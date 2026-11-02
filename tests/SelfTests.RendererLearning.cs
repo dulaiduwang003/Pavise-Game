@@ -1,4 +1,4 @@
-// 作者：bdth 2074055628@qq.com
+// Copyright (C) 2026 bdth. SPDX-License-Identifier: GPL-3.0-only
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -67,8 +67,8 @@ namespace PaviseApp
                 original.Entries.Add("GameMenu");
                 original.Entries.Add("OldRender");
                 original.Entries.Add("HistoricalAlias");
-                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyBoost, "0"));
-                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyPreset, "2"));
+                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyGameRebar, "0"));
+                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyGameFullscreenOptimizations, "0"));
                 Eq(true, new GameProfileStore(dir).Save(new[] { original }));
                 var mode = new GameMode(dir, new SuppressionCore());
                 int changed = 0;
@@ -86,8 +86,8 @@ namespace PaviseApp
                 Eq(1, actual.Entries.Count);
                 Eq(true, actual.Entries.Contains("GameRender"));
                 Eq(2, actual.Overrides.Count);
-                Eq("0", actual.Overrides[PolicyCatalog.KeyBoost]);
-                Eq("0", actual.Overrides[PolicyCatalog.KeyPreset]);
+                Eq("0", actual.Overrides[PolicyCatalog.KeyGameRebar]);
+                Eq("0", actual.Overrides[PolicyCatalog.KeyGameFullscreenOptimizations]);
                 Eq(false, GameSessionDetector.IsProfileEntryName(actual, "GameMenu"));
                 Eq(false, GameSessionDetector.IsProfileEntryName(actual, "OldRender"));
                 Eq(1, changed);
@@ -195,7 +195,7 @@ namespace PaviseApp
                     Path.Combine(dir, "GameMenu.exe"));
                 original.LearnedExecutablePath = Path.Combine(dir, "OldRender.exe");
                 original.Entries.Add("OldRender");
-                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyBoost, "0"));
+                Eq(true, PolicyResolver.SetOverride(original, PolicyCatalog.KeyGameRebar, "0"));
                 Eq(true, new GameProfileStore(dir).Save(new[] { original }));
                 var mode = new GameMode(dir, new SuppressionCore());
                 int changed = 0, failures = 0;

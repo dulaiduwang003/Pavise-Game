@@ -56,13 +56,13 @@ namespace PaviseApp
             Settings.Save(AutomaticPolicy.VersionKey, true);
             Eq(PerformancePreset.Extreme, PresetValue.From(6));
             Eq(true, PresetValue.SupportsCoreScheduling(PerformancePreset.Extreme));
-            Eq(true, GameMode.IsAggressive(PerformancePreset.Extreme, false));
+            Eq(true, AutomaticPolicy.SceneUsesWideBackgroundScope(PerformancePreset.Extreme));
             foreach (string mode in new[] { "0", "6", "4", "6", "1", "0" })
             {
                 Settings.SaveStr(PolicyCatalog.KeyPreset, mode);
                 var policy = PolicyResolver.Global();
                 Eq(mode == "6", policy.DwmBoost);
-                Eq(mode == "6", policy.IdlePolicy);
+                Eq("0", policy.ValueOf(PolicyCatalog.KeyIdlePolicy));
                 Eq(true, policy.PauseUpdate);
                 Eq(mode == "6", policy.IntelEnduranceOff);
                 Eq("off", policy.NvLowLatMode);
@@ -91,9 +91,9 @@ namespace PaviseApp
             Eq(false, modeSwitch.AutomationPolicySnapshot.IntelEnduranceOff);
             Settings.SaveStr(PolicyCatalog.KeyPreset, "6");
             Eq(true, PowerPlan.SelectPlan(PowerPlan.BalancedGuid.ToString()));
-            Eq(false, PolicyResolver.Global().IdlePolicy);
+            Eq("0", PolicyResolver.Global().ValueOf(PolicyCatalog.KeyIdlePolicy));
             Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice));
-            Eq(true, PolicyResolver.Global().IdlePolicy);
+            Eq("0", PolicyResolver.Global().ValueOf(PolicyCatalog.KeyIdlePolicy));
 
             int dwmCalls = 0; bool dwmFail = false;
             DwmBoost.RequestForTest = delegate(bool enabled) { dwmCalls++; return dwmFail ? -1 : 0; };

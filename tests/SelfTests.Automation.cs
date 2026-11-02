@@ -19,12 +19,14 @@ namespace PaviseApp
                 PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                 PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache, PolicyCatalog.KeyNvRebar,
                 PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf,
-                PolicyCatalog.KeyIntelEndurance, PolicyCatalog.KeyGpuPowerMax })
+                PolicyCatalog.KeyIntelEndurance, PolicyCatalog.KeyGpuPowerMax, PolicyCatalog.KeyWsTrim,
+                PolicyCatalog.KeyLaptopPerf, PolicyCatalog.KeyAggressive, PolicyCatalog.KeyAdaptiveEscalate })
             {
                 Settings.SaveStr(key, "1"); profile.Overrides[key] = "1";
-                bool automaticAgain = key == PolicyCatalog.KeyPauseServices || key == PolicyCatalog.KeyNvMaxPerf
+                bool automaticAgain = key == PolicyCatalog.KeyNvMaxPerf
                     || key == PolicyCatalog.KeyNvShaderCache || key == PolicyCatalog.KeyPauseUpdate || key == PolicyCatalog.KeyIntelEndurance
-                    || key == PolicyCatalog.KeyNvLowLat || key == PolicyCatalog.KeyAmdAntiLag || key == PolicyCatalog.KeyStandbyCleaner;
+                    || key == PolicyCatalog.KeyNvLowLat || key == PolicyCatalog.KeyAmdAntiLag || key == PolicyCatalog.KeyStandbyCleaner
+                    || key == PolicyCatalog.KeyEnglishInput;
                 Eq(!automaticAgain, PolicyCatalog.ItemOf(key) == null);
                 Eq(false, PolicyResolver.SetOverride(profile, key, "1"));
                 Eq(true, GameProfile.IsRetiredOverrideKey(key));
@@ -75,18 +77,19 @@ namespace PaviseApp
             {
                 Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
                 typeof(GameMode).GetMethod("SyncAutomationPolicy", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(mode, null);
-                foreach (string field in new[] { "englishInputOn",
-                    "nvSmoothMotion", "nvRebarOn", "amdAntiLag",
-                    "amdAfmf", "intelEnduranceOn" })
+                foreach (string field in new[] { "nvSmoothMotion", "nvRebarOn", "amdAntiLag",
+                    "amdAfmf" })
                     Eq(false, (bool)typeof(GameMode).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
+                Eq(true, (bool)typeof(GameMode).GetField("englishInputOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
+                Eq(true, (bool)typeof(GameMode).GetField("intelEnduranceOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
                 Eq(true, mode.KillGameDvr);
-                Eq(true, (bool)typeof(GameMode).GetField("mmcssOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
+                Eq(false, (bool)typeof(GameMode).GetField("mmcssOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
                 Eq("off", mode.AutomationPolicySnapshot.NvDlssMode);
                 Eq(true, mode.AutomationPolicySnapshot.PauseUpdate);
                 Eq(true, (bool)typeof(GameMode).GetField("pauseUpdateOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
                 Eq("off", mode.AutomationPolicySnapshot.NvLowLatMode);
-                Eq(preset == "1", mode.PauseServices);
-                Eq(preset != "4", mode.NvMaxPerf);
+                Eq(false, mode.PauseServices);
+                Eq(true, mode.NvMaxPerf);
                 Eq(true, mode.NvShaderCacheMax);
             }
             Settings.UseTransientStoreForCurrentProcess();
@@ -100,13 +103,17 @@ namespace PaviseApp
             Eq(true, RebarProbe.EnableBlockReason(true, true, true, true) == null);
             Eq(false, RebarProbe.EnabledFromWindow(256UL * 1024 * 1024));
             Eq(true, RebarProbe.EnabledFromWindow(1024UL * 1024 * 1024));
-            RunExtremeModeTests();
             RunGameLowLatencyPreferenceTests();
             RunGameDvrPreferenceTests();
             Settings.Save(AutomaticPolicy.VersionKey, true);
+            Eq(false, CalibrationRuntime.Requested);
+            var profile = new GameProfile { Id = "automatic-test", Name = "Automatic test" };
+            try
+            {
+            AutomaticPolicy.RequestedForTest = delegate { return true; };
+            AutomaticPolicy.EffectiveForTest = delegate { return false; };
             foreach (PolicyItem item in PolicyCatalog.All)
                 if (!AutomaticPolicy.IsIntent(item.Key)) Settings.SaveStr(item.Key, item.Kind == PolicyValueKind.Bool ? "0" : "off");
-            var profile = new GameProfile { Id = "automatic-test", Name = "Automatic test" };
             profile.Overrides[PolicyCatalog.KeyPreset] = "1";
             profile.Overrides[PolicyCatalog.KeySuppress] = "0";
             profile.Overrides[PolicyCatalog.KeyBoost] = "0";
@@ -115,16 +122,16 @@ namespace PaviseApp
                 Settings.SaveStr(PolicyCatalog.KeyPreset, mode);
                 PolicySnapshot policy = PolicyResolver.For(profile);
                 Eq(PresetValue.From(int.Parse(mode)), policy.Preset);
-                Eq(true, policy.SuppressBackground); Eq(true, policy.BoostGame);
-                Eq(true, policy.Awake); Eq(true, policy.PauseMaintenance);
+                Eq(false, policy.SuppressBackground); Eq(false, policy.BoostGame);
+                Eq(false, policy.Awake); Eq(false, policy.PauseMaintenance);
                 Eq(false, policy.AutoCoresAllowed); Eq(false, policy.EnglishInput);
-                Eq(false, policy.StandbyCleaner); Eq(mode == "1" || mode == "6", policy.PauseServices); Eq(true, policy.PauseUpdate);
-                Eq(mode == "6", policy.DwmBoost); Eq(mode == "6", policy.IntelEnduranceOff);
-                Eq(mode == "6", policy.IdlePolicy);
-                Eq(mode != "4", policy.NvMaxPerf); Eq(true, policy.NvShaderCacheMax);
+                Eq(false, policy.StandbyCleaner); Eq(false, policy.PauseServices); Eq(false, policy.PauseUpdate);
+                Eq(false, policy.DwmBoost); Eq(false, policy.IntelEnduranceOff);
+                Eq("0", policy.ValueOf(PolicyCatalog.KeyIdlePolicy));
+                Eq(false, policy.NvMaxPerf); Eq(false, policy.NvShaderCacheMax);
                 Eq(false, policy.NvRebar); Eq(false, policy.NvSmoothMotion);
                 Eq("off", policy.NvDlssMode);
-                Eq(false, policy.CacheWarm); Eq(mode != "4", policy.WsTrim);
+                Eq(false, policy.CacheWarm); Eq("0", PolicyResolver.Read(profile, PolicyCatalog.KeyWsTrim));
             }
             Eq(false, PolicyResolver.SetOverride(profile, PolicyCatalog.KeySuppress, "0"));
             Eq(false, PolicyResolver.SetOverride(profile, PolicyCatalog.KeyPreset, "1"));
@@ -132,6 +139,9 @@ namespace PaviseApp
             Eq(false, profile.Overrides.ContainsKey(PolicyCatalog.KeyPreset));
             Eq(true, PolicyResolver.SetOverride(profile, PolicyCatalog.KeyAutoCores, "1"));
             Eq(false, PolicyResolver.For(profile).AutoCoresAllowed);
+            }
+            finally { AutomaticPolicy.RequestedForTest = null; AutomaticPolicy.EffectiveForTest = null; AutomaticPolicy.ApprovedForTest = null; }
+            Settings.Save(PolicyCatalog.KeyPowerPlan, true);
             Settings.SaveStr(PolicyCatalog.KeyPreset, "1");
             Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice)); Eq(true, PolicyResolver.Global().PowerPlanOn);
             Eq(null, PolicyCatalog.ItemOf("GmPowerYield"));
@@ -147,40 +157,144 @@ namespace PaviseApp
             Eq(true, PolicyResolver.Global().PowerPlanOn);
             Eq(false, PowerPlan.SelectPlan("not-a-plan")); Eq(localPlan, PowerPlan.EffectivePlanId);
             Settings.SaveStr(PolicyCatalog.KeyPreset, "4"); Eq(true, PolicyResolver.Global().PowerPlanOn);
-            Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice)); Eq(false, PolicyResolver.Global().PowerPlanOn);
+            Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice)); Eq(true, PolicyResolver.Global().PowerPlanOn);
             Settings.SaveStr("AutoInput", "english"); Eq(false, PolicyResolver.Global().EnglishInput);
             foreach (string key in new[] { "AutoInput", "AutoRecording", "AutoGraphics",
                 PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyStandbyCleaner,
                 PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyNvLowLat,
                 PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvRebar,
                 PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf,
-                PolicyCatalog.KeyIntelEndurance, PolicyCatalog.KeyGpuPowerMax })
+                PolicyCatalog.KeyIntelEndurance, PolicyCatalog.KeyGpuPowerMax, PolicyCatalog.KeyWsTrim,
+                PolicyCatalog.KeyLaptopPerf })
             {
                 if (key != PolicyCatalog.KeyPauseUpdate && key != PolicyCatalog.KeyIntelEndurance
-                    && key != PolicyCatalog.KeyNvLowLat && key != PolicyCatalog.KeyAmdAntiLag && key != PolicyCatalog.KeyStandbyCleaner) Eq(null, PolicyCatalog.ItemOf(key));
+                    && key != PolicyCatalog.KeyNvLowLat && key != PolicyCatalog.KeyAmdAntiLag && key != PolicyCatalog.KeyStandbyCleaner
+                    && key != PolicyCatalog.KeyEnglishInput) Eq(null, PolicyCatalog.ItemOf(key));
                 Eq(false, PolicyResolver.SetOverride(profile, key, "1"));
             }
             foreach (PolicyItem item in PolicyCatalog.All)
             {
                 if (AutomaticPolicy.IsIntent(item.Key) || AutomaticPolicy.IsEnvironment(item.Key) || AutomaticPolicy.IsLowLatency(item.Key)
-                    || AutomaticPolicy.IsRetiredInAuto(item.Key)) continue;
-                bool participates = false;
+                    || AutomaticPolicy.IsRetiredInAuto(item.Key) || AutomaticPolicy.IsGamePriorityOption(item.Key)
+                    || item.Key == PolicyCatalog.KeyPowerPlan) continue;
+                Settings.SaveStr(item.Key, item.Key == PolicyCatalog.KeyThreadBoost ? ThreadBoostSelection.Candidate
+                    : item.Kind == PolicyValueKind.Bool ? "1" : "on");
                 foreach (string mode in new[] { "0", "1", "6", "4" })
                 {
                     Settings.SaveStr(PolicyCatalog.KeyPreset, mode);
                     string value = PolicyResolver.GlobalValue(item.Key);
-                    participates |= value != null && value != "0" && value != "off";
+                    Eq(true, value != null && value != "0" && value != "off");
                 }
-                Eq(true, participates);
+                Settings.SaveStr(item.Key, item.Kind == PolicyValueKind.Bool ? "0" : "off");
+                Eq(item.Kind == PolicyValueKind.Bool ? "0" : "off", PolicyResolver.GlobalValue(item.Key));
             }
             Settings.SaveStr(PolicyCatalog.KeyPreset, "2"); Eq(PerformancePreset.Standard, PolicyResolver.Global().Preset);
-            long start = DateTime.UtcNow.Ticks;
-            Eq(false, WsTrim.ObserveIdle(77123, 10, 10, 2, start));
-            Eq(false, WsTrim.ObserveIdle(77123, 10, 10, 2, start + TimeSpan.TicksPerSecond * 59));
-            Eq(true, WsTrim.ObserveIdle(77123, 10, 10, 2, start + TimeSpan.TicksPerMinute));
-            Eq(false, WsTrim.ObserveIdle(77123, 10, 11, 2, start + TimeSpan.TicksPerMinute));
-            Eq(false, WsTrim.ObserveIdle(77123, 11, 11, 2, start + TimeSpan.TicksPerMinute * 2));
+            Eq(true, AutomaticPolicy.IsRetired(PolicyCatalog.KeyWsTrim));
+            Eq(null, typeof(GameMode).Assembly.GetType("PaviseApp.WsTrim"));
+            RunCalibrationApprovalPolicyTests();
+            RunIndependentPowerPreferenceTests();
             RunNoSwitchPowerPlanTests();
+        }
+        private static void RunIndependentPowerPreferenceTests()
+        {
+            var oldRead = Settings.BeforeStrictStringReadForTest;
+            var oldWrite = Settings.BeforeStringWriteForTest;
+            try
+            {
+                Eq(false, AutomaticPolicy.IsCandidate(PolicyCatalog.KeyPowerPlan));
+                Eq(true, GameProfile.IsRetiredOverrideKey(PolicyCatalog.KeyPowerPlan));
+                foreach (bool enabled in new[] { false, true })
+                foreach (string choice in new[] { "", PowerPlan.ManagedChoice, PowerPlan.NoSwitchChoice, PowerPlan.BalancedGuid.ToString() })
+                {
+                    Settings.UseTransientStoreForCurrentProcess();
+                    Settings.Save(PolicyCatalog.KeyPowerPlan, enabled); Settings.SaveStr("PowerPlanChoice", choice);
+                    string expected = !enabled || choice == PowerPlan.NoSwitchChoice ? PowerPlan.NoSwitchChoice
+                        : choice.Length == 0 ? PowerPlan.ManagedChoice : choice;
+                    Eq(expected, PowerPlan.EffectivePlanId);
+                    foreach (bool automatic in new[] { false, true })
+                    foreach (string legacyOverride in new[] { "0", "1" })
+                    {
+                        Settings.Save(CalibrationRuntime.RequestedKey, automatic);
+                        var profile = new GameProfile { Id = "independent-plan", Name = "Independent plan" };
+                        profile.Overrides[PolicyCatalog.KeyPowerPlan] = legacyOverride;
+                        Eq(expected != PowerPlan.NoSwitchChoice, PolicyResolver.For(profile).PowerPlanOn);
+                        Eq(false, PolicyResolver.For(profile).HasOverride(PolicyCatalog.KeyPowerPlan));
+                        PolicyResolver.Sanitize(profile);
+                        Eq(false, profile.Overrides.ContainsKey(PolicyCatalog.KeyPowerPlan));
+                        Eq(0, PolicyResolver.Diff(profile).Count);
+                    }
+                }
+                Settings.UseTransientStoreForCurrentProcess();
+                Settings.Save(PolicyCatalog.KeyPowerPlan, false); Settings.SaveStr("PowerPlanChoice", PowerPlan.ManagedChoice);
+                Settings.BeforeStringWriteForTest = delegate(string key) { if (key == "PowerPlanChoice") throw new IOException("fixture power choice write failure"); };
+                Eq(false, PowerPlan.SelectPlan(PowerPlan.ManagedChoice)); Eq(true, PowerPlan.NoSwitchSelected);
+                Eq(PowerPlan.ManagedChoice, Settings.LoadStr("PowerPlanChoice", ""));
+                Settings.BeforeStringWriteForTest = oldWrite;
+                Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice)); Eq(false, PowerPlan.NoSwitchSelected);
+                // The retired boolean must not become a second hidden control again.
+                Settings.Save(PolicyCatalog.KeyPowerPlan, false); Eq(false, PowerPlan.NoSwitchSelected);
+                Settings.BeforeStrictStringReadForTest = delegate(string key) { if (key == "PowerPlanChoice") throw new IOException("fixture power choice read failure"); };
+                Eq(true, PowerPlan.NoSwitchSelected); Eq(false, PowerPlan.SelectPlan(PowerPlan.NoSwitchChoice));
+                Settings.BeforeStrictStringReadForTest = oldRead;
+                foreach (string malformed in new[] { "bad-plan", "v2:", "v2:bad-plan", "v2:00000000-0000-0000-0000-000000000000" })
+                {
+                    Settings.SaveStr("PowerPlanChoice", malformed); Eq(true, PowerPlan.NoSwitchSelected);
+                    Eq((bool?)null, PowerPlan.ClassifyRestorePlanForTest(Guid.NewGuid()));
+                }
+                Eq(true, PowerPlan.SelectPlan(PowerPlan.BalancedGuid.ToString()));
+                Eq(PowerPlan.BalancedGuid.ToString(), PowerPlan.EffectivePlanId);
+            }
+            finally
+            {
+                Settings.BeforeStrictStringReadForTest = oldRead; Settings.BeforeStringWriteForTest = oldWrite;
+                Settings.UseTransientStoreForCurrentProcess();
+            }
+        }
+        private static void RunCalibrationApprovalPolicyTests()
+        {
+            Settings.UseTransientStoreForCurrentProcess();
+            try
+            {
+                Eq(false, AutomaticPolicy.Requested); Eq(false, CalibrationRuntime.Requested);
+                Settings.Save(AutomaticPolicy.VersionKey, true);
+                Eq(false, AutomaticPolicy.Requested);
+                var profile = new GameProfile { Id = "calibration-gate", Name = "Calibration gate" };
+                foreach (PolicyItem item in PolicyCatalog.All)
+                    if (AutomaticPolicy.IsCandidate(item.Key)) Settings.SaveStr(item.Key, item.Kind == PolicyValueKind.Bool ? "1" : "on");
+                Settings.Save(AutomaticPolicy.GameLowLatencyKey, true);
+                foreach (string mode in new[] { "0", "1" })
+                {
+                    Settings.SaveStr(PolicyCatalog.KeyPreset, mode);
+                    Eq(true, PolicyResolver.Global().BoostGame); Eq(true, PolicyResolver.Global().SuppressBackground);
+                    AutomaticPolicy.RequestedForTest = delegate { return true; };
+                    AutomaticPolicy.EffectiveForTest = delegate { return false; };
+                    foreach (PolicyItem item in PolicyCatalog.All)
+                        if (AutomaticPolicy.IsCandidate(item.Key)) Eq(AutomaticPolicy.IsLowLatency(item.Key) ? "off" : "0", PolicyResolver.For(profile).ValueOf(item.Key));
+                    AutomaticPolicy.EffectiveForTest = delegate { return true; };
+                    AutomaticPolicy.ApprovedForTest = delegate(string key) { return key == PolicyCatalog.KeyBoost || key == PolicyCatalog.KeySuppress ? "1" : null; };
+                    Eq(true, PolicyResolver.For(profile).BoostGame); Eq(true, PolicyResolver.For(profile).SuppressBackground);
+                    foreach (PolicyItem item in PolicyCatalog.All)
+                        if (AutomaticPolicy.IsCandidate(item.Key) && item.Key != PolicyCatalog.KeyBoost && item.Key != PolicyCatalog.KeySuppress)
+                            Eq(AutomaticPolicy.IsLowLatency(item.Key) ? "off" : "0", PolicyResolver.For(profile).ValueOf(item.Key));
+                    // 后台治理随批准值；顶部电源选择独立于自动批准，竞技仍按既有托管保护调处理器。
+                    Eq(mode == "1", PolicyResolver.For(profile).WideBackgroundScope);
+                    Eq(mode == "0", PolicyResolver.For(profile).AdaptiveEscalation);
+                    Eq(mode == "1" && PolicyResolver.For(profile).PowerPlanOn, PolicyResolver.For(profile).ProcessorTuning);
+                    Eq(false, PolicyResolver.For(profile).PauseMaintenance); Eq(false, PolicyResolver.For(profile).Awake);
+                    Settings.Save(PolicyCatalog.KeyAwake, true); Eq(true, PolicyResolver.For(profile).Awake);
+                    Settings.Save(PolicyCatalog.KeyAwake, false); Eq(false, PolicyResolver.For(profile).Awake);
+                    Settings.SaveStr(PolicyCatalog.KeyGpuDemote, "1"); Eq(false, PolicyResolver.For(profile).GpuDemote);
+                    AutomaticPolicy.EffectiveForTest = delegate { return false; };
+                    Eq(false, PolicyResolver.For(profile).BoostGame); Eq(false, PolicyResolver.For(profile).SuppressBackground);
+                    AutomaticPolicy.RequestedForTest = null; AutomaticPolicy.EffectiveForTest = null; AutomaticPolicy.ApprovedForTest = null;
+                    Eq(true, PolicyResolver.Global().BoostGame);
+                }
+            }
+            finally
+            {
+                AutomaticPolicy.RequestedForTest = null; AutomaticPolicy.EffectiveForTest = null; AutomaticPolicy.ApprovedForTest = null;
+                Settings.UseTransientStoreForCurrentProcess();
+            }
         }
         private static void RunNoSwitchPowerPlanTests()
         {
@@ -192,13 +306,23 @@ namespace PaviseApp
                 var profile = new GameProfile { Id = "power-off-fixture", Name = "Power off fixture" };
                 profile.Overrides[PolicyCatalog.KeyPowerPlan] = "1";
                 Settings.Save(PolicyCatalog.KeyPowerPlan, true);
+                Settings.Save(PolicyCatalog.KeyLaptopPerf, true);
+                Settings.Save("AutoLaptopPerformanceV1", true);
                 Settings.Save(LaptopPerfMode.PreferenceKey, true);
                 PolicySnapshot snapshot = PolicyResolver.For(profile);
                 var mode = new GameMode(Path.Combine(Path.GetTempPath(), "PaviseNoSwitch-" + Guid.NewGuid().ToString("N")), new SuppressionCore());
+                Eq(true, mode.LaptopPerformanceEnabled);
+                Eq(true, Settings.LoadCached(LaptopPerfMode.PreferenceKey, false));
+                Eq("AutoLaptopPerformanceV2", LaptopPerfMode.PreferenceKey);
+                Eq(false, Settings.LoadCached(PolicyCatalog.KeyLaptopPerf, false));
+                Eq(false, Settings.LoadCached("AutoLaptopPerformanceV1", false));
+                Eq(true, AutomaticPolicy.IsRetired(PolicyCatalog.KeyLaptopPerf));
+                Eq(true, AutomaticPolicy.IsRetired("AutoLaptopPerformanceV1"));
+                Eq(false, AutomaticPolicy.IsRetired(LaptopPerfMode.PreferenceKey));
                 foreach (bool automatic in new[] { false, true })
                 foreach (string preset in new[] { "0", "1", "6", "4" })
                 {
-                    Settings.Save(AutomaticPolicy.VersionKey, automatic);
+                    Settings.Save(CalibrationRuntime.RequestedKey, automatic);
                     Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
                     Eq(true, PowerPlan.SelectPlan(PowerPlan.NoSwitchChoice));
                     Eq(PowerPlan.NoSwitchChoice, PowerPlan.EffectivePlanId);
@@ -211,7 +335,12 @@ namespace PaviseApp
                     typeof(GameMode).GetField("enabled", flags).SetValue(mode, true);
                     typeof(GameMode).GetField("planActive", flags).SetValue(mode, true);
                     typeof(GameMode).GetField("lastPowerPolicyKey", flags).SetValue(mode, 3);
-                    Eq(false, (bool)typeof(GameMode).GetMethod("LaptopPerformanceAdmitted", flags).Invoke(mode, null));
+                    Eq(true, typeof(GameMode).GetProperty("LaptopPerformanceEnabled", BindingFlags.Public | BindingFlags.Instance) != null);
+                    Eq(true, typeof(GameMode).GetMethod("TrySetLaptopPerformanceEnabled", BindingFlags.Public | BindingFlags.Instance,
+                        null, new[] { typeof(bool) }, null) != null);
+                    Eq(true, mode.LaptopPerformanceEnabled); // The off choice suppresses application, not saved user intent.
+                    Eq(false, GameMode.LaptopPerformanceAdmitted(mode.LaptopPerformanceEnabled, true, true, true,
+                        PowerPlan.EffectivePlanId == PowerPlan.NoSwitchChoice, false, false, true, false, true));
                     Eq(false, (bool)typeof(GameMode).GetMethod("PowerPlanNotificationStillCurrent", flags).Invoke(mode, new object[] { 0, 3 }));
                     mode.NotifyPowerSchemeChanged();
                     Eq(0, (int)typeof(GameMode).GetField("powerPlanNotificationPending", flags).GetValue(mode));
@@ -224,13 +353,14 @@ namespace PaviseApp
                     Eq(false, (bool)typeof(GameMode).GetMethod("RunPowerPlanApply", flags).Invoke(mode,
                         new object[] { 0, new Func<bool>(delegate { calls++; return true; }) }));
                     Eq(0, calls);
-                    typeof(GameMode).GetMethod("MaybeActivatePowerOverlay", flags).Invoke(mode, new object[] { true });
-                    Eq(0, (int)typeof(GameMode).GetField("overlayAttempts", flags).GetValue(mode));
-                    Eq(0L, (long)typeof(GameMode).GetField("nextOverlayAuditTicks", flags).GetValue(mode));
+                    Eq(null, typeof(GameMode).GetMethod("MaybeActivatePowerOverlay", flags));
+                    Eq(null, typeof(GameMode).GetField("overlayAttempts", flags));
+                    Eq(null, typeof(GameMode).GetField("nextOverlayAuditTicks", flags));
+                    Eq(null, typeof(GameMode).GetField("overlayRaised", flags));
                     Eq(true, PowerPlan.SelectPlan(PowerPlan.BalancedGuid.ToString()));
                     Eq(true, snapshot.PowerPlanOn);
                     Eq(true, PowerPlan.SelectPlan(PowerPlan.ManagedChoice));
-                    Eq(!automatic || preset != "4", snapshot.PowerPlanOn);
+                    Eq(true, snapshot.PowerPlanOn);
                 }
                 Eq(true, PowerPlan.SelectPlan(PowerPlan.NoSwitchChoice));
                 int nativeCalls = 0;
@@ -241,9 +371,9 @@ namespace PaviseApp
                 PowerPlan.RestoreSetPlanForTest = delegate(Guid plan) { nativeCalls++; return true; };
                 PowerPlan.RestoreOrphanManagedPlanForTest = delegate { nativeCalls++; return false; };
                 Eq(false, PowerPlan.ActivatePlanForTest());
-                Eq(false, PowerPlan.Enforce(true, false, true));
+                Eq(false, PowerPlan.Enforce(true));
                 typeof(PowerPlan).GetField("active", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, true);
-                Eq(false, PowerPlan.Enforce(true, false, true));
+                Eq(false, PowerPlan.Enforce(true));
                 Eq(0, nativeCalls);
                 Eq(true, PowerPlan.RestorePlanForTest(false));
                 Eq(0, nativeCalls);
@@ -252,7 +382,7 @@ namespace PaviseApp
                 Eq(false, PowerPlan.ClassifyRestorePlanForTest(external));
                 Settings.SaveStr("PgPlanGuid", managed.ToString());
                 Settings.SaveStr(PowerPlan.PlanJournalKey, original.ToString());
-                Eq(false, PowerPlan.Enforce(true, false));
+                Eq(false, PowerPlan.Enforce(true));
                 Eq(original.ToString(), Settings.LoadStr(PowerPlan.PlanJournalKey, ""));
                 Guid current = managed;
                 int writes = 0;
@@ -289,7 +419,7 @@ namespace PaviseApp
                 Directory.CreateDirectory(dir);
                 var mode = new GameMode(dir, new SuppressionCore());
                 mode.InitializeAutomation();
-                Eq(true, mode.KillGameDvr);
+                Eq(false, mode.KillGameDvr);
                 Eq(true, mode.SetGameDvrSuppression(requested));
                 Eq(requested, Settings.Load("GameDvrOff", !requested));
                 foreach (string preset in new[] { "0", "1", "6", "4", "2" })
@@ -297,7 +427,7 @@ namespace PaviseApp
                     Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
                     mode.RefreshAutomaticPreferences();
                     Eq(requested, mode.KillGameDvr);
-                    Eq(true, (bool)typeof(GameMode).GetField("mmcssOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
+                    Eq(false, (bool)typeof(GameMode).GetField("mmcssOn", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mode));
                 }
                 var reloaded = new GameMode(dir, new SuppressionCore());
                 reloaded.InitializeAutomation();
@@ -322,9 +452,9 @@ namespace PaviseApp
             var profile = new GameProfile { Id = "latency-test", Name = "Latency fixture" };
             foreach (string key in new[] { PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyAmdAntiLag })
             {
-                Settings.SaveStr(key, key == PolicyCatalog.KeyNvLowLat ? "on" : "1");
                 profile.Overrides[key] = "1";
             }
+            PolicyResolver.Sanitize(profile); Eq(0, profile.Overrides.Count);
             var snapshot = PolicyResolver.For(profile);
             var nvPlanKey = typeof(GameMode).GetField("automaticNvPlanKey", BindingFlags.Instance | BindingFlags.NonPublic);
             Eq(true, AutomaticPolicy.IsLowLatency(PolicyCatalog.KeyNvLowLat));
@@ -376,6 +506,10 @@ namespace PaviseApp
             try
             {
                 Settings.Save(AutomaticPolicy.VersionKey, true);
+                // Driver plan and restoration coverage uses explicit manual preferences;
+                // an old automatic flag cannot stand in for a calibration certificate.
+                Settings.Save(PolicyCatalog.KeyNvMaxPerf, true);
+                Settings.Save(PolicyCatalog.KeyNvShaderCache, true);
                 var mode = new GameMode(dir, new SuppressionCore(Path.Combine(dir, "state")));
                 var profile = new GameProfile { Id = "prestage", Name = "Prestage test" };
                 var keys = new HashSet<int>();
@@ -391,7 +525,7 @@ namespace PaviseApp
                 foreach (bool vrr in new[] { false, true })
                 {
                     Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
-                    Settings.Save(AutomaticPolicy.GameLowLatencyKey, low);
+                    Settings.SaveStr(PolicyCatalog.KeyNvLowLat, low ? "on" : "off");
                     PolicySnapshot policy = PolicyResolver.For(profile);
                     NvGamePlan before = GameMode.AutomaticPreStagePlan(policy, onAc, vrr);
                     NvGamePlan live = mode.RefreshAutomaticNvPlan(policy.NvMaxPerf, policy.NvShaderCacheMax,
@@ -416,7 +550,7 @@ namespace PaviseApp
                 fake.Values[NvApi.SettingPreRenderLimit] = 3;
                 fake.Values[NvApi.SettingVrrAppOverride] = 0;
                 Settings.SaveStr(PolicyCatalog.KeyPreset, "6");
-                Settings.Save(AutomaticPolicy.GameLowLatencyKey, true);
+                Settings.SaveStr(PolicyCatalog.KeyNvLowLat, "on");
                 NvGamePlan plan = GameMode.AutomaticPreStagePlan(PolicyResolver.For(profile), true, true);
                 bool retry;
                 Eq(0, mode.ApplyNvGamePlan(@"C:\fixture\prestage-game.exe", plan, out retry, preStage: true).Count);
@@ -455,7 +589,7 @@ namespace PaviseApp
             finally
             {
                 NvDrsTweaks.Driver = original; Logger.LogPath = previousLog;
-                Settings.Save(AutomaticPolicy.GameLowLatencyKey, false);
+                Settings.SaveStr(PolicyCatalog.KeyNvLowLat, "off");
                 Settings.SaveStr(PolicyCatalog.KeyPreset, "0");
             }
         }
@@ -605,17 +739,24 @@ namespace PaviseApp
 
         private static void RunAutomaticFreshStartTests()
         {
+            Settings.UseTransientStoreForCurrentProcess();
             string dir = Path.Combine(Path.GetTempPath(), "PaviseAutomaticFresh-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
+            Settings.Save(AutomaticPolicy.VersionKey, true);
             Settings.Save("GameDvrOff", true);
             Settings.Save(PolicyCatalog.KeyEnglishInput, true);
             Settings.Save(PolicyCatalog.KeySuppress, false);
+            Settings.Save(PolicyCatalog.KeyAwake, true);
             var mode = new GameMode(dir, new SuppressionCore());
             mode.InitializeAutomation();
-            Eq(true, AutomaticPolicy.Enabled);
-            Eq(true, mode.AutomationPolicySnapshot.SuppressBackground);
+            Eq(false, AutomaticPolicy.Enabled);
+            Eq(false, AutomaticPolicy.Effective);
+            Eq(false, CalibrationRuntime.Requested);
+            bool legacy;
+            Eq(false, Settings.TryLoadStoredBool(AutomaticPolicy.VersionKey, out legacy));
+            Eq(false, mode.AutomationPolicySnapshot.SuppressBackground);
             Eq(true, mode.KillGameDvr);
-            Eq(false, mode.AutomationPolicySnapshot.EnglishInput);
+            Eq(true, mode.AutomationPolicySnapshot.EnglishInput);
             Eq(0, Directory.GetDirectories(dir).Length);
             Eq(@"Software\PaviseAuto", Settings.Key);
             Eq("PaviseAuto", TaskHelper.TaskName);

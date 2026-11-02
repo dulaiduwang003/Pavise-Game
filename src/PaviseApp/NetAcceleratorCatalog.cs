@@ -1,0 +1,95 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace PaviseApp
+{
+	internal static class NetAcceleratorCatalog
+	{
+		private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+		{
+			"uu", "uu_ball", "xunyou", "leigod", "leigod_launcher", "leishensdk", "qiyou", "biubiu", "bbservice", "dolphinq",
+			"wtfast"
+		};
+
+		private static readonly string[] Tokens = new string[27]
+		{
+			"accelerat", "booster", "加速器", "xunyou", "leigod", "leishen", "qiyou", "biubiu", "dolphinq", "wtfast",
+			"exitlag", "noping", "mudfish", "clash", "mihomo", "sing-box", "v2ray", "xray", "nekoray", "nekobox",
+			"hiddify", "wireguard", "openvpn", "tailscale", "zerotier", "sstap", "netch"
+		};
+
+		internal static bool IsAcceleratorLikeName(string name)
+		{
+			if (string.IsNullOrEmpty(name))
+			{
+				return false;
+			}
+			name = WhitelistRule.NormalizeName(name);
+			if (ProcessNames.Contains(name))
+			{
+				return true;
+			}
+			string text = name.ToLowerInvariant();
+			string[] tokens = Tokens;
+			foreach (string value in tokens)
+			{
+				if (text.Contains(value))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		internal static bool IsAcceleratorLikePath(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+			{
+				return false;
+			}
+			try
+			{
+				string directoryName = Path.GetDirectoryName(path);
+				for (int i = 0; i < 2; i++)
+				{
+					if (string.IsNullOrEmpty(directoryName))
+					{
+						break;
+					}
+					string text = Path.GetFileName(directoryName).ToLowerInvariant();
+					if (text.Length == 0)
+					{
+						break;
+					}
+					string[] tokens = Tokens;
+					foreach (string value in tokens)
+					{
+						if (text.Contains(value))
+						{
+							return true;
+						}
+					}
+					directoryName = Path.GetDirectoryName(directoryName);
+				}
+			}
+			catch
+			{
+			}
+			return false;
+		}
+
+		internal static string[] ProcessNamesForDisplay()
+		{
+			string[] array = new string[ProcessNames.Count];
+			ProcessNames.CopyTo(array);
+			Array.Sort(array, StringComparer.OrdinalIgnoreCase);
+			return array;
+		}
+
+		internal static string[] TokensForDisplay()
+		{
+			return (string[])Tokens.Clone();
+		}
+	}
+}

@@ -1,0 +1,2716 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32;
+
+namespace PaviseApp
+{
+	internal static partial class PowerPlan
+	{
+		private sealed class ExtremeSavedValue
+		{
+			internal Guid Setting;
+
+			internal uint Ac;
+
+			internal uint Dc;
+
+			internal string Text
+			{
+				get
+				{
+					return Setting.ToString("N") + "=" + Ac.ToString(CultureInfo.InvariantCulture) + "," + Dc.ToString(CultureInfo.InvariantCulture);
+				}
+			}
+		}
+
+		private enum CpuIdlePhase
+		{
+			Prepared,
+			Owned,
+			Restoring,
+			Settled
+		}
+
+		private sealed class CpuIdleReceipt
+		{
+			internal Guid Scheme;
+
+			internal CpuIdlePhase Phase;
+
+			// -1 is a legacy receipt; v3 bits 1/2 authorize restoring only the still-owned AC/DC value 1.
+			internal int PendingMask = -1;
+
+			internal string Text(CpuIdlePhase phase)
+			{
+				object obj;
+				switch (phase)
+				{
+				default:
+					obj = "S";
+					break;
+				case CpuIdlePhase.Restoring:
+					obj = "R";
+					break;
+				case CpuIdlePhase.Owned:
+					obj = "O";
+					break;
+				case CpuIdlePhase.Prepared:
+					obj = "P";
+					break;
+				}
+				string text = (string)obj;
+				return PendingMask < 0 ? "2|" + Scheme.ToString("D") + "|0|" + text
+					: "3|" + Scheme.ToString("D") + "|0|" + text + "|" + PendingMask.ToString(CultureInfo.InvariantCulture);
+			}
+		}
+
+		private sealed class ManagedPolicyRecord
+		{
+			internal Guid Plan;
+
+			internal Guid Base;
+
+			internal Guid Previous;
+
+            internal bool CurrentTemplate;
+            internal string Source = "", Fingerprint = "";
+
+			internal string Encode()
+			{
+				return "presets2|" + Plan.ToString("D") + "|" + Base.ToString("D") + "|" + Previous.ToString("D") + "|" + Source + "|" + Fingerprint;
+			}
+		}
+
+		private sealed class NativeManagedPowerPlans : IManagedPowerPresetPlans
+		{
+			public Guid? Current()
+			{
+				return PowerPlan.Current();
+			}
+
+			public bool Exists(Guid scheme)
+			{
+				return SchemeUsable(scheme);
+			}
+
+			public bool IsOwned(Guid scheme)
+			{
+				if (ManagedPolicyOwns(scheme))
+				{
+					return true;
+				}
+				string[] array = new string[1] { "PgPlanGuid" };
+				foreach (string name in array)
+				{
+					Guid result;
+					if (Guid.TryParse(Settings.LoadStr(name, ""), out result) && result == scheme)
+					{
+						return true;
+					}
+				}
+				return ManagedPowerPlanPolicy.HasManagedName(ReadName(scheme), MachineSignature());
+			}
+
+            public bool ImportPreset(ManagedPowerPreset preset, Guid destination)
+            { return ImportPresetNative(preset, destination); }
+
+            public Guid[] Subgroups(Guid scheme) { return ReadPresetSubgroups(scheme); }
+            public bool RemoveOverride(Guid scheme, Guid sub, Guid setting, bool ac) { return RemovePresetOverrideNative(scheme, sub, setting, ac); }
+            public bool CopyBaseSetting(Guid source, Guid target, Guid sub, Guid setting, bool ac) { return CopyPresetBaseNative(source, target, sub, setting, ac); }
+
+			public bool Duplicate(Guid source, out Guid created)
+			{
+				return PowerPlan.Duplicate(source, out created);
+			}
+
+			public bool Activate(Guid scheme)
+			{
+				return Set(scheme);
+			}
+
+			public bool Delete(Guid scheme)
+			{
+				Guid guid = scheme;
+				uint num = PowerDeleteScheme(IntPtr.Zero, ref guid);
+				if (num != 0)
+				{
+					return num == 2;
+				}
+				return true;
+			}
+
+			public bool Rename(Guid scheme, string title, string note)
+			{
+				if (WriteName(scheme, title, note))
+				{
+					return ReadName(scheme) == title;
+				}
+				return false;
+			}
+
+			public string Name(Guid scheme)
+			{
+				if (!(scheme == Guid.Empty))
+				{
+					return ReadName(scheme);
+				}
+				return "";
+			}
+
+			public Guid[] ProcessorSettings(Guid scheme, Guid processor)
+			{
+                Guid[] stored = ReadPresetStoredSettings(scheme, processor);
+                if (stored == null) return null;
+                List<Guid> list = new List<Guid>(stored);
+                var enumerated = new HashSet<Guid>();
+				uint num = 0u;
+				while (num < 2048)
+				{
+					uint size = 16u;
+					byte[] array = new byte[16];
+					switch (EnumerateProcessorSetting(IntPtr.Zero, ref scheme, ref processor, 18u, num, array, ref size))
+					{
+                    case 2u: case 3u: case 259u:
+                        return list.ToArray();
+					case 0u:
+						if (size == 16)
+						{
+							Guid guid = new Guid(array);
+							if (guid == Guid.Empty || !enumerated.Add(guid))
+							{
+								return null;
+							}
+                            if (!list.Contains(guid)) list.Add(guid);
+							num++;
+							break;
+						}
+						goto default;
+					default:
+						return null;
+					}
+				}
+				return null;
+			}
+
+			public uint? Read(Guid scheme, Guid sub, Guid setting, bool ac)
+			{
+				uint value;
+				if (!(ac ? ReadAc(scheme, sub, setting, out value) : ReadDc(scheme, sub, setting, out value)))
+				{
+					return null;
+				}
+				return value;
+			}
+
+			public bool Write(Guid scheme, Guid sub, Guid setting, bool ac, uint value)
+			{
+				if (!ac)
+				{
+					return WriteDc(scheme, sub, setting, value);
+				}
+				return WriteAc(scheme, sub, setting, value);
+			}
+		}
+
+		private const string ParkSnapKey = "CoreParkSnap";
+
+		private const string ParkTriesKey = "CoreParkTries";
+
+		private const string ParkAbsent = "-";
+
+		private const int MaxRestoreTries = 3;
+
+		internal const string PlanJournalKey = "PrevPowerPlan";
+
+		private const string ChoiceKey = "PowerPlanChoice";
+
+		private const string ChoicePrefix = "v2:";
+
+		private const string DefaultPlanKey = "DefaultPlanGuid";
+
+		private const string ManagedPlanKey = "PgPlanGuid";
+
+		public const string ManagedChoice = "managed";
+
+		public const string NoSwitchChoice = "off";
+
+		private const string PlanNote = "由 Pavise 创建并托管 游戏结束自动切回原方案 删掉它 Pavise 会重建";
+
+		private const string IdleDisableClearedKey = "IdleDisableCleared";
+
+		internal const string ExtremeSnapKey = "ExtremePowerKnobSnap";
+
+		internal const string LegacyCpuIdleLedgerKey = "CpuIdleStateV1";
+
+		private const string ManagedPolicyKey = "ManagedPlanPolicyV3";
+
+		private const uint AccessScheme = 16u;
+
+		private const uint ErrorInvalidParameter = 87u;
+
+		private static readonly Guid Ultimate = new Guid("e9a42b02-d5df-448d-aa00-03f14749eb61");
+
+		private static readonly Guid HighPerf = new Guid("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
+
+		private static readonly Guid Balanced = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
+
+		private static readonly Guid PowerSaver = new Guid("a1841308-3541-4fab-bc81-f71556f20b4a");
+
+		private static readonly string[] UltimateNames = new string[2] { "卓越性能", "Ultimate Performance" };
+
+		private static string machineSig;
+
+		private static readonly object lk = new object();
+
+		private static Guid saved;
+
+		private static Guid? settledRestoreTarget;
+
+		private static bool active;
+
+		private static Guid target;
+
+		private static bool resolved;
+
+		private static bool targetOwned;
+
+
+		private static int tuneState = -1;
+
+        // Recovery state for receipts written by retired releases; never enables the old tuning policy.
+        private static bool extremeTunePending;
+
+		private static readonly Guid IdlePromote = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
+
+		private static readonly Guid IdleDemote = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
+
+		private static readonly Guid IdleScaling = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
+
+		private static readonly Guid RetiredIdleCheck = new Guid("c4581c31-89ab-4597-8e2b-9c9cab440e6b");
+
+		private static CpuIdleReceipt cpuIdleReceipt;
+
+		private static bool managedCreationBlocked;
+
+		private static long managedFailureRetryGeneration;
+
+		private static Guid pendingManagedCleanup;
+
+		private static readonly Guid SubVideo = new Guid("7516b95f-f776-4464-8c53-06167f40cc99");
+
+		private static readonly Guid VideoBrightness = new Guid("aded5e82-b909-4619-9949-f5d71dac0bcb");
+
+		private static readonly Guid VideoDimBrightness = new Guid("f1fbfde2-a960-4165-9f88-50667911ce96");
+
+		private static readonly Guid VideoAdaptive = new Guid("fbd9aa66-9553-4097-ba44-ed6e9d65eab8");
+
+		private static readonly Guid SubNone = new Guid("fea3413e-7e05-4911-9a71-700331f1c294");
+
+		private static readonly Guid SubProcessor = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+
+		private static readonly Guid SubPcie = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
+
+		private static readonly Guid SubUsb = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
+
+		private static readonly Guid SubDisk = new Guid("0012ee47-9041-4b5d-9b77-535fba8b1442");
+
+		private static readonly Guid SubWireless = new Guid("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1");
+
+		private static readonly Guid Personality = new Guid("245d8541-3943-4422-b025-13a784f679b7");
+
+		private static readonly Guid ProcThrottleMin = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
+
+		private static readonly Guid ProcThrottleMax = new Guid("bc5038f7-23e0-4960-96da-33abaf5935ec");
+
+		private static readonly Guid CpMinCores = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
+
+		private static readonly Guid CpMaxCores = new Guid("ea062031-0e34-4ff1-9b6d-eb1059334028");
+
+		private static readonly Guid PerfBoostMode = new Guid("be337238-0d82-4146-a960-4f3749d470c7");
+
+		private static readonly Guid Throttling = new Guid("3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb");
+
+		private static readonly Guid SysCoolPol = new Guid("94d3a615-a899-4ac5-ae2b-e4d8f634367f");
+
+		private static readonly Guid PcieAspm = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
+
+		private static readonly Guid UsbSelSuspend = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
+
+		private static readonly Guid DiskIdle = new Guid("6738e2c4-e8a5-4a42-b16a-e040e769756e");
+
+		private static readonly Guid NvmeLatTolPrimary = new Guid("fc95af4d-40e7-4b6d-835a-56d131dbc80e");
+
+		private static readonly Guid NvmeLatTolSecondary = new Guid("dbc9e238-6de9-49e3-92cd-8c2b4946b472");
+
+		private static readonly Guid AhciLpm = new Guid("0b2d69d7-a2a1-449c-9680-f91c70521c60");
+
+		private static readonly Guid Usb3Lpm = new Guid("d4e98f31-5ffe-4ce1-be31-1b38b384c009");
+
+		private static readonly Guid SubIntelGfx = new Guid("44f3beca-a7c0-460e-9df2-bb8b99e0cba6");
+
+		private static readonly Guid IntelGfxPlan = new Guid("3619c3f2-afb2-4afc-b0e9-e7fef372de36");
+
+		private static readonly Guid SubSwitchGfx = new Guid("e276e160-7cb0-43c6-b20b-73f5dce39954");
+
+		private static readonly Guid SwitchGfxPolicy = new Guid("a1662ab2-9d34-4e53-ba8b-2639b9e20857");
+
+		private static readonly Guid PerfEpp = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
+
+		private static readonly Guid PerfAutonomous = new Guid("8baa4a8a-14c6-4451-8e8b-14bdbd197537");
+
+		private static readonly Guid PerfBoostPol = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b59");
+
+		private static readonly Guid PerfIncPol = new Guid("465e1f50-b610-473a-ab58-00d1077dc418");
+
+		private static readonly Guid PerfDecPol = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac6");
+
+		private static readonly Guid PerfIncTime = new Guid("984cf492-3bed-4488-a8f9-4286c97bf5aa");
+
+		private static readonly Guid PerfDecTime = new Guid("d8edeb9b-95cf-4f95-a73c-b061973693c8");
+
+		private static readonly Guid PerfIncThreshold = new Guid("06cadf0e-64ed-448a-8927-ce7bf90eb35d");
+
+		private static readonly Guid PerfDecThreshold = new Guid("12a0ab44-fe28-4fa9-b3bd-4b64f44960a6");
+
+		private static readonly Guid LatencyHintPerf = new Guid("619b7505-003b-4e82-b7a6-4dd29c300971");
+
+		private static readonly Guid LatencyHintUnpark = new Guid("616cdaa5-695e-4545-97ad-97dc2d1bdd88");
+
+		private static readonly Guid PerfDutyCycling = new Guid("4e4450b3-6179-4e91-b8f1-5bb9938f81a1");
+
+		private static readonly Guid ProcFreqMax = new Guid("75b0ae3f-bce0-45a7-8c89-c9611c25e100");
+
+		private static readonly Guid WirelessPowerSave = new Guid("12bbebe6-58d6-4636-95bb-3217ef867c1a");
+
+		private static readonly Guid ProcThrottleMin1 = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964d");
+
+		private static readonly Guid ProcThrottleMax1 = new Guid("bc5038f7-23e0-4960-96da-33abaf5935ed");
+
+		private static readonly Guid CpMinCores1 = new Guid("0cc5b647-c1df-4637-891a-dec35c318584");
+
+		private static readonly Guid CpMaxCores1 = new Guid("ea062031-0e34-4ff1-9b6d-eb1059334029");
+
+		private static readonly Guid PerfEpp1 = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
+
+		private static readonly Guid SchedPolicy = new Guid("93b8b6dc-0698-4d1c-9ee4-0644e900c85d");
+
+		private static readonly Guid ShortSchedPolicy = new Guid("bae08b81-2d5e-4688-ad6a-13243356654b");
+
+		private static readonly Guid PerfBoostPol1 = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b5a");
+
+		private static readonly Guid PerfIncPol1 = new Guid("465e1f50-b610-473a-ab58-00d1077dc419");
+
+		private static readonly Guid PerfDecPol1 = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac7");
+
+		private static readonly Guid PerfIncTime1 = new Guid("984cf492-3bed-4488-a8f9-4286c97bf5ab");
+
+		private static readonly Guid PerfDecTime1 = new Guid("d8edeb9b-95cf-4f95-a73c-b061973693c9");
+
+		private static readonly Guid PerfIncThreshold1 = new Guid("06cadf0e-64ed-448a-8927-ce7bf90eb35e");
+
+		private static readonly Guid PerfDecThreshold1 = new Guid("12a0ab44-fe28-4fa9-b3bd-4b64f44960a7");
+
+		private static readonly Guid LatencyHintPerf1 = new Guid("619b7505-003b-4e82-b7a6-4dd29c300972");
+
+		private static readonly Guid LatencyHintUnpark1 = new Guid("616cdaa5-695e-4545-97ad-97dc2d1bdd89");
+
+		private static readonly Guid IdleDisableSet = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
+
+		public static string ManagedPlanTitle
+		{
+			get
+			{
+				return Lang.T("t.powerplan.2") + MachineSignature();
+			}
+		}
+
+		public static string SelectedPlanId
+		{
+			get
+			{
+				string value;
+				if (!Settings.TryLoadStr("PowerPlanChoice", out value))
+				{
+					return "off";
+				}
+				bool value2;
+				if (value.StartsWith("v2:", StringComparison.Ordinal))
+				{
+					value = value.Substring("v2:".Length);
+					if (value.Length == 0)
+					{
+						return "off";
+					}
+				}
+				else if (!Settings.TryLoadBool("PowerPlanOn", true, out value2) || !value2)
+				{
+					return "off";
+				}
+				Guid g;
+				if (value.Length != 0 && !(value == "managed") && !(value == "off") && (!TryGuid(value, out g) || !(g != Guid.Empty)))
+				{
+					return "off";
+				}
+				return value;
+			}
+		}
+
+		public static bool ManagedSelected
+		{
+			get
+			{
+				return SelectedPlanId == "managed";
+			}
+		}
+
+		public static string EffectivePlanId
+		{
+			get
+			{
+				string selectedPlanId = SelectedPlanId;
+				if (selectedPlanId.Length <= 0)
+				{
+					return "managed";
+				}
+				return selectedPlanId;
+			}
+		}
+
+		public static bool AutomaticSelection
+		{
+			get
+			{
+				return EffectivePlanId == "managed";
+			}
+		}
+
+		public static bool NoSwitchSelected
+		{
+			get
+			{
+				return EffectivePlanId == "off";
+			}
+		}
+
+		public static string SelectionLabel
+		{
+			get
+			{
+				if (!NoSwitchSelected)
+				{
+					if (!AutomaticSelection)
+					{
+						return PlanLabelOf(EffectivePlanId);
+					}
+					return Lang.T("plan.pick.auto");
+				}
+				return Lang.T("plan.pick.off");
+			}
+		}
+
+		public static string CreatedPlanId
+		{
+			get
+			{
+				return Settings.LoadStr("DefaultPlanGuid", "");
+			}
+		}
+
+		public static bool HasResidue
+		{
+			get
+			{
+                if (Settings.LoadStr(PresetCreationKey, "").Length != 0) return true;
+				if (!settledRestoreTarget.HasValue && !LaboratoryHasResidue && !IdlePolicyHasResidue && !LegacyCpuIdleHasResidue)
+				{
+					return Settings.LoadStr("PrevPowerPlan", "").Length > 0;
+				}
+				return true;
+			}
+		}
+
+		internal static bool IdlePolicyHasResidue
+		{
+			get
+			{
+				string value;
+				if (Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+				{
+					return !string.IsNullOrEmpty(value);
+				}
+				return true;
+			}
+		}
+
+		internal static bool LegacyCpuIdleHasResidue
+		{
+			get
+			{
+				lock (lk)
+				{
+					if (cpuIdleReceipt != null)
+					{
+						return true;
+					}
+					try
+					{
+						string text;
+						return !CpuIdleReadLedger(out text) || text == null || text.Length != 0;
+					}
+					catch
+					{
+						return true;
+					}
+				}
+			}
+		}
+
+		private static IManagedPowerPlans ManagedPlans
+		{
+			get
+			{
+				return new NativeManagedPowerPlans();
+			}
+		}
+
+        internal static bool ExtremeTunePending
+		{
+			get
+			{
+				return extremeTunePending;
+			}
+		}
+
+		internal static bool ManagedPlanIsActive
+		{
+			get
+			{
+				try
+				{
+					Guid guid = ManagedPlanGuid();
+					if (guid == Guid.Empty)
+					{
+						return false;
+					}
+					Guid? guid2 = Current();
+					return guid2.HasValue && guid2.Value == guid;
+				}
+				catch
+				{
+					return false;
+				}
+			}
+		}
+
+		public static bool HasParkResidue()
+		{
+			string value;
+			return !Settings.TryLoadStr("CoreParkSnap", out value) || value == null || value.Length > 0;
+		}
+
+		public static bool TryCurrentUnparked(out bool unparked)
+		{
+			unparked = false;
+			Guid? guid = Current();
+			if (!guid.HasValue)
+			{
+				return false;
+			}
+			IManagedPowerPlans managedPlans = ManagedPlans;
+			return ManagedPowerPlanPolicy.ParkingDisabled(managedPlans.Read(guid.Value, SubProcessor, CpMinCores, true), managedPlans.Read(guid.Value, SubProcessor, CpMinCores, false), managedPlans.Read(guid.Value, SubProcessor, CpMinCores1, true), managedPlans.Read(guid.Value, SubProcessor, CpMinCores1, false), Native.OnAcPower(), CpuTopology.Hybrid, out unparked);
+		}
+
+		public static bool RestoreParkState()
+		{
+			lock (lk)
+			{
+				string text;
+				if (!Settings.TryLoadStr("CoreParkSnap", out text) || text == null)
+				{
+					return false;
+				}
+				if (text.Length == 0)
+				{
+					return true;
+				}
+				string[] array = text.Split('|');
+				bool valuesRestored = array.Length == 7 && array[0] == "2" && array[6] == "F";
+				if (valuesRestored)
+				{
+					array = new[] { array[1], array[2], array[3], array[4], array[5] };
+				}
+				Guid guid;
+				if (array.Length != 5 || !Guid.TryParse(array[0], out guid) || guid == Guid.Empty)
+				{
+					return ParkRestoreFailed();
+				}
+				foreach (string original in new[] { array[1], array[2], array[3], array[4] })
+				{
+					uint value;
+					if (original != "-" && (!uint.TryParse(original, out value) || value > 100))
+					{
+						return ParkRestoreFailed();
+					}
+				}
+				if (!valuesRestored)
+				{
+					bool primary = WriteBack(guid, CpMinCores, array[1], array[2]);
+					bool secondary = WriteBack(guid, CpMinCores1, array[3], array[4]);
+					if (!primary || !secondary)
+					{
+						return ParkRestoreFailed();
+					}
+					// Once values are restored, a failed activation must only retry the
+					// activation, even if another owner later chooses the old value 100.
+					string flushReceipt = "2|" + text + "|F";
+					string persisted;
+					if (!Settings.SaveStrDurable("CoreParkSnap", flushReceipt)
+						|| !Settings.TryLoadStr("CoreParkSnap", out persisted) || persisted != flushReceipt)
+					{
+						return ParkRestoreFailed();
+					}
+				}
+				Guid? current = Current();
+				if (!current.HasValue || current == Guid.Empty)
+				{
+					return ParkRestoreFailed();
+				}
+				if (current == guid)
+				{
+					Guid? confirmed = Current();
+					if (!confirmed.HasValue || confirmed == Guid.Empty
+						|| (confirmed == guid && (!Set(guid) || Current() != guid)))
+					{
+						return ParkRestoreFailed();
+					}
+				}
+				if (!ClearParkSnap())
+				{
+					return ParkRestoreFailed();
+				}
+				Logger.Log(Lang.T("log.powerplancorepark.4"));
+				return true;
+			}
+		}
+
+		private static bool ParkRestoreFailed()
+		{
+			int result;
+			int.TryParse(Settings.LoadStr("CoreParkTries", "0"), out result);
+			int tries = Math.Min(Math.Max(result, 0), 3);
+			if (tries < 3)
+			{
+				Settings.SaveStr("CoreParkTries", (tries + 1).ToString(CultureInfo.InvariantCulture));
+			}
+			if (tries == 2) Logger.Warn(Lang.T("log.powerplancorepark.8"));
+			else Logger.Log(Lang.T("log.powerplancorepark.3"));
+			return false;
+		}
+
+		private static bool ClearParkSnap()
+		{
+			string remaining;
+			if (!Settings.SaveStrDurable("CoreParkSnap", "")
+				|| !Settings.TryLoadStr("CoreParkSnap", out remaining) || remaining != "")
+			{
+				return false;
+			}
+			Settings.Remove("CoreParkTries");
+			return true;
+		}
+
+		private static bool WriteBack(Guid scheme, Guid setting, string acStr, string dcStr)
+		{
+			bool ac = RestoreParkIndex(scheme, setting, true, acStr);
+			bool dc = RestoreParkIndex(scheme, setting, false, dcStr);
+			return ac && dc;
+		}
+
+		private static bool RestoreParkIndex(Guid scheme, Guid setting, bool ac, string original)
+		{
+			try
+			{
+				if (original == "-") return true;
+				uint saved, current;
+				if (!uint.TryParse(original, out saved) || saved > 100
+					|| !(ac ? ReadAc(scheme, SubProcessor, setting, out current) : ReadDc(scheme, SubProcessor, setting, out current)))
+				{
+					return false;
+				}
+				// Only the old Pavise value is owned; preserve later external changes.
+				if (current != 100 || saved == 100) return true;
+				if (!(ac ? WriteAc(scheme, SubProcessor, setting, saved) : WriteDc(scheme, SubProcessor, setting, saved)))
+				{
+					return false;
+				}
+				return (ac ? ReadAc(scheme, SubProcessor, setting, out current) : ReadDc(scheme, SubProcessor, setting, out current)) && current == saved;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		public static string MachineSignature()
+		{
+			if (machineSig != null)
+			{
+				return machineSig;
+			}
+			string text = "";
+			try
+			{
+				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
+				{
+					if (registryKey != null)
+					{
+						text = (registryKey.GetValue("MachineGuid") as string) ?? "";
+					}
+				}
+			}
+			catch
+			{
+			}
+			if (text.Length == 0)
+			{
+				try
+				{
+					text = Environment.MachineName;
+				}
+				catch
+				{
+					text = "PAVISE";
+				}
+			}
+			uint num = 2166136261u;
+			string text2 = text;
+			foreach (char c in text2)
+			{
+				num ^= c;
+				num *= 16777619;
+			}
+			machineSig = (num & 0xFFFFu).ToString("X4");
+			return machineSig;
+		}
+
+		private static int TuneCode(bool aggressive)
+		{
+			return aggressive ? 1 : 0;
+		}
+
+		public static string CurrentPlanLabel()
+		{
+			Guid? guid = Current();
+			if (!guid.HasValue)
+			{
+				return Lang.T("t.systemaudithardware.3");
+			}
+			Guid value = guid.Value;
+			if (value == Ultimate)
+			{
+				return Lang.T("t.powerplan.1");
+			}
+			if (value == HighPerf)
+			{
+				return Lang.T("t.powerplan.3");
+			}
+			if (value == Balanced)
+			{
+				return Lang.T("t.powerplan.4");
+			}
+			if (value == PowerSaver)
+			{
+				return Lang.T("t.powerplan.5");
+			}
+			string text = ReadName(value);
+			if (text.Length <= 0)
+			{
+				return Lang.T("t.powerplan.6");
+			}
+			return text;
+		}
+
+		private static string PlanLabel(Guid g)
+		{
+			if (g == Ultimate)
+			{
+				return Lang.T("t.powerplan.1");
+			}
+			if (g == HighPerf)
+			{
+				return Lang.T("t.powerplan.3");
+			}
+			string text = ReadName(g);
+			if (text.Length <= 0)
+			{
+				return g.ToString();
+			}
+			return text;
+		}
+
+		public static List<PowerPlanEntry> ListUserPlans()
+		{
+			Guid guid = ManagedPlanGuid();
+			List<PowerPlanEntry> list = new List<PowerPlanEntry>();
+			foreach (Guid item in EnumerateSchemes())
+			{
+				if (!ManagedPolicyOwns(item) && (!(guid != Guid.Empty) || !(item == guid)))
+				{
+					string text = ReadName(item);
+					if (!string.Equals(text, "由软件调度 " + MachineSignature(), StringComparison.OrdinalIgnoreCase) && !string.Equals(text, "Scheduled by Pavise " + MachineSignature(), StringComparison.OrdinalIgnoreCase))
+					{
+						list.Add(new PowerPlanEntry(item, (text.Length > 0) ? text : item.ToString()));
+					}
+				}
+			}
+			return list;
+		}
+
+		public static bool SelectPlan(string id)
+		{
+			string text = id ?? "";
+			Guid g;
+			if (text.Length > 0 && text != "managed" && text != "off" && (!TryGuid(text, out g) || g == Guid.Empty))
+			{
+				return false;
+			}
+			string value;
+			if (!Settings.TryLoadStr("PowerPlanChoice", out value))
+			{
+				return false;
+			}
+			string text2 = "v2:" + ((text.Length == 0) ? "managed" : text);
+			if (value == text2)
+			{
+				return true;
+			}
+			if (!Settings.SaveStr("PowerPlanChoice", text2))
+			{
+				return false;
+			}
+			lock (lk)
+			{
+				managedCreationBlocked = false;
+				resolved = false;
+				target = Guid.Empty;
+				targetOwned = false;
+				tuneState = -1;
+			}
+			if (text == "off")
+			{
+				Logger.Log(Lang.T("log.powerplan.off"));
+			}
+			else if (text == "managed")
+			{
+				Logger.Log(Lang.T("log.powerplan.7") + ManagedPlanTitle + Lang.T("log.powerplan.8"));
+			}
+			else if (text.Length == 0)
+			{
+				Logger.Log(Lang.T("log.powerplan.9") + ManagedPlanTitle);
+			}
+			else
+			{
+				Logger.Log(Lang.T("log.powerplan.10") + PlanLabelOf(text) + Lang.T("log.powerplan.11"));
+			}
+			return true;
+		}
+
+		private static Guid ManagedPlanGuid()
+		{
+			string text = Settings.LoadStr("PgPlanGuid", "");
+			Guid g;
+			if (text.Length == 0 || !TryGuid(text, out g))
+			{
+				return Guid.Empty;
+			}
+			foreach (Guid item in EnumerateSchemes())
+			{
+				if (item == g)
+				{
+					return g;
+				}
+			}
+			return Guid.Empty;
+		}
+
+		private static Guid EnsureManagedPlan()
+		{
+			return EnsureManagedPolicyPlan();
+		}
+
+		public static bool RemoveManagedPlan()
+		{
+			lock (lk)
+			{
+				if (!RestoreLaboratoryBeforeCoreChange()) return false;
+				if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
+				{
+					return false;
+				}
+				return RemoveManagedPlanCore();
+			}
+		}
+
+		private static bool RemoveManagedPlanCore()
+		{
+			string text = Settings.LoadStr("PgPlanGuid", "");
+			if (text.Length == 0)
+			{
+				return true;
+			}
+			Guid g;
+			if (!TryGuid(text, out g))
+			{
+				Settings.SaveStr("PgPlanGuid", "");
+				return true;
+			}
+			Guid? guid = Current();
+			if (guid.HasValue && guid.Value == g && !SwitchAwayFrom(g))
+			{
+				return false;
+			}
+			Guid guid2 = g;
+			uint num = PowerDeleteScheme(IntPtr.Zero, ref guid2);
+			if (num != 0 && num != 2)
+			{
+				return false;
+			}
+			if (!ForgetDeletedExtremeSnapshot(g))
+			{
+				return false;
+			}
+			if (!Settings.SaveStrDurable("PgPlanGuid", ""))
+			{
+				return false;
+			}
+			lock (lk)
+			{
+				resolved = false;
+				target = Guid.Empty;
+				targetOwned = false;
+				tuneState = -1;
+			}
+			Logger.Log(Lang.T("log.powerplan.15") + ManagedPlanTitle);
+			return true;
+		}
+
+		private static bool SwitchAwayFrom(Guid avoid)
+		{
+			Guid g;
+			if (TryGuid(Settings.LoadStr("PrevPowerPlan", ""), out g) && g != avoid && SchemeUsable(g) && Set(g))
+			{
+				return true;
+			}
+			if (SchemeUsable(Balanced) && Set(Balanced))
+			{
+				return true;
+			}
+			foreach (Guid item in EnumerateSchemes())
+			{
+				if (item != avoid && Set(item))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		private static string PlanLabelOf(string id)
+		{
+			Guid g;
+			if (!TryGuid(id, out g))
+			{
+				return id;
+			}
+			return PlanLabel(g);
+		}
+
+		public static bool RemoveCreatedPlan()
+		{
+			lock (lk)
+			{
+				if (!RestoreLaboratoryBeforeCoreChange()) return false;
+				if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
+				{
+					return false;
+				}
+				return RemoveCreatedPlanCore();
+			}
+		}
+
+		private static bool RemoveCreatedPlanCore()
+		{
+			string text = Settings.LoadStr("DefaultPlanGuid", "");
+			if (text.Length == 0)
+			{
+				return true;
+			}
+			Guid g;
+			if (!TryGuid(text, out g))
+			{
+				Settings.SaveStr("DefaultPlanGuid", "");
+				return true;
+			}
+			Guid? guid = Current();
+			if (guid.HasValue && guid.Value == g && !SwitchAwayFrom(g))
+			{
+				return false;
+			}
+			Guid guid2 = g;
+			if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref guid2) != 0)
+			{
+				return false;
+			}
+			Settings.SaveStr("DefaultPlanGuid", "");
+			lock (lk)
+			{
+				resolved = false;
+				target = Guid.Empty;
+			}
+			Logger.Log(Lang.T("log.powerplan.19"));
+			return true;
+		}
+
+		private static bool TryUserChosenTarget()
+		{
+			string selectedPlanId = SelectedPlanId;
+			if (selectedPlanId.Length == 0)
+			{
+				return false;
+			}
+			if (selectedPlanId == "managed")
+			{
+				Guid guid = EnsureManagedPlan();
+				if (guid == Guid.Empty)
+				{
+					return false;
+				}
+				target = guid;
+                targetOwned = ManagedPlans.IsOwned(guid);
+				return true;
+			}
+			Guid g;
+			if (!TryGuid(selectedPlanId, out g) || !SchemeUsable(g))
+			{
+				return false;
+			}
+			target = g;
+			targetOwned = false;
+			Logger.Log(Lang.T("log.powerplan.23") + PlanLabel(g) + Lang.T("log.powerplan.24"));
+			return true;
+		}
+
+		private static Guid ResolveTarget(bool aggressive)
+		{
+			if (NoSwitchSelected)
+			{
+				return Guid.Empty;
+			}
+			requestedAggressive = aggressive;
+            if (resolved && targetOwned && tuneState != TuneCode(aggressive)) resolved = false;
+			if (resolved)
+			{
+				return target;
+			}
+			resolved = false;
+			target = Guid.Empty;
+			targetOwned = false;
+			if (!TryUserChosenTarget())
+			{
+				if (!AutomaticSelection || SelectedPlanId == "managed")
+				{
+					return Guid.Empty;
+				}
+				Guid guid = EnsureManagedPlan();
+				if (!(guid != Guid.Empty))
+				{
+					return Guid.Empty;
+				}
+				target = guid;
+                targetOwned = ManagedPlans.IsOwned(guid);
+			}
+			resolved = true;
+			return target;
+		}
+
+		private static bool TryGuid(string s, out Guid g)
+		{
+			try
+			{
+				g = new Guid(s);
+				return true;
+			}
+			catch
+			{
+				g = Guid.Empty;
+				return false;
+			}
+		}
+
+		private static bool ActivateInner(bool aggressive)
+		{
+			if (NoSwitchSelected)
+			{
+				return false;
+			}
+			if (active)
+			{
+				return true;
+			}
+			if (!RestoreLaboratoryBeforeCoreChange()) return false;
+			string value;
+			if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out value) || value == null || value.Length != 0) && !RestorePlanCore(false))
+			{
+				return false;
+			}
+			if (AutomaticSelection)
+			{
+				resolved = false;
+				target = Guid.Empty;
+				targetOwned = false;
+			}
+			Guid guid = ResolveTarget(aggressive);
+			if (guid == Guid.Empty)
+			{
+				return false;
+			}
+			if (!targetOwned && !RestoreOwnedIdlePolicy())
+			{
+				return false;
+			}
+			Guid? guid2 = RestoreCurrentPlan();
+			if (!guid2.HasValue || guid2.Value == Guid.Empty)
+			{
+				return false;
+			}
+			if (guid2.Value == guid && !targetOwned)
+			{
+				active = true;
+				return true;
+			}
+			saved = guid2.Value;
+			if (targetOwned)
+			{
+				saved = ManagedReturnPlan(guid2.Value, guid);
+				if (saved == Guid.Empty)
+				{
+					return false;
+				}
+			}
+			if (!Settings.SaveStrDurable("PrevPowerPlan", saved.ToString()) || Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
+			{
+				saved = Guid.Empty;
+				Logger.Log(Lang.T("log.powerplan.25"));
+				return false;
+			}
+			if (targetOwned)
+			{
+				if (!PrepareManagedScheme(guid, aggressive))
+				{
+					return false;
+				}
+			}
+			bool flag = RestoreSetPlan(guid);
+			Guid? guid3 = (flag ? RestoreCurrentPlan() : null);
+			if (flag && guid3.HasValue && guid3.Value == guid)
+			{
+                active = true;
+                if (targetOwned) CleanupPreviousPresetPlan();
+                Logger.Log(Lang.T("log.powerplan.26") + RestorePlanLabel(guid) + Lang.T("log.gpupowermax.7") + RestorePlanLabel(saved) + " ");
+				return true;
+			}
+			Logger.Log(Lang.T("log.powerplan.27"));
+			return false;
+		}
+
+		public static bool Enforce(bool aggressive)
+		{
+			lock (lk)
+			{
+				if (NoSwitchSelected)
+				{
+					return false;
+				}
+				if (!active)
+				{
+					return ActivateInner(aggressive);
+				}
+				Guid guid = ResolveTarget(aggressive);
+				if (guid == Guid.Empty)
+				{
+					return false;
+				}
+				if (targetOwned && saved == Guid.Empty)
+				{
+					active = false;
+					return ActivateInner(aggressive);
+				}
+				if (!targetOwned && !RestoreOwnedIdlePolicy())
+				{
+					return false;
+				}
+				if (targetOwned && tuneState != TuneCode(aggressive) && !RetuneManagedScheme(guid, aggressive))
+				{
+					return false;
+				}
+				Guid? guid2 = RestoreCurrentPlan();
+				if (!guid2.HasValue || guid2.Value == Guid.Empty)
+				{
+					return false;
+				}
+				if (guid2.HasValue && guid2.Value != guid)
+				{
+					if (!RestoreSetPlan(guid) || !(RestoreCurrentPlan() == guid))
+					{
+						return false;
+					}
+					Logger.Log(Lang.T("log.powerplan.28") + RestorePlanLabel(guid));
+				}
+				return true;
+			}
+		}
+
+		public static bool EnforceSettled(bool aggressive)
+		{
+			lock (lk)
+			{
+				if (NoSwitchSelected || !active)
+				{
+					return false;
+				}
+				Guid guid = (resolved ? target : Guid.Empty);
+				if (guid == Guid.Empty)
+				{
+					return false;
+				}
+				bool num;
+				if (!targetOwned)
+				{
+					num = IdlePolicyHasResidue;
+				}
+				else
+				{
+					if (saved == Guid.Empty)
+					{
+						goto IL_0080;
+					}
+					num = tuneState != TuneCode(aggressive);
+				}
+				if (!num)
+				{
+					Guid? guid2 = RestoreCurrentPlan();
+					return guid2.HasValue && guid2.Value == guid;
+				}
+				goto IL_0080;
+				IL_0080:
+				return false;
+			}
+		}
+
+		private static bool? IsOurActivePlan(Guid g)
+		{
+			if (ManagedPolicyOwns(g))
+			{
+				return true;
+			}
+			if (resolved && g == target)
+			{
+				return true;
+			}
+			ManagedPolicyRecord record;
+			bool flag = !ReadManagedPolicy(out record);
+			string[] array = new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" };
+			foreach (string text in array)
+			{
+				string value;
+				if (!Settings.TryLoadStr(text, out value) || value == null)
+				{
+					flag = true;
+					continue;
+				}
+				if (text == "PowerPlanChoice" && value.StartsWith("v2:", StringComparison.Ordinal))
+				{
+					value = value.Substring("v2:".Length);
+					if (value.Length == 0)
+					{
+						flag = true;
+						continue;
+					}
+				}
+				if (value.Length != 0 && (!(text == "PowerPlanChoice") || (!(value == "managed") && !(value == "off"))))
+				{
+					Guid g2;
+					if (!TryGuid(value, out g2) || g2 == Guid.Empty)
+					{
+						flag = true;
+					}
+					else if (g == g2)
+					{
+						return true;
+					}
+				}
+			}
+			if (!flag)
+			{
+				return false;
+			}
+			return null;
+		}
+
+		public static bool Restore()
+		{
+			lock (lk)
+			{
+				if (!RestoreLaboratoryBeforeCoreChange()) return false;
+                if (!RecoverPresetCreation(ManagedPlans)) return false;
+				bool flag = RestoreLegacyCpuIdle();
+				flag &= RestoreOwnedIdlePolicy();
+				bool flag2 = RestorePlanCore();
+				if (flag && flag2)
+				{
+					managedCreationBlocked = false;
+				}
+				return flag && flag2;
+			}
+		}
+
+		private static bool RestorePlanCore()
+		{
+			return RestorePlanCore(true);
+		}
+
+		private static bool RestorePlanCore(bool healOrphanManaged)
+		{
+			try
+			{
+				return RestorePlanCoreChecked(healOrphanManaged);
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static bool RestorePlanCoreChecked(bool healOrphanManaged)
+		{
+			lock (lk)
+			{
+				if (settledRestoreTarget.HasValue && settledRestoreTarget.Value == saved)
+				{
+					return ClearRestoredPlan(saved);
+				}
+				Guid g = saved;
+				if (g == Guid.Empty)
+				{
+					string value;
+					if (!Settings.TryLoadStr("PrevPowerPlan", out value) || value == null)
+					{
+						return false;
+					}
+					if (value.Length > 0 && (!TryGuid(value, out g) || g == Guid.Empty))
+					{
+						return ClearRestoredPlan(g);
+					}
+				}
+				if (g == Guid.Empty)
+				{
+					if (healOrphanManaged && !NoSwitchSelected && !RestoreOrphanManagedPlan())
+					{
+						return false;
+					}
+					active = false;
+					tuneState = -1;
+					return true;
+				}
+				Guid? guid = RestoreCurrentPlan();
+				if (!guid.HasValue || guid.Value == Guid.Empty)
+				{
+					return false;
+				}
+				if (guid.Value == g)
+				{
+					return ClearRestoredPlan(g);
+				}
+				bool? flag = (active ? new bool?(true) : RestorePlanIsOwned(guid.Value));
+				if (!flag.HasValue)
+				{
+					return false;
+				}
+				if (!flag.Value)
+				{
+					Logger.Log(Lang.T("log.powerplan.36") + RestorePlanLabel(guid.Value));
+					return ClearRestoredPlan(g);
+				}
+				Guid? guid2 = RestoreCurrentPlan();
+				if (!guid2.HasValue || guid2.Value != guid.Value)
+				{
+					return false;
+				}
+				if (!RestoreSetPlan(g))
+				{
+					bool? flag2 = RestorePlanIsUsable(g);
+					if (flag2.HasValue && !flag2.Value)
+					{
+						ClearRestoredPlan(g);
+						Logger.Warn(Lang.T("log.powerplan.30"));
+					}
+					else
+					{
+						Logger.Log(Lang.T("log.powerplan.31"));
+					}
+					return false;
+				}
+				Guid? guid3 = RestoreCurrentPlan();
+				if (!guid3.HasValue || guid3.Value != g)
+				{
+					return false;
+				}
+				Logger.Log(Lang.T("log.powerplan.29"));
+				return ClearRestoredPlan(g);
+			}
+		}
+
+		private static bool ClearRestoredPlan(Guid restoreTarget)
+		{
+			active = false;
+			tuneState = -1;
+			saved = restoreTarget;
+			settledRestoreTarget = restoreTarget;
+			string value;
+			if (!Settings.SaveStr("PrevPowerPlan", "") || !Settings.TryLoadStr("PrevPowerPlan", out value) || value != "")
+			{
+				return false;
+			}
+			saved = Guid.Empty;
+			settledRestoreTarget = null;
+			return true;
+		}
+
+		private static Guid? RestoreCurrentPlan()
+		{
+			return Current();
+		}
+
+		private static bool RestoreSetPlan(Guid scheme)
+		{
+			return Set(scheme);
+		}
+
+		private static bool? RestorePlanIsOwned(Guid scheme)
+		{
+			return IsOurActivePlan(scheme);
+		}
+
+		private static bool? RestorePlanIsUsable(Guid scheme)
+		{
+			uint num = 0u;
+			while (num < 128)
+			{
+				uint size = 16u;
+				byte[] array = new byte[16];
+				switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, num, array, ref size))
+				{
+				case 259u:
+					return false;
+				case 0u:
+					if (size == 16)
+					{
+						if (new Guid(array) == scheme)
+						{
+							return true;
+						}
+						num++;
+						break;
+					}
+					goto default;
+				default:
+					return null;
+				}
+			}
+			return null;
+		}
+
+		private static bool RestoreOrphanManagedPlan()
+		{
+			return HealManagedResidue();
+		}
+
+		private static string RestorePlanLabel(Guid scheme)
+		{
+			return PlanLabel(scheme);
+		}
+
+		private static bool HealManagedResidue()
+		{
+			Guid? guid = Current();
+			Guid g;
+			if (!guid.HasValue || !TryGuid(Settings.LoadStr("PgPlanGuid", ""), out g) || guid.Value != g)
+			{
+				return true;
+			}
+			if (!SwitchAwayFrom(g))
+			{
+				return false;
+			}
+			Logger.Log(Lang.T("log.powerplan.32"));
+			return true;
+		}
+
+		public static void HealFromCrash()
+		{
+            Settings.Remove("PowerPlanSourceV1");
+			Settings.Remove("GmDisableCpuIdle");
+			Settings.Remove("GmDisableCpuIdleV2");
+			lock (lk)
+			{
+                if (!RestoreLaboratoryBeforeCoreChange() || !RecoverPresetCreation(ManagedPlans)) return;
+                RestoreLegacyCpuIdle();
+				RestoreOwnedIdlePolicy();
+				HealPlanFromCrashCore();
+			}
+		}
+
+		private static void HealPlanFromCrashCore()
+		{
+			RestorePlanCore(false);
+		}
+
+		private static bool RestoreOwnedIdlePolicy()
+		{
+			string value;
+			if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+			{
+				return false;
+			}
+			if (string.IsNullOrEmpty(value))
+			{
+				return true;
+			}
+			string[] array = value.Split('|');
+			Guid result;
+			if (array.Length == 3 && array[0] == "2")
+			{
+				if (!Guid.TryParse(array[1], out result) || result == Guid.Empty)
+				{
+					return false;
+				}
+			}
+			else
+			{
+				if (array.Length != 1)
+				{
+					return false;
+				}
+				if (!Guid.TryParse(Settings.LoadStr("PgPlanGuid", ""), out result) || result == Guid.Empty)
+				{
+					return false;
+				}
+			}
+			if (!RestoreExtremeKnobs(result))
+			{
+				return false;
+			}
+			tuneState = -1;
+			return true;
+		}
+
+		private static bool IsRetiredIdleKnob(Guid setting)
+		{
+			if (!(setting == IdlePromote) && !(setting == IdleDemote) && !(setting == IdleScaling))
+			{
+				return setting == RetiredIdleCheck;
+			}
+			return true;
+		}
+
+		private static bool ReadExtremeSnapshot(Guid scheme, out List<ExtremeSavedValue> values)
+		{
+			values = new List<ExtremeSavedValue>();
+			string value;
+			if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+			{
+				return false;
+			}
+			if (value.Length == 0)
+			{
+				return true;
+			}
+			if (value.IndexOf('|') >= 0)
+			{
+				string[] array = value.Split('|');
+				Guid result;
+				if (array.Length != 3 || array[0] != "2" || !Guid.TryParse(array[1], out result) || result == Guid.Empty || result != scheme)
+				{
+					return false;
+				}
+				value = array[2];
+			}
+			HashSet<Guid> hashSet = new HashSet<Guid>();
+			string[] array2 = value.Split(';');
+			foreach (string text in array2)
+			{
+				string[] array3 = text.Split('=');
+				Guid result2;
+				if (array3.Length != 2 || !Guid.TryParse(array3[0], out result2) || !hashSet.Add(result2) || !IsRetiredIdleKnob(result2))
+				{
+					return false;
+				}
+				string[] array4 = array3[1].Split(',');
+				uint result3;
+				uint result4;
+				if (array4.Length != 2 || !uint.TryParse(array4[0], NumberStyles.None, CultureInfo.InvariantCulture, out result3) || !uint.TryParse(array4[1], NumberStyles.None, CultureInfo.InvariantCulture, out result4))
+				{
+					return false;
+				}
+				values.Add(new ExtremeSavedValue
+				{
+					Setting = result2,
+					Ac = result3,
+					Dc = result4
+				});
+			}
+			return true;
+		}
+
+		private static bool SaveExtremeSnapshot(Guid scheme, List<ExtremeSavedValue> values)
+		{
+			List<string> list = new List<string>();
+			foreach (ExtremeSavedValue value in values)
+			{
+				list.Add(value.Text);
+			}
+			string val = ((list.Count == 0) ? "" : ("2|" + scheme.ToString("N") + "|" + string.Join(";", list.ToArray())));
+			return Settings.SaveStrDurable("ExtremePowerKnobSnap", val);
+		}
+
+		private static bool ForgetDeletedExtremeSnapshot(Guid scheme)
+		{
+			List<ExtremeSavedValue> values;
+			if (ReadExtremeSnapshot(scheme, out values))
+			{
+				if (values.Count != 0)
+				{
+					return SaveExtremeSnapshot(scheme, new List<ExtremeSavedValue>());
+				}
+				return true;
+			}
+			return false;
+		}
+
+		private static bool DropOrphanExtremeSnapshot(Guid configuringScheme)
+		{
+			string value;
+			if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value) || value.Length == 0)
+			{
+				return false;
+			}
+			if (value.IndexOf('|') < 0)
+			{
+				return false;
+			}
+			string[] array = value.Split('|');
+			Guid result;
+			if (array.Length != 3 || array[0] != "2" || !Guid.TryParse(array[1], out result) || result == Guid.Empty || result == configuringScheme)
+			{
+				return false;
+			}
+			List<Guid> list;
+			if (!TryEnumerateSchemes(out list) || list.Contains(result))
+			{
+				return false;
+			}
+			if (!SaveExtremeSnapshot(result, new List<ExtremeSavedValue>()))
+			{
+				return false;
+			}
+			Logger.Log(Lang.T("log.powerplanschemes.extremeOrphan"));
+			return true;
+		}
+
+		private static bool PrepareExtremeKnobs(Guid scheme)
+		{
+			bool flag = RestoreExtremeKnobs(scheme);
+			if (!flag && DropOrphanExtremeSnapshot(scheme))
+			{
+				flag = RestoreExtremeKnobs(scheme);
+			}
+			extremeTunePending = !flag;
+			return flag;
+		}
+
+		private static bool RestoreExtremeKnobs(Guid scheme)
+		{
+			List<ExtremeSavedValue> values;
+			if (!ReadExtremeSnapshot(scheme, out values))
+			{
+				return false;
+			}
+			if (values.Count == 0)
+			{
+				return true;
+			}
+			List<ExtremeSavedValue> list = new List<ExtremeSavedValue>();
+			bool result = true;
+			foreach (ExtremeSavedValue item in values)
+			{
+				if (!RestoreExtremeIndex(scheme, item.Setting, true, item.Ac) || !RestoreExtremeIndex(scheme, item.Setting, false, item.Dc))
+				{
+					list.Add(item);
+					result = false;
+				}
+			}
+			Guid? guid = Current();
+			if (!guid.HasValue || (guid.Value == scheme && !Set(scheme)))
+			{
+				return false;
+			}
+			if (SaveExtremeSnapshot(scheme, list))
+			{
+				return result;
+			}
+			return false;
+		}
+
+		private static bool RestoreExtremeIndex(Guid scheme, Guid setting, bool ac, uint original)
+		{
+			uint? num = ReadExtremeIndex(scheme, setting, ac);
+			if (!num.HasValue)
+			{
+				return false;
+			}
+			if (num.Value == original)
+			{
+				return true;
+			}
+			if (!(ac ? WriteAc(scheme, SubProcessor, setting, original) : WriteDc(scheme, SubProcessor, setting, original)))
+			{
+				return false;
+			}
+			return ReadExtremeIndex(scheme, setting, ac) == original;
+		}
+
+		private static uint? ReadExtremeIndex(Guid scheme, Guid setting, bool ac)
+		{
+			uint value;
+			if (!(ac ? ReadAc(scheme, SubProcessor, setting, out value) : ReadDc(scheme, SubProcessor, setting, out value)))
+			{
+				return null;
+			}
+			return value;
+		}
+
+		internal static bool RestoreLegacyCpuIdle()
+		{
+			lock (lk)
+			{
+				try
+				{
+					if (!LoadCpuIdleReceipt())
+					{
+						return false;
+					}
+					CpuIdleReceipt cpuIdleReceipt = PowerPlan.cpuIdleReceipt;
+					if (cpuIdleReceipt == null)
+					{
+						return true;
+					}
+					if (cpuIdleReceipt.Phase == CpuIdlePhase.Settled)
+					{
+						return ClearCpuIdleReceipt();
+					}
+					uint ac;
+					uint dc;
+					if (cpuIdleReceipt.PendingMask < 0)
+					{
+						if (!CpuIdleReadValues(cpuIdleReceipt.Scheme, out ac, out dc)) return false;
+						if (ac == 0 && dc == 0)
+						{
+							cpuIdleReceipt.PendingMask = 0;
+						}
+						else if (cpuIdleReceipt.Phase == CpuIdlePhase.Owned && ac == 1 && dc == 1)
+						{
+							cpuIdleReceipt.PendingMask = 3;
+						}
+						else if (ac == 1 || dc == 1)
+						{
+							// Old Prepared/Restoring records cannot distinguish a partial restore from an external edit.
+							// Preserve the debt without claiming either remaining 1.
+							return false;
+						}
+						else
+						{
+							cpuIdleReceipt.Phase = CpuIdlePhase.Settled;
+							return ClearCpuIdleReceipt();
+						}
+						cpuIdleReceipt.Phase = CpuIdlePhase.Restoring;
+					}
+					// Persist and verify authority before writing either source, including a prior failed progress save.
+					if (!WriteCpuIdleLedgerVerified(cpuIdleReceipt.Text(CpuIdlePhase.Restoring))
+						|| !RestoreCpuIdleSide(cpuIdleReceipt, true)
+						|| !RestoreCpuIdleSide(cpuIdleReceipt, false)
+						|| !CpuIdleReadValues(cpuIdleReceipt.Scheme, out ac, out dc)) return false;
+					// A completed source may since have been changed by another owner. Do not reapply that policy.
+					if (ac == 0 && dc == 0 && !ReapplyCpuIdle(cpuIdleReceipt.Scheme))
+					{
+						return false;
+					}
+					cpuIdleReceipt.Phase = CpuIdlePhase.Settled;
+					return ClearCpuIdleReceipt();
+				}
+				catch
+				{
+					return false;
+				}
+			}
+		}
+
+		private static bool LoadCpuIdleReceipt()
+		{
+			if (PowerPlan.cpuIdleReceipt != null)
+			{
+				return true;
+			}
+			string text;
+			if (!CpuIdleReadLedger(out text) || text == null)
+			{
+				return false;
+			}
+			if (text.Length == 0)
+			{
+				return true;
+			}
+			if (text.Length > 80)
+			{
+				return false;
+			}
+			string[] array = text.Split('|');
+			Guid result;
+			bool legacy = array.Length == 4 && (array[0] == "1" || array[0] == "2");
+			bool current = array.Length == 5 && array[0] == "3";
+			if ((!legacy && !current) || array[2] != "0" || !Guid.TryParseExact(array[1], "D", out result) || result == Guid.Empty
+				|| (array[0] == "1" && array[3] != "A" && array[3] != "R" && array[3] != "S")
+				|| (array[0] == "2" && array[3] != "P" && array[3] != "O" && array[3] != "R" && array[3] != "S")
+				|| (current && ((array[3] != "R" && array[3] != "S") || array[4].Length != 1 || array[4][0] < '0' || array[4][0] > '3' || (array[3] == "S" && array[4] != "0"))))
+			{
+				return false;
+			}
+			CpuIdlePhase cpuIdlePhase = ((array[3] == "R") ? CpuIdlePhase.Restoring : ((array[3] == "S") ? CpuIdlePhase.Settled : ((array[3] == "O") ? CpuIdlePhase.Owned : CpuIdlePhase.Prepared)));
+			CpuIdleReceipt cpuIdleReceipt = new CpuIdleReceipt();
+			cpuIdleReceipt.Scheme = result;
+			cpuIdleReceipt.Phase = cpuIdlePhase;
+			cpuIdleReceipt.PendingMask = current ? array[4][0] - '0' : -1;
+			PowerPlan.cpuIdleReceipt = cpuIdleReceipt;
+			return true;
+		}
+
+		private static bool ClearCpuIdleReceipt()
+		{
+			if (cpuIdleReceipt == null || cpuIdleReceipt.Phase != CpuIdlePhase.Settled)
+			{
+				return false;
+			}
+			if (!WriteCpuIdleLedgerVerified(cpuIdleReceipt.Text(CpuIdlePhase.Settled)))
+			{
+				return false;
+			}
+			if (!WriteCpuIdleLedgerVerified(""))
+			{
+				return false;
+			}
+			cpuIdleReceipt = null;
+			return true;
+		}
+
+		private static bool WriteCpuIdleLedgerVerified(string text)
+		{
+			string text2;
+			if (CpuIdleWriteLedger(text) && CpuIdleReadLedger(out text2))
+			{
+				return string.Equals(text2, text, StringComparison.Ordinal);
+			}
+			return false;
+		}
+
+		private static bool ReapplyCpuIdle(Guid scheme)
+		{
+			Guid? guid = CpuIdleCurrentScheme();
+			if (!guid.HasValue || guid.Value == Guid.Empty)
+			{
+				return false;
+			}
+			if (guid.Value != scheme)
+			{
+				return true;
+			}
+			uint ac;
+			uint dc;
+			if (!CpuIdleReadValues(scheme, out ac, out dc))
+			{
+				return false;
+			}
+			if (ac != 0 || dc != 0) return true;
+			guid = CpuIdleCurrentScheme();
+			if (!guid.HasValue || guid.Value == Guid.Empty)
+			{
+				return false;
+			}
+			if (guid.Value != scheme)
+			{
+				return true;
+			}
+			if (!CpuIdleSetActive(scheme))
+			{
+				return false;
+			}
+			guid = CpuIdleCurrentScheme();
+			if (!guid.HasValue || guid.Value != scheme || !CpuIdleReadValues(scheme, out ac, out dc))
+			{
+				return false;
+			}
+			return true;
+		}
+
+		private static bool RestoreCpuIdleSide(CpuIdleReceipt receipt, bool ac)
+		{
+			int bit = ac ? 1 : 2;
+			if ((receipt.PendingMask & bit) == 0) return true;
+			uint value;
+			if (!CpuIdleReadValue(receipt.Scheme, ac, out value)) return false;
+			if (value == 1)
+			{
+				if (!(ac ? WriteAc(receipt.Scheme, SubProcessor, IdleDisableSet, 0u)
+					: WriteDc(receipt.Scheme, SubProcessor, IdleDisableSet, 0u))) return false;
+				if (!CpuIdleReadValue(receipt.Scheme, ac, out value) || value == 1) return false;
+			}
+			// Zero is restored; any other non-owned value belongs to an external writer.
+			// Commit this source's release before the next source, so a later 1 is never reclaimed.
+			receipt.PendingMask &= ~bit;
+			return WriteCpuIdleLedgerVerified(receipt.Text(CpuIdlePhase.Restoring));
+		}
+
+		private static Guid? CpuIdleCurrentScheme()
+		{
+			return Current();
+		}
+
+		private static bool CpuIdleReadValue(Guid scheme, bool ac, out uint value)
+		{
+			return ac ? ReadAc(scheme, SubProcessor, IdleDisableSet, out value)
+				: ReadDc(scheme, SubProcessor, IdleDisableSet, out value);
+		}
+
+		private static bool CpuIdleReadValues(Guid scheme, out uint ac, out uint dc)
+		{
+			dc = 0u;
+			return CpuIdleReadValue(scheme, true, out ac) && CpuIdleReadValue(scheme, false, out dc);
+		}
+
+		private static bool CpuIdleSetActive(Guid scheme)
+		{
+			return Set(scheme);
+		}
+
+		private static bool CpuIdleReadLedger(out string text)
+		{
+			return Settings.TryLoadStr("CpuIdleStateV1", out text);
+		}
+
+		private static bool CpuIdleWriteLedger(string text)
+		{
+			return Settings.SaveStrDurable("CpuIdleStateV1", text);
+		}
+
+		private static bool ReadManagedPolicy(out ManagedPolicyRecord record)
+		{
+			record = null;
+			string value;
+			if (!Settings.TryLoadStr("ManagedPlanPolicyV3", out value) || value == null)
+			{
+				return false;
+			}
+			if (value.Length == 0)
+			{
+				return true;
+			}
+			string[] array = value.Split('|');
+			Guid result;
+			Guid result2;
+			Guid result3;
+            bool modern = array.Length == 6 && array[0] == "presets2";
+            bool legacy = array.Length == 4 && (array[0] == "3" || array[0] == "2223" || array[0] == "preset1");
+            if ((!modern && !legacy) || !Guid.TryParse(array[1], out result) || result == Guid.Empty
+                || !Guid.TryParse(array[2], out result2) || result2 == Guid.Empty || result2 == result
+                || !Guid.TryParse(array[3], out result3) || result3 == result2 || result3 == result
+                || IsBuiltInPlan(result) || IsBuiltInPlan(result3)
+                || modern && (ManagedPowerPreset.Find(array[4]) == null || string.IsNullOrEmpty(array[5]))) return false;
+            record = new ManagedPolicyRecord {
+                Plan = result, Base = result2, Previous = result3, CurrentTemplate = modern,
+                Source = modern ? array[4] : "", Fingerprint = modern ? array[5] : ""
+            };
+			return true;
+		}
+
+        private static Guid EnsureManagedPolicyPlan()
+        {
+            if (!RestoreLaboratoryBeforeCoreChange() || !RestoreLegacyCpuIdle()
+                || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy()) return Guid.Empty;
+            if (managedCreationBlocked && managedFailureRetryGeneration == ActionFailureStore.RetryGeneration) return Guid.Empty;
+            managedCreationBlocked = false;
+            IManagedPowerPlans plans = ManagedPlans;
+            if (!RecoverPresetCreation(plans)) return Guid.Empty;
+            ManagedPolicyRecord old;
+            if (!ReadManagedPolicy(out old)) return Guid.Empty;
+            Guid? current = plans.Current();
+            if (!current.HasValue || current == Guid.Empty) return Guid.Empty;
+            Guid previous; Guid.TryParse(Settings.LoadStr(PlanJournalKey, ""), out previous);
+            if (saved != Guid.Empty) previous = saved;
+            if (previous == Guid.Empty && old != null && plans.IsOwned(current.Value)) previous = old.Base;
+            Guid baseline = ManagedPowerPlanPolicy.ChooseBase(current, previous, Balanced, plans);
+            if (saved != Guid.Empty && plans.Exists(saved) && !plans.IsOwned(saved)) baseline = saved;
+            if (baseline == Guid.Empty) return Guid.Empty;
+            if (plans.IsOwned(current.Value) && (!plans.Activate(baseline) || plans.Current() != baseline)) return Guid.Empty;
+            if (pendingManagedCleanup != Guid.Empty)
+            {
+                if (!DeleteInactiveManaged(plans, pendingManagedCleanup, true)) return Guid.Empty;
+                pendingManagedCleanup = Guid.Empty;
+            }
+            if (old != null && old.Previous != Guid.Empty && plans.Exists(old.Previous)
+                && !DeleteInactiveManaged(plans, old.Previous)) return Guid.Empty;
+            ManagedPowerPresetSelection selection = SelectManagedPreset(requestedAggressive);
+            if (selection.Preset == null)
+            {
+                // An unsupported/unknown platform keeps the real OEM/user plan, never the retired tuning table.
+                Logger.Info("POWER source=OEM/base reason=" + selection.Reason);
+                return baseline;
+            }
+            var importer = plans as IManagedPowerPresetPlans;
+            if (importer == null) return Guid.Empty;
+            Guid created = Guid.NewGuid();
+            string intent = "1|" + created.ToString("D") + "|" + baseline.ToString("D");
+            if (!Settings.SaveStrDurable(PresetCreationKey, intent) || Settings.LoadStr(PresetCreationKey, "") != intent) return Guid.Empty;
+            if (!importer.ImportPreset(selection.Preset, created) || !plans.Exists(created))
+            {
+                AbandonManagedCreation(plans, created); RecoverPresetCreation(plans); return Guid.Empty;
+            }
+            Guid oldPlan = old != null ? old.Plan : Guid.Empty;
+            if (oldPlan == Guid.Empty) Guid.TryParse(Settings.LoadStr(ManagedPlanKey, ""), out oldPlan);
+            if (oldPlan == baseline || IsBuiltInPlan(oldPlan) || !plans.Exists(oldPlan)
+                || !ManagedPowerPlanPolicy.HasManagedName(plans.Name(oldPlan), MachineSignature())) oldPlan = Guid.Empty;
+            var record = new ManagedPolicyRecord { Plan = created, Base = baseline, Previous = oldPlan,
+                CurrentTemplate = true, Source = selection.Preset.Id, Fingerprint = PresetFingerprint(selection) };
+            string encoded = record.Encode();
+            if (!plans.Rename(created, ManagedPlanTitle, PlanNote + " [" + selection.Preset.Id + "]")
+                || !Settings.SaveStrDurable(ManagedPolicyKey, encoded) || Settings.LoadStr(ManagedPolicyKey, "") != encoded)
+            { AbandonManagedCreation(plans, created); return Guid.Empty; }
+            string owned = created.ToString("D");
+            if (!Settings.SaveStrDurable(ManagedPlanKey, owned) || Settings.LoadStr(ManagedPlanKey, "") != owned)
+            { AbandonManagedCreation(plans, created); return Guid.Empty; }
+            if (!Settings.SaveStrDurable(PresetCreationKey, "") || Settings.LoadStr(PresetCreationKey, "!") != "") return Guid.Empty;
+            tuneState = -1;
+            return created;
+        }
+
+		private static bool IsBuiltInPlan(Guid plan)
+		{
+			if (plan != Guid.Empty)
+			{
+				if (!(plan == Balanced) && !(plan == HighPerf) && !(plan == Ultimate))
+				{
+					return plan == PowerSaver;
+				}
+				return true;
+			}
+			return false;
+		}
+
+		private static bool DeleteInactiveManaged(IManagedPowerPlans plans, Guid plan, bool createdHere = false)
+		{
+			if (plan == Guid.Empty || IsBuiltInPlan(plan) || plans.Current() == plan)
+			{
+				return false;
+			}
+			if (!createdHere && !ManagedPowerPlanPolicy.HasManagedName(plans.Name(plan), MachineSignature()))
+			{
+				return false;
+			}
+			string value;
+			string value2;
+			if (!Settings.TryLoadStr("PrevPowerPlan", out value) || !Settings.TryLoadStr("ExtremePowerKnobSnap", out value2))
+			{
+				return false;
+			}
+			Guid result;
+			if ((Guid.TryParse(value, out result) && result == plan) || !string.IsNullOrEmpty(value2))
+			{
+				return false;
+			}
+			if (plans.Exists(plan))
+			{
+				if (plans.Delete(plan))
+				{
+					return !plans.Exists(plan);
+				}
+				return false;
+			}
+			return true;
+		}
+
+		private static void AbandonManagedCreation(IManagedPowerPlans plans, Guid created)
+		{
+			BlockManagedCreation();
+			if (!DeleteInactiveManaged(plans, created, true))
+			{
+				pendingManagedCleanup = created;
+			}
+		}
+
+		private static void BlockManagedCreation()
+		{
+			managedFailureRetryGeneration = ActionFailureStore.RetryGeneration;
+			managedCreationBlocked = true;
+		}
+
+		private static bool ManagedPolicyOwns(Guid scheme)
+		{
+			ManagedPolicyRecord record;
+			if (ReadManagedPolicy(out record) && record != null)
+			{
+				if (!(record.Plan == scheme))
+				{
+					return record.Previous == scheme;
+				}
+				return true;
+			}
+			return false;
+		}
+
+		private static Guid ManagedReturnPlan(Guid current, Guid managed)
+		{
+			if (!ManagedPlans.IsOwned(current))
+			{
+				return current;
+			}
+			ManagedPolicyRecord record;
+			if (!ReadManagedPolicy(out record) || record == null || !(record.Plan == managed) || !ManagedPlans.Exists(record.Base) || ManagedPlans.IsOwned(record.Base))
+			{
+				return Guid.Empty;
+			}
+			return record.Base;
+		}
+
+		private static bool PrepareManagedScheme(Guid scheme, bool aggressive)
+		{
+			if (!RestoreLaboratoryBeforeCoreChange()) return false;
+			ManagedPolicyRecord record;
+			if (!ReadManagedPolicy(out record) || record == null || record.Plan != scheme || record.Base != saved)
+			{
+				return false;
+			}
+			IManagedPowerPlans managedPlans = ManagedPlans;
+			Guid? guid = managedPlans.Current();
+			if (!guid.HasValue)
+			{
+				return false;
+			}
+			Guid? guid2 = guid;
+			if (guid2.HasValue && guid2.GetValueOrDefault() == scheme && (saved == Guid.Empty || !managedPlans.Activate(saved) || managedPlans.Current() != saved))
+			{
+				return false;
+			}
+			if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy())
+			{
+				return false;
+			}
+            // The imported source is immutable; restore daily/DC preferences before user lab overrides.
+            if (!record.CurrentTemplate || !TuneTarget(scheme, aggressive)) return false;
+            tuneState = TuneCode(aggressive);
+            return true;
+        }
+
+		private static bool RetuneManagedScheme(Guid scheme, bool aggressive)
+		{
+			if (!PrepareManagedScheme(scheme, aggressive) || !ManagedPlans.Activate(scheme) || ManagedPlans.Current() != scheme)
+			{
+				active = false;
+				tuneState = -1;
+				return false;
+			}
+            CleanupPreviousPresetPlan();
+            return true;
+        }
+
+        [DllImport("powrprof.dll", EntryPoint = "PowerEnumerate")]
+		private static extern uint EnumerateProcessorSetting(IntPtr root, ref Guid scheme, ref Guid sub, uint access, uint index, byte[] buffer, ref uint size);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerReadValueMin(IntPtr root, ref Guid sub, ref Guid setting, out uint min);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerReadValueMax(IntPtr root, ref Guid sub, ref Guid setting, out uint max);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerGetActiveScheme(IntPtr root, out IntPtr guid);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerSetActiveScheme(IntPtr root, ref Guid guid);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerDuplicateScheme(IntPtr root, ref Guid src, ref IntPtr dest);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerDeleteScheme(IntPtr root, ref Guid guid);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerEnumerate(IntPtr root, IntPtr scheme, IntPtr subgroup, uint accessFlags, uint index, byte[] buffer, ref uint size);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerReadFriendlyName(IntPtr root, ref Guid scheme, IntPtr subgroup, IntPtr setting, IntPtr buffer, ref uint size);
+
+		[DllImport("powrprof.dll", EntryPoint = "PowerReadFriendlyName")]
+		private static extern uint PowerReadFriendlyNameBuf(IntPtr root, ref Guid scheme, IntPtr subgroup, IntPtr setting, byte[] buffer, ref uint size);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerWriteFriendlyName(IntPtr root, ref Guid scheme, IntPtr subgroup, IntPtr setting, byte[] buffer, uint size);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerWriteDescription(IntPtr root, ref Guid scheme, IntPtr subgroup, IntPtr setting, byte[] buffer, uint size);
+
+		[DllImport("kernel32.dll")]
+		private static extern IntPtr LocalFree(IntPtr h);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerWriteACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerWriteDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
+
+		[DllImport("powrprof.dll")]
+		private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
+
+        private static bool TuneTarget(Guid g, bool aggressive)
+        {
+            return TunePresetTarget(g, aggressive);
+        }
+
+		private static void ReadAutonomousScaling(Guid scheme, out bool? ac, out bool? dc)
+		{
+			ac = null;
+			dc = null;
+			try
+			{
+				ProcessorPowerPlatform.Interface current = ProcessorPowerPlatform.Current;
+				uint value;
+				uint? requested = (ReadAc(scheme, SubProcessor, PerfAutonomous, out value) ? new uint?(value) : null);
+				uint? requested2 = (ReadDc(scheme, SubProcessor, PerfAutonomous, out value) ? new uint?(value) : null);
+				ac = ProcessorPowerPlatform.AutonomousMinimum(current, requested);
+				dc = ProcessorPowerPlatform.AutonomousMinimum(current, requested2);
+			}
+			catch
+			{
+			}
+		}
+
+		internal static bool ClearLegacyIdleDisableOnce()
+		{
+			lock (lk)
+			{
+				if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
+				{
+					return false;
+				}
+				return ClearLegacyIdleDisableOnceCore();
+			}
+		}
+
+		private static bool ClearLegacyIdleDisableOnceCore()
+		{
+            ManagedPolicyRecord currentRecord;
+            if (ReadManagedPolicy(out currentRecord) && currentRecord != null && currentRecord.CurrentTemplate) return true;
+			if (Settings.Load("IdleDisableCleared", false))
+			{
+				return true;
+			}
+			try
+			{
+				Guid guid = ManagedPlanGuid();
+				if (guid == Guid.Empty || !SettingPresent(guid, SubProcessor, IdleDisableSet))
+				{
+					Settings.Save("IdleDisableCleared", true);
+					return true;
+				}
+				if (!WritePair(guid, SubProcessor, IdleDisableSet, 0u, 0u))
+				{
+					return false;
+				}
+				Guid? guid2 = Current();
+				if (guid2.HasValue && guid2.Value == guid && !Set(guid))
+				{
+					return false;
+				}
+				Settings.Save("IdleDisableCleared", true);
+				Logger.Log(Lang.T("log.powerplanschemes.47"));
+				return true;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		internal static bool ReadAc(Guid scheme, Guid sub, Guid setting, out uint value)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, out value) == 0;
+		}
+
+		internal static uint? ActivePersonality()
+		{
+			Guid? guid = Current();
+			uint value;
+			if (!guid.HasValue || !ReadAc(guid.Value, SubNone, Personality, out value))
+			{
+				return null;
+			}
+			return value;
+		}
+
+		internal static bool ReadDc(Guid scheme, Guid sub, Guid setting, out uint value)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			return PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, out value) == 0;
+		}
+
+		internal static bool WriteDc(Guid scheme, Guid sub, Guid setting, uint value)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			return PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, value) == 0;
+		}
+
+		internal static bool WriteAc(Guid scheme, Guid sub, Guid setting, uint value)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			return PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, value) == 0;
+		}
+
+		private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			uint value;
+			return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, out value) == 0;
+		}
+
+		private static uint Clamp(Guid sub, Guid setting, uint v)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			uint min;
+			if (PowerReadValueMin(IntPtr.Zero, ref sub2, ref setting2, out min) != 0)
+			{
+				return v;
+			}
+			sub2 = sub;
+			setting2 = setting;
+			uint max;
+			if (PowerReadValueMax(IntPtr.Zero, ref sub2, ref setting2, out max) != 0)
+			{
+				return v;
+			}
+			if (min > max)
+			{
+				return v;
+			}
+			if (v < min)
+			{
+				return min;
+			}
+			if (v > max)
+			{
+				return max;
+			}
+			return v;
+		}
+
+		private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc)
+		{
+			uint code;
+			return WritePair(scheme, sub, setting, ac, dc, out code);
+		}
+
+		private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc, out uint code)
+		{
+			Guid sub2 = sub;
+			Guid setting2 = setting;
+			code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, ac);
+			if (code == 87)
+			{
+				uint num = Clamp(sub, setting, ac);
+				if (num != ac)
+				{
+					sub2 = sub;
+					setting2 = setting;
+					code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, num);
+				}
+			}
+			if (code != 0)
+			{
+				return false;
+			}
+			sub2 = sub;
+			setting2 = setting;
+			code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, dc);
+			if (code == 87)
+			{
+				uint num2 = Clamp(sub, setting, dc);
+				if (num2 != dc)
+				{
+					sub2 = sub;
+					setting2 = setting;
+					code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, num2);
+				}
+			}
+			return code == 0;
+		}
+
+		internal static bool IsManagedPlanName(string name)
+		{
+			if (string.IsNullOrEmpty(name))
+			{
+				return false;
+			}
+			string[] array = new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" };
+			foreach (string value in array)
+			{
+				if (name.StartsWith(value, StringComparison.Ordinal))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		internal static int DeleteManagedPlansByName()
+		{
+			int num = 0;
+			lock (lk)
+			{
+				if (!RestoreLaboratoryBeforeCoreChange()) return 0;
+				Guid? guid = Current();
+				foreach (Guid item in EnumerateSchemes())
+				{
+					if (!IsManagedPlanName(ReadName(item)))
+					{
+						continue;
+					}
+					if (guid.HasValue && guid.Value == item)
+					{
+						if (!SwitchAwayFrom(item))
+						{
+							continue;
+						}
+						guid = Current();
+					}
+					Guid guid2 = item;
+					if (PowerDeleteScheme(IntPtr.Zero, ref guid2) == 0)
+					{
+						num++;
+					}
+				}
+				return num;
+			}
+		}
+
+		private static Guid? Current()
+		{
+			IntPtr guid;
+			if (PowerGetActiveScheme(IntPtr.Zero, out guid) != 0 || guid == IntPtr.Zero)
+			{
+				return null;
+			}
+			try
+			{
+				return (Guid)Marshal.PtrToStructure(guid, typeof(Guid));
+			}
+			catch
+			{
+				return null;
+			}
+			finally
+			{
+				LocalFree(guid);
+			}
+		}
+
+		private static bool Set(Guid g)
+		{
+			if (PowerSetActiveScheme(IntPtr.Zero, ref g) != 0)
+			{
+				return false;
+			}
+			Guid? guid = Current();
+			if (guid.HasValue)
+			{
+				return guid.Value == g;
+			}
+			return false;
+		}
+
+		private static bool SchemeUsable(Guid g)
+		{
+			uint size = 0u;
+			uint num = PowerReadFriendlyName(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ref size);
+			if (num != 0)
+			{
+				return num == 234;
+			}
+			return true;
+		}
+
+		private static string ReadName(Guid g)
+		{
+			try
+			{
+				uint size = 0u;
+				uint num = PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, null, ref size);
+				if ((num != 0 && num != 234) || size == 0 || size > 4096)
+				{
+					return "";
+				}
+				byte[] array = new byte[size];
+				if (PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, array, ref size) != 0)
+				{
+					return "";
+				}
+				string @string = Encoding.Unicode.GetString(array);
+				char[] trimChars = new char[1];
+				return @string.TrimEnd(trimChars);
+			}
+			catch
+			{
+				return "";
+			}
+		}
+
+		private static bool WriteName(Guid g, string title, string note)
+		{
+			try
+			{
+				byte[] bytes = Encoding.Unicode.GetBytes(title + "\0");
+				Guid scheme = g;
+				if (PowerWriteFriendlyName(IntPtr.Zero, ref scheme, IntPtr.Zero, IntPtr.Zero, bytes, (uint)bytes.Length) != 0)
+				{
+					return false;
+				}
+				byte[] bytes2 = Encoding.Unicode.GetBytes(note + "\0");
+				scheme = g;
+				PowerWriteDescription(IntPtr.Zero, ref scheme, IntPtr.Zero, IntPtr.Zero, bytes2, (uint)bytes2.Length);
+				return true;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static List<Guid> EnumerateSchemes()
+		{
+			List<Guid> list;
+			TryEnumerateSchemes(out list);
+			return list;
+		}
+
+		private static bool TryEnumerateSchemes(out List<Guid> list)
+		{
+			list = new List<Guid>();
+			try
+			{
+				uint num = 0u;
+				while (num < 128)
+				{
+					uint size = 16u;
+					byte[] array = new byte[16];
+					switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, num, array, ref size))
+					{
+					case 259u:
+						return true;
+					case 0u:
+						if (size == 16)
+						{
+							Guid guid = new Guid(array);
+							if (guid == Guid.Empty || list.Contains(guid))
+							{
+								return false;
+							}
+							list.Add(guid);
+							num++;
+							break;
+						}
+						goto default;
+					default:
+						return false;
+					}
+				}
+			}
+			catch
+			{
+			}
+			return false;
+		}
+
+		internal static void SyncDisplayFeel(Guid src, Guid dst)
+		{
+			Guid[] array = new Guid[3] { VideoBrightness, VideoDimBrightness, VideoAdaptive };
+			Guid[] array2 = array;
+			foreach (Guid guid in array2)
+			{
+				Guid scheme = src;
+				Guid scheme2 = dst;
+				Guid sub = SubVideo;
+				Guid setting = guid;
+				uint value;
+				if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value) == 0)
+				{
+					PowerWriteACValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, value);
+				}
+				if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value) == 0)
+				{
+					PowerWriteDCValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, value);
+				}
+			}
+		}
+
+		private static bool Duplicate(Guid src, out Guid created)
+		{
+			created = Guid.Empty;
+			IntPtr dest = IntPtr.Zero;
+			Guid src2 = src;
+			if (PowerDuplicateScheme(IntPtr.Zero, ref src2, ref dest) != 0 || dest == IntPtr.Zero)
+			{
+				return false;
+			}
+			try
+			{
+				created = (Guid)Marshal.PtrToStructure(dest, typeof(Guid));
+			}
+			catch
+			{
+				return false;
+			}
+			finally
+			{
+				LocalFree(dest);
+			}
+			return created != Guid.Empty;
+		}
+	}
+}

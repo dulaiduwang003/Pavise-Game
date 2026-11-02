@@ -1,0 +1,303 @@
+using System;
+using System.Collections.Generic;
+
+namespace PaviseApp
+{
+	internal static class SelfYield
+	{
+		private sealed class EmptyHelperScope : IDisposable
+		{
+			public void Dispose()
+			{
+			}
+		}
+
+		private sealed class HelperScope : IDisposable
+		{
+			internal IYieldChild Child;
+
+			internal uint[] Original;
+
+			internal uint[] Desired;
+
+			internal bool EndRequested;
+
+			internal bool Closed;
+
+			internal bool Restore()
+			{
+				if (Closed)
+				{
+					return true;
+				}
+				uint[] ids;
+				int num = Child.Read(out ids);
+				if (num < 0)
+				{
+					return false;
+				}
+				if (num == 0 && NativeYieldChild.Same(ids, Desired) && !Child.Write(Desired, Original))
+				{
+					return false;
+				}
+				Child.Dispose();
+				Closed = true;
+				return true;
+			}
+
+			public void Dispose()
+			{
+				lock (sync)
+				{
+					EndRequested = true;
+					if (Restore())
+					{
+						helpers.Remove(this);
+					}
+				}
+			}
+		}
+
+		private static readonly object sync = new object();
+
+		private static bool engaged;
+
+		private static uint origPriority;
+
+		private static int origIo = -1;
+
+		private static uint[] helperCpuSets;
+
+		private static int helperRendererPid;
+
+		private static long helperRendererBirth;
+
+		private static readonly List<HelperScope> helpers = new List<HelperScope>();
+
+		private static readonly IDisposable emptyHelper = new EmptyHelperScope();
+
+		private static IntPtr Self
+		{
+			get
+			{
+				return (IntPtr)(-1);
+			}
+		}
+
+		public static bool Engaged
+		{
+			get
+			{
+				lock (sync)
+				{
+					return engaged;
+				}
+			}
+		}
+
+		public static void Engage()
+		{
+			lock (sync)
+			{
+				if (engaged)
+				{
+					return;
+				}
+				IntPtr self = Self;
+				uint priorityClass = Native.GetPriorityClass(self);
+				if (priorityClass != 0)
+				{
+					origPriority = priorityClass;
+					origIo = Native.QueryIoPriority(self);
+					helperCpuSets = null;
+					bool flag = priorityClass == 16384 || Native.SetPriorityClass(self, 16384u);
+					bool flag2 = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(self, 1);
+					engaged = flag || flag2;
+					if (engaged)
+					{
+						Logger.Log(Lang.T("log.selfyield.1"));
+					}
+				}
+			}
+		}
+
+		public static void Release()
+		{
+			lock (sync)
+			{
+				helperCpuSets = null;
+				helperRendererPid = 0;
+				helperRendererBirth = 0L;
+				ReleaseHelpersLocked();
+				if (engaged)
+				{
+					engaged = false;
+					IntPtr self = Self;
+					if (origPriority != 0)
+					{
+						Native.SetPriorityClass(self, origPriority);
+					}
+					if (origIo >= 0)
+					{
+						Native.TrySetIoPriority(self, origIo);
+					}
+					Logger.Log(Lang.T("log.selfyield.2"));
+				}
+			}
+		}
+
+		internal static bool HelperMasksSeparate(ulong game, ulong background, ulong all)
+		{
+			if (game != 0 && background != 0 && all != 0 && (game & ~all) == 0 && (background & ~all) == 0)
+			{
+				return (game & background) == 0;
+			}
+			return false;
+		}
+
+		private static bool HelperCoresSeparateLocked()
+		{
+			ulong background;
+			return HelperCoresSeparateLocked(out background);
+		}
+
+		private static bool HelperCoresSeparateLocked(out ulong background)
+		{
+			background = 0uL;
+			if (helperRendererPid <= 0 || helperRendererBirth <= 0 || helperCpuSets == null || CpuTopology.MultiGroup || !CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)
+			{
+				return false;
+			}
+			HashSet<uint> hashSet = new HashSet<uint>();
+			ulong[] array = CpuTopology.PhysicalCoreMasks();
+			foreach (ulong num in array)
+			{
+				uint[] array2 = CpuTopology.CpuSetIdsFor(num);
+				if (array2 == null)
+				{
+					return false;
+				}
+				uint[] array3 = array2;
+				foreach (uint num2 in array3)
+				{
+					uint[] array4 = helperCpuSets;
+					foreach (uint num3 in array4)
+					{
+						if (num2 == num3)
+						{
+							background |= num;
+							hashSet.Add(num2);
+						}
+					}
+				}
+			}
+			if (hashSet.Count != helperCpuSets.Length)
+			{
+				return false;
+			}
+			IntPtr intPtr = Native.OpenProcess(1052672, false, helperRendererPid);
+			if (intPtr == IntPtr.Zero)
+			{
+				return false;
+			}
+			try
+			{
+				long creation;
+				long cpu;
+				ulong io;
+				ulong mask;
+				return Native.WaitForSingleObject(intPtr, 0u) == 258 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == helperRendererBirth && Native.TryQueryAffinity(intPtr, out mask) && HelperMasksSeparate(mask, background, CpuTopology.AllMask);
+			}
+			finally
+			{
+				Native.CloseHandle(intPtr);
+			}
+		}
+
+		internal static void TrackHelperRenderer(int pid, long birth)
+		{
+			if (!OvernightPerformancePolicy.Enabled)
+			{
+				return;
+			}
+			lock (sync)
+			{
+				bool flag = pid != helperRendererPid || birth != helperRendererBirth;
+				helperRendererPid = pid;
+				helperRendererBirth = birth;
+				if (flag || (helpers.Count > 0 && !HelperCoresSeparateLocked()))
+				{
+					ReleaseHelpersLocked();
+				}
+			}
+		}
+
+		private static void DrainFinishedHelpersLocked()
+		{
+			for (int num = helpers.Count - 1; num >= 0; num--)
+			{
+				if (helpers[num].EndRequested && helpers[num].Restore())
+				{
+					helpers.RemoveAt(num);
+				}
+			}
+		}
+
+		private static void ReleaseHelpersLocked()
+		{
+			foreach (HelperScope helper in helpers)
+			{
+				helper.EndRequested = true;
+			}
+			DrainFinishedHelpersLocked();
+		}
+
+		private static IDisposable BeginHelperLocked(IYieldChild child, uint[] desired)
+		{
+			DrainFinishedHelpersLocked();
+			if (child == null)
+			{
+				return emptyHelper;
+			}
+			uint[] ids;
+			if (!child.Owned || desired == null || desired.Length == 0 || !NativeYieldChild.Same(desired, desired) || helpers.Count >= 32 || child.Read(out ids) != 0 || ids == null || ids.Length != 0)
+			{
+				child.Dispose();
+				return emptyHelper;
+			}
+			HelperScope helperScope = new HelperScope();
+			helperScope.Child = child;
+			helperScope.Original = ids;
+			helperScope.Desired = (uint[])desired.Clone();
+			HelperScope helperScope2 = helperScope;
+			helpers.Add(helperScope2);
+			if (!child.Write(ids, helperScope2.Desired))
+			{
+				helperScope2.EndRequested = true;
+				if (helperScope2.Restore())
+				{
+					helpers.Remove(helperScope2);
+				}
+			}
+			return helperScope2;
+		}
+
+		internal static IDisposable OwnHelperScope(IntPtr launchedChild)
+		{
+			if (!OvernightPerformancePolicy.Enabled)
+			{
+				return emptyHelper;
+			}
+			lock (sync)
+			{
+				ulong background;
+				ulong mask;
+				if (!engaged || helperCpuSets == null || !Native.CpuSetsMatch(Self, helperCpuSets) || !HelperCoresSeparateLocked(out background) || !Native.TryQueryAffinity(launchedChild, out mask) || (mask & background) == 0)
+				{
+					return emptyHelper;
+				}
+				return BeginHelperLocked(NativeYieldChild.Open(launchedChild), helperCpuSets);
+			}
+		}
+	}
+}

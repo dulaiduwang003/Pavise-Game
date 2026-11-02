@@ -62,7 +62,7 @@ namespace PaviseApp
             }
             internal void Queue(bool active)
             {
-                Coordinator.Queue(false, false, new string[0], new string[0], null, active);
+                Coordinator.Queue(false, false, new string[0], new string[0], active);
                 PerformanceEq(true, Coordinator.DrainForTest(5000));
             }
             internal void Reduced()
@@ -183,7 +183,7 @@ namespace PaviseApp
             using (var release = new ManualResetEvent(false))
             {
                 f.BeforeWrite = delegate { entered.Set(); PerformanceEq(true, release.WaitOne(5000)); };
-                f.Coordinator.Queue(false, false, new string[0], new string[0], null, true);
+                f.Coordinator.Queue(false, false, new string[0], new string[0], true);
                 PerformanceEq(true, entered.WaitOne(5000));
                 f.Coordinator.Queue(false, false, new string[0], new string[0]);
                 release.Set();
