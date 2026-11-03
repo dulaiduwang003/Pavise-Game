@@ -1,73 +1,86 @@
 <div align="center">
 
-<a href="https://pavise.club/"><img src="docs/icon.png" width="76" height="76" alt="Pavise logo"></a>
+<a href="https://pavise.club/">
+  <img src="docs/icon.png" width="96" height="96" alt="Pavise logo">
+</a>
 
 # PAVISE
 
-### Resource orchestration, bounded by the game session.
+### Give your games room to run.
 
-A Windows resource-control system built around game identity,<br>
-explicit user intent, and recorded recovery.
+A Windows game resource manager.<br>Choose how background tasks, scheduling and power behave; restore recorded session changes after play.
 
-**English** · [简体中文](README.md) · [日本語](README.ja.md)
+**Per-game profiles · Smart / Competitive · Recorded recovery**
 
-**The 3.1.0.6 source is being organized and will be uploaded in a few days.** Historical source in the repository does not yet represent this release.
+[简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-[![GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-bf2949?style=flat-square&labelColor=17242c)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=17242c&color=bf2949)](https://pavise.club/changelog/#latest)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
+[![GitHub downloads](https://img.shields.io/github/downloads/dulaiduwang003/Pavise-Game/total?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases)
+[![GitHub stars](https://img.shields.io/github/stars/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors)
 
-**[Website](https://pavise.club/) · [Download](https://pavise.club/changelog/#latest) · [User guide](https://pavise.club/docs/)**
+**[Website](https://pavise.club/en/) · [Latest download](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) · [User guide](https://pavise.club/en/docs/) · [Report an issue](https://github.com/dulaiduwang003/Pavise-Game/issues)**
 
 </div>
 
-## System design
+> **The source code and documentation are being organized and will be uploaded to this repository when ready.** The code currently here is historical; use the published application and its release notes for current behavior.
 
-<a href="docs/pavise-architecture.svg"><img src="docs/pavise-architecture.png" width="100%" alt="Pavise component architecture: implementation modules, dependencies, native interfaces, and session state transitions"></a>
+## What Pavise does
 
-*Figure 1. Component dependencies and session lifecycle. [Vector original](docs/pavise-architecture.svg).*
+Games share a PC with browsers, launchers and update tasks. Pavise applies your saved choices to game and background resource allocation during a session, then restores the session changes it recorded.
 
-Pavise treats resource control as a bounded game session. It identifies the game and related processes, resolves saved choices into an effective policy, applies supported controls through Windows native interfaces, and restores recorded changes when the session ends.
+You choose which features to enable. Guard applies them when it identifies a game. Each game can have its own configuration; protection rules and your whitelist determine which background applications remain unaffected.
 
-**Scope before strength.** Process identity, foreground state, and CPU topology establish the target. Game execution and background contention follow separate paths, subject to protection rules and runtime support.
+| Area | Main capabilities |
+| --- | --- |
+| **Library and detection** | Add games, scan installations or running programs, and manage per-game settings. Program selection includes windowed, minimized and tray applications. |
+| **Background control** | Adjust eligible background CPU, I/O, memory-page and GPU scheduling; manage exclusions; pause updates, downloads and maintenance during play. |
+| **Game and core scheduling** | Game priorities, thread boosting, logical-core selection, CCD / SMT shortcuts, core isolation and background core avoidance. |
+| **Managed power** | Match the CPU, device type and Smart / Competitive scene. Preserve everyday display, sleep, lid and battery settings, or select an existing plan or Don't switch. |
+| **Graphics and memory** | Supported GPU performance preferences, graphics controls, cache warming and standby-memory cleanup, configured independently. |
+| **Laboratory** | CPU idle policies, EPP power sharing, GPU clock / power controls and low-buffer audio, subject to hardware and driver support. |
+| **System checkup** | Inspect system and device state; observe and adjust GPU interrupts, verify after reboot and restore. MSI repair and restoration have separate actions. |
+| **Recovery and updates** | Original-value records, pending recovery retries, logs, diagnostic summaries, an AI tuning export, and in-app updates with progress and signature verification. |
 
-**Intent separate from observation.** Saved configuration defines what is requested; current conditions determine what can be applied. Telemetry supports observation and comparison, while performance choices remain with the user.
+The overview shows **confirmed suppressed-process and paused-service counts** for the current session. Availability depends on Windows, hardware and drivers. Assess results with your own games and background workload.
 
-**Recovery as part of control.** Applicable changes retain original values and recovery records. Exit triggers reconciliation; unfinished recovery remains pending. Persistent settings and cache operations follow their own lifecycles.
+## Scenes and configuration presets
 
-## Interface
+- **Smart** balances game resource control with everyday application interaction.
+- **Competitive** uses a more active session policy while respecting foreground protection, the whitelist and your feature choices.
+- **Default / Extreme presets** apply groups of feature settings independently of the scene. Hardware support and current state are still checked.
 
-<img src="docs/overview-3.1.0.6.en.png" width="100%" alt="Current Pavise overview with ROG-inspired styling and compact bottom navigation">
+## Download and start
 
-*3.1.0.6 UI. Screenshot uses demonstration data; it is not a benchmark. *
+1. Download the complete package from the [website](https://pavise.club/en/changelog/#latest) or [GitHub Releases](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+2. Extract it to a stable folder. Keep `Pavise.exe`, its `.exe.config` and the accompanying files together, then run as administrator.
+3. Add a game, select a scene, review feature choices and the whitelist, then enable Guard.
+4. Check recovery after play. Persistent settings follow their own restoration instructions; restart when a setting requires it.
 
-<details>
-<summary>Light theme</summary>
+Requires **Windows 10 2004 / build 19041 or newer and .NET Framework 4.7.2+**. Windows 11 is supported; individual controls depend on system and device capabilities.
 
-<img src="docs/overview-light-3.1.0.6.en.png" width="100%" alt="Pavise light theme">
+### Updates and release changes
 
-</details>
+Starting with **3.2.0.2**, About → Check & update can download and verify an update before replacing the application, keeping your library, whitelist and preferences. **Versions 3.2.0.1 and earlier need one manual upgrade first.** Exit the game before updating.
 
-## Run
+Frame-rate detection, the floating OSD, game-session reports and RTSS integration have been removed. See the [release history](https://github.com/dulaiduwang003/Pavise-Game/releases) for full changes.
 
-Windows 10 2004 / build 19041 or newer, .NET Framework 4.7.2+, and administrator rights for resource control.
+## Documentation and feedback
 
-Download and extract the complete package. Keep `Pavise.exe`, `Pavise.exe.config`, `LICENSE`, and `NOTICE` together. Add a game to the library, review the saved policy, then enable Guard. See the [user guide](https://pavise.club/docs/) for configuration and recovery details.
+[User guide](https://pavise.club/en/docs/) · [Changelog](https://pavise.club/en/changelog/#latest) · [Issues](https://github.com/dulaiduwang003/Pavise-Game/issues)
 
-Effects depend on the game, hardware, and selected settings. Compare under the same workload; enabling more controls does not guarantee better performance.
+For a report, include the Pavise and Windows versions, CPU / GPU, game, relevant settings and reproduction steps. Add logs or a diagnostic summary when useful.
 
-## Project
+## Author and support
 
-[Issues](https://github.com/dulaiduwang003/Pavise-Game/issues) · [Contributors](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [Author: bdth](https://github.com/dulaiduwang003) · [Support development](https://pavise.club/support/)
+Created and maintained by **[bdth](https://github.com/dulaiduwang003)**. Pavise is free to obtain; **donations are entirely optional**. Thank you for using it, reporting issues and supporting development.
 
-For the current release, use the verified download package. Source publication will follow; report issues with your version, environment and reproduction steps.
+[Support development](https://pavise.club/support/) · [Author profile](https://github.com/dulaiduwang003)
 
-Pavise is free to obtain; donations are optional. QQ communities: `166255062` / `1109874913`.
+<p align="center">
+  <img src="docs/wechat.png" width="220" alt="Author's WeChat donation QR code">
+  <img src="docs/alipay.png" width="220" alt="Author's Alipay donation QR code">
+</p>
 
-<details>
-<summary>Support the author</summary>
-
-<img src="docs/wechat.png" width="180" alt="Author's WeChat donation QR code"> <img src="docs/alipay.png" width="180" alt="Author's Alipay donation QR code">
-
-</details>
-
-**License:** [GPL-3.0-only](LICENSE). Copyright (C) 2026 bdth. See [NOTICE](NOTICE).
+See [LICENSE](LICENSE) and [NOTICE](NOTICE) for the project license and notices.
