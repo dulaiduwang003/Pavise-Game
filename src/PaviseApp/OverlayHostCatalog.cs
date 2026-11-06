@@ -18,6 +18,7 @@ namespace PaviseApp
 
 		internal static bool ShouldProtectProcess(string name, string imagePath, bool protectGamePlatformHosts)
 		{
+			if (StreamingToolCatalog.IsStreamingToolProcess(name, imagePath)) return true;
 			string text = WhitelistRule.NormalizeName(name);
 			if (!ProcessNames.Contains(text) && (!protectGamePlatformHosts || !PlatformRuntimePolicy.Enabled("steam") || !GamePlatformProcessNames.Contains(text)))
 			{

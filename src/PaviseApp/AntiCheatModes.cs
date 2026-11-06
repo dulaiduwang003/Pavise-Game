@@ -71,6 +71,11 @@ namespace PaviseApp
 			return false;
 		}
 
+		internal static int CoreLimitOf(AntiCheatMode mode)
+		{
+			return mode == AntiCheatMode.Gentle ? 4 : (mode == AntiCheatMode.Balanced ? 2 : 1);
+		}
+
 		public static bool ShouldReleasePins(AntiCheatMode from, AntiCheatMode to)
 		{
 			if (from == AntiCheatMode.Isolated)

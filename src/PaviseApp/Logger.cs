@@ -89,6 +89,13 @@ namespace PaviseApp
 			Log("INFO " + msg);
 		}
 
+		internal static void RuntimeIdentity()
+		{
+			Info("RUNTIME event=identity version=" + App.Version + " mvid=" + typeof(App).Module.ModuleVersionId.ToString("D")
+				+ " os=" + Environment.OSVersion.Version + " arch=" + (Environment.Is64BitProcess ? "x64" : "x86")
+				+ " pid=" + System.Diagnostics.Process.GetCurrentProcess().Id);
+		}
+
 		public static void Warn(string msg)
 		{
 			Log("WARN " + msg);
@@ -271,6 +278,33 @@ namespace PaviseApp
 					knownLength = -1L;
 				}
 			}
+		}
+
+		internal static void ExportTo(string destination)
+		{
+			string output = Path.GetFullPath(destination);
+			byte[] snapshot;
+			lock (lk)
+			{
+				if (string.IsNullOrEmpty(LogPath)) throw new FileNotFoundException("No runtime log is available.");
+				string source = Path.GetFullPath(LogPath);
+				if (string.Equals(output, source, StringComparison.OrdinalIgnoreCase)
+					|| string.Equals(output, source + ".old", StringComparison.OrdinalIgnoreCase))
+					throw new IOException("Choose a different file from the active runtime logs.");
+				using (FileStream input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+				{
+					snapshot = new byte[checked((int)input.Length)];
+					int offset = 0;
+					while (offset < snapshot.Length)
+					{
+						int count = input.Read(snapshot, offset, snapshot.Length - offset);
+						if (count == 0) throw new EndOfStreamException("The runtime log changed while it was being read.");
+						offset += count;
+					}
+				}
+			}
+			// A slow destination must not hold up runtime log writes or rotation.
+			File.WriteAllBytes(output, snapshot);
 		}
 
 		public static string Tail(int maxLines)

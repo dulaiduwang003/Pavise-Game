@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 
 namespace PaviseApp
 {
@@ -30,13 +31,28 @@ namespace PaviseApp
 
 		internal volatile string GlobalState = "";
 
-		private int previousMode = -1;
+		private sealed class CheckSchedule
+		{
+			internal bool Initialized, Wanted, ForwardStopped;
+			internal int BuildClass, Failures;
+			internal long NextCheck;
+			internal readonly AutomaticRecoveryBudget Recovery = new AutomaticRecoveryBudget();
+		}
 
-		private long nextCheck;
+		private readonly CheckSchedule tickSchedule = new CheckSchedule();
 
-		private int tickFailures;
+		private readonly CheckSchedule globalSchedule = new CheckSchedule();
 
-		private int globalFailures;
+		internal void BeginAutomaticCycle(string identity)
+		{
+			lock (Gate)
+			{
+				ActionFailureStore.BeginAutomaticCycle("AutoTimerTick", "system", identity);
+				ActionFailureStore.BeginAutomaticCycle("AutoGlobalTimer", "system", identity);
+				if (tickSchedule.Recovery.BeginCycle(identity)) { tickSchedule.ForwardStopped = false; tickSchedule.NextCheck = 0L; tickSchedule.Failures = tickSchedule.Recovery.FailureCount; }
+				if (globalSchedule.Recovery.BeginCycle(identity)) { globalSchedule.ForwardStopped = false; globalSchedule.NextCheck = 0L; globalSchedule.Failures = globalSchedule.Recovery.FailureCount; }
+			}
+		}
 
 		internal bool GlobalReady
 		{
@@ -64,50 +80,67 @@ namespace PaviseApp
 
 		private void SyncLocked(bool tickWanted, bool globalWanted, int build, long now)
 		{
-			int num = (tickWanted ? 1 : 0) | (globalWanted ? 2 : 0);
-			if (num != previousMode || now >= nextCheck || ActionFailureStore.IsRetryPending("AutoTimerTick", "system") || ActionFailureStore.IsRetryPending("AutoGlobalTimer", "system"))
+			int buildClass = build >= 20348 ? 2 : (build > 0 && build < 19041 ? 1 : 0);
+			bool tickDue = CheckDue(tickSchedule, tickWanted, 0, TickState, now);
+			bool globalDue = CheckDue(globalSchedule, globalWanted, buildClass, GlobalState, now);
+			if (!tickDue && !globalDue) return;
+			Stopwatch elapsed = Stopwatch.StartNew();
+			string boot;
+			try { boot = Boot(); }
+			catch { boot = null; }
+			if (tickDue)
 			{
-				previousMode = num;
-				string boot;
-				try
-				{
-					boot = Boot();
-				}
-				catch
-				{
-					boot = null;
-				}
-				TickState = Step("AutoTimerTickBoot", tickWanted, boot, TickOn, TickOwned, TickEnable, TickRestore);
-				if (TickState == "failed" || TickState == "restore-failed")
-				{
-					tickFailures = Math.Min(8, tickFailures + 1);
-				}
-				else
-				{
-					tickFailures = 0;
-				}
-				bool flag = build > 0 && build < 19041;
-				bool flag2 = build >= 20348;
-				GlobalState = Step("AutoGlobalTimerBoot", globalWanted && flag2, boot, GlobalOn, GlobalOwned, GlobalEnable, GlobalRestore);
-				if (GlobalState == "failed" || GlobalState == "restore-failed")
-				{
-					globalFailures = Math.Min(8, globalFailures + 1);
-				}
-				else
-				{
-					globalFailures = 0;
-				}
-				if (globalWanted && !flag2 && GlobalState != "restore-failed")
-				{
-					GlobalState = (flag ? "ready" : "unsupported");
-				}
-				bool flag3 = TickState == "failed" || TickState == "stopped" || TickState == "restore-failed" || GlobalState == "failed" || GlobalState == "stopped" || GlobalState == "restore-failed";
-				int num2 = Math.Max(tickFailures, globalFailures);
-				nextCheck = now + TimeSpan.FromSeconds(flag3 ? Math.Min(300, 30 * (1 << Math.Min(4, Math.Max(0, num2 - 1)))) : 300).Ticks;
+				NoteCheck(tickSchedule, tickWanted, 0);
+				TickState = Step("AutoTimerTickBoot", tickWanted, boot, TickOn, TickOwned, TickEnable, TickRestore, tickSchedule.Recovery);
+				tickSchedule.ForwardStopped = ActionFailureStore.IsBlocked("AutoTimerTick", "system");
+				ScheduleCheck(tickSchedule, TickState, now + elapsed.Elapsed.Ticks);
+			}
+			if (globalDue)
+			{
+				NoteCheck(globalSchedule, globalWanted, buildClass);
+				GlobalState = Step("AutoGlobalTimerBoot", globalWanted && buildClass == 2, boot, GlobalOn, GlobalOwned, GlobalEnable, GlobalRestore, globalSchedule.Recovery);
+				globalSchedule.ForwardStopped = ActionFailureStore.IsBlocked("AutoGlobalTimer", "system");
+				if (globalWanted && buildClass != 2 && GlobalState != "restore-failed")
+					GlobalState = buildClass == 1 ? "ready" : "unsupported";
+				ScheduleCheck(globalSchedule, GlobalState, now + elapsed.Elapsed.Ticks);
 			}
 		}
 
-		internal static string Step(string slot, bool want, string boot, Func<bool> read, Func<bool> owned, Func<bool> enable, Func<bool> restore)
+		private static bool CheckDue(CheckSchedule schedule, bool wanted, int buildClass, string state, long now)
+		{
+			// Preference changes cannot turn unresolved recovery into a polling loop.
+			if (state == "restore-failed" && (!schedule.Recovery.CanAttempt || (schedule.Initialized && now < schedule.NextCheck)))
+			{
+				RecoveryAttemptTrace.FailureSchedule(schedule.Recovery.FailureCount, AutomaticRecoveryBudget.MaximumFailures, schedule.NextCheck);
+				return false;
+			}
+			if (wanted && schedule.ForwardStopped && state != "restore-failed") return false;
+			if (!wanted && state == "unverified" && !schedule.Recovery.CanAttempt) return false;
+			if (schedule.Initialized && schedule.Wanted == wanted && schedule.BuildClass == buildClass
+				&& ((!wanted && (state == "" || state == "restored")) || state == "unsupported")) return false;
+			return !schedule.Initialized || schedule.Wanted != wanted || schedule.BuildClass != buildClass
+				|| now >= schedule.NextCheck;
+		}
+
+		private static void NoteCheck(CheckSchedule schedule, bool wanted, int buildClass)
+		{
+			schedule.Initialized = true;
+			schedule.Wanted = wanted;
+			schedule.BuildClass = buildClass;
+		}
+
+		private static void ScheduleCheck(CheckSchedule schedule, string state, long completedAt)
+		{
+			bool failed = state == "failed" || state == "restore-failed";
+			schedule.Failures = state == "restore-failed" ? schedule.Recovery.FailureCount : (failed ? Math.Min(8, schedule.Failures + 1) : 0);
+			int delay = failed || state == "stopped"
+				? Math.Min(300, 30 * (1 << Math.Min(4, Math.Max(0, schedule.Failures - 1)))) : 300;
+			schedule.NextCheck = completedAt + TimeSpan.FromSeconds(delay).Ticks;
+			if (state == "restore-failed")
+				RecoveryAttemptTrace.FailureSchedule(schedule.Recovery.FailureCount, AutomaticRecoveryBudget.MaximumFailures, schedule.NextCheck);
+		}
+
+		internal static string Step(string slot, bool want, string boot, Func<bool> read, Func<bool> owned, Func<bool> enable, Func<bool> restore, AutomaticRecoveryBudget recovery = null)
 		{
 			string action = ((slot == "AutoTimerTickBoot") ? "AutoTimerTick" : ((slot == "AutoGlobalTimerBoot") ? "AutoGlobalTimer" : slot));
 			bool admitted = false;
@@ -118,11 +151,13 @@ namespace PaviseApp
 				{
 					if (ActionFailureStore.IsBlocked(action, "system"))
 					{
-						return RestoreOwnedTimer(owned, restore) ? "stopped" : "restore-failed";
+						if (!RestoreOwnedTimer(owned, restore, recovery)) return "restore-failed";
+						ActionFailureStore.CancelApply(action, "system");
+						return "stopped";
 					}
-					if (ActionFailureStore.IsRetryPending(action, "system") && owned() && (!restore() || owned()))
+					if (ActionFailureStore.IsIsolated(action, "system") && !RestoreOwnedTimer(owned, restore, recovery))
 					{
-						ActionFailureStore.Trip(action, "system", "Timer setting recovery incomplete before retry");
+						ActionFailureStore.Trip(action, "system", "Timer setting recovery incomplete before apply");
 						return "restore-failed";
 					}
 					string reason;
@@ -159,11 +194,16 @@ namespace PaviseApp
 					{
 						throw new InvalidOperationException("Timer observation journal persistence failed");
 					}
-					if (ActionFailureStore.CompleteApply(action, "system"))
+					if (text3 == "unverified")
 					{
+						ActionFailureStore.CancelApply(action, "system");
 						return text3;
 					}
-					if (!RestoreOwnedTimer(owned, restore))
+					if (ActionFailureStore.CompleteApply(action, "system"))
+					{
+						return ActionFailureStore.IsBlocked(action, "system") ? "stopped" : text3;
+					}
+					if (!RestoreOwnedTimer(owned, restore, recovery))
 					{
 						return "restore-failed";
 					}
@@ -174,41 +214,47 @@ namespace PaviseApp
 				{
 					if (!BootSessionIdentity.Valid(boot))
 					{
+						if (recovery != null) recovery.Record(false);
 						return "restore-failed";
 					}
 					string text4 = "off|" + boot;
 					if (!Settings.SaveStrDurable(slot, text4) || Settings.LoadStr(slot, "") != text4)
 					{
+						if (recovery != null) recovery.Record(false);
 						return "restore-failed";
 					}
 					text = text4;
-					if (!restore() || owned())
+					if (!RestoreOwnedTimer(owned, restore, recovery))
 					{
 						return "restore-failed";
 					}
+					ActionFailureStore.CancelApply(action, "system");
 				}
 				if (text.StartsWith("off|", StringComparison.Ordinal) || text.StartsWith("seen-off|", StringComparison.Ordinal))
 				{
-					return RebootStatus(slot, text, boot, "off", "restored", "restore-pending-reboot");
+					string status = RebootStatus(slot, text, boot, "off", "restored", "restore-pending-reboot");
+					if ((status == "unverified" || status == "restore-failed") && recovery != null) recovery.Record(false);
+					return status;
 				}
 				return "";
 			}
 			catch (NotSupportedException)
 			{
-				return SkipTimerApply(action, want, admitted, owned, restore, "unsupported");
+				return SkipTimerApply(action, want, admitted, owned, restore, "unsupported", recovery);
 			}
 			catch (OperationCanceledException)
 			{
-				return SkipTimerApply(action, want, admitted, owned, restore, "");
+				return SkipTimerApply(action, want, admitted, owned, restore, "", recovery);
 			}
 			catch (Exception ex3)
 			{
 				if (!want)
 				{
+					if (recovery != null) recovery.Record(false);
 					return "restore-failed";
 				}
 				ActionFailureStore.Trip(action, "system", ex3.Message);
-				if (!RestoreOwnedTimer(owned, restore))
+				if (!RestoreOwnedTimer(owned, restore, recovery))
 				{
 					return "restore-failed";
 				}
@@ -217,25 +263,33 @@ namespace PaviseApp
 			}
 		}
 
-		private static bool RestoreOwnedTimer(Func<bool> owned, Func<bool> restore)
+		private static bool RestoreOwnedTimer(Func<bool> owned, Func<bool> restore, AutomaticRecoveryBudget recovery)
 		{
+			if (recovery != null && !recovery.CanAttempt) return false;
+			bool restored;
+			bool hadOwner = false;
 			try
 			{
-				return !owned() || (restore() && !owned());
+				hadOwner = owned();
+				restored = !hadOwner || (restore() && !owned());
 			}
 			catch
 			{
-				return false;
+				restored = false;
 			}
+			if (recovery != null) recovery.Record(restored);
+			if (recovery != null && restored && hadOwner) recovery.CompleteRecovery();
+			return restored;
 		}
 
-		private static string SkipTimerApply(string action, bool want, bool admitted, Func<bool> owned, Func<bool> restore, string state)
+		private static string SkipTimerApply(string action, bool want, bool admitted, Func<bool> owned, Func<bool> restore, string state, AutomaticRecoveryBudget recovery)
 		{
 			if (!want)
 			{
+				if (recovery != null) recovery.Record(false);
 				return "restore-failed";
 			}
-			if (!RestoreOwnedTimer(owned, restore))
+			if (!RestoreOwnedTimer(owned, restore, recovery))
 			{
 				ActionFailureStore.Trip(action, "system", "Timer setting recovery after skipped apply remains incomplete");
 				return "restore-failed";

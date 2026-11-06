@@ -256,6 +256,8 @@ namespace PaviseApp
 		[STAThread]
 		private static void Main(string[] args)
 		{
+			AutostartJobHandoff.Incoming jobHandoff;
+			args = AutostartJobHandoff.Strip(args, out jobHandoff);
 			if (SelfUpdateInstaller.TryRun(args)) return;
 			if (TryHandleCriticalThreadGuardian(args))
 			{
@@ -267,7 +269,7 @@ namespace PaviseApp
 			}
 			else
 			{
-				if (CpuCapGuard.TryHandleArgs(args) || FreezeGuard.TryHandleArgs(args) || CoreIsolationWorker.TryHandleArgs(args) || GameExtension.TryHandleArgs(args))
+				if (GameAffinityJobGuard.TryHandleArgs(args) || CoreIsolationWorker.TryHandleArgs(args) || GameExtension.TryHandleArgs(args))
 				{
 					return;
 				}
@@ -452,6 +454,10 @@ namespace PaviseApp
 					PaviseDialog.Warn(null, "PAVISE", PerformancePolicy.Text("更新正在进行，请等待更新窗口完成。", "An update is in progress. Please wait for the update window to finish."));
 					return;
 				}
+				if (jobHandoff != null ? !AutostartJobHandoff.Adopt(jobHandoff) : AutostartJobHandoff.TryHandOff(args))
+				{
+					return;
+				}
 				bool flag = IsAutostart(args);
 				bool createdNew = false;
 				Mutex mutex = null;
@@ -561,6 +567,8 @@ namespace PaviseApp
 						string dir = Paths.Data;
 						Logger.LogPath = Path.Combine(dir, "Pavise.log");
 						Logger.WritesEnabled = Settings.Load("LogWritesEnabled", true);
+						Logger.RuntimeIdentity();
+						AutostartJobHandoff.LogOutcome();
 						if (flag4)
 						{
 							Logger.Log(Lang.T("log.program.1"));
@@ -573,15 +581,17 @@ namespace PaviseApp
 						catch
 						{
 						}
-						int num2 = SuppressionCore.HealFromCrash(Path.Combine(dir, "Pavise.suppression.state"));
-						if (num2 > 0)
-						{
-							Logger.Log(Lang.T("log.program.2") + num2 + Lang.T("log.program.3"));
-						}
 						LaboratorySession.Recover();
 						if (!LaboratoryManualActions.RecoverStartup()) Logger.Warn("Manual laboratory recovery remains pending");
-						if (!new AntiCheatAffinityLease().Recover()) Logger.Warn("AC AFFINITY recovery pending");
 						PowerPlan.HealFromCrash();
+						try
+						{
+							PowerPlan.SweepUntrackedManagedPlansOnce();
+						}
+						catch (Exception sweepError)
+						{
+							Logger.Warn("POWER event=orphan-sweep failure=" + sweepError.GetType().Name);
+						}
 						try
 						{
 							PowerPlan.ClearLegacyIdleDisableOnce();
@@ -766,13 +776,22 @@ namespace PaviseApp
 						{
 							CriticalThreadGuardian.TrySettleHistoricalGone(dir);
 						}
-						if (!HardThreadFileStore.CanonicalRootHasRecoveryDebt(Path.Combine(dir, "CriticalThreadHardAffinityV1")))
+						string jobAffinityRecoveryReason;
+						bool jobAffinityRecovered = GameAffinityJobLease.Recover(out jobAffinityRecoveryReason);
+						if (!jobAffinityRecovered) Logger.Warn("Game affinity Job recovery pending: " + jobAffinityRecoveryReason);
+						if (jobAffinityRecovered)
+						{
+							int num2 = SuppressionCore.HealFromCrash(Path.Combine(dir, "Pavise.suppression.state"));
+							if (num2 > 0) Logger.Log(Lang.T("log.program.2") + num2 + Lang.T("log.program.3"));
+						}
+						if (jobAffinityRecovered && !new AntiCheatAffinityLease().Recover()) Logger.Warn("AC AFFINITY recovery pending");
+						if (jobAffinityRecovered && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(Path.Combine(dir, "CriticalThreadHardAffinityV1")))
 						{
 							CrashGuard.HealFromCrash();
 						}
 						else
 						{
-							Logger.Warn(PerformancePolicy.Text("关键线程恢复尚未结清，保留进程亲和性恢复记录", "Thread recovery is unresolved; process-affinity recovery records were retained"));
+							Logger.Warn(PerformancePolicy.Text("线程或 Job 亲和性恢复尚未结清，保留进程亲和性恢复记录", "Thread or Job affinity recovery is unresolved; process-affinity recovery records were retained"));
 						}
 						try
 						{
@@ -810,10 +829,7 @@ namespace PaviseApp
 							}
 						};
 						bool flag5 = ShouldShowStartupPanel(flag, requested, result2, DateTime.UtcNow.Ticks);
-						if (!BackgroundCpuCap.Recover())
-						{
-							Logger.Warn(Lang.F("cpucap.failed", "recovery-pending"));
-						}
+						RetiredBackgroundCpuCap.Retire();
 						SuppressionCore core3 = new SuppressionCore(Path.Combine(dir, "Pavise.suppression.state"));
 						Tamer tamer = new Tamer(core3);
 						GameMode gameMode = new GameMode(dir, core3);

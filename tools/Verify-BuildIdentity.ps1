@@ -22,6 +22,7 @@ if ($identityFile.FileVersion -ne $identityExpectedVersion -or $identityFile.Pro
     throw ('Expected application, file, informational and assembly version ' + $identityExpectedVersion + '.')
 }
 foreach ($identityType in @(
+    'GamingHandheldDetection',
     'OverviewTelemetryReader',
     'OverviewMemoryCleanupControl',
     'ManualMemoryCleaner',
@@ -47,10 +48,20 @@ foreach ($identityType in @(
     'AntiCheatAffinityTopology',
     'AntiCheatAffinityRuntime',
     'AntiCheatAffinityEligibility',
+    'AntiCheatGroupMigration',
+    'CriticalThreadStabilityPolicy',
+    'GameAffinityJobNative',
+    'GameAffinityJobLease',
+    'GameAffinityJobGuard',
+    'BackgroundGovernancePolicy',
+    'StreamingToolCatalog',
     'AiTuningPrompt',
     'AiTuningPromptDialog',
     'AiTuningHardwareReport',
     'AiTuningFeatureCatalog',
+    'CpuMitigationPolicy',
+    'QuantumRuntime',
+    'QuantumLiveUpdate',
     'GpuInventoryDiscovery',
     'SelfUpdateManifest',
     'SelfUpdateDownload',
@@ -107,7 +118,21 @@ foreach ($identityType in @(
     'MonitoringGpuReading',
     'GameRunGpuObservation',
     'GameRunGpuAdapter',
-    'GameRunAdapterTrack')) {
+    'GameRunAdapterTrack',
+    'BackgroundCpuCap',
+    'BackgroundCpuCapEligibility',
+    'CpuCapGuard',
+    'CpuCapNative',
+    'CpuCapRecord',
+    'CpuCapRecovery',
+    'CpuCapTargetSafety',
+    'CpuCapProcessChannel',
+    'BackgroundFreeze',
+    'BackgroundFreezePolicy',
+    'FreezeGuard',
+    'FreezeLeaseSet',
+    'FreezeNative',
+    'FreezeTarget')) {
     if ($null -ne $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "Retired implementation is present: $identityType" }
 }
 foreach ($identityResource in $identityAssembly.GetManifestResourceNames()) {
@@ -148,15 +173,19 @@ foreach ($identityMethod in @('Prepare', 'LaunchHelper', 'CommitSafeExit', 'Abor
 }
 if ($identityVersion -ne $identityExpectedVersion) { throw 'Application version does not match the source and binary version.' }
 $identityPower = $identityAssembly.GetType('PaviseApp.PowerPlan', $true)
-foreach ($identityField in @('CoreKnobs', 'OptionalKnobs', 'HybridKnobs', 'CalmArenaAcOnDesktop')) {
-    if ($null -ne $identityPower.GetField($identityField, $identityFlags)) { throw "Retired managed power parameters are present: $identityField" }
+foreach ($identityMethod in @('TuneLegacy3110Target', 'Legacy3110ManagedIntact', 'Legacy3110Fingerprint', 'CreateLegacy3110Native', 'SyncLegacy3110DisplayFeel')) {
+    if ($null -eq $identityPower.GetMethod($identityMethod, $identityFlags)) { throw "3.1.1.0 managed power comparison implementation is missing: $identityMethod" }
 }
-if ($null -ne $identityAssembly.GetType('PaviseApp.PowerPlanProfile')) { throw 'Retired managed power architecture policy is present.' }
+if ($null -eq $identityAssembly.GetType('PaviseApp.PowerPlanProfile')) { throw '3.1.1.0 managed power architecture policy is missing.' }
+$identityLegacySource = $identityPower.GetField('Legacy3110Source', $identityFlags)
+if ($null -eq $identityLegacySource -or $identityLegacySource.GetRawConstantValue() -ne 'legacy-3.1.1.0') {
+    throw 'Managed power comparison source identity does not match 3.1.1.0.'
+}
 foreach ($identityType in @('ManagedPowerPreset', 'ManagedPowerPresetSelection', 'ManagedPowerHardwareFacts', 'IManagedPowerPresetPlans')) {
     if ($null -eq $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "Managed power implementation is missing: $identityType" }
 }
 $identityPowerAssets = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/Assets/PowerPlans') -File -Filter '*.pow')
-if ($identityPowerAssets.Count -ne 7) { throw 'Expected exactly seven original power-plan assets.' }
+if ($identityPowerAssets.Count -ne 7) { throw 'Expected exactly seven embedded power-plan assets.' }
 foreach ($identityPowerAsset in $identityPowerAssets) {
     $identityPowerResource = $identityAssembly.GetManifestResourceStream('Pavise.PowerPlans.' + $identityPowerAsset.Name)
     if ($null -eq $identityPowerResource) { throw ('Missing original power-plan resource: ' + $identityPowerAsset.Name) }

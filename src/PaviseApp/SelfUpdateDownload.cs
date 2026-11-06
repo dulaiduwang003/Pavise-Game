@@ -31,6 +31,8 @@ namespace PaviseApp
             string[] feeds = new string[] { "https://" + SelfUpdateManifest.OfficialHost + "/updates/stable.json",
                 "https://" + SelfUpdateManifest.FallbackHost + "/updates/stable.json" };
             Exception last = null;
+            SelfUpdatePackage older = null;
+            Version currentVersion = new Version(App.Version);
             int feedTimeout = FeedTimeoutMilliseconds;
 #if PAVISE_SELFTEST
             feedTimeout = FixtureTimeout(FixtureFeedTimeoutMilliseconds, feedTimeout);
@@ -45,8 +47,17 @@ namespace PaviseApp
                         Fetch(feed, output, SelfUpdateManifest.MaxManifestBytes, -1, null, cancel, feedTimeout);
                         string text = new UTF8Encoding(false, true).GetString(output.ToArray());
                         SelfUpdatePackage package = SelfUpdateManifest.ParseAndVerify(text);
-                        if (new Version(package.Version).CompareTo(new Version(App.Version)) < 0)
-                            throw new InvalidDataException("更新服务提供的版本早于当前版本，已停止自动更新。");
+                        cancel.ThrowIfCancellationRequested();
+                        Version remoteVersion = new Version(package.Version);
+                        if (remoteVersion.CompareTo(currentVersion) < 0)
+                        {
+                            // A valid older release means this build is ahead, not
+                            // that the feed failed. Still probe the remaining source
+                            // in case it already offers the current or a newer build.
+                            if (older == null || remoteVersion.CompareTo(new Version(older.Version)) > 0)
+                                older = package;
+                            continue;
+                        }
                         return package;
                     }
                 }
@@ -58,6 +69,8 @@ namespace PaviseApp
                     last = error;
                 }
             }
+            cancel.ThrowIfCancellationRequested();
+            if (older != null) return older;
             throw new InvalidOperationException("暂时无法取得有效的签名更新清单，请稍后重试，或通过夸克网盘、GitHub 下载最新版。", last);
         }
 

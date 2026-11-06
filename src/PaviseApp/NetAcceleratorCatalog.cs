@@ -9,14 +9,14 @@ namespace PaviseApp
 		private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 		{
 			"uu", "uu_ball", "xunyou", "leigod", "leigod_launcher", "leishensdk", "qiyou", "biubiu", "bbservice", "dolphinq",
-			"wtfast"
+			"wtfast", "guguai"
 		};
 
-		private static readonly string[] Tokens = new string[27]
+		private static readonly string[] Tokens = new string[30]
 		{
 			"accelerat", "booster", "加速器", "xunyou", "leigod", "leishen", "qiyou", "biubiu", "dolphinq", "wtfast",
 			"exitlag", "noping", "mudfish", "clash", "mihomo", "sing-box", "v2ray", "xray", "nekoray", "nekobox",
-			"hiddify", "wireguard", "openvpn", "tailscale", "zerotier", "sstap", "netch"
+			"hiddify", "wireguard", "openvpn", "tailscale", "zerotier", "sstap", "netch", "guguai", "ggkuai", "古怪"
 		};
 
 		internal static bool IsAcceleratorLikeName(string name)

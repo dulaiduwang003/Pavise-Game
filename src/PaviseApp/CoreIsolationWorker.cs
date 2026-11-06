@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
@@ -30,43 +31,60 @@ namespace PaviseApp
 			return null;
 		}
 
-		internal static bool Recover(ICoreIsolationStore journal)
-		{
-			try
-			{
-				string value;
-				if (!journal.Read(out value))
-				{
-					return false;
-				}
-				if (string.IsNullOrEmpty(value))
-				{
-					return true;
-				}
-				using (Mutex mutex = Acquire())
-				{
-					if (mutex == null)
-					{
-						return false;
-					}
-					try
-					{
-						using (CoreIsolationEngine coreIsolationEngine = new CoreIsolationEngine(new CoreIsolationNative(), journal))
-						{
-							return coreIsolationEngine.Recover();
-						}
-					}
-					finally
-					{
-						mutex.ReleaseMutex();
-					}
-				}
-			}
-			catch
-			{
-				return false;
-			}
-		}
+        private static readonly object recoveryGate = new object();
+        private static readonly Dictionary<object, CoreIsolationEngine> recoveryOwners = new Dictionary<object, CoreIsolationEngine>();
+        private static long automaticSession;
+        internal static void SyncAutomaticSession(long session)
+        {
+            lock (recoveryGate)
+            {
+                if (session <= automaticSession) return;
+                automaticSession = session;
+                foreach (CoreIsolationEngine owner in recoveryOwners.Values) owner.SyncAutomaticSession(session);
+            }
+        }
+        private static CoreIsolationEngine CreateEngine(ICoreIsolationStore journal)
+        { return new CoreIsolationEngine(new CoreIsolationNative(), journal); }
+        internal static bool Recover(ICoreIsolationStore journal)
+        {
+            lock (recoveryGate)
+            {
+                object key = journal is CoreIsolationSettingsStore ? (object)typeof(CoreIsolationSettingsStore) : journal;
+                CoreIsolationEngine engine;
+                if (!recoveryOwners.TryGetValue(key, out engine))
+                {
+                    engine = CreateEngine(journal); engine.SyncAutomaticSession(automaticSession);
+                    recoveryOwners[key] = engine;
+                }
+                if (!engine.RecoveryDue) return false;
+                try
+                {
+                    using (Mutex mutex = Acquire())
+                    {
+                        if (mutex == null) { RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false; }
+                        try
+                        {
+                            if (!engine.Recover()) return false;
+                            engine.Dispose(); recoveryOwners.Remove(key); return true;
+                        }
+                        finally { mutex.ReleaseMutex(); }
+                    }
+                }
+                catch { return false; }
+            }
+        }
+        private static void RecoveryWait() { Thread.Sleep(1000); }
+        private static void DrainRecovery(CoreIsolationEngine engine)
+        {
+            // Once commands fail, this guardian keeps its handles and mutex. Only
+            // due finite attempts run; after exhaustion it observes target lifetime.
+            while (engine.Pending)
+            {
+                try { if (engine.RecoveryDue && engine.Restore()) return; }
+                catch { }
+                RecoveryWait();
+            }
+        }
 
 		internal static bool TryHandleArgs(string[] args)
 		{
@@ -135,11 +153,16 @@ namespace PaviseApp
 
 		private static bool Run(IntPtr parent, ICoreIsolationStore journal)
 		{
-			using (CoreIsolationEngine coreIsolationEngine = new CoreIsolationEngine(new CoreIsolationNative(), journal))
-			{
+            CoreIsolationEngine coreIsolationEngine = CreateEngine(journal);
+            try { return RunOwned(parent, coreIsolationEngine); }
+            finally { DrainRecovery(coreIsolationEngine); coreIsolationEngine.Dispose(); }
+        }
+        private static bool RunOwned(IntPtr parent, CoreIsolationEngine coreIsolationEngine)
+        {
 				if (!coreIsolationEngine.Recover() || !Native.EnsureBoostPrivilege())
 				{
 					Console.WriteLine("ERR recovery-or-privilege");
+                    DrainRecovery(coreIsolationEngine);
 					return false;
 				}
 				BlockingCollection<string> commands = new BlockingCollection<string>(32);
@@ -194,10 +217,9 @@ namespace PaviseApp
 				}
 				finally
 				{
-					coreIsolationEngine.Restore();
+                    DrainRecovery(coreIsolationEngine);
 				}
 				return !coreIsolationEngine.Pending;
-			}
 		}
 
 		private static bool Execute(CoreIsolationEngine engine, string line)

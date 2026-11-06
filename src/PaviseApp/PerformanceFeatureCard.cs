@@ -21,6 +21,8 @@ namespace PaviseApp
 
 			internal Control Host;
 
+            internal bool FullWidthPicker;
+
 			internal string Title;
 
 			internal string Detail;
@@ -84,6 +86,20 @@ namespace PaviseApp
 
 		private TierPicker measuredPicker;
 
+        private bool fullWidthPicker;
+        internal bool FullWidthPicker
+        {
+            get { return fullWidthPicker; }
+            set
+            {
+                if (fullWidthPicker == value) return;
+                fullWidthPicker = value;
+                cachedPresentation = null;
+                ArrangePresentation();
+                if (PresentationChanged != null) PresentationChanged();
+            }
+        }
+
 		private string[] measuredPickerLabels;
 
 		private Font measuredPickerFont;
@@ -103,6 +119,8 @@ namespace PaviseApp
 		internal string DisplayTitle = "";
 
 		internal PerformanceRestartScope RestartScope;
+
+		internal PerformanceLifetime Lifetime = PerformanceLifetime.Persistent;
 
 		internal string RestartText = "";
 
@@ -538,8 +556,10 @@ namespace PaviseApp
 			int num5 = Math.Max(num4 + 1, width - num);
 			int num6 = Math.Max(1, num5 - num4);
 			bool flag = base.Hosted is Toggle;
-			bool flag2 = flag || base.Hosted is QuantumProfilePicker || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
+			bool flag2 = flag || base.Hosted is QuantumProfilePicker || base.Hosted is TechSelect || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
 			int num7 = ((base.Hosted != null) ? (flag ? Theme.S(94) : ((base.Hosted is TierPicker) ? Math.Min(PickerWidth((TierPicker)base.Hosted), num6) : ((base.Hosted is QuantumProfilePicker) ? Math.Min(Theme.S(230), num6) : Math.Min((intrinsicHostWidth > 0) ? intrinsicHostWidth : base.Hosted.Width, num6)))) : 0);
+            bool widePicker = FullWidthPicker && base.Hosted is TierPicker;
+            if (widePicker) num7 = Math.Max(1, width - 2 * num);
 			int num8 = ((base.Hosted != null) ? (flag ? Theme.S(40) : Math.Max((intrinsicHostHeight > 0) ? intrinsicHostHeight : base.Hosted.Height, Theme.S(30))) : 0);
 			if (flag2 && num6 - num7 - Theme.S(16) < Theme.S(96))
 			{
@@ -557,7 +577,7 @@ namespace PaviseApp
 			Font font3 = Theme.UI(8.5f, false);
 			Font font4 = Theme.UI(7.7f, false);
 			Presentation presentation = cachedPresentation;
-			if (presentation != null && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.HostWidth == num7 && presentation.HostHeight == num8 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && presentation.Effect == shownEffect && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, font2) && object.ReferenceEquals(presentation.LockFont, font3) && object.ReferenceEquals(presentation.TagFont, font4))
+			if (presentation != null && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.FullWidthPicker == FullWidthPicker && presentation.HostWidth == num7 && presentation.HostHeight == num8 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && presentation.Effect == shownEffect && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, font2) && object.ReferenceEquals(presentation.LockFont, font3) && object.ReferenceEquals(presentation.TagFont, font4))
 			{
 				if (apply)
 				{
@@ -573,13 +593,15 @@ namespace PaviseApp
 			Rectangle titleBounds = new Rectangle(num4, 0, val, val2);
 			int val3 = TextRenderer.MeasureText(shownTitle, font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
 			titleBounds.Width = Math.Max(1, Math.Min(val, val3));
-			Rectangle infoBounds = new Rectangle(num4 + Math.Min(val, val3) + Theme.S(5), 0, num10, num10);
+			int firstLineHeight = TextRenderer.MeasureText(FirstLine(shownTitle), font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Height;
+			if (firstLineHeight <= 0) firstLineHeight = font.Height;
+			Rectangle infoBounds = new Rectangle(num4 + Math.Min(val, val3) + Theme.S(5), (firstLineHeight - num10) / 2, num10, num10);
 			Rectangle detailBounds = new Rectangle(num4, num13 + ((num11 != 0) ? Theme.S(3) : 0), num9, num11);
 			num13 = detailBounds.Bottom;
 			Rectangle hostBounds = Rectangle.Empty;
 			if (base.Hosted != null && !flag2)
 			{
-				hostBounds = new Rectangle(num4, num13 + Theme.S(10), num7, num8);
+				hostBounds = new Rectangle(widePicker ? num : num4, num13 + Theme.S(10), num7, num8);
 				num13 = hostBounds.Bottom;
 			}
 			Rectangle restartBounds = Rectangle.Empty;
@@ -646,6 +668,7 @@ namespace PaviseApp
 				Width = width,
 				Scale = Dpi.Scale,
 				Host = base.Hosted,
+                FullWidthPicker = FullWidthPicker,
 				HostWidth = num7,
 				HostHeight = num8,
 				Title = shownTitle,
@@ -657,7 +680,7 @@ namespace PaviseApp
 				DetailFont = font2,
 				LockFont = font3,
 				TagFont = font4,
-				IconBounds = new Rectangle(num, (num18 - num2) / 2, num2, num2),
+				IconBounds = new Rectangle(num, widePicker ? num19 : (num18 - num2) / 2, num2, num2),
 				TitleBounds = titleBounds,
 				StatusBounds = statusBounds,
 				LockBounds = lockBounds,

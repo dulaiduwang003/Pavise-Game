@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -420,6 +420,10 @@ namespace PaviseApp
 
 			internal bool QuantumOn;
 
+			internal bool CpuMitigationsOn;
+
+			internal bool CpuMitigationsExpanded;
+
 			internal bool LegacyQuantum;
 
 			internal int QuantumSelection;
@@ -437,6 +441,8 @@ namespace PaviseApp
 			internal string StorageDetail = "";
 
 			internal string QuantumState = "";
+
+			internal string CpuMitigationsState = "";
 		}
 
 		private sealed class EnvironmentObservationCycle
@@ -695,8 +701,6 @@ namespace PaviseApp
 
 			public string Details;
 
-			public bool IsGroup;
-
 			public bool Automatic;
 
 			public WhitelistItem(WhitelistRuleView view)
@@ -851,13 +855,11 @@ namespace PaviseApp
 
 		private DBPanel acDrawerBody;
 
-		private Toggle swAcMaster;
-
 		private AcConsoleSurface acRosterBar;
 
 		private Label lblAcRoster;
 
-		private Label acMasterLabel;
+		private Label acTitleLabel;
 
 		private Label acStrengthLabel;
 
@@ -877,7 +879,7 @@ namespace PaviseApp
 
 		private PillButton acStrengthHelp;
 
-		private AcGlyph acMasterIcon;
+		private AcGlyph acTitleIcon;
 
 		private bool acOtherOpen;
 
@@ -964,8 +966,6 @@ namespace PaviseApp
 		private PlanComparison corePlanPreview;
 
 		private PillButton coreEvidenceToggle;
-
-		private bool coreEvidenceExpanded;
 
 		private string coreDraftProfile;
 
@@ -1087,6 +1087,11 @@ namespace PaviseApp
 
 		private EnvironmentObservationCycle environmentObservation = new EnvironmentObservationCycle();
 
+		private readonly ProcessActionFailureBudget environmentObservationFailures = new ProcessActionFailureBudget();
+		private readonly ProcessActionFailureBudget runningObservationFailures = new ProcessActionFailureBudget();
+		private int environmentConfigurationGeneration = -1;
+		private string environmentConfigurationSignature;
+
 		private readonly Dictionary<string, bool> environmentPreferenceOverrides = new Dictionary<string, bool>();
 
 		private bool? environmentBundleOverride;
@@ -1203,8 +1208,6 @@ namespace PaviseApp
 
 		private Toggle swLogWrites;
 
-		private long diagnosticCopiedUntil;
-
 		private long logSeenVersion = -1L;
 
 		private LogStreamView logSeenStream;
@@ -1242,8 +1245,6 @@ namespace PaviseApp
 		private int overviewReaderGeneration = -1;
 
 		private volatile bool overviewTelemetryActive;
-
-		private bool overviewGamePaused;
 
 		private bool overviewDisposeRegistered;
 
@@ -1520,8 +1521,6 @@ namespace PaviseApp
 
 		private RogLinkButton headerWebsite;
 
-		private bool destroyingWindowHandle;
-
 		private NavRail tuningNav;
 
 		private AdvancedBackBar overviewBackBar;
@@ -1778,7 +1777,11 @@ namespace PaviseApp
 					};
 				}
 			}
-			Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 231, num3 - 40, 48, 7.8f, false, Theme.Dim);
+			Label freeLabel = CardLabel(roundPanel, Lang.T("about.free"), 20, 231, num3 - 40, 22, 9.5f, true, Theme.Green);
+			freeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			Label refundHint = CardLabel(roundPanel, Lang.T("about.refund.hint"), 20, 258, num3 - 40, 44, 7.8f, false, Theme.Fg);
+			refundHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, num3 - 40, 40, 7.8f, false, Theme.Dim);
 			label4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + num3 + num4, num2, num5, num6, true));
 			Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, num5 - 126, 20, 7.6f, true, Theme.Faint);
@@ -2069,23 +2072,13 @@ namespace PaviseApp
 				BackColor = Theme.Card
 			};
 			acRosterBar.Controls.Add(acControlBay);
-			acMasterIcon = new AcGlyph
+			acTitleIcon = new AcGlyph
 			{
 				Key = "master"
 			};
-			acControlBay.Controls.Add(acMasterIcon);
-			swAcMaster = MakeSwitch(!tamer.Paused, delegate
-			{
-				tamer.Paused = !swAcMaster.Checked;
-				Settings.Save("TameOn", swAcMaster.Checked);
-				RefreshAcGroupStates();
-			});
-			swAcMaster.Name = "acMaster";
-			swAcMaster.AccessibleName = Lang.T("tame.toggle");
-			swAcMaster.PerformanceConsole = true;
-			acControlBay.Controls.Add(swAcMaster);
-			acMasterLabel = CardLabel(acControlBay, AutoText("专项压制", "Suppression"), 0, 0, 120, 28, 11f, true, Theme.Fg);
-			acMasterLabel.Name = "acMasterLabel";
+			acControlBay.Controls.Add(acTitleIcon);
+			acTitleLabel = CardLabel(acControlBay, AutoText("专项压制", "Suppression"), 0, 0, 120, 28, 11f, true, Theme.Fg);
+			acTitleLabel.Name = "acTitleLabel";
 			acHelp = new PerformanceInfoButton
 			{
 				Name = "acInfo",
@@ -2230,7 +2223,7 @@ namespace PaviseApp
 
 		private void ShowAcHelp()
 		{
-			ShowAcInformation(Lang.T("v14.anticheat"), Lang.T("v14.anticheat.master.sub") + "\r\n\r\n" + Lang.T("ac.mode." + AntiCheatModes.Token(tamer.Mode) + ".d") + "\r\n\r\n" + Lang.T("ac.mode.disclaimer"));
+			ShowAcInformation(Lang.T("v14.anticheat"), Lang.T("v14.anticheat.groups.sub") + "\r\n\r\n" + Lang.T("ac.mode." + AntiCheatModes.Token(tamer.Mode) + ".d") + "\r\n\r\n" + Lang.T("ac.mode.disclaimer"));
 		}
 
 		private void ShowAcInformation(string title, string detail)
@@ -2348,11 +2341,10 @@ namespace PaviseApp
 			int num2 = Theme.S(stacked ? 14 : 24);
 			int num3 = Theme.S(28);
 			int num4 = num + num3 + Theme.S(10);
-			acMasterIcon.SetBounds(num, num2 + Theme.S(6), num3, num3);
-			swAcMaster.SetBounds(Math.Max(num, width - num - Theme.S(94)), num2, Theme.S(94), Theme.S(40));
-			int val = Math.Max(1, swAcMaster.Left - num4 - Theme.S(34));
-			acMasterLabel.SetBounds(num4, num2 + Theme.S(4), val, Theme.S(30));
-			int val2 = TextRenderer.MeasureText(acMasterLabel.Text, acMasterLabel.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+			acTitleIcon.SetBounds(num, num2 + Theme.S(6), num3, num3);
+			int val = Math.Max(1, width - num - num4 - Theme.S(26));
+			acTitleLabel.SetBounds(num4, num2 + Theme.S(4), val, Theme.S(30));
+			int val2 = TextRenderer.MeasureText(acTitleLabel.Text, acTitleLabel.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
 			acHelp.SetBounds(num4 + Math.Min(val, val2), num2 + Theme.S(6), Theme.S(26), Theme.S(26));
 			int num5 = num2 + Theme.S(stacked ? 55 : 86);
 			acStrengthLabel.SetBounds(num, num5, width - num * 2, Theme.S(22));
@@ -2601,10 +2593,6 @@ namespace PaviseApp
 			if (acModePicker != null && acModePicker.Index != (int)tamer.Mode)
 			{
 				acModePicker.Index = (int)tamer.Mode;
-			}
-			if (swAcMaster != null)
-			{
-				swAcMaster.SetSilently(!tamer.Paused);
 			}
 			if (acModePicker != null)
 			{
@@ -3443,7 +3431,7 @@ namespace PaviseApp
 
 		private static bool HasAutomationInventory(int category, PerformanceRestartScope scope)
 		{
-			if ((category == 0 && (PerformanceRestartFor("GmMmcss") == scope || PerformanceRestartFor(LaptopPerfMode.PreferenceKey) == scope)) || (category == 2 && (PerformanceRestartFor("GmEnglishInputV1") == scope || PerformanceRestartFor("GpuPrefStageOn") == scope)) || (category == 1 && PerformanceRestartFor("AppGpuAutoV1") == scope))
+			if ((category == 0 && PerformanceRestartFor("GmMmcss") == scope) || (category == 2 && (PerformanceRestartFor("GmEnglishInputV1") == scope || PerformanceRestartFor("GpuPrefStageOn") == scope)) || (category == 1 && PerformanceRestartFor("AppGpuAutoV1") == scope))
 			{
 				return true;
 			}
@@ -3460,10 +3448,6 @@ namespace PaviseApp
 
 		private void AddAutomationInventory(Control parent, ref int y, int category, PerformanceRestartScope scope)
 		{
-			if (category == 0 && PerformanceRestartFor(LaptopPerfMode.PreferenceKey) == scope)
-			{
-				AddLaptopPerformanceToggle(parent, ref y);
-			}
 			if (category == 0 && PerformanceRestartFor("GmMmcss") == scope)
 			{
 				AddManualPerformanceToggle(parent, ref y, "GmMmcss", AutoText("多媒体调度", "Multimedia scheduling"), AutoText("调整已注册的游戏多媒体线程，目标需重新读取配置。", "Adjusts registered game multimedia threads; the target must reload the configuration."), () => Settings.LoadCached("GmMmcss", true), (bool value) => SaveManualPerformancePreference("GmMmcss", value));
@@ -3744,7 +3728,7 @@ namespace PaviseApp
 			}
 			int sy2 = 2;
 			BuildPerformanceSystemOptions(performanceTabPanels[3], ref sy2);
-			PrivacyOptionsPanel backgroundPrivacy = BuildEnvironmentPrivacy(performanceTabPanels[1], PerformanceRestartScope.SystemRestart, action => action.Key == PrivacyActionCatalog.BackgroundGlobal);
+			PrivacyOptionsPanel backgroundPrivacy = BuildEnvironmentPrivacy(performanceTabPanels[1], PerformanceRestartScope.ProcessRestart, action => action.Key == PrivacyActionCatalog.BackgroundGlobal);
 			backgroundPrivacy.Top = Theme.S(2);
 			int labY = 2;
 			BuildLaboratoryOptions(performanceTabPanels[4], ref labY);
@@ -3754,6 +3738,10 @@ namespace PaviseApp
 				ConfigurePerformanceCards(dBPanel);
 			}
 			OrderPerformanceConsole();
+			foreach (DBPanel dBPanel in performanceTabPanels)
+			{
+				GroupPerformanceLifetimes(dBPanel);
+			}
 			pagePolicy.SizeChanged += delegate
 			{
 				LayoutPerformanceViewport();
@@ -3774,7 +3762,6 @@ namespace PaviseApp
 			switch (key)
 			{
 			case "GmSuppress":
-			case "GmGpuDemote":
 			case "GmPauseDl":
 			case "GmPauseUpdate":
 			case "GmPauseMaintenanceV1":
@@ -3799,16 +3786,13 @@ namespace PaviseApp
 
 		private static bool PrimaryPerformancePolicy(string key)
 		{
-			if (!(key == "GmBoost") && !(key == "GmAwake"))
-			{
-				return key == "GmSuppress";
-			}
-			return true;
+			return key == "GmBoost";
 		}
 
 		internal static PerformanceRestartScope PerformanceRestartFor(string key)
 		{
-			if (key == PrivacyActionCatalog.BackgroundGlobal) return PerformanceRestartScope.SystemRestart;
+			if (key == PerformanceActionCatalog.Quantum) return PerformanceRestartScope.None;
+			if (key == PrivacyActionCatalog.BackgroundGlobal) return PerformanceRestartScope.ProcessRestart;
 			if (PerformancePolicy.IsIndependentManual(key))
 			{
 				return PerformanceRestartScope.SystemRestart;
@@ -3838,6 +3822,118 @@ namespace PaviseApp
 			return PerformanceFeatureCard.RestartLabel(scope);
 		}
 
+		// Only settings that the session restore (RestoreEnv/Deactivate) reverts after every match are in-match.
+		// Anything else stays with the persistent group so an unclassified setting is never presented as temporary.
+		internal static PerformanceLifetime PerformanceLifetimeFor(string key)
+		{
+			switch (key)
+			{
+			case "GmBoost":
+			case "GmThreadBoostStrategyV1":
+			case "GmPauseUpdate":
+			case "GmPauseMaintenanceV1":
+			case "GmPauseDl":
+			case "GmAwake":
+			case "GmDwmBoost":
+			case "GmIntelEnduranceV1":
+			case "GmEnglishInputV1":
+			case "NvMaxPerf":
+			case "NvShaderCache":
+			case "NvLowLat":
+			case "NvVrrWindowed":
+			case "GpuPrefStageOn":
+			case "LabEppYieldV1":
+			case "LabGpuClockMaxV1":
+			case "LabGpuPowerMaxV1":
+			case "LabAudioLowBufferV1":
+			case "LabCpuIdleStrategyV1":
+				return PerformanceLifetime.Session;
+			default:
+				return PerformanceLifetime.Persistent;
+			}
+		}
+
+		private static bool PerformanceControlLifetime(Control control, out PerformanceLifetime lifetime)
+		{
+			lifetime = PerformanceLifetime.Session;
+			bool found = false;
+			PerformanceFeatureCard card = control as PerformanceFeatureCard;
+			if (card != null)
+			{
+				lifetime = card.Lifetime;
+				return true;
+			}
+			foreach (Control child in control.Controls)
+			{
+				PerformanceLifetime nested;
+				if (PerformanceControlLifetime(child, out nested))
+				{
+					found = true;
+					if (nested == PerformanceLifetime.Persistent)
+					{
+						lifetime = PerformanceLifetime.Persistent;
+					}
+				}
+			}
+			if (!found)
+			{
+				lifetime = PerformanceLifetime.Persistent;
+			}
+			return found;
+		}
+
+		private static void GroupPerformanceLifetimes(Control grid)
+		{
+			List<Control> session = new List<Control>();
+			List<Control> persistent = new List<Control>();
+			List<Control> headings = new List<Control>();
+			foreach (Control control in grid.Controls)
+			{
+				if (control is PerformanceSectionHeading)
+				{
+					headings.Add(control);
+					continue;
+				}
+				PerformanceLifetime lifetime;
+				PerformanceControlLifetime(control, out lifetime);
+				(lifetime == PerformanceLifetime.Session ? session : persistent).Add(control);
+			}
+			grid.SuspendLayout();
+			try
+			{
+				foreach (Control heading in headings)
+				{
+					grid.Controls.Remove(heading);
+					heading.Dispose();
+				}
+				int index = 0;
+				PerformanceLifetime[] order = new PerformanceLifetime[2] { PerformanceLifetime.Session, PerformanceLifetime.Persistent };
+				foreach (PerformanceLifetime lifetime in order)
+				{
+					// A single-group tab still names its group, so the laboratory shows that its settings end with the match.
+					if (((lifetime == PerformanceLifetime.Session) ? session : persistent).Count > 0)
+					{
+						PerformanceSectionHeading heading = new PerformanceSectionHeading
+						{
+							Name = "performanceLifetime" + lifetime,
+							Text = PerformanceSectionHeading.LifetimeTitle(lifetime),
+							Lifetime = lifetime
+						};
+						grid.Controls.Add(heading);
+						grid.Controls.SetChildIndex(heading, index++);
+					}
+					foreach (Control control in (lifetime == PerformanceLifetime.Session) ? session : persistent)
+					{
+						grid.Controls.SetChildIndex(control, index++);
+					}
+				}
+			}
+			finally
+			{
+				grid.ResumeLayout(false);
+			}
+		}
+
 		private static void ConfigurePerformanceCards(Control parent)
 		{
 			foreach (Control control in parent.Controls)
@@ -3847,11 +3943,13 @@ namespace PaviseApp
 				{
 					string text = PerformanceFeatureKey(performanceFeatureCard.Hosted.Name);
 					performanceFeatureCard.RestartScope = ((text == "EnvPerformanceBundleV1" || text == "EnvStoragePowerGroupV1") ? PerformanceRestartScope.SystemRestart : PerformanceRestartFor(text));
-					performanceFeatureCard.RestartText = ((text == "AppGpuAutoV1") ? AutoText("重启应用", "Restart app") : ((text == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : ""));
+					performanceFeatureCard.Lifetime = PerformanceLifetimeFor(text);
+					performanceFeatureCard.RestartText = ((text == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((text == "AppGpuAutoV1") ? AutoText("重启应用", "Restart app") : ((text == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : "")));
 					performanceFeatureCard.Title = performanceFeatureCard.Title.Replace(" · 需重启", "").Replace(" · restart required", "");
 					if (text == "EnvQuantumProfileV1")
 					{
 						performanceFeatureCard.Title = PerformanceActionCatalog.Find("EnvQuantumProfileV1").Title;
+						performanceFeatureCard.RestartText = AutoText("优先在线应用", "Online update preferred");
 					}
 					ConfigurePerformanceConsole(performanceFeatureCard, text);
 					performanceFeatureCard.ArrangePresentation();
@@ -3900,6 +3998,7 @@ namespace PaviseApp
 		private void AddManualPolicyControl(Control parent, ref int y, PolicyItem item)
 		{
 			string key = item.Key;
+			if (key == BackgroundGovernancePolicy.SettingKey || key == "GmSuppress") return;
 			string text = ((key == "GmSuppress") ? AutoText("后台治理", "Background protection") : ((key == "GmDwmBoost") ? AutoText("桌面合成调度", "Desktop compositor scheduling") : ((key == "GmThreadBoostStrategyV1") ? AutoText("游戏线程提优", "Game thread boost") : Lang.T(item.LangKey))));
 			string text2 = ManualPolicyDescription(key);
 			if (item.Kind == PolicyValueKind.Bool)
@@ -4133,7 +4232,7 @@ namespace PaviseApp
 			switch (key)
 			{
 			case "GmSuppress":
-				return AutoText("智能随负载压制后台、切出放行；竞技切出仍保留。前台和关键进程受保护，关闭后不压制。", "Smart adapts background control to load and releases it on switch-out; Competitive retains it. Foreground and critical processes stay protected; Off disables control.");
+				return Lang.T("background.governance.detail");
 			case "GmBoost":
 				return AutoText("统一调整游戏的 CPU、内存、磁盘 I/O 与 GPU 优先级，切出游戏保持，退局恢复。", "Adjusts game CPU, memory, disk I/O and GPU priorities together. Kept when you switch away; restored when the session ends.");
 			case "GmBoostCpuV1":
@@ -4146,10 +4245,8 @@ namespace PaviseApp
 				return AutoText("提高游戏 GPU 调度优先级，需驱动支持及读回确认。退局恢复原值。", "Raises game GPU scheduling priority with driver support and readback checks. Restores on exit.");
 			case "GmThreadBoostStrategyV1":
 				return AutoText("开启后按游戏自动选择：认得出画面提交线程就提优渲染关键线程，认不出（如 Vulkan、OpenGL）改提最忙线程。仅手动执行，退局恢复。可与逐游戏关键线程硬绑定同时生效，组合效果未测。", "Picks per game: boosts the render-critical threads when the frame-submission thread is recognized, otherwise (e.g. Vulkan, OpenGL) the busiest thread. Manual only; restores on exit. Can run alongside per-game candidate thread affinity; the combination is untested.");
-			case "GmGpuDemote":
-				return AutoText("有 GPU 竞争时降低后台图形任务优先级。", "Lowers background graphics priority when GPU resources are contested.");
 			case "PowerPlanOn":
-				return AutoText("对局使用所选电源计划，“不切换”时停用。托管按 CPU 架构及智能／竞技场景自动匹配；掌机沿用移动端规则，工作站、多处理器组及多插槽使用通用计划，保留本机电池设置，退局恢复原计划。", "Uses the selected match power plan unless Don't switch is chosen. Managed plans match the CPU architecture and Smart/Competitive session. Handhelds follow mobile CPU rules; workstations and multi-group/socket systems use the universal plan. Local battery settings are retained and the original plan is restored after the session.");
+				return AutoText("对局使用所选电源计划，“不切换”时停用。托管在智能／竞技中共用参数，仍按交流／电池、CPU 拓扑及设备特征适配，场景、自动升档和切出不改变参数；掌机不接管。指定已有计划只切换，退局恢复原计划；实验室覆盖独立恢复。", "Uses the selected match power plan unless Don't switch is chosen. Smart and Competitive share managed parameters, adapted to AC/battery power, CPU topology and device characteristics. Scene changes, automatic escalation and switching away do not change those parameters. Handhelds bypass power management. Existing plans are only activated and restored after the session; laboratory overrides retain separate recovery.");
 			case "GmPauseDl":
 				return AutoText("对局暂停 Windows 传递优化下载，结束恢复。", "Pauses Windows Delivery Optimization downloads during a match, then restores.");
 			case "GmPauseUpdate":
@@ -4252,15 +4349,7 @@ namespace PaviseApp
 			coreEvidenceToggle.SetBounds(Theme.S(18), 0, Theme.S(220), Theme.S(24));
 			coreEvidenceToggle.Click += delegate
 			{
-				coreEvidenceExpanded = true;
-				try
-				{
-					ShowCoreInformation(PerformancePolicy.Text("绑定证据", "Affinity evidence"), coreEditorRuntime.Text);
-				}
-				finally
-				{
-					coreEvidenceExpanded = false;
-				}
+				ShowCoreInformation(PerformancePolicy.Text("绑定证据", "Affinity evidence"), coreEditorRuntime.Text);
 			};
 			coreRightRail.Controls.Add(coreEvidenceToggle);
 			BuildCoreShortcuts(w - 36);
@@ -4443,7 +4532,7 @@ namespace PaviseApp
 			{
 				text = text + "\n" + PerformancePolicy.Text("本局目标：", "Session target: ") + CpuTopology.DescribeMask(status.ExpectedMask);
 				string text2 = text;
-				text = text2 + "\n" + PerformancePolicy.Text("最近回读：", "Last readback: ") + (status.AffinityRead ? CpuTopology.DescribeMask(status.ObservedMask) : PerformancePolicy.Text("尚未确认", "Unconfirmed")) + (status.AffinityVerified ? PerformancePolicy.Text(" · 硬绑定已验证", " · hard affinity verified") : PerformancePolicy.Text(" · 硬绑定未生效", " · hard affinity not active"));
+				text = text2 + "\n" + PerformancePolicy.Text("最近回读：", "Last readback: ") + (status.AffinityRead ? CpuTopology.DescribeMask(status.ObservedMask) : PerformancePolicy.Text("尚未确认", "Unconfirmed")) + (status.AffinityVerified ? " · " + AutoCores.AffinityProtectionText(status) : PerformancePolicy.Text(" · 硬绑定未生效", " · hard affinity not active"));
 				if (manualCorePlan == null || manualCorePlan.GameMask != status.ExpectedMask || manualCorePlan.Isolation != status.ManualIsolation)
 				{
 					text = text + "\n" + PerformancePolicy.Text("新保存的范围／隔离设置下次启动游戏生效。", "New CPU/isolation settings apply on the next game launch.");
@@ -4473,7 +4562,7 @@ namespace PaviseApp
 			else if (status.AffinityRead && status.AffinityVerified)
 			{
 				currentValue = CpuTopology.DescribeMask(status.ObservedMask);
-				currentDetail = PerformancePolicy.Text("已回读确认 · 与任务管理器亲和性一致", "Readback verified · Task Manager affinity");
+				currentDetail = AutoCores.AffinityProtectionText(status);
 				currentTone = Theme.Accent;
 			}
 			else
@@ -4542,21 +4631,21 @@ namespace PaviseApp
 
 		private static string TopologyLine()
 		{
-			ulong[] array = CpuTopology.PhysicalCoreMasks();
-			int num = 0;
-			ulong[] array2 = array;
-			foreach (ulong num2 in array2)
-			{
-				if (CpuTopology.CountSetBits(num2 & CpuTopology.AllMask) > 1)
-				{
-					num++;
-				}
-			}
-			string text = Lang.F("core.topo.line", array.Length, CpuTopology.CountSetBits(CpuTopology.AllMask), num);
-			if (!CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)
-			{
-				return text + Lang.T("core.topo.split");
-			}
+            if (CpuTopology.MultiGroup)
+                return PerformancePolicy.Text("多处理器组 · 全机逻辑核、物理核与核心类型未确认", "Multiple processor groups · total logical/physical core counts and types unconfirmed");
+			int logical = CpuTopology.CountSetBits(CpuTopology.AllMask);
+			if (!CoreMatrix.TopologyCountsConfirmed)
+				return logical + PerformancePolicy.Text(" 个可用逻辑核 · 物理核数与 SMT 状态未确认 · 核心类型未确认",
+					" available logical CPUs · physical core count and SMT state unconfirmed · core types unconfirmed");
+			ulong[] cores = CpuTopology.PhysicalCoreMasks();
+			int smt = 0;
+			foreach (ulong core in cores)
+				if (CpuTopology.CountSetBits(core & CpuTopology.AllMask) > 1) smt++;
+			string text = cores.Length + PerformancePolicy.Text(" 物理核 · ", " physical cores · ") + logical
+				+ PerformancePolicy.Text(" 逻辑核 · 当前 ", " logical CPUs · ") + smt
+				+ PerformancePolicy.Text(" 个物理核含多个逻辑线程", " physical cores currently have multiple logical threads");
+			if (!CpuTopology.CoreTypesConfirmed)
+				text += PerformancePolicy.Text(" · 核心类型未确认", " · core types unconfirmed");
 			return text;
 		}
 
@@ -4640,8 +4729,9 @@ namespace PaviseApp
 			};
 			coreQuickPanel.SetBounds(Theme.S(18), 0, Theme.S(width), Theme.S(30));
 			coreEditor.Controls.Add(coreQuickPanel);
+            if (CpuTopology.MultiGroup) return;
 			AddCoreShortcut("all", Lang.T("schedule.quick.all"), CpuTopology.AllMask, 0);
-			if (CpuTopology.Hybrid)
+			if (CpuTopology.Hybrid && CpuTopology.CoreTypesConfirmed && CoreMatrix.TopologyCountsConfirmed)
 			{
 				AddCoreShortcut("perf", Lang.T("schedule.quick.perf"), CpuTopology.PerfMask, 0);
 				AddCoreShortcut("eff", Lang.T("schedule.quick.eff"), CpuTopology.EffMask, 0);
@@ -4792,7 +4882,7 @@ namespace PaviseApp
 				}
 			};
 			criticalThreadEditor.Controls.Add(criticalThreadEnabled);
-			criticalThreadHelp = CardLabel(criticalThreadEditor, ThreadUi("逐游戏，默认关闭。至少选中三个不同物理核，每核可只选一个逻辑线程，无需补全超线程。打开后：游戏在前台时识别渲染线程（需要 DirectX 游戏，只读取该游戏的画面提交事件），等它持续占用至少 35% 单核后，自动在允许范围内挑选一个逻辑线程绑定（优先性能核与优选核，尽量避开 CPU 0 所在核，至少给其他线程留两个不同物理核），并让同一游戏的其他线程避让该线程所在的整颗物理核。绑定后停止识别。切出游戏不影响，退局时还原。要中途停止请关闭此开关。不隔离系统和其他程序，也不保证有收益。", "Per game, off by default. Select at least three distinct physical cores; one logical processor per core is enough, without adding SMT siblings. When on: while the game is in front, its render thread is identified (DirectX games; only this game's present events are read); once it keeps at least 35% of one core busy, an allowed logical processor is chosen for binding (performance and favored cores first, avoiding the core of CPU 0 where possible, with two other physical cores left for other threads). This game's other threads avoid the entire physical core containing that logical processor. Identification stops once bound. Switching away keeps the binding; it is restored when the session ends. Turn this switch off to stop mid-game. The system and other programs are not isolated, and no gain is guaranteed."), 18, 50, width - 36, 80, 9f, false, Theme.Dim);
+			criticalThreadHelp = CardLabel(criticalThreadEditor, ThreadUi("逐游戏，默认关闭。至少选中三个不同物理核，每核可只选一个逻辑线程，无需补全超线程。打开后：游戏在前台时，把一个持续占用至少 30% 单核的关键线程硬绑定到独立物理核心（渲染线程优先，需 DirectX 画面提交事件；识别不到时取持续 30 秒最忙且明显领先的线程，几个线程负载接近时视为工作线程池，交给系统调度）。其他持续接近跑满（至少 70%）的线程只设为优先核，核心忙时系统仍可把它挪走。各线程用不同物理核，数量按处理器拓扑自动定（最多 4 个；大小核只用性能核，优先优选核与 X3D 大缓存 CCD，尽量避开 CPU 0 所在核，至少给其他线程留两个物理核）；自动模式保留其他游戏线程原分配；旧的手动规则仍按保存的策略执行。切出游戏保留，退局时还原；游戏主动改回分配时让出，连续无法核验或候选反复更换时恢复并停止本局重绑。同一线程不叠加额外线程提优。关闭再开启可重试。不隔离系统和其他程序，也不保证有收益。", "Per game, off by default. Select at least three distinct physical cores; one logical processor per core is enough, without adding SMT siblings. When on: while the game is in front, one critical thread that keeps at least 30% of one core busy gets hard affinity on its own physical core (the render thread first, from DirectX present events; without them, the busiest thread after 30 seconds when it clearly leads; several threads with similar loads are treated as a worker pool and left to the scheduler). Other threads that stay near saturation (at least 70%) only receive a preferred core, and Windows may still move them while that core is busy. Each thread uses a different physical core; the count follows the CPU topology (up to 4; hybrid CPUs use performance cores only; favored cores and the large-cache X3D CCD come first, the core of CPU 0 is avoided where possible, and two physical cores stay free for other threads). Automatic mode keeps other game threads unchanged; older manual rules retain their saved policy. Switching away keeps the placement; it is restored when the session ends. Placement yields when the game changes it; repeated verification failures or candidate changes restore the original state and stop rebinding for the session. Extra priority boosts are not layered onto the same thread. Toggle off and on to retry. The system and other programs are not isolated, and no gain is guaranteed."), 18, 50, width - 36, 80, 9f, false, Theme.Dim);
 			criticalThreadHelp.AutoEllipsis = false;
 			criticalThreadCompanion = CardLabel(criticalThreadEditor, "", 18, 0, width - 36, 40, 9f, false, Theme.Dim);
 			criticalThreadCompanion.Name = "CriticalThreadCompanion";
@@ -4904,7 +4994,7 @@ namespace PaviseApp
 				error = criticalThreadAllowedError;
 				return null;
 			}
-			CriticalThreadRule criticalThreadRule = CriticalThreadRule.Auto(true);
+			CriticalThreadRule criticalThreadRule = CriticalThreadRule.Auto(false);
 			error = criticalThreadRule.Validate(criticalThreadAll, criticalThreadPhysical, criticalThreadAllowed, criticalThreadReserved, criticalThreadTopologyTrusted);
 			if (error != null)
 			{
@@ -4917,7 +5007,7 @@ namespace PaviseApp
 		{
 			string error;
 			CriticalThreadRule criticalThreadRule = CriticalThreadSwitchRule(out error);
-			CriticalThreadRule criticalThreadRule2 = CriticalThreadRule.Parse(criticalThreadExpected);
+			CriticalThreadRule criticalThreadRule2 = CriticalThreadRule.ParseForRuntime(criticalThreadExpected);
 			string text = ((criticalThreadExpected == null) ? ThreadUi("默认关闭；打开右上角开关即可启用。", "Off by default. Turn on the switch above to enable it.") : ((criticalThreadRule2 != null && !criticalThreadRule2.Automatic) ? ThreadUi("此游戏保存的是手动指定核心的旧规则，仍按原规则执行；关闭再打开开关即改为自动选核。", "This game keeps an older rule with manually chosen cores, which still applies; turn the switch off and on to choose cores automatically.") : ThreadUi("已启用；实际状态见下方。", "On; see the runtime state below.")));
 			string text2 = ((criticalThreadExpected == null) ? error : criticalThreadAllowedError);
 			criticalThreadResult.Text = ((criticalThreadError == null) ? "" : (criticalThreadError + "\n")) + (text2 ?? text);
@@ -4952,7 +5042,7 @@ namespace PaviseApp
 			}
 			long nowTicks = AutoCores.NowTicks;
 			bool flag = criticalThreadUiState.SnapshotTicks > 0 && nowTicks >= criticalThreadUiState.SnapshotTicks && nowTicks - criticalThreadUiState.SnapshotTicks <= 65000000;
-			CriticalThreadRule criticalThreadRule = CriticalThreadRule.Parse(criticalThreadExpected);
+			CriticalThreadRule criticalThreadRule = CriticalThreadRule.ParseForRuntime(criticalThreadExpected);
 			bool flag2 = criticalThreadRule != null && criticalThreadRule.Automatic && !criticalThreadUiState.Applied;
 			string text = (criticalThreadUiState.Pending ? ThreadUi("恢复待办：新绑定被阻止。", "Recovery pending: new affinity is blocked.") : ((criticalThreadUiState.State == "off" || criticalThreadUiState.State == "waiting-game" || flag2) ? criticalThreadUiState.StateText : ((!flag) ? ThreadUi("运行快照待复核；当前硬绑定未确认。", "Runtime snapshot needs rechecking; current affinity is unconfirmed.") : criticalThreadUiState.StateText)));
 			if (!flag && criticalThreadUiState.SnapshotTicks > 0)
@@ -5177,10 +5267,10 @@ namespace PaviseApp
 				coreEditorTitle.SetBounds(num5, Theme.S(coreWorkspaceCompact ? 6 : 20), Math.Max(1, num6 - Theme.S(120)), Theme.S(30));
 				coreRangeInfo.SetBounds(num5 + Math.Min(Theme.S(140), coreEditorTitle.Width), Theme.S(coreWorkspaceCompact ? 5 : 19), Theme.S(30), Theme.S(32));
 				coreSelectedCount.SetBounds(Math.Max(num5, num4 - num5 - Theme.S(115)), Theme.S(coreWorkspaceCompact ? 8 : 22), Theme.S(115), Theme.S(26));
-				coreSelectedCount.Text = PerformancePolicy.Text("已选 ", "Selected ") + CpuTopology.CountSetBits(coreEditMatrix.Selected) + " / " + CpuTopology.CountSetBits(CpuTopology.AllMask);
+				coreSelectedCount.Text = CpuTopology.MultiGroup ? PerformancePolicy.Text("范围未确认", "Range unconfirmed") : PerformancePolicy.Text("已选 ", "Selected ") + CpuTopology.CountSetBits(coreEditMatrix.Selected) + " / " + CpuTopology.CountSetBits(CpuTopology.AllMask);
 				coreQuickPanel.SetBounds(num5, Theme.S(coreWorkspaceCompact ? 38 : 64), num6, coreQuickPanel.Height);
 				LayoutCoreShortcuts();
-				coreTopologyCount.Text = CpuTopology.PhysicalCoreCount + PerformancePolicy.Text(" 物理核 / ", " cores / ") + CpuTopology.CountSetBits(CpuTopology.AllMask) + PerformancePolicy.Text(" 逻辑核", " logical CPUs");
+				coreTopologyCount.Text = CpuTopology.MultiGroup ? PerformancePolicy.Text("全机核心范围未确认", "Total CPU range unconfirmed") : CoreMatrix.TopologyCountsConfirmed ? CpuTopology.PhysicalCoreCount + PerformancePolicy.Text(" 物理核 / ", " cores / ") + CpuTopology.CountSetBits(CpuTopology.AllMask) + PerformancePolicy.Text(" 逻辑核", " logical CPUs") : CpuTopology.CountSetBits(CpuTopology.AllMask) + PerformancePolicy.Text(" 逻辑核 · 物理核数未确认", " logical CPUs · physical core count unconfirmed");
 				int num7 = 0;
 				foreach (Control control in coreQuickPanel.Controls)
 				{
@@ -5354,6 +5444,7 @@ namespace PaviseApp
 			environmentPreferenceOverrides.Clear();
 			environmentBundleOverride = (environmentStorageOverride = (environmentStorageOverride = null));
 			environmentQuantumOverride = null;
+			environmentCpuMitigationsOverride = null;
 		}
 
 		private static EnvironmentPreferenceObservation ReadEnvironmentPreference(DirectXGlobalPreference preference)
@@ -5394,6 +5485,9 @@ namespace PaviseApp
 				StorageState = PerformanceTuning.StorageGroupState(),
 				StorageLabel = PerformanceTuning.StorageGroupLabel(),
 				QuantumOn = Settings.LoadCached("EnvQuantumProfileV1", false),
+				CpuMitigationsOn = Settings.LoadCached(PerformanceActionCatalog.CpuMitigations, false),
+				CpuMitigationsExpanded = PerformanceTuning.CpuMitigationsExpanded,
+				CpuMitigationsState = PerformanceTuning.State(PerformanceActionCatalog.CpuMitigations),
 				QuantumState = PerformanceTuning.State("EnvQuantumProfileV1"),
 				QuantumSelection = QuantumProfiles.Selected,
 				LegacyQuantum = QuantumRecovery.LegacyRecordsForDisplay
@@ -5405,6 +5499,23 @@ namespace PaviseApp
 				PerformanceTuning.State("EnvStorageD3ColdV1")
 			});
 			return environmentGraphicsObservation;
+		}
+
+		private string EnvironmentObservationConfiguration()
+		{
+			// MutationGeneration only invalidates this cheap saved-preference cache.
+			// The normalized values, never the generation itself, identify the phase.
+			int version = Settings.MutationGeneration;
+			if (environmentConfigurationSignature != null && environmentConfigurationGeneration == version) return environmentConfigurationSignature;
+			StringBuilder value = new StringBuilder();
+			foreach (PerformanceAction action in PerformanceActionCatalog.All)
+				if (action.Environment) value.Append(action.Key).Append('=').Append(Settings.LoadCached(action.Key, false) ? '1' : '0').Append(';');
+			foreach (string key in new[] { "EnvVbsDisabledV1", "EnvCpuMitigationsExpandedV1", "GmCacheWarmV2", "AutoTimerTick", "AutoGlobalTimer", "GmIntelEnduranceV1" })
+				value.Append(key).Append('=').Append(Settings.LoadCached(key, false) ? '1' : '0').Append(';');
+			value.Append("quantum=").Append(QuantumProfiles.Selected);
+			environmentConfigurationSignature = value.ToString();
+			environmentConfigurationGeneration = version;
+			return environmentConfigurationSignature;
 		}
 
 		private void QueueEnvironmentObservation(bool force)
@@ -5423,6 +5534,9 @@ namespace PaviseApp
 			{
 				return;
 			}
+			long observationSession = gameMode == null ? 0 : gameMode.AutomaticSessionSerial;
+			string observationConfiguration = EnvironmentObservationConfiguration();
+			if (!environmentObservationFailures.Allowed(0, observationSession, observationConfiguration, "environment")) return;
 			cycle.Busy = 1;
 			cycle.StartedUtc = DateTime.UtcNow;
 			int version = cycle.Version;
@@ -5437,8 +5551,10 @@ namespace PaviseApp
 				}
 				catch (Exception ex)
 				{
-					Logger.Warn("Environment observation: " + ex.Message);
+					int failures = environmentObservationFailures.Failed(0, observationSession, observationConfiguration, "environment");
+					Logger.Warn("Environment observation failure=" + failures + "/3: " + ex.Message);
 				}
+				if (observed != null) environmentObservationFailures.Succeeded(0, observationSession, observationConfiguration, "environment");
 				Action apply = delegate
 				{
 					cycle.Busy = 0;
@@ -5457,6 +5573,7 @@ namespace PaviseApp
 								environmentPreferenceOverrides.Clear();
 								environmentBundleOverride = (environmentStorageOverride = (environmentStorageOverride = null));
 								environmentQuantumOverride = null;
+								environmentCpuMitigationsOverride = null;
 							}
 							ApplyEnvironmentObservation();
 							RefreshAutomationPage();
@@ -5490,12 +5607,15 @@ namespace PaviseApp
 				}))
 				{
 					cycle.Busy = 0;
+					int failures = environmentObservationFailures.Failed(0, observationSession, observationConfiguration, "environment");
+					Logger.Warn("Environment observation queue failure=" + failures + "/3");
 				}
 			}
 			catch
 			{
 				cycle.Busy = 0;
-				throw;
+				int failures = environmentObservationFailures.Failed(0, observationSession, observationConfiguration, "environment");
+				Logger.Warn("Environment observation queue exception=" + failures + "/3");
 			}
 		}
 
@@ -5604,9 +5724,10 @@ namespace PaviseApp
 					}
 				}
 				bool flag2 = PerformanceRestartFor("NvLowLat") == performanceRestartScope;
-				if (flag || flag2 || performanceRestartScope == PerformanceRestartScope.SystemRestart)
+				if (flag || flag2 || performanceRestartScope == PerformanceRestartScope.SystemRestart || performanceRestartScope == PerformanceRestartScope.None)
 				{
 					AddAutomationSection(scroll, ref sy, PerformanceScopeTitle(performanceRestartScope), performanceRestartScope);
+					if (performanceRestartScope == PerformanceRestartScope.None) BuildPerformanceQuantumEnvironment(scroll, ref sy);
 					if (flag2)
 					{
 						swGameLowLatency = MakeSwitch(PerformancePolicy.GameLowLatency, OnGameLowLatencyToggle);
@@ -5626,6 +5747,10 @@ namespace PaviseApp
 					if (flag)
 					{
 						PrivacyOptionsPanel privacyOptionsPanel = BuildEnvironmentPrivacy(scroll, performanceRestartScope);
+						if (performanceRestartScope == PerformanceRestartScope.SystemRestart && scroll is PerformanceFeatureGrid)
+						{
+							privacyOptionsPanel.PrependPerformanceCard((PerformanceFeatureCard)environmentPerformanceCards["AutoGlobalTimer"]);
+						}
 						privacyOptionsPanel.Top = Theme.S(sy);
 						sy += Dpi.U(privacyOptionsPanel.Height) + 8;
 					}
@@ -5953,8 +6078,9 @@ namespace PaviseApp
 			toggle.Name = "environment" + key;
 			toggle.AccessibleName = Lang.T(title);
 			environmentPerformanceSwitches.Add(key, toggle);
+			Control host = toggle;
 			string desc = PerformanceEnvironmentExplanation(key, description);
-			int num = FullTextCardHeight(desc, ScrollContentW, toggle, 88);
+			int num = FullTextCardHeight(desc, ScrollContentW, host, 88);
 			if (key == "AutoGlobalTimer")
 			{
 				string readback = Lang.F("env.gtimer.readback", "0.5000", "15.6250", "0.5000");
@@ -5965,12 +6091,12 @@ namespace PaviseApp
 				};
 				foreach (string text in array)
 				{
-					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, true, readback), ScrollContentW, toggle, 88));
-					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, false, readback), ScrollContentW, toggle, 88));
+					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, true, readback), ScrollContentW, host, 88));
+					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, false, readback), ScrollContentW, host, 88));
 				}
 			}
 			int used;
-			SettingCard settingCard = MakeAutoCard(parent, 6, y, ScrollContentW, num, Lang.T(title), desc, toggle, out used);
+			SettingCard settingCard = MakeAutoCard(parent, 6, y, ScrollContentW, num, Lang.T(title), desc, host, out used);
 			settingCard.Height += Theme.S(17);
 			y += used + 17 + 8;
 			environmentPerformanceCards.Add(key, settingCard);
@@ -6117,7 +6243,7 @@ namespace PaviseApp
 			switch (key)
 			{
 			case "AutoGlobalTimer":
-				return AutoText("开启或还原后需重启；仅对局请求 0.5 ms，退局释放。实际精度由系统决定，可能增加功耗。", "Restart after enabling or restoring; requests 0.5 ms only during matches, then releases it. Windows decides the actual resolution; power use may rise.");
+				return AutoText("开启或还原后需重启；仅对局请求 0.5 ms，退局释放。故障后可点重试，无需反复切换开关。实际精度由系统决定，可能增加功耗。", "Restart after enabling or restoring; requests 0.5 ms only during matches, then releases it. Use Retry after a failure. Windows decides the actual resolution; power use may rise.");
 			case "AutoTimerTick":
 				return AutoText("手动设置时钟与节拍启动参数，开关后需重启。切换模式不改动此项，关闭恢复原配置。", "Manual clock/tick boot settings; restart after changes. Mode switches leave this choice alone; Off restores originals.");
 			case "GmCacheWarmV2":
@@ -6266,9 +6392,16 @@ namespace PaviseApp
 			cardPerformanceEnvironmentBundle = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(desc, ScrollContentW, swPerformanceEnvironmentBundle, 100), PerformanceTuning.EnvironmentBundleTitle, desc, swPerformanceEnvironmentBundle, out used);
 			cardPerformanceEnvironmentBundle.Height += Theme.S(17);
 			y += used + 17 + 8;
+			BuildPerformanceCpuMitigations(parent, ref y);
+			SyncPerformanceTuningEnvironment();
+		}
+
+		private void BuildPerformanceQuantumEnvironment(Control parent, ref int y)
+		{
 			PerformanceAction performanceAction = PerformanceActionCatalog.Find("EnvQuantumProfileV1");
-			string text = performanceAction.Title + PerformancePolicy.Text(" · 需重启", " · restart required");
-			string text2 = AutoText("游戏/日常选短可变 3:1，后台计算选长固定 1:1；比例不是帧率倍数。应用或恢复后需重启，“恢复原配置”也撤销旧版校正。", "Use short variable 3:1 for games/daily use or long fixed 1:1 for background work; these are turn ratios, not FPS multipliers. Restart after changes; Restore original also undoes legacy corrections.");
+			string text = performanceAction.Title;
+			string text2 = AutoText("游戏/日常选短可变 3:1，后台计算选长固定 1:1；比例不是帧率倍数。优先在线应用和恢复，系统拒绝或原值无法在线还原时提示重启电脑。“恢复原配置”也撤销旧版校正。", "Use short variable 3:1 for games/daily use or long fixed 1:1 for background work; these are turn ratios, not FPS multipliers. Apply and restore online where supported; a PC restart is shown if Windows rejects the update or the original cannot be restored online. Restore original also undoes legacy corrections.");
+			int used;
 			swPerformanceEnvironmentQuantum = new QuantumProfilePicker();
 			swPerformanceEnvironmentQuantum.SetSilently(0);
 			swPerformanceEnvironmentQuantum.SelectionChanged += ChangePerformanceTuningQuantum;
@@ -6414,6 +6547,7 @@ namespace PaviseApp
 				break;
 			}
 			settingCard2.SetStatus(obj, ink);
+			SyncPerformanceCpuMitigations();
 			SyncPerformanceStorageEnvironment();
 			if (swPerformanceEnvironmentQuantum != null && !swPerformanceEnvironmentQuantum.IsDisposed && cardPerformanceEnvironmentQuantum != null && !cardPerformanceEnvironmentQuantum.IsDisposed)
 			{
@@ -6427,6 +6561,13 @@ namespace PaviseApp
 				bool flag5 = !flag4 && text3 != "working" && cachedEnvironmentTuning != null && cachedEnvironmentTuning.LegacyQuantum;
 				string text4 = (flag5 ? PerformancePolicy.Text("旧版校正记录待恢复 · 选择「恢复原配置」", "Legacy correction pending · choose Restore original") : ((text3.Length == 0) ? Lang.T(flag3 ? "env.performance.pending" : "env.performance.off") : PerformanceTuning.Label(text3)));
 				cardPerformanceEnvironmentQuantum.SetStatus(text4, (flag4 || flag5) ? Theme.Warning : (flag3 ? Theme.Accent : Theme.Dim));
+				PerformanceFeatureCard quantumCard = cardPerformanceEnvironmentQuantum as PerformanceFeatureCard;
+				if (quantumCard != null)
+				{
+					bool restart = text3 == "pending-reboot" || text3 == "restore-pending-reboot";
+					quantumCard.RestartScope = restart ? PerformanceRestartScope.SystemRestart : PerformanceRestartScope.None;
+					quantumCard.RestartText = restart ? AutoText("需重启电脑", "PC restart required") : AutoText("优先在线应用", "Online update preferred");
+				}
 			}
 		}
 
@@ -7405,6 +7546,14 @@ namespace PaviseApp
 					paths.Add(gameLibraryItem.Profile.ExecutablePath);
 				}
 			}
+			paths.Sort(StringComparer.OrdinalIgnoreCase);
+			string observationKey = string.Join("\n", paths.ToArray()).ToLowerInvariant();
+			long observationSession = gameMode == null ? 0 : gameMode.AutomaticSessionSerial;
+			if (!runningObservationFailures.Allowed(0, observationSession, observationKey, "running"))
+			{
+				Interlocked.Exchange(ref runningBusy, 0);
+				return;
+			}
 			try
 			{
 				QueueUiStateWork(delegate
@@ -7413,9 +7562,12 @@ namespace PaviseApp
 					try
 					{
 						states = QueryLibraryRunningState(paths);
+						if (states != null) runningObservationFailures.Succeeded(0, observationSession, observationKey, "running");
 					}
 					catch
 					{
+						int failures = runningObservationFailures.Failed(0, observationSession, observationKey, "running");
+						Logger.Warn("Library running observation failure=" + failures + "/3");
 					}
 					try
 					{
@@ -7442,6 +7594,8 @@ namespace PaviseApp
 			}
 			catch
 			{
+				int failures = runningObservationFailures.Failed(0, observationSession, observationKey, "running");
+				Logger.Warn("Library running observation queue failure=" + failures + "/3");
 				ReleaseGameRunningRefresh();
 			}
 		}
@@ -8052,29 +8206,28 @@ namespace PaviseApp
 			PillButton pillButton = new PillButton(Lang.T("v20.log.refresh"));
 			pillButton.Name = "refreshSessionLog";
 			PillButton pillButton2 = pillButton;
-			pillButton2.SetBounds(Theme.S(208), Theme.S(num5), Theme.S(96), Theme.S(36));
+			pillButton2.SetBounds(Theme.S(30), Theme.S(num5), Theme.S(96), Theme.S(36));
 			pillButton2.Click += delegate
 			{
 				RefreshLog(true);
 			};
+			PillButton exportLog = new PillButton(Lang.T("log.export.file"));
+			exportLog.Name = "exportLogFile";
+			exportLog.AccessibleName = Lang.T("log.export.file");
+			exportLog.AccessibleDescription = Lang.T("log.export.detail");
+			exportLog.SetBounds(Theme.S(136), Theme.S(num5), Theme.S(112), Theme.S(36));
+			exportLog.Click += ExportLogFile;
 			PillButton pillButton3 = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
-			pillButton3.SetBounds(Theme.S(314), Theme.S(num5), Theme.S(112), Theme.S(36));
+			pillButton3.SetBounds(Theme.S(258), Theme.S(num5), Theme.S(112), Theme.S(36));
 			pillButton3.Click += delegate
 			{
 				if (PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("rep.clear.ask"), DlgKind.Warn))
 				{
 					Logger.Clear();
 					Logger.Log(Lang.T("log.panelformlogpage.1"));
+					Logger.RuntimeIdentity();
 					RefreshLog(true);
 				}
-			};
-			PillButton pillButton4 = new PillButton(Lang.T("workflow.diagnostic.copy"), BtnKind.Primary);
-			pillButton4.Name = "copyDiagnostics";
-			PillButton pillButton5 = pillButton4;
-			pillButton5.SetBounds(Theme.S(30), Theme.S(num5), Theme.S(168), Theme.S(36));
-			pillButton5.Click += delegate
-			{
-				CopyDiagnosticSummary();
 			};
 			swLogWrites = MakeSwitch(Settings.Load("LogWritesEnabled", true), OnLogWritesToggle);
 			swLogWrites.Location = new Point(Theme.S(30 + num) - swLogWrites.Width, Theme.S(num5 + 6));
@@ -8086,7 +8239,7 @@ namespace PaviseApp
 			label.TextAlign = ContentAlignment.MiddleRight;
 			Label label2 = label;
 			label2.SetBounds(Theme.S(30 + num - 162) - swLogWrites.Width, Theme.S(num5), Theme.S(152), Theme.S(36));
-			pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton5, pillButton2, pillButton3, label2, swLogWrites });
+			pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton2, exportLog, pillButton3, label2, swLogWrites });
 			RefreshLog(true);
 		}
 
@@ -8094,22 +8247,8 @@ namespace PaviseApp
 		{
 			if (logStream != null)
 			{
+				logStream.TechnicalEvents = true;
 				logStream.Filter = 4;
-			}
-		}
-
-		private void CopyDiagnosticSummary()
-		{
-			try
-			{
-				string text = DiagnosticSummary.Build(gameMode, elevated, Logger.Tail(220));
-				Clipboard.SetText(text);
-				diagnosticCopiedUntil = DateTime.UtcNow.AddSeconds(6.0).Ticks;
-				RefreshLog(true);
-			}
-			catch
-			{
-				PaviseDialog.Warn(this, Lang.T("workflow.diagnostic.title"), Lang.T("workflow.diagnostic.failed"));
 			}
 		}
 
@@ -8165,7 +8304,7 @@ namespace PaviseApp
 			if (lblLogStreamHint != null)
 			{
 				bool writesEnabled = Logger.WritesEnabled;
-				lblLogStreamHint.Text = ((DateTime.UtcNow.Ticks < diagnosticCopiedUntil) ? Lang.T("workflow.diagnostic.copied") : (writesEnabled ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused")));
+				lblLogStreamHint.Text = writesEnabled ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
 				lblLogStreamHint.ForeColor = (writesEnabled ? Theme.Faint : LogStreamView.SeverityColor(LogEventSeverity.Warning));
 			}
 		}
@@ -8318,7 +8457,7 @@ namespace PaviseApp
 				{
 					overviewLogVersion = Logger.Version;
 					int warnings;
-					DiagnosticSummary.CountIssues(Logger.Tail(220), out warnings, out overviewErrors);
+					LogStreamView.CountIssues(Logger.Tail(220), out warnings, out overviewErrors);
 				}
 				overviewAction = ((!elevated) ? "admin" : (gameMode.ProfileStoreSaveFailed ? "library" : ((gameMode.Enabled && overviewErrors > 0) ? "logs" : "")));
 			}
@@ -8457,8 +8596,7 @@ namespace PaviseApp
 
 		private void PresentOverviewResources(OverviewResourceSnapshot resources)
 		{
-			bool paused = overviewGamePaused || gameMode.IsActive;
-			overviewResources = paused ? null : resources;
+			overviewResources = resources;
 			if (overviewUsage != null)
 			{
 				resources = resources ?? new OverviewResourceSnapshot();
@@ -8467,27 +8605,17 @@ namespace PaviseApp
 				{
 					array[i] = overviewUsage[i].MeasureHeight(overviewUsage[i].Width);
 				}
-				if (paused)
+				double? num = OverviewPercent(resources.CpuPercent);
+				double? num2 = OverviewPercent(resources.GpuPercent);
+				overviewUsage[0].SetReading(PerformancePolicy.Text("CPU 占用", "CPU usage"), OverviewPercentText(num), "", num);
+				overviewUsage[1].SetReading(PerformancePolicy.Text("GPU 占用", "GPU usage"), OverviewPercentText(num2), "", num2);
+				if (!string.IsNullOrEmpty(resources.GpuUsageDescription))
 				{
-					string status = Lang.T("overview.usage.ingame");
-					overviewUsage[0].SetStatus(PerformancePolicy.Text("CPU 占用", "CPU usage"), status);
-					overviewUsage[1].SetStatus(PerformancePolicy.Text("GPU 占用", "GPU usage"), status);
-					overviewUsage[2].SetStatus(PerformancePolicy.Text("内存", "Memory"), status);
+					overviewUsage[1].AccessibleDescription = overviewUsage[1].Value + "\r\n" + resources.GpuUsageDescription;
 				}
-				else
-				{
-					double? num = OverviewPercent(resources.CpuPercent);
-					double? num2 = OverviewPercent(resources.GpuPercent);
-					overviewUsage[0].SetReading(PerformancePolicy.Text("CPU 占用", "CPU usage"), OverviewPercentText(num), "", num);
-					overviewUsage[1].SetReading(PerformancePolicy.Text("GPU 占用", "GPU usage"), OverviewPercentText(num2), "", num2);
-					if (!string.IsNullOrEmpty(resources.GpuUsageDescription))
-					{
-						overviewUsage[1].AccessibleDescription = overviewUsage[1].Value + "\r\n" + resources.GpuUsageDescription;
-					}
-					double? num3 = ((resources.TotalMemoryBytes != 0 && resources.UsedMemoryBytes <= resources.TotalMemoryBytes) ? new double?((double)resources.UsedMemoryBytes * 100.0 / (double)resources.TotalMemoryBytes) : null);
-					string value = (num3.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
-					overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), value, num3.HasValue ? OverviewPercentText(num3) : "", num3);
-				}
+				double? num3 = ((resources.TotalMemoryBytes != 0 && resources.UsedMemoryBytes <= resources.TotalMemoryBytes) ? new double?((double)resources.UsedMemoryBytes * 100.0 / (double)resources.TotalMemoryBytes) : null);
+				string value = (num3.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
+				overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), value, num3.HasValue ? OverviewPercentText(num3) : "", num3);
 				bool flag = false;
 				for (int j = 0; j < overviewUsage.Length; j++)
 				{
@@ -8610,7 +8738,6 @@ namespace PaviseApp
 						ReleaseOverviewTelemetryReader();
 					}
 				}
-				RefreshOverviewTelemetryGamePolicy();
 				if (active)
 				{
 					QueueOverviewTelemetry(true);
@@ -8618,25 +8745,10 @@ namespace PaviseApp
 			}
 		}
 
-		private bool RefreshOverviewTelemetryGamePolicy()
-		{
-			bool paused = gameMode.IsActive;
-			if (overviewGamePaused != paused)
-			{
-				overviewGamePaused = paused;
-				overviewHudGeneration++;
-				overviewNextTelemetry = 0L;
-				overviewResources = null;
-				PresentOverviewResources(null);
-				if (paused) ReleaseOverviewTelemetryReader();
-			}
-			return paused;
-		}
-
 		private bool OverviewTelemetryRequestCurrent(int generation)
 		{
 			return !overviewTelemetryDisposed && overviewTelemetryActive
-				&& generation == overviewHudGeneration && !gameMode.IsActive;
+				&& generation == overviewHudGeneration;
 		}
 
 		private bool QueueOverviewTelemetryWork(Action work)
@@ -8650,7 +8762,7 @@ namespace PaviseApp
 			{
 				lock (overviewReaderGate)
 				{
-					if (overviewTelemetryDisposed || !overviewTelemetryActive || gameMode.IsActive)
+					if (overviewTelemetryDisposed || !overviewTelemetryActive)
 					{
 						if (overviewReader != null) overviewReader.Dispose();
 						overviewReader = null;
@@ -8662,7 +8774,6 @@ namespace PaviseApp
 
 		private void QueueOverviewTelemetry(bool force)
 		{
-			if (RefreshOverviewTelemetryGamePolicy()) return;
 			if (!overviewTelemetryActive || overviewTelemetryDisposed || base.IsDisposed || base.Disposing || !base.IsHandleCreated)
 			{
 				return;
@@ -9172,6 +9283,8 @@ namespace PaviseApp
 			{
 			case "laboratoryCpuIdle":
 				return "LabCpuIdleStrategyV1";
+            case "backgroundGovernanceMode":
+                return "GmSuppress";
 			case "WindowedOpt":
 				return "WindowedOptimizations";
 			case "VrrOpt":
@@ -9216,10 +9329,7 @@ namespace PaviseApp
 				card.Summary = AutoText("插电对局切换厂商性能档，退局恢复原档", "Use the vendor performance profile on AC; restore after matches");
 				break;
 			case "GmSuppress":
-				card.Summary = AutoText("对局期间管理竞争资源的后台任务", "Manage competing background tasks during matches");
-				break;
-			case "GmGpuDemote":
-				card.Summary = AutoText("降低合格后台程序的 GPU 优先级", "Lower GPU priority for eligible background apps");
+				card.Summary = Lang.T("background.governance.summary");
 				break;
 			case "GmPauseDl":
 				card.Summary = AutoText("对局期间暂停支持的后台下载", "Pause supported background downloads during matches");
@@ -9281,6 +9391,9 @@ namespace PaviseApp
 			case "EnvPerformanceBundleV1":
 				card.Summary = AutoText("关闭 VBS 与 CPU 缓解，降低相应防护", "Disable VBS and CPU mitigations, reducing those protections");
 				break;
+			case "EnvCpuMitigationsV1":
+				card.Summary = AutoText("关闭适用的软件缓解，降低相应防护", "Disable applicable software mitigations, reducing those protections");
+				break;
 			case "EnvStoragePowerGroupV1":
 				card.Summary = AutoText("减少存储设备省电等待，视驱动支持", "Reduce storage power-saving delays where drivers support it");
 				break;
@@ -9319,7 +9432,7 @@ namespace PaviseApp
 
 		private void OrderPerformanceConsole()
 		{
-            string[] array = new string[7] { "GmBoost", "GmAwake", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
+            string[] array = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
 			Control control = performanceTabPanels[0];
 			List<PerformanceFeatureCard> list = new List<PerformanceFeatureCard>();
 			foreach (Control control2 in control.Controls)
@@ -9446,219 +9559,6 @@ namespace PaviseApp
 		private void RefreshPolicyPresentation()
 		{
 			RefreshStandbyCleanerPresentation();
-		}
-
-		private void BuildRecoveryMaintenance(Control parent, ref int y)
-		{
-			PillButton pillButton = new PillButton(PerformancePolicy.Text("查看", "View"));
-			pillButton.Name = "manageDisabledActions";
-			pillButton.Bg = Theme.Card;
-			PillButton pillButton2 = pillButton;
-			pillButton2.Size = new Size(Theme.S(112), Theme.S(32));
-			pillButton2.Click += delegate
-			{
-				ShowDisabledActions();
-			};
-			string desc = PerformancePolicy.Text("执行失败立即停用对应动作。这里查看原因，并手动重试一次。", "An execution failure immediately disables that action. View the reason and allow one manual retry here.");
-			int used;
-			MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(desc, ScrollContentW, pillButton2, 76), PerformancePolicy.Text("已停用动作", "Disabled actions"), desc, pillButton2, out used);
-			y += used + 8;
-		}
-
-		private void ShowDisabledActions()
-		{
-			if (runtimeShutdownBusy || base.IsDisposed || base.Disposing)
-			{
-				return;
-			}
-			using (MaintenanceListPanel content = new MaintenanceListPanel(ReadFailureItems, RequestActionRetry))
-			{
-				PaviseDialog.Show(this, PerformancePolicy.Text("已停用动作", "Disabled actions"), PerformancePolicy.Text("恢复始终继续。退局后可手动允许对应动作重试一次。", "Restoration continues. After the match, you can allow one retry for a disabled action."), content, 760);
-			}
-		}
-
-		internal static List<MaintenanceListItem> ReadFailureItems()
-		{
-			List<MaintenanceListItem> list = new List<MaintenanceListItem>();
-			foreach (ActionFailureRecord item in ActionFailureStore.Records())
-			{
-				list.Add(new MaintenanceListItem
-				{
-					Key = item.Key,
-					Title = MaintenanceActionTitle(item.Action),
-					Retryable = (!RetiredPerformanceAction(item.Action) && !item.RetryPending && !string.IsNullOrEmpty(item.Action) && !string.IsNullOrEmpty(item.Target)),
-					Status = (RetiredPerformanceAction(item.Action) ? PerformancePolicy.Text("已移除 · 仅恢复旧记录", "Removed · restore legacy records only") : (item.PersistenceFailed ? PerformancePolicy.Text("记录保存受限 · 继续停用", "Record could not be saved · still disabled") : (item.RetryPending ? PerformancePolicy.Text("已允许重试一次", "One retry allowed") : PerformancePolicy.Text("故障 · 已停用", "Fault · disabled")))),
-					Detail = ((string.IsNullOrEmpty(item.Target) || item.Target == "global") ? "" : (item.Target + "\n")) + RecordTime(item.OccurredUtc) + "\n" + item.Reason + (string.IsNullOrEmpty(item.Environment) ? "" : ("\n" + item.Environment))
-				});
-			}
-			return list;
-		}
-
-		private static bool RetiredPerformanceAction(string action)
-		{
-			if (ThreadBoostSelection.IsLegacy(action))
-			{
-				return false;
-			}
-			if (PrivacyActionCatalog.IsRetired(action) || PerformancePolicy.IsRetired(action) || action == "AutoBackgroundCoreLayoutV1" || action == "MatchPausePcaV1")
-			{
-				return true;
-			}
-			PerformanceAction[] retired = PerformanceActionCatalog.Retired;
-			foreach (PerformanceAction performanceAction in retired)
-			{
-				if (performanceAction.Key == action)
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-
-		private string RequestActionRetry(string key)
-		{
-			if (runtimeShutdownBusy || wipeBusy != 0 || gameMode.IsActive)
-			{
-				return PerformancePolicy.Text("请在退出对局且维护操作结束后重试。", "Retry after leaving the match and completing maintenance.");
-			}
-			ActionFailureRecord actionFailureRecord = null;
-			foreach (ActionFailureRecord item in ActionFailureStore.Records())
-			{
-				if (item.Key == key)
-				{
-					actionFailureRecord = item;
-					break;
-				}
-			}
-			if (actionFailureRecord != null && RetiredPerformanceAction(actionFailureRecord.Action))
-			{
-				return PerformancePolicy.Text("此动作已移除，只恢复旧记录，不再允许重新应用。", "This action was removed. Only legacy restoration is allowed.");
-			}
-			if (!ActionFailureStore.RequestRetry(key))
-			{
-				return PerformancePolicy.Text("暂时不能重试，停用记录已保留。", "A retry could not be allowed. The disabled record is retained.");
-			}
-			if (actionFailureRecord != null && PrivacyControl.IsAction(actionFailureRecord.Action) && !PrivacyControl.Set(actionFailureRecord.Action, true, "", delegate
-			{
-				try
-				{
-					if (!base.IsDisposed && base.IsHandleCreated)
-					{
-						BeginInvoke(new Action(SyncEnvironmentPrivacy));
-					}
-				}
-				catch (InvalidOperationException)
-				{
-				}
-			}))
-			{
-				return PerformancePolicy.Text("重试许可已保留，请在系统环境增强页操作。", "Retry permission is retained; use the System environment enhancements page.");
-			}
-			gameMode.Poke();
-			return null;
-		}
-
-		private static string RecordTime(DateTime utc)
-		{
-			if (utc == DateTime.MinValue)
-			{
-				return PerformancePolicy.Text("时间未知", "Time unknown");
-			}
-			return utc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-		}
-
-		private static string MaintenanceActionTitle(string action)
-		{
-			if (action == "GmRenderLane")
-			{
-				return Lang.T("gm.lane");
-			}
-			if (action == "FrameCoordination")
-			{
-				return Lang.T("auto.framecoord");
-			}
-			PerformanceAction performanceAction = PerformanceActionCatalog.Find(action);
-			if (performanceAction != null)
-			{
-				return performanceAction.Title;
-			}
-			PrivacyAction privacyAction = PrivacyActionCatalog.Find(action);
-			if (privacyAction != null)
-			{
-				return privacyAction.Title;
-			}
-			foreach (PolicyItem item in PolicyCatalog.All)
-			{
-				if (string.Equals(item.Key, action, StringComparison.Ordinal))
-				{
-					return Lang.T(item.LangKey);
-				}
-			}
-			string text = action ?? "";
-			int num = text.IndexOf(':');
-			if (num >= 0)
-			{
-				text = text.Substring(num + 1);
-			}
-			switch (text)
-			{
-			case "do":
-				return Lang.T("t.gamemodeenv.1");
-			case "wu":
-				return Lang.T("t.gamemodeenv.3");
-			case "services":
-				return Lang.T("gm.pausesvc");
-			case "standby":
-				return Lang.T("gm.standbycleaner");
-			case "pqos":
-				return Lang.T("t.gamemodeenv.4");
-			case "awake":
-				return Lang.T("t.gamemodeenv.5");
-			case "dwmboost":
-				return Lang.T("gm.dwmboost");
-			case "maint":
-				return Lang.T("gm.pausemaint");
-			case "nvvrr":
-				return Lang.T("set.nvvrr");
-			case "intelend":
-				return Lang.T("set.intel.endurance");
-			case "laptopperf":
-				return Lang.T("gm.laptopperf");
-			case "gamedvr":
-			case "GameDvrOff":
-				return Lang.T("set.dvr");
-			case "mmcss":
-			case "GmMmcss":
-				return Lang.T("auto.mmcss");
-			case "power":
-				return PerformancePolicy.Text("对局电源计划", "Match power plan");
-			case "GlobalTimerResolutionLeaseV1":
-				return PerformancePolicy.Text("对局 0.5 ms 计时器", "Match 0.5 ms timer");
-			case "NvDriverProfile":
-				return PerformancePolicy.Text("NVIDIA 驱动配置", "NVIDIA driver profile");
-			case "BackgroundSuppression":
-				return PerformancePolicy.Text("后台进程资源让位", "Background process resource yielding");
-			case "FrameCoordination":
-				return Lang.T("auto.framecoord");
-			case "game-critical-thread-hard-affinity":
-				return PerformancePolicy.Text("关键线程硬绑定", "Candidate thread hard affinity");
-			case "GamePriority":
-				return PerformancePolicy.Text("游戏 CPU 优先级", "Game CPU priority");
-			case "GameMemoryPriority":
-				return PerformancePolicy.Text("游戏内存保留优先级", "Game memory retention priority");
-			case "GameIoPriority":
-				return PerformancePolicy.Text("游戏磁盘 I/O 优先级", "Game disk I/O priority");
-			case "GameGpuPriority":
-				return PerformancePolicy.Text("游戏 GPU 调度优先级", "Game GPU scheduling priority");
-			case "GameEcoQoS":
-				return PerformancePolicy.Text("游戏节能调度限制解除", "Game power-throttling release");
-			default:
-				if (!string.IsNullOrEmpty(action))
-				{
-					return action;
-				}
-				return PerformancePolicy.Text("优化动作", "Optimization action");
-			}
 		}
 
 		private void LayoutCompactSettingsAppearance(DBPanel panel)
@@ -9927,8 +9827,6 @@ namespace PaviseApp
 			BuildAiTuningSettingsCard(scroll);
 			RefreshStandbyCleanerPresentation();
 			scroll = settingsTabPanels[1];
-			sy = 2;
-			BuildRecoveryMaintenance(scroll, ref sy);
 			PillButton pillButton = new PillButton(Lang.T("workflow.attention.action.logs"));
 			pillButton.Name = "settingsOpenLogs";
 			pillButton.Bg = Theme.Card;
@@ -9970,7 +9868,6 @@ namespace PaviseApp
 			cardShader = AddSettingsTile(scroll, "SettingsShader", Lang.T("btn.shader"), Lang.T("set.shader.n"), "shader", btnShaderGo);
 			cardShader.Value = " ";
 			SyncShaderCleanupPresentation();
-			ConvertSettingsMaintenanceCards(scroll);
 			scroll = settingsTabPanels[2];
 			sy = 2;
 			BuildAppearanceSection(scroll, ref sy);
@@ -10632,7 +10529,6 @@ namespace PaviseApp
 				Lang.T("sec.maint"),
 				Lang.T("sec.appearance")
 			};
-			string[] array = new string[3] { "general", "maintenance", "appearance" };
 			settingsTabs.SetTabs(labels, null);
 			pageSettings.Controls.Add(settingsTabs);
 			settingsTabPanels = new DBPanel[3];
@@ -10673,7 +10569,6 @@ namespace PaviseApp
 				int index2 = j;
 				SettingsWorkspaceTab settingsWorkspaceTab = new SettingsWorkspaceTab(labels[j]);
 				settingsWorkspaceTab.Name = "SettingsCategory" + j;
-				settingsWorkspaceTab.IconKey = array[j];
 				settingsWorkspaceTab.Selected = j == 0;
 				settingsWorkspaceTab.TabIndex = j;
 				SettingsWorkspaceTab settingsWorkspaceTab2 = settingsWorkspaceTab;
@@ -10734,32 +10629,6 @@ namespace PaviseApp
 			return settingsWorkspaceTile2;
 		}
 
-		private void ConvertSettingsMaintenanceCards(Control panel)
-		{
-			List<SettingCard> list = new List<SettingCard>();
-			foreach (Control control in panel.Controls)
-			{
-				if (control is SettingCard && !(control is SettingsWorkspaceTile))
-				{
-					list.Add((SettingCard)control);
-				}
-			}
-			foreach (SettingCard item in list)
-			{
-				Control hosted = item.Hosted;
-				if (hosted != null)
-				{
-					item.Controls.Remove(hosted);
-				}
-				SettingsWorkspaceTile settingsWorkspaceTile = AddSettingsTile(panel, "SettingsRecovery", item.Title, item.Desc, "repair", hosted);
-				settingsWorkspaceTile.SetStatus(item.StatusText, item.StatusColor);
-				settingsWorkspaceTile.Value = item.Value;
-				panel.Controls.SetChildIndex(settingsWorkspaceTile, 0);
-				panel.Controls.Remove(item);
-				item.Dispose();
-			}
-		}
-
 		private static SettingsWorkspaceTile SettingsTile(Control panel, string name)
 		{
 			return panel.Controls[name] as SettingsWorkspaceTile;
@@ -10785,37 +10654,31 @@ namespace PaviseApp
 				int num3 = Theme.S(12);
 				settingsWorkspaceViewport.SetBounds(0, 0, pageSettings.ClientSize.Width, pageSettings.ClientSize.Height);
 				int num4 = Math.Max(Theme.S(300), settingsWorkspaceViewport.ClientSize.Width - num * 2);
-				int num5 = Theme.S(12);
-				int num6 = Theme.S(120);
+				int tabGap = Theme.S(6);
+				int tabHeight = Theme.S(44);
+				int tabX = 0;
+				int tabY = Theme.S(4);
 				foreach (SettingsWorkspaceTab settingsWorkspaceTab in settingsWorkspaceTabs)
 				{
-					num6 = Math.Max(num6, TextRenderer.MeasureText(settingsWorkspaceTab.Text, Theme.UI(10.5f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(58));
-				}
-				int num7 = ((num4 >= Math.Max(Theme.S(760), num6 * settingsWorkspaceTabs.Count + num5 * (settingsWorkspaceTabs.Count - 1) + Theme.S(32))) ? 1 : 2);
-				bool flag = false;
-				if (flag)
-				{
-					num3 = Theme.S(8);
+					int tabWidth = Math.Min(num4, Math.Max(Theme.S(124), TextRenderer.MeasureText(settingsWorkspaceTab.Text, Theme.UI(10f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(44)));
+					if (tabX > 0 && tabX + tabWidth > num4)
+					{
+						tabX = 0;
+						tabY += tabHeight + tabGap;
+					}
+					settingsWorkspaceTab.SetBounds(tabX, tabY, tabWidth, tabHeight);
+					tabX += tabWidth + tabGap;
 				}
 				int num8 = Math.Max(1, settingsWorkspaceViewport.ClientSize.Height - num2 - num3);
-				bool flag2 = num7 > 1 && num8 < Theme.S(300);
-				int num9 = ((!flag) ? Theme.S((num7 == 1) ? 72 : (flag2 ? 88 : 112)) : 0);
-				int num10 = ((!flag) ? (num9 + Theme.S(12)) : Theme.S((num7 == 1) ? 72 : (flag2 ? 96 : 122)));
-				int num11 = (flag ? num8 : Math.Min(Theme.S(540), num8));
+				int num9 = tabY + tabHeight + Theme.S(12);
+				int num10 = num9 + Theme.S(12);
+				int num11 = Math.Min(Theme.S(540), num8);
 				int num12 = Math.Max(1, num11 - num10 - Theme.S(12));
 				settingsWorkspaceSurface.FrameTop = num9;
-				settingsWorkspaceSurface.BackColor = ((!flag) ? Theme.Bg : Theme.Card);
+				settingsWorkspaceSurface.BackColor = Theme.Bg;
 				settingsWorkspaceSurface.SetBounds(num, num2, num4, num11);
 				int num13 = Theme.S(16);
-				int num14 = (flag ? num13 : 0);
-				int num15 = Math.Min(Math.Max(Theme.S((Lang.Cur == 0) ? 176 : 208), num6), (num4 - num14 * 2 - num5 * ((num7 != 1) ? 1 : (settingsWorkspaceTabs.Count - 1))) / ((num7 == 1) ? settingsWorkspaceTabs.Count : 2));
-				for (int i = 0; i < settingsWorkspaceTabs.Count; i++)
-				{
-					int num16 = ((num7 == 1) ? i : (i % 2));
-					int num17 = ((num7 != 1) ? (i / 2) : 0);
-					settingsWorkspaceTabs[i].SetBounds(num14 + num16 * (num15 + num5), Theme.S(flag2 ? 8 : 12) + num17 * Theme.S(flag2 ? 40 : 50), num15, Theme.S(flag2 ? 32 : 42));
-				}
-				settingsWorkspaceSurface.HeaderLine = (flag ? (num10 - Theme.S(10)) : 0);
+				settingsWorkspaceSurface.HeaderLine = 0;
 				for (int j = 0; j < settingsTabPanels.Length; j++)
 				{
 					DBPanel dBPanel = settingsTabPanels[j];
@@ -10827,13 +10690,10 @@ namespace PaviseApp
 				LayoutSettingsMaintenance(settingsTabPanels[1]);
 				LayoutSettingsAppearance(settingsTabPanels[2]);
 
-				if (!flag)
-				{
-					DBPanel dBPanel2 = settingsTabPanels[settingsTabs.Index];
-					num11 = Math.Min(num8, num10 + dBPanel2.AutoScrollMinSize.Height + Theme.S(12));
-					settingsWorkspaceSurface.Height = num11;
-					dBPanel2.Height = Math.Max(1, num11 - num10 - Theme.S(12));
-				}
+				DBPanel dBPanel2 = settingsTabPanels[settingsTabs.Index];
+				num11 = Math.Min(num8, num10 + dBPanel2.AutoScrollMinSize.Height + Theme.S(12));
+				settingsWorkspaceSurface.Height = num11;
+				dBPanel2.Height = Math.Max(1, num11 - num10 - Theme.S(12));
 				settingsWorkspaceSurface.DivisionX = 0;
 				settingsWorkspaceSurface.DivisionTop = 0;
 				SettingsWorkspaceTile settingsWorkspaceTile = SettingsTile(settingsTabPanels[0], "SettingsStandbyCleanerCard");
@@ -10908,60 +10768,40 @@ namespace PaviseApp
 
 		private void LayoutSettingsMaintenance(DBPanel panel)
 		{
-			SettingsWorkspaceTile settingsWorkspaceTile = SettingsTile(panel, "SettingsRecovery");
-			SettingsWorkspaceTile settingsWorkspaceTile2 = SettingsTile(panel, "SettingsLogs");
-			SettingsWorkspaceTile settingsWorkspaceTile3 = SettingsTile(panel, "SettingsShader");
-			SettingsWorkspaceTile settingsWorkspaceTile4 = SettingsTile(panel, "SettingsReset");
-			SettingsWorkspaceTile settingsWorkspaceTile5 = SettingsTile(panel, "SettingsUninstall");
-			if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || settingsWorkspaceTile5 == null)
-			{
-				return;
-			}
-			SettingsWorkspaceTile[] array = new SettingsWorkspaceTile[5] { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, settingsWorkspaceTile5 };
-			int num = SettingsContentWidth(panel);
-			int num2 = Theme.S(24);
-			bool flag = num >= Theme.S(806);
-			int num3 = (flag ? ((num - num2) / 2) : num);
-			Point autoScrollPosition = new Point(0, -panel.AutoScrollPosition.Y);
+			SettingsWorkspaceTile[] tiles = {
+				SettingsTile(panel, "SettingsLogs"), SettingsTile(panel, "SettingsShader"),
+				SettingsTile(panel, "SettingsReset"), SettingsTile(panel, "SettingsUninstall")
+			};
+			foreach (SettingsWorkspaceTile tile in tiles) if (tile == null) return;
+			int width = SettingsContentWidth(panel), gap = Theme.S(24);
+			bool twoColumns = width >= Theme.S(806);
+			int column = twoColumns ? (width - gap) / 2 : width;
+			Point scroll = new Point(0, -panel.AutoScrollPosition.Y);
 			panel.AutoScrollPosition = Point.Empty;
-			int num4 = 0;
-			if (flag)
+			int top = 0;
+			for (int i = 0; i < tiles.Length; i += twoColumns ? 2 : 1)
 			{
-				int num5 = Math.Max(settingsWorkspaceTile.MeasureHeight(num3), settingsWorkspaceTile2.MeasureHeight(num3));
-				settingsWorkspaceTile.SetBounds(0, num4, num3, num5);
-				settingsWorkspaceTile2.SetBounds(num3 + num2, num4, num - num3 - num2, num5);
-				num4 += num5;
-				settingsWorkspaceTile3.SetBounds(0, num4, num, settingsWorkspaceTile3.MeasureHeight(num));
-				num4 = settingsWorkspaceTile3.Bottom;
-				int num6 = Math.Max(settingsWorkspaceTile4.MeasureHeight(num3), settingsWorkspaceTile5.MeasureHeight(num3));
-				settingsWorkspaceTile4.SetBounds(0, num4, num3, num6);
-				settingsWorkspaceTile5.SetBounds(num3 + num2, num4, num - num3 - num2, num6);
-				num4 += num6;
+				int height = tiles[i].MeasureHeight(column);
+				if (twoColumns) height = Math.Max(height, tiles[i + 1].MeasureHeight(width - column - gap));
+				tiles[i].SetBounds(0, top, column, height);
+				if (twoColumns) tiles[i + 1].SetBounds(column + gap, top, width - column - gap, height);
+				top += height;
 			}
-			else
+			for (int i = 0; i < tiles.Length; i++)
 			{
-				SettingsWorkspaceTile[] array2 = array;
-				foreach (SettingsWorkspaceTile settingsWorkspaceTile6 in array2)
-				{
-					settingsWorkspaceTile6.SetBounds(0, num4, num, settingsWorkspaceTile6.MeasureHeight(num));
-					num4 = settingsWorkspaceTile6.Bottom;
-				}
+				tiles[i].TabIndex = i;
+				tiles[i].BottomSeparator = twoColumns ? i < 2 : i < tiles.Length - 1;
+				tiles[i].ArrangeContent();
 			}
-			for (int j = 0; j < array.Length; j++)
+			SettingsWorkspaceCategoryPanel category = panel as SettingsWorkspaceCategoryPanel;
+			if (category != null)
 			{
-				array[j].TabIndex = j;
-				array[j].BottomSeparator = j < 3;
-				array[j].ArrangeContent();
+				category.DivisionX = twoColumns ? width / 2 : 0;
+				category.DivisionBottom = twoColumns ? tiles[0].Bottom - Theme.S(8) : 0;
+				category.Invalidate();
 			}
-			SettingsWorkspaceCategoryPanel settingsWorkspaceCategoryPanel = panel as SettingsWorkspaceCategoryPanel;
-			if (settingsWorkspaceCategoryPanel != null)
-			{
-				settingsWorkspaceCategoryPanel.DivisionX = (flag ? (num / 2) : 0);
-				settingsWorkspaceCategoryPanel.DivisionBottom = (flag ? (settingsWorkspaceTile.Bottom - Theme.S(8)) : 0);
-				settingsWorkspaceCategoryPanel.Invalidate();
-			}
-			panel.AutoScrollMinSize = new Size(0, num4);
-			panel.AutoScrollPosition = autoScrollPosition;
+			panel.AutoScrollMinSize = new Size(0, top);
+			panel.AutoScrollPosition = scroll;
 		}
 
 		private void LayoutSettingsAppearance(DBPanel panel)
@@ -11590,7 +11430,7 @@ namespace PaviseApp
 		private bool CanRemoveSelectedWhitelist()
 		{
 			WhitelistItem whitelistItem = ((lstWhite == null) ? null : (lstWhite.SelectedItem as WhitelistItem));
-			if (whitelistItem != null && !whitelistItem.IsGroup && !whitelistItem.Automatic && whitelistItem.View != null)
+			if (whitelistItem != null && !whitelistItem.Automatic && whitelistItem.View != null)
 			{
 				return !whitelistItem.View.Required;
 			}
@@ -11749,7 +11589,6 @@ namespace PaviseApp
 			whiteViews = ((views == null) ? new List<WhitelistRuleView>() : new List<WhitelistRuleView>(views));
 			List<WhitelistItem> list = new List<WhitelistItem>();
 			List<WhitelistItem> list2 = new List<WhitelistItem>();
-			List<WhitelistItem> list3 = new List<WhitelistItem>();
 			foreach (WhitelistRuleView whiteView in whiteViews)
 			{
 				WhitelistItem item = Decorate(new WhitelistItem(whiteView));
@@ -11759,7 +11598,8 @@ namespace PaviseApp
 				}
 				else if (whiteView.Required)
 				{
-					list3.Add(item);
+					// The system category exposes these unchanged rules together.
+					continue;
 				}
 				else
 				{
@@ -11768,7 +11608,6 @@ namespace PaviseApp
 			}
 			list.AddRange(list2);
 			list.AddRange(AutomaticExemptionItems());
-			list.AddRange(list3);
 			whiteRows = list;
 			FilterWhitelistRows();
 		}
@@ -12113,6 +11952,8 @@ namespace PaviseApp
 		private static List<WhitelistItem> AutomaticExemptionItems()
 		{
 			List<WhitelistItem> list = new List<WhitelistItem>();
+			string systemNames = string.Join(" · ", SystemProcessCatalog.PresetWhitelist);
+			list.Add(AutomaticExemption("white.auto.system", Lang.F("white.auto.system.list", systemNames), "shield", DetailSection("white.auto.details.processes", systemNames) + "\r\n\r\n" + Lang.T("white.auto.details.system.note")));
 			string[] value = NetAcceleratorCatalog.ProcessNamesForDisplay();
 			string[] value2 = NetAcceleratorCatalog.TokensForDisplay();
 			list.Add(AutomaticExemption("white.auto.accel", Lang.F("white.auto.accel.list", string.Join(" · ", value)), "chart", DetailSection("white.auto.details.processes", string.Join(" · ", value)) + "\r\n\r\n" + DetailSection("white.auto.details.namekeywords", string.Join(" · ", value2))));
@@ -12137,6 +11978,8 @@ namespace PaviseApp
 			string[] value5 = PeripheralCatalog.NameKeywordsForDisplay();
 			string[] value6 = PeripheralCatalog.DescriptionWordsForDisplay();
 			list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + DetailSection("white.auto.details.vendors", string.Join(" · ", PeripheralCatalog.PresentVendorTokensForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
+			string streamingProducts = string.Join(" · ", StreamingToolCatalog.ProductsForDisplay());
+			list.Add(AutomaticExemption("white.auto.streaming", Lang.F("white.auto.streaming.list", streamingProducts), "chart", DetailSection("white.auto.details.products", streamingProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", StreamingToolCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.streaming.note")));
 			return list;
 		}
 
@@ -12854,6 +12697,8 @@ namespace PaviseApp
 				SetModeFlyout(false);
 			};
 			powerButton = modeFlyout.Power;
+			ConfigureLaptopPerformanceToggle();
+			ConfigureBackgroundGovernanceControl();
 			modeFlyout.Scene.AccessibleName = AutoText("游戏场景", "Game scene");
 			modeFlyout.Scene.IndexChanged = delegate(int index)
 			{
@@ -12874,7 +12719,12 @@ namespace PaviseApp
 			{
 				modeFlyout.Scene.Index = ((gameMode.Preset == PerformancePreset.Competitive) ? 1 : 0);
 				modeFlyout.Scene.Enabled = !gameMode.ModeSwitchLocked;
-				powerButton.Enabled = !gameMode.Enabled || !gameMode.IsActive;
+				RefreshBackgroundGovernanceControl();
+				modeFlyout.SetLaptopPerformance(gameMode.LaptopPerformanceSupportKnown && gameMode.LaptopPerformanceSupported);
+				modeFlyout.LaptopPerformance.SetSilently(gameMode.LaptopPerformanceEnabled);
+				if (PowerPlan.HandheldBypass && (powerPlanChoices.Count != 1 || powerPlanChoices[0] != "off"))
+					LoadStrategyPowerChoices();
+				powerButton.Enabled = !PowerPlan.HandheldBypass && (!gameMode.Enabled || !gameMode.IsActive);
 				if (!powerButton.Enabled)
 				{
 					powerButton.CloseDropDown();
@@ -12884,12 +12734,22 @@ namespace PaviseApp
 				{
 					powerButton.SetSilently(num);
 				}
+				if (modeFlyout.Visible) LayoutModeFlyout();
 			}
 		}
 
 		private void LoadStrategyPowerChoices()
 		{
 			powerPlanChoices.Clear();
+			if (PowerPlan.HandheldBypass)
+			{
+				powerPlanChoices.Add("off");
+				powerButton.SetItems(new[] { AutoText("掌机：不切换", "Handheld: no switching") });
+				powerButton.SetSilently(0);
+				powerButton.Enabled = false;
+				powerButton.AccessibleDescription = AutoText("已识别为掌机，电源计划由系统和厂商软件管理。", "Handheld detected; Windows and the vendor software manage power plans.");
+				return;
+			}
 			powerPlanChoices.Add("managed");
 			powerPlanChoices.Add("off");
 			List<string> list = new List<string>();
@@ -12900,6 +12760,12 @@ namespace PaviseApp
 			{
 				powerPlanChoices.Add(item.Id.ToString());
 				list2.Add(item.Name);
+			}
+			string selected = PowerPlan.EffectivePlanId;
+			if (!powerPlanChoices.Exists(id => string.Equals(id, selected, StringComparison.OrdinalIgnoreCase)))
+			{
+				powerPlanChoices.Add(selected);
+				list2.Add(AutoText("不可用", "Unavailable") + " [" + selected + "]");
 			}
 			powerButton.SetItems(list2.ToArray());
 		}
@@ -12923,7 +12789,7 @@ namespace PaviseApp
 		{
 			if (powerButton != null && !powerButton.IsDisposed)
 			{
-				if (visible && gameMode.Enabled && gameMode.IsActive)
+				if (visible && (PowerPlan.HandheldBypass || gameMode.Enabled && gameMode.IsActive))
 				{
 					visible = false;
 				}
@@ -12942,6 +12808,12 @@ namespace PaviseApp
 
 		private void ChoosePowerPlan(string id)
 		{
+			if (PowerPlan.HandheldBypass)
+			{
+				SetPowerFlyout(false);
+				RefreshStrategyControls();
+				return;
+			}
 			if (gameMode.IsActive && gameMode.Enabled)
 			{
 				SetPowerFlyout(false);
@@ -12975,10 +12847,8 @@ namespace PaviseApp
 				{
 					LoadStrategyPowerChoices();
 					RefreshStrategyControls();
-					modeFlyout.FitViewport(new Size(Math.Max(1, root.ClientSize.Width - Theme.S(24)), Math.Max(1, root.ClientSize.Height - Theme.S(24))));
-					Point point = root.PointToClient(modeButton.PointToScreen(Point.Empty));
-					modeFlyout.Left = Math.Max(Theme.S(12), Math.Min(point.X + modeButton.Width - modeFlyout.Width, root.ClientSize.Width - modeFlyout.Width - Theme.S(12)));
-					modeFlyout.Top = Math.Max(Theme.S(12), Math.Min(point.Y + modeButton.Height + Theme.S(8), root.ClientSize.Height - modeFlyout.Height - Theme.S(12)));
+					LayoutModeFlyout();
+					QueueLaptopPerformanceProbe();
 				}
 				else if (powerButton != null)
 				{
@@ -12990,6 +12860,14 @@ namespace PaviseApp
 					modeFlyout.BringToFront();
 				}
 			}
+		}
+
+		private void LayoutModeFlyout()
+		{
+			modeFlyout.FitViewport(new Size(Math.Max(1, root.ClientSize.Width - Theme.S(24)), Math.Max(1, root.ClientSize.Height - Theme.S(24))));
+			Point point = root.PointToClient(modeButton.PointToScreen(Point.Empty));
+			modeFlyout.Left = Math.Max(Theme.S(12), Math.Min(point.X + modeButton.Width - modeFlyout.Width, root.ClientSize.Width - modeFlyout.Width - Theme.S(12)));
+			modeFlyout.Top = Math.Max(Theme.S(12), Math.Min(point.Y + modeButton.Height + Theme.S(8), root.ClientSize.Height - modeFlyout.Height - Theme.S(12)));
 		}
 
 		private void ChooseGlobalMode(PerformancePreset mode)
@@ -13086,48 +12964,40 @@ namespace PaviseApp
 
 		protected override void DestroyHandle()
 		{
-			destroyingWindowHandle = true;
-			try
+			System.Windows.Forms.Timer timer = fitTimer;
+			fitTimer = null;
+			if (timer != null)
 			{
-				System.Windows.Forms.Timer timer = fitTimer;
-				fitTimer = null;
-				if (timer != null)
-				{
-					timer.Tick -= OnFitTick;
-					timer.Stop();
-					timer.Dispose();
-				}
-				System.Windows.Forms.Timer timer2 = outroTimer;
-				outroTimer = null;
-				if (timer2 != null)
-				{
-					timer2.Tick -= OnOutroTick;
-					timer2.Stop();
-					timer2.Dispose();
-				}
-				if (uiTimer != null)
-				{
-					uiTimer.Stop();
-					if (base.Disposing)
-					{
-						uiTimer.Tick -= OnUiTick;
-						uiTimer.Dispose();
-						uiTimer = null;
-					}
-				}
-				UiClock.Suspended = true;
-				if (paviseCore != null)
-				{
-					paviseCore.SetAnimationEnabled(false);
-				}
-				DisposePageReveal();
-				CancelAutoHide();
-				base.DestroyHandle();
+				timer.Tick -= OnFitTick;
+				timer.Stop();
+				timer.Dispose();
 			}
-			finally
+			System.Windows.Forms.Timer timer2 = outroTimer;
+			outroTimer = null;
+			if (timer2 != null)
 			{
-				destroyingWindowHandle = false;
+				timer2.Tick -= OnOutroTick;
+				timer2.Stop();
+				timer2.Dispose();
 			}
+			if (uiTimer != null)
+			{
+				uiTimer.Stop();
+				if (base.Disposing)
+				{
+					uiTimer.Tick -= OnUiTick;
+					uiTimer.Dispose();
+					uiTimer = null;
+				}
+			}
+			UiClock.Suspended = true;
+			if (paviseCore != null)
+			{
+				paviseCore.SetAnimationEnabled(false);
+			}
+			DisposePageReveal();
+			CancelAutoHide();
+			base.DestroyHandle();
 		}
 
 		protected override void OnHandleDestroyed(EventArgs e)
@@ -13261,10 +13131,6 @@ namespace PaviseApp
 				if (swGame != null)
 				{
 					swGame.SetSilently(gameMode.Enabled);
-				}
-				if (swAcMaster != null)
-				{
-					swAcMaster.SetSilently(!tamer.Paused);
 				}
 				if (swAutoHide != null)
 				{

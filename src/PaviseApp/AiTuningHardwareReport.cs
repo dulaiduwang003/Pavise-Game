@@ -8,8 +8,7 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Called by the report worker. This collector only reads existing Windows
-    // interfaces/caches; it does not apply policies or start sensor services.
+    // Reads existing Windows interfaces/caches without applying policies or starting sensor services.
     internal static class AiTuningHardwareReport
     {
         private const string Unknown = "未知／未读取";
@@ -107,11 +106,17 @@ namespace PaviseApp
                 parts.Add("核心类别、SMT 与缓存域未确认");
                 return string.Join("；", parts.ToArray());
             }
-            parts.Add("混合核心=" + (CpuTopology.Hybrid ? "已检测到" : "未检测到"));
+            parts.Add("混合核心=" + (CpuTopology.CoreTypesConfirmed ? (CpuTopology.Hybrid ? "已确认" : "仅确认一种核心类型") : "未确认"));
+            parts.Add("核心类型证据=" + CpuTopology.CoreTypeDetail);
             parts.Add("非对称缓存=" + (CpuTopology.AsymCache ? "已检测到" : "未检测到"));
             if (multiGroup)
             {
                 parts.Add("现有位掩码仅覆盖有限处理器组，不导出为全机效率核、SMT 或 CCD 结论");
+                return string.Join("；", parts.ToArray());
+            }
+            if (!CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)
+            {
+                parts.Add("物理核数、SMT 与核心类别映射未确认，不按型号或线程数推断");
                 return string.Join("；", parts.ToArray());
             }
             ulong[] cores = CpuTopology.PhysicalCoreMasks();
@@ -123,10 +128,10 @@ namespace PaviseApp
                 if (CpuTopology.PerfMask != 0 && (core & CpuTopology.PerfMask) == core) performance++;
             }
             parts.Add("观测到含 SMT 同胞线程的物理核=" + smt.ToString(CultureInfo.InvariantCulture));
-            if (CpuTopology.Hybrid && CpuTopology.TopologySourcesAgree && CpuTopology.PerfMask != 0 && CpuTopology.EffMask != 0)
+            if (CpuTopology.Hybrid && CpuTopology.CoreTypesConfirmed && CpuTopology.PerfMask != 0 && CpuTopology.EffMask != 0)
                 parts.Add("性能类／效率类物理核=" + performance.ToString(CultureInfo.InvariantCulture) + "／" + efficient.ToString(CultureInfo.InvariantCulture));
             else
-                parts.Add("性能类／效率类物理核=" + (CpuTopology.Hybrid ? "未确认" : "未识别出可区分的核心类别"));
+                parts.Add("性能类／效率类物理核=" + (CpuTopology.CoreTypesConfirmed ? "仅确认一种核心类型" : "未确认"));
             ulong[] l3 = CpuTopology.L3Masks(), domains = CpuTopology.DieMasks();
             parts.Add("L3 缓存域数量=" + Number(l3.Length));
             parts.Add("最大单个 L3 域容量=" + (CpuTopology.L3CacheMb() > 0 ? CpuTopology.L3CacheMb().ToString(CultureInfo.InvariantCulture) + " MiB" : Unknown));
@@ -213,6 +218,7 @@ namespace PaviseApp
 
         private static string ReadPlanChoice()
         {
+            if (PowerPlan.HandheldBypass) return "已识别为掌机：不切换、不创建或维护托管电源计划，交给系统和厂商软件管理";
             if (PowerPlan.NoSwitchSelected) return "不切换电源计划";
             if (PowerPlan.AutomaticSelection)
                 return "由 Pavise 调度；按 CPU 架构和智能/竞技场景选择托管计划，工作站/多处理器组/多插槽使用通用计划，电池沿用本机 DC 基准";

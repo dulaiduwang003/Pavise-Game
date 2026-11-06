@@ -1,4 +1,4 @@
-// 根据调用方提供的硬件信息选择电源来源；此处只做策略判断，不访问系统。
+// 根据调用方提供的硬件信息选择电源方案；此处只做策略判断，不访问系统。
 using System;
 using System.Text.RegularExpressions;
 
@@ -67,7 +67,7 @@ namespace PaviseApp
                         "explicit-source-unavailable; keep OEM/base");
                 // 显式来源仅覆盖自动选择，不代表已验证硬件兼容性。
                 return new ManagedPowerPresetSelection(explicitSource, preserveParking, false, true,
-                    "explicit-source; original source with baseline preferences and topology adaptation");
+                    "explicit-plan; preserve baseline preferences and topology adaptation");
             }
 
             if (facts == null) return Oem(false, "hardware-facts-unavailable");
@@ -94,7 +94,7 @@ namespace PaviseApp
 
             if (amd)
             {
-                // Heterogeneous AMD mobile parts have no dedicated source in this seven-plan collection.
+                // AMD 移动端混合核心使用通用方案。
                 if (mobile && (facts.Hybrid || facts.EfficiencyClassCount > 1))
                     return Chosen("universal", preserveParking, "AMD-mobile-multiple-core-classes; universal source");
                 if (name.IndexOf("X3D", StringComparison.Ordinal) >= 0 || facts.AsymmetricCache)
@@ -106,7 +106,7 @@ namespace PaviseApp
             }
 
             if (!mobile && Regex.IsMatch(name, @"\b\d{3,5}(?:KF|KS|K)\b"))
-                return Chosen("intel-kf", preserveParking, "Intel-desktop-K-KF-KS; KF performance source");
+                return Chosen("intel-k-series", preserveParking, "Intel-desktop-K-KF-KS; K-series plan");
             if (Regex.IsMatch(name, @"\b\d{3,5}(?:HK|HX|XE|X|KF|KS|K)\b"))
                 return mobile ? Chosen("universal", preserveParking, "Intel-mobile-unlocked; universal source")
                     : Oem(preserveParking, "Intel-HEDT-or-unmatched-unlocked-model; keep OEM/base");
@@ -116,7 +116,7 @@ namespace PaviseApp
                 || name.IndexOf("CELERON", StringComparison.Ordinal) >= 0
                 || Regex.IsMatch(name, @"\bINTEL\s+(?:\(R\)\s*)?PROCESSOR\b");
             if (consumerIntel && Regex.IsMatch(name, @"\b(?:\d{3,5}(?:F|TE|T|S|H|U|P|V|Y|G[147])?|N\d{2,3})\b"))
-                return Chosen("powerx-v3", preserveParking, "Intel-Non-K; PowerX v3 source");
+                return Chosen("intel-non-k", preserveParking, "Intel-Non-K; standard processor plan");
             return Oem(preserveParking, "Intel-model-unclassified; keep OEM/base");
         }
 

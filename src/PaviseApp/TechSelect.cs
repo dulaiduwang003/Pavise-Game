@@ -55,6 +55,19 @@ namespace PaviseApp
 
 		private readonly DropdownHost dropdown;
 
+		private bool roundedStyle;
+
+		internal bool RoundedStyle
+		{
+			get { return roundedStyle; }
+			set
+			{
+				if (roundedStyle == value) return;
+				roundedStyle = value;
+				Invalidate();
+			}
+		}
+
 		public int SelectedIndex
 		{
 			get
@@ -137,6 +150,7 @@ namespace PaviseApp
 		}
 
 		protected virtual int MaximumVisibleItems { get { return Int32.MaxValue; } }
+
 
 		public Rectangle TextBounds
 		{
@@ -402,6 +416,11 @@ namespace PaviseApp
 			{
 				return;
 			}
+			if (RoundedStyle)
+			{
+				PaintRounded(graphics);
+				return;
+			}
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle rectangle = new Rectangle(0, 0, Math.Max(1, base.Width - 1), Math.Max(1, base.Height - 1));
 			bool flag = base.Enabled && (Focused || DropDownVisible);
@@ -420,6 +439,27 @@ namespace PaviseApp
 			}
 			TextRenderer.DrawText(graphics, SelectedText, DsType.Font(DsText.Body), TextBounds, base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			DsPaint.DropArrow(graphics, base.Width - Theme.S(19), base.Height / 2, Theme.S(4), DropDownVisible, (!base.Enabled) ? Theme.Faint : (flag ? Theme.Accent : Theme.Dim));
+		}
+
+		private void PaintRounded(Graphics graphics)
+		{
+			graphics.SmoothingMode = SmoothingMode.AntiAlias;
+			using (GraphicsPath path = Theme.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(7)))
+			{
+				using (var brush = new SolidBrush(Col.Lerp(Theme.Inset, Theme.CardHover, DropDownVisible ? 1f : State.HoverIfEnabled)))
+					graphics.FillPath(brush, path);
+				using (var pen = new Pen((Enabled && (DropDownVisible || Focused)) ? Theme.Accent : Col.Lerp(Theme.Stroke, Theme.StrokeHi, State.HoverIfEnabled)))
+					graphics.DrawPath(pen, path);
+				PaintBusy(graphics, ClientRectangle, path);
+			}
+			TextRenderer.DrawText(graphics, SelectedText, Theme.UI(9.5f, false),
+				new Rectangle(Theme.S(11), 0, Math.Max(1, Width - Theme.S(40)), Height), Enabled ? Theme.Fg : Theme.Dim,
+				TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+			int x = Width - Theme.S(21), y = Height / 2, delta = Theme.S(4), direction = DropDownVisible ? -1 : 1;
+			using (var pen = new Pen(Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
+				graphics.DrawLines(pen, new[] {
+					new Point(x - delta, y - direction * delta / 2), new Point(x, y + direction * delta / 2),
+					new Point(x + delta, y - direction * delta / 2) });
 		}
 
 		protected override void Dispose(bool disposing)

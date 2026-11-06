@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -14,6 +17,10 @@ namespace PaviseApp
 
 		internal const int AuditSeconds = 5;
 
+		internal const int AcquireReadbackSamples = 3;
+
+		internal const int AcquireReadbackDelayMs = 20;
+
 		internal Request Set;
 
 		internal Read Query;
@@ -26,11 +33,63 @@ namespace PaviseApp
 
 		private int releaseFailures;
 
+		private readonly AutomaticRecoveryBudget recoveryBudget = new AutomaticRecoveryBudget();
+
+		internal void BeginAutomaticCycle(string identity)
+		{
+			lock (gate)
+			{
+				ActionFailureStore.BeginAutomaticCycle(FailureAction, "system", identity);
+				if (recoveryBudget.BeginCycle(identity))
+				{
+					releaseRetryAt = 0L;
+					releaseFailures = recoveryBudget.FailureCount;
+					nextAudit = 0L;
+				}
+			}
+		}
+
 		private bool exemptionOwned;
 
 		private int originalControl;
 
 		private int originalState;
+
+		private string nativeFailure;
+
+		private string failureDetail;
+
+		private StringBuilder acquisitionTrace;
+
+		private string acquisitionDetail;
+
+		private bool nativeAcquisition;
+
+		internal string AcquisitionDetail
+		{
+			get { lock (gate) { return acquisitionDetail ?? ""; } }
+		}
+
+		private void TraceAcquisition(string detail)
+		{
+			if (acquisitionTrace == null) return;
+			if (acquisitionTrace.Length > 0) acquisitionTrace.Append("; ");
+			acquisitionTrace.Append(detail);
+		}
+
+		internal string FailureDetail
+		{
+			get
+			{
+				lock (gate)
+				{
+					string original = failureDetail ?? ActionFailureStore.FailureReason(FailureAction, "system");
+					if (HasResidue && !string.IsNullOrEmpty(nativeFailure) && nativeFailure != original)
+						return nativeFailure + (string.IsNullOrEmpty(original) ? "" : " cause={" + original + "}");
+					return original ?? "";
+				}
+			}
+		}
 
 		internal bool Active { get; private set; }
 
@@ -85,6 +144,15 @@ namespace PaviseApp
 			Query = NativeQuery;
 		}
 
+		internal string ReadState(out bool hasResidue)
+		{
+			lock (gate)
+			{
+				hasResidue = HasResidue;
+				return State;
+			}
+		}
+
 		internal bool Readback(out bool verified, out uint actual, out uint finest)
 		{
 			lock (gate)
@@ -106,15 +174,20 @@ namespace PaviseApp
 
 		private int NativeSet(uint desired, bool acquire, out uint actual)
 		{
+			actual = 0;
+			if (acquire) nativeAcquisition = true;
 			if (acquire && Native.OsBuild() >= 22000)
 			{
-				actual = 0u;
 				int controlMask;
 				int stateMask;
-				if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask, out stateMask))
+				int win32, ntStatus;
+				if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask, out stateMask, out win32, out ntStatus))
 				{
+					nativeFailure = PowerReadFailure("exemption-query", win32, ntStatus);
+					TraceAcquisition("exemptionBefore=unreadable " + nativeFailure);
 					return -1;
 				}
+				TraceAcquisition("exemptionBefore=" + controlMask + "/" + stateMask);
 				if (!exemptionOwned)
 				{
 					originalControl = controlMask;
@@ -123,19 +196,56 @@ namespace PaviseApp
 				if (!Native.TimerExemptOk(controlMask, stateMask))
 				{
 					exemptionOwned = true;
-					if (!Native.RestorePowerThrottling(new IntPtr(-1), controlMask | 4, stateMask & -5))
+					if (!Native.RestorePowerThrottling(new IntPtr(-1), controlMask | 4, stateMask & -5, out win32))
 					{
+						nativeFailure = "stage=exemption-write api=SetProcessInformation win32=" + win32;
 						return -1;
 					}
 					int controlMask2;
 					int stateMask2;
-					if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask2, out stateMask2) || !Native.TimerExemptOk(controlMask2, stateMask2))
+					if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask2, out stateMask2, out win32, out ntStatus))
 					{
+						nativeFailure = PowerReadFailure("exemption-readback", win32, ntStatus);
+						TraceAcquisition("exemptionAfter=unreadable " + nativeFailure);
+						return -1;
+					}
+					TraceAcquisition("exemptionAfter=" + controlMask2 + "/" + stateMask2);
+					if (!Native.TimerExemptOk(controlMask2, stateMask2))
+					{
+						nativeFailure = "stage=exemption-readback result=mismatch control=" + controlMask2 + " state=" + stateMask2;
 						return -1;
 					}
 				}
+				else TraceAcquisition("exemptionAfter=" + controlMask + "/" + stateMask + " already-confirmed");
 			}
-			return Native.NtSetTimerResolution(desired, acquire, out actual);
+			else if (acquire) TraceAcquisition("exemption=not-required");
+			int status = Native.NtSetTimerResolution(desired, acquire, out actual);
+			if (acquire) TraceAcquisition("ntSetStatus=0x" + status.ToString("X8") + " ntSetActual100ns=" + actual);
+			if (status < 0) nativeFailure = TimerStatus(acquire ? "request" : "release", "NtSetTimerResolution", status);
+			return status;
+		}
+
+		private static string TimerStatus(string stage, string api, int status)
+		{
+			return "stage=" + stage + " api=" + api + " ntstatus=0x" + status.ToString("X8");
+		}
+
+		private static string PowerReadFailure(string stage, int win32, int status)
+		{
+			return TimerStatus(stage, "GetProcessInformation/NtQueryInformationProcess", status) + " win32=" + win32;
+		}
+
+		private string CurrentFailure(string stage)
+		{
+			return string.IsNullOrEmpty(nativeFailure) ? "stage=" + stage : nativeFailure;
+		}
+
+		private void RecordFailure(string reason)
+		{
+			if (acquisitionTrace != null && acquisitionTrace.Length > 0)
+				reason += " request={" + acquisitionTrace + "}";
+			failureDetail = reason;
+			ActionFailureStore.Trip(FailureAction, "system", reason);
 		}
 
 		private static int NativeQuery(out uint coarsest, out uint finest, out uint current)
@@ -151,21 +261,42 @@ namespace PaviseApp
 			}
 			try
 			{
+				nativeFailure = null;
 				int controlMask;
 				int stateMask;
-				if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask, out stateMask))
+				int win32, ntStatus;
+				if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out controlMask, out stateMask, out win32, out ntStatus))
 				{
+					nativeFailure = PowerReadFailure("exemption-restore-query", win32, ntStatus);
 					return false;
 				}
-				if (Native.TimerExemptOk(controlMask, stateMask) && !Native.RestorePowerThrottling(new IntPtr(-1), (controlMask & -5) | (originalControl & 4), (stateMask & -5) | (originalState & 4)))
+				if (Native.TimerExemptOk(controlMask, stateMask))
 				{
-					return false;
+					int desiredControl = (controlMask & -5) | (originalControl & 4);
+					int desiredState = (stateMask & -5) | (originalState & 4);
+					if (!Native.RestorePowerThrottling(new IntPtr(-1), desiredControl, desiredState, out win32))
+					{
+						nativeFailure = "stage=exemption-restore-write api=SetProcessInformation win32=" + win32;
+						return false;
+					}
+					int verifiedControl, verifiedState;
+					if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out verifiedControl, out verifiedState, out win32, out ntStatus))
+					{
+						nativeFailure = PowerReadFailure("exemption-restore-readback", win32, ntStatus);
+						return false;
+					}
+					if ((verifiedControl & 4) != (originalControl & 4) || (verifiedState & 4) != (originalState & 4))
+					{
+						nativeFailure = "stage=exemption-restore-readback result=mismatch control=" + verifiedControl + " state=" + verifiedState;
+						return false;
+					}
 				}
 				exemptionOwned = false;
 				return true;
 			}
-			catch
+			catch (Exception error)
 			{
+				nativeFailure = "stage=exemption-restore exception=" + error.GetType().Name;
 				return false;
 			}
 		}
@@ -174,7 +305,13 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				return UpdateLocked(want, now);
+				long previousDeadline = releaseRetryAt;
+				Stopwatch elapsed = Stopwatch.StartNew();
+				bool result = UpdateLocked(want, now);
+				if (releaseRetryAt != previousDeadline && releaseRetryAt > now) releaseRetryAt += elapsed.Elapsed.Ticks;
+                if (!result && HasResidue)
+                    RecoveryAttemptTrace.FailureSchedule(recoveryBudget.FailureCount, AutomaticRecoveryBudget.MaximumFailures, releaseRetryAt);
+				return result;
 			}
 		}
 
@@ -183,21 +320,25 @@ namespace PaviseApp
 			if (!want)
 			{
 				nextAudit = 0L;
-				if (now < releaseRetryAt)
+				if (now < releaseRetryAt || (HasResidue && !recoveryBudget.CanAttempt))
 				{
 					return !HasResidue;
 				}
 				if (!Active)
 				{
+					bool hadResidue = HasResidue;
 					Verified = false;
 					Failed = !CleanupExemption();
+					recoveryBudget.Record(!Failed);
+					if (hadResidue && !Failed && !HasResidue) recoveryBudget.CompleteRecovery();
 					if (Failed)
 					{
-						ActionFailureStore.Trip("GlobalTimerResolutionLeaseV1", "system", "Timer exemption restoration failed");
+						RecordFailure(CurrentFailure("exemption-restore"));
 						DelayRelease(now);
 					}
 					else
 					{
+						ActionFailureStore.CancelApply(FailureAction, "system");
 						releaseFailures = 0;
 						releaseRetryAt = 0L;
 					}
@@ -206,11 +347,12 @@ namespace PaviseApp
 				bool flag = Release();
 				if (!flag)
 				{
-					ActionFailureStore.Trip("GlobalTimerResolutionLeaseV1", "system", "Timer request release failed");
+					RecordFailure(CurrentFailure("release"));
 					DelayRelease(now);
 				}
 				else
 				{
+					ActionFailureStore.CancelApply(FailureAction, "system");
 					releaseFailures = 0;
 					releaseRetryAt = 0L;
 				}
@@ -218,7 +360,8 @@ namespace PaviseApp
 			}
 			if (ActionFailureStore.IsBlocked("GlobalTimerResolutionLeaseV1", "system"))
 			{
-				if (HasResidue && now >= releaseRetryAt)
+				failureDetail = ActionFailureStore.FailureReason(FailureAction, "system");
+				if (HasResidue && recoveryBudget.CanAttempt && now >= releaseRetryAt)
 				{
 					if (!Release())
 					{
@@ -226,6 +369,7 @@ namespace PaviseApp
 					}
 					else
 					{
+						ActionFailureStore.CancelApply(FailureAction, "system");
 						releaseFailures = 0;
 						releaseRetryAt = 0L;
 					}
@@ -233,11 +377,12 @@ namespace PaviseApp
 				Failed = true;
 				return false;
 			}
-			if (ActionFailureStore.IsRetryPending("GlobalTimerResolutionLeaseV1", "system"))
+			if (ActionFailureStore.IsIsolated("GlobalTimerResolutionLeaseV1", "system"))
 			{
+				if (HasResidue && (!recoveryBudget.CanAttempt || now < releaseRetryAt)) return false;
 				if (HasResidue && !Release())
 				{
-					ActionFailureStore.Trip("GlobalTimerResolutionLeaseV1", "system", "Timer recovery incomplete before retry");
+					RecordFailure(CurrentFailure("recovery-before-apply"));
 					DelayRelease(now);
 					return false;
 				}
@@ -251,7 +396,7 @@ namespace PaviseApp
 				}
 				if (!ReadCurrent(now))
 				{
-					return Isolate("Timer readback failed", now);
+					return Isolate(CurrentFailure("query"), now);
 				}
 				if (TargetReached)
 				{
@@ -265,7 +410,7 @@ namespace PaviseApp
 				}
 				if (!Release(false))
 				{
-					ActionFailureStore.Trip("GlobalTimerResolutionLeaseV1", "system", "Timer request release failed before maintenance");
+					RecordFailure(CurrentFailure("release-before-maintenance"));
 					DelayRelease(now);
 					return false;
 				}
@@ -280,41 +425,87 @@ namespace PaviseApp
 			if (!ActionFailureStore.TryBeginApply("GlobalTimerResolutionLeaseV1", "system", out reason))
 			{
 				Failed = true;
+				failureDetail = string.IsNullOrEmpty(reason) ? "stage=admission result=denied" : reason;
 				return false;
 			}
+			acquisitionTrace = new StringBuilder();
+			nativeAcquisition = false;
 			try
 			{
+				nativeFailure = null;
 				uint actual;
-				if (Set(5000u, true, out actual) >= 0)
+				int status = Set(5000u, true, out actual);
+				TraceAcquisition("setStatus=0x" + status.ToString("X8") + " setActual100ns=" + actual);
+				if (status >= 0)
 				{
 					Active = true;
 					Actual = actual;
 					Failed = false;
-					if (!ReadCurrent(now))
+					// Observe the same successful request at most three times. This
+					// does not acquire again or replenish the action failure budget.
+					for (int sample = 1; sample <= AcquireReadbackSamples; sample++)
 					{
-						return Isolate("Timer request accepted but readback failed", now);
+						if (sample > 1)
+						{
+							Thread.Sleep(AcquireReadbackDelayMs);
+							if (!ConfirmAcquisitionExemption(sample))
+								return Isolate(CurrentFailure("exemption-during-acquire"), now);
+						}
+						if (!ReadCurrent(now, sample))
+							return Isolate(CurrentFailure("query-after-acquire"), now);
+						if (TargetReached || Finest > Desired) break;
 					}
 					if (!TargetReached && Finest <= 5000)
 					{
-						return Isolate("Timer request did not reach the supported target", now);
+						return Isolate("stage=target-readback desired100ns=" + Desired + " actual100ns=" + Actual + " finest100ns=" + Finest, now);
 					}
 					if (!ActionFailureStore.CompleteApply("GlobalTimerResolutionLeaseV1", "system"))
 					{
-						return Isolate("Timer isolation record persistence failed", now);
+						return Isolate("stage=completion-record result=persistence-failed", now);
 					}
+					failureDetail = null;
+					nativeFailure = null;
 					return true;
 				}
+				if (string.IsNullOrEmpty(nativeFailure)) nativeFailure = TimerStatus("request", "NtSetTimerResolution", status);
+				Verified = false;
+				return Isolate(CurrentFailure("request"), now);
 			}
-			catch
+			catch (Exception error)
 			{
+				nativeFailure = "stage=request exception=" + error.GetType().Name;
+				Verified = false;
+				return Isolate(CurrentFailure("request"), now);
 			}
-			Verified = false;
-			return Isolate("Timer request failed", now);
+			finally
+			{
+				acquisitionDetail = acquisitionTrace.ToString();
+				acquisitionTrace = null;
+				nativeAcquisition = false;
+			}
+		}
+
+		private bool ConfirmAcquisitionExemption(int sample)
+		{
+			// The native path always refers to this process; it cannot be reused
+			// as another process identity during a synchronous acquisition.
+			if (!nativeAcquisition || Native.OsBuild() < 22000) return true;
+			int control, state, win32, status;
+			if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out control, out state, out win32, out status))
+			{
+				nativeFailure = PowerReadFailure("exemption-during-acquire", win32, status);
+				TraceAcquisition("exemptionSample" + sample + "=unreadable " + nativeFailure);
+				return false;
+			}
+			TraceAcquisition("exemptionSample" + sample + "=" + control + "/" + state);
+			if (Native.TimerExemptOk(control, state)) return true;
+			nativeFailure = "stage=exemption-during-acquire result=mismatch control=" + control + " state=" + state;
+			return false;
 		}
 
 		private bool Isolate(string reason, long now)
 		{
-			ActionFailureStore.Trip("GlobalTimerResolutionLeaseV1", "system", reason);
+			RecordFailure(reason);
 			if (HasResidue && !Release())
 			{
 				DelayRelease(now);
@@ -332,6 +523,17 @@ namespace PaviseApp
 
 		private bool Release(bool cleanup = true)
 		{
+			if (HasResidue && !recoveryBudget.CanAttempt) return false;
+			bool hadResidue = HasResidue;
+			bool restored = ReleaseCore(cleanup);
+			recoveryBudget.Record(restored);
+			if (hadResidue && restored && !HasResidue) recoveryBudget.CompleteRecovery();
+			return restored;
+		}
+
+		private bool ReleaseCore(bool cleanup)
+		{
+			nativeFailure = null;
 			if (!Active)
 			{
 				Failed = cleanup && !CleanupExemption();
@@ -340,7 +542,8 @@ namespace PaviseApp
 			try
 			{
 				uint actual;
-				if (Set(5000u, false, out actual) >= 0)
+				int status = Set(5000u, false, out actual);
+				if (status >= 0)
 				{
 					Active = false;
 					Actual = actual;
@@ -348,15 +551,17 @@ namespace PaviseApp
 					Failed = cleanup && !CleanupExemption();
 					return !Failed;
 				}
+				if (string.IsNullOrEmpty(nativeFailure)) nativeFailure = TimerStatus("release", "NtSetTimerResolution", status);
 			}
-			catch
+			catch (Exception error)
 			{
+				nativeFailure = "stage=release exception=" + error.GetType().Name;
 			}
 			Failed = true;
 			return false;
 		}
 
-		private bool ReadCurrent(long now)
+		private bool ReadCurrent(long now, int acquisitionSample = 0)
 		{
 			nextAudit = now + TimeSpan.FromSeconds(5.0).Ticks;
 			Verified = false;
@@ -365,16 +570,28 @@ namespace PaviseApp
 				uint coarsest;
 				uint finest;
 				uint current;
-				if (Query(out coarsest, out finest, out current) >= 0 && finest != 0 && coarsest >= finest && current != 0)
+				int status = Query(out coarsest, out finest, out current);
+				if (acquisitionSample > 0)
+					TraceAcquisition("query" + acquisitionSample + "Status=0x" + status.ToString("X8")
+						+ " actual100ns=" + current + " finest100ns=" + finest + " coarsest100ns=" + coarsest);
+				if (status >= 0 && finest != 0 && coarsest >= finest && current != 0)
 				{
 					Coarsest = coarsest;
 					Finest = finest;
 					Actual = current;
 					Verified = true;
 				}
+				else
+				{
+					nativeFailure = TimerStatus("query", "NtQueryTimerResolution", status)
+						+ " coarsest100ns=" + coarsest + " finest100ns=" + finest + " current100ns=" + current;
+				}
 			}
-			catch
+			catch (Exception error)
 			{
+				if (acquisitionSample > 0)
+					TraceAcquisition("query" + acquisitionSample + "Exception=" + error.GetType().Name);
+				nativeFailure = "stage=query exception=" + error.GetType().Name;
 			}
 			return Verified;
 		}

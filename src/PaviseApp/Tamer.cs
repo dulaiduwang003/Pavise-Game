@@ -15,6 +15,9 @@ namespace PaviseApp
 
 			public string Group;
 
+			public long Birth;
+
+
 			public AcquireResult Result;
 
 			public string FailureDetail;
@@ -29,6 +32,86 @@ namespace PaviseApp
 		internal const int OverflowSweepIntervalMs = 8000;
 
 		internal const int FailedSweepRetryMs = 1000;
+
+		private sealed class SweepRetryPhase
+		{
+			internal int Failures;
+			internal long NotBefore;
+			internal int CaptureFailures;
+			internal long CaptureNotBefore;
+		}
+		private readonly Dictionary<string, SweepRetryPhase> sweepRetryPhases = new Dictionary<string, SweepRetryPhase>(StringComparer.Ordinal);
+		private readonly Dictionary<int, long> sweepEventBirths = new Dictionary<int, long>();
+		private readonly HashSet<string> sweepObservedEvents = new HashSet<string>(StringComparer.Ordinal);
+		private long sweepEventPhase;
+		private string sweepPhaseKey;
+		private string sweepConfigurationKey;
+		private SweepRetryPhase captureRetryPhase = new SweepRetryPhase();
+		private ProcessSnapshot iterationSnapshot;
+		private bool iterationCaptureAttempted;
+
+		private ProcessSnapshot CaptureSweepSnapshot()
+		{
+			if (iterationCaptureAttempted) return iterationSnapshot;
+			iterationCaptureAttempted = true;
+			if (captureRetryPhase.CaptureFailures >= 3 || DateTime.UtcNow.Ticks < captureRetryPhase.CaptureNotBefore) return null;
+			try { iterationSnapshot = ProcessSnapshotSource.Capture(); } catch { iterationSnapshot = null; }
+			if (iterationSnapshot == null)
+			{
+				captureRetryPhase.CaptureFailures++;
+				captureRetryPhase.CaptureNotBefore = DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;
+				Logger.Log("Tamer snapshot: attempt=" + captureRetryPhase.CaptureFailures + "/3; failed capture shared by observation and sweep");
+			}
+			else { captureRetryPhase.CaptureFailures = 0; captureRetryPhase.CaptureNotBefore = 0; }
+			return iterationSnapshot;
+		}
+
+		private SweepRetryPhase SelectSweepRetryPhase(List<ProcessChange> changes, out bool changed)
+		{
+			Dictionary<string, string> active = BuildActive();
+			if (changes != null)
+			{
+				foreach (ProcessChange change in changes)
+				{
+					long birth;
+					string group;
+					AcquireRequest request;
+					if (change.Kind == ProcessChangeKind.Started)
+					{
+						if (string.IsNullOrEmpty(change.Name) || !active.TryGetValue(change.Name, out group)
+							|| !TryBuildAcquireRequest(change.Pid, change.Name, group, out request) || request.Birth <= 0) continue;
+						birth = request.Birth;
+						sweepEventBirths[change.Pid] = birth;
+					}
+					else
+					{
+						if (!sweepEventBirths.TryGetValue(change.Pid, out birth))
+						{
+							string name = core.NameOf(change.Pid);
+							if (name == null || !active.ContainsKey(name)) continue;
+							birth = core.CreationOf(change.Pid);
+						}
+						if (birth <= 0 || IsPidCurrentlyAlive(change.Pid)) continue;
+						core.ObserveTargetExit(change.Pid, birth);
+					}
+					// Sequence alone is not process identity. Replayed notifications cannot refill a budget.
+					string identity = change.Pid + "/" + birth + "/" + change.Kind;
+					if (sweepObservedEvents.Add(identity)) sweepEventPhase++;
+				}
+			}
+			var names = new List<string>(active.Keys);
+			names.Sort(StringComparer.OrdinalIgnoreCase);
+			string configuration = (governanceContextKey ?? "") + "\n" + mode + "\n" + string.Join("\n", names.ToArray());
+			string key = configuration + "\nevent:" + sweepEventPhase;
+			SweepRetryPhase previous;
+			bool recovering = sweepPhaseKey != null && sweepRetryPhases.TryGetValue(sweepPhaseKey, out previous) && previous.Failures > 0;
+			changed = configuration != sweepConfigurationKey || (recovering && key != sweepPhaseKey);
+			sweepConfigurationKey = configuration;
+			sweepPhaseKey = key;
+			SweepRetryPhase phase;
+			if (!sweepRetryPhases.TryGetValue(key, out phase)) sweepRetryPhases[key] = phase = new SweepRetryPhase();
+			return phase;
+		}
 
 		private const int MaxPendingChanges = 512;
 
@@ -50,8 +133,6 @@ namespace PaviseApp
 
 		private readonly int selfSession;
 
-		private volatile bool paused;
-
 		private volatile int mode = 2;
 
 		private volatile bool stopping;
@@ -72,6 +153,10 @@ namespace PaviseApp
 		private AntiCheatAffinityRuntime affinityRuntime;
 		private bool affinityFastWake;
 		private bool affinityShutdownOk = true;
+		private bool groupMigrationReady;
+		private List<KeyValuePair<string, int>> governanceServices;
+		private long governanceServicesNextRead;
+		private string governanceContextKey;
 
 		internal string AffinityDetails(string group)
 		{
@@ -130,12 +215,16 @@ namespace PaviseApp
 		{
 			get
 			{
-				return paused;
-			}
-			set
-			{
-				paused = value;
-				Poke();
+				if (!groupMigrationReady) return true;
+				lock (sync)
+				{
+					foreach (AcGroup group in AntiCheatCatalog.Groups)
+					{
+						bool on;
+						if (group.Suppressible && enabled.TryGetValue(group.Key, out on) && on) return false;
+					}
+					return true;
+				}
 			}
 		}
 
@@ -158,7 +247,6 @@ namespace PaviseApp
 		public Tamer(SuppressionCore core)
 		{
 			this.core = core;
-			paused = !Settings.Load("TameOn", false);
 			using (Process process = Process.GetCurrentProcess())
 			{
 				selfPid = process.Id;
@@ -171,13 +259,23 @@ namespace PaviseApp
 					selfSession = -1;
 				}
 			}
+			groupMigrationReady = MigrateGroupControls();
 			AcGroup[] groups = AntiCheatCatalog.Groups;
 			foreach (AcGroup acGroup in groups)
 			{
-				enabled[acGroup.Key] = Settings.Load("Tame_" + acGroup.Key, acGroup.Default);
+				enabled[acGroup.Key] = groupMigrationReady && Settings.Load("Tame_" + acGroup.Key, acGroup.Default);
 			}
 			mode = (int)AntiCheatModes.Current;
 			RetireNonSuppressibleGroups();
+		}
+
+		private static bool MigrateGroupControls()
+		{
+			List<string> groups = new List<string>();
+			foreach (AcGroup group in AntiCheatCatalog.Groups) if (group.Suppressible) groups.Add(group.Key);
+			bool ready = AntiCheatGroupMigration.Ensure(AntiCheatGroupMigration.ReadStored, Settings.SaveDurable, groups);
+			if (!ready) Logger.Warn("AC group-control migration unresolved; governance remains paused");
+			return ready;
 		}
 
 		private void RetireNonSuppressibleGroups()
@@ -202,7 +300,7 @@ namespace PaviseApp
 			lock (sync)
 			{
 				bool value;
-				return enabled.TryGetValue(key, out value) && value;
+				return groupMigrationReady && enabled.TryGetValue(key, out value) && value;
 			}
 		}
 
@@ -224,9 +322,10 @@ namespace PaviseApp
 			{
 				lock (sync)
 				{
+					if (!groupMigrationReady) groupMigrationReady = MigrateGroupControls();
+					if (!groupMigrationReady || !Settings.SaveDurable("Tame_" + key, on)) return;
 					enabled[key] = on;
 				}
-				Settings.Save("Tame_" + key, on);
 				Poke();
 				Logger.Log(Lang.T("log.tamer.1") + key + " " + (on ? Lang.T("log.tamer.3") : Lang.T("log.tamer.4")));
 			}
@@ -234,9 +333,9 @@ namespace PaviseApp
 
 		public string GroupStatus(string key)
 		{
-			if (paused)
+			if (Paused)
 			{
-				return WithAffinity(Lang.T("gs.moff"), key);
+				return WithAffinity(Lang.T("gs.noff"), key);
 			}
 			lock (sync)
 			{
@@ -263,7 +362,7 @@ namespace PaviseApp
 
 		public int GroupState(string key)
 		{
-			if (paused)
+			if (Paused)
 			{
 				return 0;
 			}
@@ -350,6 +449,7 @@ namespace PaviseApp
 			long num2 = 0L;
 			long num3 = 0L;
 			long nextCoreRetry = 0L;
+			long failedSweepRetryNotBefore = 0L;
 			while (!stopping)
 			{
 				try
@@ -357,31 +457,36 @@ namespace PaviseApp
 					lock (engineSync)
 					{
 						long ticks = DateTime.UtcNow.Ticks;
-						if (ticks >= num3)
-						{
-							num3 = ticks + TimeSpan.FromSeconds(30.0).Ticks;
-							try
-							{
-								ObserveRecordOnlyProcesses(ProcessSnapshotSource.Capture());
-							}
-							catch
-							{
-							}
-						}
 						bool flag = ticks < Interlocked.Read(ref panicUntilUtcTicks);
 						List<ProcessChange> changes = DrainProcessChanges();
 						bool flag2 = false;
 						bool flag3 = false;
-						if (!paused && !flag)
+						bool phaseChanged = false;
+						RefreshGovernanceSession();
+						SweepRetryPhase retryPhase = SelectSweepRetryPhase(changes, out phaseChanged);
+						captureRetryPhase = retryPhase;
+						iterationSnapshot = null;
+						iterationCaptureAttempted = false;
+						if (ticks >= num3)
 						{
+							num3 = ticks + TimeSpan.FromSeconds(30).Ticks;
+							try { ObserveRecordOnlyProcesses(CaptureSweepSnapshot()); } catch { }
+						}
+						if (!Paused && !flag)
+						{
+							failedSweepRetryNotBefore = retryPhase.NotBefore;
+							if (phaseChanged) num = retryPhase.NotBefore;
 							flag2 = Interlocked.Exchange(ref fullSweepRequested, 0) != 0;
 							flag3 = Interlocked.Exchange(ref overflowSweepRequested, 0) != 0;
 						}
-						if (paused || flag)
+						if (Paused || flag)
 						{
-							ReleaseAll(paused ? Lang.T("gs.moff") : Lang.T("t.tamer.6"));
+							ReleaseAll(Paused ? Lang.T("gs.noff") : Lang.T("t.tamer.6"));
 						}
-						else if (flag2 || ticks >= num || (flag3 && ticks >= num2))
+						// Healthy scans remain periodic. Only failed execution consumes a phase's
+						// budget; a generic Poke cannot refill it or bypass its failure deadline.
+						else if (retryPhase.Failures < 3 && ticks >= failedSweepRetryNotBefore
+							&& (phaseChanged || (flag2 && retryPhase.Failures == 0) || ticks >= num || (flag3 && ticks >= num2)))
 						{
 							bool flag4 = false;
 							try
@@ -392,6 +497,9 @@ namespace PaviseApp
 							{
 								if (flag4)
 								{
+									failedSweepRetryNotBefore = 0L;
+									retryPhase.Failures = 0;
+									retryPhase.NotBefore = 0L;
 									num = DateTime.UtcNow.AddMilliseconds(FullSweepInterval(ProcessEventsAvailable)).Ticks;
 									if (flag3)
 									{
@@ -400,12 +508,20 @@ namespace PaviseApp
 								}
 								else
 								{
-									Interlocked.Exchange(ref fullSweepRequested, 1);
 									if (flag3)
 									{
 										Interlocked.Exchange(ref overflowSweepRequested, 1);
 									}
-									num = DateTime.UtcNow.AddMilliseconds(1000.0).Ticks;
+									retryPhase.Failures++;
+									failedSweepRetryNotBefore = retryPhase.Failures >= 3 ? DateTime.MaxValue.Ticks : DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;
+									retryPhase.NotBefore = failedSweepRetryNotBefore;
+									Logger.Log("Tamer sweep recovery: phase=" + sweepPhaseKey + " attempt=" + retryPhase.Failures + "/3; "
+										+ (retryPhase.Failures >= 3 ? "active retries stopped; process events remain active" : "backoff"));
+									num = failedSweepRetryNotBefore;
+									// A failed snapshot did not cover the drained events. Put them back
+									// through the bounded queue so the next wake can handle them incrementally.
+									if (changes != null && changes.Count > 0)
+										NotifyProcessChanges(new ProcessChangeBatch(changes.ToArray(), false));
 								}
 							}
 						}
@@ -415,14 +531,28 @@ namespace PaviseApp
 							{
 								Interlocked.Exchange(ref overflowSweepRequested, 1);
 							}
-							HandleProcessChanges(changes);
+							try
+							{
+								HandleProcessChanges(changes);
+							}
+							catch
+							{
+								// A partial incremental batch needs a full snapshot to reconcile it.
+								// Do not replay a failing batch on an immediate self-generated wake.
+								Interlocked.Exchange(ref overflowSweepRequested, 1);
+								if (ticks >= failedSweepRetryNotBefore)
+									failedSweepRetryNotBefore = DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;
+								retryPhase.NotBefore = failedSweepRetryNotBefore;
+								num = failedSweepRetryNotBefore;
+								throw;
+							}
 						}
 						if (ticks >= nextCoreRetry)
 						{
 							core.RetryPending();
 							nextCoreRetry = ticks + TimeSpan.FromSeconds(8).Ticks;
 						}
-						SyncAffinity(paused || flag);
+						SyncAffinity(Paused || flag);
 					}
 					Logger.RepeatedRecovered("Tamer");
 				}
@@ -431,7 +561,7 @@ namespace PaviseApp
 					Logger.RepeatedError("Tamer", Lang.T("log.tamer.7") + ex.GetType().Name + ": " + ex.Message, -1L);
 				}
 				long num4 = num - DateTime.UtcNow.Ticks;
-				long num5 = num2 - DateTime.UtcNow.Ticks;
+				long num5 = Math.Max(num2, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
 				if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0 && num5 > 0 && (num4 <= 0 || num5 < num4))
 				{
 					num4 = num5;
@@ -441,23 +571,92 @@ namespace PaviseApp
 				kick.WaitOne(millisecondsTimeout);
 			}
 			affinityShutdownOk = ReleaseAll(Lang.T("t.gamemode.53"));
+			if (affinityRuntime != null) affinityShutdownOk = affinityRuntime.Shutdown() && affinityShutdownOk;
 		}
 
 		private void SyncAffinity(bool suspended)
 		{
-			AntiCheatAffinityGameContext context = suspended || AffinityGameContext == null ? null : AffinityGameContext();
+			AntiCheatAffinityGameContext context = suspended ? null : GovernanceContext();
+			List<KeyValuePair<string, int>> services = context == null ? null : GovernanceServices();
 			Dictionary<string, string> activeGroups = BuildActive();
 			List<AntiCheatAffinityTarget> targets = new List<AntiCheatAffinityTarget>();
 			foreach (int pid in core.PidsWith(SuppressReason.AntiCheat))
 			{
 				string name = core.NameOf(pid), group;
 				long birth = core.CreationOf(pid);
+				AcquireRequest retained = new AcquireRequest { Pid = pid, Name = name, Birth = birth };
+				if (suspended || name == null || !activeGroups.TryGetValue(name, out group)
+					|| CheckGovernanceAdmission(retained, context, services) != null)
+				{
+					core.Release(pid, SuppressReason.AntiCheat);
+					continue;
+				}
+				if (!suspended && birth > 0 && name != null)
+					core.Reconcile(pid, name, SuppressReason.AntiCheat);
 				if (birth > 0 && core.IsThrottled(pid) && name != null && activeGroups.TryGetValue(name, out group))
 					targets.Add(new AntiCheatAffinityTarget { Pid = pid, Birth = birth, Name = name, Group = group });
 			}
 			if (targets.Count == 0) context = null;
-			affinityRuntime.Tick(context, targets);
-			affinityFastWake = context != null || affinityRuntime.PendingRecovery;
+			affinityRuntime.Tick(context, targets, AntiCheatModes.CoreLimitOf((AntiCheatMode)mode));
+			affinityFastWake = context != null || affinityRuntime.PendingRecovery || (!suspended && targets.Count > 0);
+		}
+
+		private AntiCheatAffinityGameContext GovernanceContext()
+		{
+			try { return AffinityGameContext == null ? null : AffinityGameContext(); }
+			catch { return null; }
+		}
+
+		private void RefreshGovernanceSession()
+		{
+			AntiCheatAffinityGameContext context = GovernanceContext();
+			string key = context == null ? null : context.Key;
+			if (key == governanceContextKey) return;
+			governanceContextKey = key;
+			governanceServicesNextRead = 0L;
+			Interlocked.Exchange(ref fullSweepRequested, 1);
+		}
+
+		private List<KeyValuePair<string, int>> GovernanceServices()
+		{
+			long now = DateTime.UtcNow.Ticks;
+			if (now >= governanceServicesNextRead)
+			{
+				try { governanceServices = SvcQuery.RunningServices(); }
+				catch { governanceServices = null; }
+				governanceServicesNextRead = now + TimeSpan.FromSeconds(8).Ticks;
+			}
+			return governanceServices;
+		}
+
+		private static bool ReadGovernanceIdentity(int pid, out string name, out long birth, out int session)
+		{
+			name = null; birth = 0; session = -1;
+			try
+			{
+				using (Process process = Process.GetProcessById(pid))
+				{
+					name = process.ProcessName;
+					birth = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+					session = process.SessionId;
+					return birth > 0 && !process.HasExited;
+				}
+			}
+			catch { return false; }
+		}
+
+		private static string CheckGovernanceAdmission(AcquireRequest request, AntiCheatAffinityGameContext context,
+			IEnumerable<KeyValuePair<string, int>> services)
+		{
+			if (context == null || context.GameAncestors == null) return "game-ancestry-unavailable";
+			if (request == null || request.Birth <= 0) return "process-identity-unavailable";
+			string name; long birth; int session;
+			if (!ReadGovernanceIdentity(request.Pid, out name, out birth, out session)
+				|| birth != request.Birth || !string.Equals(name, request.Name, StringComparison.OrdinalIgnoreCase))
+				return "process-identity-changed";
+			string reason;
+			return AntiCheatAffinityEligibility.Eligible(name, request.Pid, session, services, context.GameAncestors, out reason)
+				? null : reason;
 		}
 
 		private string CheckAffinityAdmission(AntiCheatAffinityTarget target, AntiCheatAffinityGameContext context)
@@ -553,6 +752,7 @@ namespace PaviseApp
 			Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 			lock (sync)
 			{
+				if (!groupMigrationReady) return dictionary;
 				AcGroup[] groups = AntiCheatCatalog.Groups;
 				foreach (AcGroup acGroup in groups)
 				{
@@ -619,7 +819,7 @@ namespace PaviseApp
 				ProcessSnapshot processSnapshot;
 				try
 				{
-					processSnapshot = ProcessSnapshotSource.Capture();
+					processSnapshot = CaptureSweepSnapshot();
 				}
 				catch
 				{
@@ -648,7 +848,8 @@ namespace PaviseApp
 								{
 									Pid = num,
 									Name = name,
-									Group = value
+									Group = value,
+									Birth = procEntry.Creation
 								});
 							}
 						}
@@ -677,45 +878,13 @@ namespace PaviseApp
 		private bool TryBuildAcquireRequest(int pid, string expectedName, string group, out AcquireRequest request)
 		{
 			request = null;
-			if (pid == selfPid)
-			{
-				return false;
-			}
-			try
-			{
-				using (Process process = Process.GetProcessById(pid))
-				{
-					string processName = process.ProcessName;
-					if (!string.Equals(processName, expectedName, StringComparison.OrdinalIgnoreCase))
-					{
-						return false;
-					}
-					int sessionId;
-					try
-					{
-						sessionId = process.SessionId;
-					}
-					catch
-					{
-						return false;
-					}
-					if (selfSession < 0 || (sessionId != selfSession && sessionId != 0))
-					{
-						return false;
-					}
-					request = new AcquireRequest
-					{
-						Pid = pid,
-						Name = processName,
-						Group = group
-					};
-					return true;
-				}
-			}
-			catch
-			{
-				return false;
-			}
+			if (pid == selfPid) return false;
+			string name; long birth; int session;
+			if (!ReadGovernanceIdentity(pid, out name, out birth, out session)
+				|| !string.Equals(name, expectedName, StringComparison.OrdinalIgnoreCase)
+				|| selfSession < 0 || (session != selfSession && session != 0)) return false;
+			request = new AcquireRequest { Pid = pid, Name = name, Group = group, Birth = birth };
+			return true;
 		}
 
 		private void ApplyBatch(List<AcquireRequest> acquisitions, List<int> releases)
@@ -727,6 +896,8 @@ namespace PaviseApp
 				return;
 			}
 			SuppressionCore.BatchResult batchResult = null;
+			AntiCheatAffinityGameContext context = GovernanceContext();
+			List<KeyValuePair<string, int>> services = context == null ? null : GovernanceServices();
 			core.BeginBatch();
 			try
 			{
@@ -736,7 +907,15 @@ namespace PaviseApp
 					{
 						try
 						{
-							acquisition.Result = core.Acquire(acquisition.Pid, acquisition.Name, SuppressReason.AntiCheat, acquisition.Group, AntiCheatModes.LevelOf((AntiCheatMode)mode), 0L);
+							string blocked = !IsGroupEnabled(acquisition.Group) ? "group-disabled"
+								: CheckGovernanceAdmission(acquisition, context, services);
+							if (blocked != null)
+							{
+								core.Release(acquisition.Pid, SuppressReason.AntiCheat);
+								acquisition.Result = AcquireResult.AlreadyProtected;
+								continue;
+							}
+							acquisition.Result = core.Acquire(acquisition.Pid, acquisition.Name, SuppressReason.AntiCheat, acquisition.Group, AntiCheatModes.LevelOf((AntiCheatMode)mode), acquisition.Birth);
 						}
 						catch
 						{

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -80,12 +80,17 @@ namespace PaviseApp
 
 			internal string Encode()
 			{
+				// The comparison build uses the existing 3.1.1.0 record envelope so
+				// switching back to the previous executable can still restore it.
+				if (Source == Legacy3110Source)
+					return "2223|" + Plan.ToString("D") + "|" + Base.ToString("D") + "|" + Previous.ToString("D");
 				return "presets2|" + Plan.ToString("D") + "|" + Base.ToString("D") + "|" + Previous.ToString("D") + "|" + Source + "|" + Fingerprint;
 			}
 		}
 
-		private sealed class NativeManagedPowerPlans : IManagedPowerPresetPlans
+		private sealed class NativeManagedPowerPlans : IManagedPowerPresetPlans, IManagedPowerReadEvidence, IManagedPowerLegacy3110Plans, IManagedPowerLegacy3110WriteEvidence, IManagedPowerDeviceKind, IManagedPowerSchemeEvidence
 		{
+            public LaboratoryEppDeviceKind DeviceKind { get { return LaboratoryEppEligibility.DeviceKind; } }
 			public Guid? Current()
 			{
 				return PowerPlan.Current();
@@ -95,6 +100,9 @@ namespace PaviseApp
 			{
 				return SchemeUsable(scheme);
 			}
+
+            public ManagedPowerSchemeEvidence SchemeEvidence(Guid scheme)
+            { return ReadManagedSchemeEvidenceNative(scheme); }
 
 			public bool IsOwned(Guid scheme)
 			{
@@ -114,11 +122,22 @@ namespace PaviseApp
 				return ManagedPowerPlanPolicy.HasManagedName(ReadName(scheme), MachineSignature());
 			}
 
-            public bool ImportPreset(ManagedPowerPreset preset, Guid destination)
-            { return ImportPresetNative(preset, destination); }
+            public bool CreatePreset(ManagedPowerPreset preset, Guid destination)
+            { return CreatePresetNative(preset, destination); }
+
+            public bool CreateLegacy3110(Guid destination)
+            { return CreateLegacy3110Native(destination); }
+
+            public uint WriteLegacy3110(Guid scheme, Guid sub, Guid setting, bool ac, uint value)
+            {
+                if (HandheldBypass) return 5;
+                Guid? current = PowerPlan.Current();
+                if (!current.HasValue || current == Guid.Empty || current == scheme || !IsOwned(scheme)) return 5;
+                return ac ? PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, value)
+                    : PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, value);
+            }
 
             public Guid[] Subgroups(Guid scheme) { return ReadPresetSubgroups(scheme); }
-            public bool RemoveOverride(Guid scheme, Guid sub, Guid setting, bool ac) { return RemovePresetOverrideNative(scheme, sub, setting, ac); }
             public bool CopyBaseSetting(Guid source, Guid target, Guid sub, Guid setting, bool ac) { return CopyPresetBaseNative(source, target, sub, setting, ac); }
 
 			public bool Duplicate(Guid source, out Guid created)
@@ -205,6 +224,9 @@ namespace PaviseApp
 				return value;
 			}
 
+            public ManagedPowerReadEvidence ReadEvidence(Guid scheme, Guid sub, Guid setting, bool ac)
+            { return ReadPresetPowerEvidence(scheme, sub, setting, ac); }
+
 			public bool Write(Guid scheme, Guid sub, Guid setting, bool ac, uint value)
 			{
 				if (!ac)
@@ -237,7 +259,7 @@ namespace PaviseApp
 
 		public const string NoSwitchChoice = "off";
 
-		private const string PlanNote = "由 Pavise 创建并托管 游戏结束自动切回原方案 删掉它 Pavise 会重建";
+		private const string PlanNote = "Pavise动态计划";
 
 		private const string IdleDisableClearedKey = "IdleDisableCleared";
 
@@ -294,8 +316,6 @@ namespace PaviseApp
 		private static CpuIdleReceipt cpuIdleReceipt;
 
 		private static bool managedCreationBlocked;
-
-		private static long managedFailureRetryGeneration;
 
 		private static Guid pendingManagedCleanup;
 
@@ -466,10 +486,16 @@ namespace PaviseApp
 			}
 		}
 
+		internal static bool HandheldBypass
+		{
+			get { return GamingHandheldDetection.Detected; }
+		}
+
 		public static string EffectivePlanId
 		{
 			get
 			{
+				if (HandheldBypass) return "off";
 				string selectedPlanId = SelectedPlanId;
 				if (selectedPlanId.Length <= 0)
 				{
@@ -872,6 +898,7 @@ namespace PaviseApp
 		public static bool SelectPlan(string id)
 		{
 			string text = id ?? "";
+			if (HandheldBypass && text != "off") return false;
 			Guid g;
 			if (text.Length > 0 && text != "managed" && text != "off" && (!TryGuid(text, out g) || g == Guid.Empty))
 			{
@@ -883,14 +910,11 @@ namespace PaviseApp
 				return false;
 			}
 			string text2 = "v2:" + ((text.Length == 0) ? "managed" : text);
-			if (value == text2)
-			{
-				return true;
-			}
-			if (!Settings.SaveStr("PowerPlanChoice", text2))
+			if (value != text2 && !Settings.SaveStr("PowerPlanChoice", text2))
 			{
 				return false;
 			}
+            if (value == text2) return true;
 			lock (lk)
 			{
 				managedCreationBlocked = false;
@@ -945,6 +969,7 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
+				if (HandheldBypass) return false;
 				if (!RestoreLaboratoryBeforeCoreChange()) return false;
 				if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
 				{
@@ -1032,6 +1057,7 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
+				if (HandheldBypass) return false;
 				if (!RestoreLaboratoryBeforeCoreChange()) return false;
 				if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
 				{
@@ -1152,6 +1178,7 @@ namespace PaviseApp
 
 		private static bool ActivateInner(bool aggressive)
 		{
+			if (HandheldBypass) return RestoreHandheldApply();
 			if (NoSwitchSelected)
 			{
 				return false;
@@ -1160,11 +1187,12 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			if (!RestoreLaboratoryBeforeCoreChange()) return false;
+			if (!RestoreLaboratoryBeforeCoreChange())
+                return PowerApplyFailed("laboratory-recovery", "Laboratory power recovery pending");
 			string value;
 			if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out value) || value == null || value.Length != 0) && !RestorePlanCore(false))
 			{
-				return false;
+				return PowerApplyFailed("previous-plan-recovery", "Previous power-plan recovery pending");
 			}
 			if (AutomaticSelection)
 			{
@@ -1173,18 +1201,20 @@ namespace PaviseApp
 				targetOwned = false;
 			}
 			Guid guid = ResolveTarget(aggressive);
+			if (HandheldBypass) return RestoreHandheldApply();
 			if (guid == Guid.Empty)
 			{
-				return false;
+				return PowerApplyFailed("target-resolution", "Selected power-plan target unavailable");
 			}
 			if (!targetOwned && !RestoreOwnedIdlePolicy())
 			{
-				return false;
+				return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
 			}
 			Guid? guid2 = RestoreCurrentPlan();
+			if (HandheldBypass) return RestoreHandheldApply();
 			if (!guid2.HasValue || guid2.Value == Guid.Empty)
 			{
-				return false;
+				return PowerApplyFailed("active-plan-read", "Active power-plan query failed");
 			}
 			if (guid2.Value == guid && !targetOwned)
 			{
@@ -1197,22 +1227,19 @@ namespace PaviseApp
 				saved = ManagedReturnPlan(guid2.Value, guid);
 				if (saved == Guid.Empty)
 				{
-					return false;
+					return PowerApplyFailed("return-plan-resolution", "Managed return plan invalid or unavailable");
 				}
 			}
 			if (!Settings.SaveStrDurable("PrevPowerPlan", saved.ToString()) || Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
 			{
 				saved = Guid.Empty;
 				Logger.Log(Lang.T("log.powerplan.25"));
-				return false;
+				return PowerApplyFailed("return-plan-save", "Return-plan receipt persistence or readback failed");
 			}
-			if (targetOwned)
-			{
-				if (!PrepareManagedScheme(guid, aggressive))
-				{
-					return false;
-				}
-			}
+			if (HandheldBypass) return RestoreHandheldApply();
+			bool prepared = !targetOwned || PrepareManagedScheme(guid, aggressive);
+			if (HandheldBypass) return RestoreHandheldApply();
+			if (!prepared) return PowerApplyFailed("managed-preparation", "Managed parameter preparation failed");
 			bool flag = RestoreSetPlan(guid);
 			Guid? guid3 = (flag ? RestoreCurrentPlan() : null);
 			if (flag && guid3.HasValue && guid3.Value == guid)
@@ -1223,13 +1250,24 @@ namespace PaviseApp
 				return true;
 			}
 			Logger.Log(Lang.T("log.powerplan.27"));
-			return false;
+			return PowerApplyFailed(flag ? "activation-readback" : "activation",
+                flag ? "Active power-plan readback mismatch" : "Selected power-plan activation rejected");
+		}
+
+		private static bool RestoreHandheldApply()
+		{
+			ClearApplyFailureReason();
+			return Restore();
 		}
 
 		public static bool Enforce(bool aggressive)
 		{
+			ClearApplyFailureReason();
 			lock (lk)
 			{
+				// A queued apply can outlive the device-policy decision. Settle only
+				// existing recovery receipts; skipping a handheld is not an apply failure.
+				if (HandheldBypass) return RestoreHandheldApply();
 				if (NoSwitchSelected)
 				{
 					return false;
@@ -1238,10 +1276,19 @@ namespace PaviseApp
 				{
 					return ActivateInner(aggressive);
 				}
+				if (targetOwned && tuneState == TuneCode(aggressive) && !ManagedPresetIntact(target, aggressive))
+				{
+					// Replace drifted parameters or a plan from the other device-policy route.
+					// Keep the original return-plan receipt across the replacement.
+					resolved = false;
+					tuneState = -1;
+					Logger.Warn(PerformancePolicy.Text("托管电源性能参数发生变化，正在重建并核验", "Managed power performance settings changed; rebuilding and verifying"));
+				}
 				Guid guid = ResolveTarget(aggressive);
+				if (HandheldBypass) return RestoreHandheldApply();
 				if (guid == Guid.Empty)
 				{
-					return false;
+					return PowerApplyFailed("target-resolution", "Selected power-plan target unavailable");
 				}
 				if (targetOwned && saved == Guid.Empty)
 				{
@@ -1250,23 +1297,27 @@ namespace PaviseApp
 				}
 				if (!targetOwned && !RestoreOwnedIdlePolicy())
 				{
-					return false;
+					return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
 				}
-				if (targetOwned && tuneState != TuneCode(aggressive) && !RetuneManagedScheme(guid, aggressive))
+				if (HandheldBypass) return RestoreHandheldApply();
+				bool retuned = !targetOwned || tuneState == TuneCode(aggressive) || RetuneManagedScheme(guid, aggressive);
+				if (HandheldBypass) return RestoreHandheldApply();
+				if (!retuned)
 				{
-					return false;
+					return PowerApplyFailed("managed-retune", "Managed parameter preparation or reactivation failed");
 				}
 				Guid? guid2 = RestoreCurrentPlan();
+				if (HandheldBypass) return RestoreHandheldApply();
 				if (!guid2.HasValue || guid2.Value == Guid.Empty)
 				{
-					return false;
+					return PowerApplyFailed("active-plan-read", "Active power-plan query failed");
 				}
 				if (guid2.HasValue && guid2.Value != guid)
 				{
-					if (!RestoreSetPlan(guid) || !(RestoreCurrentPlan() == guid))
-					{
-						return false;
-					}
+					if (!RestoreSetPlan(guid))
+                        return PowerApplyFailed("activation", "Selected power-plan activation rejected");
+                    if (!(RestoreCurrentPlan() == guid))
+                        return PowerApplyFailed("activation-readback", "Active power-plan readback mismatch");
 					Logger.Log(Lang.T("log.powerplan.28") + RestorePlanLabel(guid));
 				}
 				return true;
@@ -1277,6 +1328,7 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
+				if (HandheldBypass) return !active && !HasResidue;
 				if (NoSwitchSelected || !active)
 				{
 					return false;
@@ -1302,7 +1354,7 @@ namespace PaviseApp
 				if (!num)
 				{
 					Guid? guid2 = RestoreCurrentPlan();
-					return guid2.HasValue && guid2.Value == guid;
+						return guid2.HasValue && guid2.Value == guid && (!targetOwned || ManagedPresetIntact(guid, aggressive));
 				}
 				goto IL_0080;
 				IL_0080:
@@ -1374,6 +1426,20 @@ namespace PaviseApp
 					managedCreationBlocked = false;
 				}
 				return flag && flag2;
+			}
+		}
+
+		internal static string AutomaticPolicySignature(bool aggressive)
+		{
+			lock (lk)
+			{
+				string selected = SelectedPlanId;
+				if (selected != "managed") return selected;
+                if (UsesLegacyManagedPolicy())
+				    return selected + ":" + Legacy3110Source + ":" + Legacy3110Fingerprint(aggressive);
+                ManagedPowerPresetSelection selection = SelectManagedPreset(aggressive);
+                return selection.Preset == null ? selected + ":OEM/base:" + selection.Reason
+                    : selected + ":" + selection.Preset.Id + ":" + PresetFingerprint(selection);
 			}
 		}
 
@@ -2041,74 +2107,120 @@ namespace PaviseApp
 			Guid result3;
             bool modern = array.Length == 6 && array[0] == "presets2";
             bool legacy = array.Length == 4 && (array[0] == "3" || array[0] == "2223" || array[0] == "preset1");
+            bool legacy3110 = modern && array[4] == Legacy3110Source
+                && array[5].StartsWith("legacy3110:", StringComparison.Ordinal);
+            bool legacy3110Envelope = legacy && array[0] == "2223";
+            ManagedPowerPreset storedPreset = modern && !legacy3110 ? ManagedPowerPreset.FromPolicyRecord(array[4], array[5]) : null;
             if ((!modern && !legacy) || !Guid.TryParse(array[1], out result) || result == Guid.Empty
                 || !Guid.TryParse(array[2], out result2) || result2 == Guid.Empty || result2 == result
                 || !Guid.TryParse(array[3], out result3) || result3 == result2 || result3 == result
                 || IsBuiltInPlan(result) || IsBuiltInPlan(result3)
-                || modern && (ManagedPowerPreset.Find(array[4]) == null || string.IsNullOrEmpty(array[5]))) return false;
+                || modern && !legacy3110 && storedPreset == null) return false;
             record = new ManagedPolicyRecord {
-                Plan = result, Base = result2, Previous = result3, CurrentTemplate = modern,
-                Source = modern ? array[4] : "", Fingerprint = modern ? array[5] : ""
+                Plan = result, Base = result2, Previous = result3, CurrentTemplate = modern || legacy3110Envelope,
+                Source = legacy3110 || legacy3110Envelope ? Legacy3110Source : modern ? storedPreset.Id : "", Fingerprint = modern ? array[5] : ""
             };
 			return true;
 		}
 
         private static Guid EnsureManagedPolicyPlan()
         {
-            if (!RestoreLaboratoryBeforeCoreChange() || !RestoreLegacyCpuIdle()
-                || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy()) return Guid.Empty;
-            if (managedCreationBlocked && managedFailureRetryGeneration == ActionFailureStore.RetryGeneration) return Guid.Empty;
-            managedCreationBlocked = false;
+            if (HandheldBypass) return Guid.Empty;
+            if (!RestoreLaboratoryBeforeCoreChange())
+                return ManagedPlanFailed("laboratory-recovery", "Laboratory power recovery pending");
+            if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy())
+                return ManagedPlanFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
+            if (managedCreationBlocked)
+                return ManagedPlanFailed("creation-blocked", "Managed creation remains blocked after failure");
             IManagedPowerPlans plans = ManagedPlans;
-            if (!RecoverPresetCreation(plans)) return Guid.Empty;
+            if (!RecoverPresetCreation(plans))
+                return ManagedPlanFailed("creation-recovery", "Previous creation recovery pending");
             ManagedPolicyRecord old;
-            if (!ReadManagedPolicy(out old)) return Guid.Empty;
+            if (!ReadManagedPolicy(out old))
+                return ManagedPlanFailed("ownership-record-read", "Managed ownership record unreadable or invalid");
             Guid? current = plans.Current();
-            if (!current.HasValue || current == Guid.Empty) return Guid.Empty;
+            if (HandheldBypass) return Guid.Empty;
+            if (!current.HasValue || current == Guid.Empty)
+                return ManagedPlanFailed("active-plan-read", "Active power-plan query failed");
             Guid previous; Guid.TryParse(Settings.LoadStr(PlanJournalKey, ""), out previous);
             if (saved != Guid.Empty) previous = saved;
             if (previous == Guid.Empty && old != null && plans.IsOwned(current.Value)) previous = old.Base;
             Guid baseline = ManagedPowerPlanPolicy.ChooseBase(current, previous, Balanced, plans);
             if (saved != Guid.Empty && plans.Exists(saved) && !plans.IsOwned(saved)) baseline = saved;
-            if (baseline == Guid.Empty) return Guid.Empty;
-            if (plans.IsOwned(current.Value) && (!plans.Activate(baseline) || plans.Current() != baseline)) return Guid.Empty;
+            if (baseline == Guid.Empty)
+                return ManagedPlanFailed("baseline-resolution", "Usable local baseline unavailable");
+            if (HandheldBypass) return Guid.Empty;
+            if (plans.IsOwned(current.Value) && (!plans.Activate(baseline) || plans.Current() != baseline))
+                return ManagedPlanFailed("baseline-activation", "Baseline activation or readback failed");
             if (pendingManagedCleanup != Guid.Empty)
             {
-                if (!DeleteInactiveManaged(plans, pendingManagedCleanup, true)) return Guid.Empty;
+                if (!DeleteInactiveManaged(plans, pendingManagedCleanup, true))
+                    return ManagedPlanFailed("creation-cleanup", "Uncommitted managed-plan cleanup pending");
                 pendingManagedCleanup = Guid.Empty;
             }
-            if (old != null && old.Previous != Guid.Empty && plans.Exists(old.Previous)
-                && !DeleteInactiveManaged(plans, old.Previous)) return Guid.Empty;
-            ManagedPowerPresetSelection selection = SelectManagedPreset(requestedAggressive);
-            if (selection.Preset == null)
+            if (old != null && old.Previous != Guid.Empty && !DeleteInactiveManaged(plans, old.Previous))
+                return ManagedPlanFailed("previous-managed-cleanup", "Previous managed-plan cleanup pending");
+            if (HandheldBypass) return Guid.Empty;
+            bool legacy = UsesLegacyManagedPolicy();
+            var legacyCreator = plans as IManagedPowerLegacy3110Plans;
+            var presetCreator = plans as IManagedPowerPresetPlans;
+            ManagedPowerPresetSelection selection = legacy ? null : SelectManagedPreset(requestedAggressive);
+            if (!legacy && selection.Preset == null)
             {
-                // An unsupported/unknown platform keeps the real OEM/user plan, never the retired tuning table.
+                // Unsupported desktop CPU/platform evidence keeps the real OEM/user plan.
                 Logger.Info("POWER source=OEM/base reason=" + selection.Reason);
                 return baseline;
             }
-            var importer = plans as IManagedPowerPresetPlans;
-            if (importer == null) return Guid.Empty;
+            if (legacy ? legacyCreator == null : presetCreator == null || selection == null || selection.Preset == null)
+                return ManagedPlanFailed("creation-interface", "Selected managed device-policy creation interface unavailable");
             Guid created = Guid.NewGuid();
             string intent = "1|" + created.ToString("D") + "|" + baseline.ToString("D");
-            if (!Settings.SaveStrDurable(PresetCreationKey, intent) || Settings.LoadStr(PresetCreationKey, "") != intent) return Guid.Empty;
-            if (!importer.ImportPreset(selection.Preset, created) || !plans.Exists(created))
+            if (!Settings.SaveStrDurable(PresetCreationKey, intent) || Settings.LoadStr(PresetCreationKey, "") != intent)
+                return ManagedPlanFailed("creation-intent-save", "Creation receipt persistence or readback failed");
+            if (HandheldBypass) return Guid.Empty;
+            bool createdOk = legacy ? legacyCreator.CreateLegacy3110(created) : presetCreator.CreatePreset(selection.Preset, created);
+            if (HandheldBypass) return Guid.Empty;
+            if (!createdOk || !plans.Exists(created))
             {
+                PowerApplyFailed(legacy ? "legacy3110-creation" : "preset-creation", "Selected template copy failed or created plan unavailable");
                 AbandonManagedCreation(plans, created); RecoverPresetCreation(plans); return Guid.Empty;
             }
             Guid oldPlan = old != null ? old.Plan : Guid.Empty;
             if (oldPlan == Guid.Empty) Guid.TryParse(Settings.LoadStr(ManagedPlanKey, ""), out oldPlan);
-            if (oldPlan == baseline || IsBuiltInPlan(oldPlan) || !plans.Exists(oldPlan)
-                || !ManagedPowerPlanPolicy.HasManagedName(plans.Name(oldPlan), MachineSignature())) oldPlan = Guid.Empty;
+            if (oldPlan != Guid.Empty)
+            {
+                ManagedPowerSchemeEvidence oldState = ReadManagedSchemeEvidence(plans, oldPlan);
+                if (!ManagedSchemeEvidenceAvailable(oldState, oldPlan))
+                {
+                    AbandonManagedCreation(plans, created); return Guid.Empty;
+                }
+                if (oldPlan == baseline || IsBuiltInPlan(oldPlan) || oldState.State == ManagedPowerSchemeState.ConfirmedMissing
+                    || (old == null || old.Plan != oldPlan)
+                        && !ManagedPowerPlanPolicy.HasManagedName(plans.Name(oldPlan), MachineSignature())) oldPlan = Guid.Empty;
+            }
             var record = new ManagedPolicyRecord { Plan = created, Base = baseline, Previous = oldPlan,
-                CurrentTemplate = true, Source = selection.Preset.Id, Fingerprint = PresetFingerprint(selection) };
+                CurrentTemplate = true,
+                Source = legacy ? Legacy3110Source : selection.Preset.Id,
+                Fingerprint = legacy ? Legacy3110Fingerprint(requestedAggressive) : PresetFingerprint(selection) };
             string encoded = record.Encode();
-            if (!plans.Rename(created, ManagedPlanTitle, PlanNote + " [" + selection.Preset.Id + "]")
-                || !Settings.SaveStrDurable(ManagedPolicyKey, encoded) || Settings.LoadStr(ManagedPolicyKey, "") != encoded)
-            { AbandonManagedCreation(plans, created); return Guid.Empty; }
+            if (!plans.Rename(created, ManagedPlanTitle, PlanNote))
+            {
+                PowerApplyFailed("managed-name-save", "Managed plan name write or readback failed");
+                AbandonManagedCreation(plans, created); return Guid.Empty;
+            }
+            if (!Settings.SaveStrDurable(ManagedPolicyKey, encoded) || Settings.LoadStr(ManagedPolicyKey, "") != encoded)
+            {
+                PowerApplyFailed("ownership-record-save", "Managed ownership persistence or readback failed");
+                AbandonManagedCreation(plans, created); return Guid.Empty;
+            }
             string owned = created.ToString("D");
             if (!Settings.SaveStrDurable(ManagedPlanKey, owned) || Settings.LoadStr(ManagedPlanKey, "") != owned)
-            { AbandonManagedCreation(plans, created); return Guid.Empty; }
-            if (!Settings.SaveStrDurable(PresetCreationKey, "") || Settings.LoadStr(PresetCreationKey, "!") != "") return Guid.Empty;
+            {
+                PowerApplyFailed("managed-guid-save", "Managed plan identity persistence or readback failed");
+                AbandonManagedCreation(plans, created); return Guid.Empty;
+            }
+            if (!Settings.SaveStrDurable(PresetCreationKey, "") || Settings.LoadStr(PresetCreationKey, "!") != "")
+                return ManagedPlanFailed("creation-intent-clear", "Completed creation receipt persistence or readback failed");
             tuneState = -1;
             return created;
         }
@@ -2128,11 +2240,15 @@ namespace PaviseApp
 
 		private static bool DeleteInactiveManaged(IManagedPowerPlans plans, Guid plan, bool createdHere = false)
 		{
-			if (plan == Guid.Empty || IsBuiltInPlan(plan) || plans.Current() == plan)
+			Guid? active = plans.Current();
+			if (plan == Guid.Empty || IsBuiltInPlan(plan) || !active.HasValue || active == Guid.Empty || active == plan)
 			{
 				return false;
 			}
-			if (!createdHere && !ManagedPowerPlanPolicy.HasManagedName(plans.Name(plan), MachineSignature()))
+            ManagedPowerSchemeEvidence presence = ReadManagedSchemeEvidence(plans, plan);
+            if (!ManagedSchemeEvidenceAvailable(presence, plan)) return false;
+			if (presence.State == ManagedPowerSchemeState.Present && !createdHere
+                && !ManagedPowerPlanPolicy.HasManagedName(plans.Name(plan), MachineSignature()))
 			{
 				return false;
 			}
@@ -2147,15 +2263,14 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			if (plans.Exists(plan))
+            if (presence.State == ManagedPowerSchemeState.ConfirmedMissing) return true;
+			if (plans.Delete(plan))
 			{
-				if (plans.Delete(plan))
-				{
-					return !plans.Exists(plan);
-				}
-				return false;
+                presence = ReadManagedSchemeEvidence(plans, plan);
+                return ManagedSchemeEvidenceAvailable(presence, plan)
+                    && presence.State == ManagedPowerSchemeState.ConfirmedMissing;
 			}
-			return true;
+			return false;
 		}
 
 		private static void AbandonManagedCreation(IManagedPowerPlans plans, Guid created)
@@ -2169,7 +2284,6 @@ namespace PaviseApp
 
 		private static void BlockManagedCreation()
 		{
-			managedFailureRetryGeneration = ActionFailureStore.RetryGeneration;
 			managedCreationBlocked = true;
 		}
 
@@ -2203,36 +2317,52 @@ namespace PaviseApp
 
 		private static bool PrepareManagedScheme(Guid scheme, bool aggressive)
 		{
-			if (!RestoreLaboratoryBeforeCoreChange()) return false;
+			if (HandheldBypass) return false;
+			if (!RestoreLaboratoryBeforeCoreChange())
+                return PowerApplyFailed("laboratory-recovery", "Laboratory power recovery pending");
 			ManagedPolicyRecord record;
 			if (!ReadManagedPolicy(out record) || record == null || record.Plan != scheme || record.Base != saved)
 			{
-				return false;
+				return PowerApplyFailed("ownership-record-validation", "Managed ownership target or baseline mismatch");
 			}
 			IManagedPowerPlans managedPlans = ManagedPlans;
 			Guid? guid = managedPlans.Current();
+			if (HandheldBypass) return false;
 			if (!guid.HasValue)
 			{
-				return false;
+				return PowerApplyFailed("active-plan-read", "Active power-plan query failed");
 			}
 			Guid? guid2 = guid;
 			if (guid2.HasValue && guid2.GetValueOrDefault() == scheme && (saved == Guid.Empty || !managedPlans.Activate(saved) || managedPlans.Current() != saved))
 			{
-				return false;
+				return PowerApplyFailed("baseline-activation", "Baseline activation or readback failed");
 			}
 			if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy())
 			{
-				return false;
+				return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
 			}
-            // The imported source is immutable; restore daily/DC preferences before user lab overrides.
-            if (!record.CurrentTemplate || !TuneTarget(scheme, aggressive)) return false;
+            // Apply the selected device route only to an owned inactive candidate.
+            // Current ownership, rollback, and bounded-attempt protections remain in force.
+            if (HandheldBypass) return false;
+            bool legacy = UsesLegacyManagedPolicy();
+            if (!record.CurrentTemplate || (record.Source == Legacy3110Source) != legacy || !TuneTarget(scheme, aggressive, legacy))
+                return PowerApplyFailed("managed-parameters", "Managed source or local adaptation verification failed");
+            if (legacy && !SyncLegacy3110DisplayFeel(record.Base, scheme))
+                return PowerApplyFailed("managed-display-preferences", "3.1.1.0 display preference copy or verification failed");
+            // One-time chassis discovery may finish while an inactive candidate is
+            // being prepared. Keep its durable ownership receipt, but do not activate
+            // a candidate that no longer belongs to the selected device policy.
+            if (UsesLegacyManagedPolicy() != legacy)
+                return PowerApplyFailed("device-policy-changed", "Device policy changed while preparing the inactive candidate");
             tuneState = TuneCode(aggressive);
             return true;
         }
 
 		private static bool RetuneManagedScheme(Guid scheme, bool aggressive)
 		{
-			if (!PrepareManagedScheme(scheme, aggressive) || !ManagedPlans.Activate(scheme) || ManagedPlans.Current() != scheme)
+			bool prepared = PrepareManagedScheme(scheme, aggressive);
+			if (HandheldBypass) return RestoreHandheldApply();
+			if (!prepared || !ManagedPlans.Activate(scheme) || ManagedPlans.Current() != scheme)
 			{
 				active = false;
 				tuneState = -1;
@@ -2293,9 +2423,9 @@ namespace PaviseApp
 		[DllImport("powrprof.dll")]
 		private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
 
-        private static bool TuneTarget(Guid g, bool aggressive)
+        private static bool TuneTarget(Guid g, bool aggressive, bool legacy)
         {
-            return TunePresetTarget(g, aggressive);
+            return legacy ? TuneLegacy3110Target(g, aggressive) : TunePresetTarget(g, aggressive);
         }
 
 		private static void ReadAutonomousScaling(Guid scheme, out bool? ac, out bool? dc)
@@ -2330,6 +2460,9 @@ namespace PaviseApp
 
 		private static bool ClearLegacyIdleDisableOnceCore()
 		{
+            // Receipt-backed restoration runs before this method. Do not infer
+            // a new repair from an old managed-plan name on a gaming handheld.
+            if (HandheldBypass) return true;
             ManagedPolicyRecord currentRecord;
             if (ReadManagedPolicy(out currentRecord) && currentRecord != null && currentRecord.CurrentTemplate) return true;
 			if (Settings.Load("IdleDisableCleared", false))
@@ -2499,11 +2632,57 @@ namespace PaviseApp
 			return false;
 		}
 
+		// Plans that fell out of the ownership record (a crash between creation and
+		// record save, an older build's failed restore) are never deleted by the
+		// session path, which only ever touches Plan and Previous. Once per process,
+		// after crash healing and outside any session, delete every inactive plan that
+		// carries this machine's managed name but is referenced by no ownership key.
+		private static int orphanSweepDone;
+
+		internal static void SweepUntrackedManagedPlansOnce()
+		{
+			if (System.Threading.Interlocked.Exchange(ref orphanSweepDone, 1) != 0) return;
+			lock (lk)
+			{
+				if (HandheldBypass || active || LaboratoryHasResidue || IdlePolicyHasResidue || LegacyCpuIdleHasResidue) return;
+				// An unfinished creation receipt means ownership is in flux; leave everything alone.
+				if (Settings.LoadStr(PresetCreationKey, "").Length > 0) return;
+				ManagedPolicyRecord record;
+				if (!ReadManagedPolicy(out record)) return;
+				var keep = new HashSet<Guid> { pendingManagedCleanup };
+				if (record != null)
+				{
+					keep.Add(record.Plan);
+					keep.Add(record.Previous);
+					keep.Add(record.Base);
+				}
+				foreach (string key in new[] { ManagedPlanKey, DefaultPlanKey, PlanJournalKey })
+				{
+					Guid tracked;
+					if (Guid.TryParse(Settings.LoadStr(key, ""), out tracked)) keep.Add(tracked);
+				}
+				List<Guid> schemes;
+				if (!TryEnumerateSchemes(out schemes)) return;
+				IManagedPowerPlans plans = ManagedPlans;
+				string signature = MachineSignature();
+				int deleted = 0, failed = 0;
+				foreach (Guid scheme in schemes)
+				{
+					if (keep.Contains(scheme) || !ManagedPowerPlanPolicy.HasManagedName(ReadName(scheme), signature)) continue;
+					if (DeleteInactiveManaged(plans, scheme)) deleted++;
+					else failed++;
+				}
+				if (deleted > 0 || failed > 0)
+					Logger.Info("POWER event=orphan-sweep deleted=" + deleted + " failed=" + failed);
+			}
+		}
+
 		internal static int DeleteManagedPlansByName()
 		{
 			int num = 0;
 			lock (lk)
 			{
+				if (HandheldBypass) return 0;
 				if (!RestoreLaboratoryBeforeCoreChange()) return 0;
 				Guid? guid = Current();
 				foreach (Guid item in EnumerateSchemes())
@@ -2553,17 +2732,27 @@ namespace PaviseApp
 
 		private static bool Set(Guid g)
 		{
-			if (PowerSetActiveScheme(IntPtr.Zero, ref g) != 0)
+			uint code = PowerSetActiveScheme(IntPtr.Zero, ref g);
+			if (code != 0)
 			{
-				return false;
+				if (string.IsNullOrEmpty(applyFailureReason)) applyFailurePermanent = code == 5 || code == 50 || code == 120;
+				Guid? observed = Current();
+				return PlanActivationFailed(g, "api=PowerSetActiveScheme code=" + code + " observed=" + (observed.HasValue ? observed.Value.ToString("D") : "unreadable"));
 			}
 			Guid? guid = Current();
-			if (guid.HasValue)
-			{
-				return guid.Value == g;
-			}
-			return false;
+			return guid == g || PlanActivationFailed(g, "api=PowerSetActiveScheme code=0 observed=" + (guid.HasValue ? guid.Value.ToString("D") : "unreadable"));
 		}
+
+        private static bool PlanActivationFailed(Guid targetPlan, string detail)
+        {
+            string failure = "stage=activation target=" + targetPlan.ToString("D") + " " + detail;
+            if (string.IsNullOrEmpty(applyFailureReason))
+                applyFailureReason = failure;
+            // Set also runs during independent recovery; report this operation's
+            // native failure without replacing the apply's original failure.
+            Logger.Warn("POWER phase=native " + failure);
+            return false;
+        }
 
 		private static bool SchemeUsable(Guid g)
 		{
@@ -2575,6 +2764,32 @@ namespace PaviseApp
 			}
 			return true;
 		}
+
+        private static ManagedPowerSchemeEvidence ReadManagedSchemeEvidenceNative(Guid scheme)
+        {
+            try
+            {
+                uint size = 0;
+                return PowerPresetWriter.ClassifySchemeEvidence(PowerReadFriendlyName(IntPtr.Zero,
+                    ref scheme, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ref size));
+            }
+            catch { return PowerPresetWriter.ClassifySchemeEvidence(31); }
+        }
+
+        private static ManagedPowerSchemeEvidence ReadManagedSchemeEvidence(IManagedPowerPlans plans, Guid scheme)
+        {
+            var evidence = plans as IManagedPowerSchemeEvidence;
+            return evidence != null ? evidence.SchemeEvidence(scheme)
+                : PowerPresetWriter.ClassifySchemeEvidence(plans.Exists(scheme) ? 0u : 2u);
+        }
+
+        private static bool ManagedSchemeEvidenceAvailable(ManagedPowerSchemeEvidence evidence, Guid scheme)
+        {
+            if (evidence.State != ManagedPowerSchemeState.Unavailable) return true;
+            applyFailurePermanent |= PowerPresetWriter.PermanentNativeFailure(evidence.NativeCode);
+            return PowerApplyFailed("plan-existence", "Power-plan existence unavailable code=" + evidence.NativeCode
+                + " scheme=" + scheme.ToString("D"));
+        }
 
 		private static string ReadName(Guid g)
 		{

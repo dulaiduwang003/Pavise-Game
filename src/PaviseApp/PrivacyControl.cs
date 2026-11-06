@@ -163,7 +163,6 @@ namespace PaviseApp
 			privacyResult.Supported = r.Supported;
 			privacyResult.Managed = r.Managed;
 			privacyResult.RestartRequired = r.RestartRequired;
-			privacyResult.RetryAllowed = r.RetryAllowed;
 			privacyResult.HasRecovery = r.HasRecovery;
 			return privacyResult;
 		}
@@ -194,27 +193,6 @@ namespace PaviseApp
 				}
 			}
 			value.Configured = PreferenceEnabled(action, selectedTarget);
-			if (value.State == "stopped")
-			{
-				bool flag = false;
-				bool flag2 = true;
-				try
-				{
-					foreach (ActionFailureRecord item in ActionFailureStore.Records())
-					{
-						if (item.Action == action)
-						{
-							flag = true;
-							flag2 &= item.RetryPending;
-						}
-					}
-				}
-				catch
-				{
-					flag2 = false;
-				}
-				value.RetryAllowed = flag && flag2;
-			}
 			return value;
 		}
 
@@ -239,15 +217,28 @@ namespace PaviseApp
 
 		private static bool RequiresReboot(string action)
 		{
-			if (!(action == "EnvPrivacyNtfsMemoryV1"))
-			{
-				return action == "EnvPrivacyBackgroundGlobalV1";
-			}
-			return true;
+			return action == PrivacyActionCatalog.NtfsMemory;
+		}
+
+		internal static string BackgroundAppRestartState(string state, string phase)
+		{
+			if (phase == "apply" && (state == "configured" || state == "partial"))
+				return "pending-app-restart";
+			if (phase == "restore" && (state == "restored" || state == "ready"))
+				return "restore-pending-app-restart";
+			return state;
 		}
 
 		private static string RebootState(string action, string state)
 		{
+			if (action == PrivacyActionCatalog.BackgroundGlobal)
+			{
+				// This is a reminder to reopen affected apps, not an observation that
+				// their processes have restarted. Legacy Boot receipts no longer gate it.
+				string phase;
+				Settings.TryLoadStr(PreferencePrefix + action + "Phase", out phase);
+				return BackgroundAppRestartState(state, phase);
+			}
 			if (!RequiresReboot(action))
 			{
 				return state;
@@ -560,7 +551,11 @@ namespace PaviseApp
 											RestartRequired = true
 										}
 									}
-								} : null);
+								} : (action == PrivacyActionCatalog.BackgroundGlobal ? new PrivacyPlan
+								{
+									Supported = true,
+									Targets = new PrivacyTarget[0]
+								} : null));
 								SetResult(action, selectedTarget, plan, RebootState(action, "restored"), "");
 							}
 						}
@@ -618,7 +613,6 @@ namespace PaviseApp
 				return;
 			}
 			List<string> list = new List<string>();
-			bool mutation = false;
 			bool flag = false;
 			string text = null;
 			try
@@ -626,10 +620,10 @@ namespace PaviseApp
 				PrivacyTarget[] targets = plan.Targets;
 				foreach (PrivacyTarget privacyTarget in targets)
 				{
-					ReadTarget(action, privacyTarget.Key);
-					if (ActionFailureStore.IsBlocked(action, privacyTarget.Key))
+					if (!PerformanceTuning.RestoreWithBudget(new PerformanceActionStore.Receipt { Id = "privacy-read:" + action, Target = privacyTarget.Key, Expected = privacyTarget.Wanted }, 3,
+						delegate { ReadTarget(action, privacyTarget.Key); return true; }))
 					{
-						SetResult(action, selectedTarget, plan, "stopped", ActionFailureStore.FailureReason(action, privacyTarget.Key));
+						SetResult(action, selectedTarget, plan, "stopped", "Privacy source read budget exhausted");
 						return;
 					}
 				}
@@ -643,7 +637,8 @@ namespace PaviseApp
 				PrivacyTarget[] targets3 = plan.Targets;
 				foreach (PrivacyTarget privacyTarget3 in targets3)
 				{
-					flag2 |= ActionFailureStore.IsRetryPending(action, privacyTarget3.Key);
+					ActionFailureStore.BeginAutomaticCycle(action, privacyTarget3.Key, PerformanceTuning.RecoveryCycleSerial + "\n" + privacyTarget3.Wanted);
+					flag2 |= ActionFailureStore.IsIsolated(action, privacyTarget3.Key);
 				}
 				List<PerformanceActionStore.Receipt> list2 = PerformanceActionStore.All();
 				list2.Reverse();
@@ -653,6 +648,16 @@ namespace PaviseApp
 					{
 						text = item.Target;
 						throw new InvalidOperationException("Recovery incomplete before privacy apply");
+					}
+				}
+				// A fault can block new writes, but never the recovery of values we own.
+				foreach (PrivacyTarget privacyTarget in plan.Targets)
+				{
+					ActionFailureStore.BeginAutomaticCycle(action, privacyTarget.Key, PerformanceTuning.RecoveryCycleSerial + "\n" + privacyTarget.Wanted);
+					if (ActionFailureStore.IsBlocked(action, privacyTarget.Key))
+					{
+						SetResult(action, selectedTarget, plan, "stopped", ActionFailureStore.FailureReason(action, privacyTarget.Key));
+						return;
 					}
 				}
 				if (!SavePreference(action, true))
@@ -700,7 +705,6 @@ namespace PaviseApp
 						}
 					}, delegate(string value)
 					{
-						mutation = true;
 						targetWriteAttempted = true;
 						return WriteTarget(action, target.Key, value);
 					}, delegate(string value)
@@ -762,7 +766,7 @@ namespace PaviseApp
 					flag3 |= privacyTarget6.RestartRequired;
 				}
 				string state = (flag3 ? "pending-reboot" : (plan.Limited ? "partial" : "configured"));
-				if (RequiresReboot(action))
+				if (RequiresReboot(action) || action == PrivacyActionCatalog.BackgroundGlobal)
 				{
 					state = RebootState(action, plan.Limited ? "partial" : "configured");
 				}
@@ -793,14 +797,6 @@ namespace PaviseApp
 					ActionFailureStore.Trip(action, text, ex3.Message);
 				}
 				bool flag6 = RestoreAction(action, selectedTarget);
-				PrivacyTarget[] targets8 = plan.Targets;
-				foreach (PrivacyTarget privacyTarget7 in targets8)
-				{
-					if (ActionFailureStore.IsRetryPending(action, privacyTarget7.Key))
-					{
-						ActionFailureStore.WithdrawRetry(action, privacyTarget7.Key);
-					}
-				}
 				SetResult(action, selectedTarget, plan, (!flag6) ? "restore-failed" : ((text == null) ? "unverified" : "stopped"), ex3.Message);
 				Logger.Warn("Privacy | " + action + " | " + ex3.Message);
 			}
@@ -810,14 +806,9 @@ namespace PaviseApp
 				{
 					foreach (string item3 in list)
 					{
-						if (!ActionFailureStore.IsIsolated(action, item3))
-						{
-							ActionFailureStore.CancelApply(action, item3);
-						}
-						if (mutation)
-						{
-							ActionFailureStore.WithdrawRetry(action, item3);
-						}
+						bool owned = true;
+						try { owned = PerformanceActionStore.All().Exists(r => r.Id == action && r.Target == item3); } catch { }
+						if (!owned) ActionFailureStore.CancelApply(action, item3);
 					}
 				}
 			}
@@ -862,6 +853,15 @@ namespace PaviseApp
 
 		internal static void TrackRebootWrite(string action, bool restoring)
 		{
+			if (action == PrivacyActionCatalog.BackgroundGlobal)
+			{
+				string phase = restoring ? "restore" : "apply";
+				string stored;
+				if (!Settings.SaveStrDurable(PreferencePrefix + action + "Phase", phase)
+					|| !Settings.TryLoadStr(PreferencePrefix + action + "Phase", out stored) || stored != phase)
+					throw new InvalidOperationException("App restart reminder could not be persisted");
+				return;
+			}
 			if (RequiresReboot(action))
 			{
 				string text = CurrentBoot();
@@ -894,6 +894,13 @@ namespace PaviseApp
 		}
 
 		internal static bool RestoreReceipt(PerformanceActionStore.Receipt receipt)
+		{
+			bool restored = PerformanceTuning.RestoreWithBudget(receipt, 3, () => RestoreReceiptCore(receipt));
+			if (restored) ActionFailureStore.CancelApply(receipt.Id, receipt.Target);
+			return restored;
+		}
+
+		private static bool RestoreReceiptCore(PerformanceActionStore.Receipt receipt)
 		{
 			if (receipt == null || !IsAction(receipt.Id))
 			{
@@ -978,6 +985,11 @@ namespace PaviseApp
 			}
 		}
 
+		internal static void BeginRecoveryCycle(long serial)
+		{
+			lock (gate) { retiredRecoveryFailures = 0; retiredRecoveryAt = 0; }
+		}
+
 		internal static bool TryRestoreRetired(Func<bool> mayContinue)
 		{
 			if (!RecoveryAdmitted(mayContinue))
@@ -986,7 +998,7 @@ namespace PaviseApp
 			}
 			lock (gate)
 			{
-				if (closing || working || DateTime.UtcNow.Ticks < retiredRecoveryAt)
+				if (closing || working || retiredRecoveryFailures >= 5 || DateTime.UtcNow.Ticks < retiredRecoveryAt)
 				{
 					return false;
 				}
@@ -1029,7 +1041,7 @@ namespace PaviseApp
 				{
 					lock (gate)
 					{
-						retiredRecoveryFailures = ((!flag) ? Math.Min(5, retiredRecoveryFailures + 1) : 0);
+						if (!flag) retiredRecoveryFailures = Math.Min(5, retiredRecoveryFailures + 1);
 						retiredRecoveryAt = DateTime.UtcNow.AddSeconds(flag ? 60 : Math.Min(300, 30 * (1 << retiredRecoveryFailures))).Ticks;
 					}
 					Finish();

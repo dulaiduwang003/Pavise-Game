@@ -102,7 +102,7 @@ namespace PaviseApp
 			}
 		}
 
-		private sealed class CriticalThreadHardAffinityNative : IHardThreadNative, IDisposable, IHardThreadTransientReads
+		private sealed class CriticalThreadHardAffinityNative : IHardThreadNative, IDisposable, IHardThreadTransientReads, IHardThreadCandidateReads
 		{
 			private struct GroupAffinity
 			{
@@ -122,6 +122,12 @@ namespace PaviseApp
 			private IntPtr process;
 
 			private bool closeFault;
+
+			private readonly StringBuilder processPath = new StringBuilder(32768);
+
+			private static readonly HardThreadOptionalEntry threadCpuSetMasks = new HardThreadOptionalEntry();
+
+			private static readonly HardThreadOptionalEntry processCpuSetMasks = new HardThreadOptionalEntry();
 
 			private readonly Dictionary<string, IntPtr> threads = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
 
@@ -160,6 +166,12 @@ namespace PaviseApp
 
 			[DllImport("kernel32.dll", SetLastError = true)]
 			private static extern bool GetThreadGroupAffinity(IntPtr thread, out GroupAffinity affinity);
+
+			[DllImport("kernel32.dll", SetLastError = true)]
+			private static extern int GetThreadPriority(IntPtr thread);
+
+			[DllImport("kernel32.dll", SetLastError = true)]
+			private static extern uint GetPriorityClass(IntPtr process);
 
 			[DllImport("kernel32.dll", SetLastError = true)]
 			private static extern bool SetThreadGroupAffinity(IntPtr thread, ref GroupAffinity affinity, out GroupAffinity previous);
@@ -227,13 +239,13 @@ namespace PaviseApp
 					return HardThreadRead.Unknown;
 				case 258u:
 				{
-					StringBuilder stringBuilder = new StringBuilder(32768);
-					int capacity = stringBuilder.Capacity;
+					processPath.Length = 0;
+					int capacity = processPath.Capacity;
 					long born;
 					long exited;
 					long kernel;
 					long user;
-					if (!GetProcessTimes(process, out born, out exited, out kernel, out user) || born != target.ProcessCreation || !QueryFullProcessImageName(process, 0u, stringBuilder, ref capacity) || !string.Equals(Path.GetFullPath(stringBuilder.ToString()), target.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+					if (!GetProcessTimes(process, out born, out exited, out kernel, out user) || born != target.ProcessCreation || !QueryFullProcessImageName(process, 0u, processPath, ref capacity) || !string.Equals(Path.GetFullPath(processPath.ToString()), target.ExecutablePath, StringComparison.OrdinalIgnoreCase))
 					{
 						return HardThreadRead.Unknown;
 					}
@@ -243,6 +255,15 @@ namespace PaviseApp
 			}
 
 			public HardThreadMachine ReadMachine()
+			{
+				HardThreadMachine machine = ReadProcessScope();
+				if (machine.Read != HardThreadRead.Known || machine.GroupCount != 1) return machine;
+				try { machine.PhysicalCores = PhysicalCores(); }
+				catch (Exception error) { machine.Read = HardThreadRead.Unknown; machine.Detail = error.GetType().Name; }
+				return machine;
+			}
+
+			public HardThreadMachine ReadProcessScope()
 			{
 				HardThreadMachine hardThreadMachine = new HardThreadMachine();
 				hardThreadMachine.Read = HardThreadRead.Unknown;
@@ -270,7 +291,6 @@ namespace PaviseApp
 					}
 					hardThreadMachine2.ProcessMask = processMask.ToUInt64();
 					hardThreadMachine2.Group = 0;
-					hardThreadMachine2.PhysicalCores = PhysicalCores();
 					bool empty;
 					bool empty2;
 					if (!CpuSetIdsEmpty(process, false, out empty) || !CpuSetMasksEmpty(process, false, out empty2))
@@ -279,6 +299,12 @@ namespace PaviseApp
 						return hardThreadMachine2;
 					}
 					hardThreadMachine2.CpuSetsEmpty = empty && empty2;
+					try
+					{
+						uint priority = GetPriorityClass(process);
+						if (priority != 0) { hardThreadMachine2.ProcessPriorityClass = priority; hardThreadMachine2.ProcessPriorityClassKnown = true; }
+					}
+					catch { }
 					return hardThreadMachine2;
 				}
 				catch (Exception ex)
@@ -365,9 +391,16 @@ namespace PaviseApp
 
 			private static bool CpuSetMasksEmpty(IntPtr handle, bool thread, out bool empty)
 			{
+				bool observedEmpty = false, unsupported;
+				HardThreadOptionalEntry entry = thread ? threadCpuSetMasks : processCpuSetMasks;
+				bool read = entry.TryInvoke(delegate { return ReadCpuSetMasks(handle, thread, out observedEmpty); }, out unsupported);
+				empty = unsupported || observedEmpty;
+				return read;
+			}
+
+			private static bool ReadCpuSetMasks(IntPtr handle, bool thread, out bool empty)
+			{
 				empty = false;
-				try
-				{
 					ushort required;
 					bool flag = (thread ? GetThreadSelectedCpuSetMasks(handle, null, 0, out required) : GetProcessDefaultCpuSetMasks(handle, null, 0, out required));
 					if ((!flag && Marshal.GetLastWin32Error() != 122) || required > 64)
@@ -387,12 +420,6 @@ namespace PaviseApp
 					}
 					empty = required2 == 0;
 					return true;
-				}
-				catch (EntryPointNotFoundException)
-				{
-					empty = true;
-					return true;
-				}
 			}
 
 			private IntPtr OriginalThread(HardThreadIdentity thread)
@@ -456,6 +483,12 @@ namespace PaviseApp
 						hardThreadObserved2.Group = affinity.Group;
 						hardThreadObserved2.Mask = affinity.Mask.ToUInt64();
 						hardThreadObserved2.CpuSetsEmpty = empty && empty2;
+						try
+						{
+							int priority = GetThreadPriority(intPtr);
+							if (priority != int.MaxValue) { hardThreadObserved2.ThreadPriorityLevel = priority; hardThreadObserved2.ThreadPriorityKnown = true; }
+						}
+						catch { }
 						return hardThreadObserved2;
 					}
 					catch (Exception ex)
@@ -577,6 +610,8 @@ namespace PaviseApp
 
 		private volatile bool lastOperationNativeAttempt;
 
+		private bool reassertionAdmitted;
+
 		private volatile HardThreadStatus currentStatus;
 
 		private volatile string currentDetail = "";
@@ -663,6 +698,8 @@ namespace PaviseApp
 		}
 
 		internal string LastReassertion { get; private set; }
+
+		internal Func<bool> BeforeReassertion { get; set; }
 
 		private CriticalThreadHardAffinitySession(IHardThreadGate gate, IHardThreadNative native, IHardThreadStore store, IHardThreadGuardian guardian = null)
 		{
@@ -830,6 +867,7 @@ namespace PaviseApp
 			lastOperationWriteIntent = false;
 			lastOperationNativeAttempt = false;
 			LastReassertion = null;
+			reassertionAdmitted = false;
 		}
 
 		private void RequireForwardAuthority()
@@ -946,6 +984,81 @@ namespace PaviseApp
 			}
 		}
 
+		internal HardThreadCandidateAudit AuditCandidates(out string detail)
+		{
+			detail = "";
+			try
+			{
+				using (gate.EnterUse())
+				{
+					BeginOperation();
+					RequireForwardAuthority();
+					IHardThreadCandidateReads reads = native as IHardThreadCandidateReads;
+					if (reads == null || plan == null || plan.WorkerMode != HardThreadWorkerMode.CandidatesOnly
+						|| Status != HardThreadStatus.AppliedCandidates || journal == null || journal.Revision <= 0
+						|| journal.Target == null || !journal.Target.Same(gate.Target) || !plan.Target.Same(gate.Target))
+						return AuditResult(HardThreadCandidateAudit.Unavailable, "no supported applied candidate-only scope", out detail);
+					HardThreadChoice[] choices = plan.Choices;
+					var owned = new Dictionary<string, HardThreadReceipt>(StringComparer.Ordinal);
+					foreach (HardThreadReceipt row in journal.Rows)
+					{
+						if (row.Terminal) continue;
+						if (row.Thread == null || row.Phase != HardThreadPhase.Applied || !row.PreviousKnown
+							|| !plan.IsCandidate(row.Thread) || row.Group != plan.Group || row.Applied != plan.MaskFor(row.Thread)
+							|| row.Captured != plan.ProcessMask || row.PreviousGroup != row.Group || row.Previous != row.Captured
+							|| owned.ContainsKey(row.Thread.Key))
+							return AuditResult(HardThreadCandidateAudit.Unavailable, "candidate ownership is not durably applied", out detail);
+						owned.Add(row.Thread.Key, row);
+					}
+					if (owned.Count != choices.Length)
+						return AuditResult(HardThreadCandidateAudit.Unavailable, "candidate ownership is incomplete", out detail);
+					HardThreadMachine scope = reads.ReadProcessScope();
+					if (scope == null || scope.Read == HardThreadRead.Unknown)
+						return AuditResult(HardThreadCandidateAudit.Unavailable, "original process scope is unavailable", out detail);
+					if (scope.Read == HardThreadRead.Gone)
+						return AuditResult(HardThreadCandidateAudit.Gone, "original process exited", out detail);
+					if (scope.Read != HardThreadRead.Known)
+						return AuditResult(HardThreadCandidateAudit.Unavailable, "original process scope is unreadable", out detail);
+					if (scope.GroupCount != 1 || scope.Group != plan.Group || scope.ProcessMask != plan.ProcessMask
+						|| !scope.CpuSetsEmpty || (gate.Target.AllowedMask & ~scope.ProcessMask) != 0)
+						return AuditResult(HardThreadCandidateAudit.Changed, "original process range, group or CPU Sets changed", out detail);
+					var candidateFacts = new List<string>();
+					foreach (HardThreadChoice choice in choices)
+					{
+						HardThreadReceipt row;
+						if (!owned.TryGetValue(choice.Thread.Key, out row))
+							return AuditResult(HardThreadCandidateAudit.Unavailable, "original candidate receipt is missing", out detail);
+						HardThreadObserved observed = native.ReadThread(choice.Thread);
+						if (observed == null || observed.Read == HardThreadRead.Unknown)
+							return AuditResult(HardThreadCandidateAudit.Unavailable, "original candidate is unavailable", out detail);
+						if (observed.Read == HardThreadRead.Gone)
+							return AuditResult(HardThreadCandidateAudit.Gone, "original candidate exited", out detail);
+						if (observed.Read != HardThreadRead.Known)
+							return AuditResult(HardThreadCandidateAudit.Unavailable, "original candidate is unreadable", out detail);
+						if (observed.Group != row.Group || observed.Mask != row.Applied || !observed.CpuSetsEmpty)
+							return AuditResult(HardThreadCandidateAudit.Changed, "original candidate range, group or CPU Sets changed", out detail);
+						candidateFacts.Add("TID=" + choice.Thread.Tid + " affinity=0x" + observed.Mask.ToString("X") + " group=" + observed.Group
+							+ " priorityLevel(raw)=" + (observed.ThreadPriorityKnown ? observed.ThreadPriorityLevel.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unreadable"));
+					}
+					RequireForwardAuthority();
+					foreach (HardThreadChoice choice in choices) Confirm(owned[choice.Thread.Key]);
+					return AuditResult(HardThreadCandidateAudit.Verified, string.Join("; ", candidateFacts.ToArray())
+						+ "; processPriorityClass(raw)=" + (scope.ProcessPriorityClassKnown ? "0x" + scope.ProcessPriorityClass.ToString("X") : "unreadable"), out detail);
+				}
+			}
+			catch (Exception error)
+			{
+				return AuditResult(HardThreadCandidateAudit.Unavailable, "candidate audit unavailable: " + error.GetType().Name + ": " + error.Message, out detail);
+			}
+		}
+
+		private HardThreadCandidateAudit AuditResult(HardThreadCandidateAudit result, string reason, out string detail)
+		{
+			detail = Detail = reason;
+			lastFailureKind = result == HardThreadCandidateAudit.Verified ? HardThreadFailureKind.None : HardThreadFailureKind.ObservationUnavailable;
+			return result;
+		}
+
 		internal bool AdmitNewThreads(HardThreadIdentity[] threads, HardThreadCoverage coverage)
 		{
 			if (threads != null)
@@ -1035,6 +1148,16 @@ namespace PaviseApp
 				return "process scope changed";
 			}
 			RequireForwardAuthority();
+			if (!reassertionAdmitted)
+			{
+				Func<bool> admit = BeforeReassertion;
+				if (admit != null)
+				{
+					try { if (!admit()) return "forward reassertion declined"; }
+					catch { return "forward reassertion policy unavailable"; }
+				}
+				reassertionAdmitted = true;
+			}
 			lastOperationNativeAttempt = true;
 			ushort previousGroup;
 			ulong previousMask;

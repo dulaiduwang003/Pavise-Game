@@ -88,8 +88,9 @@ namespace PaviseApp
 				Detail = "shared snapshot has not advanced";
 				return true;
 			}
-			hotspots = (from x in tracker.Observe(previous, threadTimes2, 8)
+			hotspots = (from x in tracker.Observe(previous, threadTimes2, 8, CriticalThreadAutoPolicy.MinimumShare)
 				select new CriticalThreadHotspot(x)).ToArray();
+			// Manual rules keep their own 35% admission in CriticalThreadRuntimePolicy.Select.
 			candidates = hotspots.Take(2).ToArray();
 			previous = threadTimes2;
 			Detail = ((candidates.Length == 0) ? "waiting for sustained CPU hotspot windows" : "CPU hotspot candidates; roles unverified");

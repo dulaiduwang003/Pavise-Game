@@ -119,7 +119,12 @@ namespace PaviseApp
 				text = text + " · allocated 0x" + plan.Allocated.ToString("X");
 			}
 			string text2 = (autoCoreStatus.Pending ? "recovery pending" : (autoCoreStatus.ObservationOnly ? "disabled" : ((!autoCoreStatus.Watching) ? "no match" : (autoCoreStatus.Engaged ? "exclusive" : (autoCoreStatus.Exclusive ? "exclusive requested" : ((autoCoreStatus.Blocked != null) ? ("shared (" + autoCoreStatus.Blocked + ")") : "shared"))))));
-			return text + " · " + text2 + " · game 0x" + autoCoreStatus.GameMask.ToString("X") + " · hard target 0x" + autoCoreStatus.ExpectedMask.ToString("X") + " · observed " + (autoCoreStatus.AffinityRead ? ("0x" + autoCoreStatus.ObservedMask.ToString("X")) : "unreadable") + " · verified " + autoCoreStatus.AffinityVerified + " · background " + autoCoreStatus.BackgroundMoved + " · work wall " + autoCoreStatus.WorkMs.ToString("F1") + "ms" + (string.IsNullOrEmpty(autoCoreStatus.PlacementEvidence) ? "" : (" · placement {" + autoCoreStatus.PlacementEvidence + "}"));
+			return text + " · " + text2 + " · game 0x" + autoCoreStatus.GameMask.ToString("X") + " · hard target 0x" + autoCoreStatus.ExpectedMask.ToString("X") + " · observed " + (autoCoreStatus.AffinityRead ? ("0x" + autoCoreStatus.ObservedMask.ToString("X")) : "unreadable") + " · verified " + autoCoreStatus.AffinityVerified + " · job protected " + autoCoreStatus.JobAffinity + (string.IsNullOrEmpty(autoCoreStatus.JobFallbackReason) ? "" : " · job unavailable " + autoCoreStatus.JobFallbackReason) + " · background " + autoCoreStatus.BackgroundMoved + (string.IsNullOrEmpty(autoCoreStatus.BackgroundAffinityDetail) ? "" : " · " + autoCoreStatus.BackgroundAffinityDetail) + " · work wall " + autoCoreStatus.WorkMs.ToString("F1") + "ms" + (string.IsNullOrEmpty(autoCoreStatus.PlacementEvidence) ? "" : (" · placement {" + autoCoreStatus.PlacementEvidence + "}"));
+		}
+
+		internal static string AffinityProtectionText(AutoCoreStatus status)
+		{
+			return PerformancePolicy.Text("核心绑定已生效", "Core affinity active");
 		}
 
 		internal static string ValidateRange(ulong isolation, ulong game, ulong all, ulong[] cores, ulong allocated, bool manual = false)

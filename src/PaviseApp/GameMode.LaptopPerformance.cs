@@ -45,11 +45,15 @@ namespace PaviseApp
             laptopPerfSupported = supported;
             laptopPerfSupportKnown = true;
             if (!supported && !laptopPerfActive && !LaptopPerfMode.HasResidue)
-                SetLaptopPerformanceState("unsupported", PerformancePolicy.Text("本机没有可核验的联想/华硕笔记本性能档接口", "No verified Lenovo/ASUS laptop performance interface is available"));
+                SetLaptopPerformanceState("unsupported", LaptopPerfMode.SupportDetail.Length > 0 ? LaptopPerfMode.SupportDetail
+                    : PerformancePolicy.Text("本机没有可核验的联想/华硕笔记本性能档接口", "No verified Lenovo/ASUS laptop performance interface is available"));
+            else if (supported && !LaptopPerformanceEnabled && !laptopPerfActive && !LaptopPerfMode.HasResidue)
+                SetLaptopPerformanceState("off", PerformancePolicy.Text("已关闭；", "Off; ") + LaptopPerfMode.SupportDetail);
         }
 
         public bool TrySetLaptopPerformanceEnabled(bool value)
         {
+            if (LaptopPerformanceEnabled == value) return !stopping;
             if (stopping || !Settings.SaveDurable(LaptopPerfMode.PreferenceKey, value)) return false;
             Interlocked.Exchange(ref laptopPerfNextWork, 0L);
             SetLaptopPerformanceState(value ? "waiting-game" : "off", value
@@ -104,6 +108,7 @@ namespace PaviseApp
 
         private void StepLaptopPerformancePolicy()
         {
+            if (!AutomaticWorkAllowed("laptop-worker")) return;
             long now = DateTime.UtcNow.Ticks;
             if (now < Interlocked.Read(ref laptopPerfNextWork)) return;
             int mutation = Settings.MutationGeneration;
@@ -128,6 +133,7 @@ namespace PaviseApp
                     try { RunLaptopPerformanceStep(generation); }
                     catch (Exception ex)
                     {
+                        RecordAutomaticWorkFailure("laptop-worker", ex.GetType().Name);
                         SetLaptopPerformanceState("failed", PerformancePolicy.Text("厂商性能档检查失败：", "Vendor mode check failed: ") + ex.Message);
                         Interlocked.Exchange(ref laptopPerfNextWork, DateTime.UtcNow.AddSeconds(30).Ticks);
                     }
@@ -145,6 +151,7 @@ namespace PaviseApp
             catch { }
             if (!queued)
             {
+                RecordAutomaticWorkFailure("laptop-worker", "queue-rejected");
                 Interlocked.Exchange(ref laptopPerfWorker, 0);
                 laptopPerfIdle.Set();
                 SetLaptopPerformanceState("failed", PerformancePolicy.Text("厂商性能档检查暂时无法排队", "Vendor mode check could not be queued"));
@@ -176,7 +183,8 @@ namespace PaviseApp
                 if (!laptopPerfSupported)
                 {
                     if (!RestoreLaptopPerformanceForPowerPlan()) return;
-                    SetLaptopPerformanceState("unsupported", PerformancePolicy.Text("本机厂商性能档接口不可用，未新增切档", "The vendor performance interface is unavailable; no new mode change"));
+                    SetLaptopPerformanceState("unsupported", LaptopPerfMode.SupportDetail.Length > 0 ? LaptopPerfMode.SupportDetail
+                        : PerformancePolicy.Text("本机厂商性能档接口不可用，未新增切档", "The vendor performance interface is unavailable; no new mode change"));
                     Interlocked.Exchange(ref laptopPerfNextWork, DateTime.UtcNow.AddSeconds(30).Ticks);
                     return;
                 }
@@ -225,6 +233,8 @@ namespace PaviseApp
 
         private bool RestoreLaptopPerformanceForPowerPlan()
         {
+            if (Volatile.Read(ref laptopPerfWorker) != 0 && !Monitor.IsEntered(powerApplyGate))
+            { RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false; }
             lock (powerApplyGate)
             {
                 bool owed = laptopPerfActive || LaptopPerfMode.HasResidue;

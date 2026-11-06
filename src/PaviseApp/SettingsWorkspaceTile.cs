@@ -17,8 +17,6 @@ namespace PaviseApp
 
 		internal bool CompactRow;
 
-		internal Action<string, string> DetailsRequested;
-
 		private readonly PerformanceInfoButton information;
 
 		private bool arranging;
@@ -100,14 +98,7 @@ namespace PaviseApp
 			EventHandler value = delegate
 			{
 				PerformanceInformationTip.Cancel(information);
-				if (DetailsRequested != null)
-				{
-					DetailsRequested(base.Title, DetailsText);
-				}
-				else
-				{
-					PaviseDialog.Info(FindForm(), base.Title, DetailsText);
-				}
+				PaviseDialog.Info(FindForm(), base.Title, DetailsText);
 			};
 			performanceInfoButton.Click += value;
 			information.MouseEnter += delegate

@@ -14,6 +14,10 @@ namespace PaviseApp
 
 		internal bool CpuSetsEmpty;
 
+		internal bool ProcessPriorityClassKnown;
+
+		internal uint ProcessPriorityClass;
+
 		internal string Detail;
 	}
 }

@@ -7,7 +7,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-	internal static class RenderLane
+	internal static partial class RenderLane
 	{
 		private enum RestoreResult
 		{
@@ -76,6 +76,8 @@ namespace PaviseApp
 
 		private static readonly object operationGate = new object();
 
+		private static readonly Dictionary<int, Func<bool>> recoveryAdmissions = new Dictionary<int, Func<bool>>();
+
 		private static bool shutdownClosed;
 
 		private static int lanePid;
@@ -132,7 +134,7 @@ namespace PaviseApp
 				{
 					return LaneState.Engaged;
 				}
-				if (gaveUpPid == pid && gaveUpCreation == creation)
+				if (stoppedPhases.Contains(LanePhase(pid, creation)))
 				{
 					return LaneState.Unavailable;
 				}
@@ -146,15 +148,27 @@ namespace PaviseApp
 
 		public static void EnsureForGame(int pid, long creation, string gameName)
 		{
+			EnsureForGame(pid, creation, gameName, null);
+		}
+
+		internal static void EnsureForGame(int pid, long creation, string gameName, Func<bool> admitted)
+		{
+			try { if (admitted != null && !admitted()) return; }
+			catch { return; }
+			if (ThreadPriorityReservation.HasProcess(pid, creation)) return;
 			Thread thread;
+			int scheduledGeneration;
 			lock (sync)
 			{
-				if (shutdownClosed || pid <= 0 || (laneApplied && lanePid == pid && laneCreation == creation) || (gaveUpPid == pid && gaveUpCreation == creation) || (trackPid == pid && trackCreation == creation))
+				if (shutdownClosed || pid <= 0 || (laneApplied && lanePid == pid && laneCreation == creation) || stoppedPhases.Contains(LanePhase(pid, creation)) || (trackPid == pid && trackCreation == creation))
 				{
 					return;
 				}
 				laneGen++;
 				int gen = laneGen;
+				scheduledGeneration = gen;
+				recoveryAdmissions[gen] = admitted;
+				workerPhases[gen] = LanePhase(pid, creation);
 				trackPid = pid;
 				trackCreation = creation;
 				trackGen = gen;
@@ -167,7 +181,17 @@ namespace PaviseApp
 				thread.Name = "Pavise.RenderLane";
 				thread.Priority = ThreadPriority.BelowNormal;
 			}
-			thread.Start();
+			try { thread.Start(); }
+			catch
+			{
+				lock (sync)
+				{
+					string phase;
+					if (workerPhases.TryGetValue(scheduledGeneration, out phase)) stoppedPhases.Add(phase);
+					recoveryAdmissions.Remove(scheduledGeneration); workerPhases.Remove(scheduledGeneration);
+					if (trackGen == scheduledGeneration) { trackPid = 0; trackCreation = 0; trackGen = 0; }
+				}
+			}
 		}
 
 		private static bool GenAlive(int gen)
@@ -202,11 +226,14 @@ namespace PaviseApp
 			}
 			catch
 			{
+				GiveUp(pid, creation, gen);
 			}
 			finally
 			{
 				lock (sync)
 				{
+					recoveryAdmissions.Remove(gen);
+					workerPhases.Remove(gen);
 					if (trackGen == gen)
 					{
 						trackPid = 0;
@@ -362,6 +389,7 @@ namespace PaviseApp
 
 		private static PinOutcome TryPin(int pid, long creation, Candidate best, string gameName, int gen, bool logThis)
 		{
+			lock (ThreadPriorityReservation.Gate)
 			return RunPinMutation(gen, () => TryPinLocked(pid, creation, best, gameName, gen, logThis));
 		}
 
@@ -430,6 +458,8 @@ namespace PaviseApp
 
 		private static PinOutcome TryPinPriorityLocked(int pid, long creation, Candidate best, string gameName, int gen, bool logThis, Func<int> readPriority, Func<int, bool> setPriority)
 		{
+			if (!RecoveryAdmissionAllowed(gen)) return PinOutcome.Canceled;
+			if (ThreadPriorityReservation.Contains(pid, creation, best.Tid, best.ThreadCreation)) return PinOutcome.Canceled;
 			int num = readPriority();
 			if (num == int.MaxValue)
 			{
@@ -455,6 +485,12 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.renderlane.10"));
 				}
 				return PinOutcome.Retryable;
+			}
+			BindLaneRecoveryOwner();
+			if (!RecoveryAdmissionAllowed(gen))
+			{
+				ClearJournal(expected);
+				return PinOutcome.Canceled;
 			}
 			if (!setPriority(2))
 			{
@@ -514,6 +550,14 @@ namespace PaviseApp
 			return PinOutcome.Pinned;
 		}
 
+		private static bool RecoveryAdmissionAllowed(int gen)
+		{
+			Func<bool> admitted;
+			lock (sync) recoveryAdmissions.TryGetValue(gen, out admitted);
+			try { return admitted == null || admitted(); }
+			catch { return false; }
+		}
+
 		private static bool VerifyOnce(int pid, long creation, string gameName, int gen, LaneJudge judge)
 		{
 			int num;
@@ -545,7 +589,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				if (RestoreThread(pid, creation, num, threadCreation, original) == RestoreResult.Failed)
+				if (!RestoreLaneLocked())
 				{
 					Logger.Log(Lang.T("log.renderlane.21") + num + Lang.T("log.renderlane.22"));
 					GiveUp(pid, creation, gen);
@@ -600,6 +644,8 @@ namespace PaviseApp
 				{
 					gaveUpPid = pid;
 					gaveUpCreation = creation;
+					string phase;
+					stoppedPhases.Add(workerPhases.TryGetValue(gen, out phase) ? phase : LanePhase(pid, creation));
 				}
 			}
 		}
@@ -624,6 +670,32 @@ namespace PaviseApp
 			lock (operationGate)
 			{
 				return ReleaseLocked();
+			}
+		}
+
+		internal static bool ReleaseReservedPriority()
+		{
+			lock (ThreadPriorityReservation.Gate)
+			lock (operationGate)
+			{
+				int target;
+				long created;
+				int tid;
+				long threadBirth;
+				lock (sync)
+				{
+					target = lanePid;
+					created = laneCreation;
+					tid = laneTid;
+					threadBirth = laneThreadCreation;
+				}
+				if (ThreadPriorityReservation.Contains(target, created, tid, threadBirth)) return ReleaseLocked();
+				string raw;
+				if (!Settings.TryLoadStr("RenderLane", out raw)) return false;
+				if (raw.Length == 0) return true;
+				int original;
+				if (!ParseJournal(raw, out target, out created, out tid, out original) || !ReadThreadBirth(raw, out threadBirth)) return false;
+				return !ThreadPriorityReservation.Contains(target, created, tid, threadBirth) || ReleaseLocked();
 			}
 		}
 
@@ -671,6 +743,13 @@ namespace PaviseApp
 
 		private static bool RestoreLaneLocked()
 		{
+			if (!laneApplied && !HasResidue()) { SettleLaneRecovery(); return true; }
+			BindLaneRecoveryOwner();
+			return RunLaneRecovery(RestoreLaneCore);
+		}
+
+		private static bool RestoreLaneCore()
+		{
 			bool flag;
 			int pid;
 			long creation;
@@ -688,7 +767,7 @@ namespace PaviseApp
 			}
 			if (!flag)
 			{
-				return HealFromCrashLocked();
+				return HealFromCrashCore();
 			}
 			RestoreResult restoreResult = RestoreThread(pid, creation, num, threadCreation, num2);
 			bool flag2 = restoreResult != RestoreResult.Failed;
@@ -731,6 +810,11 @@ namespace PaviseApp
 		}
 
 		private static bool HealFromCrashLocked()
+		{
+			return RestoreLaneLocked();
+		}
+
+		private static bool HealFromCrashCore()
 		{
 			string value;
 			if (!Settings.TryLoadStr("RenderLane", out value))

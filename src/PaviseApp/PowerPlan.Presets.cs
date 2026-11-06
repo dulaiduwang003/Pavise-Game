@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -12,18 +10,58 @@ namespace PaviseApp
 {
     internal interface IManagedPowerPresetPlans : IManagedPowerPlans
     {
-        bool ImportPreset(ManagedPowerPreset preset, Guid destination);
+        bool CreatePreset(ManagedPowerPreset preset, Guid destination);
         Guid[] Subgroups(Guid scheme);
-        bool RemoveOverride(Guid scheme, Guid sub, Guid setting, bool ac);
         bool CopyBaseSetting(Guid source, Guid target, Guid sub, Guid setting, bool ac);
+    }
+
+    internal interface IManagedPowerDeviceKind
+    {
+        LaboratoryEppDeviceKind DeviceKind { get; }
     }
 
     internal static partial class PowerPlan
     {
         private const string PresetCreationKey = "ManagedPresetCreationV1";
-        private const string PresetRevision = "full2";
+        private const string PresetRevision = "copy1";
         private static bool requestedAggressive;
         private static ManagedPowerHardwareFacts cachedManagedHardware;
+        [ThreadStatic] private static string applyFailureReason;
+        [ThreadStatic] private static bool applyFailurePermanent;
+        internal static string LastApplyFailureReason { get { return applyFailureReason ?? ""; } }
+        internal static bool LastApplyFailureIsPermanent { get { return applyFailurePermanent; } }
+        internal static void ClearApplyFailureReason() { applyFailureReason = null; applyFailurePermanent = false; }
+
+        // Battery presence alone cannot distinguish a notebook from a desktop UPS.
+        // Only a verified desktop enters the preset route. Missing/unfinished
+        // chassis evidence retains the conservative 3.1.1.0 dynamic policy.
+        internal static bool UsesLegacyManagedPolicy()
+        {
+            var device = ManagedPlans as IManagedPowerDeviceKind;
+            return device == null || device.DeviceKind != LaboratoryEppDeviceKind.Desktop;
+        }
+
+        // Carry the first failing stage back to the session owner. Cleanup can fail
+        // afterwards, but must not replace the reason that stopped the apply.
+        private static bool PowerApplyFailed(string stage, string detail)
+        {
+            if (string.IsNullOrEmpty(applyFailureReason))
+                applyFailureReason = "stage=" + stage + " detail=" + PowerFailureDetail(detail);
+            return false;
+        }
+
+        private static Guid ManagedPlanFailed(string stage, string detail)
+        {
+            PowerApplyFailed(stage, detail);
+            return Guid.Empty;
+        }
+
+        private static string PowerFailureDetail(string detail)
+        {
+            detail = (detail ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (detail.Length > 1200) detail = detail.Substring(0, 1200);
+            return "\"" + detail.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
 
         private static ManagedPowerPresetSelection SelectManagedPreset(bool aggressive)
         {
@@ -114,33 +152,159 @@ namespace PaviseApp
         [DllImport("powrprof.dll", EntryPoint = "PowerEnumerate")]
         private static extern uint EnumeratePresetSubgroup(IntPtr root, ref Guid scheme, IntPtr sub, uint access, uint index, byte[] buffer, ref uint size);
 
-        private static bool ImportPresetNative(ManagedPowerPreset preset, Guid destination)
+        private static bool CreatePresetNative(ManagedPowerPreset preset, Guid destination)
         {
-            if (preset == null || destination == Guid.Empty || IsBuiltInPlan(destination) || ManagedPlans.Exists(destination)) return false;
-            string file = Path.Combine(Path.GetTempPath(), "Pavise-PowerPlan-" + destination.ToString("N") + ".pow");
-            bool createdHere = false;
+            if (HandheldBypass) return false;
+            if (preset == null) return PresetCreationFailed(null, "Missing parameter set");
             try
             {
-                byte[] bytes = preset.ReadBytes();
-                using (var output = new FileStream(file, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                { createdHere = true; output.Write(bytes, 0, bytes.Length); output.Flush(true); }
-                var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "powercfg.exe"),
-                    "/import \"" + file + "\" " + destination.ToString("D"));
-                start.UseShellExecute = false; start.CreateNoWindow = true; start.WindowStyle = ProcessWindowStyle.Hidden;
-                start.RedirectStandardOutput = true; start.RedirectStandardError = true;
-                using (Process process = Process.Start(start))
+                Guid baseline;
+                if (!TryReadPresetCreationIntent(destination, out baseline)) return PresetCreationFailed(preset, "Missing durable creation record");
+                string failure;
+                return PowerPresetWriter.Create(preset, destination, Ultimate, HighPerf, baseline, new NativePowerPresetWriter(), out failure)
+                    || PresetCreationFailed(preset, failure, PowerPresetWriter.LastFailureNativeCode);
+            }
+            catch (Exception error) { return PresetCreationFailed(preset, error.GetType().Name + ": " + error.Message); }
+        }
+
+        private static bool PresetCreationFailed(ManagedPowerPreset preset, string detail, uint nativeCode = 0)
+        {
+            applyFailurePermanent |= PowerPresetWriter.PermanentNativeFailure(nativeCode);
+            if (string.IsNullOrEmpty(applyFailureReason))
+                applyFailureReason = "stage=preset-creation source=" + (preset == null ? "unknown" : preset.Id)
+                    + " detail=" + PowerFailureDetail(detail);
+            return false;
+        }
+
+        private static bool HasPresetCreationIntent(Guid destination)
+        {
+            Guid baseline;
+            return TryReadPresetCreationIntent(destination, out baseline);
+        }
+
+        private static bool TryReadPresetCreationIntent(Guid destination, out Guid baseline)
+        {
+            baseline = Guid.Empty;
+            if (destination == Guid.Empty || IsBuiltInPlan(destination)) return false;
+            string raw;
+            if (!Settings.TryLoadStr(PresetCreationKey, out raw) || string.IsNullOrEmpty(raw)) return false;
+            string[] parts = raw.Split('|'); Guid candidate;
+            return parts.Length == 3 && parts[0] == "1" && Guid.TryParse(parts[1], out candidate) && candidate == destination
+                && Guid.TryParse(parts[2], out baseline) && baseline != Guid.Empty && baseline != destination;
+        }
+
+        private sealed class NativePowerPresetWriter : IPowerPresetWriterPlatform, IVerifiedPowerPresetBaseline, IManagedPowerSchemeEvidence
+        {
+            private Guid createdHere;
+            public Guid? Current() { return PowerPlan.Current(); }
+            public bool Exists(Guid scheme) { return SchemeUsable(scheme); }
+            public ManagedPowerSchemeEvidence SchemeEvidence(Guid scheme) { return ReadManagedSchemeEvidenceNative(scheme); }
+            public bool IsRegistered(ManagedPowerPresetValue value)
+            { return PowerPresetWriter.IsRegistered(PowerPresetWriter.SettingPath(value)); }
+
+            public bool VerifyBaseline(Guid baseline, Guid destination)
+            {
+                Guid recorded;
+                ManagedPolicyRecord policy;
+                Guid? active = Current();
+                return TryReadPresetCreationIntent(destination, out recorded) && recorded == baseline
+                    && ReadManagedPolicy(out policy) && active.HasValue && active != Guid.Empty && active != destination
+                    && SchemeEvidence(baseline).State == ManagedPowerSchemeState.Present
+                    && SchemeEvidence(destination).State != ManagedPowerSchemeState.Unavailable
+                    && !ManagedPlans.IsOwned(baseline) && Current() == active;
+            }
+
+            public uint Duplicate(Guid source, Guid destination)
+            {
+                if (HandheldBypass) return 5;
+                Guid baseline;
+                if (!TryReadPresetCreationIntent(destination, out baseline)) return 87;
+                ManagedPowerSchemeEvidence candidate = SchemeEvidence(destination);
+                if (candidate.State == ManagedPowerSchemeState.Unavailable) return candidate.NativeCode;
+                if (candidate.State != ManagedPowerSchemeState.ConfirmedMissing) return 87;
+                if (!VerifyBaseline(baseline, destination)) return 5;
+                if (source != Ultimate && source != HighPerf && source != baseline) return 87;
+                if (source != Ultimate && source != HighPerf && Current() != baseline) return 5;
+                IntPtr allocated = Marshal.AllocHGlobal(16), result = allocated;
+                try
                 {
-                    if (process == null) return false;
-                    var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
-                    if (!process.WaitForExit(15000)) { try { process.Kill(); process.WaitForExit(); } catch { } return false; }
-                    process.WaitForExit();
-                    if (process.ExitCode != 0) { Logger.Warn("POWER preset import failed: " + preset.Id + " code=" + process.ExitCode); return false; }
-                    return ManagedPlans.Exists(destination);
+                    Marshal.StructureToPtr(destination, allocated, false);
+                    if (HandheldBypass) return 5;
+                    uint code = PowerDuplicateScheme(IntPtr.Zero, ref source, ref result);
+                    if (code != 0) return code;
+                    if (result == IntPtr.Zero || (Guid)Marshal.PtrToStructure(result, typeof(Guid)) != destination) return 13;
+                    createdHere = destination;
+                    return 0;
+                }
+                finally
+                {
+                    if (result != IntPtr.Zero && result != allocated) LocalFree(result);
+                    Marshal.FreeHGlobal(allocated);
                 }
             }
-            catch (Exception error) { Logger.Warn("POWER preset import failed: " + preset.Id + " " + error.GetType().Name); return false; }
-            finally { if (createdHere) try { File.Delete(file); } catch { } }
+
+            private bool CanWrite(Guid scheme)
+            {
+                if (HandheldBypass) return false;
+                Guid? active = Current();
+                return createdHere == scheme && HasPresetCreationIntent(scheme)
+                    && active.HasValue && active != Guid.Empty && active != scheme
+                    && SchemeEvidence(scheme).State == ManagedPowerSchemeState.Present;
+            }
+
+            public ManagedPowerPresetValue[] StoredSettings(Guid scheme)
+            {
+                if (!CanWrite(scheme)) return null;
+                try
+                {
+                    var values = new List<ManagedPowerPresetValue>();
+                    Guid[] groups = ReadPresetSubgroups(scheme);
+                    if (groups == null) return null;
+                    foreach (Guid sub in groups)
+                    {
+                        Guid[] settings = ReadPresetStoredSettings(scheme, sub);
+                        if (settings == null) return null;
+                        foreach (Guid setting in settings)
+                            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(PresetSettingPath(scheme, sub, setting)))
+                            {
+                                if (key == null) return null;
+                                values.Add(new ManagedPowerPresetValue(sub.ToString(), setting.ToString(),
+                                    key.GetValue("ACSettingIndex") == null ? (uint?)null : 0u,
+                                    key.GetValue("DCSettingIndex") == null ? (uint?)null : 0u, null, null, 4, 4));
+                            }
+                    }
+                    return values.ToArray();
+                }
+                catch { return null; }
+            }
+
+            public uint ReadDefault(ManagedPowerPresetValue value, Guid personality, bool ac, out uint index)
+            {
+                Guid sub = value.Sub, setting = value.Setting;
+                return ac ? ReadPresetAcDefault(IntPtr.Zero, ref personality, ref sub, ref setting, out index)
+                    : ReadPresetDcDefault(IntPtr.Zero, ref personality, ref sub, ref setting, out index);
+            }
+
+            public uint Write(Guid scheme, ManagedPowerPresetValue value, bool ac, uint index)
+            {
+                if (!CanWrite(scheme)) return 5;
+                Guid sub = value.Sub, setting = value.Setting;
+                return ac ? PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, index)
+                    : PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, index);
+            }
+
+            public uint Read(Guid scheme, ManagedPowerPresetValue value, bool ac, out uint index)
+            {
+                Guid sub = value.Sub, setting = value.Setting;
+                return ac ? PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out index)
+                    : PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out index);
+            }
         }
+
+        [DllImport("powrprof.dll", EntryPoint = "PowerReadACDefaultIndex")]
+        private static extern uint ReadPresetAcDefault(IntPtr root, ref Guid personality, ref Guid sub, ref Guid setting, out uint value);
+        [DllImport("powrprof.dll", EntryPoint = "PowerReadDCDefaultIndex")]
+        private static extern uint ReadPresetDcDefault(IntPtr root, ref Guid personality, ref Guid sub, ref Guid setting, out uint value);
 
         private static Guid[] ReadPresetSubgroups(Guid scheme)
         {
@@ -234,6 +398,7 @@ namespace PaviseApp
 
         private static bool TunePresetTarget(Guid scheme, bool aggressive)
         {
+            if (HandheldBypass) return false;
             ManagedPolicyRecord record;
             var plans = ManagedPlans as IManagedPowerPresetPlans;
             if (plans == null || !ReadManagedPolicy(out record) || record == null || !record.CurrentTemplate
@@ -242,22 +407,34 @@ namespace PaviseApp
             if (selection.Preset == null || record.Source != selection.Preset.Id || record.Fingerprint != PresetFingerprint(selection)) return false;
             try
             {
-                // Validate the imported source before deliberate AC/DC adaptation. Unsupported items are skipped.
+                // 在本机 AC/DC 适配前核对写入值；未注册项已在创建阶段跳过。
+                var readEvidence = plans as IManagedPowerReadEvidence;
                 foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
                 {
                     if (PreserveBaseAc(value.Sub, value.Setting, selection.PreserveParking)) continue;
+                    if (value.Ac.HasValue && readEvidence != null)
+                    {
+                        ManagedPowerReadEvidence read = readEvidence.ReadEvidence(scheme, value.Sub, value.Setting, true);
+                        if (read.State == ManagedPowerReadState.Unavailable)
+                            return PresetPreparationFailed("AC value unavailable: " + value.Sub + "/" + value.Setting
+                                + " code=" + read.NativeCode + " resolution=" + read.ResolutionCode, read.NativeCode, read.ResolutionCode);
+                        if (read.State == ManagedPowerReadState.Value && read.Value != value.Ac.Value)
+                            return PresetPreparationFailed("AC readback mismatch: " + value.Sub + "/" + value.Setting);
+                        continue;
+                    }
                     uint? actual = plans.Read(scheme, value.Sub, value.Setting, true);
-                    if (value.Ac.HasValue && actual.HasValue && actual.Value != value.Ac.Value) return false;
+                    if (value.Ac.HasValue && actual.HasValue && actual.Value != value.Ac.Value)
+                        return PresetPreparationFailed("AC readback mismatch: " + value.Sub + "/" + value.Setting);
                 }
                 Guid[] baseGroups = plans.Subgroups(record.Base), targetGroups = plans.Subgroups(scheme);
-                if (baseGroups == null || targetGroups == null) return false;
+                if (baseGroups == null || targetGroups == null) return PresetPreparationFailed("Subgroup enumeration failed");
                 var groups = new HashSet<Guid>(baseGroups); groups.UnionWith(targetGroups); groups.Add(SubNone);
                 if (!CopyPresetBaseValue(plans, record.Base, scheme, SubNone, Personality, false)) return false;
                 int copied = 0;
                 foreach (Guid sub in groups)
                 {
                     Guid[] baseSettings = plans.ProcessorSettings(record.Base, sub), targetSettings = plans.ProcessorSettings(scheme, sub);
-                    if (baseSettings == null || targetSettings == null) return false;
+                    if (baseSettings == null || targetSettings == null) return PresetPreparationFailed("Setting enumeration failed: " + sub);
                     var settings = new HashSet<Guid>(baseSettings); settings.UnionWith(targetSettings);
                     foreach (Guid setting in settings)
                     {
@@ -273,19 +450,62 @@ namespace PaviseApp
                     + " preservedAC=" + copied + " reason=" + selection.Reason);
                 return true;
             }
-            catch (Exception error) { Logger.Warn("POWER preset preparation failed: " + error.GetType().Name); return false; }
+            catch (Exception error) { return PresetPreparationFailed(error.GetType().Name + ": " + error.Message); }
+        }
+
+        private static bool ManagedPresetIntact(Guid scheme, bool aggressive)
+        {
+            ManagedPolicyRecord record;
+            IManagedPowerPlans plans = ManagedPlans;
+            if (!ReadManagedPolicy(out record) || record == null || !record.CurrentTemplate || record.Plan != scheme
+                || !plans.Exists(scheme) || !plans.IsOwned(scheme)) return false;
+            bool legacy = UsesLegacyManagedPolicy();
+            if ((record.Source == Legacy3110Source) != legacy) return false;
+            if (legacy)
+                return (record.Fingerprint.Length == 0 || record.Fingerprint == Legacy3110Fingerprint(aggressive))
+                    && Legacy3110ManagedIntact(scheme, aggressive);
+            ManagedPowerPresetSelection selection = SelectManagedPreset(aggressive);
+            if (selection.Preset == null || record.Source != selection.Preset.Id || record.Fingerprint != PresetFingerprint(selection)) return false;
+            HashSet<Guid> laboratory = LaboratoryPower.OwnedSettings(scheme);
+            if (laboratory == null) return false;
+            foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
+            {
+                // Daily-use AC and all battery settings remain local preferences.
+                // Laboratory mutations have their own audit / recovery owner.
+                if (!value.Ac.HasValue || PreserveBaseAc(value.Sub, value.Setting, selection.PreserveParking)
+                    || value.Sub == SubProcessor && laboratory.Contains(value.Setting)) continue;
+                var evidence = plans as IManagedPowerReadEvidence;
+                if (evidence != null)
+                {
+                    ManagedPowerReadEvidence actualRead = evidence.ReadEvidence(scheme, value.Sub, value.Setting, true);
+                    if (actualRead.State == ManagedPowerReadState.Unavailable) return false;
+                    if (actualRead.State == ManagedPowerReadState.Value && actualRead.Value != value.Ac.Value) return false;
+                    if (actualRead.State == ManagedPowerReadState.ConfirmedUnregistered
+                        && evidence.ReadEvidence(record.Base, value.Sub, value.Setting, true).State != ManagedPowerReadState.ConfirmedUnregistered) return false;
+                    continue;
+                }
+                uint? actual = plans.Read(scheme, value.Sub, value.Setting, true);
+                if (!actual.HasValue && plans.Read(record.Base, value.Sub, value.Setting, true).HasValue) return false;
+                if (actual.HasValue && actual.Value != value.Ac.Value) return false;
+            }
+            return true;
+        }
+
+        private static bool PresetPreparationFailed(string detail, uint nativeCode = 0, uint resolutionCode = 0)
+        {
+            applyFailurePermanent |= PowerPresetWriter.PermanentNativeFailure(nativeCode) || PowerPresetWriter.PermanentNativeFailure(resolutionCode);
+            if (string.IsNullOrEmpty(applyFailureReason))
+                applyFailureReason = "stage=managed-parameters detail=" + PowerFailureDetail(detail);
+            return false;
         }
 
         private static bool CopyPresetBaseValue(IManagedPowerPlans plans, Guid source, Guid targetPlan, Guid sub, Guid setting, bool ac)
         {
+            if (HandheldBypass) return false;
             var imported = plans as IManagedPowerPresetPlans;
-            return imported != null && imported.CopyBaseSetting(source, targetPlan, sub, setting, ac);
+            return imported != null && imported.CopyBaseSetting(source, targetPlan, sub, setting, ac)
+                || PresetPreparationFailed("Baseline adaptation failed: " + sub + "/" + setting + "/" + (ac ? "AC" : "DC"));
         }
-
-        [DllImport("powrprof.dll", EntryPoint = "PowerReadACValue")]
-        private static extern uint ReadPresetAcValue(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint type, byte[] buffer, ref uint size);
-        [DllImport("powrprof.dll", EntryPoint = "PowerReadDCValue")]
-        private static extern uint ReadPresetDcValue(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint type, byte[] buffer, ref uint size);
 
         private static string PresetSettingPath(Guid scheme, Guid sub, Guid setting)
         {
@@ -294,53 +514,145 @@ namespace PaviseApp
         }
 
         private static bool CanEditPreset(Guid scheme)
-        { return scheme != Guid.Empty && !IsBuiltInPlan(scheme) && ManagedPlans.Current() != scheme && ManagedPlans.IsOwned(scheme); }
+        {
+            Guid? active = ManagedPlans.Current();
+            return scheme != Guid.Empty && !IsBuiltInPlan(scheme) && active.HasValue && active != Guid.Empty
+                && active != scheme && ManagedPlans.IsOwned(scheme);
+        }
 
         private static bool CopyPresetBaseNative(Guid source, Guid destination, Guid sub, Guid setting, bool ac)
         {
-            if (source == destination || !CanEditPreset(destination)) return false;
+            Guid? activeBefore = ManagedPlans.Current();
+            if (!CanCopyPresetBase(source, destination, activeBefore))
+                return PresetPreparationFailed("Baseline/candidate ownership or active-plan check failed");
             string name = ac ? "ACSettingIndex" : "DCSettingIndex";
             try
             {
-                object value = null; RegistryValueKind kind = RegistryValueKind.Unknown;
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(PresetSettingPath(source, sub, setting)))
+                ManagedPowerReadEvidence baseline = ReadPresetPowerEvidence(source, sub, setting, ac);
+                if (baseline.State == ManagedPowerReadState.Unavailable)
+                    return PresetPreparationFailed("Local value unavailable: " + name + " " + sub + "/" + setting
+                        + " code=" + baseline.NativeCode + " resolution=" + baseline.ResolutionCode, baseline.NativeCode, baseline.ResolutionCode);
+                ManagedPowerReadEvidence target = ReadPresetPowerEvidence(destination, sub, setting, ac);
+                if (baseline.State == ManagedPowerReadState.ConfirmedUnregistered)
+                    return target.State == ManagedPowerReadState.ConfirmedUnregistered
+                        && CanCopyPresetBase(source, destination, activeBefore)
+                        || PresetPreparationFailed("Unregistered local setting could not be verified: " + name + " " + sub + "/" + setting);
+                if (target.State == ManagedPowerReadState.Unavailable && target.NativeCode != 2 && target.NativeCode != 3 && target.NativeCode != 87)
+                    return PresetPreparationFailed("Candidate value unavailable: " + name + " " + sub + "/" + setting
+                        + " code=" + target.NativeCode + " resolution=" + target.ResolutionCode, target.NativeCode, target.ResolutionCode);
+                uint stored;
+                uint storedCode = ReadPresetStoredIndex(source, sub, setting, ac, out stored);
+                if (storedCode != 2 && (storedCode != 0 || stored != baseline.Value))
+                    return PresetPreparationFailed("Local stored index could not be verified: " + name + " " + sub + "/" + setting + " code=" + storedCode, storedCode);
+                // A missing override can have different effective values under the two
+                // personalities. Copy a verified baseline value, never equal error codes.
+                ManagedPowerReadEvidence verifyBase = ReadPresetPowerEvidence(source, sub, setting, ac);
+                if (!CanCopyPresetBase(source, destination, activeBefore) || verifyBase.State != ManagedPowerReadState.Value
+                    || verifyBase.Value != baseline.Value)
+                    return PresetPreparationFailed("Baseline changed or candidate became active/ownership changed: " + name + " " + sub + "/" + setting, verifyBase.NativeCode, verifyBase.ResolutionCode);
+                if (target.State == ManagedPowerReadState.Value && target.Value == baseline.Value) return true;
+                uint code = ac ? PowerWriteACValueIndex(IntPtr.Zero, ref destination, ref sub, ref setting, baseline.Value)
+                    : PowerWriteDCValueIndex(IntPtr.Zero, ref destination, ref sub, ref setting, baseline.Value);
+                if (code != 0) return PresetPreparationFailed("Write " + name + " " + sub + "/" + setting + " code=" + code, code);
+                uint actual;
+                code = ReadPresetIndex(destination, sub, setting, ac, out actual);
+                if (code != 0 || actual != baseline.Value)
+                    return PresetPreparationFailed("Baseline readback mismatch: " + name + " " + sub + "/" + setting
+                        + " code=" + code + " expected=" + baseline.Value + " actual=" + actual, code);
+                return CanCopyPresetBase(source, destination, activeBefore)
+                    || PresetPreparationFailed("Candidate became active or ownership changed after baseline readback");
+            }
+            catch (Exception error) { return PresetPreparationFailed(name + " " + sub + "/" + setting + ": " + error.GetType().Name + ": " + error.Message); }
+        }
+
+        private static bool CanCopyPresetBase(Guid source, Guid destination, Guid? expectedActive)
+        {
+            if (HandheldBypass) return false;
+            ManagedPolicyRecord record; IManagedPowerPlans plans = ManagedPlans;
+            return source != Guid.Empty && source != destination && expectedActive.HasValue && expectedActive != Guid.Empty
+                && ReadManagedPolicy(out record) && record != null && record.CurrentTemplate
+                && record.Plan == destination && record.Base == source && plans.Exists(source) && plans.Exists(destination)
+                && !plans.IsOwned(source) && CanEditPreset(destination) && plans.Current() == expectedActive;
+        }
+
+        private static uint ReadPresetIndex(Guid scheme, Guid sub, Guid setting, bool ac, out uint value)
+        {
+            // *Value returns a payload; only *ValueIndex is an AC/DCSettingIndex.
+            return ac ? PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value)
+                : PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value);
+        }
+
+        private static uint ReadPresetStoredIndex(Guid scheme, Guid sub, Guid setting, bool ac, out uint value)
+        {
+            value = 0; string name = ac ? "ACSettingIndex" : "DCSettingIndex";
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(PresetSettingPath(scheme, sub, setting)))
                 {
-                    if (key != null && Array.IndexOf(key.GetValueNames(), name) >= 0)
-                    { value = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames); kind = key.GetValueKind(name); }
-                }
-                if (value == null)
-                {
-                    // Read the base's effective default as raw data too; a missing DWORD is not a zero.
-                    uint type, size = 0;
-                    uint code = ac ? ReadPresetAcValue(IntPtr.Zero, ref source, ref sub, ref setting, out type, null, ref size)
-                        : ReadPresetDcValue(IntPtr.Zero, ref source, ref sub, ref setting, out type, null, ref size);
-                    if (code == 2 || code == 3 || code == 87) return RemovePresetOverrideNative(destination, sub, setting, ac);
-                    if (code != 0 && code != 234 || size > 1024 * 1024) return false;
-                    var bytes = new byte[size];
-                    code = ac ? ReadPresetAcValue(IntPtr.Zero, ref source, ref sub, ref setting, out type, bytes, ref size)
-                        : ReadPresetDcValue(IntPtr.Zero, ref source, ref sub, ref setting, out type, bytes, ref size);
-                    if (code != 0) return false;
-                    kind = (RegistryValueKind)type;
-                    switch (kind)
-                    {
-                        case RegistryValueKind.DWord: if (size != 4) return false; value = BitConverter.ToInt32(bytes, 0); break;
-                        case RegistryValueKind.QWord: if (size != 8) return false; value = BitConverter.ToInt64(bytes, 0); break;
-                        case RegistryValueKind.Binary: case RegistryValueKind.None: value = bytes; break;
-                        case RegistryValueKind.String: case RegistryValueKind.ExpandString: value = System.Text.Encoding.Unicode.GetString(bytes).TrimEnd('\0'); break;
-                        case RegistryValueKind.MultiString: value = System.Text.Encoding.Unicode.GetString(bytes).TrimEnd('\0').Split('\0'); break;
-                        default: return false;
-                    }
-                }
-                using (RegistryKey key = Registry.LocalMachine.CreateSubKey(PresetSettingPath(destination, sub, setting)))
-                {
-                    if (key == null) return false;
-                    key.SetValue(name, value, kind);
-                    object read = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                    return key.GetValueKind(name) == kind && SamePresetRegistryValue(value, read);
+                    if (key == null || Array.IndexOf(key.GetValueNames(), name) < 0) return 2;
+                    object stored = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                    if (key.GetValueKind(name) != RegistryValueKind.DWord || !(stored is int)) return 13;
+                    value = unchecked((uint)(int)stored); return 0;
                 }
             }
-            catch { return false; }
+            catch (UnauthorizedAccessException) { return 5; }
+            catch (System.Security.SecurityException) { return 5; }
+            catch { return 31; }
         }
+
+        private static ManagedPowerReadEvidence ReadPresetPowerEvidence(Guid scheme, Guid sub, Guid setting, bool ac)
+        {
+            uint value, code = ReadPresetIndex(scheme, sub, setting, ac, out value);
+            // Access denial, invalid handles and unknown errors never establish absence.
+            if (code != 0 && code != 2 && code != 3 && code != 87)
+                return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, code, false);
+            if (!SchemeUsable(scheme)) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, 2, false);
+            uint definition = ReadPresetDefinitionStatus(sub, setting);
+            // Creation skips definitions confirmed absent. A historical per-plan
+            // index must not make maintenance reintroduce that unsupported setting.
+            if ((code == 0 || code == 2 || code == 3) && (definition == 2 || definition == 3))
+                return new ManagedPowerReadEvidence(ManagedPowerReadState.ConfirmedUnregistered, 0, code, definition, false);
+            if (definition != 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, definition, false);
+            if (code == 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Value, value, 0, 0, false);
+            uint storedCode = ReadPresetStoredIndex(scheme, sub, setting, ac, out value);
+            // Default resolution needs independent proof that no override exists.
+            // In particular ERROR_INVALID_PARAMETER is never itself an absence proof.
+            if (storedCode != 2) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, storedCode == 0 ? code : storedCode, false);
+            uint resolution = ReadPresetEffectiveDefault(scheme, sub, setting, ac, out value);
+            return new ManagedPowerReadEvidence(resolution == 0 ? ManagedPowerReadState.Value : ManagedPowerReadState.Unavailable,
+                value, code, resolution, resolution == 0);
+        }
+
+        private static uint ReadPresetEffectiveDefault(Guid scheme, Guid sub, Guid setting, bool ac, out uint value)
+        {
+            value = 0; uint index;
+            uint code = ReadPresetIndex(scheme, SubNone, Personality, ac, out index);
+            if (code != 0) return code;
+            Guid personality = index == 0 ? PowerSaver : index == 1 ? HighPerf : index == 2 ? Balanced : Guid.Empty;
+            if (personality == Guid.Empty) return 13;
+            code = ac ? ReadPresetAcDefault(IntPtr.Zero, ref personality, ref sub, ref setting, out value)
+                : ReadPresetDcDefault(IntPtr.Zero, ref personality, ref sub, ref setting, out value);
+            if (code != 0) return code;
+            uint verify;
+            code = ReadPresetIndex(scheme, SubNone, Personality, ac, out verify);
+            if (code != 0) return code;
+            return verify == index && SchemeUsable(scheme) ? 0u : 1237u;
+        }
+
+        private static uint ReadPresetDefinitionStatus(Guid sub, Guid setting)
+        {
+            string path = @"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\"
+                + (sub == SubNone ? "" : sub.ToString("D") + "\\") + setting.ToString("D");
+            IntPtr key;
+            uint code = OpenPresetDefinition(new IntPtr(unchecked((int)0x80000002)), path, 0, 0x20019, out key);
+            if (code == 0) ClosePresetDefinition(key);
+            return code;
+        }
+
+        [DllImport("advapi32.dll", EntryPoint = "RegOpenKeyExW", CharSet = CharSet.Unicode)]
+        private static extern uint OpenPresetDefinition(IntPtr root, string path, uint options, int access, out IntPtr key);
+        [DllImport("advapi32.dll", EntryPoint = "RegCloseKey")]
+        private static extern uint ClosePresetDefinition(IntPtr key);
 
         private static bool SamePresetRegistryValue(object expected, object actual)
         {
@@ -349,25 +661,6 @@ namespace PaviseApp
             if (a.Length != b.Length || a.GetType() != b.GetType()) return false;
             for (int i = 0; i < a.Length; i++) if (!object.Equals(a.GetValue(i), b.GetValue(i))) return false;
             return true;
-        }
-
-        private static bool RemovePresetOverrideNative(Guid scheme, Guid sub, Guid setting, bool ac)
-        {
-            // Only an inactive, durably owned imported plan can have an index removed.
-            // This preserves an absent local/OEM value without inventing zero or deleting a setting definition.
-            if (!CanEditPreset(scheme)) return false;
-            string path = PresetSettingPath(scheme, sub, setting);
-            string value = ac ? "ACSettingIndex" : "DCSettingIndex";
-            try
-            {
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(path, true))
-                {
-                    if (key == null) return true;
-                    key.DeleteValue(value, false);
-                    return key.GetValue(value, null) == null;
-                }
-            }
-            catch { return false; }
         }
 
         private static bool RecoverPresetCreation(IManagedPowerPlans plans)
@@ -380,10 +673,20 @@ namespace PaviseApp
                 || candidate == baseline || IsBuiltInPlan(candidate)) return false;
             ManagedPolicyRecord record;
             if (!ReadManagedPolicy(out record)) return false;
+            ManagedPowerSchemeEvidence candidateState = ReadManagedSchemeEvidence(plans, candidate);
+            if (!ManagedSchemeEvidenceAvailable(candidateState, candidate)) return false;
             if (record == null || record.Plan != candidate)
             {
-                if (plans.Current() == candidate && (!plans.Exists(baseline) || !plans.Activate(baseline) || plans.Current() != baseline)) return false;
-                if (plans.Exists(candidate) && !DeleteInactiveManaged(plans, candidate, true)) return false;
+                Guid? current = plans.Current();
+                if (!current.HasValue || current == Guid.Empty) return false;
+                if (current == candidate)
+                {
+                    ManagedPowerSchemeEvidence baselineState = ReadManagedSchemeEvidence(plans, baseline);
+                    if (!ManagedSchemeEvidenceAvailable(baselineState, baseline)
+                        || baselineState.State != ManagedPowerSchemeState.Present
+                        || !plans.Activate(baseline) || plans.Current() != baseline) return false;
+                }
+                if (!DeleteInactiveManaged(plans, candidate, true)) return false;
             }
             return Settings.SaveStrDurable(PresetCreationKey, "") && Settings.LoadStr(PresetCreationKey, "!") == "";
         }
@@ -394,7 +697,7 @@ namespace PaviseApp
             if (!ReadManagedPolicy(out record) || record == null || !record.CurrentTemplate || record.Previous == Guid.Empty) return;
             IManagedPowerPlans plans = ManagedPlans;
             if (plans.Current() != record.Plan) return;
-            if (plans.Exists(record.Previous) && !DeleteInactiveManaged(plans, record.Previous)) return;
+            if (!DeleteInactiveManaged(plans, record.Previous)) return;
             record.Previous = Guid.Empty;
             string encoded = record.Encode();
             // A failed cleanup save retains a harmless reference to an absent plan for the next retry.

@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.Management;
+using System.Diagnostics;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -10,7 +12,8 @@ namespace PaviseApp
 		{
 			None,
 			Lenovo,
-			Asus
+			Asus,
+			AsusGHelper
 		}
 
 		internal interface IBackend
@@ -20,15 +23,28 @@ namespace PaviseApp
 			bool Write(int vendor, int mode);
 		}
 
-		private sealed class FirmwareBackend : IBackend
+		internal interface IPerformanceBackend
 		{
+			bool IsPerformance(int vendor, int mode);
+		}
+
+		private sealed class FirmwareBackend : IBackend, IPerformanceBackend
+		{
+			public bool IsPerformance(int vendor, int mode)
+			{
+				return vendor == (int)Vendor.AsusGHelper ? AsusPerformanceController.IsPerformance(mode)
+					: mode == PerformanceModeOf((Vendor)vendor);
+			}
+
 			public bool Read(int vendor, out int mode)
 			{
+				if (vendor == (int)Vendor.AsusGHelper) return AsusPerformanceController.Read(out mode);
 				return ReadMode((Vendor)vendor, out mode);
 			}
 
 			public bool Write(int vendor, int mode)
 			{
+				if (vendor == (int)Vendor.AsusGHelper) return AsusPerformanceController.Write(mode);
 				return WriteMode((Vendor)vendor, mode);
 			}
 		}
@@ -40,10 +56,6 @@ namespace PaviseApp
 		private const string Scope = "root\\WMI";
 
 		private const int LenovoPerformance = 3;
-
-		private const int AsusThrottleDevice = 1179765;
-
-		private const int AsusPerformance = 1;
 
 		private static readonly object lk = new object();
 
@@ -65,11 +77,14 @@ namespace PaviseApp
 		private static int supportedVendor;
 		private static bool sessionObserved, sessionYielded, applyConfirmed;
 		private static int sessionVendor;
+		private static int sessionExpectedMode;
 		private static string sessionReceipt;
 		private static volatile string lastStatus = "off", lastDetail = "";
+		private static volatile string supportDetail = "";
 
 		public static string LastStatus { get { return lastStatus; } }
 		public static string LastDetail { get { return lastDetail; } }
+		public static string SupportDetail { get { return supportDetail; } }
 
 		public static bool HasResidue
 		{
@@ -145,6 +160,7 @@ namespace PaviseApp
 			{
 				if (DateTime.UtcNow < supportExpires) return supportedVendor != 0;
 				supportedVendor = 0;
+				supportDetail = "";
 				supportExpires = DateTime.UtcNow.AddSeconds(30);
 #if PAVISE_SELFTEST
 				bool laptop = BackendForTest != null;
@@ -154,12 +170,17 @@ namespace PaviseApp
 #endif
 				if (!laptop) return false;
 				IBackend device = Backend;
-				foreach (int vendor in new[] { (int)Vendor.Lenovo, (int)Vendor.Asus })
+				foreach (int vendor in new[] { (int)Vendor.Lenovo, (int)Vendor.AsusGHelper, (int)Vendor.Asus })
 				{
 					int mode;
 					try { if (device.Read(vendor, out mode) && KnownMode(vendor, mode)) { supportedVendor = vendor; break; } }
 					catch { }
 				}
+#if !PAVISE_SELFTEST
+				if (supportedVendor == (int)Vendor.AsusGHelper) supportDetail = AsusPerformanceController.Detail;
+				else if (supportedVendor == (int)Vendor.Lenovo) supportDetail = Text("联想 SmartFan：原档读取与切档核验可用", "Lenovo SmartFan: original-mode reads and switch verification available");
+				else supportDetail = AsusPerformanceController.UnavailableDetail();
+#endif
 				return supportedVendor != 0;
 			}
 		}
@@ -184,24 +205,28 @@ namespace PaviseApp
 					int vendor = sessionObserved ? sessionVendor : (SupportedCached() ? supportedVendor : 0);
 					int original;
 					if (vendor == 0 || !device.Read(vendor, out original) || original < 0)
-						return Result("unsupported", "未核验到受支持的联想/华硕标准性能档", "No supported Lenovo/ASUS standard performance mode was verified", false);
+						return Result("unsupported", supportDetail.Length > 0 ? supportDetail : "未核验到受支持的联想/华硕标准性能档", supportDetail.Length > 0 ? supportDetail : "No supported Lenovo/ASUS standard performance mode was verified", false);
 					int target = PerformanceModeOf((Vendor)vendor);
+					IPerformanceBackend performance = device as IPerformanceBackend;
 					if (sessionObserved)
 					{
-						if (original == target) return Result(sessionReceipt == null ? "already" : "applied", "厂商性能档已就绪", "The vendor performance mode is ready", true);
+						if (original == sessionExpectedMode && (original == target || performance == null || performance.IsPerformance(vendor, original)))
+							return Result(sessionReceipt == null ? "already" : "applied", "厂商性能档已就绪", "The vendor performance mode is ready", true);
 						return YieldExternal(receipt);
 					}
 					if (!KnownMode(vendor, original)) return Result("unsupported", "当前为未知或自定义厂商档位，未接管", "The current vendor mode is unknown or custom; it is not controlled", false);
 					sessionVendor = vendor;
-					if (original == target)
+					if (original == target || (performance != null && performance.IsPerformance(vendor, original)))
 					{
 						sessionObserved = true;
+						sessionExpectedMode = original;
 						return Result("already", "原本已处于厂商性能档，未认领或写入", "The performance mode was already selected; nothing was owned or written", true);
 					}
 					string pending = vendor.ToString(CultureInfo.InvariantCulture) + "|" + original.ToString(CultureInfo.InvariantCulture) + "|" + target.ToString(CultureInfo.InvariantCulture);
 					if (!PersistSnapshot(pending)) return Result("recovery-pending", "原档记录未能持久保存并读回，未切档", "The original mode could not be durably saved and read back; no mode was changed", false);
 					sessionReceipt = pending;
 					sessionObserved = true;
+					sessionExpectedMode = target;
 					int before;
 					if (!Admitted(admission))
 					{
@@ -236,7 +261,7 @@ namespace PaviseApp
 
 		public static void EndSession()
 		{
-			lock (lk) { sessionObserved = sessionYielded = applyConfirmed = false; sessionVendor = 0; sessionReceipt = null; }
+			lock (lk) { sessionObserved = sessionYielded = applyConfirmed = false; sessionVendor = sessionExpectedMode = 0; sessionReceipt = null; }
 		}
 
 #if PAVISE_SELFTEST
@@ -246,13 +271,14 @@ namespace PaviseApp
 			{
 				EndSession(); supportExpires = DateTime.MinValue; supportedVendor = 0;
 				BackendForTest = null; SaveSnapshotForTest = null; ReadSnapshotForTest = null; OnAcPowerForTest = null;
-				lastStatus = "off"; lastDetail = "";
+				lastStatus = "off"; lastDetail = supportDetail = "";
 			}
 		}
 #endif
 
 		private static bool KnownMode(int vendor, int mode)
 		{
+			if (vendor == (int)Vendor.AsusGHelper) return mode >= 0 && mode <= 4;
 			if (vendor != 1)
 			{
 				if (vendor == 2 && mode >= 0)
@@ -290,6 +316,9 @@ namespace PaviseApp
 		private static bool ReadMode(Vendor vendor, out int mode)
 		{
 			mode = -1;
+			// ASUS DSTS is a capability response on models such as GX531, not a
+			// current profile. Never use it to own a mode or settle a legacy receipt.
+			if (vendor == Vendor.Asus) return false;
 			try
 			{
 				switch (vendor)
@@ -310,34 +339,6 @@ namespace PaviseApp
 							}
 							mode = Convert.ToInt32(managementBaseObject3["Data"]);
 							return mode >= 0;
-						}
-					}
-				}
-				case Vendor.Asus:
-				{
-					using (ManagementObject managementObject = First("AsusAtkWmi_WMNB"))
-					{
-						if (managementObject == null)
-						{
-							return false;
-						}
-						using (ManagementBaseObject managementBaseObject = managementObject.GetMethodParameters("DSTS"))
-						{
-							managementBaseObject["Device_ID"] = 1179765u;
-							using (ManagementBaseObject managementBaseObject2 = managementObject.InvokeMethod("DSTS", managementBaseObject, InvocationOptions()))
-							{
-								if (managementBaseObject2 == null)
-								{
-									return false;
-								}
-								uint num = Convert.ToUInt32(managementBaseObject2["device_status"]);
-								if ((num & 0x10000) == 0)
-								{
-									return false;
-								}
-								mode = (int)(num & 0xFF);
-								return true;
-							}
 						}
 					}
 				}
@@ -372,27 +373,7 @@ namespace PaviseApp
 						}
 					}
 					int mode3;
-					return ReadMode(vendor, out mode3) && mode3 == mode;
-				}
-				case Vendor.Asus:
-				{
-					using (ManagementObject managementObject = First("AsusAtkWmi_WMNB"))
-					{
-						if (managementObject == null)
-						{
-							return false;
-						}
-						using (ManagementBaseObject managementBaseObject = managementObject.GetMethodParameters("DEVS"))
-						{
-							managementBaseObject["Device_ID"] = 1179765u;
-							managementBaseObject["Control_status"] = (uint)mode;
-							using (managementObject.InvokeMethod("DEVS", managementBaseObject, InvocationOptions()))
-							{
-							}
-						}
-					}
-					int mode2;
-					return ReadMode(vendor, out mode2) && mode2 == mode;
+					return VerifyReadback(delegate { return ReadMode(vendor, out mode3) ? mode3 : -1; }, mode, delegate { Thread.Sleep(100); });
 				}
 				}
 			}
@@ -409,6 +390,21 @@ namespace PaviseApp
 				return 1;
 			}
 			return 3;
+		}
+
+		internal static bool VerifyReadback(Func<int> read, int expected, Action pause)
+		{
+			// Some Lenovo firmware acknowledges before SmartFan reports the new
+			// state. Poll briefly without issuing a second firmware write.
+			Stopwatch watch = Stopwatch.StartNew();
+			for (int attempt = 0; attempt < 8; attempt++)
+			{
+				int current = read();
+				if (current == expected) return true;
+				if (current < 0 || watch.ElapsedMilliseconds >= 1500) return false;
+				pause();
+			}
+			return false;
 		}
 
 		private static InvokeMethodOptions InvocationOptions()

@@ -8,6 +8,7 @@ namespace PaviseApp
 {
 	internal static class LolRuntimeProcesses
 	{
+		private static readonly ProcessActionFailureBudget cleanupFailures = new ProcessActionFailureBudget();
 		private enum SessionRelation
 		{
 			Unknown,
@@ -608,21 +609,32 @@ namespace PaviseApp
 			}
 			for (int j = 0; j < list.Count; j++)
 			{
+				if (!cleanupFailures.Allowed(list[j], list3[j], list4[j], "cleanup")) continue;
+				bool cleaned = false;
+				bool failedOperation = false;
 				IntPtr intPtr2 = IntPtr.Zero;
 				try
 				{
 					intPtr2 = Native.OpenProcess(1052673, false, list[j]);
 					int sessionId3;
-					if (intPtr2 == IntPtr.Zero || !Native.TryGetLiveProcessSessionId(intPtr2, list[j], out sessionId3) || !IsExpectedSession(sessionId, sessionId3))
+					if (intPtr2 == IntPtr.Zero)
 					{
+						failedOperation = Marshal.GetLastWin32Error() != 87; // Already exited is a successful negative observation.
 						continue;
 					}
+					if (!Native.TryGetLiveProcessSessionId(intPtr2, list[j], out sessionId3)) { failedOperation = true; continue; }
+					if (!IsExpectedSession(sessionId, sessionId3)) continue;
 					string text2 = Native.ImagePath(intPtr2);
 					long creation2;
 					long cpu2;
 					ulong io2;
-					if (!string.IsNullOrEmpty(text2) && Native.QueryProcessSample(intPtr2, out creation2, out cpu2, out io2) && creation2 == list3[j] && string.Equals(text2, list4[j], StringComparison.OrdinalIgnoreCase) && IsCleanupTarget(text2, Path.GetFileName(text2), lolRoot, weGameRoot, includeDownloaders) && TerminateProcess(intPtr2, 0u) && WaitForSingleObject(intPtr2, 1500u) == 0)
+					if (string.IsNullOrEmpty(text2) || !Native.QueryProcessSample(intPtr2, out creation2, out cpu2, out io2)) { failedOperation = true; continue; }
+					if (creation2 != list3[j] || !string.Equals(text2, list4[j], StringComparison.OrdinalIgnoreCase)
+						|| !IsCleanupTarget(text2, Path.GetFileName(text2), lolRoot, weGameRoot, includeDownloaders)) continue;
+					failedOperation = true;
+					if (TerminateProcess(intPtr2, 0u) && WaitForSingleObject(intPtr2, 1500u) == 0)
 					{
+						cleaned = true;
 						lolCleanupResult.Count++;
 						if (list2[j] > 0)
 						{
@@ -632,9 +644,13 @@ namespace PaviseApp
 				}
 				catch
 				{
+					failedOperation = true;
 				}
 				finally
 				{
+					if (cleaned) cleanupFailures.Succeeded(list[j], list3[j], list4[j], "cleanup");
+					else if (failedOperation) Logger.Warn("LoL cleanup failure=" + cleanupFailures.Failed(list[j], list3[j], list4[j], "cleanup")
+						+ "/3 target=" + list[j] + "/" + list3[j]);
 					if (intPtr2 != IntPtr.Zero)
 					{
 						Native.CloseHandle(intPtr2);

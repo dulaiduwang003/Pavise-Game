@@ -9,6 +9,16 @@ namespace PaviseApp
 {
 	internal sealed class LogStreamView : ScrollableControl
 	{
+		internal static void CountIssues(string raw, out int warnings, out int errors)
+		{
+			warnings = errors = 0;
+			foreach (LogEventEntry entry in ParseEvents(raw))
+			{
+				if (entry.Severity == LogEventSeverity.Warning) warnings++;
+				if (entry.Severity == LogEventSeverity.Error) errors++;
+			}
+		}
+
 		private sealed class ViewAnchor
 		{
 			internal string Key;
@@ -39,6 +49,20 @@ namespace PaviseApp
 		private string source = "";
 
 		private int filter;
+
+		private bool technicalEvents;
+
+		internal bool TechnicalEvents
+		{
+			get { return technicalEvents; }
+			set
+			{
+				if (technicalEvents == value) return;
+				technicalEvents = value;
+				expanded.Clear();
+				RebuildShown(false);
+			}
+		}
 
 		private string sessionToken = "";
 
@@ -318,7 +342,8 @@ namespace PaviseApp
 			List<LogEventEntry> list2 = new List<LogEventEntry>(all);
 			list2.Reverse();
 			groups.Clear();
-			groups.AddRange(LogEventProjection.Project(list2, filter, SessionToken));
+			groups.AddRange(technicalEvents ? ProjectTechnical(list2, filter, SessionToken)
+				: LogEventProjection.Project(list2, filter, SessionToken));
 			foreach (LogEventEntry item in list)
 			{
 				foreach (LogEventEntry group2 in groups)
@@ -370,6 +395,42 @@ namespace PaviseApp
 				}
 			}
 			RebuildRows(anchor);
+		}
+
+		private static List<LogEventEntry> ProjectTechnical(IList<LogEventEntry> chronological, int filter, string activeSession)
+		{
+			var result = new List<LogEventEntry>();
+			string session = LogEventProjection.SelectSession(chronological, activeSession);
+			if (filter == 4 && session.Length == 0) return result;
+			int start = -1, end = chronological.Count;
+			for (int i = 0; i < chronological.Count; i++)
+			{
+				LogEventEntry entry = chronological[i];
+				if (entry.SessionToken == session && start < 0) start = i;
+				else if (start >= 0 && entry.SessionToken.Length > 0 && entry.SessionToken != session && entry.Phase == "start")
+				{
+					end = i;
+					break;
+				}
+			}
+			var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+			for (int i = 0; i < chronological.Count; i++)
+			{
+				LogEventEntry entry = chronological[i];
+				bool issue = entry.Severity == LogEventSeverity.Warning || entry.Severity == LogEventSeverity.Error;
+				if ((filter == 1 && !issue) || (filter == 2 && entry.Severity != LogEventSeverity.Error)
+					|| (filter == 3 && entry.Module != Lang.T("auto.log.module"))
+					|| (filter == 4 && (start < 0 || entry.SessionToken != session
+						&& (!issue || entry.SessionToken.Length != 0 || i < start || i >= end)))) continue;
+				string key = "raw:" + entry.SessionToken + "\u001f" + entry.Raw;
+				int occurrence;
+				occurrences.TryGetValue(key, out occurrence);
+				occurrences[key] = occurrence + 1;
+				entry.StableKey = key + "\u001f" + occurrence.ToString(CultureInfo.InvariantCulture);
+				result.Add(entry);
+			}
+			result.Reverse();
+			return result;
 		}
 
 		private void RebuildRows(ViewAnchor anchor)
@@ -453,7 +514,7 @@ namespace PaviseApp
 					string key = body.Substring(num2 + 1, num3 - num2 - 1).Trim();
 					string text = body.Substring(num3 + 1).Trim();
 					logEventEntry2.Module = Lang.T("auto.log.module");
-					logEventEntry2.Message = GameMode.AutomationActionLabel(key) + " · " + GameMode.AutomationStateLabel(text);
+					logEventEntry2.Message = "action=" + key + " result=" + text;
 					return logEventEntry2;
 				}
 			}
@@ -666,6 +727,11 @@ namespace PaviseApp
 			return LogEventSeverity.Info;
 		}
 
+		internal LogEventSeverity VisibleSeverity(LogEventSeverity value)
+		{
+			return technicalEvents ? value : DisplaySeverity(value);
+		}
+
 		private void DrawEntry(Graphics g, LogEventEntry entry, int index, int y)
 		{
 			int num = Theme.S(8);
@@ -674,7 +740,7 @@ namespace PaviseApp
 			bool flag = detailRows.Contains(entry);
 			int num4 = (flag ? Theme.S(16) : 0);
 			Rectangle r = new Rectangle(num + num4, y + Theme.S(3), num3 - num * 2 - num4, num2);
-			LogEventSeverity value = DisplaySeverity(entry.Severity);
+			LogEventSeverity value = VisibleSeverity(entry.Severity);
 			Color color = SeverityColor(value);
 			Color baseFill = ((index == selected) ? Col.Lerp(Theme.Card, color, 0.11f) : Col.Lerp(Theme.Card, Theme.Inset, ((index & 1) == 0) ? 0.06f : 0.16f));
 			using (GraphicsPath path = Theme.TechPath(r, Theme.S(8)))

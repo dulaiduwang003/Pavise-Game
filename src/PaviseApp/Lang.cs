@@ -10,15 +10,25 @@ namespace PaviseApp
 
 		private static readonly Dictionary<string, string[]> M = new Dictionary<string, string[]>
 		{
-			{ "overview.usage.ingame", new string[3] { "游戏中", "In game", "ゲーム中" } },
+            { "background.governance.title", new[] { "后台治理", "Background governance", "バックグラウンド制御" } },
+            { "background.governance.mode", new[] { "后台治理档位", "Background governance level", "バックグラウンド制御の段階" } },
+            { "background.governance.off", new[] { "关闭", "Off", "無効" } },
+            { "background.governance.normal", new[] { "正常", "Normal", "通常" } },
+            { "background.governance.aggressive", new[] { "激进", "Aggressive", "積極的" } },
+            { "background.governance.status.off", new[] { "后台治理已关闭", "Background governance is off", "バックグラウンド制御は無効です" } },
+            { "background.governance.status.normal", new[] { "正常治理", "Normal governance", "通常の制御" } },
+            { "background.governance.status.aggressive", new[] { "激进治理（含动态提优限制）", "Aggressive governance (including priority-boost limits)", "積極的な制御（一時的な優先度上昇も抑制）" } },
+            { "background.governance.summary", new[] { "正常减少后台争用；激进再禁止后台动态提优", "Normal reduces contention; Aggressive also blocks background priority boosts", "通常は競合を軽減、積極的はバックグラウンドの優先度上昇も抑制" } },
+            { "background.governance.detail", new[] { "正常减少后台争用；激进额外禁止 Windows 临时提升后台线程优先级，后台响应可能稍慢。\n智能切出释放，竞技持续治理；游戏和白名单受保护，停用或退局恢复。", "Normal reduces background contention. Aggressive also stops Windows from temporarily boosting background threads, so background apps may respond a little slower.\nSmart releases governance when switching out of a game; Competitive keeps it active. Games and whitelisted apps stay protected. Turning governance off or leaving the game restores owned changes.", "通常はバックグラウンドの競合を減らし、積極的ではWindowsによるバックグラウンドスレッドの一時的な優先度上昇も止めるため、応答が少し遅くなる場合があります。\nスマートはゲームから切り替えると解除し、競技は制御を継続。ゲームと許可リストは保護し、無効化・ゲーム終了で元に戻します。" } },
 			{ "configpreset.label", new string[3] { "预设", "Preset", "プリセット" } },
 			{ "configpreset.default", new string[3] { "作者同款", "Author’s setup", "作者の設定" } },
 			{ "configpreset.extreme", new string[3] { "极限配置", "Extreme setup", "極限設定" } },
-			{ "configpreset.guide", new string[3] { "新手引导", "Quick setup", "かんたん設定" } },
+			{ "configpreset.guide", new string[3] { "一键配置", "One-click setup", "ワンクリック設定" } },
 			{ "configpreset.guide.intro", new string[3] { "选择一套配置，点击即可应用。仅设置本机支持的项目。", "Choose a setup to apply it. Only settings supported by this PC are applied.", "設定を選ぶと適用します。このPCで対応する項目のみ設定します。" } },
-			{ "configpreset.guide.author.body", new string[3] { "作者日常使用的游戏配置，兼顾日常体验与游戏表现，适合直接上手。", "The author's everyday gaming setup, balancing daily use and game performance.", "日常の使いやすさとゲーム性能を両立する、作者が普段使う設定です。" } },
-			{ "configpreset.guide.extreme.body", new string[3] { "采用更积极的性能设置，可能增加功耗与温度，适合愿意进一步调优的用户。", "More aggressive performance settings that may increase heat and power use, for users seeking further tuning.", "性能をより重視する設定です。消費電力や温度が上がる場合があります。" } },
+			{ "configpreset.guide.author.body", new string[3] { "作者当前使用的游戏配置，兼顾日常使用与游戏体验。应用后需重启电脑。", "The author's current gaming setup, balancing everyday use and gaming. Restart the PC after applying.", "作者が現在使用している、普段使いとゲーム体験を両立する設定。適用後はPCを再起動してください。" } },
+			{ "configpreset.guide.extreme.body", new string[3] { "采用更积极的性能设置，包含 GPU 频率与功耗上限配置。应用后需重启电脑。", "More aggressive performance settings, including maximum GPU clock and power-limit requests. Restart the PC after applying.", "GPUの最大クロックと電力上限の要求を含む、より積極的な性能設定。適用後はPCを再起動してください。" } },
 			{ "configpreset.guide.recommended", new string[3] { "推荐", "Recommended", "おすすめ" } },
+			{ "configpreset.guide.aggressive", new string[3] { "激进", "Aggressive", "積極的" } },
 			{ "configpreset.guide.current", new string[3] { "当前配置", "Current setup", "現在の設定" } },
 			{ "configpreset.guide.action", new string[3] { "点击应用", "Click to apply", "クリックして適用" } },
 			{ "configpreset.guide.working", new string[3] { "正在应用配置，请稍候…", "Applying settings…", "設定を適用中…" } },
@@ -95,52 +105,12 @@ namespace PaviseApp
 				new string[3] { "已忽略 {0} 项", "{0} ignored entries", "除外 {0} 件" }
 			},
 			{
-				"freeze.othermode",
-				new string[3] { "仅极限模式启用", "Extreme mode only", "極限モードのみ" }
-			},
-			{
-				"freeze.unsupported",
-				new string[3] { "系统不支持冻结；合格目标使用 Job 备用", "Freeze unsupported; admitted targets use Job fallback", "凍結非対応。対象処理はJobで代替" }
-			},
-			{
-				"freeze.failed",
-				new string[3] { "冻结已停止：{0}；合格目标使用 Job 备用", "Freeze stopped: {0}; admitted targets use Job fallback", "凍結停止：{0}。対象処理はJobで代替" }
-			},
-			{
-				"freeze.status",
-				new string[3] { "当前冻结 {0} 个后台进程", "Currently freezing {0} background processes", "現在{0}個のバックグラウンドを凍結中" }
-			},
-			{
-				"freeze.released",
-				new string[3] { "已恢复 {0} 个后台进程运行", "Resumed {0} background processes", "{0}個のバックグラウンドプロセスを再開しました" }
-			},
-			{
 				"background.scope",
-				new string[3] { "后台范围：可纳入的独立服务 {0} 个；保留原有动态优先级提升设置", "Background scope: {0} eligible dedicated services; original dynamic priority boost settings retained", "対象の独立サービス：{0} 件、元の動的優先度ブースト設定を維持" }
+				new string[3] { "后台范围：可纳入的独立服务 {0} 个；普通后台禁用动态优先级提升策略：{1}", "Background scope: {0} eligible dedicated services; policy disables ordinary background dynamic priority boosts: {1}", "対象の独立サービス：{0} 件、通常のバックグラウンドで動的優先度ブーストを無効にする方針：{1}" }
 			},
 			{
 				"cpucap.title",
-				new string[3] { "极限冻结备用 · CPU 限额", "Extreme freeze fallback · CPU cap", "極限凍結の代替 · CPU制限" }
-			},
-			{
-				"cpucap.applied",
-				new string[3] { "后台 CPU 硬限额 PID {0}：整机 CPU 的 {1}%", "Background CPU cap PID {0}: {1}% of system CPU", "バックグラウンドCPU制限 PID {0}：全体の{1}%" }
-			},
-			{
-				"cpucap.skipped",
-				new string[3] { "后台 CPU 硬限额跳过 PID {0}：{1}", "Background CPU cap skipped PID {0}: {1}", "CPU制限をスキップ PID {0}：{1}" }
-			},
-			{
-				"cpucap.failed",
-				new string[3] { "后台 CPU 硬限额已停止并尝试解除：{0}", "Background CPU cap stopped; release attempted: {0}", "CPU制限を停止し解除を試行：{0}" }
-			},
-			{
-				"cpucap.status",
-				new string[3] { "当前限制 {0} 个后台进程", "Currently limiting {0} background processes", "現在{0}個のバックグラウンドを制限中" }
-			},
-			{
-				"cpucap.unsupported",
-				new string[3] { "仅极限作为冻结备用；竞技不使用 Job", "Extreme freeze fallback only; no Job cap in Competitive", "極限の凍結代替のみ。競技ではJob制限なし" }
+				new string[3] { "已下架的 CPU 限额记录", "Retired CPU cap records", "廃止されたCPU制限の記録" }
 			},
 			{
 				"schedule.quick.all",
@@ -269,30 +239,6 @@ namespace PaviseApp
 			{
 				"workflow.attention.action.logs",
 				new string[3] { "查看日志", "View logs", "ログを見る" }
-			},
-			{
-				"workflow.diagnostic.title",
-				new string[3] { "诊断摘要", "Diagnostic summary", "診断サマリー" }
-			},
-			{
-				"workflow.diagnostic.copy",
-				new string[3] { "复制诊断摘要", "Copy diagnostics", "診断をコピー" }
-			},
-			{
-				"workflow.diagnostic.context",
-				new string[3] { "近期日志与问题上下文（不代表当前仍未恢复）：", "Recent logs and issue context (issues may already be resolved):", "最近のログと問題の前後関係（解決済みの場合もあります）：" }
-			},
-			{
-				"workflow.diagnostic.copied",
-				new string[3] { "已复制版本、游戏、相关设置及近期日志，可直接粘贴反馈。", "Copied version, game, settings and recent logs. Paste them into your feedback.", "バージョン、ゲーム、設定、最近のログをコピーしました。報告に貼り付けられます。" }
-			},
-			{
-				"workflow.diagnostic.failed",
-				new string[3] { "暂时无法复制，请重试或打开日志文件。", "Could not copy. Retry or open the log file.", "コピーできませんでした。再試行するかログファイルを開いてください。" }
-			},
-			{
-				"workflow.diagnostic.nolog",
-				new string[3] { "暂无可用日志。", "No logs available.", "利用できるログがありません。" }
 			},
 			{
 				"irqcheck.btn.verify",
@@ -596,7 +542,7 @@ namespace PaviseApp
 			},
 			{
 				"schedule.auto.placement",
-				new string[3] { "未能确认游戏亲和性，本局停止落核；具体阶段与错误码见诊断摘要。", "Game affinity could not be verified; placement stops for this session. See diagnostics for the stage and error.", "ゲームのアフィニティを確認できません。診断情報で失敗した段階を確認してください。" }
+				new string[3] { "未能确认游戏亲和性，本局停止落核；具体阶段与错误码见运行日志。", "Game affinity could not be verified; placement stops for this session. See the run log for the stage and error code.", "ゲームのアフィニティを確認できません。実行ログで失敗した段階とエラーコードを確認してください。" }
 			},
 			{
 				"schedule.auto.affinityrange",
@@ -604,11 +550,11 @@ namespace PaviseApp
 			},
 			{
 				"schedule.auto.affinitywrite",
-				new string[3] { "系统拒绝写入游戏亲和性；具体错误码见诊断摘要。", "The system rejected the game affinity write; see diagnostics for the error code.", "ゲームのアフィニティ書き込みが拒否されました。診断情報を確認してください。" }
+				new string[3] { "系统拒绝写入游戏亲和性；具体错误码见运行日志。", "The system rejected the game affinity write; see the run log for the error code.", "ゲームのアフィニティ書き込みが拒否されました。実行ログでエラーコードを確認してください。" }
 			},
 			{
 				"schedule.auto.affinityread",
-				new string[3] { "无法读取游戏亲和性，尚不能确认落核状态；请查看诊断摘要。", "Game affinity could not be read; placement is unconfirmed. See diagnostics.", "アフィニティを読み取れず配置を確認できません。診断情報を確認してください。" }
+				new string[3] { "无法读取游戏亲和性，尚不能确认落核状态；请查看运行日志。", "Game affinity could not be read; placement is unconfirmed. See the run log.", "アフィニティを読み取れず配置を確認できません。実行ログを確認してください。" }
 			},
 			{
 				"schedule.auto.restorehandle",
@@ -1116,11 +1062,11 @@ namespace PaviseApp
 			},
 			{
 				"mode.pick.standard",
-				new string[2] { "后台治理生效时：按负载升降档，切出释放，方便多任务。", "With background control active: adapts to CPU load and releases on switch-out for multitasking." }
+				new string[2] { "后台治理生效时：CPU 持续达到70%时扩围，恢复后降档；切出释放并保护前台。", "With governance active: sustained 70% CPU widens scope, recovery relaxes it; switch-out releases governance and foreground apps stay protected." }
 			},
 			{
 				"mode.pick.competitive",
-				new string[2] { "后台治理生效时：采用更广范围，切出仍保留，适合专注对局。", "With background control active: uses a wider scope and stays active on switch-out for focused matches." }
+				new string[2] { "后台治理生效时：采用更广范围，切出或合格软件前台不解限；游戏、白名单及依赖仍保护。", "With governance active: wider scope; switch-out or eligible foreground apps do not release limits. Games, whitelists and dependencies stay protected." }
 			},
 			{
 				"set.awake",
@@ -1201,6 +1147,30 @@ namespace PaviseApp
 			{
 				"v20.log.refresh",
 				new string[2] { "立即刷新", "Refresh now" }
+			},
+			{
+				"log.export.file",
+				new string[3] { "导出文件", "Export file", "ファイル出力" }
+			},
+			{
+				"log.export.detail",
+				new string[3] { "选择位置保存当前完整运行日志", "Choose where to save the complete current runtime log", "現在の実行ログ全体の保存先を選択" }
+			},
+			{
+				"log.export.title",
+				new string[3] { "导出运行日志", "Export runtime log", "実行ログを出力" }
+			},
+			{
+				"log.export.filter",
+				new string[3] { "日志文件 (*.log)|*.log|文本文件 (*.txt)|*.txt", "Log files (*.log)|*.log|Text files (*.txt)|*.txt", "ログファイル (*.log)|*.log|テキストファイル (*.txt)|*.txt" }
+			},
+			{
+				"log.export.saved",
+				new string[3] { "日志已导出到：", "Log exported to:", "ログの保存先：" }
+			},
+			{
+				"log.export.failed",
+				new string[3] { "日志导出失败：", "Could not export the log:", "ログを出力できませんでした：" }
 			},
 			{
 				"v20.log.system",
@@ -1652,7 +1622,7 @@ namespace PaviseApp
 			},
 			{
 				"log.adaptive.1",
-				new string[2] { "自适应压制 CPU 持续饱和 已临时扩大后台范围 当前周期第 ", "Adaptive suppression: sustained CPU saturation; temporarily widened background control. Current-cycle episode " }
+				new string[2] { "自适应压制 CPU 达到70%并持续10秒 已临时扩大后台范围 当前周期第 ", "Adaptive suppression: CPU at or above 70% for 10 seconds; temporarily widened background control. Current-cycle episode " }
 			},
 			{
 				"log.adaptive.2",
@@ -1708,7 +1678,7 @@ namespace PaviseApp
 			},
 			{
 				"log.powerplan.off",
-				new string[3] { "电源计划：不切换，保留系统电源设置", "Power plan: don't switch; system power settings retained", "電源プラン：切り替えず、システムの電源設定を維持" }
+				new string[3] { "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off" }
 			},
 			{
 				"plan.pick.managed",
@@ -1923,8 +1893,8 @@ namespace PaviseApp
 				new string[2] { "系统已开启", "Already on in the system" }
 			},
 			{
-				"v14.anticheat.master.sub",
-				new string[2] { "总开关只控制专项压制；关闭后反作弊后台豁免仍然有效。「仅保护」分组不参与专项压制。", "Controls optional suppression only. Background exemptions stay active when off; protection-only groups are never suppressed." }
+				"v14.anticheat.groups.sub",
+				new string[2] { "各分组开关直接控制专项压制，全部关闭即停止；反作弊后台豁免始终有效。「仅保护」与「只记录」分组不参与压制。", "Each group switch directly controls suppression; turning all groups off stops it. Background exemptions remain active. Protection-only and record-only groups are never suppressed." }
 			},
 			{
 				"v14.anticheat",
@@ -2010,13 +1980,19 @@ namespace PaviseApp
 				"st.hp",
 				new string[2] { "高性能电源", "High-performance power" }
 			},
+			{ "st.power.verified", new[] { "对局电源已验证", "Match power verified", "ゲーム用電源を確認済み" } },
+			{ "st.power.pending", new[] { "对局电源待验证", "Match power pending verification", "ゲーム用電源を確認中" } },
+			{ "st.power.stopped", new[] { "对局电源故障·已停用", "Match power failed; stopped", "ゲーム用電源でエラー・停止中" } },
+			{ "st.power.restore.failed", new[] { "电源恢复未完成", "Power restoration incomplete", "電源の復元が未完了" } },
+			{ "st.power.unchanged", new[] { "沿用系统电源", "Keeping system power plan", "システムの電源プランを維持" } },
+			{ "st.power.waiting", new[] { "对局电源待命", "Match power standing by", "ゲーム用電源は待機中" } },
 			{
 				"st.pr",
 				new string[2] { "电源就绪", "Power ready" }
 			},
 			{
 				"tame.toggle",
-				new string[2] { "反作弊压制 总开关", "Anti-cheat suppression master switch" }
+				new string[2] { "反作弊分组压制", "Anti-cheat group suppression" }
 			},
 			{
 				"set.nvmax",
@@ -2200,7 +2176,7 @@ namespace PaviseApp
 			},
 			{
 				"log.power.retry.stopped",
-				new string[2] { "电源计划执行失败，已停用；恢复会继续，需手动重试。", "Power plan execution failed and is disabled until manual retry. Restoration continues." }
+				new string[2] { "POWER event=apply-failed execution=stopped retry=manual", "POWER event=apply-failed execution=stopped retry=manual" }
 			},
 			{
 				"lib.rebar.bios",
@@ -2596,7 +2572,15 @@ namespace PaviseApp
 			},
 			{
 				"netthrottle.broken",
-				new string[2] { "当前值 {0} 超出有效范围，建议校正回系统默认值 10", "Current value {0} is outside the valid range; correcting back to the system default of 10 is recommended" }
+				new string[2] { "当前值 {0} 不属于有效配置（1–70 或 0xFFFFFFFF），可修复到系统默认值 10；如网络异常可撤回", "Current value {0} is not valid (1–70 or 0xFFFFFFFF); it can be restored to the system default of 10. Revert if network issues occur" }
+			},
+			{
+				"netthrottle.disabled",
+				new string[2] { "当前值 0xFFFFFFFF 表示已关闭网络节流，属于有效配置，保留现状，无需修复", "Current value 0xFFFFFFFF disables network throttling; this is valid and will be preserved, with no repair needed" }
+			},
+			{
+				"netthrottle.invalid",
+				new string[2] { "配置值无效", "Invalid setting" }
 			},
 			{
 				"netthrottle.absent",
@@ -2691,6 +2675,18 @@ namespace PaviseApp
 				new string[2] { "查看全部", "View all" }
 			},
 			{
+				"white.auto.system",
+				new string[3] { "Windows 系统进程", "Windows system processes", "Windows システムプロセス" }
+			},
+			{
+				"white.auto.system.list",
+				new string[3] { "系统预置进程：{0}", "System presets: {0}", "システム既定プロセス：{0}" }
+			},
+			{
+				"white.auto.details.system.note",
+				new string[3] { "系统预置项集中展示，可搜索具体进程名。手动白名单和平台保护单独显示。", "System presets are grouped here. Search by process name. Manual rules and platform protection are listed separately.", "システムの既定項目をまとめて表示し、プロセス名で検索できます。手動の許可規則とプラットフォーム保護は別に表示します。" }
+			},
+			{
 				"white.auto.accel",
 				new string[2] { "网游加速器", "Game network accelerators" }
 			},
@@ -2723,6 +2719,22 @@ namespace PaviseApp
 				new string[2] { "进程名关键词：{0}", "Process-name keywords: {0}" }
 			},
 			{
+				"white.auto.streaming",
+				new string[3] { "直播与推流工具", "Live streaming and broadcast tools", "ライブ配信・送出ツール" }
+			},
+			{
+				"white.auto.streaming.list",
+				new string[3] { "直播工具：{0}", "Broadcast tools: {0}", "配信ツール：{0}" }
+			},
+			{
+				"white.auto.details.products",
+				new string[3] { "直播工具目录", "Broadcast tool catalog", "配信ツール一覧" }
+			},
+			{
+				"white.auto.details.streaming.note",
+				new string[3] { "自动识别直播主程序及目录中列出的专用组件，连同身份核验通过的子孙进程一起保护；已确认且仍存活的家族成员在父进程退出后继续保护。独立运行的组件须命中自身识别规则。游戏家族后台治理选项不取消这项保护。", "Recognized broadcast applications and listed dedicated components protect their identity-verified descendants. Confirmed living family members stay protected after their parent exits. Independently launched components must match their own recognition rules. Game-family background governance does not disable this protection.", "認識した配信アプリと一覧の専用コンポーネント、および識別を確認した子孫プロセスを保護します。確認済みで実行中のメンバーは親の終了後も保護します。独立起動したコンポーネントには個別の照合規則が必要です。ゲーム関連のバックグラウンド制御を有効にしても、この保護は維持されます。" }
+			},
+			{
 				"white.auto.details.body",
 				new string[2] { "以下内容直接来自当前版本实际使用的识别目录；点击文本可选择和复制。", "This list is generated directly from the recognition catalogs used by this version. Select the text to copy it." }
 			},
@@ -2732,7 +2744,7 @@ namespace PaviseApp
 			},
 			{
 				"white.auto.details.peripheral.note",
-				new string[3] { "名称、文件描述、产品名或公司名命中输入、音频与外设关键词，或命中本机在场设备派生的厂商词时自动保护；沿用 2.2.2.3 的宽匹配规则。", "Names, file descriptions, product names, or company names matching input/audio/peripheral keywords, or vendor tokens from present devices, are protected using the 2.2.2.3 broad matching rules.", "名前・ファイル説明・製品名・会社名の入出力や周辺機器キーワード、または接続デバイスのメーカー名で自動保護します。2.2.2.3 の広い一致ルールを使用します。" }
+				new string[3] { "名称、文件描述、产品名或公司名命中输入、音频与外设关键词，或命中本机在场设备派生的厂商词时自动保护。", "Names, file descriptions, product names, or company names matching input/audio/peripheral keywords, or vendor tokens from present devices, are protected automatically.", "名前・ファイル説明・製品名・会社名の入出力や周辺機器キーワード、または接続デバイスのメーカー名で自動保護します。" }
 			},
 			{
 				"white.auto.details.tokens",
@@ -2740,7 +2752,7 @@ namespace PaviseApp
 			},
 			{
 				"white.auto.details.hardware.note",
-				new string[2] { "显卡驱动容器及功耗、睿频、风扇工具自动保护；名称关键词采用子串匹配，沿用 2.2.2.3 保护规则。", "GPU driver containers and power, boost, and fan tools are protected using the 2.2.2.3 substring matching rules." }
+				new string[3] { "显卡驱动容器及功耗、睿频、风扇工具自动保护；名称关键词采用子串匹配。", "GPU driver containers and power, boost, and fan tools are protected using process-name substring matching.", "GPUドライバーのコンテナーと電力・ブースト・ファン制御ツールを自動保護します。プロセス名に含まれるキーワードで照合します。" }
 			},
 			{
 				"white.auto.details.groups",
@@ -3539,6 +3551,14 @@ namespace PaviseApp
 				new string[3] { "GPL-3.0-only ↗", "GPL-3.0-only ↗", "GPL-3.0-only ↗" }
 			},
 			{
+				"about.free",
+				new string[3] { "永久免费", "Free forever", "永久無料" }
+			},
+			{
+				"about.refund.hint",
+				new string[3] { "Pavise 永久免费。如您通过任何渠道付费购买本软件，请向卖家或交易平台申请退款。", "Pavise is free forever. If you paid for it through any channel, request a refund from the seller or purchase platform.", "Pavise は永久無料です。有料で購入された場合は、販売者または購入先のプラットフォームに返金を申請してください。" }
+			},
+			{
 				"about.contact.hint",
 				new string[2] { "Bug、建议和使用问题可通过抖音私信反馈。", "Report bugs, suggestions, or usage issues via Douyin direct message." }
 			},
@@ -3628,15 +3648,15 @@ namespace PaviseApp
 			},
 			{
 				"ac.mode.gentle.d",
-				new string[2] { "小核限频与磁盘 IO 降级，不改调度优先级。对局中为可核验的独立服务硬绑能效核或辅助物理核，检测亲和性改写后有限纠偏，退局恢复；CPU Sets 保持原值。", "Efficiency-mode throttling and lower disk IO; scheduling priority untouched. During games, verified dedicated services use hard affinity on efficiency or auxiliary physical cores, with bounded corrections and restoration at session end. CPU Sets stay unchanged." }
+				new string[2] { "CPU 低于正常优先级、磁盘 IO 低、内存页优先级 3，启用 EcoQoS；保留动态提优与计时器请求。对局中可核验的独立服务共享最多 4 个完整能效核或其他缓存域的核；同构辅助核为 2 个。CPU Sets 保持原值，有限纠偏，退局恢复绑核，关闭分组恢复资源设置。", "BelowNormal CPU, low disk IO, memory-page priority 3 and EcoQoS; preserves dynamic boosting and timer requests. During games, verified dedicated services share up to four complete efficiency or alternate-cache cores, or two homogeneous auxiliary cores. CPU Sets stay unchanged. Corrections are bounded; game exit restores affinity and disabling a group restores resource settings." }
 			},
 			{
 				"ac.mode.balanced.d",
-				new string[2] { "在温和的基础上把调度优先级降到低于正常。对局硬绑、亲和性守护和退局恢复与温和相同，CPU Sets 保持原值。", "Adds below-normal scheduling priority on top of Gentle, with the same session hard affinity, bounded affinity guard and restoration. CPU Sets stay unchanged." }
+				new string[2] { "CPU 低于正常优先级、磁盘 IO 极低、内存页优先级 2，启用 EcoQoS 并禁用 Windows 动态优先级提升；保留计时器请求。对局中可核验的独立服务共享 2 个完整能效核或辅助物理核。CPU Sets 保持原值，有限纠偏，退局恢复绑核，关闭或降档按原记录恢复。", "BelowNormal CPU, very-low disk IO, memory-page priority 2 and EcoQoS; disables Windows dynamic priority boosting while preserving timer requests. During games, verified dedicated services share two complete efficiency or auxiliary physical cores. CPU Sets stay unchanged. Corrections are bounded; game exit restores affinity and disabling or lowering the tier restores owned settings as appropriate." }
 			},
 			{
 				"ac.mode.isolated.d",
-				new string[2] { "按 2223 力度执行：CPU 低于正常优先级、磁盘 IO 极低、内存页优先级 3，启用 EcoQoS；保留高精度计时器请求和原动态优先级提升设置。对局中为可核验的独立服务硬绑能效核或辅助物理核，有限纠偏，退局恢复。CPU Sets 保持原值，关闭压制后恢复本工具修改。", "Uses the 2223 strength: BelowNormal CPU priority, very-low disk IO, memory-page priority 3 and EcoQoS; preserves timer requests and original dynamic priority boosting. During games, verified dedicated services use hard affinity on efficiency or auxiliary cores, with bounded corrections and restoration. CPU Sets stay unchanged; disabling suppression restores owned changes." }
+				new string[2] { "CPU Idle 优先级、磁盘 IO 极低、内存页优先级 1，启用 EcoQoS、禁用 Windows 动态优先级提升，系统支持时忽略该进程的高精度计时器请求。对局中可核验的独立服务共享 1 个完整能效核或辅助物理核，包含其 SMT 线程。每秒核验、有限纠偏，保留 CPU Sets；退局恢复绑核，关闭或降档按原记录恢复。过强压制可能增加游戏等待。", "Idle CPU, very-low disk IO, memory-page priority 1 and EcoQoS. Disables Windows dynamic priority boosting and ignores the process's high-resolution timer requests where supported. During games, verified dedicated services share one complete efficiency or auxiliary physical core, including SMT siblings. Checks once per second with bounded corrections and unchanged CPU Sets. Game exit restores affinity; disabling or lowering the tier restores owned settings as appropriate. Heavy suppression can increase game waits." }
 			},
 			{
 				"ac.protectonly",
@@ -3936,7 +3956,7 @@ namespace PaviseApp
 			},
 			{
 				"t.gamemodeboost.38",
-				new string[2] { " 省电模式已清除 计时器豁免位未落上 不影响提优", " power-saving cleared; the timer exemption bit did not take, which does not affect the boost" }
+				new string[2] { " EcoQoS=cleared timerExemption=unconfirmed", " EcoQoS=cleared timerExemption=unconfirmed" }
 			},
 			{
 				"t.gamemodeboost.33",
@@ -3964,7 +3984,7 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodeboost.39",
-				new string[2] { " 句柄被保护 身份快照保留待重试", " handle protected; identity snapshot kept for retry" }
+				new string[2] { " restore=pending snapshot=retained retry=scheduled", " restore=pending snapshot=retained retry=scheduled" }
 			},
 			{
 				"log.gamemodeboost.46",
@@ -3976,15 +3996,15 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodeboost.52",
-				new string[2] { "游戏模式解除 ", "Game mode ended " }
+				new string[2] { "SESSION event=end reason=", "SESSION event=end reason=" }
 			},
 			{
 				"log.gamemodeboost.53",
-				new string[2] { " 恢复 ", " restored " }
+				new string[2] { " restoredProcessCount=", " restoredProcessCount=" }
 			},
 			{
 				"log.gamemodeboost.54",
-				new string[2] { " 个后台进程 本局累计 含中途新增与宽限期先行还原", " background processes this session, including mid-match additions and early grace-period restores" }
+				new string[2] { " countScope=session includes=mid-session,grace-period", " countScope=session includes=mid-session,grace-period" }
 			},
 			{
 				"t.gamemodeenv.1",
@@ -4064,7 +4084,7 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodeenv.39",
-				new string[2] { " 静默重试中", " retrying silently" }
+				new string[2] { " retry=scheduled", " retry=scheduled" }
 			},
 			{
 				"log.gamemodeenv.40",
@@ -4080,11 +4100,11 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodeenv.42",
-				new string[2] { " 解除 ", " released suppression on " }
+				new string[2] { " releasedProcessCount=", " releasedProcessCount=" }
 			},
 			{
 				"log.gamemodeenv.43",
-				new string[2] { " 个进程的压制 个别被句柄保护的会自动补还原", " processes; the few protected by handles will be auto-restored later" }
+				new string[2] { " scope=background", " scope=background" }
 			},
 			{
 				"t.gamemodelibrary.1",
@@ -4188,7 +4208,7 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodesettings.7",
-				new string[2] { " 后台去 ", " — background on " }
+				new string[2] { " backgroundCores=", " backgroundCores=" }
 			},
 			{
 				"log.gamemodesweep.1",
@@ -4208,7 +4228,7 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodesweep.6",
-				new string[2] { " 显卡让位", " GPU yield" }
+				new string[2] { " backgroundGpuPolicy=demote", " backgroundGpuPolicy=demote" }
 			},
 			{
 				"log.gamemodesweep.7",
@@ -4372,23 +4392,23 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemode.44",
-				new string[2] { "游戏在宽限期内重新出现 启动器换壳或快速重启 游戏模式保持不中断 后台重新静默接管", "Game reappeared within the grace period (launcher shell swap or quick restart); game mode continues uninterrupted, background control silently resumes" }
+				new string[2] { "宽限期内重新确认游戏会话；保持会话并重新应用后台策略", "Game session reconfirmed during the grace period; session retained and background policy reapplied" }
 			},
 			{
 				"log.gamemode.45",
-				new string[2] { "游戏模式激活 检测到 ", "Game mode activated, detected " }
+				new string[2] { "游戏会话激活 target=", "Game session activated target=" }
 			},
 			{
 				"log.gamemode.46",
-				new string[2] { "游戏模式 检测目标变更 ", "Game mode detection target changed " }
+				new string[2] { "游戏会话检测目标更新 target=", "Game session detection target updated target=" }
 			},
 			{
 				"log.gamemode.47",
-				new string[2] { "游戏进程消失 后台压制立即还原 电源和环境保留 ", "Game process gone — background suppression restored immediately, power and environment kept, " }
+				new string[2] { "游戏会话未确认；进入退出宽限 graceSeconds=", "Game session unconfirmed; exit grace started graceSeconds=" }
 			},
 			{
 				"log.gamemode.48",
-				new string[2] { " 秒宽限 防换壳和快速重启抖动", " s grace period to absorb shell swaps and quick-restart jitter" }
+				new string[2] { " backgroundRestore=requested", " backgroundRestore=requested" }
 			},
 			{
 				"t.gamemode.49",
@@ -4412,19 +4432,19 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemode.54",
-				new string[2] { "待命 ", "Standby " }
+				new string[2] { "游戏识别待命 target=", "Game detection pending target=" }
 			},
 			{
 				"log.gamemode.55",
-				new string[2] { " 已启动 进对局后接管", " started, will take over once a match begins" }
+				new string[2] { "；等待满足对局接管条件", "; waiting for match activation criteria" }
 			},
 			{
 				"log.gamemode.56",
-				new string[2] { "待命解除 ", "Standby released " }
+				new string[2] { "游戏识别待命解除 target=", "Game detection no longer pending target=" }
 			},
 			{
 				"log.gamemode.57",
-				new string[2] { " 已退出", " exited" }
+				new string[2] { "；未再检测到候选进程", "; candidate process no longer detected" }
 			},
 			{
 				"log.gamemode.62",
@@ -4444,11 +4464,11 @@ namespace PaviseApp
 			},
 			{
 				"log.gamemodeboost.60",
-				new string[2] { "游戏提优 首次生效距识别 ", "Game boost: first took effect " }
+				new string[2] { "游戏提优首次生效 detectionLatency=", "Game priority first applied detectionLatency=" }
 			},
 			{
 				"log.gamemodeboost.61",
-				new string[2] { " 毫秒", " ms after detection" }
+				new string[2] { "ms", "ms" }
 			},
 			{
 				"log.fthtweak.1",
@@ -5508,11 +5528,11 @@ namespace PaviseApp
 			},
 			{
 				"t.systemaudit.149",
-				new string[2] { "NetworkThrottlingIndex 非默认且会干扰 MMCSS；可恢复默认 10。", "NetworkThrottlingIndex is non-default and disrupts MMCSS; restore default 10." }
+				new string[2] { "NetworkThrottlingIndex 超出有效配置范围。", "NetworkThrottlingIndex is outside the valid settings." }
 			},
 			{
 				"t.systemaudit.150",
-				new string[2] { "网络限流值保持系统默认，无需处理。", "The network throttling index is at the system default; no action required." }
+				new string[2] { "保留现有网络节流配置，无需修复。", "Preserve the existing network throttling setting; no repair required." }
 			},
 			{
 				"t.systemaudit.151",
@@ -5848,11 +5868,11 @@ namespace PaviseApp
 			},
 			{
 				"log.selfyield.1",
-				new string[2] { "对局让位 Pavise 已移居后台核心并降低自身调度权重", "Self-yield: Pavise moved itself to background cores and lowered its own scheduling weight" }
+				new string[2] { "Pavise 后台调度策略已应用", "Pavise background scheduling policy applied" }
 			},
 			{
 				"log.selfyield.2",
-				new string[2] { "对局让位 已恢复 Pavise 自身调度状态", "Self-yield: Pavise restored its own scheduling state" }
+				new string[2] { "Pavise 调度恢复操作已执行", "Pavise scheduling restoration executed" }
 			},
 			{
 				"log.suppressioncore.1",
@@ -5860,19 +5880,19 @@ namespace PaviseApp
 			},
 			{
 				"log.suppressioncore.2",
-				new string[2] { " 暂被句柄保护挡住 快照保留待重试", " temporarily blocked by handle protection, snapshot kept for retry" }
+				new string[2] { " restore=pending status=protected snapshot=retained retry=scheduled", " restore=pending status=protected snapshot=retained retry=scheduled" }
 			},
 			{
 				"log.suppressioncore.3",
-				new string[2] { " 多次被句柄保护挡住 停止周期重试 快照与恢复日志已保留 下次启动自动恢复", " blocked by handle protection repeatedly, periodic retries stopped; snapshot and recovery log kept, auto-restore on next launch" }
+				new string[2] { " restore=pending periodicRetry=stopped recoveryRecord=retained restartRetry=scheduled", " restore=pending periodicRetry=stopped recoveryRecord=retained restartRetry=scheduled" }
 			},
 			{
 				"log.suppressioncore.4",
-				new string[2] { "补还原成功 ", "Deferred restore succeeded " }
+				new string[2] { "延迟恢复完成 ", "Deferred restoration completed " }
 			},
 			{
 				"log.suppressioncore.5",
-				new string[2] { " 此前被句柄保护挡住 ", " previously blocked by handle protection " }
+				new string[2] { "；历史恢复受限次数=", "; previous restoration-limited attempts=" }
 			},
 			{
 				"log.suppressioncore.6",
@@ -5908,7 +5928,7 @@ namespace PaviseApp
 			},
 			{
 				"log.suppressioncore.giveup.4",
-				new string[3] { " 已写入的项退不回 退局再还原", "; values already written could not be restored yet, will retry on exit", " 書き込み済みの項目は戻せず 退出時に再度復元" }
+				new string[3] { " rollback=pending exitRetry=scheduled", " rollback=pending exitRetry=scheduled", " rollback=pending exitRetry=scheduled" }
 			},
 			{
 				"log.suppressioncore.11",
@@ -6856,27 +6876,27 @@ namespace PaviseApp
 			},
 			{
 				"log.powerplan.7",
-				new string[2] { "对局电源计划 改用托管方案 ", "Match power plan: switching to managed plan " }
+				new string[2] { "POWER selection=managed plan=", "POWER selection=managed plan=" }
 			},
 			{
 				"log.powerplan.8",
-				new string[2] { " 各项由 Pavise 按本机处理器写入", " with settings written by Pavise for this processor" }
+				new string[2] { " event=selection-saved routing=processor-specific", " event=selection-saved routing=processor-specific" }
 			},
 			{
 				"log.powerplan.9",
-				new string[2] { "对局电源计划 改回默认的托管方案 ", "Match power plan: back to the default managed plan " }
+				new string[2] { "POWER event=selection-saved selection=managed plan=", "POWER event=selection-saved selection=managed plan=" }
 			},
 			{
 				"log.powerplan.10",
-				new string[2] { "对局电源计划 改用 ", "Match power plan: switching to " }
+				new string[2] { "POWER selection=existing plan=", "POWER selection=existing plan=" }
 			},
 			{
 				"log.powerplan.11",
-				new string[2] { " Pavise 只负责切过去 一个设置都不改", " Pavise only switches to it and changes none of its settings" }
+				new string[2] { " event=selection-saved parameterWrite=disabled", " event=selection-saved parameterWrite=disabled" }
 			},
 			{
 				"log.powerplan.15",
-				new string[2] { "已删除托管电源方案 ", "Deleted managed power plan " }
+				new string[2] { "POWER event=managed-plan-deleted plan=", "POWER event=managed-plan-deleted plan=" }
 			},
 			{
 				"log.powerplan.16",
@@ -6892,51 +6912,51 @@ namespace PaviseApp
 			},
 			{
 				"log.powerplan.19",
-				new string[2] { "已删除 Pavise 创建的卓越性能电源计划", "Deleted the Ultimate Performance power plan created by Pavise" }
+				new string[2] { "POWER event=owned-system-plan-deleted source=ultimate-performance", "POWER event=owned-system-plan-deleted source=ultimate-performance" }
 			},
 			{
 				"log.powerplan.23",
-				new string[2] { "对局电源计划 使用所选方案 ", "Match power plan: using the selected plan " }
+				new string[2] { "POWER selection=existing plan=", "POWER selection=existing plan=" }
 			},
 			{
 				"log.powerplan.24",
-				new string[2] { " 只切换 不改动它的设置", " switch only, its settings are not changed" }
+				new string[2] { " event=target-resolved parameterWrite=disabled", " event=target-resolved parameterWrite=disabled" }
 			},
 			{
 				"log.powerplan.25",
-				new string[2] { "电源计划原值快照无法持久化 已取消切换", "Power plan original-value snapshot could not be persisted, switch cancelled" }
+				new string[2] { "POWER event=activation-cancelled reason=snapshot-persistence-failed", "POWER event=activation-cancelled reason=snapshot-persistence-failed" }
 			},
 			{
 				"log.powerplan.26",
-				new string[2] { "电源计划 ", "Power plan " }
+				new string[2] { "POWER event=activation-verified plan=", "POWER event=activation-verified plan=" }
 			},
 			{
 				"log.powerplan.27",
-				new string[2] { "电源计划切换失败 本轮未启用", "Power plan switch failed, not enabled this round" }
+				new string[2] { "POWER event=activation-failed", "POWER event=activation-failed" }
 			},
 			{
 				"log.powerplan.28",
-				new string[2] { "电源计划被改动 已强制拉回 ", "Power plan was changed externally, forced back to " }
+				new string[2] { "POWER event=reactivation-verified target=", "POWER event=reactivation-verified target=" }
 			},
 			{
 				"log.powerplan.29",
-				new string[2] { "电源计划已还原", "Power plan restored" }
+				new string[2] { "POWER event=restore-complete", "POWER event=restore-complete" }
 			},
 			{
 				"log.powerplan.30",
-				new string[2] { "原电源计划已不存在 无法还原", "The original power plan no longer exists, cannot restore" }
+				new string[2] { "POWER event=restore-failed reason=original-plan-missing", "POWER event=restore-failed reason=original-plan-missing" }
 			},
 			{
 				"log.powerplan.31",
-				new string[2] { "电源计划还原失败 快照保留待下次启动重试", "Power plan restore failed, snapshot kept, will retry at next startup" }
+				new string[2] { "POWER event=restore-failed snapshot=retained retry=next-start", "POWER event=restore-failed snapshot=retained retry=next-start" }
 			},
 			{
 				"log.powerplan.32",
-				new string[2] { "检测到托管电源方案残留为活动方案 已切回系统方案", "Detected a leftover managed power plan still active, switched back to the system plan" }
+				new string[2] { "POWER event=orphan-plan-recovered target=system", "POWER event=orphan-plan-recovered target=system" }
 			},
 			{
 				"log.powerplan.36",
-				new string[2] { "当前活动方案为用户手动切换 尊重手动选择 不再切回原方案 当前 ", "The active plan was switched manually by the user; that choice is respected and the original plan is not restored. Current: " }
+				new string[2] { "POWER event=restore-skipped reason=external-change activePlan=", "POWER event=restore-skipped reason=external-change activePlan=" }
 			},
 			{
 				"t.powerplanprofile.1",
@@ -7496,7 +7516,7 @@ namespace PaviseApp
 			},
 			{
 				"env.gtimer.state.stopped",
-				new string[2] { "执行失败，已停用。恢复会继续；可在设置的维护页手动重试一次。", "The action failed and is disabled. Recovery continues; allow one manual retry on Settings > Maintenance." }
+				new string[2] { "本阶段执行已停止，恢复记录已保留；请查看日志。", "Execution stopped for this phase. Recovery records are retained; check the log." }
 			},
 			{
 				"env.gtimer.state.restore-failed",
@@ -7536,7 +7556,7 @@ namespace PaviseApp
 			},
 			{
 				"auto.log.stopped",
-				new string[2] { "执行失败，已停用，需手动重试", "Execution failed; disabled until manual retry" }
+				new string[2] { "本阶段执行已停止，请查看日志", "Execution stopped for this phase; check the log" }
 			},
 			{
 				"set.exitgrace",

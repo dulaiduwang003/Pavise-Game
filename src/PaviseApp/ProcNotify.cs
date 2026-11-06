@@ -359,7 +359,7 @@ namespace PaviseApp
 				{
 					return;
 				}
-				long key = (long)((ulong)(uint)processChange.Pid << 1) | (long)((processChange.Kind == ProcessChangeKind.Stopped) ? 1 : 0);
+				long key = (long)((ulong)(uint)processChange.Pid << 1) | ((processChange.Kind == ProcessChangeKind.Stopped) ? 1L : 0L);
 				if (changes.Count < 256 || changes.ContainsKey(key))
 				{
 					changes[key] = processChange;

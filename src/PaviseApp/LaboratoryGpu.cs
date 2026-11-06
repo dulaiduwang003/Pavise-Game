@@ -16,11 +16,24 @@ namespace PaviseApp
         private sealed class Control
         {
             internal string Key, Receipt, Zh = "关闭", En = "Off";
-            internal bool Active, Yielded, Requested;
+            internal bool Active, Yielded, Requested, RecoveryPending;
             internal DateTime Next;
+            internal LaboratoryFailureBudget Failures = new LaboratoryFailureBudget();
         }
         private static readonly Control power = new Control { Key = PowerKey, Receipt = PowerReceipt };
         private static readonly Control clock = new Control { Key = ClockKey, Receipt = ClockReceipt };
+        private static long session;
+        internal static void BeginAutomaticCycle(long value)
+        {
+            lock (sync)
+            {
+                if (value <= session) return;
+                session = value;
+                foreach (Control c in new[] { power, clock }) { c.Failures.BeginSession(value); c.Next = DateTime.MinValue; c.Yielded = false; }
+            }
+        }
+        internal static void Update(bool powerEnabled, bool clocksEnabled, long expectedSession)
+        { lock (sync) if (expectedSession == session) Update(powerEnabled, clocksEnabled); }
         internal static bool HasResidue
         {
             get
@@ -85,11 +98,14 @@ namespace PaviseApp
             {
                 power.Requested = clock.Requested = false;
                 bool a = RestoreOne(power), b = RestoreOne(clock);
-                power.Next = clock.Next = DateTime.MinValue;
-                power.Yielded = clock.Yielded = false;
                 return a & b;
             }
         }
+        internal static bool Restore(long expectedSession)
+        { lock (sync) return expectedSession == session && Restore(); }
+        internal static bool RecoveryExhausted
+        { get { lock (sync) return (!power.RecoveryPending || power.Failures.Exhausted("restore", 3))
+            && (!clock.RecoveryPending || clock.Failures.Exhausted("restore", 3)); } }
         private static DateTime Now
         {
             get
@@ -160,8 +176,10 @@ namespace PaviseApp
             if (!c.Requested) { c.Requested = true; c.Next = DateTime.MinValue; c.Yielded = false; }
             if (c.Yielded || Now < c.Next) return;
             c.Next = Now.AddSeconds(15);
+            if (c.RecoveryPending && !RestoreOne(c)) return;
+            if (!c.Active && !c.Failures.CanAttempt("apply", Now.Ticks, 1)) { RestoreOne(c); return; }
             string raw;
-            if (!Load(c.Receipt, out raw)) { Status(c, "无法读取恢复记录", "Recovery record is unreadable"); return; }
+            if (!Load(c.Receipt, out raw)) { c.Failures.Failed("apply", Now.Ticks, 1, c.Key); Status(c, "无法读取恢复记录", "Recovery record is unreadable"); return; }
             if (c.Active)
             {
                 Receipt existing;
@@ -175,7 +193,7 @@ namespace PaviseApp
                 { Status(c, "暂时无法核验；保留恢复记录", "Cannot verify now; recovery record retained"); return; }
                 if (current.Current != existing.Applied || current.Context != existing.Device.Context)
                 {
-                    if (!Save(c.Receipt, "")) { Status(c, "外部设置已变更，恢复记录待清理", "External setting changed; record cleanup pending"); return; }
+                    if (!RestoreOne(c)) { Status(c, "外部设置已变更，恢复记录待清理", "External setting changed; record cleanup pending"); return; }
                     c.Active = false; c.Yielded = true;
                     Status(c, "外部设置已接管，本局停止干预", "External setting took ownership; yielded for this session");
                 }
@@ -184,19 +202,21 @@ namespace PaviseApp
             // A previous process may have died after recording or writing. Repay that
             // recovery obligation before obtaining a new session lease.
             if (raw.Length > 0 && !RestoreOne(c)) return;
+            if (!c.Failures.CanAttempt("apply", Now.Ticks, 1)) return;
             Sample sample; string why;
             if (!Probe(c.Key, null, out sample, out why))
             { c.Next = Now.AddSeconds(60); Status(c, "不可用：" + why, "Unavailable: " + why); return; }
             if (sample.Maximum <= 0 || sample.Current > sample.Maximum)
-            { c.Next = Now.AddSeconds(60); Status(c, "驱动返回的范围无效", "Driver returned an invalid range"); return; }
+            { c.Failures.Failed("apply", Now.Ticks, 1, c.Key); Status(c, "驱动返回的范围无效", "Driver returned an invalid range"); return; }
             if (sample.Current == sample.Maximum && !(c.Key == ClockKey && sample.Vendor == "nv"))
             { Status(c, "当前已是上限，无需修改", "Already at the limit; no change needed"); return; }
             var receipt = new Receipt { Device = sample, Original = sample.Current, Applied = sample.Maximum };
             if (!Save(c.Receipt, Encode(receipt)))
-            { Status(c, "恢复记录保存失败，未修改", "Recovery record could not be saved; unchanged"); return; }
+            { c.Failures.Failed("apply", Now.Ticks, 1, c.Key); Status(c, "恢复记录保存失败，未修改", "Recovery record could not be saved; unchanged"); return; }
             bool wrote = Write(c.Key, sample, sample.Maximum);
             if (!wrote && sample.RejectedWithoutChange)
             {
+                c.Failures.Failed("apply", Now.Ticks, 1, c.Key);
                 bool cleared = Save(c.Receipt, "");
                 c.Next = Now.AddSeconds(60);
                 Status(c, cleared ? "驱动不支持或拒绝该设置，未修改" : "驱动拒绝设置，恢复记录待清理",
@@ -208,6 +228,7 @@ namespace PaviseApp
                 || Probe(c.Key, sample, out check, out ignored) && check.Current == receipt.Applied && check.Context == sample.Context);
             if (!verified)
             {
+                c.Failures.Failed("apply", Now.Ticks, 1, c.Key);
                 bool restored = RestoreOne(c);
                 c.Next = Now.AddSeconds(60);
                 Status(c, restored ? "驱动拒绝或核验失败，已撤回" : "驱动写入未核验，等待恢复",
@@ -222,6 +243,18 @@ namespace PaviseApp
                 c.Key == ClockKey ? "Maximum clock floor applied and verified" : "Driver power limit applied and verified");
         }
         private static bool RestoreOne(Control c)
+        {
+            if (!c.Failures.CanAttempt("restore", Now.Ticks, 3)) { c.Failures.ReportRecovery("restore", 3); return false; }
+            bool ok = false;
+            try { ok = RestoreOneCore(c); return ok; }
+            finally
+            {
+                c.RecoveryPending = !ok;
+                if (ok) c.Failures.Neutral("restore");
+                else { c.Failures.Failed("restore", Now.Ticks, 3, c.Key); c.Failures.ReportRecovery("restore", 3); }
+            }
+        }
+        private static bool RestoreOneCore(Control c)
         {
             string raw;
             if (!Load(c.Receipt, out raw)) { Status(c, "无法读取恢复记录", "Recovery record is unreadable"); return false; }
@@ -512,8 +545,9 @@ namespace PaviseApp
         internal static Func<DateTime> NowForTest;
         internal static void ResetForTest()
         {
+            session = 0;
             foreach (Control c in new[] { power, clock })
-            { c.Active = c.Requested = c.Yielded = false; c.Next = DateTime.MinValue; Status(c, "关闭", "Off"); }
+            { c.Failures = new LaboratoryFailureBudget(); c.Active = c.Requested = c.Yielded = c.RecoveryPending = false; c.Next = DateTime.MinValue; Status(c, "关闭", "Off"); }
         }
 #endif
     }

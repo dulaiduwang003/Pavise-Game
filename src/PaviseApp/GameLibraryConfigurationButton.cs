@@ -51,6 +51,8 @@ namespace PaviseApp
 
 		private bool modalPresentation;
 
+		internal bool Attention;
+
 		internal bool ModalPresentation
 		{
 			get
@@ -106,19 +108,21 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
-			Color color = Col.Lerp(Theme.Inset, Theme.Accent, expanded ? 0.13f : (0.035f + hover.Value * 0.08f));
+			Color accent = Attention ? Theme.Warning : Theme.Accent;
+			Color ink = Attention ? Theme.Warning : (expanded ? Theme.Fg : Theme.Dim);
+			Color color = Col.Lerp(Theme.Inset, accent, Attention ? 0.14f : (expanded ? 0.13f : (0.035f + hover.Value * 0.08f)));
 			using (GraphicsPath path = Theme.TechPath(rectangle, Theme.S(6)))
 			{
 				using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, color, Theme.Card, LinearGradientMode.Horizontal))
 				{
 					graphics.FillPath(brush, path);
 				}
-				using (Pen pen = new Pen(expanded ? Col.Alpha(Theme.Accent, 125) : Theme.Stroke))
+				using (Pen pen = new Pen((expanded || Attention) ? Col.Alpha(accent, 125) : Theme.Stroke))
 				{
 					graphics.DrawPath(pen, path);
 				}
 			}
-			using (SolidBrush brush2 = new SolidBrush(Col.Alpha(Theme.Accent, expanded ? 255 : 135)))
+			using (SolidBrush brush2 = new SolidBrush(Col.Alpha(accent, (expanded || Attention) ? 255 : 135)))
 			{
 				graphics.FillPolygon(brush2, new Point[4]
 				{
@@ -128,12 +132,12 @@ namespace PaviseApp
 					new Point(0, base.Height - Theme.S(5))
 				});
 			}
-			Glyphs.Draw(graphics, "settings", new Rectangle(Theme.S(13), (base.Height - Theme.S(15)) / 2, Theme.S(15), Theme.S(15)), expanded ? Theme.Accent : Theme.Dim);
-			TextRenderer.DrawText(graphics, Text, Font, new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(74)), base.Height), expanded ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			Glyphs.Draw(graphics, Attention ? "lol" : "settings", new Rectangle(Theme.S(13), (base.Height - Theme.S(15)) / 2, Theme.S(15), Theme.S(15)), Attention ? accent : (expanded ? Theme.Accent : Theme.Dim));
+			TextRenderer.DrawText(graphics, Text, Font, new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(74)), base.Height), ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			int num = base.Width - Theme.S(19);
 			int num2 = base.Height / 2;
 			int num3 = ((!expanded) ? 1 : (-1));
-			using (Pen pen2 = new Pen(expanded ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
+			using (Pen pen2 = new Pen(Attention ? accent : (expanded ? Theme.Accent : Theme.Dim), Math.Max(1f, Theme.S(1))))
 			{
 				if (modalPresentation)
 				{

@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace PaviseApp
 {
@@ -11,6 +11,21 @@ namespace PaviseApp
 		private readonly object gate = new object();
 
 		private Process worker;
+        private GameAffinityJobProtocol protocol;
+        private bool stopSent, waitedForExit;
+        private string applyScope;
+        private static readonly object phaseGate = new object();
+        private static readonly HashSet<string> failedScopes = new HashSet<string>(StringComparer.Ordinal);
+        private static long automaticSession;
+        internal static void SyncAutomaticSession(long session)
+        {
+            lock (phaseGate)
+            {
+                if (session <= automaticSession) return;
+                automaticSession = session; failedScopes.Clear();
+            }
+            CoreIsolationWorker.SyncAutomaticSession(session);
+        }
 
 		private Timer heartbeat;
 
@@ -32,10 +47,11 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				if (failed)
-				{
-					return false;
-				}
+                lock (phaseGate)
+                {
+                    applyScope = automaticSession + "|" + pid + "|" + creation + "|" + isolation + "|" + game + "|" + manual;
+                    if (failed || failedScopes.Contains(applyScope)) return false;
+                }
 				if (worker == null)
 				{
 					try
@@ -54,6 +70,8 @@ namespace PaviseApp
 							RedirectStandardInput = true,
 							RedirectStandardOutput = true
 						});
+                        stopSent = waitedForExit = false;
+                        protocol = new GameAffinityJobProtocol(worker);
 						if (ReadReply() != "READY")
 						{
 							return Break("worker-start");
@@ -80,16 +98,7 @@ namespace PaviseApp
 			}
 		}
 
-		private string ReadReply()
-		{
-			StreamReader output = worker.StandardOutput;
-			Task<string> task = Task.Factory.StartNew(() => output.ReadLine());
-			if (!task.Wait(5000))
-			{
-				throw new TimeoutException("isolation-worker");
-			}
-			return task.Result;
-		}
+        private string ReadReply() { return protocol.ReadReply(5000); }
 
 		private bool Command(string command)
 		{
@@ -146,67 +155,56 @@ namespace PaviseApp
 		{
 			LastError = reason;
 			failed = true;
+            lock (phaseGate) { if (applyScope != null) failedScopes.Add(applyScope); }
 			active = false;
 			bool flag = CloseWorker(false);
-			ActiveMask = 0uL;
+            if (flag) ActiveMask = 0uL;
 			State = (flag ? "schedule.isolation.failed" : "schedule.isolation.pending");
 			Logger.Warn(Lang.T(State) + " (" + reason + ")");
 			return false;
 		}
 
-		private bool CloseWorker(bool requestStop)
-		{
-			if (heartbeat != null)
-			{
-				heartbeat.Dispose();
-				heartbeat = null;
-			}
-			bool flag = true;
-			if (worker != null)
-			{
-				if (requestStop)
-				{
-					flag = Command("STOP");
-				}
-				try
-				{
-					worker.StandardInput.Close();
-				}
-				catch
-				{
-				}
-				try
-				{
-					if (!worker.WaitForExit(5000))
-					{
-						return false;
-					}
-				}
-				catch
-				{
-					flag = false;
-				}
-				try
-				{
-					flag &= worker.ExitCode == 0;
-				}
-				catch
-				{
-					flag = false;
-				}
-				worker.Dispose();
-				worker = null;
-			}
-			if (CoreIsolationWorker.Recover(journal))
-			{
-				if (!flag)
-				{
-					return !HasReceipt();
-				}
-				return true;
-			}
-			return false;
-		}
+        private bool CloseWorker(bool requestStop)
+        {
+            if (heartbeat != null) { heartbeat.Dispose(); heartbeat = null; }
+            if (worker != null)
+            {
+                // Revoked output has one lifetime drain reader. STOP is a one-way
+                // signal: no late READY/OK may be mistaken for a recovery reply.
+                if (protocol != null) protocol.Revoke();
+                if (!stopSent)
+                {
+                    stopSent = true;
+                    try { worker.StandardInput.WriteLine("STOP"); worker.StandardInput.Flush(); } catch { }
+                    try { worker.StandardInput.Close(); } catch { }
+                }
+                try
+                {
+                    if (!worker.HasExited)
+                    {
+                        if (waitedForExit) { ReportWorkerPending(); return false; }
+                        waitedForExit = true;
+                        if (!worker.WaitForExit(5000)) { ReportWorkerPending(); return false; }
+                    }
+                    if (protocol != null) { protocol.Dispose(); protocol = null; }
+                    worker.Dispose(); worker = null;
+                }
+                catch { ReportWorkerPending(); return false; }
+            }
+            // The guardian must have exited before this process may take recovery.
+            // Recover retains its engine and finite budget across every client caller.
+            return CoreIsolationWorker.Recover(journal);
+        }
+
+        private void ReportWorkerPending()
+        {
+            // The guardian owns restoration until it exits. Observe that fact
+            // without issuing another protocol command or parent restore.
+            RecoveryAttemptTrace.Exhausted(delegate
+            {
+                lock (gate) { try { return worker == null || worker.HasExited; } catch { return false; } }
+            });
+        }
 
 		private bool HasReceipt()
 		{

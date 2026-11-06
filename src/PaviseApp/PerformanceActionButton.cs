@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-	internal sealed class PerformanceActionButton : PillButton
+	internal class PerformanceActionButton : PillButton
 	{
 		private sealed class ActionAccessibility : FxAccessibleObject
 		{

@@ -6,8 +6,6 @@ namespace PaviseApp
 
 		internal string Wanted;
 
-		internal string Note;
-
 		internal bool RestartRequired;
 	}
 }

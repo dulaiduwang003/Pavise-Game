@@ -45,7 +45,7 @@ namespace PaviseApp
 			Environment.SpecialFolder.LocalApplicationData
 		};
 
-		internal static bool BasicBackgroundEligible(int pid, int self, string name, string path, int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot, bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false, bool familyExempt = true, long creation = 0L, bool platformRemoved = false)
+		internal static bool BasicBackgroundEligible(int pid, int self, string name, string path, int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot, bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false, bool familyExempt = true, long creation = 0L, bool platformRemoved = false, bool allowForeground = false)
 		{
 			if (CatalogProtected(pid, creation, name, path))
 			{
@@ -63,7 +63,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			if (pid == foreground)
+			if (!allowForeground && pid == foreground)
 			{
 				return false;
 			}
@@ -102,7 +102,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			bool flag = AntiCheatCatalog.IsAntiCheatProcess(name, path) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name);
+			bool flag = AntiCheatCatalog.IsAntiCheatProcess(name, path) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name) || StreamingToolCatalog.IsStreamingToolProcess(name, path);
 			if (creation > 0)
 			{
 				lock (catalogSync)
@@ -208,6 +208,50 @@ namespace PaviseApp
 			return true;
 		}
 
+		internal static bool IsRequiredGameLaunchHost(string name, string path)
+		{
+			string normalized = WhitelistRule.NormalizeName(name);
+			// These backends create game processes and carry session/network work.
+			// Their UI renderers remain independently eligible for family control.
+			if (!string.Equals(normalized, "LeagueClient", StringComparison.OrdinalIgnoreCase)
+				&& !string.Equals(normalized, "RiotClientServices", StringComparison.OrdinalIgnoreCase)) return false;
+			if (string.IsNullOrEmpty(path)) return true;
+			string image = WhitelistRule.NormalizeImagePath(path);
+			return image.Length > 0 && string.Equals(normalized, WhitelistRule.NormalizeName(Path.GetFileName(image)), StringComparison.OrdinalIgnoreCase);
+		}
+
+		internal static HashSet<int> CollectGameCreationHosts(ProcessSnapshot snapshot, ICollection<int> games, int selfPid, int ownerSession)
+		{
+			var result = new HashSet<int>();
+			if (snapshot == null || games == null || ownerSession < 0) return result;
+			var processes = new Dictionary<int, ProcEntry>();
+			var duplicates = new HashSet<int>();
+			foreach (ProcEntry process in snapshot.Entries)
+			{
+				if (process == null || duplicates.Contains(process.Pid)) continue;
+				if (processes.ContainsKey(process.Pid)) { processes.Remove(process.Pid); duplicates.Add(process.Pid); }
+				else processes.Add(process.Pid, process);
+			}
+			string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+			foreach (int game in games)
+			{
+				ProcEntry child;
+				if (!processes.TryGetValue(game, out child) || child.Session != ownerSession || child.Creation <= 0) continue;
+				var visited = new HashSet<int>();
+				for (int depth = 0; depth < 24 && visited.Add(child.Pid); depth++)
+				{
+					if (SystemProcessCatalog.IsShellProcess(child.Name) || SystemProcessCatalog.IsCoreSystemProcess(child.Name, child.Path, windows)) break;
+					ProcEntry parent;
+					if (child.ParentPid <= 4 || child.ParentPid == selfPid || !processes.TryGetValue(child.ParentPid, out parent)
+						|| parent.Session != ownerSession || parent.Creation <= 0 || parent.Creation > child.Creation || visited.Contains(parent.Pid)) break;
+					if (SystemProcessCatalog.IsShellProcess(parent.Name) || SystemProcessCatalog.IsCoreSystemProcess(parent.Name, parent.Path, windows)) break;
+					result.Add(parent.Pid);
+					child = parent;
+				}
+			}
+			return result;
+		}
+
 		internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured, ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null, bool exactExecutablesOnly = false, bool forceFamilyProtection = false)
 		{
 			HashSet<int> hashSet = new HashSet<int>();
@@ -217,25 +261,34 @@ namespace PaviseApp
 			}
 			List<string> list = new List<string>();
 			HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			HashSet<string> legacyGameNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			foreach (GameProfile item in configured)
 			{
 				if (item != null && (exactExecutablesOnly || forceFamilyProtection || FamilyExemptFor(item)))
 				{
-					if (!string.IsNullOrEmpty(item.ExecutablePath))
+					string executable = WhitelistRule.NormalizeImagePath(item.ExecutablePath);
+					string learned = WhitelistRule.NormalizeImagePath(item.LearnedExecutablePath);
+					if (executable.Length > 0)
 					{
-						hashSet2.Add(item.ExecutablePath);
+						hashSet2.Add(executable);
 					}
-					if (!string.IsNullOrEmpty(item.LearnedExecutablePath))
+					if (learned.Length > 0)
 					{
-						hashSet2.Add(item.LearnedExecutablePath);
+						hashSet2.Add(learned);
 					}
+					if (exactExecutablesOnly && forceFamilyProtection && executable.Length == 0 && learned.Length == 0)
+						foreach (string entry in item.Entries)
+						{
+							string gameName = WhitelistRule.NormalizeName(entry);
+							if (gameName.Length > 0) legacyGameNames.Add(gameName);
+						}
 					if (!exactExecutablesOnly && SafeFamilyDir(item.Root))
 					{
 						list.Add(item.Root);
 					}
 				}
 			}
-			if (hashSet2.Count == 0 && list.Count == 0)
+			if (hashSet2.Count == 0 && list.Count == 0 && legacyGameNames.Count == 0)
 			{
 				return hashSet;
 			}
@@ -248,7 +301,8 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				if (!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(procEntry.Path) || LibraryRootOf(procEntry.Path, list) != null))
+				if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(WhitelistRule.NormalizeImagePath(procEntry.Path)) || LibraryRootOf(procEntry.Path, list) != null))
+					|| legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name)))
 				{
 					hashSet3.Add(procEntry.Pid);
 				}

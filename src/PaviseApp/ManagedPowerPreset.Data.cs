@@ -1,6 +1,5 @@
-// Generated from the seven original .pow registry hives, with missing AC/DC and registry types retained.
-// Includes every stored setting: performance, idle, autonomous, history, heterogeneity and personal preferences.
-// Original raw .pow resources are authoritative for import. These records only support inspection/verification.
+﻿// 保留电源配置中的 AC/DC 缺省状态及注册表类型。
+// 复制系统计划后按本表逐项写入，并用于参数核对。
 using System;
 
 namespace PaviseApp
@@ -33,7 +32,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("02f815b5-a5cf-4c84-bf20-649d1f75d3d8", "4c793e7d-a264-42e1-87d3-7a0d2f523ccd", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("0d7dbae2-4294-402a-ba8e-26777e8488cd", "309dce9b-bef4-4119-9921-a851fb12f0f4", 1u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "0e796bdb-100d-47d6-a2d5-f7d2daa51f51", 1u, 1u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", null, null, "00000000", "00000000", 3, 3),
+                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "1a34bdc3-7e6b-442e-a9d0-64b6ef378e84", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "25dfa149-5dd1-4736-b5ab-e8a37b5b8187", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "29f6c1db-86da-48c5-9fdb-f2b67b1f44da", 0u, 0u, null, null, 4, 4),
@@ -44,7 +43,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "abfc2519-3608-4c2a-94ea-171b0ed546ab", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "d4c1d4c8-d5cc-43d3-b83e-fc51215cb04d", 0u, 0u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "245d8541-3943-4422-b025-13a784f679b7", null, null, "01000000", "01000000", 3, 3),
+                        new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "245d8541-3943-4422-b025-13a784f679b7", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "0853a681-27c8-4100-a2fd-82013e970683", 100000u, 50u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "48e6b7a6-50f5-4782-a5d4-53bb8f07e226", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "498c044a-201b-4631-a522-5c744ed4e678", 1u, 1u, null, null, 4, 4),
@@ -149,7 +148,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("8619b916-e004-4dd8-9b66-dae86f806698", "c763ee92-71e8-4127-84eb-f6ed043a3e3d", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "03680956-93bc-4294-bba6-4e0f09bb717f", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "10778347-1370-4ee0-8bbd-33bdacaade49", 1u, 0u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", null, null, "00000000", "00000000", 3, 3),
+                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "13d09884-f74e-474a-a852-b6bde8ad03a8", 100u, 70u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "5c5bb349-ad29-4ee2-9d0b-2b25270f7a81", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "e69653ca-cf7f-4f05-aa73-cb833fa90ad4", 0u, 0u, null, null, 4, 4),
@@ -162,7 +161,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("e73a048d-bf27-4f12-9731-8b2076e8891f", "f3c5027d-cd16-4930-aa6b-90db844a8f00", 7u, 7u, null, null, 4, 4),
                         new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "f15576e8-98b7-4186-b944-eafa664402d9", 1u, 1u, null, null, 4, 4),
                     };
-                case "powerx-v3":
+                case "intel-non-k":
                     return new[]
                     {
                         new ManagedPowerPresetValue("0012ee47-9041-4b5d-9b77-535fba8b1442", "0b2d69d7-a2a1-449c-9680-f91c70521c60", 0u, 0u, null, null, 4, 4),
@@ -176,7 +175,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("02f815b5-a5cf-4c84-bf20-649d1f75d3d8", "4c793e7d-a264-42e1-87d3-7a0d2f523ccd", null, 1u, null, null, 0, 4),
                         new ManagedPowerPresetValue("0d7dbae2-4294-402a-ba8e-26777e8488cd", "309dce9b-bef4-4119-9921-a851fb12f0f4", 1u, null, null, null, 4, 0),
                         new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "0e796bdb-100d-47d6-a2d5-f7d2daa51f51", 0u, 0u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", null, null, null, "00000000", 0, 3),
+                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", null, 0u, null, null, 0, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "1a34bdc3-7e6b-442e-a9d0-64b6ef378e84", null, 1u, null, null, 0, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "25dfa149-5dd1-4736-b5ab-e8a37b5b8187", null, 1u, null, null, 0, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "29f6c1db-86da-48c5-9fdb-f2b67b1f44da", null, 0u, null, null, 0, 4),
@@ -259,14 +258,14 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("8619b916-e004-4dd8-9b66-dae86f806698", "9fe527be-1b70-48da-930d-7bcf17b44990", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("8619b916-e004-4dd8-9b66-dae86f806698", "c763ee92-71e8-4127-84eb-f6ed043a3e3d", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "10778347-1370-4ee0-8bbd-33bdacaade49", 1u, 1u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", null, null, "00000000", "00000000", 3, 3),
+                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "13d09884-f74e-474a-a852-b6bde8ad03a8", null, 100u, null, null, 0, 4),
                         new ManagedPowerPresetValue("e73a048d-bf27-4f12-9731-8b2076e8891f", "5dbb7c9f-38e9-40d2-9749-4f8a0e9f640f", 0u, null, null, null, 4, 0),
                         new ManagedPowerPresetValue("e73a048d-bf27-4f12-9731-8b2076e8891f", "9a66d8d7-4ff7-4ef9-b5a2-5a326ca2a469", 3u, null, null, null, 4, 0),
                         new ManagedPowerPresetValue("e73a048d-bf27-4f12-9731-8b2076e8891f", "bcded951-187b-4d05-bccc-f7e51960c258", 0u, null, null, null, 4, 0),
                         new ManagedPowerPresetValue("e73a048d-bf27-4f12-9731-8b2076e8891f", "f3c5027d-cd16-4930-aa6b-90db844a8f00", 5u, null, null, null, 4, 0),
                     };
-                case "intel-kf":
+                case "intel-k-series":
                     return new[]
                     {
                         new ManagedPowerPresetValue("0012ee47-9041-4b5d-9b77-535fba8b1442", "6738e2c4-e8a5-4a42-b16a-e040e769756e", 0u, null, null, null, 4, 0),
@@ -342,7 +341,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("02f815b5-a5cf-4c84-bf20-649d1f75d3d8", "4c793e7d-a264-42e1-87d3-7a0d2f523ccd", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("0d7dbae2-4294-402a-ba8e-26777e8488cd", "309dce9b-bef4-4119-9921-a851fb12f0f4", 1u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "0e796bdb-100d-47d6-a2d5-f7d2daa51f51", 1u, 1u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", null, null, "00000000", "00000000", 3, 3),
+                        new ManagedPowerPresetValue("19cbb8fa-5279-450e-9fac-8a3d5fedd0c1", "12bbebe6-58d6-4636-95bb-3217ef867c1a", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "1a34bdc3-7e6b-442e-a9d0-64b6ef378e84", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "25dfa149-5dd1-4736-b5ab-e8a37b5b8187", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "29f6c1db-86da-48c5-9fdb-f2b67b1f44da", 0u, 0u, null, null, 4, 4),
@@ -353,7 +352,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "abfc2519-3608-4c2a-94ea-171b0ed546ab", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("238c9fa8-0aad-41ed-83f4-97be242c8f20", "d4c1d4c8-d5cc-43d3-b83e-fc51215cb04d", 0u, 0u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "245d8541-3943-4422-b025-13a784f679b7", null, null, "01000000", "01000000", 3, 3),
+                        new ManagedPowerPresetValue("fea3413e-7e05-4911-9a71-700331f1c294", "245d8541-3943-4422-b025-13a784f679b7", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "0853a681-27c8-4100-a2fd-82013e970683", 100000u, 50u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "48e6b7a6-50f5-4782-a5d4-53bb8f07e226", 0u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("2a737441-1930-4402-8d77-b2bebba308a3", "498c044a-201b-4631-a522-5c744ed4e678", 1u, 1u, null, null, 4, 4),
@@ -458,7 +457,7 @@ namespace PaviseApp
                         new ManagedPowerPresetValue("8619b916-e004-4dd8-9b66-dae86f806698", "c763ee92-71e8-4127-84eb-f6ed043a3e3d", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "03680956-93bc-4294-bba6-4e0f09bb717f", 1u, 1u, null, null, 4, 4),
                         new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "10778347-1370-4ee0-8bbd-33bdacaade49", 1u, 0u, null, null, 4, 4),
-                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", null, null, "00000000", "00000000", 3, 3),
+                        new ManagedPowerPresetValue("9596fb26-9850-41fd-ac3e-f7c3c00afd4b", "34c7b99f-9a6d-4b3c-8dc7-b6693b78cef4", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "13d09884-f74e-474a-a852-b6bde8ad03a8", 100u, 70u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "5c5bb349-ad29-4ee2-9d0b-2b25270f7a81", 0u, 0u, null, null, 4, 4),
                         new ManagedPowerPresetValue("de830923-a562-41af-a086-e3a2c6bad2da", "e69653ca-cf7f-4f05-aa73-cb833fa90ad4", 0u, 0u, null, null, 4, 4),
