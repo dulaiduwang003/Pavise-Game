@@ -22,7 +22,6 @@ namespace PaviseApp
 
 		internal bool RestartRequired;
 
-		internal bool RetryAllowed;
 
 		internal bool HasRecovery;
 	}

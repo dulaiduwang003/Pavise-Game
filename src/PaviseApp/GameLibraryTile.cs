@@ -6,7 +6,7 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-	internal sealed class GameLibraryTile : Control
+	internal sealed partial class GameLibraryTile : Control
 	{
 		private sealed class TileAccessibility : ControlAccessibleObject
 		{
@@ -363,6 +363,7 @@ namespace PaviseApp
 				{
 					this.ConfigurationRequested(this, EventArgs.Empty);
 				}
+				QueueAddonNoticeInspection(true);
 			};
 			configurationButton.Enter += delegate
 			{
@@ -380,6 +381,7 @@ namespace PaviseApp
 			};
 			base.Controls.Add(moreButton);
 			base.Controls.Add(configurationButton);
+			InitializeAddonNotice();
 			RefreshModel();
 		}
 
@@ -391,6 +393,7 @@ namespace PaviseApp
 
 		public void RefreshModel()
 		{
+			RefreshAddonNotice();
 			if (Item != null && Item.Profile != null)
 			{
 				base.AccessibleName = Item.Profile.Name;
@@ -399,6 +402,15 @@ namespace PaviseApp
 				moreButton.Bg = Theme.Inset;
 				moreButton.Invalidate();
 				configurationButton.AccessibleName = Item.Profile.Name + " · " + PerformancePolicy.Text("深度调优", "Advanced tuning");
+				configurationButton.Text = addonNoticeAvailable ? PerformancePolicy.Text("有附加层可清理", "Add-ons available to remove") : PerformancePolicy.Text("深度调优", "Advanced tuning");
+				configurationButton.Attention = addonNoticeAvailable;
+				string addonTip = addonNoticeAvailable ? PerformancePolicy.Text("发现可删除的英雄联盟附加层。点击进入专属优化；删除前请完全退出英雄联盟和 WeGame。", "League add-ons were found. Open the dedicated settings here; fully exit League of Legends and WeGame before removal.") : "";
+				if (addonNoticeAvailable)
+				{
+					base.AccessibleDescription += "\r\n" + addonTip;
+					configurationButton.AccessibleName += " · " + configurationButton.Text;
+				}
+				tips.SetToolTip(configurationButton, addonTip);
 				configurationButton.Expanded = ConfigurationExpanded;
 				configurationButton.Bg = Theme.Card;
 				configurationButton.Invalidate();
@@ -573,6 +585,10 @@ namespace PaviseApp
 
 		protected override void Dispose(bool disposing)
 		{
+			if (disposing)
+			{
+				DisposeAddonNotice();
+			}
 			if (disposing && configurationContent != null)
 			{
 				Control control = configurationContent;

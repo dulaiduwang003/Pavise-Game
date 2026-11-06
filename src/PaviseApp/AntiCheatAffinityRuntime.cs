@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -41,7 +41,7 @@ namespace PaviseApp
     internal sealed class AntiCheatAffinityRuntime
     {
         internal delegate bool Identify(int pid, long creation, string name, out AntiCheatAffinityIdentity identity, out string reason);
-        internal delegate bool Inspect(AntiCheatAffinityIdentity identity, out ushort group, out ulong mask, out string reason);
+        internal delegate bool Inspect(AntiCheatAffinityIdentity identity, out ushort group, out ulong mask, out string reason, bool allowCpuSets);
         private sealed class TargetState
         {
             internal AntiCheatAffinityTarget Target;
@@ -63,12 +63,16 @@ namespace PaviseApp
         private readonly Func<AntiCheatAffinityTarget, AntiCheatAffinityGameContext, string> admission;
         private readonly Func<long> nowMilliseconds;
         private readonly Dictionary<string, TargetState> targets = new Dictionary<string, TargetState>(StringComparer.Ordinal);
+        private readonly Dictionary<ushort, ulong> sharedPools = new Dictionary<ushort, ulong>();
         private volatile AntiCheatAffinityView[] views = new AntiCheatAffinityView[0];
         private AntiCheatAffinitySnapshot topology;
         private string session;
         private bool initialized;
+        private int coreLimit;
         internal bool PendingRecovery { get { return lease.PendingRecovery; } }
         private long capturedAt;
+        private sealed class PreparationAttempt { internal int Failures; internal long Next; }
+        private readonly Dictionary<string, PreparationAttempt> preparationAttempts = new Dictionary<string, PreparationAttempt>(StringComparer.Ordinal);
 
         internal AntiCheatAffinityRuntime(Func<int, long, string, bool> prepare, Func<AntiCheatAffinityTarget, AntiCheatAffinityGameContext, string> admission)
             : this(new AntiCheatAffinityLease(), AntiCheatAffinityTopology.Capture,
@@ -89,14 +93,16 @@ namespace PaviseApp
             finally { Native.CloseHandle(handle); }
         }
 
-        internal void Tick(AntiCheatAffinityGameContext context, IList<AntiCheatAffinityTarget> current)
+        internal void Tick(AntiCheatAffinityGameContext context, IList<AntiCheatAffinityTarget> current, int maximumPhysicalCores = 4)
         {
+            if (context != null) lease.BeginRecoverySession(context.Session);
             if (!initialized) { lease.Recover(); initialized = true; }
             if (context == null || !gameAlive(context)) { Stop(); return; }
-            if (session != context.Key)
+            if (session != context.Key || coreLimit != maximumPhysicalCores)
             {
                 if (!Stop()) return;
                 session = context.Key;
+                coreLimit = maximumPhysicalCores;
                 topology = capture();
                 capturedAt = nowMilliseconds();
             }
@@ -118,6 +124,9 @@ namespace PaviseApp
                 if (present.Contains(key)) continue;
                 if (old.Identity == null || lease.Release(old.Identity)) targets.Remove(key);
             }
+            foreach (ushort group in new List<ushort>(sharedPools.Keys))
+                if (!PoolStillAvailable(topology, group, sharedPools[group], context.Group == group ? context.ProtectedMask : 0))
+                    sharedPools.Remove(group);
             List<AntiCheatAffinityView> next = new List<AntiCheatAffinityView>();
             foreach (AntiCheatAffinityTarget target in current)
             {
@@ -139,10 +148,14 @@ namespace PaviseApp
                 }
                 ulong protectedMask = context.Group == state.Group ? context.ProtectedMask : 0;
                 ulong domainMask = context.Group == state.Group ? context.GameDomainMask : 0;
+                ulong sharedMask;
                 if (state.Choice != null && (state.Protected != protectedMask || state.Domain != domainMask
-                    || (refreshed && state.Choice.Applicable && !PoolStillAvailable(topology, state, protectedMask))))
+                    || (state.Choice.Applicable && (!sharedPools.TryGetValue(state.Group, out sharedMask) || sharedMask != state.Choice.Mask))
+                    || (refreshed && state.Choice.Applicable && !PoolStillAvailable(topology, state.Group, state.Choice.Mask, protectedMask))))
                 {
                     if (!lease.Release(state.Identity)) { next.Add(View(state, "recovery-pending", "game-layout-changed", false, true)); continue; }
+                    if (sharedPools.TryGetValue(state.Group, out sharedMask) && sharedMask == state.Choice.Mask)
+                        sharedPools.Remove(state.Group);
                     state.Choice = null; state.Failure = null;
                     topology = capture(); capturedAt = nowMilliseconds();
                 }
@@ -161,19 +174,34 @@ namespace PaviseApp
                 {
                     if (!state.Prepared)
                     {
+                        string preparationKey = context.Session + "|" + target.Key + "|" + maximumPhysicalCores;
+                        PreparationAttempt preparation;
+                        if (!preparationAttempts.TryGetValue(preparationKey, out preparation)) preparationAttempts[preparationKey] = preparation = new PreparationAttempt();
+                        if (preparation.Failures >= 3 || nowMilliseconds() < preparation.Next)
+                        { next.Add(View(state, "handoff-pending", "previous-placement-recovery-budget", false, true)); continue; }
                         if (!prepare(target.Pid, target.Birth, target.Name))
-                        { next.Add(View(state, "handoff-pending", "previous-placement-recovery", false, false)); continue; }
+                        {
+                            preparation.Failures++; preparation.Next = nowMilliseconds() + 30000;
+                            Logger.Warn("Anti-cheat affinity preparation: target=" + target.Key + " failure=" + preparation.Failures + "/3; recovery retained");
+                            next.Add(View(state, "handoff-pending", "previous-placement-recovery", false, true)); continue;
+                        }
+                        preparationAttempts.Remove(preparationKey);
                         state.Prepared = true;
                     }
-                    if (!inspect(state.Identity, out state.Group, out state.Allowed, out reason))
+                    if (!inspect(state.Identity, out state.Group, out state.Allowed, out reason, true))
                     { state.Failure = reason; next.Add(View(state, "unavailable", reason, false, false)); continue; }
                     state.Protected = context.Group == state.Group ? context.ProtectedMask : 0;
                     state.Domain = context.Group == state.Group ? context.GameDomainMask : 0;
-                    state.Choice = AntiCheatAffinityTopology.Select(topology, state.Group, state.Allowed, state.Protected, state.Domain);
+                    ulong allowed = state.Allowed;
+                    if (sharedPools.TryGetValue(state.Group, out sharedMask)) allowed &= sharedMask;
+                    state.Choice = AntiCheatAffinityTopology.Select(topology, state.Group, allowed, state.Protected, state.Domain, coreLimit);
+                    if (state.Choice.Applicable && sharedPools.TryGetValue(state.Group, out sharedMask) && state.Choice.Mask != sharedMask)
+                        state.Choice = new AntiCheatAffinityChoice { Reason = "shared-pool-unavailable" };
                     if (!state.Choice.Applicable)
                     { state.Failure = state.Choice.Reason; next.Add(View(state, "unavailable", state.Failure, false, false)); continue; }
+                    if (!sharedPools.ContainsKey(state.Group)) sharedPools[state.Group] = state.Choice.Mask;
                 }
-                AntiCheatAffinityResult result = lease.Ensure(state.Identity, state.Group, state.Choice.Mask);
+                AntiCheatAffinityResult result = lease.Ensure(state.Identity, state.Group, state.Choice.Mask, true);
                 if (!result.Bound && !result.PendingRecovery && result.Code != "already-matched") state.Halted = result;
                 next.Add(View(state, result.Code, result.Detail, result.Bound, result.PendingRecovery));
             }
@@ -186,19 +214,19 @@ namespace PaviseApp
         { return new AntiCheatAffinityView(state.Target, code, detail, bound, pending, state.Group,
             state.Choice == null ? 0 : state.Choice.Mask, state.Choice == null ? "none" : state.Choice.Kind); }
 
-        private static bool PoolStillAvailable(AntiCheatAffinitySnapshot snapshot, TargetState state, ulong protectedMask)
+        private static bool PoolStillAvailable(AntiCheatAffinitySnapshot snapshot, ushort group, ulong mask, ulong protectedMask)
         {
             if (snapshot == null || !snapshot.Valid || !snapshot.CpuSetMetadata) return false;
             ulong covered = 0;
             foreach (AntiCheatAffinityCore core in snapshot.Cores)
             {
-                if (core.Group != state.Group || (core.Mask & state.Choice.Mask) == 0) continue;
-                if ((core.Mask & state.Choice.Mask) != core.Mask || core.Allocated || (core.Mask & protectedMask) != 0) return false;
+                if (core.Group != group || (core.Mask & mask) == 0) continue;
+                if ((core.Mask & mask) != core.Mask || core.Allocated || core.Favored || (core.Mask & protectedMask) != 0) return false;
                 // Parking an idle, already admitted core does not revoke this
                 // placement. Rebinding on each idle parking transition would churn.
                 covered |= core.Mask;
             }
-            return covered == state.Choice.Mask;
+            return mask != 0 && covered == mask;
         }
 
         private void Publish(AntiCheatAffinityView[] next)
@@ -215,9 +243,16 @@ namespace PaviseApp
         internal bool Stop()
         {
             bool ok = lease.ReleaseAll();
-            if (ok) { targets.Clear(); topology = null; session = null; Publish(new AntiCheatAffinityView[0]); }
+            if (ok) { targets.Clear(); sharedPools.Clear(); topology = null; session = null; Publish(new AntiCheatAffinityView[0]); }
             else Publish(targets.Values.Select(t => View(t, "recovery-pending", "restoration-unverified", false, true)).ToArray());
             return ok;
+        }
+
+        internal bool Shutdown()
+        {
+            bool restored = Stop();
+            bool stopped = lease.Stop();
+            return restored && stopped;
         }
 
         internal string Summary(string group)
@@ -236,13 +271,15 @@ namespace PaviseApp
         internal string Details(string group)
         {
             return string.Join("\r\n", views.Where(v => v.Group == group).Select(v => v.Name + " (PID " + v.Pid + "): "
-                + (v.Bound ? PerformancePolicy.Text("硬亲和性已回读", "Hard affinity verified") : Explain(v.Code, v.Detail))
+                + (v.Bound ? PerformancePolicy.Text("核心绑定已核验", "Core binding verified") : Explain(v.Code, v.Detail))
                 + (v.Mask == 0 ? "" : " · G" + v.ProcessorGroup + " CPU " + string.Join(",", Enumerable.Range(0,64).Where(i => (v.Mask & (1UL << i)) != 0).Select(i => i.ToString(CultureInfo.InvariantCulture)).ToArray()))
                 + " · " + KindText(v.Kind)).ToArray());
         }
 
         private static string KindText(string kind)
         {
+            if (kind.StartsWith("single-", StringComparison.Ordinal))
+                return PerformancePolicy.Text("单物理核 · ", "One physical core · ") + KindText(kind.Substring(7));
             if (kind == "efficiency") return PerformancePolicy.Text("能效核池", "Efficiency cores");
             if (kind == "auxiliary") return PerformancePolicy.Text("辅助物理核", "Auxiliary physical cores");
             if (kind == "alternate-cache-domain") return PerformancePolicy.Text("其他共享缓存域", "Alternate shared-cache domain");
@@ -260,6 +297,7 @@ namespace PaviseApp
             if (detail == "shared-or-unverified-service-host" || detail == "process-not-in-running-services" || detail == "running-services-unavailable") return PerformancePolicy.Text("无法核验独立反作弊服务身份", "Dedicated anti-cheat service identity could not be verified");
             if (detail == "insufficient-game-core-capacity") return PerformancePolicy.Text("剩余游戏物理核不足", "Insufficient remaining physical cores for the game");
             if (detail == "insufficient-unreserved-cores") return PerformancePolicy.Text("可用辅助物理核不足", "Insufficient available auxiliary physical cores");
+            if (detail == "shared-pool-unavailable") return PerformancePolicy.Text("进程原有核心范围无法使用本局共享核池", "Original process affinity cannot use the session's shared core pool");
             if (detail == "alternate-cache-domain-unavailable") return PerformancePolicy.Text("其他缓存域当前停放或不可用", "Alternate cache domain is parked or unavailable");
             return PerformancePolicy.Text("当前条件未执行硬绑", "Hard affinity unavailable under current conditions") + " (" + detail + ")";
         }

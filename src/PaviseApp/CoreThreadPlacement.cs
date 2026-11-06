@@ -6,6 +6,9 @@ namespace PaviseApp
 {
 	internal static class CoreThreadPlacement
 	{
+		private static readonly object recoveryGate = new object();
+		private static readonly AutomaticRecoveryBudget recoveryBudget = new AutomaticRecoveryBudget();
+		private static long recoveryDue;
 		private sealed class Receipt
 		{
 			internal int Pid;
@@ -92,6 +95,30 @@ namespace PaviseApp
 		}
 
 		internal static bool Recover()
+		{
+			lock (recoveryGate)
+			{
+				if (recoveryBudget.BeginCycle(PerformanceTuning.RecoveryCycleSerial + "\nlegacy-core-thread")) recoveryDue = 0;
+				if (!recoveryBudget.CanAttempt) { RecoveryAttemptTrace.Exhausted(); return false; }
+				if (DateTime.UtcNow.Ticks < recoveryDue) { RecoveryAttemptTrace.DeferredUntil(recoveryDue); return false; }
+				bool restored = false;
+				try { restored = RecoverCore(); return restored; }
+				catch { return false; }
+				finally
+				{
+					if (restored) { recoveryBudget.CompleteRecovery(); recoveryDue = 0; }
+					else
+					{
+						recoveryBudget.Record(false);
+						recoveryDue = DateTime.UtcNow.AddSeconds(30).Ticks;
+						RecoveryAttemptTrace.FailureSchedule(recoveryBudget.FailureCount, 3, recoveryDue);
+						Logger.Warn("Legacy core placement recovery failure=" + recoveryBudget.FailureCount + "/3; journal retained");
+					}
+				}
+			}
+		}
+
+		private static bool RecoverCore()
 		{
 			string value;
 			if (!Settings.TryLoadStr("AutoCoreThreadPlacementV1", out value))

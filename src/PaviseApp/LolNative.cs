@@ -5,6 +5,7 @@ namespace PaviseApp
 {
 	internal static class LolNative
 	{
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct TcpRowOwnerPid
 		{
 			public uint State;
@@ -19,6 +20,7 @@ namespace PaviseApp
 
 			public uint OwningPid;
 		}
+#pragma warning restore 0649
 
 		[DllImport("iphlpapi.dll", SetLastError = true)]
 		private static extern uint GetExtendedTcpTable(IntPtr table, ref int size, bool order, int addressFamily, int tableClass, int reserved);

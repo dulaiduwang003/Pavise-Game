@@ -1062,7 +1062,7 @@ namespace PaviseApp
 			report.Persistent.Add(new AuditRow
 			{
 				Name = Lang.T("t.systemaudit.148"),
-				Value = (flag ? Lang.T("t.systemaudit.145") : Lang.T("t.systemaudit.134")),
+				Value = (flag ? Lang.T("netthrottle.invalid") : Lang.T("t.systemaudit.134")),
 				Note = (flag ? Lang.T("t.systemaudit.149") : Lang.T("t.systemaudit.150")) + " " + text,
 				Evidence = "机制明确",
 				Warn = flag,

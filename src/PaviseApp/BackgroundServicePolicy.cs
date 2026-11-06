@@ -17,8 +17,7 @@ namespace PaviseApp
 
 		internal static bool SupportedMode(PerformancePreset mode)
 		{
-			// 2223 ordinary suppression stays in the user's session. Extreme is
-			// retired and cannot activate this newer cross-session service path.
+			// Cross-session service governance is restricted to Extreme.
 			return mode == PerformancePreset.Extreme;
 		}
 

@@ -307,7 +307,7 @@ namespace PaviseApp
             private readonly ConfigurationPresetKind kind;
             private readonly string heading, detail;
             private readonly string[] badges;
-            private readonly bool recommended, current;
+            private readonly bool current;
             private bool hover, pending;
 
             private sealed class Plan
@@ -322,11 +322,9 @@ namespace PaviseApp
                 this.kind = kind;
                 this.heading = heading;
                 this.detail = detail;
-                this.recommended = recommended;
                 this.current = current;
-                badges = recommended && current ? new[] { Lang.T("configpreset.guide.recommended"), Lang.T("configpreset.guide.current") }
-                    : recommended ? new[] { Lang.T("configpreset.guide.recommended") }
-                    : current ? new[] { Lang.T("configpreset.guide.current") } : new string[0];
+                string primaryBadge = Lang.T(recommended ? "configpreset.guide.recommended" : "configpreset.guide.aggressive");
+                badges = current ? new[] { primaryBadge, Lang.T("configpreset.guide.current") } : new[] { primaryBadge };
                 Text = heading;
                 UseMnemonic = false;
                 FlatStyle = FlatStyle.Flat;
@@ -416,7 +414,7 @@ namespace PaviseApp
                 for (int i = 0; i < badges.Length; i++)
                 {
                     Rectangle badge = plan.Badges[i];
-                    bool filled = recommended && i == 0;
+                    bool filled = i == 0;
                     Color badgeTone = !live ? Theme.Faint : filled ? tone : Theme.Green;
                     using (GraphicsPath shape = Theme.TechPath(new Rectangle(badge.X, badge.Y, badge.Width - 1, badge.Height - 1), Theme.S(4)))
                     {

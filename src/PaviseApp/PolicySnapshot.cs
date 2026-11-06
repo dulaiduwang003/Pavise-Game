@@ -64,6 +64,16 @@ namespace PaviseApp
 			}
 		}
 
+		internal int BackgroundGovernanceMode
+		{
+			get { return ValueOf(PolicyCatalog.KeyBackgroundGovernance) == "1" ? BackgroundGovernancePolicy.Aggressive : BackgroundGovernancePolicy.Normal; }
+		}
+
+		internal bool BackgroundBoostLimitRequested
+		{
+			get { return BackgroundGovernancePolicy.WantsBackgroundBoostLimit(SuppressBackground, BackgroundGovernanceMode); }
+		}
+
 		public bool WideBackgroundScope
 		{
 			get
@@ -104,7 +114,7 @@ namespace PaviseApp
 		{
 			get
 			{
-				return On("GmGpuDemote");
+				return SuppressBackground;
 			}
 		}
 
@@ -152,7 +162,7 @@ namespace PaviseApp
 		{
 			get
 			{
-				return On("GmPauseDl");
+				return SuppressBackground;
 			}
 		}
 
@@ -184,7 +194,7 @@ namespace PaviseApp
 		{
 			get
 			{
-				return On("GmAwake");
+				return true;
 			}
 		}
 

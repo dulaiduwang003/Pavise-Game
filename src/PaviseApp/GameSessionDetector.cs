@@ -617,6 +617,14 @@ namespace PaviseApp
 			{
 				if (CandidateIdentityUsable(member) && !ElectionVetoed(member.Name, member.Path))
 				{
+					// Family membership also includes persistent launchers and their platform
+					// children. Keep that protection, but do not let those background
+					// processes alone advertise a game that has already been closed.
+					bool selected = SamePath(profile.ExecutablePath, member.Path) || SamePath(profile.LearnedExecutablePath, member.Path);
+					if (!selected && ((!member.Visible && !member.Foreground) || PlatformRuntimePolicy.RuntimePlatform(member.Name) != null))
+					{
+						continue;
+					}
 					if (!list.Contains(member.Name))
 					{
 						list.Add(member.Name);

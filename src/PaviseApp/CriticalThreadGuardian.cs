@@ -432,6 +432,8 @@ namespace PaviseApp
 			private Timer cleanupTimer;
 
 			private int cleanupDelay = 1000;
+			private int cleanupAttempts;
+			private bool cleanupExitPhase;
 
 			internal Scope Scope;
 
@@ -562,6 +564,7 @@ namespace PaviseApp
 
 			private void ScheduleCleanupLocked()
 			{
+				if (cleanupAttempts >= 3) return;
 				if (cleanupTimer == null)
 				{
 					cleanupTimer = new Timer(delegate
@@ -862,6 +865,15 @@ namespace PaviseApp
 			{
 				lock (lifetime)
 				{
+					bool exited = childGone || ChildState == HardThreadRead.Gone;
+					if (exited && !cleanupExitPhase)
+					{
+						cleanupExitPhase = true;
+						cleanupAttempts = 0;
+					}
+					if (cleanupAttempts >= 3) return;
+					cleanupAttempts++;
+					Logger.Warn("Critical guardian cleanup: phase=" + (cleanupExitPhase ? "child-exit" : "live") + " attempt=" + cleanupAttempts + "/3");
 					disposed = true;
 					try
 					{
@@ -1549,6 +1561,18 @@ namespace PaviseApp
 				return new RecoveryUse(original.Coordination);
 			}
 
+			internal bool WaitForTargetExit()
+			{
+				RequireStopped();
+				return WaitForSingleObject(original.Target.Handle, uint.MaxValue) == 0;
+			}
+
+			internal bool TargetExited()
+			{
+				RequireStopped();
+				return WaitForSingleObject(original.Target.Handle, 0) == 0;
+			}
+
 			internal void RequireStopped()
 			{
 				if (original == null)
@@ -1882,6 +1906,67 @@ namespace PaviseApp
 		private static readonly object historicalGate = new object();
 
 		private static HistoricalRegistration issuingHistorical;
+		private static readonly Dictionary<string, int> historicalFailures = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> historicalInFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private sealed class HistoricalTargetObservation { internal bool Exited; internal int FailedReads; internal long SessionSerial; }
+		private static readonly Dictionary<string, HistoricalTargetObservation> historicalTargets = new Dictionary<string, HistoricalTargetObservation>(StringComparer.OrdinalIgnoreCase);
+
+		private static string HistoricalTargetPhase(string key, HardThreadTarget target)
+		{
+			lock (historicalGate)
+			{
+				HistoricalTargetObservation observation;
+				if (!historicalTargets.TryGetValue(key, out observation)) historicalTargets[key] = observation = new HistoricalTargetObservation();
+				long serial = PerformanceTuning.RecoveryCycleSerial;
+				if (serial > observation.SessionSerial) { observation.SessionSerial = serial; observation.FailedReads = 0; }
+				if (!observation.Exited && observation.FailedReads < 3)
+				{
+					try
+					{
+						using (HistoricalProcessPin first = new HistoricalProcessPin(target.ProcessId))
+						using (HistoricalProcessPin second = !first.Fact.Opened && first.Fact.Error == 87 ? new HistoricalProcessPin(target.ProcessId) : null)
+						{
+							observation.Exited = HardThreadHistoricalPolicy.Gone(target, first.Fact, second == null ? null : second.Fact) != HardThreadGoneReason.None;
+							if (observation.Exited || (first.Fact.Opened && first.Fact.TimesKnown && first.Fact.Pid == target.ProcessId && first.Fact.Birth == target.ProcessCreation && first.Fact.Wait == 258)) observation.FailedReads = 0;
+							else observation.FailedReads++;
+						}
+					}
+					catch { observation.FailedReads++; }
+				}
+				return key + (observation.Exited ? "/target-exit" : "/live-or-unknown");
+			}
+		}
+
+		private static bool HistoricalAttemptAllowed(string key)
+		{
+			lock (historicalGate) { int count; return !historicalFailures.TryGetValue(key, out count) || count < 3; }
+		}
+
+		private static bool BeginHistoricalAttempt(string key)
+		{
+			lock (historicalGate) { return HistoricalAttemptAllowed(key) && historicalInFlight.Add(key); }
+		}
+
+		private static bool HistoricalTargetReadable(string key)
+		{
+			lock (historicalGate)
+			{
+				HistoricalTargetObservation observation;
+				return !historicalTargets.TryGetValue(key, out observation) || observation.Exited || observation.FailedReads < 3;
+			}
+		}
+
+		private static void HistoricalAttemptEnded(string key, bool completed)
+		{
+			lock (historicalGate)
+			{
+				historicalInFlight.Remove(key);
+				if (completed) { historicalFailures.Remove(key); return; }
+				int count; historicalFailures.TryGetValue(key, out count);
+				historicalFailures[key] = Math.Min(3, count + 1);
+				Logger.Warn("Critical historical recovery: scope=" + key + " attempt=" + historicalFailures[key] + "/3; original files retained");
+			}
+		}
 
 		internal static bool SettledLeftoversPending
 		{
@@ -1891,14 +1976,14 @@ namespace PaviseApp
 			}
 		}
 
-		internal static void RetainRecoveryUntilSettled(Func<bool> restore, Action<int> wait)
+		internal static bool RetainRecoveryUntilSettled(Func<bool> restore, Action<int> wait)
 		{
 			if (restore == null || wait == null)
 			{
 				throw new ArgumentNullException("original recovery operation");
 			}
 			int num = 250;
-			while (true)
+			for (int attempt = 1; attempt <= 3; attempt++)
 			{
 				bool flag = false;
 				try
@@ -1910,12 +1995,49 @@ namespace PaviseApp
 				}
 				if (flag)
 				{
-					break;
+					return true;
 				}
-				wait(num);
-				num = Math.Min(30000, num * 2);
+				Logger.Warn("Critical thread guardian recovery: attempt=" + attempt + "/3; original authority retained");
+				if (attempt < 3)
+				{
+					try { wait(num); } catch { Thread.Sleep(num); }
+					num *= 2;
+				}
 			}
+			return false;
 		}
+
+internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<int> wait, Func<bool> targetGone, Func<bool> waitForTargetExit, int initialDelay)
+        {
+            bool exitPhase = false;
+            try { exitPhase = targetGone(); } catch { }
+            int attempts = 0, delay = initialDelay;
+            while (true)
+            {
+                bool gone = exitPhase;
+                if (!gone) { try { gone = targetGone(); } catch { } }
+                if (!exitPhase && gone)
+                {
+                    exitPhase = true; attempts = 0; delay = initialDelay;
+                }
+                bool settled = false;
+                attempts++;
+                try { settled = settle(); } catch { }
+                if (settled) return true;
+                Logger.Warn("Guardian recovery: phase=" + (exitPhase ? "target-exit" : "live") + " attempt=" + attempts + "/3; original ownership retained");
+                if (attempts >= 3)
+                {
+                    if (exitPhase) return false;
+                    bool exited = false;
+                    try { exited = waitForTargetExit(); } catch { }
+                    if (!exited) return false;
+                    exitPhase = true; attempts = 0; delay = initialDelay;
+                    continue;
+                }
+                try { wait(delay); } catch { Thread.Sleep(delay); }
+                delay *= 2;
+            }
+        }
 
 		internal static bool TryRun(string[] args, string originalStartupData, out int exitCode)
 		{
@@ -2551,6 +2673,7 @@ namespace PaviseApp
 				Task<byte[]> task = ReadStop(namedPipeClientStream);
 				bool flag = false;
 				long num = 0L;
+				int terminalReadFailures = 0;
 				while (true)
 				{
 					switch (nativeRegistration.Parent.State)
@@ -2569,7 +2692,7 @@ namespace PaviseApp
 								flag = true;
 							}
 						}
-						if (!flag || DateTime.UtcNow.Ticks < num)
+						if (!flag || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < num)
 						{
 							break;
 						}
@@ -2591,6 +2714,8 @@ namespace PaviseApp
 						}
 						catch
 						{
+							terminalReadFailures++;
+							Logger.Warn("Critical guardian terminal journal read: attempt=" + terminalReadFailures + "/3; retained until parent exit");
 						}
 						if (flag2)
 						{
@@ -2606,13 +2731,18 @@ namespace PaviseApp
 						try
 						{
 							nativeRegistration = null;
-							RetainRecoveryUntilSettled(delegate
+							Func<bool> restore = delegate
 							{
 								using (CriticalThreadHardAffinitySession criticalThreadHardAffinitySession = CriticalThreadHardAffinitySession.OpenRecovery(proof))
 								{
 									return criticalThreadHardAffinitySession.Restore();
 								}
-							}, Thread.Sleep);
+							};
+							if (!RetainRecoveryAcrossTargetExit(restore, Thread.Sleep, proof.TargetExited, proof.WaitForTargetExit, 250))
+							{
+								Logger.Warn("Critical thread guardian recovery: exhausted; authority retained without active retries");
+								Thread.Sleep(Timeout.Infinite);
+							}
 							exitCode = 0;
 						}
 						finally
@@ -2650,6 +2780,8 @@ namespace PaviseApp
 
 		internal static bool SweepSettledGuards(string originalStartupData)
 		{
+			string enumerationKey = "cleanup-enumeration:" + originalStartupData + "/" + PerformanceTuning.RecoveryCycleSerial;
+			if (!HistoricalAttemptAllowed(enumerationKey)) return false;
 			settledLeftovers = false;
 			bool flag = false;
 			try
@@ -2674,6 +2806,7 @@ namespace PaviseApp
 				NoReparse(text2);
 				flag = true;
 				string[] directories = Directory.GetDirectories(text2);
+				HistoricalAttemptEnded(enumerationKey, true);
 				foreach (string text3 in directories)
 				{
 					Guid result;
@@ -2690,6 +2823,7 @@ namespace PaviseApp
 			}
 			catch
 			{
+				HistoricalAttemptEnded(enumerationKey, false);
 				flag = false;
 				return false;
 			}
@@ -2703,6 +2837,15 @@ namespace PaviseApp
 		}
 
 		private static bool SweepSettledGuard(string directory)
+		{
+			string key = "cleanup:" + directory + "/" + PerformanceTuning.RecoveryCycleSerial;
+			if (!BeginHistoricalAttempt(key)) return false;
+			bool completed = false;
+			try { completed = SweepSettledGuardCore(directory); return completed; }
+			finally { HistoricalAttemptEnded(key, completed); }
+		}
+
+		private static bool SweepSettledGuardCore(string directory)
 		{
 			if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
 			{
@@ -2778,6 +2921,8 @@ namespace PaviseApp
 
 		internal static bool TrySettleHistoricalGone(string originalStartupData)
 		{
+			string enumerationKey = "journal-enumeration:" + originalStartupData + "/" + PerformanceTuning.RecoveryCycleSerial;
+			if (!HistoricalAttemptAllowed(enumerationKey)) return false;
 			try
 			{
 				if (string.IsNullOrEmpty(originalStartupData) || !Path.IsPathRooted(originalStartupData))
@@ -2804,6 +2949,7 @@ namespace PaviseApp
 					{
 						array = hardThreadFileStore.HistoricalJournals();
 					}
+					HistoricalAttemptEnded(enumerationKey, true);
 					bool flag = false;
 					HardThreadJournal[] array2 = array;
 					foreach (HardThreadJournal hardThreadJournal in array2)
@@ -2820,11 +2966,17 @@ namespace PaviseApp
 						{
 							continue;
 						}
+						string observationKey = "journal:" + text + "/" + hardThreadJournal.Target.SessionId + "/" + hardThreadJournal.Target.ProcessCreation;
+						string retryKey = HistoricalTargetPhase(observationKey, hardThreadJournal.Target);
+						if (!HistoricalTargetReadable(observationKey)) { flag = true; continue; }
+						if (!HistoricalAttemptAllowed(retryKey)) { flag = true; continue; }
 						if (!hardThreadHistoricalBudget.BeginSession(stopwatch.ElapsedMilliseconds))
 						{
 							flag = true;
 							break;
 						}
+						bool completed = false;
+						if (!BeginHistoricalAttempt(retryKey)) { flag = true; continue; }
 						try
 						{
 							using (HardThreadFileStore hardThreadFileStore2 = new HardThreadFileStore(text))
@@ -2872,26 +3024,31 @@ namespace PaviseApp
 									}
 									if (nativeGoneProof == null)
 									{
+										completed = true; // A valid live target is a successful observation, not an execution failure.
 										flag = true;
 										continue;
 									}
 									using (nativeGoneProof)
 									{
 										hardThreadFileStore2.CommitHistoricalGone(nativeGoneProof);
+										completed = true;
 									}
 								}
 							}
 						}
 						catch
 						{
+							completed = false;
 							flag = true;
 						}
+						finally { HistoricalAttemptEnded(retryKey, completed); }
 					}
 					return !flag && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(text);
 				}
 			}
 			catch
 			{
+				HistoricalAttemptEnded(enumerationKey, false);
 				return false;
 			}
 		}

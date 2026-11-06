@@ -13,6 +13,7 @@ namespace PaviseApp
         private int overviewActivityEpoch;
         private bool overviewActivityShown;
         private long overviewActivityNextRead;
+        private long overviewActivityForegroundVersion = long.MinValue;
 
         private void BuildOverviewGuardActivity()
         {
@@ -27,10 +28,14 @@ namespace PaviseApp
 
         private void PresentOverviewGuardActivity(GuardActivitySnapshot snapshot)
         {
+            if (snapshot != null && (snapshot.Session != gameMode.GuardActivitySession
+                || snapshot.ForegroundVersion != gameMode.GuardActivityForegroundVersion)) return;
             overviewActivitySnapshot = snapshot;
             if (overviewActivity == null || overviewActivity.IsDisposed) return;
             overviewActivity.Text = snapshot == null
-                ? PerformancePolicy.Text("正在读取本局执行结果…", "Reading this session's actions…") : snapshot.Summary;
+                ? (gameMode.SmartSceneSwitchedOut
+                    ? PerformancePolicy.Text("检测到切出游戏，正在读取后台恢复状态…", "Game switched out; checking background restoration…")
+                    : PerformancePolicy.Text("正在读取本局执行结果…", "Reading this session's actions…")) : snapshot.Summary;
             overviewActivity.AccessibleName = overviewActivity.Text;
             overviewActivity.AccessibleDescription = overviewActivity.Text;
         }
@@ -51,6 +56,14 @@ namespace PaviseApp
             }
             if (!shown) { overviewActivitySnapshot = null; return; }
             long session = gameMode.GuardActivitySession;
+            long foregroundVersion = gameMode.GuardActivityForegroundVersion;
+            if (overviewActivityForegroundVersion != foregroundVersion)
+            {
+                overviewActivityForegroundVersion = foregroundVersion;
+                overviewActivityEpoch++;
+                overviewActivityNextRead = 0;
+                PresentOverviewGuardActivity(null);
+            }
             long now = DateTime.UtcNow.Ticks;
             if (overviewActivitySnapshot != null && (overviewActivitySnapshot.Session != session
                 || now - overviewActivitySnapshot.CapturedTicks > TimeSpan.FromSeconds(10).Ticks))
@@ -68,7 +81,8 @@ namespace PaviseApp
                         if (IsDisposed || Disposing || !IsHandleCreated) return;
                         PostUiStateResult(delegate {
                             if (!IsDisposed && epoch == overviewActivityEpoch && gameMode.Enabled && gameMode.IsActive
-                                && gameMode.GuardActivitySession == session && snapshot != null && snapshot.Session == session)
+                                && gameMode.GuardActivitySession == session && snapshot != null && snapshot.Session == session
+                                && gameMode.GuardActivityForegroundVersion == foregroundVersion && snapshot.ForegroundVersion == foregroundVersion)
                                 PresentOverviewGuardActivity(snapshot);
                         });
                     }

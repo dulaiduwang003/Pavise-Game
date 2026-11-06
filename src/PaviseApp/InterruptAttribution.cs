@@ -34,6 +34,7 @@ namespace PaviseApp
 			public string Name;
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct WnodeHeader
 		{
 			public uint BufferSize;
@@ -89,6 +90,7 @@ namespace PaviseApp
 
 			public uint LoggerNameOffset;
 		}
+#pragma warning restore 0649
 
 		private struct EventTraceHeader
 		{
@@ -115,6 +117,7 @@ namespace PaviseApp
 			public uint UserTime;
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct EventDescriptor
 		{
 			public ushort Id;
@@ -180,6 +183,7 @@ namespace PaviseApp
 
 			public IntPtr UserContext;
 		}
+#pragma warning restore 0649
 
 		private delegate void EventRecordCallback(ref EventRecord record);
 

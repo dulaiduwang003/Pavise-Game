@@ -9,6 +9,10 @@ namespace PaviseApp
 {
 	internal static class PerformanceActionBackend
 	{
+#if PAVISE_SELFTEST
+		internal static Func<string> QuantumReadForTest;
+		internal static Func<string, bool> QuantumWriteForTest;
+#endif
 		internal sealed class DefenderInactiveException : NotSupportedException
 		{
 			internal DefenderInactiveException()
@@ -164,6 +168,10 @@ namespace PaviseApp
 
 		internal static string Read(string id, string target)
 		{
+#if PAVISE_SELFTEST
+			if (id == PerformanceActionCatalog.Quantum && target == QuantumRecovery.Target && QuantumReadForTest != null)
+				return QuantumReadForTest();
+#endif
 			if (id == "MatchVisualEffectsV1")
 			{
 				SharedSpiManual.RequirePrimitive(target, false);
@@ -194,6 +202,19 @@ namespace PaviseApp
 
 		internal static bool Write(string id, string target, string value)
 		{
+			if (id == PerformanceActionCatalog.Quantum && target == QuantumRecovery.Target)
+			{
+				if (!QuantumLiveUpdate.PrepareWrite()) return false;
+				bool written;
+#if PAVISE_SELFTEST
+				written = QuantumWriteForTest != null ? QuantumWriteForTest(value) : WriteRegistry(target, value);
+#else
+				written = WriteRegistry(target, value);
+#endif
+				if (!written || Read(id, target) != value) return false;
+				QuantumLiveUpdate.AfterWrite(value);
+				return true;
+			}
 			if (id == "MatchVisualEffectsV1")
 			{
 				SharedSpiManual.RequirePrimitive(target, true, value);
@@ -590,6 +611,18 @@ namespace PaviseApp
 				Dword(original);
 				return "d:1";
 			}
+		}
+
+		internal static string WantedRegistry(string id, string target, string original)
+		{
+			if (id == PerformanceActionCatalog.CpuMitigations && PerformanceTuning.CpuMitigationsExpanded)
+			{
+				if (target != null && target.EndsWith("\nFeatureSettingsOverride", StringComparison.OrdinalIgnoreCase))
+					return CpuMitigationPolicy.WantedOverride(original);
+				if (target != null && target.EndsWith("\nFeatureSettingsOverrideMask", StringComparison.OrdinalIgnoreCase))
+					return CpuMitigationPolicy.WantedMask(original);
+			}
+			return WantedRegistry(id, original);
 		}
 
 		internal static string[] EnvironmentTargets(string id)

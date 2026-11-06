@@ -47,7 +47,6 @@ namespace PaviseApp
     }
     internal interface IConfigurationPresetSnapshot { string ExtraSnapshot(); }
 
-    // No policy mutation, hardware access, threading or UI in this coordinator.
     internal sealed class ConfigurationPresetCoordinator
     {
         private readonly IConfigurationPresetBackend backend;
@@ -64,7 +63,7 @@ namespace PaviseApp
         internal ConfigurationPresetKind? CurrentPreset()
         {
             string raw = backend.LoadIdentity(); string[] p = (raw ?? "").Split('|');
-            if (p.Length != 3 || p[0] != "1" || (p[1] != "default" && p[1] != "extreme")) return null;
+            if (p.Length != 3 || (p[1] != "default" && p[1] != "extreme") || p[0] != (p[1] == "default" ? "4" : "2")) return null;
             string actual = Fingerprint();
             return actual != null && actual == p[2] ? (ConfigurationPresetKind?)(p[1] == "extreme" ? ConfigurationPresetKind.Extreme : ConfigurationPresetKind.Default) : null;
         }
@@ -85,6 +84,13 @@ namespace PaviseApp
                     string before = backend.Read(entry), target = entry.Value(preset), detail;
                     if (before == null) { item.Status = ConfigurationPresetItemStatus.Skipped; item.Detail = PerformancePolicy.Text("配置无法读取，未修改", "Configuration unreadable; unchanged"); expected[entry.Key] = null; continue; }
                     expected[entry.Key] = before;
+                    if (target == null)
+                    {
+                        // Preserving a choice is not a successful application attempt.
+                        item.Status = ConfigurationPresetItemStatus.Skipped;
+                        item.Detail = PerformancePolicy.Text("保留当前选择", "Current selection preserved");
+                        continue;
+                    }
                     ConfigurationPresetAvailability availability;
                     try { availability = ConfigurationPresetEntry.IsEnabled(target) ? backend.Inspect(entry) : ConfigurationPresetAvailability.Yes(); }
                     catch (Exception ex) { availability = ConfigurationPresetAvailability.No(PerformancePolicy.Text("适用性检测失败，已跳过：", "Eligibility check failed; skipped: ") + ex.GetType().Name); }
@@ -138,7 +144,7 @@ namespace PaviseApp
                     string fingerprint = Fingerprint();
                     if (fingerprint != null)
                     {
-                        string identity = "1|" + (preset == ConfigurationPresetKind.Extreme ? "extreme" : "default") + "|" + fingerprint;
+                        string identity = (preset == ConfigurationPresetKind.Extreme ? "2|extreme|" : "4|default|") + fingerprint;
                         if (backend.SaveIdentity(identity)) result.Identity = identity; else result.Failed++;
                     }
                 }

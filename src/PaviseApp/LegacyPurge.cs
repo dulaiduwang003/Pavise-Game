@@ -228,7 +228,7 @@ namespace PaviseApp
 				return list;
 			}
 			Step("NVIDIA per-game profile recovery", () => GameNvPersistentRecovery.Restore(dataDir), list);
-			StepIf(Lang.T("cpucap.title"), () => !string.IsNullOrEmpty(Settings.LoadStr("BackgroundCpuCapJobsV1", "")), BackgroundCpuCap.Recover, list);
+			StepIf(Lang.T("cpucap.title"), RetiredBackgroundCpuCap.HasReceipts, RetiredBackgroundCpuCap.Retire, list);
 			Step(Lang.T("t.gamemodeenv.35"), PowerPlan.Restore, list);
 			Step(Lang.T("t.legacypurge.1"), PowerPlan.RemoveCreatedPlan, list);
 			Step(Lang.T("t.legacypurge.2"), PowerPlan.RemoveManagedPlan, list);
@@ -329,7 +329,8 @@ namespace PaviseApp
 			Step(Lang.T("t.legacypurge.28"), delegate
 			{
 				string journal = Path.Combine(dataDir, "Pavise.suppression.state");
-				return !HasHardThreadRecoveryDebt(dataDir) && RestoreProcessResidue(CrashGuard.HealFromCrash, delegate
+				string jobReason;
+				return !HasHardThreadRecoveryDebt(dataDir) && GameAffinityJobLease.Recover(out jobReason) && RestoreProcessResidue(CrashGuard.HealFromCrash, delegate
 				{
 					SuppressionCore.HealFromCrash(journal);
 				}, CrashGuard.HasPending, () => SuppressionCore.HasPendingJournalFile(journal));

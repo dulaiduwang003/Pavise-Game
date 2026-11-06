@@ -16,6 +16,8 @@ namespace PaviseApp
 
 		internal bool NoChangeNeeded;
 
+		internal bool PriorityReserved;
+
 		internal bool PresenterOnly;
 
 		internal string Detail;

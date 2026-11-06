@@ -2,6 +2,10 @@ namespace PaviseApp
 {
 	internal sealed class AdaptiveGuard
 	{
+		public const double EnterUtilization = 0.7;
+
+		public const double ExitUtilization = 0.6;
+
 		public const long RelaxTicks = 1200000000L;
 
 		public const int MaxEpisodes = 3;

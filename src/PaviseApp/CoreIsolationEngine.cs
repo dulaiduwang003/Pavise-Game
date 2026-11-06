@@ -38,6 +38,62 @@ namespace PaviseApp
 
 		private bool manual;
 
+        private sealed class RecoveryAttempt { internal int Failures; internal long Due; }
+        private readonly Dictionary<string, RecoveryAttempt> recoveryAttempts = new Dictionary<string, RecoveryAttempt>();
+        private readonly List<Entry> recoveryOwners = new List<Entry>();
+        private long recoverySession;
+        private bool ownersExited;
+        private string ownedReceipt;
+        private static long RecoveryClock() { return AutoCores.NowTicks; }
+        internal void SyncAutomaticSession(long session)
+        { if (session > recoverySession) recoverySession = session; }
+        private string RecoveryPhase()
+        {
+            if (!ownersExited && recoveryOwners.Count > 0)
+            {
+                bool gone = true;
+                foreach (Entry owner in recoveryOwners)
+                {
+                    try { if (!os.Gone(owner.Pid, owner.Creation)) { gone = false; break; } }
+                    catch { gone = false; break; }
+                }
+                if (gone) ownersExited = true;
+            }
+            return recoverySession + (ownersExited ? "|exited" : "|live");
+        }
+        internal bool RecoveryDue
+        {
+            get
+            {
+                string phase = RecoveryPhase(); RecoveryAttempt attempt;
+                if (!recoveryAttempts.TryGetValue(phase, out attempt) || (attempt.Failures < 3 && RecoveryClock() >= attempt.Due)) return true;
+                ReportRecovery(phase, attempt); return false;
+            }
+        }
+        private bool RunRecovery(Func<bool> operation)
+        {
+            string phase = RecoveryPhase(); RecoveryAttempt attempt;
+            if (!recoveryAttempts.TryGetValue(phase, out attempt)) recoveryAttempts[phase] = attempt = new RecoveryAttempt();
+            if (attempt.Failures >= 3 || RecoveryClock() < attempt.Due) { ReportRecovery(phase, attempt); return false; }
+            bool restored = false;
+            try { restored = operation(); return restored; }
+            finally
+            {
+                if (restored) recoveryAttempts.Clear();
+                else
+                {
+                    attempt.Failures++; attempt.Due = RecoveryClock() + TimeSpan.FromSeconds(30).Ticks;
+                    ReportRecovery(phase, attempt);
+                    if (attempt.Failures == 3) Logger.Log("CORE isolation recovery paused after 3 failures; journal and owner retained");
+                }
+            }
+        }
+        private void ReportRecovery(string phase, RecoveryAttempt attempt)
+        {
+            if (attempt.Failures >= 3) RecoveryAttemptTrace.Exhausted(() => RecoveryPhase() != phase);
+            else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(Math.Max(0, attempt.Due - RecoveryClock())));
+        }
+
 		internal string Error { get; private set; }
 
 		internal bool Active { get; private set; }
@@ -85,11 +141,17 @@ namespace PaviseApp
 					.Append(',')
 					.Append(Hex(entry.Applied));
 			}
-			return store.Write(stringBuilder.ToString());
+			string receipt = stringBuilder.ToString(), verified;
+            if (!store.Write(receipt)) return false;
+            ownedReceipt = receipt;
+            return store.Read(out verified) && verified == receipt;
 		}
 
 		internal bool Recover()
-		{
+        { return RunRecovery(RecoverCore); }
+        private bool RecoverCore()
+        {
+            if (Pending) return RestoreCore();
 			string value;
 			if (!store.Read(out value))
 			{
@@ -103,6 +165,8 @@ namespace PaviseApp
 			{
 				return Fail("journal-corrupt");
 			}
+            string current;
+            if (ownedReceipt != null && (!store.Read(out current) || current != ownedReceipt)) return Fail("journal-owner-changed");
 			string text = os.BootIdentity();
 			if (text == null)
 			{
@@ -110,14 +174,14 @@ namespace PaviseApp
 			}
 			if (text != boot)
 			{
-				if (!store.Write(""))
+				if (!ClearReceipt())
 				{
 					return Fail("journal-clear");
 				}
 				Reset();
 				return true;
 			}
-			return Restore();
+			return RestoreCore();
 		}
 
 		private bool Decode(string raw)
@@ -165,6 +229,7 @@ namespace PaviseApp
 			manual = flag;
 			systemPrepared = array[num - 1] == "1";
 			entries.AddRange(list);
+            recoveryOwners.AddRange(list); ownedReceipt = raw;
 			return true;
 		}
 
@@ -288,9 +353,11 @@ namespace PaviseApp
 			entry.Applied = mask | (gameMask & isolated);
 			Entry entry2 = entry;
 			entries.Add(entry2);
+            recoveryOwners.Add(entry2);
 			if (!Persist())
 			{
 				entries.Remove(entry2);
+                recoveryOwners.Remove(entry2);
 				os.Close(intPtr);
 				return Fail("journal-write");
 			}
@@ -411,12 +478,16 @@ namespace PaviseApp
 		}
 
 		internal bool Restore()
-		{
+        { return !Pending || RunRecovery(RestoreCore); }
+        private bool RestoreCore()
+        {
 			Active = false;
 			if (!Pending)
 			{
 				return true;
 			}
+            string current;
+            if (ownedReceipt != null && (!store.Read(out current) || current != ownedReceipt)) return Fail("journal-owner-changed");
 			string text = os.BootIdentity();
 			if (text == null)
 			{
@@ -424,7 +495,7 @@ namespace PaviseApp
 			}
 			if (text != boot)
 			{
-				if (!store.Write(""))
+				if (!ClearReceipt())
 				{
 					return Fail("journal-clear");
 				}
@@ -473,13 +544,16 @@ namespace PaviseApp
 			{
 				return Fail("restore-pending");
 			}
-			if (!store.Write(""))
+			if (!ClearReceipt())
 			{
 				return Fail("journal-clear");
 			}
 			Reset();
 			return true;
 		}
+
+        private bool ClearReceipt()
+        { string verify; return store.Write("") && store.Read(out verify) && string.IsNullOrEmpty(verify); }
 
 		private void Reset()
 		{
@@ -488,21 +562,17 @@ namespace PaviseApp
 				os.Close(entry.Handle);
 			}
 			entries.Clear();
+            recoveryOwners.Clear(); ownedReceipt = null; ownersExited = false; recoveryAttempts.Clear();
 			isolated = (all = (pre = 0uL));
 			boot = null;
 			Active = (systemPrepared = (manual = false));
 		}
 
-		public void Dispose()
-		{
-			try
-			{
-				Restore();
-			}
-			finally
-			{
-				Reset();
-			}
-		}
-	}
+        public void Dispose()
+        {
+            // Restoration belongs to the finite owner loop. Dispose must neither
+            // perform another attempt nor drop handles for unresolved mutations.
+            if (!Pending) Reset();
+        }
+    }
 }

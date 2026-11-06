@@ -7,6 +7,7 @@ namespace PaviseApp
 {
 	internal static class DpcSampler
 	{
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct ProcessorPerf
 		{
 			public long IdleTime;
@@ -21,6 +22,7 @@ namespace PaviseApp
 
 			public uint InterruptCount;
 		}
+#pragma warning restore 0649
 
 		[DllImport("ntdll.dll")]
 		private static extern int NtQuerySystemInformation(int infoClass, IntPtr buffer, int length, out int returned);

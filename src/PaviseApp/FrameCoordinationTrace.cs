@@ -44,7 +44,6 @@ namespace PaviseApp
         internal int PumpTid;
         internal double CpuMs;
         internal bool Drained { get { Thread current = pump; return current == null || !current.IsAlive; } }
-        // Legacy cleanup fixtures retain the shutdown seal; production no longer starts identity captures.
         internal static bool IdentityClosing { get { lock (ledgerGate) return identitySealed; } }
         private static string SessionName(string prefix)
         { return prefix + Process.GetCurrentProcess().Id + "." + Guid.NewGuid().ToString("N"); }
@@ -208,11 +207,17 @@ namespace PaviseApp
                 if (recovered != 0) return recovered;
             }
             if (!WriteReceipt(channel, name) || !Settings.TryLoadStr(channel.Key, out written) || written != name) return 5;
+            FrameRecoveryBudget.Own(channel.Key, 0, 0, name);
             claimed = true; channel.Active = this;
             return 0;
         }
         // Caller holds ledgerGate and has verified that no live trace of this process owns the channel.
         private static int RecoverReceiptLocked(Channel channel, string receipt)
+        {
+            int result = 5;
+            return FrameRecoveryBudget.Run(channel.Key, delegate { result = RecoverReceiptCore(channel, receipt); return result == 0; }) ? 0 : result;
+        }
+        private static int RecoverReceiptCore(Channel channel, string receipt)
         {
             if (!System.Text.RegularExpressions.Regex.IsMatch(receipt, channel.Pattern)) return 5;
             IntPtr p = Props(receipt, false);
@@ -244,6 +249,13 @@ namespace PaviseApp
             return waitMs;
         }
         private bool StopLocked(int waitMs)
+        {
+            if (receiptSettled) return true;
+            bool stopped = false;
+            bool released = FrameRecoveryBudget.Run(channel.Key, delegate { stopped = StopCore(waitMs); return receiptSettled; });
+            return released && stopped;
+        }
+        private bool StopCore(int waitMs)
         {
             int rc = 0;
             stopRequested = true;
@@ -290,7 +302,11 @@ namespace PaviseApp
                 {
                     if (channel.Active == this) channel.Active = null;
                     if (claimed) cleared = ClearLedger(channel, name);
-                    if (cleared) receiptSettled = true;
+                    if (cleared)
+                    {
+                        receiptSettled = true;
+                        if (claimed) FrameRecoveryBudget.Settled(channel.Key, name);
+                    }
                 }
             }
             if (!cleared) Error = 5;

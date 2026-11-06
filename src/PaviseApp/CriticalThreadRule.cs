@@ -41,9 +41,9 @@ namespace PaviseApp
 
 		internal CriticalThreadRule(string topology, bool workerAvoidance, params ulong[] processors)
 		{
-			if (string.IsNullOrEmpty(topology) || topology == "auto" || processors == null || processors.Length < 1 || processors.Length > 2 || processors.Any((ulong x) => x == 0 || (x & (x - 1)) != 0) || processors.Distinct().Count() != processors.Length)
+			if (string.IsNullOrEmpty(topology) || topology == "auto" || processors == null || processors.Length < 1 || processors.Length > CriticalThreadAutoPolicy.MaximumIsolated || processors.Any((ulong x) => x == 0 || (x & (x - 1)) != 0) || processors.Distinct().Count() != processors.Length)
 			{
-				throw new ArgumentException("Choose one or two distinct logical processors");
+				throw new ArgumentException("Choose one to " + CriticalThreadAutoPolicy.MaximumIsolated + " distinct logical processors");
 			}
 			Topology = topology;
 			WorkerAvoidance = workerAvoidance;
@@ -61,6 +61,13 @@ namespace PaviseApp
 		internal static CriticalThreadRule Auto(bool workerAvoidance)
 		{
 			return new CriticalThreadRule(workerAvoidance);
+		}
+
+		internal static CriticalThreadRule ParseForRuntime(string text)
+		{
+			CriticalThreadRule rule = Parse(text);
+			// 自动开关只约束呈现线程；历史规则仍按原格式读取以便精确恢复。
+			return rule != null && rule.Automatic ? Auto(false) : rule;
 		}
 
 		internal string Encode()

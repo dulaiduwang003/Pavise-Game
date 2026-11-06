@@ -56,7 +56,7 @@ namespace PaviseApp
         internal static bool IsProtectedName(string name) { return ProtectedNameReason(name).Length != 0; }
         internal static string DisplayReason(string value)
         {
-            if(value=="Defender protection driver")return LaboratoryActionText.Pick("Defender 文件保护驱动，按要求不处理", value, "Defender保護ドライバーのため対象外です");
+            if(value=="Defender protection driver")return LaboratoryActionText.Pick("Defender 文件保护驱动，不在处理范围", value, "Defender保護ドライバーのため対象外です");
             if(value=="Windows system filter")return LaboratoryActionText.Pick("Windows 系统文件过滤组件，不作为可选第三方目标", value, "Windowsのシステムフィルターのため対象外です");
             if(value=="Encryption or cloud-file filter")return LaboratoryActionText.Pick("加密或云文件过滤组件，分离可能影响文件访问", value, "暗号化・クラウドファイルのフィルターのため対象外です");
             if(value=="Protected game or anti-cheat driver")return LaboratoryActionText.Pick("游戏保护或反作弊驱动，为兼容游戏不处理", value, "ゲーム保護・アンチチートドライバーのため対象外です");

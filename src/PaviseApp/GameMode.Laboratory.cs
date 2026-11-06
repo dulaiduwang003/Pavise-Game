@@ -31,6 +31,7 @@ namespace PaviseApp
                     laboratory = new LaboratorySession(powerApplyGate);
                 }
             }
+            laboratory.BeginAutomaticCycle(System.Threading.Interlocked.Read(ref gameSessionStarts));
             LaboratorySelection selection = LaboratorySelection.Read(match, pid, creation);
             lock (sync)
             {

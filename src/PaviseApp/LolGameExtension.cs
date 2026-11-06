@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace PaviseApp
 {
@@ -89,11 +90,25 @@ namespace PaviseApp
 			{
 				lolOptimizationService.Enabled = true;
 			}
-			if (!lolOptimizationService.AdoptRootFromPath(profile.ExecutablePath) && !lolOptimizationService.GetSnapshot().InstallationFound)
+			string root;
+			string localPath = TryResolveProfileRoot(profile, out root) ? Path.Combine(root, "LeagueClient", "LeagueClient.exe") : profile.ExecutablePath;
+			if (!lolOptimizationService.AdoptRootFromPath(localPath) && !lolOptimizationService.GetSnapshot().InstallationFound)
 			{
 				lolOptimizationService.RequestDiscovery();
 			}
 			return new LolCardPanel(lolOptimizationService);
+		}
+
+		internal static bool TryResolveProfileRoot(GameProfile profile, out string root)
+		{
+			root = null;
+			if (profile == null) return false;
+			string error;
+			foreach (string input in new[] { profile.ExecutablePath, profile.Root })
+			{
+				if (LolAddonCleaner.TryResolveRoot(input, out root, out error)) return true;
+			}
+			return false;
 		}
 
 		public override void Shutdown(int waitMs)

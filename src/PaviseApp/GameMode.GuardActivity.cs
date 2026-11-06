@@ -7,13 +7,18 @@ namespace PaviseApp
     {
         internal long GuardActivitySession { get { return Interlocked.Read(ref gameSessionStarts); } }
 
+        // SwitchOuts distinguishes out/back/out cycles even if the UI did not
+        // observe the intermediate state. Competitive switch-out keeps its policy.
+        internal long GuardActivityForegroundVersion
+        { get { return ((long)sessionForeground.SwitchOuts << 1) | (SmartSceneSwitchedOut ? 1L : 0L); } }
+
         internal GuardActivitySnapshot CaptureGuardActivity()
         {
             long session = GuardActivitySession;
+            long foregroundVersion = GuardActivityForegroundVersion;
+            bool switchedOut = SmartSceneSwitchedOut;
             if (!Enabled || !IsActive) return null;
             var processes = new List<KeyValuePair<int, long>>(core.CaptureAppliedActivity());
-            processes.AddRange(backgroundCpuCap.CaptureAppliedActivity());
-            processes.AddRange(backgroundFreeze.CaptureAppliedActivity());
             var services = new List<string>(SvcPause.CaptureConfirmedStops());
             services.AddRange(DoTweak.CaptureConfirmedStops());
             services.AddRange(UpdatePause.CaptureConfirmedStops());
@@ -21,8 +26,10 @@ namespace PaviseApp
             ProcessSnapshot scan = Volatile.Read(ref whiteEvalSnapshot);
             ProcessSnapshot antiCheatScan = antiCheatProcessSnapshot;
             if (scan == null || (antiCheatScan != null && antiCheatScan.TakenTicks > scan.TakenTicks)) scan = antiCheatScan;
-            if (!Enabled || !IsActive || session != GuardActivitySession) return null;
-            return GuardActivitySnapshot.Create(session, scan, processes, services);
+            bool releasePending = switchedOut && core.BackgroundReleasePending;
+            if (!Enabled || !IsActive || session != GuardActivitySession
+                || foregroundVersion != GuardActivityForegroundVersion || switchedOut != SmartSceneSwitchedOut) return null;
+            return GuardActivitySnapshot.Create(session, scan, processes, services, foregroundVersion, switchedOut, releasePending);
         }
     }
 }

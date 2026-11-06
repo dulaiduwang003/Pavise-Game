@@ -10,6 +10,10 @@ namespace PaviseApp
 
 		internal bool CpuSetsEmpty;
 
+		internal bool ThreadPriorityKnown;
+
+		internal int ThreadPriorityLevel;
+
 		internal string Detail;
 	}
 }

@@ -102,7 +102,7 @@ namespace PaviseApp
 		{
 			if (receipt != null && receipt.Id == "EnvQuantumProfileV1" && Canonical(receipt))
 			{
-				return HasLegacyRecords;
+				return true;
 			}
 			return false;
 		}
@@ -118,6 +118,18 @@ namespace PaviseApp
 		}
 
 		private static bool Unwind(PerformanceActionStore.Receipt through)
+		{
+			lock (gate)
+			{
+				QuantumLiveUpdate.Begin();
+				bool restored = UnwindCore(through);
+				if (restored && lastWrote)
+					PerformanceTuning.SetState(PerformanceActionCatalog.Quantum, QuantumLiveUpdate.Complete(false, "restored"));
+				return restored;
+			}
+		}
+
+		private static bool UnwindCore(PerformanceActionStore.Receipt through)
 		{
 			lock (gate)
 			{

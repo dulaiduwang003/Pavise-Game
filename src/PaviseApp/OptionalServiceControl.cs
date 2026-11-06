@@ -37,6 +37,7 @@ namespace PaviseApp
 			public uint WaitHint;
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct QUERY_SERVICE_CONFIG
 		{
 			public uint Type;
@@ -111,6 +112,7 @@ namespace PaviseApp
 
 			public ulong BootFlags;
 		}
+#pragma warning restore 0649
 
 		private const uint ScManagerConnect = 1u;
 

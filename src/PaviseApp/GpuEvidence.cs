@@ -108,6 +108,7 @@ namespace PaviseApp
 			}
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct PdhFmtCounterValue
 		{
 			public uint CStatus;
@@ -121,6 +122,7 @@ namespace PaviseApp
 
 			public PdhFmtCounterValue Value;
 		}
+#pragma warning restore 0649
 
 		internal const double MinElectUtilization = 10.0;
 
@@ -131,6 +133,13 @@ namespace PaviseApp
 		private const uint PDH_FMT_DOUBLE = 512u;
 
 		private const uint PDH_MORE_DATA = 2147485650u;
+
+		private static bool IsUnavailableObservation(uint status)
+		{
+			// PDH_NO_DATA also covers instances that have not appeared yet. Neither
+			// it nor PDH_CSTATUS_NO_INSTANCE is positive GPU evidence or a fatal read.
+			return status == 0x800007D5u || status == 0x800007D1u;
+		}
 
 		public static Dictionary<int, double> Sample3D(int rounds, int intervalMs, Func<bool> canceled)
 		{
@@ -176,7 +185,11 @@ namespace PaviseApp
 					return null;
 				}
 				num = PdhCollectQueryData(query);
-				if (num != 0)
+				if (IsUnavailableObservation(num))
+				{
+					if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.prime", num);
+				}
+				else if (num != 0)
 				{
 					if (diagnostics != null)
 					{
@@ -186,6 +199,7 @@ namespace PaviseApp
 				}
 				Dictionary<int, double> dictionary = null;
 				int num2 = 0;
+				bool failedRound = false;
 				for (int i = 0; i < rounds; i++)
 				{
 					if (canceled != null && canceled())
@@ -194,8 +208,15 @@ namespace PaviseApp
 					}
 					Thread.Sleep(intervalMs);
 					num = PdhCollectQueryData(query);
+					if (IsUnavailableObservation(num))
+					{
+						if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.sample", num);
+						if (dictionary == null || sustained) dictionary = new Dictionary<int, double>();
+						continue;
+					}
 					if (num != 0)
 					{
+						failedRound = true;
 						if (diagnostics != null)
 						{
 							diagnostics.Failure("PdhCollectQueryData.sample", num);
@@ -209,6 +230,7 @@ namespace PaviseApp
 					Dictionary<int, double> dictionary2 = ReadByPid(counter, filterAdapter, luidHigh, luidLow, diagnostics);
 					if (dictionary2 == null)
 					{
+						failedRound = true;
 						continue;
 					}
 					num2++;
@@ -246,7 +268,7 @@ namespace PaviseApp
 				}
 				if (sustained && num2 < 2)
 				{
-					return null;
+					return dictionary == null || failedRound ? null : new Dictionary<int, double>();
 				}
 				return dictionary;
 			}
@@ -278,6 +300,12 @@ namespace PaviseApp
 			uint bufferSize = 0u;
 			uint itemCount = 0u;
 			uint num = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
+			if (num == 0 && itemCount == 0) return new Dictionary<int, double>();
+			if (IsUnavailableObservation(num))
+			{
+				if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.size", num);
+				return new Dictionary<int, double>();
+			}
 			if (num != 2147485650u || bufferSize == 0)
 			{
 				if (diagnostics != null)
@@ -290,6 +318,11 @@ namespace PaviseApp
 			try
 			{
 				num = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
+				if (IsUnavailableObservation(num))
+				{
+					if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.data", num);
+					return new Dictionary<int, double>();
+				}
 				if (num != 0)
 				{
 					if (diagnostics != null)
@@ -299,14 +332,19 @@ namespace PaviseApp
 					return null;
 				}
 				Dictionary<int, double> dictionary = new Dictionary<int, double>();
+				bool observed = itemCount == 0, failedInstance = false;
 				int num2 = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
 				for (uint num3 = 0u; num3 < itemCount; num3++)
 				{
 					PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + num3 * num2), typeof(PdhFmtCounterValueItem));
-					if (diagnostics == null && pdhFmtCounterValueItem.Value.CStatus > 1)
+					if (IsUnavailableObservation(pdhFmtCounterValueItem.Value.CStatus))
 					{
+						observed = true;
+						if (diagnostics != null) diagnostics.Unavailable("counter.CStatus", pdhFmtCounterValueItem.Value.CStatus);
 						continue;
 					}
+					if (pdhFmtCounterValueItem.Value.CStatus <= 1) observed = true;
+					else failedInstance = true;
 					string instanceName = Marshal.PtrToStringUni(pdhFmtCounterValueItem.Name);
 					int num4 = ParsePid(instanceName);
 					if (diagnostics != null)
@@ -351,7 +389,7 @@ namespace PaviseApp
 						}
 					}
 				}
-				return dictionary;
+				return failedInstance && !observed ? null : dictionary;
 			}
 			finally
 			{

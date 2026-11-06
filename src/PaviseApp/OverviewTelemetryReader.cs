@@ -40,6 +40,7 @@ namespace PaviseApp
 			internal ulong AvailableExtendedVirtual;
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct PdhValue
 		{
 			internal uint Status;
@@ -53,6 +54,7 @@ namespace PaviseApp
 
 			internal PdhValue Value;
 		}
+#pragma warning restore 0649
 
 		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 		private struct DisplayMode
@@ -172,6 +174,12 @@ namespace PaviseApp
 					cachedHardware = ReadStaticHardware();
 				}
 				overviewHardwareInfo = CopyHardware(cachedHardware);
+			}
+			OverviewGpuInfo gpu = OverviewGpuReader.Read();
+			if (gpu != null)
+			{
+				overviewHardwareInfo.GpuName = gpu.Name;
+				overviewHardwareInfo.GpuMemoryBytes = gpu.MemoryBytes;
 			}
 			try
 			{
@@ -499,18 +507,6 @@ namespace PaviseApp
 			catch
 			{
 				overviewHardwareInfo.LogicalProcessors = Environment.ProcessorCount;
-			}
-			try
-			{
-				GpuAdapter gpuAdapter = GpuInventory.Primary();
-				if (gpuAdapter != null)
-				{
-					overviewHardwareInfo.GpuName = gpuAdapter.Name;
-					overviewHardwareInfo.GpuMemoryBytes = (ulong)((gpuAdapter.VideoMemoryBytes > 0) ? gpuAdapter.VideoMemoryBytes : 0);
-				}
-			}
-			catch
-			{
 			}
 			try
 			{

@@ -14,9 +14,10 @@ namespace PaviseApp
         internal byte Scheduling;
         internal bool Parked;
         internal bool Allocated;
+        // Favored cores are excluded from the weak-core pool.
+        internal bool Favored { get; set; }
         internal int L3Id = -1;
         internal uint L3Bytes;
-        internal bool Favored;
     }
 
     internal sealed class AntiCheatAffinitySnapshot
@@ -33,7 +34,7 @@ namespace PaviseApp
         internal string Reason = "no-safe-core-pool";
         internal int PhysicalCount;
         internal string Kind = "none";
-        internal bool Applicable { get { return Mask != 0 && PhysicalCount >= 2; } }
+        internal bool Applicable { get { return Mask != 0 && PhysicalCount >= 1; } }
     }
 
     internal static class AntiCheatAffinityTopology
@@ -53,7 +54,6 @@ namespace PaviseApp
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetLogicalProcessorInformationEx(int relationship, [Out] byte[] buffer, ref int length);
 
-        // Read only. No CPU Set assignment API is used by this module.
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetSystemCpuSetInformation([Out] byte[] buffer, int length, out int returned, IntPtr process, uint flags);
 
@@ -126,7 +126,6 @@ namespace PaviseApp
                 + logical.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        // Separate decoding keeps malformed records testable without native writes.
         internal static AntiCheatAffinitySnapshot Decode(byte[] topology, byte[] cpuSets)
         {
             if (topology == null || topology.Length < 48) return Invalid("topology-unavailable");
@@ -318,8 +317,9 @@ namespace PaviseApp
         }
 
         internal static AntiCheatAffinityChoice Select(AntiCheatAffinitySnapshot snapshot, ushort group,
-            ulong originalAllowedMask, ulong protectedMask, ulong gameDomainMask)
+            ulong originalAllowedMask, ulong protectedMask, ulong gameDomainMask, int maximumPhysicalCores = int.MaxValue)
         {
+            if (maximumPhysicalCores < 1) return Skip("invalid-core-limit");
             if (snapshot == null || !snapshot.Valid || snapshot.Cores == null)
                 return Skip(snapshot == null ? "topology-unavailable" : snapshot.Reason);
             if (!snapshot.CpuSetMetadata) return Skip("cpu-state-unavailable");
@@ -347,7 +347,8 @@ namespace PaviseApp
                     || core.Parked || core.Allocated || core.Favored) continue;
                 candidates.Add(core);
             }
-            if (candidates.Count < 2) return Skip("insufficient-unreserved-cores");
+            int minimumCores = maximumPhysicalCores == 1 ? 1 : 2;
+            if (candidates.Count < minimumCores) return Skip("insufficient-unreserved-cores");
             if (tiers.Count > 1)
             {
                 List<byte> orderedTiers = new List<byte>(tiers);
@@ -375,8 +376,8 @@ namespace PaviseApp
                         List<AntiCheatAffinityCore> classPool = new List<AntiCheatAffinityCore>();
                         foreach (AntiCheatAffinityCore core in pool)
                             if (core.Scheduling == schedulingClasses[rank]) classPool.Add(core);
-                        if (classPool.Count >= 2 && local.Count - classPool.Count >= 2)
-                            return Pick(classPool, "efficiency", "secondary-efficiency-tier");
+                        if (classPool.Count >= minimumCores && local.Count - Math.Min(maximumPhysicalCores, classPool.Count) >= 2)
+                            return Pick(classPool, "efficiency", "secondary-efficiency-tier", maximumPhysicalCores);
                     }
                 }
                 return Skip("insufficient-efficiency-core-capacity");
@@ -384,7 +385,7 @@ namespace PaviseApp
             // Parking is transient; allocated/protected game cores still provide
             // game capacity. Only candidates must be currently unparked and free.
             // The module never writes parking or moves any game thread.
-            if (local.Count < 6) return Skip("insufficient-game-core-capacity");
+            if (local.Count < 4 + minimumCores) return Skip("insufficient-game-core-capacity");
             int domain = -1;
             bool validDomain = gameDomainMask != 0;
             foreach (AntiCheatAffinityCore core in local)
@@ -409,9 +410,9 @@ namespace PaviseApp
                 }
                 List<AntiCheatAffinityCore> best = null;
                 foreach (List<AntiCheatAffinityCore> pool in alternatives.Values)
-                    if (pool.Count >= 2 && local.Count - pool.Count >= 4
+                    if (pool.Count >= minimumCores && local.Count - Math.Min(maximumPhysicalCores, pool.Count) >= 4
                         && (best == null || pool.Count > best.Count)) best = pool;
-                if (best != null) return Pick(best, "alternate-cache-domain", "explicit-game-cache-domain-preserved");
+                if (best != null) return Pick(best, "alternate-cache-domain", "explicit-game-cache-domain-preserved", maximumPhysicalCores);
                 if (alternateExists) return Skip("alternate-cache-domain-unavailable");
             }
             // No alternate-domain assumption from CPU model, cache size or core
@@ -421,15 +422,20 @@ namespace PaviseApp
                 return order != 0 ? order : b.Mask.CompareTo(a.Mask);
             });
             List<AntiCheatAffinityCore> auxiliary = new List<AntiCheatAffinityCore>();
-            for (int i = 0; i < 2; i++) auxiliary.Add(candidates[i]);
-            return Pick(auxiliary, "auxiliary", "two-complete-auxiliary-cores");
+            for (int i = 0; i < minimumCores; i++) auxiliary.Add(candidates[i]);
+            return Pick(auxiliary, "auxiliary", minimumCores == 1 ? "one-complete-auxiliary-core" : "two-complete-auxiliary-cores", maximumPhysicalCores);
         }
 
-        private static AntiCheatAffinityChoice Pick(List<AntiCheatAffinityCore> cores, string kind, string reason)
+        private static AntiCheatAffinityChoice Pick(List<AntiCheatAffinityCore> cores, string kind, string reason, int maximumPhysicalCores)
         {
+            cores.Sort(delegate(AntiCheatAffinityCore a, AntiCheatAffinityCore b) {
+                int order = a.Scheduling.CompareTo(b.Scheduling);
+                return order != 0 ? order : b.Mask.CompareTo(a.Mask);
+            });
+            int count = Math.Min(cores.Count, maximumPhysicalCores);
             ulong mask = 0;
-            foreach (AntiCheatAffinityCore core in cores) mask |= core.Mask;
-            return new AntiCheatAffinityChoice { Mask = mask, PhysicalCount = cores.Count, Kind = kind, Reason = reason };
+            for (int i = 0; i < count; i++) mask |= cores[i].Mask;
+            return new AntiCheatAffinityChoice { Mask = mask, PhysicalCount = count, Kind = count == 1 ? "single-" + kind : kind, Reason = reason };
         }
     }
 }

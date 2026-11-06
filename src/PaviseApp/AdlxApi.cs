@@ -54,12 +54,14 @@ namespace PaviseApp
 		[UnmanagedFunctionPointer(CallingConvention.StdCall)]
 		private delegate int FnGpuOutByte(IntPtr self, IntPtr gpu, out byte value);
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct GpuLuid
 		{
 			internal uint Low;
 
 			internal int High;
 		}
+#pragma warning restore 0649
 
 		[UnmanagedFunctionPointer(CallingConvention.StdCall)]
 		private delegate int FnOutLuid(IntPtr self, out GpuLuid value);

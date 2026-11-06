@@ -24,26 +24,54 @@ namespace PaviseApp
 
 			internal bool Closed;
 
+			internal int RestoreFailures;
+
+			internal long RestoreAfter;
+            internal bool Exited;
+
 			internal bool Restore()
 			{
 				if (Closed)
 				{
 					return true;
 				}
+                if (Exited) { Child.Dispose(); Closed = true; return true; }
+                if (RestoreFailures >= 3) { RecoveryAttemptTrace.Exhausted(ObserveExit); return false; }
+                if (DateTime.UtcNow.Ticks < RestoreAfter) { RecoveryAttemptTrace.DeferredUntil(RestoreAfter); return false; }
 				uint[] ids;
 				int num = Child.Read(out ids);
 				if (num < 0)
 				{
-					return false;
+					return Failed();
 				}
 				if (num == 0 && NativeYieldChild.Same(ids, Desired) && !Child.Write(Desired, Original))
 				{
-					return false;
+					return Failed();
 				}
 				Child.Dispose();
 				Closed = true;
 				return true;
 			}
+
+			private bool Failed()
+			{
+				RestoreFailures++;
+				RestoreAfter = DateTime.UtcNow.AddSeconds(30).Ticks;
+                if (RestoreFailures >= 3) RecoveryAttemptTrace.Exhausted(ObserveExit);
+                else RecoveryAttemptTrace.DeferredUntil(RestoreAfter);
+				Logger.Warn("SelfYield helper restore failed attempt=" + RestoreFailures + "/3; ownership retained");
+				return false;
+			}
+            private bool ObserveExit()
+            {
+                lock (sync)
+                {
+                    if (Closed) return true;
+                    uint[] ignored;
+                    if (!Exited && Child.Read(out ignored) > 0) Exited = true;
+                    return Exited;
+                }
+            }
 
 			public void Dispose()
 			{
@@ -61,6 +89,24 @@ namespace PaviseApp
 		private static readonly object sync = new object();
 
 		private static bool engaged;
+
+		private static long session;
+		private static int applyFailures;
+		private static int restoreFailures;
+		private static long applyAfter;
+		private static long restoreAfter;
+
+		internal static void BeginSession(long value)
+		{
+			lock (sync)
+			{
+				if (value <= session) return;
+				session = value;
+				applyFailures = restoreFailures = 0;
+				applyAfter = restoreAfter = 0;
+				foreach (HelperScope helper in helpers) { helper.RestoreFailures = 0; helper.RestoreAfter = 0; }
+			}
+		}
 
 		private static uint origPriority;
 
@@ -95,6 +141,19 @@ namespace PaviseApp
 			}
 		}
 
+        internal static bool HasResidue
+        {
+            get
+            {
+                lock (sync)
+                {
+                    if (engaged) return true;
+                    foreach (HelperScope helper in helpers) if (!helper.Closed) return true;
+                    return false;
+                }
+            }
+        }
+
 		public static void Engage()
 		{
 			lock (sync)
@@ -103,6 +162,7 @@ namespace PaviseApp
 				{
 					return;
 				}
+				if (applyFailures >= 3 || DateTime.UtcNow.Ticks < applyAfter) return;
 				IntPtr self = Self;
 				uint priorityClass = Native.GetPriorityClass(self);
 				if (priorityClass != 0)
@@ -115,8 +175,15 @@ namespace PaviseApp
 					engaged = flag || flag2;
 					if (engaged)
 					{
+						applyFailures = 0;
 						Logger.Log(Lang.T("log.selfyield.1"));
 					}
+				}
+				if (!engaged)
+				{
+					applyFailures++;
+					applyAfter = DateTime.UtcNow.AddSeconds(30).Ticks;
+					Logger.Warn("SelfYield apply failed attempt=" + applyFailures + "/3");
 				}
 			}
 		}
@@ -131,16 +198,31 @@ namespace PaviseApp
 				ReleaseHelpersLocked();
 				if (engaged)
 				{
-					engaged = false;
+                    if (restoreFailures >= 3) { RecoveryAttemptTrace.Exhausted(); return; }
+                    if (DateTime.UtcNow.Ticks < restoreAfter) { RecoveryAttemptTrace.DeferredUntil(restoreAfter); return; }
+					bool restored = true;
 					IntPtr self = Self;
 					if (origPriority != 0)
 					{
-						Native.SetPriorityClass(self, origPriority);
+						uint current = Native.GetPriorityClass(self);
+						restored = current != 0 && (current != 16384 || current == origPriority || (Native.SetPriorityClass(self, origPriority) && Native.GetPriorityClass(self) == origPriority));
 					}
 					if (origIo >= 0)
 					{
-						Native.TrySetIoPriority(self, origIo);
+						int current = Native.QueryIoPriority(self);
+						restored &= current >= 0 && (current != 1 || current == origIo || (Native.TrySetIoPriority(self, origIo) && Native.QueryIoPriority(self) == origIo));
 					}
+					if (!restored)
+					{
+						restoreFailures++;
+						restoreAfter = DateTime.UtcNow.AddSeconds(30).Ticks;
+                        RecoveryAttemptTrace.FailureSchedule(restoreFailures, 3, restoreAfter);
+						Logger.Warn("SelfYield restore failed attempt=" + restoreFailures + "/3; ownership retained");
+						return;
+					}
+					engaged = false;
+					restoreFailures = 0;
+					restoreAfter = 0;
 					Logger.Log(Lang.T("log.selfyield.2"));
 				}
 			}

@@ -12,6 +12,9 @@ namespace PaviseApp
 			public long Creation;
 
 			public string Path;
+
+			public int Failures;
+			public long NextAttempt;
 		}
 
 		private const int SystemProcessInformation = 5;
@@ -75,6 +78,16 @@ namespace PaviseApp
 		private static int sharedBufferUsed;
 
 		private static long sharedBufferTakenTicks;
+        private static long queryFailureCycle = -1, queryAfter;
+        private static int queryFailures;
+        private static bool QueryFailed(string reason)
+        {
+            queryFailures++;
+            queryAfter = AutoCores.NowTicks + TimeSpan.FromSeconds(30).Ticks;
+            Logger.Warn("Process snapshot source failed phase=" + queryFailureCycle + " attempt=" + queryFailures + "/3: " + reason
+                + (queryFailures >= 3 ? "; source unknown; native queries stopped for this phase" : ""));
+            return false;
+        }
 
 		private static long threadSampleReuses;
 
@@ -216,6 +229,9 @@ namespace PaviseApp
 
 		private static bool QuerySharedBufferLocked()
 		{
+            long cycle = PerformanceTuning.RecoveryCycleSerial;
+            if (cycle > queryFailureCycle) { queryFailureCycle = cycle; queryFailures = 0; queryAfter = 0; }
+            if (queryFailures >= 3 || AutoCores.NowTicks < queryAfter) return false;
 			sharedBufferTakenTicks = 0L;
 			sharedBufferUsed = 0;
 			try
@@ -228,14 +244,15 @@ namespace PaviseApp
 				while (true)
 				{
 					int ret;
-					switch (NtQuerySystemInformation(5, sharedBuffer, sharedBufferBytes, out ret))
+                    int status = NtQuerySystemInformation(5, sharedBuffer, sharedBufferBytes, out ret);
+                    switch (status)
 					{
 					case 0:
 						sharedBufferUsed = ((ret > 0 && ret <= sharedBufferBytes) ? ret : sharedBufferBytes);
 						sharedBufferTakenTicks = AutoCores.NowTicks;
 						return true;
 					default:
-						return false;
+                        return QueryFailed("NtQuerySystemInformation status=" + status);
 					case -1073741820:
 					{
 						int num = ret + 262144;
@@ -245,7 +262,7 @@ namespace PaviseApp
 						}
 						if (num > 67108864)
 						{
-							return false;
+                            return QueryFailed("process buffer exceeds safe capacity");
 						}
 						Marshal.FreeHGlobal(sharedBuffer);
 						sharedBuffer = IntPtr.Zero;
@@ -256,7 +273,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			catch
+            catch (Exception error)
 			{
 				if (sharedBuffer != IntPtr.Zero)
 				{
@@ -264,7 +281,7 @@ namespace PaviseApp
 					sharedBuffer = IntPtr.Zero;
 					sharedBufferBytes = 0;
 				}
-				return false;
+                return QueryFailed(error.GetType().Name);
 			}
 		}
 
@@ -429,12 +446,16 @@ namespace PaviseApp
 					if (pathCache.TryGetValue(procEntry.Pid, out value) && value.Creation == procEntry.Creation)
 					{
 						procEntry.Path = value.Path;
-						continue;
+						if (value.Path != null || value.Failures >= 3 || DateTime.UtcNow.Ticks < value.NextAttempt) continue;
 					}
+					else value = new PathCacheEntry { Creation = procEntry.Creation };
 					string text = (procEntry.Path = QueryPath(procEntry.Pid));
 					if (text == null)
 					{
-						pathCache.Remove(procEntry.Pid);
+						value.Failures++;
+						value.NextAttempt = DateTime.UtcNow.AddSeconds(30).Ticks;
+						pathCache[procEntry.Pid] = value;
+						Logger.Warn("Process path read failed pid=" + procEntry.Pid + " birth=" + procEntry.Creation + " attempt=" + value.Failures + "/3");
 						continue;
 					}
 					pathCache[procEntry.Pid] = new PathCacheEntry

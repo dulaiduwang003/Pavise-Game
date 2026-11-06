@@ -10,7 +10,7 @@ namespace PaviseApp
 			"PerformanceActionReceiptsV1", "NvDrsList", "AmdSnap", "AppGpuPreferencesV1", "GpuPrefStage", "GpuPowerSnap", "GpuClockLockReceipt", "NvVrrModeSnap", "IntelEnduranceSnap", "LaptopPerfSnap",
 			"PowerOverlaySnap", "PrevPowerPlan", "ManagedPlanPolicyV3", "ManagedPresetCreationV1", "ExtremePowerKnobSnap", "CoreParkSnap", "CpuIdleStateV1", "PrevReservedCpuSets", "PrevTimerTick", "PrevRefreshHz", "DisplaySoloSnap",
 			"MemShieldSnap", "PrevMMAgent", "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevMaintDisabled", "PrevSvcPaused", "PrevOptionalServicesPausedV1", "PrevPresenceQos", "RssSteerReceipt",
-			"LinkMetricReceipt", "IrqPrio", "BackgroundCpuCapJobsV1", "AutoCoreThreadPlacementV1", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "Crash_ThrottleMasks", "Crash_BoostMask", "Crash_BoostNames", "Crash_BoostEntriesV2",
+			"LinkMetricReceipt", "IrqPrio", RetiredBackgroundCpuCap.LegacyReceiptKey, RetiredBackgroundCpuCap.ReceiptKey, "GameAffinityJobReceiptsV1", "AutoCoreThreadPlacementV1", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "Crash_ThrottleMasks", "Crash_BoostMask", "Crash_BoostNames", "Crash_BoostEntriesV2", "Crash_BoostPriorityOwnershipV1",
 			"FthExclusionBak", "FthCustomBak", "CfgList", "IfeoList", "MsiList", "DpiExeList", "FsoExeList", LaboratoryPower.ReceiptKey, LaboratoryGpu.PowerReceipt, LaboratoryGpu.ClockReceipt, AntiCheatAffinityLease.ReceiptKey,
 			LaboratoryFileFilter.ReceiptKey, LaboratoryClockRepair.ReceiptKey, LaboratoryAudioEffects.ReceiptKey,
 			"RtssInstallationOwnerV1",

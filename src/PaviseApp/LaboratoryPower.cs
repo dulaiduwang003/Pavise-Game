@@ -12,7 +12,6 @@ namespace PaviseApp
         internal double CpuPercent = double.NaN, GpuPercent = double.NaN, CpuWatts = double.NaN;
     }
 
-    // The controller is platform independent. Tests supply a memory-only implementation.
     internal interface ILaboratoryPowerPlatform
     {
         long Now { get; }
@@ -55,8 +54,21 @@ namespace PaviseApp
         internal static void Update(bool epp, string idleStrategy) { Update(epp, idleStrategy, 0, 0); }
         internal static void Update(bool epp, string idleStrategy, int rendererPid, long rendererCreation)
         { lock (PowerPlan.LaboratoryGate) Controller.Update(epp, idleStrategy, rendererPid, rendererCreation); }
+        internal static void Update(bool epp, string idleStrategy, int rendererPid, long rendererCreation, long session)
+        { lock (PowerPlan.LaboratoryGate) if (Controller.Session == session) Controller.Update(epp, idleStrategy, rendererPid, rendererCreation); }
+        internal static void BeginAutomaticCycle(long session)
+        { lock (PowerPlan.LaboratoryGate) Controller.BeginAutomaticCycle(session); }
         internal static bool Restore() { lock (PowerPlan.LaboratoryGate) return Controller.Restore(); }
+        internal static bool Restore(long expectedSession)
+        { lock (PowerPlan.LaboratoryGate) return Controller.Session == expectedSession && Controller.Restore(); }
+        internal static bool RecoveryExhausted
+        { get { lock (PowerPlan.LaboratoryGate) return controller != null && controller.RecoveryExhausted; } }
         internal static string State(string key) { lock (PowerPlan.LaboratoryGate) return Controller.State(key); }
+        internal static HashSet<Guid> OwnedSettings(Guid scheme)
+        {
+            lock (PowerPlan.LaboratoryGate)
+                return controller == null ? new HashSet<Guid>() : controller.OwnedSettings(scheme);
+        }
         internal static bool HasResidue
         {
             get
@@ -86,6 +98,17 @@ namespace PaviseApp
         }
         private readonly ILaboratoryPowerPlatform platform;
         private readonly object gate;
+        private readonly LaboratoryFailureBudget failures = new LaboratoryFailureBudget();
+        internal long Session { get; private set; }
+        internal bool RecoveryExhausted { get { lock (gate) return failures.Exhausted("restore", 3); } }
+        internal void BeginAutomaticCycle(long session)
+        {
+            lock (gate)
+            {
+                if (!failures.BeginSession(session)) return;
+                Session = session; idleBlocked = eppBlocked = false; ResetEpp();
+            }
+        }
         private bool initialized, idleBlocked, eppBlocked, recoveryPending;
         private string idle = "default", idleState = "等待对局", eppState = "等待对局";
         private Guid plan;
@@ -100,6 +123,19 @@ namespace PaviseApp
 
         internal LaboratoryPowerController(ILaboratoryPowerPlatform value, object sync)
         { platform = value; gate = sync; }
+        internal HashSet<Guid> OwnedSettings(Guid scheme)
+        {
+            lock (gate)
+            {
+                Journal journal;
+                if (!Load(out journal)) return null;
+                var result = new HashSet<Guid>();
+                if (journal.Values.Count == 0 || journal.Owner != scheme) return result;
+                if (!JournalAuthorized(journal)) return null;
+                foreach (Value value in journal.Values) result.Add(value.Setting);
+                return result;
+            }
+        }
         internal string State(string key)
         {
             lock (gate)
@@ -459,6 +495,19 @@ namespace PaviseApp
         }
         private bool Apply(Dictionary<Guid, uint> requested, out bool included)
         {
+            var settings = new List<string>();
+            bool rendererScoped = false;
+            foreach (KeyValuePair<Guid, uint> value in requested) { settings.Add(value.Key.ToString("N") + ":" + value.Value.ToString(CultureInfo.InvariantCulture)); rendererScoped |= IsEpp(value.Key); }
+            settings.Sort(StringComparer.Ordinal);
+            string identity = "apply|" + plan.ToString("N") + (rendererScoped ? "|" + pid + "|" + creation : "") + "|" + string.Join(";", settings.ToArray());
+            included = false;
+            if (!failures.CanAttempt(identity, platform.Now, 1)) return false;
+            bool ok = false;
+            try { ok = ApplyCore(requested, out included); return ok; }
+            finally { if (!ok) failures.Failed(identity, platform.Now, 1, "power"); }
+        }
+        private bool ApplyCore(Dictionary<Guid, uint> requested, out bool included)
+        {
             included = true;
             Journal journal;
             if (!Load(out journal) || journal.Values.Count > 0 && journal.Owner != plan) return false;
@@ -501,9 +550,23 @@ namespace PaviseApp
         // null restores everything; true restores EPP only; false restores idle knobs only.
         private bool RestoreCore(bool? epp)
         {
-            bool ok = RestoreJournal(epp);
-            if (!ok) recoveryPending = true;
-            return ok;
+            const string identity = "restore";
+            if (!failures.CanAttempt(identity, platform.Now, 3)) { recoveryPending = true; failures.ReportRecovery(identity, 3); return false; }
+            bool ok = false;
+            try
+            {
+                ok = RestoreJournal(epp);
+                if (ok)
+                {
+                    Journal remaining;
+                    if (Load(out remaining) && remaining.Values.Count == 0) failures.Neutral(identity);
+                }
+                return ok;
+            }
+            finally
+            {
+                if (!ok) { recoveryPending = true; failures.Failed(identity, platform.Now, 3, "power"); failures.ReportRecovery(identity, 3); }
+            }
         }
         private bool RestoreJournal(bool? epp)
         {

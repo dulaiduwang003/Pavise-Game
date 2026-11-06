@@ -26,6 +26,8 @@ namespace PaviseApp
 
 		public int BackgroundMoved;
 
+		public string BackgroundAffinityDetail;
+
 		public string PlacementEvidence;
 
 		public double WorkMs;
@@ -41,5 +43,9 @@ namespace PaviseApp
 		public bool AffinityRead;
 
 		public bool AffinityVerified;
+
+		public bool JobAffinity;
+
+		public string JobFallbackReason;
 	}
 }

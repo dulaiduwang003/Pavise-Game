@@ -575,6 +575,8 @@ namespace PaviseApp
 			btnDelete.Enabled = false;
 		}
 
+		private readonly ProcessActionFailureBudget inspectionFailures = new ProcessActionFailureBudget();
+
 		private void QueueInspection(LolOptimizationSnapshot s)
 		{
 			string root = ((s != null) ? s.LolRoot : null) ?? "";
@@ -593,6 +595,7 @@ namespace PaviseApp
 			}
 			bool flag = !string.Equals(root, inspectRoot, StringComparison.OrdinalIgnoreCase);
 			int num = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | ((s.CrossProcessCount > 0) ? 16 : 0);
+			if (!inspectionFailures.Allowed(0, num, root, "availability")) return;
 			bool flag2 = num != inspectSignature;
 			TimeSpan timeSpan = ((inspectBlocked && num == 0) ? TimeSpan.FromSeconds(5.0) : TimeSpan.FromMinutes(2.0));
 			if ((!flag && !flag2 && DateTime.UtcNow - inspectUtc < timeSpan) || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref inspectBusy, 1, 0) != 0)
@@ -631,6 +634,8 @@ namespace PaviseApp
 				{
 					error = ex.Message;
 				}
+				if (string.IsNullOrEmpty(error)) inspectionFailures.Succeeded(0, num, root, "availability");
+				else inspectionFailures.Failed(0, num, root, "availability");
 				try
 				{
 					BeginInvoke((MethodInvoker)delegate

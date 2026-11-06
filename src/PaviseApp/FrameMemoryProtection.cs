@@ -121,6 +121,7 @@ namespace PaviseApp
 					executionFailure = "Memory protection recovery record could not be saved or verified";
 					return false;
 				}
+				FrameRecoveryBudget.Own("memory", selected[0].Pid, selected[0].ProcessBirth);
 				platform = adapter;
 				foreach (FrameThreadReceipt item3 in list)
 				{
@@ -180,7 +181,68 @@ namespace PaviseApp
 			}
 		}
 
+		internal static bool HealthyOutsideReservation()
+		{
+			lock (ThreadPriorityReservation.Gate)
+			lock (gate)
+			{
+				string raw;
+				List<FrameThreadReceipt> rows;
+				if (!Settings.TryLoadStr(JournalKey, out raw) || !Parse(raw, out rows)) return false;
+				foreach (FrameThreadReceipt row in rows)
+				{
+					if (ThreadPriorityReservation.Contains(row.Pid, row.ProcessBirth, row.Tid, row.ThreadBirth)) continue;
+					int priority;
+					if (platform.ReadMemory(row, out priority) != 0 || priority != 5) return false;
+				}
+				return true;
+			}
+		}
+
+		internal static bool ReleaseReservedPriority()
+		{
+			if (!HasResidue) return true;
+			return FrameRecoveryBudget.Run("memory", ReleaseReservedPriorityCore,
+				delegate { string raw; return Settings.TryLoadStr(JournalKey, out raw) && raw.Length == 0; });
+		}
+
+		private static bool ReleaseReservedPriorityCore()
+		{
+			lock (ThreadPriorityReservation.Gate)
+			lock (gate)
+			{
+				string raw;
+				List<FrameThreadReceipt> rows;
+				if (!Settings.TryLoadStr(JournalKey, out raw) || !Parse(raw, out rows)) return false;
+				List<string> remaining = new List<string> { "v1" };
+				bool matched = false;
+				foreach (FrameThreadReceipt row in rows)
+				{
+					if (!ThreadPriorityReservation.Contains(row.Pid, row.ProcessBirth, row.Tid, row.ThreadBirth))
+					{
+						remaining.Add(row.Encode());
+						continue;
+					}
+					matched = true;
+					int priority;
+					int read = platform.ReadMemory(row, out priority);
+					if (read < 0 || (read == 0 && priority == 5 && !platform.SetMemory(row, 5, row.Original))) return false;
+				}
+				if (!matched) return true;
+				string next = remaining.Count == 1 ? "" : string.Join(";", remaining.ToArray());
+				string check;
+				return Settings.TryLoadStr(JournalKey, out check) && check == raw && Settings.SaveStrDurable(JournalKey, next)
+					&& Settings.TryLoadStr(JournalKey, out check) && check == next;
+			}
+		}
+
 		private static bool RestoreLocked()
+		{
+			if (!HasResidue) return true;
+			return FrameRecoveryBudget.Run("memory", RestoreCore);
+		}
+
+		private static bool RestoreCore()
 		{
 			string value;
 			List<FrameThreadReceipt> rows;

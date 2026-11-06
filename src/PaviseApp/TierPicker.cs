@@ -34,8 +34,6 @@ namespace PaviseApp
 
 		public Action<int> IndexChanged;
 
-		public Action<int> IndexReselected;
-
 		public string[] Labels;
 
 		public bool StrongSelection;
@@ -197,15 +195,7 @@ namespace PaviseApp
 			base.OnMouseUp(e);
 			if (e.Button == MouseButtons.Left)
 			{
-				int num = HitIndex(e.Location);
-				if (base.CanInteract && num == idx && IndexReselected != null)
-				{
-					IndexReselected(idx);
-				}
-				else
-				{
-					Activate(num);
-				}
+				Activate(HitIndex(e.Location));
 			}
 		}
 
@@ -223,16 +213,6 @@ namespace PaviseApp
 			base.OnKeyDown(e);
 			if (e.Handled || e.Modifiers != 0)
 			{
-				return;
-			}
-			if ((e.KeyCode == Keys.Return || e.KeyCode == Keys.Space) && IndexReselected != null)
-			{
-				e.Handled = true;
-				e.SuppressKeyPress = true;
-				if (base.CanInteract)
-				{
-					IndexReselected(idx);
-				}
 				return;
 			}
 			int num = DsKeys.NavigateHorizontal(e.KeyCode, idx, Count);

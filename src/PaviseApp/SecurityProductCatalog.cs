@@ -25,6 +25,23 @@ namespace PaviseApp
 		private static bool refreshing;
 
 		private static volatile int generation;
+        private sealed class ProviderState { internal string[] Roots = new string[0]; internal int Failures; }
+        private static readonly Dictionary<string, ProviderState> providers = new Dictionary<string, ProviderState>(StringComparer.Ordinal);
+        private static long failureCycle = -1;
+        private static int queueFailures;
+        private static void SyncCycleLocked()
+        {
+            long cycle = PerformanceTuning.RecoveryCycleSerial;
+            if (cycle <= failureCycle) return;
+            failureCycle = cycle; queueFailures = 0; scanned = false;
+            foreach (ProviderState provider in providers.Values) provider.Failures = 0;
+        }
+        private static bool ProviderWorkLocked()
+        {
+            foreach (string name in Classes)
+            { ProviderState state; if (!providers.TryGetValue(name, out state) || state.Failures < 3) return true; }
+            return false;
+        }
 
 		internal static int CurrentGeneration()
 		{
@@ -54,39 +71,46 @@ namespace PaviseApp
 			bool flag;
 			lock (sync)
 			{
+                SyncCycleLocked();
 				int tickCount = Environment.TickCount;
-				if (scanned && (refreshing || tickCount - stamp < 600000))
+				if (refreshing || queueFailures >= 3 || (scanned && tickCount - stamp < 600000) || !ProviderWorkLocked())
 				{
 					return roots;
 				}
 				flag = !scanned;
 				stamp = tickCount;
 				scanned = true;
-				refreshing = !flag;
+				refreshing = true;
 			}
-			if (flag)
-			{
-				return Publish(Scan());
-			}
-			ThreadPool.QueueUserWorkItem(delegate
-			{
-				try
-				{
-					Publish(Scan());
-				}
-				finally
-				{
-					lock (sync)
-					{
-						refreshing = false;
-					}
-				}
-			});
-			lock (sync)
-			{
-				return roots;
-			}
-		}
+            long cycle;
+            lock (sync) cycle = failureCycle;
+            if (flag)
+            {
+                try { return Publish(Scan()); }
+                finally { lock (sync) { refreshing = false; stamp = Environment.TickCount; } }
+            }
+            try
+            {
+                if (!ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { Publish(Scan()); }
+                    finally { lock (sync) { refreshing = false; stamp = Environment.TickCount; } }
+                })) throw new InvalidOperationException("Security product scan could not be queued");
+            }
+            catch (Exception error)
+            {
+                lock (sync)
+                {
+                    refreshing = false; stamp = Environment.TickCount;
+                    if (cycle == failureCycle)
+                    {
+                        queueFailures++;
+                        Logger.Warn("Security product queue failed phase=" + cycle + " attempt=" + queueFailures + "/3: " + error.GetType().Name);
+                    }
+                }
+            }
+            lock (sync) return roots;
+        }
 
 		private static string[] Publish(string[] fresh)
 		{
@@ -102,44 +126,60 @@ namespace PaviseApp
 			}
 		}
 
-		private static string[] Scan()
-		{
-			HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			string folderPath = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-			string[] bases = StandardBases();
-			string[] classes = Classes;
-			foreach (string text in classes)
-			{
-				try
-				{
-					using (ManagementObjectSearcher managementObjectSearcher = new ManagementObjectSearcher("root\\SecurityCenter2", "SELECT pathToSignedProductExe, pathToSignedReportingExe FROM " + text))
-					{
-						managementObjectSearcher.Options.Timeout = TimeSpan.FromSeconds(3.0);
-						using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
-						{
-							foreach (ManagementObject item in managementObjectCollection)
-							{
-								using (item)
-								{
-									Add(hashSet, ProductRoot(item["pathToSignedProductExe"] as string, bases, folderPath));
-									Add(hashSet, ProductRoot(item["pathToSignedReportingExe"] as string, bases, folderPath));
-								}
-							}
-						}
-					}
-				}
-				catch
-				{
-				}
-			}
-			List<string> list = new List<string>(hashSet);
-			list.Sort(StringComparer.OrdinalIgnoreCase);
-			if (list.Count > 16)
-			{
-				list.RemoveRange(16, list.Count - 16);
-			}
-			return list.ToArray();
-		}
+        private static string[] Scan()
+        {
+            var merged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in Classes)
+            {
+                ProviderState provider; long cycle; bool allowed;
+                lock (sync)
+                {
+                    if (!providers.TryGetValue(name, out provider)) providers[name] = provider = new ProviderState();
+                    cycle = failureCycle; allowed = provider.Failures < 3;
+                }
+                if (allowed)
+                {
+                    try
+                    {
+                        string[] fresh = ReadProvider(name);
+                        lock (sync) provider.Roots = fresh;
+                    }
+                    catch (Exception error)
+                    {
+                        lock (sync)
+                        {
+                            if (cycle == failureCycle)
+                            {
+                                provider.Failures++;
+                                Logger.Warn("Security product read failed provider=" + name + " phase=" + cycle + " attempt=" + provider.Failures + "/3: " + error.GetType().Name);
+                            }
+                        }
+                    }
+                }
+                lock (sync) foreach (string root in provider.Roots) merged.Add(root);
+            }
+            var list = new List<string>(merged); list.Sort(StringComparer.OrdinalIgnoreCase);
+            if (list.Count > MaxRoots) list.RemoveRange(MaxRoots, list.Count - MaxRoots);
+            return list.ToArray();
+        }
+        private static string[] ReadProvider(string provider)
+        {
+            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            string[] bases = StandardBases();
+            using (var searcher = new ManagementObjectSearcher("root\\SecurityCenter2", "SELECT pathToSignedProductExe, pathToSignedReportingExe FROM " + provider))
+            {
+                searcher.Options.Timeout = TimeSpan.FromSeconds(3);
+                using (ManagementObjectCollection rows = searcher.Get())
+                    foreach (ManagementObject row in rows)
+                        using (row)
+                        {
+                            Add(found, ProductRoot(row["pathToSignedProductExe"] as string, bases, windows));
+                            Add(found, ProductRoot(row["pathToSignedReportingExe"] as string, bases, windows));
+                        }
+            }
+            return new List<string>(found).ToArray();
+        }
 
 		private static void Add(HashSet<string> set, string root)
 		{
