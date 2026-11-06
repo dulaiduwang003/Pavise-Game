@@ -33,8 +33,21 @@ namespace PaviseApp
             return any ? "1" : "0";
         }
         public string Read(ConfigurationPresetEntry entry)
+        { return ReadSavedValue(entry); }
+        private static string ReadSavedValue(ConfigurationPresetEntry entry)
         {
             string key = entry.Key;
+            if (key == BackgroundGovernancePolicy.SettingKey)
+            {
+                string selected;
+                return Settings.TryLoadStr(key, out selected)
+                    ? BackgroundGovernancePolicy.Parse(selected).ToString(CultureInfo.InvariantCulture) : null;
+            }
+            if (key == PerformanceActionCatalog.CpuMitigations)
+            {
+                string enabled = Boolean(key, false), expanded = Boolean(CpuMitigationPolicy.ExpandedPreferenceKey, false);
+                return enabled == null || expanded == null ? null : enabled == "0" ? "0" : expanded == "1" ? "1" : "legacy";
+            }
             if (key == "EnvQuantumProfileV1")
             {
                 string enabled = Boolean(key, false), raw;
@@ -60,18 +73,33 @@ namespace PaviseApp
             return Boolean(key, policy != null ? policy.Fallback == "1" : key == "GmMmcss" || key == "GpuPrefStageOn" || key == "GameDvrOff");
         }
         public string ExtraSnapshot()
+        { return ReadSavedExtra(); }
+        private static string ReadSavedExtra()
         {
             StringBuilder text = new StringBuilder();
             foreach (string key in bundle) { string value = Boolean(key, false); if (value == null) return null; text.Append(key).Append('=').Append(value).Append('\n'); }
             foreach (string key in PerformanceTuning.StorageMembers()) { string value = Boolean(key, false); if (value == null) return null; text.Append(key).Append('=').Append(value).Append('\n'); }
             return text.ToString();
         }
+        // Saved preferences only: no capability inspection, identity receipt, native read,
+        // or last-applied metadata. Values use the same defaults as preset matching.
+        internal static string SavedIdentityPhase()
+        {
+            StringBuilder text = new StringBuilder();
+            foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
+            {
+                string value = ReadSavedValue(entry);
+                int quantum;
+                if (entry.Key == "EnvQuantumProfileV1" && int.TryParse(value, out quantum))
+                    value = quantum.ToString(CultureInfo.InvariantCulture);
+                text.Append(entry.Key).Append('=').Append(value ?? "?").Append('\n');
+            }
+            return text.Append(ReadSavedExtra() ?? "?").ToString();
+        }
         private static ConfigurationPresetAvailability Available(bool yes, string zh, string en)
         { return yes ? ConfigurationPresetAvailability.Yes() : ConfigurationPresetAvailability.No(PerformancePolicy.Text(zh, en)); }
         private static bool ServiceExists(string name)
         { using (RegistryKey key = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Services\\" + name)) return key != null; }
-        private static bool GraphicsPriorityReadable()
-        { int priority; using (Process process = Process.GetCurrentProcess()) return Native.D3DKMTGetProcessSchedulingPriorityClass(process.Handle, out priority) == 0; }
         private static bool NtfsAvailable()
         { foreach (DriveInfo drive in DriveInfo.GetDrives()) try { if (drive.IsReady && drive.DriveType == DriveType.Fixed && drive.DriveFormat == "NTFS") return true; } catch { } return false; }
         private static bool RegistryAvailable(string path)
@@ -90,7 +118,6 @@ namespace PaviseApp
                     case "NvLowLat": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("prerender")), "NVIDIA 低延迟接口不支持或无法读取", "NVIDIA low-latency setting unsupported or unreadable");
                     case "GpuPrefStageOn": return Available(GpuPrefStage.Supported, "系统不支持游戏显卡偏好登记", "Game GPU preferences are unsupported");
                     case "AppGpuAutoV1": return Available(AppGpuPreferences.Shared.Supported, "未核验到支持的混合显卡设备", "A supported hybrid-GPU system was not verified");
-                    case "GmGpuDemote": return Available(GraphicsPriorityReadable(), "系统或驱动不支持 GPU 调度优先级", "GPU scheduling priorities are unsupported or unreadable");
                     case "AutoGlobalTimer": return Available(build < 19041 || build >= 20348, "系统不支持全局计时器配置", "Global timer configuration is unsupported on this OS");
                     case "AutoTimerTick": return Available(!LaboratoryClockRepair.HasReceipt && TimerTickTweak.CanReadForPreset(), "计时配置不可读取或有待恢复的修复记录", "Timer settings unreadable or timer repair recovery pending");
                     case "GmMmcss": return Available(ServiceExists("MMCSS") && RegistryAvailable("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"), "游戏多媒体调度配置不可用", "Game multimedia scheduling configuration unavailable");
@@ -99,6 +126,16 @@ namespace PaviseApp
                     case "GmPauseMaintenanceV1": return Available(ServiceExists("Schedule"), "计划任务服务不可用", "Task Scheduler service unavailable");
                     case "AutoNtfsShortNamesV1": return Available(NtfsAvailable(), "未找到可核验的 NTFS 卷", "No verified NTFS volume available");
                     case "AutoGameMitigationsV1": return Available(build >= 16299, "系统不支持逐程序保护配置", "Per-image mitigation settings unsupported");
+                    case PerformanceActionCatalog.CpuMitigations:
+                        return Available(PerformanceTuning.CpuMitigationsExpansionSupported() && PerformanceActionBackend.EnvironmentTargets(entry.Key).Length > 0,
+                            "本机不支持 CPU 软件缓解配置", "CPU software-mitigation configuration unsupported");
+                    case "EnvNtfsLastAccessV1": case "EnvAudioIdleV1":
+                        return Available(PerformanceActionBackend.EnvironmentTargets(entry.Key).Length > 0,
+                            "本机未找到支持的配置目标", "No supported configuration targets found");
+                    case "EnvVbsDisabledV1":
+                        string vbsReason;
+                        bool vbsAvailable = VbsTweak.CanConfigureForPreset(out vbsReason);
+                        return vbsAvailable ? ConfigurationPresetAvailability.Yes() : ConfigurationPresetAvailability.No(vbsReason);
                     case "LabGpuClockMaxV1": case "LabGpuPowerMaxV1":
                         // Match the manual laboratory switches: save the session request.
                         // The game-session controller still verifies the device, applies only
@@ -135,9 +172,9 @@ namespace PaviseApp
                 return true;
             }
         }
-        private static bool SetEnvironment(string key, bool on, Func<bool> cancelled, out string detail)
+        private static bool SetEnvironment(string key, bool on, Func<bool> cancelled, out string detail, bool selectCpuScope = false, bool expandedCpuScope = true)
         {
-            bool accepted = Wait(done => PerformanceTuning.SetEnvironment(key, on, done), cancelled);
+            bool accepted = Wait(done => selectCpuScope ? PerformanceTuning.SetCpuMitigations(on, done, expandedCpuScope) : PerformanceTuning.SetEnvironment(key, on, done), cancelled);
             string state = PerformanceTuning.State(key); detail = PerformanceTuning.Label(state);
             bool ok = accepted && !BadState(state) && Settings.LoadCached(key, false) == on;
             if (!ok && on && state != "working")
@@ -150,10 +187,10 @@ namespace PaviseApp
             }
             return ok;
         }
-        private static bool SetGroup(bool storage, bool on, Func<bool> cancelled, out string detail)
+        private static bool SetGroup(bool storage, bool on, Func<bool> cancelled, out string detail, string onlyMember = null)
         {
             bool ok = true; List<string> descriptions = new List<string>();
-            string[] members = storage ? PerformanceTuning.StorageMembers().ToArray() : bundle;
+            string[] members = onlyMember != null ? new[] { onlyMember } : storage ? PerformanceTuning.StorageMembers().ToArray() : bundle;
             foreach (string key in members)
             {
                 if (cancelled != null && cancelled()) { detail = PerformancePolicy.Text("后续设置已停止", "Further settings cancelled"); return false; }
@@ -206,8 +243,27 @@ namespace PaviseApp
         {
             detail = ""; if (gameMode == null || (cancelled != null && cancelled())) return false;
             bool on = ConfigurationPresetEntry.IsEnabled(value); string key = entry.Key;
+            if (key == BackgroundGovernancePolicy.SettingKey)
+            {
+                if (value != "0" && value != "1") return false;
+                bool accepted = gameMode.TrySetBackgroundGovernanceMode(value == "1" ? 1 : 0);
+                detail = accepted ? PerformancePolicy.Text("后台治理档位已保存", "Background governance level saved")
+                    : PerformancePolicy.Text("后台治理档位未保存", "Background governance level was not saved");
+                return accepted;
+            }
+            if (key == PerformanceActionCatalog.CpuMitigations)
+            {
+                if (value != "0" && value != "1" && value != "legacy") return false;
+                if (value == "1" && !PerformanceTuning.CpuMitigationsExpansionSupported())
+                { detail = PerformancePolicy.Text("本机不支持扩展 CPU 软件缓解配置", "Expanded CPU software-mitigation configuration unsupported"); return false; }
+                if (value == "legacy" && PerformanceTuning.CpuMitigationsExpanded
+                    && !SetEnvironment(key, false, cancelled, out detail, true)) return false;
+                return SetEnvironment(key, on, cancelled, out detail, true, value != "legacy");
+            }
             if (key == PerformanceTuning.EnvironmentBundleKey || key == PerformanceTuning.StorageGroupKey)
                 return SetGroup(key == PerformanceTuning.StorageGroupKey, on, cancelled, out detail);
+            if (key == "EnvVbsDisabledV1") return SetGroup(false, on, cancelled, out detail, key);
+            if (key == "EnvNtfsLastAccessV1" || key == "EnvAudioIdleV1") return SetEnvironment(key, on, cancelled, out detail);
             if (key == PerformanceActionCatalog.Quantum)
             {
                 bool accepted = Wait(done => PerformanceTuning.SetQuantumProfile(on ? 1 : 0, done), cancelled);

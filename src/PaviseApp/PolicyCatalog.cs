@@ -14,6 +14,8 @@ namespace PaviseApp
 
 		public const string KeySuppress = "GmSuppress";
 
+		public const string KeyBackgroundGovernance = "BackgroundGovernanceMode";
+
 		public const string KeySuppressFamily = "GameFamilyBackground";
 
 		public const string KeyGameFullscreenOptimizations = "GameDisableFullscreenOptimizationsV1";
@@ -102,10 +104,11 @@ namespace PaviseApp
 
 		public static readonly string[] HandheldBlocked = new string[0];
 
-		private static readonly PolicyItem[] Items = new PolicyItem[29]
+		private static readonly PolicyItem[] Items = new PolicyItem[23]
 		{
 			new PolicyItem("PerformancePreset", PolicyValueKind.Enum, "0", "cfg.mode", "cfg.group.mode", new string[2] { "0", "1" }),
 			new PolicyItem("GmSuppress", PolicyValueKind.Bool, "1", "v14.bg.master", "cfg.group.bg", null),
+			new PolicyItem("BackgroundGovernanceMode", PolicyValueKind.Enum, "0", "background.governance.mode", "cfg.group.bg", new string[2] { "0", "1" }),
 			new PolicyItem("GmThreadBoostStrategyV1", PolicyValueKind.Choice, "on", "auto.threadboost", "cfg.group.bg", ThreadBoostSelection.Choices),
 			new PolicyItem("GmEnglishInputV1", PolicyValueKind.Bool, "0", "gm.englishinput", "cfg.group.env", null),
 			new PolicyItem("GameFamilyBackground", PolicyValueKind.Bool, "0", "lib.family.suppress", "cfg.group.bg", null),
@@ -113,11 +116,6 @@ namespace PaviseApp
 			new PolicyItem("GmAutoCoresV2", PolicyValueKind.Bool, "0", "schedule.auto.allow", "cfg.group.bg", null),
 			new PolicyItem("GameNvRebarV1", PolicyValueKind.Bool, "0", "set.nvrebar", "cfg.group.gpu", null),
 			new PolicyItem("GmBoost", PolicyValueKind.Bool, "1", "gm.boost", "cfg.group.bg", null),
-			new PolicyItem("GmBoostCpuV1", PolicyValueKind.Bool, "1", "gm.boost.cpu", "cfg.group.bg", null),
-			new PolicyItem("GmBoostMemoryV1", PolicyValueKind.Bool, "1", "gm.boost.memory", "cfg.group.bg", null),
-			new PolicyItem("GmBoostIoV1", PolicyValueKind.Bool, "1", "gm.boost.io", "cfg.group.bg", null),
-			new PolicyItem("GmBoostGpuV1", PolicyValueKind.Bool, "1", "gm.boost.gpu", "cfg.group.bg", null),
-			new PolicyItem("GmGpuDemote", PolicyValueKind.Bool, "0", "gm.gpudemote", "cfg.group.bg", null),
 			new PolicyItem("PowerPlanOn", PolicyValueKind.Bool, "1", "plan.pick.title", "cfg.group.mempower", null),
 			new PolicyItem("GmCacheWarmV2", PolicyValueKind.Bool, "0", "gm.cachewarm", "cfg.group.mempower", null),
 			new PolicyItem("GmStandbyCleanerV2", PolicyValueKind.Bool, "0", "gm.standbycleaner", "cfg.group.env", null),
@@ -128,9 +126,7 @@ namespace PaviseApp
 			new PolicyItem("GmIntelEnduranceV1", PolicyValueKind.Bool, "0", "set.intel.endurance", "cfg.group.gpu", null),
 			new PolicyItem("NvLowLat", PolicyValueKind.Choice, "off", "set.nvll", "cfg.group.gpu", new string[2] { "off", "on" }),
 			new PolicyItem("AmdAntiLag", PolicyValueKind.Bool, "0", "set.amdalag", "cfg.group.gpu", null),
-			new PolicyItem("GmPauseDl", PolicyValueKind.Bool, "1", "gm.pausedl", "cfg.group.env", null),
 			new PolicyItem("GmPauseMaintenanceV1", PolicyValueKind.Bool, "1", "gm.pausemaint", "cfg.group.env", null),
-			new PolicyItem("GmAwake", PolicyValueKind.Bool, "1", "set.awake", "cfg.group.env", null),
 			new PolicyItem("NvMaxPerf", PolicyValueKind.Bool, "0", "set.nvmax", "cfg.group.gpu", null),
 			new PolicyItem("NvShaderCache", PolicyValueKind.Bool, "0", "auto.nvshader", "cfg.group.gpu", null)
 		};

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -49,6 +49,8 @@ namespace PaviseApp
 
 		internal const string DriverFailureAction = "NvDriverProfile";
 
+		private const string InvalidJournalReason = "NVIDIA recovery journal is unreadable or invalid";
+
 		private static readonly INvDrsDriver Driver = new NativeNvDrsDriver();
 
 		public static readonly string[] RebarKeys = new string[3] { "rebarfeat", "rebaropt", "rebarsize" };
@@ -67,6 +69,41 @@ namespace PaviseApp
 
 		private static readonly Dictionary<string, int> restoreFailures = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+		private static readonly Dictionary<string, string> automaticPhases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly Dictionary<string, long> automaticSessions = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+		private static long automaticSession;
+
+		internal static void BeginAutomaticSession(long session)
+		{
+			lock (sync)
+			{
+				if (session <= automaticSession) return;
+				automaticSession = session;
+				foreach (string name in new List<string>(automaticPhases.Keys))
+				{
+					string phase = automaticPhases[name];
+					automaticPhases[name] = session + phase.Substring(phase.IndexOf(':'));
+					automaticSessions[name] = session;
+				}
+			}
+		}
+
+		// A configuration keeps its budget when it is revisited in the same real game session.
+		internal static void SyncAutomaticPhase(string executable, long session, int configuration)
+		{
+			if (string.IsNullOrEmpty(executable)) return;
+			lock (sync)
+			{
+				if (session < automaticSession) return;
+				BeginAutomaticSession(session);
+				string name = Path.GetFileName(executable);
+				long previous;
+				if (automaticSessions.TryGetValue(name, out previous) && session < previous) return;
+				automaticSessions[name] = session;
+				automaticPhases[name] = session + ":" + configuration;
+			}
+		}
+
 		internal static object SessionGate
 		{
 			get
@@ -75,11 +112,33 @@ namespace PaviseApp
 			}
 		}
 
+		private static void IsolateInvalidJournal(string executable)
+		{
+			// Preserve the original failure and recovery receipt while the same fault is isolated.
+			if (ActionFailureStore.IsBlocked(DriverFailureAction, executable)
+				&& ActionFailureStore.FailureReason(DriverFailureAction, executable) == InvalidJournalReason) return;
+			ActionFailureStore.Trip(DriverFailureAction, executable, InvalidJournalReason,
+				"NVIDIA DRS | GPU/driver context unavailable");
+		}
+
 		public static bool HasGameResidue
 		{
 			get
 			{
 				return Settings.LoadStr("NvDrsList", "").Length > 0;
+			}
+		}
+
+		internal static bool PlanSatisfied(string executable, NvGamePlan plan)
+		{
+			if (string.IsNullOrEmpty(executable) || plan == null || plan.Empty) return false;
+			lock (sync)
+			{
+				string name = Path.GetFileName(executable);
+				List<KeyValuePair<string, uint>> desired = BuildDesired(plan);
+				if (desired.Count == 0 || ActionFailureStore.IsBlocked(DriverFailureAction, name)) return false;
+				foreach (var setting in desired) if (ActionFailureStore.IsBlocked(FailureActionFor(setting.Key), name)) return false;
+				return Settings.LoadStr(SatKey(name), "") == SatSignature(desired);
 			}
 		}
 
@@ -458,7 +517,7 @@ namespace PaviseApp
 
 		private static long RestoreClock()
 		{
-			return DateTime.UtcNow.Ticks;
+			return AutoCores.NowTicks;
 		}
 
 		internal static string FailureActionFor(string key)
@@ -493,7 +552,14 @@ namespace PaviseApp
 
 		private static string RestoreKey(string exeName, string action)
 		{
-			return exeName + "|" + action;
+			string phase;
+			if (!automaticPhases.TryGetValue(exeName, out phase))
+			{
+				phase = automaticSession + ":startup";
+				automaticPhases[exeName] = phase;
+				automaticSessions[exeName] = automaticSession;
+			}
+			return exeName + "|" + phase + "|" + action;
 		}
 
 		private static void ScheduleRestore(string exeName, string action)
@@ -501,24 +567,37 @@ namespace PaviseApp
 			string key = RestoreKey(exeName, action);
 			int value;
 			restoreFailures.TryGetValue(key, out value);
-			value = Math.Min(value + 1, 5);
+			value = Math.Min(value + 1, 3);
 			restoreFailures[key] = value;
-			restoreRetryAt[key] = RestoreClock() + TimeSpan.FromSeconds(Math.Min(4 << value - 1, 60)).Ticks;
+			restoreRetryAt[key] = RestoreClock() + TimeSpan.FromSeconds(4 << value - 1).Ticks;
+			ReportRestoreSchedule(exeName, action);
+			if (value == 3) Logger.Log("NVIDIA recovery paused after 3 failures: " + exeName + " / " + action + "; recovery receipt retained");
+		}
+
+		private static bool RestoreExhausted(string exeName, string action)
+		{
+			int failures;
+			return restoreFailures.TryGetValue(RestoreKey(exeName, action), out failures) && failures >= 3;
 		}
 
 		private static bool RestoreDue(string exeName, string action)
 		{
-			if (ActionFailureStore.IsRetryPending(action, exeName) || ActionFailureStore.IsRetryPending("NvDriverProfile", exeName))
-			{
-				return true;
-			}
+			if (RestoreExhausted(exeName, action)) { ReportRestoreSchedule(exeName, action); return false; }
 			long value;
 			if (restoreRetryAt.TryGetValue(RestoreKey(exeName, action), out value))
 			{
-				return RestoreClock() >= value;
+				if (RestoreClock() < value) { ReportRestoreSchedule(exeName, action); return false; }
 			}
 			return true;
 		}
+
+        private static void ReportRestoreSchedule(string executable, string action)
+        {
+            if (RestoreExhausted(executable, action)) { RecoveryAttemptTrace.Exhausted(); return; }
+            long due;
+            if (restoreRetryAt.TryGetValue(RestoreKey(executable, action), out due))
+                RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(Math.Max(0, due - RestoreClock())));
+        }
 
 		private static bool SaveGameSnapshot(string exeName, Dictionary<string, string> snapshot)
 		{
@@ -541,8 +620,9 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			if (!force && !RestoreDue(exeName, action))
+			if (RestoreExhausted(exeName, action) || (!force && !RestoreDue(exeName, action)))
 			{
+				ReportRestoreSchedule(exeName, action);
 				return false;
 			}
 			List<string> list = new List<string>();
@@ -675,8 +755,11 @@ namespace PaviseApp
 				Settings.SaveStr(SatKey(exeName), "");
 				if (flag2)
 				{
-					restoreFailures.Remove(RestoreKey(exeName, action));
-					restoreRetryAt.Remove(RestoreKey(exeName, action));
+					if (action == DriverFailureAction ? snapshot.Count == 0 : SnapshotKeysFor(snapshot, action).Count == 0)
+					{
+						restoreFailures.Remove(RestoreKey(exeName, action));
+						restoreRetryAt.Remove(RestoreKey(exeName, action));
+					}
 				}
 				else
 				{
@@ -751,7 +834,7 @@ namespace PaviseApp
 		public static List<string> ApplyForGame(string exePath, NvGamePlan plan, out bool retryLater)
 		{
 			retryLater = false;
-			if (string.IsNullOrEmpty(exePath) || !Driver.Available)
+			if (string.IsNullOrEmpty(exePath))
 			{
 				return null;
 			}
@@ -762,11 +845,30 @@ namespace PaviseApp
 			}
 			lock (sync)
 			{
+				if (!RestoreDue(fileName, DriverFailureAction)) { retryLater = !RestoreExhausted(fileName, DriverFailureAction); return null; }
+				try
+				{
+					if (!Driver.Available)
+					{
+						string raw;
+						bool ownsRecovery = !Settings.TryLoadStr(SnapPrefix + fileName, out raw) || raw.Length > 0;
+						if (ownsRecovery) ScheduleRestore(fileName, DriverFailureAction);
+						retryLater = ownsRecovery || !NvidiaAbsent();
+						return null;
+					}
+				}
+				catch
+				{
+					string raw;
+					if (!Settings.TryLoadStr(SnapPrefix + fileName, out raw) || raw.Length > 0) ScheduleRestore(fileName, DriverFailureAction);
+					throw;
+				}
 				List<KeyValuePair<string, uint>> list = ((plan == null || plan.Empty) ? new List<KeyValuePair<string, uint>>() : BuildDesired(plan));
 				Dictionary<string, string> snapshot;
 				if (!TryReadGameSnapshot(fileName, out snapshot))
 				{
-					ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA recovery journal is unreadable or invalid", "NVIDIA DRS | GPU/driver context unavailable");
+					IsolateInvalidJournal(fileName);
+					ScheduleRestore(fileName, DriverFailureAction);
 					retryLater = true;
 					return null;
 				}
@@ -787,14 +889,11 @@ namespace PaviseApp
 				}
 				uint num = CurrentDriverVersion();
 				string environmentContext = "NVIDIA DRS | " + ((num == 0) ? "GPU/driver context unavailable" : ("driver " + FormatDriver(num)));
-				bool flag = ActionFailureStore.IsRetryPending("NvDriverProfile", fileName);
 				bool flag2 = !ActionFailureStore.IsBlocked("NvDriverProfile", fileName);
 				bool flag3 = false;
-				bool flag4 = flag;
 				foreach (string key4 in dictionary.Keys)
 				{
 					flag3 |= !ActionFailureStore.IsBlocked(key4, fileName);
-					flag4 |= ActionFailureStore.IsRetryPending(key4, fileName);
 				}
 				string text = SatSignature(list);
 				bool flag5 = flag2;
@@ -802,7 +901,7 @@ namespace PaviseApp
 				{
 					flag5 &= !ActionFailureStore.IsBlocked(key5, fileName);
 				}
-				if (list.Count > 0 && flag5 && !flag4 && Settings.LoadStr(SatKey(fileName), "") == text)
+				if (list.Count > 0 && flag5 && Settings.LoadStr(SatKey(fileName), "") == text)
 				{
 					return new List<string>();
 				}
@@ -810,11 +909,11 @@ namespace PaviseApp
 				bool flag7 = false;
 				bool flag8 = true;
 				string reason;
-				if (flag6 && (!flag || snapshot.Count <= 0))
+				if (flag6)
 				{
 					flag7 = ActionFailureStore.TryBeginApply("NvDriverProfile", fileName, out reason);
 				}
-				if (flag6 && !flag7 && (!flag || snapshot.Count <= 0))
+				if (flag6 && !flag7)
 				{
 					flag6 = false;
 				}
@@ -822,18 +921,21 @@ namespace PaviseApp
 				{
 					return null;
 				}
+				if (!flag6)
+				{
+					bool recoveryDue = false;
+					foreach (string key in snapshot.Keys) recoveryDue |= RestoreDue(fileName, FailureActionFor(key));
+					if (!recoveryDue) return null;
+				}
 				IntPtr session = IntPtr.Zero;
 				try
 				{
 					if (!Driver.TryOpenSession(out session))
 					{
+						ScheduleRestore(fileName, DriverFailureAction);
 						if (flag7)
 						{
 							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA driver session could not be opened", environmentContext);
-						}
-						else if (flag)
-						{
-							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA recovery before retry could not open the driver session", environmentContext);
 						}
 						else if (snapshot.Count > 0)
 						{
@@ -845,7 +947,8 @@ namespace PaviseApp
 					IntPtr profile;
 					if (!Driver.FindOrCreateAppProfile(session, fileName, out profile))
 					{
-						if (flag7 || flag || snapshot.Count > 0)
+						ScheduleRestore(fileName, DriverFailureAction);
+						if (flag7 || snapshot.Count > 0)
 						{
 							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA game profile could not be opened", environmentContext);
 						}
@@ -853,17 +956,6 @@ namespace PaviseApp
 						return null;
 					}
 					List<string> list3 = new List<string>();
-					if (flag && snapshot.Count > 0)
-					{
-						if (!RestoreGameKeys(session, profile, fileName, snapshot, new List<string>(snapshot.Keys), "NvDriverProfile", false))
-						{
-							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA recovery before retry failed", environmentContext);
-							retryLater = true;
-							return null;
-						}
-						flag7 = ActionFailureStore.TryBeginApply("NvDriverProfile", fileName, out reason);
-						flag6 = flag7 && flag3;
-					}
 					HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 					foreach (KeyValuePair<string, uint> item2 in list)
 					{
@@ -917,19 +1009,6 @@ namespace PaviseApp
 							}
 							continue;
 						}
-						if (ActionFailureStore.IsRetryPending(key3, fileName) && !RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, false))
-						{
-							ActionFailureStore.Trip(key3, fileName, "NVIDIA action recovery before retry failed", environmentContext);
-							foreach (KeyValuePair<string, uint> item6 in item4.Value)
-							{
-								if (!list3.Contains(item6.Key))
-								{
-									list3.Add(item6.Key);
-								}
-							}
-							retryLater = true;
-							continue;
-						}
 						if (!ActionFailureStore.TryBeginApply(key3, fileName, out reason))
 						{
 							foreach (KeyValuePair<string, uint> item7 in item4.Value)
@@ -968,7 +1047,6 @@ namespace PaviseApp
 							{
 								ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA recovery journal could not be saved", environmentContext);
 								ActionFailureStore.CancelApply(key3, fileName);
-								ActionFailureStore.WithdrawRetry(key3, fileName);
 								RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, false);
 								flag6 = false;
 								retryLater = true;
@@ -1029,7 +1107,6 @@ namespace PaviseApp
 								if (RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, true))
 								{
 									ActionFailureStore.CancelApply(key3, fileName);
-									ActionFailureStore.WithdrawRetry(key3, fileName);
 								}
 								else
 								{
@@ -1175,6 +1252,7 @@ namespace PaviseApp
 				}
 				catch (NotSupportedException)
 				{
+					ScheduleRestore(fileName, DriverFailureAction);
 					if (flag7)
 					{
 						ActionFailureStore.CancelApply("NvDriverProfile", fileName);
@@ -1183,6 +1261,7 @@ namespace PaviseApp
 				}
 				catch (OperationCanceledException)
 				{
+					ScheduleRestore(fileName, DriverFailureAction);
 					if (flag7)
 					{
 						ActionFailureStore.CancelApply("NvDriverProfile", fileName);
@@ -1191,6 +1270,7 @@ namespace PaviseApp
 				}
 				catch (Exception ex6)
 				{
+					ScheduleRestore(fileName, DriverFailureAction);
 					if (flag7)
 					{
 						ActionFailureStore.Trip("NvDriverProfile", fileName, ex6.GetType().Name + ": " + ex6.Message, environmentContext);
@@ -1257,82 +1337,92 @@ namespace PaviseApp
 			return false;
 		}
 
-		public static void RestoreKind(string key)
-		{
-			if (!Driver.Available)
-			{
-				return;
-			}
-			lock (sync)
-			{
-				string[] array = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				string[] array2 = array;
-				foreach (string text in array2)
-				{
-					Dictionary<string, string> snapshot;
-					if (!TryReadGameSnapshot(text, out snapshot))
-					{
-						ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery journal is unreadable or invalid");
-					}
-					else
-					{
-						if (!snapshot.ContainsKey(key))
-						{
-							continue;
-						}
-						string action = FailureActionFor(key);
-						if (!RestoreDue(text, action))
-						{
-							continue;
-						}
-						IntPtr session = IntPtr.Zero;
-						try
-						{
-							IntPtr profile;
-							if (!Driver.TryOpenSession(out session))
-							{
-								ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery could not open the driver session");
-							}
-							else if (!Driver.FindOrCreateAppProfile(session, text, out profile))
-							{
-								ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery could not open the game profile");
-							}
-							else if (!RestoreGameKeys(session, profile, text, snapshot, new List<string> { key }, action, false))
-							{
-								ActionFailureStore.Trip(action, text, "NVIDIA setting recovery remains incomplete");
-							}
-							else if (SnapshotKeysFor(snapshot, action).Count == 0)
-							{
-								ActionFailureStore.CancelApply(action, text);
-							}
-						}
-						catch (NotSupportedException)
-						{
-						}
-						catch (OperationCanceledException)
-						{
-						}
-						catch (Exception ex3)
-						{
-							ActionFailureStore.Trip("NvDriverProfile", text, ex3.GetType().Name + ": " + ex3.Message);
-						}
-						finally
-						{
-							if (session != IntPtr.Zero)
-							{
-								try
-								{
-									Driver.CloseSession(session);
-								}
-								catch
-								{
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+        public static void RestoreKind(string key)
+        {
+            lock (sync)
+                foreach (string executable in Settings.LoadStr(ListKey, "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    RestoreTarget(executable, key);
+        }
+
+        private static bool RestoreTarget(string executable, string onlyKey)
+        {
+            if (!RestoreDue(executable, DriverFailureAction)) return false;
+            Dictionary<string, string> snapshot;
+            if (!TryReadGameSnapshot(executable, out snapshot))
+            {
+                IsolateInvalidJournal(executable);
+                ScheduleRestore(executable, DriverFailureAction);
+                return false;
+            }
+            if (snapshot.Count == 0)
+            {
+                if (SaveGameSnapshot(executable, snapshot))
+                {
+                    restoreFailures.Remove(RestoreKey(executable, DriverFailureAction));
+                    restoreRetryAt.Remove(RestoreKey(executable, DriverFailureAction));
+                    return true;
+                }
+                ScheduleRestore(executable, DriverFailureAction);
+                return false;
+            }
+            var groups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            bool due = false;
+            foreach (string key in snapshot.Keys)
+            {
+                if (onlyKey != null && key != onlyKey) continue;
+                string action = FailureActionFor(key);
+                List<string> keys;
+                if (!groups.TryGetValue(action, out keys)) groups[action] = keys = new List<string>();
+                keys.Add(key);
+                due |= RestoreDue(executable, action);
+            }
+            if (groups.Count == 0) return true;
+            // Exhausted/deferred receipts must not repeatedly open a native session.
+            if (!due) return false;
+            IntPtr session = IntPtr.Zero;
+            try
+            {
+                IntPtr profile;
+                if (!Driver.Available || !Driver.TryOpenSession(out session)
+                    || !Driver.FindOrCreateAppProfile(session, executable, out profile))
+                {
+                    ActionFailureStore.Trip(DriverFailureAction, executable, "NVIDIA recovery driver/profile unavailable");
+                    ScheduleRestore(executable, DriverFailureAction);
+                    return false;
+                }
+                bool restored = true;
+                foreach (var group in groups)
+                {
+                    bool admitted = RestoreDue(executable, group.Key);
+                    if (RestoreGameKeys(session, profile, executable, snapshot, group.Value, group.Key, false))
+                    {
+                        if (SnapshotKeysFor(snapshot, group.Key).Count == 0) ActionFailureStore.CancelApply(group.Key, executable);
+                    }
+                    else
+                    {
+                        restored = false;
+                        if (admitted) ActionFailureStore.Trip(group.Key, executable, "NVIDIA action recovery remains incomplete");
+                    }
+                }
+                if (snapshot.Count == 0)
+                {
+                    ActionFailureStore.CancelApply(DriverFailureAction, executable);
+                    restoreFailures.Remove(RestoreKey(executable, DriverFailureAction));
+                    restoreRetryAt.Remove(RestoreKey(executable, DriverFailureAction));
+                }
+                return restored;
+            }
+            catch (Exception error)
+            {
+                ActionFailureStore.Trip(DriverFailureAction, executable, error.GetType().Name + ": " + error.Message);
+                ScheduleRestore(executable, DriverFailureAction);
+                return false;
+            }
+            finally
+            {
+                if (session != IntPtr.Zero) try { Driver.CloseSession(session); } catch { }
+            }
+        }
 
 		public static void RestoreKinds(string[] keys)
 		{
@@ -1384,124 +1474,16 @@ namespace PaviseApp
 			}
 		}
 
-		public static bool RestoreAllGames()
-		{
-			lock (sync)
-			{
-				string[] array = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				if (array.Length == 0)
-				{
-					return true;
-				}
-				if (!Driver.Available)
-				{
-					if (!NvidiaAbsent())
-					{
-						return false;
-					}
-					int num = DropAllSnapshots();
-					if (num > 0)
-					{
-						Logger.Log(Lang.T("log.nvdrstweaks.34") + num + Lang.T("log.nvdrstweaks.35"));
-					}
-					return Settings.LoadStr("NvDrsList", "").Length == 0;
-				}
-				bool result = true;
-				string[] array2 = array;
-				foreach (string text in array2)
-				{
-					Dictionary<string, string> snapshot;
-					if (!TryReadGameSnapshot(text, out snapshot))
-					{
-						ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery journal is unreadable or invalid");
-						result = false;
-						continue;
-					}
-					if (snapshot.Count == 0)
-					{
-						if (!SaveGameSnapshot(text, snapshot))
-						{
-							result = false;
-						}
-						Settings.SaveStr(SatKey(text), "");
-						continue;
-					}
-					IntPtr session = IntPtr.Zero;
-					try
-					{
-						if (!Driver.TryOpenSession(out session))
-						{
-							ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery could not open the driver session");
-							result = false;
-							continue;
-						}
-						IntPtr profile;
-						if (!Driver.FindOrCreateAppProfile(session, text, out profile))
-						{
-							ActionFailureStore.Trip("NvDriverProfile", text, "NVIDIA recovery could not open the game profile");
-							result = false;
-							continue;
-						}
-						Dictionary<string, List<string>> dictionary = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-						foreach (string key2 in snapshot.Keys)
-						{
-							string key = FailureActionFor(key2);
-							List<string> value;
-							if (!dictionary.TryGetValue(key, out value))
-							{
-								value = (dictionary[key] = new List<string>());
-							}
-							value.Add(key2);
-						}
-						foreach (KeyValuePair<string, List<string>> item in dictionary)
-						{
-							bool flag = RestoreDue(text, item.Key);
-							if (RestoreGameKeys(session, profile, text, snapshot, item.Value, item.Key, false))
-							{
-								ActionFailureStore.CancelApply(item.Key, text);
-								continue;
-							}
-							result = false;
-							if (flag)
-							{
-								ActionFailureStore.Trip(item.Key, text, "NVIDIA action recovery remains incomplete");
-							}
-						}
-						if (snapshot.Count == 0)
-						{
-							ActionFailureStore.CancelApply("NvDriverProfile", text);
-						}
-					}
-					catch (NotSupportedException)
-					{
-						result = false;
-					}
-					catch (OperationCanceledException)
-					{
-						result = false;
-					}
-					catch (Exception ex3)
-					{
-						ActionFailureStore.Trip("NvDriverProfile", text, ex3.GetType().Name + ": " + ex3.Message);
-						result = false;
-					}
-					finally
-					{
-						if (session != IntPtr.Zero)
-						{
-							try
-							{
-								Driver.CloseSession(session);
-							}
-							catch
-							{
-							}
-						}
-					}
-				}
-				return result;
-			}
-		}
+        public static bool RestoreAllGames()
+        {
+            lock (sync)
+            {
+                bool restored = true;
+                foreach (string executable in Settings.LoadStr(ListKey, "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    restored &= RestoreTarget(executable, null);
+                return restored;
+            }
+        }
 
 		private static bool NvidiaAbsent()
 		{

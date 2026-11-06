@@ -17,7 +17,5 @@ namespace PaviseApp
 		internal DateTime OccurredUtc;
 
 		internal bool PersistenceFailed;
-
-		internal bool RetryPending;
 	}
 }

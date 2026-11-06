@@ -47,7 +47,7 @@ namespace PaviseApp
 				return cached;
 			}
 			string text = CpuName();
-			string text2 = GpuFromRegistry();
+			string text2 = GpuForDisplay();
 			if (string.IsNullOrEmpty(text2) && allowSlow)
 			{
 				text2 = GpuFromWmi();
@@ -86,14 +86,10 @@ namespace PaviseApp
 			}
 		}
 
-		private static string GpuFromRegistry()
+		private static string GpuForDisplay()
 		{
-			GpuAdapter gpuAdapter = GpuInventory.Primary();
-			if (gpuAdapter != null)
-			{
-				return gpuAdapter.Name;
-			}
-			return null;
+			OverviewGpuInfo gpu = OverviewGpuReader.Read();
+			return gpu == null ? null : gpu.Name;
 		}
 
 		private static string GpuFromWmi()

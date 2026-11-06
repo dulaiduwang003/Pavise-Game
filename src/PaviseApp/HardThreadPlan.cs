@@ -49,9 +49,9 @@ namespace PaviseApp
 			{
 				throw new InvalidOperationException("original process mask does not contain the allowed range");
 			}
-			if (selected == null || selected.Length < 1 || selected.Length > 2)
+			if (selected == null || selected.Length < 1 || selected.Length > CriticalThreadAutoPolicy.MaximumIsolated)
 			{
-				throw new ArgumentException("one or two candidates required");
+				throw new ArgumentException("one to " + CriticalThreadAutoPolicy.MaximumIsolated + " candidates required");
 			}
 			ulong num = 0uL;
 			ulong num2 = 0uL;

@@ -1,86 +1,194 @@
 <div align="center">
 
-<a href="https://pavise.club/">
-  <img src="docs/icon.png" width="96" height="96" alt="Pavise logo">
+<a href="https://pavise.club/en/">
+  <img src="docs/icon.png" width="96" height="96" alt="Pavise ロゴ">
 </a>
 
 # PAVISE
 
-### ゲームに使えるリソースを。
+### ゲームに、走る余地を。
 
-Windows 向けゲームリソース管理ツール。<br>バックグラウンド、スケジューリング、電源の動作を選び、対局終了後に記録済みの変更を復元します。
+バックグラウンドプロセスの制御、ゲームごとのプロファイル、<br>
+プレイ後の自動復元を備えた Windows 向けゲームリソースマネージャー。
 
-**ゲーム別設定 · スマート／競技 · 記録に基づく復元**
-
-[简体中文](README.md) · [English](README.en.md) · **日本語**
+[English](README.md) · [简体中文](README.zh-CN.md) · **日本語**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://pavise.club/en/changelog/#latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/dulaiduwang003/Pavise-Game/total?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases)
 [![GitHub stars](https://img.shields.io/github/stars/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/stargazers)
 [![Contributors](https://img.shields.io/github/contributors/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors)
 
-**[公式サイト](https://pavise.club/en/) · [最新版](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) · [使い方](https://pavise.club/en/docs/) · [問題を報告](https://github.com/dulaiduwang003/Pavise-Game/issues)**
+**[公式サイト](https://pavise.club/en/) &nbsp; / &nbsp; [ダウンロードと更新履歴](https://pavise.club/en/changelog/#latest) &nbsp; / &nbsp; [ユーザーガイド](https://pavise.club/en/docs/)**
+
+このページは日本語の説明書です。アプリの UI は英語と中国語のみのため、以下の画面は英語 UI です。
+
+<br>
+
+<img src="docs/screenshots/en/overview.png" width="100%" alt="Pavise の概要画面：実行中のゲーム、セッション状態、リソース制御">
 
 </div>
 
-> **ソースコードとドキュメントは整理中です。準備が整い次第、このリポジトリにアップロードします。** 現在のコードは過去のバージョンです。現行の動作は公開済みアプリとリリースノートを参照してください。
-
-## Pavise でできること
-
-ゲームは、ブラウザー、ランチャー、更新タスクと PC のリソースを共有します。Pavise は保存した設定に従って対局中のリソース配分を調整し、終了後に記録済みの対局変更を復元します。
-
-有効にする機能は自分で選びます。守護はゲームを識別すると設定を適用します。ゲームごとに設定を保存でき、保護ルールとホワイトリストで対象外のアプリを管理できます。
-
-| 項目 | 主な機能 |
-| --- | --- |
-| **ゲームライブラリと識別** | ゲームの追加、インストール先や実行中プログラムの検索、ゲーム別設定。最小化・トレイ常駐アプリも選択できます。 |
-| **バックグラウンド制御** | 対象プロセスの CPU、I/O、メモリページ、GPU スケジューリングを調整。除外設定と、対局中の更新・ダウンロード・保守タスクの一時停止。 |
-| **ゲームとコアの制御** | 優先度、スレッド優先度、論理コア選択、CCD／SMT 一括選択、コア分離とバックグラウンドのコア回避。 |
-| **電源管理** | CPU、端末種別、スマート／競技の選択に応じてプランを適用。画面、スリープ、蓋、バッテリーの設定を保持し、既存プランや「切り替えない」も選択可能。 |
-| **グラフィックスとメモリ** | 対応 GPU の性能設定、グラフィックス設定、キャッシュの事前読み込み、スタンバイメモリ整理を個別に選択。 |
-| **実験室** | CPU アイドル、EPP 電力配分、GPU クロック／電力、低バッファー音声。利用可否はハードウェアとドライバーによります。 |
-| **システム診断** | 設定とデバイス状態の確認。GPU 割り込みの観測・調整・再起動後の検証・復元。MSI の修復と復元は別操作。 |
-| **復元と更新** | 元の値の記録、未完了復元の再試行、ログ、診断概要、AI 調整用説明の出力、進捗と署名検証に対応したアプリ内更新。 |
-
-概要には、その対局で**適用を確認したプロセス抑制数とサービス停止数**を表示します。機能の利用可否は Windows、ハードウェア、ドライバーによります。効果は実際のゲームとバックグラウンド負荷で判断してください。
-
-## シーンと設定プリセット
-
-- **スマート**：ゲームと普段のアプリ操作の両立を考慮した制御。
-- **競技**：前面アプリの保護、ホワイトリスト、機能選択を守りながら、対局向けの制御を強めます。
-- **デフォルト／極限プリセット**：機能設定を一括適用します。シーンとは別に選び、ハードウェア対応と現在の状態を確認して実行します。
-
-## ダウンロードと使い始め方
-
-1. [公式サイト](https://pavise.club/en/changelog/#latest)または [GitHub Releases](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) から配布パッケージをダウンロード。
-2. 固定のフォルダーに展開し、`Pavise.exe`、同名の `.exe.config`、同梱ファイルをまとめて保持し、管理者として実行。
-3. ゲームを追加し、シーン、機能、ホワイトリストを確認して守護を有効化。
-4. 終了後に復元状態を確認。永続設定は各項目の復元手順に従い、必要な場合は再起動。
-
-必要環境：**Windows 10 2004（19041）以降、.NET Framework 4.7.2 以降**。Windows 11 に対応し、各機能はシステムとデバイスの能力に応じて提供します。
-
-### 更新とバージョン情報
-
-**3.2.0.2** 以降は「バージョン情報 → 更新を確認」から進捗を見ながらダウンロードし、検証後にアプリを置き換えられます。ゲームライブラリ、ホワイトリスト、設定を保持します。**3.2.0.1 以前は一度手動で更新してください。** 更新前にゲームを終了してください。
-
-フレームレート検出、フローティング OSD、対局レポート、RTSS 連携は削除されました。詳細は[リリース履歴](https://github.com/dulaiduwang003/Pavise-Game/releases)を参照してください。
-
-## ドキュメントとフィードバック
-
-[使い方](https://pavise.club/en/docs/) · [更新履歴](https://pavise.club/en/changelog/#latest) · [問題を報告](https://github.com/dulaiduwang003/Pavise-Game/issues)
-
-報告には Pavise と Windows のバージョン、CPU／GPU、ゲーム、関連設定、再現手順を添えてください。必要に応じてログや診断概要も追加してください。
-
-## 作者と支援
-
-**[bdth](https://github.com/dulaiduwang003)** が作成・保守しています。Pavise は無料で、**寄付は任意**です。利用、フィードバック、開発支援に感謝します。
-
-[開発を支援](https://pavise.club/support/) · [作者プロフィール](https://github.com/dulaiduwang003)
-
 <p align="center">
-  <img src="docs/wechat.png" width="220" alt="作者の WeChat 寄付用 QR コード">
-  <img src="docs/alipay.png" width="220" alt="作者の Alipay 寄付用 QR コード">
+  <a href="#pavise-を選ぶ理由">Pavise を選ぶ理由</a> ·
+  <a href="#機能">機能</a> ·
+  <a href="#モード">モード</a> ·
+  <a href="#クイックスタート">クイックスタート</a> ·
+  <a href="#コントリビュート">コントリビュート</a> ·
+  <a href="#コントリビューター">コントリビューター</a>
 </p>
 
-ライセンスと表示事項は [LICENSE](LICENSE)、[NOTICE](NOTICE) を参照してください。
+## Pavise を選ぶ理由
+
+ゲームは、ブラウザー、ランチャー、更新サービス、その他のバックグラウンド処理と 1 台のマシンを共有しています。Pavise はその奪い合いを管理します。プレイ中はゲームのスケジューリング優先度を上げ、対象となるバックグラウンドプロセスが占有するリソースを抑えます。
+
+**ゲームが終了すると、Pavise は記録しておいたセッション変更を自動的に復元します。** Pavise が異常終了した場合は、次回起動時に復元を再試行し、復元できなかった項目の記録を保持します。永続設定とファイル削除には別の復元規則があります。[復元されるもの](#復元されるもの)を参照してください。
+
+| ゲームのために | デスクトップはそのまま | 何が起きたか分かる |
+| :--- | :--- | :--- |
+| ゲームの自動検出、設定可能なバックグラウンド抑制、ゲームごとのプロファイル。 | 記録したセッション変更はプレイ後に復元され、普段のシステム設定は変わりません。 | セッションレポート、ハードウェア診断、構造化ログ、コピーできる診断サマリー。 |
+
+Pavise はローカルで動作し、本機のデータを送信せず、ゲームプロセスへの注入やゲームメモリの書き換えも行いません。起動時に公式の更新元を 1 回確認します。
+
+CPU や GPU の性能を新たに生み出すものではありません。効果はバックグラウンドの競合状況、ハードウェア、ゲームによって異なります。同じ場面で Pavise のオン・オフを比較してください。もともとクリーンな環境や完全に GPU 律速のゲームでは変化が小さい場合があります。
+
+## 機能
+
+RTSS 連携、フレームレート計測、パフォーマンスオーバーレイは廃止されました。RTSS を削除する場合は、[Uninstall-RTSS.cmd](Uninstall-RTSS.cmd) を右クリックし、「管理者として実行」を選んでください。Pavise の起動時に自動でアンインストールされることはありません。
+
+| 領域 | 制御できること |
+| :--- | :--- |
+| **ゲームライブラリ** | EXE、ショートカット、フォルダーを追加。Steam、Epic、GOG、Ubisoft、Riot、WeGame、Battle.net、Xbox、Microsoft Store をスキャン。ゲームごとに個別のプロファイルを保持。 |
+| **バックグラウンドプロセス** | CPU、ディスク IO、ページング、GPU の優先度、EcoQoS、タイマーポリシーをまとめて制御。組み込みの保護規則とホワイトリストで、触れないものを決めます。 |
+| **CPU コア** | ゲーム用コアの選択、CCD と SMT のショートカット、システム用コアの確保、通常のバックグラウンドをゲーム用コアの外に留めるオプション。 |
+| **グラフィックス** | 対応する NVIDIA、AMD、Intel のドライバー制御、GPU 設定、電力上限、任意の VRAM ポリシー。元の値は記録されます。 |
+| **メモリと電源** | 管理電源プラン、セッション中の電源ポリシー、任意のメモリ制御。メモリ整理などの高度なポリシーは個別に設定できます。 |
+| **デバイス割り込み** | DPC 活動の観測、セッション間の比較、デバイスとコア候補の確認、再起動後の手動変更の検証。 |
+| **診断** | ハードウェア能力、スケジューリング設定、電力・温度制限、セッションレポート、警告の確認。問題を報告する際は診断サマリーをコピーできます。 |
+| **ワークフロー** | 英語と中国語の切り替え、ライトとダークのテーマ、機能検索、トレイへの最小化、ホワイトリストの管理。 |
+
+**[すべてのモジュール、スイッチ、制限事項を見る →](https://pavise.club/en/docs/)**
+
+通常のバックグラウンド抑制は、アンチチートプロセス、Windows コアサービス、入力・音声・周辺機器のチェーン、ハードウェアツール、他のログインアカウントを除外します。アンチチートの制御は別のスイッチで既定はオフ、対象は指定されたユーザーモードプロセスのみで、カーネルドライバーは制御しません。ゲーム一族の除外は既定で有効です。
+
+他の WeGame ゲームでは、ゲームごとの詳細設定で自動シェル除去を有効にできます。観測済みの描画プロセスが実行されていることと、そのプロセスの識別情報を確認すると、WeGame の画面だけを自動で終了します。ログインと実行用の構成要素は保持し、手動確認や前景への切り替え、負荷の上昇は不要です。未観測のプログラムやランチャーは対象外です。この条件はログインや読み込みの完了を示すものではありません。LoL 専用の LCU 処理は維持します。
+
+## モード
+
+| モード | バックグラウンドの範囲 | 切り替え後に使うアプリ | 電源とハードウェアのポリシー |
+| :--- | :--- | :--- | :--- |
+| **スマート** | セッション開始時に対象のバックグラウンドプロセスを隔離します。 | 使用中のアプリとその一族は除外されます。 | 任意の自動引き上げは既定でオフです。 |
+| **eスポーツ** | 抑制範囲を対象のゲーム以外のプロセスへ広げます。ウィンドウのあるアプリも含みます。 | 抑制対象のままです。ホワイトリストと組み込みの保護は有効です。 | 追加ポリシーは引き続き設定できます。 |
+| **携帯機** | eスポーツと同じバックグラウンド範囲です。 | eスポーツと同じです。 | 電力制御はベンダーツールに任せます。バッテリーが必要で、デスクトップ向けのポリシーはいくつか提供しません。 |
+| **カスタム** | バックグラウンド、コア、グラフィックス、メモリ、電源、環境のポリシーを個別に選びます。 | 選んだポリシーによります。 | 全体で調整するか、ゲームごとに上書きします。 |
+
+本機で使えないモードは表示されません。以前の極限モードは v2.2.2 で削除され、その追加項目はそれぞれ独立したスイッチになりました（既定はオフ）。[モードの詳細](https://pavise.club/en/docs/modes/)。
+
+## クイックスタート
+
+Process Lasso（PL）などと併用する場合、同じ項目に異なる優先度・CPU範囲・電源設定を適用すると競合する可能性があります。両方が High でも優先度は加算されません。切り分けでは PL の設定を固定し、Pavise の設定を一度に一つだけ変更してください。[ポリシーの説明](https://pavise.club/en/docs/v3/modes/)を参照してください。
+
+**動作要件：** Windows 10 バージョン 2004（ビルド 19041）以降、Windows 11 24H2 を推奨。リソース管理には管理者権限が必要です。アプリの UI は**英語と簡体字中国語**に対応し、日本語はドキュメントのみです。
+
+1. **Pavise を入手**：[公式ダウンロードページ](https://pavise.club/en/changelog/#latest)で更新履歴を読み、GitHub または Quark を選びます。ダウンロードは無料です。
+2. **Pavise を開き**、ゲームの EXE、ショートカット、フォルダーをライブラリに追加するか、インストール済みのゲームをスキャンします。
+3. **モードを選び**、その設定を確認します。影響を受けたくないアプリはホワイトリストに追加します。必要ならゲームごとのプロファイルを使います。
+4. **ガードを有効にしてプレイします。** 検出とセッション管理は自動で行われ、ゲームを最小化してもセッションは終わりません。
+5. **ゲームを終了します。** Pavise は記録したセッション変更を復元します。セッションレポートや診断サマリーで何が起きたかを確認できます。
+
+実行ファイルは現在署名されていません。詳しい設定手順とスクリーンショットは[図解ユーザーガイド](https://pavise.club/en/docs/)を参照してください。
+
+## 復元されるもの
+
+| 変更 | 復元の動作 |
+| :--- | :--- |
+| **ゲームセッションの変更** | プレイ終了時に記録した元の値から復元します。異常終了後は次回起動時に再試行します。 |
+| **永続設定** | システム環境の設定、アプリの GPU 設定、EXE ごとの互換設定は個別に復元するまで残ります。一部は再起動が必要です。 |
+| **入力言語** | 英語レイアウトへの一度きりの切り替え要求は戻しません。 |
+| **削除したファイルや消去したキャッシュ** | 設定の復元では再作成できません。任意の LOL 追加コンポーネント削除は、明示的に確認する別操作です。 |
+
+ガードをオフにすると汎用のセッション管理を停止し、セッション変更の復元を試みます。待機ポリシー、永続設定、ゲーム拡張はそれぞれの制御に従います。
+
+<details>
+<summary><strong>復元ツールとローカルデータ</strong></summary>
+
+設定ページに復元とアンインストールの操作があります。操作前に[復元の説明](https://pavise.club/en/docs/v3/recovery/)を読み、必要な設定や記録を保存してください。
+
+データは通常 `%AppData%\Pavise` に保存され、UI と機能の設定はレジストリの `HKCU\Software\Pavise` にあります。実行ファイルの隣に空の `Pavise.portable` ファイルを置くと、プログラムのディレクトリに保存するポータブルモードになります。
+
+</details>
+
+## 画面
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/en/library.png" alt="Pavise のゲームライブラリ"><br><strong>ゲームライブラリ</strong><br>ゲーム、認識、個別プロファイル。</td>
+<td width="50%"><img src="docs/screenshots/en/policy.png" alt="Pavise の最適化ポリシー"><br><strong>最適化ポリシー</strong><br>プレイ中に使うポリシーを制御します。</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/en/graphics.png" alt="Pavise のグラフィックス制御"><br><strong>グラフィックス</strong><br>ドライバー制御と GPU ポリシー。</td>
+<td width="50%"><img src="docs/screenshots/en/interrupt.png" alt="Pavise のデバイス割り込みページ"><br><strong>デバイス割り込み</strong><br>観測し、調整し、結果を比較します。</td>
+</tr>
+</table>
+
+## ドキュメント
+
+| まずはここから | さらに詳しく |
+| :--- | :--- |
+| [図解ユーザーガイド](https://pavise.club/en/docs/) | [モードの詳細解説](https://pavise.club/en/docs/modes/) |
+| [更新履歴とダウンロード](https://pavise.club/en/changelog/#latest) | [ゲームごとの設定](https://pavise.club/en/docs/profiles/) |
+| [英語ドキュメント](README.md) | [スケジューリングの仕組み](https://pavise.club/en/docs/mechanisms/) |
+| [中国語ドキュメント](README.zh-CN.md) | [メモリと電源のポリシー](https://pavise.club/en/docs/memory-power/) |
+
+## ソースからビルド
+
+Windows 上で .NET Framework 4.x のコンパイラーを使ってビルドします。ビルドスクリプトはシステムのコンパイラーを使うため、Visual Studio は不要です。
+
+```bat
+git clone --branch pavise3x https://github.com/dulaiduwang003/Pavise-Game.git
+cd Pavise-Game
+build.cmd -b dev
+```
+
+出力は `build\Pavise.exe` です。
+
+## コントリビュート
+
+バグ報告、修正、ドキュメントの改善、翻訳を歓迎します。
+
+1. バグは [Issue を作成](https://github.com/dulaiduwang003/Pavise-Game/issues)し、Pavise のバージョン、Windows のビルド、ハードウェア、影響を受けるゲーム、関連する設定、再現手順を添えてください。診断出力を共有する前に個人情報が含まれていないか確認してください。
+2. リポジトリを Fork し、**`pavise3x`** からブランチを作成して、変更は焦点を絞ってください。大きな機能は先に Issue で方針を相談してください。
+3. 何を変更し、どうテストしたかを説明してください。UI の変更にはスクリーンショットを、動作の修正には関連ログや回帰テストを添えてください。
+4. **`pavise3x`** に向けて Pull Request を作成してください。メンテナーがレビューとテストを行ってからマージします。
+
+コードを使用、改変、再配布する前に [GNU GPLv3](LICENSE) をお読みください。
+
+## コントリビューター
+
+コード、テスト、バグ報告、翻訳で Pavise を良くしてくださる皆さんに感謝します。
+
+<a href="https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors">
+  <img src="docs/contributors.svg" alt="Pavise のコントリビューター：完全な一覧は GitHub で">
+</a>
+
+[コントリビューター一覧](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [参加する](https://github.com/dulaiduwang003/Pavise-Game/issues)
+
+## サポートとコミュニティ
+
+**[bdth](https://github.com/dulaiduwang003)** が作成し、保守しています。
+
+- **公式サイト：** [pavise.club](https://pavise.club/en/)
+- **バグと提案：** [GitHub Issues](https://github.com/dulaiduwang003/Pavise-Game/issues)
+- **メール：** [2074055628@qq.com](mailto:2074055628@qq.com)
+- **QQ コミュニティ：** グループ 4 `166255062` · グループ 5 `1109874913`
+- **開発を支援：** [寄付](https://pavise.club/en/support/)。寄付は任意で、Pavise とその機能は無料で入手できます。
+
+## ライセンス
+
+Pavise は **[GNU General Public License バージョン 3 のみ](LICENSE)**（`GPL-3.0-only`）で公開されています。Copyright (C) 2026 bdth。
+
+GPLv3 に従い、利用、学習、改変、再配布ができ、商用利用や有償配布も可能です。対象となる作品を配布する場合は、著作権表示とライセンス表示を保持し、変更内容と日付を明示したうえで、GPLv3 で提供してください。バイナリを配布する場合は、ライセンスの定めに従って受領者に対応するソースコードを提供する必要があります。
+
+本ソフトウェアは、商品性や特定目的への適合性を含め、**一切の保証なく**提供されます。全文は [LICENSE](LICENSE)、プロジェクトの表示は [NOTICE](NOTICE) を参照してください。
+
+公式版は引き続き[公式サイト](https://pavise.club/en/changelog/#latest)で無料配布します。寄付は任意です。

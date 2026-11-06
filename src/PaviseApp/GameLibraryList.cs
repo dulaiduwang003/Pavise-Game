@@ -17,7 +17,7 @@ namespace PaviseApp
 
 		private bool arranging;
 
-		public Func<string, Bitmap> IconProvider;
+		public Func<string, Bitmap> IconProvider { get; set; }
 
 		public IList<GameLibraryItem> Items
 		{

@@ -1,0 +1,147 @@
+{
+  "version": "3.3.0.7",
+  "date": "2026-11-05",
+  "baseline": "3.2.0.2",
+  "items": [
+    {
+      "zh": "软件绝大部分功能仅在对局中生效，退局后自动恢复；不支持退局恢复的功能均已单独标注。遇到问题时，建议先排查：系统最近是否更新过 Windows 或显卡等驱动；关闭 Pavise 后问题是否依旧，可能是游戏本身的问题。禁止与其他会修改进程优先级或 CPU 绑核的调度软件同时使用，两边会互相覆盖设置。Pavise 是免费开源软件，欢迎任何人友好交流；对恶意攻击和辱骂，不会惯着。",
+      "en": "Most Pavise features take effect only during a game session and restore automatically when it ends; features that do not support restoration at session end are explicitly marked. If you run into problems, first check whether Windows or drivers such as the graphics driver were updated recently, and whether the problem persists with Pavise closed; it may come from the game itself. Do not use Pavise together with other scheduling tools that change process priority or CPU affinity, as they overwrite each other. Pavise is free, open-source software and friendly discussion is welcome from anyone; malicious attacks and abuse will not be tolerated.",
+      "ja": "Paviseのほとんどの機能はゲーム中のみ有効になり、ゲーム終了後に自動で元に戻ります。ゲーム終了時の復元に対応しない機能は個別に明記しています。問題が起きたら、まずWindowsやグラフィックドライバーなどが最近更新されていないか、Paviseを終了しても問題が続くか（ゲーム自体の問題の可能性）を確認してください。プロセス優先度やCPUアフィニティを変更する他のスケジューリングソフトとの併用は禁止です（互いの設定を上書きします）。Paviseは無料のオープンソースソフトウェアです。どなたとの友好的な交流も歓迎しますが、悪意ある攻撃や誹謗中傷には容赦しません。"
+    },
+    {
+      "zh": "后台治理改为关闭、正常、激进三档，入口在顶部策略设置的游戏场景下方：正常降低普通后台的 CPU、I/O、内存与 GPU 优先级并启用效率模式；激进另外禁止 Windows 临时提升后台线程优先级。后台 GPU 优先级和传递优化下载让路并入后台治理，减少独立开关。",
+      "en": "Background governance now has Off, Normal and Aggressive levels below Game scenario in the top strategy settings. Normal lowers CPU, I/O, memory and GPU priority for ordinary background processes and enables efficiency mode; Aggressive also stops Windows from temporarily boosting background thread priority. Background GPU priority and Delivery Optimization yielding are now part of background governance, reducing separate switches.",
+      "ja": "バックグラウンド制御を上部の方針設定（ゲームシナリオの下）でオフ・通常・積極の3段階に。通常は一般的なバックグラウンドのCPU・I/O・メモリ・GPU優先度を下げて効率モードを有効にし、積極ではWindowsによるバックグラウンドスレッドの一時的な優先度上昇も止めます。バックグラウンドGPU優先度と配信の最適化のダウンロード譲渡もバックグラウンド制御に統合し、個別スイッチを減らしました。"
+    },
+    {
+      "zh": "智能模式在 CPU 持续 10 秒达到 70% 时临时扩大后台治理范围，回落后恢复，切出游戏即释放并保护前台；竞技模式持续治理。游戏、白名单和必要依赖始终受保护。",
+      "en": "Smart mode temporarily widens background governance when CPU use stays at 70% for 10 seconds and narrows it again after recovery; switching away from the game releases it and protects the foreground app. Competitive mode keeps governance active. Games, the whitelist and required dependencies remain protected.",
+      "ja": "スマートモードはCPU使用率が10秒間70%に達すると一時的に制御範囲を広げ、落ち着くと元に戻し、ゲームから切り替えると解除して前面のアプリを保護します。競技モードは制御を継続。ゲーム、許可リスト、必要な依存プロセスは常に保護されます。"
+    },
+    {
+      "zh": "白名单新增“直播与推流工具”：自动保护 OBS Studio、哔哩哔哩直播姬、抖音/快手/斗鱼直播伴侣、虎牙开播端、Streamlabs、XSplit、PRISM Live Studio、TikTok LIVE Studio、Meld Studio、vMix、Wirecast，连同其身份核验通过的子进程。",
+      "en": "Added a Streaming tools whitelist category that automatically protects OBS Studio, Bilibili Live, the Douyin, Kuaishou and Douyu streaming companions, Huya, Streamlabs, XSplit, PRISM Live Studio, TikTok LIVE Studio, Meld Studio, vMix and Wirecast, together with their verified child processes.",
+      "ja": "許可リストに「ライブ配信・送出ツール」を追加。OBS Studio、bilibili直播姬、抖音・快手・斗鱼の配信アシスタント、虎牙開播端、Streamlabs、XSplit、PRISM Live Studio、TikTok LIVE Studio、Meld Studio、vMix、Wirecastと、識別を確認した子プロセスを自動保護します。"
+    },
+    {
+      "zh": "白名单新增“Windows 系统进程”分类：系统预置项集中展示，可按进程名搜索；手动白名单与平台保护分开显示。",
+      "en": "Added a Windows system processes whitelist category that groups built-in system entries with process-name search; manual rules and platform protection are listed separately.",
+      "ja": "許可リストに「Windowsシステムプロセス」を追加。システムの既定項目をまとめて表示し、プロセス名で検索できます。手動の許可規則とプラットフォーム保護は別に表示します。"
+    },
+    {
+      "zh": "关键线程自动绑定（逐游戏）：一个关键线程（优先渲染线程）独占物理核心，其他持续接近满载的线程只设为优先核，负载相近的工作线程交由系统调度；数量按 CPU 拓扑自动确定，大小核只用性能核；游戏自行改回分配时让出。",
+      "en": "Automatic critical-thread binding (per game) gives one critical thread, preferably the render thread, its own physical core and only a preferred core to other threads that stay near saturation; worker threads with similar loads are left to Windows. The count follows the CPU topology, hybrid CPUs use performance cores only, and the binding yields when the game changes placement itself.",
+      "ja": "重要スレッドの自動固定（ゲームごと）：重要スレッド1本（描画スレッド優先）に専用の物理コアを割り当て、ほぼ飽和が続く他のスレッドには優先コアのみ設定。負荷が近いワーカースレッドはWindowsに任せます。数はCPU構成から自動決定し、ハイブリッドCPUでは性能コアのみ使用。ゲーム自身が割り当てを変えた場合は譲ります。"
+    },
+    {
+      "zh": "游戏核心调度、后台隔离挪核和独立反作弊服务优先用 Job 锁定所选核心范围，阻止进程自行改绑；退局或主程序异常退出时由独立守护恢复原范围。修复开机自启后守护进程受计划任务限制无法启动、绑定失效的问题。",
+      "en": "Game core scheduling, background isolation and standalone anti-cheat services now prefer Job objects to lock the selected cores so processes cannot rebind themselves; an independent guardian restores the original range after the game or if Pavise exits unexpectedly. Fixed the guardian failing to start after autostart because of scheduled-task restrictions, which disabled these bindings.",
+      "ja": "ゲームのコア割り当て、バックグラウンドの隔離、独立したアンチチートサービスは、Jobで選択コアを固定してプロセス自身による変更を防ぎます。ゲーム終了時やPaviseの異常終了時は独立した監視プロセスが元の範囲に戻します。自動起動後にタスクスケジューラーの制約で監視プロセスが起動できず、固定が効かない問題を修正しました。"
+    },
+    {
+      "zh": "修复各系列 CPU 核心识别：交叉核对 Windows 拓扑与 CPU Sets，必要时逐核读取 CPUID；关闭超线程不再混淆性能核与能效核，证据不足时明确显示未确认，不改变已保存的核心范围。",
+      "en": "Fixed core identification across CPU families by cross-checking Windows topology with CPU Sets and reading per-core CPUID when needed. Disabling SMT no longer confuses performance and efficiency cores, unconfirmed results are shown as such, and saved core ranges are unchanged.",
+      "ja": "CPUシリーズ全般のコア識別を修正。WindowsのトポロジーとCPU Setsを照合し、必要に応じてコアごとにCPUIDを読み取ります。SMT無効時も性能コアと効率コアを混同せず、根拠不足は未確認と表示し、保存済みのコア範囲は変更しません。"
+    },
+    {
+      "zh": "游戏线程提优优先识别 DirectX 画面提交线程；连续五次采样未成功后停止观测并保留备用提优；健康提优不再定时撤回重采样，游戏改回优先级后不再争抢；关键线程绑定中的同一线程不重复提优。",
+      "en": "Game thread boosting prefers the DirectX present thread; after five consecutive unsuccessful samples it stops observing while keeping the fallback boost. Healthy boosts are no longer periodically withdrawn for resampling, Pavise stops competing once the game restores its own priority, and a thread under critical-thread binding is not boosted twice.",
+      "ja": "ゲームスレッドの優先度向上はDirectXの画面提出スレッドを優先。サンプリングが連続5回成功しなければ観測を止め、代替の向上は維持します。正常な向上を定期的に撤回して再測定することはなくなり、ゲームが優先度を戻した場合は競合しません。重要スレッド固定中のスレッドに重複して適用しません。"
+    },
+    {
+      "zh": "反作弊：ACE、EasyAntiCheat、BattlEye 分组开关直接生效，移除专项总开关；三档分别温和降低优先级、共享 2 个或 1 个完整物理核心，并加强内存与 I/O 压制；核验独立服务与游戏祖先做好依赖保护，避免误压启动器；修复反作弊调度与游戏优先级的计时冲突。",
+      "en": "Anti-cheat: the ACE, EasyAntiCheat and BattlEye group switches now take effect directly without a separate master switch. The three levels lower priority gently or share 2 or 1 full physical cores with stronger memory and I/O suppression. Standalone services and game ancestors are verified for dependency protection so launchers are not suppressed, and a timing conflict with game priority boosting was fixed.",
+      "ja": "アンチチート：ACE、EasyAntiCheat、BattlEyeのグループスイッチが直接反映され、専用の総合スイッチを削除。3段階で優先度を穏やかに下げる、または完全な物理コア2個・1個を共有させ、メモリとI/Oの抑制を強化。独立サービスとゲームの親プロセスを確認して依存を保護し、ランチャーを抑制しません。ゲーム優先度とのタイミング競合も修正しました。"
+    },
+    {
+      "zh": "托管电源：笔记本沿用旧策略，台式机按 CPU 匹配新版预置；高性能模板缺失时核验后复制原计划（可为平衡）的副本作为候选；识别到 ROG Ally、GPD WIN 等掌机时跳过接管，交给系统和厂商软件管理。",
+      "en": "Managed power: laptops keep the previous policy and desktops use newer presets matched to the CPU. When performance templates are missing, a verified copy of the original plan (which may be Balanced) is used as the candidate. Handhelds such as ROG Ally and GPD WIN are skipped and left to Windows and vendor software.",
+      "ja": "管理電源：ノートPCは従来の方針、デスクトップはCPUに合わせた新しいプリセットを使用。高性能テンプレートがない場合は、確認済みの元プラン（バランスの場合あり）の複製を候補にします。ROG Ally、GPD WINなどの携帯ゲーム機は管理対象外とし、Windowsとメーカーソフトに任せます。"
+    },
+    {
+      "zh": "对局电源：托管计划原生逐项写入并回读核验；指定计划每 15 秒核对是否仍在使用；临时失败最多尝试 3 次，失败阶段和错误码写入日志；启动时清理不再使用的 Pavise 电源计划。",
+      "en": "Match power: managed plans are written item by item through native APIs and verified by readback, and selected plans are checked every 15 seconds to confirm they remain active. Temporary failures are retried at most 3 times with the failing stage and error code logged, and unused Pavise power plans are removed at startup.",
+      "ja": "対戦時の電源：管理プランはネイティブAPIで項目ごとに書き込み、読み戻して確認します。指定プランは15秒ごとに使用中か確認。一時的な失敗は最大3回まで再試行し、失敗段階とエラーコードをログに記録。起動時に使われなくなったPaviseの電源プランを整理します。"
+    },
+    {
+      "zh": "厂商切档：联想 SmartFan 支持延迟读回；ASUS 通过运行中的 G-Helper 切换 Turbo，退局恢复原配置，途中手动改档后让出控制；入口移到策略设置的对局电源下方。",
+      "en": "Vendor performance modes: Lenovo SmartFan supports delayed readback; ASUS switches to Turbo through a running G-Helper and restores the original profile after the game, yielding if you change it manually. The setting now sits below Match power in the strategy settings.",
+      "ja": "メーカー性能モード：Lenovo SmartFanは遅延読み戻しに対応。ASUSは実行中のG-HelperでTurboに切り替え、ゲーム後に元の設定へ戻し、途中で手動変更した場合は制御を譲ります。設定は方針設定の対戦時の電源の下に移動しました。"
+    },
+    {
+      "zh": "前台时间片支持在线生效和恢复，系统拒绝时才提示重启电脑；Windows 后台应用限制改为按需提示重启应用，家庭版必要时注销。",
+      "en": "Foreground quantum now applies and restores online, prompting for a PC restart only if Windows refuses. Windows background-app restrictions now ask you to restart the affected apps as needed, or to sign out on Home editions when required.",
+      "ja": "前景タイムスライスを即時に適用・復元でき、Windowsが拒否した場合のみPCの再起動を案内します。Windowsのバックグラウンドアプリ制限は必要に応じて該当アプリの再起動を案内し、Home版では必要時にサインアウトを求めます。"
+    },
+    {
+      "zh": "性能选项新增独立 CPU 软件缓解开关：Intel/AMD 可选择扩展关闭范围，保留其他配置位并可恢复原值；应用和恢复需重启电脑，旧版已开启的范围不会自动扩大。",
+      "en": "Added a standalone CPU software-mitigation switch in Performance Options. Intel and AMD systems can choose an expanded disable range while other configuration bits are kept and original values can be restored; applying or restoring requires a PC restart, and ranges enabled by older versions are not widened automatically.",
+      "ja": "パフォーマンスオプションにCPUソフトウェア緩和策の独立スイッチを追加。Intel/AMDでは拡張した無効化範囲を選べ、他の設定ビットは維持し元の値に戻せます。適用と復元にはPCの再起動が必要で、旧版で有効にした範囲は自動的に広げません。"
+    },
+    {
+      "zh": "英雄联盟游戏卡片新增 LOL 附加内容清理提示：发现可清理内容时突出显示入口，点击进入专属优化，清理后自动刷新。",
+      "en": "League of Legends cards now show a LoL cleanup notice when removable add-ons are found, linking to the dedicated optimization page and refreshing after cleanup.",
+      "ja": "League of Legendsのゲームカードに、削除できる追加コンポーネントがある場合のLoLクリーンアップ案内を表示。専用の最適化画面を開け、削除後は自動で更新します。"
+    },
+    {
+      "zh": "修复连续进出游戏时 0.5 ms 计时器请求异常；全局计时器与恒定节拍故障后停止本阶段，有限次数恢复旧请求并核验，系统精度不足时显示受限。",
+      "en": "Fixed 0.5 ms timer requests failing across repeated game sessions. After a global timer or fixed-tick failure, that stage stops and the previous request is restored and verified with a limited number of attempts; insufficient system precision is shown as limited.",
+      "ja": "ゲームへの連続出入りで0.5 msタイマー要求が異常になる問題を修正。グローバルタイマーや固定ティックの障害後はその段階を止め、回数を限って以前の要求を復元・確認します。システム精度が足りない場合は制限ありと表示します。"
+    },
+    {
+      "zh": "有限恢复：各项动作失败后停止本阶段，并自动有限次恢复原值，不再需要手动重试；移除设置中的“已停用动作”入口，失败阶段与错误码写入日志。",
+      "en": "Bounded recovery: when an action fails, its stage stops and original values are restored automatically with a limited number of attempts, so manual retries are no longer needed. The disabled-actions view was removed from Settings, and failing stages and error codes are logged.",
+      "ja": "回数制限付きの復元：動作が失敗するとその段階を止め、元の値を回数を限って自動復元するため、手動の再試行は不要になりました。設定の「停止中の動作」画面を削除し、失敗段階とエラーコードはログに記録します。"
+    },
+    {
+      "zh": "游戏 CPU、内存、磁盘 I/O 与 GPU 优先级统一由“性能优先级”开关控制，各项分别核验与恢复；修复已确认未改动的优先级在退局时被写回旧值的优先级错误恢复问题。",
+      "en": "Game CPU, memory, disk I/O and GPU priorities are now controlled by the single Performance priority switch, each still verified and restored separately. Fixed incorrect priority restoration that wrote old values back after games even when nothing had been changed.",
+      "ja": "ゲームのCPU・メモリ・ディスクI/O・GPU優先度を「パフォーマンス優先度」スイッチで一括管理し、各項目は個別に確認・復元します。変更していない優先度をゲーム終了時に古い値へ戻してしまう誤った復元を修正しました。"
+    },
+    {
+      "zh": "对局保持唤醒改为自动唤醒：守护开启且游戏在前台时生效，切出、退局或停止守护后释放，不再需要独立开关。",
+      "en": "Keep-awake during matches is now automatic: it applies while protection is on and the game is in front, and is released when you switch away, the game ends or protection stops, without a separate switch.",
+      "ja": "対戦中のスリープ抑止を自動化。保護が有効でゲームが前面にある間だけ働き、切り替え・ゲーム終了・保護停止で解除され、個別スイッチは不要になりました。"
+    },
+    {
+      "zh": "切出与退局：智能切出时概览区分后台压制已释放或仍在恢复，服务单独统计；切回游戏立即核验核心绑定、关键线程与优先级；修复退局状态残留旧数量的问题。",
+      "en": "Switching away and leaving games: in Smart mode, Overview shows whether background suppression was released or is still recovering, with services counted separately. Returning to the game immediately re-verifies core bindings, critical threads and priorities, and stale counts no longer remain in the post-game state.",
+      "ja": "切り替えとゲーム終了：スマートモードで切り替えると、概要にバックグラウンド抑制が解除済みか復元中かを表示し、サービスは別に集計。ゲームに戻るとコア固定、重要スレッド、優先度をすぐ確認し、ゲーム終了後の状態に古い件数が残る問題を修正しました。"
+    },
+    {
+      "zh": "概览在游戏期间继续显示 CPU、GPU 占用与内存实时数据，修复部分显卡的占用显示；离开概览后停止读取。",
+      "en": "Overview keeps showing live CPU, GPU and memory usage during games, with GPU usage display fixed on some graphics cards; reading stops when you leave Overview.",
+      "ja": "ゲーム中も概要にCPU・GPU使用率とメモリをリアルタイム表示し、一部のGPUで使用率が正しく表示されない問題を修正。概要を離れると読み取りを停止します。"
+    },
+    {
+      "zh": "一键配置：“作者同款”更新为作者当前配置，包含正常后台治理；“极限配置”采用激进后台治理、扩展 CPU 缓解关闭范围以及 GPU 频率与功耗上限设置。",
+      "en": "One-click presets: the author preset now matches the author's current setup, including Normal background governance; the extreme preset uses Aggressive governance, the expanded CPU-mitigation range and GPU clock and power-limit settings.",
+      "ja": "ワンクリック設定：「作者と同じ」は作者の現在の設定に更新し、通常のバックグラウンド制御を含みます。「極限」は積極的な制御、拡張したCPU緩和策の範囲、GPUクロックと電力上限の設定を使用します。"
+    },
+    {
+      "zh": "重做策略布局：后台治理和对局电源移到顶部策略设置；设置页分类标签改为紧凑样式并按窗口宽度自动换行；性能页各分类按“对局生效”（退局自动还原）与“长期生效”（退局不还原）分组。",
+      "en": "Redesigned the strategy layout: background governance and match power now sit in the top strategy settings, and Settings category tabs use a compact style that wraps to the window width. Each performance category groups its settings into In-match (restored after the match) and Persistent (kept after the match).",
+      "ja": "方針設定のレイアウトを刷新。バックグラウンド制御と対戦時の電源を上部の方針設定に移し、設定画面のカテゴリタブはコンパクトにしてウィンドウ幅に合わせて折り返します。性能ページの各カテゴリは「対戦中のみ」（終了後に復元）と「継続適用」（終了後も維持）に分けて表示します。"
+    },
+    {
+      "zh": "运行日志改为技术事件记录，减少重复成功记录；新增日志导出，可选择位置保存完整日志；移除诊断摘要。",
+      "en": "The run log now records technical events with fewer repeated success entries. Added log export to save the complete log to a chosen location; the diagnostic summary was removed.",
+      "ja": "実行ログを技術イベントの記録に変更し、重複する成功記録を減らしました。ログ出力を追加し、保存先を選んでログ全体を保存できます。診断サマリーは削除しました。"
+    },
+    {
+      "zh": "修复网络体检将 0xFFFFFFFF 误判为异常：该值表示已关闭网络节流，属于有效配置，不再强制改回 10；旧修复记录仍可撤回。",
+      "en": "Fixed the checkup treating 0xFFFFFFFF as abnormal: it means network throttling is disabled and is a valid setting, so it is no longer forced back to 10. Previous repair records can still be undone.",
+      "ja": "体検で0xFFFFFFFFを異常と誤判定する問題を修正。この値はネットワーク調整が無効であることを示す有効な設定のため、10に戻しません。以前の修復記録は引き続き元に戻せます。"
+    },
+    {
+      "zh": "修复取消更新检查后误显示“发现新版本”的问题；当前版本高于线上版本时提示无需更新，同版与旧版不再显示升级箭头。",
+      "en": "Fixed a false new-version message after cancelling an update check. When the installed version is newer than the published one, Pavise reports that no update is needed, and the same or older versions no longer show an upgrade arrow.",
+      "ja": "更新確認を取り消した後に新しいバージョンがあると誤表示する問題を修正。公開版より新しい場合は更新不要と表示し、同じ版や古い版に更新矢印を表示しません。"
+    },
+    {
+      "zh": "关于页新增“永久免费”声明，提示通过任何渠道付费购买 Pavise 的用户向卖家或交易平台申请退款。",
+      "en": "About now states that Pavise is permanently free and advises anyone who paid for it through any channel to request a refund from the seller or marketplace.",
+      "ja": "「このアプリについて」に永久無料の声明を追加し、いずれかの経路で有料購入した場合は販売者または取引プラットフォームに返金を求めるよう案内します。"
+    }
+  ]
+}

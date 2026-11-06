@@ -24,6 +24,22 @@ namespace PaviseApp
 
 		private string sourceScopeHash;
 
+		private sealed class RootWriterBusyException : IOException
+		{
+			internal RootWriterBusyException(IOException inner) : base("original root writer is active", inner) { }
+		}
+
+		private static FileStream OpenObservationWriter(string path)
+		{
+			try { return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None); }
+			catch (IOException error)
+			{
+				int code = error.HResult & 65535;
+				if (code == 32 || code == 33) throw new RootWriterBusyException(error);
+				throw;
+			}
+		}
+
 		internal bool HoldsRootWriter
 		{
 			get
@@ -56,7 +72,7 @@ namespace PaviseApp
 			}
 			if (observeOnly)
 			{
-				rootWriter = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+				rootWriter = OpenObservationWriter(path);
 			}
 			else
 			{
@@ -227,6 +243,11 @@ namespace PaviseApp
 			return list.ToArray();
 		}
 
+		internal static HardThreadJournal[] ObserveHistoricalJournals(string canonicalRoot)
+		{
+			using (var store = new HardThreadFileStore(canonicalRoot, true)) return store.HistoricalJournals();
+		}
+
 		internal HardThreadJournal ReadHistorical(HardThreadTarget target)
 		{
 			if (!HoldsRootWriter)
@@ -337,15 +358,21 @@ namespace PaviseApp
 
 		internal static bool CanonicalRootHasRecoveryDebt(string canonicalRoot)
 		{
+			bool debt;
+			return !TryCanonicalRootHasRecoveryDebt(canonicalRoot, out debt) || debt;
+		}
+
+		// A confirmed debt is different from an unreadable source. Legacy callers
+		// keep the fail-closed wrapper above; recovery owners can now budget actual
+		// observation failures without spending a native-write attempt on a wait.
+		internal static bool TryCanonicalRootHasRecoveryDebt(string canonicalRoot, out bool debt)
+		{
+			debt = false;
 			try
 			{
 				if (string.IsNullOrEmpty(canonicalRoot) || !Path.IsPathRooted(canonicalRoot))
 				{
-					return true;
-				}
-				if (CriticalThreadGuardian.HasControllerDebt(canonicalRoot))
-				{
-					return true;
+					return false;
 				}
 				string fullPath = Path.GetFullPath(canonicalRoot);
 				bool flag = false;
@@ -366,25 +393,36 @@ namespace PaviseApp
 					}
 					if ((attributes & FileAttributes.ReparsePoint) != 0 || (attributes & FileAttributes.Directory) == 0)
 					{
-						return true;
+						return false;
 					}
 					if (string.Equals(directoryInfo.FullName.TrimEnd('\\'), fullPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
 					{
 						flag = true;
 					}
 				}
+				if (CriticalThreadGuardian.HasControllerDebt(fullPath))
+				{
+					debt = true;
+					return true;
+				}
 				if (!flag)
 				{
-					return false;
+					return true;
 				}
-				using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(fullPath, true))
+				try
 				{
-					return hardThreadFileStore.HistoricalDebt();
+					using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(fullPath, true))
+					{
+						debt = hardThreadFileStore.HistoricalDebt();
+					}
 				}
+				catch (RootWriterBusyException) { debt = true; return true; }
+				return true;
 			}
 			catch
 			{
-				return true;
+					debt = false;
+					return false;
 			}
 		}
 

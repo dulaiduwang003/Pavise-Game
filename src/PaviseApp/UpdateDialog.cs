@@ -31,6 +31,7 @@ namespace PaviseApp
         internal bool IsInstalling { get { return installing; } }
 
         private static string T(string zh, string en) { return PerformancePolicy.Text(zh, en); }
+        private static string T(string zh, string en, string ja) { return Lang.Cur == 2 ? ja : T(zh, en); }
 
         internal static UpdateDialog ShowFor(IWin32Window owner, UpdateResult latest, Action<UpdateDialog, string, SelfUpdatePackage> install)
         {
@@ -65,7 +66,7 @@ namespace PaviseApp
         internal UpdateDialog(UpdateResult latest, Action<UpdateDialog, string, SelfUpdatePackage> install)
         {
             this.install = install;
-            latestVersion = latest == null ? null : latest.Latest;
+            latestVersion = latest != null && latest.Ok && UpdateChecker.IsNewer(latest.Latest, App.Version) ? latest.Latest : null;
             Name = "SelfUpdateDialog";
             Text = T("Pavise 软件更新", "Pavise software update");
             AccessibleName = Text;
@@ -97,7 +98,7 @@ namespace PaviseApp
             lockPanel.Controls.Add(notice);
             close = Button("×", "UpdateClose", BtnKind.Normal, delegate { Close(); });
             close.AccessibleName = T("关闭更新窗口", "Close update window");
-            start = Button(T("立即更新", "Update now"), "UpdateStart", BtnKind.Primary, delegate { BeginOperation(true); });
+            start = Button(T("立即更新", "Update now"), "UpdateStart", BtnKind.Primary, delegate { BeginOperation(state != "cancelled"); });
             cancel = Button(T("稍后更新", "Later"), "UpdateCancel", BtnKind.Normal, CancelOrClose);
             quark = Button(T("夸克下载入口", "Quark download entry"), "UpdateQuark", BtnKind.Primary, delegate { OpenManual(true); });
             github = Button(T("GitHub 下载", "GitHub download"), "UpdateGitHub", BtnKind.Normal, delegate { OpenManual(false); });
@@ -227,6 +228,8 @@ namespace PaviseApp
             CancellationToken token = cancelSource.Token;
             Interlocked.Exchange(ref cancelRequested, 0);
             int request = ++operation;
+            package = null;
+            latestVersion = null;
             SetBusy(true);
             SetState("checking");
             ThreadPool.QueueUserWorkItem(delegate
@@ -235,26 +238,33 @@ namespace PaviseApp
                 {
                     SelfUpdatePackage found = SelfUpdateDownload.Check(token);
                     token.ThrowIfCancellationRequested();
-                    if (!UpdateChecker.IsNewer(found.Version, App.Version))
+                    int comparison = new Version(found.Version).CompareTo(new Version(App.Version));
+                    if (comparison <= 0)
                     {
-                        Post(delegate { if (operation == request) { latestVersion = found.Version; SetBusy(false); SetState("current"); } });
+                        Post(delegate
+                        {
+                            if (!AcceptCompletion(request, token)) return;
+                            latestVersion = found.Version;
+                            SetBusy(false);
+                            SetState(comparison < 0 ? "ahead" : "current");
+                        });
                         return;
                     }
                     if (!download)
                     {
-                        Post(delegate { if (operation == request) { package = found; latestVersion = found.Version; SetBusy(false); SetState("ready"); } });
+                        Post(delegate { if (AcceptCompletion(request, token)) { package = found; latestVersion = found.Version; SetBusy(false); SetState("ready"); } });
                         return;
                     }
                     stagingDirectory = SelfUpdateInstaller.CreateStagingDirectory();
-                    Post(delegate { if (operation == request) { package = found; latestVersion = found.Version; SetState("downloading"); } });
+                    Post(delegate { if (AcceptProgress(request, token)) { package = found; latestVersion = found.Version; SetState("downloading"); } });
                     string executable = SelfUpdateDownload.Download(found, stagingDirectory, delegate(SelfUpdateProgress p)
                     {
-                        Post(delegate { if (operation == request && busy && !installing) ApplyProgress(p); });
+                        Post(delegate { if (AcceptProgress(request, token)) ApplyProgress(p); });
                     }, token);
                     token.ThrowIfCancellationRequested();
                     Post(delegate
                     {
-                        if (operation != request || !busy || Volatile.Read(ref cancelRequested) != 0 || cancelSource.IsCancellationRequested) { FinishCancelled(request); return; }
+                        if (!AcceptCompletion(request, token)) return;
                         if (install == null) { ShowManual(T("当前启动方式无法安装更新，请使用手动下载。", "This launch mode cannot install updates. Use a manual download.")); return; }
                         SetInstalling(T("正在安全停止守护并还原会话改动。请勿断电。", "Safely stopping the guard and restoring session changes. Keep the PC powered on."));
                         try { install(this, executable, found); }
@@ -267,23 +277,37 @@ namespace PaviseApp
                     string message = ex.Message;
                     Post(delegate
                     {
-                        if (operation != request) return;
-                        if (Volatile.Read(ref cancelRequested) != 0 || cancelSource.IsCancellationRequested) FinishCancelled(request);
-                        else ShowManual(message);
+                        if (AcceptCompletion(request, token)) ShowManual(message);
                     });
                 }
                 finally { cancelSource.Dispose(); }
             });
         }
 
+        private bool AcceptProgress(int request, CancellationToken token)
+        {
+            return operation == request && busy && !installing && Volatile.Read(ref cancelRequested) == 0 && !token.IsCancellationRequested;
+        }
+
+        private bool AcceptCompletion(int request, CancellationToken token)
+        {
+            if (operation != request || !busy || installing) return false;
+            if (Volatile.Read(ref cancelRequested) != 0 || token.IsCancellationRequested)
+            {
+                FinishCancelled(request);
+                return false;
+            }
+            return true;
+        }
+
         private void FinishCancelled(int request)
         {
-            if (operation != request || installing) return;
+            if (operation != request || !busy || installing) return;
             CleanupDownload();
+            package = null;
+            latestVersion = null;
             SetBusy(false);
-            SetState("ready");
-            summary.Text = T("更新已取消，原程序未变更。现在可以关闭软件。", "Update cancelled; the original program is unchanged. You can close the app now.");
-            Arrange();
+            SetState("cancelled");
         }
 
         private void CancelOrClose()
@@ -339,16 +363,21 @@ namespace PaviseApp
             bool active = value == "checking" || value == "downloading" || value == "verifying" || value == "installing";
             Text = manual ? T("Pavise 手动更新", "Pavise manual update") : T("Pavise 软件更新", "Pavise software update");
             caption.Text = "PAVISE  //  " + (manual ? T("手动更新", "MANUAL UPDATE") : T("软件更新", "SOFTWARE UPDATE"));
-            title.Text = manual ? T("手动更新", "Manual update") : value == "ready" ? T("发现新版本", "Update available") : value == "current" ? T("已是最新版本", "You're up to date") : value == "downloading" ? T("正在下载更新", "Downloading update") : value == "verifying" ? T("正在校验更新包", "Verifying update") : value == "installing" ? T("正在准备安装", "Preparing installation") : T("正在检查更新", "Checking for updates");
+            title.Text = manual ? T("手动更新", "Manual update") : value == "cancelled" ? T("更新已取消", "Update cancelled") : value == "ready" ? T("发现新版本", "Update available") : value == "ahead" ? T("无需更新", "No update needed", "更新は不要です") : value == "current" ? T("已是最新版本", "You're up to date") : value == "downloading" ? T("正在下载更新", "Downloading update") : value == "verifying" ? T("正在校验更新包", "Verifying update") : value == "installing" ? T("正在准备安装", "Preparing installation") : T("正在检查更新", "Checking for updates");
             summary.Text = manual ? T("自动更新失败后已切换为手动更新，请选择下方下载入口。", "Automatic update failed. Choose a manual download below.")
+                : value == "cancelled" ? T("操作已取消，原程序未变更。可以重新检查更新或关闭窗口。", "Operation cancelled; the original program is unchanged. Check again or close this window.")
+                : value == "ahead" ? T("当前版本高于线上版本，无需更新。", "Your version is newer than the online release. No update is needed.", "現在のバージョンは公開版より新しいため、更新は不要です。")
                 : value == "current" ? T("当前运行的是 Pavise v", "You are running Pavise v") + App.Version
                 : value == "ready" ? T("点击更新后自动下载、替换原 EXE 并启动新版；成功后删除旧版。", "Download, replace the original EXE and restart automatically; remove the old version after a successful start.")
                 : value == "installing" ? T("正在安全停止运行，更新窗口将在程序退出后继续安装。", "Safely stopping Pavise. The updater will continue after the app exits.")
                 : T("下载并校验完成后自动替换程序，然后重新启动。", "After download and verification, replace the program and restart.");
-            versions.Text = T("当前 v", "Current v") + App.Version + (!string.IsNullOrEmpty(latestVersion) && latestVersion != App.Version ? "   →   v" + latestVersion : "");
+            versions.Text = T("当前 v", "Current v") + App.Version
+                + (value == "ahead" && !string.IsNullOrEmpty(latestVersion)
+                    ? "   " + T("线上 v", "Online v", "公開版 v") + latestVersion
+                    : UpdateChecker.IsNewer(latestVersion, App.Version) ? "   →   v" + latestVersion : "");
             progress.Visible = progressTitle.Visible = progressDetail.Visible = stages.Visible = active;
             reason.Visible = manual;
-            quark.Visible = github.Visible = !active && value != "current";
+            quark.Visible = github.Visible = manual || value == "ready";
             quark.Kind = manual ? BtnKind.Primary : BtnKind.Normal;
             lockPanel.Visible = active || value == "ready";
             notice.ForeColor = active ? Theme.Warning : Theme.Dim;
@@ -361,12 +390,12 @@ namespace PaviseApp
             if (value == "downloading") progress.Value = 0;
             progressTitle.Text = value == "checking" ? T("正在连接官方更新服务", "Connecting to the official update service") : value == "installing" ? T("正在等待安全退出回执", "Waiting for safe shutdown confirmation") : T("下载更新包", "Downloading update");
             progressDetail.Text = value == "checking" ? T("连接失败将显示夸克网盘与 GitHub 手动下载。", "If the connection fails, Quark and GitHub manual downloads will appear.") : value == "installing" ? T("此阶段无法取消。请勿断电。", "This stage cannot be cancelled. Keep the PC powered on.") : "";
-            start.Visible = !active && value != "current" && !stoppedRuntime && install != null;
+            start.Visible = !active && value != "current" && value != "ahead" && !stoppedRuntime && install != null;
             start.Kind = manual ? BtnKind.Normal : BtnKind.Primary;
-            start.Text = manual ? T("重试自动更新", "Retry automatic update") : T("立即更新", "Update now");
+            start.Text = value == "cancelled" ? T("重新检查", "Check again") : manual ? T("重试自动更新", "Retry automatic update") : T("立即更新", "Update now");
             cancel.Visible = true;
             cancel.Enabled = !installing;
-            cancel.Text = stoppedRuntime ? T("退出 Pavise", "Exit Pavise") : active ? T("取消更新", "Cancel update") : manual ? T("关闭", "Close") : value == "current" ? T("完成", "Done") : T("稍后更新", "Later");
+            cancel.Text = stoppedRuntime ? T("退出 Pavise", "Exit Pavise") : active ? T("取消更新", "Cancel update") : manual || value == "cancelled" ? T("关闭", "Close") : value == "current" || value == "ahead" ? T("完成", "Done", "完了") : T("稍后更新", "Later");
             close.Enabled = !busy;
             footer.Text = manual ? T("更新已停止，个人数据与恢复记录保留。", "Update stopped; personal data and recovery records retained.") : T("游戏库、白名单、个人设置与恢复记录将保留", "Your library, whitelist, settings and recovery records are retained");
             Arrange();

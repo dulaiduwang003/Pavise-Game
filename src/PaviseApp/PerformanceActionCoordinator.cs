@@ -20,6 +20,7 @@ namespace PaviseApp
 			internal string[] Games;
 
 			internal string Signature;
+			internal long SessionSerial;
 		}
 
 		private sealed class Attempt
@@ -27,6 +28,7 @@ namespace PaviseApp
 			internal long Next;
 
 			internal int Failures;
+			internal Func<bool>[] RecoveryObservers;
 
 			internal string State = "";
 
@@ -44,6 +46,13 @@ namespace PaviseApp
 		private readonly ManualResetEvent sessionRestored = new ManualResetEvent(true);
 
 		private volatile bool sessionRestoreOk = true;
+		private sealed class RestoreSchedule
+		{
+			internal bool Reported;
+			internal long Due;
+			internal Func<bool>[] Observers;
+		}
+		private RestoreSchedule sessionRestoreSchedule;
 
 		private readonly Dictionary<string, string> states = new Dictionary<string, string>();
 
@@ -183,7 +192,8 @@ namespace PaviseApp
 			{
 				Array.Sort(games, StringComparer.OrdinalIgnoreCase);
 			}
-			string text = guard + "|" + match + "|" + visualMatch + "|" + requireExistingGames + "|" + string.Join("\n", games) + "|retry:" + ActionFailureStore.RetryGeneration + "|selected:" + PerformanceTuning.ActionSelectionSignature();
+			long sessionSerial = PerformanceTuning.RecoveryCycleSerial;
+			string text = sessionSerial + "|" + guard + "|" + match + "|" + visualMatch + "|" + requireExistingGames + "|" + string.Join("\n", games) + "|selected:" + PerformanceTuning.ActionSelectionSignature();
 			lock (gate)
 			{
 				long num = Now();
@@ -199,6 +209,7 @@ namespace PaviseApp
 					RequireExistingGames = requireExistingGames,
 					Games = games,
 					Signature = text
+					, SessionSerial = sessionSerial
 				};
 				sessionRestored.Reset();
 				nextCheck = num + TimeSpan.FromMinutes(1.0).Ticks;
@@ -277,7 +288,7 @@ namespace PaviseApp
 
 		private bool Resolve(string id, string target, Func<string> query, out string resolved)
 		{
-			string key = id + "\nresolve:" + target;
+			string key = PerformanceTuning.RecoveryCycleSerial + "\n" + id + "\nresolve:" + target;
 			resolved = null;
 			Attempt attempt;
 			if (!Due(id, key, out attempt))
@@ -288,7 +299,15 @@ namespace PaviseApp
 			attempt.Target = target;
 			try
 			{
-				resolved = query();
+				string queried = null;
+				if (!PerformanceTuning.RestoreWithBudget(new PerformanceActionStore.Receipt { Id = "resolve:" + id, Target = target }, 3,
+					delegate { queried = query(); return true; }))
+				{
+					attempt.State = "stopped";
+					Record(id, "stopped", "Query failure budget exhausted");
+					return false;
+				}
+				resolved = queried;
 				if (string.IsNullOrEmpty(resolved))
 				{
 					Unsupported(id, attempt, "unsupported");
@@ -330,22 +349,18 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string key = id + "\napply:" + target + "\n" + wanted;
+			ActionFailureStore.BeginAutomaticCycle(id, target, request.SessionSerial + "\n" + wanted);
+			string key = request.SessionSerial + "\n" + id + "\napply:" + target + "\n" + wanted;
 			Attempt value;
-			if (ActionFailureStore.IsRetryPending(id, target))
+			if (ActionFailureStore.IsIsolated(id, target))
 			{
-				if (!RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), true))
+				if (!RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false))
 				{
-					ActionFailureStore.Trip(id, target, "Recovery incomplete before retry");
 					Record(id, "restore-failed", target);
 					return;
 				}
-				if (attempts.TryGetValue(key, out value))
-				{
-					value.Next = 0L;
-					value.State = "";
-				}
 			}
+			ActionFailureStore.BeginAutomaticCycle(id, target, request.SessionSerial + "\n" + wanted);
 			if (ActionFailureStore.IsBlocked(id, target))
 			{
 				bool flag = RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false);
@@ -439,7 +454,7 @@ namespace PaviseApp
 			List<PerformanceActionStore.Receipt> list;
 			try
 			{
-				list = PerformanceActionStore.All();
+				if (!PerformanceTuning.ReadRecoveryReceipts(out list)) return false;
 			}
 			catch (Exception ex)
 			{
@@ -452,7 +467,7 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				string key = PerformanceActionStore.Slot(item.Id, item.Target);
+				string key = PerformanceTuning.RecoveryCycleSerial + "\n" + PerformanceActionStore.Slot(item.Id, item.Target) + "\n" + item.Original + "\n" + item.Expected;
 				Attempt value;
 				if (!restoreAttempts.TryGetValue(key, out value))
 				{
@@ -461,6 +476,7 @@ namespace PaviseApp
 				}
 				if (!force && Now() < value.Next)
 				{
+					ReportRestoreSchedule(value);
 					result = false;
 					string value2;
 					restoreDetails.TryGetValue(key, out value2);
@@ -469,13 +485,15 @@ namespace PaviseApp
 				}
 				bool flag = false;
 				string text = null;
-				try
+				using (var attemptTrace = new RecoveryAttemptTrace())
 				{
-					flag = PerformanceActionBackend.Restore(item);
-				}
-				catch (Exception ex2)
-				{
-					text = ex2.Message;
+					try { flag = PerformanceTuning.RestorePerformanceReceipt(item); }
+					catch (Exception ex2) { text = ex2.Message; }
+					if (!flag && attemptTrace.Reported && attemptTrace.Next == long.MaxValue)
+					{
+						value.Failures = 5;
+						value.RecoveryObservers = attemptTrace.PhaseObservers.ToArray();
+					}
 				}
 				if (flag)
 				{
@@ -490,16 +508,28 @@ namespace PaviseApp
 					value.Failures++;
 				}
 				value.Next = Now() + TimeSpan.FromSeconds(Math.Min(300, 30 << value.Failures - 1)).Ticks;
+				ReportRestoreSchedule(value);
 				RestoreFailure(id, key, item.Target + " | " + (text ?? PerformancePolicy.Text("配置恢复未完成", "Configuration restore incomplete")));
 			}
 			return result;
+		}
+
+		private static void ReportRestoreSchedule(Attempt attempt)
+		{
+			if (attempt.Failures < 5) { RecoveryAttemptTrace.DeferredUntil(attempt.Next); return; }
+			long session = PerformanceTuning.RecoveryCycleSerial;
+			RecoveryAttemptTrace.Exhausted(() => PerformanceTuning.RecoveryCycleSerial != session);
+			if (attempt.RecoveryObservers != null)
+				foreach (Func<bool> observer in attempt.RecoveryObservers) RecoveryAttemptTrace.Exhausted(observer);
 		}
 
 		private static bool HasRetiredDefenderRecords()
 		{
 			try
 			{
-				foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+				List<PerformanceActionStore.Receipt> receipts;
+				if (!PerformanceTuning.ReadRecoveryReceipts(out receipts)) return true;
+				foreach (PerformanceActionStore.Receipt item in receipts)
 				{
 					if (item.Id == "AutoDefenderSessionV1" || item.Id == "AutoDefenderResourcesV1")
 					{
@@ -540,6 +570,9 @@ namespace PaviseApp
 
 		private void Process(Request request)
 		{
+			using (var recoveryTrace = new RecoveryAttemptTrace())
+			{
+			if (!request.Match || !request.Guard) sessionRestoreOk = false;
 			batchStates.Clear();
 			batchDetails.Clear();
 			collectingBatch = true;
@@ -551,6 +584,13 @@ namespace PaviseApp
 			{
 				collectingBatch = false;
 				PublishBatch();
+				if (!request.Match || !request.Guard)
+				{
+					Volatile.Write(ref sessionRestoreSchedule, new RestoreSchedule { Reported = recoveryTrace.Reported,
+						Due = recoveryTrace.Next, Observers = recoveryTrace.PhaseObservers.ToArray() });
+					sessionRestored.Set();
+				}
+			}
 			}
 		}
 
@@ -579,7 +619,6 @@ namespace PaviseApp
 			if (!request.Match || !request.Guard)
 			{
 				sessionRestoreOk = flag6 && flag3;
-				sessionRestored.Set();
 			}
 			if (!request.Guard || !Current(request))
 			{
@@ -714,8 +753,18 @@ namespace PaviseApp
 		{
 			if (sessionRestored.WaitOne(timeout))
 			{
-				return sessionRestoreOk;
+				if (sessionRestoreOk) return true;
+				RestoreSchedule schedule = Volatile.Read(ref sessionRestoreSchedule);
+				if (schedule != null && schedule.Reported)
+				{
+					if (schedule.Due == long.MaxValue) RecoveryAttemptTrace.Exhausted();
+					else RecoveryAttemptTrace.DeferredUntil(Math.Max(schedule.Due, DateTime.UtcNow.AddSeconds(1).Ticks));
+					if (schedule.Observers != null)
+						foreach (Func<bool> observer in schedule.Observers) RecoveryAttemptTrace.Exhausted(observer);
+				}
+				return false;
 			}
+			RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
 			return false;
 		}
 	}

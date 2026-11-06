@@ -26,38 +26,86 @@ namespace PaviseApp
 
 		private static readonly Dictionary<string, ActionFailureRecord> volatileFailures = new Dictionary<string, ActionFailureRecord>(StringComparer.OrdinalIgnoreCase);
 
-		private static readonly HashSet<string> permits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-		private static readonly Dictionary<string, string> retries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
 		private static readonly Dictionary<string, string> admissions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 		private static readonly HashSet<string> failedCompletions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly HashSet<string> recoveredIntents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 		private static bool migrated;
 
-		private static long retryGeneration;
-
-		internal static long RetryGeneration
+		private sealed class AutomaticPhase
 		{
-			get
+			internal int Attempts;
+			internal int MaxFailures = 1;
+			internal long Sequence;
+			internal long FailureSequence;
+		}
+
+		private static readonly Dictionary<string, string> automaticCycles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		private static readonly Dictionary<string, Dictionary<string, AutomaticPhase>> automaticPhases = new Dictionary<string, Dictionary<string, AutomaticPhase>>(StringComparer.OrdinalIgnoreCase);
+		private static readonly Dictionary<string, long> automaticSessions = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+		private static long automaticSequence;
+
+		// cycleIdentity is a genuine session identity, a newline, then material configuration.
+		// A -> B -> A within that session selects the original spent budget rather than refilling it.
+		internal static bool BeginAutomaticCycle(string action, string target, string cycleIdentity, int maxFailures = 1)
+		{
+			if (string.IsNullOrEmpty(action) || string.IsNullOrEmpty(target) || string.IsNullOrEmpty(cycleIdentity)) return false;
+			long session;
+			if (!long.TryParse(SessionPart(cycleIdentity), NumberStyles.None, CultureInfo.InvariantCulture, out session) || session < 0) return false;
+			if (maxFailures < 1 || maxFailures > 3) throw new ArgumentOutOfRangeException("maxFailures");
+			lock (gate)
 			{
-				lock (gate)
-				{
-					return retryGeneration;
-				}
+				string key = RecordKey(action, target), previous;
+				MigrateLegacy();
+				long seenSession;
+				if (automaticSessions.TryGetValue(key, out seenSession) && session < seenSession) return false;
+				if (automaticCycles.TryGetValue(key, out previous) && previous == cycleIdentity) return false;
+				string failureKey = BlockKey(action, target);
+				if (admissions.ContainsKey(key) || (failureKey != null && admissions.ContainsValue(failureKey))) return false;
+				automaticCycles[key] = cycleIdentity;
+				automaticSessions[key] = session;
+				Dictionary<string, AutomaticPhase> phases;
+				if (!automaticPhases.TryGetValue(key, out phases)) automaticPhases[key] = phases = new Dictionary<string, AutomaticPhase>(StringComparer.Ordinal);
+				if (previous != null && session > seenSession) phases.Clear();
+				AutomaticPhase phase;
+				if (!phases.TryGetValue(cycleIdentity, out phase)) phases[cycleIdentity] = new AutomaticPhase { MaxFailures = maxFailures, Sequence = ++automaticSequence };
+				return true;
 			}
 		}
 
-		internal static bool HasRetryPermits
+		private static string SessionPart(string identity)
 		{
-			get
+			int split = identity.IndexOf('\n');
+			return split < 0 ? "" : identity.Substring(0, split);
+		}
+
+		private static AutomaticPhase Phase(string action, string target)
+		{
+			string key = RecordKey(action, target), cycle;
+			if (!automaticCycles.TryGetValue(key, out cycle)) cycle = "";
+			Dictionary<string, AutomaticPhase> phases;
+			if (!automaticPhases.TryGetValue(key, out phases)) automaticPhases[key] = phases = new Dictionary<string, AutomaticPhase>(StringComparer.Ordinal);
+			AutomaticPhase phase;
+			if (!phases.TryGetValue(cycle, out phase)) phases[cycle] = phase = new AutomaticPhase { Sequence = ++automaticSequence };
+			return phase;
+		}
+
+		private static bool Blocked(string action, string target, string failureKey)
+		{
+			if (admissions.ContainsKey(RecordKey(action, target)) || recoveredIntents.Contains(RecordKey(action, target))) return true;
+			if (failureKey != null)
 			{
-				lock (gate)
-				{
-					return permits.Count != 0;
-				}
+				ActionFailureRecord failure = Read(failureKey, action, target);
+				if (failure != null && failure.PersistenceFailed) return true;
 			}
+			AutomaticPhase phase = Phase(action, target);
+			if (phase.Attempts >= phase.MaxFailures) return true;
+			// A current-process wildcard failure covers default-cycle targets as well.
+			string cycle;
+			AutomaticPhase wildcard = Phase(action, "*");
+			return target != "*" && failureKey == RecordKey(action, "*") && wildcard.Attempts >= wildcard.MaxFailures
+				&& (!automaticCycles.TryGetValue(RecordKey(action, target), out cycle) || wildcard.FailureSequence >= phase.Sequence);
 		}
 
 		internal static string CurrentEnvironment()
@@ -246,7 +294,7 @@ namespace PaviseApp
 			{
 				MigrateLegacy();
 				string text = BlockKey(action, target);
-				return text != null && !permits.Contains(text);
+				return Blocked(action, target, text);
 			}
 		}
 
@@ -269,16 +317,6 @@ namespace PaviseApp
 			}
 		}
 
-		internal static bool IsRetryPending(string action, string target)
-		{
-			lock (gate)
-			{
-				MigrateLegacy();
-				string text = BlockKey(action, target);
-				return text != null && permits.Contains(text);
-			}
-		}
-
 		internal static bool TryBeginApply(string action, string target, out string reason)
 		{
 			reason = null;
@@ -297,12 +335,13 @@ namespace PaviseApp
 					return false;
 				}
 				string text = BlockKey(action, target);
-				if (text != null && !permits.Contains(text))
+				if (Blocked(action, target, text) || (text != null && admissions.ContainsValue(text)))
 				{
-					reason = Read(text, action, target).Reason;
+					reason = text == null ? "Automatic phase stopped or action already running" : Read(text, action, target).Reason;
 					return false;
 				}
 				ActionFailureRecord record = NewRecord(action, target, "Execution admitted; verified completion pending", null);
+				Phase(action, target).Attempts++;
 				string text2 = Serialize(record);
 				string name = IntentKey(action, target);
 				string value;
@@ -310,16 +349,7 @@ namespace PaviseApp
 				{
 					Trip(action, target, "Execution intent could not be persisted; no apply attempted");
 					reason = "Execution intent could not be persisted";
-					if (text != null)
-					{
-						permits.Remove(text);
-					}
 					return false;
-				}
-				if (text != null)
-				{
-					permits.Remove(text);
-					retries[key] = text;
 				}
 				admissions[key] = text;
 				return true;
@@ -334,7 +364,7 @@ namespace PaviseApp
 				string text2;
 				if (failedCompletions.Remove(text))
 				{
-					text2 = (retries.ContainsKey(text) ? retries[text] : text);
+					text2 = admissions.ContainsKey(text) && admissions[text] != null ? admissions[text] : text;
 					ActionFailureRecord actionFailureRecord = Read(text2, action, target);
 					if (actionFailureRecord != null && actionFailureRecord.PersistenceFailed)
 					{
@@ -343,11 +373,9 @@ namespace PaviseApp
 					}
 					if (actionFailureRecord != null && !actionFailureRecord.PersistenceFailed)
 					{
-						SaveIntent(action, target, "");
+						if (SaveIntent(action, target, "")) recoveredIntents.Remove(text);
 					}
 					admissions.Remove(text);
-					retries.Remove(text);
-					permits.Remove(text2);
 					return;
 				}
 				ActionFailureRecord actionFailureRecord2 = Read(text, action, target);
@@ -360,51 +388,8 @@ namespace PaviseApp
 					Trip(action, target, "Cancelled execution intent could not be cleared");
 					return;
 				}
-				if (retries.TryGetValue(text, out text2))
-				{
-					retries.Remove(text);
-					if (Read(text2, action, target) != null)
-					{
-						permits.Add(text2);
-					}
-				}
 				admissions.Remove(text);
-			}
-		}
-
-		internal static void WithdrawRetry(string action, string target)
-		{
-			lock (gate)
-			{
-				string text = RecordKey(action, target);
-				if (failedCompletions.Contains(text))
-				{
-					CancelApply(action, target);
-					return;
-				}
-				ActionFailureRecord actionFailureRecord = Read(text, action, target);
-				if (actionFailureRecord != null && actionFailureRecord.PersistenceFailed && !admissions.ContainsKey(text))
-				{
-					permits.Remove(text);
-					return;
-				}
-				if (!SaveIntent(action, target, ""))
-				{
-					Trip(action, target, "Withdrawn execution intent could not be cleared");
-					return;
-				}
-				string value;
-				if (retries.TryGetValue(text, out value))
-				{
-					permits.Remove(value);
-					retries.Remove(text);
-				}
-				value = BlockKey(action, target);
-				if (value != null)
-				{
-					permits.Remove(value);
-				}
-				admissions.Remove(text);
+				recoveredIntents.Remove(text);
 			}
 		}
 
@@ -417,8 +402,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string value;
-				bool flag = retries.TryGetValue(text, out value);
+				string value = admissions[text];
+				bool flag = value != null;
 				string value2;
 				if (!Settings.TryLoadStr(IntentKey(action, target), out value2) || string.IsNullOrEmpty(value2))
 				{
@@ -436,12 +421,12 @@ namespace PaviseApp
 					return false;
 				}
 				admissions.Remove(text);
-				retries.Remove(text);
 				failedCompletions.Remove(text);
+				// A successful observation does not consume the failure budget or refund earlier failures.
+				Phase(action, target).Attempts = Math.Max(0, Phase(action, target).Attempts - 1);
 				if (flag)
 				{
 					volatileFailures.Remove(value);
-					permits.Remove(value);
 				}
 				return true;
 			}
@@ -460,7 +445,9 @@ namespace PaviseApp
 			actionFailureRecord.PersistenceFailed = !Save(failureKey, Serialize(actionFailureRecord));
 			volatileFailures[failureKey] = actionFailureRecord;
 			failedCompletions.Add(text);
-			permits.Remove(failureKey);
+			AutomaticPhase phase = Phase(action, target);
+			phase.Attempts = Math.Max(phase.Attempts, phase.MaxFailures);
+			phase.FailureSequence = ++automaticSequence;
 		}
 
 		internal static void Trip(string action, string target, string reason, string environmentContext = null)
@@ -474,10 +461,8 @@ namespace PaviseApp
 				string text = RecordKey(action, target);
 				string target2 = target;
 				string value;
-				if (retries.TryGetValue(text, out value))
+				if (admissions.TryGetValue(text, out value) && value != null)
 				{
-					permits.Remove(value);
-					retries.Remove(text);
 					if (!string.Equals(value, text, StringComparison.OrdinalIgnoreCase))
 					{
 						target2 = "*";
@@ -487,11 +472,16 @@ namespace PaviseApp
 				{
 					target2 = "*";
 				}
-				admissions.Remove(text);
-				permits.Remove(text);
+				bool admitted = admissions.Remove(text);
 				failedCompletions.Remove(text);
 				text = RecordKey(action, target2);
-				permits.Remove(text);
+				ActionFailureRecord previous;
+				AutomaticPhase phase = Phase(action, target);
+				// Without an admission ticket there is no safely attributable retry allowance.
+				// Stop this phase; duplicate logging must not create an unlimited external path.
+				phase.Attempts = Math.Max(admitted ? 1 : phase.MaxFailures, phase.Attempts);
+				phase.FailureSequence = ++automaticSequence;
+				if (!admitted && volatileFailures.TryGetValue(text, out previous) && previous.Reason == reason) return;
 				ActionFailureRecord actionFailureRecord = NewRecord(action, target2, reason, environmentContext);
 				actionFailureRecord.PersistenceFailed = !Save(text, Serialize(actionFailureRecord));
 				volatileFailures[text] = actionFailureRecord;
@@ -556,15 +546,13 @@ namespace PaviseApp
 					}
 					throw new InvalidOperationException("Invalid unfinished execution intent: " + intentKey);
 				}
+				recoveredIntents.Add(key);
 				ActionFailureRecord actionFailureRecord4 = Read(key, actionFailureRecord2.Action, actionFailureRecord2.Target) ?? Read(RecordKey(actionFailureRecord2.Action, "*"), actionFailureRecord2.Action, "*");
 				if (actionFailureRecord4 == null)
 				{
-					Trip(actionFailureRecord2.Action, actionFailureRecord2.Target, "Previous execution was not confirmed; recovery required", actionFailureRecord2.Environment);
-				}
-				actionFailureRecord4 = Read(key, actionFailureRecord2.Action, actionFailureRecord2.Target) ?? Read(RecordKey(actionFailureRecord2.Action, "*"), actionFailureRecord2.Action, "*");
-				if (actionFailureRecord4 != null && !actionFailureRecord4.PersistenceFailed)
-				{
-					Save(intentKey, "", DurableIntent(actionFailureRecord2.Action));
+					actionFailureRecord4 = NewRecord(actionFailureRecord2.Action, actionFailureRecord2.Target, "Previous execution was not confirmed; recovery required", actionFailureRecord2.Environment);
+					actionFailureRecord4.PersistenceFailed = !Save(key, Serialize(actionFailureRecord4));
+					volatileFailures[key] = actionFailureRecord4;
 				}
 			}
 		}
@@ -617,39 +605,11 @@ namespace PaviseApp
 						Environment = value.Environment,
 						Reason = value.Reason,
 						OccurredUtc = value.OccurredUtc,
-						PersistenceFailed = value.PersistenceFailed,
-						RetryPending = (permits.Contains(value.Key) || retries.ContainsValue(value.Key))
+						PersistenceFailed = value.PersistenceFailed
 					});
 				}
 				list.Sort((ActionFailureRecord a, ActionFailureRecord b) => b.OccurredUtc.CompareTo(a.OccurredUtc));
 				return list;
-			}
-		}
-
-		internal static bool RequestRetry(string recordKey)
-		{
-			if (string.IsNullOrEmpty(recordKey))
-			{
-				return false;
-			}
-			lock (gate)
-			{
-				MigrateLegacy();
-				ActionFailureRecord actionFailureRecord = Read(recordKey, null, null);
-				if (actionFailureRecord == null || string.IsNullOrEmpty(actionFailureRecord.Action) || string.IsNullOrEmpty(actionFailureRecord.Target) || permits.Contains(recordKey) || retries.ContainsValue(recordKey))
-				{
-					return false;
-				}
-				if (!Save(recordKey, Serialize(actionFailureRecord)))
-				{
-					actionFailureRecord.PersistenceFailed = true;
-					volatileFailures[recordKey] = actionFailureRecord;
-					return false;
-				}
-				actionFailureRecord.PersistenceFailed = false;
-				permits.Add(recordKey);
-				retryGeneration++;
-				return true;
 			}
 		}
 
@@ -670,7 +630,14 @@ namespace PaviseApp
 			string value;
 			if (failed && Settings.TryLoadStr(text, out value) && !(value == "1"))
 			{
-				RegisterLegacy(action, "*", "Legacy failure isolation | " + oldKey);
+				// Migration is diagnostic history, not a newly attempted execution.
+				string key = RecordKey(action, "*");
+				if (Read(key, action, "*") == null)
+				{
+					ActionFailureRecord imported = NewRecord(action, "*", "Legacy failure isolation | " + oldKey, null);
+					imported.PersistenceFailed = !Save(key, Serialize(imported));
+					volatileFailures[key] = imported;
+				}
 				ActionFailureRecord actionFailureRecord = Read(RecordKey(action, "*"), action, "*");
 				if (actionFailureRecord != null && !actionFailureRecord.PersistenceFailed)
 				{

@@ -6,6 +6,7 @@ namespace PaviseApp
 {
 	internal static class SvcQuery
 	{
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct SERVICE_STATUS_PROCESS
 		{
 			public uint ServiceType;
@@ -35,6 +36,7 @@ namespace PaviseApp
 
 			public SERVICE_STATUS_PROCESS Status;
 		}
+#pragma warning restore 0649
 
 		private const uint SC_MANAGER_ENUMERATE_SERVICE = 4u;
 

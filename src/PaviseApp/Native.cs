@@ -67,6 +67,7 @@ namespace PaviseApp
 			public uint Attributes;
 		}
 
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 		private struct PublicObjectBasicInformation
 		{
 			public uint Attributes;
@@ -166,6 +167,7 @@ namespace PaviseApp
 
 			public uint LoggerNameOffset;
 		}
+#pragma warning restore 0649
 
 		public struct EventTraceHeader
 		{
@@ -764,17 +766,33 @@ namespace PaviseApp
 
 		public static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask)
 		{
+			int win32, ntStatus;
+			return TryQueryPowerThrottling(process, out controlMask, out stateMask, out win32, out ntStatus);
+		}
+
+		internal static bool RestorePowerThrottling(IntPtr process, int controlMask, int stateMask, out int win32)
+		{
+			bool restored = RestorePowerThrottling(process, controlMask, stateMask);
+			win32 = restored ? 0 : Marshal.GetLastWin32Error();
+			return restored;
+		}
+
+		internal static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask, out int win32, out int ntStatus)
+		{
 			int num = Marshal.SizeOf(typeof(PowerThrottlingState));
 			PowerThrottlingState powerThrottlingState = default(PowerThrottlingState);
 			powerThrottlingState.Version = 1u;
 			PowerThrottlingState info = powerThrottlingState;
 			bool flag = GetProcessInformation(process, 4, ref info, num);
+			win32 = flag ? 0 : Marshal.GetLastWin32Error();
+			ntStatus = 0;
 			if (!flag)
 			{
 				PowerThrottlingState powerThrottlingState2 = default(PowerThrottlingState);
 				powerThrottlingState2.Version = 1u;
 				info = powerThrottlingState2;
-				flag = NtQueryInformationProcessPower(process, 77, ref info, num, IntPtr.Zero) == 0;
+				ntStatus = NtQueryInformationProcessPower(process, 77, ref info, num, IntPtr.Zero);
+				flag = ntStatus == 0;
 			}
 			controlMask = (int)info.ControlMask;
 			stateMask = (int)info.StateMask;

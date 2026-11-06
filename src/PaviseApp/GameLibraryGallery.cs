@@ -45,7 +45,7 @@ namespace PaviseApp
 
 		public Func<GameProfile, Bitmap> CoverProvider;
 
-		public Action<Control, GameLibraryItem> ConfigurationRefresher;
+		public Action<Control, GameLibraryItem> ConfigurationRefresher { get; set; }
 
 		public IList<GameLibraryItem> Items
 		{
@@ -583,7 +583,7 @@ namespace PaviseApp
 			{
 				if (num >= 0)
 				{
-					ToggleConfiguration(cards[num]);
+					((PillButton)cards[num].ConfigurationButton).PerformClick();
 				}
 				e.Handled = true;
 				e.SuppressKeyPress = true;

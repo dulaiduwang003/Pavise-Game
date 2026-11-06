@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 
 namespace PaviseApp
@@ -15,6 +16,20 @@ namespace PaviseApp
 		public const long StaleTicks = 100000000L;
 
 		private const long NotTiming = -1L;
+
+		private readonly double enterUtilization;
+
+		private readonly double exitUtilization;
+
+		internal CpuSaturation() : this(EnterUtilization, ExitUtilization) { }
+
+		internal CpuSaturation(double enter, double exit)
+		{
+			if (!(enter > 0 && enter <= 1 && exit >= 0 && exit < enter))
+				throw new ArgumentOutOfRangeException("enter", "CPU thresholds must satisfy 0 <= exit < enter <= 1.");
+			enterUtilization = enter;
+			exitUtilization = exit;
+		}
 
 		private bool saturated;
 
@@ -58,7 +73,7 @@ namespace PaviseApp
 			staleSince = -1L;
 			if (!saturated)
 			{
-				if (utilization >= 0.9)
+				if (utilization >= enterUtilization)
 				{
 					if (enterSince == -1)
 					{
@@ -76,7 +91,7 @@ namespace PaviseApp
 					enterSince = -1L;
 				}
 			}
-			else if (utilization < 0.8)
+			else if (utilization < exitUtilization)
 			{
 				if (exitSince == -1)
 				{

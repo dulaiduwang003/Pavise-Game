@@ -451,7 +451,7 @@ namespace PaviseApp
 			return logEventEntry;
 		}
 
-		private static string SelectSession(IList<LogEventEntry> events, string active)
+		internal static string SelectSession(IList<LogEventEntry> events, string active)
 		{
 			if (!string.IsNullOrEmpty(active))
 			{

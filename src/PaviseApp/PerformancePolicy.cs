@@ -153,7 +153,7 @@ namespace PaviseApp
 
 		internal static bool SceneTunesProcessor(PerformancePreset mode)
 		{
-			return mode == PerformancePreset.Competitive;
+			return mode == PerformancePreset.Standard || mode == PerformancePreset.Competitive;
 		}
 
 		internal static string Text(string zh, string en)
@@ -183,6 +183,8 @@ namespace PaviseApp
 			{
 				return Resolve("GmBoost", raw);
 			}
+			if (key == "GmAwake") return "1";
+			if (key == "GmPauseDl" || key == "GmGpuDemote") return PolicyResolver.GlobalValue("GmSuppress") == "1" ? Resolve("GmSuppress", raw) : "0";
 			if (key == "PowerPlanOn")
 			{
 				if (!PowerPlan.NoSwitchSelected)

@@ -23,6 +23,12 @@ namespace PaviseApp
 
 		internal List<CoreThreadCandidate> Observe(ThreadTimes before, ThreadTimes after, int keep)
 		{
+			return Observe(before, after, keep, 0.35);
+		}
+
+		// minimumShare is the per-window share of one logical CPU a thread must keep to stay tracked.
+		internal List<CoreThreadCandidate> Observe(ThreadTimes before, ThreadTimes after, int keep, double minimumShare)
+		{
 			keep = Math.Max(1, keep);
 			List<CoreThreadCandidate> list = new List<CoreThreadCandidate>();
 			if (!ValidShape(before) || !ValidShape(after) || !AutoCores.WindowUsable(before, after))
@@ -45,7 +51,7 @@ namespace PaviseApp
 					continue;
 				}
 				double num2 = (double)(after.Cpu[j] - before.Cpu[value]) / (double)(after.Ticks - before.Ticks);
-				if (!(num2 < 0.35) && !(num2 > 1.1))
+				if (!(num2 < minimumShare) && !(num2 > 1.1))
 				{
 					CoreThreadCandidate value2;
 					if (!tracked.TryGetValue(num, out value2) || value2.Creation != after.Created[j] || Math.Abs(value2.Last - num2) > 0.25)

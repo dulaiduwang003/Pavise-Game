@@ -283,11 +283,13 @@ namespace PaviseApp
             { plan.UnavailableReason = "memory"; plan.Note = EnvironmentEnhancementEligibility.Description; return plan; }
             var targets = new List<PrivacyTarget>();
             foreach (RegSetting setting in SettingsFor(action, platform))
-                targets.Add(new PrivacyTarget { Key = ScopeTarget(setting.Target), Wanted = "d:" + setting.Value.ToString(CultureInfo.InvariantCulture), RestartRequired = true });
+                targets.Add(new PrivacyTarget { Key = ScopeTarget(setting.Target), Wanted = "d:" + setting.Value.ToString(CultureInfo.InvariantCulture), RestartRequired = action != PrivacyActionCatalog.BackgroundGlobal });
             plan.Supported = targets.Count != 0;
             plan.Targets = targets.ToArray();
             plan.Note = action == PrivacyActionCatalog.BackgroundGlobal
-                ? PrivacyActionCatalog.Find(action).Detail
+                ? (platform.PolicyCapable
+                    ? PerformancePolicy.Text("配置已写入后，重新启动受影响的 Windows 应用以采用新策略；保留逐应用例外。", "After configuration is written, restart affected Windows apps to adopt the policy; per-app exceptions are retained.")
+                    : PerformancePolicy.Text("家庭版采用当前账户的后台设置。更改后重新启动相关应用；若未采用，注销后重新登录。未验证资源管理器重启可以刷新此设置。", "Home uses the current account's background settings. Restart affected apps after changes; if they do not adopt the setting, sign out and back in. Restarting Explorer is not a verified refresh route."))
                 : PerformancePolicy.Text("内存充足时扩大文件系统缓存；开启/恢复需重启。", "Expands file-system caching when memory is sufficient. Enabling or restoring requires restart.");
             // The device-wide policy is a default: explicit per-app exceptions take precedence.
             if (action == PrivacyActionCatalog.BackgroundGlobal) plan.Limited = true;

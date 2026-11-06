@@ -8,17 +8,18 @@ namespace PaviseApp
     {
         private int laptopPerformanceProbeBusy;
 
-        private void AddLaptopPerformanceToggle(Control parent, ref int y)
+        private void ConfigureLaptopPerformanceToggle()
         {
-            AddManualPerformanceToggle(parent, ref y, LaptopPerfMode.PreferenceKey,
-                AutoText("笔记本厂商性能模式", "Laptop vendor performance mode"),
-                AutoText("兼容的联想/华硕笔记本插电对局时切厂商性能档，退局恢复原档；用户或厂商中途改档则让出。电源选“不切换”时不接管。可能增加发热和风扇噪声。",
-                    "On supported Lenovo/ASUS laptops, switches the vendor profile during AC-powered matches and restores it afterwards. Yields to user/vendor changes. Skips Don't switch. Heat and fan noise may increase."),
-                () => gameMode.LaptopPerformanceEnabled,
-                value => gameMode.TrySetLaptopPerformanceEnabled(value),
-                () => gameMode.LaptopPerformanceSupportKnown && gameMode.LaptopPerformanceSupported,
-                null, () => gameMode.LaptopPerformanceStatus);
-            QueueLaptopPerformanceProbe();
+            Toggle toggle = modeFlyout.LaptopPerformance;
+            toggle.AccessibleDescription = AutoText("联想使用 SmartFan；ASUS 需保持 G-Helper 运行，支持其前五个配置档。插电对局切性能档，退局恢复完整原配置；已有自定义 Turbo/全速档不覆盖，途中改档则让出。电源选“不切换”时不接管。可能增加发热和风扇噪声。",
+                "Lenovo uses SmartFan. ASUS requires running G-Helper and supports its first five profiles. On AC, switches to performance and restores the complete original profile after matches. Preserves custom Turbo/Full Speed and yields to external changes. Skips Don't switch. Heat and fan noise may increase.");
+            toggle.CheckedChanged += delegate
+            {
+                bool supported = gameMode.LaptopPerformanceSupportKnown && gameMode.LaptopPerformanceSupported;
+                bool saved = !supported || gameMode.TrySetLaptopPerformanceEnabled(toggle.Checked);
+                RefreshStrategyControls();
+                if (!saved) ShowManualPerformanceSaveFailure();
+            };
         }
 
         private void QueueLaptopPerformanceProbe()
@@ -32,7 +33,7 @@ namespace PaviseApp
                     catch (Exception error) { Logger.Warn("Laptop profile availability: " + error.GetType().Name); }
                     finally { Interlocked.Exchange(ref laptopPerformanceProbeBusy, 0); }
                     if (IsDisposed || Disposing || runtimeShutdownBusy || !IsHandleCreated) return;
-                    try { PostUiStateResult(delegate { if (!IsDisposed && !Disposing && !runtimeShutdownBusy) RefreshAutomationPage(); }); }
+                    try { PostUiStateResult(delegate { if (!IsDisposed && !Disposing && !runtimeShutdownBusy) RefreshStrategyControls(); }); }
                     catch (InvalidOperationException) { }
                 });
             }

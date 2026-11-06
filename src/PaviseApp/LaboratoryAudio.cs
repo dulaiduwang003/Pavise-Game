@@ -18,7 +18,6 @@ namespace PaviseApp
         internal string FormatIdentity;
     }
 
-    // Kept separate from COM so eligibility, readback and recovery can be tested without audio I/O.
     internal interface ILaboratoryAudioDriver : IDisposable
     {
         WaitHandle RenderReady { get; }
@@ -172,6 +171,8 @@ namespace PaviseApp
         private static Thread worker;
         private static bool enabled;
         private static long generation;
+        private static long ownerSerial;
+        internal static long OwnerSerial { get { lock (gate) return ownerSerial; } }
         private static string state;
 #if PAVISE_LAB_AUDIO_CHECKS
         internal static Func<AutoResetEvent, ILaboratoryAudioDriver> TestDriverFactory;
@@ -191,6 +192,7 @@ namespace PaviseApp
         }
         private static void StartWorker()
         {
+            ownerSerial++;
             state = PerformancePolicy.Text("正在检查默认播放设备…", "Checking default playback endpoint…");
             worker = new Thread(Run) { IsBackground = true, Name = "Pavise laboratory audio" };
             worker.SetApartmentState(ApartmentState.MTA);
@@ -198,10 +200,20 @@ namespace PaviseApp
         }
         internal static bool Restore()
         {
-            Update(false);
+            long expectedOwner;
+            lock (gate) expectedOwner = ownerSerial;
+            return Restore(expectedOwner);
+        }
+        internal static bool Restore(long expectedOwner)
+        {
             Thread pending;
-            lock (gate) pending = worker;
-            return pending == null || (pending != Thread.CurrentThread && pending.Join(2500));
+            lock (gate)
+            {
+                if (ownerSerial != expectedOwner) return false;
+                Update(false); pending = worker;
+            }
+            bool exited = pending == null || (pending != Thread.CurrentThread && pending.Join(2500));
+            lock (gate) return exited && ownerSerial == expectedOwner && worker == null;
         }
         private static void Report(string value)
         {

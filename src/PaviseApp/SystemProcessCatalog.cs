@@ -23,6 +23,12 @@ namespace PaviseApp
 
 		internal static bool IsCoreSystemProcess(string name, string path, string windowsRoot)
 		{
+			if (string.Equals(WhitelistRule.NormalizeName(name), "smartscreen", StringComparison.OrdinalIgnoreCase))
+			{
+				// Trust only the Windows component, not a same-named application or a file under Windows\Temp.
+				string root = WhitelistRule.NormalizeImagePath((windowsRoot ?? "").TrimEnd('\\', '/'));
+				return root.Length > 0 && WhitelistRule.PathEquals(path, root + "\\System32\\smartscreen.exe");
+			}
 			if (CoreSystemProcesses.Contains(name) && !string.IsNullOrEmpty(windowsRoot) && !string.IsNullOrEmpty(path))
 			{
 				return path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);

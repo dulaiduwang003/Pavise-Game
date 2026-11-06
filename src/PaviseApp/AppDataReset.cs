@@ -94,6 +94,7 @@ namespace PaviseApp
 			hashSet.Add("PerfMonitorHotkeyV1");
 			hashSet.Add("PlatformRuntimeRemovedV1");
 			hashSet.Add("AutomaticPolicyV1");
+			hashSet.Add(CpuMitigationPolicy.ExpandedPreferenceKey);
 			HashSet<string> hashSet2 = hashSet;
 			foreach (PolicyItem item2 in PolicyCatalog.All)
 			{

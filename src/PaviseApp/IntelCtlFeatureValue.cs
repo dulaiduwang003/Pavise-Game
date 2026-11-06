@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
+#pragma warning disable 0649 // written by native marshaling, never by managed code
 	internal struct IntelCtlFeatureValue
 	{
 		public uint Size;
@@ -26,4 +27,5 @@ namespace PaviseApp
 
 		public IntPtr CustomValue;
 	}
+#pragma warning restore 0649
 }

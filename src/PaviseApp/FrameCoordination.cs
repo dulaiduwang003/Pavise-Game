@@ -39,13 +39,11 @@ namespace PaviseApp
 
 		internal const int LeaseCheckMs = 5000;
 
-		internal const int LeaseChecks = 120;
-
 		internal const int ObserveGapMs = 30000;
 
 		internal const string CaptureSessionKey = "FrameCoordinationCaptureSessionsV1";
 
-		internal const int MaxCaptureFailures = 3;
+		internal const int MaxCaptureFailures = 5;
 
 		internal const int MaxCaptureSessions = 64;
 
@@ -56,6 +54,8 @@ namespace PaviseApp
 		private static Thread worker;
 
 		private static int generation;
+
+		private static int priorityReleaseVersion;
 
 		private static int pid;
 
@@ -75,6 +75,8 @@ namespace PaviseApp
 		private static readonly object captureSessionGate = new object();
 
 		private static readonly Dictionary<int, FrameCaptureSession> captureSessions = new Dictionary<int, FrameCaptureSession>();
+		private static readonly Dictionary<string, Dictionary<int, FrameCaptureSession>> capturePhases = new Dictionary<string, Dictionary<int, FrameCaptureSession>>(StringComparer.Ordinal);
+		private static string capturePhase;
 
 		private static bool captureSessionsLoaded;
 
@@ -116,10 +118,11 @@ namespace PaviseApp
 
 		internal static void Ensure(int target, long created, string name, Func<bool> admitted)
 		{
-			if (target <= 0 || created <= 0 || admitted == null || !admitted())
+			if (target <= 0 || created <= 0 || admitted == null || !admitted() || ThreadPriorityReservation.HasProcess(target, created))
 			{
 				return;
 			}
+			ActionFailureStore.BeginAutomaticCycle(ActionKey, name, FrameRecoveryBudget.Cycle(target, created));
 			lock (sync)
 			{
 				if (closed)
@@ -140,12 +143,6 @@ namespace PaviseApp
 					return;
 				}
 				FrameCaptureSession session = CaptureSession(target, created);
-				if (session != null && session.Stopped && !session.NoChangeNeeded && ActionFailureStore.IsRetryPending("FrameCoordination", name))
-				{
-					session.Stopped = false;
-					session.Failures = 0;
-					session.Retry.Reset();
-				}
 				if ((session == null || session.Stopped) && !HasResidue)
 				{
 					state = ((session == null) ? 3 : ((!session.NoChangeNeeded) ? 4 : 0));
@@ -274,10 +271,20 @@ namespace PaviseApp
 					{
 						PublishCriticalRoles(frameCoordinationSample, epoch);
 					}
-					bool flag2 = frameCoordinationSample != null && frameCoordinationSample.Valid && ApplyIsolated(frameCoordinationSample, func, name);
+					int appliedReleaseVersion;
+					bool flag2;
+					lock (ThreadPriorityReservation.Gate)
+					{
+						appliedReleaseVersion = Volatile.Read(ref priorityReleaseVersion);
+						flag2 = frameCoordinationSample != null && frameCoordinationSample.Valid && ApplyIsolated(frameCoordinationSample, func, name);
+					}
 					long elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
 					ObserveCapture(session, frameCoordinationSample, flag2, elapsedMilliseconds);
-					if (!flag2 && ActionFailureStore.IsIsolated("FrameCoordination", name))
+					if (!flag2 && frameCoordinationSample != null && frameCoordinationSample.PriorityReserved)
+					{
+						break;
+					}
+					if (!flag2 && ActionFailureStore.IsBlocked("FrameCoordination", name))
 					{
 						session.Stopped = true;
 						SaveCaptureSessions();
@@ -294,7 +301,7 @@ namespace PaviseApp
 							{
 								text = "INFO " + text.Substring(text.IndexOf("FRAME", StringComparison.Ordinal));
 							}
-							Logger.Log(text + " | " + PerformancePolicy.Text("本进程不再重复采样，保留原调度", "Further capture stopped for this process; original scheduling retained"));
+							Logger.Log(text + " | " + PerformancePolicy.Text("本阶段停止重复采样", "Further capture stopped for this phase") + " captureFailures=" + session.Failures + "/" + MaxCaptureFailures);
 							break;
 						}
 						if (!presenterOnly && session.PresenterOnly)
@@ -304,7 +311,7 @@ namespace PaviseApp
 						}
 						if (session.Retry.ShouldLog)
 						{
-							Logger.Log(WaitingLine(name, frameCoordinationSample) + " retryMs=" + session.Retry.DelayMs);
+							Logger.Log(WaitingLine(name, frameCoordinationSample) + " retryMs=" + session.Retry.DelayMs + " captureFailures=" + session.Failures + "/" + MaxCaptureFailures);
 						}
 						if (!Wait(session.Retry.DelayMs, func))
 						{
@@ -318,17 +325,29 @@ namespace PaviseApp
 					}
 					state = 2;
 					Logger.Log("PASS FRAME " + ((Lang.Cur == 1) ? "Coordination active: " : "线程协同已执行：") + name + " pid=" + target + " present=" + frameCoordinationSample.PresentTid + " worker=" + frameCoordinationSample.WorkerTid + " sampleCpuMs=" + frameCoordinationSample.CpuMs.ToString("F1", CultureInfo.InvariantCulture));
-					for (int i = 0; i < 120; i++)
+					// A healthy lease needs no periodic restore, ETW capture, or reapply.
+					while (Wait(LeaseCheckMs, func))
 					{
-						if (!Wait(5000, func))
+						bool healthy;
+						bool priorityReleased;
+						lock (ThreadPriorityReservation.Gate)
 						{
-							break;
+							healthy = LeaseHealthy();
+							int releaseVersion = Volatile.Read(ref priorityReleaseVersion);
+							priorityReleased = releaseVersion != appliedReleaseVersion && LeaseReturnedByReservation();
+							if (healthy) appliedReleaseVersion = releaseVersion;
 						}
-						if (!LeaseHealthy())
+						if (!healthy)
 						{
+							if (!priorityReleased)
+							{
+								YieldBoostToGame(session);
+								Logger.Info("FRAME " + name + " | " + PerformancePolicy.Text("线程状态已变化；恢复自有设置并停止本进程重复提优", "Thread state changed; owned settings restored and repeated boosting stopped for this process"));
+							}
 							break;
 						}
 					}
+					break;
 				}
 			}
 			catch (Exception ex)
@@ -363,17 +382,32 @@ namespace PaviseApp
 
 		internal static bool Apply(FrameCoordinationSample sample, Func<bool> alive)
 		{
+			lock (ThreadPriorityReservation.Gate)
 			lock (mutation)
 			{
 				applyExecutionFailure = null;
 				if (sample != null)
 				{
 					sample.NoChangeNeeded = false;
+					sample.PriorityReserved = false;
 				}
-				if (sample == null || !sample.Valid || sample.Pid <= 0 || sample.Birth <= 0 || sample.PresentTid <= 0 || !sample.Threads.ContainsKey(sample.PresentTid) || sample.Threads[sample.PresentTid] <= 0 || !alive() || !RestoreLocked())
+				if (sample == null || !sample.Valid || sample.Pid <= 0 || sample.Birth <= 0 || sample.PresentTid <= 0 || !sample.Threads.ContainsKey(sample.PresentTid) || sample.Threads[sample.PresentTid] <= 0 || !alive())
 				{
 					return false;
 				}
+				bool available = false;
+				foreach (int tid in new int[] { sample.PresentTid, sample.WorkerTid })
+				{
+					long threadBirth;
+					if (tid > 0 && sample.Threads.TryGetValue(tid, out threadBirth) && threadBirth > 0
+						&& !ThreadPriorityReservation.Contains(sample.Pid, sample.Birth, tid, threadBirth)) available = true;
+				}
+				if (!available)
+				{
+					sample.PriorityReserved = true;
+					return false;
+				}
+				if (!RestoreLocked()) return false;
 				List<FrameThreadReceipt> list = new List<FrameThreadReceipt>();
 				int[] array = new int[2] { sample.PresentTid, sample.WorkerTid };
 				foreach (int num in array)
@@ -381,6 +415,11 @@ namespace PaviseApp
 					long value;
 					if ((num == sample.WorkerTid && num == sample.PresentTid && list.Count > 0) || num <= 0 || !sample.Threads.TryGetValue(num, out value))
 					{
+						continue;
+					}
+					if (ThreadPriorityReservation.Contains(sample.Pid, sample.Birth, num, value))
+					{
+						sample.PriorityReserved = true;
 						continue;
 					}
 					FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
@@ -408,7 +447,7 @@ namespace PaviseApp
 				}
 				if (list.Count == 0)
 				{
-					sample.NoChangeNeeded = true;
+					sample.NoChangeNeeded = !sample.PriorityReserved;
 					return false;
 				}
 				string text = Encode(list);
@@ -422,6 +461,7 @@ namespace PaviseApp
 					applyExecutionFailure = "Thread recovery record could not be saved or verified";
 					return false;
 				}
+				FrameRecoveryBudget.Own("priority", sample.Pid, sample.Birth);
 				foreach (FrameThreadReceipt item in list)
 				{
 					if (!alive())
@@ -466,7 +506,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			if (ActionFailureStore.IsRetryPending("FrameCoordination", target) && !Restore())
+			if (HasResidue && !Restore())
 			{
 				return false;
 			}
@@ -498,7 +538,8 @@ namespace PaviseApp
 			{
 				if (Restore())
 				{
-					ActionFailureStore.CancelApply("FrameCoordination", target);
+					if (sample.NoChangeNeeded || sample.PriorityReserved) ActionFailureStore.CompleteApply("FrameCoordination", target);
+					else ActionFailureStore.CancelApply("FrameCoordination", target);
 				}
 				else
 				{
@@ -586,9 +627,108 @@ namespace PaviseApp
 			}
 		}
 
+		internal static void SyncAutomaticPhase(long gameSerial, int target, long created, string materialConfig)
+		{
+			if (!FrameRecoveryBudget.Sync(gameSerial, target, created, materialConfig)) return;
+			string phase = FrameRecoveryBudget.Cycle(target, created);
+			lock (captureSessionGate)
+			{
+				if (phase == capturePhase) return;
+				if (capturePhase != null)
+				{
+					capturePhases[capturePhase] = new Dictionary<int, FrameCaptureSession>(captureSessions);
+					captureSessions.Clear();
+					Dictionary<int, FrameCaptureSession> previous;
+					if (capturePhases.TryGetValue(phase, out previous))
+						foreach (var row in previous) captureSessions[row.Key] = row.Value;
+					captureSessionsLoaded = true;
+				}
+				capturePhase = phase;
+			}
+		}
+
+		private static bool LeaseReturnedByReservation()
+		{
+			lock (mutation)
+			{
+				string raw;
+				List<FrameThreadReceipt> rows;
+				if (!Settings.TryLoadStr(JournalKey, out raw) || !Parse(raw, out rows)) return false;
+				foreach (FrameThreadReceipt row in rows)
+				{
+					if (ThreadPriorityReservation.Contains(row.Pid, row.ProcessBirth, row.Tid, row.ThreadBirth)) continue;
+					int priority;
+					if (platform.Read(row, out priority) != 0 || priority != row.Applied) return false;
+				}
+				// A partial return must not hide a different thread's ownership change
+				// in the same five-second interval.
+				return FrameMemoryProtection.HealthyOutsideReservation();
+			}
+		}
+
+		internal static bool ReleaseReservedPriority()
+		{
+			if (!HasResidue) return true;
+			return FrameRecoveryBudget.Run("priority", ReleaseReservedPriorityCore,
+				delegate { string raw; return Settings.TryLoadStr(JournalKey, out raw) && raw.Length == 0; });
+		}
+
+		private static bool ReleaseReservedPriorityCore()
+		{
+			lock (ThreadPriorityReservation.Gate)
+			lock (mutation)
+			{
+				string raw;
+				List<FrameThreadReceipt> rows;
+				if (!Settings.TryLoadStr(JournalKey, out raw) || !Parse(raw, out rows)) return false;
+				List<FrameThreadReceipt> remaining = new List<FrameThreadReceipt>();
+				bool matched = false;
+				foreach (FrameThreadReceipt row in rows)
+				{
+					if (!ThreadPriorityReservation.Contains(row.Pid, row.ProcessBirth, row.Tid, row.ThreadBirth))
+					{
+						remaining.Add(row);
+						continue;
+					}
+					if (!matched) Interlocked.Increment(ref priorityReleaseVersion);
+					matched = true;
+					int priority;
+					int read = platform.Read(row, out priority);
+					if (read < 0 || (read == 0 && priority == row.Applied && !platform.Set(row, row.Applied, row.Original))) return false;
+				}
+				if (!FrameMemoryProtection.ReleaseReservedPriority()) return false;
+				if (!matched) return true;
+				string next = remaining.Count == 0 ? "" : Encode(remaining);
+				string check;
+				return Settings.TryLoadStr(JournalKey, out check) && check == raw && Settings.SaveStrDurable(JournalKey, next)
+					&& Settings.TryLoadStr(JournalKey, out check) && check == next;
+			}
+		}
+
+		private static void YieldBoostToGame(FrameCaptureSession session)
+		{
+			lock (captureSessionGate)
+			{
+				// This is an ownership change, not identification exhaustion. Observer-only
+				// capture remains available and candidate fallback must not fight it.
+				session.Stopped = true;
+				session.NoChangeNeeded = true;
+				session.Failures = 0;
+				SaveCaptureSessions();
+			}
+		}
+
 		private static bool RestoreLocked()
 		{
+			FrameRecoveryBudget.ObserveExit(CaptureProcessState);
 			bool flag = FrameMemoryProtection.Restore();
+			string raw;
+			if (Settings.TryLoadStr(JournalKey, out raw) && raw.Length == 0) return flag;
+			return FrameRecoveryBudget.Run("priority", RestorePriorityCore) && flag;
+		}
+
+		private static bool RestorePriorityCore()
+		{
 			string value;
 			List<FrameThreadReceipt> result;
 			if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out value) || !Parse(value, out result))
@@ -597,7 +737,7 @@ namespace PaviseApp
 			}
 			if (value.Length == 0)
 			{
-				return flag;
+				return true;
 			}
 			bool flag2 = true;
 			foreach (FrameThreadReceipt item in result)
@@ -615,7 +755,7 @@ namespace PaviseApp
 			}
 			string value2;
 			bool flag3 = flag2 && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameCoordinationJournalV1", "") && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2.Length == 0;
-			return flag && flag3;
+			return flag3;
 		}
 
 		internal static bool ReleaseExcept(int keepPid, long keepBirth)
@@ -681,6 +821,7 @@ namespace PaviseApp
 			{
 				return;
 			}
+			ActionFailureStore.BeginAutomaticCycle(ActionKey, name, FrameRecoveryBudget.Cycle(target, created));
 			lock (sync)
 			{
 				if (closed)
@@ -701,7 +842,7 @@ namespace PaviseApp
 					return;
 				}
 				FrameCaptureSession session = CaptureSession(target, created);
-				if (session != null && (!session.Stopped || session.NoChangeNeeded) && session.Failures < 3)
+				if (session != null && (!session.Stopped || session.NoChangeNeeded) && session.Failures < MaxCaptureFailures)
 				{
 					pid = target;
 					birth = created;
@@ -769,7 +910,7 @@ namespace PaviseApp
 						}
 						continue;
 					}
-					if ((session.Stopped && !session.NoChangeNeeded) || CaptureProcessState(target, created) > 0)
+					if (session.Failures >= MaxCaptureFailures || (session.Stopped && !session.NoChangeNeeded) || CaptureProcessState(target, created) > 0)
 					{
 						break;
 					}
@@ -801,20 +942,20 @@ namespace PaviseApp
 						}
 						continue;
 					}
-					if (ActionFailureStore.IsIsolated("FrameCoordination", name) || (session.Stopped && !session.NoChangeNeeded))
+					if (session.Failures >= MaxCaptureFailures)
 					{
 						state = 4;
+						Logger.Log(WaitingLine(name, frameCoordinationSample) + " | " + PerformancePolicy.Text("连续采样未成功，本进程不再观测", "Repeated captures were unsuccessful; observation stopped for this process") + " captureFailures=" + session.Failures + "/" + MaxCaptureFailures);
 						break;
 					}
-					if (session.Failures >= 3)
+					if (ActionFailureStore.IsBlocked("FrameCoordination", name) || (session.Stopped && !session.NoChangeNeeded))
 					{
 						state = 4;
-						Logger.Info("FRAME " + PerformancePolicy.Text("渲染线程连续多次未识别，本进程不再观测：", "Render thread not identified after repeated captures; observation stopped for this process: ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail));
 						break;
 					}
 					if (session.Retry.ShouldLog)
 					{
-						Logger.Info("FRAME " + PerformancePolicy.Text("渲染线程识别等待：", "Render thread identification waiting: ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail) + " retryMs=" + session.Retry.DelayMs);
+						Logger.Info("FRAME " + PerformancePolicy.Text("渲染线程识别等待：", "Render thread identification waiting: ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail) + " retryMs=" + session.Retry.DelayMs + " captureFailures=" + session.Failures + "/" + MaxCaptureFailures);
 					}
 					if (!Wait(session.Retry.DelayMs, func))
 					{
@@ -912,10 +1053,12 @@ namespace PaviseApp
 				return true;
 			}
 			string[] array = value.Split(';');
-			if (array[0] != "v1" || array.Length > 65)
+			bool legacy = array[0] == "v1";
+			if ((!legacy && array[0] != "v2") || array.Length > 65)
 			{
 				return CaptureSessionLoadFailed();
 			}
+			int storedLimit = legacy ? 3 : MaxCaptureFailures;
 			for (int i = 1; i < array.Length; i++)
 			{
 				string[] array2 = array[i].Split('|');
@@ -925,14 +1068,15 @@ namespace PaviseApp
 				int result4;
 				int result5;
 				int result6;
-				if (array2.Length != 6 || !int.TryParse(array2[0], out result) || result <= 0 || !long.TryParse(array2[1], out result2) || result2 <= 0 || !int.TryParse(array2[2], out result3) || (result3 != 0 && result3 != 1) || !int.TryParse(array2[3], out result4) || result4 < 0 || result4 > 3 || !int.TryParse(array2[4], out result5) || (result5 != 0 && result5 != 1) || !int.TryParse(array2[5], out result6) || (result6 != 0 && result6 != 1) || (result4 == 3 && result5 == 0) || (result6 != 0 && result5 == 0) || captureSessions.ContainsKey(result))
+				if (array2.Length != 6 || !int.TryParse(array2[0], out result) || result <= 0 || !long.TryParse(array2[1], out result2) || result2 <= 0 || !int.TryParse(array2[2], out result3) || (result3 != 0 && result3 != 1) || !int.TryParse(array2[3], out result4) || result4 < 0 || result4 > storedLimit || !int.TryParse(array2[4], out result5) || (result5 != 0 && result5 != 1) || !int.TryParse(array2[5], out result6) || (result6 != 0 && result6 != 1) || (result4 == storedLimit && result5 == 0) || (result6 != 0 && result5 == 0) || captureSessions.ContainsKey(result))
 				{
 					return CaptureSessionLoadFailed();
 				}
 				captureSessions[result] = new FrameCaptureSession(result, result2)
 				{
 					PresenterOnly = (result3 != 0),
-					Failures = result4,
+					// Saturate an exhausted legacy budget instead of granting it two new attempts.
+					Failures = (legacy && result4 == storedLimit) ? MaxCaptureFailures : result4,
 					Stopped = (result5 != 0),
 					NoChangeNeeded = (result6 != 0)
 				};
@@ -951,7 +1095,7 @@ namespace PaviseApp
 		private static void SaveCaptureSessions()
 		{
 			List<string> list = new List<string>();
-			list.Add("v1");
+			list.Add("v2");
 			List<string> list2 = list;
 			foreach (FrameCaptureSession value2 in captureSessions.Values)
 			{
@@ -984,6 +1128,7 @@ namespace PaviseApp
 
 		private static void ObserveCapture(FrameCaptureSession session, FrameCoordinationSample sample, bool applied, long elapsedMs)
 		{
+			if (sample != null && sample.PriorityReserved && !applied) return;
 			lock (captureSessionGate)
 			{
 				bool presenterOnly = session.PresenterOnly;
@@ -1008,7 +1153,9 @@ namespace PaviseApp
 					{
 						return;
 					}
-					if (session.Failures < 3)
+					// Evidence misses consume the same persisted budget as other unsuccessful
+					// captures. Both boost and observer workers must share this counter.
+					if (session.Failures < MaxCaptureFailures)
 					{
 						session.Failures++;
 					}
@@ -1016,7 +1163,7 @@ namespace PaviseApp
 					{
 						session.PresenterOnly = true;
 					}
-					if (session.Failures >= 3)
+					if (session.Failures >= MaxCaptureFailures)
 					{
 						session.Stopped = true;
 					}
@@ -1042,7 +1189,7 @@ namespace PaviseApp
 					return false;
 				}
 			}
-			return !ActionFailureStore.IsIsolated("FrameCoordination", name);
+			return !ActionFailureStore.IsBlocked("FrameCoordination", name);
 		}
 
 		private static int CaptureProcessState(int target, long created)

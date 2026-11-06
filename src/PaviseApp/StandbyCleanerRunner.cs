@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
@@ -13,12 +14,14 @@ namespace PaviseApp
 			internal readonly StandbyCleanerOptions Options;
 
 			internal readonly Func<bool> MayContinue;
+			internal readonly string Cycle;
 
-			internal Request(int generation, StandbyCleanerOptions options, Func<bool> mayContinue)
+			internal Request(int generation, StandbyCleanerOptions options, Func<bool> mayContinue, string cycle)
 			{
 				Generation = generation;
 				Options = options;
 				MayContinue = mayContinue;
+				Cycle = cycle;
 			}
 		}
 
@@ -44,9 +47,12 @@ namespace PaviseApp
 
 		private bool closed;
 
-		private bool hasFaultedGeneration;
+		private readonly HashSet<string> faultedCycles = new HashSet<string>(StringComparer.Ordinal);
 
-		private int faultedGeneration;
+		private static string CycleIdentity(StandbyCleanerOptions options)
+		{
+			return PerformanceTuning.RecoveryCycleSerial + "\n" + options.Serialize();
+		}
 
 		private int inFlight;
 
@@ -99,21 +105,22 @@ namespace PaviseApp
 					wake.Set();
 					return false;
 				}
+				string cycle = CycleIdentity(options);
+				ActionFailureStore.BeginAutomaticCycle("GmStandbyCleanerV2", "system", cycle);
 				if (ActionFailureStore.IsBlocked("GmStandbyCleanerV2", "system"))
 				{
 					return false;
 				}
-				if (hasFaultedGeneration && faultedGeneration == generation && !ActionFailureStore.IsRetryPending("GmStandbyCleanerV2", "system"))
+				if (faultedCycles.Contains(cycle))
 				{
 					return false;
 				}
 				Request request = current;
-				if (request != null && request.Generation == generation && SameOptions(request.Options, options))
+				if (request != null && request.Generation == generation && request.Cycle == cycle && SameOptions(request.Options, options))
 				{
 					return true;
 				}
-				hasFaultedGeneration = false;
-				current = new Request(generation, options, mayContinue);
+				current = new Request(generation, options, mayContinue, cycle);
 				if (worker == null)
 				{
 					Thread thread = new Thread(Loop);
@@ -126,6 +133,8 @@ namespace PaviseApp
 					}
 					catch
 					{
+						faultedCycles.Add(cycle);
+						ActionFailureStore.Trip("GmStandbyCleanerV2", "system", "Standby worker could not start");
 						worker = null;
 						current = null;
 						return false;
@@ -270,8 +279,7 @@ namespace PaviseApp
 							else if (standbyCleanerResult == StandbyCleanerResult.QueryFailed || standbyCleanerResult == StandbyCleanerResult.PurgeFailed || (standbyCleanerResult == StandbyCleanerResult.Purged && nativeStatus != 0))
 							{
 								current = null;
-								hasFaultedGeneration = true;
-								faultedGeneration = request.Generation;
+								faultedCycles.Add(request.Cycle);
 								flag = true;
 							}
 							else if (standbyCleanerResult == StandbyCleanerResult.InvalidOptions)

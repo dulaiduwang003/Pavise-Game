@@ -7,6 +7,8 @@ namespace PaviseApp
 {
 	internal sealed class LolOptimizationService : IDisposable
 	{
+		private readonly ProcessActionFailureBudget headlessFailures = new ProcessActionFailureBudget();
+		private readonly HashSet<string> exitedHeadlessLeases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 #if PAVISE_SELFTEST
 		internal Func<string, bool, Func<bool>, string> FindLolRootForTest;
 		internal Func<string, string, bool, Func<bool>, string> FindWeGameRootForTest;
@@ -992,18 +994,19 @@ namespace PaviseApp
 					return false;
 				}
 				RememberHeadlessLease(root);
+				ObserveHeadlessOwnerExit();
 				LolLcuCredentials credentialsForRestore = GetCredentialsForRestore(root, true);
 				if (credentialsForRestore == null)
 				{
 					SetError(Lang.T("lol.err.nosession"));
 					return false;
 				}
-				bool flag = LolLcuClient.RestoreUx(credentialsForRestore, root);
+				bool flag = TryRestoreUxBounded(credentialsForRestore, root);
 				if (!flag)
 				{
 					InvalidateCredentials();
 					credentialsForRestore = GetCredentialsForRestore(root, true);
-					flag = credentialsForRestore != null && LolLcuClient.RestoreUx(credentialsForRestore, root);
+					flag = TryRestoreUxBounded(credentialsForRestore, root);
 					if (!flag && credentialsForRestore != null)
 					{
 						ScheduleRestoreCredentialRetry();
@@ -1162,6 +1165,10 @@ namespace PaviseApp
 
 		private bool SetHeadlessMark(string root, int gamePid, long gameCreation)
 		{
+			string existing; LolHeadlessLeaseInfo previous;
+			if (!Settings.TryLoadStr("LolHeadlessEngagedRoot", out existing)) return false;
+			if (!string.IsNullOrEmpty(existing) && (!LolHeadlessLease.TryParse(existing, out previous)
+				|| !SameRootPath(previous.Root, root) || previous.GamePid != gamePid || previous.GameCreation != gameCreation)) return false;
 			if (!LolHeadlessLease.Set(root, gamePid, gameCreation))
 			{
 				return false;
@@ -1191,9 +1198,16 @@ namespace PaviseApp
 			{
 				return true;
 			}
+			string recoveryStage = HeadlessRecoveryStage(text, num, num2, "clear-mark");
+			if (!headlessFailures.Allowed(num, num2, text, recoveryStage)) return false;
 			bool flag = num > 0 && num2 > 0 && LolHeadlessLease.ClearIfMatches(text, num, num2);
-			bool flag2 = LolHeadlessLease.Matches(text, num, num2);
-			bool flag3 = flag || !flag2;
+			string current; LolHeadlessLeaseInfo remaining;
+			bool confirmedReleased = Settings.TryLoadStr("LolHeadlessEngagedRoot", out current)
+				&& (string.IsNullOrEmpty(current) || LolHeadlessLease.TryParse(current, out remaining)
+				&& (!SameRootPath(remaining.Root, text) || remaining.GamePid != num || remaining.GameCreation != num2));
+			bool flag3 = flag || confirmedReleased;
+			if (flag3) headlessFailures.Succeeded(num, num2, text, recoveryStage);
+			else Logger.Warn("LoL recovery mark failure=" + headlessFailures.Failed(num, num2, text, recoveryStage) + "/3; owned mark retained");
 			lock (stateLock)
 			{
 				if (SameLocalLeaseLocked(text, num, num2))
@@ -1212,8 +1226,11 @@ namespace PaviseApp
 
 		private void RememberHeadlessLease(string root)
 		{
+			string stored;
 			LolHeadlessLeaseInfo info;
-			bool flag = LolHeadlessLease.TryRead(out info) && SameRootPath(info.Root, root);
+			if (!Settings.TryLoadStr("LolHeadlessEngagedRoot", out stored)) return;
+			if (!string.IsNullOrEmpty(stored) && !LolHeadlessLease.TryParse(stored, out info)) return;
+			bool flag = LolHeadlessLease.TryParse(stored, out info) && SameRootPath(info.Root, root);
 			lock (stateLock)
 			{
 				if (flag)
@@ -1248,6 +1265,8 @@ namespace PaviseApp
 
 		private void ForgetRememberedHeadlessLease()
 		{
+			string stored;
+			if (!Settings.TryLoadStr("LolHeadlessEngagedRoot", out stored) || !string.IsNullOrEmpty(stored)) return;
 			lock (stateLock)
 			{
 				headlessLeaseRoot = null;
@@ -1756,6 +1775,7 @@ namespace PaviseApp
 
 		private bool ReleaseOnClientExit(bool active, bool clientExitConfirmed)
 		{
+			if (clientExitConfirmed) ObserveHeadlessOwnerExit();
 			if (active && clientExitConfirmed)
 			{
 				lock (stateLock)
@@ -1817,6 +1837,7 @@ namespace PaviseApp
 
 		private void RunRestoreStage(LolLcuCredentials credentials, string root, string weGame, bool serviceEnabled, bool noUxEnabled, bool manualBypass, bool active, bool ready, bool matchExitConfirmed, ref LolProcessSnapshot processes)
 		{
+			if (matchExitConfirmed) ObserveHeadlessOwnerExit();
 			bool flag = false;
 			if (active)
 			{
@@ -1981,13 +2002,22 @@ namespace PaviseApp
 			int pid;
 			long creation;
 			bool flag2 = LolRuntimeProcesses.TryGetGameIdentity(root, processes.GameProcessId, out pid, out creation);
-			bool flag3 = flag2 && SetHeadlessMark(root, pid, creation);
-			bool flag4 = flag3 && LolWatchdog.StartDetached(root, pid, creation);
-			bool flag5 = flag4 && LolLcuClient.KillUx(credentials, root);
-			if (flag3 && !flag5)
+			if (flag2 && !headlessFailures.Allowed(pid, creation, root, "apply")) return;
+			bool flag3 = false, flag4 = false, flag5 = false;
+			try
 			{
-				ClearOwnedHeadlessMark();
+				flag3 = flag2 && SetHeadlessMark(root, pid, creation);
+				flag4 = flag3 && LolWatchdog.StartDetached(root, pid, creation);
+				flag5 = flag4 && LolLcuClient.KillUx(credentials, root);
 			}
+			finally
+			{
+				if (flag5) headlessFailures.Succeeded(pid, creation, root, "apply");
+				else if (flag2) Logger.Warn("LoL headless apply failure=" + headlessFailures.Failed(pid, creation, root, "apply")
+					+ "/3 target=" + pid + "/" + creation + "; recovery ownership retained where present");
+			}
+			// Readiness timeout and a failed UX request do not prove that the helper
+			// or the mutation is absent. Keep the lease until verified restoration.
 			lock (stateLock)
 			{
 				if (flag5)
@@ -2029,7 +2059,7 @@ namespace PaviseApp
 			{
 				credentials = GetCredentialsForRestore(root, force);
 			}
-			bool flag = credentials != null && LolLcuClient.RestoreUx(credentials, root);
+			bool flag = TryRestoreUxBounded(credentials, root);
 			lock (stateLock)
 			{
 				string a = lastAction;
@@ -2064,6 +2094,40 @@ namespace PaviseApp
 				Logger.Log("英雄联盟专栏：大厅界面已自动恢复");
 			}
 			return flag;
+		}
+
+		private string HeadlessRecoveryStage(string root, int pid, long birth, string stage)
+		{
+			lock (stateLock) return stage + (exitedHeadlessLeases.Contains(root + "|" + pid + "|" + birth) ? "-exited" : "");
+		}
+
+		private void ObserveHeadlessOwnerExit()
+		{
+			string root; int pid; long birth;
+			lock (stateLock)
+			{
+				root = headlessLeaseRoot; pid = headlessLeaseGamePid; birth = headlessLeaseGameCreation;
+				if (pid <= 0 || birth <= 0 || string.IsNullOrEmpty(root) || exitedHeadlessLeases.Contains(root + "|" + pid + "|" + birth)) return;
+			}
+			if (!LolWatchdog.OriginalGameIdentityGone(root, pid, birth)) return;
+			lock (stateLock) if (SameLocalLeaseLocked(root, pid, birth)) exitedHeadlessLeases.Add(root + "|" + pid + "|" + birth);
+		}
+
+		private bool TryRestoreUxBounded(LolLcuCredentials credentials, string root)
+		{
+			// Missing credentials are a normal discovery/availability observation, not a failed write.
+			if (credentials == null) return false;
+			int pid; long birth;
+			lock (stateLock) { pid = headlessLeaseGamePid; birth = headlessLeaseGameCreation; }
+			string stage = HeadlessRecoveryStage(root, pid, birth, "restore");
+			if (!headlessFailures.Allowed(pid, birth, root, stage)) return false;
+			bool ok = false;
+			try { ok = LolLcuClient.RestoreUx(credentials, root); return ok; }
+			finally
+			{
+				if (ok) headlessFailures.Succeeded(pid, birth, root, stage);
+				else Logger.Warn("LoL UI recovery failure=" + headlessFailures.Failed(pid, birth, root, stage) + "/3 target=" + pid + "/" + birth + "; lease retained");
+			}
 		}
 
 		public void RequestDiscovery()

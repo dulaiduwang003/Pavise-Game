@@ -16,6 +16,82 @@ namespace PaviseApp
 
 		private static readonly object gate = new object();
 
+		private static readonly Dictionary<string, int> recoveryFailures = new Dictionary<string, int>(StringComparer.Ordinal);
+		private static long recoverySessionSerial;
+		internal static long RecoveryCycleSerial { get { return Interlocked.Read(ref recoverySessionSerial); } }
+
+		internal static void BeginRecoveryCycle(long gameSessionSerial)
+		{
+			lock (SystemConfigurationGate.Sync)
+			{
+				// Late work from an old session must not refill a newer session's budget.
+				if (gameSessionSerial > recoverySessionSerial)
+				{
+					Interlocked.Exchange(ref recoverySessionSerial, gameSessionSerial);
+					PrivacyControl.BeginRecoveryCycle(gameSessionSerial);
+				}
+			}
+		}
+
+		internal static bool RestoreWithBudget(PerformanceActionStore.Receipt receipt, int maximumFailures, Func<bool> restore)
+		{
+			if (receipt == null || restore == null) return false;
+			lock (SystemConfigurationGate.Sync)
+			{
+				// Mutable receipt diagnostics/commit flags are intentionally excluded.
+				string key = recoverySessionSerial + "|" + RecoveryPart(receipt.Id) + RecoveryPart(receipt.Target)
+					+ RecoveryPart(receipt.Original) + RecoveryPart(receipt.Expected) + RecoveryPart(receipt.VisualOwner);
+				int failures;
+				recoveryFailures.TryGetValue(key, out failures);
+				Func<bool> phaseChanged = delegate
+				{
+					lock (SystemConfigurationGate.Sync)
+					{
+						int remaining;
+						return !key.StartsWith(recoverySessionSerial + "|", StringComparison.Ordinal)
+							|| !recoveryFailures.TryGetValue(key, out remaining) || remaining < maximumFailures;
+					}
+				};
+				if (failures >= maximumFailures) { RecoveryAttemptTrace.Exhausted(phaseChanged); return false; }
+				bool restored = false;
+				try { restored = restore(); return restored; }
+				finally
+				{
+					if (restored) recoveryFailures.Remove(key);
+					else
+					{
+						recoveryFailures[key] = ++failures;
+						if (failures >= maximumFailures) RecoveryAttemptTrace.Exhausted(phaseChanged);
+						else RecoveryAttemptTrace.DeferredUntil(DateTime.UtcNow.Ticks);
+						Logger.Warn("Performance recovery: action=" + receipt.Id + " target=" + receipt.Target
+							+ " phase=" + recoverySessionSerial + " attempt=" + failures + "/" + maximumFailures
+							+ (failures >= maximumFailures ? "; active retries stopped; receipt retained" : "; receipt retained"));
+					}
+				}
+			}
+		}
+
+		private static string RecoveryPart(string value)
+		{
+			return (value == null ? -1 : value.Length) + ":" + value;
+		}
+
+		internal static bool RestorePerformanceReceipt(PerformanceActionStore.Receipt receipt, Func<bool> prepare = null)
+		{
+			bool restored = RestoreWithBudget(receipt, 5, () => (prepare == null || prepare()) && PerformanceActionBackend.Restore(receipt));
+			if (restored) ActionFailureStore.CancelApply(receipt.Id, receipt.Target);
+			return restored;
+		}
+
+		internal static bool ReadRecoveryReceipts(out List<PerformanceActionStore.Receipt> receipts)
+		{
+			List<PerformanceActionStore.Receipt> read = null;
+			bool ok = RestoreWithBudget(new PerformanceActionStore.Receipt { Id = "recovery-journal", Target = "performance" }, 5,
+				delegate { read = PerformanceActionStore.All(); return true; });
+			receipts = read;
+			return ok;
+		}
+
 		private static readonly HashSet<string> busy = new HashSet<string>();
 
 		private static readonly Dictionary<string, string> states = new Dictionary<string, string>();
@@ -23,6 +99,12 @@ namespace PaviseApp
 		private static volatile HashSet<string> storageOwned = new HashSet<string>(StringComparer.Ordinal);
 
 		internal static volatile bool EnvironmentWorkClosing;
+
+#if PAVISE_SELFTEST
+		internal static Func<bool> CpuMitigationsSupportedForTest;
+		internal static Func<WaitCallback, bool> EnvironmentQueueForTest;
+		internal static Func<string> BootForTest;
+#endif
 
 		internal static string EnvironmentBundleTitle
 		{
@@ -97,6 +179,9 @@ namespace PaviseApp
 
 		internal static string Boot()
 		{
+#if PAVISE_SELFTEST
+			if (BootForTest != null) return BootForTest();
+#endif
 			return BootSessionIdentity.Read();
 		}
 
@@ -154,7 +239,8 @@ namespace PaviseApp
 				{
 					value = Settings.LoadStr(id + "State", "");
 				}
-				if (value != "configured" && value != "restored")
+				bool live = value == "live-applied" || value == "live-restored";
+				if (value != "configured" && value != "restored" && !live)
 				{
 					return value;
 				}
@@ -162,10 +248,10 @@ namespace PaviseApp
 				switch (BootSessionIdentity.Compare(Settings.LoadStr(id + "Boot", ""), Boot()))
 				{
 				default:
-					result = ((value == "configured") ? "pending-reboot" : "restore-pending-reboot");
+					result = live ? value : ((value == "configured") ? "pending-reboot" : "restore-pending-reboot");
 					break;
 				case IrqRebootState.Rebooted:
-					result = ((value == "configured") ? "ready" : "restored");
+					result = ((value == "configured" || value == "live-applied") ? "ready" : "restored");
 					break;
 				case IrqRebootState.Unknown:
 					result = "unverified";
@@ -188,6 +274,7 @@ namespace PaviseApp
 					return false;
 				}
 				string val = Settings.LoadStr("EnvQuantumSelectedProfileV1", "38");
+				bool previousOn = Settings.LoadCached(PerformanceActionCatalog.Quantum, false);
 				if (index > 0 && !Settings.SaveStr("EnvQuantumSelectedProfileV1", QuantumProfiles.Values[index].ToString(CultureInfo.InvariantCulture)))
 				{
 					return false;
@@ -197,6 +284,7 @@ namespace PaviseApp
 					return true;
 				}
 				Settings.SaveStr("EnvQuantumSelectedProfileV1", val);
+				Settings.SaveDurable(PerformanceActionCatalog.Quantum, previousOn);
 				return false;
 			}
 		}
@@ -267,6 +355,49 @@ namespace PaviseApp
 			return flag;
 		}
 
+		internal static bool CpuMitigationsExpanded
+		{
+			get { return Settings.LoadCached(CpuMitigationPolicy.ExpandedPreferenceKey, false); }
+		}
+
+		internal static bool CpuMitigationsExpansionSupported()
+		{
+#if PAVISE_SELFTEST
+			if (CpuMitigationsSupportedForTest != null) return CpuMitigationsSupportedForTest();
+#endif
+			try
+			{
+				using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+					"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
+					return key != null && CpuMitigationPolicy.Supports(Native.OsBuild(), key.GetValue("VendorIdentifier") as string);
+			}
+			catch { return false; }
+		}
+
+		internal static bool SetCpuMitigations(bool on, Action completed, bool expanded = true)
+		{
+			lock (gate)
+			{
+				if (EnvironmentWorkClosing || busy.Contains(PerformanceActionCatalog.CpuMitigations)
+					|| busy.Contains(EnvironmentBundleKey) || busy.Contains(StorageGroupKey)) return false;
+				if (on && expanded && !CpuMitigationsExpansionSupported())
+				{
+					SetState(PerformanceActionCatalog.CpuMitigations, "unsupported");
+					return false;
+				}
+				bool previous = CpuMitigationsExpanded;
+				bool previousOn = Settings.LoadCached(PerformanceActionCatalog.CpuMitigations, false);
+				// Retain the explicitly chosen scope when switching off, including if
+				// restoration fails. A later bundle operation must not silently treat
+				// still-owned expanded values as a legacy/basic configuration.
+				if (on && !Settings.SaveDurable(CpuMitigationPolicy.ExpandedPreferenceKey, expanded)) return false;
+				if (SetEnvironment(PerformanceActionCatalog.CpuMitigations, on, completed)) return true;
+				if (on) Settings.SaveDurable(CpuMitigationPolicy.ExpandedPreferenceKey, previous);
+				Settings.SaveDurable(PerformanceActionCatalog.CpuMitigations, previousOn);
+				return false;
+			}
+		}
+
 		internal static void SetState(string id, string state)
 		{
 			lock (gate)
@@ -276,8 +407,15 @@ namespace PaviseApp
 			Settings.SaveStr(id + "State", state);
 		}
 
+		internal static string EnvironmentAutomaticCycle(string id)
+		{
+			return RecoveryCycleSerial + "\n" + id
+				+ (id == PerformanceActionCatalog.Quantum ? "\nquantum:" + QuantumProfiles.Target : "");
+		}
+
 		internal static bool ApplyEnvironment(string id, bool on)
 		{
+			if (id == PerformanceActionCatalog.Quantum) QuantumLiveUpdate.Begin();
 			if (EnvironmentWorkClosing)
 			{
 				return false;
@@ -288,7 +426,9 @@ namespace PaviseApp
 			bool flag4 = false;
 			if (on)
 			{
-				string[] array = PerformanceActionBackend.EnvironmentTargets(id);
+				string[] array = null;
+				if (!RestoreWithBudget(new PerformanceActionStore.Receipt { Id = "environment-discovery:" + id, Target = "system" }, 3,
+					delegate { array = PerformanceActionBackend.EnvironmentTargets(id); return true; })) { SetState(id, "stopped"); return false; }
 				if (array.Length == 0)
 				{
 					SetState(id, "unsupported");
@@ -301,11 +441,12 @@ namespace PaviseApp
 				string[] array2 = array;
 				foreach (string target in array2)
 				{
+					ActionFailureStore.BeginAutomaticCycle(id, target, EnvironmentAutomaticCycle(id));
 					if (EnvironmentWorkClosing)
 					{
 						return false;
 					}
-					if (ActionFailureStore.IsRetryPending(id, target) && !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase)))
+					if (ActionFailureStore.IsIsolated(id, target) && !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase)))
 					{
 						ActionFailureStore.Trip(id, target, "Recovery incomplete before retry");
 						flag = false;
@@ -314,6 +455,7 @@ namespace PaviseApp
 						continue;
 					}
 					string reason;
+					ActionFailureStore.BeginAutomaticCycle(id, target, EnvironmentAutomaticCycle(id));
 					if (!ActionFailureStore.TryBeginApply(id, target, out reason))
 					{
 						flag = false;
@@ -337,7 +479,7 @@ namespace PaviseApp
 						{
 							throw new InvalidOperationException("Boot journal persistence failed");
 						}
-						bool flag5 = QuantumRecovery.RestoreAll();
+						bool flag5 = RestoreWithBudget(new PerformanceActionStore.Receipt { Id = id, Target = "legacy-quantum" }, 3, QuantumRecovery.RestoreAll);
 						flag2 |= QuantumRecovery.LastWrote;
 						if (flag5)
 						{
@@ -437,7 +579,7 @@ namespace PaviseApp
 						else
 						{
 							flag2 = true;
-							if (!QuantumRecovery.RestoreAll())
+							if (!RestoreWithBudget(new PerformanceActionStore.Receipt { Id = id, Target = "legacy-quantum" }, 3, QuantumRecovery.RestoreAll))
 							{
 								flag = false;
 							}
@@ -452,7 +594,9 @@ namespace PaviseApp
 			}
 			else
 			{
-				foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+				List<PerformanceActionStore.Receipt> receipts;
+				if (!ReadRecoveryReceipts(out receipts)) { SetState(id, "restore-failed"); return false; }
+				foreach (PerformanceActionStore.Receipt item in receipts)
 				{
 					if (!(item.Id == id))
 					{
@@ -464,14 +608,8 @@ namespace PaviseApp
 					}
 					try
 					{
-						string text6 = Boot();
-						if (!BootSessionIdentity.Valid(text6) || !Settings.SaveStrDurable(id + "Boot", text6))
-						{
-							flag = false;
-							continue;
-						}
 						flag2 = true;
-						if (!PerformanceActionBackend.Restore(item))
+						if (!RestorePerformanceReceipt(item, delegate { string boot = Boot(); return BootSessionIdentity.Valid(boot) && Settings.SaveStrDurable(id + "Boot", boot); }))
 						{
 							flag = false;
 						}
@@ -484,6 +622,7 @@ namespace PaviseApp
 				}
 			}
 			string state = (flag ? ((!flag2) ? VerifiedEnvironmentState(id, on) : (on ? "configured" : "restored")) : ((!on) ? "restore-failed" : (flag4 ? "restore-failed" : (flag3 ? "stopped" : "failed"))));
+			if (flag && id == PerformanceActionCatalog.Quantum) state = QuantumLiveUpdate.Complete(on, state);
 			SetState(id, state);
 			PerformanceAction performanceAction = PerformanceActionCatalog.Find(id);
 			if (performanceAction != null)
@@ -504,6 +643,8 @@ namespace PaviseApp
 		private static string VerifiedEnvironmentState(string id, bool on)
 		{
 			string text = Settings.LoadStr(id + "State", "");
+			if (id == PerformanceActionCatalog.Quantum && (on ? text == "live-applied" : text == "live-restored"))
+				return text;
 			if (!on)
 			{
 				if (!(text == "restored"))
@@ -528,13 +669,21 @@ namespace PaviseApp
 
 		private static bool ApplyCpuMitigationsGroup(string[] targets)
 		{
+			if (CpuMitigationsExpanded && !CpuMitigationsExpansionSupported())
+			{
+				SetState(PerformanceActionCatalog.CpuMitigations, "unsupported");
+				return false;
+			}
 			Predicate<PerformanceActionStore.Receipt> selected = (PerformanceActionStore.Receipt receipt) => receipt.Id == "EnvCpuMitigationsV1";
-			if (ActionFailureStore.IsRetryPending("EnvCpuMitigationsV1", "system") && !RestoreWhere(selected))
+			ActionFailureStore.BeginAutomaticCycle("EnvCpuMitigationsV1", "system", RecoveryCycleSerial + "\nexpanded:" + CpuMitigationsExpanded);
+			if (ActionFailureStore.IsIsolated("EnvCpuMitigationsV1", "system") && !RestoreWhere(selected))
 			{
 				ActionFailureStore.Trip("EnvCpuMitigationsV1", "system", "CPU mitigation recovery incomplete before retry");
 				SetState("EnvCpuMitigationsV1", "restore-failed");
 				return false;
 			}
+			ActionFailureStore.CancelApply("EnvCpuMitigationsV1", "system");
+			ActionFailureStore.BeginAutomaticCycle("EnvCpuMitigationsV1", "system", RecoveryCycleSerial + "\nexpanded:" + CpuMitigationsExpanded);
 			string reason;
 			if (!ActionFailureStore.TryBeginApply("EnvCpuMitigationsV1", "system", out reason))
 			{
@@ -551,7 +700,7 @@ namespace PaviseApp
 						throw new OperationCanceledException();
 					}
 					string text2 = PerformanceActionBackend.Read("EnvCpuMitigationsV1", text);
-					string text3 = PerformanceActionBackend.WantedRegistry("EnvCpuMitigationsV1", text2);
+					string text3 = PerformanceActionBackend.WantedRegistry("EnvCpuMitigationsV1", text, text2);
 					if (text2 != text3)
 					{
 						string text4 = Boot();
@@ -628,7 +777,7 @@ namespace PaviseApp
 			List<PerformanceActionStore.Receipt> list2;
 			try
 			{
-				list2 = PerformanceActionStore.All();
+				if (!ReadRecoveryReceipts(out list2)) { list.Add("Recovery journal read budget exhausted; records retained"); return list; }
 			}
 			catch (Exception ex)
 			{
@@ -669,7 +818,7 @@ namespace PaviseApp
 					{
 						text3 = PerformancePolicy.Text("无法识别恢复项目，已保留恢复记录", "Unknown recovery action; recovery record retained");
 					}
-					else if (!PerformanceActionBackend.Restore(item))
+					else if (!RestorePerformanceReceipt(item))
 					{
 						text3 = PerformanceActionBackend.RestoreFailureHint(item);
 					}
@@ -716,6 +865,10 @@ namespace PaviseApp
 		{
 			switch (state)
 			{
+			case "live-applied":
+				return PerformancePolicy.Text("已在线应用 · 无需重启电脑", "Applied online; no PC restart");
+			case "live-restored":
+				return PerformancePolicy.Text("已在线恢复 · 无需重启电脑", "Restored online; no PC restart");
 			case "working":
 				return PerformancePolicy.Text("正在配置", "Configuring");
 			case "configured":
@@ -741,7 +894,7 @@ namespace PaviseApp
 			case "failed":
 				return PerformancePolicy.Text("配置未完成 · 查看记录", "Configuration incomplete; see records");
 			case "stopped":
-				return PerformancePolicy.Text("执行失败 · 已隔离，需手动重试", "Apply failed; isolated until explicit retry");
+				return PerformancePolicy.Text("执行失败 · 已停止应用，保留恢复记录", "Apply failed; further application stopped and recovery records retained");
 			case "restore-failed":
 				return PerformancePolicy.Text("恢复未完成 · 查看记录", "Restore pending");
 			case "restored":
@@ -1308,15 +1461,14 @@ namespace PaviseApp
 			return VbsTweak.Disable();
 		}
 
-		private static bool RestoreOwnedVbs()
+		private static bool RestoreOwnedVbs(Func<bool> prepare = null)
 		{
 			if (VbsTweak.OwnsState)
 			{
-				if (ChangeVbs(false))
-				{
-					return !VbsTweak.OwnsState;
-				}
-				return false;
+				bool restored = RestoreWithBudget(new PerformanceActionStore.Receipt { Id = EnvironmentVbsKey, Target = "system" }, 3,
+					() => (prepare == null || prepare()) && ChangeVbs(false) && !VbsTweak.OwnsState);
+				if (restored) ActionFailureStore.CancelApply(EnvironmentVbsKey, "system");
+				return restored;
 			}
 			return true;
 		}
@@ -1359,7 +1511,8 @@ namespace PaviseApp
 			{
 				try
 				{
-					if (ActionFailureStore.IsRetryPending("EnvVbsDisabledV1", "system") && !RestoreOwnedVbs())
+					ActionFailureStore.BeginAutomaticCycle("EnvVbsDisabledV1", "system", RecoveryCycleSerial + "\ndisabled");
+					if (ActionFailureStore.IsIsolated("EnvVbsDisabledV1", "system") && !RestoreOwnedVbs())
 					{
 						throw new InvalidOperationException("Recovery incomplete before retry");
 					}
@@ -1371,6 +1524,7 @@ namespace PaviseApp
 					return false;
 				}
 				string reason;
+				ActionFailureStore.BeginAutomaticCycle("EnvVbsDisabledV1", "system", RecoveryCycleSerial + "\ndisabled");
 				if (!ActionFailureStore.TryBeginApply("EnvVbsDisabledV1", "system", out reason))
 				{
 					SetState("EnvVbsDisabledV1", VbsTweak.OwnsState ? "restore-failed" : "stopped");
@@ -1422,7 +1576,8 @@ namespace PaviseApp
 					SetState("EnvVbsDisabledV1", on ? "unverified" : "restore-failed");
 					return false;
 				}
-				bool flag2 = Settings.SaveStrDurable("EnvVbsDisabledV1Boot", text2) && ChangeVbs(on);
+				bool flag2 = on ? Settings.SaveStrDurable("EnvVbsDisabledV1Boot", text2) && ChangeVbs(true)
+					: RestoreOwnedVbs(() => Settings.SaveStrDurable("EnvVbsDisabledV1Boot", text2));
 				if (flag2)
 				{
 					flag2 = (on ? VbsConfigured() : (!VbsTweak.OwnsState));
@@ -1483,6 +1638,9 @@ namespace PaviseApp
 
 		internal static bool QueueEnvironmentWork(WaitCallback work)
 		{
+#if PAVISE_SELFTEST
+			if (EnvironmentQueueForTest != null) return EnvironmentQueueForTest(work);
+#endif
 			return ThreadPool.QueueUserWorkItem(work);
 		}
 

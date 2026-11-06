@@ -6,6 +6,9 @@ namespace PaviseApp
 	{
 		public const int SystemDefault = 10;
 
+		// REG_DWORD is read as a signed Int32. 0xFFFFFFFF disables throttling.
+		public const int ThrottlingDisabled = -1;
+
 		private static readonly ReversibleReg Throttle = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "NetworkThrottlingIndex", RegistryValueKind.DWord, "PrevNetThrottle");
 
 		private static readonly object lk = new object();
@@ -14,7 +17,8 @@ namespace PaviseApp
 		{
 			get
 			{
-				return Settings.Load("NetThrottleRepaired", false);
+				// The journal is authoritative even if saving the UI marker failed.
+				return Throttle.HasBackup;
 			}
 		}
 
@@ -45,11 +49,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			if (num.Value >= 1)
-			{
-				return num.Value > 70;
-			}
-			return true;
+			return !IsValid(num.Value);
+		}
+
+		private static bool IsValid(int value)
+		{
+			return value == ThrottlingDisabled || (value >= 1 && value <= 70);
 		}
 
 		public static string Describe()
@@ -59,7 +64,11 @@ namespace PaviseApp
 			{
 				return Lang.T("netthrottle.absent");
 			}
-			if (num.Value < 1 || num.Value > 70)
+			if (num.Value == ThrottlingDisabled)
+			{
+				return Lang.T("netthrottle.disabled");
+			}
+			if (!IsValid(num.Value))
 			{
 				return Lang.F("netthrottle.broken", "0x" + num.Value.ToString("X"));
 			}
@@ -75,13 +84,13 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.nettweak.1"));
 					return true;
 				}
-				if (!Throttle.Apply(10))
+				if (!Throttle.Apply(SystemDefault))
 				{
 					Logger.Log(Lang.T("log.nettweak.2"));
 					return false;
 				}
 				Settings.Save("NetThrottleRepaired", true);
-				Logger.Log(Lang.T("log.nettweak.3") + 10 + Lang.T("log.nettweak.4"));
+				Logger.Log(Lang.T("log.nettweak.3") + SystemDefault + Lang.T("log.nettweak.4"));
 				return true;
 			}
 		}

@@ -62,8 +62,79 @@ namespace PaviseApp
 			}
 		}
 
+		private sealed class FailureBudget
+		{
+			internal int Failures;
+			internal long NotBefore;
+		}
+
+		private static string FailurePhaseIdentity(Entry entry, string action)
+		{
+			return action + "/" + PerformanceTuning.RecoveryCycleSerial + "/" + entry.Level + "/"
+				+ entry.AntiCheatLevel + "/" + entry.BackgroundLevel + "/" + GpuDemoteEnabled
+				+ "/" + entry.RecoveryExitObserved;
+		}
+
+		private static FailureBudget FailureBudgetFor(Entry entry, string action)
+		{
+			string identity = FailurePhaseIdentity(entry, action);
+			FailureBudget budget;
+			if (!entry.FailureBudgets.TryGetValue(identity, out budget)) entry.FailureBudgets[identity] = budget = new FailureBudget();
+			string prior;
+			if (!entry.SelectedFailureBudgets.TryGetValue(action, out prior) || prior != identity)
+			{
+				entry.SelectedFailureBudgets[action] = identity;
+				if (action == "restore") { entry.ProtectedRetries = budget.Failures; entry.NextRetryTicks = budget.NotBefore; }
+				if (action == "layout") { entry.AutomaticLayoutFailures = budget.Failures; entry.AutomaticLayoutRetryAt = budget.NotBefore; }
+				if (action == "reconcile") { entry.ReconcileFailures = budget.Failures; entry.NextReconcileTicks = budget.NotBefore; }
+			}
+			return budget;
+		}
+
+		private static void ReportFailureBudget(Entry entry, string action, FailureBudget budget)
+		{
+			if (budget.Failures < 8) { RecoveryAttemptTrace.DeferredUntil(budget.NotBefore); return; }
+			string phase = FailurePhaseIdentity(entry, action);
+			RecoveryAttemptTrace.Exhausted(() => budget.Failures < 8 || FailurePhaseIdentity(entry, action) != phase);
+		}
+
+		private static bool RestoreBudgetBlocked(Entry entry, string action, bool respectDeadline)
+		{
+			FailureBudget budget = FailureBudgetFor(entry, action);
+			if (budget.Failures < 8 && (!respectDeadline || DateTime.UtcNow.Ticks >= budget.NotBefore)) return false;
+			ReportFailureBudget(entry, action, budget);
+			return true;
+		}
+
+		private static void RecordFailureBudget(Entry entry, string action, bool completed, long notBefore)
+		{
+			FailureBudget budget = FailureBudgetFor(entry, action);
+			if (completed) { budget.Failures = 0; budget.NotBefore = 0; return; }
+			budget.Failures = Math.Min(8, budget.Failures + 1);
+			budget.NotBefore = budget.Failures >= 8 ? DateTime.MaxValue.Ticks : notBefore;
+			ReportFailureBudget(entry, action, budget);
+			Logger.Log("Suppression " + action + ": target=" + entry.Name + "/" + entry.Creation
+				+ " phase=" + PerformanceTuning.RecoveryCycleSerial + " attempt=" + budget.Failures + "/8; ownership retained");
+		}
+
+		internal void ObserveTargetExit(int pid, long birth)
+		{
+			lock (sync)
+			{
+				Entry entry;
+				if (!map.TryGetValue(pid, out entry) || entry.Creation != birth || entry.RecoveryExitObserved) return;
+				entry.RecoveryExitObserved = true;
+				FailureBudgetFor(entry, "restore");
+				FailureBudgetFor(entry, "layout");
+			}
+		}
+
 		private sealed class Entry
 		{
+			internal readonly Dictionary<string, FailureBudget> FailureBudgets = new Dictionary<string, FailureBudget>();
+			internal readonly Dictionary<string, string> SelectedFailureBudgets = new Dictionary<string, string>();
+			internal bool RecoveryExitObserved;
+			internal bool AffinityPrepareInFlight;
 			public string Name;
 
 			public string FailureTarget;
@@ -94,6 +165,13 @@ namespace PaviseApp
 
 			public bool BackgroundPlacementOwned;
 
+			// Persisted bg-job rows delegate affinity restoration exclusively to the
+			// separately journaled Job owner, including after it becomes neutral.
+			public bool BackgroundJobPlacement, BackgroundJobActive;
+			public int BackgroundPid;
+			public GameAffinityJobLease BackgroundJobs;
+			public string BackgroundAffinityDetail;
+
 			// Once transferred, placement belongs solely to the anti-cheat hard-affinity lease.
 			// Keep this after Reasons is cleared, and in the recovery journal.
 			public bool AntiCheatPlacementExternal;
@@ -103,6 +181,9 @@ namespace PaviseApp
 			public bool BackgroundPlacementVerified;
 
 			public bool BackgroundRestorePending;
+
+			// Retained only until released Background ownership is restored or reapplied.
+			public bool BackgroundReleaseDebt;
 
 			public ulong BackgroundApplied;
 
@@ -147,6 +228,10 @@ namespace PaviseApp
 			public int ReconcileFailures;
 
 			public int FastReconcileRemaining;
+
+			public long AntiCheatCorrectionWindow;
+
+			public int AntiCheatCorrections;
 
 			public bool Journaled;
 
@@ -235,6 +320,11 @@ namespace PaviseApp
 
 		private readonly Dictionary<int, Entry> map = new Dictionary<int, Entry>();
 
+		private readonly GameAffinityJobLease backgroundAffinityJobs = new GameAffinityJobLease();
+		private bool backgroundJobJournalPending;
+		private bool backgroundJobsStopCompleted;
+		private readonly Dictionary<string, FailureBudget> backgroundJobJournalFailures = new Dictionary<string, FailureBudget>();
+
 		private ulong throttleMask;
 
 		private readonly ulong allMask;
@@ -267,6 +357,101 @@ namespace PaviseApp
 		private static readonly Dictionary<string, long> protectedLogTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
 		internal bool EnforceBackgroundAffinity;
+
+		internal bool BackgroundReleasePending
+		{
+			get
+			{
+				lock (sync)
+				{
+					if (backgroundJobJournalPending || backgroundAffinityJobs.HasPending) return true;
+					foreach (Entry entry in map.Values)
+						if ((entry.Reasons & SuppressReason.Background) != 0 || entry.BackgroundReleaseDebt || entry.BackgroundRestorePending
+							|| (entry.Reasons == SuppressReason.None && entry.BackgroundPlacementOwned)) return true;
+					return false;
+				}
+			}
+		}
+
+		internal bool BackgroundAffinityPending
+		{
+			get
+			{
+				lock (sync)
+				{
+					if (backgroundJobJournalPending || backgroundAffinityJobs.HasPending) return true;
+					foreach (Entry entry in map.Values) if (entry.BackgroundRestorePending) return true;
+					return false;
+				}
+			}
+		}
+
+		internal string BackgroundAffinityDetail()
+		{
+			lock (sync)
+			{
+				int jobs = 0, fallback = 0;
+				HashSet<string> reasons = new HashSet<string>(StringComparer.Ordinal);
+				foreach (Entry entry in map.Values)
+				{
+					if (entry.SqueezeAff == 0 || !SqueezeOwnedBy(entry, SuppressReason.Background)) continue;
+					if (entry.BackgroundJobActive && VerifyBackgroundJob(entry)) jobs++;
+					else if (!entry.BackgroundJobPlacement && entry.BackgroundPlacementVerified) fallback++;
+					if (!string.IsNullOrEmpty(entry.BackgroundAffinityDetail)) reasons.Add(entry.BackgroundAffinityDetail);
+				}
+				return jobs == 0 && fallback == 0 && !BackgroundAffinityPending ? "" : "Job=" + jobs + "; process-fallback=" + fallback + (reasons.Count == 0 ? "" : "; " + string.Join("; ", new List<string>(reasons).ToArray()));
+			}
+		}
+
+		internal bool StopBackgroundAffinityJobs()
+		{
+			lock (sync)
+			{
+				if (backgroundJobsStopCompleted) return FlushBackgroundJobJournalLocked(false);
+				string reason;
+				bool ok = backgroundAffinityJobs.Stop(out reason);
+				backgroundJobsStopCompleted = ok;
+				bool changed = false;
+				foreach (Entry entry in map.Values)
+				{
+					if (!entry.BackgroundJobPlacement) continue;
+					changed |= entry.BackgroundPlacementVerified || (ok ? entry.BackgroundJobActive || entry.BackgroundRestorePending || entry.SqueezeAff != 0 : !entry.BackgroundRestorePending);
+					entry.BackgroundPlacementVerified = false;
+					if (ok) { entry.BackgroundJobActive = false; entry.BackgroundRestorePending = false; entry.SqueezeAff = 0; }
+					else entry.BackgroundRestorePending = true;
+				}
+				return FlushBackgroundJobJournalLocked(changed) && ok;
+			}
+		}
+
+		private bool FlushBackgroundJobJournalLocked(bool changed)
+		{
+			backgroundJobJournalPending |= changed;
+			if (!backgroundJobJournalPending) return true;
+			string phase = PerformanceTuning.RecoveryCycleSerial + "/" + EnforceBackgroundAffinity;
+			FailureBudget budget;
+			if (!backgroundJobJournalFailures.TryGetValue(phase, out budget))
+				backgroundJobJournalFailures[phase] = budget = new FailureBudget();
+			long now = DateTime.UtcNow.Ticks;
+			if (budget.Failures >= 8 || now < budget.NotBefore)
+			{
+				ReportBackgroundJournalBudget(phase, budget);
+				return false;
+			}
+			if (SaveJournalLocked(true)) return true;
+			budget.Failures++;
+			budget.NotBefore = budget.Failures >= 8 ? DateTime.MaxValue.Ticks : DateTime.UtcNow.AddSeconds(30).Ticks;
+			ReportBackgroundJournalBudget(phase, budget);
+			Logger.Log("Suppression background journal: phase=" + phase + " attempt=" + budget.Failures + "/8; journal debt retained");
+			return false;
+		}
+
+		private void ReportBackgroundJournalBudget(string phase, FailureBudget budget)
+		{
+			if (budget.Failures < 8) RecoveryAttemptTrace.DeferredUntil(budget.NotBefore);
+			else RecoveryAttemptTrace.Exhausted(() => !backgroundJobJournalPending
+				|| PerformanceTuning.RecoveryCycleSerial + "/" + EnforceBackgroundAffinity != phase);
+		}
 
 		private static IAutomaticLayoutPlatform LayoutPlatform
 		{
@@ -409,18 +594,19 @@ namespace PaviseApp
 						}
 						if (flag2 && value2.OrigPri != uint.MaxValue && value2.GaveUp)
 						{
-							if (!ActionFailureStore.IsRetryPending("BackgroundSuppression", FailureTargetOf(intPtr, value2)))
+							value2.Reasons |= reason;
+							SetReasonLevel(value2, reason, level);
+							if (group != null && value2.Group == null)
 							{
-								value2.Reasons |= reason;
-								SetReasonLevel(value2, reason, level);
-								if (group != null && value2.Group == null)
-								{
-									value2.Group = group;
-								}
-								return AcquireResult.AlreadyProtected;
+								value2.Group = group;
 							}
+							if (!value2.GaveUpRestored)
+								value2.GaveUpRestored = RestoreEntryValues(intPtr, value2);
+							if (!value2.GaveUpRestored) return AcquireResult.AlreadyProtected;
+							ActionFailureStore.CancelApply("BackgroundSuppression", FailureTargetOf(intPtr, value2));
+							if (!BeginSuppressionCycle(intPtr, value2, pid)) return AcquireResult.AlreadyProtected;
 							value2.GaveUp = false;
-							value2.NextReconcileTicks = 0L;
+							value2.NextReconcileTicks = 0;
 						}
 						if (flag2 && value2.OrigPri != uint.MaxValue)
 						{
@@ -469,11 +655,16 @@ namespace PaviseApp
 								RecordBatchApplyResultLocked(pid, true, null);
 								return AcquireResult.AlreadyThrottled;
 							}
-							if (ThrottleMatches(intPtr, value2.Level, value2.OrigPri, value2.OrigAff, value2.OrigCpuSets, DesiredGpu(value2), AntiCheatThrottled(value2), DesiredAffinityOf(value2), PlacementIsProtected(value2), value2.OrigBoost))
+							if (VerifyBackgroundJob(value2) && ThrottleMatches(intPtr, value2.Level, value2.OrigPri, value2.OrigAff, value2.OrigCpuSets, DesiredGpu(value2), AntiCheatThrottled(value2), DesiredAffinityOf(value2), PlacementIsProtected(value2), value2.OrigBoost))
 							{
 								ScheduleAfterMatch(value2, pid);
 								RecordBatchApplyResultLocked(pid, true, null);
 								return AcquireResult.AlreadyThrottled;
+							}
+							if (!AllowAntiCheatCorrection(intPtr, pid, value2))
+							{
+								RecordBatchApplyResultLocked(pid, false, "anti-cheat-policy-conflict");
+								return AcquireResult.AlreadyProtected;
 							}
 							if (QueueApplyLocked(pid, name))
 							{
@@ -649,6 +840,14 @@ namespace PaviseApp
 
 		private bool RestoreEntryValues(IntPtr handle, Entry entry)
 		{
+			if (RestoreBudgetBlocked(entry, "restore-values", false)) return false;
+			bool restored = RestoreEntryValuesCore(handle, entry);
+			RecordFailureBudget(entry, "restore-values", restored, 0);
+			return restored;
+		}
+
+		private bool RestoreEntryValuesCore(IntPtr handle, Entry entry)
+		{
 			try
 			{
 				if (EntryIdentity(handle, entry) != 0)
@@ -666,11 +865,13 @@ namespace PaviseApp
 
 		private static bool EntrySnapshotMatches(IntPtr handle, Entry entry)
 		{
-			return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, !entry.AntiCheatPlacementExternal);
+			if (entry.BackgroundJobPlacement && (entry.BackgroundJobActive || entry.BackgroundRestorePending)) return false;
+			return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, !entry.AntiCheatPlacementExternal && !entry.BackgroundJobPlacement);
 		}
 
 		private bool ApplyEntryValues(IntPtr handle, Entry entry)
 		{
+			if (!VerifyBackgroundJob(entry)) return false;
 			DetectBackgroundPlacementChange(handle, entry);
 			return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, DesiredGpu(entry), entry.OrigBoost, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry));
 		}
@@ -696,7 +897,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num2 = DesiredIoPriority(level);
+			int num2 = DesiredIoPriority(level, antiCheat);
 			int num3 = DesiredPagePriority(level, antiCheat);
 			if (Native.QueryIoPriority(h) != num2 || Native.QueryPagePriority(h) != num3)
 			{
@@ -708,7 +909,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = SevereAntiCheat(level, antiCheat);
+			bool flag = DisableDynamicBoost(level, antiCheat);
 			uint[] expected = originalCpuSets ?? new uint[0];
 			if (!affinityOwned && !Native.CpuSetsMatch(h, expected))
 			{
@@ -728,13 +929,25 @@ namespace PaviseApp
 
 		internal static bool SevereAntiCheat(SuppressionLevel level, bool antiCheat)
 		{
-			// 2223 preserves anti-cheat progress: BelowNormal, page priority 3,
-			// no timer seal and no forced dynamic-boost disable, even in the strongest tier.
-			return false;
+			return antiCheat && level >= SuppressionLevel.Isolated;
+		}
+
+		// Set from the session policy before each background sweep: true only for
+		// Aggressive background governance. Anti-cheat taming does not depend on it.
+		internal static volatile bool BackgroundBoostLimit;
+
+		internal static bool DisableDynamicBoost(SuppressionLevel level, bool antiCheat)
+		{
+			// The original boost state is journaled and restored by the ordinary lease
+			// path, and the drift check re-applies when the governance level changes.
+			if (antiCheat) return level >= SuppressionLevel.Restrained;
+			return BackgroundBoostLimit && level >= SuppressionLevel.Isolated;
 		}
 
 		internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority, bool antiCheat)
 		{
+			if (antiCheat && level >= SuppressionLevel.Eco)
+				return level >= SuppressionLevel.Isolated ? 64u : 16384u;
 			uint result = ((originalPriority == 0 || originalPriority == uint.MaxValue) ? 32u : originalPriority);
 			if (level >= SuppressionLevel.Restrained)
 			{
@@ -743,8 +956,9 @@ namespace PaviseApp
 			return result;
 		}
 
-		internal static int DesiredIoPriority(SuppressionLevel level)
+		internal static int DesiredIoPriority(SuppressionLevel level, bool antiCheat = false)
 		{
+			if (antiCheat && level >= SuppressionLevel.Restrained) return 0;
 			if (level < SuppressionLevel.Isolated)
 			{
 				return 1;
@@ -754,6 +968,7 @@ namespace PaviseApp
 
 		internal static int DesiredPagePriority(SuppressionLevel level, bool antiCheat)
 		{
+			if (antiCheat) return level >= SuppressionLevel.Isolated ? 1 : (level >= SuppressionLevel.Restrained ? 2 : 3);
 			if (level < SuppressionLevel.Isolated || (antiCheat && !SevereAntiCheat(level, antiCheat)))
 			{
 				return 3;
@@ -780,7 +995,7 @@ namespace PaviseApp
 			{
 				return -1;
 			}
-			if (!SevereAntiCheat(level, antiCheat))
+			if (!DisableDynamicBoost(level, antiCheat))
 			{
 				return originalBoost;
 			}
@@ -792,7 +1007,7 @@ namespace PaviseApp
 			int num = DesiredBoostDisabled(level, antiCheat, originalBoost);
 			if (num < 0)
 			{
-				if (!SevereAntiCheat(level, antiCheat))
+				if (!DisableDynamicBoost(level, antiCheat))
 				{
 					return "";
 				}
@@ -844,17 +1059,25 @@ namespace PaviseApp
 			return SuppressionAffinityPolicy.DesiredAffinity(e.Reasons, (e.BackgroundRestorePending && !AntiCheatThrottled(e)) ? 0 : e.SqueezeAff, e.OrigAff, allMask);
 		}
 
+		private bool BeginSuppressionCycle(IntPtr handle, Entry entry, int pid)
+		{
+			string signature = PerformanceTuning.RecoveryCycleSerial + "\n" + pid + "/" + entry.Creation + "/"
+				+ entry.Level + "/" + entry.BackgroundLevel + "/" + entry.AntiCheatLevel + "/" + GpuDemoteEnabled + "/" + EnforceBackgroundAffinity;
+			return ActionFailureStore.BeginAutomaticCycle("BackgroundSuppression", FailureTargetOf(handle, entry), signature);
+		}
+
 		private bool ApplyEntryLocked(IntPtr h, Entry e, int pid)
 		{
+			if (FailureBudgetFor(e, "reconcile").Failures >= 8) return false;
 			string target = FailureTargetOf(h, e);
+			BeginSuppressionCycle(h, e, pid);
 			int num = EntryIdentity(h, e);
 			if (num != 0)
 			{
 				StopEntry(e, num == 1);
 				return false;
 			}
-			bool flag = ActionFailureStore.IsRetryPending("BackgroundSuppression", target);
-			if (flag)
+			if (ActionFailureStore.IsIsolated("BackgroundSuppression", target))
 			{
 				if (!RestoreEntryValues(h, e))
 				{
@@ -863,11 +1086,13 @@ namespace PaviseApp
 						StopEntry(e, true);
 						return false;
 					}
-					ActionFailureStore.Trip("BackgroundSuppression", target, "Background recovery incomplete before explicit retry");
+					ActionFailureStore.Trip("BackgroundSuppression", target, "Background recovery incomplete before apply");
 					StopEntry(e, false);
 					return false;
 				}
 				e.GaveUp = false;
+				ActionFailureStore.CancelApply("BackgroundSuppression", target);
+				BeginSuppressionCycle(h, e, pid);
 			}
 			string reason;
 			if (!ActionFailureStore.TryBeginApply("BackgroundSuppression", target, out reason))
@@ -890,11 +1115,11 @@ namespace PaviseApp
 			}
 			catch (NotSupportedException)
 			{
-				return CancelSkippedEntry(h, e, target, flag);
+				return CancelSkippedEntry(h, e, target);
 			}
 			catch (OperationCanceledException)
 			{
-				return CancelSkippedEntry(h, e, target, flag);
+				return CancelSkippedEntry(h, e, target);
 			}
 			catch (Exception ex3)
 			{
@@ -905,10 +1130,6 @@ namespace PaviseApp
 			{
 			case 1:
 				ActionFailureStore.CancelApply("BackgroundSuppression", target);
-				if (flag)
-				{
-					ActionFailureStore.WithdrawRetry("BackgroundSuppression", target);
-				}
 				StopEntry(e, true);
 				return false;
 			case 2:
@@ -931,16 +1152,12 @@ namespace PaviseApp
 			return false;
 		}
 
-		private bool CancelSkippedEntry(IntPtr handle, Entry entry, string target, bool retry)
+		private bool CancelSkippedEntry(IntPtr handle, Entry entry, string target)
 		{
 			bool flag = EntryIdentity(handle, entry) == 1 || RestoreEntryValues(handle, entry);
 			if (flag)
 			{
 				ActionFailureStore.CancelApply("BackgroundSuppression", target);
-				if (retry)
-				{
-					ActionFailureStore.WithdrawRetry("BackgroundSuppression", target);
-				}
 			}
 			else
 			{
@@ -980,6 +1197,22 @@ namespace PaviseApp
 			return true;
 		}
 
+		private bool AllowAntiCheatCorrection(IntPtr handle, int pid, Entry entry)
+		{
+			if (!entry.Applied || !AntiCheatThrottled(entry)
+				|| (entry.Reasons & SuppressReason.Background) != 0) return true;
+			long now = DateTime.UtcNow.Ticks;
+			if (now < entry.AntiCheatCorrectionWindow || now - entry.AntiCheatCorrectionWindow >= TimeSpan.FromMinutes(1).Ticks)
+			{
+				entry.AntiCheatCorrectionWindow = now;
+				entry.AntiCheatCorrections = 0;
+			}
+			if (entry.AntiCheatCorrections < 3) { entry.AntiCheatCorrections++; return true; }
+			LastApplyError = "anti-cheat-policy-conflict";
+			GiveUpAntiCheatLocked(handle, pid, entry);
+			return false;
+		}
+
 		internal static bool AffinityOnlyFailure(string detail)
 		{
 			if (string.IsNullOrEmpty(detail))
@@ -1004,7 +1237,14 @@ namespace PaviseApp
 
 		private static void ScheduleAfterMatch(Entry e, int pid)
 		{
+			RecordFailureBudget(e, "reconcile", true, 0);
+			e.BackgroundReleaseDebt = false;
 			e.ReconcileFailures = 0;
+			if (AntiCheatThrottled(e))
+			{
+				e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+				return;
+			}
 			if (e.FastReconcileRemaining > 0)
 			{
 				e.FastReconcileRemaining--;
@@ -1018,11 +1258,15 @@ namespace PaviseApp
 
 		private static void ScheduleAfterApply(Entry e, bool applied, int pid)
 		{
+			FailureBudgetFor(e, "reconcile");
+			if (!applied) e.Applied = false;
 			if (applied)
 			{
+				RecordFailureBudget(e, "reconcile", true, 0);
+				e.BackgroundReleaseDebt = false;
 				e.ReconcileFailures = 0;
 				e.FastReconcileRemaining = 2;
-				e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(4.0).Ticks;
+				e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatThrottled(e) ? AntiCheatAuditSeconds(e.Level) : 4).Ticks;
 				return;
 			}
 			if (e.ReconcileFailures < 8)
@@ -1039,6 +1283,13 @@ namespace PaviseApp
 				num = Math.Min(60, num * 2);
 			}
 			e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(num).Ticks;
+			RecordFailureBudget(e, "reconcile", false, e.NextReconcileTicks);
+			if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
+		}
+
+		internal static int AntiCheatAuditSeconds(SuppressionLevel level)
+		{
+			return level >= SuppressionLevel.Isolated ? 1 : (level >= SuppressionLevel.Restrained ? 2 : 4);
 		}
 
 		private static int PositiveMod(int value, int modulo)
@@ -1056,7 +1307,7 @@ namespace PaviseApp
 			affinityOwned |= antiCheat;
 			Interlocked.Increment(ref applyOperations);
 			List<string> list = new List<string>();
-			if (SevereAntiCheat(level, antiCheat) && DesiredBoostDisabled(level, antiCheat, origBoost) < 0)
+			if (DisableDynamicBoost(level, antiCheat) && DesiredBoostDisabled(level, antiCheat, origBoost) < 0)
 			{
 				list.Add("boost-snapshot");
 				return StopFailedApply(list);
@@ -1098,7 +1349,18 @@ namespace PaviseApp
 			{
 				ulong num2 = ((originalAffinity != 0) ? originalAffinity : allMask);
 				bool flag = desiredAffinity != num2;
-				if (Native.QueryAffinity(h) != desiredAffinity && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
+				ulong currentAffinity = Native.QueryAffinity(h);
+				if (flag && currentAffinity != desiredAffinity)
+				{
+					long birth, cpu; ulong io; string admissionReason = null;
+					if (!Native.QueryProcessSample(h, out birth, out cpu, out io)
+						|| !GameThreadAffinityAdmission.Check(h, birth, currentAffinity, out admissionReason))
+					{
+						list.Add(admissionReason ?? GameThreadAffinityAdmission.RefusalPrefix + "process-identity-unconfirmed");
+						return StopFailedApply(list);
+					}
+				}
+				if (currentAffinity != desiredAffinity && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
 				{
 					list.Add(flag ? "affinity-write" : "affinity-restore");
 				}
@@ -1111,7 +1373,7 @@ namespace PaviseApp
 			{
 				return StopFailedApply(list);
 			}
-			int num3 = DesiredIoPriority(level);
+			int num3 = DesiredIoPriority(level, antiCheat);
 			if (Native.QueryIoPriority(h) != num3 && !Native.TrySetIoPriority(h, num3))
 			{
 				list.Add("io-write");
@@ -1234,9 +1496,14 @@ namespace PaviseApp
 
 		public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement)
 		{
+			return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, qosControl, qosState, gpu, boost, restorePlacement, true);
+		}
+
+		internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority)
+		{
 			bool flag = !restorePlacement || Native.RestoreCpuSetsVerified(h, cpuSets);
 			uint num = ((pri == 0 || pri == uint.MaxValue) ? 32u : pri);
-			flag &= Native.SetPriorityClass(h, num);
+			if (restorePriority) flag &= Native.SetPriorityClass(h, num);
 			ulong num2 = ((aff != 0) ? aff : allMask);
 			if (restorePlacement && !CpuTopology.MultiGroup && Native.QueryAffinity(h) != num2)
 			{
@@ -1258,7 +1525,7 @@ namespace PaviseApp
 				}
 				flag &= Native.QueryBoostDisabled(h) == boost;
 			}
-			flag &= Native.GetPriorityClass(h) == num;
+			if (restorePriority) flag &= Native.GetPriorityClass(h) == num;
 			flag &= Native.QueryIoPriority(h) == num3;
 			flag &= Native.QueryPagePriority(h) == num4;
 			if (restorePlacement && !CpuTopology.MultiGroup)
@@ -1276,6 +1543,7 @@ namespace PaviseApp
 
 		private RestoreResult RestoreOne(int pid, Entry e)
 		{
+			if (!ReleaseBackgroundJob(e)) return RestoreResult.Protected;
 			IntPtr intPtr = Native.OpenProcess(12800, false, pid);
 			if (intPtr == IntPtr.Zero)
 			{
@@ -1519,8 +1787,10 @@ namespace PaviseApp
 
 		private static void LayoutFailed(Entry e)
 		{
+			FailureBudgetFor(e, "layout");
 			e.AutomaticLayoutFailures = Math.Min(8, e.AutomaticLayoutFailures + 1);
-			e.AutomaticLayoutRetryAt = DateTime.UtcNow.AddSeconds(Math.Min(60, 4 * (1 << Math.Min(4, e.AutomaticLayoutFailures - 1)))).Ticks;
+			e.AutomaticLayoutRetryAt = e.AutomaticLayoutFailures >= 8 ? DateTime.MaxValue.Ticks : DateTime.UtcNow.AddSeconds(Math.Min(60, 4 * (1 << Math.Min(4, e.AutomaticLayoutFailures - 1)))).Ticks;
+			RecordFailureBudget(e, "layout", false, e.AutomaticLayoutRetryAt);
 		}
 
 		private static bool RestoreAutomaticLayoutValues(IntPtr h, Entry e)
@@ -1566,14 +1836,17 @@ namespace PaviseApp
 			{
 				return true;
 			}
+			if (RestoreBudgetBlocked(e, "layout", false)) return false;
 			if (e.RestoreInFlight)
 			{
+				RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
 				return false;
 			}
 			e.AutomaticLayoutRestoring = true;
 			IAutomaticLayoutPlatform layoutPlatform = LayoutPlatform;
 			if (layoutPlatform == null)
 			{
+				RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
 				return false;
 			}
 			IntPtr intPtr = layoutPlatform.Open(pid, e.Creation, e.Name);
@@ -1598,6 +1871,7 @@ namespace PaviseApp
 					return false;
 				}
 				e.AutomaticLayoutRestoring = false;
+				RecordFailureBudget(e, "layout", true, 0);
 				return true;
 			}
 			finally
@@ -1629,7 +1903,7 @@ namespace PaviseApp
 				long ticks = DateTime.UtcNow.Ticks;
 				foreach (KeyValuePair<int, Entry> item in map)
 				{
-					if (item.Value.AutomaticLayoutSets != null && ticks >= item.Value.AutomaticLayoutRetryAt)
+					if (item.Value.AutomaticLayoutSets != null && !RestoreBudgetBlocked(item.Value, "layout", true) && ticks >= item.Value.AutomaticLayoutRetryAt)
 					{
 						RestoreAutomaticLayoutLocked(item.Key, item.Value);
 					}
@@ -1639,7 +1913,7 @@ namespace PaviseApp
 
 		private static bool PlacementIsProtected(Entry e)
 		{
-			if (e.AntiCheatPlacementExternal || AntiCheatThrottled(e))
+			if (e.BackgroundJobPlacement || e.AntiCheatPlacementExternal || AntiCheatThrottled(e))
 			{
 				return true;
 			}
@@ -1652,12 +1926,29 @@ namespace PaviseApp
 
 		private static bool RestorePlacement(Entry e)
 		{
-			return !e.AntiCheatPlacementExternal && !e.BackgroundPlacementOwned && !e.AutomaticLayoutYielded;
+			return !e.BackgroundJobPlacement && !e.AntiCheatPlacementExternal && !e.BackgroundPlacementOwned && !e.AutomaticLayoutYielded;
 		}
 
 		// Must succeed before the independent hard-affinity lease writes anything.
 		// Legacy recovery debt is never discarded just because a process is now recognized as AC.
 		internal bool PrepareAntiCheatAffinity(int pid, long creation, string name)
+		{
+			Entry entry;
+			lock (sync)
+			{
+				if (!map.TryGetValue(pid, out entry) || entry.Creation != creation || !SameName(entry.Name, name)
+					|| !AntiCheatThrottled(entry) || entry.OrigPri == uint.MaxValue || entry.RestoreInFlight || entry.LegacyPlacementDebt) return false;
+				if (entry.AntiCheatPlacementExternal && entry.Journaled) return true;
+				if (entry.AffinityPrepareInFlight) { RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false; }
+				if (RestoreBudgetBlocked(entry, "affinity-prepare", false)) return false;
+				entry.AffinityPrepareInFlight = true;
+			}
+			bool completed = false;
+			try { completed = PrepareAntiCheatAffinityCore(pid, creation, name); return completed; }
+			finally { lock (sync) { entry.AffinityPrepareInFlight = false; RecordFailureBudget(entry, "affinity-prepare", completed, 0); } }
+		}
+
+		private bool PrepareAntiCheatAffinityCore(int pid, long creation, string name)
 		{
 			Entry entry;
 			lock (sync)
@@ -1734,7 +2025,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				return ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), PlacementIsProtected(e));
+				if ((e.Reasons & SuppressReason.Background) == 0 && !ReleaseBackgroundJob(e)) return false;
+				return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), PlacementIsProtected(e));
 			}
 		}
 
@@ -1938,6 +2230,7 @@ namespace PaviseApp
 				{
 					return true;
 				}
+				if (FailureBudgetFor(value, "reconcile").Failures >= 8) return true;
 				if (!forceAudit && ticks < value.NextReconcileTicks)
 				{
 					return true;
@@ -1965,6 +2258,7 @@ namespace PaviseApp
 				string text = Native.ImageName(intPtr);
 				if (text == null || !SameName(text, expectedName))
 				{
+					if (text == null) { lock (sync) ScheduleAfterApply(value, false, pid); }
 					return false;
 				}
 				long creation;
@@ -1972,6 +2266,7 @@ namespace PaviseApp
 				ulong io;
 				if (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io))
 				{
+					lock (sync) ScheduleAfterApply(value, false, pid);
 					return false;
 				}
 				lock (sync)
@@ -1999,7 +2294,7 @@ namespace PaviseApp
 						}
 					}
 					int desiredGpu = DesiredGpu(value3);
-					if (ThrottleMatches(intPtr, level, origPri, origAff, value3.OrigCpuSets, desiredGpu, AntiCheatThrottled(value3), DesiredAffinityOf(value3), PlacementIsProtected(value3), value3.OrigBoost))
+					if (VerifyBackgroundJob(value3) && ThrottleMatches(intPtr, level, origPri, origAff, value3.OrigCpuSets, desiredGpu, AntiCheatThrottled(value3), DesiredAffinityOf(value3), PlacementIsProtected(value3), value3.OrigBoost))
 					{
 						if (!value3.Applied && value3.ReconcileFailures > 0)
 						{
@@ -2010,6 +2305,7 @@ namespace PaviseApp
 						return true;
 					}
 					bool applied = value3.Applied;
+					if (!AllowAntiCheatCorrection(intPtr, pid, value3)) return true;
 					int reconcileFailures = value3.ReconcileFailures;
 					value3.Applied = ApplyEntryLocked(intPtr, value3, pid);
 					ScheduleAfterApply(value3, value3.Applied, pid);
@@ -2037,6 +2333,10 @@ namespace PaviseApp
 			finally
 			{
 				Native.CloseHandle(intPtr);
+				if ((reason & SuppressReason.AntiCheat) != 0)
+				{
+					lock (sync) RefreshGroupCountsLocked();
+				}
 			}
 		}
 
@@ -2111,7 +2411,7 @@ namespace PaviseApp
 			try
 			{
 				int num = CountThrottledLocked(reason);
-				Volatile.Write(ref lastThrottledCount, num);
+				if (reason == SuppressReason.Background) Volatile.Write(ref lastThrottledCount, num);
 				return num;
 			}
 			finally
@@ -2485,11 +2785,11 @@ namespace PaviseApp
 					Entry value = item.Value;
 					if (value.OrigPri != uint.MaxValue)
 					{
-						if (value.AntiCheatPlacementExternal || value.AutomaticLayoutSets != null || value.AutomaticLayoutYielded)
+						if (value.BackgroundJobPlacement || value.AntiCheatPlacementExternal || value.AutomaticLayoutSets != null || value.AutomaticLayoutYielded)
 						{
 							durable = true;
 						}
-						list.Add(item.Key + "|" + value.Creation + "|" + B64(value.Name) + "|" + value.OrigPri + "|" + value.OrigAff + "|" + value.OrigIo + "|" + value.OrigPg + "|" + CpuSetsText(value.OrigCpuSets) + "|" + value.OrigQoSControl + "|" + value.OrigQoSState + "|" + value.OrigGpu + "|" + value.OrigBoost + (value.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((value.AutomaticLayoutSets != null || value.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(value.AutomaticLayoutSets) + "|" + (value.AutomaticLayoutYielded ? "1" : "0")) : (value.BackgroundPlacementOwned ? ("|bg|" + value.BackgroundApplied + "|" + value.BackgroundPrevious) : ""))));
+						list.Add(item.Key + "|" + value.Creation + "|" + B64(value.Name) + "|" + value.OrigPri + "|" + value.OrigAff + "|" + value.OrigIo + "|" + value.OrigPg + "|" + CpuSetsText(value.OrigCpuSets) + "|" + value.OrigQoSControl + "|" + value.OrigQoSState + "|" + value.OrigGpu + "|" + value.OrigBoost + (value.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((value.AutomaticLayoutSets != null || value.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(value.AutomaticLayoutSets) + "|" + (value.AutomaticLayoutYielded ? "1" : "0")) : (value.BackgroundPlacementOwned ? ("|" + (value.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + value.BackgroundApplied + "|" + value.BackgroundPrevious) : ""))));
 					}
 				}
 				if (list.Count == 1)
@@ -2537,6 +2837,8 @@ namespace PaviseApp
 
 		private void MarkJournaledLocked()
 		{
+			backgroundJobJournalPending = false;
+			backgroundJobJournalFailures.Clear();
 			foreach (Entry value in map.Values)
 			{
 				if (value.OrigPri != uint.MaxValue)
@@ -2625,6 +2927,7 @@ namespace PaviseApp
 			ulong result11 = 0uL;
 			bool flag = array.Length == 15 && array[12] == "layout";
 			bool externalAcPlacement = array.Length == 15 && array[12] == "ac-placement";
+			bool jobPlacement = array.Length == 15 && array[12] == "bg-job";
 			uint[] array3 = null;
 			bool automaticLayoutYielded = false;
 			if (flag)
@@ -2647,7 +2950,7 @@ namespace PaviseApp
 					return null;
 				}
 			}
-			else if (array.Length == 15 && (array[12] != "bg" || !ulong.TryParse(array[13], out result10) || !ulong.TryParse(array[14], out result11)))
+			else if (array.Length == 15 && ((array[12] != "bg" && !jobPlacement) || !ulong.TryParse(array[13], out result10) || !ulong.TryParse(array[14], out result11)))
 			{
 				return null;
 			}
@@ -2671,6 +2974,8 @@ namespace PaviseApp
 			entry.AntiCheatPlacementExternal = externalAcPlacement;
 			entry.LegacyPlacementDebt = !externalAcPlacement;
 			entry.BackgroundPlacementOwned = array.Length == 15 && !flag && !externalAcPlacement;
+			entry.BackgroundJobPlacement = jobPlacement;
+			entry.BackgroundPid = pid;
 			entry.AutomaticLayoutSets = array3;
 			entry.AutomaticLayoutYielded = automaticLayoutYielded;
 			entry.BackgroundApplied = result10;
@@ -2717,6 +3022,8 @@ namespace PaviseApp
 			{
 				return 0;
 			}
+			string jobReason;
+			if (!GameAffinityJobLease.Recover(out jobReason)) return 0;
 			int num = 0;
 			List<string> list = new List<string>();
 			list.Add("PAVISE_SUPPRESSION_V1");
@@ -2770,6 +3077,10 @@ namespace PaviseApp
 						case JournalIdentity.Unknown:
 							list.Add(array[i]);
 							continue;
+						}
+						if (entry.BackgroundJobPlacement && !ReleaseBackgroundJob(entry))
+						{
+							list.Add(array[i]); continue;
 						}
 						if (EntrySnapshotMatches(intPtr, entry))
 						{
@@ -3061,6 +3372,7 @@ namespace PaviseApp
 				}
 				if ((reason & SuppressReason.Background) != 0)
 				{
+					value.BackgroundReleaseDebt |= value.OrigPri != uint.MaxValue && (value.Journaled || value.Applied);
 					value.BackgroundLevel = SuppressionLevel.None;
 					if ((value.Reasons & ~reason & SuppressReason.AntiCheat) == 0)
 					{
@@ -3068,10 +3380,12 @@ namespace PaviseApp
 					}
 				}
 				value.Level = EffectiveLevel(value);
+				RefreshThrottledCacheLocked();
 				if (value.Reasons != 0)
 				{
 					flag2 = true;
 					flag = value.OrigPri != uint.MaxValue && value.Journaled && (level != value.Level || !value.Applied || flag3 || (reason & SuppressReason.AntiCheat) != 0);
+					if (!flag) value.BackgroundReleaseDebt = false;
 					PersistJournalLocked();
 				}
 				else
@@ -3113,12 +3427,14 @@ namespace PaviseApp
 					{
 						value2.Applied = applied;
 						ScheduleAfterApply(value2, applied, pid);
+						RefreshThrottledCacheLocked();
 					}
 				}
 				return 0;
 			}
 			if (flag2)
 			{
+				RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
 				return 0;
 			}
 			RestoreResult result;
@@ -3148,8 +3464,15 @@ namespace PaviseApp
 			lock (sync)
 			{
 				Entry value;
-				if (!map.TryGetValue(pid, out value) || !object.ReferenceEquals(value, e) || e.Reasons != 0 || e.RestoreInFlight || (respectBackoff && DateTime.UtcNow.Ticks < e.NextRetryTicks))
+				if (RestoreBudgetBlocked(e, "restore", false)) return false;
+				if (!map.TryGetValue(pid, out value) || !object.ReferenceEquals(value, e) || e.Reasons != 0 || e.RestoreInFlight)
 				{
+					RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
+					return false;
+				}
+				if (respectBackoff && DateTime.UtcNow.Ticks < e.NextRetryTicks)
+				{
+					RecoveryAttemptTrace.DeferredUntil(e.NextRetryTicks);
 					return false;
 				}
 				e.RestoreInFlight = true;
@@ -3189,6 +3512,7 @@ namespace PaviseApp
 					}
 				}
 				TryClearMarkLocked();
+				RefreshThrottledCacheLocked();
 			}
 			if (flag)
 			{
@@ -3212,6 +3536,7 @@ namespace PaviseApp
 					{
 						value2.Applied = applied;
 						ScheduleAfterApply(value2, applied, pid);
+						RefreshThrottledCacheLocked();
 					}
 				}
 				return false;
@@ -3266,6 +3591,7 @@ namespace PaviseApp
 				}
 				break;
 			}
+			lock (sync) RecordFailureBudget(e, "restore", restoreResult != RestoreResult.Protected, e.NextRetryTicks);
 			return restoreResult == RestoreResult.Restored;
 		}
 
@@ -3277,7 +3603,7 @@ namespace PaviseApp
 			{
 				foreach (KeyValuePair<int, Entry> item in map)
 				{
-					if (item.Value.Reasons == SuppressReason.None && ticks >= item.Value.NextRetryTicks)
+					if (item.Value.Reasons == SuppressReason.None && !RestoreBudgetBlocked(item.Value, "restore", true) && ticks >= item.Value.NextRetryTicks)
 					{
 						if (list == null)
 						{
@@ -3321,6 +3647,7 @@ namespace PaviseApp
 		public bool SetSqueeze(int pid, long creation, string name, ulong squeezeMask, SuppressReason reason, out bool changed)
 		{
 			changed = false;
+			if (squeezeMask != 0 && GameAffinityJobLease.IsGuardian(pid, creation)) return false;
 			if (squeezeMask != 0 && reason == SuppressReason.AntiCheat)
 			{
 				return false;
@@ -3362,7 +3689,7 @@ namespace PaviseApp
 						return false;
 					}
 				}
-				if (value.SqueezeAff == num && (reason != SuppressReason.Background || (!value.BackgroundRestorePending && (value.BackgroundPlacementVerified || num == 0))))
+				if (value.SqueezeAff == num && VerifyBackgroundJob(value) && (reason != SuppressReason.Background || (!value.BackgroundRestorePending && (value.BackgroundPlacementVerified || num == 0))))
 				{
 					return true;
 				}
@@ -3373,6 +3700,10 @@ namespace PaviseApp
 				if (num != 0 && DateTime.UtcNow.Ticks < value.SqueezeRetryAt)
 				{
 					return false;
+				}
+				if (num == 0)
+				{
+					if (RestoreBudgetBlocked(value, "squeeze-restore", true)) return false;
 				}
 			}
 			IntPtr intPtr = Native.OpenProcess(12800, false, pid);
@@ -3396,15 +3727,20 @@ namespace PaviseApp
 						return false;
 					}
 					ulong squeezeAff = value2.SqueezeAff;
+					if (num == 0)
+					{
+						if (RestoreBudgetBlocked(value2, "squeeze-restore", true)) return false;
+					}
 					if (reason == SuppressReason.Background)
 					{
+						if (num == 0 && !ReleaseBackgroundJob(value2)) return false;
 						ulong mask;
 						if (!Native.TryQueryAffinity(intPtr, out mask))
 						{
 							return false;
 						}
 						ulong num2 = ((squeezeAff != 0) ? squeezeAff : value2.OrigAff);
-						if (!EnforceBackgroundAffinity && (mask != num2 || !Native.CpuSetsMatch(intPtr, value2.OrigCpuSets ?? new uint[0])))
+						if (!value2.BackgroundJobPlacement && !EnforceBackgroundAffinity && (mask != num2 || !Native.CpuSetsMatch(intPtr, value2.OrigCpuSets ?? new uint[0])))
 						{
 							if (squeezeAff != 0)
 							{
@@ -3421,22 +3757,99 @@ namespace PaviseApp
 							return false;
 						}
 						bool backgroundPlacementOwned = value2.BackgroundPlacementOwned;
+						bool priorJobPlacement = value2.BackgroundJobPlacement;
+						// A legacy-owned applied mask must not be relabeled bg-job before
+						// restoration. Keep this backend until the active squeeze is released.
+						bool keepProcessBackend = !priorJobPlacement && squeezeAff != 0;
+						if (num != 0 && (!keepProcessBackend || mask != num3))
+						{
+							string admissionReason;
+							if (!GameThreadAffinityAdmission.Check(intPtr, pid, creation, mask, out admissionReason))
+							{
+								SetBackgroundBackend(value2, "Forward affinity refused pid=" + pid + ": " + admissionReason);
+								return false;
+							}
+						}
 						ulong backgroundApplied = value2.BackgroundApplied;
 						ulong backgroundPrevious = value2.BackgroundPrevious;
 						value2.BackgroundPlacementOwned = true;
 						value2.BackgroundPrevious = ((squeezeAff != 0) ? squeezeAff : backgroundPrevious);
 						value2.BackgroundApplied = num3;
-						if (!SaveJournalLocked())
+						if (num != 0 && !keepProcessBackend)
+						{
+							value2.BackgroundJobPlacement = true;
+							value2.BackgroundJobs = backgroundAffinityJobs; value2.BackgroundPid = pid;
+						}
+						if (!SaveJournalLocked(true))
 						{
 							value2.BackgroundPlacementOwned = backgroundPlacementOwned;
+							value2.BackgroundJobPlacement = priorJobPlacement;
 							value2.BackgroundApplied = backgroundApplied;
 							value2.BackgroundPrevious = backgroundPrevious;
 							return false;
 						}
-						bool flag = Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
+						bool flag;
+						if (num == 0 && value2.BackgroundJobPlacement) flag = true; // Job release already restored or preserved foreign state.
+						else if (num != 0 && !keepProcessBackend)
+						{
+							string jobReason;
+							backgroundJobsStopCompleted = false;
+							flag = backgroundAffinityJobs.Ensure(pid, creation, name, value2.OrigAff, num3, out jobReason);
+							if (flag)
+							{
+								value2.BackgroundJobActive = true;
+								SetBackgroundBackend(value2, "Job affinity verified");
+							}
+							else if (GameThreadAffinityAdmission.IsRefusal(jobReason))
+							{
+								// This refusal applies to every forward affinity backend.
+								// Keep the Job ownership tag, including an older active range.
+								value2.BackgroundJobActive = backgroundAffinityJobs.IsActive(pid, creation);
+								value2.BackgroundRestorePending = backgroundAffinityJobs.HasPending;
+								value2.BackgroundPlacementVerified = false;
+								SetBackgroundBackend(value2, "Job affinity refused: " + jobReason);
+								return false;
+							}
+							else if (backgroundAffinityJobs.HasPending || backgroundAffinityJobs.IsActive(pid, creation))
+							{
+								value2.BackgroundRestorePending = true; value2.BackgroundPlacementVerified = false;
+								SetBackgroundBackend(value2, "Job recovery pending: " + jobReason);
+								return false;
+							}
+							else
+							{
+								// A cleanly rejected/settled Job may use the single process-affinity
+								// fallback. Persist that ownership change before its first write.
+								ulong currentMask;
+								if (!SameProcess(intPtr, value2) || !Native.TryQueryAffinity(intPtr, out currentMask) || currentMask != mask)
+								{ value2.BackgroundRestorePending = true; value2.BackgroundPlacementVerified = false; return false; }
+								string admissionReason;
+								if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, num3, out currentMask, out admissionReason))
+								{
+									SetBackgroundBackend(value2, "Process affinity refused: " + admissionReason);
+									return false;
+								}
+								value2.BackgroundJobPlacement = value2.BackgroundJobActive = false;
+								if (!SaveJournalLocked(true)) { value2.BackgroundJobPlacement = true; value2.BackgroundRestorePending = true; return false; }
+								SetBackgroundBackend(value2, "Job unavailable (" + jobReason + "); process affinity fallback");
+								flag = currentMask == num3 || Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
+							}
+						}
+						else if (num != 0)
+						{
+							ulong currentMask; string admissionReason;
+							if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, num3, out currentMask, out admissionReason))
+							{
+								SetBackgroundBackend(value2, "Process affinity refused: " + admissionReason);
+								return false;
+							}
+							flag = currentMask == num3 || Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
+						}
+						else flag = Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
 						bool flag2 = Native.TryQueryAffinity(intPtr, out mask);
-						value2.BackgroundPlacementVerified = flag && flag2 && mask == num3;
-						if (flag && flag2 && mask == num3)
+						bool verified = flag && ((num == 0 && value2.BackgroundJobPlacement) || (flag2 && mask == num3));
+						value2.BackgroundPlacementVerified = verified;
+						if (verified)
 						{
 							value2.SqueezeAff = num;
 							value2.BackgroundRestorePending = false;
@@ -3499,6 +3912,7 @@ namespace PaviseApp
 		{
 			if (target == 0)
 			{
+				lock (sync) RecordFailureBudget(entry, "squeeze-restore", ok, DateTime.UtcNow.AddSeconds(30).Ticks);
 				return;
 			}
 			lock (sync)
@@ -3525,6 +3939,7 @@ namespace PaviseApp
 
 		private static bool RestoreBackgroundPlacement(IntPtr handle, Entry e)
 		{
+			if (e.BackgroundJobPlacement) return ReleaseBackgroundJob(e);
 			if (e.AntiCheatPlacementExternal)
 			{
 				return true;
@@ -3542,6 +3957,73 @@ namespace PaviseApp
 				return true;
 			}
 			return false;
+		}
+
+		private static bool VerifyBackgroundJob(Entry entry)
+		{
+			if (!entry.BackgroundJobPlacement) return true;
+			if (!entry.BackgroundJobActive) return !entry.BackgroundRestorePending;
+			string reason = "job-owner-unavailable";
+			if (entry.BackgroundJobs != null && entry.BackgroundJobs.Verify(entry.BackgroundPid, entry.Creation, entry.SqueezeAff, out reason)) return true;
+			entry.BackgroundPlacementVerified = false; entry.BackgroundRestorePending = true;
+			SetBackgroundBackend(entry, "Job recovery pending: " + reason);
+			return false;
+		}
+
+		private static bool ReleaseBackgroundJob(Entry entry)
+		{
+			if (!entry.BackgroundJobPlacement) return true;
+			string reason;
+			bool released = entry.BackgroundJobs != null
+				? entry.BackgroundJobs.Release(entry.BackgroundPid, entry.Creation, out reason)
+				: GameAffinityJobLease.Recover(out reason) && GameAffinityJobLease.TargetRecoverySettled(entry.BackgroundPid, entry.Creation, out reason);
+			if (!released)
+			{
+				entry.BackgroundRestorePending = true; entry.BackgroundPlacementVerified = false;
+				SetBackgroundBackend(entry, "Job recovery pending: " + reason);
+				return false;
+			}
+			entry.BackgroundJobActive = false; entry.BackgroundRestorePending = false; entry.BackgroundPlacementVerified = false;
+			return true;
+		}
+
+		private static bool AdmitBackgroundProcessWrite(IntPtr process, int pid, Entry entry, ulong expected, ulong target, out ulong current, out string reason)
+		{
+			current = 0; reason = null;
+			if (!SameProcess(process, entry) || !Native.TryQueryAffinity(process, out current) || current != expected)
+			{ reason = GameThreadAffinityAdmission.RefusalPrefix + "process-changed"; return false; }
+			return current == target || GameThreadAffinityAdmission.Check(process, pid, entry.Creation, current, out reason);
+		}
+
+		private static void SetBackgroundBackend(Entry entry, string detail)
+		{
+			if (entry.BackgroundAffinityDetail == detail) return;
+			entry.BackgroundAffinityDetail = detail;
+			Logger.Info("BACKGROUND AFFINITY " + entry.Name + " pid=" + entry.BackgroundPid + " " + detail);
+		}
+
+		internal bool ReleaseAllBackgroundAffinityJobs()
+		{
+			lock (sync)
+			{
+				bool needed = backgroundAffinityJobs.HasActive || backgroundAffinityJobs.HasPending;
+				foreach (Entry entry in map.Values)
+					if (entry.BackgroundJobPlacement && (entry.BackgroundJobActive || entry.BackgroundRestorePending || entry.SqueezeAff != 0)) needed = true;
+				if (!needed) return FlushBackgroundJobJournalLocked(false);
+				string reason;
+				bool ok = backgroundAffinityJobs.ReleaseAll(out reason);
+				bool changed = false;
+				foreach (Entry entry in map.Values)
+				{
+					if (!entry.BackgroundJobPlacement) continue;
+					bool active = entry.BackgroundJobActive, pending = entry.BackgroundRestorePending, verified = entry.BackgroundPlacementVerified;
+					ulong squeeze = entry.SqueezeAff;
+					if (!ReleaseBackgroundJob(entry)) { ok = false; continue; }
+					entry.SqueezeAff = 0;
+					changed |= active != entry.BackgroundJobActive || pending != entry.BackgroundRestorePending || verified != entry.BackgroundPlacementVerified || squeeze != entry.SqueezeAff;
+				}
+				return FlushBackgroundJobJournalLocked(changed) && ok;
+			}
 		}
 
 		private void DetectBackgroundPlacementChange(IntPtr handle, Entry e)
@@ -3602,6 +4084,7 @@ namespace PaviseApp
 			{
 				foreach (KeyValuePair<int, Entry> item in map)
 				{
+					if (verifiedOnly && reason == SuppressReason.Background) VerifyBackgroundJob(item.Value);
 					if ((item.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && item.Value.BackgroundRestorePending)) && SqueezeOwnedBy(item.Value, reason) && (!verifiedOnly || reason != SuppressReason.Background || (item.Value.BackgroundPlacementVerified && !item.Value.BackgroundRestorePending)))
 					{
 						num++;
@@ -3616,7 +4099,7 @@ namespace PaviseApp
 			lock (sync)
 			{
 				Entry value;
-				return map.TryGetValue(pid, out value) && value.SqueezeAff != 0 && !value.BackgroundRestorePending && (!value.BackgroundPlacementOwned || value.BackgroundPlacementVerified);
+				return map.TryGetValue(pid, out value) && VerifyBackgroundJob(value) && value.SqueezeAff != 0 && !value.BackgroundRestorePending && (!value.BackgroundPlacementOwned || value.BackgroundPlacementVerified);
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -390,73 +390,73 @@ namespace PaviseApp
 			allMask = CpuTopology.AllMask;
 			bands.Clear();
 			laidOutFor = width;
-			ulong[] array = CpuTopology.PhysicalCoreMasks();
-			if (array.Length == 0)
+            if (CpuTopology.MultiGroup)
+            {
+                cacheHeavy = 0;
+                return AddBand(new List<ulong>(), UnknownCoreTitle(), width, 0);
+            }
+			bool physicalKnown = TopologyCountsConfirmed;
+			ulong[] cores = CpuTopology.PhysicalCoreMasks();
+			if (!physicalKnown)
 			{
-				return Theme.S(40);
+				var logical = new List<ulong>();
+				for (int cpu = 0; cpu < 64; cpu++)
+					if ((allMask & (1UL << cpu)) != 0) logical.Add(1UL << cpu);
+				cores = logical.ToArray();
 			}
-			cacheHeavy = CpuTopology.CacheHeavyMask();
-			ulong[] array2 = CpuTopology.DieMasks();
-			int num = 0;
-			if (array2.Length >= 2)
+			if (cores.Length == 0) return Theme.S(40);
+			cacheHeavy = physicalKnown ? CpuTopology.CacheHeavyMask() : 0;
+			int y = 0;
+			if (physicalKnown && CpuTopology.CoreTypesConfirmed && CpuTopology.Hybrid)
 			{
-				for (int i = 0; i < array2.Length; i++)
+				var performance = new List<ulong>();
+				var efficiency = new List<ulong>();
+				var unknown = new List<ulong>();
+				foreach (ulong physical in cores)
 				{
-					List<ulong> list = new List<ulong>();
-					ulong[] array3 = array;
-					foreach (ulong num2 in array3)
-					{
-						ulong num3 = num2 & allMask;
-						if (num3 != 0 && (num3 & array2[i]) != 0)
-						{
-							list.Add(num3);
-						}
-					}
-					if (list.Count != 0)
-					{
-						if (num > 0)
-						{
-							num += Theme.S(16);
-						}
-						bool flag = cacheHeavy != 0 && (array2[i] & cacheHeavy) != 0;
-						num = AddBand(list, Lang.F(flag ? "core.band.ccd.cache" : "core.band.ccd", i), width, num, true);
-					}
+					ulong core = physical & allMask;
+					if (core == 0) continue;
+					if ((core & CpuTopology.PerfMask) == core && (core & CpuTopology.EffMask) == 0) performance.Add(core);
+					else if ((core & CpuTopology.EffMask) == core && (core & CpuTopology.PerfMask) == 0) efficiency.Add(core);
+					else unknown.Add(core);
 				}
-				return num;
+				if (performance.Count > 0) y = AddBand(performance, Lang.T("core.band.perf"), width, y);
+				if (efficiency.Count > 0) y = AddBand(efficiency, Lang.T("core.band.eff"), width, y == 0 ? 0 : y + Theme.S(16));
+				if (unknown.Count > 0) y = AddBand(unknown, UnknownCoreTitle(), width, y == 0 ? 0 : y + Theme.S(16));
+				return y;
 			}
-			ulong num4 = (CpuTopology.Hybrid ? CpuTopology.PerfMask : 0);
-			List<ulong> list2 = new List<ulong>();
-			List<ulong> list3 = new List<ulong>();
-			ulong[] array4 = array;
-			foreach (ulong num5 in array4)
+			ulong[] dies = physicalKnown ? CpuTopology.DieMasks() : new ulong[0];
+			if (dies.Length >= 2)
 			{
-				ulong num6 = num5 & allMask;
-				if (num6 != 0)
+				for (int i = 0; i < dies.Length; i++)
 				{
-					if ((num4 != 0) ? ((num6 & num4) != 0) : (CpuTopology.CountSetBits(num6) > 1))
+					var groups = new List<ulong>();
+					foreach (ulong physical in cores)
 					{
-						list2.Add(num6);
+						ulong core = physical & allMask;
+						if (core != 0 && (core & dies[i]) != 0) groups.Add(core);
 					}
-					else
-					{
-						list3.Add(num6);
-					}
+					if (groups.Count == 0) continue;
+					bool cache = cacheHeavy != 0 && (dies[i] & cacheHeavy) != 0;
+					y = AddBand(groups, Lang.F(cache ? "core.band.ccd.cache" : "core.band.ccd", i), width,
+						y == 0 ? 0 : y + Theme.S(16));
 				}
+				return y;
 			}
-			bool flag2 = list2.Count > 0 && list3.Count > 0;
-			if (list2.Count > 0)
-			{
-				num = AddBand(list2, flag2 ? Lang.T("core.band.perf") : Lang.T("core.band.all"), width, num);
-			}
-			if (list3.Count > 0)
-			{
-				if (list2.Count > 0)
-				{
-					num += Theme.S(16);
-				}
-				num = AddBand(list3, flag2 ? Lang.T("core.band.eff") : Lang.T("core.band.all"), width, num);
-			}
-			return num;
+			var all = new List<ulong>();
+			foreach (ulong physical in cores)
+				if ((physical & allMask) != 0) all.Add(physical & allMask);
+			return AddBand(all, physicalKnown && CpuTopology.CoreTypesConfirmed ? Lang.T("core.band.all") : UnknownCoreTitle(), width, 0);
+		}
+
+		internal static bool TopologyCountsConfirmed
+		{
+			get { return CpuTopology.PhysicalCoreMasks().Length > 0 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled; }
+		}
+
+		private static string UnknownCoreTitle()
+		{
+			return PerformancePolicy.Text("处理器核心 · 类型未确认", "CPU cores · type unconfirmed");
 		}
 
 		private int AddBand(List<ulong> groups, string title, int width, int y)
@@ -482,7 +482,9 @@ namespace PaviseApp
 			}
 			Band band = new Band();
 			band.Title = title;
-			band.Meta = Lang.F(smt ? "core.band.meta.smt" : "core.band.meta.solo", groups.Count, num);
+			band.Meta = TopologyCountsConfirmed ? Lang.F(smt ? "core.band.meta.smt" : "core.band.meta.solo", groups.Count, num)
+                : CpuTopology.MultiGroup ? PerformancePolicy.Text("多处理器组 · 核心范围与物理核数未确认", "Multiple processor groups · CPU range and physical core count unconfirmed")
+                : num + PerformancePolicy.Text(" 逻辑核 · 物理核数未确认", " logical CPUs · physical core count unconfirmed");
 			band.TitleY = y;
 			Band band2 = band;
 			y += Theme.S(26);
@@ -649,7 +651,7 @@ namespace PaviseApp
 			}
 			Rectangle bounds = new Rectangle(rect.Left + Theme.S(3), rect.Top + Theme.S(1), rect.Width - Theme.S(3) * 2, Theme.S(15));
 			bool flag3 = cacheHeavy != 0 && (grp.Mask & cacheHeavy) != 0;
-			TextRenderer.DrawText(g, "C" + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds, (!flag3) ? (flag ? Theme.Dim : Theme.Faint) : (flag ? Theme.Accent2 : Col.Alpha(Theme.Accent2, 170)), TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(g, (TopologyCountsConfirmed ? "C" : "L") + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds, (!flag3) ? (flag ? Theme.Dim : Theme.Faint) : (flag ? Theme.Accent2 : Col.Alpha(Theme.Accent2, 170)), TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			bool multiThread = grp.Cells.Count > 1;
 			string text;
 			switch (HeadTagFor(flag2, flag, flag3, multiThread))
@@ -673,7 +675,7 @@ namespace PaviseApp
 			if (text != null)
 			{
 				Font font = Theme.MonoFor(text, 6.4f);
-				int indexWidth = TextRenderer.MeasureText(g, "C" + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds.Size, TextFormatFlags.NoPadding).Width;
+				int indexWidth = TextRenderer.MeasureText(g, (TopologyCountsConfirmed ? "C" : "L") + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds.Size, TextFormatFlags.NoPadding).Width;
 				int tagWidth = TextRenderer.MeasureText(g, text, font, bounds.Size, TextFormatFlags.NoPadding).Width;
 				if (!HeadTagFits(bounds.Width, indexWidth, tagWidth, Theme.S(3)))
 				{

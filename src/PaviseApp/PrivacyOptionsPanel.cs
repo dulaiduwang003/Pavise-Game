@@ -118,6 +118,15 @@ namespace PaviseApp
 			return PerformancePolicy.Text(zh, en);
 		}
 
+		internal void PrependPerformanceCard(PerformanceFeatureCard card)
+		{
+			if (card == null) throw new ArgumentNullException("card");
+			if (performanceGrid == null) throw new InvalidOperationException("A performance layout is required.");
+			performanceGrid.Controls.Add(card);
+			performanceGrid.Controls.SetChildIndex(card, 0);
+			Relayout();
+		}
+
 		private bool CanModify()
 		{
 			try
@@ -161,7 +170,7 @@ namespace PaviseApp
 				bool flag = privacyResult.Configured || privacyResult.HasRecovery;
 				row.Toggle.SetSilently((row == pendingRow) ? pendingDesired : flag);
 				row.Toggle.Busy = busy || privacyResult.Busy;
-				row.Toggle.Enabled = !busy && !privacyResult.Busy && CanModify() && (privacyResult.Configured || privacyResult.HasRecovery || (privacyResult.State == "restored" && !privacyResult.Managed) || (privacyResult.RetryAllowed && !privacyResult.Managed) || (privacyResult.Supported && !privacyResult.Managed && privacyResult.State != "stopped" && privacyResult.State != "unverified"));
+				row.Toggle.Enabled = !busy && !privacyResult.Busy && CanModify() && (privacyResult.Configured || privacyResult.HasRecovery || (privacyResult.State == "restored" && !privacyResult.Managed) || (privacyResult.Supported && !privacyResult.Managed && privacyResult.State != "stopped" && privacyResult.State != "unverified"));
 				string text = row.Action.Detail;
 				if (!string.IsNullOrEmpty(privacyResult.Detail) && !string.Equals(text, privacyResult.Detail, StringComparison.Ordinal))
 				{
@@ -171,12 +180,6 @@ namespace PaviseApp
 				row.Card.AccessibleDescription = text;
 				bool flag2 = privacyResult.State == "failed" || privacyResult.State == "stopped" || privacyResult.State == "restore-failed" || privacyResult.State == "unverified" || (privacyResult.State == "partial" && flag && !privacyResult.Limited) || (privacyResult.State == "ready" && privacyResult.Configured);
 				string status = Status(privacyResult);
-				// The restart badge already conveys this routine state for background app restrictions.
-				if (row.Action.Key == PrivacyActionCatalog.BackgroundGlobal && !privacyResult.Busy
-					&& (privacyResult.State == "pending-reboot" || privacyResult.State == "restart-required" || privacyResult.State == "restore-pending-reboot"))
-				{
-					status = "";
-				}
 				row.Card.SetStatus(status, flag2 ? Theme.Warning : (flag ? Theme.Accent : Theme.Dim));
 				PerformanceFeatureCard performanceFeatureCard = row.Card as PerformanceFeatureCard;
 				if (performanceFeatureCard != null)
@@ -193,11 +196,7 @@ namespace PaviseApp
 			{
 				return PrivacyText("正在处理", "Working");
 			}
-			if (value.State == "stopped" && value.RetryAllowed)
-			{
-				return PrivacyText("已允许手动重试一次", "One manual retry allowed");
-			}
-			if (!value.Configured && value.HasRecovery && (value.State == "configured" || value.State == "partial" || value.State == "ready"))
+			if (!value.Configured && value.HasRecovery && (value.State == "configured" || value.State == "partial" || value.State == "ready" || value.State == "pending-app-restart"))
 			{
 				return PrivacyText("保留恢复记录 · 关闭开关可还原", "Recovery record retained · turn off to restore");
 			}
@@ -226,6 +225,10 @@ namespace PaviseApp
 			case "pending-reboot":
 			case "restart-required":
 				return PrivacyText("配置已保存 · 需重启", "Configuration saved · restart required");
+			case "pending-app-restart":
+				return PrivacyText("配置已写入 · 重启相关应用", "Configuration written · restart affected apps");
+			case "restore-pending-app-restart":
+				return PrivacyText("原配置已恢复 · 重启相关应用", "Original configuration restored · restart affected apps");
 			case "restore-pending-reboot":
 				return PrivacyText("原配置已恢复 · 需重启", "Original configuration restored · restart required");
 			case "restored":

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -11,6 +12,9 @@ namespace PaviseApp
 {
 	internal static class LolWatchdog
 	{
+		private sealed class LaunchOwner { internal Process Process; internal EventWaitHandle Ready; }
+		private static readonly object launchGate = new object();
+		private static readonly Dictionary<string, LaunchOwner> launchOwners = new Dictionary<string, LaunchOwner>(StringComparer.OrdinalIgnoreCase);
 		private const int Synchronize = 1048576;
 
 		private const int ReconnectBindWindowSeconds = 20;
@@ -93,6 +97,11 @@ namespace PaviseApp
 
 		public static bool StartDetached(string lolRoot, int pid, long creation)
 		{
+			lock (launchGate) return StartDetachedCore(lolRoot, pid, creation);
+		}
+
+		private static bool StartDetachedCore(string lolRoot, int pid, long creation)
+		{
 			try
 			{
 				lolRoot = Path.GetFullPath(lolRoot).TrimEnd('\\');
@@ -111,6 +120,18 @@ namespace PaviseApp
 				return false;
 			}
 			Native.CloseHandle(handle);
+			string launchKey = lolRoot + "|" + pid + "|" + creation;
+			LaunchOwner owner;
+			if (launchOwners.TryGetValue(launchKey, out owner))
+			{
+				try
+				{
+					if (!owner.Process.HasExited)
+						return owner.Ready.WaitOne(0) && LolHeadlessLease.Matches(lolRoot, pid, creation);
+				}
+				catch { return false; }
+				owner.Ready.Dispose(); owner.Process.Dispose(); launchOwners.Remove(launchKey);
+			}
 			if (ExistingGuardIsReady(lolRoot, pid, creation) && SiblingPaviseProcessAlive())
 			{
 				return true;
@@ -140,6 +161,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
+				launchOwners[launchKey] = new LaunchOwner { Process = process, Ready = eventWaitHandle };
 				if (!eventWaitHandle.WaitOne(5000))
 				{
 					return false;
@@ -163,7 +185,11 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (process != null)
+				// A ready timeout does not terminate the original helper. Retain its
+				// process and readiness event so later calls observe that same owner.
+				bool exited = process == null;
+				try { if (process != null) exited = process.HasExited; } catch { }
+				if (exited && process != null)
 				{
 					try
 					{
@@ -173,7 +199,7 @@ namespace PaviseApp
 					{
 					}
 				}
-				if (eventWaitHandle != null)
+				if (exited && eventWaitHandle != null)
 				{
 					try
 					{
@@ -183,6 +209,7 @@ namespace PaviseApp
 					{
 					}
 				}
+				if (exited) launchOwners.Remove(launchKey);
 			}
 		}
 
@@ -500,7 +527,7 @@ namespace PaviseApp
 			return uint.MaxValue;
 		}
 
-		private static bool OriginalGameIdentityGone(string lolRoot, int pid, long creation)
+		internal static bool OriginalGameIdentityGone(string lolRoot, int pid, long creation)
 		{
 			IntPtr intPtr = IntPtr.Zero;
 			try
@@ -539,6 +566,7 @@ namespace PaviseApp
 
 		private static bool TryRestore(string lolRoot, int leasePid, long leaseCreation)
 		{
+			int restoreAttempts = 0, clearAttempts = 0;
 			DateTime dateTime = DateTime.UtcNow.AddMinutes(2.0);
 			DateTime dateTime2 = DateTime.UtcNow.AddMinutes(30.0);
 			DateTime dateTime3 = DateTime.MinValue;
@@ -610,12 +638,13 @@ namespace PaviseApp
 					continue;
 				}
 				bool flag2 = !flag && lolLcuCredentials != null && DateTime.UtcNow >= dateTime4;
-				if (flag2 && LolLcuClient.RestoreUx(lolLcuCredentials, lolRoot))
+				if (flag2 && ++restoreAttempts <= 3 && LolLcuClient.RestoreUx(lolLcuCredentials, lolRoot))
 				{
 					flag = true;
 				}
 				if (flag)
 				{
+					if (++clearAttempts > 3) return false;
 					if (LolHeadlessLease.ClearIfMatches(lolRoot, leasePid, leaseCreation) || !LeaseStillOwned(lolRoot, leasePid, leaseCreation))
 					{
 						return true;
@@ -625,6 +654,7 @@ namespace PaviseApp
 				}
 				if (flag2)
 				{
+					if (restoreAttempts >= 3) return false;
 					if (num < int.MaxValue)
 					{
 						num++;

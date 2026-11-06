@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -39,6 +39,10 @@ namespace PaviseApp
 		private static readonly List<ulong> physicalCoreMasks;
 
 		private static List<ulong> parsedCoreMasks;
+
+        internal static bool CoreTypesConfirmed;
+        internal static string CoreTypeDetail = "core-class-unavailable";
+        private static int[] topologyClasses;
 
 		public static bool Hybrid;
 
@@ -101,17 +105,10 @@ namespace PaviseApp
 			}
 		}
 
-		public static bool TopologySourcesAgree
-		{
-			get
-			{
-				if (parsedCoreMasks.Count == physicalCoreMasks.Count)
-				{
-					return UnionOf(parsedCoreMasks) == UnionOf(physicalCoreMasks);
-				}
-				return false;
-			}
-		}
+        public static bool TopologySourcesAgree
+        {
+            get { return CpuCoreClassification.SamePhysicalCores(parsedCoreMasks.ToArray(), physicalCoreMasks.ToArray()); }
+        }
 
 		public static string TopologySourceCounts
 		{
@@ -306,15 +303,15 @@ namespace PaviseApp
 		{
 			try
 			{
-				MultiGroup = GetActiveProcessorGroupCount() > 1;
+				MultiGroup |= GetActiveProcessorGroupCount() > 1;
 			}
 			catch
 			{
-				MultiGroup = Environment.ProcessorCount > 64;
+				MultiGroup |= Environment.ProcessorCount > 64;
 			}
 			int returned;
 			GetSystemCpuSetInformation(IntPtr.Zero, 0, out returned, IntPtr.Zero, 0u);
-			if (returned <= 0)
+			if (returned <= 0 || returned > 4194304)
 			{
 				return;
 			}
@@ -326,6 +323,11 @@ namespace PaviseApp
 				{
 					return;
 				}
+                byte[] cpuSetBytes = new byte[returned];
+                Marshal.Copy(intPtr, cpuSetBytes, 0, returned);
+                CpuTopologyEvidence evidence = CpuTopologyEvidence.FromCpuSets(cpuSetBytes);
+                MultiGroup |= evidence.MultiGroup;
+                if (!evidence.Valid) { CoreTypeDetail = evidence.Reason; return; }
 				List<CpuSetRec> list = new List<CpuSetRec>();
 				int num3;
 				for (long num2 = 0L; num2 + 20 <= returned; num2 += num3)
@@ -355,19 +357,9 @@ namespace PaviseApp
 					return;
 				}
 				List<uint> list2 = new List<uint>();
-				byte b2 = byte.MaxValue;
-				byte b3 = 0;
 				foreach (CpuSetRec item2 in list)
 				{
 					list2.Add(item2.Id);
-					if (item2.Efficiency < b2)
-					{
-						b2 = item2.Efficiency;
-					}
-					if (item2.Efficiency > b3)
-					{
-						b3 = item2.Efficiency;
-					}
 				}
 				allIds = list2.ToArray();
 				FavoredMask = ComputeFavoredMask(list);
@@ -395,30 +387,22 @@ namespace PaviseApp
 						physicalCoreMasks.Add(value3);
 					}
 				}
+                ResolveCoreTypes(evidence.Classes);
+                // Recompute defaults after class reconciliation, before deriving CPU Set pools.
+                DeriveMasks();
+                if (MultiGroup || AllMaskReconciled || !TopologySourcesAgree) return;
 				List<uint> list3 = new List<uint>();
 				List<uint> list4 = new List<uint>();
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-				if (b3 > b2)
-				{
-					int num5 = 0;
-					foreach (CpuSetRec item4 in list)
-					{
-						if (item4.Efficiency == b3)
-						{
-							num5++;
-						}
-					}
-					if (num5 >= 8)
-					{
-						foreach (CpuSetRec value4 in dictionary.Values)
-						{
-							if (value4.Efficiency != b3)
-							{
-								hashSet.Add(value4.Group + ":" + value4.Core);
-							}
-						}
-					}
-				}
+                if (Hybrid)
+                {
+                    if (CountSetBits(PerfMask) >= 8)
+                    {
+                        foreach (CpuSetRec row in dictionary.Values)
+                            if (row.Group == 0 && row.Logical < 64 && (EffMask & (1UL << row.Logical)) != 0)
+                                hashSet.Add(row.Group + ":" + row.Core);
+                    }
+                }
 				else if (!AsymCache && !MultiGroup)
 				{
 					List<CpuPartitionPolicy.CoreDesc> list5 = new List<CpuPartitionPolicy.CoreDesc>();
@@ -501,7 +485,7 @@ namespace PaviseApp
 					{
 						list3.Add(item5.Id);
 					}
-					else if (hashSet.Count > 0 && (b3 == b2 || item5.Efficiency == b3))
+					else if (hashSet.Count > 0 && (!Hybrid || (item5.Group == 0 && item5.Logical < 64 && (PerfMask & (1UL << item5.Logical)) != 0)))
 					{
 						list4.Add(item5.Id);
 					}
@@ -511,7 +495,7 @@ namespace PaviseApp
 						{
 							num7 |= (ulong)(1L << (int)item5.Logical);
 						}
-						else if (hashSet.Count > 0 && (b3 == b2 || item5.Efficiency == b3))
+						else if (hashSet.Count > 0 && (!Hybrid || (item5.Group == 0 && item5.Logical < 64 && (PerfMask & (1UL << item5.Logical)) != 0)))
 						{
 							num8 |= (ulong)(1L << (int)item5.Logical);
 						}
@@ -570,7 +554,7 @@ namespace PaviseApp
 			}
 			int length = 0;
 			GetLogicalProcessorInformationEx(65535, IntPtr.Zero, ref length);
-			if (length <= 0)
+			if (length <= 0 || length > 4194304)
 			{
 				return;
 			}
@@ -582,6 +566,12 @@ namespace PaviseApp
 				{
 					return;
 				}
+                byte[] topologyBytes = new byte[length];
+                Marshal.Copy(intPtr, topologyBytes, 0, length);
+                CpuTopologyEvidence evidence = CpuTopologyEvidence.FromTopology(topologyBytes);
+                MultiGroup |= evidence.MultiGroup;
+                if (!evidence.Valid) { CoreTypeDetail = evidence.Reason; return; }
+                topologyClasses = evidence.Classes;
 				Dictionary<int, ulong> dictionary = new Dictionary<int, ulong>();
 				List<ulong> list = new List<ulong>();
 				List<KeyValuePair<uint, ulong>> list2 = new List<KeyValuePair<uint, ulong>>();
@@ -899,6 +889,8 @@ namespace PaviseApp
 				Hybrid = false;
 				AsymCache = false;
 			}
+            Hybrid = false;
+            PerfMask = EffMask = 0;
 			DeriveMasks();
 			try
 			{
@@ -909,6 +901,32 @@ namespace PaviseApp
 			}
 			ValidateMasks();
 		}
+
+        private static void ResolveCoreTypes(int[] cpuSetClasses)
+        {
+            bool trusted = !MultiGroup && !AllMaskReconciled && TopologySourcesAgree;
+            CpuCoreClassificationResult result = CpuCoreClassification.Resolve(AllMask,
+                physicalCoreMasks.ToArray(), topologyClasses, cpuSetClasses, null, trusted);
+            // A flat Windows class does not rule out a hybrid CPU with SMT disabled.
+            // The fallback samples only its own temporary worker and never reassigns a game.
+            string probeReason = "";
+            if (trusted && result.State == CpuCoreClassificationState.Unknown)
+            {
+                int[] coreTypes = CpuCoreTypeProbe.Read(AllMask, out probeReason);
+                result = CpuCoreClassification.Resolve(AllMask, physicalCoreMasks.ToArray(),
+                    topologyClasses, cpuSetClasses, coreTypes, trusted);
+            }
+            Hybrid = result.State == CpuCoreClassificationState.Hybrid;
+            CoreTypesConfirmed = Hybrid || result.State == CpuCoreClassificationState.Uniform;
+            PerfMask = Hybrid ? result.PerformanceMask : 0;
+            EffMask = Hybrid ? result.EfficiencyMask : 0;
+            CoreTypeDetail = result.Source + ":" + result.Reason + (probeReason.Length == 0 ? "" : ";" + probeReason);
+            if (Hybrid)
+            {
+                AsymCache = false;
+                FavoredMask &= PerfMask;
+            }
+        }
 
 		internal static bool PartitionAgreesWithEfficiency(ulong gamePartition, ulong background)
 		{
@@ -929,17 +947,10 @@ namespace PaviseApp
 
 		internal static ulong ReconcileAllMask(ulong fromCount, ulong fromEnum, out bool mismatch)
 		{
-			mismatch = fromEnum != 0 && fromEnum != fromCount;
-			if (!mismatch)
-			{
-				return fromCount;
-			}
-			ulong num = fromCount & fromEnum;
-			if (num == 0)
-			{
-				return fromCount;
-			}
-			return num;
+            // A count does not identify processor indexes. Preserve the validated
+            // active mask even when disabled CPUs leave gaps in the numbering.
+            mismatch = fromEnum != 0 && CountSetBits(fromEnum) != CountSetBits(fromCount);
+            return fromEnum != 0 ? fromEnum : fromCount;
 		}
 
 		private static void DeriveMasks()
@@ -959,7 +970,10 @@ namespace PaviseApp
 			}
 			else
 			{
-				ThrottleMask = (ulong)((processorCount >= 2 && processorCount <= 64) ? (3L << processorCount - 2) : ((processorCount >= 2) ? 0 : 1));
+                ThrottleMask = 0;
+                int remaining = 2;
+                for (int logical = 63; logical >= 0 && remaining > 0; logical--)
+                    if ((AllMask & (1UL << logical)) != 0) { ThrottleMask |= 1UL << logical; remaining--; }
 				BoostMask = AllMask;
 			}
 			StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask, Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);

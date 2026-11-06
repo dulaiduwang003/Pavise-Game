@@ -37,6 +37,8 @@ namespace PaviseApp
         }
         internal static bool VerifiedLaptop
         { get { return Device == LaboratoryEppDeviceKind.Laptop; } }
+        internal static LaboratoryEppDeviceKind DeviceKind
+        { get { return Device; } }
         internal static LaboratoryEppAvailability Current
         {
             get
