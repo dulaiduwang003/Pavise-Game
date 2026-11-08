@@ -148,9 +148,8 @@ namespace PaviseApp
             if (!Native.TryQueryAffinity(process, out currentMask)
                 || !GameThreadAffinityAdmission.Check(process, birth, currentMask, out reason))
             { if (reason == null) reason = GameThreadAffinityAdmission.RefusalPrefix + "process-mask-unreadable"; return false; }
-            // An existing launcher/service job is compatible when Windows can form
-            // a nested hierarchy. Only our empty job is changed; assignment and the
-            // effective affinity readback below decide whether protection succeeded.
+            // Windows validates existing job hierarchies during assignment.
+            // Confirm protection from assignment and effective affinity readback.
             var limits = new ExtendedLimits();
             limits.Basic.Flags = SilentBreakaway | AffinityLimit;
             limits.Basic.Affinity = (UIntPtr)desired;

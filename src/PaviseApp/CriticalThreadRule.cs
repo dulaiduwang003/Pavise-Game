@@ -16,6 +16,8 @@ namespace PaviseApp
 
 		internal readonly bool Automatic;
 
+		internal readonly bool ManualTarget;
+
 		private readonly ulong[] targets;
 
 		internal ulong[] Targets
@@ -63,15 +65,39 @@ namespace PaviseApp
 			return new CriticalThreadRule(workerAvoidance);
 		}
 
+		private CriticalThreadRule(string topology, ulong processor, bool manualTarget)
+			: this(topology, true, new ulong[] { processor })
+		{
+			if (topology != topology.ToUpperInvariant()) throw new ArgumentException("Noncanonical processor topology");
+			Automatic = true;
+			ManualTarget = true;
+		}
+
+		internal static CriticalThreadRule Manual(string topology, ulong processor)
+		{
+			return new CriticalThreadRule(topology, processor, true);
+		}
+
+		internal static string ProcessorName(ulong processor)
+		{
+			if (processor == 0 || (processor & (processor - 1)) != 0) return "CPU —";
+			int index = 0;
+			while ((processor >>= 1) != 0) index++;
+			return "CPU" + index.ToString(CultureInfo.InvariantCulture);
+		}
+
 		internal static CriticalThreadRule ParseForRuntime(string text)
 		{
 			CriticalThreadRule rule = Parse(text);
-			// 自动开关只约束呈现线程；历史规则仍按原格式读取以便精确恢复。
-			return rule != null && rule.Automatic ? Auto(false) : rule;
+			return rule != null && rule.Automatic && !rule.ManualTarget ? Auto(true) : rule;
 		}
 
 		internal string Encode()
 		{
+			if (ManualTarget)
+			{
+				return "3|" + Topology + "|" + targets[0].ToString("X", CultureInfo.InvariantCulture) + "|1";
+			}
 			if (Automatic)
 			{
 				return "2|auto|" + (WorkerAvoidance ? "1" : "0");
@@ -89,6 +115,11 @@ namespace PaviseApp
 			{
 				return bound.Encode() == Encode();
 			}
+			if (ManualTarget)
+			{
+				return bound.Topology == Topology && bound.CandidateCount == 1 && bound.targets[0] == targets[0]
+					&& bound.WorkerAvoidance == WorkerAvoidance;
+			}
 			return bound.WorkerAvoidance == WorkerAvoidance;
 		}
 
@@ -105,7 +136,7 @@ namespace PaviseApp
 				{
 					return (array[1] == "auto" && (array[2] == "0" || array[2] == "1")) ? new CriticalThreadRule(array[2] == "1") : null;
 				}
-				if (array.Length != 4 || array[0] != "1" || (array[3] != "0" && array[3] != "1"))
+				if (array.Length != 4 || (array[0] != "1" && array[0] != "3") || (array[3] != "0" && array[3] != "1"))
 				{
 					return null;
 				}
@@ -122,7 +153,9 @@ namespace PaviseApp
 						return null;
 					}
 				}
-				CriticalThreadRule criticalThreadRule = new CriticalThreadRule(array[1], array[3] == "1", array[2].Split(',').Select(Hex).ToArray());
+				CriticalThreadRule criticalThreadRule = array[0] == "3"
+					? Manual(array[1], Hex(array[2]))
+					: new CriticalThreadRule(array[1], array[3] == "1", array[2].Split(',').Select(Hex).ToArray());
 				return (criticalThreadRule.Encode() == text) ? criticalThreadRule : null;
 			}
 			catch (ArgumentException)
@@ -164,7 +197,7 @@ namespace PaviseApp
 			{
 				return PerformancePolicy.Text("处理器拓扑不可验证", "CPU topology could not be verified");
 			}
-			if (!topologyTrusted || physical == null || (!Automatic && Topology != ManualCorePlan.Stamp(all, physical)))
+			if (!topologyTrusted || physical == null || ((!Automatic || ManualTarget) && Topology != ManualCorePlan.Stamp(all, physical)))
 			{
 				return PerformancePolicy.Text("处理器拓扑已变化，请重新选择", "CPU topology changed; choose processors again");
 			}
@@ -187,7 +220,7 @@ namespace PaviseApp
 			}
 			// Either reserved SMT sibling holds the entire physical core for that owner.
 			reserved = AutoCores.WholeCores(reserved, physical);
-			if (Automatic)
+			if (Automatic && !ManualTarget)
 			{
 				if (CriticalThreadAutoPolicy.Targets(1, physical, allowed, reserved, 0uL, 0uL, null, 0uL, 0uL) == null)
 				{

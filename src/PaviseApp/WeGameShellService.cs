@@ -125,8 +125,7 @@ namespace PaviseApp
             lock (gate) { if (disposed) return; disposed = true; }
             Stop();
             lock (gate) { attemptReceipts.Clear(); }
-            // The event remains valid if a slow read-only native query is still
-            // returning; it never owns an outstanding cleanup authorization.
+            // A slow read-only query may outlive Stop; its event carries no cleanup authority.
         }
 
         internal void NotifySession(GameProfile value, int pid, long creation, bool active)
@@ -260,8 +259,7 @@ namespace PaviseApp
             {
                 lock (gate)
                 {
-                    // Invalidation and the final native mutation share this lock.
-                    // Stop/renderer changes cannot leave a queued termination.
+                    // Serialize invalidation with native mutation to cancel queued termination after Stop/renderer changes.
                     GameProcessSnapshot game;
                     if (!CurrentLocked(epoch, currentProfile, pid, creation) || !cleaning || !TryRendererIdentity(currentProfile, pid, creation, rendererPath, out game))
                     { cancelled = true; break; }
@@ -334,8 +332,7 @@ namespace PaviseApp
             discoveryAttempted = false; nextDiscoveryAt = 0; attempted = false; cleaning = false; detached = false; activeReceipt = null; status = ""; error = "";
         }
 
-        // Receipt ownership survives detector gaps, metadata learning and a
-        // Stop/Start cycle. No still-live receipt is evicted to make room.
+        // Retain live cleanup receipts across detector gaps and Stop/Start; never evict them for capacity.
         private bool ClaimAttemptLocked(GameProfile value, int pid, long creation)
         {
             string key = AttemptKey(value, pid, creation);
@@ -355,8 +352,7 @@ namespace PaviseApp
 
         private static string AttemptKey(GameProfile value, int pid, long creation)
         {
-            // ExecutablePath is the stable library binding; learning a renderer
-            // must not make the same live process eligible for a second cleanup.
+            // Bind cleanup to the executable path so renderer learning cannot re-admit the same live process.
             string binding = string.IsNullOrEmpty(value.ExecutablePath) ? value.Root : value.ExecutablePath;
             try { binding = Path.GetFullPath(binding ?? "").TrimEnd('\\', '/').ToUpperInvariant(); }
             catch { binding = "<invalid>"; }
@@ -447,8 +443,7 @@ namespace PaviseApp
             return string.Equals(file, "wegame.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "wegameclient.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "browser.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "crashpad_handler.exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Pure selection seam: helpers must have a complete verified ancestry to
-        // a UI shell. Runtime and anti-cheat families are always excluded.
+        // Require verified UI-shell ancestry; exclude runtime and anti-cheat families.
         internal static List<GameProcessSnapshot> SelectShellCandidates(IList<GameProcessSnapshot> entries, string root)
         {
             List<GameProcessSnapshot> result = new List<GameProcessSnapshot>();
@@ -477,8 +472,7 @@ namespace PaviseApp
                 }
                 if (!protectedAncestor && (!helper || shellAncestor)) result.Add(item);
             }
-            // Child UI components go first; closing a root shell first can hide
-            // their ancestry from the next verification pass.
+            // Close UI children before roots so subsequent ancestry checks retain evidence.
             result.Sort(delegate(GameProcessSnapshot a, GameProcessSnapshot b) { return b.Creation.CompareTo(a.Creation); });
             return result;
         }

@@ -116,8 +116,7 @@ namespace PaviseApp
 
         internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<int> wait, Func<bool> targetGone, Func<bool> waitForTargetExit, int initialDelay)
         {
-            // Preserve the original fixture/API contract: an untyped false or
-            // exception is a failure, never evidence of an ordering wait.
+            // An untyped false or exception counts as a failure, not an ordering wait.
             return RetainRecoveryAcrossTargetExitTyped(
                 () => settle() ? RecoveryOutcome.Settled : RecoveryOutcome.Failed,
                 wait, targetGone, waitForTargetExit, initialDelay);
@@ -141,10 +140,8 @@ namespace PaviseApp
                 if (outcome == RecoveryOutcome.Settled) return true;
                 if (outcome == RecoveryOutcome.OrderingWait)
                 {
-                    // Only a verified thread-journal debt or an operation-mutex
-                    // timeout reaches this path. Neither attempted a native
-                    // restoration. Keep prior failures and separately bound these
-                    // observations, including when the upstream debt never clears.
+                    // Journal ordering debt and mutex timeouts are observations, not native restores.
+                    // Bound those observations separately without refunding earlier failures.
                     orderingObservations++;
                     if (orderingObservations < GameAffinityJobRecord.RecoveryOrderingObservationLimit)
                     {
@@ -230,8 +227,7 @@ namespace PaviseApp
                     string applyFailure = null;
                     bool applied = GameAffinityJobOperation.Run(record, delegate
                     {
-                        // Startup recovery uses this same gate. Recheck after taking
-                        // it so a dead owner's buffered APPLY cannot follow recovery.
+                        // Recheck forward authority under the startup-recovery gate to reject buffered APPLY after EOF.
                         if (!GameAffinityJobNative.Alive(parent) || commands.IsAddingCompleted)
                         { applyFailure = "forward-owner-lost"; return false; }
                         return GameAffinityJobNative.Apply(job, target, record.Birth, desired, out applyFailure);

@@ -14,8 +14,7 @@ namespace PaviseApp
         internal string Detail { get { return PerformancePolicy.Text(Chinese, English); } }
     }
 
-    // Chassis discovery is performed once, off the UI thread. A desktop UPS is not
-    // sufficient evidence for a laptop; neither CPU EPP support nor battery alone admits it.
+    // Discover chassis once off the UI thread; a battery/UPS or EPP support does not prove a laptop.
     internal static class LaboratoryEppEligibility
     {
         private static int started;

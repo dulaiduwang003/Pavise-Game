@@ -11,7 +11,7 @@
 バックグラウンドプロセスの制御、ゲームごとのプロファイル、<br>
 プレイ後の自動復元を備えた Windows 向けゲームリソースマネージャー。
 
-[English](README.md) · [简体中文](README.zh-CN.md) · **日本語**
+[简体中文](README.md) · [简体中文](README.zh-CN.md) · **日本語**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://pavise.club/en/changelog/#latest)
@@ -137,7 +137,7 @@ Process Lasso（PL）などと併用する場合、同じ項目に異なる優�
 | :--- | :--- |
 | [図解ユーザーガイド](https://pavise.club/en/docs/) | [モードの詳細解説](https://pavise.club/en/docs/modes/) |
 | [更新履歴とダウンロード](https://pavise.club/en/changelog/#latest) | [ゲームごとの設定](https://pavise.club/en/docs/profiles/) |
-| [英語ドキュメント](README.md) | [スケジューリングの仕組み](https://pavise.club/en/docs/mechanisms/) |
+| [最新版の機能と構成図](README.md) | [スケジューリングの仕組み](https://pavise.club/en/docs/mechanisms/) |
 | [中国語ドキュメント](README.zh-CN.md) | [メモリと電源のポリシー](https://pavise.club/en/docs/memory-power/) |
 
 ## ソースからビルド
@@ -147,7 +147,7 @@ Windows 上で .NET Framework 4.x のコンパイラーを使ってビルドし�
 ```bat
 git clone --branch pavise3x https://github.com/dulaiduwang003/Pavise-Game.git
 cd Pavise-Game
-build.cmd -b dev
+build.cmd -b prod
 ```
 
 出力は `build\Pavise.exe` です。

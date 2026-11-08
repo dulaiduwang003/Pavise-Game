@@ -21,8 +21,7 @@ namespace PaviseApp
         bool Write(string id, AudioEffectsProperty property, out string error);
     }
 
-    // Manual endpoint-scoped transaction. The caller serializes UI work and invokes
-    // Restore on normal exit/startup. This is not a per-frame or per-match writer.
+    // Manual endpoint transactions restore on exit/startup under the caller's serialization gate.
     internal sealed class LaboratoryAudioEffectsController
     {
         private readonly object sync = new object();

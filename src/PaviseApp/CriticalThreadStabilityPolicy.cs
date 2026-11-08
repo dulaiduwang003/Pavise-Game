@@ -24,7 +24,9 @@ namespace PaviseApp
             if (string.IsNullOrWhiteSpace(profile) || pid <= 0 || birth <= 0 || serial <= 0
                 || serial < highestSerial || string.IsNullOrWhiteSpace(rawRule)) return null;
             if (serial > highestSerial) { highestSerial = serial; scopes.Clear(); }
-            string key = profile + "\n" + pid.ToString(CultureInfo.InvariantCulture) + ":" + birth.ToString(CultureInfo.InvariantCulture) + "\n" + rawRule;
+            CriticalThreadRule runtimeRule = CriticalThreadRule.ParseForRuntime(rawRule);
+            string identity = runtimeRule == null ? rawRule : runtimeRule.Encode();
+            string key = profile + "\n" + pid.ToString(CultureInfo.InvariantCulture) + ":" + birth.ToString(CultureInfo.InvariantCulture) + "\n" + identity;
             Scope scope;
             if (!scopes.TryGetValue(key, out scope)) scopes[key] = scope = new Scope();
             current = scope;

@@ -619,7 +619,7 @@ namespace PaviseApp
 					int sessionId3;
 					if (intPtr2 == IntPtr.Zero)
 					{
-						failedOperation = Marshal.GetLastWin32Error() != 87; // Already exited is a successful negative observation.
+						failedOperation = Marshal.GetLastWin32Error() != 87;
 						continue;
 					}
 					if (!Native.TryGetLiveProcessSessionId(intPtr2, list[j], out sessionId3)) { failedOperation = true; continue; }

@@ -773,18 +773,6 @@ namespace PaviseApp
 				new string[2] { "下次启动生效 · 不移动或重启正在运行的应用", "Applies next launch · Running apps are not moved or restarted" }
 			},
 			{
-				"set.autogpu",
-				new string[2] { "自动后台节能显卡", "Auto power-saving GPU for background apps" }
-			},
-			{
-				"set.autogpu.n",
-				new string[2] { "对局稳定后检测一次，将仍在游戏渲染卡上执行 3D 负载的后台程序登记为下次启动使用节能显卡。已有显卡偏好的程序、录屏与硬件工具、游戏库与白名单成员，以及带可见窗口的程序不在范围内。占用率取连续三轮采样的最小值，排除瞬时尖峰。每局最多登记 2 个，每个程序仅自动登记一次；在上方列表移除后不再自动加入。", "Checks once after the session stabilizes and enrolls background apps still running 3D work on the game's render GPU to use the power-saving GPU at their next launch. Out of scope: apps with an existing GPU preference, capture and hardware tools, library games, whitelisted apps, and any app with a visible window. Utilization is the minimum of three consecutive samples, which excludes momentary spikes. At most 2 apps per session, each enrolled only once; entries removed from the list above are not enrolled again." }
-			},
-			{
-				"autogpu.warn",
-				new string[2] { "开启自动后台节能显卡？\r\n\r\n对局稳定约一分钟后检测一次，将仍在游戏渲染卡上执行 3D 负载的后台程序登记为下次启动使用节能显卡（写入 Windows 显卡偏好，不迁移也不重启正在运行的程序）。\r\n\r\n不在范围内：已设置显卡偏好的程序、录屏与通信覆盖层、硬件与外设工具、游戏库成员、白名单。每局最多登记 2 个，每个程序仅自动登记一次，可在「应用显卡偏好」列表中移除，移除后不再自动加入。\r\n\r\n影响：被登记的程序自下次启动起使用节能显卡，其渲染性能将下降。确认开启？", "Enable auto power-saving GPU for background apps?\r\n\r\nAbout a minute into a stable session, Pavise checks once and enrolls background apps still running 3D work on the game's render GPU to prefer the power-saving GPU at their next launch (a Windows GPU preference; running apps are neither moved nor restarted).\r\n\r\nOut of scope: apps with an existing GPU preference, capture and communication overlays, hardware and peripheral tools, library games, and whitelisted apps. At most 2 apps per session, each enrolled only once; entries can be removed in the Application GPU preferences list and are not enrolled again.\r\n\r\nImpact: enrolled apps render on the power-saving GPU from their next launch, which lowers their graphics performance. Continue?" }
-			},
-			{
 				"nav.tame",
 				new string[2] { "反作弊", "Anti-Cheat" }
 			},
@@ -1141,12 +1129,28 @@ namespace PaviseApp
 				new string[3] { "最近一局", "Latest game", "直近の対局" }
 			},
 			{
+				"log.category.actions",
+				new string[3] { "动作日志", "Action log", "動作ログ" }
+			},
+			{
+				"log.category.diagnostics",
+				new string[3] { "诊断日志", "Diagnostic log", "診断ログ" }
+			},
+			{
+				"log.actions.hint",
+				new string[3] { "动作预览 · 双击复制记录 · 导出完整会话", "Action preview · double-click to copy the entry · export the full session", "動作のプレビュー · ダブルクリックで記録をコピー · 対局全体を出力" }
+			},
+			{
+				"log.diagnostics.hint",
+				new string[3] { "诊断预览 · 双击复制原文 · 导出完整原始日志", "Diagnostic preview · double-click to copy · export the full raw log", "診断のプレビュー · ダブルクリックで原文コピー · 元のログ全体を出力" }
+			},
+			{
 				"log.latest.empty",
 				new string[3] { "暂无对局日志\r\n进入游戏后自动显示最近一局", "No game logs yet\r\nThe latest game appears automatically when you play", "対局の記録はまだありません\r\nゲームを開始すると直近の対局を自動表示します" }
 			},
 			{
 				"v20.log.refresh",
-				new string[2] { "立即刷新", "Refresh now" }
+				new string[3] { "立即刷新", "Refresh now", "今すぐ更新" }
 			},
 			{
 				"log.export.file",
@@ -1159,6 +1163,30 @@ namespace PaviseApp
 			{
 				"log.export.title",
 				new string[3] { "导出运行日志", "Export runtime log", "実行ログを出力" }
+			},
+			{
+				"log.export.actions.title",
+				new string[3] { "导出当前或最近会话的动作日志", "Export actions for the current or latest session", "現在または直近の対局の動作ログを出力" }
+			},
+			{
+				"log.export.diagnostics.title",
+				new string[3] { "导出完整诊断日志", "Export the complete diagnostic log", "診断ログ全体を出力" }
+			},
+			{
+				"log.export.actions.detail",
+				new string[3] { "从原始日志导出当前或最近会话的完整动作记录，不受页面预览条数限制", "Export all recorded actions for the current or latest session from the source log, beyond the preview limit", "元のログから現在または直近の対局の動作記録を出力します。プレビューの件数制限は適用されません" }
+			},
+			{
+				"log.export.diagnostics.detail",
+				new string[3] { "导出当前完整原始日志，包含其他会话和诊断细节", "Export the complete source log, including other sessions and diagnostic details", "他の対局や診断情報も含め、現在の元ログ全体を出力します" }
+			},
+			{
+				"log.export.actions.saved",
+				new string[3] { "当前或最近会话的完整动作记录已导出：", "All recorded actions for the current or latest session were exported:", "現在または直近の対局の動作記録をすべて出力しました：" }
+			},
+			{
+				"log.export.diagnostics.saved",
+				new string[3] { "完整原始诊断日志已导出：", "The complete raw diagnostic log was exported:", "元の診断ログ全体を出力しました：" }
 			},
 			{
 				"log.export.filter",
@@ -1557,26 +1585,6 @@ namespace PaviseApp
 				new string[2] { "自动入库设置未能保存，本次运行仍遵从当前开关", "Auto-add preference could not be saved; this run still follows the current switch" }
 			},
 			{
-				"log.autogpu.1",
-				new string[2] { "自动后台节能显卡已开启 对局中占用游戏渲染卡的后台程序将登记为下次启动改用节能显卡", "Auto background GPU preference enabled; background apps using the game's render GPU will be enrolled to prefer the power-saving GPU next launch" }
-			},
-			{
-				"log.autogpu.2",
-				new string[2] { "自动后台节能显卡已关闭", "Auto background GPU preference disabled" }
-			},
-			{
-				"log.autogpu.3",
-				new string[2] { "自动显卡偏好：后台程序 ", "Auto GPU preference: background app " }
-			},
-			{
-				"log.autogpu.4",
-				new string[2] { " 在游戏渲染卡上占用 3D 约 ", " used about " }
-			},
-			{
-				"log.autogpu.5",
-				new string[2] { "%，已登记下次启动改用节能显卡；可在「应用显卡偏好」管理列表移除，移除后不会自动加回", "% 3D on the game's render GPU; enrolled to prefer the power-saving GPU next launch. Remove it in the Application GPU preferences manager and it will not come back automatically" }
-			},
-			{
 				"t.autoadd.1",
 				new string[2] { "# 从游戏库移除过的路径不再自动入库；重新手动添加会自动解除。", "# Paths removed from the library are never auto-added again; adding them back manually lifts this." }
 			},
@@ -1925,6 +1933,10 @@ namespace PaviseApp
 				new string[2] { "GPU 3D 引擎主导 {0}%", "GPU 3D engine dominant at {0}%" }
 			},
 			{
+				"detect.present",
+				new string[2] { "画面提交 {0} 帧/秒", "Presenting {0} frames/s" }
+			},
+			{
 				"detect.gpu.pending",
 				new string[2] { "窗口化候选，等待 GPU 证据确认", "Windowed candidate, awaiting GPU evidence" }
 			},
@@ -2228,7 +2240,7 @@ namespace PaviseApp
 			},
 			{
 				"rep.clear.log",
-				new string[2] { "清除日志", "Clear log" }
+				new string[3] { "清除日志", "Clear log", "ログを消去" }
 			},
 			{
 				"rep.clear.ask",
@@ -2960,7 +2972,7 @@ namespace PaviseApp
 			},
 			{
 				"set.logwrites",
-				new string[2] { "记录运行日志", "Write the run log" }
+				new string[3] { "记录运行日志", "Write the run log", "実行ログを記録" }
 			},
 			{
 				"log.logwrites.off",
@@ -2972,7 +2984,7 @@ namespace PaviseApp
 			},
 			{
 				"v20.log.paused",
-				new string[2] { "日志记录已关闭 下方为关闭前的记录", "Log writing is off; the entries below predate it" }
+				new string[3] { "日志记录已关闭 下方为关闭前的记录", "Log writing is off; the entries below predate it", "ログの記録は停止中です。停止前の記録を表示しています" }
 			},
 			{
 				"set.autostart",
@@ -7437,6 +7449,10 @@ namespace PaviseApp
 			{
 				"auto.log.restored",
 				new string[2] { "已还原", "Restored" }
+			},
+			{
+				"auto.log.restoring",
+				new string[2] { "还原中", "Restoring" }
 			},
 			{
 				"auto.log.failed",

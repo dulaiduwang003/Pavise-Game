@@ -455,7 +455,7 @@ namespace PaviseApp
 						value.Failures++;
 						value.NextAttempt = DateTime.UtcNow.AddSeconds(30).Ticks;
 						pathCache[procEntry.Pid] = value;
-						Logger.Warn("Process path read failed pid=" + procEntry.Pid + " birth=" + procEntry.Creation + " attempt=" + value.Failures + "/3");
+						Logger.Info("Process path read failed pid=" + procEntry.Pid + " birth=" + procEntry.Creation + " attempt=" + value.Failures + "/3");
 						continue;
 					}
 					pathCache[procEntry.Pid] = new PathCacheEntry

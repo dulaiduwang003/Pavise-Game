@@ -125,8 +125,7 @@ namespace PaviseApp
 
 			protected override void OnPaint(PaintEventArgs e)
 			{
-				// Flat Button is opaque and may skip OnPaintBackground. Clear the
-				// entire buffer, including the corners outside the cut button face.
+				// Opaque Button painting must clear the full buffer, including clipped corners.
 				e.Graphics.Clear(Theme.Card);
 				e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 				Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);

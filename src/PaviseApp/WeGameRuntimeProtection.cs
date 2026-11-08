@@ -81,8 +81,7 @@ namespace PaviseApp
 				{
 					hashSet.Add(value2.Pid);
 					string directoryName = Path.GetDirectoryName(dictionary2[value2.Pid]);
-					// Streaming roots inherit only verified children. A nearby browser,
-					// updater or encoder is not evidence of membership in that live stream.
+					// Only verified descendants inherit streaming protection; nearby browser/encoder processes do not.
 					if (!StreamingToolCatalog.IsStreamingToolProcess(value2.Name, value2.Path) && FamilyBoundary.SafeFamilyDir(directoryName))
 					{
 						hashSet3.Add(directoryName);

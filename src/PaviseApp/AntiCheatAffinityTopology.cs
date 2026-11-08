@@ -14,7 +14,6 @@ namespace PaviseApp
         internal byte Scheduling;
         internal bool Parked;
         internal bool Allocated;
-        // Favored cores are excluded from the weak-core pool.
         internal bool Favored { get; set; }
         internal int L3Id = -1;
         internal uint L3Bytes;
@@ -364,10 +363,7 @@ namespace PaviseApp
                     List<AntiCheatAffinityCore> pool = new List<AntiCheatAffinityCore>();
                     foreach (AntiCheatAffinityCore core in candidates)
                         if (core.Efficiency == orderedTiers[tier]) pool.Add(core);
-                    // Some three-class systems expose E and LP-E under the same
-                    // EfficiencyClass but distinct SchedulingClass. Prefer the
-                    // faster complete secondary scheduling class; these are OS
-                    // rankings, not a vendor/model-name or core-number guess.
+                    // Use SchedulingClass to distinguish E/LP-E cores with the same EfficiencyClass.
                     SortedSet<byte> secondaryClasses = new SortedSet<byte>();
                     foreach (AntiCheatAffinityCore core in pool) secondaryClasses.Add(core.Scheduling);
                     List<byte> schedulingClasses = new List<byte>(secondaryClasses);
@@ -382,9 +378,7 @@ namespace PaviseApp
                 }
                 return Skip("insufficient-efficiency-core-capacity");
             }
-            // Parking is transient; allocated/protected game cores still provide
-            // game capacity. Only candidates must be currently unparked and free.
-            // The module never writes parking or moves any game thread.
+            // Require unparked candidate cores; parked game cores still count toward game capacity.
             if (local.Count < 4 + minimumCores) return Skip("insufficient-game-core-capacity");
             int domain = -1;
             bool validDomain = gameDomainMask != 0;
@@ -415,8 +409,7 @@ namespace PaviseApp
                 if (best != null) return Pick(best, "alternate-cache-domain", "explicit-game-cache-domain-preserved", maximumPhysicalCores);
                 if (alternateExists) return Skip("alternate-cache-domain-unavailable");
             }
-            // No alternate-domain assumption from CPU model, cache size or core
-            // number. A small auxiliary pool leaves four physical cores free.
+            // Use cache-domain evidence and retain four physical game/system cores.
             candidates.Sort(delegate(AntiCheatAffinityCore a, AntiCheatAffinityCore b) {
                 int order = a.Scheduling.CompareTo(b.Scheduling);
                 return order != 0 ? order : b.Mask.CompareTo(a.Mask);

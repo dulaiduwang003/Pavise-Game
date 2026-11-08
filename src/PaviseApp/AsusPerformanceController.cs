@@ -11,10 +11,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PaviseApp
 {
-    // DSTS(0x120075) reports capabilities, not the selected profile, on e.g. GX531.
-    // Let the running controller apply its complete profile, including fan curves.
-    // Its persisted selection plus a NEW successful driver acknowledgement verify
-    // each request. Never edit G-Helper's files or synthesize global keystrokes.
+    // DSTS reports capabilities, not the active mode. Verify G-Helper's selection and a fresh driver acknowledgement.
+    // Send only to its dedicated receiver; do not edit its files or inject global input.
     internal static class AsusPerformanceController
     {
         internal interface IRuntime
@@ -54,8 +52,7 @@ namespace PaviseApp
 
         private static string Text(string zh, string en) { return Lang.Cur == 1 ? en : zh; }
 
-        // Parse the controller's flat JSON without assuming its layout, key order,
-        // or that a custom profile ID is also its underlying firmware mode.
+        // Custom profile IDs are independent of firmware mode; parse by JSON keys.
         private static bool Parse(string json, out Selection value)
         {
             value = null;
@@ -163,7 +160,6 @@ namespace PaviseApp
                 string json; int pid; long creation;
                 if (!runtime.Read(out json, out pid, out creation) || pid != current.ProcessId || creation != current.Creation) return false;
                 Selection destination;
-                // Validate the requested custom profile independently of the active one.
                 string requested = Regex.Replace(json, "(\"performance_mode\"\\s*:\\s*)-?[0-9]+", "${1}" + mode);
                 if (!Parse(requested, out destination)) return false;
                 long offset = runtime.LogLength();
@@ -179,9 +175,7 @@ namespace PaviseApp
                     bool acknowledged = delta.Contains(": Mode = " + destination.Base + " : OK");
                     if (acknowledged && acknowledgedAt < 0) acknowledgedAt = attempt;
                     if (check.Mode != mode && check.Mode != current.Mode) return false;
-                    // G-Helper applies custom fans after the base mode, then power
-                    // settings after another second. Let that work settle and keep
-                    // checking for user changes / cancellation before confirming.
+                    // G-Helper applies fans and power after the base mode; wait for settlement while checking cancellation and user changes.
                     if (check.Mode == mode && acknowledged && attempt - acknowledgedAt >= 13)
                     {
                         observed = check;
@@ -262,9 +256,7 @@ namespace PaviseApp
                     if (owner != pid || IsWindowVisible(window) || GetWindowTextLength(window) != 0) return true;
                     var name = new StringBuilder(256);
                     GetClassName(window, name, name.Capacity);
-                    // NativeWindow applies Windows minimum-frame sizing, so the
-                    // receiver is not necessarily 0x0. Other plain NativeWindows
-                    // ignore WM_HOTKEY; only KeyboardHook.Window dispatches it.
+                    // NativeWindow minimum-frame sizing can make the receiver nonzero-sized; only KeyboardHook.Window handles WM_HOTKEY.
                     if (name.ToString().StartsWith("WindowsForms10.Window.0.app.", StringComparison.Ordinal)) found.Add(window);
                     return true;
                 }, IntPtr.Zero);
@@ -274,8 +266,7 @@ namespace PaviseApp
 
             public bool Send(int processId, long creation, int key, int modifiers)
             {
-                // Target G-Helper's dedicated hidden hotkey receiver. No focus
-                // changes, global input injection, program launches or restarts.
+                // Send WM_HOTKEY only to G-Helper's dedicated hidden receiver.
                 using (Process process = Process.GetProcessById(processId))
                 {
                     if (process.StartTime.ToUniversalTime().Ticks != creation || process.SessionId != Process.GetCurrentProcess().SessionId) return false;

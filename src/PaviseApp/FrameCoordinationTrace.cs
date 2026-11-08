@@ -9,9 +9,14 @@ namespace PaviseApp
     {
         internal const string TraceKey = "FrameCoordinationTraceV1";
         internal const string IdentityTraceKey = Settings.GpuIdentityReceiptKey;
-        // Keep the retired telemetry channel only to recover owned ETW receipts left by older versions.
-        // Each channel accepts its own prefix; crossed or unknown receipts remain recovery debt.
+        // Recover only receipts matching each owned channel prefix, including retired telemetry.
         internal const string FrameSessionPrefix = "Pavise.FrameCoordination.", IdentitySessionPrefix = "Pavise.GpuIdentity.";
+        internal const string PresentSessionPrefix = "Pavise.PresentProbe.";
+        internal const string PresentProbeReceiptKey = "PresentProbeTraceV1";
+        internal const string PresentProbeSessionPattern = @"\APavise\.PresentProbe\.[0-9]+\.[0-9a-f]{32}\z";
+        internal static readonly Guid DxgKrnl = new Guid("802ec45a-1e99-4b83-9920-87c98277ba9d");
+        // Microsoft-Windows-DxgKrnl "Present" keyword (local manifest); DXGI/D3D9 use Analytic|Events.
+        internal const ulong DxgKrnlPresentKeyword = 0x8000000UL, RuntimePresentKeyword = 0x8000000000000002UL;
         // ERROR_SHUTDOWN_IN_PROGRESS: process shutdown closed the GPU identity channel.
         internal const int IdentityClosedError = 1115;
         private const int IdentityHealWaitMs = 3500;
@@ -19,13 +24,16 @@ namespace PaviseApp
         private sealed class Channel
         {
             internal string Key, Pattern;
-            internal bool Identity;
+            internal bool Identity, Present;
             internal FrameCoordinationTrace Active;
+            // Bounded telemetry channels recover their own stale receipt and are not restore debt while healthy.
+            internal bool Telemetry { get { return Identity || Present; } }
         }
         private static readonly Channel frameChannel = new Channel { Key = TraceKey, Pattern = @"\APavise\.FrameCoordination\.[0-9]+\.[0-9a-f]{32}\z" },
-            identityChannel = new Channel { Key = IdentityTraceKey, Pattern = Settings.GpuIdentitySessionPattern, Identity = true };
+            identityChannel = new Channel { Key = IdentityTraceKey, Pattern = Settings.GpuIdentitySessionPattern, Identity = true },
+            presentChannel = new Channel { Key = PresentProbeReceiptKey, Pattern = PresentProbeSessionPattern, Present = true };
         // Set only by process shutdown (CloseIdentity); guarded by ledgerGate.
-        private static bool identitySealed;
+        private static bool identitySealed, presentSealed;
         private Channel channel = frameChannel;
         private readonly object memory = new object();
         private readonly object cleanup = new object();
@@ -34,8 +42,8 @@ namespace PaviseApp
         private Native.EventRecordCallback callback;
         private Thread pump;
         private bool started, claimed;
-        // stopRequested: a stop began, so HasResidue and Heal treat the trace as stopping. handlesClosed: the
-        // session and consumer are both closed; whichever of the stopper or a late pump finishes last settles.
+        // stopRequested marks recovery debt; handlesClosed requires both native handles to close.
+        // The stopper or late pump that finishes last settles the trace.
         private volatile bool stopRequested, handlesClosed;
         private bool receiptSettled;
         private string name = SessionName(FrameSessionPrefix);
@@ -55,13 +63,18 @@ namespace PaviseApp
                 {
                     string receipt;
                     bool frame = frameChannel.Active != null || !Settings.TryLoadStr(TraceKey, out receipt) || receipt.Length > 0;
-                    // A healthy, bounded telemetry capture is not an outstanding optimization
-                    // to restore. A failed/stopping capture or a previous-process receipt is.
-                    var identity = identityChannel.Active;
-                    return frame || (identity != null ? identity.Error != 0 || identity.stopRequested
-                        : !Settings.TryLoadStr(IdentityTraceKey, out receipt) || receipt.Length > 0);
+                    // Healthy bounded telemetry is not recovery debt; failed/stopping or previous-process receipts are.
+                    return frame || TelemetryResidueLocked(identityChannel) || TelemetryResidueLocked(presentChannel);
                 }
             }
+        }
+        // Caller holds ledgerGate.
+        private static bool TelemetryResidueLocked(Channel channel)
+        {
+            string receipt;
+            var active = channel.Active;
+            return active != null ? active.Error != 0 || active.stopRequested
+                : !Settings.TryLoadStr(channel.Key, out receipt) || receipt.Length > 0;
         }
         [DllImport("kernel32.dll")] private static extern ushort GetActiveProcessorGroupCount();
         [StructLayout(LayoutKind.Sequential)] private struct Filter { internal ulong Ptr; internal uint Size, Type; }
@@ -124,7 +137,11 @@ namespace PaviseApp
         }
         // The identity receipt has its own strict writer that does not advance the user-setting generation.
         private static bool WriteReceipt(Channel channel, string value)
-        { return channel.Identity ? Settings.SaveGpuIdentityReceipt(value) : Settings.SaveStr(channel.Key, value); }
+        {
+            if (channel.Identity) return Settings.SaveGpuIdentityReceipt(value);
+            if (channel.Present) return Settings.SavePresentProbeReceipt(value);
+            return Settings.SaveStr(channel.Key, value);
+        }
 
         private static IntPtr Props(string name, bool start)
         { return Props(name, start, false); }
@@ -170,6 +187,34 @@ namespace PaviseApp
             }
             finally { Marshal.FreeHGlobal(pidPointer); Marshal.FreeHGlobal(filterPointer); }
             if (Error != 0) { Stop(); return false; }
+            return OpenAndPumpLocked(receive);
+        }
+        // System-wide present events only: no pid filter, no kernel thread flags, three present providers.
+        internal bool StartPresentProbe(Native.EventRecordCallback receive)
+        {
+            lock (cleanup)
+            {
+                if (started) { Error = 1247; return false; }
+                channel = presentChannel; name = SessionName(PresentSessionPrefix);
+                started = true;
+                int refusal;
+                lock (ledgerGate) refusal = ClaimLocked();
+                if (refusal != 0) { Error = refusal; return false; }
+                properties = Props(name, true, true);
+                Error = StartSession(out session, name, properties);
+                if (Error != 0) { session = 0; Stop(); return false; }
+                var parameters = new Native.EnableTraceParameters { Version = 2 };
+                Guid dxgi = FrameCoordinationSampler.Dxgi, d3d9 = FrameCoordinationSampler.D3d9, kernel = DxgKrnl;
+                Error = Native.EnableTraceEx2(session, ref dxgi, 1, 5, RuntimePresentKeyword, 0, 0, ref parameters);
+                if (Error == 0) Error = Native.EnableTraceEx2(session, ref d3d9, 1, 5, RuntimePresentKeyword, 0, 0, ref parameters);
+                if (Error == 0) Error = Native.EnableTraceEx2(session, ref kernel, 1, 5, DxgKrnlPresentKeyword, 0, 0, ref parameters);
+                if (Error != 0) { Stop(); return false; }
+                return OpenAndPumpLocked(receive);
+            }
+        }
+        // Caller holds the cleanup lock; the session is started and its providers are enabled.
+        private bool OpenAndPumpLocked(Native.EventRecordCallback receive)
+        {
             callback = receive; loggerName = Marshal.StringToHGlobalUni(name);
             var log = new Native.EventTraceLogfile { LoggerName = loggerName,
                 ProcessTraceMode = Native.ProcessTraceModeRealTime | Native.ProcessTraceModeEventRecord | 0x1000,
@@ -183,8 +228,7 @@ namespace PaviseApp
                 finally {
                     IntPtr thread = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, PumpTid);
                     if (thread != IntPtr.Zero) { try { long b,e,k,u; if (Native.GetThreadTimes(thread,out b,out e,out k,out u)) CpuMs=(k+u)/10000.0; } finally { Native.CloseHandle(thread); } }
-                    // ProcessTrace returned: no callback can follow. If the stopper's bounded wait already expired,
-                    // this late pump settles the trace itself (it never takes the cleanup lock or joins itself).
+                    // ProcessTrace has returned, so no callbacks remain; the late pump settles without taking cleanup or joining itself.
                     if (handlesClosed) Settle();
                 }
             });
@@ -196,13 +240,14 @@ namespace PaviseApp
         private int ClaimLocked()
         {
             if (channel.Identity && identitySealed) return IdentityClosedError;
+            if (channel.Present && presentSealed) return IdentityClosedError;
             if (channel.Active != null) return 170;
             string previous, written;
             if (!Settings.TryLoadStr(channel.Key, out previous)) return 5;
             if (previous.Length != 0)
             {
-                // Only the identity channel self-recovers, and only its own stale receipt; no live trace owns it.
-                if (!channel.Identity) return 5;
+                // Only telemetry channels self-recover, and only their own stale receipt; no live trace owns it.
+                if (!channel.Telemetry) return 5;
                 int recovered = RecoverReceiptLocked(channel, previous);
                 if (recovered != 0) return recovered;
             }
@@ -231,8 +276,7 @@ namespace PaviseApp
         }
         internal bool Stop()
         { lock (cleanup) return StopLocked(StopWaitMs()); }
-        // Bounded variant for shutdown and failure retries: an initialisation that holds the cleanup lock
-        // reports the debt instead of blocking the caller.
+        // If initialization holds the cleanup lock, report recovery debt instead of blocking shutdown.
         private bool StopWithin(int timeoutMs)
         {
             var clock = Stopwatch.StartNew();
@@ -264,7 +308,7 @@ namespace PaviseApp
                 rc = Control(session, name, properties, Native.EventTraceControlStop);
                 var value = (Native.EventTraceProperties)Marshal.PtrToStructure(properties, typeof(Native.EventTraceProperties));
                 Lost = value.EventsLost + value.RealTimeBuffersLost;
-                // 停止失败时保留会话句柄，后续清理继续重试。
+                // 停止失败时保留会话句柄，由所属预算控制后续恢复。
                 if (rc == 0 || rc == 4201 || rc == 234) session = 0;
             }
             if (consumer != Native.InvalidProcessTraceHandle)
@@ -289,15 +333,14 @@ namespace PaviseApp
             if (current == Thread.CurrentThread) return false;
             return current.Join(Math.Max(0, waitMs));
         }
-        // Only after both handles are closed and ProcessTrace returned (or never ran). Idempotent: the stopper
-        // and a late pump may both arrive here. A failed receipt clear keeps the receipt as recovery debt.
+        // Settle after both handles close and ProcessTrace returns; stopper and late pump may race here.
+        // A failed receipt clear retains recovery debt.
         private bool Settle()
         {
             bool cleared = true;
             lock (ledgerGate)
             {
-                // A late stopper may follow the pump's successful settlement after the next
-                // owner has already claimed this channel. Never re-clear that owner's receipt.
+                // A late stopper must not clear the receipt of a newer channel owner.
                 if (!receiptSettled)
                 {
                     if (channel.Active == this) channel.Active = null;
@@ -328,7 +371,7 @@ namespace PaviseApp
             GC.KeepAlive(callback);
         }
         internal static bool Heal()
-        { bool frame = Heal(frameChannel); return Heal(identityChannel) && frame; }
+        { bool frame = Heal(frameChannel); bool identity = Heal(identityChannel); return Heal(presentChannel) && identity && frame; }
         private static bool Heal(Channel channel)
         {
             FrameCoordinationTrace pending;
@@ -336,15 +379,14 @@ namespace PaviseApp
             {
                 pending = channel.Active;
                 // Healthy bounded telemetry is not recovery debt: ordinary healing never interrupts it.
-                if (channel.Identity && pending != null && pending.Error == 0 && !pending.stopRequested) return true;
+                if (channel.Telemetry && pending != null && pending.Error == 0 && !pending.stopRequested) return true;
             }
             if (pending != null)
             {
                 // 持有 ledgerGate 时不能获取清理锁。
-                if (channel.Identity)
+                if (channel.Telemetry)
                 {
-                    // An identity trace stopping without an error settles itself (stopper or late pump). A failed
-                    // one gets an active, bounded STOP retry here instead of a passive refusal.
+                    // A healthy stopping identity trace settles itself; failed traces use the bounded STOP recovery path.
                     if (pending.Error == 0 && !pending.Drained) return true;
                     pending.StopWithin(IdentityHealWaitMs);
                 }
@@ -364,15 +406,26 @@ namespace PaviseApp
         // Process shutdown also retries the retired telemetry receipt. A failed stop/clear leaves recovery debt.
         internal static bool CloseIdentity(int timeoutMs)
         {
+            var clock = Stopwatch.StartNew();
+            bool identity = CloseSealed(identityChannel, timeoutMs);
+            int remaining = Math.Max(0, timeoutMs - (int)Math.Min(int.MaxValue, clock.ElapsedMilliseconds));
+            return CloseSealed(presentChannel, remaining) && identity;
+        }
+        private static bool CloseSealed(Channel channel, int timeoutMs)
+        {
             FrameCoordinationTrace pending;
-            lock (ledgerGate) { identitySealed = true; pending = identityChannel.Active; }
+            lock (ledgerGate)
+            {
+                if (channel.Identity) identitySealed = true; else presentSealed = true;
+                pending = channel.Active;
+            }
             if (pending != null) pending.StopWithin(timeoutMs);
             lock (ledgerGate)
             {
-                if (identityChannel.Active != null) return false;
+                if (channel.Active != null) return false;
                 string receipt;
-                if (!Settings.TryLoadStr(IdentityTraceKey, out receipt)) return false;
-                return receipt.Length == 0 || RecoverReceiptLocked(identityChannel, receipt) == 0;
+                if (!Settings.TryLoadStr(channel.Key, out receipt)) return false;
+                return receipt.Length == 0 || RecoverReceiptLocked(channel, receipt) == 0;
             }
         }
     }

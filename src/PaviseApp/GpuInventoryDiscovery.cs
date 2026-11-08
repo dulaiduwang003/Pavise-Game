@@ -10,8 +10,7 @@ namespace PaviseApp
         { InstanceId = instanceId; SoftwareKey = softwareKey; }
     }
 
-    // Pure mapping of currently present display instances to their current
-    // device-specific driver software keys. A model id is not a device identity.
+    // Map current display instances to their device-specific driver keys; model IDs are not device identities.
     internal static class GpuInventoryDiscovery
     {
         internal const string DisplayClass = "{4d36e968-e325-11ce-bfc1-08002be10318}";

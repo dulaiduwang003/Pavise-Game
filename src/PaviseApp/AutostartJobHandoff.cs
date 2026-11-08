@@ -9,13 +9,8 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // Task Scheduler runs every task process inside a job whose LimitFlags are 0:
-    // no breakaway, silent or explicit (measured on build 26300 for a Highest task).
-    // The hard-thread and CPU-cap guardians must outlive Pavise, so they refuse to
-    // start there. An autostarted instance in such a job relaunches itself once via
-    // WMI, which creates the process outside any job with the same user, session and
-    // elevated token, and exits only after the successor confirms. Every failure
-    // keeps the original instance running exactly as before. One attempt, no retry.
+    // Task Scheduler jobs can prevent independent guardians from surviving the main process.
+    // A single WMI handoff verifies an elevated successor outside the job; failures retain this instance.
     internal static class AutostartJobHandoff
     {
         internal const string Argument = "--job-handoff";
@@ -102,8 +97,7 @@ namespace PaviseApp
                 catch
                 {
                 }
-                // A predecessor that is still alive kept the session (it timed out
-                // before our signal); once it is gone, this instance is the only one.
+                // A live predecessor retains the session; proceed only after it has exited.
                 if (predecessor != null && !predecessor.WaitForExit(PredecessorExitWaitMs)) return false;
                 bool inJob;
                 bool known = IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out inJob);

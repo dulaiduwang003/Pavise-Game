@@ -199,8 +199,7 @@ namespace PaviseApp
                 }
                 return;
             }
-            // A previous process may have died after recording or writing. Repay that
-            // recovery obligation before obtaining a new session lease.
+            // Settle previous-process recovery before acquiring a new session lease.
             if (raw.Length > 0 && !RestoreOne(c)) return;
             if (!c.Failures.CanAttempt("apply", Now.Ticks, 1)) return;
             Sample sample; string why;

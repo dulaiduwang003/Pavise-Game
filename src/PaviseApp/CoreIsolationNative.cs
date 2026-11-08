@@ -6,6 +6,12 @@ namespace PaviseApp
 {
 	internal sealed class CoreIsolationNative : ICoreIsolationPlatform
 	{
+		private readonly object queryGate = new object();
+		private byte[] systemBuffer;
+		private byte[] allowedBuffer;
+		private const int MaxSystemBytes = 65536;
+		private const int MaxSystemReads = 3;
+
 		[DllImport("ntdll.dll")]
 		private static extern int NtSetSystemInformation(int c, byte[] b, int n);
 
@@ -44,18 +50,27 @@ namespace PaviseApp
 
 		public IsolationCpuState ReadSystem(IntPtr process)
 		{
-			int r;
-			GetSystemCpuSetInformation(null, 0, out r, process, 0);
-			if (r < 32 || r > 65536)
+			lock (queryGate)
 			{
+				int r;
+				if (systemBuffer == null)
+				{
+					bool sized = GetSystemCpuSetInformation(null, 0, out r, process, 0);
+					if ((!sized && Marshal.GetLastWin32Error() != 122) || r < 32 || r > MaxSystemBytes) return null;
+					systemBuffer = new byte[r];
+				}
+				for (int attempt = 0; attempt < MaxSystemReads; attempt++)
+				{
+					Array.Clear(systemBuffer, 0, systemBuffer.Length);
+					if (GetSystemCpuSetInformation(systemBuffer, systemBuffer.Length, out r, process, 0))
+					{
+						return r >= 32 && r <= systemBuffer.Length ? Decode(systemBuffer, r) : null;
+					}
+					if (Marshal.GetLastWin32Error() != 122 || r <= systemBuffer.Length || r > MaxSystemBytes || attempt + 1 == MaxSystemReads) return null;
+					systemBuffer = new byte[r];
+				}
 				return null;
 			}
-			byte[] array = new byte[r];
-			if (!GetSystemCpuSetInformation(array, array.Length, out r, process, 0) || r > array.Length)
-			{
-				return null;
-			}
-			return Decode(array, r);
 		}
 
 		internal static IsolationCpuState Decode(byte[] b, int length)
@@ -160,14 +175,18 @@ namespace PaviseApp
 		public bool ReadAllowed(IntPtr h, out ulong mask)
 		{
 			mask = 0uL;
-			byte[] array = new byte[160];
-			int r;
-			if (NtQueryInformationProcess(h, 67, array, array.Length, out r) != 0 || r != 8)
+			lock (queryGate)
 			{
-				return false;
+				if (allowedBuffer == null) allowedBuffer = new byte[160];
+				Array.Clear(allowedBuffer, 0, allowedBuffer.Length);
+				int r;
+				if (NtQueryInformationProcess(h, 67, allowedBuffer, allowedBuffer.Length, out r) != 0 || r != 8)
+				{
+					return false;
+				}
+				mask = BitConverter.ToUInt64(allowedBuffer, 0);
+				return true;
 			}
-			mask = BitConverter.ToUInt64(array, 0);
-			return true;
 		}
 
 		public bool SetAllowed(IntPtr h, ulong mask)

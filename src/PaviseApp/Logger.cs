@@ -283,6 +283,21 @@ namespace PaviseApp
 		internal static void ExportTo(string destination)
 		{
 			string output = Path.GetFullPath(destination);
+			byte[] snapshot = ReadExportSnapshot(output);
+			// A slow destination must not hold up runtime log writes or rotation.
+			File.WriteAllBytes(output, snapshot);
+		}
+
+		internal static void ExportActionsTo(string destination, string activeSession)
+		{
+			string output = Path.GetFullPath(destination);
+			byte[] snapshot = ReadExportSnapshot(output);
+			string actions = ActionLogProjection.Export(Encoding.UTF8.GetString(snapshot).TrimStart('\uFEFF'), activeSession);
+			File.WriteAllText(output, actions, new UTF8Encoding(false));
+		}
+
+		private static byte[] ReadExportSnapshot(string output)
+		{
 			byte[] snapshot;
 			lock (lk)
 			{
@@ -303,8 +318,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			// A slow destination must not hold up runtime log writes or rotation.
-			File.WriteAllBytes(output, snapshot);
+			return snapshot;
 		}
 
 		public static string Tail(int maxLines)

@@ -22,8 +22,7 @@ namespace PaviseApp
             ForegroundVersion = foregroundVersion; SmartSwitchedOut = smartSwitchedOut; BackgroundReleasePending = backgroundReleasePending;
         }
 
-        // The executor receipts establish success. The existing guard scan establishes
-        // identity and liveness; presenting this data must never start a process scan.
+        // Success comes from executor receipts; identity/liveness use the existing scan, never a new UI scan.
         internal static GuardActivitySnapshot Create(long session, ProcessSnapshot scan,
             IEnumerable<KeyValuePair<int, long>> receipts, IEnumerable<string> stoppedServices,
             long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false)

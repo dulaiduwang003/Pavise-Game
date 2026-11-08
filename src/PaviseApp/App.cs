@@ -4,7 +4,7 @@ namespace PaviseApp
 	{
 		public const string DisplayName = "PAVISE AUTO";
 
-		public const string Version = "3.3.0.7";
+		public const string Version = "3.3.0.8";
 
 		public const string Author = "bdth";
 
@@ -34,7 +34,6 @@ namespace PaviseApp
 
 		public const string RepoUrl = "https://github.com/dulaiduwang003/Pavise-Game";
 
-		// Quark shares can change; the official download page remains the durable entry point.
 		public const string ManualUpdateQuarkUrl = "https://pavise.club/changelog/#latest";
 
 		public const string ManualUpdateGithubUrl = "https://github.com/dulaiduwang003/Pavise-Game/releases/latest";

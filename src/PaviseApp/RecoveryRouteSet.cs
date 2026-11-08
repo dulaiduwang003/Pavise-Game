@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 namespace PaviseApp
 {
-    // A synchronous child reports its existing owner's schedule. Async work must
-    // report waiting at the entry point; ThreadStatic state never flows to workers.
+    // Async owners report waiting at admission; ThreadStatic recovery state does not flow to workers.
     internal sealed class RecoveryAttemptTrace : IDisposable
     {
         [ThreadStatic] private static RecoveryAttemptTrace current;
@@ -53,6 +52,19 @@ namespace PaviseApp
         internal readonly long Session;
         internal RecoveryRouteSet(long session, Func<long> utcClock) { Session = session; clock = utcClock; }
         internal bool Complete { get { lock (gate) { foreach (Route r in routes.Values) if (!r.Neutral) return false; return true; } } }
+        // Exhausted routes (Due == MaxValue) wake only on a genuine phase change.
+        internal bool RetryScheduled
+        {
+            get
+            {
+                lock (gate)
+                {
+                    foreach (Route route in routes.Values)
+                        if (!route.Neutral && (route.Running || route.Due != long.MaxValue && DependenciesReady(route))) return true;
+                    return false;
+                }
+            }
+        }
         internal long Next
         {
             get

@@ -3,8 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Decode complete Windows snapshots before publishing any physical-core or
-    // core-type evidence. No processor model or SMT heuristic belongs here.
+    // Publish topology only from complete Windows snapshots; do not infer core type from model/SMT.
     internal sealed class CpuTopologyEvidence
     {
         internal bool Valid, MultiGroup;

@@ -11,9 +11,7 @@ namespace PaviseApp
     {
         private const string Legacy3110Source = "legacy-3.1.1.0";
 
-        // Keep the current durable creation intent and inactive-plan checks. The
-        // source and later tuning table are the standard-template path from 3.1.1.0.
-        // In particular, none of the seven newer parameter sets is written here.
+        // Create from a standard template; tune with the legacy parameter table.
         private static bool CreateLegacy3110Native(Guid destination)
         {
             if (HandheldBypass) return false;

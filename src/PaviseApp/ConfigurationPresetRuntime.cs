@@ -96,8 +96,7 @@ namespace PaviseApp
             lock (stateGate)
             {
                 if (!IdentityObservationCurrent(session, generation, observationEpoch)) { Volatile.Write(ref refreshing, 0); return; }
-                // A cached identity describes the material configuration that was
-                // verified. An exhausted phase must not retain another phase's label.
+                // Cached identity must name the verified material configuration, including after phase exhaustion.
                 if (currentConfiguration != savedConfiguration) { current = null; currentConfiguration = null; }
                 if (!identityPhases.TryGetValue(savedConfiguration, out phase))
                     identityPhases[savedConfiguration] = phase = new IdentityRefreshPhase { Session = session, Configuration = savedConfiguration };

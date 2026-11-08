@@ -3,8 +3,7 @@ using System.Diagnostics;
 
 namespace PaviseApp
 {
-    // Display facts are deliberately separate from the verified control inventory.
-    // Missing driver bindings must not hide a GPU or authorize a tuning target.
+    // Separate display facts from control identity; missing driver bindings do not hide or authorize a GPU.
     internal sealed class OverviewGpuReader
     {
         private static readonly OverviewGpuReader shared = new OverviewGpuReader(

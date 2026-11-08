@@ -873,7 +873,9 @@ namespace PaviseApp
 					}
 					if (cleanupAttempts >= 3) return;
 					cleanupAttempts++;
-					Logger.Warn("Critical guardian cleanup: phase=" + (cleanupExitPhase ? "child-exit" : "live") + " attempt=" + cleanupAttempts + "/3");
+					// The first attempt of each phase is the ordinary stop/cleanup, not a failure.
+					string cleanupLine = "Critical guardian cleanup: phase=" + (cleanupExitPhase ? "child-exit" : "live") + " attempt=" + cleanupAttempts + "/3";
+					if (cleanupAttempts == 1) Logger.Info(cleanupLine); else Logger.Warn(cleanupLine);
 					disposed = true;
 					try
 					{

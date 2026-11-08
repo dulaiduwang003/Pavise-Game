@@ -52,8 +52,7 @@ namespace PaviseApp
     {
         bool Restore(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong original, out AntiCheatAffinityObservation observed);
     }
-    // Optional lifetime of an enforcing constraint, separate from the process-mask journal.
-    // Mock/process-only backends keep the existing ownership contract.
+    // Keep constraint lifetime independent of process-mask recovery.
     internal interface IAntiCheatAffinityConstraintPlatform
     {
         bool ConstraintPending { get; }
@@ -70,8 +69,7 @@ namespace PaviseApp
         { Code = code; Detail = detail; Bound = bound; PendingRecovery = pending; }
     }
 
-    // This owner has no topology policy: the caller supplies a verified, group-local hard mask.
-    // No thread affinity or CPU Sets setter is used here.
+    // The caller supplies a verified group-local mask; this lease owns only process hard affinity.
     internal sealed class AntiCheatAffinityLease
     {
         internal const string ReceiptKey = "AntiCheatHardAffinityV1";
@@ -269,7 +267,7 @@ namespace PaviseApp
             if (read.Read != AntiCheatAffinityRead.Known || read.Group != row.Group) return Debt(row);
             // A prepared target change can still be at our previous mask if the process crashed before Set.
             bool owned = read.Mask == row.Applied || ((row.Phase == 'P' || row.Phase == 'R') && row.Previous != 0 && read.Mask == row.Previous);
-            if (!owned || read.Mask == row.Original) return Remove(row); // Preserve external modifications.
+            if (!owned || read.Mask == row.Original) return Remove(row);
             if ((row.Original & ~read.AllowedMask) != 0) return Debt(row);
             Receipt backup = row.Copy(); row.Previous = read.Mask; row.Phase = 'R';
             if (!Save()) { rows[row.Identity.Key] = backup; return Debt(backup); }

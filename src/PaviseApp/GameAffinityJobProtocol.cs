@@ -5,9 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // One output reader belongs to one guardian process for its entire lifetime.
-    // Losing a reply deadline revokes this channel; the reader still drains late
-    // output through EOF, without leaving a blocking ReadLine task per command.
+    // Keep one output reader per guardian until EOF; a reply timeout revokes commands without spawning another reader.
     internal sealed class GameAffinityJobProtocol : IDisposable
     {
         private readonly object gate = new object();
@@ -66,8 +64,7 @@ namespace PaviseApp
             lock (gate) { lost = true; replies.Clear(); Monitor.PulseAll(gate); }
         }
 
-        // Only the lease owner disposes this reader, after guardian exit has been
-        // verified. Revoking commands alone must not dispose recovery handles.
+        // Dispose the reader only after guardian exit; command revocation does not release recovery handles.
         public void Dispose()
         {
             lock (gate)

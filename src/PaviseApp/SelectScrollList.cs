@@ -4,8 +4,6 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // Native ListBox supplies scrollbars and accessible list items. Only row painting,
-    // navigation/commit and wheel handling are specialized; no per-font Font objects.
     internal sealed class SelectScrollList : ListBox
     {
         private readonly TechSelect owner;

@@ -7,6 +7,20 @@ namespace PaviseApp
 {
 	internal sealed class GameCardDetailsButton : PillButton
 	{
+		private bool showAdjustLabel;
+
+		internal bool ShowAdjustLabel
+		{
+			get { return showAdjustLabel; }
+			set
+			{
+				showAdjustLabel = value;
+				Text = value ? PerformancePolicy.Text("调整", "Adjust") : "›";
+				Font = Theme.UI(value ? 8f : 13f, true);
+				Invalidate();
+			}
+		}
+
 		internal GameCardDetailsButton()
 			: base("›")
 		{
@@ -25,7 +39,12 @@ namespace PaviseApp
 			{
 				e.Graphics.DrawLine(pen, 0, Theme.S(5), 0, base.Height - Theme.S(5));
 			}
-			int num = base.Width / 2;
+			if (showAdjustLabel)
+			{
+				TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(Theme.S(8), 0, Math.Max(1, Width - Theme.S(22)), Height),
+					Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+			}
+			int num = showAdjustLabel ? base.Width - Theme.S(10) : base.Width / 2;
 			int num2 = base.Height / 2;
 			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			using (Pen pen2 = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))

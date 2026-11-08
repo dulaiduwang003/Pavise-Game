@@ -3,13 +3,8 @@ using System.Linq;
 
 namespace PaviseApp
 {
-	// Automatic critical-thread placement. One game thread, the presentation thread when
-	// frame evidence identifies it, receives hard affinity on its own physical core once it
-	// keeps at least 30% of one logical CPU busy for three consecutive 5-second windows.
-	// Further threads that stay near saturation receive only an ideal-processor hint on
-	// distinct physical cores: the scheduler prefers that core but may still move them, so
-	// they can never be stranded behind interrupts or other work. The total stays within a
-	// topology-derived capacity that always leaves two physical cores for everything else.
+	// Only the primary thread receives hard affinity; secondary threads use ideal-processor hints.
+	// Capacity reserves physical cores for game workers and the system.
 	internal static class CriticalThreadAutoPolicy
 	{
 		internal const int MaximumIsolated = 4;
@@ -21,10 +16,8 @@ namespace PaviseApp
 
 		internal const double MinimumShare = 0.30;
 
-		// Secondary threads must stay at least this busy to receive a soft placement hint.
 		internal const double SaturatedShare = 0.70;
 
-		// Busy threads whose CPU shares sit within this band of the busiest one are peers.
 		internal const double PoolBand = 0.10;
 
 		internal const int PoolSize = 3;
@@ -53,12 +46,8 @@ namespace PaviseApp
 			return new HardThreadIdentity[0];
 		}
 
-		// The one thread that receives hard affinity. Frame evidence names it directly.
-		// Without frame evidence the busiest thread qualifies only after 30 seconds and only
-		// when it stands apart: three or more busy threads within 10 points of each other
-		// look like an interchangeable worker pool, which the scheduler places better than
-		// any fixed core. Thread start addresses cannot tell pools apart because engines
-		// start render, audio and worker threads through one shared thread procedure.
+		// Prefer presentation evidence; otherwise require sustained load distinct from a worker pool.
+		// Shared thread entry points cannot distinguish render threads from pool workers.
 		internal static HardThreadIdentity SelectPrimary(CriticalThreadHotspot[] hotspots, CriticalThreadRoleFact[] roles, out bool pooled)
 		{
 			pooled = false;
@@ -93,8 +82,6 @@ namespace PaviseApp
 			return Identity(top);
 		}
 
-		// Further threads receive only an ideal-processor hint, and only when they stay near
-		// saturation: a thread that idles most of the time is not what limits the frame.
 		internal static HardThreadIdentity[] SelectSecondary(CriticalThreadHotspot[] hotspots, HardThreadIdentity primary, int count)
 		{
 			if (primary == null || count < 1)
@@ -130,9 +117,7 @@ namespace PaviseApp
 			return new HardThreadIdentity(hotspot.Tid, hotspot.Creation);
 		}
 
-		// How many threads may be placed (one hard, the rest soft) on this machine. At least two physical cores
-		// always remain for the game's other threads and the system. Hybrid CPUs isolate
-		// on performance cores only and keep half of them for the rest of the game.
+		// Reserve two physical cores; hybrid CPUs place critical work only on performance cores.
 		internal static int Capacity(ulong[] physical, ulong allowed, ulong reserved, ulong performance)
 		{
 			if (physical == null || allowed == 0)
@@ -197,6 +182,21 @@ namespace PaviseApp
 			}
 			return (from x in array3.Take(count).Select((ulong x) => x & allowed)
 				select x & (~x + 1)).ToArray();
+		}
+
+		internal static ulong[] Destinations(CriticalThreadRule preference, int count, ulong[] physical, ulong allowed, ulong reserved, ulong favored, ulong performance, ulong[] domains, ulong preferredDomain, ulong crowded)
+		{
+			if (preference == null || !preference.Automatic) return null;
+			if (!preference.ManualTarget)
+				return Targets(count, physical, allowed, reserved, favored, performance, domains, preferredDomain, crowded);
+			if (count < 1 || count > MaximumIsolated || physical == null) return null;
+			ulong target = preference.Targets[0];
+			ulong whole = physical.FirstOrDefault(x => (x & target) != 0);
+			if (whole == 0 || (target & allowed) != target || (whole & reserved) != 0
+				|| physical.Count(x => (x & allowed) != 0 && (x & (whole | reserved)) == 0) < 2) return null;
+			if (count == 1) return new ulong[] { target };
+			ulong[] secondary = Targets(count - 1, physical, allowed, reserved | whole, favored, performance, domains, preferredDomain, crowded);
+			return secondary == null ? null : new ulong[] { target }.Concat(secondary).ToArray();
 		}
 
 		private static ulong Domain(ulong[] pool, int count, ulong favored, ulong[] domains, ulong preferred)

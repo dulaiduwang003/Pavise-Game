@@ -108,7 +108,7 @@ namespace PaviseApp
 			}
 		}
 
-#pragma warning disable 0649 // written by native marshaling, never by managed code
+#pragma warning disable 0649
 		private struct PdhFmtCounterValue
 		{
 			public uint CStatus;

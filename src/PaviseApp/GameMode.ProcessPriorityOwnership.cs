@@ -18,8 +18,7 @@ namespace PaviseApp
 			bool attempted = false;
 			try
 			{
-				// Recovery intent precedes the native call; verified ownership follows
-				// its readback. An already matching class never creates either state.
+				// Persist intent before writing and ownership after verified readback; matching values create neither.
 				if (!CrashGuard.PrepareBoostPriorityWrite(pid, pass.RendererCreation, previous, applied))
 					return FinishUnwrittenGamePriority(pid, pass, previous, applied, WriteFault);
 				if (pass.WriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration
@@ -43,8 +42,7 @@ namespace PaviseApp
 				{
 					if (!CrashGuard.CancelUnwrittenBoostPriority(pid, pass.RendererCreation, previous, applied)) return WriteFault;
 				}
-				// A successful call with unknown readback may have applied the target. Keep its intent
-				// until the common conditional restoration path can verify it.
+				// A successful write with unknown readback retains intent until conditional restoration verifies it.
 				return Retry;
 			}
 			catch

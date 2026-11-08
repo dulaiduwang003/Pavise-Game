@@ -606,9 +606,7 @@ namespace PaviseApp
 			return TryReadTaskTarget(out command, out arguments);
 		}
 
-		// Update transactions preserve the complete task XML, including a disabled
-		// task. They never invoke ordinary registration's enabled-state fallback or
-		// stale-payload cleanup before the new application has acknowledged startup.
+		// Keep the complete original task XML until the replacement application acknowledges startup.
 		internal static string CaptureStartupTaskForUpdate()
 		{
 			lock (startupGate)

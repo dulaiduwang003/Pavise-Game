@@ -8,7 +8,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Reads existing Windows interfaces/caches without applying policies or starting sensor services.
     internal static class AiTuningHardwareReport
     {
         private const string Unknown = "未知／未读取";

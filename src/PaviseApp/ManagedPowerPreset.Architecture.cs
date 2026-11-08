@@ -1,4 +1,3 @@
-// 根据调用方提供的硬件信息选择电源方案；此处只做策略判断，不访问系统。
 using System;
 using System.Text.RegularExpressions;
 
@@ -94,7 +93,6 @@ namespace PaviseApp
 
             if (amd)
             {
-                // AMD 移动端混合核心使用通用方案。
                 if (mobile && (facts.Hybrid || facts.EfficiencyClassCount > 1))
                     return Chosen("universal", preserveParking, "AMD-mobile-multiple-core-classes; universal source");
                 if (name.IndexOf("X3D", StringComparison.Ordinal) >= 0 || facts.AsymmetricCache)

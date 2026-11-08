@@ -2016,8 +2016,7 @@ namespace PaviseApp
 				else if (flag2) Logger.Warn("LoL headless apply failure=" + headlessFailures.Failed(pid, creation, root, "apply")
 					+ "/3 target=" + pid + "/" + creation + "; recovery ownership retained where present");
 			}
-			// Readiness timeout and a failed UX request do not prove that the helper
-			// or the mutation is absent. Keep the lease until verified restoration.
+			// Timeout or request failure does not prove the helper/mutation absent; retain the lease until verified restoration.
 			lock (stateLock)
 			{
 				if (flag5)

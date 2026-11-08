@@ -20,8 +20,7 @@ namespace PaviseApp
 		internal static string BuildHelperScript(uint value, long deadlineTicks)
 		{
 			if (value > 63 || deadlineTicks <= 0) throw new ArgumentOutOfRangeException();
-			// Only two invariant decimal integers are substituted. No paths, commands,
-			// script files, registry data or arbitrary user text run as SYSTEM.
+			// The SYSTEM helper accepts only two validated invariant integers.
 			return "$ErrorActionPreference='Stop';try { Add-Type -TypeDefinition @'\n"
 				+ "using System;using System.Runtime.InteropServices;public static class PaviseQuantumOnce {"
 				+ "[DllImport(\"ntdll.dll\",ExactSpelling=true)]static extern int NtSetSystemInformation(int c,ref uint v,uint n);"
@@ -36,8 +35,7 @@ namespace PaviseApp
 		{
 			if (string.IsNullOrEmpty(encodedScript) || encodedScript.Length > 16000)
 				throw new ArgumentException("Invalid fixed helper payload");
-			// Encoding must have been produced by BuildHelperScript; this method is
-			// internal and is never exposed as a general task or command launcher.
+			// SYSTEM execution is restricted to BuildHelperScript output.
 			Convert.FromBase64String(encodedScript);
 			string command = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
 			return "<?xml version=\"1.0\" encoding=\"UTF-16\"?><Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">"
@@ -96,8 +94,7 @@ namespace PaviseApp
 
 		internal static bool HasCompletedRun(bool terminal, int status, DateTime beforeRun, DateTime afterRun)
 		{
-			// A newly registered task must actually record this run. A default zero
-			// result or an idle state on its own is not acknowledgement of our call.
+			// A run is acknowledged only by a fresh task result, not idle state or the default zero.
 			return terminal && afterRun > beforeRun && status != 0x41303 && status != 0x41301;
 		}
 
@@ -204,8 +201,7 @@ namespace PaviseApp
 				{
 					int status = unchecked((int)Convert.ToInt64(Property(task, "LastTaskResult"), CultureInfo.InvariantCulture));
 					DateTime afterRun = Convert.ToDateTime(Property(task, "LastRunTime"), CultureInfo.InvariantCulture);
-					// Initial task state is HAS_NOT_RUN. Only terminal state plus a
-					// completed exit code can acknowledge the submitted native update.
+					// HAS_NOT_RUN is not completion; require terminal state and a completed exit code.
 					if (HasCompletedRun(Terminal(task), status, beforeRun, afterRun))
 					{
 						terminal = true;
@@ -228,8 +224,7 @@ namespace PaviseApp
 				if (created)
 				{
 					if (terminal) try { Call(folder, "DeleteTask", name, 0); } catch { }
-					// Nonterminal/undeleted tasks are reaped before the next online
-					// operation, including after an application crash and restart.
+					// Reap unfinished one-shot tasks before the next operation, including after crashes.
 				}
 				Release(instance); Release(task); Release(folder); Release(service);
 			}

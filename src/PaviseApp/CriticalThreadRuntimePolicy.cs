@@ -6,6 +6,23 @@ namespace PaviseApp
 {
 	internal static class CriticalThreadRuntimePolicy
 	{
+		private struct SampleThreadIdentity : IEquatable<SampleThreadIdentity>
+		{
+			private readonly long tid, creation;
+
+			internal SampleThreadIdentity(long tid, long creation)
+			{ this.tid = tid; this.creation = creation; }
+
+			public bool Equals(SampleThreadIdentity other)
+			{ return tid == other.tid && creation == other.creation; }
+
+			public override bool Equals(object value)
+			{ return value is SampleThreadIdentity && Equals((SampleThreadIdentity)value); }
+
+			public override int GetHashCode()
+			{ unchecked { return tid.GetHashCode() * 397 ^ creation.GetHashCode(); } }
+		}
+
 		internal static HardThreadChoice[] Select(CriticalThreadRule rule, CriticalThreadHotspot[] hotspots, CriticalThreadRoleFact[] roles)
 		{
 			if (rule == null || hotspots == null)
@@ -46,6 +63,32 @@ namespace PaviseApp
 				coverage = HardThreadCoverage.CandidatesOnly;
 				return plan.Choices.Select((HardThreadChoice x) => x.Thread).ToArray();
 			}
+			if (plan.RequireWorkerCoverage)
+			{
+				coverage = HardThreadCoverage.Partial;
+				if (sample == null || !CoreThreadTracker.ValidShape(sample) || sample.Ids.Length > 512
+					|| sample.Ids.Any((long tid) => tid <= 0 || tid > int.MaxValue) || sample.Created.Any((long birth) => birth <= 0))
+					return new HardThreadIdentity[0];
+				HashSet<SampleThreadIdentity> identities = new HashSet<SampleThreadIdentity>();
+				for (int index = 0; index < sample.Ids.Length; index++)
+					if (!identities.Add(new SampleThreadIdentity(sample.Ids[index], sample.Created[index])))
+						return new HardThreadIdentity[0];
+				HardThreadChoice[] selected = plan.Choices;
+				if (selected.Any((HardThreadChoice x) => !Contains(sample, x.Thread)))
+					return new HardThreadIdentity[0];
+				HardThreadIdentity[] ordered = new HardThreadIdentity[sample.Ids.Length];
+				HardThreadIdentity[] candidates = new HardThreadIdentity[selected.Length];
+				int workerCount = 0, candidateCount = 0;
+				for (int index = 0; index < sample.Ids.Length; index++)
+				{
+					HardThreadIdentity thread = new HardThreadIdentity((int)sample.Ids[index], sample.Created[index]);
+					if (plan.IsCandidate(thread)) candidates[candidateCount++] = thread;
+					else ordered[workerCount++] = thread;
+				}
+				Array.Copy(candidates, 0, ordered, workerCount, candidateCount);
+				coverage = HardThreadCoverage.Complete;
+				return ordered;
+			}
 			HashSet<string> hashSet = new HashSet<string>((receipts ?? new HardThreadOwnership[0]).Select((HardThreadOwnership x) => x.Thread.Key), StringComparer.Ordinal);
 			List<HardThreadIdentity> list = new List<HardThreadIdentity>();
 			int num = 0;
@@ -83,15 +126,28 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+			HashSet<SampleThreadIdentity> hashSet = new HashSet<SampleThreadIdentity>();
+			int eligibleReceipts = 0;
 			foreach (HardThreadOwnership hardThreadOwnership in receipts)
 			{
-				if (hardThreadOwnership == null || hardThreadOwnership.Thread == null || !hashSet.Add(hardThreadOwnership.Thread.Key))
+				if (hardThreadOwnership == null || hardThreadOwnership.Thread == null
+					|| !hashSet.Add(new SampleThreadIdentity(hardThreadOwnership.Thread.Tid, hardThreadOwnership.Thread.Creation)))
 				{
 					return false;
 				}
+				if (hardThreadOwnership.Group == plan.Group && hardThreadOwnership.VerifiedUtcTicks >= auditStartedUtc)
+					eligibleReceipts++;
 			}
-			HardThreadOwnership[] array = (receipts ?? new HardThreadOwnership[0]).Where((HardThreadOwnership x) => x != null && x.Group == plan.Group && x.VerifiedUtcTicks >= auditStartedUtc && Contains(sample, x.Thread)).ToArray();
+			HashSet<SampleThreadIdentity> sampleIdentities = null;
+			if (eligibleReceipts >= 8 && sample.Ids.Length >= 16 && eligibleReceipts * 2 >= sample.Ids.Length)
+			{
+				sampleIdentities = new HashSet<SampleThreadIdentity>();
+				for (int index = 0; index < sample.Ids.Length; index++)
+					sampleIdentities.Add(new SampleThreadIdentity(sample.Ids[index], sample.Created[index]));
+			}
+			HardThreadOwnership[] array = receipts.Where((HardThreadOwnership x) => x != null && x.Group == plan.Group
+				&& x.VerifiedUtcTicks >= auditStartedUtc && (sampleIdentities == null ? Contains(sample, x.Thread)
+					: sampleIdentities.Contains(new SampleThreadIdentity(x.Thread.Tid, x.Thread.Creation)))).ToArray();
 			HardThreadOwnership[] array2 = array;
 			foreach (HardThreadOwnership hardThreadOwnership2 in array2)
 			{
@@ -108,7 +164,7 @@ namespace PaviseApp
 				}
 			}
 			complete = plan.WorkerMode == HardThreadWorkerMode.AvoidWorkers && candidates == plan.Choices.Length && candidates + workers == sample.Ids.Length;
-			return candidates == plan.Choices.Length;
+			return candidates == plan.Choices.Length && (!plan.RequireWorkerCoverage || complete);
 		}
 	}
 }

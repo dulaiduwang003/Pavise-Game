@@ -5,8 +5,7 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Platform identity only. Battery presence, Modern Standby and mobile CPUs
-    // are not evidence that a computer is a gaming handheld.
+    // Identify handhelds from verified platform identity, not battery, standby or CPU branding.
     internal static class GamingHandheldDetection
     {
         internal sealed class HardwareIdentity
@@ -74,8 +73,7 @@ namespace PaviseApp
 
         internal static bool IsHandheld(string manufacturer, string model, string cpuName)
         {
-            // Even Ryzen Z-series branding is not used independently of a verified
-            // device family; generic laptops and mini PCs keep their normal path.
+            // CPU branding requires a verified device family; generic laptops and mini PCs retain normal routing.
             return MatchSystem(manufacturer, model).Length > 0;
         }
 
@@ -113,8 +111,7 @@ namespace PaviseApp
 
         private static string MatchBoard(string manufacturer, string productName)
         {
-            // These are independently documented board DMI pairs. Never combine
-            // a system manufacturer with a board product, or infer one from CPU.
+            // Use documented matching DMI pairs; never combine system and board identities.
             string maker = Normalize(manufacturer), product = Normalize(productName);
             if (maker == "AYANEO" && Has(product, @"^(?:AYANEO 2|AIR|AIR 1S|AIR PRO|AB05 MENDOCINO|FLIP|GEEK|KUN)$"))
                 return "ayaneo-handheld; board-identity";

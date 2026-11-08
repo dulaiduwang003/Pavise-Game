@@ -362,9 +362,8 @@ namespace PaviseApp
 			return !TryCanonicalRootHasRecoveryDebt(canonicalRoot, out debt) || debt;
 		}
 
-		// A confirmed debt is different from an unreadable source. Legacy callers
-		// keep the fail-closed wrapper above; recovery owners can now budget actual
-		// observation failures without spending a native-write attempt on a wait.
+		// Distinguish verified ordering debt from an unreadable journal.
+		// Budget failed observations separately from native restore attempts.
 		internal static bool TryCanonicalRootHasRecoveryDebt(string canonicalRoot, out bool debt)
 		{
 			debt = false;

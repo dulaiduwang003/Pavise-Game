@@ -261,8 +261,7 @@ namespace PaviseApp
 
         private Operation BeginOperation(bool wait = true)
         {
-            // Allocate before taking the monitor. A failed view publication must
-            // roll back admission too: no using/finally exists at the call site yet.
+            // Allocate the view before admission so allocation failure cannot leave unreported ownership.
             var operation = new Operation(this);
             if (wait) Monitor.Enter(gate);
             else if (!Monitor.TryEnter(gate)) return null;
@@ -495,9 +494,7 @@ namespace PaviseApp
                 }
                 if (entry.Pending) { reason = "recovery-pending"; return false; }
                 if (entry.Active && entry.Desired == desiredMask) return VerifyLocked(entry, desiredMask, out reason);
-                // A new range must not erase game/application-owned thread placement.
-                // Reject it before releasing the currently owned range or changing its
-                // durable receipt. The native writer checks again before its own write.
+                // Reject game-owned thread placement before changing the active range or receipt; recheck before the native write.
                 ulong currentRange;
                 if (!Native.TryQueryAffinity(entry.Process, out currentRange)
                     || !GameThreadAffinityAdmission.Check(entry.Process, pid, birth, currentRange, out reason))
@@ -507,9 +504,8 @@ namespace PaviseApp
                 }
                 if (entry.Active)
                 {
-                    // The receipt's Desired describes the applied range, not a future
-                    // request. Settle that range and persist neutral before arming the
-                    // next one, so a refusal/crash cannot orphan the previous range.
+                    // Desired records the applied range, not the next request.
+                    // Persist neutral before changing range so a crash cannot orphan the previous limit.
                     if (!ReleaseLocked(entry, out reason)) return false;
                 }
                 if (!GuardAlive(entry))
@@ -587,10 +583,8 @@ namespace PaviseApp
             else if (reason == "thread-recovery-pending" || reason == "recovery-operation-pending"
                 || reason == "guardian-forward-revocation-pending")
             {
-                // Ordering wait, not a failed restoration: the thread journal owns
-                // its own bounded recovery and no process write was attempted.
-                // Use a separate finite observation budget, so a slow writer can
-                // settle without refunding failures or polling permanent debt forever.
+                // Wait for the thread journal before process recovery; no native restore is attempted here.
+                // Use a separate finite observation budget without refunding failures.
                 entry.Pending = true;
                 entry.RecoveryOrderingObservations++;
                 if (entry.RecoveryOrderingObservations >= GameAffinityJobRecord.RecoveryOrderingObservationLimit)

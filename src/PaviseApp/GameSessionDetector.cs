@@ -283,7 +283,7 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			return FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
+			return FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence, incumbent);
 		}
 
 		internal static GameDetection FindForegroundCandidateSnapshot(IList<GameProcessSnapshot> snapshot, IList<GameProfile> profiles, GameDetection incumbent, GameFamilyEvidence familyEvidence = null)
@@ -306,7 +306,7 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				GameDetection gameDetection2 = FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
+				GameDetection gameDetection2 = FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence, incumbent);
 				if (gameDetection2 != null)
 				{
 					int num = CompareCandidateOwnership(gameDetection2, gameDetection);
@@ -364,9 +364,12 @@ namespace PaviseApp
 			return foreground != null;
 		}
 
-		private static GameDetection FindForegroundCandidateInProfile(Dictionary<int, GameProcessSnapshot> byPid, GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence)
+		private static GameDetection FindForegroundCandidateInProfile(Dictionary<int, GameProcessSnapshot> byPid, GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence, GameDetection incumbent = null)
 		{
 			bool flag = SamePath(profile.ExecutablePath, foreground.Path) || SamePath(profile.LearnedExecutablePath, foreground.Path);
+			// Fullscreen alone cannot promote a challenger while an existing renderer is alive.
+			// Require GPU evidence to exclude fullscreen web/SDK overlays.
+			bool challengesLiveRenderer = !flag && IncumbentRendererLive(incumbent, profile, foreground, byPid);
 			if (ElectionVetoed(foreground.Name, foreground.Path))
 			{
 				return null;
@@ -390,7 +393,7 @@ namespace PaviseApp
 			}
 			else if (!profile.ForceTrigger)
 			{
-				gameDetection = (foreground.FullscreenLike ? Elected(profile, foreground, !flag, Lang.T("detect.fullscreen")) : (SamePath(profile.LearnedExecutablePath, foreground.Path) ? Elected(profile, foreground, false, Lang.T("detect.learned")) : ((!SamePath(profile.ExecutablePath, foreground.Path)) ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window")))));
+				gameDetection = (foreground.FullscreenLike && !challengesLiveRenderer ? Elected(profile, foreground, !flag, Lang.T("detect.fullscreen")) : (SamePath(profile.LearnedExecutablePath, foreground.Path) ? Elected(profile, foreground, false, Lang.T("detect.learned")) : ((!SamePath(profile.ExecutablePath, foreground.Path)) ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window")))));
 			}
 			else
 			{
@@ -409,6 +412,21 @@ namespace PaviseApp
 				}
 			}
 			return gameDetection;
+		}
+
+		private static bool IncumbentRendererLive(GameDetection incumbent, GameProfile profile, GameProcessSnapshot foreground,
+			Dictionary<int, GameProcessSnapshot> byPid)
+		{
+			if (incumbent == null || incumbent.Profile == null || profile == null || string.IsNullOrEmpty(profile.Id)
+				|| !string.Equals(incumbent.Profile.Id, profile.Id, StringComparison.OrdinalIgnoreCase)
+				|| !incumbent.RendererCandidateSelected || incumbent.RendererSafetyOnly || incumbent.RequiresGpuConfirm
+				|| incumbent.RendererPid <= 0 || incumbent.RendererCreation <= 0 || incumbent.RendererPid == foreground.Pid)
+			{
+				return false;
+			}
+			GameProcessSnapshot live;
+			return byPid.TryGetValue(incumbent.RendererPid, out live) && live.Creation == incumbent.RendererCreation
+				&& SamePath(live.Path, incumbent.RendererPath);
 		}
 
 		private static int CompareCandidateOwnership(GameDetection candidate, GameDetection current)
@@ -617,9 +635,7 @@ namespace PaviseApp
 			{
 				if (CandidateIdentityUsable(member) && !ElectionVetoed(member.Name, member.Path))
 				{
-					// Family membership also includes persistent launchers and their platform
-					// children. Keep that protection, but do not let those background
-					// processes alone advertise a game that has already been closed.
+					// Persistent launcher/platform descendants remain protected without keeping a closed game active.
 					bool selected = SamePath(profile.ExecutablePath, member.Path) || SamePath(profile.LearnedExecutablePath, member.Path);
 					if (!selected && ((!member.Visible && !member.Foreground) || PlatformRuntimePolicy.RuntimePlatform(member.Name) != null))
 					{

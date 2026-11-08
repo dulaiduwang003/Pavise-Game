@@ -5,8 +5,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // An alternate managed-plan backend can supply the matching hardware policy
-    // without consulting the host. Native plans retain the 3.1.1.0 discovery path.
     internal interface IManagedPowerLegacy3110Hardware
     {
         PowerPlanProfile Profile { get; }
@@ -23,9 +21,7 @@ namespace PaviseApp
 
     internal static partial class PowerPlan
     {
-        // These three tables are the final 3.1.1.0 tables (496298c / 0d6bd81).
-        // Creation receipts, bounded retries and restore ownership live outside
-        // this parameter policy and deliberately do not come from that version.
+        // Legacy parameter tables; creation, failure budgets and restore ownership use the current controllers.
 		private struct Knob
 		{
 			public readonly Guid Sub;
@@ -69,7 +65,6 @@ namespace PaviseApp
 		{
 			new Knob(SubProcessor, ProcThrottleMin, 100u, 100u, 20u, 10u, "t.powerplanschemes.1"),
 			new Knob(SubProcessor, ProcThrottleMax, 100u, 100u, 100u, 100u, "t.powerplanschemes.2"),
-			// 2223 relaxes the AC parking floor to 50% through ResolveArenaAc.
 			new Knob(SubProcessor, CpMinCores, 100u, 100u, 50u, 20u, "t.powerplanschemes.3"),
 			new Knob(SubProcessor, CpMaxCores, 100u, 100u, 100u, 100u, "t.powerplanschemes.4"),
 			new Knob(SubProcessor, PerfBoostMode, 2u, 2u, 2u, 3u, "t.powerplanschemes.5"),
@@ -253,8 +248,7 @@ namespace PaviseApp
         private static bool ResolveLegacy3110Knob(Guid scheme, Knob knob, bool aggressive,
             Legacy3110Context context, out uint ac, out uint dc)
         {
-            // Preserve the original distinction: only primary parking consults
-            // UseArenaCoreParking; secondary parking follows the selected mode.
+            // Only primary parking uses UseArenaCoreParking; secondary parking follows the mode.
             bool parking = knob.Setting == CpMinCores || knob.Setting == CpMaxCores;
             bool arena = parking ? context.Profile.UseArenaCoreParking(aggressive) : aggressive;
             ac = arena ? knob.ArenaAc : knob.CalmAc;
@@ -287,8 +281,7 @@ namespace PaviseApp
         private static IEnumerable<Knob> Legacy3110Knobs(Legacy3110Context context)
         {
             foreach (Knob knob in Legacy3110Tables.CoreKnobs) yield return knob;
-            // The current handheld bypass excludes the sole old Intel-GPU
-            // handheld override, so this table's value 1 remains unchanged.
+            // Handheld bypass leaves the legacy Intel-GPU override inactive.
             foreach (Knob knob in Legacy3110Tables.OptionalKnobs) yield return knob;
             if (context.Hybrid && context.Profile.WriteHetero)
                 foreach (Knob knob in Legacy3110Tables.HybridKnobs)
@@ -302,7 +295,8 @@ namespace PaviseApp
         {
             Legacy3110Context context = Legacy3110ContextFor(scheme, true);
             IManagedPowerPlans plans = context.Plans;
-            if (scheme == Guid.Empty || context.Profile == null || !plans.Exists(scheme) || !plans.IsOwned(scheme)) return false;
+            if (scheme == Guid.Empty || context.Profile == null || !plans.Exists(scheme) || !plans.IsOwned(scheme))
+                return write ? false : NoteIntactMismatch("legacy-plan-missing-or-not-owned");
             if (write)
             {
                 Guid? current = plans.Current();
@@ -320,13 +314,17 @@ namespace PaviseApp
                 if (acState == ManagedPowerReadState.ConfirmedUnregistered && dcState == ManagedPowerReadState.ConfirmedUnregistered)
                 { skipped++; continue; }
                 if (acState != ManagedPowerReadState.Value || dcState != ManagedPowerReadState.Value)
-                    return write ? PresetPreparationFailed("legacy3110 setting read failed " + knob.Setting.ToString("D")) : false;
+                    return write ? PresetPreparationFailed("legacy3110 setting read failed " + knob.Setting.ToString("D"))
+                        : NoteIntactMismatch(Legacy3110KnobName(knob) + " read ac=" + acState + " dc=" + dcState);
                 uint ac, dc;
                 if (!ResolveLegacy3110Knob(scheme, knob, aggressive, context, out ac, out dc))
-                    return write ? PresetPreparationFailed("legacy3110 setting resolution failed " + knob.Setting.ToString("D")) : false;
+                    return write ? PresetPreparationFailed("legacy3110 setting resolution failed " + knob.Setting.ToString("D"))
+                        : NoteIntactMismatch(Legacy3110KnobName(knob) + " resolution failed");
                 if (!write)
                 {
-                    if (actualAc != ac || actualDc != dc) return false;
+                    if (actualAc != ac || actualDc != dc)
+                        return NoteIntactMismatch(Legacy3110KnobName(knob) + " expected ac/dc=" + ac + "/" + dc
+                            + " actual ac/dc=" + actualAc + "/" + actualDc);
                 }
                 else
                 {
@@ -341,6 +339,13 @@ namespace PaviseApp
             return true;
         }
 
+        private static string Legacy3110KnobName(Knob knob)
+        {
+            string label;
+            try { label = knob.Label; } catch { label = ""; }
+            return "setting=" + (string.IsNullOrEmpty(label) ? "" : label + " ") + knob.Setting.ToString("D");
+        }
+
         internal static bool TuneLegacy3110Target(Guid scheme, bool aggressive)
         {
             try { return ApplyOrVerifyLegacy3110(scheme, aggressive, true, null); }
@@ -352,9 +357,10 @@ namespace PaviseApp
             try
             {
                 HashSet<Guid> laboratory = LaboratoryPower.OwnedSettings(scheme);
-                return laboratory != null && ApplyOrVerifyLegacy3110(scheme, aggressive, false, laboratory);
+                if (laboratory == null) return NoteIntactMismatch("laboratory-ownership-unreadable");
+                return ApplyOrVerifyLegacy3110(scheme, aggressive, false, laboratory);
             }
-            catch { return false; }
+            catch (Exception error) { return NoteIntactMismatch("legacy-verify " + error.GetType().Name); }
         }
 
         internal static bool SyncLegacy3110DisplayFeel(Guid source, Guid destination)

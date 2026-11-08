@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -525,12 +525,14 @@ namespace PaviseApp
 				rebar = MakeOption("libraryRebarToggle", Lang.T("lib.rebar"), false, form.ToggleGameRebar);
 				fullscreen = MakeOption("libraryFullscreenToggle", Lang.T("lib.fso"), false, form.ToggleGameFullscreenOptimizations);
 				core.IconKey = "core";
+				core.DetailsWidth = 62;
 				family.IconKey = "family";
 				rebar.IconKey = "rebar";
 				fullscreen.IconKey = "fullscreen";
 				coreDetails = new GameCardDetailsButton
 				{
 					Name = "libraryCoreSettings",
+					ShowAdjustLabel = true,
 					AccessibleName = Lang.T("nav.corescheduling")
 				};
 				GameCardDetailsButton gameCardDetailsButton = coreDetails;
@@ -655,7 +657,7 @@ namespace PaviseApp
 					{
 						array[i].SetBounds(0, Theme.S(4 + i * 48), num, Theme.S(40));
 					}
-					coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(29)), Theme.S(2), Theme.S(28), Theme.S(36));
+					coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), Theme.S(2), Theme.S(64), Theme.S(36));
 					owner.criticalThreadEditor.SetBounds(0, fullscreen.Bottom + Theme.S(8), num, owner.criticalThreadEditor.Height);
 					int num2 = Dpi.U(owner.criticalThreadEditor.Bottom) + 8;
 					extensionTitle.Visible = extension != null;
@@ -1207,6 +1209,14 @@ namespace PaviseApp
 		private Label lblLogStreamHint;
 
 		private Toggle swLogWrites;
+
+		private bool logDiagnostics;
+
+		private PillButton logActionsButton;
+
+		private PillButton logDiagnosticsButton;
+
+		private PillButton logExportButton;
 
 		private long logSeenVersion = -1L;
 
@@ -3431,7 +3441,7 @@ namespace PaviseApp
 
 		private static bool HasAutomationInventory(int category, PerformanceRestartScope scope)
 		{
-			if ((category == 0 && PerformanceRestartFor("GmMmcss") == scope) || (category == 2 && (PerformanceRestartFor("GmEnglishInputV1") == scope || PerformanceRestartFor("GpuPrefStageOn") == scope)) || (category == 1 && PerformanceRestartFor("AppGpuAutoV1") == scope))
+			if ((category == 0 && PerformanceRestartFor("GmMmcss") == scope) || (category == 2 && (PerformanceRestartFor("GmEnglishInputV1") == scope || PerformanceRestartFor("GpuPrefStageOn") == scope)))
 			{
 				return true;
 			}
@@ -3459,10 +3469,6 @@ namespace PaviseApp
 			if (category == 2 && PerformanceRestartFor("GpuPrefStageOn") == scope)
 			{
 				AddManualPerformanceToggle(parent, ref y, "GpuPrefStageOn", AutoText("游戏高性能显卡预选", "Prefer the high-performance GPU for games"), AutoText("为游戏登记显卡偏好，下次启动生效。", "Registers the game GPU preference for the next launch."), () => Settings.LoadCached("GpuPrefStageOn", true), (bool value) => SaveManualPerformancePreference("GpuPrefStageOn", value), () => Native.OsBuild() >= 17134);
-			}
-			if (category == 1 && PerformanceRestartFor("AppGpuAutoV1") == scope)
-			{
-				AddManualPerformanceToggle(parent, ref y, "AppGpuAutoV1", AutoText("后台节能显卡登记", "Background power-saving GPU registration"), AutoText("混合显卡电脑为符合条件的后台程序登记节能偏好，下次启动生效。", "On hybrid systems, registers eligible background apps for a power-saving GPU on their next launch."), () => Settings.LoadCached("AppGpuAutoV1", false), (bool value) => SaveManualPerformancePreference("AppGpuAutoV1", value), () => AppGpuPreferences.Shared.Supported);
 			}
 			PerformanceAction[] all = PerformanceActionCatalog.All;
 			foreach (PerformanceAction performanceAction in all)
@@ -3807,7 +3813,6 @@ namespace PaviseApp
 			case "AutoOpenGlThreadsV1":
 			case "AutoGameMitigationsV1":
 			case "GpuPrefStageOn":
-			case "AppGpuAutoV1":
 			case "WindowedOptimizations":
 			case "VariableRefreshRate":
 			case "NvVrrWindowed":
@@ -3822,8 +3827,7 @@ namespace PaviseApp
 			return PerformanceFeatureCard.RestartLabel(scope);
 		}
 
-		// Only settings that the session restore (RestoreEnv/Deactivate) reverts after every match are in-match.
-		// Anything else stays with the persistent group so an unclassified setting is never presented as temporary.
+		// Only settings restored by session teardown belong to the in-match group.
 		internal static PerformanceLifetime PerformanceLifetimeFor(string key)
 		{
 			switch (key)
@@ -3910,7 +3914,6 @@ namespace PaviseApp
 				PerformanceLifetime[] order = new PerformanceLifetime[2] { PerformanceLifetime.Session, PerformanceLifetime.Persistent };
 				foreach (PerformanceLifetime lifetime in order)
 				{
-					// A single-group tab still names its group, so the laboratory shows that its settings end with the match.
 					if (((lifetime == PerformanceLifetime.Session) ? session : persistent).Count > 0)
 					{
 						PerformanceSectionHeading heading = new PerformanceSectionHeading
@@ -3944,7 +3947,7 @@ namespace PaviseApp
 					string text = PerformanceFeatureKey(performanceFeatureCard.Hosted.Name);
 					performanceFeatureCard.RestartScope = ((text == "EnvPerformanceBundleV1" || text == "EnvStoragePowerGroupV1") ? PerformanceRestartScope.SystemRestart : PerformanceRestartFor(text));
 					performanceFeatureCard.Lifetime = PerformanceLifetimeFor(text);
-					performanceFeatureCard.RestartText = ((text == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((text == "AppGpuAutoV1") ? AutoText("重启应用", "Restart app") : ((text == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : "")));
+					performanceFeatureCard.RestartText = ((text == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((text == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : ""));
 					performanceFeatureCard.Title = performanceFeatureCard.Title.Replace(" · 需重启", "").Replace(" · restart required", "");
 					if (text == "EnvQuantumProfileV1")
 					{
@@ -4325,7 +4328,8 @@ namespace PaviseApp
 			{
 				if (coreDraftProfile != null)
 				{
-					coreSaveError = (gameMode.SetProfileOverride(coreDraftProfile, "GmAutoCoresV2", coreEnableToggle.Checked ? "1" : "0") ? null : "schedule.manual.savefailed");
+					GameProfile profile = FindLibraryProfile(coreDraftProfile);
+					coreSaveError = SaveCoreConfigurationWithRender(profile, ManualCorePlan.Raw(profile), ManualCorePlan.Parse(ManualCorePlan.Raw(profile)), coreEnableToggle.Checked);
 					SyncCoreEditor(CorePageProfile());
 				}
 			};
@@ -4491,7 +4495,9 @@ namespace PaviseApp
 				CoreDraftChanged();
 				return;
 			}
-			string text = gameMode.SaveManualCorePlan(coreDraftProfile, coreDraftExpected, manualCorePlan);
+			GameProfile profile = FindLibraryProfile(coreDraftProfile);
+			bool enabled = profile != null && ManualCorePlan.Parse(coreDraftExpected) != null && PolicyResolver.For(profile).AutoCoresAllowed;
+			string text = SaveCoreConfigurationWithRender(profile, coreDraftExpected, manualCorePlan, enabled);
 			if (text == null)
 			{
 				coreDraftExpected = manualCorePlan.Encode();
@@ -4868,9 +4874,10 @@ namespace PaviseApp
 			criticalThreadProfile = (criticalThreadExpected = (criticalThreadError = null));
 			criticalThreadEditor.Name = "CriticalThreadEditor";
 			criticalThreadTitle = CardLabel(criticalThreadEditor, ThreadUi("渲染线程亲和性", "Render thread affinity"), 18, 12, width - 104, 30, 11f, true, Theme.Fg);
-			criticalThreadEnabled = new FamilySuppressionSwitch
+			criticalThreadEnabled = new FamilySuppressionSwitch(true)
 			{
 				Name = "libraryThreadAffinityToggle",
+				DetailsWidth = 62,
 				Text = ThreadUi("渲染线程亲和性", "Render thread affinity"),
 				IconKey = "threads"
 			};
@@ -4882,7 +4889,7 @@ namespace PaviseApp
 				}
 			};
 			criticalThreadEditor.Controls.Add(criticalThreadEnabled);
-			criticalThreadHelp = CardLabel(criticalThreadEditor, ThreadUi("逐游戏，默认关闭。至少选中三个不同物理核，每核可只选一个逻辑线程，无需补全超线程。打开后：游戏在前台时，把一个持续占用至少 30% 单核的关键线程硬绑定到独立物理核心（渲染线程优先，需 DirectX 画面提交事件；识别不到时取持续 30 秒最忙且明显领先的线程，几个线程负载接近时视为工作线程池，交给系统调度）。其他持续接近跑满（至少 70%）的线程只设为优先核，核心忙时系统仍可把它挪走。各线程用不同物理核，数量按处理器拓扑自动定（最多 4 个；大小核只用性能核，优先优选核与 X3D 大缓存 CCD，尽量避开 CPU 0 所在核，至少给其他线程留两个物理核）；自动模式保留其他游戏线程原分配；旧的手动规则仍按保存的策略执行。切出游戏保留，退局时还原；游戏主动改回分配时让出，连续无法核验或候选反复更换时恢复并停止本局重绑。同一线程不叠加额外线程提优。关闭再开启可重试。不隔离系统和其他程序，也不保证有收益。", "Per game, off by default. Select at least three distinct physical cores; one logical processor per core is enough, without adding SMT siblings. When on: while the game is in front, one critical thread that keeps at least 30% of one core busy gets hard affinity on its own physical core (the render thread first, from DirectX present events; without them, the busiest thread after 30 seconds when it clearly leads; several threads with similar loads are treated as a worker pool and left to the scheduler). Other threads that stay near saturation (at least 70%) only receive a preferred core, and Windows may still move them while that core is busy. Each thread uses a different physical core; the count follows the CPU topology (up to 4; hybrid CPUs use performance cores only; favored cores and the large-cache X3D CCD come first, the core of CPU 0 is avoided where possible, and two physical cores stay free for other threads). Automatic mode keeps other game threads unchanged; older manual rules retain their saved policy. Switching away keeps the placement; it is restored when the session ends. Placement yields when the game changes it; repeated verification failures or candidate changes restore the original state and stop rebinding for the session. Extra priority boosts are not layered onto the same thread. Toggle off and on to retry. The system and other programs are not isolated, and no gain is guaranteed."), 18, 50, width - 36, 80, 9f, false, Theme.Dim);
+			criticalThreadHelp = CardLabel(criticalThreadEditor, ThreadUi("逐游戏，默认关闭。通过独立弹窗选择自动或手动落核；手动只指定一个逻辑 CPU，仍自动识别关键线程。候选跟随核心调度范围，未开核心调度则显示全核；范围冲突在保存前处理。开启、换核与范围修改下局生效，关闭立即撤回。至少选中三个不同物理核，每核可只选一个逻辑线程，无需补全超线程。打开后：游戏在前台时，把一个持续占用至少 30% 单核的关键线程硬绑定到独立物理核心（渲染线程优先，需 DirectX 画面提交事件；识别不到时取持续 30 秒最忙且明显领先的线程，几个线程负载接近时视为工作线程池，交给系统调度）。其他持续接近跑满（至少 70%）的线程只设为优先核，核心忙时系统仍可把它挪走。各线程用不同物理核，数量按处理器拓扑自动定（最多 4 个；大小核只用性能核，优先优选核与 X3D 大缓存 CCD，尽量避开 CPU 0 所在核，至少给其他线程留两个物理核）；自动模式先让当前其他游戏线程避开该整颗物理核（含超线程同胞），全部回读通过后绑定关键线程并隔离普通外部进程；至少给工作线程保留两个物理核。新线程在下一次核验后接管；权限不足或线程已有自定义分配时撤回，不强制覆盖。旧手动规则仍按保存策略执行。切出游戏保留，退局时还原；游戏主动改回分配时让出，连续无法核验或候选反复更换时恢复并停止本局重绑。同一线程不叠加额外线程提优。失败后本局停止重新绑定。不隔离中断/DPC；外部程序自行硬绑定仍可能进入。新线程接管有间隔，不保证帧率收益。", "Per game, off by default. Use the separate dialog for Automatic or Manual CPU selection. Manual chooses one logical CPU while thread identification remains automatic. Candidates follow core scheduling, or all CPUs when it is off; conflicts must be resolved before saving. Enabling, CPU and range edits apply next session; disabling withdraws immediately. Select at least three distinct physical cores; one logical processor per core is enough, without adding SMT siblings. When on: while the game is in front, one critical thread that keeps at least 30% of one core busy gets hard affinity on its own physical core (the render thread first, from DirectX present events; without them, the busiest thread after 30 seconds when it clearly leads; several threads with similar loads are treated as a worker pool and left to the scheduler). Other threads that stay near saturation (at least 70%) only receive a preferred core, and Windows may still move them while that core is busy. Each thread uses a different physical core; the count follows the CPU topology (up to 4; hybrid CPUs use performance cores only; favored cores and the large-cache X3D CCD come first, the core of CPU 0 is avoided where possible, and two physical cores stay free for other threads). Automatic mode first moves the current game workers off the entire selected physical core, including its SMT sibling. Once every worker is verified, it binds the critical thread and reserves the core against ordinary external processes. At least two physical cores remain for workers. New threads are admitted at the next audit; missing permissions or custom placement withdraw the operation without forcing it. Older manual rules retain their saved policy. Switching away keeps the placement; it is restored when the session ends. Placement yields when the game changes it; repeated verification failures or candidate changes restore the original state and stop rebinding for the session. Extra priority boosts are not layered onto the same thread. Failed placement stops rebinding for the session. Interrupts/DPCs are not isolated, and an external program with explicit hard affinity may still enter. New thread admission has a delay; FPS gains are not guaranteed."), 18, 50, width - 36, 80, 9f, false, Theme.Dim);
 			criticalThreadHelp.AutoEllipsis = false;
 			criticalThreadCompanion = CardLabel(criticalThreadEditor, "", 18, 0, width - 36, 40, 9f, false, Theme.Dim);
 			criticalThreadCompanion.Name = "CriticalThreadCompanion";
@@ -4911,6 +4918,14 @@ namespace PaviseApp
 				PaviseDialog.Info(LibraryDialogOwner, criticalThreadEnabled.Text, body);
 			};
 			criticalThreadEditor.Controls.Add(criticalThreadInfo);
+			criticalThreadMode = new GameCardDetailsButton
+			{
+				Name = "RenderAffinitySettings",
+				ShowAdjustLabel = true,
+				AccessibleName = ThreadUi("设置渲染亲和性自动或手动选核", "Set automatic or manual render CPU placement")
+			};
+			criticalThreadMode.Click += delegate { OpenRenderAffinityEditor(); };
+			criticalThreadEnabled.Controls.Add(criticalThreadMode);
 			criticalThreadEditor.SizeChanged += delegate
 			{
 				LayoutCriticalThreadEditor();
@@ -4994,7 +5009,7 @@ namespace PaviseApp
 				error = criticalThreadAllowedError;
 				return null;
 			}
-			CriticalThreadRule criticalThreadRule = CriticalThreadRule.Auto(false);
+			CriticalThreadRule criticalThreadRule = CriticalThreadRule.Auto(true);
 			error = criticalThreadRule.Validate(criticalThreadAll, criticalThreadPhysical, criticalThreadAllowed, criticalThreadReserved, criticalThreadTopologyTrusted);
 			if (error != null)
 			{
@@ -5008,6 +5023,9 @@ namespace PaviseApp
 			string error;
 			CriticalThreadRule criticalThreadRule = CriticalThreadSwitchRule(out error);
 			CriticalThreadRule criticalThreadRule2 = CriticalThreadRule.ParseForRuntime(criticalThreadExpected);
+			criticalThreadMode.AccessibleDescription = criticalThreadRule2 != null && criticalThreadRule2.ManualTarget
+				? ThreadUi("手动 · ", "Manual · ") + CriticalThreadRule.ProcessorName(criticalThreadRule2.Targets[0])
+				: ThreadUi("自动选核", "Automatic CPU");
 			string text = ((criticalThreadExpected == null) ? ThreadUi("默认关闭；打开右上角开关即可启用。", "Off by default. Turn on the switch above to enable it.") : ((criticalThreadRule2 != null && !criticalThreadRule2.Automatic) ? ThreadUi("此游戏保存的是手动指定核心的旧规则，仍按原规则执行；关闭再打开开关即改为自动选核。", "This game keeps an older rule with manually chosen cores, which still applies; turn the switch off and on to choose cores automatically.") : ThreadUi("已启用；实际状态见下方。", "On; see the runtime state below.")));
 			string text2 = ((criticalThreadExpected == null) ? error : criticalThreadAllowedError);
 			criticalThreadResult.Text = ((criticalThreadError == null) ? "" : (criticalThreadError + "\n")) + (text2 ?? text);
@@ -5054,7 +5072,7 @@ namespace PaviseApp
 				text = text + "\n" + ThreadUi("最近原生回读已匹配；不代表性能收益。", "Last native readback matched; this does not prove a performance gain.");
 			}
 			string text2 = ThreadUi("运行状态（缓存快照）", "Runtime state (cached snapshot)") + "\n" + text;
-			if (criticalThreadUiState.SessionActive && criticalThreadRule != null && criticalThreadRule.WorkerAvoidance != criticalThreadUiState.RequestedWorkerAvoid)
+			if (criticalThreadUiState.SessionActive && criticalThreadRule != null && criticalThreadRule.Encode() != criticalThreadUiState.RuleSignature)
 			{
 				text2 = text2 + "\n" + ThreadUi("本局策略与新保存规则不同；保存不等于已经应用。", "The session policy differs from the saved rule; saving does not mean it has been applied.");
 			}
@@ -5108,7 +5126,7 @@ namespace PaviseApp
 				error = gameMode.SaveCriticalThreadRule(criticalThreadProfile, criticalThreadExpected, criticalThreadRule);
 				if (error == null)
 				{
-					criticalThreadExpected = ((criticalThreadRule == null) ? null : criticalThreadRule.Encode());
+					criticalThreadExpected = CriticalThreadRule.Raw(FindLibraryProfile(criticalThreadProfile));
 				}
 			}
 			criticalThreadError = error;
@@ -5117,12 +5135,13 @@ namespace PaviseApp
 
 		private void LayoutCriticalThreadEditor()
 		{
-			if (criticalThreadEditor != null && !criticalThreadEditor.IsDisposed && criticalThreadInfo != null)
+			if (criticalThreadEditor != null && !criticalThreadEditor.IsDisposed && criticalThreadInfo != null && criticalThreadMode != null)
 			{
 				int num = Math.Max(1, criticalThreadEditor.Width);
 				criticalThreadEnabled.SetBounds(0, 0, num, Theme.S(40));
 				int num2 = TextRenderer.MeasureText(criticalThreadEnabled.Text, Theme.UI(8f, true)).Width;
-				criticalThreadInfo.SetBounds(Math.Min(Theme.S(36) + num2, Math.Max(0, num - Theme.S(80))), Theme.S(4), Theme.S(28), Theme.S(32));
+				criticalThreadInfo.SetBounds(Math.Min(Theme.S(36) + num2, Math.Max(0, num - Theme.S(142))), Theme.S(4), Theme.S(28), Theme.S(32));
+				criticalThreadMode.SetBounds(Math.Max(0, num - Theme.S(65)), Theme.S(2), Theme.S(64), Theme.S(36));
 				criticalThreadResult.SetBounds(Theme.S(12), Theme.S(46), Math.Max(1, num - Theme.S(24)), Theme.S(30));
 				if (criticalThreadIssue)
 				{
@@ -5503,8 +5522,7 @@ namespace PaviseApp
 
 		private string EnvironmentObservationConfiguration()
 		{
-			// MutationGeneration only invalidates this cheap saved-preference cache.
-			// The normalized values, never the generation itself, identify the phase.
+			// MutationGeneration invalidates the cache; only normalized preference values identify the phase.
 			int version = Settings.MutationGeneration;
 			if (environmentConfigurationSignature != null && environmentConfigurationGeneration == version) return environmentConfigurationSignature;
 			StringBuilder value = new StringBuilder();
@@ -7086,9 +7104,10 @@ namespace PaviseApp
 				return;
 			}
 			bool flag = !PolicyResolver.For(gameProfile).AutoCoresAllowed;
-			if (!gameMode.SetProfileOverride(id, "GmAutoCoresV2", flag ? "1" : "0") && !gameMode.ProfileStoreSaveFailed)
+			string error = SaveCoreConfigurationWithRender(gameProfile, ManualCorePlan.Raw(gameProfile), PolicyResolver.For(gameProfile).ManualCores, flag);
+			if (error != null && !gameMode.ProfileStoreSaveFailed)
 			{
-				PaviseDialog.Warn(LibraryDialogOwner, Lang.T("nav.corescheduling"), Lang.T("lib.family.save.failed"));
+				PaviseDialog.Warn(LibraryDialogOwner, Lang.T("nav.corescheduling"), Lang.T(error));
 			}
 			RefreshGames();
 			SelectProfile(id);
@@ -8169,29 +8188,34 @@ namespace PaviseApp
 			int num = ContentW + RailW;
 			int num2 = PageHeader(pageLog, Lang.T("nav.log"), Lang.T("v20.log.sub"), 1, true, 0, num);
 			RoundPanel roundPanel = MakeConsolePanel(pageLog, 30, num2, num, 64, true);
-			StatusDot statusDot = new StatusDot();
-			statusDot.SetBounds(Theme.S(18), Theme.S(20), Theme.S(24), Theme.S(24));
-			statusDot.Bg = Theme.Card;
-			statusDot.FollowAccent = true;
-			statusDot.Pulse = true;
-			roundPanel.Controls.Add(statusDot);
-			CardLabel(roundPanel, "PAVISE // SESSION LOG", 50, 9, 260, 18, 7.2f, true, Theme.Faint);
-			CardLabel(roundPanel, Lang.T("log.latest.session"), 50, 28, 260, 25, 10.5f, true, Theme.Fg);
+			roundPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			logActionsButton = new PillButton(Lang.T("log.category.actions"));
+			logActionsButton.Name = "showActionLog";
+			logActionsButton.SetBounds(Theme.S(18), Theme.S(14), Theme.S(128), Theme.S(36));
+			logActionsButton.Click += delegate { SelectLogCategory(false); };
+			logDiagnosticsButton = new PillButton(Lang.T("log.category.diagnostics"));
+			logDiagnosticsButton.Name = "showDiagnosticLog";
+			logDiagnosticsButton.SetBounds(Theme.S(154), Theme.S(14), Theme.S(144), Theme.S(36));
+			logDiagnosticsButton.Click += delegate { SelectLogCategory(true); };
+			roundPanel.Controls.AddRange(new Control[] { logActionsButton, logDiagnosticsButton });
+			CardLabel(roundPanel, Lang.T("log.latest.session"), 320, 7, num - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			lblLogStreamHint = new Label
 			{
 				Name = "logSessionHint",
 				ForeColor = Theme.Faint,
 				BackColor = Color.Transparent,
 				Font = Theme.UI(7.8f, false),
-				TextAlign = ContentAlignment.MiddleRight
+				TextAlign = ContentAlignment.MiddleLeft,
+				AutoEllipsis = true
 			};
-			int num3 = Math.Max(310, num - 420);
-			lblLogStreamHint.SetBounds(Theme.S(num3), Theme.S(21), Theme.S(num - num3 - 18), Theme.S(24));
+			lblLogStreamHint.SetBounds(Theme.S(320), Theme.S(31), Theme.S(num - 338), Theme.S(24));
+			lblLogStreamHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			roundPanel.Controls.Add(lblLogStreamHint);
 			int num4 = num2 + 76;
 			int num5 = Math.Max(PageH - 48, num4 + 190);
 			logWrap = new RoundPanel();
 			logWrap.SetBounds(Theme.S(30), Theme.S(num4), Theme.S(num), Theme.S(num5 - num4 - 10));
+			logWrap.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 			logWrap.BackColor = Theme.Bg;
 			logWrap.Fill = Theme.Inset;
 			logWrap.Border = Theme.StrokeHi;
@@ -8207,18 +8231,22 @@ namespace PaviseApp
 			pillButton.Name = "refreshSessionLog";
 			PillButton pillButton2 = pillButton;
 			pillButton2.SetBounds(Theme.S(30), Theme.S(num5), Theme.S(96), Theme.S(36));
+			pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			pillButton2.Click += delegate
 			{
 				RefreshLog(true);
 			};
 			PillButton exportLog = new PillButton(Lang.T("log.export.file"));
+			logExportButton = exportLog;
 			exportLog.Name = "exportLogFile";
 			exportLog.AccessibleName = Lang.T("log.export.file");
-			exportLog.AccessibleDescription = Lang.T("log.export.detail");
 			exportLog.SetBounds(Theme.S(136), Theme.S(num5), Theme.S(112), Theme.S(36));
+			exportLog.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			exportLog.Click += ExportLogFile;
 			PillButton pillButton3 = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
 			pillButton3.SetBounds(Theme.S(258), Theme.S(num5), Theme.S(112), Theme.S(36));
+			pillButton3.Name = "clearSessionLog";
+			pillButton3.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			pillButton3.Click += delegate
 			{
 				if (PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("rep.clear.ask"), DlgKind.Warn))
@@ -8231,6 +8259,7 @@ namespace PaviseApp
 			};
 			swLogWrites = MakeSwitch(Settings.Load("LogWritesEnabled", true), OnLogWritesToggle);
 			swLogWrites.Location = new Point(Theme.S(30 + num) - swLogWrites.Width, Theme.S(num5 + 6));
+			swLogWrites.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 			Label label = new Label();
 			label.Text = Lang.T("set.logwrites");
 			label.ForeColor = Theme.Dim;
@@ -8239,6 +8268,7 @@ namespace PaviseApp
 			label.TextAlign = ContentAlignment.MiddleRight;
 			Label label2 = label;
 			label2.SetBounds(Theme.S(30 + num - 162) - swLogWrites.Width, Theme.S(num5), Theme.S(152), Theme.S(36));
+			label2.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 			pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton2, exportLog, pillButton3, label2, swLogWrites });
 			RefreshLog(true);
 		}
@@ -8247,9 +8277,32 @@ namespace PaviseApp
 		{
 			if (logStream != null)
 			{
-				logStream.TechnicalEvents = true;
+				logStream.ActionEvents = !logDiagnostics;
+				logStream.TechnicalEvents = logDiagnostics;
 				logStream.Filter = 4;
 			}
+			if (logActionsButton != null)
+			{
+				logActionsButton.Kind = logDiagnostics ? BtnKind.Normal : BtnKind.Primary;
+				logActionsButton.AccessibleDescription = Lang.T("log.actions.hint");
+				logActionsButton.Invalidate();
+			}
+			if (logDiagnosticsButton != null)
+			{
+				logDiagnosticsButton.Kind = logDiagnostics ? BtnKind.Primary : BtnKind.Normal;
+				logDiagnosticsButton.AccessibleDescription = Lang.T("log.diagnostics.hint");
+				logDiagnosticsButton.Invalidate();
+			}
+			if (logExportButton != null)
+				logExportButton.AccessibleDescription = Lang.T(logDiagnostics ? "log.export.diagnostics.detail" : "log.export.actions.detail");
+		}
+
+		private void SelectLogCategory(bool diagnostics)
+		{
+			if (logDiagnostics == diagnostics) return;
+			logDiagnostics = diagnostics;
+			ConfigureLogView();
+			SyncLogHint();
 		}
 
 		private void OnLogWritesToggle(object s, EventArgs e)
@@ -8304,7 +8357,7 @@ namespace PaviseApp
 			if (lblLogStreamHint != null)
 			{
 				bool writesEnabled = Logger.WritesEnabled;
-				lblLogStreamHint.Text = writesEnabled ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
+				lblLogStreamHint.Text = writesEnabled ? Lang.T(logDiagnostics ? "log.diagnostics.hint" : "log.actions.hint") : Lang.T("v20.log.paused");
 				lblLogStreamHint.ForeColor = (writesEnabled ? Theme.Faint : LogStreamView.SeverityColor(LogEventSeverity.Warning));
 			}
 		}
@@ -8669,7 +8722,7 @@ namespace PaviseApp
 			{
 				coreWidth = num4;
 				coreHeight = Math.Min(coreHeight, (int)Math.Round((float)coreWidth * 450f / 580f));
-				coreY = Math.Max(0, (statusY - coreHeight) / 2);
+				coreY = Math.Max(0, (statusY - (overviewSecurityWarningShown ? 44 : 0) - coreHeight) / 2);
 				int num8 = Math.Max(8, Math.Min((statusY - num5) / 2 + 24, statusY - num5 - 16));
 				OverviewSpecItem[] array3 = overviewSpecs;
 				foreach (OverviewSpecItem control in array3)
@@ -8695,7 +8748,7 @@ namespace PaviseApp
 			coreHeight = Math.Min((int)Math.Round((float)coreWidth * 450f / 580f), Math.Max(1, pageHeight - 16));
 			coreWidth = Math.Min(coreWidth, (int)Math.Round((float)coreHeight * 580f / 450f));
 			coreY = 8;
-			statusY = coreY + coreHeight + 8;
+			statusY = coreY + coreHeight + 8 + (overviewSecurityWarningShown ? 44 : 0);
 			int num12 = statusY + 62 + (overviewActivityShown ? 30 : 0);
 			int num13 = Math.Max(1, num11 - num * 2);
 			int num14 = (flag2 ? ((num13 - 48) / 2) : num13);
@@ -8935,6 +8988,7 @@ namespace PaviseApp
 			swGame.TabIndex = 0;
 			swGame.AccessibleName = Lang.T("v14.master");
 			pageOverview.Controls.Add(swGame);
+			BuildOverviewSecurityWarning();
 			BuildOverviewGuardActivity();
 			BuildOverviewHud();
 			RefreshUpdatePresentation();
@@ -8974,11 +9028,12 @@ namespace PaviseApp
 				int num2 = Math.Max(1, Dpi.U(pageOverview.ClientSize.Height));
 				int num3 = 42;
 				int statusY = Math.Max(8, Math.Min(num2 - num3 - 8 - (overviewActivityShown ? 30 : 0), (int)Math.Round((float)num2 * 0.87f) - num3 / 2));
-				int val = Math.Max(1, Math.Min(450, statusY - 26));
+				int warningReserve = overviewSecurityWarningShown ? 44 : 0;
+				int val = Math.Max(1, Math.Min(450, statusY - 26 - warningReserve));
 				int num4 = Math.Max(1, Math.Min(580, num - 48));
 				val = Math.Min(val, (int)Math.Round((float)num4 * 450f / 580f));
 				num4 = Math.Min(num4, (int)Math.Round((float)val * 580f / 450f));
-				int coreY = Math.Max(0, (statusY - val) / 2);
+				int coreY = Math.Max(0, (statusY - warningReserve - val) / 2);
 				int num5 = ArrangeOverviewHud(num, num2, ref num4, ref val, ref coreY, ref statusY);
 				SetOverviewBounds(paviseCore, (num - num4) / 2, coreY, num4, val);
 				int num6 = ((num5 > num2) ? Math.Max(1, num - Dpi.U(SystemInformation.VerticalScrollBarWidth)) : num);
@@ -8998,6 +9053,7 @@ namespace PaviseApp
 				SetOverviewBounds(lblOverviewGuard, num10, statusY, num7, num3);
 				num10 += num7 + 12;
 				SetOverviewBounds(swGame, num10, statusY + 5, 72, 32);
+				LayoutOverviewSecurityWarning(num6, statusY);
 				if (overviewActivity != null)
 				{
 					SetOverviewBounds(overviewActivity, 16, statusY + num3 + 2, Math.Max(1, num6 - 32), 26);
@@ -9339,9 +9395,6 @@ namespace PaviseApp
 				break;
 			case "GmPauseMaintenanceV1":
 				card.Summary = AutoText("暂缓维护任务，减少资源竞争", "Defer maintenance to reduce resource contention");
-				break;
-			case "AppGpuAutoV1":
-				card.Summary = AutoText("为合格后台程序登记节能显卡偏好", "Prefer the power-saving GPU for eligible background apps");
 				break;
 			case "AutoBackgroundFpsV1":
 				card.Summary = AutoText("限制合格后台渲染，不限制游戏前台", "Cap eligible background rendering, leave foreground uncapped");
@@ -11598,7 +11651,6 @@ namespace PaviseApp
 				}
 				else if (whiteView.Required)
 				{
-					// The system category exposes these unchanged rules together.
 					continue;
 				}
 				else

@@ -3,6 +3,14 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
+	internal enum RendererProof
+	{
+		None,
+		Gpu,
+		Present,
+		Rejected
+	}
+
 	internal sealed class RendererHandoffTracker
 	{
 		private sealed class Candidate
@@ -28,6 +36,10 @@ namespace PaviseApp
 			public bool Verified;
 
 			public double Utilization;
+
+			public double PresentFps;
+
+			public RendererProof Proof;
 
 			public long ProofMs;
 
@@ -221,24 +233,76 @@ namespace PaviseApp
 
 		internal void Complete(RendererProbeTicket ticket, IDictionary<int, double> utilization, bool identityValid, long nowMs)
 		{
+			Complete(ticket, utilization, null, identityValid, nowMs);
+		}
+
+		internal RendererProof Complete(RendererProbeTicket ticket, IDictionary<int, double> utilization, PresentActivitySample presents, bool identityValid, long nowMs)
+		{
 			lock (gate)
 			{
 				if (!object.ReferenceEquals(inFlight, ticket))
 				{
-					return;
+					return RendererProof.None;
 				}
 				inFlight = null;
 				if (ticket != null && !ticket.Canceled && identityValid && current != null && current.Generation == ticket.Generation && current.Foreground && current.RecoveryReady && nowMs >= ticket.StartedMs && nowMs - ticket.StartedMs <= 5000)
 				{
-					double value;
-					current.Verified = HasGpuEvidence(ticket.Detection, utilization, out value);
+					double gpu, fps;
+					RendererProof proof = ResolveEvidence(ticket.Detection, utilization, presents, out gpu, out fps);
+					current.Verified = proof == RendererProof.Present || proof == RendererProof.Gpu;
 					if (current.Verified)
 					{
-						current.Utilization = value;
+						current.Proof = proof;
+						current.Utilization = gpu;
+						current.PresentFps = fps;
 						current.ProofMs = nowMs;
 					}
+					return proof;
+				}
+				return RendererProof.None;
+			}
+		}
+
+		internal const int MinPresentFrames = 8;
+
+		// Prefer presentation evidence; use GPU utilization only when frame counts are inconclusive.
+		internal static RendererProof ResolveEvidence(GameDetection candidate, IDictionary<int, double> utilization, PresentActivitySample presents, out double gpu, out double fps)
+		{
+			gpu = 0.0;
+			fps = 0.0;
+			if (candidate == null || candidate.RendererPid <= 0)
+			{
+				return RendererProof.None;
+			}
+			if (presents != null && presents.Valid)
+			{
+				int own = presents.FramesOf(candidate.RendererPid);
+				int other = 0;
+				foreach (int familyPid in candidate.FamilyPids)
+				{
+					if (familyPid != candidate.RendererPid)
+					{
+						other = Math.Max(other, presents.FramesOf(familyPid));
+					}
+				}
+				// Require a clear frame-count lead; web views can present at the display refresh rate too.
+				if (own >= MinPresentFrames && (long)own * 2 >= (long)other * 3)
+				{
+					fps = presents.FpsOf(candidate.RendererPid);
+					double observed;
+					if (utilization != null && utilization.TryGetValue(candidate.RendererPid, out observed) && !double.IsNaN(observed) && !double.IsInfinity(observed))
+					{
+						gpu = observed;
+					}
+					return RendererProof.Present;
+				}
+				if (own == 0 && other >= MinPresentFrames)
+				{
+					// Frames submitted by another game process disqualify a foreground helper or overlay.
+					return RendererProof.Rejected;
 				}
 			}
+			return HasGpuEvidence(candidate, utilization, out gpu) ? RendererProof.Gpu : RendererProof.None;
 		}
 
 		internal GameDetection Confirmed(long nowMs)
@@ -261,7 +325,9 @@ namespace PaviseApp
 				gameDetection.RequiresGpuConfirm = false;
 				if (!flag)
 				{
-					gameDetection.Evidence = Lang.F("detect.gpu", (int)current.Utilization);
+					gameDetection.Evidence = current.Proof == RendererProof.Present
+						? Lang.F("detect.present", (int)Math.Round(current.PresentFps))
+						: Lang.F("detect.gpu", (int)current.Utilization);
 					gameDetection.RendererGpuProofExpiresMs = current.ProofMs + 3000;
 				}
 				return gameDetection;

@@ -13,8 +13,7 @@ namespace PaviseApp
         { State = state; Value = value; NativeCode = nativeCode; ResolutionCode = resolutionCode; UsedDefault = usedDefault; }
     }
 
-    // Optional capability keeps legacy plan backends compatible while native
-    // verification can distinguish unsupported settings from failed reads.
+    // Read evidence distinguishes unsupported settings from failed reads without changing legacy backends.
     internal interface IManagedPowerReadEvidence
     {
         ManagedPowerReadEvidence ReadEvidence(Guid scheme, Guid sub, Guid setting, bool ac);

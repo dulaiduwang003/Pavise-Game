@@ -570,6 +570,57 @@ namespace PaviseApp
 			return SaveString(name, val, false);
 		}
 
+		internal const string PresentProbeReceiptKey = FrameCoordinationTrace.PresentProbeReceiptKey;
+
+		internal const string PresentProbeSessionPattern = FrameCoordinationTrace.PresentProbeSessionPattern;
+
+		// ETW receipt writes must not advance the optimistic user-setting generation.
+		internal static bool SavePresentProbeReceipt(string value)
+		{
+			string text = value ?? "";
+			if (text.Length != 0 && !Regex.IsMatch(text, PresentProbeSessionPattern))
+			{
+				return false;
+			}
+			lock (writeSync)
+			{
+				if (writesSuspendedForReset)
+				{
+					return false;
+				}
+				try
+				{
+					string existing;
+					if (!TryLoadRawStr(PresentProbeReceiptKey, out existing))
+					{
+						return false;
+					}
+#if PAVISE_SELFTEST
+					if (transientValues != null)
+					{
+						transientValues[PresentProbeReceiptKey] = text;
+						return true;
+					}
+#endif
+					using (RegistryKey registryKey = ProfiledCreate())
+					{
+						if (registryKey == null)
+						{
+							return false;
+						}
+						registryKey.SetValue(PresentProbeReceiptKey, text, RegistryValueKind.String);
+					}
+					string readBack;
+					return TryLoadRawStr(PresentProbeReceiptKey, out readBack) && readBack == text;
+				}
+				catch (Exception error)
+				{
+					Logger.LogFailure(Lang.T("log.settings.2") + PresentProbeReceiptKey, error);
+					return false;
+				}
+			}
+		}
+
 		internal static bool SaveGpuIdentityReceipt(string value)
 		{
 			string text = value ?? "";

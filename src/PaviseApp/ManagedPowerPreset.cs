@@ -1,5 +1,4 @@
-﻿// 保存七份电源配置；架构选择规则见 ManagedPowerPreset.Architecture.cs。
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;

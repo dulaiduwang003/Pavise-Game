@@ -60,8 +60,6 @@ namespace PaviseApp
                     saved = BackgroundGovernancePolicy.Save(mode);
                     backgroundGovernanceSaveUnverified = !saved;
                     InvalidateFamilyPolicy();
-                    // The next sweep re-reads the boost limit from the policy snapshot;
-                    // held background processes converge through the boost drift check.
                     firstSweep = true;
                 }
             }
