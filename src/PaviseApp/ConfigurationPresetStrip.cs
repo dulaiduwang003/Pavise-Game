@@ -28,9 +28,9 @@ namespace PaviseApp
         internal int MinimumStripWidth
         {
             get {
-                int text = Math.Max(TextRenderer.MeasureText(Lang.T("configpreset.guide"), Theme.UI(9.5f, true)).Width,
+                int widthLimit = Math.Max(TextRenderer.MeasureText(Lang.T("configpreset.guide"), Theme.UI(9.5f, true)).Width,
                     TextRenderer.MeasureText(Lang.T("configpreset.working"), Theme.UI(9.5f, true)).Width);
-                return Math.Max(Theme.S(108), text + Theme.S(32));
+                return Math.Max(Theme.S(108), widthLimit + Theme.S(32));
             }
         }
         internal int PreferredStripWidth { get { return MinimumStripWidth; } }

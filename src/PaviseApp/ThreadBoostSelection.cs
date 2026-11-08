@@ -122,10 +122,10 @@ namespace PaviseApp
 		internal static bool MigrateOverrides(IDictionary<string, string> values)
 		{
 			string value;
-			bool flag = values.TryGetValue("GmRenderLane", out value);
+			bool value6 = values.TryGetValue("GmRenderLane", out value);
 			string value2;
-			bool flag2 = values.TryGetValue("FrameCoordination", out value2);
-			if (!flag && !flag2)
+			bool value7 = values.TryGetValue("FrameCoordination", out value2);
+			if (!value6 && !value7)
 			{
 				return true;
 			}
@@ -134,11 +134,11 @@ namespace PaviseApp
 			{
 				bool value4 = value == "1";
 				bool value5 = value2 == "1";
-				if (!flag && !TryLegacyFlag("GmRenderLane", true, out value4))
+				if (!value6 && !TryLegacyFlag("GmRenderLane", true, out value4))
 				{
 					return false;
 				}
-				if (!flag2 && !TryLegacyFlag("FrameCoordination", false, out value5))
+				if (!value7 && !TryLegacyFlag("FrameCoordination", false, out value5))
 				{
 					return false;
 				}

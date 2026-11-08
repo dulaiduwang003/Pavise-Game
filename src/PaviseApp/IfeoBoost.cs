@@ -45,31 +45,31 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = Settings.Save("GmIfeoBoost", false);
-				flag &= Settings.SaveStr("IfeoArm", "");
-				string[] array = ParseList(Settings.LoadStr("IfeoList", ""));
-				foreach (string text in array)
+				bool gmIfeoBoostEnabled = Settings.Save("GmIfeoBoost", false);
+				gmIfeoBoostEnabled &= Settings.SaveStr("IfeoArm", "");
+				string[] list = ParseList(Settings.LoadStr("IfeoList", ""));
+				foreach (string entryText in list)
 				{
-					bool flag2 = RegOf(text).Restore();
-					flag2 &= IoRegOf(text).Restore();
-					if (!(flag2 & PageRegOf(text).Restore()))
+					bool restoreSucceeded = RegOf(entryText).Restore();
+					restoreSucceeded &= IoRegOf(entryText).Restore();
+					if (!(restoreSucceeded & PageRegOf(entryText).Restore()))
 					{
-						flag = false;
+						gmIfeoBoostEnabled = false;
 						continue;
 					}
-					string text2 = Settings.LoadStr("IfeoMk_" + text, "11");
-					bool ourSub = text2.Length < 2 || text2[1] == '0';
-					bool ourExe = text2.Length < 1 || text2[0] == '0';
-					IfeoStore.CleanupEmpty(text, "PerfOptions", ourSub, ourExe);
-					Settings.SaveStr("IfeoMk_" + text, "");
-					IfeoStore.RemoveFromList("IfeoList", text);
-					Logger.Log(Lang.T("log.ifeoboost.8") + text);
+					string value = Settings.LoadStr("IfeoMk_" + entryText, "11");
+					bool ourSub = value.Length < 2 || value[1] == '0';
+					bool ourExe = value.Length < 1 || value[0] == '0';
+					IfeoStore.CleanupEmpty(entryText, "PerfOptions", ourSub, ourExe);
+					Settings.SaveStr("IfeoMk_" + entryText, "");
+					IfeoStore.RemoveFromList("IfeoList", entryText);
+					Logger.Log(Lang.T("log.ifeoboost.8") + entryText);
 				}
-				if (!flag)
+				if (!gmIfeoBoostEnabled)
 				{
 					Logger.Log(Lang.T("log.ifeoboost.9"));
 				}
-				return flag;
+				return gmIfeoBoostEnabled;
 			}
 		}
 

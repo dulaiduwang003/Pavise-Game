@@ -32,15 +32,15 @@ namespace PaviseApp
 
 		internal static string Stamp(ulong all, ulong[] physical)
 		{
-			string text = all.ToString("X", CultureInfo.InvariantCulture);
+			string allText = all.ToString("X", CultureInfo.InvariantCulture);
 			if (physical != null)
 			{
-				foreach (ulong num in physical)
+				foreach (ulong numericValueEntry in physical)
 				{
-					text = text + "," + num.ToString("X", CultureInfo.InvariantCulture);
+					allText = allText + "," + numericValueEntry.ToString("X", CultureInfo.InvariantCulture);
 				}
 			}
-			return text;
+			return allText;
 		}
 
 		internal static string CurrentStamp()
@@ -54,32 +54,32 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = text.Split('|');
-			bool flag = array.Length == 5 && array[0] == "2" && array[4] == "1";
-			if ((array.Length != 4 || !(array[0] == "1")) && !flag)
+			string[] parts = text.Split('|');
+			bool allConditionsMet = parts.Length == 5 && parts[0] == "2" && parts[4] == "1";
+			if ((parts.Length != 4 || !(parts[0] == "1")) && !allConditionsMet)
 			{
 				return null;
 			}
 			ulong value;
-			if ((array[3] != "0" && array[3] != "1") || !Hex(array[2], out value) || value == 0)
+			if ((parts[3] != "0" && parts[3] != "1") || !Hex(parts[2], out value) || value == 0)
 			{
 				return null;
 			}
-			string[] array2 = array[1].Split(',');
-			if (array2.Length < 2 || array2.Length > 65)
+			string[] parts2 = parts[1].Split(',');
+			if (parts2.Length < 2 || parts2.Length > 65)
 			{
 				return null;
 			}
-			string[] array3 = array2;
-			foreach (string text2 in array3)
+			string[] textEntries = parts2;
+			foreach (string entryText in textEntries)
 			{
 				ulong value2;
-				if (!Hex(text2, out value2) || value2 == 0)
+				if (!Hex(entryText, out value2) || value2 == 0)
 				{
 					return null;
 				}
 			}
-			return new ManualCorePlan(value, array[3] == "1", array[1].ToUpperInvariant(), flag);
+			return new ManualCorePlan(value, parts[3] == "1", parts[1].ToUpperInvariant(), allConditionsMet);
 		}
 
 		private static bool Hex(string text, out ulong value)
@@ -108,20 +108,20 @@ namespace PaviseApp
 			{
 				return "schedule.manual.topology";
 			}
-			ulong num = 0uL;
+			ulong numericValue = 0uL;
 			if (physical == null || physical.Length == 0)
 			{
 				return "schedule.manual.topology";
 			}
-			foreach (ulong num2 in physical)
+			foreach (ulong numericValueEntry in physical)
 			{
-				if (num2 == 0 || (num2 & ~all) != 0 || (num & num2) != 0)
+				if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
 				{
 					return "schedule.manual.topology";
 				}
-				num |= num2;
+				numericValue |= numericValueEntry;
 			}
-			if (num != all)
+			if (numericValue != all)
 			{
 				return "schedule.manual.topology";
 			}
@@ -129,8 +129,8 @@ namespace PaviseApp
 			{
 				return "schedule.manual.minimum";
 			}
-			ulong num3 = AutoCores.WholeCores(GameMask, physical);
-			if (((Isolation ? num3 : GameMask) & allocated) != 0)
+			ulong wholeCoresResult = AutoCores.WholeCores(GameMask, physical);
+			if (((Isolation ? wholeCoresResult : GameMask) & allocated) != 0)
 			{
 				return "schedule.manual.allocated";
 			}
@@ -146,7 +146,7 @@ namespace PaviseApp
 			{
 				return "schedule.manual.allocated";
 			}
-			if (AutoCores.ValidateRange(num3, GameMask, all, physical, allocated, true) != null)
+			if (AutoCores.ValidateRange(wholeCoresResult, GameMask, all, physical, allocated, true) != null)
 			{
 				return "schedule.manual.spare";
 			}
@@ -162,10 +162,10 @@ namespace PaviseApp
 		{
 			ulong allocated = AutoCores.LiveAllocated();
 			ulong[] cores = CpuTopology.PhysicalCoreMasks();
-			ulong num = AutoCores.WholeCores(GameMask, cores);
+			ulong wholeCoresResult = AutoCores.WholeCores(GameMask, cores);
 			AutoCorePlan autoCorePlan = new AutoCorePlan();
-			autoCorePlan.Exclusive = (Isolation ? num : GameMask);
-			autoCorePlan.Cores = AutoCores.PhysicalCount(num, cores);
+			autoCorePlan.Exclusive = (Isolation ? wholeCoresResult : GameMask);
+			autoCorePlan.Cores = AutoCores.PhysicalCount(wholeCoresResult, cores);
 			autoCorePlan.Logical = AutoCores.CountBits(GameMask);
 			autoCorePlan.Allocated = allocated;
 			autoCorePlan.Kind = "manual";

@@ -78,12 +78,12 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			uint[] array = ((r.Tid == 0) ? Native.QueryCpuSets(r.Handle) : Native.QueryThreadCpuSets(r.Handle));
-			if (array == null)
+			uint[] cpuSets = ((r.Tid == 0) ? Native.QueryCpuSets(r.Handle) : Native.QueryThreadCpuSets(r.Handle));
+			if (cpuSets == null)
 			{
 				return false;
 			}
-			if (!Same(array, r.Applied))
+			if (!Same(cpuSets, r.Applied))
 			{
 				return true;
 			}
@@ -134,32 +134,32 @@ namespace PaviseApp
 				return false;
 			}
 			List<string> list = new List<string>();
-			string[] array = value.Split(';');
-			Array.Reverse(array);
-			string[] array2 = array;
-			foreach (string text in array2)
+			string[] valueParts = value.Split(';');
+			Array.Reverse(valueParts);
+			string[] textEntries = valueParts;
+			foreach (string entryText in textEntries)
 			{
 				IntPtr intPtr = IntPtr.Zero;
 				IntPtr intPtr2 = IntPtr.Zero;
 				try
 				{
-					string[] array3 = text.Split('|');
-					if (array3.Length != 6)
+					string[] entryTextParts = entryText.Split('|');
+					if (entryTextParts.Length != 6)
 					{
-						list.Add(text);
+						list.Add(entryText);
 						continue;
 					}
 					Receipt receipt = new Receipt();
-					receipt.Pid = int.Parse(array3[0]);
-					receipt.ProcessCreation = long.Parse(array3[1]);
-					receipt.Tid = int.Parse(array3[2]);
-					receipt.ThreadCreation = long.Parse(array3[3]);
-					receipt.Original = ParseIds(array3[4]);
-					receipt.Applied = ParseIds(array3[5]);
+					receipt.Pid = int.Parse(entryTextParts[0]);
+					receipt.ProcessCreation = long.Parse(entryTextParts[1]);
+					receipt.Tid = int.Parse(entryTextParts[2]);
+					receipt.ThreadCreation = long.Parse(entryTextParts[3]);
+					receipt.Original = ParseIds(entryTextParts[4]);
+					receipt.Applied = ParseIds(entryTextParts[5]);
 					Receipt receipt2 = receipt;
 					if (receipt2.Pid <= 0 || receipt2.ProcessCreation <= 0 || receipt2.Tid < 0 || (receipt2.Tid > 0 && receipt2.ThreadCreation <= 0) || receipt2.Applied.Length == 0)
 					{
-						list.Add(text);
+						list.Add(entryText);
 						continue;
 					}
 					intPtr = Native.OpenProcess(0x1000 | ((receipt2.Tid == 0) ? 8704 : 0), false, receipt2.Pid);
@@ -170,12 +170,12 @@ namespace PaviseApp
 					{
 						if (Marshal.GetLastWin32Error() != 87)
 						{
-							list.Add(text);
+							list.Add(entryText);
 						}
 					}
 					else if (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io))
 					{
-						list.Add(text);
+						list.Add(entryText);
 					}
 					else
 					{
@@ -196,12 +196,12 @@ namespace PaviseApp
 						{
 							if (Marshal.GetLastWin32Error() != 87)
 							{
-								list.Add(text);
+								list.Add(entryText);
 							}
 						}
 						else if (!Native.GetThreadTimes(intPtr2, out creation, out exit, out kernel, out user))
 						{
-							list.Add(text);
+							list.Add(entryText);
 						}
 						else if (exit == 0 && creation == receipt2.ThreadCreation && Native.QueryThreadOwnerPid(intPtr2) == receipt2.Pid)
 						{
@@ -214,13 +214,13 @@ namespace PaviseApp
 					RestoreOwnedPlacement:
 					if (!RestoreReceipt(receipt2))
 					{
-						list.Add(text);
+						list.Add(entryText);
 					}
 					FinishReceiptInspection:;
 				}
 				catch
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 				finally
 				{

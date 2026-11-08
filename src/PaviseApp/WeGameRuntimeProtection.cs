@@ -34,10 +34,10 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text = WhitelistRule.NormalizeImagePath(path);
-			if (text.Length != 0)
+			string imagePath = WhitelistRule.NormalizeImagePath(path);
+			if (imagePath.Length != 0)
 			{
-				return string.Equals(WhitelistRule.NormalizeName(name), WhitelistRule.NormalizeName(Path.GetFileName(text)), StringComparison.OrdinalIgnoreCase);
+				return string.Equals(WhitelistRule.NormalizeName(name), WhitelistRule.NormalizeName(Path.GetFileName(imagePath)), StringComparison.OrdinalIgnoreCase);
 			}
 			return false;
 		}
@@ -67,11 +67,11 @@ namespace PaviseApp
 				}
 				else if (procEntry.Pid > 4 && procEntry.Pid != selfPid && procEntry.Session == ownerSession && procEntry.Creation > 0)
 				{
-					string text = WhitelistRule.NormalizeImagePath(procEntry.Path);
-					if (text.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(text)), StringComparison.OrdinalIgnoreCase))
+					string imagePath = WhitelistRule.NormalizeImagePath(procEntry.Path);
+					if (imagePath.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(imagePath)), StringComparison.OrdinalIgnoreCase))
 					{
 						dictionary[procEntry.Pid] = procEntry;
-						dictionary2[procEntry.Pid] = text;
+						dictionary2[procEntry.Pid] = imagePath;
 					}
 				}
 			}
@@ -105,17 +105,17 @@ namespace PaviseApp
 			}
 			for (int j = 0; j < 24; j++)
 			{
-				bool flag = false;
+				bool collectReady = false;
 				foreach (ProcEntry value4 in dictionary.Values)
 				{
 					ProcEntry value;
 					if (!hashSet.Contains(value4.Pid) && hashSet.Contains(value4.ParentPid) && dictionary.TryGetValue(value4.ParentPid, out value) && value.Creation < value4.Creation)
 					{
 						hashSet.Add(value4.Pid);
-						flag = true;
+						collectReady = true;
 					}
 				}
-				if (!flag)
+				if (!collectReady)
 				{
 					break;
 				}

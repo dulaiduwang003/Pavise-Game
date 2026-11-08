@@ -40,23 +40,23 @@ namespace PaviseApp
 		}
 		private string EnvironmentGameDvrStatus()
 		{
-			string text = gameMode.AutomaticExecutionState("GameDvrOff");
-			switch (text)
+			string automaticExecutionStateResult = gameMode.AutomaticExecutionState("GameDvrOff");
+			switch (automaticExecutionStateResult)
 			{
 			case "failed":
 			case "restore-failed":
 			case "stopped":
-				return GameMode.AutomationStateLabel(text);
+				return GameMode.AutomationStateLabel(automaticExecutionStateResult);
 			default:
 				if (!gameMode.KillGameDvr)
 				{
-					return Lang.T((text == "restored") ? "env.dvr.restored" : "env.performance.off");
+					return Lang.T((automaticExecutionStateResult == "restored") ? "env.dvr.restored" : "env.performance.off");
 				}
 				if (!gameMode.Enabled)
 				{
 					return Lang.T("env.dvr.waiting");
 				}
-				return Lang.T((text == "applied") ? "env.dvr.active" : "env.performance.pending");
+				return Lang.T((automaticExecutionStateResult == "applied") ? "env.dvr.active" : "env.performance.pending");
 			}
 		}
 		private Dictionary<string, bool> QueryLibraryRunningState(List<string> paths)
@@ -101,8 +101,8 @@ namespace PaviseApp
 				OpenLibraryCoreScheduling(id);
 				return;
 			}
-			bool flag = !PolicyResolver.For(gameProfile).AutoCoresAllowed;
-			string error = SaveCoreConfigurationWithRender(gameProfile, ManualCorePlan.Raw(gameProfile), PolicyResolver.For(gameProfile).ManualCores, flag);
+			bool isNotAutoCoresAllowed = !PolicyResolver.For(gameProfile).AutoCoresAllowed;
+			string error = SaveCoreConfigurationWithRender(gameProfile, ManualCorePlan.Raw(gameProfile), PolicyResolver.For(gameProfile).ManualCores, isNotAutoCoresAllowed);
 			if (error != null && !gameMode.ProfileStoreSaveFailed)
 			{
 				PaviseDialog.Warn(LibraryDialogOwner, Lang.T("nav.corescheduling"), Lang.T(error));
@@ -212,14 +212,14 @@ namespace PaviseApp
 				{
 					return;
 				}
-				bool flag = !gameProfile.SuppressFamilyBackground;
+				bool isNotSuppressFamilyBackground = !gameProfile.SuppressFamilyBackground;
 				string executablePath = gameProfile.ExecutablePath;
-				if (flag && !item.RendererObserved)
+				if (isNotSuppressFamilyBackground && !item.RendererObserved)
 				{
 					PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.family.suppress"), Lang.T("lib.family.gated.body"));
 					return;
 				}
-				if (flag)
+				if (isNotSuppressFamilyBackground)
 				{
 					using (FamilySuppressionDialog familySuppressionDialog = new FamilySuppressionDialog(gameProfile.Name, executablePath))
 					{
@@ -239,7 +239,7 @@ namespace PaviseApp
 						return;
 					}
 				}
-				if (!gameMode.SetProfileFamilySuppression(id, flag, executablePath) && !gameMode.ProfileStoreSaveFailed)
+				if (!gameMode.SetProfileFamilySuppression(id, isNotSuppressFamilyBackground, executablePath) && !gameMode.ProfileStoreSaveFailed)
 				{
 					PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.family.suppress"), Lang.T("lib.family.save.failed"));
 				}
@@ -334,18 +334,18 @@ namespace PaviseApp
 				});
 			};
 			contextMenuStrip2.Items.Add(toolStripMenuItem5);
-			int num = contextMenuStrip2.Padding.Vertical;
-			int num2 = Theme.S(230);
+			int vertical = contextMenuStrip2.Padding.Vertical;
+			int scaledDimension = Theme.S(230);
 			foreach (ToolStripItem item in contextMenuStrip2.Items)
 			{
 				item.AutoSize = false;
 				item.Margin = Padding.Empty;
-				item.Size = new Size(num2 - contextMenuStrip2.Padding.Horizontal, Theme.S((item is ToolStripSeparator) ? 9 : 36));
-				num += item.Height;
+				item.Size = new Size(scaledDimension - contextMenuStrip2.Padding.Horizontal, Theme.S((item is ToolStripSeparator) ? 9 : 36));
+				vertical += item.Height;
 			}
-			contextMenuStrip2.Size = new Size(num2, num);
+			contextMenuStrip2.Size = new Size(scaledDimension, vertical);
 			contextMenuStrip2.PerformLayout();
-			using (GraphicsPath path = Theme.TechPath(new Rectangle(0, 0, num2, num), Theme.S(8)))
+			using (GraphicsPath path = Theme.TechPath(new Rectangle(0, 0, scaledDimension, vertical), Theme.S(8)))
 			{
 				contextMenuStrip2.Region = new Region(path);
 				return contextMenuStrip2;
@@ -356,10 +356,10 @@ namespace PaviseApp
 			GameProfile gameProfile = FindLibraryProfile(keepId);
 			if (gameProfile != null)
 			{
-				string text = PaviseDialog.Prompt(this, Lang.T("lib.rename"), Lang.F("lib.rename.sub", gameProfile.Name), gameProfile.Name);
-				if (!string.IsNullOrEmpty(text) && !(text == gameProfile.Name))
+				string promptResult = PaviseDialog.Prompt(this, Lang.T("lib.rename"), Lang.F("lib.rename.sub", gameProfile.Name), gameProfile.Name);
+				if (!string.IsNullOrEmpty(promptResult) && !(promptResult == gameProfile.Name))
 				{
-					gameMode.RenameProfile(keepId, text);
+					gameMode.RenameProfile(keepId, promptResult);
 					RefreshGames();
 					SelectProfile(keepId);
 				}
@@ -396,7 +396,7 @@ namespace PaviseApp
 		}
 		private void ApplyRunningStates(Dictionary<string, bool> states)
 		{
-			bool flag = false;
+			bool applyRunningStatesReady = false;
 			foreach (GameLibraryItem item in lstGames.Items)
 			{
 				GameLibraryItem gameLibraryItem = item as GameLibraryItem;
@@ -407,11 +407,11 @@ namespace PaviseApp
 					if (!string.IsNullOrEmpty(executablePath) && states.TryGetValue(executablePath, out value) && value != gameLibraryItem.Running)
 					{
 						gameLibraryItem.Running = value;
-						flag = true;
+						applyRunningStatesReady = true;
 					}
 				}
 			}
-			if (flag)
+			if (applyRunningStatesReady)
 			{
 				lstGames.RefreshRows();
 				RefreshLibraryInspector();
@@ -425,15 +425,15 @@ namespace PaviseApp
 			}
 			List<string> list = new List<string>();
 			string error = null;
-			foreach (string text in files)
+			foreach (string filePath in files)
 			{
-				if (!string.IsNullOrEmpty(text))
+				if (!string.IsNullOrEmpty(filePath))
 				{
-					if (Directory.Exists(text))
+					if (Directory.Exists(filePath))
 					{
-						list.Add(text);
+						list.Add(filePath);
 					}
-					else if (!gameMode.AddGameFile(text, out error) && error != Lang.T("t.gamemodelibrary.1"))
+					else if (!gameMode.AddGameFile(filePath, out error) && error != Lang.T("t.gamemodelibrary.1"))
 					{
 						break;
 					}
@@ -492,19 +492,19 @@ namespace PaviseApp
 			{
 				return dictionary;
 			}
-			Process[] array = null;
+			Process[] runningProcesses = null;
 			try
 			{
-				array = Process.GetProcesses();
-				Process[] array2 = array;
-				foreach (Process process in array2)
+				runningProcesses = Process.GetProcesses();
+				Process[] processItems = runningProcesses;
+				foreach (Process process in processItems)
 				{
 					List<string> value2 = null;
-					int num = 0;
+					int probeRunningValue = 0;
 					try
 					{
 						dictionary2.TryGetValue(process.ProcessName, out value2);
-						num = process.Id;
+						probeRunningValue = process.Id;
 					}
 					catch
 					{
@@ -514,27 +514,27 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					IntPtr intPtr = Native.OpenProcess(4096, false, num);
+					IntPtr intPtr = Native.OpenProcess(4096, false, probeRunningValue);
 					if (intPtr == IntPtr.Zero)
 					{
 						continue;
 					}
-					string text;
+					string imagePathResult;
 					try
 					{
-						text = Native.ImagePath(intPtr);
+						imagePathResult = Native.ImagePath(intPtr);
 					}
 					finally
 					{
 						Native.CloseHandle(intPtr);
 					}
-					if (string.IsNullOrEmpty(text))
+					if (string.IsNullOrEmpty(imagePathResult))
 					{
 						continue;
 					}
 					foreach (string item in value2)
 					{
-						if (string.Equals(item, text, StringComparison.OrdinalIgnoreCase))
+						if (string.Equals(item, imagePathResult, StringComparison.OrdinalIgnoreCase))
 						{
 							dictionary[item] = true;
 						}
@@ -546,10 +546,10 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (array != null)
+				if (runningProcesses != null)
 				{
-					Process[] array3 = array;
-					foreach (Process process2 in array3)
+					Process[] processItems2 = runningProcesses;
+					foreach (Process process2 in processItems2)
 					{
 						process2.Dispose();
 					}
@@ -718,9 +718,9 @@ namespace PaviseApp
 		{
 			for (int i = 0; i < 2; i++)
 			{
-				int num = (lstGames.VisibleItemCount + lstGames.ColumnCount - 1) / lstGames.ColumnCount;
-				int num2 = Dpi.U(lstGames.ClientSize.Height);
-				int val = ((num > 0 && num <= 3) ? ((num2 - 4 - Math.Max(0, num - 1) * lstGames.CardGap) / num - 32) : 170);
+				int columnCountRatio = (lstGames.VisibleItemCount + lstGames.ColumnCount - 1) / lstGames.ColumnCount;
+				int uResult = Dpi.U(lstGames.ClientSize.Height);
+				int val = ((columnCountRatio > 0 && columnCountRatio <= 3) ? ((uResult - 4 - Math.Max(0, columnCountRatio - 1) * lstGames.CardGap) / columnCountRatio - 32) : 170);
 				lstGames.PreferredCardHeight = Math.Max(128, Math.Min(170, val));
 			}
 		}
@@ -889,10 +889,10 @@ namespace PaviseApp
 			{
 				if (e.Button == MouseButtons.Left)
 				{
-					int num = lstWhite.IndexFromPoint(e.Location);
-					if (num >= 0)
+					int selectedIndexValue = lstWhite.IndexFromPoint(e.Location);
+					if (selectedIndexValue >= 0)
 					{
-						lstWhite.SelectedIndex = num;
+						lstWhite.SelectedIndex = selectedIndexValue;
 						ShowSelectedAutomaticExemption();
 					}
 				}
@@ -921,8 +921,8 @@ namespace PaviseApp
 				ownedMenu.Dispose();
 			};
 			whitePanel.Controls.Add(lstWhite);
-			Control[] array = new Control[3] { pageWhitelist, whitePanel, lstWhite };
-			foreach (Control control in array)
+			Control[] controlItems = new Control[3] { pageWhitelist, whitePanel, lstWhite };
+			foreach (Control control in controlItems)
 			{
 				control.AllowDrop = true;
 				control.DragEnter += OnWhiteDragEnter;

@@ -37,26 +37,26 @@ namespace PaviseApp
 		{
 			irq = null;
 			idle = null;
-			int num = Math.Min(64, Environment.ProcessorCount);
-			int num2 = Marshal.SizeOf(typeof(ProcessorPerf));
-			IntPtr intPtr = Marshal.AllocHGlobal(num2 * num);
+			int processorCountLimit = Math.Min(64, Environment.ProcessorCount);
+			int sizeOfResult = Marshal.SizeOf(typeof(ProcessorPerf));
+			IntPtr intPtr = Marshal.AllocHGlobal(sizeOfResult * processorCountLimit);
 			try
 			{
 				int returned;
-				if (NtQuerySystemInformation(8, intPtr, num2 * num, out returned) != 0)
+				if (NtQuerySystemInformation(8, intPtr, sizeOfResult * processorCountLimit, out returned) != 0)
 				{
 					return false;
 				}
-				int num3 = Math.Min(num, returned / num2);
-				if (num3 <= 0)
+				int processorCountLimitLimit = Math.Min(processorCountLimit, returned / sizeOfResult);
+				if (processorCountLimitLimit <= 0)
 				{
 					return false;
 				}
-				irq = new long[num3];
-				idle = new long[num3];
-				for (int i = 0; i < num3; i++)
+				irq = new long[processorCountLimitLimit];
+				idle = new long[processorCountLimitLimit];
+				for (int i = 0; i < processorCountLimitLimit; i++)
 				{
-					ProcessorPerf processorPerf = (ProcessorPerf)Marshal.PtrToStructure((IntPtr)((long)intPtr + i * num2), typeof(ProcessorPerf));
+					ProcessorPerf processorPerf = (ProcessorPerf)Marshal.PtrToStructure((IntPtr)((long)intPtr + i * sizeOfResult), typeof(ProcessorPerf));
 					irq[i] = processorPerf.DpcTime + processorPerf.InterruptTime;
 					idle[i] = processorPerf.IdleTime;
 				}
@@ -100,10 +100,10 @@ namespace PaviseApp
 				{
 					progress(Math.Min(1f, (float)stopwatch.ElapsedMilliseconds / (float)windowMs));
 				}
-				int num = windowMs - (int)stopwatch.ElapsedMilliseconds;
-				if (num > 0)
+				int remainingWindowMs = windowMs - (int)stopwatch.ElapsedMilliseconds;
+				if (remainingWindowMs > 0)
 				{
-					Thread.Sleep(Math.Min(200, num));
+					Thread.Sleep(Math.Min(200, remainingWindowMs));
 				}
 			}
 			if (cancelled != null && cancelled())
@@ -116,8 +116,8 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			double num2 = (double)stopwatch.ElapsedTicks * (10000000.0 / (double)Stopwatch.Frequency);
-			if (irq2.Length != irq.Length || num2 <= 0.0)
+			double scaledElapsedTicks = (double)stopwatch.ElapsedTicks * (10000000.0 / (double)Stopwatch.Frequency);
+			if (irq2.Length != irq.Length || scaledElapsedTicks <= 0.0)
 			{
 				return null;
 			}
@@ -125,15 +125,15 @@ namespace PaviseApp
 			{
 				progress(1f);
 			}
-			double[] array = new double[irq.Length];
-			double num3 = 0.0;
+			double[] measuredValueItems = new double[irq.Length];
+			double measuredValue = 0.0;
 			for (int i = 0; i < irq.Length; i++)
 			{
-				array[i] = (double)Math.Max(0L, irq2[i] - irq[i]) / num2;
-				num3 += (double)Math.Max(0L, idle2[i] - idle[i]) / num2;
+				measuredValueItems[i] = (double)Math.Max(0L, irq2[i] - irq[i]) / scaledElapsedTicks;
+				measuredValue += (double)Math.Max(0L, idle2[i] - idle[i]) / scaledElapsedTicks;
 			}
-			cpuBusy = Math.Max(0.0, Math.Min(1.0, 1.0 - num3 / (double)irq.Length));
-			return array;
+			cpuBusy = Math.Max(0.0, Math.Min(1.0, 1.0 - measuredValue / (double)irq.Length));
+			return measuredValueItems;
 		}
 	}
 }

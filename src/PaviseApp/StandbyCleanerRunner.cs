@@ -182,7 +182,7 @@ namespace PaviseApp
 				Request request = current;
 				StandbyCleanerResult standbyCleanerResult;
 				int nativeStatus;
-				bool flag;
+				bool loopReady;
 				if (request == null)
 				{
 					wake.WaitOne();
@@ -265,7 +265,7 @@ namespace PaviseApp
 						{
 							ActionFailureStore.Trip("GmStandbyCleanerV2", "system", string.Concat(standbyCleanerResult, " | 0x", nativeStatus.ToString("X8")));
 						}
-						flag = false;
+						loopReady = false;
 						lock (gate)
 						{
 							if (closing || !object.ReferenceEquals(current, request))
@@ -280,7 +280,7 @@ namespace PaviseApp
 							{
 								current = null;
 								faultedCycles.Add(request.Cycle);
-								flag = true;
+								loopReady = true;
 							}
 							else if (standbyCleanerResult == StandbyCleanerResult.InvalidOptions)
 							{
@@ -292,7 +292,7 @@ namespace PaviseApp
 				}
 				continue;
 				ReportCleanerFault:
-				if (flag && onFault != null)
+				if (loopReady && onFault != null)
 				{
 					try
 					{

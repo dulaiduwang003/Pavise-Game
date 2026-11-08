@@ -13,13 +13,13 @@ namespace PaviseApp
 		{
 			try
 			{
-				byte[] array = new byte[712];
+				byte[] rawBytes = new byte[712];
 				UIntPtr read;
-				if (!ReadProcessMemory(new IntPtr(-1), new IntPtr(2147352576), array, new UIntPtr((uint)array.Length), out read) || read.ToUInt64() != (ulong)array.Length)
+				if (!ReadProcessMemory(new IntPtr(-1), new IntPtr(2147352576), rawBytes, new UIntPtr((uint)rawBytes.Length), out read) || read.ToUInt64() != (ulong)rawBytes.Length)
 				{
 					return null;
 				}
-				if (BitConverter.ToUInt32(array, 620) != 10)
+				if (BitConverter.ToUInt32(rawBytes, 620) != 10)
 				{
 					return null;
 				}
@@ -28,7 +28,7 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				return Create(result, BitConverter.ToUInt32(array, 708));
+				return Create(result, BitConverter.ToUInt32(rawBytes, 708));
 			}
 			catch
 			{
@@ -51,10 +51,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = identity.Split(':');
+			string[] identityParts = identity.Split(':');
 			Guid result;
 			uint result2;
-			if (array.Length == 3 && array[0] == "boot2" && Guid.TryParseExact(array[1], "N", out result) && result != Guid.Empty && uint.TryParse(array[2], NumberStyles.None, CultureInfo.InvariantCulture, out result2))
+			if (identityParts.Length == 3 && identityParts[0] == "boot2" && Guid.TryParseExact(identityParts[1], "N", out result) && result != Guid.Empty && uint.TryParse(identityParts[2], NumberStyles.None, CultureInfo.InvariantCulture, out result2))
 			{
 				return result2 != 0;
 			}

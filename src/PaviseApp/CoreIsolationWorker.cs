@@ -170,8 +170,8 @@ namespace PaviseApp
 				{
 					try
 					{
-						string text;
-						while ((text = Console.ReadLine()) != null && text.Length <= 256 && commands.TryAdd(text))
+						string line;
+						while ((line = Console.ReadLine()) != null && line.Length <= 256 && commands.TryAdd(line))
 						{
 						}
 					}
@@ -203,13 +203,13 @@ namespace PaviseApp
 						stopwatch.Restart();
 						if (item == "STOP")
 						{
-							bool flag = coreIsolationEngine.Restore();
-							Console.WriteLine(flag ? "OK" : ("ERR " + coreIsolationEngine.Error));
-							return flag;
+							bool restoreSucceeded = coreIsolationEngine.Restore();
+							Console.WriteLine(restoreSucceeded ? "OK" : ("ERR " + coreIsolationEngine.Error));
+							return restoreSucceeded;
 						}
-						bool flag2 = Execute(coreIsolationEngine, item);
-						Console.WriteLine(flag2 ? "OK" : ("ERR " + (coreIsolationEngine.Error ?? "protocol")));
-						if (!flag2)
+						bool executeSucceeded = Execute(coreIsolationEngine, item);
+						Console.WriteLine(executeSucceeded ? "OK" : ("ERR " + (coreIsolationEngine.Error ?? "protocol")));
+						if (!executeSucceeded)
 						{
 							break;
 						}
@@ -228,16 +228,16 @@ namespace PaviseApp
 			{
 				return engine.Audit();
 			}
-			string[] array = line.Split(' ');
+			string[] lineParts = line.Split(' ');
 			ulong result;
 			int result2;
 			long result3;
 			ulong result4;
-			if (array.Length == 5 && (array[0] == "BEGIN" || array[0] == "MANUAL") && ulong.TryParse(array[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result) && int.TryParse(array[2], out result2) && long.TryParse(array[3], out result3) && ulong.TryParse(array[4], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4))
+			if (lineParts.Length == 5 && (lineParts[0] == "BEGIN" || lineParts[0] == "MANUAL") && ulong.TryParse(lineParts[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result) && int.TryParse(lineParts[2], out result2) && long.TryParse(lineParts[3], out result3) && ulong.TryParse(lineParts[4], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4))
 			{
-				return engine.Begin(result, result2, result3, result4, array[0] == "MANUAL");
+				return engine.Begin(result, result2, result3, result4, lineParts[0] == "MANUAL");
 			}
-			if (array.Length == 4 && array[0] == "ALLOW" && int.TryParse(array[1], out result2) && long.TryParse(array[2], out result3) && ulong.TryParse(array[3], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4))
+			if (lineParts.Length == 4 && lineParts[0] == "ALLOW" && int.TryParse(lineParts[1], out result2) && long.TryParse(lineParts[2], out result3) && ulong.TryParse(lineParts[3], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4))
 			{
 				if (engine.Allow(result2, result3, result4))
 				{
@@ -245,7 +245,7 @@ namespace PaviseApp
 				}
 				return false;
 			}
-			if (array.Length == 3 && array[0] == "DROP" && int.TryParse(array[1], out result2) && long.TryParse(array[2], out result3))
+			if (lineParts.Length == 3 && lineParts[0] == "DROP" && int.TryParse(lineParts[1], out result2) && long.TryParse(lineParts[2], out result3))
 			{
 				return engine.Drop(result2, result3);
 			}

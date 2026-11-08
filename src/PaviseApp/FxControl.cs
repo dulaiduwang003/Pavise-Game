@@ -161,10 +161,10 @@ namespace PaviseApp
 
 		protected virtual bool StepAll()
 		{
-			bool flag = hover.Step();
-			bool flag2 = press.Step();
+			bool stepSucceeded = hover.Step();
+			bool stepSucceeded2 = press.Step();
 			bool result = StepBusy();
-			if (!flag && !flag2)
+			if (!stepSucceeded && !stepSucceeded2)
 			{
 				return result;
 			}

@@ -89,11 +89,11 @@ namespace PaviseApp
 
 		public void SetSilently(bool v)
 		{
-			float num = (v ? 1f : 0f);
-			if (isOn != v || colorBlend.Value != num || colorBlend.Target != num)
+			float measuredValue = (v ? 1f : 0f);
+			if (isOn != v || colorBlend.Value != measuredValue || colorBlend.Target != measuredValue)
 			{
 				isOn = v;
-				colorBlend.Set(num);
+				colorBlend.Set(measuredValue);
 				Invalidate();
 				NotifyStateChange();
 			}
@@ -117,9 +117,9 @@ namespace PaviseApp
 
 		protected override bool StepAll()
 		{
-			bool flag = base.StepAll();
+			bool stepAllSucceeded = base.StepAll();
 			bool result = colorBlend.Step();
-			if (!flag)
+			if (!stepAllSucceeded)
 			{
 				return result;
 			}
@@ -198,17 +198,17 @@ namespace PaviseApp
 			}
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-			int num = Theme.S(22);
-			int num2 = Theme.S(3);
-			if (num > base.Height)
+			int scaledDimension = Theme.S(22);
+			int scaledDimension2 = Theme.S(3);
+			if (scaledDimension > base.Height)
 			{
-				num = base.Height;
+				scaledDimension = base.Height;
 			}
-			int num3 = (string.IsNullOrEmpty(Text) ? Math.Max(Theme.S(20), base.Width - 1) : Theme.S(44));
-			int num4 = num - num2 * 2;
-			Rectangle rectangle = new Rectangle(0, (base.Height - num) / 2, num3, num);
+			int sLimit = (string.IsNullOrEmpty(Text) ? Math.Max(Theme.S(20), base.Width - 1) : Theme.S(44));
+			int width = scaledDimension - scaledDimension2 * 2;
+			Rectangle rectangle = new Rectangle(0, (base.Height - scaledDimension) / 2, sLimit, scaledDimension);
 			float value = colorBlend.Value;
-			using (GraphicsPath path = Theme.Rounded(rectangle, num / 2))
+			using (GraphicsPath path = Theme.Rounded(rectangle, scaledDimension / 2))
 			{
 				using (SolidBrush brush = new SolidBrush(Theme.TrackOff))
 				{
@@ -236,33 +236,33 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (num4 > 0)
+			if (width > 0)
 			{
-				int num5 = (isOn ? (rectangle.Right - num2 - num4) : (rectangle.X + num2));
-				int num6 = rectangle.Y + num2;
+				int left = (isOn ? (rectangle.Right - scaledDimension2 - width) : (rectangle.X + scaledDimension2));
+				int top = rectangle.Y + scaledDimension2;
 				using (SolidBrush brush4 = new SolidBrush(Col.Alpha(Color.Black, 70)))
 				{
-					graphics.FillEllipse(brush4, num5, num6 + Theme.S(1), num4, num4);
+					graphics.FillEllipse(brush4, left, top + Theme.S(1), width, width);
 				}
 				using (SolidBrush brush5 = new SolidBrush(isOn ? DsPalette.KnobOn : DsPalette.KnobOff))
 				{
-					graphics.FillEllipse(brush5, num5, num6, num4, num4);
+					graphics.FillEllipse(brush5, left, top, width, width);
 				}
 			}
 			if (!string.IsNullOrEmpty(Text))
 			{
-				int num7 = num3 + Theme.S(12);
-				TextRenderer.DrawText(graphics, Text, Font, new Rectangle(num7, 0, base.Width - num7, base.Height), ForeColor, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+				int sLimitOffset = sLimit + Theme.S(12);
+				TextRenderer.DrawText(graphics, Text, Font, new Rectangle(sLimitOffset, 0, base.Width - sLimitOffset, base.Height), ForeColor, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
 			}
-			PaintBusy(graphics, new Rectangle(0, 0, num3, base.Height), null);
+			PaintBusy(graphics, new Rectangle(0, 0, sLimit, base.Height), null);
 			if (!base.Enabled)
 			{
 				DsPaint.Veil(graphics, base.ClientRectangle, Col.Alpha(Theme.Card, 105));
 			}
 			if (base.WantsFocusCue)
 			{
-				int num8 = Theme.S(2);
-				DsFocus.Draw(graphics, Rectangle.Intersect(Rectangle.Inflate(rectangle, num8, num8), base.ClientRectangle), Theme.Fg, base.EffBg);
+				int scaledDimension3 = Theme.S(2);
+				DsFocus.Draw(graphics, Rectangle.Intersect(Rectangle.Inflate(rectangle, scaledDimension3, scaledDimension3), base.ClientRectangle), Theme.Fg, base.EffBg);
 			}
 		}
 	}

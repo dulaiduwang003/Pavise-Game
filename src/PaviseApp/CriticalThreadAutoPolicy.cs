@@ -150,37 +150,37 @@ namespace PaviseApp
 				return null;
 			}
 			// A selected logical processor is sufficient; reservations still exclude its entire physical core.
-			ulong[] array = physical.Where((ulong x) => x != 0 && (x & allowed) != 0 && (x & reserved) == 0).ToArray();
-			if (array.Length - count < 2)
+			ulong[] whereItems = physical.Where((ulong x) => x != 0 && (x & allowed) != 0 && (x & reserved) == 0).ToArray();
+			if (whereItems.Length - count < 2)
 			{
 				return null;
 			}
-			ulong[] array2 = array;
-			if (performance != 0 && array2.Count((ulong x) => (x & performance) == x) >= count)
+			ulong[] numericValueItems = whereItems;
+			if (performance != 0 && numericValueItems.Count((ulong x) => (x & performance) == x) >= count)
 			{
-				array2 = array2.Where((ulong x) => (x & performance) == x).ToArray();
+				numericValueItems = numericValueItems.Where((ulong x) => (x & performance) == x).ToArray();
 			}
-			if (array2.Count((ulong x) => (x & 1) == 0) >= count)
+			if (numericValueItems.Count((ulong x) => (x & 1) == 0) >= count)
 			{
-				array2 = array2.Where((ulong x) => (x & 1) == 0).ToArray();
+				numericValueItems = numericValueItems.Where((ulong x) => (x & 1) == 0).ToArray();
 			}
-			if (crowded != 0 && array2.Count((ulong x) => (x & crowded) == 0) >= count)
+			if (crowded != 0 && numericValueItems.Count((ulong x) => (x & crowded) == 0) >= count)
 			{
-				array2 = array2.Where((ulong x) => (x & crowded) == 0).ToArray();
+				numericValueItems = numericValueItems.Where((ulong x) => (x & crowded) == 0).ToArray();
 			}
-			ulong domain = Domain(array2, count, favored, domains, preferredDomain);
+			ulong domain = Domain(numericValueItems, count, favored, domains, preferredDomain);
 			if (domain != 0)
 			{
-				array2 = array2.Where((ulong x) => (x & domain) == x).ToArray();
+				numericValueItems = numericValueItems.Where((ulong x) => (x & domain) == x).ToArray();
 			}
-			ulong[] array3 = (from x in array2
+			ulong[] items = (from x in numericValueItems
 				orderby (x & favored) != 0 descending, x descending
 				select x).ToArray();
-			if (array3.Length < count)
+			if (items.Length < count)
 			{
 				return null;
 			}
-			return (from x in array3.Take(count).Select((ulong x) => x & allowed)
+			return (from x in items.Take(count).Select((ulong x) => x & allowed)
 				select x & (~x + 1)).ToArray();
 		}
 
@@ -210,23 +210,23 @@ namespace PaviseApp
 				return 0uL;
 			}
 			ulong result = 0uL;
-			int num = -1;
-			int num2 = -1;
+			int domainValue = -1;
+			int domainValue2 = -1;
 			foreach (ulong domain in domains)
 			{
 				if (domain == 0)
 				{
 					continue;
 				}
-				ulong[] array = pool.Where((ulong x) => (x & domain) == x).ToArray();
-				if (array.Length >= count)
+				ulong[] whereItems = pool.Where((ulong x) => (x & domain) == x).ToArray();
+				if (whereItems.Length >= count)
 				{
-					int num3 = array.Count((ulong x) => (x & favored) != 0);
-					if (num3 > num || (num3 == num && array.Length > num2))
+					int countResult = whereItems.Count((ulong x) => (x & favored) != 0);
+					if (countResult > domainValue || (countResult == domainValue && whereItems.Length > domainValue2))
 					{
 						result = domain;
-						num = num3;
-						num2 = array.Length;
+						domainValue = countResult;
+						domainValue2 = whereItems.Length;
 					}
 				}
 			}

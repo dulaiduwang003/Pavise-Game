@@ -167,12 +167,12 @@ namespace PaviseApp
 			}
             string current;
             if (ownedReceipt != null && (!store.Read(out current) || current != ownedReceipt)) return Fail("journal-owner-changed");
-			string text = os.BootIdentity();
-			if (text == null)
+			string bootIdentityResult = os.BootIdentity();
+			if (bootIdentityResult == null)
 			{
 				return Fail("boot-read");
 			}
-			if (text != boot)
+			if (bootIdentityResult != boot)
 			{
 				if (!ClearReceipt())
 				{
@@ -190,27 +190,27 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = raw.Split('|');
+			string[] rawParts = raw.Split('|');
 			ulong v = 0uL;
-			bool flag = array.Length > 0 && array[0] == "3";
-			int num = ((array.Length > 0 && (array[0] == "2" || flag)) ? 6 : 5);
+			bool allConditionsMet = rawParts.Length > 0 && rawParts[0] == "3";
+			int decodeValue = ((rawParts.Length > 0 && (rawParts[0] == "2" || allConditionsMet)) ? 6 : 5);
 			Guid result;
 			ulong v2;
 			ulong v3;
-			if (array.Length < num || array.Length > num + 256 || (array[0] != "1" && array[0] != "2" && !flag) || array[1].Length != 32 || !Guid.TryParseExact(array[1], "N", out result) || result == Guid.Empty || !ParseHex(array[2], out v2) || !ParseHex(array[3], out v3) || (num == 6 && !ParseHex(array[4], out v)) || (array[num - 1] != "0" && array[num - 1] != "1") || v2 == 0 || v3 == 0 || (v3 & ~v2) != 0 || (!flag && (v3 & 1) != 0) || (flag && v != 0) || (v & ~v2) != 0 || (v & v3) != 0)
+			if (rawParts.Length < decodeValue || rawParts.Length > decodeValue + 256 || (rawParts[0] != "1" && rawParts[0] != "2" && !allConditionsMet) || rawParts[1].Length != 32 || !Guid.TryParseExact(rawParts[1], "N", out result) || result == Guid.Empty || !ParseHex(rawParts[2], out v2) || !ParseHex(rawParts[3], out v3) || (decodeValue == 6 && !ParseHex(rawParts[4], out v)) || (rawParts[decodeValue - 1] != "0" && rawParts[decodeValue - 1] != "1") || v2 == 0 || v3 == 0 || (v3 & ~v2) != 0 || (!allConditionsMet && (v3 & 1) != 0) || (allConditionsMet && v != 0) || (v & ~v2) != 0 || (v & v3) != 0)
 			{
 				return false;
 			}
 			List<Entry> list = new List<Entry>();
 			HashSet<int> hashSet = new HashSet<int>();
-			for (int i = num; i < array.Length; i++)
+			for (int i = decodeValue; i < rawParts.Length; i++)
 			{
-				string[] array2 = array[i].Split(',');
+				string[] parts = rawParts[i].Split(',');
 				int result2;
 				long result3;
 				ulong v4;
 				ulong v5;
-				if (array2.Length != 4 || !int.TryParse(array2[0], out result2) || result2 <= 0 || !hashSet.Add(result2) || !long.TryParse(array2[1], out result3) || result3 <= 0 || !ParseHex(array2[2], out v4) || !ParseHex(array2[3], out v5) || (v4 & ~v2) != 0 || (v5 & ~v2) != 0 || (v4 & ~v5) != 0 || (v5 & ~v4 & ~v3) != 0)
+				if (parts.Length != 4 || !int.TryParse(parts[0], out result2) || result2 <= 0 || !hashSet.Add(result2) || !long.TryParse(parts[1], out result3) || result3 <= 0 || !ParseHex(parts[2], out v4) || !ParseHex(parts[3], out v5) || (v4 & ~v2) != 0 || (v5 & ~v2) != 0 || (v4 & ~v5) != 0 || (v5 & ~v4 & ~v3) != 0)
 				{
 					return false;
 				}
@@ -222,12 +222,12 @@ namespace PaviseApp
 					Applied = v5
 				});
 			}
-			boot = array[1];
+			boot = rawParts[1];
 			all = v2;
 			isolated = v3;
 			pre = v;
-			manual = flag;
-			systemPrepared = array[num - 1] == "1";
+			manual = allConditionsMet;
+			systemPrepared = rawParts[decodeValue - 1] == "1";
 			entries.AddRange(list);
             recoveryOwners.AddRange(list); ownedReceipt = raw;
 			return true;
@@ -257,8 +257,8 @@ namespace PaviseApp
 				return Fail("lease-pending");
 			}
 			IsolationCpuState isolationCpuState = os.ReadSystem(IntPtr.Zero);
-			string text = os.BootIdentity();
-			if (isolationCpuState == null || text == null)
+			string bootIdentityResult = os.BootIdentity();
+			if (isolationCpuState == null || bootIdentityResult == null)
 			{
 				return Fail("system-read");
 			}
@@ -270,7 +270,7 @@ namespace PaviseApp
 			{
 				return Fail("invalid-range");
 			}
-			boot = text;
+			boot = bootIdentityResult;
 			all = isolationCpuState.All;
 			isolated = mask;
 			pre = isolationCpuState.Allocated;
@@ -300,9 +300,9 @@ namespace PaviseApp
 				Restore();
 				return false;
 			}
-			bool flag = os.SetSystemAllowed(all & ~isolated & ~pre);
+			bool setSystemAllowedSucceeded = os.SetSystemAllowed(all & ~isolated & ~pre);
 			isolationCpuState = os.ReadSystem(IntPtr.Zero);
-			if (!flag || isolationCpuState == null || isolationCpuState.All != all || isolationCpuState.Allocated != (pre | isolated))
+			if (!setSystemAllowedSucceeded || isolationCpuState == null || isolationCpuState.All != all || isolationCpuState.Allocated != (pre | isolated))
 			{
 				Fail("system-write-readback");
 				Restore();
@@ -398,22 +398,22 @@ namespace PaviseApp
 			{
 				return Fail("system-state-changed");
 			}
-			bool flag = false;
-			for (int num = entries.Count - 1; num >= 0; num--)
+			bool auditReady = false;
+			for (int entriesIndex = entries.Count - 1; entriesIndex >= 0; entriesIndex--)
 			{
-				Entry entry = entries[num];
+				Entry entry = entries[entriesIndex];
 				if (os.Exited(entry.Handle))
 				{
 					os.Close(entry.Handle);
-					entries.RemoveAt(num);
-					flag = true;
+					entries.RemoveAt(entriesIndex);
+					auditReady = true;
 				}
 				else if (!Verify(entry))
 				{
 					return Fail("admission-state-changed");
 				}
 			}
-			if (flag && !Persist())
+			if (auditReady && !Persist())
 			{
 				return Fail("journal-write");
 			}
@@ -488,12 +488,12 @@ namespace PaviseApp
 			}
             string current;
             if (ownedReceipt != null && (!store.Read(out current) || current != ownedReceipt)) return Fail("journal-owner-changed");
-			string text = os.BootIdentity();
-			if (text == null)
+			string bootIdentityResult = os.BootIdentity();
+			if (bootIdentityResult == null)
 			{
 				return Fail("boot-read");
 			}
-			if (text != boot)
+			if (bootIdentityResult != boot)
 			{
 				if (!ClearReceipt())
 				{
@@ -502,12 +502,12 @@ namespace PaviseApp
 				Reset();
 				return true;
 			}
-			bool flag = !systemPrepared;
+			bool isNotSystemPreparedSnapshot = !systemPrepared;
 			IsolationCpuState isolationCpuState = os.ReadSystem(IntPtr.Zero);
 			if (systemPrepared && isolationCpuState != null && isolationCpuState.All == all)
 			{
-				flag = (isolationCpuState.Allocated & isolated) == 0;
-				bool flag2 = true;
+				isNotSystemPreparedSnapshot = (isolationCpuState.Allocated & isolated) == 0;
+				bool restoreCoreReady = true;
 				foreach (Entry entry in entries)
 				{
 					if (entry.Handle == IntPtr.Zero)
@@ -517,30 +517,30 @@ namespace PaviseApp
 					ulong mask;
 					if (entry.Handle == IntPtr.Zero || os.Exited(entry.Handle) || !os.ReadAllowed(entry.Handle, out mask) || mask != entry.Applied)
 					{
-						flag2 = false;
+						restoreCoreReady = false;
 					}
 				}
-				if ((isolationCpuState.Allocated & isolated) == isolated && (isolationCpuState.Allocated == (pre | isolated) || (flag2 && entries.Count > 0)))
+				if ((isolationCpuState.Allocated & isolated) == isolated && (isolationCpuState.Allocated == (pre | isolated) || (restoreCoreReady && entries.Count > 0)))
 				{
-					ulong num = isolationCpuState.Allocated & ~isolated;
-					bool flag3 = os.SetSystemAllowed(all & ~num);
+					ulong allocatedMask = isolationCpuState.Allocated & ~isolated;
+					bool setSystemAllowedSucceeded = os.SetSystemAllowed(all & ~allocatedMask);
 					isolationCpuState = os.ReadSystem(IntPtr.Zero);
-					flag = flag3 && isolationCpuState != null && isolationCpuState.All == all && isolationCpuState.Allocated == num;
+					isNotSystemPreparedSnapshot = setSystemAllowedSucceeded && isolationCpuState != null && isolationCpuState.All == all && isolationCpuState.Allocated == allocatedMask;
 				}
 			}
-			if (!flag)
+			if (!isNotSystemPreparedSnapshot)
 			{
 				return Fail("restore-pending");
 			}
-			bool flag4 = true;
+			bool restoreCoreReady2 = true;
 			foreach (Entry entry2 in entries)
 			{
 				if (!RestoreEntry(entry2))
 				{
-					flag4 = false;
+					restoreCoreReady2 = false;
 				}
 			}
-			if (!flag || !flag4)
+			if (!isNotSystemPreparedSnapshot || !restoreCoreReady2)
 			{
 				return Fail("restore-pending");
 			}

@@ -79,20 +79,20 @@ namespace PaviseApp
 			SharedSpiManual.RequirePrimitive(target, false);
 			Effect effect = Find(target);
 			int value = 0;
-			bool flag;
+			bool animationParametersSucceeded;
 			if (effect.Animation)
 			{
 				AnimationInfo animationInfo = default(AnimationInfo);
 				animationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
 				AnimationInfo value2 = animationInfo;
-				flag = AnimationParameters(effect.Get, value2.Size, ref value2, 0u);
+				animationParametersSucceeded = AnimationParameters(effect.Get, value2.Size, ref value2, 0u);
 				value = value2.MinAnimate;
 			}
 			else
 			{
-				flag = Native.SystemParametersInfoGet(effect.Get, 0u, ref value, 0u);
+				animationParametersSucceeded = Native.SystemParametersInfoGet(effect.Get, 0u, ref value, 0u);
 			}
-			if (!flag)
+			if (!animationParametersSucceeded)
 			{
 				throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot read desktop effect: " + target);
 			}
@@ -111,16 +111,16 @@ namespace PaviseApp
 			{
 				throw new FormatException("Invalid desktop effect value");
 			}
-			int num = ((value == "1") ? 1 : 0);
+			int minAnimateValue = ((value == "1") ? 1 : 0);
 			if (effect.Animation)
 			{
 				AnimationInfo animationInfo = default(AnimationInfo);
 				animationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
-				animationInfo.MinAnimate = num;
+				animationInfo.MinAnimate = minAnimateValue;
 				AnimationInfo value2 = animationInfo;
 				return AnimationParameters(effect.Set, value2.Size, ref value2, 2u);
 			}
-			return Native.SystemParametersInfoSet(effect.Set, effect.UiParam ? ((uint)num) : 0u, effect.UiParam ? IntPtr.Zero : new IntPtr(num), 2u);
+			return Native.SystemParametersInfoSet(effect.Set, effect.UiParam ? ((uint)minAnimateValue) : 0u, effect.UiParam ? IntPtr.Zero : new IntPtr(minAnimateValue), 2u);
 		}
 	}
 }

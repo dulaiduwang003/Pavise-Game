@@ -102,7 +102,7 @@ namespace PaviseApp
 			originalMain.RequireCurrent();
 			SpiOwnerIdentity.Sid(sid);
 			string directoryName = Path.GetDirectoryName(store.PathName);
-			bool flag = false;
+			bool initializeCoreReady = false;
 			if (Directory.Exists(directoryName))
 			{
 				if (File.Exists(store.PathName))
@@ -116,7 +116,7 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Existing SPI directory has no valid owner; initialization remains unknown");
 				}
-				flag = true;
+				initializeCoreReady = true;
 			}
 			NoReparse.CheckPath(directoryName);
 			List<PerformanceActionStore.Receipt> list = new List<PerformanceActionStore.Receipt>();
@@ -131,7 +131,7 @@ namespace PaviseApp
 					list.Add(item);
 				}
 			}
-			SpiLegacyMigrationPlan spiLegacyMigrationPlan = ((list.Count == 0 && !flag) ? null : SpiLegacyMigrationPlan.Prepare(sid, store, list, flag));
+			SpiLegacyMigrationPlan spiLegacyMigrationPlan = ((list.Count == 0 && !initializeCoreReady) ? null : SpiLegacyMigrationPlan.Prepare(sid, store, list, initializeCoreReady));
 			originalMain.RequireCurrent();
 			byte[] bytes = new UTF8Encoding(false, true).GetBytes("pavise-spi-initialization-3\nuser_sid\t" + sid + "\nnonce\t" + Guid.NewGuid().ToString("N") + "\nlegacy_closure\tnone\nmain\toriginal-single-instance-lease-v1\n");
 			BootstrapProof proof = new BootstrapProof(mintWitness, originalMain, sid, store.PathName, bytes, spiLegacyMigrationPlan);

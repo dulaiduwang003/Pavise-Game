@@ -38,17 +38,17 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Game image outside its hash budget");
 				}
-				string text;
+				string toLowerInvariantResult;
 				using (SHA256 sHA = SHA256.Create())
 				{
-					text = BitConverter.ToString(sHA.ComputeHash(fileStream)).Replace("-", "").ToLowerInvariant();
+					toLowerInvariantResult = BitConverter.ToString(sHA.ComputeHash(fileStream)).Replace("-", "").ToLowerInvariant();
 				}
 				fileStream.Position = 0L;
-				if (expectedHash != null && expectedHash != text)
+				if (expectedHash != null && expectedHash != toLowerInvariantResult)
 				{
 					throw new GameNvPreparationPending(GameNvPending.Target);
 				}
-				return new GameNvTargetImage(fullPath, fileStream, text);
+				return new GameNvTargetImage(fullPath, fileStream, toLowerInvariantResult);
 			}
 			catch
 			{

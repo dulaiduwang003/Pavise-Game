@@ -44,27 +44,27 @@ namespace PaviseApp
 			Dictionary<long, CoreThreadCandidate> dictionary2 = new Dictionary<long, CoreThreadCandidate>();
 			for (int j = 0; j < after.Ids.Length; j++)
 			{
-				long num = after.Ids[j];
+				long numericValue = after.Ids[j];
 				int value;
-				if (num <= 0 || num > int.MaxValue || after.Created[j] <= 0 || !dictionary.TryGetValue(num, out value) || before.Created[value] != after.Created[j])
+				if (numericValue <= 0 || numericValue > int.MaxValue || after.Created[j] <= 0 || !dictionary.TryGetValue(numericValue, out value) || before.Created[value] != after.Created[j])
 				{
 					continue;
 				}
-				double num2 = (double)(after.Cpu[j] - before.Cpu[value]) / (double)(after.Ticks - before.Ticks);
-				if (!(num2 < minimumShare) && !(num2 > 1.1))
+				double lastValue = (double)(after.Cpu[j] - before.Cpu[value]) / (double)(after.Ticks - before.Ticks);
+				if (!(lastValue < minimumShare) && !(lastValue > 1.1))
 				{
 					CoreThreadCandidate value2;
-					if (!tracked.TryGetValue(num, out value2) || value2.Creation != after.Created[j] || Math.Abs(value2.Last - num2) > 0.25)
+					if (!tracked.TryGetValue(numericValue, out value2) || value2.Creation != after.Created[j] || Math.Abs(value2.Last - lastValue) > 0.25)
 					{
 						CoreThreadCandidate coreThreadCandidate = new CoreThreadCandidate();
-						coreThreadCandidate.Tid = (int)num;
+						coreThreadCandidate.Tid = (int)numericValue;
 						coreThreadCandidate.Creation = after.Created[j];
 						value2 = coreThreadCandidate;
 					}
-					value2.Mean = (value2.Mean * (double)Math.Min(7, value2.Windows) + num2) / (double)(Math.Min(7, value2.Windows) + 1);
+					value2.Mean = (value2.Mean * (double)Math.Min(7, value2.Windows) + lastValue) / (double)(Math.Min(7, value2.Windows) + 1);
 					value2.Windows++;
-					value2.Last = num2;
-					dictionary2[num] = value2;
+					value2.Last = lastValue;
+					dictionary2[numericValue] = value2;
 					if (value2.Windows >= 3)
 					{
 						list.Add(value2);

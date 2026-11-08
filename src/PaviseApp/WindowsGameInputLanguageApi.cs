@@ -163,12 +163,12 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				long num = (long)(((ulong)creation.High << 32) | creation.Low);
-				if (num <= 0)
+				long lowMask = (long)(((ulong)creation.High << 32) | creation.Low);
+				if (lowMask <= 0)
 				{
 					return null;
 				}
-				ProcessLease result = new ProcessLease(intPtr, num);
+				ProcessLease result = new ProcessLease(intPtr, lowMask);
 				intPtr = IntPtr.Zero;
 				return result;
 			}
@@ -197,17 +197,17 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			IntPtr[] array = new IntPtr[keyboardLayoutList];
-			int keyboardLayoutList2 = GetKeyboardLayoutList(array.Length, array);
-			if (keyboardLayoutList2 <= 0 || keyboardLayoutList2 > array.Length)
+			IntPtr[] nativeHandleItems = new IntPtr[keyboardLayoutList];
+			int keyboardLayoutList2 = GetKeyboardLayoutList(nativeHandleItems.Length, nativeHandleItems);
+			if (keyboardLayoutList2 <= 0 || keyboardLayoutList2 > nativeHandleItems.Length)
 			{
 				return null;
 			}
-			if (keyboardLayoutList2 != array.Length)
+			if (keyboardLayoutList2 != nativeHandleItems.Length)
 			{
-				Array.Resize(ref array, keyboardLayoutList2);
+				Array.Resize(ref nativeHandleItems, keyboardLayoutList2);
 			}
-			return array;
+			return nativeHandleItems;
 		}
 
 		public IntPtr GetKeyboardLayout(uint threadId)

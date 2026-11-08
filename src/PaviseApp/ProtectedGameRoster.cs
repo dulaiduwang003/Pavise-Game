@@ -17,20 +17,20 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = rendererName;
-			int num = text.LastIndexOfAny(new char[2] { '\\', '/' });
-			if (num >= 0)
+			string rendererNameSnapshot = rendererName;
+			int lastIndexOfAnyResult = rendererNameSnapshot.LastIndexOfAny(new char[2] { '\\', '/' });
+			if (lastIndexOfAnyResult >= 0)
 			{
-				text = text.Substring(num + 1);
+				rendererNameSnapshot = rendererNameSnapshot.Substring(lastIndexOfAnyResult + 1);
 			}
-			if (!text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			if (!rendererNameSnapshot.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				text += ".exe";
+				rendererNameSnapshot += ".exe";
 			}
-			text = text.Trim();
-			if (text.Length != 0 && text.IndexOf(';') < 0 && text.IndexOf('|') < 0)
+			rendererNameSnapshot = rendererNameSnapshot.Trim();
+			if (rendererNameSnapshot.Length != 0 && rendererNameSnapshot.IndexOf(';') < 0 && rendererNameSnapshot.IndexOf('|') < 0)
 			{
-				return text.ToLowerInvariant();
+				return rendererNameSnapshot.ToLowerInvariant();
 			}
 			return null;
 		}
@@ -42,13 +42,13 @@ namespace PaviseApp
 				return cache;
 			}
 			Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-			string[] array = Settings.LoadStr("AcProtectedGames", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string text in array)
+			string[] loadStrParts = Settings.LoadStr("AcProtectedGames", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string entryText in loadStrParts)
 			{
-				int num = text.LastIndexOf('|');
-				if (num > 0 && num < text.Length - 1)
+				int matchIndex = entryText.LastIndexOf('|');
+				if (matchIndex > 0 && matchIndex < entryText.Length - 1)
 				{
-					dictionary[text.Substring(0, num)] = text.Substring(num + 1);
+					dictionary[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
 				}
 			}
 			cache = dictionary;
@@ -73,22 +73,22 @@ namespace PaviseApp
 
 		public static bool Contains(string rendererName)
 		{
-			string text = Norm(rendererName);
-			if (text == null)
+			string normResult = Norm(rendererName);
+			if (normResult == null)
 			{
 				return false;
 			}
 			lock (lk)
 			{
 				string value;
-				return Load().TryGetValue(text, out value) && Current(value);
+				return Load().TryGetValue(normResult, out value) && Current(value);
 			}
 		}
 
 		public static void Remember(string rendererName)
 		{
-			string text = Norm(rendererName);
-			if (text == null)
+			string normResult = Norm(rendererName);
+			if (normResult == null)
 			{
 				return;
 			}
@@ -96,32 +96,32 @@ namespace PaviseApp
 			{
 				Dictionary<string, string> dictionary = Load();
 				string value;
-				if (dictionary.TryGetValue(text, out value) && Current(value))
+				if (dictionary.TryGetValue(normResult, out value) && Current(value))
 				{
 					return;
 				}
-				dictionary[text] = App.Version;
+				dictionary[normResult] = App.Version;
 				Persist();
 			}
-			Logger.Log(Lang.T("log.protectedgameroster.1") + text + Lang.T("log.protectedgameroster.2"));
+			Logger.Log(Lang.T("log.protectedgameroster.1") + normResult + Lang.T("log.protectedgameroster.2"));
 		}
 
 		public static bool Forget(string rendererName)
 		{
-			string text = Norm(rendererName);
-			if (text == null)
+			string normResult = Norm(rendererName);
+			if (normResult == null)
 			{
 				return false;
 			}
 			lock (lk)
 			{
-				if (!Load().Remove(text))
+				if (!Load().Remove(normResult))
 				{
 					return false;
 				}
 				Persist();
 			}
-			Logger.Log(Lang.T("log.protectedgameroster.3") + text);
+			Logger.Log(Lang.T("log.protectedgameroster.3") + normResult);
 			return true;
 		}
 

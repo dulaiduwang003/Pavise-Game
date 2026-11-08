@@ -373,15 +373,15 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			int num = text.IndexOf('\n');
-			int num2 = text.IndexOf('\r');
-			if (num < 0 || (num2 >= 0 && num2 < num))
+			int matchIndex = text.IndexOf('\n');
+			int matchIndex2 = text.IndexOf('\r');
+			if (matchIndex < 0 || (matchIndex2 >= 0 && matchIndex2 < matchIndex))
 			{
-				num = num2;
+				matchIndex = matchIndex2;
 			}
-			if (num >= 0)
+			if (matchIndex >= 0)
 			{
-				return text.Substring(0, num);
+				return text.Substring(0, matchIndex);
 			}
 			return text;
 		}
@@ -419,8 +419,8 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = exceptionalWords;
-			foreach (string value in array)
+			string[] exceptionalWordsSnapshot = exceptionalWords;
+			foreach (string value in exceptionalWordsSnapshot)
 			{
 				if (statusText.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
 				{
@@ -441,8 +441,8 @@ namespace PaviseApp
 			string shownSummary = ShownSummary;
 			string shownStatus = ShownStatus;
 			string shownEffect = ShownEffect;
-			bool flag = observedTitle != shownTitle || observedSummary != shownSummary || observedStatus != shownStatus || observedLock != base.LockText || observedEffect != shownEffect;
-			bool flag2 = observedStatusColor != base.StatusColor;
+			bool anyConditionMet = observedTitle != shownTitle || observedSummary != shownSummary || observedStatus != shownStatus || observedLock != base.LockText || observedEffect != shownEffect;
+			bool matchesObservedStatusColor = observedStatusColor != base.StatusColor;
 			observedTitle = shownTitle;
 			observedSummary = shownSummary;
 			observedStatus = shownStatus;
@@ -450,7 +450,7 @@ namespace PaviseApp
 			observedEffect = shownEffect;
 			observedStatusColor = base.StatusColor;
 			SyncAccessibility();
-			if (flag)
+			if (anyConditionMet)
 			{
 				cachedPresentation = null;
 				if (PresentationChanged != null)
@@ -458,7 +458,7 @@ namespace PaviseApp
 					PresentationChanged();
 				}
 			}
-			else if (flag2 && PresentationStateChanged != null)
+			else if (matchesObservedStatusColor && PresentationStateChanged != null)
 			{
 				PresentationStateChanged();
 			}
@@ -470,8 +470,8 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string text = ((base.Hosted == null) ? "" : (base.Hosted.AccessibleDescription ?? ""));
-			if (!(accessibleTitle == base.Title) || !(accessibleDisplayTitle == ShownTitle) || !(accessibleSummary == ShownSummary) || !(accessibleEffect == EffectText) || !(accessibleStatus == base.StatusText) || !(accessibleLock == base.LockText) || !(accessibleDetail == base.Desc) || !(accessibleHost == text))
+			string accessibleDescriptionOffset = ((base.Hosted == null) ? "" : (base.Hosted.AccessibleDescription ?? ""));
+			if (!(accessibleTitle == base.Title) || !(accessibleDisplayTitle == ShownTitle) || !(accessibleSummary == ShownSummary) || !(accessibleEffect == EffectText) || !(accessibleStatus == base.StatusText) || !(accessibleLock == base.LockText) || !(accessibleDetail == base.Desc) || !(accessibleHost == accessibleDescriptionOffset))
 			{
 				accessibleTitle = base.Title;
 				accessibleDisplayTitle = ShownTitle;
@@ -480,11 +480,11 @@ namespace PaviseApp
 				accessibleStatus = base.StatusText;
 				accessibleLock = base.LockText;
 				accessibleDetail = base.Desc;
-				accessibleHost = text;
+				accessibleHost = accessibleDescriptionOffset;
 				detailsText = base.Title + "\r\n\r\n" + base.Desc + ((base.StatusText.Length == 0) ? "" : ("\r\n\r\n" + base.StatusText)) + ((base.LockText.Length == 0 || string.Equals(base.LockText, base.StatusText, StringComparison.Ordinal)) ? "" : ("\r\n" + base.LockText)) + "\r\n" + EffectText;
-				if (text.Length > 0 && text != base.Desc && !base.Desc.Contains(text))
+				if (accessibleDescriptionOffset.Length > 0 && accessibleDescriptionOffset != base.Desc && !base.Desc.Contains(accessibleDescriptionOffset))
 				{
-					detailsText = detailsText + "\r\n\r\n" + text;
+					detailsText = detailsText + "\r\n\r\n" + accessibleDescriptionOffset;
 				}
 				base.AccessibleName = ShownTitle;
 				base.AccessibleDescription = detailsText;
@@ -517,57 +517,57 @@ namespace PaviseApp
 		{
 			Font font = DsType.Font(DsText.Label, true);
 			string[] labels = picker.Labels;
-			int num = ((labels != null) ? labels.Length : 0);
-			bool flag = measuredPicker == picker && measuredPickerFont == font && measuredPickerScale == Dpi.Scale && measuredPickerLabels != null && measuredPickerLabels.Length == num;
-			if (flag)
+			int labelsCount = ((labels != null) ? labels.Length : 0);
+			bool allConditionsMet = measuredPicker == picker && measuredPickerFont == font && measuredPickerScale == Dpi.Scale && measuredPickerLabels != null && measuredPickerLabels.Length == labelsCount;
+			if (allConditionsMet)
 			{
-				for (int i = 0; i < num; i++)
+				for (int i = 0; i < labelsCount; i++)
 				{
 					if (measuredPickerLabels[i] != labels[i])
 					{
-						flag = false;
+						allConditionsMet = false;
 						break;
 					}
 				}
 			}
-			if (flag)
+			if (allConditionsMet)
 			{
 				return measuredPickerWidth;
 			}
-			int num2 = 0;
-			for (int j = 0; j < num; j++)
+			int pickerWidthValue = 0;
+			for (int j = 0; j < labelsCount; j++)
 			{
-				num2 = Math.Max(num2, TextRenderer.MeasureText(labels[j] ?? "", font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
+				pickerWidthValue = Math.Max(pickerWidthValue, TextRenderer.MeasureText(labels[j] ?? "", font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
 			}
 			measuredPicker = picker;
 			measuredPickerFont = font;
 			measuredPickerScale = Dpi.Scale;
 			measuredPickerLabels = ((labels == null) ? new string[0] : ((string[])labels.Clone()));
-			measuredPickerWidth = Math.Max(Theme.S(310), num * (num2 + Theme.S(18)) + Math.Max(0, num - 1) * Theme.S(4));
+			measuredPickerWidth = Math.Max(Theme.S(310), labelsCount * (pickerWidthValue + Theme.S(18)) + Math.Max(0, labelsCount - 1) * Theme.S(4));
 			return measuredPickerWidth;
 		}
 
 		private int LayoutPresentation(int width, bool apply)
 		{
-			int num = Theme.S((width < Theme.S(440)) ? 16 : 24);
-			int num2 = Theme.S(34);
-			int num3 = Theme.S(16);
-			int num4 = num + num2 + num3;
-			int num5 = Math.Max(num4 + 1, width - num);
-			int num6 = Math.Max(1, num5 - num4);
-			bool flag = base.Hosted is Toggle;
-			bool flag2 = flag || base.Hosted is QuantumProfilePicker || base.Hosted is TechSelect || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
-			int num7 = ((base.Hosted != null) ? (flag ? Theme.S(94) : ((base.Hosted is TierPicker) ? Math.Min(PickerWidth((TierPicker)base.Hosted), num6) : ((base.Hosted is QuantumProfilePicker) ? Math.Min(Theme.S(230), num6) : Math.Min((intrinsicHostWidth > 0) ? intrinsicHostWidth : base.Hosted.Width, num6)))) : 0);
+			int scaledDimension = Theme.S((width < Theme.S(440)) ? 16 : 24);
+			int scaledDimension2 = Theme.S(34);
+			int scaledDimension3 = Theme.S(16);
+			int scaledDimension3Offset = scaledDimension + scaledDimension2 + scaledDimension3;
+			int lowerBound = Math.Max(scaledDimension3Offset + 1, width - scaledDimension);
+			int lowerBound2 = Math.Max(1, lowerBound - scaledDimension3Offset);
+			bool matchesHosted = base.Hosted is Toggle;
+			bool anyConditionMet = matchesHosted || base.Hosted is QuantumProfilePicker || base.Hosted is TechSelect || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
+			int scaledDimension4 = ((base.Hosted != null) ? (matchesHosted ? Theme.S(94) : ((base.Hosted is TierPicker) ? Math.Min(PickerWidth((TierPicker)base.Hosted), lowerBound2) : ((base.Hosted is QuantumProfilePicker) ? Math.Min(Theme.S(230), lowerBound2) : Math.Min((intrinsicHostWidth > 0) ? intrinsicHostWidth : base.Hosted.Width, lowerBound2)))) : 0);
             bool widePicker = FullWidthPicker && base.Hosted is TierPicker;
-            if (widePicker) num7 = Math.Max(1, width - 2 * num);
-			int num8 = ((base.Hosted != null) ? (flag ? Theme.S(40) : Math.Max((intrinsicHostHeight > 0) ? intrinsicHostHeight : base.Hosted.Height, Theme.S(30))) : 0);
-			if (flag2 && num6 - num7 - Theme.S(16) < Theme.S(96))
+            if (widePicker) scaledDimension4 = Math.Max(1, width - 2 * scaledDimension);
+			int scaledDimension5 = ((base.Hosted != null) ? (matchesHosted ? Theme.S(40) : Math.Max((intrinsicHostHeight > 0) ? intrinsicHostHeight : base.Hosted.Height, Theme.S(30))) : 0);
+			if (anyConditionMet && lowerBound2 - scaledDimension4 - Theme.S(16) < Theme.S(96))
 			{
-				flag2 = false;
+				anyConditionMet = false;
 			}
-			int num9 = Math.Max(1, num6 - (flag2 ? (num7 + Theme.S(20)) : 0));
-			int num10 = Theme.S(28);
-			int val = Math.Max(1, num9 - num10 - Theme.S(5));
+			int lowerBound3 = Math.Max(1, lowerBound2 - (anyConditionMet ? (scaledDimension4 + Theme.S(20)) : 0));
+			int scaledDimension6 = Theme.S(28);
+			int val = Math.Max(1, lowerBound3 - scaledDimension6 - Theme.S(5));
 			string shownTitle = ShownTitle;
 			string shownSummary = ShownSummary;
 			string shownStatus = ShownStatus;
@@ -577,7 +577,7 @@ namespace PaviseApp
 			Font font3 = Theme.UI(8.5f, false);
 			Font font4 = Theme.UI(7.7f, false);
 			Presentation presentation = cachedPresentation;
-			if (presentation != null && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.FullWidthPicker == FullWidthPicker && presentation.HostWidth == num7 && presentation.HostHeight == num8 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && presentation.Effect == shownEffect && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, font2) && object.ReferenceEquals(presentation.LockFont, font3) && object.ReferenceEquals(presentation.TagFont, font4))
+			if (presentation != null && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.FullWidthPicker == FullWidthPicker && presentation.HostWidth == scaledDimension4 && presentation.HostHeight == scaledDimension5 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && presentation.Effect == shownEffect && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, font2) && object.ReferenceEquals(presentation.LockFont, font3) && object.ReferenceEquals(presentation.TagFont, font4))
 			{
 				if (apply)
 				{
@@ -585,82 +585,82 @@ namespace PaviseApp
 				}
 				return presentation.Height;
 			}
-			bool flag3 = width < Theme.S(440);
+			bool matchesWidth = width < Theme.S(440);
 			int val2 = Measure(shownTitle, font, val, Theme.S(24));
-			int num11 = ((shownSummary.Length != 0) ? (flag3 ? Measure(shownSummary, font2, num9, Theme.S(18)) : Theme.S(20)) : 0);
-			int num12 = Math.Max(val2, num10);
-			int num13 = num12;
-			Rectangle titleBounds = new Rectangle(num4, 0, val, val2);
+			int measureResult = ((shownSummary.Length != 0) ? (matchesWidth ? Measure(shownSummary, font2, lowerBound3, Theme.S(18)) : Theme.S(20)) : 0);
+			int scaledDimension6Limit = Math.Max(val2, scaledDimension6);
+			int layoutPresentationValue = scaledDimension6Limit;
+			Rectangle titleBounds = new Rectangle(scaledDimension3Offset, 0, val, val2);
 			int val3 = TextRenderer.MeasureText(shownTitle, font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
 			titleBounds.Width = Math.Max(1, Math.Min(val, val3));
 			int firstLineHeight = TextRenderer.MeasureText(FirstLine(shownTitle), font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Height;
 			if (firstLineHeight <= 0) firstLineHeight = font.Height;
-			Rectangle infoBounds = new Rectangle(num4 + Math.Min(val, val3) + Theme.S(5), (firstLineHeight - num10) / 2, num10, num10);
-			Rectangle detailBounds = new Rectangle(num4, num13 + ((num11 != 0) ? Theme.S(3) : 0), num9, num11);
-			num13 = detailBounds.Bottom;
+			Rectangle infoBounds = new Rectangle(scaledDimension3Offset + Math.Min(val, val3) + Theme.S(5), (firstLineHeight - scaledDimension6) / 2, scaledDimension6, scaledDimension6);
+			Rectangle detailBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + ((measureResult != 0) ? Theme.S(3) : 0), lowerBound3, measureResult);
+			layoutPresentationValue = detailBounds.Bottom;
 			Rectangle hostBounds = Rectangle.Empty;
-			if (base.Hosted != null && !flag2)
+			if (base.Hosted != null && !anyConditionMet)
 			{
-				hostBounds = new Rectangle(widePicker ? num : num4, num13 + Theme.S(10), num7, num8);
-				num13 = hostBounds.Bottom;
+				hostBounds = new Rectangle(widePicker ? scaledDimension : scaledDimension3Offset, layoutPresentationValue + Theme.S(10), scaledDimension4, scaledDimension5);
+				layoutPresentationValue = hostBounds.Bottom;
 			}
 			Rectangle restartBounds = Rectangle.Empty;
 			Rectangle statusBounds = Rectangle.Empty;
 			Rectangle lockBounds = Rectangle.Empty;
-			int num14 = (flag2 ? num9 : num6);
-			bool flag4 = false;
-			int num15 = num6 - num7 - Theme.S(12);
-			if (base.Hosted != null && !flag2 && shownStatus.Length > 0 && num15 >= Theme.S(110))
+			int layoutPresentationValue2 = (anyConditionMet ? lowerBound3 : lowerBound2);
+			bool layoutPresentationReady = false;
+			int remainingS = lowerBound2 - scaledDimension4 - Theme.S(12);
+			if (base.Hosted != null && !anyConditionMet && shownStatus.Length > 0 && remainingS >= Theme.S(110))
 			{
-				int num16 = Measure(shownStatus, font3, num15, Theme.S(18));
-				if (num16 <= num8)
+				int measureResult2 = Measure(shownStatus, font3, remainingS, Theme.S(18));
+				if (measureResult2 <= scaledDimension5)
 				{
-					statusBounds = new Rectangle(hostBounds.Right + Theme.S(12), hostBounds.Top + (num8 - num16) / 2, num15, num16);
-					flag4 = true;
+					statusBounds = new Rectangle(hostBounds.Right + Theme.S(12), hostBounds.Top + (scaledDimension5 - measureResult2) / 2, remainingS, measureResult2);
+					layoutPresentationReady = true;
 				}
 			}
 			if (shownEffect.Length > 0)
 			{
-				int num17 = Math.Min(num9, TextRenderer.MeasureText(shownEffect, font4, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width + Theme.S(16));
-				restartBounds = new Rectangle(num4, num13 + Theme.S(7), num17, Theme.S(20));
-				num13 = restartBounds.Bottom;
+				int lowerBound3Limit = Math.Min(lowerBound3, TextRenderer.MeasureText(shownEffect, font4, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width + Theme.S(16));
+				restartBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + Theme.S(7), lowerBound3Limit, Theme.S(20));
+				layoutPresentationValue = restartBounds.Bottom;
 			}
-			if (shownStatus.Length > 0 && !flag4)
+			if (shownStatus.Length > 0 && !layoutPresentationReady)
 			{
-				statusBounds = new Rectangle(num4, num13 + Theme.S(6), num14, Measure(shownStatus, font3, num14, Theme.S(18)));
-				num13 = statusBounds.Bottom;
+				statusBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + Theme.S(6), layoutPresentationValue2, Measure(shownStatus, font3, layoutPresentationValue2, Theme.S(18)));
+				layoutPresentationValue = statusBounds.Bottom;
 			}
 			if (base.LockText.Length > 0)
 			{
-				lockBounds = new Rectangle(num4, num13 + Theme.S(5), num14, Measure(base.LockText, font3, num14, Theme.S(18)));
-				num13 = lockBounds.Bottom;
+				lockBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + Theme.S(5), layoutPresentationValue2, Measure(base.LockText, font3, layoutPresentationValue2, Theme.S(18)));
+				layoutPresentationValue = lockBounds.Bottom;
 			}
-			int num18 = Math.Max(Theme.S(124), num13 + Theme.S(32));
-			int num19 = Math.Max(Theme.S(16), (num18 - num13) / 2);
-			titleBounds.Offset(0, num19);
-			infoBounds.Offset(0, num19);
-			detailBounds.Offset(0, num19);
+			int sLimit = Math.Max(Theme.S(124), layoutPresentationValue + Theme.S(32));
+			int sLimit2 = Math.Max(Theme.S(16), (sLimit - layoutPresentationValue) / 2);
+			titleBounds.Offset(0, sLimit2);
+			infoBounds.Offset(0, sLimit2);
+			detailBounds.Offset(0, sLimit2);
 			if (!restartBounds.IsEmpty)
 			{
-				restartBounds.Offset(0, num19);
+				restartBounds.Offset(0, sLimit2);
 			}
 			if (!statusBounds.IsEmpty)
 			{
-				statusBounds.Offset(0, num19);
+				statusBounds.Offset(0, sLimit2);
 			}
 			if (!lockBounds.IsEmpty)
 			{
-				lockBounds.Offset(0, num19);
+				lockBounds.Offset(0, sLimit2);
 			}
 			if (base.Hosted != null)
 			{
-				if (flag2)
+				if (anyConditionMet)
 				{
-					hostBounds = new Rectangle(num5 - num7, (num18 - num8) / 2, num7, num8);
+					hostBounds = new Rectangle(lowerBound - scaledDimension4, (sLimit - scaledDimension5) / 2, scaledDimension4, scaledDimension5);
 				}
 				else
 				{
-					hostBounds.Offset(0, num19);
+					hostBounds.Offset(0, sLimit2);
 				}
 			}
 			cachedPresentation = new Presentation
@@ -669,8 +669,8 @@ namespace PaviseApp
 				Scale = Dpi.Scale,
 				Host = base.Hosted,
                 FullWidthPicker = FullWidthPicker,
-				HostWidth = num7,
-				HostHeight = num8,
+				HostWidth = scaledDimension4,
+				HostHeight = scaledDimension5,
 				Title = shownTitle,
 				Detail = shownSummary,
 				Status = shownStatus,
@@ -680,7 +680,7 @@ namespace PaviseApp
 				DetailFont = font2,
 				LockFont = font3,
 				TagFont = font4,
-				IconBounds = new Rectangle(num, widePicker ? num19 : (num18 - num2) / 2, num2, num2),
+				IconBounds = new Rectangle(scaledDimension, widePicker ? sLimit2 : (sLimit - scaledDimension2) / 2, scaledDimension2, scaledDimension2),
 				TitleBounds = titleBounds,
 				StatusBounds = statusBounds,
 				LockBounds = lockBounds,
@@ -688,7 +688,7 @@ namespace PaviseApp
 				RestartBounds = restartBounds,
 				HostBounds = hostBounds,
 				InfoBounds = infoBounds,
-				Height = num18
+				Height = sLimit
 			};
 			observedTitle = shownTitle;
 			observedSummary = shownSummary;

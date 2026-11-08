@@ -30,27 +30,27 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = Settings.Save("CfgOff", false);
-				string[] array = ParseList(Settings.LoadStr("CfgList", ""));
-				foreach (string text in array)
+				bool cfgOffEnabled = Settings.Save("CfgOff", false);
+				string[] list = ParseList(Settings.LoadStr("CfgList", ""));
+				foreach (string entryText in list)
 				{
-					if (!RegOf(text).Restore())
+					if (!RegOf(entryText).Restore())
 					{
-						flag = false;
+						cfgOffEnabled = false;
 						continue;
 					}
-					string text2 = Settings.LoadStr("CfgMk_" + text, "1");
-					bool ourExe = text2.Length == 0 || text2[0] != '1';
-					IfeoStore.CleanupEmpty(text, null, false, ourExe);
-					Settings.SaveStr("CfgMk_" + text, "");
-					IfeoStore.RemoveFromList("CfgList", text);
-					Logger.Log(Lang.T("log.cfgofftweak.6") + text);
+					string value = Settings.LoadStr("CfgMk_" + entryText, "1");
+					bool ourExe = value.Length == 0 || value[0] != '1';
+					IfeoStore.CleanupEmpty(entryText, null, false, ourExe);
+					Settings.SaveStr("CfgMk_" + entryText, "");
+					IfeoStore.RemoveFromList("CfgList", entryText);
+					Logger.Log(Lang.T("log.cfgofftweak.6") + entryText);
 				}
-				if (!flag)
+				if (!cfgOffEnabled)
 				{
 					Logger.Log(Lang.T("log.cfgofftweak.8"));
 				}
-				return flag;
+				return cfgOffEnabled;
 			}
 		}
 

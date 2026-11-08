@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
@@ -33,12 +33,12 @@ namespace PaviseApp
 
 		internal static bool WriteVerified(IManagedPowerPlans plans, Guid scheme, Guid sub, Guid setting, bool ac, uint value)
 		{
-			uint? num = plans.Read(scheme, sub, setting, ac);
-			if (!num.HasValue)
+			uint? readResult = plans.Read(scheme, sub, setting, ac);
+			if (!readResult.HasValue)
 			{
 				return false;
 			}
-			if (num.Value == value)
+			if (readResult.Value == value)
 			{
 				return true;
 			}
@@ -52,13 +52,13 @@ namespace PaviseApp
 		internal static bool ParkingDisabled(uint? ac, uint? dc, uint? ac1, uint? dc1, bool onAc, bool secondaryRequired, out bool disabled)
 		{
 			disabled = false;
-			uint? num = (onAc ? ac : dc);
-			uint? num2 = (onAc ? ac1 : dc1);
-			if (!num.HasValue || num.Value > 100 || (secondaryRequired && (!num2.HasValue || num2.Value > 100)))
+			uint? acSnapshot = (onAc ? ac : dc);
+			uint? ac1Snapshot = (onAc ? ac1 : dc1);
+			if (!acSnapshot.HasValue || acSnapshot.Value > 100 || (secondaryRequired && (!ac1Snapshot.HasValue || ac1Snapshot.Value > 100)))
 			{
 				return false;
 			}
-			disabled = num.Value == 100 && (!secondaryRequired || num2 == 100);
+			disabled = acSnapshot.Value == 100 && (!secondaryRequired || ac1Snapshot == 100);
 			return true;
 		}
 	}

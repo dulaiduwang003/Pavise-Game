@@ -50,14 +50,14 @@ namespace PaviseApp
 		{
 			ac = acCandidate;
 			dc = dcCandidate;
-			uint? num = (acMode.HasValue ? new uint?(acCandidate) : readExisting(true));
-			uint? num2 = (dcMode.HasValue ? new uint?(dcCandidate) : readExisting(false));
-			if (!num.HasValue || !num2.HasValue || num.Value > 100 || num2.Value > 100)
+			uint? nullable = (acMode.HasValue ? new uint?(acCandidate) : readExisting(true));
+			uint? nullable2 = (dcMode.HasValue ? new uint?(dcCandidate) : readExisting(false));
+			if (!nullable.HasValue || !nullable2.HasValue || nullable.Value > 100 || nullable2.Value > 100)
 			{
 				return false;
 			}
-			ac = num.Value;
-			dc = num2.Value;
+			ac = nullable.Value;
+			dc = nullable2.Value;
 			return true;
 		}
 
@@ -112,35 +112,35 @@ namespace PaviseApp
 			{
 				return Interface.Unknown;
 			}
-			int num = 0;
+			int processedCount = 0;
 			Interface @interface = Interface.Unknown;
 			using (IEnumerator<uint> enumerator = implementations.GetEnumerator())
 			{
 				while (enumerator.MoveNext())
 				{
-					int num2;
+					int classifyValue;
 					switch (enumerator.Current)
 					{
 					default:
-						num2 = 0;
+						classifyValue = 0;
 						break;
 					case 3u:
-						num2 = 2;
+						classifyValue = 2;
 						break;
 					case 1u:
-						num2 = 1;
+						classifyValue = 1;
 						break;
 					}
-					Interface interface2 = (Interface)num2;
-					if (interface2 == Interface.Unknown || (num > 0 && interface2 != @interface))
+					Interface interface2 = (Interface)classifyValue;
+					if (interface2 == Interface.Unknown || (processedCount > 0 && interface2 != @interface))
 					{
 						return Interface.Unknown;
 					}
 					@interface = interface2;
-					num++;
+					processedCount++;
 				}
 			}
-			if (num != expectedCount)
+			if (processedCount != expectedCount)
 			{
 				return Interface.Unknown;
 			}
@@ -187,8 +187,8 @@ namespace PaviseApp
 				{
 					return Interface.Unknown;
 				}
-				string text = dateTime.Value.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
-				string query = "*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55 and TimeCreated[@SystemTime >= '" + text + "']]]";
+				string valueText = dateTime.Value.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+				string query = "*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55 and TimeCreated[@SystemTime >= '" + valueText + "']]]";
 				EventLogQuery eventLogQuery = new EventLogQuery("System", PathType.LogName, query);
 				eventLogQuery.ReverseDirection = true;
 				EventLogQuery eventQuery = eventLogQuery;

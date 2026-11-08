@@ -93,15 +93,15 @@ namespace PaviseApp
 
 		protected override void OnFrame(object s, EventArgs e)
 		{
-			bool flag = StepBusy();
+			bool stepBusySucceeded = StepBusy();
 			for (int i = 0; i < glow.Length; i++)
 			{
 				if (glow[i].Step())
 				{
-					flag = true;
+					stepBusySucceeded = true;
 				}
 			}
-			if (flag)
+			if (stepBusySucceeded)
 			{
 				Invalidate();
 			}
@@ -128,14 +128,14 @@ namespace PaviseApp
 		private Rectangle SegmentRect(int index)
 		{
 			int count = Count;
-			int num = Theme.S(4);
-			int num2 = (base.Width - num * (count - 1)) / count;
-			int num3 = index * (num2 + num);
+			int scaledDimension = Theme.S(4);
+			int countRatio = (base.Width - scaledDimension * (count - 1)) / count;
+			int scaledIndex = index * (countRatio + scaledDimension);
 			if (index == count - 1)
 			{
-				num2 = base.Width - num3;
+				countRatio = base.Width - scaledIndex;
 			}
-			return new Rectangle(num3, 0, num2, base.Height);
+			return new Rectangle(scaledIndex, 0, countRatio, base.Height);
 		}
 
 		private int HitIndex(Point p)
@@ -170,10 +170,10 @@ namespace PaviseApp
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
-			int num = HitIndex(e.Location);
-			if (num != hoverIdx)
+			int hitIndexResult = HitIndex(e.Location);
+			if (hitIndexResult != hoverIdx)
 			{
-				hoverIdx = num;
+				hoverIdx = hitIndexResult;
 				SyncGlow();
 				Invalidate();
 			}
@@ -215,12 +215,12 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = DsKeys.NavigateHorizontal(e.KeyCode, idx, Count);
-			if (num >= 0)
+			int navigateHorizontalResult = DsKeys.NavigateHorizontal(e.KeyCode, idx, Count);
+			if (navigateHorizontalResult >= 0)
 			{
 				e.Handled = true;
 				e.SuppressKeyPress = true;
-				Activate(num);
+				Activate(navigateHorizontalResult);
 			}
 		}
 
@@ -239,7 +239,7 @@ namespace PaviseApp
 			}
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			int count = Count;
-			int num = Theme.S(6);
+			int scaledDimension = Theme.S(6);
 			for (int i = 0; i < count; i++)
 			{
 				Rectangle rectangle = SegmentRect(i);
@@ -252,7 +252,7 @@ namespace PaviseApp
 				}
 				else
 				{
-					DsPaint.TechFrame(graphics, rectangle, num, Col.Lerp(Theme.Card, Theme.CardHover, t), Col.Lerp(Theme.Stroke, Theme.StrokeHi, t));
+					DsPaint.TechFrame(graphics, rectangle, scaledDimension, Col.Lerp(Theme.Card, Theme.CardHover, t), Col.Lerp(Theme.Stroke, Theme.StrokeHi, t));
 				}
 			}
 			Rectangle rectangle2 = Rectangle.Empty;
@@ -263,7 +263,7 @@ namespace PaviseApp
 				rectangle2.Height--;
 				if (StrongSelection)
 				{
-					using (GraphicsPath path = (PlainSegments ? Theme.Rounded(rectangle2, Theme.S(5)) : Theme.TechPath(rectangle2, num)))
+					using (GraphicsPath path = (PlainSegments ? Theme.Rounded(rectangle2, Theme.S(5)) : Theme.TechPath(rectangle2, scaledDimension)))
 					{
 						using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(rectangle2), Col.Lerp(Theme.Accent, Color.White, 0.08f), Theme.Accent2, LinearGradientMode.ForwardDiagonal))
 						{
@@ -276,7 +276,7 @@ namespace PaviseApp
 					}
 					using (Pen pen2 = new Pen(Col.Alpha(Color.White, 100), DsSpace.Line(1)))
 					{
-						graphics.DrawLine(pen2, rectangle2.Left + Theme.S(2), rectangle2.Top + Theme.S(1), rectangle2.Right - num, rectangle2.Top + Theme.S(1));
+						graphics.DrawLine(pen2, rectangle2.Left + Theme.S(2), rectangle2.Top + Theme.S(1), rectangle2.Right - scaledDimension, rectangle2.Top + Theme.S(1));
 					}
 				}
 				else if (PlainSegments)
@@ -285,7 +285,7 @@ namespace PaviseApp
 				}
 				else
 				{
-					DsPaint.TechFrame(graphics, rectangle2, num, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
+					DsPaint.TechFrame(graphics, rectangle2, scaledDimension, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
 				}
 			}
 			for (int j = 0; j < count; j++)
@@ -293,9 +293,9 @@ namespace PaviseApp
 				Rectangle bounds = SegmentRect(j);
 				bounds.Width--;
 				bounds.Height--;
-				bool flag = j == idx;
-				string text = ((Labels != null && j < Labels.Length) ? Labels[j] : "");
-				TextRenderer.DrawText(graphics, text, DsType.Font(DsText.Label, flag), bounds, (!base.Enabled) ? Theme.Faint : (flag ? (StrongSelection ? Theme.OnAccent : Theme.Fg) : Theme.Dim), TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+				bool matchesJ = j == idx;
+				string message = ((Labels != null && j < Labels.Length) ? Labels[j] : "");
+				TextRenderer.DrawText(graphics, message, DsType.Font(DsText.Label, matchesJ), bounds, (!base.Enabled) ? Theme.Faint : (matchesJ ? (StrongSelection ? Theme.OnAccent : Theme.Fg) : Theme.Dim), TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
 			}
 			PaintBusy(graphics, base.ClientRectangle, null);
 			if (!base.Enabled)

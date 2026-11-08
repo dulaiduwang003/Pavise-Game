@@ -44,12 +44,12 @@ namespace PaviseApp
 
 		public static bool NeedsRepair()
 		{
-			int? num = Current();
-			if (!num.HasValue)
+			int? currentResult = Current();
+			if (!currentResult.HasValue)
 			{
 				return false;
 			}
-			return !IsValid(num.Value);
+			return !IsValid(currentResult.Value);
 		}
 
 		private static bool IsValid(int value)
@@ -59,20 +59,20 @@ namespace PaviseApp
 
 		public static string Describe()
 		{
-			int? num = Current();
-			if (!num.HasValue)
+			int? currentResult = Current();
+			if (!currentResult.HasValue)
 			{
 				return Lang.T("netthrottle.absent");
 			}
-			if (num.Value == ThrottlingDisabled)
+			if (currentResult.Value == ThrottlingDisabled)
 			{
 				return Lang.T("netthrottle.disabled");
 			}
-			if (!IsValid(num.Value))
+			if (!IsValid(currentResult.Value))
 			{
-				return Lang.F("netthrottle.broken", "0x" + num.Value.ToString("X"));
+				return Lang.F("netthrottle.broken", "0x" + currentResult.Value.ToString("X"));
 			}
-			return Lang.F("netthrottle.ok", num.Value);
+			return Lang.F("netthrottle.ok", currentResult.Value);
 		}
 
 		public static bool Repair()
@@ -99,13 +99,13 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = !Throttle.HasBackup || Throttle.Restore();
-				if (flag)
+				bool matchesRestore = !Throttle.HasBackup || Throttle.Restore();
+				if (matchesRestore)
 				{
 					Settings.Save("NetThrottleRepaired", false);
 					Logger.Log(Lang.T("log.nettweak.5"));
 				}
-				return flag;
+				return matchesRestore;
 			}
 		}
 

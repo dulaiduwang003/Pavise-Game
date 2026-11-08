@@ -32,15 +32,15 @@ namespace PaviseApp
 
 		public string BootIdentity()
 		{
-			byte[] array = new byte[32];
+			byte[] rawBytes = new byte[32];
 			int r;
-			if (NtQuerySystemInformation(90, array, array.Length, out r) < 0 || r < 20 || r > array.Length)
+			if (NtQuerySystemInformation(90, rawBytes, rawBytes.Length, out r) < 0 || r < 20 || r > rawBytes.Length)
 			{
 				return null;
 			}
-			byte[] array2 = new byte[16];
-			Array.Copy(array, array2, 16);
-			Guid guid = new Guid(array2);
+			byte[] rawBytes2 = new byte[16];
+			Array.Copy(rawBytes, rawBytes2, 16);
+			Guid guid = new Guid(rawBytes2);
 			if (!(guid == Guid.Empty))
 			{
 				return guid.ToString("N");
@@ -82,35 +82,35 @@ namespace PaviseApp
 			IsolationCpuState isolationCpuState = new IsolationCpuState();
 			SortedDictionary<int, ulong> sortedDictionary = new SortedDictionary<int, ulong>();
 			HashSet<uint> hashSet = new HashSet<uint>();
-			uint num;
-			for (int i = 0; i < length; i += (int)num)
+			uint toUInt32Result;
+			for (int i = 0; i < length; i += (int)toUInt32Result)
 			{
 				if (length - i < 32)
 				{
 					return null;
 				}
-				num = BitConverter.ToUInt32(b, i);
-				if (num < 32 || num > length - i || BitConverter.ToInt32(b, i + 4) != 0 || BitConverter.ToUInt16(b, i + 12) != 0 || b[i + 14] >= 64 || !hashSet.Add(BitConverter.ToUInt32(b, i + 8)))
+				toUInt32Result = BitConverter.ToUInt32(b, i);
+				if (toUInt32Result < 32 || toUInt32Result > length - i || BitConverter.ToInt32(b, i + 4) != 0 || BitConverter.ToUInt16(b, i + 12) != 0 || b[i + 14] >= 64 || !hashSet.Add(BitConverter.ToUInt32(b, i + 8)))
 				{
 					return null;
 				}
-				ulong num2 = (ulong)(1L << (int)b[i + 14]);
-				if ((isolationCpuState.All & num2) != 0)
+				ulong allValue = (ulong)(1L << (int)b[i + 14]);
+				if ((isolationCpuState.All & allValue) != 0)
 				{
 					return null;
 				}
-				isolationCpuState.All |= num2;
+				isolationCpuState.All |= allValue;
 				if ((b[i + 19] & 2u) != 0)
 				{
-					isolationCpuState.Allocated |= num2;
+					isolationCpuState.Allocated |= allValue;
 				}
 				if ((b[i + 19] & 4u) != 0)
 				{
-					isolationCpuState.Admitted |= num2;
+					isolationCpuState.Admitted |= allValue;
 				}
 				ulong value;
 				sortedDictionary.TryGetValue(b[i + 15], out value);
-				sortedDictionary[b[i + 15]] = value | num2;
+				sortedDictionary[b[i + 15]] = value | allValue;
 			}
 			isolationCpuState.Physical = new List<ulong>(sortedDictionary.Values).ToArray();
 			if (isolationCpuState.All != 0)

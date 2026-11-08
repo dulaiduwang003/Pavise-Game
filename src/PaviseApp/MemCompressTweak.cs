@@ -64,14 +64,14 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = output.Trim().Split(',');
-			if (array.Length < 2)
+			string[] trimParts = output.Trim().Split(',');
+			if (trimParts.Length < 2)
 			{
 				return false;
 			}
-			bool flag = bool.TryParse(array[0].Trim(), out compression);
-			bool result = bool.TryParse(array[1].Trim(), out combining);
-			if (flag)
+			bool tryParse = bool.TryParse(trimParts[0].Trim(), out compression);
+			bool result = bool.TryParse(trimParts[1].Trim(), out combining);
+			if (tryParse)
 			{
 				return result;
 			}
@@ -85,13 +85,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = snapshot.Split(',');
-			if (array.Length != 2 || (array[0] != "0" && array[0] != "1") || (array[1] != "0" && array[1] != "1"))
+			string[] snapshotParts = snapshot.Split(',');
+			if (snapshotParts.Length != 2 || (snapshotParts[0] != "0" && snapshotParts[0] != "1") || (snapshotParts[1] != "0" && snapshotParts[1] != "1"))
 			{
 				return false;
 			}
-			compression = array[0] == "1";
-			combining = array[1] == "1";
+			compression = snapshotParts[0] == "1";
+			combining = snapshotParts[1] == "1";
 			return true;
 		}
 
@@ -118,16 +118,16 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string text = "";
+			string restoreArgumentsResult = "";
 			if (compression)
 			{
-				text += " -MemoryCompression";
+				restoreArgumentsResult += " -MemoryCompression";
 			}
 			if (combining)
 			{
-				text += " -PageCombining";
+				restoreArgumentsResult += " -PageCombining";
 			}
-			return text;
+			return restoreArgumentsResult;
 		}
 
 		internal static bool QueryState(out bool compression, out bool combining)
@@ -165,14 +165,14 @@ namespace PaviseApp
 
 		private static bool RunCommand(string command, string label, out string output)
 		{
-			int num = command.IndexOf(' ');
-			string text = ((num < 0) ? command : command.Substring(0, num));
-			if (text != "Disable-MMAgent" && text != "Enable-MMAgent")
+			int matchIndex = command.IndexOf(' ');
+			string commandSnapshot = ((matchIndex < 0) ? command : command.Substring(0, matchIndex));
+			if (commandSnapshot != "Disable-MMAgent" && commandSnapshot != "Enable-MMAgent")
 			{
 				throw new ArgumentException("Unexpected MMAgent command");
 			}
-			string text2 = ((num < 0) ? "" : command.Substring(num));
-			string script = "try { Import-Module -Name ([IO.Path]::Combine($PSHOME, 'Modules', 'MMAgent', 'MMAgent.psd1')) -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null } catch { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n$mmCommand = Get-Command -Name 'MMAgent\\" + text + "' -ErrorAction SilentlyContinue;\r\nif ($null -eq $mmCommand) { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n& $mmCommand" + text2 + " -ErrorAction Stop";
+			string substringResult = ((matchIndex < 0) ? "" : command.Substring(matchIndex));
+			string script = "try { Import-Module -Name ([IO.Path]::Combine($PSHOME, 'Modules', 'MMAgent', 'MMAgent.psd1')) -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null } catch { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n$mmCommand = Get-Command -Name 'MMAgent\\" + commandSnapshot + "' -ErrorAction SilentlyContinue;\r\nif ($null -eq $mmCommand) { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n& $mmCommand" + substringResult + " -ErrorAction Stop";
 			return ExecuteCapabilityScript(script, label, out output);
 		}
 
@@ -197,8 +197,8 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.memcompress.2"));
 					return false;
 				}
-				bool flag = value.Length == 0;
-				if (flag && (!Settings.SaveStr("PrevMemoryCompressionRepairV1", "0") || Settings.LoadStr("PrevMemoryCompressionRepairV1", "") != "0"))
+				bool matchesLength = value.Length == 0;
+				if (matchesLength && (!Settings.SaveStr("PrevMemoryCompressionRepairV1", "0") || Settings.LoadStr("PrevMemoryCompressionRepairV1", "") != "0"))
 				{
 					Logger.Log(Lang.T("log.memcompress.2"));
 					return false;
@@ -207,13 +207,13 @@ namespace PaviseApp
 				RunCommand("Enable-MMAgent -MemoryCompression", "mmagent-enable-compression", out output);
 				bool compression2;
 				bool combining2;
-				bool flag2 = QueryState(out compression2, out combining2);
-				if (flag2 && compression2)
+				bool state = QueryState(out compression2, out combining2);
+				if (state && compression2)
 				{
 					Logger.Log(Lang.T("audit.mem.enabled"));
 					return true;
 				}
-				if (flag2 && !compression2 && flag && !ClearRepairReceipt())
+				if (state && !compression2 && matchesLength && !ClearRepairReceipt())
 				{
 					Logger.Log(Lang.T("log.memcompress.5"));
 				}
@@ -273,13 +273,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = RestoreArguments(snapshot);
-			if (text.Length == 0)
+			string restoreArgumentsResult = RestoreArguments(snapshot);
+			if (restoreArgumentsResult.Length == 0)
 			{
 				return true;
 			}
 			string output;
-			RunCommand("Enable-MMAgent" + text, "mmagent-restore", out output);
+			RunCommand("Enable-MMAgent" + restoreArgumentsResult, "mmagent-restore", out output);
 			bool compression2;
 			bool combining2;
 			if (QueryState(out compression2, out combining2))
@@ -291,10 +291,10 @@ namespace PaviseApp
 
 		private static bool ClearOwnership()
 		{
-			bool flag = Settings.Save("MemCompressOffByPavise", false);
-			bool flag2 = Settings.SaveStr("PrevMMAgent", "");
+			bool memCompressOffByPaviseEnabled = Settings.Save("MemCompressOffByPavise", false);
+			bool prevMMAgentEnabled = Settings.SaveStr("PrevMMAgent", "");
 			string value;
-			if (flag && flag2 && !Settings.Load("MemCompressOffByPavise", true) && Settings.TryLoadStr("PrevMMAgent", out value))
+			if (memCompressOffByPaviseEnabled && prevMMAgentEnabled && !Settings.Load("MemCompressOffByPavise", true) && Settings.TryLoadStr("PrevMMAgent", out value))
 			{
 				return value.Length == 0;
 			}
@@ -310,8 +310,8 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.memcompress.5"));
 					return false;
 				}
-				string text = Settings.LoadStr("PrevMMAgent", "");
-				if (text.Length > 0 && !RestoreSnapshot(text))
+				string prevMMAgentValue = Settings.LoadStr("PrevMMAgent", "");
+				if (prevMMAgentValue.Length > 0 && !RestoreSnapshot(prevMMAgentValue))
 				{
 					Logger.Log(Lang.T("log.memcompress.5"));
 					return false;

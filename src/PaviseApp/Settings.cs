@@ -100,28 +100,28 @@ namespace PaviseApp
 								return true;
 							}
 							string[] valueNames = registryKey.GetValueNames();
-							foreach (string text in valueNames)
+							foreach (string entryText in valueNames)
 							{
-								if (!selected(text))
+								if (!selected(entryText))
 								{
 									continue;
 								}
 								try
 								{
-									registryKey.DeleteValue(text, false);
-									bool flag = false;
+									registryKey.DeleteValue(entryText, false);
+									bool clearUserPreferencesForResetReady = false;
 									string[] valueNames2 = registryKey.GetValueNames();
 									foreach (string a in valueNames2)
 									{
-										if (string.Equals(a, text, StringComparison.OrdinalIgnoreCase))
+										if (string.Equals(a, entryText, StringComparison.OrdinalIgnoreCase))
 										{
-											flag = true;
+											clearUserPreferencesForResetReady = true;
 											break;
 										}
 									}
-									if (flag)
+									if (clearUserPreferencesForResetReady)
 									{
-										list.Add(text + " (still present)");
+										list.Add(entryText + " (still present)");
 									}
 									else
 									{
@@ -130,7 +130,7 @@ namespace PaviseApp
 								}
 								catch (Exception ex)
 								{
-									list.Add(text + " (" + ex.GetType().Name + ")");
+									list.Add(entryText + " (" + ex.GetType().Name + ")");
 								}
 							}
 							registryKey.Flush();
@@ -152,13 +152,13 @@ namespace PaviseApp
 
 		internal static bool TryLoadCached(string name, out bool value)
 		{
-			int num = MutationGeneration;
+			int mutationGenerationSnapshot = MutationGeneration;
 			lock (readCacheSync)
 			{
-				if (readCacheGeneration != num)
+				if (readCacheGeneration != mutationGenerationSnapshot)
 				{
 					readCache.Clear();
-					readCacheGeneration = num;
+					readCacheGeneration = mutationGenerationSnapshot;
 				}
 				return readCache.TryGetValue(name, out value);
 			}
@@ -166,13 +166,13 @@ namespace PaviseApp
 
 		public static bool LoadCached(string name, bool def)
 		{
-			int num = MutationGeneration;
+			int mutationGenerationSnapshot = MutationGeneration;
 			lock (readCacheSync)
 			{
-				if (readCacheGeneration != num)
+				if (readCacheGeneration != mutationGenerationSnapshot)
 				{
 					readCache.Clear();
-					readCacheGeneration = num;
+					readCacheGeneration = mutationGenerationSnapshot;
 				}
 				bool value;
 				if (readCache.TryGetValue(name, out value))
@@ -180,15 +180,15 @@ namespace PaviseApp
 					return value;
 				}
 			}
-			bool flag = Load(name, def);
+			bool loadSucceeded = Load(name, def);
 			lock (readCacheSync)
 			{
-				if (readCacheGeneration == num)
+				if (readCacheGeneration == mutationGenerationSnapshot)
 				{
-					readCache[name] = flag;
+					readCache[name] = loadSucceeded;
 				}
 			}
-			return flag;
+			return loadSucceeded;
 		}
 
 		internal static bool TryLoadStoredBool(string name, out bool value)
@@ -196,12 +196,12 @@ namespace PaviseApp
 			value = false;
 			try
 			{
-				object obj = ReadValue(name);
-				if (obj == null)
+				object value2 = ReadValue(name);
+				if (value2 == null)
 				{
 					return false;
 				}
-				value = Convert.ToInt32(obj) != 0;
+				value = Convert.ToInt32(value2) != 0;
 				return true;
 			}
 			catch
@@ -215,12 +215,12 @@ namespace PaviseApp
 			value = fallback;
 			try
 			{
-				object obj = ReadValue(name);
-				if (obj != null)
+				object value2 = ReadValue(name);
+				if (value2 != null)
 				{
 					try
 					{
-						value = Convert.ToInt32(obj) != 0;
+						value = Convert.ToInt32(value2) != 0;
 					}
 					catch
 					{
@@ -275,20 +275,20 @@ namespace PaviseApp
 				}
 			}
 #endif
-			object obj = null;
+			object storedSettingValue = null;
 			for (int i = 0; i < 8; i++)
 			{
 				using (RegistryKey registryKey = ProfiledOpen())
 				{
-					obj = ((registryKey == null) ? null : registryKey.GetValue(name));
+					storedSettingValue = ((registryKey == null) ? null : registryKey.GetValue(name));
 				}
-				string text = obj as string;
-				if (text == null || text.IndexOf('\0') < 0)
+				string valueOffset = storedSettingValue as string;
+				if (valueOffset == null || valueOffset.IndexOf('\0') < 0)
 				{
 					break;
 				}
 			}
-			return obj;
+			return storedSettingValue;
 		}
 
 		internal static void NoteExternalMutation()
@@ -300,8 +300,8 @@ namespace PaviseApp
 		{
 			try
 			{
-				object obj = ReadValue(name);
-				return (obj == null) ? def : (Convert.ToInt32(obj) != 0);
+				object value = ReadValue(name);
+				return (value == null) ? def : (Convert.ToInt32(value) != 0);
 			}
 			catch
 			{
@@ -473,11 +473,11 @@ namespace PaviseApp
 					if (registryKey != null)
 					{
 						string[] valueNames = registryKey.GetValueNames();
-						foreach (string text in valueNames)
+						foreach (string entryText in valueNames)
 						{
-							if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+							if (entryText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
 							{
-								list.Add(text);
+								list.Add(entryText);
 							}
 						}
 					}
@@ -514,16 +514,16 @@ namespace PaviseApp
 			present = false;
 			try
 			{
-				object obj = ReadValue(name);
-				if (obj == null)
+				object value2 = ReadValue(name);
+				if (value2 == null)
 				{
 					return true;
 				}
-				if (!(obj is string))
+				if (!(value2 is string))
 				{
 					return false;
 				}
-				value = (string)obj;
+				value = (string)value2;
 				present = true;
 				return true;
 			}
@@ -556,8 +556,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				object obj = ReadValue(name);
-				return (obj == null) ? def : obj.ToString();
+				object value2 = ReadValue(name);
+				return (value2 == null) ? def : value2.ToString();
 			}
 			catch
 			{
@@ -577,8 +577,8 @@ namespace PaviseApp
 		// ETW receipt writes must not advance the optimistic user-setting generation.
 		internal static bool SavePresentProbeReceipt(string value)
 		{
-			string text = value ?? "";
-			if (text.Length != 0 && !Regex.IsMatch(text, PresentProbeSessionPattern))
+			string valueOffset = value ?? "";
+			if (valueOffset.Length != 0 && !Regex.IsMatch(valueOffset, PresentProbeSessionPattern))
 			{
 				return false;
 			}
@@ -598,7 +598,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
 					if (transientValues != null)
 					{
-						transientValues[PresentProbeReceiptKey] = text;
+						transientValues[PresentProbeReceiptKey] = valueOffset;
 						return true;
 					}
 #endif
@@ -608,10 +608,10 @@ namespace PaviseApp
 						{
 							return false;
 						}
-						registryKey.SetValue(PresentProbeReceiptKey, text, RegistryValueKind.String);
+						registryKey.SetValue(PresentProbeReceiptKey, valueOffset, RegistryValueKind.String);
 					}
 					string readBack;
-					return TryLoadRawStr(PresentProbeReceiptKey, out readBack) && readBack == text;
+					return TryLoadRawStr(PresentProbeReceiptKey, out readBack) && readBack == valueOffset;
 				}
 				catch (Exception error)
 				{
@@ -623,8 +623,8 @@ namespace PaviseApp
 
 		internal static bool SaveGpuIdentityReceipt(string value)
 		{
-			string text = value ?? "";
-			if (text.Length == 0 || Regex.IsMatch(text, "\\APavise\\.GpuIdentity\\.[0-9]+\\.[0-9a-f]{32}\\z"))
+			string valueOffset = value ?? "";
+			if (valueOffset.Length == 0 || Regex.IsMatch(valueOffset, "\\APavise\\.GpuIdentity\\.[0-9]+\\.[0-9a-f]{32}\\z"))
 			{
 				lock (writeSync)
 				{
@@ -640,7 +640,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
 							if (transientValues != null)
 							{
-								transientValues[GpuIdentityReceiptKey] = text;
+								transientValues[GpuIdentityReceiptKey] = valueOffset;
 								return true;
 							}
 #endif
@@ -650,10 +650,10 @@ namespace PaviseApp
 								{
 									return false;
 								}
-								registryKey.SetValue("MonitoringGpuIdentityTraceV1", text, RegistryValueKind.String);
+								registryKey.SetValue("MonitoringGpuIdentityTraceV1", valueOffset, RegistryValueKind.String);
 							}
 							string value3;
-							return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value3) && value3 == text;
+							return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value3) && value3 == valueOffset;
 						}
 						catch (Exception error)
 						{

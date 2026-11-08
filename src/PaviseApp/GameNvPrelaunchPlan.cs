@@ -111,34 +111,34 @@ namespace PaviseApp
 			{
 				throw new ArgumentNullException("approval");
 			}
-			string text = "";
-			bool flag = !string.IsNullOrWhiteSpace(libraryId) && libraryId.Length <= 256 && GameNvText.IsHash(currentImageHash);
+			string message = "";
+			bool matchesIsHash = !string.IsNullOrWhiteSpace(libraryId) && libraryId.Length <= 256 && GameNvText.IsHash(currentImageHash);
 			try
 			{
 				if (string.IsNullOrEmpty(executable) || !Path.IsPathRooted(executable) || !string.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase))
 				{
-					flag = false;
+					matchesIsHash = false;
 				}
 				else
 				{
-					text = Path.GetFullPath(executable);
+					message = Path.GetFullPath(executable);
 				}
 			}
 			catch (ArgumentException)
 			{
-				flag = false;
+				matchesIsHash = false;
 			}
-			if (flag && !GamePerformanceTargetPolicy.AllowsGameTarget(text))
+			if (matchesIsHash && !GamePerformanceTargetPolicy.AllowsGameTarget(message))
 			{
-				flag = false;
+				matchesIsHash = false;
 			}
-			bool flag2 = approval.Current && approval.NvidiaScope && approval.Generation > 0 && GameNvText.IsHash(approval.EvidenceHash) && GameNvText.IsHash(approval.MachineHash) && GameNvText.IsHash(approval.PhysicalToken);
+			bool matchesIsHash2 = approval.Current && approval.NvidiaScope && approval.Generation > 0 && GameNvText.IsHash(approval.EvidenceHash) && GameNvText.IsHash(approval.MachineHash) && GameNvText.IsHash(approval.PhysicalToken);
 			GameNvApiEvidence gameNvApiEvidence = null;
-			if (flag && flag2 && approval.OpenGlSelected && phase == GameNvTargetPhase.Closed && apiProvider != null)
+			if (matchesIsHash && matchesIsHash2 && approval.OpenGlSelected && phase == GameNvTargetPhase.Closed && apiProvider != null)
 			{
 				try
 				{
-					gameNvApiEvidence = apiProvider.Observe(text, currentImageHash);
+					gameNvApiEvidence = apiProvider.Observe(message, currentImageHash);
 				}
 				catch (OperationCanceledException)
 				{
@@ -149,19 +149,19 @@ namespace PaviseApp
 					gameNvApiEvidence = null;
 				}
 			}
-			bool flag3 = gameNvApiEvidence != null && gameNvApiEvidence.Api == GameNvApi.OpenGl && (gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ObservedContext || gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ValidatedLaunchMode) && gameNvApiEvidence.ExecutableHash == currentImageHash && !string.IsNullOrWhiteSpace(gameNvApiEvidence.SourceVersion) && gameNvApiEvidence.Nvidia && gameNvApiEvidence.PhysicalToken == approval.PhysicalToken;
+			bool allConditionsMet = gameNvApiEvidence != null && gameNvApiEvidence.Api == GameNvApi.OpenGl && (gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ObservedContext || gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ValidatedLaunchMode) && gameNvApiEvidence.ExecutableHash == currentImageHash && !string.IsNullOrWhiteSpace(gameNvApiEvidence.SourceVersion) && gameNvApiEvidence.Nvidia && gameNvApiEvidence.PhysicalToken == approval.PhysicalToken;
 			Dictionary<GameNvMember, GameNvPending> dictionary = new Dictionary<GameNvMember, GameNvPending>();
 			Dictionary<uint, uint> dictionary2 = new Dictionary<uint, uint>();
 			foreach (GameNvMember value in Enum.GetValues(typeof(GameNvMember)))
 			{
-				GameNvPending gameNvPending = (((value == GameNvMember.PState) ? approval.PStateSelected : approval.OpenGlSelected) ? ((!flag2) ? GameNvPending.Approval : ((!flag) ? GameNvPending.Target : ((phase != GameNvTargetPhase.Closed) ? GameNvPending.NextLaunch : ((value == GameNvMember.PState && !approval.OnAc) ? GameNvPending.AcPower : ((value != GameNvMember.OpenGl || flag3) ? GameNvPending.Ready : GameNvPending.ApiEvidence))))) : GameNvPending.Off);
+				GameNvPending gameNvPending = (((value == GameNvMember.PState) ? approval.PStateSelected : approval.OpenGlSelected) ? ((!matchesIsHash2) ? GameNvPending.Approval : ((!matchesIsHash) ? GameNvPending.Target : ((phase != GameNvTargetPhase.Closed) ? GameNvPending.NextLaunch : ((value == GameNvMember.PState && !approval.OnAc) ? GameNvPending.AcPower : ((value != GameNvMember.OpenGl || allConditionsMet) ? GameNvPending.Ready : GameNvPending.ApiEvidence))))) : GameNvPending.Off);
 				dictionary.Add(value, gameNvPending);
 				if (gameNvPending == GameNvPending.Ready)
 				{
 					dictionary2.Add(Id(value), 1u);
 				}
 			}
-			return new GameNvPrelaunchPlan(libraryId ?? "", text, currentImageHash ?? "", approval, dictionary, dictionary2, gameNvApiEvidence);
+			return new GameNvPrelaunchPlan(libraryId ?? "", message, currentImageHash ?? "", approval, dictionary, dictionary2, gameNvApiEvidence);
 		}
 
 		internal static uint Id(GameNvMember member)

@@ -128,9 +128,9 @@ namespace PaviseApp
 				hashSet2.Add(CoreMotionPreferences.KeyPrefix + l);
 			}
 			string[] envKeys = GameMode.EnvKeys;
-			foreach (string text in envKeys)
+			foreach (string entryKey in envKeys)
 			{
-				hashSet2.Add("EnvFuse_" + text);
+				hashSet2.Add("EnvFuse_" + entryKey);
 			}
 			return hashSet2;
 		}
@@ -157,10 +157,10 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = new string[6] { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_" };
-			foreach (string text in array)
+			string[] textEntries = new string[6] { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_" };
+			foreach (string entryText in textEntries)
 			{
-				if (name.Length > text.Length && name.StartsWith(text, StringComparison.OrdinalIgnoreCase))
+				if (name.Length > entryText.Length && name.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
 				{
 					return true;
 				}
@@ -179,15 +179,15 @@ namespace PaviseApp
 				return true;
 			}
 			string[] atomicFiles = AtomicFiles;
-			foreach (string text in atomicFiles)
+			foreach (string filePath in atomicFiles)
 			{
-				if (string.Equals(name, text + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, text + ".stale.bak", StringComparison.OrdinalIgnoreCase))
+				if (string.Equals(name, filePath + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, filePath + ".stale.bak", StringComparison.OrdinalIgnoreCase))
 				{
 					return true;
 				}
-				string text2 = text + ".";
+				string filePathOffset = filePath + ".";
 				Guid result;
-				if (name.Length == text2.Length + 32 + 4 && name.StartsWith(text2, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Guid.TryParseExact(name.Substring(text2.Length, 32), "N", out result))
+				if (name.Length == filePathOffset.Length + 32 + 4 && name.StartsWith(filePathOffset, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Guid.TryParseExact(name.Substring(filePathOffset.Length, 32), "N", out result))
 				{
 					return true;
 				}
@@ -205,17 +205,17 @@ namespace PaviseApp
 			{
 				throw new IOException("Invalid app data directory");
 			}
-			string text = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-			if (string.Equals(text, Path.GetPathRoot(text).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+			string getFullPathTrimmed = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			if (string.Equals(getFullPathTrimmed, Path.GetPathRoot(getFullPathTrimmed).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
 			{
 				throw new IOException("A drive root is not an app data directory");
 			}
-			for (string text2 = text; !string.IsNullOrEmpty(text2); text2 = Path.GetDirectoryName(text2))
+			for (string iterationIndex = getFullPathTrimmed; !string.IsNullOrEmpty(iterationIndex); iterationIndex = Path.GetDirectoryName(iterationIndex))
 			{
 				FileAttributes attributes;
 				try
 				{
-					attributes = File.GetAttributes(text2);
+					attributes = File.GetAttributes(iterationIndex);
 				}
 				catch (FileNotFoundException)
 				{
@@ -230,7 +230,7 @@ namespace PaviseApp
 					throw new IOException("App data directory is redirected or is not a directory");
 				}
 			}
-			return text;
+			return getFullPathTrimmed;
 		}
 
 		private static void Progress(Action<string> progress, string message)
@@ -292,10 +292,10 @@ namespace PaviseApp
 		{
 			ResetDataReport resetDataReport = new ResetDataReport();
 			List<string> list = new List<string>();
-			string text;
+			string validateDataDirectoryResult;
 			try
 			{
-				text = ValidateDataDirectory(dataDir);
+				validateDataDirectoryResult = ValidateDataDirectory(dataDir);
 			}
 			catch (Exception ex)
 			{
@@ -303,7 +303,7 @@ namespace PaviseApp
 				resetDataReport.Failure = Lang.T("wipe.pathfail") + " (" + ex.GetType().Name + ")";
 				return resetDataReport;
 			}
-			if (LegacyPurge.HasHardThreadRecoveryDebt(text) || !GameNvCanonicalStore.SafeToClear(text)
+			if (LegacyPurge.HasHardThreadRecoveryDebt(validateDataDirectoryResult) || !GameNvCanonicalStore.SafeToClear(validateDataDirectoryResult)
                 || LaboratoryFileFilter.HasReceipt || LaboratoryAudioEffects.HasReceipt || LaboratoryClockRepair.HasUnfinishedRecovery || LaboratoryManualActions.Busy)
 			{
 				resetDataReport.Warnings = 1;
@@ -329,17 +329,17 @@ namespace PaviseApp
 			Progress(progress, PerformancePolicy.Text("正在清理游戏库和记录", "Clearing game library and records"));
 			try
 			{
-				ValidateDataDirectory(text);
-				if (Directory.Exists(text))
+				ValidateDataDirectory(validateDataDirectoryResult);
+				if (Directory.Exists(validateDataDirectoryResult))
 				{
-					string[] fileSystemEntries = Directory.GetFileSystemEntries(text, "*", SearchOption.TopDirectoryOnly);
+					string[] fileSystemEntries = Directory.GetFileSystemEntries(validateDataDirectoryResult, "*", SearchOption.TopDirectoryOnly);
 					foreach (string path in fileSystemEntries)
 					{
 						if (IsUserDataFile(Path.GetFileName(path)))
 						{
 							try
 							{
-								ValidateDataDirectory(text);
+								ValidateDataDirectory(validateDataDirectoryResult);
 								DeleteFile(path);
 								resetDataReport.Files++;
 							}
@@ -363,7 +363,7 @@ namespace PaviseApp
 
 		private static void DeleteFile(string path)
 		{
-			int num = 0;
+			int processedCount = 0;
 			while (true)
 			{
 				try
@@ -406,13 +406,13 @@ namespace PaviseApp
 				}
 				catch (IOException)
 				{
-					if (num >= 2)
+					if (processedCount >= 2)
 					{
 						throw;
 					}
 					Thread.Sleep(100);
 				}
-				num++;
+				processedCount++;
 			}
 		}
 	}

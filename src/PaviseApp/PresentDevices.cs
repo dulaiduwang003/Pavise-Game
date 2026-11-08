@@ -75,10 +75,10 @@ namespace PaviseApp
 					StringBuilder stringBuilder = new StringBuilder(260);
 					if (CM_Get_Device_IDW(parent, stringBuilder, 260u, 0u) == 0)
 					{
-						string text = stringBuilder.ToString();
-						if (text.Length != 0 && !text.StartsWith("HTREE", StringComparison.OrdinalIgnoreCase))
+						string stringBuilderText = stringBuilder.ToString();
+						if (stringBuilderText.Length != 0 && !stringBuilderText.StartsWith("HTREE", StringComparison.OrdinalIgnoreCase))
 						{
-							list.Add(text);
+							list.Add(stringBuilderText);
 							devInst = parent;
 							continue;
 						}
@@ -110,20 +110,20 @@ namespace PaviseApp
 				DEVPROPKEY key = BusReportedDescKey;
 				uint size = 0u;
 				uint type;
-				int num = CM_Get_DevNode_PropertyW(devInst, ref key, out type, null, ref size, 0u);
-				if (num != 26 || size == 0 || size > 4096)
+				int cMGetDevNodePropertyWResult = CM_Get_DevNode_PropertyW(devInst, ref key, out type, null, ref size, 0u);
+				if (cMGetDevNodePropertyWResult != 26 || size == 0 || size > 4096)
 				{
 					return null;
 				}
-				byte[] array = new byte[size];
-				if (CM_Get_DevNode_PropertyW(devInst, ref key, out type, array, ref size, 0u) != 0 || type != 18)
+				byte[] rawBytes = new byte[size];
+				if (CM_Get_DevNode_PropertyW(devInst, ref key, out type, rawBytes, ref size, 0u) != 0 || type != 18)
 				{
 					return null;
 				}
-				string @string = Encoding.Unicode.GetString(array, 0, (int)size);
+				string @string = Encoding.Unicode.GetString(rawBytes, 0, (int)size);
 				char[] trimChars = new char[1];
-				string text = @string.TrimEnd(trimChars).Trim();
-				return (text.Length == 0) ? null : text;
+				string trimEndTrimmed = @string.TrimEnd(trimChars).Trim();
+				return (trimEndTrimmed.Length == 0) ? null : trimEndTrimmed;
 			}
 			catch
 			{
@@ -152,12 +152,12 @@ namespace PaviseApp
 				}
 				SP_DEVINFO_DATA data = default(SP_DEVINFO_DATA);
 				data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
-				for (uint num = 0u; SetupDiEnumDeviceInfo(intPtr, num, ref data); num++)
+				for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data); iterationIndex++)
 				{
-					string text = InstanceIdOf(intPtr, ref data);
-					if (!string.IsNullOrEmpty(text))
+					string instanceIdOfResult = InstanceIdOf(intPtr, ref data);
+					if (!string.IsNullOrEmpty(instanceIdOfResult))
 					{
-						list.Add(text);
+						list.Add(instanceIdOfResult);
 					}
 					data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
 				}

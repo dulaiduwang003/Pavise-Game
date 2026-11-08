@@ -62,15 +62,15 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = 0uL;
-			foreach (ulong num2 in physical)
+			ulong wholeCoresResult = 0uL;
+			foreach (ulong numericValueEntry in physical)
 			{
-				if ((num2 & mask) != 0)
+				if ((numericValueEntry & mask) != 0)
 				{
-					num |= num2;
+					wholeCoresResult |= numericValueEntry;
 				}
 			}
-			return num;
+			return wholeCoresResult;
 		}
 
 		internal static ulong GameRegion(AutoCorePlan plan, ulong all, ulong[] physical)
@@ -79,15 +79,15 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = plan.Exclusive & all;
-			if (num == 0 || num == all)
+			ulong exclusiveMask = plan.Exclusive & all;
+			if (exclusiveMask == 0 || exclusiveMask == all)
 			{
 				return 0uL;
 			}
-			ulong num2 = WholeCores(num, physical) & all;
-			if (num2 != all)
+			ulong wholeCoresMask = WholeCores(exclusiveMask, physical) & all;
+			if (wholeCoresMask != all)
 			{
-				return num2;
+				return wholeCoresMask;
 			}
 			return 0uL;
 		}
@@ -98,12 +98,12 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = all & ~region;
+			ulong allMask = all & ~region;
 			if (hybrid && perf != 0)
 			{
-				num &= perf;
+				allMask &= perf;
 			}
-			return num;
+			return allMask;
 		}
 
 		internal static GpuIrqOutcome Evaluate(GpuIrqSample gpu, ulong region, ulong target, out string reason)
@@ -155,8 +155,8 @@ namespace PaviseApp
 				reason = "irqcheck.reason.ignored";
 				return false;
 			}
-			double num = Math.Max(state.BaselineP99 * 2.0, state.BaselineP99 + 100.0);
-			if (state.BaselineP99 > 0.0 && gpu.P99Us > num)
+			double lowerBound = Math.Max(state.BaselineP99 * 2.0, state.BaselineP99 + 100.0);
+			if (state.BaselineP99 > 0.0 && gpu.P99Us > lowerBound)
 			{
 				reason = "irqcheck.reason.slower";
 				return false;
@@ -167,13 +167,13 @@ namespace PaviseApp
 
 		private static string ServiceOf(string driver)
 		{
-			string text = driver ?? "";
-			int num = text.LastIndexOf('.');
-			if (num <= 0)
+			string driverOffset = driver ?? "";
+			int matchIndex = driverOffset.LastIndexOf('.');
+			if (matchIndex <= 0)
 			{
-				return text;
+				return driverOffset;
 			}
-			return text.Substring(0, num);
+			return driverOffset.Substring(0, matchIndex);
 		}
 
 		internal static GpuIrqSample PickGpu(List<IrqDevice> devices, List<DriverInterrupt> drivers, string ownedDevice)
@@ -235,8 +235,8 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				double num = IrqPercentile.ApproxUs(driver.DpcBuckets, driver.DpcMaxUs, 0.99);
-				if (driver.DpcOver1Ms <= 0 && (driver.Dpc < 100 || num < 500.0))
+				double approxUsResult = IrqPercentile.ApproxUs(driver.DpcBuckets, driver.DpcMaxUs, 0.99);
+				if (driver.DpcOver1Ms <= 0 && (driver.Dpc < 100 || approxUsResult < 500.0))
 				{
 					continue;
 				}
@@ -257,7 +257,7 @@ namespace PaviseApp
 					Driver = driver.Driver,
 					Device = device,
 					MaxUs = driver.DpcMaxUs,
-					P99Us = num,
+					P99Us = approxUsResult,
 					Over1Ms = driver.DpcOver1Ms,
 					Events = driver.Dpc
 				});
@@ -291,27 +291,27 @@ namespace PaviseApp
 			{
 				return list;
 			}
-			string[] array = raw.Split('|');
-			if (array.Length < 2 || array[0] != "1" || !long.TryParse(array[1], NumberStyles.None, CultureInfo.InvariantCulture, out ticks))
+			string[] rawParts = raw.Split('|');
+			if (rawParts.Length < 2 || rawParts[0] != "1" || !long.TryParse(rawParts[1], NumberStyles.None, CultureInfo.InvariantCulture, out ticks))
 			{
 				ticks = 0L;
 				return list;
 			}
-			for (int i = 2; i < array.Length; i++)
+			for (int i = 2; i < rawParts.Length; i++)
 			{
-				string[] array2 = array[i].Split(',');
+				string[] parts = rawParts[i].Split(',');
 				double result;
 				double result2;
 				long result3;
 				long result4;
-				if (array2.Length == 6 && double.TryParse(array2[2], NumberStyles.Float, CultureInfo.InvariantCulture, out result) && double.TryParse(array2[3], NumberStyles.Float, CultureInfo.InvariantCulture, out result2) && long.TryParse(array2[4], NumberStyles.None, CultureInfo.InvariantCulture, out result3) && long.TryParse(array2[5], NumberStyles.None, CultureInfo.InvariantCulture, out result4))
+				if (parts.Length == 6 && double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out result) && double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out result2) && long.TryParse(parts[4], NumberStyles.None, CultureInfo.InvariantCulture, out result3) && long.TryParse(parts[5], NumberStyles.None, CultureInfo.InvariantCulture, out result4))
 				{
 					try
 					{
 						list.Add(new SlowDriver
 						{
-							Driver = Uri.UnescapeDataString(array2[0]),
-							Device = Uri.UnescapeDataString(array2[1]),
+							Driver = Uri.UnescapeDataString(parts[0]),
+							Device = Uri.UnescapeDataString(parts[1]),
 							MaxUs = result,
 							P99Us = result2,
 							Over1Ms = result3,
@@ -339,10 +339,10 @@ namespace PaviseApp
 		internal static bool IsFused(string deviceId, string version)
 		{
 			string b = FuseToken(deviceId, version);
-			string[] array = Settings.LoadStr("GpuIrqFuseV1", "").Split('\n');
-			foreach (string text in array)
+			string[] loadStrParts = Settings.LoadStr("GpuIrqFuseV1", "").Split('\n');
+			foreach (string entryText in loadStrParts)
 			{
-				if (string.Equals(text.Trim(), b, StringComparison.Ordinal))
+				if (string.Equals(entryText.Trim(), b, StringComparison.Ordinal))
 				{
 					return true;
 				}
@@ -354,8 +354,8 @@ namespace PaviseApp
 		{
 			if (!IsFused(deviceId, version))
 			{
-				string text = Settings.LoadStr("GpuIrqFuseV1", "");
-				Settings.SaveStr("GpuIrqFuseV1", (text.Length == 0) ? FuseToken(deviceId, version) : (text + "\n" + FuseToken(deviceId, version)));
+				string gpuIrqFuseV1Value = Settings.LoadStr("GpuIrqFuseV1", "");
+				Settings.SaveStr("GpuIrqFuseV1", (gpuIrqFuseV1Value.Length == 0) ? FuseToken(deviceId, version) : (gpuIrqFuseV1Value + "\n" + FuseToken(deviceId, version)));
 			}
 		}
 
@@ -508,8 +508,8 @@ namespace PaviseApp
 				}
 				if (interruptAttributionResult == null)
 				{
-					bool flag = cancelled != null && cancelled();
-					gpuIrqResult.Outcome = (flag ? GpuIrqOutcome.Cancelled : GpuIrqOutcome.Failed);
+					bool matchesCancelled = cancelled != null && cancelled();
+					gpuIrqResult.Outcome = (matchesCancelled ? GpuIrqOutcome.Cancelled : GpuIrqOutcome.Failed);
 					gpuIrqResult.Detail = error;
 					return gpuIrqResult;
 				}
@@ -523,8 +523,8 @@ namespace PaviseApp
 				long ticks = DateTime.UtcNow.Ticks;
 				gpuIrqResult.Slow = SlowDrivers(interruptAttributionResult.Drivers, devices);
 				Settings.SaveStr("GpuIrqSlowV1", EncodeSlow(gpuIrqResult.Slow, ticks));
-				bool flag2 = gpuIrqState.Phase == GpuIrqPhase.Pending || gpuIrqState.Phase == GpuIrqPhase.Applied;
-				GpuIrqSample gpuIrqSample = (gpuIrqResult.Gpu = PickGpu(devices, interruptAttributionResult.Drivers, flag2 ? gpuIrqState.DeviceId : null));
+				bool anyConditionMet = gpuIrqState.Phase == GpuIrqPhase.Pending || gpuIrqState.Phase == GpuIrqPhase.Applied;
+				GpuIrqSample gpuIrqSample = (gpuIrqResult.Gpu = PickGpu(devices, interruptAttributionResult.Drivers, anyConditionMet ? gpuIrqState.DeviceId : null));
 				ulong allMask = CpuTopology.AllMask;
 				gpuIrqResult.Region = GameRegion(Plan(), allMask, CpuTopology.PhysicalCoreMasks());
 				gpuIrqResult.Target = TargetFor(gpuIrqResult.Region, allMask, CpuTopology.PerfMask, CpuTopology.Hybrid);
@@ -548,12 +548,12 @@ namespace PaviseApp
 					}
 					else
 					{
-						bool flag3 = Restore(gpuIrqState.DeviceId);
+						bool restoreSucceeded = Restore(gpuIrqState.DeviceId);
 						AddFuse(gpuIrqState.DeviceId, gpuIrqState.DriverVersion);
 						gpuIrqState.Phase = GpuIrqPhase.RolledBack;
 						gpuIrqState.Reason = reason;
 						gpuIrqResult.Outcome = GpuIrqOutcome.RolledBack;
-						gpuIrqResult.Detail = Lang.T(reason) + (flag3 ? "" : (" · " + Lang.T("irqcheck.restorefailed")));
+						gpuIrqResult.Detail = Lang.T(reason) + (restoreSucceeded ? "" : (" · " + Lang.T("irqcheck.restorefailed")));
 						Logger.Warn(Lang.F("log.irqcheck.rolledback", gpuIrqState.DeviceName, Lang.T(reason)));
 					}
 					Save(gpuIrqState);
@@ -564,7 +564,7 @@ namespace PaviseApp
 				if (gpuIrqSample != null)
 				{
 					gpuIrqState.Seen = gpuIrqSample.Seen;
-					if (!flag2)
+					if (!anyConditionMet)
 					{
 						gpuIrqState.DeviceId = gpuIrqSample.DeviceId;
 						gpuIrqState.DriverVersion = gpuIrqSample.DriverVersion;
@@ -600,11 +600,11 @@ namespace PaviseApp
 					break;
 				}
 				case GpuIrqOutcome.NoRegion:
-					if (flag2)
+					if (anyConditionMet)
 					{
-						bool flag4 = Restore(gpuIrqState.DeviceId);
+						bool restoreSucceeded2 = Restore(gpuIrqState.DeviceId);
 						gpuIrqOutcome = GpuIrqOutcome.Restored;
-						if (!flag4)
+						if (!restoreSucceeded2)
 						{
 							gpuIrqResult.Detail = Lang.T("irqcheck.restorefailed");
 						}
@@ -613,7 +613,7 @@ namespace PaviseApp
 					gpuIrqState.Reason = "";
 					break;
 				case GpuIrqOutcome.Clear:
-					gpuIrqState.Phase = ((flag2 && gpuIrqState.Phase == GpuIrqPhase.Applied) ? GpuIrqPhase.Applied : GpuIrqPhase.Clear);
+					gpuIrqState.Phase = ((anyConditionMet && gpuIrqState.Phase == GpuIrqPhase.Applied) ? GpuIrqPhase.Applied : GpuIrqPhase.Clear);
 					gpuIrqState.Reason = "";
 					break;
 				case GpuIrqOutcome.Skipped:
@@ -638,12 +638,12 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = HooksRestoreAll();
-				if (flag)
+				bool hooksRestoreAllSucceeded = HooksRestoreAll();
+				if (hooksRestoreAllSucceeded)
 				{
 					Settings.SaveStr("GpuIrqCheckV1", "");
 				}
-				return flag;
+				return hooksRestoreAllSucceeded;
 			}
 		}
 
@@ -758,12 +758,12 @@ namespace PaviseApp
 		private static bool Write(string deviceId, ulong mask, out string failure)
 		{
 			failure = "";
-			bool flag = engine.Enable(new List<string> { deviceId }, mask);
-			if (!flag)
+			bool enableSucceeded = engine.Enable(new List<string> { deviceId }, mask);
+			if (!enableSucceeded)
 			{
 				failure = engine.LastResult.Describe();
 			}
-			return flag;
+			return enableSucceeded;
 		}
 
 		private static bool Restore(string deviceId)

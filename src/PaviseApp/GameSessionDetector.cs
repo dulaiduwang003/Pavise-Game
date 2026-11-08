@@ -185,8 +185,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = ImageNameFromVerifiedPath(entry.Path);
-			if (string.IsNullOrEmpty(text))
+			string imageNameFromVerifiedPathResult = ImageNameFromVerifiedPath(entry.Path);
+			if (string.IsNullOrEmpty(imageNameFromVerifiedPathResult))
 			{
 				return false;
 			}
@@ -195,7 +195,7 @@ namespace PaviseApp
 				Pid = entry.Pid,
 				ParentPid = entry.ParentPid,
 				Creation = entry.Creation,
-				Name = text,
+				Name = imageNameFromVerifiedPathResult,
 				Path = entry.Path
 			};
 			return true;
@@ -216,12 +216,12 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			int num = ForegroundPid();
-			if (num <= 0)
+			int foregroundPidResult = ForegroundPid();
+			if (foregroundPidResult <= 0)
 			{
 				return null;
 			}
-			ProcEntry entry = processes.Find(num);
+			ProcEntry entry = processes.Find(foregroundPidResult);
 			GameProcessSnapshot identity;
 			if (!TryCaptureProcessIdentity(entry, ownerSession, out identity) || SameRendererIdentity(incumbent, identity))
 			{
@@ -237,7 +237,7 @@ namespace PaviseApp
 			}
 			int pid;
 			bool fullscreen;
-			if (!TryCaptureCandidateWindow(out pid, out fullscreen) || pid != num)
+			if (!TryCaptureCandidateWindow(out pid, out fullscreen) || pid != foregroundPidResult)
 			{
 				return null;
 			}
@@ -252,7 +252,7 @@ namespace PaviseApp
 				GameProcessSnapshot identity2;
 				if (TryCaptureProcessIdentity(entry2, ownerSession, out identity2))
 				{
-					identity2.Foreground = identity2.Pid == num;
+					identity2.Foreground = identity2.Pid == foregroundPidResult;
 					identity2.Visible = identity2.Foreground;
 					identity2.FullscreenLike = identity2.Foreground && fullscreen;
 					list.Add(identity2);
@@ -299,7 +299,7 @@ namespace PaviseApp
 				return null;
 			}
 			GameDetection gameDetection = null;
-			bool flag = false;
+			bool foregroundCandidateSnapshotReady = false;
 			foreach (GameProfile profile in profiles)
 			{
 				if (profile == null)
@@ -309,19 +309,19 @@ namespace PaviseApp
 				GameDetection gameDetection2 = FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence, incumbent);
 				if (gameDetection2 != null)
 				{
-					int num = CompareCandidateOwnership(gameDetection2, gameDetection);
-					if (num > 0)
+					int compareCandidateOwnershipResult = CompareCandidateOwnership(gameDetection2, gameDetection);
+					if (compareCandidateOwnershipResult > 0)
 					{
 						gameDetection = gameDetection2;
-						flag = false;
+						foregroundCandidateSnapshotReady = false;
 					}
-					else if (num == 0 && !SameCandidateOwner(gameDetection2.Profile, gameDetection.Profile))
+					else if (compareCandidateOwnershipResult == 0 && !SameCandidateOwner(gameDetection2.Profile, gameDetection.Profile))
 					{
-						flag = true;
+						foregroundCandidateSnapshotReady = true;
 					}
 				}
 			}
-			if (!flag)
+			if (!foregroundCandidateSnapshotReady)
 			{
 				return gameDetection;
 			}
@@ -366,10 +366,10 @@ namespace PaviseApp
 
 		private static GameDetection FindForegroundCandidateInProfile(Dictionary<int, GameProcessSnapshot> byPid, GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence, GameDetection incumbent = null)
 		{
-			bool flag = SamePath(profile.ExecutablePath, foreground.Path) || SamePath(profile.LearnedExecutablePath, foreground.Path);
+			bool matchesSamePath = SamePath(profile.ExecutablePath, foreground.Path) || SamePath(profile.LearnedExecutablePath, foreground.Path);
 			// Fullscreen alone cannot promote a challenger while an existing renderer is alive.
 			// Require GPU evidence to exclude fullscreen web/SDK overlays.
-			bool challengesLiveRenderer = !flag && IncumbentRendererLive(incumbent, profile, foreground, byPid);
+			bool challengesLiveRenderer = !matchesSamePath && IncumbentRendererLive(incumbent, profile, foreground, byPid);
 			if (ElectionVetoed(foreground.Name, foreground.Path))
 			{
 				return null;
@@ -387,13 +387,13 @@ namespace PaviseApp
 				return null;
 			}
 			GameDetection gameDetection;
-			if (profile.ForceTrigger && flag)
+			if (profile.ForceTrigger && matchesSamePath)
 			{
 				gameDetection = ElectForced(profile, new List<GameProcessSnapshot> { foreground });
 			}
 			else if (!profile.ForceTrigger)
 			{
-				gameDetection = (foreground.FullscreenLike && !challengesLiveRenderer ? Elected(profile, foreground, !flag, Lang.T("detect.fullscreen")) : (SamePath(profile.LearnedExecutablePath, foreground.Path) ? Elected(profile, foreground, false, Lang.T("detect.learned")) : ((!SamePath(profile.ExecutablePath, foreground.Path)) ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window")))));
+				gameDetection = (foreground.FullscreenLike && !challengesLiveRenderer ? Elected(profile, foreground, !matchesSamePath, Lang.T("detect.fullscreen")) : (SamePath(profile.LearnedExecutablePath, foreground.Path) ? Elected(profile, foreground, false, Lang.T("detect.learned")) : ((!SamePath(profile.ExecutablePath, foreground.Path)) ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window")))));
 			}
 			else
 			{
@@ -435,10 +435,10 @@ namespace PaviseApp
 			{
 				return 1;
 			}
-			int num = candidate.RendererMatchRank.CompareTo(current.RendererMatchRank);
-			if (num != 0)
+			int compareToResult = candidate.RendererMatchRank.CompareTo(current.RendererMatchRank);
+			if (compareToResult != 0)
 			{
-				return num;
+				return compareToResult;
 			}
 			if (candidate.RendererMatchRank == 1)
 			{
@@ -599,11 +599,11 @@ namespace PaviseApp
 				}
 				if (armedProfile == null)
 				{
-					string text = ArmedVia(profile, list);
-					if (text != null)
+					string armedViaResult = ArmedVia(profile, list);
+					if (armedViaResult != null)
 					{
 						armedProfile = profile.Name;
-						armedVia = text;
+						armedVia = armedViaResult;
 					}
 				}
 				GameDetection gameDetection2 = Elect(profile, list);
@@ -684,8 +684,8 @@ namespace PaviseApp
 			GameProcessSnapshot gameProcessSnapshot = identity;
 			HashSet<int> hashSet = new HashSet<int>();
 			hashSet.Add(identity.Pid);
-			int num = 0;
-			while (gameProcessSnapshot.ParentPid > 0 && num < 24)
+			int processedCount = 0;
+			while (gameProcessSnapshot.ParentPid > 0 && processedCount < 24)
 			{
 				int parentPid = gameProcessSnapshot.ParentPid;
 				if (!hashSet.Add(parentPid))
@@ -706,7 +706,7 @@ namespace PaviseApp
 					return true;
 				}
 				gameProcessSnapshot = value;
-				num++;
+				processedCount++;
 			}
 			return false;
 		}
@@ -882,11 +882,11 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			bool flag = !candidate.RequiresGpuConfirm;
-			bool flag2 = !current.RequiresGpuConfirm;
-			if (flag != flag2)
+			bool isNotRequiresGpuConfirm = !candidate.RequiresGpuConfirm;
+			bool isNotRequiresGpuConfirm2 = !current.RequiresGpuConfirm;
+			if (isNotRequiresGpuConfirm != isNotRequiresGpuConfirm2)
 			{
-				return flag;
+				return isNotRequiresGpuConfirm;
 			}
 			if (candidate.RendererForeground != current.RendererForeground)
 			{
@@ -898,16 +898,16 @@ namespace PaviseApp
 				{
 					return candidate.RendererMatchRank > current.RendererMatchRank;
 				}
-				bool flag3 = candidate.Profile != null && candidate.Profile.ContainsPath(candidate.RendererPath);
-				bool flag4 = current.Profile != null && current.Profile.ContainsPath(current.RendererPath);
-				if (flag3 != flag4)
+				bool matchesContainsPath = candidate.Profile != null && candidate.Profile.ContainsPath(candidate.RendererPath);
+				bool matchesContainsPath2 = current.Profile != null && current.Profile.ContainsPath(current.RendererPath);
+				if (matchesContainsPath != matchesContainsPath2)
 				{
-					return flag3;
+					return matchesContainsPath;
 				}
-				int num = CompareStableProfile(candidate.Profile, current.Profile);
-				if (num != 0)
+				int compareStableProfileResult = CompareStableProfile(candidate.Profile, current.Profile);
+				if (compareStableProfileResult != 0)
 				{
-					return num < 0;
+					return compareStableProfileResult < 0;
 				}
 			}
 			if (candidate.RendererCreation != current.RendererCreation)
@@ -931,19 +931,19 @@ namespace PaviseApp
 			{
 				return -1;
 			}
-			string[] array = new string[5] { a.Id, a.Root, a.ExecutablePath, a.LearnedExecutablePath, a.Name };
-			string[] array2 = new string[5] { b.Id, b.Root, b.ExecutablePath, b.LearnedExecutablePath, b.Name };
-			for (int i = 0; i < array.Length; i++)
+			string[] textEntries = new string[5] { a.Id, a.Root, a.ExecutablePath, a.LearnedExecutablePath, a.Name };
+			string[] textEntries2 = new string[5] { b.Id, b.Root, b.ExecutablePath, b.LearnedExecutablePath, b.Name };
+			for (int i = 0; i < textEntries.Length; i++)
 			{
-				int num = string.Compare(array[i] ?? "", array2[i] ?? "", StringComparison.OrdinalIgnoreCase);
-				if (num != 0)
+				int compareResult = string.Compare(textEntries[i] ?? "", textEntries2[i] ?? "", StringComparison.OrdinalIgnoreCase);
+				if (compareResult != 0)
 				{
-					return num;
+					return compareResult;
 				}
-				num = string.CompareOrdinal(array[i] ?? "", array2[i] ?? "");
-				if (num != 0)
+				compareResult = string.CompareOrdinal(textEntries[i] ?? "", textEntries2[i] ?? "");
+				if (compareResult != 0)
 				{
-					return num;
+					return compareResult;
 				}
 			}
 			return 0;
@@ -951,16 +951,16 @@ namespace PaviseApp
 
 		internal static bool IsNonGameRole(string name, string path)
 		{
-			string text = (name ?? "").Trim();
-			if (AntiCheatCatalog.IsAntiCheatProcess(text, path))
+			string trimmed = (name ?? "").Trim();
+			if (AntiCheatCatalog.IsAntiCheatProcess(trimmed, path))
 			{
 				return true;
 			}
-			if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path) && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase) && (SystemProcessCatalog.IsShellProcess(text) || SystemProcessCatalog.IsCoreSystemProcess(text, path, WindowsRootPrefix)))
+			if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path) && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase) && (SystemProcessCatalog.IsShellProcess(trimmed) || SystemProcessCatalog.IsCoreSystemProcess(trimmed, path, WindowsRootPrefix)))
 			{
 				return true;
 			}
-			string lowered = ((path ?? "") + "\\" + text).ToLowerInvariant();
+			string lowered = ((path ?? "") + "\\" + trimmed).ToLowerInvariant();
 			return AntiCheatCatalog.ContainsToken(lowered);
 		}
 
@@ -1052,43 +1052,43 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = ((suffix[0] == '_' || suffix[0] == '-') ? 1 : 0);
-			if (num >= suffix.Length)
+			int isBitnessOrVersionSuffixValue = ((suffix[0] == '_' || suffix[0] == '-') ? 1 : 0);
+			if (isBitnessOrVersionSuffixValue >= suffix.Length)
 			{
 				return false;
 			}
-			string text = suffix.Substring(num);
-			bool flag = true;
-			string text2 = text;
-			foreach (char c in text2)
+			string substringResult = suffix.Substring(isBitnessOrVersionSuffixValue);
+			bool isBitnessOrVersionSuffixReady = true;
+			string message = substringResult;
+			foreach (char c in message)
 			{
 				if (!char.IsDigit(c))
 				{
-					flag = false;
+					isBitnessOrVersionSuffixReady = false;
 					break;
 				}
 			}
-			if (flag)
+			if (isBitnessOrVersionSuffixReady)
 			{
 				return true;
 			}
-			string text3 = text.ToLowerInvariant();
-			if (text3 == "x64" || text3 == "x86")
+			string toLowerInvariantResult = substringResult.ToLowerInvariant();
+			if (toLowerInvariantResult == "x64" || toLowerInvariantResult == "x86")
 			{
 				return true;
 			}
-			if (text3.Length >= 2 && text3[0] == 'v')
+			if (toLowerInvariantResult.Length >= 2 && toLowerInvariantResult[0] == 'v')
 			{
-				bool flag2 = true;
-				for (int j = 1; j < text3.Length; j++)
+				bool isBitnessOrVersionSuffixReady2 = true;
+				for (int j = 1; j < toLowerInvariantResult.Length; j++)
 				{
-					if (!char.IsDigit(text3[j]))
+					if (!char.IsDigit(toLowerInvariantResult[j]))
 					{
-						flag2 = false;
+						isBitnessOrVersionSuffixReady2 = false;
 						break;
 					}
 				}
-				if (flag2)
+				if (isBitnessOrVersionSuffixReady2)
 				{
 					return true;
 				}
@@ -1118,10 +1118,10 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string text = Native.ImagePath(intPtr);
-				string text2 = ImageNameFromVerifiedPath(text);
+				string imagePathResult = Native.ImagePath(intPtr);
+				string imageNameFromVerifiedPathResult = ImageNameFromVerifiedPath(imagePathResult);
 				int sessionId;
-				if (string.IsNullOrEmpty(text2) || !Native.TryGetLiveProcessSessionId(intPtr, pid, out sessionId) || sessionId != ownerSession)
+				if (string.IsNullOrEmpty(imageNameFromVerifiedPathResult) || !Native.TryGetLiveProcessSessionId(intPtr, pid, out sessionId) || sessionId != ownerSession)
 				{
 					return false;
 				}
@@ -1130,8 +1130,8 @@ namespace PaviseApp
 					Pid = pid,
 					ParentPid = Native.ParentProcessId(intPtr),
 					Creation = creation,
-					Name = text2,
-					Path = text
+					Name = imageNameFromVerifiedPathResult,
+					Path = imagePathResult
 				};
 				return true;
 			}
@@ -1169,20 +1169,20 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = ForegroundPid();
-			bool flag = num > 0 && ForegroundWindowFullscreenLike(num);
+			int foregroundPidResult = ForegroundPid();
+			bool matchesForegroundWindowFullscreenLike = foregroundPidResult > 0 && ForegroundWindowFullscreenLike(foregroundPidResult);
 			HashSet<int> hashSet = VisibleWindowPids(false);
 			foreach (GameProcessSnapshot item in snapshot)
 			{
 				if (item != null && item.Pid > 0 && item.Creation > 0)
 				{
-					bool flag2 = item.Pid == num;
-					bool flag3 = hashSet.Contains(item.Pid);
-					if ((flag2 || flag3) && IsLiveProcessCreation(item.Pid, item.Creation))
+					bool foregroundValue = item.Pid == foregroundPidResult;
+					bool visibleValue = hashSet.Contains(item.Pid);
+					if ((foregroundValue || visibleValue) && IsLiveProcessCreation(item.Pid, item.Creation))
 					{
-						item.Foreground = flag2;
-						item.Visible = flag3;
-						item.FullscreenLike = flag2 && flag;
+						item.Foreground = foregroundValue;
+						item.Visible = visibleValue;
+						item.FullscreenLike = foregroundValue && matchesForegroundWindowFullscreenLike;
 					}
 				}
 			}
@@ -1438,13 +1438,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			double num = (double)((long)monitor.Right - (long)monitor.Left) * (double)((long)monitor.Bottom - (long)monitor.Top);
-			int num2 = Math.Max(rect.Left, monitor.Left);
-			int num3 = Math.Max(rect.Top, monitor.Top);
-			int num4 = Math.Min(rect.Right, monitor.Right);
-			int num5 = Math.Min(rect.Bottom, monitor.Bottom);
-			double num6 = ((num4 > num2 && num5 > num3) ? ((double)((long)num4 - (long)num2) * (double)((long)num5 - (long)num3)) : 0.0);
-			return num6 * 100.0 >= num * 97.0;
+			double scaledValue = (double)((long)monitor.Right - (long)monitor.Left) * (double)((long)monitor.Bottom - (long)monitor.Top);
+			int leftLimit = Math.Max(rect.Left, monitor.Left);
+			int topLimit = Math.Max(rect.Top, monitor.Top);
+			int rightLimit = Math.Min(rect.Right, monitor.Right);
+			int bottomLimit = Math.Min(rect.Bottom, monitor.Bottom);
+			double scaledValue2 = ((rightLimit > leftLimit && bottomLimit > topLimit) ? ((double)((long)rightLimit - (long)leftLimit) * (double)((long)bottomLimit - (long)topLimit)) : 0.0);
+			return scaledValue2 * 100.0 >= scaledValue * 97.0;
 		}
 
 		internal static HashSet<int> VisibleWindowPids(bool includeMinimized)
@@ -1453,8 +1453,8 @@ namespace PaviseApp
 			lock (visibleCacheSync)
 			{
 				HashSet<int> hashSet = (includeMinimized ? visibleCacheAll : visibleCacheShown);
-				long num = (includeMinimized ? visibleCacheAllTicks : visibleCacheShownTicks);
-				if (hashSet != null && ticks >= num && ticks - num < 15000000)
+				long visibleCacheAllTicksSnapshot = (includeMinimized ? visibleCacheAllTicks : visibleCacheShownTicks);
+				if (hashSet != null && ticks >= visibleCacheAllTicksSnapshot && ticks - visibleCacheAllTicksSnapshot < 15000000)
 				{
 					return hashSet;
 				}

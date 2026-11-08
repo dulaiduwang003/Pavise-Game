@@ -151,14 +151,14 @@ namespace PaviseApp
 					return;
 				}
 				uint adapterCount = adapterList.GetAdapterCount();
-				for (uint num = 0u; num < adapterCount; num++)
+				for (uint iterationIndex = 0u; iterationIndex < adapterCount; iterationIndex++)
 				{
 					IDXCoreAdapter adapter = null;
 					try
 					{
 						Guid riid2 = AdapterId;
 						string key;
-						if (adapterList.GetAdapter(num, ref riid2, out adapter) < 0 || adapter == null || !adapter.IsValid() || !adapter.IsPropertySupported(12u) || !TryHardwareKey(adapter, out key))
+						if (adapterList.GetAdapter(iterationIndex, ref riid2, out adapter) < 0 || adapter == null || !adapter.IsValid() || !adapter.IsPropertySupported(12u) || !TryHardwareKey(adapter, out key))
 						{
 							continue;
 						}
@@ -214,11 +214,11 @@ namespace PaviseApp
 		{
 			key = null;
 			uint property;
-			int num;
+			int hardwareKeyValue;
 			if (adapter.IsPropertySupported(14u))
 			{
 				property = 14u;
-				num = 20;
+				hardwareKeyValue = 20;
 			}
 			else
 			{
@@ -227,22 +227,22 @@ namespace PaviseApp
 					return false;
 				}
 				property = 3u;
-				num = 16;
+				hardwareKeyValue = 16;
 			}
-			IntPtr intPtr = Marshal.AllocHGlobal(num);
+			IntPtr intPtr = Marshal.AllocHGlobal(hardwareKeyValue);
 			try
 			{
-				if (adapter.GetProperty(property, new UIntPtr((uint)num), intPtr) < 0)
+				if (adapter.GetProperty(property, new UIntPtr((uint)hardwareKeyValue), intPtr) < 0)
 				{
 					return false;
 				}
-				uint num2 = (uint)Marshal.ReadInt32(intPtr, 0);
-				uint num3 = (uint)Marshal.ReadInt32(intPtr, 4);
-				if (num2 == 0 || num3 == 0)
+				uint int32 = (uint)Marshal.ReadInt32(intPtr, 0);
+				uint int322 = (uint)Marshal.ReadInt32(intPtr, 4);
+				if (int32 == 0 || int322 == 0)
 				{
 					return false;
 				}
-				key = "VEN_" + num2.ToString("X4") + "&DEV_" + num3.ToString("X4");
+				key = "VEN_" + int32.ToString("X4") + "&DEV_" + int322.ToString("X4");
 				return true;
 			}
 			finally

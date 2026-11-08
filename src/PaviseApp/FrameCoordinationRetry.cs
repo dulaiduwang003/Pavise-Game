@@ -23,7 +23,7 @@ namespace PaviseApp
 		internal void Observe(FrameCoordinationSample sample, long elapsedMs)
 		{
 			FrameCaptureIssue frameCaptureIssue = ((sample == null) ? FrameCaptureIssue.CaptureFailed : sample.Issue);
-			int num = ((sample == null) ? (-1) : sample.TraceCode);
+			int traceCode = ((sample == null) ? (-1) : sample.TraceCode);
 			if (sample != null && (sample.Valid || frameCaptureIssue == FrameCaptureIssue.InsufficientEvidence || frameCaptureIssue == FrameCaptureIssue.Canceled || frameCaptureIssue == FrameCaptureIssue.TargetChanged))
 			{
 				failures = 0;
@@ -37,12 +37,12 @@ namespace PaviseApp
 				}
 				DelayMs = Math.Min(300000, 10000 << failures - 1);
 			}
-			ShouldLog = !logged || frameCaptureIssue != lastIssue || num != lastTraceCode || elapsedMs - lastLogMs >= 300000;
+			ShouldLog = !logged || frameCaptureIssue != lastIssue || traceCode != lastTraceCode || elapsedMs - lastLogMs >= 300000;
 			if (ShouldLog)
 			{
 				logged = true;
 				lastIssue = frameCaptureIssue;
-				lastTraceCode = num;
+				lastTraceCode = traceCode;
 				lastLogMs = elapsedMs;
 			}
 		}

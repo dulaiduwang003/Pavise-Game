@@ -67,18 +67,18 @@ namespace PaviseApp
 						return list;
 					}
 					string[] subKeyNames = registryKey.GetSubKeyNames();
-					foreach (string text in subKeyNames)
+					foreach (string entryKey in subKeyNames)
 					{
-						using (RegistryKey registryKey2 = registryKey.OpenSubKey(text))
+						using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
 						{
 							if (registryKey2 == null)
 							{
 								continue;
 							}
 							string[] subKeyNames2 = registryKey2.GetSubKeyNames();
-							foreach (string text2 in subKeyNames2)
+							foreach (string entryKey2 in subKeyNames2)
 							{
-								using (RegistryKey registryKey3 = registryKey2.OpenSubKey(text2))
+								using (RegistryKey registryKey3 = registryKey2.OpenSubKey(entryKey2))
 								{
 									if (registryKey3 == null)
 									{
@@ -89,23 +89,23 @@ namespace PaviseApp
 									{
 										continue;
 									}
-									string text3 = "PCI\\" + text + "\\" + text2;
-									if (hashSet.Contains(text3))
+									string instanceIdValue = "PCI\\" + entryKey + "\\" + entryKey2;
+									if (hashSet.Contains(instanceIdValue))
 									{
 										Candidate candidate = default(Candidate);
-										candidate.InstanceId = text3;
-										candidate.Description = (registryKey3.GetValue("DeviceDesc") as string) ?? text3;
+										candidate.InstanceId = instanceIdValue;
+										candidate.Description = (registryKey3.GetValue("DeviceDesc") as string) ?? instanceIdValue;
 										Candidate item = candidate;
-										int num = item.Description.LastIndexOf(';');
-										if (num >= 0)
+										int matchIndex = item.Description.LastIndexOf(';');
+										if (matchIndex >= 0)
 										{
-											item.Description = item.Description.Substring(num + 1);
+											item.Description = item.Description.Substring(matchIndex + 1);
 										}
 										using (RegistryKey registryKey4 = registryKey3.OpenSubKey("Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties"))
 										{
 											item.HasKey = registryKey4 != null;
-											object obj2 = ((registryKey4 == null) ? null : registryKey4.GetValue("MSISupported"));
-											item.Value = ((obj2 is int) ? new int?((int)obj2) : null);
+											object value = ((registryKey4 == null) ? null : registryKey4.GetValue("MSISupported"));
+											item.Value = ((value is int) ? new int?((int)value) : null);
 										}
 										list.Add(item);
 									}
@@ -197,18 +197,18 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = true;
-				string[] array = ParseList(Settings.LoadStr("MsiList", ""));
-				foreach (string instanceId in array)
+				bool restoreSucceeded = true;
+				string[] list = ParseList(Settings.LoadStr("MsiList", ""));
+				foreach (string instanceId in list)
 				{
-					flag &= Reg(instanceId).Restore();
+					restoreSucceeded &= Reg(instanceId).Restore();
 				}
-				if (flag)
+				if (restoreSucceeded)
 				{
 					Settings.SaveStr("MsiList", "");
 					Settings.Save("MsiOnByPavise", false);
 				}
-				return flag;
+				return restoreSucceeded;
 			}
 		}
 

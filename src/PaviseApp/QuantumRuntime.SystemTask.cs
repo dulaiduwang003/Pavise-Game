@@ -124,19 +124,19 @@ namespace PaviseApp
 					|| document.SelectNodes("/t:Task/t:Principals/*", ns).Count != 1
 					|| actions.ChildNodes.Count != 1 || actions.FirstChild.LocalName != "Exec"
 					|| document.SelectNodes("/t:Task/t:Triggers/*", ns).Count != 0) return false;
-				Func<string, string> text = path => { XmlNode node = document.SelectSingleNode(path, ns); return node == null ? "" : node.InnerText; };
-				if (text("/t:Task/t:Principals/t:Principal/t:UserId") != "S-1-5-18"
-					|| text("/t:Task/t:Principals/t:Principal/t:RunLevel") != "HighestAvailable"
-					|| text("/t:Task/t:RegistrationInfo/t:Description") != "Pavise one-shot online quantum update"
-					|| text("/t:Task/t:Settings/t:Hidden") != "true"
-					|| text("/t:Task/t:Settings/t:ExecutionTimeLimit") != "PT20S") return false;
-				string logon = text("/t:Task/t:Principals/t:Principal/t:LogonType");
+				Func<string, string> func = path => { XmlNode node = document.SelectSingleNode(path, ns); return node == null ? "" : node.InnerText; };
+				if (func("/t:Task/t:Principals/t:Principal/t:UserId") != "S-1-5-18"
+					|| func("/t:Task/t:Principals/t:Principal/t:RunLevel") != "HighestAvailable"
+					|| func("/t:Task/t:RegistrationInfo/t:Description") != "Pavise one-shot online quantum update"
+					|| func("/t:Task/t:Settings/t:Hidden") != "true"
+					|| func("/t:Task/t:Settings/t:ExecutionTimeLimit") != "PT20S") return false;
+				string logon = func("/t:Task/t:Principals/t:Principal/t:LogonType");
 				if (logon.Length != 0 && logon != "ServiceAccount") return false;
 				string expectedCommand = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
-				if (!string.Equals(text("/t:Task/t:Actions/t:Exec/t:Command"), expectedCommand, StringComparison.OrdinalIgnoreCase)
-					|| !string.Equals(text("/t:Task/t:Actions/t:Exec/t:WorkingDirectory"), Environment.SystemDirectory, StringComparison.OrdinalIgnoreCase)) return false;
+				if (!string.Equals(func("/t:Task/t:Actions/t:Exec/t:Command"), expectedCommand, StringComparison.OrdinalIgnoreCase)
+					|| !string.Equals(func("/t:Task/t:Actions/t:Exec/t:WorkingDirectory"), Environment.SystemDirectory, StringComparison.OrdinalIgnoreCase)) return false;
 				const string prefix = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ";
-				string arguments = text("/t:Task/t:Actions/t:Exec/t:Arguments");
+				string arguments = func("/t:Task/t:Actions/t:Exec/t:Arguments");
 				if (!arguments.StartsWith(prefix, StringComparison.Ordinal)) return false;
 				string encoded = arguments.Substring(prefix.Length);
 				byte[] bytes = Convert.FromBase64String(encoded);

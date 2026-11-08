@@ -25,32 +25,32 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = 0uL;
-			int num2 = 0;
-			foreach (ulong num3 in physicalCores)
+			ulong legacyMaskResult = 0uL;
+			int legacyMaskValue = 0;
+			foreach (ulong numericValueEntry in physicalCores)
 			{
-				if (num3 != 0 && (num3 & 1) == 0 && (!hybrid || (num3 & perfMask) != 0))
+				if (numericValueEntry != 0 && (numericValueEntry & 1) == 0 && (!hybrid || (numericValueEntry & perfMask) != 0))
 				{
-					num |= num3;
-					if (++num2 == 2)
+					legacyMaskResult |= numericValueEntry;
+					if (++legacyMaskValue == 2)
 					{
 						break;
 					}
 				}
 			}
-			if (num2 < 2)
+			if (legacyMaskValue < 2)
 			{
 				return 0uL;
 			}
-			if (strictGame != 0 && (num & ~strictGame) != 0)
+			if (strictGame != 0 && (legacyMaskResult & ~strictGame) != 0)
 			{
 				return 0uL;
 			}
-			if (AutoCores.CountBits(allMask & ~num) * 2 < AutoCores.CountBits(allMask))
+			if (AutoCores.CountBits(allMask & ~legacyMaskResult) * 2 < AutoCores.CountBits(allMask))
 			{
 				return 0uL;
 			}
-			return num;
+			return legacyMaskResult;
 		}
 
 		internal static ulong BytesMask(byte[] bytes)
@@ -59,12 +59,12 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = 0uL;
+			ulong bytesMaskResult = 0uL;
 			for (int i = 0; i < bytes.Length && i < 8; i++)
 			{
-				num |= (ulong)bytes[i] << i * 8;
+				bytesMaskResult |= (ulong)bytes[i] << i * 8;
 			}
-			return num;
+			return bytesMaskResult;
 		}
 
 		private static bool SameBytes(byte[] a, byte[] b)
@@ -127,20 +127,20 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = snap.Split('-');
-			if (array.Length == 0 || array.Length > 64)
+			string[] snapParts = snap.Split('-');
+			if (snapParts.Length == 0 || snapParts.Length > 64)
 			{
 				return false;
 			}
-			byte[] array2 = new byte[array.Length];
-			for (int i = 0; i < array.Length; i++)
+			byte[] rawBytes = new byte[snapParts.Length];
+			for (int i = 0; i < snapParts.Length; i++)
 			{
-				if (array[i].Length != 2 || !byte.TryParse(array[i], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out array2[i]))
+				if (snapParts[i].Length != 2 || !byte.TryParse(snapParts[i], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out rawBytes[i]))
 				{
 					return false;
 				}
 			}
-			bytes = array2;
+			bytes = rawBytes;
 			return true;
 		}
 
@@ -155,24 +155,24 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text = Settings.LoadStr("PrevReservedCpuSets", "");
-			bool flag = Settings.Load("ReservedCoresByPavise", false) || text.Length > 0;
-			byte[] array;
+			string prevReservedCpuSetsValue = Settings.LoadStr("PrevReservedCpuSets", "");
+			bool matchesLoad = Settings.Load("ReservedCoresByPavise", false) || prevReservedCpuSetsValue.Length > 0;
+			byte[] raw;
 			try
 			{
-				array = ReadRaw();
+				raw = ReadRaw();
 			}
 			catch
 			{
 				return false;
 			}
-			ulong num = BytesMask(array);
-			ulong num2 = CurrentLegacyMask();
-			if (!flag)
+			ulong bytesMaskResult = BytesMask(raw);
+			ulong currentLegacyMaskResult = CurrentLegacyMask();
+			if (!matchesLoad)
 			{
-				if (array != null && array.Length == 8 && num != 0 && num == num2)
+				if (raw != null && raw.Length == 8 && bytesMaskResult != 0 && bytesMaskResult == currentLegacyMaskResult)
 				{
-					Settings.SaveStr("LegacyReservedCoresSuspectV1", num.ToString("X"));
+					Settings.SaveStr("LegacyReservedCoresSuspectV1", bytesMaskResult.ToString("X"));
 				}
 				else
 				{
@@ -182,35 +182,35 @@ namespace PaviseApp
 			}
 			Settings.Remove("LegacyReservedCoresSuspectV1");
 			byte[] bytes;
-			if (!TryDecodeSnapshot(text, out bytes))
+			if (!TryDecodeSnapshot(prevReservedCpuSetsValue, out bytes))
 			{
-				Logger.Warn(Lang.F("log.autocore.legacycorrupt", "0x" + num.ToString("X")));
+				Logger.Warn(Lang.F("log.autocore.legacycorrupt", "0x" + bytesMaskResult.ToString("X")));
 				return false;
 			}
-			ulong num3 = BytesMask(bytes);
-			if (!SameBytes(array, bytes))
+			ulong bytesMaskResult2 = BytesMask(bytes);
+			if (!SameBytes(raw, bytes))
 			{
-				if (array == null || array.Length != 8 || num != num2)
+				if (raw == null || raw.Length != 8 || bytesMaskResult != currentLegacyMaskResult)
 				{
-					Logger.Log(Lang.F("log.autocore.legacychanged", "0x" + num.ToString("X")));
+					Logger.Log(Lang.F("log.autocore.legacychanged", "0x" + bytesMaskResult.ToString("X")));
 					ForgetReceipt();
 					return true;
 				}
-				bool flag2;
+				bool writeRawSucceeded;
 				try
 				{
-					flag2 = WriteRaw(bytes);
+					writeRawSucceeded = WriteRaw(bytes);
 				}
 				catch
 				{
-					flag2 = false;
+					writeRawSucceeded = false;
 				}
-				if (!flag2)
+				if (!writeRawSucceeded)
 				{
-					Logger.Warn(Lang.F("log.autocore.legacyfailed", "0x" + num.ToString("X")));
+					Logger.Warn(Lang.F("log.autocore.legacyfailed", "0x" + bytesMaskResult.ToString("X")));
 					return false;
 				}
-				RecordCleared(num & ~num3);
+				RecordCleared(bytesMaskResult & ~bytesMaskResult2);
 			}
 			ForgetReceipt();
 			return true;
@@ -228,41 +228,41 @@ namespace PaviseApp
 
 		internal static bool ClearSuspect()
 		{
-			ulong num = Suspect();
-			if (num == 0)
+			ulong suspectResult = Suspect();
+			if (suspectResult == 0)
 			{
 				return false;
 			}
-			byte[] array;
+			byte[] raw;
 			try
 			{
-				array = ReadRaw();
+				raw = ReadRaw();
 			}
 			catch
 			{
 				return false;
 			}
-			if (array == null || array.Length != 8 || BytesMask(array) != num)
+			if (raw == null || raw.Length != 8 || BytesMask(raw) != suspectResult)
 			{
 				Settings.Remove("LegacyReservedCoresSuspectV1");
 				return false;
 			}
-			bool flag;
+			bool writeRawSucceeded;
 			try
 			{
-				flag = WriteRaw(null);
+				writeRawSucceeded = WriteRaw(null);
 			}
 			catch
 			{
-				flag = false;
+				writeRawSucceeded = false;
 			}
-			if (!flag)
+			if (!writeRawSucceeded)
 			{
-				Logger.Warn(Lang.F("log.autocore.legacyfailed", "0x" + num.ToString("X")));
+				Logger.Warn(Lang.F("log.autocore.legacyfailed", "0x" + suspectResult.ToString("X")));
 				return false;
 			}
 			Settings.Remove("LegacyReservedCoresSuspectV1");
-			RecordCleared(num);
+			RecordCleared(suspectResult);
 			return true;
 		}
 

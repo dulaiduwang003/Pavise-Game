@@ -52,9 +52,9 @@ namespace PaviseApp
 			try
 			{
 				graphics.SmoothingMode = SmoothingMode.AntiAlias;
-				bool flag = base.Height < Theme.S(72);
-				int num = Theme.S(flag ? 36 : 48);
-				Rectangle rectangle = new Rectangle(Theme.S(20), (base.Height - num) / 2, num, num);
+				bool matchesHeight = base.Height < Theme.S(72);
+				int scaledDimension = Theme.S(matchesHeight ? 36 : 48);
+				Rectangle rectangle = new Rectangle(Theme.S(20), (base.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
 				using (GraphicsPath path = Theme.TechPath(Rectangle.Inflate(rectangle, Theme.S(3), Theme.S(3)), Theme.S(6)))
 				{
 					using (SolidBrush brush = new SolidBrush(Theme.Inset))
@@ -70,12 +70,12 @@ namespace PaviseApp
 				{
 					Glyphs.Draw(graphics, "game", Rectangle.Inflate(rectangle, -Theme.S(8), -Theme.S(8)), Theme.Dim);
 				}
-				int num2 = Theme.S(flag ? 72 : 84);
-				int num3 = Math.Max(0, base.Width - num2 - Theme.S(220));
-				int num4 = Math.Max(Theme.S(4), (base.Height - Theme.S(flag ? 44 : 52)) / 2);
+				int scaledDimension2 = Theme.S(matchesHeight ? 72 : 84);
+				int lowerBound = Math.Max(0, base.Width - scaledDimension2 - Theme.S(220));
+				int sLimit = Math.Max(Theme.S(4), (base.Height - Theme.S(matchesHeight ? 44 : 52)) / 2);
 				TextFormatFlags flags = TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
-				TextRenderer.DrawText(graphics, gameName, Theme.UI(flag ? 10.5f : 12f, true), new Rectangle(num2, num4, num3, Theme.S(flag ? 24 : 28)), Theme.Fg, flags);
-				TextRenderer.DrawText(graphics, cpuLine, Theme.UI(8.5f, false), new Rectangle(num2, num4 + Theme.S(flag ? 25 : 31), num3, Theme.S(flag ? 17 : 21)), Theme.Dim, flags);
+				TextRenderer.DrawText(graphics, gameName, Theme.UI(matchesHeight ? 10.5f : 12f, true), new Rectangle(scaledDimension2, sLimit, lowerBound, Theme.S(matchesHeight ? 24 : 28)), Theme.Fg, flags);
+				TextRenderer.DrawText(graphics, cpuLine, Theme.UI(8.5f, false), new Rectangle(scaledDimension2, sLimit + Theme.S(matchesHeight ? 25 : 31), lowerBound, Theme.S(matchesHeight ? 17 : 21)), Theme.Dim, flags);
 			}
 			finally
 			{
@@ -91,16 +91,16 @@ namespace PaviseApp
 			}
 			try
 			{
-				int num = originalIcon.Width;
-				int num2 = originalIcon.Height;
-				if (num < 1 || num2 < 1)
+				int width = originalIcon.Width;
+				int height = originalIcon.Height;
+				if (width < 1 || height < 1)
 				{
 					return false;
 				}
-				float num3 = Math.Min((float)bounds.Width / (float)num, (float)bounds.Height / (float)num2);
-				int num4 = Math.Max(1, (int)Math.Round((float)num * num3));
-				int num5 = Math.Max(1, (int)Math.Round((float)num2 * num3));
-				Rectangle rect = new Rectangle(bounds.X + (bounds.Width - num4) / 2, bounds.Y + (bounds.Height - num5) / 2, num4, num5);
+				float upperBound = Math.Min((float)bounds.Width / (float)width, (float)bounds.Height / (float)height);
+				int roundLimit = Math.Max(1, (int)Math.Round((float)width * upperBound));
+				int roundLimit2 = Math.Max(1, (int)Math.Round((float)height * upperBound));
+				Rectangle rect = new Rectangle(bounds.X + (bounds.Width - roundLimit) / 2, bounds.Y + (bounds.Height - roundLimit2) / 2, roundLimit, roundLimit2);
 				graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 				graphics.DrawImage(originalIcon, rect);
 				return true;

@@ -86,8 +86,8 @@ namespace PaviseApp
 					}
 					else
 					{
-						int num = ((slot < rail.order.Length - rail.anchorCount) ? rail.FlowBottom : (rail.Height - rail.BottomPad));
-						r.Intersect(new Rectangle(0, rail.TopPad, rail.Width, Math.Max(0, num - rail.TopPad)));
+						int flowBottom = ((slot < rail.order.Length - rail.anchorCount) ? rail.FlowBottom : (rail.Height - rail.BottomPad));
+						r.Intersect(new Rectangle(0, rail.TopPad, rail.Width, Math.Max(0, flowBottom - rail.TopPad)));
 					}
 					if (!rail.IsHandleCreated || r.Width <= 0 || r.Height <= 0)
 					{
@@ -272,10 +272,10 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = Math.Min(Dpi.S(5), Math.Max(0, base.Width / 8));
+				int maxLimit = Math.Min(Dpi.S(5), Math.Max(0, base.Width / 8));
 				int val = Dpi.S(DockRows * 64 + (DockRows - 1) * 4);
-				int num2 = Math.Min(val, Math.Max(1, base.Height - Dpi.S(12)));
-				return new Rectangle(num, Dpi.S(3), Math.Max(1, base.Width - num * 2 - 1), num2);
+				int maxLimit2 = Math.Min(val, Math.Max(1, base.Height - Dpi.S(12)));
+				return new Rectangle(maxLimit, Dpi.S(3), Math.Max(1, base.Width - maxLimit * 2 - 1), maxLimit2);
 			}
 		}
 
@@ -323,8 +323,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				int num = Dpi.S(137 + order.Length * 47 + Math.Max(0, order.Length - 1) * 13 + GroupsAbove(order.Length - 1) * 42 + 48);
-				return base.Height < num;
+				int sResult = Dpi.S(137 + order.Length * 47 + Math.Max(0, order.Length - 1) * 13 + GroupsAbove(order.Length - 1) * 42 + 48);
+				return base.Height < sResult;
 			}
 		}
 
@@ -404,12 +404,12 @@ namespace PaviseApp
 				{
 					return 0;
 				}
-				int num = ((order != null) ? (order.Length - anchorCount) : 0);
-				if (num <= 0)
+				int remainingLength = ((order != null) ? (order.Length - anchorCount) : 0);
+				if (remainingLength <= 0)
 				{
 					return 0;
 				}
-				return Math.Max(0, TopPad + num * ItemH + (num - 1) * Gap + GroupsAbove(num - 1) * GroupH - FlowBottom);
+				return Math.Max(0, TopPad + remainingLength * ItemH + (remainingLength - 1) * Gap + GroupsAbove(remainingLength - 1) * GroupH - FlowBottom);
 			}
 		}
 
@@ -458,10 +458,10 @@ namespace PaviseApp
 		internal Size MeasureFloatingDock(int availableWidth)
 		{
 			EnsureDockMeasurements();
-			int num = Math.Max(1, Math.Min(availableWidth, preferredDockWidth));
-			int num2 = DockColumnCount(num);
-			int num3 = Math.Max(1, (order.Length + num2 - 1) / num2);
-			return new Size(num, Dpi.S(num3 * 64 + (num3 - 1) * 4 + 12));
+			int minLimit = Math.Max(1, Math.Min(availableWidth, preferredDockWidth));
+			int dockColumnCountResult = DockColumnCount(minLimit);
+			int lowerBound = Math.Max(1, (order.Length + dockColumnCountResult - 1) / dockColumnCountResult);
+			return new Size(minLimit, Dpi.S(lowerBound * 64 + (lowerBound - 1) * 4 + 12));
 		}
 
 		private void EnsureDockMeasurements()
@@ -472,20 +472,20 @@ namespace PaviseApp
 				measuredDockScale = Dpi.Scale;
 				normalDockCells = new int[order.Length];
 				compactDockCells = new int[order.Length];
-				int num = 0;
-				int num2 = 0;
+				int ensureDockMeasurementsValue = 0;
+				int ensureDockMeasurementsValue2 = 0;
 				for (int i = 0; i < order.Length; i++)
 				{
-					string text = labels[order[i]] ?? "";
-					normalDockCells[i] = Math.Max(Dpi.S(88), TextRenderer.MeasureText(text, normalDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
-					compactDockCells[i] = Math.Max(Dpi.S(82), TextRenderer.MeasureText(text, compactDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
-					num += normalDockCells[i];
-					num2 += compactDockCells[i];
+					string message = labels[order[i]] ?? "";
+					normalDockCells[i] = Math.Max(Dpi.S(88), TextRenderer.MeasureText(message, normalDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
+					compactDockCells[i] = Math.Max(Dpi.S(82), TextRenderer.MeasureText(message, compactDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
+					ensureDockMeasurementsValue += normalDockCells[i];
+					ensureDockMeasurementsValue2 += compactDockCells[i];
 				}
-				int num3 = GroupsAbove(Math.Max(0, order.Length - 1));
-				int num4 = Dpi.S(22 + Math.Max(0, order.Length - 1) * 4 + num3 * 18);
-				preferredDockWidth = Math.Max(Dpi.S(240), num + num4);
-				minimumDockWidth = Math.Max(Dpi.S(240), num2 + num4);
+				int groupsAboveResult = GroupsAbove(Math.Max(0, order.Length - 1));
+				int sResult = Dpi.S(22 + Math.Max(0, order.Length - 1) * 4 + groupsAboveResult * 18);
+				preferredDockWidth = Math.Max(Dpi.S(240), ensureDockMeasurementsValue + sResult);
+				minimumDockWidth = Math.Max(Dpi.S(240), ensureDockMeasurementsValue2 + sResult);
 			}
 		}
 
@@ -496,40 +496,40 @@ namespace PaviseApp
 				return;
 			}
 			DropDockTypography();
-			bool flag = false;
-			string[] array = labels;
-			foreach (string text in array)
+			bool ensureDockTypographyReady = false;
+			string[] labelsSnapshot = labels;
+			foreach (string entryText in labelsSnapshot)
 			{
-				if (text == null)
+				if (entryText == null)
 				{
 					continue;
 				}
-				string text2 = text;
-				foreach (char c in text2)
+				string message = entryText;
+				foreach (char c in message)
 				{
 					if (c >= '㐀' && c <= '\u9fff')
 					{
-						flag = true;
+						ensureDockTypographyReady = true;
 						break;
 					}
 				}
-				if (flag)
+				if (ensureDockTypographyReady)
 				{
 					break;
 				}
 			}
-			string[] array2 = (flag ? new string[3] { "DengXian", "Microsoft YaHei UI", "Segoe UI" } : new string[3] { "Bahnschrift SemiBold", "Segoe UI Semibold", "Segoe UI" });
-			string[] array3 = array2;
-			foreach (string name in array3)
+			string[] textEntries = (ensureDockTypographyReady ? new string[3] { "DengXian", "Microsoft YaHei UI", "Segoe UI" } : new string[3] { "Bahnschrift SemiBold", "Segoe UI Semibold", "Segoe UI" });
+			string[] textEntries2 = textEntries;
+			foreach (string name in textEntries2)
 			{
 				try
 				{
 					using (FontFamily fontFamily = new FontFamily(name))
 					{
-						FontStyle style = ((flag && fontFamily.IsStyleAvailable(FontStyle.Bold)) ? FontStyle.Bold : FontStyle.Regular);
-						float num = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
-						normalDockFont = new Font(fontFamily, 9.5f * num, style, GraphicsUnit.Pixel);
-						compactDockFont = new Font(fontFamily, 9.5f * num, style, GraphicsUnit.Pixel);
+						FontStyle style = ((ensureDockTypographyReady && fontFamily.IsStyleAvailable(FontStyle.Bold)) ? FontStyle.Bold : FontStyle.Regular);
+						float ratio = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
+						normalDockFont = new Font(fontFamily, 9.5f * ratio, style, GraphicsUnit.Pixel);
+						compactDockFont = new Font(fontFamily, 9.5f * ratio, style, GraphicsUnit.Pixel);
 					}
 				}
 				catch (ArgumentException)
@@ -541,9 +541,9 @@ namespace PaviseApp
 			}
 			if (normalDockFont == null)
 			{
-				float num2 = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
-				normalDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * num2, FontStyle.Bold, GraphicsUnit.Pixel);
-				compactDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * num2, FontStyle.Bold, GraphicsUnit.Pixel);
+				float ratio2 = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
+				normalDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * ratio2, FontStyle.Bold, GraphicsUnit.Pixel);
+				compactDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * ratio2, FontStyle.Bold, GraphicsUnit.Pixel);
 			}
 			dockTypographyScale = Dpi.Scale;
 		}
@@ -566,12 +566,12 @@ namespace PaviseApp
 		private int DockColumnCount(int width)
 		{
 			EnsureDockMeasurements();
-			int num = Math.Max(1, (order == null) ? 1 : order.Length);
-			if (width < minimumDockWidth && num > 4)
+			int lowerBound = Math.Max(1, (order == null) ? 1 : order.Length);
+			if (width < minimumDockWidth && lowerBound > 4)
 			{
-				return (num + 1) / 2;
+				return (lowerBound + 1) / 2;
 			}
-			return num;
+			return lowerBound;
 		}
 
 		public NavRail(string[] names, string[] icons)
@@ -622,15 +622,15 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = 0;
+			int processedCount = 0;
 			for (int i = 0; i < groupBeforeSlots.Length; i++)
 			{
 				if (slot >= groupBeforeSlots[i])
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		private int GroupsAbove(int slot)
@@ -660,8 +660,8 @@ namespace PaviseApp
 			{
 				return TopPad;
 			}
-			int num = order.Length - anchorCount;
-			if (slot >= num && base.Height > 0)
+			int remainingLength = order.Length - anchorCount;
+			if (slot >= remainingLength && base.Height > 0)
 			{
 				return base.Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
 			}
@@ -675,45 +675,45 @@ namespace PaviseApp
 				return new Rectangle(Pad, SlotY(slot), Math.Max(1, base.Width - Pad * 2), ItemH);
 			}
 			Rectangle dockBounds = DockBounds;
-			int num = ((order != null) ? order.Length : 0);
-			if (num == 0 || slot < 0 || slot >= num)
+			int orderCount = ((order != null) ? order.Length : 0);
+			if (orderCount == 0 || slot < 0 || slot >= orderCount)
 			{
 				return Rectangle.Empty;
 			}
 			int dockColumns = DockColumns;
-			int num2 = slot / dockColumns;
-			int num3 = slot % dockColumns;
-			int num4 = num2 * dockColumns;
-			int num5 = Math.Min(dockColumns, num - num4);
-			int num6 = Dpi.S(6);
-			int num7 = Dpi.S(4);
-			int num8 = Dpi.S(18);
-			int num9 = GroupsAbove(num4);
-			int num10 = GroupsAbove(num4 + num5 - 1) - num9;
-			int num11 = GroupsAbove(slot) - num9;
-			int num12 = Math.Max(num5, dockBounds.Width - num6 * 2 - num7 * (num5 - 1) - num10 * num8);
-			int[] array = ((base.Width >= preferredDockWidth) ? normalDockCells : compactDockCells);
-			int num13 = 0;
-			int num14 = 0;
-			for (int i = 0; i < num5; i++)
+			int slotRatio = slot / dockColumns;
+			int slotOffset = slot % dockColumns;
+			int scaledSlotRatio = slotRatio * dockColumns;
+			int dockColumnsLimit = Math.Min(dockColumns, orderCount - scaledSlotRatio);
+			int sResult = Dpi.S(6);
+			int sResult2 = Dpi.S(4);
+			int sResult3 = Dpi.S(18);
+			int groupsAboveResult = GroupsAbove(scaledSlotRatio);
+			int remainingGroupsAbove = GroupsAbove(scaledSlotRatio + dockColumnsLimit - 1) - groupsAboveResult;
+			int remainingGroupsAbove2 = GroupsAbove(slot) - groupsAboveResult;
+			int dockColumnsLimitLimit = Math.Max(dockColumnsLimit, dockBounds.Width - sResult * 2 - sResult2 * (dockColumnsLimit - 1) - remainingGroupsAbove * sResult3);
+			int[] normalDockCellsSnapshot = ((base.Width >= preferredDockWidth) ? normalDockCells : compactDockCells);
+			int itemBoundsValue = 0;
+			int itemBoundsValue2 = 0;
+			for (int i = 0; i < dockColumnsLimit; i++)
 			{
-				int num15 = array[num4 + i];
-				num13 += num15;
-				if (i < num3)
+				int itemBoundsValue3 = normalDockCellsSnapshot[scaledSlotRatio + i];
+				itemBoundsValue += itemBoundsValue3;
+				if (i < slotOffset)
 				{
-					num14 += num15;
+					itemBoundsValue2 += itemBoundsValue3;
 				}
 			}
-			int num16 = dockBounds.Left + num6 + (int)Math.Round((double)num12 * (double)num14 / (double)Math.Max(1, num13)) + num7 * num3 + num11 * num8;
-			int num17 = dockBounds.Left + num6 + (int)Math.Round((double)num12 * (double)(num14 + array[slot]) / (double)Math.Max(1, num13)) + num7 * num3 + num11 * num8;
-			return new Rectangle(num16, dockBounds.Top + Dpi.S(4) + num2 * (ItemH + Dpi.S(4)), Math.Max(1, num17 - num16), ItemH);
+			int itemBoundsValue4 = dockBounds.Left + sResult + (int)Math.Round((double)dockColumnsLimitLimit * (double)itemBoundsValue2 / (double)Math.Max(1, itemBoundsValue)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
+			int itemBoundsValue5 = dockBounds.Left + sResult + (int)Math.Round((double)dockColumnsLimitLimit * (double)(itemBoundsValue2 + normalDockCellsSnapshot[slot]) / (double)Math.Max(1, itemBoundsValue)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
+			return new Rectangle(itemBoundsValue4, dockBounds.Top + Dpi.S(4) + slotRatio * (ItemH + Dpi.S(4)), Math.Max(1, itemBoundsValue5 - itemBoundsValue4), ItemH);
 		}
 
 		internal Rectangle DockIconBounds(int slot)
 		{
 			Rectangle rectangle = ItemBounds(slot);
-			int num = Dpi.S(20);
-			return new Rectangle(rectangle.Left + (rectangle.Width - num) / 2, rectangle.Top + Dpi.S(7), num, num);
+			int sResult = Dpi.S(20);
+			return new Rectangle(rectangle.Left + (rectangle.Width - sResult) / 2, rectangle.Top + Dpi.S(7), sResult, sResult);
 		}
 
 		internal Rectangle DockLabelBounds(int slot)
@@ -729,17 +729,17 @@ namespace PaviseApp
 				scrollOffset = 0;
 				return;
 			}
-			int num = SlotOfItem(item);
-			if (num >= 0 && num < order.Length - anchorCount)
+			int slotOfItemResult = SlotOfItem(item);
+			if (slotOfItemResult >= 0 && slotOfItemResult < order.Length - anchorCount)
 			{
-				int num2 = SlotY(num);
-				if (num2 < TopPad)
+				int slotYResult = SlotY(slotOfItemResult);
+				if (slotYResult < TopPad)
 				{
-					scrollOffset += num2 - TopPad;
+					scrollOffset += slotYResult - TopPad;
 				}
-				else if (num2 + ItemH > FlowBottom)
+				else if (slotYResult + ItemH > FlowBottom)
 				{
-					scrollOffset += num2 + ItemH - FlowBottom;
+					scrollOffset += slotYResult + ItemH - FlowBottom;
 				}
 			}
 			scrollOffset = Math.Max(0, Math.Min(scrollOffset, ScrollMaximum));
@@ -840,27 +840,27 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag = sel != i;
+			bool matchesSel = sel != i;
 			sel = i;
 			KeepItemVisible(i);
-			int num = SlotOfItem(i);
-			int num2 = SlotY(num);
-			int num3 = ((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
-			if (flag && num >= 0 && CanAnimateIndicator)
+			int slotOfItemResult = SlotOfItem(i);
+			int slotYResult = SlotY(slotOfItemResult);
+			int top = ((FloatingDock && slotOfItemResult >= 0) ? ItemBounds(slotOfItemResult).Y : 0);
+			if (matchesSel && slotOfItemResult >= 0 && CanAnimateIndicator)
 			{
-				indicator.To(num2);
-				indicatorCross.To(num3);
+				indicator.To(slotYResult);
+				indicatorCross.To(top);
 				UiClock.Wake();
 			}
 			else
 			{
-				if (!CanAnimateIndicator || indicator.Target != (float)num2)
+				if (!CanAnimateIndicator || indicator.Target != (float)slotYResult)
 				{
-					indicator.Set(num2);
+					indicator.Set(slotYResult);
 				}
-				if (!CanAnimateIndicator || indicatorCross.Target != (float)num3)
+				if (!CanAnimateIndicator || indicatorCross.Target != (float)top)
 				{
-					indicatorCross.Set(num3);
+					indicatorCross.Set(top);
 				}
 			}
 			Invalidate();
@@ -886,8 +886,8 @@ namespace PaviseApp
 			if (order != null)
 			{
 				indicator.Set(SlotY(SlotOfItem(sel)));
-				int num = SlotOfItem(sel);
-				indicatorCross.Set((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
+				int slotOfItemResult = SlotOfItem(sel);
+				indicatorCross.Set((FloatingDock && slotOfItemResult >= 0) ? ItemBounds(slotOfItemResult).Y : 0);
 				Invalidate();
 			}
 		}
@@ -915,24 +915,24 @@ namespace PaviseApp
 
 		protected override bool StepAll()
 		{
-			bool flag = base.StepAll();
-			int num = SlotOfItem(sel);
-			int num2 = SlotY(num);
-			int num3 = ((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
-			if (!CanAnimateIndicator || indicator.Target != (float)num2)
+			bool stepAllSucceeded = base.StepAll();
+			int slotOfItemResult = SlotOfItem(sel);
+			int slotYResult = SlotY(slotOfItemResult);
+			int top = ((FloatingDock && slotOfItemResult >= 0) ? ItemBounds(slotOfItemResult).Y : 0);
+			if (!CanAnimateIndicator || indicator.Target != (float)slotYResult)
 			{
-				bool flag2 = indicator.Value != (float)num2 || indicator.Target != (float)num2;
-				indicator.Set(num2);
-				flag = flag || flag2;
+				bool anyConditionMet = indicator.Value != (float)slotYResult || indicator.Target != (float)slotYResult;
+				indicator.Set(slotYResult);
+				stepAllSucceeded = stepAllSucceeded || anyConditionMet;
 			}
-			if (!CanAnimateIndicator || indicatorCross.Target != (float)num3)
+			if (!CanAnimateIndicator || indicatorCross.Target != (float)top)
 			{
-				flag |= indicatorCross.Value != (float)num3 || indicatorCross.Target != (float)num3;
-				indicatorCross.Set(num3);
+				stepAllSucceeded |= indicatorCross.Value != (float)top || indicatorCross.Target != (float)top;
+				indicatorCross.Set(top);
 			}
 			if (indicator.Value != indicator.Target)
 			{
-				flag |= indicator.Step();
+				stepAllSucceeded |= indicator.Step();
 				if (Math.Abs(indicator.Value - indicator.Target) < 0.75f)
 				{
 					indicator.Set(indicator.Target);
@@ -940,13 +940,13 @@ namespace PaviseApp
 			}
 			if (indicatorCross.Value != indicatorCross.Target)
 			{
-				flag |= indicatorCross.Step();
+				stepAllSucceeded |= indicatorCross.Step();
 				if (Math.Abs(indicatorCross.Value - indicatorCross.Target) < 0.75f)
 				{
 					indicatorCross.Set(indicatorCross.Target);
 				}
 			}
-			return flag;
+			return stepAllSucceeded;
 		}
 
 		private int HitTest(int y)
@@ -955,8 +955,8 @@ namespace PaviseApp
 			{
 				if (i >= order.Length - anchorCount || (y >= TopPad && y < FlowBottom))
 				{
-					int num = SlotY(i);
-					if (y >= num && y < num + ItemH)
+					int slotYResult = SlotY(i);
+					if (y >= slotYResult && y < slotYResult + ItemH)
 					{
 						return order[i];
 					}
@@ -984,12 +984,12 @@ namespace PaviseApp
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
-			int num = HitTestPoint(e.Location);
-			Cursor = ((num >= 0) ? Cursors.Hand : Cursors.Default);
-			if (num != hoverIdx)
+			int hitTestPointResult = HitTestPoint(e.Location);
+			Cursor = ((hitTestPointResult >= 0) ? Cursors.Hand : Cursors.Default);
+			if (hitTestPointResult != hoverIdx)
 			{
-				hoverIdx = num;
-				itemTip.SetToolTip(this, (num >= 0) ? labels[num] : null);
+				hoverIdx = hitTestPointResult;
+				itemTip.SetToolTip(this, (hitTestPointResult >= 0) ? labels[hitTestPointResult] : null);
 				Invalidate();
 			}
 		}
@@ -1009,11 +1009,11 @@ namespace PaviseApp
 			base.OnMouseClick(e);
 			if (e.Button == MouseButtons.Left)
 			{
-				int num = HitTestPoint(e.Location);
-				if (num >= 0)
+				int hitTestPointResult = HitTestPoint(e.Location);
+				if (hitTestPointResult >= 0)
 				{
 					Focus();
-					InvokeItem(num);
+					InvokeItem(hitTestPointResult);
 				}
 			}
 		}
@@ -1035,35 +1035,35 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = SlotOfItem((hoverIdx >= 0) ? hoverIdx : sel);
-			if (num < 0)
+			int slotOfItemResult = SlotOfItem((hoverIdx >= 0) ? hoverIdx : sel);
+			if (slotOfItemResult < 0)
 			{
-				num = 0;
+				slotOfItemResult = 0;
 			}
-			int num2 = ((!FloatingDock || DockRows <= 1) ? 1 : DockColumns);
+			int dockColumnsSnapshot = ((!FloatingDock || DockRows <= 1) ? 1 : DockColumns);
 			if (e.KeyCode == Keys.Up)
 			{
-				num = Math.Max(0, num - num2);
+				slotOfItemResult = Math.Max(0, slotOfItemResult - dockColumnsSnapshot);
 			}
 			else if (e.KeyCode == Keys.Down)
 			{
-				num = Math.Min(order.Length - 1, num + num2);
+				slotOfItemResult = Math.Min(order.Length - 1, slotOfItemResult + dockColumnsSnapshot);
 			}
 			else if (e.KeyCode == Keys.Left)
 			{
-				num = Math.Max(0, num - 1);
+				slotOfItemResult = Math.Max(0, slotOfItemResult - 1);
 			}
 			else if (e.KeyCode == Keys.Right)
 			{
-				num = Math.Min(order.Length - 1, num + 1);
+				slotOfItemResult = Math.Min(order.Length - 1, slotOfItemResult + 1);
 			}
 			else if (e.KeyCode == Keys.Home)
 			{
-				num = 0;
+				slotOfItemResult = 0;
 			}
 			else if (e.KeyCode == Keys.End)
 			{
-				num = order.Length - 1;
+				slotOfItemResult = order.Length - 1;
 			}
 			else
 			{
@@ -1071,9 +1071,9 @@ namespace PaviseApp
 				{
 					return;
 				}
-				InvokeItem(order[num]);
+				InvokeItem(order[slotOfItemResult]);
 			}
-			hoverIdx = order[num];
+			hoverIdx = order[slotOfItemResult];
 			KeepItemVisible(hoverIdx);
 			Invalidate();
 			e.Handled = true;
@@ -1163,16 +1163,16 @@ namespace PaviseApp
 			}
 			GraphicsState gstate = graphics.Save();
 			graphics.SetClip(new Rectangle(0, TopPad, base.Width, Math.Max(0, base.Height - TopPad - BottomPad)));
-			int num = SlotOfItem(sel);
-			int num2 = SlotY(num);
-			if (!CanAnimateIndicator || indicator.Target != (float)num2)
+			int slotOfItemResult = SlotOfItem(sel);
+			int slotYResult = SlotY(slotOfItemResult);
+			if (!CanAnimateIndicator || indicator.Target != (float)slotYResult)
 			{
-				indicator.Set(num2);
+				indicator.Set(slotYResult);
 			}
-			if (num >= 0)
+			if (slotOfItemResult >= 0)
 			{
-				int num3 = (int)Math.Round(indicator.Value);
-				Rectangle r = new Rectangle(Pad, num3, base.Width - Pad * 2, ItemH);
+				int roundedValue = (int)Math.Round(indicator.Value);
+				Rectangle r = new Rectangle(Pad, roundedValue, base.Width - Pad * 2, ItemH);
 				using (GraphicsPath path = Theme.TechPath(r, Dpi.S(8)))
 				{
 					using (SolidBrush brush4 = new SolidBrush(Col.Alpha(Theme.Accent, Theme.LightMode ? 38 : 22)))
@@ -1184,7 +1184,7 @@ namespace PaviseApp
 						graphics.DrawPath(pen3, path);
 					}
 				}
-				Rectangle r2 = new Rectangle(Pad, num3 + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
+				Rectangle r2 = new Rectangle(Pad, roundedValue + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
 				using (GraphicsPath path2 = Theme.Rounded(r2, Dpi.S(1)))
 				{
 					using (SolidBrush brush5 = new SolidBrush(Theme.Accent))
@@ -1199,41 +1199,41 @@ namespace PaviseApp
 				{
 					break;
 				}
-				int num4 = groupSlots[i];
-				if (num4 < 0 || num4 >= order.Length)
+				int onPaintValue = groupSlots[i];
+				if (onPaintValue < 0 || onPaintValue >= order.Length)
 				{
 					continue;
 				}
-				string text = groupTexts[i] ?? "";
-				int num5 = SlotY(num4) - GroupH;
-				Font font = Theme.MonoFor(text, 6.5f);
-				int num6 = TextRenderer.MeasureText(graphics, text, font).Width;
-				int num7 = num5 + GroupH / 2;
+				string message = groupTexts[i] ?? "";
+				int remainingSlotY = SlotY(onPaintValue) - GroupH;
+				Font font = Theme.MonoFor(message, 6.5f);
+				int width = TextRenderer.MeasureText(graphics, message, font).Width;
+				int top = remainingSlotY + GroupH / 2;
 				using (Pen pen4 = new Pen(Theme.Stroke))
 				{
-					if (text.Length > 0)
+					if (message.Length > 0)
 					{
-						TextRenderer.DrawText(graphics, text, font, new Rectangle(Pad + Dpi.S(13), num5, base.Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-						graphics.DrawLine(pen4, Pad + Dpi.S(17) + num6 + Dpi.S(8), num7, base.Width - Pad - Dpi.S(2), num7);
+						TextRenderer.DrawText(graphics, message, font, new Rectangle(Pad + Dpi.S(13), remainingSlotY, base.Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+						graphics.DrawLine(pen4, Pad + Dpi.S(17) + width + Dpi.S(8), top, base.Width - Pad - Dpi.S(2), top);
 					}
 					else
 					{
-						graphics.DrawLine(pen4, Pad + Dpi.S(6), num7, base.Width - Pad - Dpi.S(6), num7);
+						graphics.DrawLine(pen4, Pad + Dpi.S(6), top, base.Width - Pad - Dpi.S(6), top);
 					}
 				}
 			}
 			for (int j = 0; j < order.Length; j++)
 			{
-				int num8 = order[j];
-				int num9 = SlotY(j);
-				if (num9 + ItemH <= TopPad || num9 >= base.Height - BottomPad)
+				int onPaintValue2 = order[j];
+				int slotYResult2 = SlotY(j);
+				if (slotYResult2 + ItemH <= TopPad || slotYResult2 >= base.Height - BottomPad)
 				{
 					continue;
 				}
-				bool flag = num8 == sel;
-				if (!flag && num8 == hoverIdx)
+				bool matchesOnPaintValue2 = onPaintValue2 == sel;
+				if (!matchesOnPaintValue2 && onPaintValue2 == hoverIdx)
 				{
-					Rectangle r3 = new Rectangle(Pad, num9, base.Width - Pad * 2, ItemH);
+					Rectangle r3 = new Rectangle(Pad, slotYResult2, base.Width - Pad * 2, ItemH);
 					using (SolidBrush brush6 = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 16 : 9)))
 					{
 						using (GraphicsPath path3 = Theme.TechPath(r3, Dpi.S(8)))
@@ -1242,15 +1242,15 @@ namespace PaviseApp
 						}
 					}
 				}
-				Color color = ((!flag) ? ((num8 == hoverIdx) ? Theme.Fg : Theme.Dim) : (Theme.LightMode ? Theme.Accent : Color.White));
-				Rectangle b = new Rectangle(IconOnly ? ((base.Width - Dpi.S(20)) / 2) : (Pad + Dpi.S(CompactRail ? 12 : 20)), num9 + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
-				Glyphs.Draw(graphics, glyphs[num8], b, flag ? Theme.Accent : color);
+				Color color = ((!matchesOnPaintValue2) ? ((onPaintValue2 == hoverIdx) ? Theme.Fg : Theme.Dim) : (Theme.LightMode ? Theme.Accent : Color.White));
+				Rectangle b = new Rectangle(IconOnly ? ((base.Width - Dpi.S(20)) / 2) : (Pad + Dpi.S(CompactRail ? 12 : 20)), slotYResult2 + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
+				Glyphs.Draw(graphics, glyphs[onPaintValue2], b, matchesOnPaintValue2 ? Theme.Accent : color);
 				if (!IconOnly)
 				{
-					int num10 = b.Right + Dpi.S(CompactRail ? 10 : 16);
-					Rectangle bounds = new Rectangle(num10, num9, base.Width - Pad - Dpi.S(10) - num10, ItemH);
-					Font font2 = Theme.UI(11f, flag);
-					TextRenderer.DrawText(graphics, labels[num8], font2, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+					int rightOffset = b.Right + Dpi.S(CompactRail ? 10 : 16);
+					Rectangle bounds = new Rectangle(rightOffset, slotYResult2, base.Width - Pad - Dpi.S(10) - rightOffset, ItemH);
+					Font font2 = Theme.UI(11f, matchesOnPaintValue2);
+					TextRenderer.DrawText(graphics, labels[onPaintValue2], font2, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
 				}
 			}
 			graphics.Restore(gstate);
@@ -1258,12 +1258,12 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num11 = Math.Max(1, FlowBottom - TopPad);
-			int num12 = Math.Min(num11, Math.Max(Dpi.S(18), num11 * num11 / (num11 + ScrollMaximum)));
-			int num13 = TopPad + (num11 - num12) * scrollOffset / Math.Max(1, ScrollMaximum);
+			int lowerBound = Math.Max(1, FlowBottom - TopPad);
+			int height = Math.Min(lowerBound, Math.Max(Dpi.S(18), lowerBound * lowerBound / (lowerBound + ScrollMaximum)));
+			int top2 = TopPad + (lowerBound - height) * scrollOffset / Math.Max(1, ScrollMaximum);
 			using (SolidBrush brush7 = new SolidBrush(Theme.Faint))
 			{
-				graphics.FillRectangle(brush7, base.Width - Dpi.S(4), num13, Math.Max(1, Dpi.S(2)), num12);
+				graphics.FillRectangle(brush7, base.Width - Dpi.S(4), top2, Math.Max(1, Dpi.S(2)), height);
 			}
 		}
 
@@ -1274,18 +1274,18 @@ namespace PaviseApp
 
 		private static GraphicsPath DockPath(Rectangle bounds, int cut)
 		{
-			int num = Math.Max(0, Math.Min(cut, Math.Min(bounds.Width, bounds.Height) / 2));
+			int minLimit = Math.Max(0, Math.Min(cut, Math.Min(bounds.Width, bounds.Height) / 2));
 			GraphicsPath graphicsPath = new GraphicsPath();
 			graphicsPath.AddPolygon(new Point[8]
 			{
-				new Point(bounds.Left + num, bounds.Top),
-				new Point(bounds.Right - num, bounds.Top),
-				new Point(bounds.Right, bounds.Top + num),
-				new Point(bounds.Right, bounds.Bottom - num),
-				new Point(bounds.Right - num, bounds.Bottom),
-				new Point(bounds.Left + num, bounds.Bottom),
-				new Point(bounds.Left, bounds.Bottom - num),
-				new Point(bounds.Left, bounds.Top + num)
+				new Point(bounds.Left + minLimit, bounds.Top),
+				new Point(bounds.Right - minLimit, bounds.Top),
+				new Point(bounds.Right, bounds.Top + minLimit),
+				new Point(bounds.Right, bounds.Bottom - minLimit),
+				new Point(bounds.Right - minLimit, bounds.Bottom),
+				new Point(bounds.Left + minLimit, bounds.Bottom),
+				new Point(bounds.Left, bounds.Bottom - minLimit),
+				new Point(bounds.Left, bounds.Top + minLimit)
 			});
 			graphicsPath.CloseFigure();
 			return graphicsPath;
@@ -1310,13 +1310,13 @@ namespace PaviseApp
 					g.FillPath(brush, path);
 				}
 			}
-			int num = Dpi.S(13);
+			int sResult = Dpi.S(13);
 			Point[] points = new Point[4]
 			{
-				new Point(dockBounds.Left, dockBounds.Bottom - num),
-				new Point(dockBounds.Left + num, dockBounds.Bottom),
-				new Point(dockBounds.Right - num, dockBounds.Bottom),
-				new Point(dockBounds.Right, dockBounds.Bottom - num)
+				new Point(dockBounds.Left, dockBounds.Bottom - sResult),
+				new Point(dockBounds.Left + sResult, dockBounds.Bottom),
+				new Point(dockBounds.Right - sResult, dockBounds.Bottom),
+				new Point(dockBounds.Right, dockBounds.Bottom - sResult)
 			};
 			using (Pen pen = new Pen(Col.Alpha(accent, Theme.LightMode ? 5 : 9), Dpi.S(7)))
 			{
@@ -1335,7 +1335,7 @@ namespace PaviseApp
 					g.DrawPath(pen3, path2);
 				}
 			}
-			using (GraphicsPath path3 = DockPath(dockBounds, num))
+			using (GraphicsPath path3 = DockPath(dockBounds, sResult))
 			{
 				Color color = (Theme.LightMode ? Color.FromArgb(246, 248, 251) : Color.FromArgb(21, 23, 28));
 				Color color2 = (Theme.LightMode ? Color.FromArgb(224, 230, 237) : Color.FromArgb(11, 13, 17));
@@ -1363,37 +1363,37 @@ namespace PaviseApp
 			}
 			using (Pen pen7 = new Pen(Col.Alpha(accent, 170), Math.Max(1, Dpi.S(1))))
 			{
-				int num2 = Math.Min(Dpi.S(30), dockBounds.Width / 6);
-				g.DrawLine(pen7, dockBounds.Left + num, dockBounds.Top, dockBounds.Left + num + num2, dockBounds.Top);
-				g.DrawLine(pen7, dockBounds.Right - num - num2, dockBounds.Bottom, dockBounds.Right - num, dockBounds.Bottom);
+				int sLimit = Math.Min(Dpi.S(30), dockBounds.Width / 6);
+				g.DrawLine(pen7, dockBounds.Left + sResult, dockBounds.Top, dockBounds.Left + sResult + sLimit, dockBounds.Top);
+				g.DrawLine(pen7, dockBounds.Right - sResult - sLimit, dockBounds.Bottom, dockBounds.Right - sResult, dockBounds.Bottom);
 			}
 			for (int i = 0; i < groupSlots.Length; i++)
 			{
-				int num3 = groupSlots[i];
-				if (num3 <= 0 || num3 >= order.Length)
+				int paintDockValue = groupSlots[i];
+				if (paintDockValue <= 0 || paintDockValue >= order.Length)
 				{
 					continue;
 				}
-				Rectangle rectangle = ItemBounds(num3 - 1);
-				Rectangle rectangle2 = ItemBounds(num3);
+				Rectangle rectangle = ItemBounds(paintDockValue - 1);
+				Rectangle rectangle2 = ItemBounds(paintDockValue);
 				if (rectangle.Top == rectangle2.Top)
 				{
-					int num4 = (rectangle.Right + rectangle2.Left) / 2;
+					int left = (rectangle.Right + rectangle2.Left) / 2;
 					using (Pen pen8 = new Pen(Theme.LightMode ? Theme.Stroke : Color.FromArgb(50, 53, 63)))
 					{
-						g.DrawLine(pen8, num4, rectangle2.Top + Dpi.S(10), num4, rectangle2.Bottom - Dpi.S(10));
+						g.DrawLine(pen8, left, rectangle2.Top + Dpi.S(10), left, rectangle2.Bottom - Dpi.S(10));
 					}
 				}
 			}
-			int num5 = SlotOfItem(sel);
-			int num6 = SlotY(num5);
-			if (!CanAnimateIndicator || indicator.Target != (float)num6)
+			int slotOfItemResult = SlotOfItem(sel);
+			int slotYResult = SlotY(slotOfItemResult);
+			if (!CanAnimateIndicator || indicator.Target != (float)slotYResult)
 			{
-				indicator.Set(num6);
+				indicator.Set(slotYResult);
 			}
-			if (num5 >= 0)
+			if (slotOfItemResult >= 0)
 			{
-				Rectangle rectangle3 = ItemBounds(num5);
+				Rectangle rectangle3 = ItemBounds(slotOfItemResult);
 				rectangle3.X = (int)Math.Round(indicator.Value);
 				rectangle3.Y = (int)Math.Round(indicatorCross.Value);
 				using (GraphicsPath path5 = DockPath(rectangle3, Dpi.S(7)))
@@ -1407,23 +1407,23 @@ namespace PaviseApp
 						g.DrawPath(pen9, path5);
 					}
 				}
-				int num7 = Math.Min(Dpi.S(54), rectangle3.Width - Dpi.S(20));
+				int sLimit2 = Math.Min(Dpi.S(54), rectangle3.Width - Dpi.S(20));
 				using (Pen pen10 = new Pen(Col.Alpha(accent, 28), Dpi.S(5)))
 				{
-					g.DrawLine(pen10, rectangle3.Left + (rectangle3.Width - num7) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + num7) / 2, rectangle3.Bottom - 1);
+					g.DrawLine(pen10, rectangle3.Left + (rectangle3.Width - sLimit2) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + sLimit2) / 2, rectangle3.Bottom - 1);
 				}
 				using (Pen pen11 = new Pen(accent, Math.Max(1, Dpi.S(2))))
 				{
-					g.DrawLine(pen11, rectangle3.Left + (rectangle3.Width - num7) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + num7) / 2, rectangle3.Bottom - 1);
+					g.DrawLine(pen11, rectangle3.Left + (rectangle3.Width - sLimit2) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + sLimit2) / 2, rectangle3.Bottom - 1);
 				}
 			}
 			for (int j = 0; j < order.Length; j++)
 			{
-				int num8 = order[j];
+				int paintDockValue2 = order[j];
 				Rectangle rectangle4 = ItemBounds(j);
-				bool flag = num8 == sel;
-				bool flag2 = num8 == hoverIdx;
-				if (!flag && flag2)
+				bool matchesPaintDockValue2 = paintDockValue2 == sel;
+				bool matchesPaintDockValue22 = paintDockValue2 == hoverIdx;
+				if (!matchesPaintDockValue2 && matchesPaintDockValue22)
 				{
 					using (GraphicsPath path6 = DockPath(rectangle4, Dpi.S(7)))
 					{
@@ -1433,11 +1433,11 @@ namespace PaviseApp
 						}
 					}
 				}
-				Color color3 = ((flag || flag2) ? Theme.Fg : Theme.Dim);
+				Color color3 = ((matchesPaintDockValue2 || matchesPaintDockValue22) ? Theme.Fg : Theme.Dim);
 				Font dockLabelFont = DockLabelFont;
-				Glyphs.Draw(g, glyphs[num8], DockIconBounds(j), flag ? accent : color3);
-				TextRenderer.DrawText(g, labels[num8], dockLabelFont, DockLabelBounds(j), color3, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-				if (!base.WantsFocusCue || num8 != ((hoverIdx >= 0) ? hoverIdx : sel))
+				Glyphs.Draw(g, glyphs[paintDockValue2], DockIconBounds(j), matchesPaintDockValue2 ? accent : color3);
+				TextRenderer.DrawText(g, labels[paintDockValue2], dockLabelFont, DockLabelBounds(j), color3, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				if (!base.WantsFocusCue || paintDockValue2 != ((hoverIdx >= 0) ? hoverIdx : sel))
 				{
 					continue;
 				}

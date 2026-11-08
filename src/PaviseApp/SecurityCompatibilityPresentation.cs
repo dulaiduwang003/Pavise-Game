@@ -69,31 +69,31 @@ namespace PaviseApp
 
         internal static string Details(SecurityProductSnapshot snapshot)
         {
-            var text = new StringBuilder();
+            var stringBuilder = new StringBuilder();
             var names = new List<string>();
             SecurityProductInfo[] products = snapshot == null ? new SecurityProductInfo[0] : snapshot.Products;
             foreach (SecurityProductInfo product in products)
                 if (product != null) names.Add(Name(product) + (product.State == SecurityProductState.Active ? "" : " (" + State(product.State) + ")"));
             if (names.Count != 0)
-                text.AppendLine(T("检测到：", "Detected: ", "検出：") + string.Join(T("、", ", ", "、"), names.ToArray()));
+                stringBuilder.AppendLine(T("检测到：", "Detected: ", "検出：") + string.Join(T("、", ", ", "、"), names.ToArray()));
             if (snapshot == null || !snapshot.ScanCompleted || snapshot.HasUnknownState)
-                text.AppendLine(T("状态未能完整确认，不视为未安装。",
+                stringBuilder.AppendLine(T("状态未能完整确认，不视为未安装。",
                     "Some states could not be confirmed; this does not mean no antivirus is installed.",
                     "状態を完全に確認できませんでした。未導入という意味ではありません。"));
             else if (products.Length == 0)
-                text.AppendLine(T("本次未识别到杀毒软件。", "No antivirus was identified in this check.", "今回はウイルス対策ソフトを検出しませんでした。"));
-            text.AppendLine();
-            text.AppendLine(T("安全软件可能影响 Pavise 的优化效果。",
+                stringBuilder.AppendLine(T("本次未识别到杀毒软件。", "No antivirus was identified in this check.", "今回はウイルス対策ソフトを検出しませんでした。"));
+            stringBuilder.AppendLine();
+            stringBuilder.AppendLine(T("安全软件可能影响 Pavise 的优化效果。",
                 "Security software may affect Pavise's optimizations.",
                 "セキュリティソフトがPaviseの最適化に影響する可能性があります。"));
-            text.AppendLine(T("将 Pavise 加入安全软件白名单；仍有异常时，查看行为防护和拦截记录。",
+            stringBuilder.AppendLine(T("将 Pavise 加入安全软件白名单；仍有异常时，查看行为防护和拦截记录。",
                 "Add Pavise to its allowlist. If issues persist, check behavior-protection rules and blocking logs.",
                 "Paviseを許可リストに追加してください。問題が続く場合は動作保護の設定とブロック記録を確認します。"));
-            text.AppendLine();
-            text.Append(T("加白不保证所有操作放行。",
+            stringBuilder.AppendLine();
+            stringBuilder.Append(T("加白不保证所有操作放行。",
                 "Allowlisting may not permit every operation.",
                 "許可リストへの追加は全操作の許可を保証しません。"));
-            return text.ToString();
+            return stringBuilder.ToString();
         }
     }
 }

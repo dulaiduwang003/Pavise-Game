@@ -611,52 +611,52 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Native.ImageName(intPtr);
-				if (text == null || !SameName(text, name))
+				string imageNameResult = Native.ImageName(intPtr);
+				if (imageNameResult == null || !SameName(imageNameResult, name))
 				{
 					return AcquireResult.AlreadyProtected;
 				}
-				if (reason == SuppressReason.Background && (WeGameRuntimeProtection.IsProtectedRuntimeName(text) || PeripheralCatalog.IsInputAudioLike(text)))
+				if (reason == SuppressReason.Background && (WeGameRuntimeProtection.IsProtectedRuntimeName(imageNameResult) || PeripheralCatalog.IsInputAudioLike(imageNameResult)))
 				{
 					return AcquireResult.AlreadyProtected;
 				}
 				long creation = 0L;
 				long cpu;
 				ulong io;
-				bool flag = Native.QueryProcessSample(intPtr, out creation, out cpu, out io);
-				if (flag && creation > 0 && (expectedCreation <= 0 || expectedCreation == creation))
+				bool processSample = Native.QueryProcessSample(intPtr, out creation, out cpu, out io);
+				if (processSample && creation > 0 && (expectedCreation <= 0 || expectedCreation == creation))
 				{
 					lock (sync)
 					{
 						Entry value2;
-						bool flag2 = map.TryGetValue(pid, out value2);
-						if (flag2 && !SameName(value2.Name, name))
+						bool value4 = map.TryGetValue(pid, out value2);
+						if (value4 && !SameName(value2.Name, name))
 						{
 							RemoveEntryLocked(pid);
-							flag2 = false;
+							value4 = false;
 							value2 = null;
 						}
-						if (flag2 && value2.OrigPri != uint.MaxValue && value2.Creation <= 0)
+						if (value4 && value2.OrigPri != uint.MaxValue && value2.Creation <= 0)
 						{
 							RemoveEntryLocked(pid);
 							batchApply.Remove(pid);
-							flag2 = false;
+							value4 = false;
 							value2 = null;
 						}
-						if (flag2 && value2.Creation > 0)
+						if (value4 && value2.Creation > 0)
 						{
-							if (!flag)
+							if (!processSample)
 							{
 								return AcquireResult.AlreadyProtected;
 							}
 							if (value2.Creation != creation)
 							{
 								RemoveEntryLocked(pid);
-								flag2 = false;
+								value4 = false;
 								value2 = null;
 							}
 						}
-						if (flag2 && value2.OrigPri != uint.MaxValue && value2.GaveUp)
+						if (value4 && value2.OrigPri != uint.MaxValue && value2.GaveUp)
 						{
 							value2.SetReasons(value2.Reasons | reason);
 							SetReasonLevel(value2, reason, level);
@@ -672,7 +672,7 @@ namespace PaviseApp
 							value2.GaveUp = false;
 							value2.NextReconcileTicks = 0;
 						}
-						if (flag2 && value2.OrigPri != uint.MaxValue)
+						if (value4 && value2.OrigPri != uint.MaxValue)
 						{
 							SuppressionLevel level2 = value2.Level;
 							SuppressReason reasons = value2.Reasons;
@@ -683,15 +683,15 @@ namespace PaviseApp
 								value2.SetGroup(group);
 							}
 							SetReasonLevel(value2, reason, level);
-							bool flag3 = reasons != value2.Reasons || level2 != value2.Level || !SameName(group2, value2.Group);
+							bool anyConditionMet = reasons != value2.Reasons || level2 != value2.Level || !SameName(group2, value2.Group);
 							long ticks = DateTime.UtcNow.Ticks;
-							bool flag4 = level2 != value2.Level;
-							bool flag5 = !value2.Journaled || flag4 || reasons != value2.Reasons || (!value2.Applied && ticks >= value2.NextReconcileTicks);
-							if ((flag3 || !value2.Journaled) && !PersistJournalLocked())
+							bool matchesLevel2 = level2 != value2.Level;
+							bool anyConditionMet2 = !value2.Journaled || matchesLevel2 || reasons != value2.Reasons || (!value2.Applied && ticks >= value2.NextReconcileTicks);
+							if ((anyConditionMet || !value2.Journaled) && !PersistJournalLocked())
 							{
 								return AcquireResult.ApplyFailed;
 							}
-							if (flag5)
+							if (anyConditionMet2)
 							{
 								if (QueueApplyLocked(pid, name))
 								{
@@ -751,39 +751,39 @@ namespace PaviseApp
 						{
 							return AcquireResult.ApplyFailed;
 						}
-						ulong num = Native.QueryAffinity(intPtr);
-						uint[] array = Native.QueryCpuSets(intPtr);
-						if (array == null)
+						ulong origAffValue = Native.QueryAffinity(intPtr);
+						uint[] origCpuSetsValue = Native.QueryCpuSets(intPtr);
+						if (origCpuSetsValue == null)
 						{
 							return AcquireResult.ApplyFailed;
 						}
-						int num2 = Native.QueryIoPriority(intPtr);
-						int num3 = Native.QueryPagePriority(intPtr);
-						if ((!CpuTopology.MultiGroup && num == 0) || num2 < 0 || num3 < 0)
+						int origIoValue = Native.QueryIoPriority(intPtr);
+						int origPgValue = Native.QueryPagePriority(intPtr);
+						if ((!CpuTopology.MultiGroup && origAffValue == 0) || origIoValue < 0 || origPgValue < 0)
 						{
 							return AcquireResult.ApplyFailed;
 						}
-						uint[] array2 = CpuTopology.BackgroundYieldCpuSetIds();
-						bool flag6 = SameCpuSets(array, CpuTopology.BackgroundCpuSetIds()) || SameCpuSets(array, CpuTopology.InactiveBackgroundCpuSetIds()) || (array2 != null && array2.Length > 0 && SameCpuSets(array, array2));
-						ulong num4 = (CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask());
-						bool flag7 = !CpuTopology.MultiGroup && (num == throttleMask || (CpuTopology.InactiveThrottleMask != 0 && num == CpuTopology.InactiveThrottleMask) || (num4 != 0 && num == num4));
-						bool flag8 = CrashGuard.UncleanThrottleAtLaunch && priorityClass == 64 && num2 == 0 && num3 == 1 && (flag6 || flag7);
-						uint num5 = (flag8 ? 32u : priorityClass);
-						if (flag8 && flag7)
+						uint[] backgroundYieldCpuSetIdsResult = CpuTopology.BackgroundYieldCpuSetIds();
+						bool anyConditionMet3 = SameCpuSets(origCpuSetsValue, CpuTopology.BackgroundCpuSetIds()) || SameCpuSets(origCpuSetsValue, CpuTopology.InactiveBackgroundCpuSetIds()) || (backgroundYieldCpuSetIdsResult != null && backgroundYieldCpuSetIdsResult.Length > 0 && SameCpuSets(origCpuSetsValue, backgroundYieldCpuSetIdsResult));
+						ulong backgroundSqueezeMaskResult = (CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask());
+						bool allConditionsMet = !CpuTopology.MultiGroup && (origAffValue == throttleMask || (CpuTopology.InactiveThrottleMask != 0 && origAffValue == CpuTopology.InactiveThrottleMask) || (backgroundSqueezeMaskResult != 0 && origAffValue == backgroundSqueezeMaskResult));
+						bool allConditionsMet2 = CrashGuard.UncleanThrottleAtLaunch && priorityClass == 64 && origIoValue == 0 && origPgValue == 1 && (anyConditionMet3 || allConditionsMet);
+						uint priorityClassSnapshot = (allConditionsMet2 ? 32u : priorityClass);
+						if (allConditionsMet2 && allConditionsMet)
 						{
-							num = 0uL;
+							origAffValue = 0uL;
 						}
-						if (flag8 && flag6)
+						if (allConditionsMet2 && anyConditionMet3)
 						{
-							array = new uint[0];
+							origCpuSetsValue = new uint[0];
 						}
-						if (flag8 && num2 == 0)
+						if (allConditionsMet2 && origIoValue == 0)
 						{
-							num2 = -1;
+							origIoValue = -1;
 						}
-						if (flag8 && num3 == 1)
+						if (allConditionsMet2 && origPgValue == 1)
 						{
-							num3 = -1;
+							origPgValue = -1;
 						}
 						int controlMask;
 						int stateMask;
@@ -792,38 +792,38 @@ namespace PaviseApp
 							controlMask = -1;
 							stateMask = -1;
 						}
-						else if (flag8 && (controlMask == 1 || controlMask == 5) && stateMask == controlMask)
+						else if (allConditionsMet2 && (controlMask == 1 || controlMask == 5) && stateMask == controlMask)
 						{
 							controlMask = -1;
 							stateMask = -1;
 						}
-						int num6 = Native.QueryBoostDisabled(intPtr);
-						if (flag8 && num6 == 1)
+						int origBoostValue = Native.QueryBoostDisabled(intPtr);
+						if (allConditionsMet2 && origBoostValue == 1)
 						{
-							num6 = 0;
+							origBoostValue = 0;
 						}
 						int cls;
 						if (Native.D3DKMTGetProcessSchedulingPriorityClass(intPtr, out cls) != 0)
 						{
 							cls = -1;
 						}
-						else if (flag8 && cls == 0)
+						else if (allConditionsMet2 && cls == 0)
 						{
 							cls = 2;
 						}
 						long creation2 = creation;
 						Entry e;
-						if (flag2)
+						if (value4)
 						{
-							value2.SetOriginalPriority(num5);
-							value2.OrigAff = num;
-							value2.OrigIo = num2;
-							value2.OrigPg = num3;
-							value2.OrigCpuSets = array;
+							value2.SetOriginalPriority(priorityClassSnapshot);
+							value2.OrigAff = origAffValue;
+							value2.OrigIo = origIoValue;
+							value2.OrigPg = origPgValue;
+							value2.OrigCpuSets = origCpuSetsValue;
 							value2.OrigGpu = cls;
 							value2.OrigQoSControl = controlMask;
 							value2.OrigQoSState = stateMask;
-							value2.OrigBoost = num6;
+							value2.OrigBoost = origBoostValue;
 							value2.SetReasons(value2.Reasons | reason);
 							SetReasonLevel(value2, reason, level);
 							value2.Creation = creation2;
@@ -840,15 +840,15 @@ namespace PaviseApp
 							Entry entry3 = new Entry();
 							entry3.Name = name;
 							entry3.SetGroup(group);
-							entry3.SetOriginalPriority(num5);
-							entry3.OrigAff = num;
-							entry3.OrigIo = num2;
-							entry3.OrigPg = num3;
-							entry3.OrigCpuSets = array;
+							entry3.SetOriginalPriority(priorityClassSnapshot);
+							entry3.OrigAff = origAffValue;
+							entry3.OrigIo = origIoValue;
+							entry3.OrigPg = origPgValue;
+							entry3.OrigCpuSets = origCpuSetsValue;
 							entry3.OrigGpu = cls;
 							entry3.OrigQoSControl = controlMask;
 							entry3.OrigQoSState = stateMask;
-							entry3.OrigBoost = num6;
+							entry3.OrigBoost = origBoostValue;
 							entry3.SetReasons(reason);
 							entry3.Creation = creation2;
 							Entry entry4 = entry3;
@@ -860,18 +860,18 @@ namespace PaviseApp
 						{
 							return AcquireResult.ApplyFailed;
 						}
-						bool flag9 = QueueApplyLocked(pid, name);
-						bool flag10 = flag9 || ApplyThrottle(intPtr, level, num5, num, array, DesiredGpu(e), num6, (reason & SuppressReason.AntiCheat) != 0, DesiredAffinityOf(e), PlacementIsProtected(e));
+						bool queueApplyLockedSucceeded = QueueApplyLocked(pid, name);
+						bool matchesQueueApplyLockedSucceeded = queueApplyLockedSucceeded || ApplyThrottle(intPtr, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, DesiredGpu(e), origBoostValue, (reason & SuppressReason.AntiCheat) != 0, DesiredAffinityOf(e), PlacementIsProtected(e));
 						Entry value3;
-						if (map.TryGetValue(pid, out value3) && !flag9)
+						if (map.TryGetValue(pid, out value3) && !queueApplyLockedSucceeded)
 						{
-							value3.SetApplied(flag10);
-							ScheduleAfterApply(value3, flag10, pid);
-							if (!flag10 && TryNeutralizeUnwritableLocked(intPtr, pid, value3))
+							value3.SetApplied(matchesQueueApplyLockedSucceeded);
+							ScheduleAfterApply(value3, matchesQueueApplyLockedSucceeded, pid);
+							if (!matchesQueueApplyLockedSucceeded && TryNeutralizeUnwritableLocked(intPtr, pid, value3))
 							{
 								return AcquireResult.NewlyProtected;
 							}
-							if (!flag10 && GiveUpAntiCheatLocked(intPtr, pid, value3))
+							if (!matchesQueueApplyLockedSucceeded && GiveUpAntiCheatLocked(intPtr, pid, value3))
 							{
 								return AcquireResult.AlreadyProtected;
 							}
@@ -881,7 +881,7 @@ namespace PaviseApp
 							marked = true;
 							CrashGuard.MarkThrottle(throttleMask);
 						}
-						return flag10 ? AcquireResult.NewlyThrottled : AcquireResult.ApplyFailed;
+						return matchesQueueApplyLockedSucceeded ? AcquireResult.NewlyThrottled : AcquireResult.ApplyFailed;
 					}
 				}
 				return AcquireResult.ApplyFailed;
@@ -894,10 +894,10 @@ namespace PaviseApp
 
 		private int EntryIdentity(IntPtr handle, Entry entry)
 		{
-			int num = Native.QueryProcessIdentityState(handle, entry.Creation);
-			if (num >= 0)
+			int processIdentityState = Native.QueryProcessIdentityState(handle, entry.Creation);
+			if (processIdentityState >= 0)
 			{
-				return num;
+				return processIdentityState;
 			}
 			return 2;
 		}
@@ -951,8 +951,8 @@ namespace PaviseApp
 		private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, bool antiCheat, ulong desiredAffinity, bool affinityOwned, int originalBoost)
 		{
 			affinityOwned |= antiCheat;
-			uint num = DesiredPriority(level, originalPriority, antiCheat);
-			if (Native.GetPriorityClass(h) != num)
+			uint desiredPriorityResult = DesiredPriority(level, originalPriority, antiCheat);
+			if (Native.GetPriorityClass(h) != desiredPriorityResult)
 			{
 				return false;
 			}
@@ -961,9 +961,9 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num2 = DesiredIoPriority(level, antiCheat);
-			int num3 = DesiredPagePriority(level, antiCheat);
-			if (Native.QueryIoPriority(h) != num2 || Native.QueryPagePriority(h) != num3)
+			int desiredIoPriorityResult = DesiredIoPriority(level, antiCheat);
+			int desiredPagePriorityResult = DesiredPagePriority(level, antiCheat);
+			if (Native.QueryIoPriority(h) != desiredIoPriorityResult || Native.QueryPagePriority(h) != desiredPagePriorityResult)
 			{
 				return false;
 			}
@@ -973,7 +973,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = DisableDynamicBoost(level, antiCheat);
+			bool disableDynamicBoostSucceeded = DisableDynamicBoost(level, antiCheat);
 			uint[] expected = originalCpuSets ?? new uint[0];
 			if (!affinityOwned && !Native.CpuSetsMatch(h, expected))
 			{
@@ -983,8 +983,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num4 = DesiredBoostDisabled(level, antiCheat, originalBoost);
-			if ((flag && num4 < 0) || (num4 >= 0 && Native.QueryBoostDisabled(h) != num4))
+			int desiredBoostDisabledResult = DesiredBoostDisabled(level, antiCheat, originalBoost);
+			if ((disableDynamicBoostSucceeded && desiredBoostDisabledResult < 0) || (desiredBoostDisabledResult >= 0 && Native.QueryBoostDisabled(h) != desiredBoostDisabledResult))
 			{
 				return false;
 			}
@@ -1065,8 +1065,8 @@ namespace PaviseApp
 
 		internal static string ApplyBoostPolicy(SuppressionLevel level, bool antiCheat, int originalBoost, Func<int> read, Func<bool, bool> write)
 		{
-			int num = DesiredBoostDisabled(level, antiCheat, originalBoost);
-			if (num < 0)
+			int desiredBoostDisabledResult = DesiredBoostDisabled(level, antiCheat, originalBoost);
+			if (desiredBoostDisabledResult < 0)
 			{
 				if (!DisableDynamicBoost(level, antiCheat))
 				{
@@ -1074,11 +1074,11 @@ namespace PaviseApp
 				}
 				return "boost-snapshot";
 			}
-			if (read() != num && !write(num == 1))
+			if (read() != desiredBoostDisabledResult && !write(desiredBoostDisabledResult == 1))
 			{
 				return "boost-write";
 			}
-			if (read() != num)
+			if (read() != desiredBoostDisabledResult)
 			{
 				return "boost-readback";
 			}
@@ -1132,10 +1132,10 @@ namespace PaviseApp
 			if (FailureBudgetFor(e, "reconcile").Failures >= 8) return false;
 			string target = FailureTargetOf(h, e);
 			BeginSuppressionCycle(h, e, pid);
-			int num = EntryIdentity(h, e);
-			if (num != 0)
+			int entryIdentityResult = EntryIdentity(h, e);
+			if (entryIdentityResult != 0)
 			{
-				StopEntry(e, num == 1);
+				StopEntry(e, entryIdentityResult == 1);
 				return false;
 			}
 			if (ActionFailureStore.IsIsolated("BackgroundSuppression", target))
@@ -1162,17 +1162,17 @@ namespace PaviseApp
 				return false;
 			}
 			LastApplyError = "";
-			bool flag2;
+			bool applyEntryValuesSucceeded;
 			try
 			{
-				num = EntryIdentity(h, e);
-				if (num != 0)
+				entryIdentityResult = EntryIdentity(h, e);
+				if (entryIdentityResult != 0)
 				{
 					ActionFailureStore.CancelApply("BackgroundSuppression", target);
-					StopEntry(e, num == 1);
+					StopEntry(e, entryIdentityResult == 1);
 					return false;
 				}
-				flag2 = ApplyEntryValues(h, e);
+				applyEntryValuesSucceeded = ApplyEntryValues(h, e);
 			}
 			catch (NotSupportedException)
 			{
@@ -1185,7 +1185,7 @@ namespace PaviseApp
 			catch (Exception ex3)
 			{
 				LastApplyError = ex3.Message;
-				flag2 = false;
+				applyEntryValuesSucceeded = false;
 			}
 			switch (EntryIdentity(h, e))
 			{
@@ -1195,10 +1195,10 @@ namespace PaviseApp
 				return false;
 			case 2:
 				LastApplyError = "Background identity unreadable after apply; recovery retained";
-				flag2 = false;
+				applyEntryValuesSucceeded = false;
 				break;
 			}
-			if (flag2)
+			if (applyEntryValuesSucceeded)
 			{
 				if (ActionFailureStore.CompleteApply("BackgroundSuppression", target))
 				{
@@ -1215,8 +1215,8 @@ namespace PaviseApp
 
 		private bool CancelSkippedEntry(IntPtr handle, Entry entry, string target)
 		{
-			bool flag = EntryIdentity(handle, entry) == 1 || RestoreEntryValues(handle, entry);
-			if (flag)
+			bool matchesRestoreEntryValues = EntryIdentity(handle, entry) == 1 || RestoreEntryValues(handle, entry);
+			if (matchesRestoreEntryValues)
 			{
 				ActionFailureStore.CancelApply("BackgroundSuppression", target);
 			}
@@ -1224,7 +1224,7 @@ namespace PaviseApp
 			{
 				ActionFailureStore.Trip("BackgroundSuppression", target, "Background recovery incomplete after skipped apply");
 			}
-			StopEntry(entry, flag);
+			StopEntry(entry, matchesRestoreEntryValues);
 			return false;
 		}
 
@@ -1247,14 +1247,14 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = LastApplyError;
-			bool flag = RestoreBackgroundPlacement(h, e) && RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost, RestorePlacement(e));
+			string lastApplyErrorSnapshot = LastApplyError;
+			bool gaveUpRestoredValue = RestoreBackgroundPlacement(h, e) && RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost, RestorePlacement(e));
 			e.GaveUp = true;
-			e.GaveUpRestored = flag;
+			e.GaveUpRestored = gaveUpRestoredValue;
 			e.SetApplied(false);
 			e.SqueezeAff = 0uL;
 			e.NextReconcileTicks = long.MaxValue;
-			Logger.Log(Lang.T("log.suppressioncore.giveup.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.giveup.2") + (string.IsNullOrEmpty(text) ? "" : text) + Lang.T(flag ? "log.suppressioncore.giveup.3" : "log.suppressioncore.giveup.4"));
+			Logger.Log(Lang.T("log.suppressioncore.giveup.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.giveup.2") + (string.IsNullOrEmpty(lastApplyErrorSnapshot) ? "" : lastApplyErrorSnapshot) + Lang.T(gaveUpRestoredValue ? "log.suppressioncore.giveup.3" : "log.suppressioncore.giveup.4"));
 			return true;
 		}
 
@@ -1280,10 +1280,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = detail.Split(',');
-			foreach (string text in array)
+			string[] detailParts = detail.Split(',');
+			foreach (string entryText in detailParts)
 			{
-				if (text != "affinity-write" && text != "affinity-readback")
+				if (entryText != "affinity-write" && entryText != "affinity-readback")
 				{
 					return false;
 				}
@@ -1334,16 +1334,16 @@ namespace PaviseApp
 			{
 				e.ReconcileFailures++;
 			}
-			int num = 4;
+			int scheduleAfterApplyValue = 4;
 			for (int i = 1; i < e.ReconcileFailures; i++)
 			{
-				if (num >= 60)
+				if (scheduleAfterApplyValue >= 60)
 				{
 					break;
 				}
-				num = Math.Min(60, num * 2);
+				scheduleAfterApplyValue = Math.Min(60, scheduleAfterApplyValue * 2);
 			}
-			e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(num).Ticks;
+			e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(scheduleAfterApplyValue).Ticks;
 			RecordFailureBudget(e, "reconcile", false, e.NextReconcileTicks);
 			if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
 		}
@@ -1355,12 +1355,12 @@ namespace PaviseApp
 
 		private static int PositiveMod(int value, int modulo)
 		{
-			int num = value % modulo;
-			if (num >= 0)
+			int valueOffset = value % modulo;
+			if (valueOffset >= 0)
 			{
-				return num;
+				return valueOffset;
 			}
-			return num + modulo;
+			return valueOffset + modulo;
 		}
 
 		private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false)
@@ -1373,8 +1373,8 @@ namespace PaviseApp
 				list.Add("boost-snapshot");
 				return StopFailedApply(list);
 			}
-			uint num = DesiredPriority(level, originalPriority, antiCheat);
-			if (Native.GetPriorityClass(h) != num && !Native.SetPriorityClass(h, num))
+			uint desiredPriorityResult = DesiredPriority(level, originalPriority, antiCheat);
+			if (Native.GetPriorityClass(h) != desiredPriorityResult && !Native.SetPriorityClass(h, desiredPriorityResult))
 			{
 				list.Add("priority-write");
 			}
@@ -1408,10 +1408,10 @@ namespace PaviseApp
 			}
 			if (!CpuTopology.MultiGroup && !affinityOwned)
 			{
-				ulong num2 = ((originalAffinity != 0) ? originalAffinity : allMask);
-				bool flag = desiredAffinity != num2;
+				ulong originalAffinitySnapshot = ((originalAffinity != 0) ? originalAffinity : allMask);
+				bool matchesDesiredAffinity = desiredAffinity != originalAffinitySnapshot;
 				ulong currentAffinity = Native.QueryAffinity(h);
-				if (flag && currentAffinity != desiredAffinity)
+				if (matchesDesiredAffinity && currentAffinity != desiredAffinity)
 				{
 					long birth, cpu; ulong io; string admissionReason = null;
 					if (!Native.QueryProcessSample(h, out birth, out cpu, out io)
@@ -1423,19 +1423,19 @@ namespace PaviseApp
 				}
 				if (currentAffinity != desiredAffinity && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
 				{
-					list.Add(flag ? "affinity-write" : "affinity-restore");
+					list.Add(matchesDesiredAffinity ? "affinity-write" : "affinity-restore");
 				}
 				if (Native.QueryAffinity(h) != desiredAffinity)
 				{
-					list.Add(flag ? "affinity-readback" : "affinity-restore-readback");
+					list.Add(matchesDesiredAffinity ? "affinity-readback" : "affinity-restore-readback");
 				}
 			}
 			if (list.Count != 0)
 			{
 				return StopFailedApply(list);
 			}
-			int num3 = DesiredIoPriority(level, antiCheat);
-			if (Native.QueryIoPriority(h) != num3 && !Native.TrySetIoPriority(h, num3))
+			int desiredIoPriorityResult = DesiredIoPriority(level, antiCheat);
+			if (Native.QueryIoPriority(h) != desiredIoPriorityResult && !Native.TrySetIoPriority(h, desiredIoPriorityResult))
 			{
 				list.Add("io-write");
 			}
@@ -1443,8 +1443,8 @@ namespace PaviseApp
 			{
 				return StopFailedApply(list);
 			}
-			int num4 = DesiredPagePriority(level, antiCheat);
-			if (Native.QueryPagePriority(h) != num4 && !Native.TrySetPagePriority(h, num4))
+			int desiredPagePriorityResult = DesiredPagePriority(level, antiCheat);
+			if (Native.QueryPagePriority(h) != desiredPagePriorityResult && !Native.TrySetPagePriority(h, desiredPagePriorityResult))
 			{
 				list.Add("page-write");
 			}
@@ -1454,13 +1454,13 @@ namespace PaviseApp
 			}
 			if (Native.PowerThrottlingSupported)
 			{
-				bool flag2 = DesiredTimerSeal(level, antiCheat);
-				uint num5 = Native.EcoQoSWantMask(flag2);
+				bool desiredTimerSealSucceeded = DesiredTimerSeal(level, antiCheat);
+				uint ecoQoSWantMaskResult = Native.EcoQoSWantMask(desiredTimerSealSucceeded);
 				int controlMask;
 				int stateMask;
-				bool flag3 = Native.TryQueryPowerThrottling(h, out controlMask, out stateMask);
-				bool flag4 = flag3 && !flag2 && (controlMask & 4) != 0;
-				if ((!flag3 || ((uint)controlMask & num5) != num5 || ((uint)stateMask & num5) != num5 || flag4) && !Native.ApplyEcoQoS(h, flag2))
+				bool tryQueryPowerThrottling = Native.TryQueryPowerThrottling(h, out controlMask, out stateMask);
+				bool allConditionsMet = tryQueryPowerThrottling && !desiredTimerSealSucceeded && (controlMask & 4) != 0;
+				if ((!tryQueryPowerThrottling || ((uint)controlMask & ecoQoSWantMaskResult) != ecoQoSWantMaskResult || ((uint)stateMask & ecoQoSWantMaskResult) != ecoQoSWantMaskResult || allConditionsMet) && !Native.ApplyEcoQoS(h, desiredTimerSealSucceeded))
 				{
 					list.Add("eco-write");
 				}
@@ -1469,24 +1469,24 @@ namespace PaviseApp
 			{
 				return StopFailedApply(list);
 			}
-			string text = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => Native.TrySetBoostDisabled(h, disabled));
-			if (text.Length > 0)
+			string applyBoostPolicyResult = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => Native.TrySetBoostDisabled(h, disabled));
+			if (applyBoostPolicyResult.Length > 0)
 			{
-				list.Add(text);
+				list.Add(applyBoostPolicyResult);
 			}
 			if (list.Count != 0)
 			{
 				return StopFailedApply(list);
 			}
-			if (Native.GetPriorityClass(h) != num)
+			if (Native.GetPriorityClass(h) != desiredPriorityResult)
 			{
 				list.Add("priority-readback");
 			}
-			if (Native.QueryIoPriority(h) != num3)
+			if (Native.QueryIoPriority(h) != desiredIoPriorityResult)
 			{
 				list.Add("io-readback");
 			}
-			if (Native.QueryPagePriority(h) != num4)
+			if (Native.QueryPagePriority(h) != desiredPagePriorityResult)
 			{
 				list.Add("page-readback");
 			}
@@ -1562,44 +1562,44 @@ namespace PaviseApp
 
 		internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority)
 		{
-			bool flag = !restorePlacement || Native.RestoreCpuSetsVerified(h, cpuSets);
-			uint num = ((pri == 0 || pri == uint.MaxValue) ? 32u : pri);
-			if (restorePriority) flag &= Native.SetPriorityClass(h, num);
-			ulong num2 = ((aff != 0) ? aff : allMask);
-			if (restorePlacement && !CpuTopology.MultiGroup && Native.QueryAffinity(h) != num2)
+			bool matchesRestoreCpuSetsVerified = !restorePlacement || Native.RestoreCpuSetsVerified(h, cpuSets);
+			uint priSnapshot = ((pri == 0 || pri == uint.MaxValue) ? 32u : pri);
+			if (restorePriority) matchesRestoreCpuSetsVerified &= Native.SetPriorityClass(h, priSnapshot);
+			ulong affSnapshot = ((aff != 0) ? aff : allMask);
+			if (restorePlacement && !CpuTopology.MultiGroup && Native.QueryAffinity(h) != affSnapshot)
 			{
-				flag &= Native.SetProcessAffinityMask(h, (UIntPtr)num2);
+				matchesRestoreCpuSetsVerified &= Native.SetProcessAffinityMask(h, (UIntPtr)affSnapshot);
 			}
-			int num3 = ((io >= 0) ? io : 2);
-			flag &= Native.TrySetIoPriority(h, num3);
-			int num4 = ((pg >= 0) ? pg : 5);
-			flag &= Native.TrySetPagePriority(h, num4);
+			int ioSnapshot = ((io >= 0) ? io : 2);
+			matchesRestoreCpuSetsVerified &= Native.TrySetIoPriority(h, ioSnapshot);
+			int pgSnapshot = ((pg >= 0) ? pg : 5);
+			matchesRestoreCpuSetsVerified &= Native.TrySetPagePriority(h, pgSnapshot);
 			if (Native.PowerThrottlingSupported)
 			{
-				flag &= Native.RestorePowerThrottling(h, qosControl, qosState);
+				matchesRestoreCpuSetsVerified &= Native.RestorePowerThrottling(h, qosControl, qosState);
 			}
 			if (boost >= 0)
 			{
 				if (Native.QueryBoostDisabled(h) != boost)
 				{
-					flag &= Native.TrySetBoostDisabled(h, boost == 1);
+					matchesRestoreCpuSetsVerified &= Native.TrySetBoostDisabled(h, boost == 1);
 				}
-				flag &= Native.QueryBoostDisabled(h) == boost;
+				matchesRestoreCpuSetsVerified &= Native.QueryBoostDisabled(h) == boost;
 			}
-			if (restorePriority) flag &= Native.GetPriorityClass(h) == num;
-			flag &= Native.QueryIoPriority(h) == num3;
-			flag &= Native.QueryPagePriority(h) == num4;
+			if (restorePriority) matchesRestoreCpuSetsVerified &= Native.GetPriorityClass(h) == priSnapshot;
+			matchesRestoreCpuSetsVerified &= Native.QueryIoPriority(h) == ioSnapshot;
+			matchesRestoreCpuSetsVerified &= Native.QueryPagePriority(h) == pgSnapshot;
 			if (restorePlacement && !CpuTopology.MultiGroup)
 			{
-				flag &= Native.QueryAffinity(h) == num2;
+				matchesRestoreCpuSetsVerified &= Native.QueryAffinity(h) == affSnapshot;
 			}
 			int cls;
 			if (gpu >= 0 && Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls != gpu)
 			{
 				Native.D3DKMTSetProcessSchedulingPriorityClass(h, gpu);
-				flag &= Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls == gpu;
+				matchesRestoreCpuSetsVerified &= Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls == gpu;
 			}
-			return flag;
+			return matchesRestoreCpuSetsVerified;
 		}
 
 		private RestoreResult RestoreOne(int pid, Entry e)
@@ -1623,8 +1623,8 @@ namespace PaviseApp
 					{
 						return RestoreResult.Gone;
 					}
-					string text = Native.ImageName(intPtr2);
-					if (text != null && !SameName(text, e.Name))
+					string imageNameResult = Native.ImageName(intPtr2);
+					if (imageNameResult != null && !SameName(imageNameResult, e.Name))
 					{
 						return RestoreResult.Gone;
 					}
@@ -1654,12 +1654,12 @@ namespace PaviseApp
 				}
 				if (e.Name != null)
 				{
-					string text2 = Native.ImageName(intPtr);
-					if (text2 == null)
+					string imageNameResult2 = Native.ImageName(intPtr);
+					if (imageNameResult2 == null)
 					{
 						return RestoreResult.Protected;
 					}
-					if (!SameName(text2, e.Name))
+					if (!SameName(imageNameResult2, e.Name))
 					{
 						return RestoreResult.Gone;
 					}
@@ -1698,8 +1698,8 @@ namespace PaviseApp
 			}
 			if (e.Name != null)
 			{
-				string text = Native.ImageName(h);
-				if (text == null || !SameName(text, e.Name))
+				string imageNameResult = Native.ImageName(h);
+				if (imageNameResult == null || !SameName(imageNameResult, e.Name))
 				{
 					return false;
 				}
@@ -1748,8 +1748,8 @@ namespace PaviseApp
 			}
 			if (boost >= 0)
 			{
-				int num = Native.QueryBoostDisabled(h);
-				if (num != boost)
+				int boostDisabled = Native.QueryBoostDisabled(h);
+				if (boostDisabled != boost)
 				{
 					return false;
 				}
@@ -1833,10 +1833,10 @@ namespace PaviseApp
 			e.SetApplied(false);
 			e.NextRetryTicks = 0L;
 			PersistJournalLocked();
-			bool flag = SelfProtectedRoster.Mark(e.Name);
-			if (flag || ShouldLogProtected(e.Name + "-unwritable"))
+			bool markSucceeded = SelfProtectedRoster.Mark(e.Name);
+			if (markSucceeded || ShouldLogProtected(e.Name + "-unwritable"))
 			{
-				Logger.Log(Lang.T("log.suppressioncoreapply.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncoreapply.2") + (flag ? Lang.T("log.suppressioncoreapply.3") : ""));
+				Logger.Log(Lang.T("log.suppressioncoreapply.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncoreapply.2") + (markSucceeded ? Lang.T("log.suppressioncoreapply.3") : ""));
 			}
 			return true;
 		}
@@ -1869,17 +1869,17 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			uint[] array = layoutPlatform.ReadSets(h);
+			uint[] sets = layoutPlatform.ReadSets(h);
 			ulong mask;
-			if (array == null || !layoutPlatform.ReadAffinity(h, out mask))
+			if (sets == null || !layoutPlatform.ReadAffinity(h, out mask))
 			{
 				return false;
 			}
-			if (CoreThreadPlacement.Same(array, e.OrigCpuSets ?? new uint[0]) && mask == e.OrigAff)
+			if (CoreThreadPlacement.Same(sets, e.OrigCpuSets ?? new uint[0]) && mask == e.OrigAff)
 			{
 				return true;
 			}
-			if (!CoreThreadPlacement.Same(array, e.AutomaticLayoutSets) || mask != e.OrigAff)
+			if (!CoreThreadPlacement.Same(sets, e.AutomaticLayoutSets) || mask != e.OrigAff)
 			{
 				e.AutomaticLayoutYielded = true;
 				return true;
@@ -2130,8 +2130,8 @@ namespace PaviseApp
 				throw new InvalidOperationException("EndBatch requires a matching BeginBatch on the same thread.");
 			}
 			List<KeyValuePair<int, string>> list = null;
-			bool flag = true;
-			bool flag2 = false;
+			bool endBatchReady = true;
+			bool endBatchReady2 = false;
 			try
 			{
 				try
@@ -2143,10 +2143,10 @@ namespace PaviseApp
 					batchDepth--;
 					if (batchDepth == 0)
 					{
-						flag2 = true;
+						endBatchReady2 = true;
 						if (batchJournalDirty)
 						{
-							flag = SaveJournalLocked();
+							endBatchReady = SaveJournalLocked();
 						}
 						batchJournalDirty = false;
 						if (batchApply.Count > 0)
@@ -2165,28 +2165,28 @@ namespace PaviseApp
 					foreach (KeyValuePair<int, string> item in list)
 					{
 						string error = null;
-						bool flag3;
+						bool applyQueuedSucceeded;
 						try
 						{
-							if (flag)
+							if (endBatchReady)
 							{
-								flag3 = ApplyQueued(item.Key, item.Value, out error);
+								applyQueuedSucceeded = ApplyQueued(item.Key, item.Value, out error);
 							}
 							else
 							{
-								flag3 = false;
+								applyQueuedSucceeded = false;
 								error = "journal-write";
 							}
 						}
 						catch (Exception ex)
 						{
-							flag3 = false;
+							applyQueuedSucceeded = false;
 							error = "apply-exception:" + ex.GetType().Name;
 						}
 						lock (sync)
 						{
-							batchApplyResults[item.Key] = flag3;
-							if (flag3)
+							batchApplyResults[item.Key] = applyQueuedSucceeded;
+							if (applyQueuedSucceeded)
 							{
 								batchApplyErrors.Remove(item.Key);
 							}
@@ -2197,7 +2197,7 @@ namespace PaviseApp
 						}
 					}
 				}
-				if (!flag2)
+				if (!endBatchReady2)
 				{
 					return new BatchResult(null);
 				}
@@ -2315,10 +2315,10 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Native.ImageName(intPtr);
-				if (text == null || !SameName(text, expectedName))
+				string imageNameResult = Native.ImageName(intPtr);
+				if (imageNameResult == null || !SameName(imageNameResult, expectedName))
 				{
-					if (text == null) { lock (sync) ScheduleAfterApply(value, false, pid); }
+					if (imageNameResult == null) { lock (sync) ScheduleAfterApply(value, false, pid); }
 					return false;
 				}
 				long creation;
@@ -2473,9 +2473,9 @@ namespace PaviseApp
 			}
 			try
 			{
-				int num = CountThrottledLocked(reason);
-				if (reason == SuppressReason.Background) Volatile.Write(ref lastThrottledCount, num);
-				return num;
+				int countThrottledLockedResult = CountThrottledLocked(reason);
+				if (reason == SuppressReason.Background) Volatile.Write(ref lastThrottledCount, countThrottledLockedResult);
+				return countThrottledLockedResult;
 			}
 			finally
 			{
@@ -2490,15 +2490,15 @@ namespace PaviseApp
 
 		private int CountThrottledLocked(SuppressReason reason)
 		{
-			int num = 0;
+			int processedCount = 0;
 			foreach (KeyValuePair<int, Entry> item in map)
 			{
 				if ((item.Value.Reasons & reason) != 0 && item.Value.OrigPri != uint.MaxValue && item.Value.Applied)
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		private void RefreshThrottledCacheLocked()
@@ -2555,25 +2555,25 @@ namespace PaviseApp
 				try { RefreshGroupCountsLocked(); }
 				finally { Monitor.Exit(sync); }
 			}
-			int num = 0;
-			int num2 = 0;
+			int antiCheatGroupCountsCachedValue = 0;
+			int antiCheatGroupCountsCachedValue2 = 0;
 			lock (lastGroupCounts)
 			{
 				int[] value;
 				if (lastGroupCounts.TryGetValue(groupKey ?? "", out value))
 				{
-					num = value[0];
-					num2 = value[1];
+					antiCheatGroupCountsCachedValue = value[0];
+					antiCheatGroupCountsCachedValue2 = value[1];
 				}
 			}
-			throttled = num;
-			protectedCnt = num2;
+			throttled = antiCheatGroupCountsCachedValue;
+			protectedCnt = antiCheatGroupCountsCachedValue2;
 		}
 
 		public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
 		{
-			int num = 0;
-			int num2 = 0;
+			int processedCount = 0;
+			int processedCount2 = 0;
 			string key = groupKey ?? "";
 			if (!Monitor.TryEnter(sync, 15))
 			{
@@ -2582,12 +2582,12 @@ namespace PaviseApp
 					int[] value;
 					if (lastGroupCounts.TryGetValue(key, out value))
 					{
-						num = value[0];
-						num2 = value[1];
+						processedCount = value[0];
+						processedCount2 = value[1];
 					}
 				}
-				throttled = num;
-				protectedCnt = num2;
+				throttled = processedCount;
+				protectedCnt = processedCount2;
 				return;
 			}
 			try
@@ -2598,17 +2598,17 @@ namespace PaviseApp
 					{
 						if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
 						{
-							num2++;
+							processedCount2++;
 						}
 						else
 						{
-							num++;
+							processedCount++;
 						}
 					}
 				}
 				lock (lastGroupCounts)
 				{
-					lastGroupCounts[key] = new int[2] { num, num2 };
+					lastGroupCounts[key] = new int[2] { processedCount, processedCount2 };
 				}
 				// The direct query distinguishes null from empty; the full cache combines them.
 				if (string.IsNullOrEmpty(groupKey)) publishedGroupCountsVersion = -1;
@@ -2617,8 +2617,8 @@ namespace PaviseApp
 			{
 				Monitor.Exit(sync);
 			}
-			throttled = num;
-			protectedCnt = num2;
+			throttled = processedCount;
+			protectedCnt = processedCount2;
 		}
 
 		private static bool ShouldLogProtected(string name)
@@ -2777,8 +2777,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Native.ImageName(intPtr);
-				if (text == null || !SameName(text, expectedName))
+				string imageNameResult = Native.ImageName(intPtr);
+				if (imageNameResult == null || !SameName(imageNameResult, expectedName))
 				{
 					error = "identity-image";
 					return false;
@@ -2791,7 +2791,7 @@ namespace PaviseApp
 					error = "identity-creation";
 					return false;
 				}
-				bool flag;
+				bool applyEntryLockedSucceeded;
 				lock (sync)
 				{
 					Entry value2;
@@ -2800,25 +2800,25 @@ namespace PaviseApp
 						error = "entry-state";
 						return false;
 					}
-					flag = ApplyEntryLocked(intPtr, value2, pid);
-					if (!flag && TryNeutralizeUnwritableLocked(intPtr, pid, value2))
+					applyEntryLockedSucceeded = ApplyEntryLocked(intPtr, value2, pid);
+					if (!applyEntryLockedSucceeded && TryNeutralizeUnwritableLocked(intPtr, pid, value2))
 					{
 						error = "self-protected";
 						return false;
 					}
-					if (!flag && GiveUpAntiCheatLocked(intPtr, pid, value2))
+					if (!applyEntryLockedSucceeded && GiveUpAntiCheatLocked(intPtr, pid, value2))
 					{
 						error = "self-protected";
 						return false;
 					}
-					if (!flag)
+					if (!applyEntryLockedSucceeded)
 					{
 						error = (string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError);
 					}
-					value2.SetApplied(flag);
-					ScheduleAfterApply(value2, flag, pid);
+					value2.SetApplied(applyEntryLockedSucceeded);
+					ScheduleAfterApply(value2, applyEntryLockedSucceeded, pid);
 				}
-				return flag;
+				return applyEntryLockedSucceeded;
 			}
 			finally
 			{
@@ -2874,8 +2874,8 @@ namespace PaviseApp
 					MarkJournaledLocked();
 					return true;
 				}
-				string text = journalPath + ".tmp";
-				using (FileStream fileStream = new FileStream(text, FileMode.Create, FileAccess.Write, FileShare.None))
+				string journalPathOffset = journalPath + ".tmp";
+				using (FileStream fileStream = new FileStream(journalPathOffset, FileMode.Create, FileAccess.Write, FileShare.None))
 				{
 					using (StreamWriter streamWriter = new StreamWriter(fileStream, new UTF8Encoding(false), 4096, true))
 					{
@@ -2892,11 +2892,11 @@ namespace PaviseApp
 				}
 				if (File.Exists(journalPath))
 				{
-					File.Replace(text, journalPath, null);
+					File.Replace(journalPathOffset, journalPath, null);
 				}
 				else
 				{
-					File.Move(text, journalPath);
+					File.Move(journalPathOffset, journalPath);
 				}
 				MarkJournaledLocked();
 				return true;
@@ -2929,15 +2929,15 @@ namespace PaviseApp
 			}
 			try
 			{
-				string[] array = File.ReadAllLines(journalPath, Encoding.UTF8);
-				if (array.Length == 0 || array[0] != "PAVISE_SUPPRESSION_V1")
+				string[] allLines = File.ReadAllLines(journalPath, Encoding.UTF8);
+				if (allLines.Length == 0 || allLines[0] != "PAVISE_SUPPRESSION_V1")
 				{
 					return;
 				}
-				for (int i = 1; i < array.Length; i++)
+				for (int i = 1; i < allLines.Length; i++)
 				{
 					int pid;
-					Entry entry = ParseJournalLine(array[i], out pid);
+					Entry entry = ParseJournalLine(allLines[i], out pid);
 					if (entry != null && pid > 0 && entry.OrigPri != uint.MaxValue)
 					{
 						entry.Journaled = true;
@@ -2954,41 +2954,41 @@ namespace PaviseApp
 		private static Entry ParseJournalLine(string line, out int pid)
 		{
 			pid = 0;
-			string[] array = line.Split('|');
+			string[] lineParts = line.Split('|');
 			long result;
 			uint result2;
 			ulong result3;
 			int result4;
 			int result5;
-			if ((array.Length != 7 && array.Length != 8 && array.Length != 10 && array.Length != 11 && array.Length != 12 && array.Length != 15) || !int.TryParse(array[0], out pid) || !long.TryParse(array[1], out result) || !uint.TryParse(array[3], out result2) || !ulong.TryParse(array[4], out result3) || !int.TryParse(array[5], out result4) || !int.TryParse(array[6], out result5))
+			if ((lineParts.Length != 7 && lineParts.Length != 8 && lineParts.Length != 10 && lineParts.Length != 11 && lineParts.Length != 12 && lineParts.Length != 15) || !int.TryParse(lineParts[0], out pid) || !long.TryParse(lineParts[1], out result) || !uint.TryParse(lineParts[3], out result2) || !ulong.TryParse(lineParts[4], out result3) || !int.TryParse(lineParts[5], out result4) || !int.TryParse(lineParts[6], out result5))
 			{
 				return null;
 			}
-			uint[] array2 = ((array.Length >= 8) ? ParseCpuSets(array[7]) : new uint[0]);
-			if (array2 == null)
+			uint[] origCpuSetsValue = ((lineParts.Length >= 8) ? ParseCpuSets(lineParts[7]) : new uint[0]);
+			if (origCpuSetsValue == null)
 			{
 				return null;
 			}
 			int result6 = -1;
 			int result7 = -1;
-			if (array.Length >= 10)
+			if (lineParts.Length >= 10)
 			{
-				if (!int.TryParse(array[8], out result6))
+				if (!int.TryParse(lineParts[8], out result6))
 				{
 					result6 = -1;
 				}
-				if (!int.TryParse(array[9], out result7))
+				if (!int.TryParse(lineParts[9], out result7))
 				{
 					result7 = -1;
 				}
 			}
 			int result8 = -1;
-			if (array.Length >= 11 && !int.TryParse(array[10], out result8))
+			if (lineParts.Length >= 11 && !int.TryParse(lineParts[10], out result8))
 			{
 				result8 = -1;
 			}
 			int result9 = -1;
-			if (array.Length >= 12 && !int.TryParse(array[11], out result9))
+			if (lineParts.Length >= 12 && !int.TryParse(lineParts[11], out result9))
 			{
 				result9 = -1;
 			}
@@ -2998,58 +2998,58 @@ namespace PaviseApp
 			}
 			ulong result10 = 0uL;
 			ulong result11 = 0uL;
-			bool flag = array.Length == 15 && array[12] == "layout";
-			bool externalAcPlacement = array.Length == 15 && array[12] == "ac-placement";
-			bool jobPlacement = array.Length == 15 && array[12] == "bg-job";
-			uint[] array3 = null;
+			bool allConditionsMet = lineParts.Length == 15 && lineParts[12] == "layout";
+			bool externalAcPlacement = lineParts.Length == 15 && lineParts[12] == "ac-placement";
+			bool jobPlacement = lineParts.Length == 15 && lineParts[12] == "bg-job";
+			uint[] automaticLayoutSetsValue = null;
 			bool automaticLayoutYielded = false;
-			if (flag)
+			if (allConditionsMet)
 			{
-				array3 = ParseCpuSets(array[13]);
-				if (array3 == null || array3.Length > 64 || new HashSet<uint>(array3).Count != array3.Length || (array[14] != "0" && array[14] != "1") || (array3.Length == 0 && array[14] == "0") || array2.Length != 0)
+				automaticLayoutSetsValue = ParseCpuSets(lineParts[13]);
+				if (automaticLayoutSetsValue == null || automaticLayoutSetsValue.Length > 64 || new HashSet<uint>(automaticLayoutSetsValue).Count != automaticLayoutSetsValue.Length || (lineParts[14] != "0" && lineParts[14] != "1") || (automaticLayoutSetsValue.Length == 0 && lineParts[14] == "0") || origCpuSetsValue.Length != 0)
 				{
 					return null;
 				}
-				automaticLayoutYielded = array[14] == "1";
-				if (array3.Length == 0)
+				automaticLayoutYielded = lineParts[14] == "1";
+				if (automaticLayoutSetsValue.Length == 0)
 				{
-					array3 = null;
+					automaticLayoutSetsValue = null;
 				}
 			}
 			else if (externalAcPlacement)
 			{
-				if (array[13] != "1" || array[14] != "0")
+				if (lineParts[13] != "1" || lineParts[14] != "0")
 				{
 					return null;
 				}
 			}
-			else if (array.Length == 15 && ((array[12] != "bg" && !jobPlacement) || !ulong.TryParse(array[13], out result10) || !ulong.TryParse(array[14], out result11)))
+			else if (lineParts.Length == 15 && ((lineParts[12] != "bg" && !jobPlacement) || !ulong.TryParse(lineParts[13], out result10) || !ulong.TryParse(lineParts[14], out result11)))
 			{
 				return null;
 			}
-			string text = Un64(array[2]);
-			if (text == null)
+			string nameValue = Un64(lineParts[2]);
+			if (nameValue == null)
 			{
 				return null;
 			}
 			Entry entry = new Entry();
-			entry.Name = text;
+			entry.Name = nameValue;
 			entry.Creation = result;
 			entry.SetOriginalPriority(result2);
 			entry.OrigAff = result3;
 			entry.OrigIo = result4;
 			entry.OrigPg = result5;
-			entry.OrigCpuSets = array2;
+			entry.OrigCpuSets = origCpuSetsValue;
 			entry.OrigQoSControl = result6;
 			entry.OrigQoSState = result7;
 			entry.OrigGpu = result8;
 			entry.OrigBoost = result9;
 			entry.AntiCheatPlacementExternal = externalAcPlacement;
 			entry.LegacyPlacementDebt = !externalAcPlacement;
-			entry.BackgroundPlacementOwned = array.Length == 15 && !flag && !externalAcPlacement;
+			entry.BackgroundPlacementOwned = lineParts.Length == 15 && !allConditionsMet && !externalAcPlacement;
 			entry.BackgroundJobPlacement = jobPlacement;
 			entry.BackgroundPid = pid;
-			entry.AutomaticLayoutSets = array3;
+			entry.AutomaticLayoutSets = automaticLayoutSetsValue;
 			entry.AutomaticLayoutYielded = automaticLayoutYielded;
 			entry.BackgroundApplied = result10;
 			entry.BackgroundPrevious = result11;
@@ -3062,18 +3062,18 @@ namespace PaviseApp
 			{
 				return JournalIdentity.Unknown;
 			}
-			string text = Native.ImageName(h);
-			if (text != null && !SameName(text, e.Name))
+			string imageNameResult = Native.ImageName(h);
+			if (imageNameResult != null && !SameName(imageNameResult, e.Name))
 			{
 				return JournalIdentity.Mismatch;
 			}
 			long creation;
 			long cpu;
 			ulong io;
-			bool flag = Native.QueryProcessSample(h, out creation, out cpu, out io);
+			bool processSample = Native.QueryProcessSample(h, out creation, out cpu, out io);
 			if (e.Creation > 0)
 			{
-				if (!flag)
+				if (!processSample)
 				{
 					return JournalIdentity.Unknown;
 				}
@@ -3082,7 +3082,7 @@ namespace PaviseApp
 					return JournalIdentity.Mismatch;
 				}
 			}
-			if (text != null)
+			if (imageNameResult != null)
 			{
 				return JournalIdentity.Confirmed;
 			}
@@ -3097,23 +3097,23 @@ namespace PaviseApp
 			}
 			string jobReason;
 			if (!GameAffinityJobLease.Recover(out jobReason)) return 0;
-			int num = 0;
+			int processedCount = 0;
 			List<string> list = new List<string>();
 			list.Add("PAVISE_SUPPRESSION_V1");
 			try
 			{
-				string[] array = File.ReadAllLines(statePath, Encoding.UTF8);
-				if (array.Length == 0 || array[0] != "PAVISE_SUPPRESSION_V1")
+				string[] allLines = File.ReadAllLines(statePath, Encoding.UTF8);
+				if (allLines.Length == 0 || allLines[0] != "PAVISE_SUPPRESSION_V1")
 				{
 					return 0;
 				}
-				for (int i = 1; i < array.Length; i++)
+				for (int i = 1; i < allLines.Length; i++)
 				{
 					int pid;
-					Entry entry = ParseJournalLine(array[i], out pid);
+					Entry entry = ParseJournalLine(allLines[i], out pid);
 					if (entry == null)
 					{
-						list.Add(array[i]);
+						list.Add(allLines[i]);
 						Logger.Log(Lang.T("log.suppressioncorerecovery.3") + (i + 1) + Lang.T("log.suppressioncorerecovery.4"));
 						continue;
 					}
@@ -3127,7 +3127,7 @@ namespace PaviseApp
 							{
 								if (IdentifyJournalEntry(intPtr2, entry) != JournalIdentity.Mismatch)
 								{
-									list.Add(array[i]);
+									list.Add(allLines[i]);
 								}
 							}
 							finally
@@ -3137,7 +3137,7 @@ namespace PaviseApp
 						}
 						else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
 						{
-							list.Add(array[i]);
+							list.Add(allLines[i]);
 						}
 						continue;
 					}
@@ -3148,29 +3148,29 @@ namespace PaviseApp
 						case JournalIdentity.Mismatch:
 							continue;
 						case JournalIdentity.Unknown:
-							list.Add(array[i]);
+							list.Add(allLines[i]);
 							continue;
 						}
 						if (entry.BackgroundJobPlacement && !ReleaseBackgroundJob(entry))
 						{
-							list.Add(array[i]); continue;
+							list.Add(allLines[i]); continue;
 						}
 						if (EntrySnapshotMatches(intPtr, entry))
 						{
-							num++;
+							processedCount++;
 						}
 						else if (RestoreBackgroundPlacement(intPtr, entry) && RestoreValues(intPtr, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, RestorePlacement(entry)))
 						{
-							num++;
+							processedCount++;
 						}
 						else
 						{
-							list.Add(array[i]);
+							list.Add(allLines[i]);
 						}
 					}
 					catch (Exception error)
 					{
-						list.Add(array[i]);
+						list.Add(allLines[i]);
 						Logger.LogFailure(Lang.T("log.suppressioncorerecovery.5") + pid, error);
 					}
 					finally
@@ -3191,7 +3191,7 @@ namespace PaviseApp
 			{
 				Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), error2);
 			}
-			return num;
+			return processedCount;
 		}
 
 		private static string B64(string value)
@@ -3217,12 +3217,12 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string[] array = new string[ids.Length];
+			string[] textEntries = new string[ids.Length];
 			for (int i = 0; i < ids.Length; i++)
 			{
-				array[i] = ids[i].ToString();
+				textEntries[i] = ids[i].ToString();
 			}
-			return string.Join(",", array);
+			return string.Join(",", textEntries);
 		}
 
 		private static uint[] ParseCpuSets(string text)
@@ -3231,16 +3231,16 @@ namespace PaviseApp
 			{
 				return new uint[0];
 			}
-			string[] array = text.Split(',');
-			uint[] array2 = new uint[array.Length];
-			for (int i = 0; i < array.Length; i++)
+			string[] parts = text.Split(',');
+			uint[] numericValueItems = new uint[parts.Length];
+			for (int i = 0; i < parts.Length; i++)
 			{
-				if (!uint.TryParse(array[i], out array2[i]))
+				if (!uint.TryParse(parts[i], out numericValueItems[i]))
 				{
 					return null;
 				}
 			}
-			return array2;
+			return numericValueItems;
 		}
 
 		public bool Release(int pid, SuppressReason reason)
@@ -3321,11 +3321,11 @@ namespace PaviseApp
 				return false;
 			}
 			Entry value;
-			long num;
+			long creation;
 			lock (sync)
 			{
 				map.TryGetValue(pid, out value);
-				num = ((value == null) ? 0 : value.Creation);
+				creation = ((value == null) ? 0 : value.Creation);
 			}
 			if (!RendererDiscardIdentityMatches(pid, expectedCreation, expectedName))
 			{
@@ -3338,13 +3338,13 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				if (!object.ReferenceEquals(value2, value) || value2.Creation != num)
+				if (!object.ReferenceEquals(value2, value) || value2.Creation != creation)
 				{
 					return false;
 				}
-				bool flag = value2.Creation > 0 && value2.Creation != expectedCreation;
-				bool flag2 = value2.Creation == 0 && value2.OrigPri == uint.MaxValue && !value2.Applied && !value2.Journaled;
-				if (!flag && !flag2)
+				bool allConditionsMet = value2.Creation > 0 && value2.Creation != expectedCreation;
+				bool allConditionsMet2 = value2.Creation == 0 && value2.OrigPri == uint.MaxValue && !value2.Applied && !value2.Journaled;
+				if (!allConditionsMet && !allConditionsMet2)
 				{
 					return false;
 				}
@@ -3386,7 +3386,7 @@ namespace PaviseApp
 
 		public int ReleaseReason(SuppressReason reason)
 		{
-			int num = 0;
+			int releaseReasonResult = 0;
 			List<int> list = PidsWith(reason);
 			BeginJournalDefer();
 			try
@@ -3394,9 +3394,9 @@ namespace PaviseApp
 				foreach (int item in list)
 				{
 					bool had;
-					num += ReleaseOne(item, reason, out had);
+					releaseReasonResult += ReleaseOne(item, reason, out had);
 				}
-				return num;
+				return releaseReasonResult;
 			}
 			finally
 			{
@@ -3418,8 +3418,8 @@ namespace PaviseApp
 		private int ReleaseOne(int pid, SuppressReason reason, long expectedCreation, bool requireCreation, string expectedName, out bool had, out RestoreResult? restoreResult)
 		{
 			restoreResult = null;
-			bool flag = false;
-			bool flag2 = false;
+			bool releaseOneReady = false;
+			bool releaseOneReady2 = false;
 			Entry value;
 			lock (sync)
 			{
@@ -3437,7 +3437,7 @@ namespace PaviseApp
 					return 0;
 				}
 				SuppressionLevel level = value.Level;
-				bool flag3 = value.SqueezeAff != 0;
+				bool matchesSqueezeAff = value.SqueezeAff != 0;
 				value.SetReasons(value.Reasons & ~reason);
 				if ((reason & SuppressReason.AntiCheat) != 0)
 				{
@@ -3456,9 +3456,9 @@ namespace PaviseApp
 				RefreshThrottledCacheLocked();
 				if (value.Reasons != 0)
 				{
-					flag2 = true;
-					flag = value.OrigPri != uint.MaxValue && value.Journaled && (level != value.Level || !value.Applied || flag3 || (reason & SuppressReason.AntiCheat) != 0);
-					if (!flag) value.BackgroundReleaseDebt = false;
+					releaseOneReady2 = true;
+					releaseOneReady = value.OrigPri != uint.MaxValue && value.Journaled && (level != value.Level || !value.Applied || matchesSqueezeAff || (reason & SuppressReason.AntiCheat) != 0);
+					if (!releaseOneReady) value.BackgroundReleaseDebt = false;
 					PersistJournalLocked();
 				}
 				else
@@ -3478,7 +3478,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (flag)
+			if (releaseOneReady)
 			{
 				IntPtr intPtr = Native.OpenProcess(12800, false, pid);
 				bool applied = false;
@@ -3505,15 +3505,15 @@ namespace PaviseApp
 				}
 				return 0;
 			}
-			if (flag2)
+			if (releaseOneReady2)
 			{
 				RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
 				return 0;
 			}
 			RestoreResult result;
-			bool flag4 = TryRestore(pid, value, out result);
+			bool tryRestore = TryRestore(pid, value, out result);
 			restoreResult = result;
-			if (!flag4)
+			if (!tryRestore)
 			{
 				return 0;
 			}
@@ -3566,7 +3566,7 @@ namespace PaviseApp
 		private bool TryRestoreOwned(int pid, Entry e, out RestoreResult result)
 		{
 			RestoreResult restoreResult = (result = ((!e.GaveUpRestored) ? RestoreOne(pid, e) : RestoreResult.Restored));
-			bool flag = false;
+			bool restoreOwnedReady = false;
 			lock (sync)
 			{
 				Entry value;
@@ -3581,13 +3581,13 @@ namespace PaviseApp
 					}
 					else if (restoreResult == RestoreResult.Restored)
 					{
-						flag = true;
+						restoreOwnedReady = true;
 					}
 				}
 				TryClearMarkLocked();
 				RefreshThrottledCacheLocked();
 			}
-			if (flag)
+			if (restoreOwnedReady)
 			{
 				IntPtr intPtr = Native.OpenProcess(12800, false, pid);
 				bool applied = false;
@@ -3641,20 +3641,20 @@ namespace PaviseApp
 						}
 						break;
 					}
-					int num = 8;
+					int restoreOwnedValue = 8;
 					for (int i = 1; i < e.ProtectedRetries; i++)
 					{
-						num *= 2;
-						if (num >= 300)
+						restoreOwnedValue *= 2;
+						if (restoreOwnedValue >= 300)
 						{
 							break;
 						}
 					}
-					if (num > 300)
+					if (restoreOwnedValue > 300)
 					{
-						num = 300;
+						restoreOwnedValue = 300;
 					}
-					e.NextRetryTicks = DateTime.UtcNow.AddSeconds(num).Ticks;
+					e.NextRetryTicks = DateTime.UtcNow.AddSeconds(restoreOwnedValue).Ticks;
 				}
 				break;
 			case RestoreResult.Restored:
@@ -3742,47 +3742,47 @@ namespace PaviseApp
 				return false;
 			}
 			Entry value;
-			ulong num;
+			ulong squeezeAffValue;
 			lock (sync)
 			{
 				if (!map.TryGetValue(pid, out value) || !SqueezeOwnedBy(value, reason) || value.OrigPri == uint.MaxValue || !value.Journaled || value.Creation <= 0 || value.Creation != creation || !SameName(value.Name, name))
 				{
 					return false;
 				}
-				num = ((squeezeMask == 0) ? 0 : SuppressionAffinityPolicy.SqueezeTarget(squeezeMask, value.OrigAff, value.OrigCpuSets, allMask, CpuTopology.MultiGroup));
-				if (squeezeMask != 0 && num == 0)
+				squeezeAffValue = ((squeezeMask == 0) ? 0 : SuppressionAffinityPolicy.SqueezeTarget(squeezeMask, value.OrigAff, value.OrigCpuSets, allMask, CpuTopology.MultiGroup));
+				if (squeezeMask != 0 && squeezeAffValue == 0)
 				{
 					return false;
 				}
-				if (num != 0 && value.AutomaticLayoutSets != null && !RestoreAutomaticLayoutLocked(pid, value))
+				if (squeezeAffValue != 0 && value.AutomaticLayoutSets != null && !RestoreAutomaticLayoutLocked(pid, value))
 				{
 					return false;
 				}
 				if (reason == SuppressReason.Background)
 				{
-					if (num == 0 && value.SqueezeAff != 0)
+					if (squeezeAffValue == 0 && value.SqueezeAff != 0)
 					{
 						value.BackgroundRestorePending = true;
 						value.BackgroundPlacementVerified = false;
 					}
-					if (num != 0 && value.BackgroundRestorePending)
+					if (squeezeAffValue != 0 && value.BackgroundRestorePending)
 					{
 						return false;
 					}
 				}
-				if (value.SqueezeAff == num && VerifyBackgroundJob(value) && (reason != SuppressReason.Background || (!value.BackgroundRestorePending && (value.BackgroundPlacementVerified || num == 0))))
+				if (value.SqueezeAff == squeezeAffValue && VerifyBackgroundJob(value) && (reason != SuppressReason.Background || (!value.BackgroundRestorePending && (value.BackgroundPlacementVerified || squeezeAffValue == 0))))
 				{
 					return true;
 				}
-				if (num != 0 && (value.SqueezeRefused || value.GaveUp))
+				if (squeezeAffValue != 0 && (value.SqueezeRefused || value.GaveUp))
 				{
 					return false;
 				}
-				if (num != 0 && DateTime.UtcNow.Ticks < value.SqueezeRetryAt)
+				if (squeezeAffValue != 0 && DateTime.UtcNow.Ticks < value.SqueezeRetryAt)
 				{
 					return false;
 				}
-				if (num == 0)
+				if (squeezeAffValue == 0)
 				{
 					if (RestoreBudgetBlocked(value, "squeeze-restore", true)) return false;
 				}
@@ -3790,7 +3790,7 @@ namespace PaviseApp
 			IntPtr intPtr = Native.OpenProcess(12800, false, pid);
 			if (intPtr == IntPtr.Zero)
 			{
-				NoteSqueezeAttempt(pid, value, num, false);
+				NoteSqueezeAttempt(pid, value, squeezeAffValue, false);
 				return false;
 			}
 			bool ok = false;
@@ -3808,20 +3808,20 @@ namespace PaviseApp
 						return false;
 					}
 					ulong squeezeAff = value2.SqueezeAff;
-					if (num == 0)
+					if (squeezeAffValue == 0)
 					{
 						if (RestoreBudgetBlocked(value2, "squeeze-restore", true)) return false;
 					}
 					if (reason == SuppressReason.Background)
 					{
-						if (num == 0 && !ReleaseBackgroundJob(value2)) return false;
+						if (squeezeAffValue == 0 && !ReleaseBackgroundJob(value2)) return false;
 						ulong mask;
 						if (!Native.TryQueryAffinity(intPtr, out mask))
 						{
 							return false;
 						}
-						ulong num2 = ((squeezeAff != 0) ? squeezeAff : value2.OrigAff);
-						if (!value2.BackgroundJobPlacement && !EnforceBackgroundAffinity && (mask != num2 || !Native.CpuSetsMatch(intPtr, value2.OrigCpuSets ?? new uint[0])))
+						ulong squeezeAffSnapshot = ((squeezeAff != 0) ? squeezeAff : value2.OrigAff);
+						if (!value2.BackgroundJobPlacement && !EnforceBackgroundAffinity && (mask != squeezeAffSnapshot || !Native.CpuSetsMatch(intPtr, value2.OrigCpuSets ?? new uint[0])))
 						{
 							if (squeezeAff != 0)
 							{
@@ -3832,8 +3832,8 @@ namespace PaviseApp
 							value2.BackgroundRestorePending = false;
 							return false;
 						}
-						ulong num3 = ((num != 0) ? num : value2.OrigAff);
-						if (num3 == 0)
+						ulong backgroundAppliedValue = ((squeezeAffValue != 0) ? squeezeAffValue : value2.OrigAff);
+						if (backgroundAppliedValue == 0)
 						{
 							return false;
 						}
@@ -3841,7 +3841,7 @@ namespace PaviseApp
 						bool priorJobPlacement = value2.BackgroundJobPlacement;
 						// Restore legacy affinity ownership before transferring the recovery receipt to a Job.
 						bool keepProcessBackend = !priorJobPlacement && squeezeAff != 0;
-						if (num != 0 && (!keepProcessBackend || mask != num3))
+						if (squeezeAffValue != 0 && (!keepProcessBackend || mask != backgroundAppliedValue))
 						{
 							string admissionReason;
 							if (!GameThreadAffinityAdmission.Check(intPtr, pid, creation, mask, out admissionReason))
@@ -3854,8 +3854,8 @@ namespace PaviseApp
 						ulong backgroundPrevious = value2.BackgroundPrevious;
 						value2.BackgroundPlacementOwned = true;
 						value2.BackgroundPrevious = ((squeezeAff != 0) ? squeezeAff : backgroundPrevious);
-						value2.BackgroundApplied = num3;
-						if (num != 0 && !keepProcessBackend)
+						value2.BackgroundApplied = backgroundAppliedValue;
+						if (squeezeAffValue != 0 && !keepProcessBackend)
 						{
 							value2.BackgroundJobPlacement = true;
 							value2.BackgroundJobs = backgroundAffinityJobs; value2.BackgroundPid = pid;
@@ -3868,14 +3868,14 @@ namespace PaviseApp
 							value2.BackgroundPrevious = backgroundPrevious;
 							return false;
 						}
-						bool flag;
-						if (num == 0 && value2.BackgroundJobPlacement) flag = true; // Job release already restored or preserved foreign state.
-						else if (num != 0 && !keepProcessBackend)
+						bool setSqueezeReady;
+						if (squeezeAffValue == 0 && value2.BackgroundJobPlacement) setSqueezeReady = true; // Job release already restored or preserved foreign state.
+						else if (squeezeAffValue != 0 && !keepProcessBackend)
 						{
 							string jobReason;
 							backgroundJobsStopCompleted = false;
-							flag = backgroundAffinityJobs.Ensure(pid, creation, name, value2.OrigAff, num3, out jobReason);
-							if (flag)
+							setSqueezeReady = backgroundAffinityJobs.Ensure(pid, creation, name, value2.OrigAff, backgroundAppliedValue, out jobReason);
+							if (setSqueezeReady)
 							{
 								value2.BackgroundJobActive = true;
 								SetBackgroundBackend(value2, "Job affinity verified", true);
@@ -3902,7 +3902,7 @@ namespace PaviseApp
 								if (!SameProcess(intPtr, value2) || !Native.TryQueryAffinity(intPtr, out currentMask) || currentMask != mask)
 								{ value2.BackgroundRestorePending = true; value2.BackgroundPlacementVerified = false; return false; }
 								string admissionReason;
-								if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, num3, out currentMask, out admissionReason))
+								if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, backgroundAppliedValue, out currentMask, out admissionReason))
 								{
 									SetBackgroundBackend(value2, "Process affinity refused: " + admissionReason);
 									return false;
@@ -3910,26 +3910,26 @@ namespace PaviseApp
 								value2.BackgroundJobPlacement = value2.BackgroundJobActive = false;
 								if (!SaveJournalLocked(true)) { value2.BackgroundJobPlacement = true; value2.BackgroundRestorePending = true; return false; }
 								SetBackgroundBackend(value2, "Job unavailable (" + jobReason + "); process affinity fallback");
-								flag = currentMask == num3 || Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
+								setSqueezeReady = currentMask == backgroundAppliedValue || Native.SetProcessAffinityMask(intPtr, (UIntPtr)backgroundAppliedValue);
 							}
 						}
-						else if (num != 0)
+						else if (squeezeAffValue != 0)
 						{
 							ulong currentMask; string admissionReason;
-							if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, num3, out currentMask, out admissionReason))
+							if (!AdmitBackgroundProcessWrite(intPtr, pid, value2, mask, backgroundAppliedValue, out currentMask, out admissionReason))
 							{
 								SetBackgroundBackend(value2, "Process affinity refused: " + admissionReason);
 								return false;
 							}
-							flag = currentMask == num3 || Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
+							setSqueezeReady = currentMask == backgroundAppliedValue || Native.SetProcessAffinityMask(intPtr, (UIntPtr)backgroundAppliedValue);
 						}
-						else flag = Native.SetProcessAffinityMask(intPtr, (UIntPtr)num3);
-						bool flag2 = Native.TryQueryAffinity(intPtr, out mask);
-						bool verified = flag && ((num == 0 && value2.BackgroundJobPlacement) || (flag2 && mask == num3));
+						else setSqueezeReady = Native.SetProcessAffinityMask(intPtr, (UIntPtr)backgroundAppliedValue);
+						bool tryQueryAffinity = Native.TryQueryAffinity(intPtr, out mask);
+						bool verified = setSqueezeReady && ((squeezeAffValue == 0 && value2.BackgroundJobPlacement) || (tryQueryAffinity && mask == backgroundAppliedValue));
 						value2.BackgroundPlacementVerified = verified;
 						if (verified)
 						{
-							value2.SqueezeAff = num;
+							value2.SqueezeAff = squeezeAffValue;
 							value2.BackgroundRestorePending = false;
 							if (EnforceBackgroundAffinity)
 							{
@@ -3940,13 +3940,13 @@ namespace PaviseApp
 							{
 								value2.BackgroundPrevious = squeezeAff;
 							}
-							changed = squeezeAff != num;
+							changed = squeezeAff != squeezeAffValue;
 							ok = true;
 							return true;
 						}
-						if (num != 0 && (!flag2 || mask == num3))
+						if (squeezeAffValue != 0 && (!tryQueryAffinity || mask == backgroundAppliedValue))
 						{
-							value2.SqueezeAff = num;
+							value2.SqueezeAff = squeezeAffValue;
 						}
 						return false;
 					}
@@ -3960,29 +3960,29 @@ namespace PaviseApp
 						}
 						value2.BackgroundRestorePending = false;
 					}
-					value2.SqueezeAff = num;
-					bool flag3 = ApplyThrottle(intPtr, value2.Level, value2.OrigPri, value2.OrigAff, value2.OrigCpuSets, DesiredGpu(value2), value2.OrigBoost, AntiCheatThrottled(value2), DesiredAffinityOf(value2));
-					if (!flag3 && num != 0)
+					value2.SqueezeAff = squeezeAffValue;
+					bool applyThrottleSucceeded = ApplyThrottle(intPtr, value2.Level, value2.OrigPri, value2.OrigAff, value2.OrigCpuSets, DesiredGpu(value2), value2.OrigBoost, AntiCheatThrottled(value2), DesiredAffinityOf(value2));
+					if (!applyThrottleSucceeded && squeezeAffValue != 0)
 					{
 						value2.SqueezeAff = 0uL;
-						ulong num4 = ((value2.OrigAff != 0) ? value2.OrigAff : allMask);
-						if (!CpuTopology.MultiGroup && Native.QueryAffinity(intPtr) != num4)
+						ulong origAff = ((value2.OrigAff != 0) ? value2.OrigAff : allMask);
+						if (!CpuTopology.MultiGroup && Native.QueryAffinity(intPtr) != origAff)
 						{
-							Native.SetProcessAffinityMask(intPtr, (UIntPtr)num4);
+							Native.SetProcessAffinityMask(intPtr, (UIntPtr)origAff);
 						}
 						return false;
 					}
-					value2.SetApplied(flag3);
-					ScheduleAfterApply(value2, flag3, pid);
+					value2.SetApplied(applyThrottleSucceeded);
+					ScheduleAfterApply(value2, applyThrottleSucceeded, pid);
 					changed = squeezeAff != value2.SqueezeAff;
-					ok = flag3;
-					return flag3;
+					ok = applyThrottleSucceeded;
+					return applyThrottleSucceeded;
 				}
 			}
 			finally
 			{
 				Native.CloseHandle(intPtr);
-				NoteSqueezeAttempt(pid, value, num, ok);
+				NoteSqueezeAttempt(pid, value, squeezeAffValue, ok);
 			}
 		}
 
@@ -4127,8 +4127,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = (e.Reasons & SuppressReason.AntiCheat) != 0;
-			if (!flag)
+			bool valuesMatch = (e.Reasons & SuppressReason.AntiCheat) != 0;
+			if (!valuesMatch)
 			{
 				return (e.Reasons & SuppressReason.Background) != 0;
 			}
@@ -4148,22 +4148,22 @@ namespace PaviseApp
 					}
 				}
 			}
-			int num = 0;
+			int processedCount = 0;
 			foreach (KeyValuePair<int, Entry> item2 in list)
 			{
 				bool changed;
 				SetSqueeze(item2.Key, item2.Value.Creation, item2.Value.Name, 0uL, reason, out changed);
 				if (changed)
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		public int SqueezedCount(SuppressReason reason, bool verifiedOnly = true)
 		{
-			int num = 0;
+			int processedCount = 0;
 			lock (sync)
 			{
 				foreach (KeyValuePair<int, Entry> item in map)
@@ -4171,10 +4171,10 @@ namespace PaviseApp
 					if (verifiedOnly && reason == SuppressReason.Background) VerifyBackgroundJob(item.Value);
 					if ((item.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && item.Value.BackgroundRestorePending)) && SqueezeOwnedBy(item.Value, reason) && (!verifiedOnly || reason != SuppressReason.Background || (item.Value.BackgroundPlacementVerified && !item.Value.BackgroundRestorePending)))
 					{
-						num++;
+						processedCount++;
 					}
 				}
-				return num;
+				return processedCount;
 			}
 		}
 

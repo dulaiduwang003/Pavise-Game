@@ -15,19 +15,19 @@ namespace PaviseApp
 	{
 		private static void RetireSceneRulePreferences()
 		{
-			bool flag = false;
-			string[] array = new string[2] { "GmAggressive", "GmAdaptiveEscalateV1" };
-			foreach (string name in array)
+			bool retireSceneRulePreferencesReady = false;
+			string[] textEntries = new string[2] { "GmAggressive", "GmAdaptiveEscalateV1" };
+			foreach (string name in textEntries)
 			{
 				bool value;
 				string value2;
 				if (Settings.TryLoadStoredBool(name, out value) || (Settings.TryLoadStr(name, out value2) && !string.IsNullOrEmpty(value2)))
 				{
-					flag = true;
+					retireSceneRulePreferencesReady = true;
 				}
 				Settings.Remove(name);
 			}
-			if (flag)
+			if (retireSceneRulePreferencesReady)
 			{
 				Logger.Log(PerformancePolicy.Text("“扩大后台压制范围”与“智能自适应升档”已并入场景规则，旧的独立选择不再生效：竞技在后台治理生效时固定宽范围，智能平时窄范围并在 CPU 持续满载时临时放宽", "Broader background suppression and Smart adaptive escalation are now scene rules; the old separate choices no longer apply: Competitive always uses the wide scope while background control is active, Smart uses the narrow scope and widens it temporarily under sustained CPU saturation"));
 			}
@@ -40,17 +40,17 @@ namespace PaviseApp
 				return;
 			}
 			PerformancePreset performancePreset = PresetValue.From(result);
-			int num = (int)performancePreset;
-			if (Settings.SaveStr("PerformancePreset", num.ToString(CultureInfo.InvariantCulture)))
+			int performancePresetSnapshot = (int)performancePreset;
+			if (Settings.SaveStr("PerformancePreset", performancePresetSnapshot.ToString(CultureInfo.InvariantCulture)))
 			{
 				lock (sync)
 				{
 					preset = performancePreset;
 				}
-				string text = PresetValue.MigrationNote(result);
-				if (text != null)
+				string migrationNoteResult = PresetValue.MigrationNote(result);
+				if (migrationNoteResult != null)
 				{
-					Logger.Log(text);
+					Logger.Log(migrationNoteResult);
 				}
 			}
 		}
@@ -117,14 +117,14 @@ namespace PaviseApp
 					list.Add(Lang.T("auto.mmcss"));
 				}
 			}
-			bool flag;
+			bool activeSnapshot;
 			int count;
 			lock (sync)
 			{
-				flag = active;
+				activeSnapshot = active;
 				count = gameBoost.Count;
 			}
-			if (flag)
+			if (activeSnapshot)
 			{
 				list.Add(Lang.T("t.gamemodeenv.29"));
 			}
@@ -224,12 +224,12 @@ namespace PaviseApp
 		}
 		private static long ResidueBackoffTicks(int tries)
 		{
-			long num = 4000L << Math.Min(Math.Max(tries - 1, 0), 7);
-			if (num > 300000)
+			long minOffset = 4000L << Math.Min(Math.Max(tries - 1, 0), 7);
+			if (minOffset > 300000)
 			{
-				num = 300000L;
+				minOffset = 300000L;
 			}
-			return num * 10000;
+			return minOffset * 10000;
 		}
 		private bool LiveBoolPreferenceLocked(string policyKey, bool globalOn)
 		{
@@ -239,12 +239,12 @@ namespace PaviseApp
 		{
 			if (detection != null && detection.RendererCreation > 0)
 			{
-				string text = ((detection.Profile != null) ? detection.Profile.Id : null);
-				if (string.IsNullOrEmpty(text) || FindProfileLocked(text) != null)
+				string id = ((detection.Profile != null) ? detection.Profile.Id : null);
+				if (string.IsNullOrEmpty(id) || FindProfileLocked(id) != null)
 				{
 					modeLockGamePid = detection.RendererPid;
 					modeLockGameCreation = detection.RendererCreation;
-					modeLockGameProfileId = text;
+					modeLockGameProfileId = id;
 				}
 			}
 		}
@@ -291,8 +291,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				int num = (int)value;
-				if (!Settings.SaveStr("PerformancePreset", num.ToString()))
+				int valueSnapshot = (int)value;
+				if (!Settings.SaveStr("PerformancePreset", valueSnapshot.ToString()))
 				{
 					return false;
 				}

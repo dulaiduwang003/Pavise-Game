@@ -23,12 +23,12 @@ namespace PaviseApp
 			PaintCoreFrame(e.Graphics, base.ClientRectangle, this);
 			using (Pen pen = new Pen(Theme.Stroke))
 			{
-				int[] array = new int[2] { Divider1, Divider2 };
-				foreach (int num in array)
+				int[] integerValues = new int[2] { Divider1, Divider2 };
+				foreach (int numericValueEntry in integerValues)
 				{
-					if (num > 0)
+					if (numericValueEntry > 0)
 					{
-						e.Graphics.DrawLine(pen, Theme.S(22), num + base.AutoScrollPosition.Y, Math.Max(Theme.S(22), base.Width - Theme.S(22)), num + base.AutoScrollPosition.Y);
+						e.Graphics.DrawLine(pen, Theme.S(22), numericValueEntry + base.AutoScrollPosition.Y, Math.Max(Theme.S(22), base.Width - Theme.S(22)), numericValueEntry + base.AutoScrollPosition.Y);
 					}
 				}
 			}

@@ -7,32 +7,32 @@ namespace PaviseApp
 	{
 		internal static bool Matches(string query, string name, string path)
 		{
-			string text = CompatibleText(query).Trim();
-			if (text.Length == 0)
+			string compatibleTextTrimmed = CompatibleText(query).Trim();
+			if (compatibleTextTrimmed.Length == 0)
 			{
 				return true;
 			}
-			string text2 = CompatibleText(name);
-			string text3 = CompatibleText(path);
-			string text4 = Compact(text2);
-			string text5 = Compact(text3);
-			bool flag = false;
-			string[] array = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string value in array)
+			string compatibleTextResult = CompatibleText(name);
+			string compatibleTextResult2 = CompatibleText(path);
+			string compactResult = Compact(compatibleTextResult);
+			string compactResult2 = Compact(compatibleTextResult2);
+			bool matchesReady = false;
+			string[] compatibleTextTrimmedParts = compatibleTextTrimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string value in compatibleTextTrimmedParts)
 			{
-				string text6 = Compact(value);
-				if (text6.Length != 0)
+				string compactResult3 = Compact(value);
+				if (compactResult3.Length != 0)
 				{
-					flag = true;
-					if (text4.IndexOf(text6, StringComparison.OrdinalIgnoreCase) < 0 && text5.IndexOf(text6, StringComparison.OrdinalIgnoreCase) < 0)
+					matchesReady = true;
+					if (compactResult.IndexOf(compactResult3, StringComparison.OrdinalIgnoreCase) < 0 && compactResult2.IndexOf(compactResult3, StringComparison.OrdinalIgnoreCase) < 0)
 					{
 						return false;
 					}
 				}
 			}
-			if (!flag && text2.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0)
+			if (!matchesReady && compatibleTextResult.IndexOf(compatibleTextTrimmed, StringComparison.OrdinalIgnoreCase) < 0)
 			{
-				return text3.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0;
+				return compatibleTextResult2.IndexOf(compatibleTextTrimmed, StringComparison.OrdinalIgnoreCase) >= 0;
 			}
 			return true;
 		}

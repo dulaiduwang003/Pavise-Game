@@ -44,16 +44,16 @@ namespace PaviseApp
 				TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(Theme.S(8), 0, Math.Max(1, Width - Theme.S(22)), Height),
 					Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
 			}
-			int num = showAdjustLabel ? base.Width - Theme.S(10) : base.Width / 2;
-			int num2 = base.Height / 2;
+			int remainingWidth = showAdjustLabel ? base.Width - Theme.S(10) : base.Width / 2;
+			int heightRatio = base.Height / 2;
 			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			using (Pen pen2 = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
 			{
 				e.Graphics.DrawLines(pen2, new Point[3]
 				{
-					new Point(num - Theme.S(2), num2 - Theme.S(4)),
-					new Point(num + Theme.S(2), num2),
-					new Point(num - Theme.S(2), num2 + Theme.S(4))
+					new Point(remainingWidth - Theme.S(2), heightRatio - Theme.S(4)),
+					new Point(remainingWidth + Theme.S(2), heightRatio),
+					new Point(remainingWidth - Theme.S(2), heightRatio + Theme.S(4))
 				});
 			}
 			if (Focused && ShowFocusCues)

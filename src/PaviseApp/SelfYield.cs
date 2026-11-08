@@ -39,12 +39,12 @@ namespace PaviseApp
                 if (RestoreFailures >= 3) { RecoveryAttemptTrace.Exhausted(ObserveExit); return false; }
                 if (DateTime.UtcNow.Ticks < RestoreAfter) { RecoveryAttemptTrace.DeferredUntil(RestoreAfter); return false; }
 				uint[] ids;
-				int num = Child.Read(out ids);
-				if (num < 0)
+				int readResult = Child.Read(out ids);
+				if (readResult < 0)
 				{
 					return Failed();
 				}
-				if (num == 0 && NativeYieldChild.Same(ids, Desired) && !Child.Write(Desired, Original))
+				if (readResult == 0 && NativeYieldChild.Same(ids, Desired) && !Child.Write(Desired, Original))
 				{
 					return Failed();
 				}
@@ -170,9 +170,9 @@ namespace PaviseApp
 					origPriority = priorityClass;
 					origIo = Native.QueryIoPriority(self);
 					helperCpuSets = null;
-					bool flag = priorityClass == 16384 || Native.SetPriorityClass(self, 16384u);
-					bool flag2 = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(self, 1);
-					engaged = flag || flag2;
+					bool matchesSetPriorityClass = priorityClass == 16384 || Native.SetPriorityClass(self, 16384u);
+					bool matchesTrySetIoPriority = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(self, 1);
+					engaged = matchesSetPriorityClass || matchesTrySetIoPriority;
 					if (engaged)
 					{
 						applyFailures = 0;
@@ -251,24 +251,24 @@ namespace PaviseApp
 				return false;
 			}
 			HashSet<uint> hashSet = new HashSet<uint>();
-			ulong[] array = CpuTopology.PhysicalCoreMasks();
-			foreach (ulong num in array)
+			ulong[] physicalCoreMasksResult = CpuTopology.PhysicalCoreMasks();
+			foreach (ulong numericValueEntry in physicalCoreMasksResult)
 			{
-				uint[] array2 = CpuTopology.CpuSetIdsFor(num);
-				if (array2 == null)
+				uint[] cpuSetIdsForResult = CpuTopology.CpuSetIdsFor(numericValueEntry);
+				if (cpuSetIdsForResult == null)
 				{
 					return false;
 				}
-				uint[] array3 = array2;
-				foreach (uint num2 in array3)
+				uint[] numericValueItems = cpuSetIdsForResult;
+				foreach (uint numericValueEntry2 in numericValueItems)
 				{
-					uint[] array4 = helperCpuSets;
-					foreach (uint num3 in array4)
+					uint[] helperCpuSetsSnapshot = helperCpuSets;
+					foreach (uint numericValueEntry3 in helperCpuSetsSnapshot)
 					{
-						if (num2 == num3)
+						if (numericValueEntry2 == numericValueEntry3)
 						{
-							background |= num;
-							hashSet.Add(num2);
+							background |= numericValueEntry;
+							hashSet.Add(numericValueEntry2);
 						}
 					}
 				}
@@ -304,10 +304,10 @@ namespace PaviseApp
 			}
 			lock (sync)
 			{
-				bool flag = pid != helperRendererPid || birth != helperRendererBirth;
+				bool anyConditionMet = pid != helperRendererPid || birth != helperRendererBirth;
 				helperRendererPid = pid;
 				helperRendererBirth = birth;
-				if (flag || (helpers.Count > 0 && !HelperCoresSeparateLocked()))
+				if (anyConditionMet || (helpers.Count > 0 && !HelperCoresSeparateLocked()))
 				{
 					ReleaseHelpersLocked();
 				}
@@ -316,11 +316,11 @@ namespace PaviseApp
 
 		private static void DrainFinishedHelpersLocked()
 		{
-			for (int num = helpers.Count - 1; num >= 0; num--)
+			for (int helpersIndex = helpers.Count - 1; helpersIndex >= 0; helpersIndex--)
 			{
-				if (helpers[num].EndRequested && helpers[num].Restore())
+				if (helpers[helpersIndex].EndRequested && helpers[helpersIndex].Restore())
 				{
-					helpers.RemoveAt(num);
+					helpers.RemoveAt(helpersIndex);
 				}
 			}
 		}

@@ -33,19 +33,19 @@ namespace PaviseApp
 					binaryWriter.Write((short)0);
 					binaryWriter.Write((short)1);
 					binaryWriter.Write((short)list.Count);
-					int num = 6 + 16 * list.Count;
+					int value = 6 + 16 * list.Count;
 					for (int j = 0; j < list.Count; j++)
 					{
-						int num2 = sizes[j];
-						binaryWriter.Write((byte)((num2 < 256) ? ((uint)num2) : 0u));
-						binaryWriter.Write((byte)((num2 < 256) ? ((uint)num2) : 0u));
+						int value2 = sizes[j];
+						binaryWriter.Write((byte)((value2 < 256) ? ((uint)value2) : 0u));
+						binaryWriter.Write((byte)((value2 < 256) ? ((uint)value2) : 0u));
 						binaryWriter.Write((byte)0);
 						binaryWriter.Write((byte)0);
 						binaryWriter.Write((short)1);
 						binaryWriter.Write((short)32);
 						binaryWriter.Write(list[j].Length);
-						binaryWriter.Write(num);
-						num += list[j].Length;
+						binaryWriter.Write(value);
+						value += list[j].Length;
 					}
 					foreach (byte[] item in list)
 					{

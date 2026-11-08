@@ -37,8 +37,8 @@ namespace PaviseApp
 		{
 			get
 			{
-				GpuAdapter[] array = Adapters();
-				foreach (GpuAdapter gpuAdapter in array)
+				GpuAdapter[] adaptersResult = Adapters();
+				foreach (GpuAdapter gpuAdapter in adaptersResult)
 				{
 					if (!gpuAdapter.Integrated)
 					{
@@ -53,21 +53,21 @@ namespace PaviseApp
 		{
 			get
 			{
-				bool flag = false;
+				bool getHybridReady = false;
 				bool result = false;
-				GpuAdapter[] array = Adapters();
-				foreach (GpuAdapter gpuAdapter in array)
+				GpuAdapter[] adaptersResult = Adapters();
+				foreach (GpuAdapter gpuAdapter in adaptersResult)
 				{
 					if (gpuAdapter.Integrated)
 					{
-						flag = true;
+						getHybridReady = true;
 					}
 					else
 					{
 						result = true;
 					}
 				}
-				if (flag)
+				if (getHybridReady)
 				{
 					return result;
 				}
@@ -79,8 +79,8 @@ namespace PaviseApp
 		{
 			get
 			{
-				GpuAdapter[] array = Adapters();
-				if (array.Length > 0)
+				GpuAdapter[] adaptersResult = Adapters();
+				if (adaptersResult.Length > 0)
 				{
 					return !HasDiscrete;
 				}
@@ -103,8 +103,8 @@ namespace PaviseApp
 		public static GpuAdapter Primary()
 		{
 			GpuAdapter gpuAdapter = null;
-			GpuAdapter[] array = Adapters();
-			foreach (GpuAdapter gpuAdapter2 in array)
+			GpuAdapter[] adaptersResult = Adapters();
+			foreach (GpuAdapter gpuAdapter2 in adaptersResult)
 			{
 				if (gpuAdapter == null)
 				{
@@ -127,15 +127,15 @@ namespace PaviseApp
 
 		public static bool IsIntegratedDevice(string hardwareId)
 		{
-			string text = VenDevKey(hardwareId);
-			if (text == null)
+			string venDevKeyResult = VenDevKey(hardwareId);
+			if (venDevKeyResult == null)
 			{
 				return false;
 			}
-			GpuAdapter[] array = Adapters();
-			foreach (GpuAdapter gpuAdapter in array)
+			GpuAdapter[] adaptersResult = Adapters();
+			foreach (GpuAdapter gpuAdapter in adaptersResult)
 			{
-				if (string.Equals(VenDevKey(gpuAdapter.HardwareId), text, StringComparison.OrdinalIgnoreCase))
+				if (string.Equals(VenDevKey(gpuAdapter.HardwareId), venDevKeyResult, StringComparison.OrdinalIgnoreCase))
 				{
 					return gpuAdapter.Integrated;
 				}
@@ -145,14 +145,14 @@ namespace PaviseApp
 
 		public static string Describe()
 		{
-			GpuAdapter[] array = Adapters();
-			if (array.Length == 0)
+			GpuAdapter[] adaptersResult = Adapters();
+			if (adaptersResult.Length == 0)
 			{
 				return null;
 			}
 			List<string> list = new List<string>();
-			GpuAdapter[] array2 = array;
-			foreach (GpuAdapter gpuAdapter in array2)
+			GpuAdapter[] gpuAdapterItems = adaptersResult;
+			foreach (GpuAdapter gpuAdapter in gpuAdapterItems)
 			{
 				list.Add(gpuAdapter.Name + " " + gpuAdapter.KindText + " ");
 			}
@@ -220,13 +220,13 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			int num = hardwareId.IndexOf("VEN_", StringComparison.OrdinalIgnoreCase);
-			int num2 = hardwareId.IndexOf("DEV_", StringComparison.OrdinalIgnoreCase);
-			if (num < 0 || num2 < 0 || num2 + 8 > hardwareId.Length)
+			int matchIndex = hardwareId.IndexOf("VEN_", StringComparison.OrdinalIgnoreCase);
+			int matchIndex2 = hardwareId.IndexOf("DEV_", StringComparison.OrdinalIgnoreCase);
+			if (matchIndex < 0 || matchIndex2 < 0 || matchIndex2 + 8 > hardwareId.Length)
 			{
 				return null;
 			}
-			return (hardwareId.Substring(num, 8) + "&" + hardwareId.Substring(num2, 8)).ToUpperInvariant();
+			return (hardwareId.Substring(matchIndex, 8) + "&" + hardwareId.Substring(matchIndex2, 8)).ToUpperInvariant();
 		}
 
 		private static GpuAdapter[] Build()
@@ -261,29 +261,29 @@ namespace PaviseApp
 							{
 								return UnverifiedInventory();
 							}
-							string text2 = Compact(registryKey2.GetValue("DriverDesc") as string);
-							if (text2.Length == 0)
+							string compactResult = Compact(registryKey2.GetValue("DriverDesc") as string);
+							if (compactResult.Length == 0)
 							{
 								return UnverifiedInventory();
 							}
 							GpuVendor vendor = VendorOf(hardwareId);
 							long videoMemoryBytes = VideoMemoryBytes(registryKey2);
-							string text3 = VenDevKey(hardwareId);
+							string venDevKeyResult = VenDevKey(hardwareId);
 							int value;
 							if (!buses.TryGetValue(binding.InstanceId, out value))
 							{
 								value = -1;
 							}
 							bool value2;
-							bool? driverReported = ((text3 != null && dictionary2.TryGetValue(text3, out value2)) ? new bool?(value2) : null);
+							bool? driverReported = ((venDevKeyResult != null && dictionary2.TryGetValue(venDevKeyResult, out value2)) ? new bool?(value2) : null);
 							if (!driverReported.HasValue && !degradeLogged)
 							{
 								degradeLogged = true;
-								Logger.Log(Lang.T("log.gpuinventory.6") + text2);
+								Logger.Log(Lang.T("log.gpuinventory.6") + compactResult);
 							}
 							list.Add(new GpuAdapter
 							{
-								Name = text2,
+								Name = compactResult,
 								HardwareId = hardwareId,
 								Vendor = vendor,
 								BusNumber = value,
@@ -316,9 +316,9 @@ namespace PaviseApp
 
 		private static long VideoMemoryBytes(RegistryKey key)
 		{
-			string[] array = new string[2] { "HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize" };
-			string[] array2 = array;
-			foreach (string name in array2)
+			string[] textEntries = new string[2] { "HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize" };
+			string[] textEntries2 = textEntries;
+			foreach (string name in textEntries2)
 			{
 				try
 				{
@@ -331,17 +331,17 @@ namespace PaviseApp
 					{
 						return (uint)(int)value;
 					}
-					byte[] array3 = value as byte[];
-					if (array3 != null && array3.Length >= 4)
+					byte[] valueOffset = value as byte[];
+					if (valueOffset != null && valueOffset.Length >= 4)
 					{
-						long num = 0L;
-						for (int num2 = Math.Min(8, array3.Length) - 1; num2 >= 0; num2--)
+						long videoMemoryBytesResult = 0L;
+						for (int valueOffsetIndex = Math.Min(8, valueOffset.Length) - 1; valueOffsetIndex >= 0; valueOffsetIndex--)
 						{
-							num = (num << 8) | array3[num2];
+							videoMemoryBytesResult = (videoMemoryBytesResult << 8) | valueOffset[valueOffsetIndex];
 						}
-						if (num > 0)
+						if (videoMemoryBytesResult > 0)
 						{
-							return num;
+							return videoMemoryBytesResult;
 						}
 					}
 				}
@@ -354,14 +354,14 @@ namespace PaviseApp
 
 		private static string Compact(string value)
 		{
-			string text = (value ?? "").Replace("(R)", "").Replace("(TM)", "").Replace("(C)", "")
+			string replaceResult = (value ?? "").Replace("(R)", "").Replace("(TM)", "").Replace("(C)", "")
 				.Replace("®", "")
 				.Replace("™", "");
-			while (text.IndexOf("  ", StringComparison.Ordinal) >= 0)
+			while (replaceResult.IndexOf("  ", StringComparison.Ordinal) >= 0)
 			{
-				text = text.Replace("  ", " ");
+				replaceResult = replaceResult.Replace("  ", " ");
 			}
-			return text.Trim();
+			return replaceResult.Trim();
 		}
 
 		private static bool TryReadPresentInstances(Dictionary<string, int> buses, out List<string> instances)
@@ -377,9 +377,9 @@ namespace PaviseApp
 				}
 				SpDevinfoData data = default(SpDevinfoData);
 				data.Size = (uint)Marshal.SizeOf(typeof(SpDevinfoData));
-				for (uint num = 0u; ; num++)
+				for (uint iterationIndex = 0u; ; iterationIndex++)
 				{
-					if (!SetupDiEnumDeviceInfo(intPtr, num, ref data))
+					if (!SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data))
 						return Marshal.GetLastWin32Error() == 259;
 					StringBuilder stringBuilder = new StringBuilder(512);
 					uint required;
@@ -389,15 +389,15 @@ namespace PaviseApp
 						stringBuilder = new StringBuilder((int)required);
 						if (!SetupDiGetDeviceInstanceIdW(intPtr, ref data, stringBuilder, required, out required)) return false;
 					}
-					string text = stringBuilder.ToString();
-					if (text.Length == 0) return false;
-					if (IsPciAdapter(text))
+					string stringBuilderText = stringBuilder.ToString();
+					if (stringBuilderText.Length == 0) return false;
+					if (IsPciAdapter(stringBuilderText))
 					{
-						instances.Add(text);
+						instances.Add(stringBuilderText);
 						int bus;
 						if (TryReadBusNumber(intPtr, ref data, out bus))
 						{
-							buses[text] = bus;
+							buses[stringBuilderText] = bus;
 						}
 					}
 					data.Size = (uint)Marshal.SizeOf(typeof(SpDevinfoData));
@@ -422,14 +422,14 @@ namespace PaviseApp
 		private static bool TryReadBusNumber(IntPtr devInfo, ref SpDevinfoData data, out int bus)
 		{
 			bus = -1;
-			byte[] array = new byte[4];
+			byte[] rawBytes = new byte[4];
 			uint dataType;
 			uint required;
-			if (!SetupDiGetDeviceRegistryPropertyW(devInfo, ref data, 21u, out dataType, array, 4u, out required))
+			if (!SetupDiGetDeviceRegistryPropertyW(devInfo, ref data, 21u, out dataType, rawBytes, 4u, out required))
 			{
 				return false;
 			}
-			bus = BitConverter.ToInt32(array, 0);
+			bus = BitConverter.ToInt32(rawBytes, 0);
 			return true;
 		}
 

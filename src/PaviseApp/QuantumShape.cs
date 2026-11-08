@@ -39,9 +39,9 @@ namespace PaviseApp
 
 		public string Describe()
 		{
-			string text = Lang.T(ShortInterval ? "quantum.short" : "quantum.long");
-			string text2 = Lang.T(VariableLength ? "quantum.variable" : "quantum.fixed");
-			return text + " " + text2 + " " + ForegroundQuantum.ToString(CultureInfo.InvariantCulture) + ":" + BackgroundQuantum.ToString(CultureInfo.InvariantCulture);
+			string tResult = Lang.T(ShortInterval ? "quantum.short" : "quantum.long");
+			string tResult2 = Lang.T(VariableLength ? "quantum.variable" : "quantum.fixed");
+			return tResult + " " + tResult2 + " " + ForegroundQuantum.ToString(CultureInfo.InvariantCulture) + ":" + BackgroundQuantum.ToString(CultureInfo.InvariantCulture);
 		}
 	}
 }

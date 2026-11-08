@@ -26,26 +26,26 @@ namespace PaviseApp
 			}
 			foreach (HardThreadCleanupPart value in Enum.GetValues(typeof(HardThreadCleanupPart)))
 			{
-				int num = (int)value;
-				if (removed[num] || deferred[num])
+				int valueSnapshot = (int)value;
+				if (removed[valueSnapshot] || deferred[valueSnapshot])
 				{
 					continue;
 				}
 				if (value == HardThreadCleanupPart.Directory && Array.IndexOf(deferred, true) >= 0)
 				{
-					deferred[num] = true;
+					deferred[valueSnapshot] = true;
 					continue;
 				}
 				if (original.DeleteExact(value))
 				{
-					removed[num] = true;
+					removed[valueSnapshot] = true;
 					continue;
 				}
 				if (value < HardThreadCleanupPart.Configuration || !original.HeldElsewhere(value))
 				{
 					return false;
 				}
-				deferred[num] = true;
+				deferred[valueSnapshot] = true;
 			}
 			return original.ClosureCertain;
 		}

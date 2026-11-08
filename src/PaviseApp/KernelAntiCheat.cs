@@ -136,25 +136,25 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = rendererName;
-			int num = text.LastIndexOfAny(new char[2] { '\\', '/' });
-			if (num >= 0)
+			string rendererNameSnapshot = rendererName;
+			int lastIndexOfAnyResult = rendererNameSnapshot.LastIndexOfAny(new char[2] { '\\', '/' });
+			if (lastIndexOfAnyResult >= 0)
 			{
-				text = text.Substring(num + 1);
+				rendererNameSnapshot = rendererNameSnapshot.Substring(lastIndexOfAnyResult + 1);
 			}
-			if (text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			if (rendererNameSnapshot.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				text = text.Substring(0, text.Length - 4);
+				rendererNameSnapshot = rendererNameSnapshot.Substring(0, rendererNameSnapshot.Length - 4);
 			}
 			string[][] byExePrefix = ByExePrefix;
-			foreach (string[] array in byExePrefix)
+			foreach (string[] textEntriesEntry in byExePrefix)
 			{
-				for (int j = 1; j < array.Length; j++)
+				for (int j = 1; j < textEntriesEntry.Length; j++)
 				{
-					string text2 = array[j];
-					if ((text2.Length > 1 && text2[0] == '=') ? string.Equals(text, text2.Substring(1), StringComparison.OrdinalIgnoreCase) : text.StartsWith(text2, StringComparison.OrdinalIgnoreCase))
+					string message = textEntriesEntry[j];
+					if ((message.Length > 1 && message[0] == '=') ? string.Equals(rendererNameSnapshot, message.Substring(1), StringComparison.OrdinalIgnoreCase) : rendererNameSnapshot.StartsWith(message, StringComparison.OrdinalIgnoreCase))
 					{
-						return array[0];
+						return textEntriesEntry[0];
 					}
 				}
 			}
@@ -163,15 +163,15 @@ namespace PaviseApp
 
 		public static string DescribeForLog(string rendererName)
 		{
-			string text = MatchByExe(rendererName);
-			if (text != null)
+			string matchByExeResult = MatchByExe(rendererName);
+			if (matchByExeResult != null)
 			{
-				return text;
+				return matchByExeResult;
 			}
-			string text2 = InstalledName();
-			if (text2 != null)
+			string installedNameResult = InstalledName();
+			if (installedNameResult != null)
 			{
-				return Lang.F("log.kernelac.installed", text2);
+				return Lang.F("log.kernelac.installed", installedNameResult);
 			}
 			return null;
 		}

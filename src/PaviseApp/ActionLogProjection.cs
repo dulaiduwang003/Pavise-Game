@@ -56,16 +56,16 @@ namespace PaviseApp
             List<LogEventEntry> events = LogStreamView.ParseEvents(raw ?? "");
             List<LogEventEntry> rows = Project(events, 4, activeSession);
             if (rows.Count == 0) return Text("当前日志没有该会话的动作记录。", "The current log has no action records for this session.", "現在のログにこのセッションの操作記録はありません。") + Environment.NewLine;
-            var text = new StringBuilder();
-            text.AppendLine(Text("Pavise 会话动作记录", "Pavise session action log", "Pavise セッション操作ログ"));
-            text.AppendLine(Text("仅列出现有日志确认的动作；恢复状态以各项记录为准。", "Actions reflect recorded evidence; restoration status is reported per action.", "既存ログで確認できる操作です。復元状態は各項目の記録をご確認ください。"));
+            var stringBuilder = new StringBuilder();
+            stringBuilder.AppendLine(Text("Pavise 会话动作记录", "Pavise session action log", "Pavise セッション操作ログ"));
+            stringBuilder.AppendLine(Text("仅列出现有日志确认的动作；恢复状态以各项记录为准。", "Actions reflect recorded evidence; restoration status is reported per action.", "既存ログで確認できる操作です。復元状態は各項目の記録をご確認ください。"));
             for (int i = rows.Count - 1; i >= 0; i--)
             {
                 LogEventEntry row = rows[i];
                 string stamp = row.Timestamp == DateTime.MinValue ? row.Date + " " + row.Time : row.Timestamp.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-                text.Append(stamp).Append("  [").Append(row.Module).Append("] ").AppendLine(row.Message);
+                stringBuilder.Append(stamp).Append("  [").Append(row.Module).Append("] ").AppendLine(row.Message);
             }
-            return text.ToString();
+            return stringBuilder.ToString();
         }
 
         private static List<LogEventEntry> Normalize(IList<LogEventEntry> input)
@@ -356,10 +356,10 @@ namespace PaviseApp
         private static string AfterFirstSpace(string text) { int at = text.IndexOf(' '); return at < 0 ? text : text.Substring(at + 1); }
         private static string Clean(string value)
         {
-            string text = Technical.Replace(value ?? "", "");
-            text = Regex.Replace(text, @"(?<!\S)[A-Za-z][A-Za-z0-9_-]*=[^\s;]+", "");
-            text = Regex.Replace(text, @"\b0x[0-9A-Fa-f]+\b", "");
-            return Regex.Replace(text, @"\s+", " ").Trim();
+            string replaceResult = Technical.Replace(value ?? "", "");
+            replaceResult = Regex.Replace(replaceResult, @"(?<!\S)[A-Za-z][A-Za-z0-9_-]*=[^\s;]+", "");
+            replaceResult = Regex.Replace(replaceResult, @"\b0x[0-9A-Fa-f]+\b", "");
+            return Regex.Replace(replaceResult, @"\s+", " ").Trim();
         }
         private static string Mask(string value)
         {

@@ -136,10 +136,10 @@ namespace PaviseApp
 
 		internal static bool IsPerCore(string upper)
 		{
-			for (int num = upper.IndexOf("CORE", StringComparison.Ordinal); num >= 0; num = upper.IndexOf("CORE", num + 1, StringComparison.Ordinal))
+			for (int iterationIndex = upper.IndexOf("CORE", StringComparison.Ordinal); iterationIndex >= 0; iterationIndex = upper.IndexOf("CORE", iterationIndex + 1, StringComparison.Ordinal))
 			{
-				int num2 = num + 4;
-				if (num2 < upper.Length && upper[num2] >= '0' && upper[num2] <= '9')
+				int iterationIndexOffset = iterationIndex + 4;
+				if (iterationIndexOffset < upper.Length && upper[iterationIndexOffset] >= '0' && upper[iterationIndexOffset] <= '9')
 				{
 					return true;
 				}
@@ -153,24 +153,24 @@ namespace PaviseApp
 			{
 				return -1;
 			}
-			string text = name.ToUpperInvariant();
-			if (Has(text, "DRAM") || Has(text, "MEMORY"))
+			string toUpperInvariantResult = name.ToUpperInvariant();
+			if (Has(toUpperInvariantResult, "DRAM") || Has(toUpperInvariantResult, "MEMORY"))
 			{
 				return 1;
 			}
-			if (IsPerCore(text))
+			if (IsPerCore(toUpperInvariantResult))
 			{
 				return -1;
 			}
-			if (Has(text, "PP0") || Has(text, "CORE"))
+			if (Has(toUpperInvariantResult, "PP0") || Has(toUpperInvariantResult, "CORE"))
 			{
 				return 2;
 			}
-			if (Has(text, "PP1") || Has(text, "_GT") || Has(text, "IGPU"))
+			if (Has(toUpperInvariantResult, "PP1") || Has(toUpperInvariantResult, "_GT") || Has(toUpperInvariantResult, "IGPU"))
 			{
 				return 3;
 			}
-			if (Has(text, "PKG") || Has(text, "PACKAGE") || text == "CPU" || text.StartsWith("CPU_") || Has(text, "SOC"))
+			if (Has(toUpperInvariantResult, "PKG") || Has(toUpperInvariantResult, "PACKAGE") || toUpperInvariantResult == "CPU" || toUpperInvariantResult.StartsWith("CPU_") || Has(toUpperInvariantResult, "SOC"))
 			{
 				return 0;
 			}
@@ -202,8 +202,8 @@ namespace PaviseApp
 				}
 				try
 				{
-					byte[] array = Ioctl(intPtr, 2244620u, 4096);
-					return (array == null || array.Length < 16) ? null : new Sample(array);
+					byte[] ioctlResult = Ioctl(intPtr, 2244620u, 4096);
+					return (ioctlResult == null || ioctlResult.Length < 16) ? null : new Sample(ioctlResult);
 				}
 				finally
 				{
@@ -218,22 +218,22 @@ namespace PaviseApp
 			{
 				return -1.0;
 			}
-			int num;
+			int wattsValue;
 			lock (sync)
 			{
 				EnsureProbedLocked();
-				num = railIndex[(int)rail];
+				wattsValue = railIndex[(int)rail];
 			}
-			if (num < 0)
+			if (wattsValue < 0)
 			{
 				return -1.0;
 			}
-			int num2 = num * 16;
-			if (num2 + 16 > before.Raw.Length || num2 + 16 > after.Raw.Length)
+			int scaledWattsValue = wattsValue * 16;
+			if (scaledWattsValue + 16 > before.Raw.Length || scaledWattsValue + 16 > after.Raw.Length)
 			{
 				return -1.0;
 			}
-			return WattsFrom(BitConverter.ToUInt64(before.Raw, num2), BitConverter.ToUInt64(after.Raw, num2), BitConverter.ToUInt64(before.Raw, num2 + 8), BitConverter.ToUInt64(after.Raw, num2 + 8));
+			return WattsFrom(BitConverter.ToUInt64(before.Raw, scaledWattsValue), BitConverter.ToUInt64(after.Raw, scaledWattsValue), BitConverter.ToUInt64(before.Raw, scaledWattsValue + 8), BitConverter.ToUInt64(after.Raw, scaledWattsValue + 8));
 		}
 
 		private static void EnsureProbedLocked()
@@ -289,11 +289,11 @@ namespace PaviseApp
 			List<string> list = new List<string>();
 			try
 			{
-				for (uint num = 0u; num < 256; num++)
+				for (uint iterationIndex = 0u; iterationIndex < 256; iterationIndex++)
 				{
 					DeviceInterfaceData data = default(DeviceInterfaceData);
 					data.Size = Marshal.SizeOf(typeof(DeviceInterfaceData));
-					if (!SetupDiEnumDeviceInterfaces(intPtr, IntPtr.Zero, ref guid, num, ref data))
+					if (!SetupDiEnumDeviceInterfaces(intPtr, IntPtr.Zero, ref guid, iterationIndex, ref data))
 					{
 						break;
 					}
@@ -304,29 +304,29 @@ namespace PaviseApp
 						continue;
 					}
 					IntPtr intPtr2 = Marshal.AllocHGlobal(required);
-					string text = null;
+					string ptrToStringUniResult = null;
 					try
 					{
 						Marshal.WriteInt32(intPtr2, (IntPtr.Size == 8) ? 8 : 6);
 						int required2;
 						if (SetupDiGetDeviceInterfaceDetailW(intPtr, ref data, intPtr2, required, out required2, IntPtr.Zero))
 						{
-							text = Marshal.PtrToStringUni(new IntPtr(intPtr2.ToInt64() + 4));
+							ptrToStringUniResult = Marshal.PtrToStringUni(new IntPtr(intPtr2.ToInt64() + 4));
 						}
 					}
 					finally
 					{
 						Marshal.FreeHGlobal(intPtr2);
 					}
-					if (text == null)
+					if (ptrToStringUniResult == null)
 					{
 						continue;
 					}
-					devicePath = text;
+					devicePath = ptrToStringUniResult;
 					unreadable = false;
 					ReadChannelsLocked();
-					string[] array = rawChannelNames;
-					foreach (string item in array)
+					string[] rawChannelNamesSnapshot = rawChannelNames;
+					foreach (string item in rawChannelNamesSnapshot)
 					{
 						if (!list.Contains(item))
 						{
@@ -362,33 +362,33 @@ namespace PaviseApp
 			}
 			try
 			{
-				byte[] array = Ioctl(intPtr, 2244608u, 2);
-				if (array == null || array.Length < 2)
+				byte[] ioctlResult = Ioctl(intPtr, 2244608u, 2);
+				if (ioctlResult == null || ioctlResult.Length < 2)
 				{
 					unreadable = true;
 					return;
 				}
-				byte[] array2 = Ioctl(intPtr, 2244612u, 8);
-				if (array2 == null || array2.Length < 4)
+				byte[] ioctlResult2 = Ioctl(intPtr, 2244612u, 8);
+				if (ioctlResult2 == null || ioctlResult2.Length < 4)
 				{
 					unreadable = true;
 					return;
 				}
-				long num = ((array2.Length >= 8) ? BitConverter.ToInt64(array2, 0) : BitConverter.ToUInt32(array2, 0));
-				if (num <= 0 || num > 65536)
+				long toInt64Result = ((ioctlResult2.Length >= 8) ? BitConverter.ToInt64(ioctlResult2, 0) : BitConverter.ToUInt32(ioctlResult2, 0));
+				if (toInt64Result <= 0 || toInt64Result > 65536)
 				{
 					unreadable = true;
 					return;
 				}
-				byte[] array3 = Ioctl(intPtr, 2244616u, (int)num);
-				if (array3 == null)
+				byte[] ioctlResult3 = Ioctl(intPtr, 2244616u, (int)toInt64Result);
+				if (ioctlResult3 == null)
 				{
 					unreadable = true;
 					return;
 				}
 				List<string> list = new List<string>();
 				List<string> list2 = new List<string>();
-				foreach (string item in Utf16Strings(array3, 3))
+				foreach (string item in Utf16Strings(ioctlResult3, 3))
 				{
 					list.Add(item);
 					if (ClassifyRail(item) >= 0)
@@ -404,10 +404,10 @@ namespace PaviseApp
 				}
 				for (int j = 0; j < channelNames.Length; j++)
 				{
-					int num2 = ClassifyRail(channelNames[j]);
-					if (num2 >= 0 && railIndex[num2] < 0)
+					int classifyRailResult = ClassifyRail(channelNames[j]);
+					if (classifyRailResult >= 0 && railIndex[classifyRailResult] < 0)
 					{
-						railIndex[num2] = j;
+						railIndex[classifyRailResult] = j;
 					}
 				}
 			}
@@ -439,9 +439,9 @@ namespace PaviseApp
 				{
 					returned = outSize;
 				}
-				byte[] array = new byte[returned];
-				Marshal.Copy(intPtr, array, 0, returned);
-				return array;
+				byte[] rawBytes = new byte[returned];
+				Marshal.Copy(intPtr, rawBytes, 0, returned);
+				return rawBytes;
 			}
 			finally
 			{

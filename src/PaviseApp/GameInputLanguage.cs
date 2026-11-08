@@ -99,8 +99,8 @@ namespace PaviseApp
 						return new EnglishInputOutcome(EnglishInputResult.Unavailable);
 					}
 					IntPtr intPtr = IntPtr.Zero;
-					IntPtr[] array = keyboardLayouts;
-					foreach (IntPtr intPtr2 in array)
+					IntPtr[] keyboardLayoutsSnapshot = keyboardLayouts;
+					foreach (IntPtr intPtr2 in keyboardLayoutsSnapshot)
 					{
 						if (IsIndependentEnglish(intPtr2))
 						{

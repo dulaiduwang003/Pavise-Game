@@ -76,13 +76,13 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = OrdinaryOverrideCount(Item.Profile);
-				string text = ((num > 0) ? Lang.F("lib.config.tag", num) : "");
+				int ordinaryOverrideCountResult = OrdinaryOverrideCount(Item.Profile);
+				string libConfigTagText = ((ordinaryOverrideCountResult > 0) ? Lang.F("lib.config.tag", ordinaryOverrideCountResult) : "");
 				if (Item.Profile.ForceTrigger)
 				{
-					text = Lang.T("v15.library.forced.tag") + ((text.Length > 0) ? (" · " + text) : "");
+					libConfigTagText = Lang.T("v15.library.forced.tag") + ((libConfigTagText.Length > 0) ? (" · " + libConfigTagText) : "");
 				}
-				return text;
+				return libConfigTagText;
 			}
 		}
 
@@ -298,11 +298,11 @@ namespace PaviseApp
 				tips.SetToolTip(FullscreenOptimizationsSwitch, Lang.T("lib.fso.tip"));
 				FamilySwitch.Gated = !Item.RendererObserved;
 				FamilySwitch.Surface = Surface;
-				string text = Lang.T(Item.RendererObserved ? "lib.renderer.observed" : "lib.renderer.pending");
-				string text2 = Lang.T(Item.RendererObserved ? "lib.renderer.observed.tip" : "lib.renderer.pending.tip");
-				string text3 = Item.Profile.ExecutablePath ?? Item.Profile.Root ?? "";
+				string tResult = Lang.T(Item.RendererObserved ? "lib.renderer.observed" : "lib.renderer.pending");
+				string tResult2 = Lang.T(Item.RendererObserved ? "lib.renderer.observed.tip" : "lib.renderer.pending.tip");
+				string executablePathOffset = Item.Profile.ExecutablePath ?? Item.Profile.Root ?? "";
 				base.AccessibleName = Item.Profile.Name;
-				base.AccessibleDescription = text + " · " + MetadataText + "\r\n" + text3 + "\r\n" + text2;
+				base.AccessibleDescription = tResult + " · " + MetadataText + "\r\n" + executablePathOffset + "\r\n" + tResult2;
 				CoreButton.Bg = Surface;
 				MoreButton.Bg = Surface;
 				MoreButton.AccessibleName = Item.Profile.Name + " · " + Lang.T("workflow.more");
@@ -312,9 +312,9 @@ namespace PaviseApp
 				CoreButton.AccessibleDescription = Lang.T("lib.cores.tip");
 				tips.SetToolTip(CoreButton, Lang.T("lib.cores.tip"));
 				FamilySwitch.AccessibleName = Item.Profile.Name + " · " + Lang.T("lib.family.suppress");
-				FamilySwitch.AccessibleDescription = text2 + "\r\n" + Lang.T("lib.family.tip");
-				tips.SetToolTip(this, Item.Profile.Name + "\r\n" + text3 + "\r\n" + MetadataText + "\r\n\r\n" + text2);
-				tips.SetToolTip(FamilySwitch, ((FamilySwitch.Gated && !FamilySwitch.Checked) ? (Lang.T("lib.family.gated.body") + "\r\n\r\n") : "") + Lang.T("lib.family.tip") + "\r\n\r\n" + text2);
+				FamilySwitch.AccessibleDescription = tResult2 + "\r\n" + Lang.T("lib.family.tip");
+				tips.SetToolTip(this, Item.Profile.Name + "\r\n" + executablePathOffset + "\r\n" + MetadataText + "\r\n\r\n" + tResult2);
+				tips.SetToolTip(FamilySwitch, ((FamilySwitch.Gated && !FamilySwitch.Checked) ? (Lang.T("lib.family.gated.body") + "\r\n\r\n") : "") + Lang.T("lib.family.tip") + "\r\n\r\n" + tResult2);
 				Invalidate();
 				FamilySwitch.Invalidate();
 			}
@@ -350,8 +350,8 @@ namespace PaviseApp
 			}
 			if (Extension != null)
 			{
-				int num = GameLibraryRowLayout.HeightForWidth(base.ClientSize.Width);
-				Extension.Bounds = new Rectangle(Theme.S(14), num, Math.Max(1, base.ClientSize.Width - Theme.S(28)), Math.Max(1, ExtraHeight - Theme.S(9)));
+				int heightForWidthResult = GameLibraryRowLayout.HeightForWidth(base.ClientSize.Width);
+				Extension.Bounds = new Rectangle(Theme.S(14), heightForWidthResult, Math.Max(1, base.ClientSize.Width - Theme.S(28)), Math.Max(1, ExtraHeight - Theme.S(9)));
 			}
 		}
 
@@ -497,22 +497,22 @@ namespace PaviseApp
 				}
 			}
 			TextRenderer.DrawText(graphics, Lang.T(Item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.1f, true), gameLibraryRowLayout.Running, Item.Running ? Theme.Green : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			string text = Lang.T(Item.RendererObserved ? "lib.renderer.observed" : "lib.renderer.pending");
+			string tResult = Lang.T(Item.RendererObserved ? "lib.renderer.observed" : "lib.renderer.pending");
 			Color color = (Item.RendererObserved ? Theme.Green : Theme.Dim);
-			int num = TextRenderer.MeasureText(text, Theme.UI(7.2f, false), Size.Empty, TextFormatFlags.NoPadding).Width;
-			int val = Math.Min(gameLibraryRowLayout.Metadata.Width, num + Theme.S(12));
+			int width = TextRenderer.MeasureText(tResult, Theme.UI(7.2f, false), Size.Empty, TextFormatFlags.NoPadding).Width;
+			int val = Math.Min(gameLibraryRowLayout.Metadata.Width, width + Theme.S(12));
 			Rectangle rectangle2 = new Rectangle(gameLibraryRowLayout.Metadata.X, gameLibraryRowLayout.Metadata.Y, Math.Max(1, val), gameLibraryRowLayout.Metadata.Height);
-			int num2 = Math.Max(2, Theme.S(3));
+			int width2 = Math.Max(2, Theme.S(3));
 			using (SolidBrush brush5 = new SolidBrush(color))
 			{
-				graphics.FillEllipse(brush5, rectangle2.Left, rectangle2.Top + (rectangle2.Height - num2) / 2, num2, num2);
+				graphics.FillEllipse(brush5, rectangle2.Left, rectangle2.Top + (rectangle2.Height - width2) / 2, width2, width2);
 			}
-			TextRenderer.DrawText(graphics, text, Theme.UI(7.2f, false), new Rectangle(rectangle2.Left + Theme.S(10), rectangle2.Top, Math.Max(1, rectangle2.Width - Theme.S(10)), rectangle2.Height), color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, tResult, Theme.UI(7.2f, false), new Rectangle(rectangle2.Left + Theme.S(10), rectangle2.Top, Math.Max(1, rectangle2.Width - Theme.S(10)), rectangle2.Height), color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			string metadataText = MetadataText;
-			int num3 = rectangle2.Right + Theme.S(10);
-			if (gameLibraryRowLayout.Metadata.Right > num3)
+			int rightOffset = rectangle2.Right + Theme.S(10);
+			if (gameLibraryRowLayout.Metadata.Right > rightOffset)
 			{
-				TextRenderer.DrawText(graphics, metadataText, Theme.UI(7.4f, false), new Rectangle(num3, gameLibraryRowLayout.Metadata.Top, gameLibraryRowLayout.Metadata.Right - num3, gameLibraryRowLayout.Metadata.Height), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				TextRenderer.DrawText(graphics, metadataText, Theme.UI(7.4f, false), new Rectangle(rightOffset, gameLibraryRowLayout.Metadata.Top, gameLibraryRowLayout.Metadata.Right - rightOffset, gameLibraryRowLayout.Metadata.Height), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
 			if (Focused && ShowFocusCues)
 			{

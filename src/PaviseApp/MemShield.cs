@@ -43,26 +43,26 @@ namespace PaviseApp
 		{
 			lock (opLk)
 			{
-				string text = Settings.LoadStr("MemShieldSnap", "");
-				if (text.Length != 0)
+				string memShieldSnapValue = Settings.LoadStr("MemShieldSnap", "");
+				if (memShieldSnapValue.Length != 0)
 				{
 					int pid;
 					long creation;
 					ulong min;
 					ulong max;
 					uint flags;
-					if (DecodeSnapshot(text, out pid, out creation, out min, out max, out flags))
+					if (DecodeSnapshot(memShieldSnapValue, out pid, out creation, out min, out max, out flags))
 					{
-						bool flag;
+						bool restoreQuotaSucceeded;
 						try
 						{
-							flag = RestoreQuota(pid, creation, min, max, flags);
+							restoreQuotaSucceeded = RestoreQuota(pid, creation, min, max, flags);
 						}
 						catch
 						{
-							flag = false;
+							restoreQuotaSucceeded = false;
 						}
-						if (flag)
+						if (restoreQuotaSucceeded)
 						{
 							if (!Settings.SaveStr("MemShieldSnap", "") || Settings.LoadStr("MemShieldSnap", "").Length != 0)
 							{
@@ -122,8 +122,8 @@ namespace PaviseApp
 			min = 0uL;
 			max = 0uL;
 			flags = 0u;
-			string[] array = (snap ?? "").Split('|');
-			if (array.Length == 6 && array[0] == "1" && int.TryParse(array[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out pid) && long.TryParse(array[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out creation) && ulong.TryParse(array[3], NumberStyles.None, CultureInfo.InvariantCulture, out min) && ulong.TryParse(array[4], NumberStyles.None, CultureInfo.InvariantCulture, out max) && uint.TryParse(array[5], NumberStyles.None, CultureInfo.InvariantCulture, out flags) && pid > 0)
+			string[] parts = (snap ?? "").Split('|');
+			if (parts.Length == 6 && parts[0] == "1" && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out pid) && long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out creation) && ulong.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out min) && ulong.TryParse(parts[4], NumberStyles.None, CultureInfo.InvariantCulture, out max) && uint.TryParse(parts[5], NumberStyles.None, CultureInfo.InvariantCulture, out flags) && pid > 0)
 			{
 				return creation > 0;
 			}

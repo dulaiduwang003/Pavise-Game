@@ -45,8 +45,8 @@ namespace PaviseApp
                     using (MemoryStream output = new MemoryStream())
                     {
                         Fetch(feed, output, SelfUpdateManifest.MaxManifestBytes, -1, null, cancel, feedTimeout);
-                        string text = new UTF8Encoding(false, true).GetString(output.ToArray());
-                        SelfUpdatePackage package = SelfUpdateManifest.ParseAndVerify(text);
+                        string stringValue = new UTF8Encoding(false, true).GetString(output.ToArray());
+                        SelfUpdatePackage package = SelfUpdateManifest.ParseAndVerify(stringValue);
                         cancel.ThrowIfCancellationRequested();
                         Version remoteVersion = new Version(package.Version);
                         if (remoteVersion.CompareTo(currentVersion) < 0)

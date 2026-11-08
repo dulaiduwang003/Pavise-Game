@@ -229,20 +229,20 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					long? num = ReadBoostAction(action, handle);
-					if (!num.HasValue)
+					long? boostAction = ReadBoostAction(action, handle);
+					if (!boostAction.HasValue)
 					{
 						return false;
 					}
-					bool flag = num.Value == original || WriteBoostAction(action, handle, original) == 0;
-					long? num2 = ReadBoostAction(action, handle);
-					int num3 = BoostActionIdentity(handle, creation);
-					bool flag2 = num3 == 1 || (num3 == 0 && flag && num2.HasValue && num2.Value == original);
-					if (flag2)
+					bool anyConditionMet = boostAction.Value == original || WriteBoostAction(action, handle, original) == 0;
+					long? boostAction2 = ReadBoostAction(action, handle);
+					int boostActionIdentityResult = BoostActionIdentity(handle, creation);
+					bool anyConditionMet2 = boostActionIdentityResult == 1 || (boostActionIdentityResult == 0 && anyConditionMet && boostAction2.HasValue && boostAction2.Value == original);
+					if (anyConditionMet2)
 					{
 						SetBoostActionRecovery(pid, action, false);
 					}
-					return flag2;
+					return anyConditionMet2;
 				}
 				}
 			}
@@ -304,31 +304,31 @@ namespace PaviseApp
 		}
 		private bool RestoreBoostSnapshot(IntPtr handle, int pid, Snap snapshot)
 		{
-			bool flag = snapshot.Pri != 0 && snapshot.Pri != uint.MaxValue && snapshot.Io >= 0 && (!Native.PowerThrottlingSupported || (snapshot.QoSControl >= 0 && snapshot.QoSState >= 0));
+			bool allConditionsMet = snapshot.Pri != 0 && snapshot.Pri != uint.MaxValue && snapshot.Io >= 0 && (!Native.PowerThrottlingSupported || (snapshot.QoSControl >= 0 && snapshot.QoSState >= 0));
 			string[] boostActions = BoostActions;
-			foreach (string text in boostActions)
+			foreach (string entryText in boostActions)
 			{
 				long original;
-				if (TryOriginalBoostAction(pid, text, out original))
+				if (TryOriginalBoostAction(pid, entryText, out original))
 				{
-					bool flag2 = RestoreBoostAction(handle, pid, snapshot.Creation, text);
-					flag = flag && flag2;
-					if (text != "GameEcoQoS")
+					bool restoreBoostActionSucceeded = RestoreBoostAction(handle, pid, snapshot.Creation, entryText);
+					allConditionsMet = allConditionsMet && restoreBoostActionSucceeded;
+					if (entryText != "GameEcoQoS")
 					{
-						RecordAutomation(ResourcePriorityKey(text), flag2 ? "restored" : "restore-failed");
+						RecordAutomation(ResourcePriorityKey(entryText), restoreBoostActionSucceeded ? "restored" : "restore-failed");
 					}
 					string value;
 					lock (sync)
 					{
 						boostActionTargets.TryGetValue(pid, out value);
 					}
-					if (flag2 && !string.IsNullOrEmpty(value))
+					if (restoreBoostActionSucceeded && !string.IsNullOrEmpty(value))
 					{
-						ActionFailureStore.CancelApply(text, value);
+						ActionFailureStore.CancelApply(entryText, value);
 					}
 				}
 			}
-			return flag;
+			return allConditionsMet;
 		}
 		public bool PanicRestore()
 		{
@@ -347,19 +347,19 @@ namespace PaviseApp
 		}
 		private bool PanicRestoreCore()
 		{
-			int num = SelfProtectedRoster.Clear();
-			if (num > 0)
+			int clearResult = SelfProtectedRoster.Clear();
+			if (clearResult > 0)
 			{
-				Logger.Log(Lang.T("log.gamemodeboost.46") + num + Lang.T("log.gamemodeboost.47"));
+				Logger.Log(Lang.T("log.gamemodeboost.46") + clearResult + Lang.T("log.gamemodeboost.47"));
 			}
-			bool flag = true;
+			bool panicRestoreCoreReady = true;
 			if (IfeoBoost.HasResidue())
 			{
-				flag &= IfeoBoost.RestoreAll();
+				panicRestoreCoreReady &= IfeoBoost.RestoreAll();
 			}
 			if (CfgOffTweak.HasResidue())
 			{
-				flag &= CfgOffTweak.RestoreAll();
+				panicRestoreCoreReady &= CfgOffTweak.RestoreAll();
 			}
 			try
 			{
@@ -371,7 +371,7 @@ namespace PaviseApp
 			}
 			lock (panicCallGate)
 			{
-				int num2 = Interlocked.Increment(ref panicSeq);
+				int incrementResult = Interlocked.Increment(ref panicSeq);
 				panicDone.Reset();
 				panicResult = false;
 				lock (sync)
@@ -383,25 +383,25 @@ namespace PaviseApp
 					InvalidateRendererHandoff();
 				}
 				kick.Set();
-				long num3 = DateTime.UtcNow.Ticks + 120000000;
+				long ticksOffset = DateTime.UtcNow.Ticks + 120000000;
 				while (true)
 				{
-					long num4 = (num3 - DateTime.UtcNow.Ticks) / 10000;
-					if (num4 <= 0)
+					long ratio = (ticksOffset - DateTime.UtcNow.Ticks) / 10000;
+					if (ratio <= 0)
 					{
 						return false;
 					}
-					if (!panicDone.WaitOne((int)num4))
+					if (!panicDone.WaitOne((int)ratio))
 					{
 						return false;
 					}
-					if (Volatile.Read(ref panicServed) == num2)
+					if (Volatile.Read(ref panicServed) == incrementResult)
 					{
 						break;
 					}
 					panicDone.Reset();
 				}
-				return panicResult && flag;
+				return panicResult && panicRestoreCoreReady;
 			}
 		}
 		private bool Deactivate(string reason)
@@ -619,8 +619,8 @@ namespace PaviseApp
 		}
 		private static bool RestoreAmdAntiLagEnv()
 		{
-			bool flag = AdlxTweaks.RestoreAntiLag();
-			return flag & AdlxTweaks.RestoreChill();
+			bool restoreAntiLagSucceeded = AdlxTweaks.RestoreAntiLag();
+			return restoreAntiLagSucceeded & AdlxTweaks.RestoreChill();
 		}
 		private static bool RestorePowerPlan()
 		{
@@ -628,24 +628,24 @@ namespace PaviseApp
 		}
 		private bool RestoreFailedPowerPlan(long now)
 		{
-			bool flag;
+			bool isInEnvRestorePending;
 			lock (sync)
 			{
-				flag = envRestorePending.Contains("powerplan");
+				isInEnvRestorePending = envRestorePending.Contains("powerplan");
 				long value;
-				if (flag && envNextAttempt.TryGetValue("powerplan", out value) && now < value)
+				if (isInEnvRestorePending && envNextAttempt.TryGetValue("powerplan", out value) && now < value)
 				{
 					return false;
 				}
 			}
-			if (flag || (!planActive && PowerPlan.HasResidue))
+			if (isInEnvRestorePending || (!planActive && PowerPlan.HasResidue))
 			{
 				lock (powerApplyGate)
 				{
-					bool flag2 = RunAutomaticRestore("powerplan", () => RestoreLaptopPerformanceForPowerPlan() && RestorePowerPlan());
+					bool runAutomaticRestoreSucceeded = RunAutomaticRestore("powerplan", () => RestoreLaptopPerformanceForPowerPlan() && RestorePowerPlan());
 					lock (sync)
 					{
-						if (flag2)
+						if (runAutomaticRestoreSucceeded)
 						{
 							ActionFailureStore.CancelApply("PowerPlanOn", "system");
 							envRestorePending.Remove("powerplan");
@@ -657,23 +657,23 @@ namespace PaviseApp
 							envRestorePending.Add("powerplan");
 						}
 					}
-					planActive = !flag2;
-					if (flag2)
+					planActive = !runAutomaticRestoreSucceeded;
+					if (runAutomaticRestoreSucceeded)
 					{
 						lastPowerPolicyKey = -1;
 						Interlocked.Exchange(ref nextPowerAuditTicks, 0L);
 					}
-					return flag2;
+					return runAutomaticRestoreSucceeded;
 				}
 			}
 			return true;
 		}
 		private bool RestoreDisplayAwake()
 		{
-			bool flag;
+			bool valuesMatch;
 			lock (sync)
 			{
-				int num;
+				int restoreDisplayAwakeValue;
 				if (!awakeActive)
 				{
 					string value;
@@ -682,36 +682,36 @@ namespace PaviseApp
 						switch (value)
 						{
 						default:
-							num = ((value == "restore-failed") ? 1 : 0);
+							restoreDisplayAwakeValue = ((value == "restore-failed") ? 1 : 0);
 							break;
 						case "applied":
 						case "restored":
 						case "failed":
-							num = 1;
+							restoreDisplayAwakeValue = 1;
 							break;
 						}
 					}
 					else
 					{
-						num = 0;
+						restoreDisplayAwakeValue = 0;
 					}
 				}
 				else
 				{
-					num = 1;
+					restoreDisplayAwakeValue = 1;
 				}
-				flag = (byte)num != 0;
+				valuesMatch = (byte)restoreDisplayAwakeValue != 0;
 			}
-			bool flag2 = RunAutomaticRestore("awake", flag ? (Func<bool>)DisplayAwake.RestoreForSession : DisplayAwake.Restore);
-			if (flag2)
+			bool runAutomaticRestoreSucceeded = RunAutomaticRestore("awake", valuesMatch ? (Func<bool>)DisplayAwake.RestoreForSession : DisplayAwake.Restore);
+			if (runAutomaticRestoreSucceeded)
 			{
 				awakeActive = false;
 			}
-			if (flag)
+			if (valuesMatch)
 			{
-				RecordAutomation("awake", flag2 ? "restored" : "restore-failed");
+				RecordAutomation("awake", runAutomaticRestoreSucceeded ? "restored" : "restore-failed");
 			}
-			return flag2;
+			return runAutomaticRestoreSucceeded;
 		}
 		private bool RestoreEnv()
 		{
@@ -907,13 +907,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = new string[16]
+			string[] textEntries = new string[16]
 			{
 				"PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos", "GpuPowerSnap", "AmdSnap", "NvDrsList", "GpuPrefStage", "PrevPowerPlan", "PowerOverlaySnap",
 				"CpuIdleStateV1", "PrevOptionalServicesPausedV1", "LaptopPerfSnap", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "FrameCoordinationTraceV1"
 			};
-			string[] array2 = array;
-			foreach (string name in array2)
+			string[] textEntries2 = textEntries;
+			foreach (string name in textEntries2)
 			{
 				string value;
 				if (!Settings.TryLoadStr(name, out value) || !string.IsNullOrEmpty(value))
@@ -937,20 +937,20 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = 0;
+			int processedCount = 0;
 			foreach (int item in core.PidsWith(SuppressReason.Background))
 			{
 				if (core.Release(item, SuppressReason.Background))
 				{
 					ReportSeal(item);
-					num++;
+					processedCount++;
 				}
 			}
-			if (num > 0)
+			if (processedCount > 0)
 			{
-				Logger.Log(reasonPrefix + Lang.T("log.gamemodeenv.42") + num + Lang.T("log.gamemodeenv.43"));
+				Logger.Log(reasonPrefix + Lang.T("log.gamemodeenv.42") + processedCount + Lang.T("log.gamemodeenv.43"));
 			}
-			return num;
+			return processedCount;
 		}
 		private void RestoreLegacyGameNvCore()
 		{
@@ -982,12 +982,12 @@ namespace PaviseApp
 		}
 		private bool RestoreGameNvDelivery()
 		{
-			bool flag = StopGameNvDelivery(5000);
-			if (flag)
+			bool stopGameNvDeliverySucceeded = StopGameNvDelivery(5000);
+			if (stopGameNvDeliverySucceeded)
 			{
 				ResumeGameNvAfterRecovery();
 			}
-			return flag;
+			return stopGameNvDeliverySucceeded;
 		}
 		internal bool FinishShutdownRecovery(Func<bool> restoreLayouts, Func<bool> stopIsolation, Func<bool> restorePins, Func<bool> restoreGuard)
 		{

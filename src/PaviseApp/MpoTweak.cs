@@ -44,19 +44,19 @@ namespace PaviseApp
 		{
 			try
 			{
-				bool flag = false;
-				bool flag2 = true;
+				bool restoreReady = false;
+				bool restoreReady2 = true;
 				if (Overlay.HasBackup)
 				{
-					flag2 = Overlay.Restore();
-					flag = true;
+					restoreReady2 = Overlay.Restore();
+					restoreReady = true;
 				}
 				else if (DisabledByPavise && CurrentlyDisabled())
 				{
-					flag2 = RemoveValue();
-					flag = true;
+					restoreReady2 = RemoveValue();
+					restoreReady = true;
 				}
-				if (!flag2)
+				if (!restoreReady2)
 				{
 					return false;
 				}
@@ -65,7 +65,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				if (flag)
+				if (restoreReady)
 				{
 					Logger.Log(Lang.T("log.mpotweak.1"));
 				}

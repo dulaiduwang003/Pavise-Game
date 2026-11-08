@@ -487,13 +487,13 @@ namespace PaviseApp
 		internal int HeightForWidth(int width, int baseHeight)
 		{
 			summaryHeight = baseHeight;
-			int num = baseHeight + (configurationAvailable ? Theme.S(32) : 0);
+			int baseHeightOffset = baseHeight + (configurationAvailable ? Theme.S(32) : 0);
 			if (configurationContent == null)
 			{
-				return num;
+				return baseHeightOffset;
 			}
 			LayoutConfigurationContent(width);
-			return num + Math.Max(1, configurationContent.Height) + Theme.S(22);
+			return baseHeightOffset + Math.Max(1, configurationContent.Height) + Theme.S(22);
 		}
 
 		private void LayoutConfigurationContent(int width)
@@ -505,12 +505,12 @@ namespace PaviseApp
 			measuringConfiguration = true;
 			try
 			{
-				int num = Math.Max(1, width - Theme.S(24));
-				int num2 = summaryHeight + Theme.S(32) + Theme.S(10);
-				configurationContent.SetBounds(Theme.S(12), num2, num, Math.Max(1, configurationContent.Height));
+				int width2 = Math.Max(1, width - Theme.S(24));
+				int top = summaryHeight + Theme.S(32) + Theme.S(10);
+				configurationContent.SetBounds(Theme.S(12), top, width2, Math.Max(1, configurationContent.Height));
 				if (configurationContent.AutoSize)
 				{
-					Size preferredSize = configurationContent.GetPreferredSize(new Size(num, 0));
+					Size preferredSize = configurationContent.GetPreferredSize(new Size(width2, 0));
 					if (preferredSize.Height > 0)
 					{
 						configurationContent.Height = preferredSize.Height;
@@ -695,14 +695,14 @@ namespace PaviseApp
 				DrawFooter(graphics, coverBounds.Bottom, icon);
 				if (selected)
 				{
-					int num = Theme.S(34);
+					int scaledDimension = Theme.S(34);
 					using (SolidBrush brush2 = new SolidBrush(Theme.Accent))
 					{
 						graphics.FillPolygon(brush2, new Point[3]
 						{
 							new Point(0, 0),
-							new Point(num, 0),
-							new Point(0, num)
+							new Point(scaledDimension, 0),
+							new Point(0, scaledDimension)
 						});
 					}
 					using (Pen pen = new Pen(Theme.OnAccent, Math.Max(1.6f, Theme.S(2))))
@@ -742,10 +742,10 @@ namespace PaviseApp
 			{
 				return;
 			}
-			float num = Math.Max((float)target.Width / (float)cover.Width, (float)target.Height / (float)cover.Height);
-			float num2 = (float)target.Width / num;
-			float num3 = (float)target.Height / num;
-			RectangleF rectangleF = new RectangleF(((float)cover.Width - num2) * 0.5f, ((float)cover.Height - num3) * 0.5f, num2, num3);
+			float lowerBound = Math.Max((float)target.Width / (float)cover.Width, (float)target.Height / (float)cover.Height);
+			float widthRatio = (float)target.Width / lowerBound;
+			float heightRatio = (float)target.Height / lowerBound;
+			RectangleF rectangleF = new RectangleF(((float)cover.Width - widthRatio) * 0.5f, ((float)cover.Height - heightRatio) * 0.5f, widthRatio, heightRatio);
 			InterpolationMode interpolationMode = g.InterpolationMode;
 			g.InterpolationMode = InterpolationMode.HighQualityBicubic;
 			using (ImageAttributes imageAttributes = new ImageAttributes())
@@ -770,62 +770,62 @@ namespace PaviseApp
 			}
 			GraphicsState gstate = g.Save();
 			g.SetClip(cover, CombineMode.Intersect);
-			int num = cover.Width;
-			int num2 = cover.Height;
+			int width = cover.Width;
+			int height = cover.Height;
 			int left = cover.Left;
 			int top = cover.Top;
 			using (SolidBrush brush2 = new SolidBrush(Color.FromArgb(55, 0, 0, 0)))
 			{
 				g.FillPolygon(brush2, new Point[4]
 				{
-					new Point(left + num / 5, top),
-					new Point(left + num / 2, top),
-					new Point(left + num, top + num2),
-					new Point(left + num * 7 / 10, top + num2)
+					new Point(left + width / 5, top),
+					new Point(left + width / 2, top),
+					new Point(left + width, top + height),
+					new Point(left + width * 7 / 10, top + height)
 				});
 				g.FillPolygon(brush2, new Point[4]
 				{
-					new Point(left - num / 5, top),
-					new Point(left + num / 7, top),
-					new Point(left + num * 3 / 5, top + num2),
-					new Point(left + num / 4, top + num2)
+					new Point(left - width / 5, top),
+					new Point(left + width / 7, top),
+					new Point(left + width * 3 / 5, top + height),
+					new Point(left + width / 4, top + height)
 				});
 			}
-			int num3 = Math.Max(4, Theme.S(9));
+			int sLimit = Math.Max(4, Theme.S(9));
 			using (Pen pen = new Pen(Color.FromArgb(11, 150, 164, 182)))
 			{
-				for (int i = left; i < cover.Right; i += num3)
+				for (int i = left; i < cover.Right; i += sLimit)
 				{
 					g.DrawLine(pen, i, top, i, cover.Bottom);
 				}
-				for (int j = top; j < cover.Bottom; j += num3)
+				for (int j = top; j < cover.Bottom; j += sLimit)
 				{
 					g.DrawLine(pen, left, j, cover.Right, j);
 				}
 			}
 			using (Pen pen2 = new Pen(Color.FromArgb(155, 3, 5, 8)))
 			{
-				g.DrawLine(pen2, left + num / 5, top, left + num * 7 / 10, top + num2);
-				g.DrawLine(pen2, left + num / 2, top, left + num, top + num2);
-				g.DrawLine(pen2, left - num / 5, top, left + num / 4, top + num2);
+				g.DrawLine(pen2, left + width / 5, top, left + width * 7 / 10, top + height);
+				g.DrawLine(pen2, left + width / 2, top, left + width, top + height);
+				g.DrawLine(pen2, left - width / 5, top, left + width / 4, top + height);
 			}
 			using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 12), Theme.S(7)))
 			{
 				using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, 150), Math.Max(1f, Theme.S(1))))
 				{
-					Point pt = new Point(left, top + num2 / 3);
-					Point pt2 = new Point(left + num / 3, top + num2);
-					Point pt3 = new Point(left + num * 3 / 5, top);
-					Point pt4 = new Point(left + num, top + num2 * 4 / 5);
+					Point pt = new Point(left, top + height / 3);
+					Point pt2 = new Point(left + width / 3, top + height);
+					Point pt3 = new Point(left + width * 3 / 5, top);
+					Point pt4 = new Point(left + width, top + height * 4 / 5);
 					g.DrawLine(pen3, pt, pt2);
 					g.DrawLine(pen3, pt3, pt4);
 					g.DrawLine(pen4, pt, pt2);
 					g.DrawLine(pen4, pt3, pt4);
 				}
 			}
-			int val = Math.Min(Theme.S(66), Math.Min(num - Theme.S(34), num2 - Theme.S(26)));
+			int val = Math.Min(Theme.S(66), Math.Min(width - Theme.S(34), height - Theme.S(26)));
 			val = Math.Max(1, val);
-			Rectangle rectangle = new Rectangle(left + (num - val) / 2, top + (num2 - val) / 2 + Theme.S(2), val, val);
+			Rectangle rectangle = new Rectangle(left + (width - val) / 2, top + (height - val) / 2 + Theme.S(2), val, val);
 			Rectangle rect = Rectangle.Inflate(rectangle, Theme.S(20), Theme.S(15));
 			using (GraphicsPath graphicsPath = new GraphicsPath())
 			{
@@ -876,29 +876,29 @@ namespace PaviseApp
 			{
 				DrawIcon(g, icon, originalIconBounds);
 			}
-			int num = (Item.Running ? Math.Min(Theme.S(71), Math.Max(Theme.S(45), base.Width / 3)) : 0);
-			Rectangle rectangle = new Rectangle(Math.Max(0, base.Width - Theme.S(9) - num), originalIconBounds.Top - Theme.S(1), num, originalIconBounds.Height + Theme.S(2));
+			int maxLimit = (Item.Running ? Math.Min(Theme.S(71), Math.Max(Theme.S(45), base.Width / 3)) : 0);
+			Rectangle rectangle = new Rectangle(Math.Max(0, base.Width - Theme.S(9) - maxLimit), originalIconBounds.Top - Theme.S(1), maxLimit, originalIconBounds.Height + Theme.S(2));
 			if (Item.Running)
 			{
-				int num2 = Math.Max(3, Theme.S(5));
+				int width = Math.Max(3, Theme.S(5));
 				using (SolidBrush brush = new SolidBrush(Theme.Green))
 				{
-					g.FillEllipse(brush, rectangle.Left, rectangle.Top + (rectangle.Height - num2) / 2, num2, num2);
+					g.FillEllipse(brush, rectangle.Left, rectangle.Top + (rectangle.Height - width) / 2, width, width);
 				}
 				TextRenderer.DrawText(g, StateText, Theme.UI(7.4f, false), new Rectangle(rectangle.Left + Theme.S(9), rectangle.Top, Math.Max(1, rectangle.Width - Theme.S(9)), rectangle.Height), Theme.Green, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
-			int num3 = originalIconBounds.Right + Theme.S(7);
-			TextRenderer.DrawText(g, GameLibraryGallery.PlatformName(Item.Profile), Theme.UI(7.4f, false), new Rectangle(num3, originalIconBounds.Top - Theme.S(1), Math.Max(1, rectangle.Left - Theme.S(7) - num3), rectangle.Height), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			int rightOffset = originalIconBounds.Right + Theme.S(7);
+			TextRenderer.DrawText(g, GameLibraryGallery.PlatformName(Item.Profile), Theme.UI(7.4f, false), new Rectangle(rightOffset, originalIconBounds.Top - Theme.S(1), Math.Max(1, rectangle.Left - Theme.S(7) - rightOffset), rectangle.Height), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 		}
 
 		private static void DrawIcon(Graphics g, Bitmap icon, Rectangle target)
 		{
 			if (icon != null && icon.Width >= 1 && icon.Height >= 1)
 			{
-				float num = Math.Min((float)target.Width / (float)icon.Width, (float)target.Height / (float)icon.Height);
-				int num2 = Math.Max(1, (int)((float)icon.Width * num));
-				int num3 = Math.Max(1, (int)((float)icon.Height * num));
-				Rectangle rect = new Rectangle(target.Left + (target.Width - num2) / 2, target.Top + (target.Height - num3) / 2, num2, num3);
+				float upperBound = Math.Min((float)target.Width / (float)icon.Width, (float)target.Height / (float)icon.Height);
+				int lowerBound = Math.Max(1, (int)((float)icon.Width * upperBound));
+				int lowerBound2 = Math.Max(1, (int)((float)icon.Height * upperBound));
+				Rectangle rect = new Rectangle(target.Left + (target.Width - lowerBound) / 2, target.Top + (target.Height - lowerBound2) / 2, lowerBound, lowerBound2);
 				InterpolationMode interpolationMode = g.InterpolationMode;
 				g.InterpolationMode = InterpolationMode.HighQualityBicubic;
 				try

@@ -31,10 +31,10 @@ namespace PaviseApp
 		{
 			ThreadPool.QueueUserWorkItem(delegate
 			{
-				UpdateResult obj = Check();
+				UpdateResult checkResult = Check();
 				try
 				{
-					done(obj);
+					done(checkResult);
 				}
 				catch
 				{
@@ -44,18 +44,18 @@ namespace PaviseApp
 
 		private static Source[] BuildSources()
 		{
-			string text = "?t=" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+			string toStringOffset = "?t=" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
 			return new Source[2]
 			{
 				new Source
 				{
 					Name = Lang.T("site.entry"),
-					Url = "https://pavise.club/version.json" + text
+					Url = "https://pavise.club/version.json" + toStringOffset
 				},
 				new Source
 				{
 					Name = "Cloudflare",
-					Url = "https://pavise-website.2074055628.workers.dev/version.json" + text
+					Url = "https://pavise-website.2074055628.workers.dev/version.json" + toStringOffset
 				}
 			};
 		}
@@ -73,14 +73,14 @@ namespace PaviseApp
 			catch
 			{
 			}
-			Source[] array = BuildSources();
+			Source[] sources = BuildSources();
 			object gate = new object();
 			AutoResetEvent signal = new AutoResetEvent(false);
 			List<UpdateResult> hits = new List<UpdateResult>();
-			int pending = array.Length;
+			int pending = sources.Length;
 			long firstHitTicks = 0L;
-			Source[] array2 = array;
-			foreach (Source source in array2)
+			Source[] sourceItems = sources;
+			foreach (Source source in sourceItems)
 			{
 				Source src = source;
 				ThreadPool.QueueUserWorkItem(delegate
@@ -108,36 +108,36 @@ namespace PaviseApp
 					signal.Set();
 				});
 			}
-			long num = DateTime.UtcNow.Ticks + 130000000;
+			long ticksOffset = DateTime.UtcNow.Ticks + 130000000;
 			while (true)
 			{
-				int num2;
-				long num3;
+				int pendingSnapshot;
+				long firstHitTicksSnapshot;
 				lock (gate)
 				{
-					num2 = pending;
-					num3 = firstHitTicks;
+					pendingSnapshot = pending;
+					firstHitTicksSnapshot = firstHitTicks;
 				}
 				long ticks = DateTime.UtcNow.Ticks;
-				if (num2 == 0 || ticks >= num)
+				if (pendingSnapshot == 0 || ticks >= ticksOffset)
 				{
 					break;
 				}
-				long num4 = num;
-				if (num3 != 0)
+				long numericValue = ticksOffset;
+				if (firstHitTicksSnapshot != 0)
 				{
-					long num5 = num3 + 25000000;
-					if (ticks >= num5)
+					long firstHitTicksSnapshotOffset = firstHitTicksSnapshot + 25000000;
+					if (ticks >= firstHitTicksSnapshotOffset)
 					{
 						break;
 					}
-					if (num5 < num4)
+					if (firstHitTicksSnapshotOffset < numericValue)
 					{
-						num4 = num5;
+						numericValue = firstHitTicksSnapshotOffset;
 					}
 				}
-				int num6 = (int)((num4 - ticks) / 10000) + 1;
-				signal.WaitOne((num6 < 50) ? 50 : num6);
+				int checkValue = (int)((numericValue - ticks) / 10000) + 1;
+				signal.WaitOne((checkValue < 50) ? 50 : checkValue);
 			}
 			UpdateResult updateResult = null;
 			lock (gate)
@@ -154,7 +154,7 @@ namespace PaviseApp
 			{
 				updateResult = new UpdateResult();
 				updateResult.Error = Lang.T("t.updatechecker.4");
-				Logger.Warn(Lang.T("log.updatechecker.5") + array.Length + Lang.T("log.updatechecker.6"));
+				Logger.Warn(Lang.T("log.updatechecker.5") + sources.Length + Lang.T("log.updatechecker.6"));
 				return updateResult;
 			}
 			updateResult.Newer = IsNewer(updateResult.Latest, App.Version);
@@ -164,12 +164,12 @@ namespace PaviseApp
 
 		private static UpdateResult Probe(Source src)
 		{
-			string text = FetchText(src.Url);
-			if (text == null)
+			string fetchTextResult = FetchText(src.Url);
+			if (fetchTextResult == null)
 			{
 				return null;
 			}
-			return ParseManifest(text, src.Name);
+			return ParseManifest(fetchTextResult, src.Name);
 		}
 
 		internal static UpdateResult ParseManifest(string body, string source)
@@ -182,18 +182,18 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = JsonValue(body, "version");
-			if (string.IsNullOrEmpty(text))
+			string latestValue = JsonValue(body, "version");
+			if (string.IsNullOrEmpty(latestValue))
 			{
 				return null;
 			}
-			if (!IsCanonicalManifestVersion(text))
+			if (!IsCanonicalManifestVersion(latestValue))
 			{
 				return null;
 			}
 			UpdateResult updateResult = new UpdateResult();
 			updateResult.Ok = true;
-			updateResult.Latest = text;
+			updateResult.Latest = latestValue;
 			updateResult.Source = source;
 			updateResult.Url = App.ChangelogUrl;
 			updateResult.Donate = ParseDonate(body);
@@ -202,8 +202,8 @@ namespace PaviseApp
 
 		internal static DonateInfo ParseDonate(string body)
 		{
-			string text = Clean(JsonValue(body, "donateId"), 64);
-			if (string.IsNullOrEmpty(text) || !IsSaneDonateId(text))
+			string idValue = Clean(JsonValue(body, "donateId"), 64);
+			if (string.IsNullOrEmpty(idValue) || !IsSaneDonateId(idValue))
 			{
 				return null;
 			}
@@ -213,7 +213,7 @@ namespace PaviseApp
 				return null;
 			}
 			DonateInfo donateInfo = new DonateInfo();
-			donateInfo.Id = text;
+			donateInfo.Id = idValue;
 			donateInfo.Url = url;
 			return donateInfo;
 		}
@@ -253,16 +253,16 @@ namespace PaviseApp
 					break;
 				}
 			}
-			string text = stringBuilder.ToString().Trim();
-			if (text.Length == 0)
+			string toStringTrimmed = stringBuilder.ToString().Trim();
+			if (toStringTrimmed.Length == 0)
 			{
 				return null;
 			}
-			if (text.Length <= max)
+			if (toStringTrimmed.Length <= max)
 			{
-				return text;
+				return toStringTrimmed;
 			}
-			return text.Substring(0, max);
+			return toStringTrimmed.Substring(0, max);
 		}
 
 		private static bool IsCanonicalManifestVersion(string tag)
@@ -314,17 +314,17 @@ namespace PaviseApp
 						{
 							return null;
 						}
-						byte[] array = new byte[8192];
+						byte[] rawBytes = new byte[8192];
 						MemoryStream memoryStream = new MemoryStream();
-						int num;
-						while ((num = stream.Read(array, 0, array.Length)) > 0)
+						int readResult;
+						while ((readResult = stream.Read(rawBytes, 0, rawBytes.Length)) > 0)
 						{
-							if (memoryStream.Length + num > 262144)
+							if (memoryStream.Length + readResult > 262144)
 							{
 								memoryStream.Dispose();
 								return null;
 							}
-							memoryStream.Write(array, 0, num);
+							memoryStream.Write(rawBytes, 0, readResult);
 						}
 						byte[] bytes = memoryStream.ToArray();
 						memoryStream.Dispose();
@@ -344,18 +344,18 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			byte[] array = FetchImageBytes(url, maxBytes);
-			string text = WebsiteFallbackFor(url);
-			object obj = array;
-			if (obj == null)
+			byte[] fetchImageBytesResult = FetchImageBytes(url, maxBytes);
+			string websiteFallbackForResult = WebsiteFallbackFor(url);
+			object instance = fetchImageBytesResult;
+			if (instance == null)
 			{
-				if (text != null)
+				if (websiteFallbackForResult != null)
 				{
-					return FetchImageBytes(text, maxBytes);
+					return FetchImageBytes(websiteFallbackForResult, maxBytes);
 				}
-				obj = null;
+				instance = null;
 			}
-			return (byte[])obj;
+			return (byte[])instance;
 		}
 
 		internal static string WebsiteFallbackFor(string url)
@@ -390,17 +390,17 @@ namespace PaviseApp
 						{
 							return null;
 						}
-						byte[] array = new byte[8192];
+						byte[] rawBytes = new byte[8192];
 						MemoryStream memoryStream = new MemoryStream();
-						int num;
-						while ((num = stream.Read(array, 0, array.Length)) > 0)
+						int readResult;
+						while ((readResult = stream.Read(rawBytes, 0, rawBytes.Length)) > 0)
 						{
-							if (memoryStream.Length + num > maxBytes)
+							if (memoryStream.Length + readResult > maxBytes)
 							{
 								memoryStream.Dispose();
 								return null;
 							}
-							memoryStream.Write(array, 0, num);
+							memoryStream.Write(rawBytes, 0, readResult);
 						}
 						byte[] result = memoryStream.ToArray();
 						memoryStream.Dispose();
@@ -420,11 +420,11 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = "\"" + key + "\"";
-			for (int num = json.IndexOf(text, StringComparison.Ordinal); num >= 0; num = json.IndexOf(text, num + text.Length, StringComparison.Ordinal))
+			string message = "\"" + key + "\"";
+			for (int iterationIndex = json.IndexOf(message, StringComparison.Ordinal); iterationIndex >= 0; iterationIndex = json.IndexOf(message, iterationIndex + message.Length, StringComparison.Ordinal))
 			{
 				int i;
-				for (i = num + text.Length; i < json.Length && (json[i] == ' ' || json[i] == '\t'); i++)
+				for (i = iterationIndex + message.Length; i < json.Length && (json[i] == ' ' || json[i] == '\t'); i++)
 				{
 				}
 				if (i < json.Length && json[i] == ':')
@@ -475,10 +475,10 @@ namespace PaviseApp
 						{
 							return null;
 						}
-						string text2 = stringBuilder.ToString();
-						if (text2.Length > 0)
+						string stringBuilderText = stringBuilder.ToString();
+						if (stringBuilderText.Length > 0)
 						{
-							return text2;
+							return stringBuilderText;
 						}
 					}
 				}
@@ -501,8 +501,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = result.Host.ToLowerInvariant();
-			if (result.IsDefaultPort && string.IsNullOrEmpty(result.UserInfo) && (text == new Uri("https://pavise.club/").Host || text == new Uri("https://pavise-website.2074055628.workers.dev/").Host))
+			string toLowerInvariantResult = result.Host.ToLowerInvariant();
+			if (result.IsDefaultPort && string.IsNullOrEmpty(result.UserInfo) && (toLowerInvariantResult == new Uri("https://pavise.club/").Host || toLowerInvariantResult == new Uri("https://pavise-website.2074055628.workers.dev/").Host))
 			{
 				return true;
 			}
@@ -511,20 +511,20 @@ namespace PaviseApp
 
 		public static bool IsNewer(string remote, string local)
 		{
-			int[] array = ParseVer(remote);
-			int[] array2 = ParseVer(local);
-			if (array.Length == 0)
+			int[] ver = ParseVer(remote);
+			int[] ver2 = ParseVer(local);
+			if (ver.Length == 0)
 			{
 				return false;
 			}
-			int num = Math.Max(array.Length, array2.Length);
-			for (int i = 0; i < num; i++)
+			int lengthLimit = Math.Max(ver.Length, ver2.Length);
+			for (int i = 0; i < lengthLimit; i++)
 			{
-				int num2 = ((i < array.Length) ? array[i] : 0);
-				int num3 = ((i < array2.Length) ? array2[i] : 0);
-				if (num2 != num3)
+				int isNewerValue = ((i < ver.Length) ? ver[i] : 0);
+				int isNewerValue2 = ((i < ver2.Length) ? ver2[i] : 0);
+				if (isNewerValue != isNewerValue2)
 				{
-					return num2 > num3;
+					return isNewerValue > isNewerValue2;
 				}
 			}
 			return false;
@@ -547,8 +547,8 @@ namespace PaviseApp
 			{
 			}
 			List<int> list = new List<int>();
-			string[] array = v.Substring(0, j).Split(new char[1] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string s in array)
+			string[] substringParts = v.Substring(0, j).Split(new char[1] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string s in substringParts)
 			{
 				int result;
 				if (int.TryParse(s, out result))

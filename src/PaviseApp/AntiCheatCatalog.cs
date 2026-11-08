@@ -121,8 +121,8 @@ namespace PaviseApp
 
 		internal static bool IsAntiCheatLikeName(string name)
 		{
-			string text = NormalizeName(name);
-			if (ProcessNames.Contains(text) || ContainsToken(text.ToLowerInvariant()))
+			string name2 = NormalizeName(name);
+			if (ProcessNames.Contains(name2) || ContainsToken(name2.ToLowerInvariant()))
 			{
 				return true;
 			}
@@ -132,7 +132,7 @@ namespace PaviseApp
 				string[] prefixes = acProtectionGroup.Prefixes;
 				foreach (string value in prefixes)
 				{
-					if (text.StartsWith(value, StringComparison.OrdinalIgnoreCase))
+					if (name2.StartsWith(value, StringComparison.OrdinalIgnoreCase))
 					{
 						return true;
 					}
@@ -156,45 +156,45 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = path.Replace('/', '\\');
-			if (text.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
+			string replaceResult = path.Replace('/', '\\');
+			if (replaceResult.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
 			{
-				text = "\\\\" + text.Substring(8);
+				replaceResult = "\\\\" + replaceResult.Substring(8);
 			}
-			else if (text.StartsWith("\\\\?\\", StringComparison.Ordinal))
+			else if (replaceResult.StartsWith("\\\\?\\", StringComparison.Ordinal))
 			{
-				text = text.Substring(4);
+				replaceResult = replaceResult.Substring(4);
 			}
-			if (text.StartsWith("\\\\.\\", StringComparison.Ordinal))
+			if (replaceResult.StartsWith("\\\\.\\", StringComparison.Ordinal))
 			{
 				return false;
 			}
-			bool flag = text.Length >= 3 && ((text[0] >= 'A' && text[0] <= 'Z') || (text[0] >= 'a' && text[0] <= 'z')) && text[1] == ':' && text[2] == '\\';
-			bool flag2 = text.StartsWith("\\\\", StringComparison.Ordinal);
-			if ((!flag && !flag2) || text.EndsWith("\\", StringComparison.Ordinal))
+			bool allConditionsMet = replaceResult.Length >= 3 && ((replaceResult[0] >= 'A' && replaceResult[0] <= 'Z') || (replaceResult[0] >= 'a' && replaceResult[0] <= 'z')) && replaceResult[1] == ':' && replaceResult[2] == '\\';
+			bool startsWith = replaceResult.StartsWith("\\\\", StringComparison.Ordinal);
+			if ((!allConditionsMet && !startsWith) || replaceResult.EndsWith("\\", StringComparison.Ordinal))
 			{
 				return false;
 			}
-			string[] array = text.Split(new char[1] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
-			int num = (flag ? 1 : 2);
-			if (array.Length <= num)
+			string[] replaceResultParts = replaceResult.Split(new char[1] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+			int isAntiCheatPathValue = (allConditionsMet ? 1 : 2);
+			if (replaceResultParts.Length <= isAntiCheatPathValue)
 			{
 				return false;
 			}
-			string[] array2 = array;
-			foreach (string text2 in array2)
+			string[] textEntries = replaceResultParts;
+			foreach (string entryText in textEntries)
 			{
-				if (text2 == "." || text2 == "..")
+				if (entryText == "." || entryText == "..")
 				{
 					return false;
 				}
 			}
-			for (int j = num; j < array.Length - 1; j++)
+			for (int j = isAntiCheatPathValue; j < replaceResultParts.Length - 1; j++)
 			{
 				string[] sharedDirectories = SharedDirectories;
 				foreach (string directory in sharedDirectories)
 				{
-					if (MatchesDirectory(array, j, directory))
+					if (MatchesDirectory(replaceResultParts, j, directory))
 					{
 						return true;
 					}
@@ -205,7 +205,7 @@ namespace PaviseApp
 					string[] directories = acProtectionGroup.Directories;
 					foreach (string directory2 in directories)
 					{
-						if (MatchesDirectory(array, j, directory2))
+						if (MatchesDirectory(replaceResultParts, j, directory2))
 						{
 							return true;
 						}
@@ -217,14 +217,14 @@ namespace PaviseApp
 
 		private static bool MatchesDirectory(string[] parts, int index, string directory)
 		{
-			int num = directory.IndexOf('\\');
-			if (num < 0)
+			int matchIndex = directory.IndexOf('\\');
+			if (matchIndex < 0)
 			{
 				return string.Equals(parts[index], directory, StringComparison.OrdinalIgnoreCase);
 			}
-			if (index + 1 < parts.Length - 1 && string.Equals(parts[index], directory.Substring(0, num), StringComparison.OrdinalIgnoreCase))
+			if (index + 1 < parts.Length - 1 && string.Equals(parts[index], directory.Substring(0, matchIndex), StringComparison.OrdinalIgnoreCase))
 			{
-				return string.Equals(parts[index + 1], directory.Substring(num + 1), StringComparison.OrdinalIgnoreCase);
+				return string.Equals(parts[index + 1], directory.Substring(matchIndex + 1), StringComparison.OrdinalIgnoreCase);
 			}
 			return false;
 		}

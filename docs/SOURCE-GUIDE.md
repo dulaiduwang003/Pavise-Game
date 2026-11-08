@@ -20,10 +20,10 @@ Pavise 使用 .NET Framework 和 Windows Forms，`build.cmd -b prod` 从 `src/` 
 | `AutomaticRecoveryBudget.cs`、`ActionFailureStore.cs` | 失败预算、阶段身份与恢复记录 |
 | `tests/`、`tools/Run-PublicTests.ps1` | 公开回归夹具与统一运行入口 |
 
-除 `tests/` 和 `tools/` 外，上表中的源码路径均相对于 `src/PaviseApp/`。同名 partial 文件属于同一个类型；这次整理按职责拆分方法，字段初始化与构造顺序保留在原类文件中。
+除 `tests/` 和 `tools/` 外，上表中的源码路径均相对于 `src/PaviseApp/`。同名 partial 文件属于同一个类型，按职责组织方法；字段初始化与构造函数保留在主文件中。
 
 ## 验证入口
 
 当前维护源码的模块入口见上表，运行行为通过回归测试和台架验证。
 
-当前公开且可运行的测试见 [测试说明](../tests/README.md)。发布程序及原始版本源码以相应发布页和版本标签为准；维护分支可以包含后续源码整理及测试。
+可运行的回归测试及其覆盖范围见 [测试说明](../tests/README.md)。发布页保存各正式版程序与更新记录；维护分支中的源码、文档和测试随项目维护更新。核对历史版本时，请结合相应版本的发布记录。

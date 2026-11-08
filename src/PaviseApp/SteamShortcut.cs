@@ -37,14 +37,14 @@ namespace PaviseApp
 				error = Lang.T("t.steamshortcut.2");
 				return false;
 			}
-			string text = FindSteamRoot();
-			if (text == null)
+			string steamRoot = FindSteamRoot();
+			if (steamRoot == null)
 			{
 				error = Lang.T("t.steamshortcut.3");
 				return false;
 			}
-			string text2 = null;
-			foreach (string item in LibraryRoots(text))
+			string message = null;
+			foreach (string item in LibraryRoots(steamRoot))
 			{
 				string path = Path.Combine(item, "steamapps\\appmanifest_" + appId + ".acf");
 				try
@@ -53,13 +53,13 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					string text3 = ParseVdfValue(File.ReadAllText(path), "installdir");
-					if (!string.IsNullOrEmpty(text3))
+					string vdfValue = ParseVdfValue(File.ReadAllText(path), "installdir");
+					if (!string.IsNullOrEmpty(vdfValue))
 					{
-						string text4 = Path.Combine(item, "steamapps\\common\\" + text3);
-						if (Directory.Exists(text4))
+						string combinedPath = Path.Combine(item, "steamapps\\common\\" + vdfValue);
+						if (Directory.Exists(combinedPath))
 						{
-							text2 = text4;
+							message = combinedPath;
 							break;
 						}
 					}
@@ -68,19 +68,19 @@ namespace PaviseApp
 				{
 				}
 			}
-			if (text2 == null)
+			if (message == null)
 			{
 				error = Lang.T("t.steamshortcut.4") + appId + Lang.T("t.steamshortcut.5");
 				return false;
 			}
-			string text5 = PickMainExecutable(text2, Path.GetFileName(text2));
-			if (text5 == null)
+			string pickMainExecutableResult = PickMainExecutable(message, Path.GetFileName(message));
+			if (pickMainExecutableResult == null)
 			{
-				error = Lang.T("t.steamshortcut.6") + text2;
+				error = Lang.T("t.steamshortcut.6") + message;
 				return false;
 			}
-			executablePath = text5;
-			suggestedName = Path.GetFileName(text2);
+			executablePath = pickMainExecutableResult;
+			suggestedName = Path.GetFileName(message);
 			return true;
 		}
 
@@ -91,27 +91,27 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = content.Split('\n');
-			foreach (string text in array)
+			string[] contentParts = content.Split('\n');
+			foreach (string entryText in contentParts)
 			{
-				string text2 = text.Trim();
-				if (text2.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))
 				{
-					string text3 = text2.Substring(4).Trim();
-					if (!text3.StartsWith("steam://rungameid/", StringComparison.OrdinalIgnoreCase))
+					string substringTrimmed = entryTextTrimmed.Substring(4).Trim();
+					if (!substringTrimmed.StartsWith("steam://rungameid/", StringComparison.OrdinalIgnoreCase))
 					{
 						return false;
 					}
-					string text4 = text3.Substring("steam://rungameid/".Length);
+					string substringResult = substringTrimmed.Substring("steam://rungameid/".Length);
 					int j;
-					for (j = 0; j < text4.Length && char.IsDigit(text4[j]); j++)
+					for (j = 0; j < substringResult.Length && char.IsDigit(substringResult[j]); j++)
 					{
 					}
 					if (j == 0)
 					{
 						return false;
 					}
-					return long.TryParse(text4.Substring(0, j), out appId) && appId > 0;
+					return long.TryParse(substringResult.Substring(0, j), out appId) && appId > 0;
 				}
 			}
 			return false;
@@ -123,13 +123,13 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("Software\\Valve\\Steam"))
 				{
-					string text = ((registryKey == null) ? null : (registryKey.GetValue("SteamPath") as string));
-					if (!string.IsNullOrEmpty(text))
+					string getValueOffset = ((registryKey == null) ? null : (registryKey.GetValue("SteamPath") as string));
+					if (!string.IsNullOrEmpty(getValueOffset))
 					{
-						text = text.Replace('/', '\\');
-						if (Directory.Exists(text))
+						getValueOffset = getValueOffset.Replace('/', '\\');
+						if (Directory.Exists(getValueOffset))
 						{
-							return text;
+							return getValueOffset;
 						}
 					}
 				}
@@ -141,10 +141,10 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey("SOFTWARE\\WOW6432Node\\Valve\\Steam"))
 				{
-					string text2 = ((registryKey2 == null) ? null : (registryKey2.GetValue("InstallPath") as string));
-					if (!string.IsNullOrEmpty(text2) && Directory.Exists(text2))
+					string getValueOffset2 = ((registryKey2 == null) ? null : (registryKey2.GetValue("InstallPath") as string));
+					if (!string.IsNullOrEmpty(getValueOffset2) && Directory.Exists(getValueOffset2))
 					{
-						return text2;
+						return getValueOffset2;
 					}
 				}
 			}
@@ -159,12 +159,12 @@ namespace PaviseApp
 			List<string> list = new List<string>();
 			list.Add(steamRoot);
 			List<string> list2 = list;
-			string[] array = new string[2]
+			string[] textEntries = new string[2]
 			{
 				Path.Combine(steamRoot, "steamapps\\libraryfolders.vdf"),
 				Path.Combine(steamRoot, "config\\libraryfolders.vdf")
 			};
-			foreach (string path in array)
+			foreach (string path in textEntries)
 			{
 				try
 				{
@@ -174,16 +174,16 @@ namespace PaviseApp
 					}
 					foreach (string item in ParseLibraryPaths(File.ReadAllText(path)))
 					{
-						bool flag = false;
+						bool libraryRootsReady = false;
 						foreach (string item2 in list2)
 						{
 							if (string.Equals(item2, item, StringComparison.OrdinalIgnoreCase))
 							{
-								flag = true;
+								libraryRootsReady = true;
 								break;
 							}
 						}
-						if (!flag && Directory.Exists(item))
+						if (!libraryRootsReady && Directory.Exists(item))
 						{
 							list2.Add(item);
 						}
@@ -205,10 +205,10 @@ namespace PaviseApp
 			}
 			foreach (Match item in Regex.Matches(vdfContent, "\"path\"\\s+\"((?:\\\\.|[^\"\\\\])*)\""))
 			{
-				string text = item.Groups[1].Value.Replace("\\\\", "\\");
-				if (text.Length > 0)
+				string replaceResult = item.Groups[1].Value.Replace("\\\\", "\\");
+				if (replaceResult.Length > 0)
 				{
-					list.Add(text);
+					list.Add(replaceResult);
 				}
 			}
 			return list;

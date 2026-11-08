@@ -16,11 +16,11 @@ namespace PaviseApp
 
 		internal static bool Supports(string key)
 		{
-			string text = Normalize(key);
-			switch (text)
+			string normalizeResult = Normalize(key);
+			switch (normalizeResult)
 			{
 			default:
-				return text == "records";
+				return normalizeResult == "records";
 			case "ace":
 			case "eac":
 			case "battleye":
@@ -40,9 +40,9 @@ namespace PaviseApp
 			try
 			{
 				g.SetClip(bounds, CombineMode.Intersect);
-				float num = (float)Math.Min(bounds.Width, bounds.Height) / 32f;
-				g.TranslateTransform((float)bounds.Left + ((float)bounds.Width - 32f * num) / 2f, (float)bounds.Top + ((float)bounds.Height - 32f * num) / 2f);
-				g.ScaleTransform(num, num);
+				float minRatio = (float)Math.Min(bounds.Width, bounds.Height) / 32f;
+				g.TranslateTransform((float)bounds.Left + ((float)bounds.Width - 32f * minRatio) / 2f, (float)bounds.Top + ((float)bounds.Height - 32f * minRatio) / 2f);
+				g.ScaleTransform(minRatio, minRatio);
 				g.SmoothingMode = SmoothingMode.AntiAlias;
 				g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 				using (Pen pen2 = new Pen(ink, 1.65f))
@@ -122,21 +122,21 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string text = key.Trim().ToLowerInvariant();
-			if (!(text == "be") && !(text == "battleeye"))
+			string toLowerInvariantResult = key.Trim().ToLowerInvariant();
+			if (!(toLowerInvariantResult == "be") && !(toLowerInvariantResult == "battleeye"))
 			{
-				return text;
+				return toLowerInvariantResult;
 			}
 			return "battleye";
 		}
 
 		private static void Eye(Graphics g, Pen pen, float x, float y, float width, float height)
 		{
-			float num = y + height / 2f;
+			float yOffset = y + height / 2f;
 			using (GraphicsPath graphicsPath = new GraphicsPath())
 			{
-				graphicsPath.AddBezier(x, num, x + width * 0.27f, y - height * 0.15f, x + width * 0.73f, y - height * 0.15f, x + width, num);
-				graphicsPath.AddBezier(x + width, num, x + width * 0.73f, y + height * 1.15f, x + width * 0.27f, y + height * 1.15f, x, num);
+				graphicsPath.AddBezier(x, yOffset, x + width * 0.27f, y - height * 0.15f, x + width * 0.73f, y - height * 0.15f, x + width, yOffset);
+				graphicsPath.AddBezier(x + width, yOffset, x + width * 0.73f, y + height * 1.15f, x + width * 0.27f, y + height * 1.15f, x, yOffset);
 				graphicsPath.CloseFigure();
 				g.DrawPath(pen, graphicsPath);
 			}
@@ -149,14 +149,14 @@ namespace PaviseApp
 
 		private static void Lines(Graphics g, Pen pen, params float[] coordinates)
 		{
-			PointF[] array = new PointF[coordinates.Length / 2];
-			for (int i = 0; i < array.Length; i++)
+			PointF[] pointFItems = new PointF[coordinates.Length / 2];
+			for (int i = 0; i < pointFItems.Length; i++)
 			{
-				array[i] = new PointF(coordinates[i * 2], coordinates[i * 2 + 1]);
+				pointFItems[i] = new PointF(coordinates[i * 2], coordinates[i * 2 + 1]);
 			}
-			if (array.Length > 1)
+			if (pointFItems.Length > 1)
 			{
-				g.DrawLines(pen, array);
+				g.DrawLines(pen, pointFItems);
 			}
 		}
 	}

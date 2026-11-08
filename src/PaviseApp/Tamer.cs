@@ -183,26 +183,26 @@ namespace PaviseApp
 				{
 					return;
 				}
-				bool flag = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
+				bool shouldReleasePins = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
 				mode = (int)value;
 				AntiCheatModes.Save(value);
-				if (flag)
+				if (shouldReleasePins)
 				{
-					int num = 0;
+					int setModeValue = 0;
 					try
 					{
 						lock (engineSync)
 						{
-							num = core.ClearSqueezes(SuppressReason.AntiCheat);
+							setModeValue = core.ClearSqueezes(SuppressReason.AntiCheat);
 						}
 					}
 					catch
 					{
-						num = 0;
+						setModeValue = 0;
 					}
-					if (num > 0)
+					if (setModeValue > 0)
 					{
-						Logger.Info(Lang.F("log.tamer.unpin", num));
+						Logger.Info(Lang.F("log.tamer.unpin", setModeValue));
 					}
 				}
 				Interlocked.Exchange(ref fullSweepRequested, 1);
@@ -236,8 +236,8 @@ namespace PaviseApp
 			}
 			set
 			{
-				int num = (value ? 1 : 0);
-				if (Interlocked.Exchange(ref processEventsAvailable, num) != num)
+				int setProcessEventsAvailableValue = (value ? 1 : 0);
+				if (Interlocked.Exchange(ref processEventsAvailable, setProcessEventsAvailableValue) != setProcessEventsAvailableValue)
 				{
 					Poke();
 				}
@@ -352,12 +352,12 @@ namespace PaviseApp
 			{
 				return WithAffinity(Lang.T("gs.noproc"), key);
 			}
-			string text = Lang.F("gs.thr", throttled);
+			string gsThrText = Lang.F("gs.thr", throttled);
 			if (protectedCnt > 0)
 			{
-				text += Lang.F("gs.prot", protectedCnt);
+				gsThrText += Lang.F("gs.prot", protectedCnt);
 			}
-			return WithAffinity(text, key);
+			return WithAffinity(gsThrText, key);
 		}
 
 		public int GroupState(string key)
@@ -445,9 +445,9 @@ namespace PaviseApp
 		{
 			Logger.Log(Lang.T("log.tamer.5"));
 			affinityRuntime = new AntiCheatAffinityRuntime(core.PrepareAntiCheatAffinity, CheckAffinityAdmission);
-			long num = 0L;
-			long num2 = 0L;
-			long num3 = 0L;
+			long numericValue = 0L;
+			long numericValue2 = 0L;
+			long numericValue3 = 0L;
 			long nextCoreRetry = 0L;
 			long failedSweepRetryNotBefore = 0L;
 			while (!stopping)
@@ -457,57 +457,57 @@ namespace PaviseApp
 					lock (engineSync)
 					{
 						long ticks = DateTime.UtcNow.Ticks;
-						bool flag = ticks < Interlocked.Read(ref panicUntilUtcTicks);
+						bool matchesTicks = ticks < Interlocked.Read(ref panicUntilUtcTicks);
 						List<ProcessChange> changes = DrainProcessChanges();
-						bool flag2 = false;
-						bool flag3 = false;
+						bool loopReady = false;
+						bool loopReady2 = false;
 						bool phaseChanged = false;
 						RefreshGovernanceSession();
 						SweepRetryPhase retryPhase = SelectSweepRetryPhase(changes, out phaseChanged);
 						captureRetryPhase = retryPhase;
 						iterationSnapshot = null;
 						iterationCaptureAttempted = false;
-						if (ticks >= num3)
+						if (ticks >= numericValue3)
 						{
-							num3 = ticks + TimeSpan.FromSeconds(30).Ticks;
+							numericValue3 = ticks + TimeSpan.FromSeconds(30).Ticks;
 							try { ObserveRecordOnlyProcesses(CaptureSweepSnapshot()); } catch { }
 						}
-						if (!Paused && !flag)
+						if (!Paused && !matchesTicks)
 						{
 							failedSweepRetryNotBefore = retryPhase.NotBefore;
-							if (phaseChanged) num = retryPhase.NotBefore;
-							flag2 = Interlocked.Exchange(ref fullSweepRequested, 0) != 0;
-							flag3 = Interlocked.Exchange(ref overflowSweepRequested, 0) != 0;
+							if (phaseChanged) numericValue = retryPhase.NotBefore;
+							loopReady = Interlocked.Exchange(ref fullSweepRequested, 0) != 0;
+							loopReady2 = Interlocked.Exchange(ref overflowSweepRequested, 0) != 0;
 						}
-						if (Paused || flag)
+						if (Paused || matchesTicks)
 						{
 							ReleaseAll(Paused ? Lang.T("gs.noff") : Lang.T("t.tamer.6"));
 						}
 						// Only failed execution spends a phase budget; Poke cannot reset its budget or deadline.
 						else if (retryPhase.Failures < 3 && ticks >= failedSweepRetryNotBefore
-							&& (phaseChanged || (flag2 && retryPhase.Failures == 0) || ticks >= num || (flag3 && ticks >= num2)))
+							&& (phaseChanged || (loopReady && retryPhase.Failures == 0) || ticks >= numericValue || (loopReady2 && ticks >= numericValue2)))
 						{
-							bool flag4 = false;
+							bool loopReady3 = false;
 							try
 							{
-								flag4 = Sweep();
+								loopReady3 = Sweep();
 							}
 							finally
 							{
-								if (flag4)
+								if (loopReady3)
 								{
 									failedSweepRetryNotBefore = 0L;
 									retryPhase.Failures = 0;
 									retryPhase.NotBefore = 0L;
-									num = DateTime.UtcNow.AddMilliseconds(FullSweepInterval(ProcessEventsAvailable)).Ticks;
-									if (flag3)
+									numericValue = DateTime.UtcNow.AddMilliseconds(FullSweepInterval(ProcessEventsAvailable)).Ticks;
+									if (loopReady2)
 									{
-										num2 = DateTime.UtcNow.AddMilliseconds(8000.0).Ticks;
+										numericValue2 = DateTime.UtcNow.AddMilliseconds(8000.0).Ticks;
 									}
 								}
 								else
 								{
-									if (flag3)
+									if (loopReady2)
 									{
 										Interlocked.Exchange(ref overflowSweepRequested, 1);
 									}
@@ -516,7 +516,7 @@ namespace PaviseApp
 									retryPhase.NotBefore = failedSweepRetryNotBefore;
 									Logger.Log("Tamer sweep recovery: phase=" + sweepPhaseKey + " attempt=" + retryPhase.Failures + "/3; "
 										+ (retryPhase.Failures >= 3 ? "active retries stopped; process events remain active" : "backoff"));
-									num = failedSweepRetryNotBefore;
+									numericValue = failedSweepRetryNotBefore;
 									// Requeue drained events after snapshot failure so the bounded queue can retry them.
 									if (changes != null && changes.Count > 0)
 										NotifyProcessChanges(new ProcessChangeBatch(changes.ToArray(), false));
@@ -525,7 +525,7 @@ namespace PaviseApp
 						}
 						else
 						{
-							if (flag3)
+							if (loopReady2)
 							{
 								Interlocked.Exchange(ref overflowSweepRequested, 1);
 							}
@@ -540,7 +540,7 @@ namespace PaviseApp
 								if (ticks >= failedSweepRetryNotBefore)
 									failedSweepRetryNotBefore = DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;
 								retryPhase.NotBefore = failedSweepRetryNotBefore;
-								num = failedSweepRetryNotBefore;
+								numericValue = failedSweepRetryNotBefore;
 								throw;
 							}
 						}
@@ -549,7 +549,7 @@ namespace PaviseApp
 							core.RetryPending();
 							nextCoreRetry = ticks + TimeSpan.FromSeconds(8).Ticks;
 						}
-						SyncAffinity(Paused || flag);
+						SyncAffinity(Paused || matchesTicks);
 					}
 					Logger.RepeatedRecovered("Tamer");
 				}
@@ -557,13 +557,13 @@ namespace PaviseApp
 				{
 					Logger.RepeatedError("Tamer", Lang.T("log.tamer.7") + ex.GetType().Name + ": " + ex.Message, -1L);
 				}
-				long num4 = num - DateTime.UtcNow.Ticks;
-				long num5 = Math.Max(num2, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
-				if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0 && num5 > 0 && (num4 <= 0 || num5 < num4))
+				long remainingNumericValue = numericValue - DateTime.UtcNow.Ticks;
+				long remainingMax = Math.Max(numericValue2, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
+				if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0 && remainingMax > 0 && (remainingNumericValue <= 0 || remainingMax < remainingNumericValue))
 				{
-					num4 = num5;
+					remainingNumericValue = remainingMax;
 				}
-				int millisecondsTimeout = (int)((num4 <= 0) ? 8000 : Math.Min(8000L, Math.Max(1L, num4 / 10000)));
+				int millisecondsTimeout = (int)((remainingNumericValue <= 0) ? 8000 : Math.Min(8000L, Math.Max(1L, remainingNumericValue / 10000)));
 				if (affinityFastWake) millisecondsTimeout = Math.Min(millisecondsTimeout, 1000);
 				kick.WaitOne(millisecondsTimeout);
 			}
@@ -774,7 +774,7 @@ namespace PaviseApp
 				return 0;
 			}
 			HashSet<int> hashSet = new HashSet<int>();
-			int num = 0;
+			int processedCount = 0;
 			ProcEntry[] entries = snapshot.Entries;
 			foreach (ProcEntry procEntry in entries)
 			{
@@ -791,7 +791,7 @@ namespace PaviseApp
 					{
 						recordedProcesses[procEntry.Pid] = procEntry.Creation;
 						Logger.Info(Lang.F("log.tamer.recordonly", acGroup.Name, procEntry.Name, procEntry.Pid));
-						num++;
+						processedCount++;
 					}
 				}
 			}
@@ -802,7 +802,7 @@ namespace PaviseApp
 					recordedProcesses.Remove(item);
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		private bool Sweep()
@@ -829,21 +829,21 @@ namespace PaviseApp
 				ProcEntry[] entries = processSnapshot.Entries;
 				foreach (ProcEntry procEntry in entries)
 				{
-					int num = -1;
+					int sweepValue = -1;
 					try
 					{
-						num = procEntry.Pid;
+						sweepValue = procEntry.Pid;
 						string name = procEntry.Name;
-						if (num != selfPid)
+						if (sweepValue != selfPid)
 						{
 							int session = procEntry.Session;
 							string value;
 							if (dictionary.TryGetValue(name, out value) && selfSession >= 0 && (session == selfSession || session == 0))
 							{
-								hashSet.Add(num);
+								hashSet.Add(sweepValue);
 								list.Add(new AcquireRequest
 								{
-									Pid = num,
+									Pid = sweepValue,
 									Name = name,
 									Group = value,
 									Birth = procEntry.Creation
@@ -853,9 +853,9 @@ namespace PaviseApp
 					}
 					catch
 					{
-						if (num > 0 && hashSet2.Contains(num))
+						if (sweepValue > 0 && hashSet2.Contains(sweepValue))
 						{
-							hashSet.Add(num);
+							hashSet.Add(sweepValue);
 						}
 					}
 				}
@@ -886,9 +886,9 @@ namespace PaviseApp
 
 		private void ApplyBatch(List<AcquireRequest> acquisitions, List<int> releases)
 		{
-			int num = ((acquisitions != null) ? acquisitions.Count : 0);
-			int num2 = ((releases != null) ? releases.Count : 0);
-			if (num == 0 && num2 == 0)
+			int acquisitionsCount = ((acquisitions != null) ? acquisitions.Count : 0);
+			int releasesCount = ((releases != null) ? releases.Count : 0);
+			if (acquisitionsCount == 0 && releasesCount == 0)
 			{
 				return;
 			}
@@ -946,16 +946,16 @@ namespace PaviseApp
 			{
 				if ((acquisition2.Result == AcquireResult.NewlyThrottled || acquisition2.Result == AcquireResult.AlreadyThrottled) && (batchResult == null || !batchResult.WasApplied(acquisition2.Pid)))
 				{
-					string text = ((batchResult != null) ? batchResult.FailureOf(acquisition2.Pid) : "batch-missing");
-					if (text == "self-protected")
+					string failureDetailValue = ((batchResult != null) ? batchResult.FailureOf(acquisition2.Pid) : "batch-missing");
+					if (failureDetailValue == "self-protected")
 					{
 						acquisition2.Result = AcquireResult.NewlyProtected;
-						acquisition2.FailureDetail = text;
+						acquisition2.FailureDetail = failureDetailValue;
 					}
 					else
 					{
 						acquisition2.Result = AcquireResult.ApplyFailed;
-						acquisition2.FailureDetail = text;
+						acquisition2.FailureDetail = failureDetailValue;
 					}
 				}
 				LogAcquireResult(acquisition2);
@@ -981,10 +981,10 @@ namespace PaviseApp
 		private bool ReleaseAll(string reason)
 		{
 			bool affinityRestored = affinityRuntime == null || affinityRuntime.Stop();
-			int num = core.ReleaseReason(SuppressReason.AntiCheat);
-			if (num > 0)
+			int releaseReasonResult = core.ReleaseReason(SuppressReason.AntiCheat);
+			if (releaseReasonResult > 0)
 			{
-				Logger.Log(Lang.T("log.tamer.14") + reason + Lang.T("log.gamemodeboost.53") + num + Lang.T("log.program.3"));
+				Logger.Log(Lang.T("log.tamer.14") + reason + Lang.T("log.gamemodeboost.53") + releaseReasonResult + Lang.T("log.program.3"));
 			}
 			return affinityRestored && !core.AnyWith(SuppressReason.AntiCheat);
 		}

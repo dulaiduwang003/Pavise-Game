@@ -283,7 +283,7 @@ namespace PaviseApp
 			}
 			IntPtr intPtr = IntPtr.Zero;
 			IntPtr intPtr2 = IntPtr.Zero;
-			bool flag = false;
+			bool stopReady = false;
 			try
 			{
 				intPtr = OpenSCManagerW(null, null, 1u);
@@ -322,24 +322,24 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				flag = true;
+				stopReady = true;
 				SERVICE_STATUS status;
-				bool flag2 = ControlService(intPtr2, 1u, out status);
-				int num = ((!flag2) ? Marshal.GetLastWin32Error() : 0);
-				LastStopWasNormalSkip = !flag2 && (num == 1062 || num == 1052 || num == 1061);
-				if (!flag2 && num == 1053)
+				bool controlServiceSucceeded = ControlService(intPtr2, 1u, out status);
+				int lastWin32Error2 = ((!controlServiceSucceeded) ? Marshal.GetLastWin32Error() : 0);
+				LastStopWasNormalSkip = !controlServiceSucceeded && (lastWin32Error2 == 1062 || lastWin32Error2 == 1052 || lastWin32Error2 == 1061);
+				if (!controlServiceSucceeded && lastWin32Error2 == 1053)
 				{
 					throw new TimeoutException("The service stop request timed out; its ownership is unknown.");
 				}
-				if (!flag2 && num != 1062 && num != 1052 && num != 1061)
+				if (!controlServiceSucceeded && lastWin32Error2 != 1062 && lastWin32Error2 != 1052 && lastWin32Error2 != 1061)
 				{
-					throw new Win32Exception(num, "The service stop request failed; its outcome is unknown.");
+					throw new Win32Exception(lastWin32Error2, "The service stop request failed; its outcome is unknown.");
 				}
-				return flag2;
+				return controlServiceSucceeded;
 			}
 			catch
 			{
-				if (flag)
+				if (stopReady)
 				{
 					throw;
 				}
@@ -367,7 +367,7 @@ namespace PaviseApp
 			}
 			IntPtr intPtr = IntPtr.Zero;
 			IntPtr intPtr2 = IntPtr.Zero;
-			bool flag = false;
+			bool startReady = false;
 			try
 			{
 				intPtr = OpenSCManagerW(null, null, 1u);
@@ -396,14 +396,14 @@ namespace PaviseApp
 				{
 					return ownershipChanged ? OptionalServiceStartResult.OwnershipChanged : OptionalServiceStartResult.NotIssued;
 				}
-				flag = true;
-				bool flag2 = StartServiceW(intPtr2, 0u, IntPtr.Zero);
-				int error = ((!flag2) ? Marshal.GetLastWin32Error() : 0);
-				return flag2 ? OptionalServiceStartResult.Accepted : ClassifyStartFailure(error);
+				startReady = true;
+				bool startServiceWSucceeded = StartServiceW(intPtr2, 0u, IntPtr.Zero);
+				int error = ((!startServiceWSucceeded) ? Marshal.GetLastWin32Error() : 0);
+				return startServiceWSucceeded ? OptionalServiceStartResult.Accepted : ClassifyStartFailure(error);
 			}
 			catch
 			{
-				if (flag)
+				if (startReady)
 				{
 					throw;
 				}
@@ -438,23 +438,23 @@ namespace PaviseApp
 			{
 				uint needed;
 				uint count;
-				bool flag = EnumPrintersW(4u, null, 4u, IntPtr.Zero, 0u, out needed, out count);
-				if (!MayContinue(mayContinue) || !flag || count != 0)
+				bool enumPrintersWSucceeded = EnumPrintersW(4u, null, 4u, IntPtr.Zero, 0u, out needed, out count);
+				if (!MayContinue(mayContinue) || !enumPrintersWSucceeded || count != 0)
 				{
 					return false;
 				}
 				uint flags = 33554434u;
-				bool flag2 = EnumPrintersW(flags, null, 2u, IntPtr.Zero, 0u, out needed, out count);
-				int num = ((!flag2) ? Marshal.GetLastWin32Error() : 0);
+				bool enumPrintersWSucceeded2 = EnumPrintersW(flags, null, 2u, IntPtr.Zero, 0u, out needed, out count);
+				int lastWin32Error = ((!enumPrintersWSucceeded2) ? Marshal.GetLastWin32Error() : 0);
 				if (!MayContinue(mayContinue))
 				{
 					return false;
 				}
-				if (flag2)
+				if (enumPrintersWSucceeded2)
 				{
 					return count == 0 && SpoolerReady() && MayContinue(mayContinue);
 				}
-				if (num != 122)
+				if (lastWin32Error != 122)
 				{
 					return false;
 				}
@@ -464,26 +464,26 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					uint num2 = needed;
-					IntPtr intPtr = Marshal.AllocHGlobal((int)num2);
+					uint neededSnapshot = needed;
+					IntPtr intPtr = Marshal.AllocHGlobal((int)neededSnapshot);
 					try
 					{
-						flag2 = EnumPrintersW(flags, null, 2u, intPtr, num2, out needed, out count);
-						num = ((!flag2) ? Marshal.GetLastWin32Error() : 0);
+						enumPrintersWSucceeded2 = EnumPrintersW(flags, null, 2u, intPtr, neededSnapshot, out needed, out count);
+						lastWin32Error = ((!enumPrintersWSucceeded2) ? Marshal.GetLastWin32Error() : 0);
 						if (!MayContinue(mayContinue))
 						{
 							return false;
 						}
-						if (flag2)
+						if (enumPrintersWSucceeded2)
 						{
-							int num3 = Marshal.SizeOf(typeof(PRINTER_INFO_2));
-							if (count > num2 / (uint)num3)
+							int sizeOfResult = Marshal.SizeOf(typeof(PRINTER_INFO_2));
+							if (count > neededSnapshot / (uint)sizeOfResult)
 							{
 								return false;
 							}
-							for (uint num4 = 0u; num4 < count; num4++)
+							for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
 							{
-								PRINTER_INFO_2 pRINTER_INFO_ = (PRINTER_INFO_2)Marshal.PtrToStructure(IntPtr.Add(intPtr, (int)num4 * num3), typeof(PRINTER_INFO_2));
+								PRINTER_INFO_2 pRINTER_INFO_ = (PRINTER_INFO_2)Marshal.PtrToStructure(IntPtr.Add(intPtr, (int)iterationIndex * sizeOfResult), typeof(PRINTER_INFO_2));
 								if (pRINTER_INFO_.Jobs != 0 || (pRINTER_INFO_.Attributes & 0x18u) != 0 || (pRINTER_INFO_.Status & 0x4700u) != 0)
 								{
 									return false;
@@ -491,7 +491,7 @@ namespace PaviseApp
 							}
 							return SpoolerReady() && MayContinue(mayContinue);
 						}
-						if (num != 122 || needed <= num2)
+						if (lastWin32Error != 122 || needed <= neededSnapshot)
 						{
 							return false;
 						}
@@ -609,13 +609,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			foreach (string text in dependencies)
+			foreach (string entryText in dependencies)
 			{
-				if (string.IsNullOrEmpty(text) || text[0] == '+')
+				if (string.IsNullOrEmpty(entryText) || entryText[0] == '+')
 				{
 					return false;
 				}
-				if (checkedServices.Contains(text))
+				if (checkedServices.Contains(entryText))
 				{
 					continue;
 				}
@@ -623,7 +623,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				IntPtr intPtr = OpenServiceW(scm, text, 5u);
+				IntPtr intPtr = OpenServiceW(scm, entryText, 5u);
 				if (intPtr == IntPtr.Zero)
 				{
 					return false;
@@ -636,7 +636,7 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					checkedServices.Add(text);
+					checkedServices.Add(entryText);
 					if (!DependenciesRunning(scm, configuration.Dependencies, checkedServices, depth + 1))
 					{
 						return false;
@@ -703,9 +703,9 @@ namespace PaviseApp
 		{
 			configuration = null;
 			uint needed;
-			bool flag = QueryServiceConfigW(service, IntPtr.Zero, 0u, out needed);
-			error = ((!flag) ? Marshal.GetLastWin32Error() : 0);
-			if (flag || error != 122 || !MayContinue(mayContinue))
+			bool serviceConfigW = QueryServiceConfigW(service, IntPtr.Zero, 0u, out needed);
+			error = ((!serviceConfigW) ? Marshal.GetLastWin32Error() : 0);
+			if (serviceConfigW || error != 122 || !MayContinue(mayContinue))
 			{
 				return false;
 			}
@@ -715,17 +715,17 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				uint num = needed;
-				IntPtr intPtr = Marshal.AllocHGlobal((int)num);
+				uint neededSnapshot = needed;
+				IntPtr intPtr = Marshal.AllocHGlobal((int)neededSnapshot);
 				try
 				{
-					flag = QueryServiceConfigW(service, intPtr, num, out needed);
-					error = ((!flag) ? Marshal.GetLastWin32Error() : 0);
+					serviceConfigW = QueryServiceConfigW(service, intPtr, neededSnapshot, out needed);
+					error = ((!serviceConfigW) ? Marshal.GetLastWin32Error() : 0);
 					if (!MayContinue(mayContinue))
 					{
 						return false;
 					}
-					if (flag)
+					if (serviceConfigW)
 					{
 						QUERY_SERVICE_CONFIG qUERY_SERVICE_CONFIG = (QUERY_SERVICE_CONFIG)Marshal.PtrToStructure(intPtr, typeof(QUERY_SERVICE_CONFIG));
 						if (qUERY_SERVICE_CONFIG.StartType > 4)
@@ -737,7 +737,7 @@ namespace PaviseApp
 						string value3;
 						string value4;
 						string[] names;
-						if (!TryReadString(intPtr, (int)num, qUERY_SERVICE_CONFIG.BinaryPath, out value) || !TryReadString(intPtr, (int)num, qUERY_SERVICE_CONFIG.LoadOrderGroup, out value2) || !TryReadString(intPtr, (int)num, qUERY_SERVICE_CONFIG.Account, out value3) || !TryReadString(intPtr, (int)num, qUERY_SERVICE_CONFIG.DisplayName, out value4) || !TryReadDependencies(intPtr, (int)num, qUERY_SERVICE_CONFIG.Dependencies, out names))
+						if (!TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.BinaryPath, out value) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.LoadOrderGroup, out value2) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Account, out value3) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.DisplayName, out value4) || !TryReadDependencies(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Dependencies, out names))
 						{
 							return false;
 						}
@@ -751,8 +751,8 @@ namespace PaviseApp
 						AppendPart(stringBuilder, value3);
 						AppendPart(stringBuilder, value4);
 						AppendPart(stringBuilder, names.Length.ToString(CultureInfo.InvariantCulture));
-						string[] array = names;
-						foreach (string value5 in array)
+						string[] namesSnapshot = names;
+						foreach (string value5 in namesSnapshot)
 						{
 							AppendPart(stringBuilder, value5);
 						}
@@ -765,7 +765,7 @@ namespace PaviseApp
 						};
 						return true;
 					}
-					if (error != 122 || needed <= num)
+					if (error != 122 || needed <= neededSnapshot)
 					{
 						return false;
 					}
@@ -807,13 +807,13 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			long num = pointer.ToInt64() - buffer.ToInt64();
-			if (num < 0 || num > capacity - 2 || (num & 1) != 0)
+			long remainingToInt64 = pointer.ToInt64() - buffer.ToInt64();
+			if (remainingToInt64 < 0 || remainingToInt64 > capacity - 2 || (remainingToInt64 & 1) != 0)
 			{
 				return false;
 			}
-			int num2 = (capacity - (int)num) / 2;
-			for (int i = 0; i < num2; i++)
+			int ratio = (capacity - (int)remainingToInt64) / 2;
+			for (int i = 0; i < ratio; i++)
 			{
 				if (Marshal.ReadInt16(pointer, i * 2) == 0)
 				{

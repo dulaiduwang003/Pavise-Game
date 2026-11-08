@@ -167,28 +167,28 @@ namespace PaviseApp
 			{
 				lock (cacheSync)
 				{
-					long num = (DateTime.UtcNow.Ticks - cachedSnapshotTicks) / 10000;
-					if (cachedSnapshot != null && cachedSnapshotSession == pathSession && num >= 0 && num <= maxAgeMs)
+					long ratio = (DateTime.UtcNow.Ticks - cachedSnapshotTicks) / 10000;
+					if (cachedSnapshot != null && cachedSnapshotSession == pathSession && ratio >= 0 && ratio <= maxAgeMs)
 					{
 						Interlocked.Increment(ref reuseCount);
 						return cachedSnapshot;
 					}
 				}
 			}
-			ProcEntry[] array = Enumerate();
-			if (array == null)
+			ProcEntry[] enumerateResult = Enumerate();
+			if (enumerateResult == null)
 			{
 				return null;
 			}
 			if (pathSession >= 0)
 			{
-				ResolvePaths(array, pathSession);
+				ResolvePaths(enumerateResult, pathSession);
 			}
 			else
 			{
-				PruneCache(array);
+				PruneCache(enumerateResult);
 			}
-			ProcessSnapshot result = new ProcessSnapshot(array);
+			ProcessSnapshot result = new ProcessSnapshot(enumerateResult);
 			if (pathSession >= 0)
 			{
 				lock (cacheSync)
@@ -255,19 +255,19 @@ namespace PaviseApp
                         return QueryFailed("NtQuerySystemInformation status=" + status);
 					case -1073741820:
 					{
-						int num = ret + 262144;
-						if (num <= sharedBufferBytes)
+						int retOffset = ret + 262144;
+						if (retOffset <= sharedBufferBytes)
 						{
-							num = sharedBufferBytes * 2;
+							retOffset = sharedBufferBytes * 2;
 						}
-						if (num > 67108864)
+						if (retOffset > 67108864)
 						{
                             return QueryFailed("process buffer exceeds safe capacity");
 						}
 						Marshal.FreeHGlobal(sharedBuffer);
 						sharedBuffer = IntPtr.Zero;
-						sharedBuffer = Marshal.AllocHGlobal(num);
-						sharedBufferBytes = num;
+						sharedBuffer = Marshal.AllocHGlobal(retOffset);
+						sharedBufferBytes = retOffset;
 						break;
 					}
 					}
@@ -300,13 +300,13 @@ namespace PaviseApp
 			{
 				try
 				{
-					long num = AutoCores.NowTicks - sharedBufferTakenTicks;
-					bool flag = maxAgeMs > 0 && sharedBuffer != IntPtr.Zero && sharedBufferTakenTicks > 0 && num >= 0 && num <= (long)Math.Min(maxAgeMs, 1500) * 10000L;
-					if (!flag && !QuerySharedBufferLocked())
+					long remainingNowTicks = AutoCores.NowTicks - sharedBufferTakenTicks;
+					bool allConditionsMet = maxAgeMs > 0 && sharedBuffer != IntPtr.Zero && sharedBufferTakenTicks > 0 && remainingNowTicks >= 0 && remainingNowTicks <= (long)Math.Min(maxAgeMs, 1500) * 10000L;
+					if (!allConditionsMet && !QuerySharedBufferLocked())
 					{
 						return null;
 					}
-					if (flag)
+					if (allConditionsMet)
 					{
 						Interlocked.Increment(ref threadSampleReuses);
 					}
@@ -321,20 +321,20 @@ namespace PaviseApp
 
 		internal static ThreadTimes ParseThreads(IntPtr buffer, int used, int pid, long creation, long taken)
 		{
-			int num2;
-			for (long num = 0L; num >= 0 && num + 256 <= used; num += num2)
+			int threadsValue;
+			for (long iterationIndex = 0L; iterationIndex >= 0 && iterationIndex + 256 <= used; iterationIndex += threadsValue)
 			{
-				IntPtr ptr = new IntPtr(buffer.ToInt64() + num);
-				num2 = Marshal.ReadInt32(ptr, 0);
+				IntPtr ptr = new IntPtr(buffer.ToInt64() + iterationIndex);
+				threadsValue = Marshal.ReadInt32(ptr, 0);
 				if (Marshal.ReadIntPtr(ptr, 80).ToInt64() == pid)
 				{
 					if (Marshal.ReadInt64(ptr, 32) != creation)
 					{
 						return null;
 					}
-					int num3 = Marshal.ReadInt32(ptr, 4);
-					long num4 = num + 256 + (long)num3 * 80L;
-					if (num3 < 0 || num3 > 16384 || num4 > used || (num2 > 0 && num4 > num + num2))
+					int int32 = Marshal.ReadInt32(ptr, 4);
+					long numericValue = iterationIndex + 256 + (long)int32 * 80L;
+					if (int32 < 0 || int32 > 16384 || numericValue > used || (threadsValue > 0 && numericValue > iterationIndex + threadsValue))
 					{
 						return null;
 					}
@@ -342,11 +342,11 @@ namespace PaviseApp
 					threadTimes.Ticks = taken;
 					threadTimes.Creation = creation;
 					threadTimes.ProcessCpu = Marshal.ReadInt64(ptr, 40) + Marshal.ReadInt64(ptr, 48);
-					threadTimes.Ids = new long[num3];
-					threadTimes.Created = new long[num3];
-					threadTimes.Cpu = new long[num3];
+					threadTimes.Ids = new long[int32];
+					threadTimes.Created = new long[int32];
+					threadTimes.Cpu = new long[int32];
 					ThreadTimes threadTimes2 = threadTimes;
-					for (int i = 0; i < num3; i++)
+					for (int i = 0; i < int32; i++)
 					{
 						IntPtr ptr2 = new IntPtr(ptr.ToInt64() + 256 + (long)i * 80L);
 						if (Marshal.ReadIntPtr(ptr2, 40).ToInt64() != pid)
@@ -363,7 +363,7 @@ namespace PaviseApp
 					}
 					return threadTimes2;
 				}
-				if (num2 <= 0)
+				if (threadsValue <= 0)
 				{
 					return null;
 				}
@@ -377,14 +377,14 @@ namespace PaviseApp
 			IntPtr ptr = buffer;
 			while (true)
 			{
-				int num = Marshal.ReadInt32(ptr, 0);
-				int num2 = Marshal.ReadIntPtr(ptr, 80).ToInt32();
-				if (num2 > 0)
+				int int32 = Marshal.ReadInt32(ptr, 0);
+				int pidValue = Marshal.ReadIntPtr(ptr, 80).ToInt32();
+				if (pidValue > 0)
 				{
 					ushort byteLength = (ushort)Marshal.ReadInt16(ptr, 56);
 					IntPtr namePtr = Marshal.ReadIntPtr(ptr, 64);
 					ProcEntry procEntry = new ProcEntry();
-					procEntry.Pid = num2;
+					procEntry.Pid = pidValue;
 					procEntry.ParentPid = Marshal.ReadIntPtr(ptr, 88).ToInt32();
 					procEntry.Session = Marshal.ReadInt32(ptr, 100);
 					procEntry.Threads = Marshal.ReadInt32(ptr, 4);
@@ -395,11 +395,11 @@ namespace PaviseApp
 					ProcEntry item = procEntry;
 					list.Add(item);
 				}
-				if (num <= 0)
+				if (int32 <= 0)
 				{
 					break;
 				}
-				ptr = new IntPtr(ptr.ToInt64() + num);
+				ptr = new IntPtr(ptr.ToInt64() + int32);
 			}
 			return list.ToArray();
 		}
@@ -410,24 +410,24 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string text;
+			string ptrToStringUniResult;
 			try
 			{
-				text = Marshal.PtrToStringUni(namePtr, byteLength / 2);
+				ptrToStringUniResult = Marshal.PtrToStringUni(namePtr, byteLength / 2);
 			}
 			catch
 			{
 				return "";
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(ptrToStringUniResult))
 			{
 				return "";
 			}
-			if (!text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			if (!ptrToStringUniResult.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				return text;
+				return ptrToStringUniResult;
 			}
-			return text.Substring(0, text.Length - 4);
+			return ptrToStringUniResult.Substring(0, ptrToStringUniResult.Length - 4);
 		}
 
 		private static void ResolvePaths(ProcEntry[] entries, int pathSession)
@@ -449,8 +449,8 @@ namespace PaviseApp
 						if (value.Path != null || value.Failures >= 3 || DateTime.UtcNow.Ticks < value.NextAttempt) continue;
 					}
 					else value = new PathCacheEntry { Creation = procEntry.Creation };
-					string text = (procEntry.Path = QueryPath(procEntry.Pid));
-					if (text == null)
+					string message = (procEntry.Path = QueryPath(procEntry.Pid));
+					if (message == null)
 					{
 						value.Failures++;
 						value.NextAttempt = DateTime.UtcNow.AddSeconds(30).Ticks;
@@ -461,7 +461,7 @@ namespace PaviseApp
 					pathCache[procEntry.Pid] = new PathCacheEntry
 					{
 						Creation = procEntry.Creation,
-						Path = text
+						Path = message
 					};
 				}
 				DropDeadLocked(hashSet);

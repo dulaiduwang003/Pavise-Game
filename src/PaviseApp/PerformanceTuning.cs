@@ -146,14 +146,14 @@ namespace PaviseApp
 		{
 			get
 			{
-				string text = PerformancePolicy.Text("对已登记 StorPort 的设备持久关闭三项电源管理：磁盘空闲电源管理、存储控制器运行时电源管理和 D3Cold。默认关闭；开启或恢复后需重启电脑，关闭时恢复原配置，不适用项自动跳过。这些设备将不再进入对应的省电状态，空闲与睡眠功耗可能上升。与电源计划在对局期间调整的存储设置相互独立。", "Persistently disables three power-management settings on devices with registered StorPort configuration: disk idle power management, storage-controller runtime power management and D3Cold. Off by default. Restart after enabling or restoring; switching off restores original settings and unsupported targets are skipped. These devices stop entering the matching power-saving states, so idle and sleep power may rise. Independent of the storage settings the power plan adjusts during matches.");
+				string textResult = PerformancePolicy.Text("对已登记 StorPort 的设备持久关闭三项电源管理：磁盘空闲电源管理、存储控制器运行时电源管理和 D3Cold。默认关闭；开启或恢复后需重启电脑，关闭时恢复原配置，不适用项自动跳过。这些设备将不再进入对应的省电状态，空闲与睡眠功耗可能上升。与电源计划在对局期间调整的存储设置相互独立。", "Persistently disables three power-management settings on devices with registered StorPort configuration: disk idle power management, storage-controller runtime power management and D3Cold. Off by default. Restart after enabling or restoring; switching off restores original settings and unsupported targets are skipped. These devices stop entering the matching power-saving states, so idle and sleep power may rise. Independent of the storage settings the power plan adjusts during matches.");
 				HashSet<string> owned = StorageOwned();
 				foreach (string item in StorageMembers())
 				{
-					string text2 = text;
-					text = text2 + "\n" + EnvironmentMemberName(item) + PerformancePolicy.Text("：", ": ") + StorageMemberLabel(item, owned);
+					string message = textResult;
+					textResult = message + "\n" + EnvironmentMemberName(item) + PerformancePolicy.Text("：", ": ") + StorageMemberLabel(item, owned);
 				}
-				return text;
+				return textResult;
 			}
 		}
 
@@ -328,10 +328,10 @@ namespace PaviseApp
 				}
 				busy.Add(id);
 			}
-			bool flag = false;
+			bool setEnvironmentSucceeded = false;
 			try
 			{
-				flag = QueueEnvironmentWork(delegate
+				setEnvironmentSucceeded = QueueEnvironmentWork(delegate
 				{
 					try
 					{
@@ -367,7 +367,7 @@ namespace PaviseApp
 			{
 				Logger.Warn(action.Title + " | " + ex.Message);
 			}
-			if (!flag)
+			if (!setEnvironmentSucceeded)
 			{
 				lock (gate)
 				{
@@ -376,7 +376,7 @@ namespace PaviseApp
 				}
 				SetState(id, on ? "failed" : "restore-failed");
 			}
-			return flag;
+			return setEnvironmentSucceeded;
 		}
 
 		internal static bool CpuMitigationsExpanded
@@ -442,26 +442,26 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = true;
-			bool flag2 = false;
-			bool flag3 = false;
-			bool flag4 = false;
+			bool applyEnvironmentSucceeded = true;
+			bool applyEnvironmentReady = false;
+			bool applyEnvironmentReady2 = false;
+			bool applyEnvironmentReady3 = false;
 			if (on)
 			{
-				string[] array = null;
+				string[] environmentTargetsResult = null;
 				if (!RestoreWithBudget(new PerformanceActionStore.Receipt { Id = "environment-discovery:" + id, Target = "system" }, 3,
-					delegate { array = PerformanceActionBackend.EnvironmentTargets(id); return true; })) { SetState(id, "stopped"); return false; }
-				if (array.Length == 0)
+					delegate { environmentTargetsResult = PerformanceActionBackend.EnvironmentTargets(id); return true; })) { SetState(id, "stopped"); return false; }
+				if (environmentTargetsResult.Length == 0)
 				{
 					SetState(id, "unsupported");
 					return false;
 				}
 				if (id == "EnvCpuMitigationsV1")
 				{
-					return ApplyCpuMitigationsGroup(array);
+					return ApplyCpuMitigationsGroup(environmentTargetsResult);
 				}
-				string[] array2 = array;
-				foreach (string target in array2)
+				string[] textEntries = environmentTargetsResult;
+				foreach (string target in textEntries)
 				{
 					ActionFailureStore.BeginAutomaticCycle(id, target, EnvironmentAutomaticCycle(id));
 					if (EnvironmentWorkClosing)
@@ -471,17 +471,17 @@ namespace PaviseApp
 					if (ActionFailureStore.IsIsolated(id, target) && !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase)))
 					{
 						ActionFailureStore.Trip(id, target, "Recovery incomplete before retry");
-						flag = false;
-						flag3 = true;
-						flag4 = true;
+						applyEnvironmentSucceeded = false;
+						applyEnvironmentReady2 = true;
+						applyEnvironmentReady3 = true;
 						continue;
 					}
 					string reason;
 					ActionFailureStore.BeginAutomaticCycle(id, target, EnvironmentAutomaticCycle(id));
 					if (!ActionFailureStore.TryBeginApply(id, target, out reason))
 					{
-						flag = false;
-						flag3 = true;
+						applyEnvironmentSucceeded = false;
+						applyEnvironmentReady2 = true;
 						continue;
 					}
 					try
@@ -490,60 +490,60 @@ namespace PaviseApp
 						{
 							goto ReadRegistryTarget;
 						}
-						string text = Boot();
-						if (!BootSessionIdentity.Valid(text))
+						string bootResult = Boot();
+						if (!BootSessionIdentity.Valid(bootResult))
 						{
 							ActionFailureStore.CancelApply(id, target);
-							flag = false;
+							applyEnvironmentSucceeded = false;
 							continue;
 						}
-						if (!Settings.SaveStrDurable(id + "Boot", text))
+						if (!Settings.SaveStrDurable(id + "Boot", bootResult))
 						{
 							throw new InvalidOperationException("Boot journal persistence failed");
 						}
-						bool flag5 = RestoreWithBudget(new PerformanceActionStore.Receipt { Id = id, Target = "legacy-quantum" }, 3, QuantumRecovery.RestoreAll);
-						flag2 |= QuantumRecovery.LastWrote;
-						if (flag5)
+						bool restoreWithBudgetSucceeded = RestoreWithBudget(new PerformanceActionStore.Receipt { Id = id, Target = "legacy-quantum" }, 3, QuantumRecovery.RestoreAll);
+						applyEnvironmentReady |= QuantumRecovery.LastWrote;
+						if (restoreWithBudgetSucceeded)
 						{
 							goto ReadRegistryTarget;
 						}
 						ActionFailureStore.CancelApply(id, target);
 						Logger.Warn(id + " | " + QuantumRecovery.LastFailure);
-						flag = false;
-						flag4 = true;
+						applyEnvironmentSucceeded = false;
+						applyEnvironmentReady3 = true;
 						goto FinishRegistryAction;
 						ApplyRegistryAction:
-						string text2;
-						if (!PerformanceActionBackend.Apply(id, target, text2))
+						string wantedRegistryResult;
+						if (!PerformanceActionBackend.Apply(id, target, wantedRegistryResult))
 						{
 							throw new InvalidOperationException(PerformanceActionBackend.ApplyFailureHint(id, target));
 						}
 						if (!ActionFailureStore.CompleteApply(id, target))
 						{
-							flag4 |= !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase));
-							flag = false;
-							flag3 = true;
+							applyEnvironmentReady3 |= !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase));
+							applyEnvironmentSucceeded = false;
+							applyEnvironmentReady2 = true;
 						}
 						goto FinishRegistryAction;
 						ReadRegistryTarget:
-						string text3 = PerformanceActionBackend.Read(id, target);
-						text2 = PerformanceActionBackend.WantedRegistry(id, text3);
-						if (!(text2 != text3))
+						string readResult = PerformanceActionBackend.Read(id, target);
+						wantedRegistryResult = PerformanceActionBackend.WantedRegistry(id, readResult);
+						if (!(wantedRegistryResult != readResult))
 						{
 							goto ApplyRegistryAction;
 						}
-						string text4 = Boot();
-						if (!BootSessionIdentity.Valid(text4))
+						string bootResult2 = Boot();
+						if (!BootSessionIdentity.Valid(bootResult2))
 						{
 							ActionFailureStore.CancelApply(id, target);
-							flag = false;
+							applyEnvironmentSucceeded = false;
 							continue;
 						}
-						if (!Settings.SaveStrDurable(id + "Boot", text4))
+						if (!Settings.SaveStrDurable(id + "Boot", bootResult2))
 						{
 							throw new InvalidOperationException("Boot journal persistence failed");
 						}
-						flag2 = true;
+						applyEnvironmentReady = true;
 						goto ApplyRegistryAction;
 						FinishRegistryAction:;
 					}
@@ -556,9 +556,9 @@ namespace PaviseApp
 						else
 						{
 							ActionFailureStore.Trip(id, target, "Recovery incomplete after unsupported apply");
-							flag4 = true;
+							applyEnvironmentReady3 = true;
 						}
-						flag = false;
+						applyEnvironmentSucceeded = false;
 					}
 					catch (OperationCanceledException)
 					{
@@ -569,16 +569,16 @@ namespace PaviseApp
 						else
 						{
 							ActionFailureStore.Trip(id, target, "Recovery incomplete after cancelled apply");
-							flag4 = true;
+							applyEnvironmentReady3 = true;
 						}
-						flag = false;
+						applyEnvironmentSucceeded = false;
 					}
 					catch (Exception ex3)
 					{
 						ActionFailureStore.Trip(id, target, ex3.Message);
-						flag4 |= !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase));
-						flag = false;
-						flag3 = true;
+						applyEnvironmentReady3 |= !RestoreWhere((PerformanceActionStore.Receipt receipt) => receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase));
+						applyEnvironmentSucceeded = false;
+						applyEnvironmentReady2 = true;
 						Logger.Warn(id + " | " + ex3.Message);
 					}
 				}
@@ -593,24 +593,24 @@ namespace PaviseApp
 				{
 					if (QuantumRecovery.HasRecords())
 					{
-						string text5 = Boot();
-						if (!BootSessionIdentity.Valid(text5) || !Settings.SaveStrDurable(id + "Boot", text5))
+						string bootResult3 = Boot();
+						if (!BootSessionIdentity.Valid(bootResult3) || !Settings.SaveStrDurable(id + "Boot", bootResult3))
 						{
-							flag = false;
+							applyEnvironmentSucceeded = false;
 						}
 						else
 						{
-							flag2 = true;
+							applyEnvironmentReady = true;
 							if (!RestoreWithBudget(new PerformanceActionStore.Receipt { Id = id, Target = "legacy-quantum" }, 3, QuantumRecovery.RestoreAll))
 							{
-								flag = false;
+								applyEnvironmentSucceeded = false;
 							}
 						}
 					}
 				}
 				catch (Exception ex4)
 				{
-					flag = false;
+					applyEnvironmentSucceeded = false;
 					Logger.Warn(id + " | " + ex4.Message);
 				}
 			}
@@ -630,27 +630,27 @@ namespace PaviseApp
 					}
 					try
 					{
-						flag2 = true;
+						applyEnvironmentReady = true;
 						if (!RestorePerformanceReceipt(item, delegate { string boot = Boot(); return BootSessionIdentity.Valid(boot) && Settings.SaveStrDurable(id + "Boot", boot); }))
 						{
-							flag = false;
+							applyEnvironmentSucceeded = false;
 						}
 					}
 					catch (Exception ex5)
 					{
-						flag = false;
+						applyEnvironmentSucceeded = false;
 						Logger.Warn(id + " | " + ex5.Message);
 					}
 				}
 			}
-			string state = (flag ? ((!flag2) ? VerifiedEnvironmentState(id, on) : (on ? "configured" : "restored")) : ((!on) ? "restore-failed" : (flag4 ? "restore-failed" : (flag3 ? "stopped" : "failed"))));
-			if (flag && id == PerformanceActionCatalog.Quantum) state = QuantumLiveUpdate.Complete(on, state);
+			string state = (applyEnvironmentSucceeded ? ((!applyEnvironmentReady) ? VerifiedEnvironmentState(id, on) : (on ? "configured" : "restored")) : ((!on) ? "restore-failed" : (applyEnvironmentReady3 ? "restore-failed" : (applyEnvironmentReady2 ? "stopped" : "failed"))));
+			if (applyEnvironmentSucceeded && id == PerformanceActionCatalog.Quantum) state = QuantumLiveUpdate.Complete(on, state);
 			SetState(id, state);
 			PerformanceAction performanceAction = PerformanceActionCatalog.Find(id);
 			if (performanceAction != null)
 			{
 				string msg = performanceAction.Title + " | " + Label(State(id));
-				if (flag)
+				if (applyEnvironmentSucceeded)
 				{
 					Logger.Info(msg);
 				}
@@ -659,25 +659,25 @@ namespace PaviseApp
 					Logger.Warn(msg);
 				}
 			}
-			return flag;
+			return applyEnvironmentSucceeded;
 		}
 
 		private static string VerifiedEnvironmentState(string id, bool on)
 		{
-			string text = Settings.LoadStr(id + "State", "");
-			if (id == PerformanceActionCatalog.Quantum && (on ? text == "live-applied" : text == "live-restored"))
-				return text;
+			string value = Settings.LoadStr(id + "State", "");
+			if (id == PerformanceActionCatalog.Quantum && (on ? value == "live-applied" : value == "live-restored"))
+				return value;
 			if (!on)
 			{
-				if (!(text == "restored"))
+				if (!(value == "restored"))
 				{
 					return "off";
 				}
-				return text;
+				return value;
 			}
-			if (text == "configured")
+			if (value == "configured")
 			{
-				return text;
+				return value;
 			}
 			foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
 			{
@@ -712,48 +712,48 @@ namespace PaviseApp
 				SetState("EnvCpuMitigationsV1", "stopped");
 				return false;
 			}
-			bool flag = false;
+			bool applyCpuMitigationsGroupReady = false;
 			try
 			{
-				foreach (string text in targets)
+				foreach (string entryText in targets)
 				{
 					if (EnvironmentWorkClosing)
 					{
 						throw new OperationCanceledException();
 					}
-					string text2 = PerformanceActionBackend.Read("EnvCpuMitigationsV1", text);
-					string text3 = PerformanceActionBackend.WantedRegistry("EnvCpuMitigationsV1", text, text2);
-					if (text2 != text3)
+					string readResult = PerformanceActionBackend.Read("EnvCpuMitigationsV1", entryText);
+					string wantedRegistryResult = PerformanceActionBackend.WantedRegistry("EnvCpuMitigationsV1", entryText, readResult);
+					if (readResult != wantedRegistryResult)
 					{
-						string text4 = Boot();
-						if (!BootSessionIdentity.Valid(text4))
+						string bootResult = Boot();
+						if (!BootSessionIdentity.Valid(bootResult))
 						{
 							throw new OperationCanceledException();
 						}
-						if (!Settings.SaveStrDurable("EnvCpuMitigationsV1Boot", text4))
+						if (!Settings.SaveStrDurable("EnvCpuMitigationsV1Boot", bootResult))
 						{
 							throw new InvalidOperationException("CPU mitigation boot journal persistence failed");
 						}
-						flag = true;
+						applyCpuMitigationsGroupReady = true;
 					}
-					if (!PerformanceActionBackend.Apply("EnvCpuMitigationsV1", text, text3))
+					if (!PerformanceActionBackend.Apply("EnvCpuMitigationsV1", entryText, wantedRegistryResult))
 					{
-						throw new InvalidOperationException(text + " | " + PerformanceActionBackend.ApplyFailureHint("EnvCpuMitigationsV1", text));
+						throw new InvalidOperationException(entryText + " | " + PerformanceActionBackend.ApplyFailureHint("EnvCpuMitigationsV1", entryText));
 					}
 				}
 				if (!ActionFailureStore.CompleteApply("EnvCpuMitigationsV1", "system"))
 				{
-					bool flag2 = RestoreWhere(selected);
-					SetState("EnvCpuMitigationsV1", flag2 ? "stopped" : "restore-failed");
+					bool restoreWhereSucceeded = RestoreWhere(selected);
+					SetState("EnvCpuMitigationsV1", restoreWhereSucceeded ? "stopped" : "restore-failed");
 					return false;
 				}
-				SetState("EnvCpuMitigationsV1", flag ? "configured" : VerifiedEnvironmentState("EnvCpuMitigationsV1", true));
+				SetState("EnvCpuMitigationsV1", applyCpuMitigationsGroupReady ? "configured" : VerifiedEnvironmentState("EnvCpuMitigationsV1", true));
 				return true;
 			}
 			catch (NotSupportedException)
 			{
-				bool flag3 = RestoreWhere(selected);
-				if (flag3)
+				bool restoreWhereSucceeded2 = RestoreWhere(selected);
+				if (restoreWhereSucceeded2)
 				{
 					ActionFailureStore.CancelApply("EnvCpuMitigationsV1", "system");
 				}
@@ -761,13 +761,13 @@ namespace PaviseApp
 				{
 					ActionFailureStore.Trip("EnvCpuMitigationsV1", "system", "CPU mitigation recovery incomplete after unsupported apply");
 				}
-				SetState("EnvCpuMitigationsV1", flag3 ? "unsupported" : "restore-failed");
+				SetState("EnvCpuMitigationsV1", restoreWhereSucceeded2 ? "unsupported" : "restore-failed");
 				return false;
 			}
 			catch (OperationCanceledException)
 			{
-				bool flag4 = RestoreWhere(selected);
-				if (flag4)
+				bool restoreWhereSucceeded3 = RestoreWhere(selected);
+				if (restoreWhereSucceeded3)
 				{
 					ActionFailureStore.CancelApply("EnvCpuMitigationsV1", "system");
 				}
@@ -775,14 +775,14 @@ namespace PaviseApp
 				{
 					ActionFailureStore.Trip("EnvCpuMitigationsV1", "system", "CPU mitigation recovery incomplete after cancelled apply");
 				}
-				SetState("EnvCpuMitigationsV1", flag4 ? "unverified" : "restore-failed");
+				SetState("EnvCpuMitigationsV1", restoreWhereSucceeded3 ? "unverified" : "restore-failed");
 				return false;
 			}
 			catch (Exception ex3)
 			{
 				ActionFailureStore.Trip("EnvCpuMitigationsV1", "system", ex3.Message);
-				bool flag5 = RestoreWhere(selected);
-				SetState("EnvCpuMitigationsV1", flag5 ? "stopped" : "restore-failed");
+				bool restoreWhereSucceeded4 = RestoreWhere(selected);
+				SetState("EnvCpuMitigationsV1", restoreWhereSucceeded4 ? "stopped" : "restore-failed");
 				Logger.Warn("EnvCpuMitigationsV1 | " + ex3.Message);
 				return false;
 			}
@@ -803,9 +803,9 @@ namespace PaviseApp
 			}
 			catch (Exception ex)
 			{
-				string text = PerformancePolicy.Text("性能配置恢复记录读取失败", "Performance recovery journal could not be read") + " | " + PsRunner.NormalizeError(ex.Message);
-				list.Add(text);
-				Logger.Warn(text);
+				string normalizeErrorOffset = PerformancePolicy.Text("性能配置恢复记录读取失败", "Performance recovery journal could not be read") + " | " + PsRunner.NormalizeError(ex.Message);
+				list.Add(normalizeErrorOffset);
+				Logger.Warn(normalizeErrorOffset);
 				return list;
 			}
 			foreach (PerformanceActionStore.Receipt item in list2)
@@ -815,45 +815,45 @@ namespace PaviseApp
 					continue;
 				}
 				PerformanceAction performanceAction = PerformanceActionCatalog.Find(item.Id);
-				string text2 = ((performanceAction == null) ? item.Id : performanceAction.Title);
+				string id = ((performanceAction == null) ? item.Id : performanceAction.Title);
 				try
 				{
 					if (progress != null)
 					{
-						progress(text2);
+						progress(id);
 					}
 				}
 				catch
 				{
 				}
-				string text3 = null;
+				string textResult = null;
 				try
 				{
 					if (PrivacyControl.IsAction(item.Id))
 					{
 						if (!PrivacyControl.RestoreReceipt(item))
 						{
-							text3 = PerformancePolicy.Text("隐私配置恢复未完成，记录已保留", "Privacy restoration is incomplete; records are retained");
+							textResult = PerformancePolicy.Text("隐私配置恢复未完成，记录已保留", "Privacy restoration is incomplete; records are retained");
 						}
 					}
 					else if (performanceAction == null)
 					{
-						text3 = PerformancePolicy.Text("无法识别恢复项目，已保留恢复记录", "Unknown recovery action; recovery record retained");
+						textResult = PerformancePolicy.Text("无法识别恢复项目，已保留恢复记录", "Unknown recovery action; recovery record retained");
 					}
 					else if (!RestorePerformanceReceipt(item))
 					{
-						text3 = PerformanceActionBackend.RestoreFailureHint(item);
+						textResult = PerformanceActionBackend.RestoreFailureHint(item);
 					}
 				}
 				catch (Exception ex2)
 				{
-					text3 = PsRunner.NormalizeError(ex2.Message);
+					textResult = PsRunner.NormalizeError(ex2.Message);
 				}
-				if (text3 != null)
+				if (textResult != null)
 				{
-					string text4 = text2 + " | " + item.Target + " | " + text3;
-					list.Add(text4);
-					Logger.Warn("Performance restore | " + text4);
+					string textResultOffset = id + " | " + item.Target + " | " + textResult;
+					list.Add(textResultOffset);
+					Logger.Warn("Performance restore | " + textResultOffset);
 				}
 			}
 			return list;
@@ -953,26 +953,26 @@ namespace PaviseApp
 			List<string> list2 = new List<string>();
 			foreach (string item in EnvironmentMembers())
 			{
-				string text = State(item);
-				if (text == "failed" || text == "stopped")
+				string stateResult = State(item);
+				if (stateResult == "failed" || stateResult == "stopped")
 				{
 					list.Add(EnvironmentMemberName(item));
 				}
-				if (text == "restore-failed")
+				if (stateResult == "restore-failed")
 				{
 					list2.Add(EnvironmentMemberName(item));
 				}
 			}
-			string text2 = "";
+			string environmentBundleIssuesResult = "";
 			if (list.Count > 0)
 			{
-				text2 = text2 + "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", list.ToArray());
+				environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", list.ToArray());
 			}
 			if (list2.Count > 0)
 			{
-				text2 = text2 + "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", list2.ToArray());
+				environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", list2.ToArray());
 			}
-			return text2;
+			return environmentBundleIssuesResult;
 		}
 
 		private static List<string> EnvironmentMembers()
@@ -1010,15 +1010,15 @@ namespace PaviseApp
 
 		private static int GroupEnabledCount(List<string> members, Predicate<string> selected)
 		{
-			int num = 0;
+			int processedCount = 0;
 			foreach (string member in members)
 			{
 				if (selected(member))
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		internal static int EnvironmentEnabledCount()
@@ -1045,72 +1045,72 @@ namespace PaviseApp
 			{
 				return "working";
 			}
-			int num = 0;
-			int num2 = 0;
-			bool flag = false;
-			bool flag2 = false;
-			bool flag3 = false;
-			bool flag4 = false;
-			bool flag5 = false;
-			bool flag6 = false;
-			bool flag7 = false;
+			int processedCount = 0;
+			int processedCount2 = 0;
+			bool groupStateReady = false;
+			bool groupStateReady2 = false;
+			bool groupStateReady3 = false;
+			bool groupStateReady4 = false;
+			bool groupStateReady5 = false;
+			bool groupStateReady6 = false;
+			bool groupStateReady7 = false;
 			foreach (string member in members)
 			{
-				bool flag8 = selected(member);
-				string text = State(member);
-				if (flag8)
+				bool selectedSucceeded = selected(member);
+				string stateResult = State(member);
+				if (selectedSucceeded)
 				{
-					num++;
-					if (text != "unsupported")
+					processedCount++;
+					if (stateResult != "unsupported")
 					{
-						num2++;
+						processedCount2++;
 					}
 				}
-				flag |= text == "failed";
-				flag2 |= text == "stopped";
-				flag3 |= text == "restore-failed";
-				flag4 |= text == "pending-reboot";
-				flag5 |= text == "restore-pending-reboot";
-				flag6 |= text == "unverified" || (flag8 && text.Length == 0);
-				flag7 |= text == "restored";
+				groupStateReady |= stateResult == "failed";
+				groupStateReady2 |= stateResult == "stopped";
+				groupStateReady3 |= stateResult == "restore-failed";
+				groupStateReady4 |= stateResult == "pending-reboot";
+				groupStateReady5 |= stateResult == "restore-pending-reboot";
+				groupStateReady6 |= stateResult == "unverified" || (selectedSucceeded && stateResult.Length == 0);
+				groupStateReady7 |= stateResult == "restored";
 			}
-			if (flag3)
+			if (groupStateReady3)
 			{
 				return "restore-failed";
 			}
-			if (flag2)
+			if (groupStateReady2)
 			{
 				return "stopped";
 			}
-			if (flag)
+			if (groupStateReady)
 			{
 				return "failed";
 			}
-			if (num > 0 && num < members.Count)
+			if (processedCount > 0 && processedCount < members.Count)
 			{
 				return "partial";
 			}
-			if (flag4)
+			if (groupStateReady4)
 			{
 				return "pending-reboot";
 			}
-			if (flag5)
+			if (groupStateReady5)
 			{
 				return "restore-pending-reboot";
 			}
-			if (flag6)
+			if (groupStateReady6)
 			{
 				return "unverified";
 			}
-			if (num > 0)
+			if (processedCount > 0)
 			{
-				if (num2 != 0)
+				if (processedCount2 != 0)
 				{
 					return "ready";
 				}
 				return "unsupported";
 			}
-			if (!flag7)
+			if (!groupStateReady7)
 			{
 				return "off";
 			}
@@ -1124,61 +1124,61 @@ namespace PaviseApp
 
 		private static string GroupLabel(List<string> members, Predicate<string> selected)
 		{
-			string text = GroupState(members, selected);
-			if (text == "partial")
+			string groupStateResult = GroupState(members, selected);
+			if (groupStateResult == "partial")
 			{
 				return PerformancePolicy.Text("部分启用 · 保留旧版选择 · ", "Partly enabled; existing choices retained · ") + GroupEnabledCount(members, selected) + "/" + members.Count;
 			}
-			string text2 = ((text == "ready") ? Lang.T("env.performance.ready") : Label(text));
-			if (text == "working")
+			string envPerformanceReadyText = ((groupStateResult == "ready") ? Lang.T("env.performance.ready") : Label(groupStateResult));
+			if (groupStateResult == "working")
 			{
-				return text2;
+				return envPerformanceReadyText;
 			}
-			int num = 0;
-			int num2 = 0;
-			bool flag = false;
+			int processedCount = 0;
+			int processedCount2 = 0;
+			bool groupLabelReady = false;
 			foreach (string member in members)
 			{
-				string text3 = State(member);
-				if (text3 == "unsupported")
+				string stateResult = State(member);
+				if (stateResult == "unsupported")
 				{
-					num++;
+					processedCount++;
 				}
-				switch (text3)
+				switch (stateResult)
 				{
 				case "failed":
 				case "stopped":
 				case "restore-failed":
-					num2++;
+					processedCount2++;
 					break;
 				}
-				flag |= text3 == "pending-reboot" || text3 == "restore-pending-reboot";
+				groupLabelReady |= stateResult == "pending-reboot" || stateResult == "restore-pending-reboot";
 			}
-			if (num2 > 0)
+			if (processedCount2 > 0)
 			{
-                text2 = num2 + PerformancePolicy.Text(" 项受限", " blocked settings") + (flag ? PerformancePolicy.Text(" · 已写入项需重启", " · Written settings require restart") : "");
+                envPerformanceReadyText = processedCount2 + PerformancePolicy.Text(" 项受限", " blocked settings") + (groupLabelReady ? PerformancePolicy.Text(" · 已写入项需重启", " · Written settings require restart") : "");
 			}
-			if (num != 0)
+			if (processedCount != 0)
 			{
-				return text2 + PerformancePolicy.Text(" · 跳过不适用项：", " · Unsupported settings skipped: ") + num;
+				return envPerformanceReadyText + PerformancePolicy.Text(" · 跳过不适用项：", " · Unsupported settings skipped: ") + processedCount;
 			}
-			return text2;
+			return envPerformanceReadyText;
 		}
 
 		private static void RestoreBundlePreferences(List<string> members, bool[] previous)
 		{
 			for (int i = 0; i < members.Count; i++)
 			{
-				bool flag;
+				bool matchesSaveDurable;
 				try
 				{
-					flag = EnvironmentPreference(members[i]) == previous[i] || Settings.SaveDurable(members[i], previous[i]);
+					matchesSaveDurable = EnvironmentPreference(members[i]) == previous[i] || Settings.SaveDurable(members[i], previous[i]);
 				}
 				catch
 				{
-					flag = false;
+					matchesSaveDurable = false;
 				}
-				if (!flag)
+				if (!matchesSaveDurable)
 				{
 					Logger.Warn("Environment preference restore | " + members[i]);
 				}
@@ -1192,8 +1192,8 @@ namespace PaviseApp
 
 		private static bool SetEnvironmentGroup(string busyKey, List<string> members, bool on, Action completed, Func<bool, bool> apply)
 		{
-			bool[] array = new bool[members.Count];
-			bool flag = false;
+			bool[] conditionMetItems = new bool[members.Count];
+			bool setEnvironmentGroupSucceeded = false;
 			lock (gate)
 			{
 				if (EnvironmentWorkClosing || busy.Count > 0)
@@ -1202,30 +1202,30 @@ namespace PaviseApp
 				}
 				for (int i = 0; i < members.Count; i++)
 				{
-					array[i] = EnvironmentPreference(members[i]);
+					conditionMetItems[i] = EnvironmentPreference(members[i]);
 				}
 				for (int j = 0; j < members.Count; j++)
 				{
-					bool flag2;
+					bool saveDurableSucceeded;
 					try
 					{
-						flag2 = Settings.SaveDurable(members[j], on);
+						saveDurableSucceeded = Settings.SaveDurable(members[j], on);
 					}
 					catch (Exception ex)
 					{
-						flag2 = false;
+						saveDurableSucceeded = false;
 						Logger.Warn("Environment preference save | " + ex.Message);
 					}
-					if (!flag2)
+					if (!saveDurableSucceeded)
 					{
-						RestoreBundlePreferences(members, array);
+						RestoreBundlePreferences(members, conditionMetItems);
 						return false;
 					}
 				}
 				busy.Add(busyKey);
 				try
 				{
-					flag = QueueEnvironmentWork(delegate
+					setEnvironmentGroupSucceeded = QueueEnvironmentWork(delegate
 					{
 						try
 						{
@@ -1255,17 +1255,17 @@ namespace PaviseApp
 				{
 					Logger.Warn("Environment configuration queue | " + ex2.Message);
 				}
-				if (!flag)
+				if (!setEnvironmentGroupSucceeded)
 				{
 					lock (gate)
 					{
 						busy.Remove(busyKey);
 						Monitor.PulseAll(gate);
-						RestoreBundlePreferences(members, array);
+						RestoreBundlePreferences(members, conditionMetItems);
 					}
 				}
 			}
-			return flag;
+			return setEnvironmentGroupSucceeded;
 		}
 
 		internal static bool ApplyEnvironmentBundle(bool on)
@@ -1341,12 +1341,12 @@ namespace PaviseApp
 
 		private static string StorageMemberLabel(string key, HashSet<string> owned)
 		{
-			string text = State(key);
-			if (StorageRecoveryPending(key, owned) && text != "restore-failed" && text != "working")
+			string stateResult = State(key);
+			if (StorageRecoveryPending(key, owned) && stateResult != "restore-failed" && stateResult != "working")
 			{
 				return StorageRecoveryPendingText;
 			}
-			if (text.Length == 0)
+			if (stateResult.Length == 0)
 			{
 				if (!EnvironmentPreference(key))
 				{
@@ -1354,9 +1354,9 @@ namespace PaviseApp
 				}
 				return Lang.T("env.performance.pending");
 			}
-			if (!(text == "ready"))
+			if (!(stateResult == "ready"))
 			{
-				return Label(text);
+				return Label(stateResult);
 			}
 			return Lang.T("env.performance.ready");
 		}
@@ -1404,14 +1404,14 @@ namespace PaviseApp
 		internal static string StorageGroupState()
 		{
 			List<string> list = StorageMembers();
-			string text = GroupState(list, EnvironmentPreference);
-			switch (text)
+			string groupStateResult = GroupState(list, EnvironmentPreference);
+			switch (groupStateResult)
 			{
 			case "working":
 			case "restore-failed":
 			case "stopped":
 			case "failed":
-				return text;
+				return groupStateResult;
 			default:
 			{
 				HashSet<string> owned = StorageOwned();
@@ -1423,7 +1423,7 @@ namespace PaviseApp
 							return "recovery-pending";
 						}
 					}
-					return text;
+					return groupStateResult;
 				}
 			}
 			}
@@ -1502,16 +1502,16 @@ namespace PaviseApp
 				SetState("EnvVbsDisabledV1", "restore-failed");
 				return false;
 			}
-			bool flag;
+			bool restoreOwnedVbsSucceeded;
 			try
 			{
-				flag = RestoreOwnedVbs();
+				restoreOwnedVbsSucceeded = RestoreOwnedVbs();
 			}
 			catch
 			{
-				flag = false;
+				restoreOwnedVbsSucceeded = false;
 			}
-			if (flag)
+			if (restoreOwnedVbsSucceeded)
 			{
 				ActionFailureStore.CancelApply("EnvVbsDisabledV1", "system");
 			}
@@ -1519,7 +1519,7 @@ namespace PaviseApp
 			{
 				ActionFailureStore.Trip("EnvVbsDisabledV1", "system", "Recovery incomplete after skipped VBS apply");
 			}
-			SetState("EnvVbsDisabledV1", flag ? state : "restore-failed");
+			SetState("EnvVbsDisabledV1", restoreOwnedVbsSucceeded ? state : "restore-failed");
 			return false;
 		}
 
@@ -1555,28 +1555,28 @@ namespace PaviseApp
 			}
 			try
 			{
-				bool flag;
+				bool matchesCompleteApply;
 				object state;
 				if (!(on ? (!VbsConfigured()) : VbsTweak.OwnsState))
 				{
-					string text = Settings.LoadStr("EnvVbsDisabledV1State", "");
-					flag = !on || ActionFailureStore.CompleteApply("EnvVbsDisabledV1", "system");
-					if (flag)
+					string envVbsDisabledV1StateValue = Settings.LoadStr("EnvVbsDisabledV1State", "");
+					matchesCompleteApply = !on || ActionFailureStore.CompleteApply("EnvVbsDisabledV1", "system");
+					if (matchesCompleteApply)
 					{
-						bool num;
+						bool matchesEnvVbsDisabledV1StateValue;
 						if (!on)
 						{
-							num = text == "restored";
+							matchesEnvVbsDisabledV1StateValue = envVbsDisabledV1StateValue == "restored";
 						}
 						else
 						{
-							if (text == "configured")
+							if (envVbsDisabledV1StateValue == "configured")
 							{
 								goto SelectCompletedVbsState;
 							}
-							num = VbsTweak.OwnsState;
+							matchesEnvVbsDisabledV1StateValue = VbsTweak.OwnsState;
 						}
-						if (num)
+						if (matchesEnvVbsDisabledV1StateValue)
 						{
 							goto SelectCompletedVbsState;
 						}
@@ -1588,8 +1588,8 @@ namespace PaviseApp
 					}
 					goto PublishVbsState;
 				}
-				string text2 = Boot();
-				if (!BootSessionIdentity.Valid(text2) || EnvironmentWorkClosing)
+				string bootResult = Boot();
+				if (!BootSessionIdentity.Valid(bootResult) || EnvironmentWorkClosing)
 				{
 					if (on)
 					{
@@ -1598,33 +1598,33 @@ namespace PaviseApp
 					SetState("EnvVbsDisabledV1", on ? "unverified" : "restore-failed");
 					return false;
 				}
-				bool flag2 = on ? Settings.SaveStrDurable("EnvVbsDisabledV1Boot", text2) && ChangeVbs(true)
-					: RestoreOwnedVbs(() => Settings.SaveStrDurable("EnvVbsDisabledV1Boot", text2));
-				if (flag2)
+				bool matchesSaveStrDurable = on ? Settings.SaveStrDurable("EnvVbsDisabledV1Boot", bootResult) && ChangeVbs(true)
+					: RestoreOwnedVbs(() => Settings.SaveStrDurable("EnvVbsDisabledV1Boot", bootResult));
+				if (matchesSaveStrDurable)
 				{
-					flag2 = (on ? VbsConfigured() : (!VbsTweak.OwnsState));
+					matchesSaveStrDurable = (on ? VbsConfigured() : (!VbsTweak.OwnsState));
 				}
-				if (!flag2)
+				if (!matchesSaveStrDurable)
 				{
 					throw new InvalidOperationException("VBS apply or readback failed");
 				}
 				if (on)
 				{
-					flag2 = ActionFailureStore.CompleteApply("EnvVbsDisabledV1", "system");
-					if (!flag2 && !RestoreOwnedVbs())
+					matchesSaveStrDurable = ActionFailureStore.CompleteApply("EnvVbsDisabledV1", "system");
+					if (!matchesSaveStrDurable && !RestoreOwnedVbs())
 					{
 						SetState("EnvVbsDisabledV1", "restore-failed");
 						return false;
 					}
 				}
-				SetState("EnvVbsDisabledV1", (!flag2) ? "stopped" : (on ? "configured" : "restored"));
-				return flag2;
+				SetState("EnvVbsDisabledV1", (!matchesSaveStrDurable) ? "stopped" : (on ? "configured" : "restored"));
+				return matchesSaveStrDurable;
 				SelectCompletedVbsState:
 				state = (on ? "configured" : "restored");
 				goto PublishVbsState;
 				PublishVbsState:
 				SetState("EnvVbsDisabledV1", (string)state);
-				return flag;
+				return matchesCompleteApply;
 			}
 			catch (NotSupportedException)
 			{
@@ -1674,28 +1674,28 @@ namespace PaviseApp
 			}
 			EnvironmentWorkClosing = true;
 			Stopwatch stopwatch = Stopwatch.StartNew();
-			bool flag = false;
+			bool closeEnvironmentWorkReady = false;
 			try
 			{
-				flag = Monitor.TryEnter(gate, timeoutMs);
-				if (!flag)
+				closeEnvironmentWorkReady = Monitor.TryEnter(gate, timeoutMs);
+				if (!closeEnvironmentWorkReady)
 				{
 					return false;
 				}
 				while (busy.Count > 0)
 				{
-					int num = (int)Math.Max(0L, timeoutMs - stopwatch.ElapsedMilliseconds);
-					if (num <= 0)
+					int lowerBound = (int)Math.Max(0L, timeoutMs - stopwatch.ElapsedMilliseconds);
+					if (lowerBound <= 0)
 					{
 						return false;
 					}
-					Monitor.Wait(gate, num);
+					Monitor.Wait(gate, lowerBound);
 				}
 				return true;
 			}
 			finally
 			{
-				if (flag)
+				if (closeEnvironmentWorkReady)
 				{
 					Monitor.Exit(gate);
 				}

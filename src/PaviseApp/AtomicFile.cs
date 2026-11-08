@@ -13,26 +13,26 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = path + ".tmp";
+			string pathOffset = path + ".tmp";
 			try
 			{
-				if (File.Exists(text))
+				if (File.Exists(pathOffset))
 				{
-					File.Delete(text);
+					File.Delete(pathOffset);
 				}
 			}
 			catch
 			{
 			}
-			bool flag = false;
+			bool writeLinesReady = false;
 			try
 			{
-				using (FileStream fileStream = new FileStream(text, FileMode.Create, FileAccess.Write, FileShare.None))
+				using (FileStream fileStream = new FileStream(pathOffset, FileMode.Create, FileAccess.Write, FileShare.None))
 				{
 					using (StreamWriter streamWriter = new StreamWriter(fileStream, new UTF8Encoding(false)))
 					{
-						string[] array = lines ?? new string[0];
-						foreach (string value in array)
+						string[] linesOffset = lines ?? new string[0];
+						foreach (string value in linesOffset)
 						{
 							streamWriter.WriteLine(value);
 						}
@@ -40,36 +40,36 @@ namespace PaviseApp
 						fileStream.Flush(true);
 					}
 				}
-				flag = true;
+				writeLinesReady = true;
 				if (!File.Exists(path))
 				{
-					File.Move(text, path);
+					File.Move(pathOffset, path);
 					return true;
 				}
-				int num = 0;
+				int processedCount = 0;
 				while (true)
 				{
 					try
 					{
-						File.Replace(text, path, null);
+						File.Replace(pathOffset, path, null);
 						return true;
 					}
 					catch (IOException)
 					{
-						if (num >= 2)
+						if (processedCount >= 2)
 						{
 							throw;
 						}
 						Thread.Sleep(80);
 					}
-					num++;
+					processedCount++;
 				}
 			}
 			catch (Exception error)
 			{
 				try
 				{
-					if (flag && File.Exists(text))
+					if (writeLinesReady && File.Exists(pathOffset))
 					{
 						try
 						{
@@ -78,10 +78,10 @@ namespace PaviseApp
 						catch
 						{
 						}
-						File.Copy(text, path, true);
+						File.Copy(pathOffset, path, true);
 						try
 						{
-							File.Delete(text);
+							File.Delete(pathOffset);
 						}
 						catch
 						{
@@ -94,9 +94,9 @@ namespace PaviseApp
 				}
 				try
 				{
-					if (File.Exists(text))
+					if (File.Exists(pathOffset))
 					{
-						File.Delete(text);
+						File.Delete(pathOffset);
 					}
 				}
 				catch

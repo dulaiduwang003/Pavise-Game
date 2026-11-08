@@ -133,11 +133,11 @@ namespace PaviseApp
 			SetToolbarVisible(true);
 			auditScroll.SuspendLayout();
 			auditScroll.AutoScrollPosition = Point.Empty;
-			Control[] array = new Control[auditScroll.Controls.Count];
-			auditScroll.Controls.CopyTo(array, 0);
+			Control[] controlItems = new Control[auditScroll.Controls.Count];
+			auditScroll.Controls.CopyTo(controlItems, 0);
 			auditScroll.Controls.Clear();
-			Control[] array2 = array;
-			foreach (Control control in array2)
+			Control[] controlItems2 = controlItems;
+			foreach (Control control in controlItems2)
 			{
 				control.Dispose();
 			}
@@ -161,29 +161,29 @@ namespace PaviseApp
 			foreach (AuditRow row in rows)
 			{
 				AuditFix value = null;
-				bool flag = false;
-				bool flag2 = false;
-				bool flag3 = false;
+				bool renderAuditGroupReady = false;
+				bool renderAuditGroupReady2 = false;
+				bool renderAuditGroupReady3 = false;
 				if (row.FixKey != null && dictionary.TryGetValue(row.FixKey, out value))
 				{
 					try
 					{
-						flag = value.CanFix();
-						flag2 = !flag && value.CanRevert();
-						flag3 = !flag && !flag2 && value.Open != null;
+						renderAuditGroupReady = value.CanFix();
+						renderAuditGroupReady2 = !renderAuditGroupReady && value.CanRevert();
+						renderAuditGroupReady3 = !renderAuditGroupReady && !renderAuditGroupReady2 && value.Open != null;
 					}
 					catch
 					{
 					}
 				}
-				bool flag4 = flag || flag2 || flag3;
+				bool matchesRenderAuditGroupReady3 = renderAuditGroupReady || renderAuditGroupReady2 || renderAuditGroupReady3;
 				AuditFix boundFix = value;
-				Action onClick = (flag4 ? ((Action)delegate
+				Action onClick = (matchesRenderAuditGroupReady3 ? ((Action)delegate
 				{
 					OnAuditFixClick(boundFix);
 				}) : null);
-				string btnText = (flag3 ? ((value.OpenText == null) ? "" : value.OpenText()) : Lang.T(flag ? (value.FixLabel ?? "audit.fix") : "audit.fix.revert"));
-				AuditRowCard auditRowCard = new AuditRowCard(row.Name, row.Value, row.Note ?? "", Lang.F("audit.evidence.format", SystemAudit.EvidenceText(row.Evidence)), row.Warn, flag4, btnText, flag, onClick, AuditContentWidth);
+				string btnText = (renderAuditGroupReady3 ? ((value.OpenText == null) ? "" : value.OpenText()) : Lang.T(renderAuditGroupReady ? (value.FixLabel ?? "audit.fix") : "audit.fix.revert"));
+				AuditRowCard auditRowCard = new AuditRowCard(row.Name, row.Value, row.Note ?? "", Lang.F("audit.evidence.format", SystemAudit.EvidenceText(row.Evidence)), row.Warn, matchesRenderAuditGroupReady3, btnText, renderAuditGroupReady, onClick, AuditContentWidth);
 				auditRowCard.SetBounds(Theme.S(6), Theme.S(sy), Theme.S(AuditContentWidth), Theme.S(auditRowCard.LogicalHeight));
 				auditRowCard.Name = "auditRow_" + (row.FixKey ?? "info");
 				auditScroll.Controls.Add(auditRowCard);
@@ -298,64 +298,64 @@ namespace PaviseApp
 		internal static string IrqResultText(GpuIrqResult r, out DlgKind kind)
 		{
 			kind = DlgKind.Info;
-			string text = ((r.Gpu == null) ? "—" : IrqRelocate.MaskText(r.Gpu.Seen));
-			string text2;
+			string maskTextResult = ((r.Gpu == null) ? "—" : IrqRelocate.MaskText(r.Gpu.Seen));
+			string irqcheckOutFailedText;
 			switch (r.Outcome)
 			{
 			case GpuIrqOutcome.Failed:
 				kind = DlgKind.Danger;
-				text2 = Lang.F("irqcheck.out.failed", r.Detail);
+				irqcheckOutFailedText = Lang.F("irqcheck.out.failed", r.Detail);
 				break;
 			case GpuIrqOutcome.AwaitingReboot:
 				kind = DlgKind.Warn;
-				text2 = Lang.T("irqcheck.out.awaiting");
+				irqcheckOutFailedText = Lang.T("irqcheck.out.awaiting");
 				break;
 			case GpuIrqOutcome.NoEvidence:
 				kind = DlgKind.Warn;
-				text2 = Lang.F("irqcheck.out.noevidence", (r.Gpu == null) ? 0 : r.Gpu.Events, 300L);
+				irqcheckOutFailedText = Lang.F("irqcheck.out.noevidence", (r.Gpu == null) ? 0 : r.Gpu.Events, 300L);
 				break;
 			case GpuIrqOutcome.NoRegion:
-				text2 = Lang.T("irqcheck.out.noregion");
+				irqcheckOutFailedText = Lang.T("irqcheck.out.noregion");
 				break;
 			case GpuIrqOutcome.Restored:
 				kind = DlgKind.Warn;
-				text2 = Lang.T("irqcheck.out.restored") + ((r.Detail.Length > 0) ? (" · " + r.Detail) : "");
+				irqcheckOutFailedText = Lang.T("irqcheck.out.restored") + ((r.Detail.Length > 0) ? (" · " + r.Detail) : "");
 				break;
 			case GpuIrqOutcome.NoTarget:
-				text2 = Lang.T("irqcheck.reason.notarget");
+				irqcheckOutFailedText = Lang.T("irqcheck.reason.notarget");
 				break;
 			case GpuIrqOutcome.Clear:
 				kind = DlgKind.Success;
-				text2 = Lang.F("irqcheck.out.clear", text, IrqRelocate.MaskText(r.Region));
+				irqcheckOutFailedText = Lang.F("irqcheck.out.clear", maskTextResult, IrqRelocate.MaskText(r.Region));
 				break;
 			case GpuIrqOutcome.Scheduled:
 				kind = DlgKind.Warn;
-				text2 = Lang.F("irqcheck.out.scheduled", text, IrqRelocate.MaskText(r.Region), IrqRelocate.MaskText(r.Target));
+				irqcheckOutFailedText = Lang.F("irqcheck.out.scheduled", maskTextResult, IrqRelocate.MaskText(r.Region), IrqRelocate.MaskText(r.Target));
 				break;
 			case GpuIrqOutcome.Verified:
 				kind = DlgKind.Success;
-				text2 = Lang.F("irqcheck.out.verified", text);
+				irqcheckOutFailedText = Lang.F("irqcheck.out.verified", maskTextResult);
 				break;
 			case GpuIrqOutcome.RolledBack:
 				kind = DlgKind.Danger;
-				text2 = Lang.F("irqcheck.out.rolledback", r.Detail);
+				irqcheckOutFailedText = Lang.F("irqcheck.out.rolledback", r.Detail);
 				break;
 			case GpuIrqOutcome.Skipped:
-				text2 = Lang.F("irqcheck.out.skipped", IrqReasonText(GpuIrqCheck.LoadState().Reason));
+				irqcheckOutFailedText = Lang.F("irqcheck.out.skipped", IrqReasonText(GpuIrqCheck.LoadState().Reason));
 				break;
 			default:
-				text2 = Lang.T("irqcheck.out.cancelled");
+				irqcheckOutFailedText = Lang.T("irqcheck.out.cancelled");
 				break;
 			}
 			if (r.Outcome == GpuIrqOutcome.Failed || r.Outcome == GpuIrqOutcome.AwaitingReboot || r.Outcome == GpuIrqOutcome.Cancelled)
 			{
-				return text2;
+				return irqcheckOutFailedText;
 			}
 			if (r.Slow == null || r.Slow.Count == 0)
 			{
-				return text2 + "\r\n\r\n" + Lang.T("irqcheck.out.noslow");
+				return irqcheckOutFailedText + "\r\n\r\n" + Lang.T("irqcheck.out.noslow");
 			}
-			StringBuilder stringBuilder = new StringBuilder(text2);
+			StringBuilder stringBuilder = new StringBuilder(irqcheckOutFailedText);
 			stringBuilder.Append("\r\n\r\n").Append(Lang.T("irqcheck.out.slow"));
 			foreach (SlowDriver item in r.Slow)
 			{

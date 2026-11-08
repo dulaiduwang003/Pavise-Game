@@ -55,11 +55,11 @@ namespace PaviseApp
 
 		public void SetSource(string value)
 		{
-			string text = value ?? "";
-			if (!(source == text))
+			string accessibleDescriptionValue = value ?? "";
+			if (!(source == accessibleDescriptionValue))
 			{
-				source = text;
-				base.AccessibleDescription = text;
+				source = accessibleDescriptionValue;
+				base.AccessibleDescription = accessibleDescriptionValue;
 				Invalidate();
 			}
 		}
@@ -163,18 +163,18 @@ namespace PaviseApp
 
 		private static GraphicsPath CompactFrame(Rectangle bounds, int bevel)
 		{
-			int num = Math.Max(0, Math.Min(bevel, Math.Min(bounds.Width, bounds.Height) / 2));
+			int minLimit = Math.Max(0, Math.Min(bevel, Math.Min(bounds.Width, bounds.Height) / 2));
 			GraphicsPath graphicsPath = new GraphicsPath();
 			graphicsPath.AddPolygon(new Point[8]
 			{
-				new Point(bounds.Left + num, bounds.Top),
-				new Point(bounds.Right - num, bounds.Top),
-				new Point(bounds.Right, bounds.Top + num),
-				new Point(bounds.Right, bounds.Bottom - num),
-				new Point(bounds.Right - num, bounds.Bottom),
-				new Point(bounds.Left + num, bounds.Bottom),
-				new Point(bounds.Left, bounds.Bottom - num),
-				new Point(bounds.Left, bounds.Top + num)
+				new Point(bounds.Left + minLimit, bounds.Top),
+				new Point(bounds.Right - minLimit, bounds.Top),
+				new Point(bounds.Right, bounds.Top + minLimit),
+				new Point(bounds.Right, bounds.Bottom - minLimit),
+				new Point(bounds.Right - minLimit, bounds.Bottom),
+				new Point(bounds.Left + minLimit, bounds.Bottom),
+				new Point(bounds.Left, bounds.Bottom - minLimit),
+				new Point(bounds.Left, bounds.Top + minLimit)
 			});
 			graphicsPath.CloseFigure();
 			return graphicsPath;
@@ -182,11 +182,11 @@ namespace PaviseApp
 
 		private void PaintCompact(Graphics g, Rectangle bounds)
 		{
-			bool flag = base.Width < Theme.S(180);
-			int num = Theme.S(flag ? 38 : 43);
-			int num2 = Theme.S(flag ? 29 : 33);
-			int num3 = Theme.S(7);
-			int num4 = bounds.Right - num2;
+			bool matchesWidth = base.Width < Theme.S(180);
+			int scaledDimension = Theme.S(matchesWidth ? 38 : 43);
+			int scaledDimension2 = Theme.S(matchesWidth ? 29 : 33);
+			int scaledDimension3 = Theme.S(7);
+			int remainingRight = bounds.Right - scaledDimension2;
 			Color color = (base.Enabled ? Theme.Accent : Theme.Faint);
 			Color a = Col.Lerp(Theme.Card, Theme.CardHover, 0.35f + hover.Value * 0.65f);
 			Color color2 = Col.Lerp(Theme.Nav, Theme.Card, 0.32f + hover.Value * 0.22f);
@@ -204,8 +204,8 @@ namespace PaviseApp
 					Point[] points = new Point[4]
 					{
 						new Point(bounds.Left, bounds.Top),
-						new Point(num + num3, bounds.Top),
-						new Point(num - num3, bounds.Bottom),
+						new Point(scaledDimension + scaledDimension3, bounds.Top),
+						new Point(scaledDimension - scaledDimension3, bounds.Bottom),
 						new Point(bounds.Left, bounds.Bottom)
 					};
 					using (LinearGradientBrush brush2 = new LinearGradientBrush(bounds, Col.Lerp(a, color, 0.22f + hover.Value * 0.12f), Col.Lerp(color2, color, 0.07f + hover.Value * 0.08f), LinearGradientMode.Vertical))
@@ -214,10 +214,10 @@ namespace PaviseApp
 					}
 					Point[] points2 = new Point[4]
 					{
-						new Point(num4 + num3, bounds.Top),
+						new Point(remainingRight + scaledDimension3, bounds.Top),
 						new Point(bounds.Right, bounds.Top),
 						new Point(bounds.Right, bounds.Bottom),
-						new Point(num4 - num3, bounds.Bottom)
+						new Point(remainingRight - scaledDimension3, bounds.Bottom)
 					};
 					using (LinearGradientBrush brush3 = new LinearGradientBrush(bounds, Col.Lerp(Theme.Inset, a, 0.28f + hover.Value * 0.16f), Theme.Inset, LinearGradientMode.Vertical))
 					{
@@ -225,32 +225,32 @@ namespace PaviseApp
 					}
 					using (Pen pen = new Pen(Col.Alpha(color, (int)(100f + hover.Value * 75f))))
 					{
-						g.DrawLine(pen, num + num3, bounds.Top, num - num3, bounds.Bottom);
+						g.DrawLine(pen, scaledDimension + scaledDimension3, bounds.Top, scaledDimension - scaledDimension3, bounds.Bottom);
 					}
 					using (Pen pen2 = new Pen(Col.Alpha(Theme.Bg, 180)))
 					{
-						g.DrawLine(pen2, num + num3 + Theme.S(2), bounds.Top, num - num3 + Theme.S(2), bounds.Bottom);
+						g.DrawLine(pen2, scaledDimension + scaledDimension3 + Theme.S(2), bounds.Top, scaledDimension - scaledDimension3 + Theme.S(2), bounds.Bottom);
 					}
 					using (Pen pen3 = new Pen(Col.Lerp(Theme.StrokeHi, color, hover.Value * 0.36f)))
 					{
-						g.DrawLine(pen3, num4 + num3, bounds.Top, num4 - num3, bounds.Bottom);
+						g.DrawLine(pen3, remainingRight + scaledDimension3, bounds.Top, remainingRight - scaledDimension3, bounds.Bottom);
 					}
-					int num5 = (int)Math.Round(press.Value * (float)Theme.S(1));
-					int num6 = bounds.Top + bounds.Height / 2 + num5;
-					int num7 = Theme.S(23);
-					int num8 = bounds.Left + (num - num7) / 2;
-					Glyphs.Draw(g, "game", new Rectangle(num8, num6 - num7 / 2, num7, num7), color);
-					int num9 = num + Theme.S(12);
-					int num10 = num4 - Theme.S(10);
-					TextRenderer.DrawText(g, SummaryText, Theme.UI(10.5f, true), new Rectangle(num9, bounds.Top + num5, Math.Max(1, num10 - num9), bounds.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-					int num11 = num4 + num2 / 2 + Theme.S(1);
+					int roundedValue = (int)Math.Round(press.Value * (float)Theme.S(1));
+					int roundedValueOffset = bounds.Top + bounds.Height / 2 + roundedValue;
+					int scaledDimension4 = Theme.S(23);
+					int leftOffset = bounds.Left + (scaledDimension - scaledDimension4) / 2;
+					Glyphs.Draw(g, "game", new Rectangle(leftOffset, roundedValueOffset - scaledDimension4 / 2, scaledDimension4, scaledDimension4), color);
+					int scaledDimensionOffset = scaledDimension + Theme.S(12);
+					int remainingRemainingRight = remainingRight - Theme.S(10);
+					TextRenderer.DrawText(g, SummaryText, Theme.UI(10.5f, true), new Rectangle(scaledDimensionOffset, bounds.Top + roundedValue, Math.Max(1, remainingRemainingRight - scaledDimensionOffset), bounds.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+					int sOffset = remainingRight + scaledDimension2 / 2 + Theme.S(1);
 					using (Pen pen4 = new Pen(base.Enabled ? Col.Lerp(Theme.Dim, Theme.Fg, hover.Value) : Theme.Faint, Math.Max(1f, Theme.S(1))))
 					{
 						g.DrawLines(pen4, new Point[3]
 						{
-							new Point(num11 - Theme.S(4), num6 - Theme.S(2)),
-							new Point(num11, num6 + Theme.S(2)),
-							new Point(num11 + Theme.S(4), num6 - Theme.S(2))
+							new Point(sOffset - Theme.S(4), roundedValueOffset - Theme.S(2)),
+							new Point(sOffset, roundedValueOffset + Theme.S(2)),
+							new Point(sOffset + Theme.S(4), roundedValueOffset - Theme.S(2))
 						});
 					}
 					Rectangle bounds2 = bounds;
@@ -267,7 +267,7 @@ namespace PaviseApp
 					}
 					using (Pen pen6 = new Pen(color, Math.Max(1f, Theme.S(2))))
 					{
-						g.DrawLine(pen6, bounds.Left + Theme.S(12), bounds.Top, num - Theme.S(3), bounds.Top);
+						g.DrawLine(pen6, bounds.Left + Theme.S(12), bounds.Top, scaledDimension - Theme.S(3), bounds.Top);
 					}
 					using (Pen pen7 = new Pen(Col.Alpha(color, (int)(110f + hover.Value * 105f))))
 					{

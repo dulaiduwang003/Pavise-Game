@@ -18,7 +18,7 @@ namespace PaviseApp
 
 		private static List<RunningProgram> Scan(Func<bool> canceled, bool whitelist)
 		{
-			Process[] array = null;
+			Process[] runningProcesses = null;
 			try
 			{
 				if (IsCanceled(canceled))
@@ -48,15 +48,15 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				array = Process.GetProcesses();
+				runningProcesses = Process.GetProcesses();
 				Dictionary<string, RunningProgram> dictionary = new Dictionary<string, RunningProgram>(StringComparer.OrdinalIgnoreCase);
-				for (int i = 0; i < array.Length; i++)
+				for (int i = 0; i < runningProcesses.Length; i++)
 				{
 					if (IsCanceled(canceled))
 					{
 						return null;
 					}
-					Process process2 = array[i];
+					Process process2 = runningProcesses[i];
 					try
 					{
 						int id2 = process2.Id;
@@ -69,38 +69,38 @@ namespace PaviseApp
 						{
 							continue;
 						}
-						string text;
+						string pathValue;
 						try
 						{
-							text = Native.ImagePath(intPtr);
+							pathValue = Native.ImagePath(intPtr);
 						}
 						finally
 						{
 							Native.CloseHandle(intPtr);
 						}
-						string text2 = GameSessionDetector.ImageNameFromVerifiedPath(text);
-						if (!(whitelist ? IsWhitelistCandidate(text2, text, windowsRoot)
-							: GameSessionDetector.IsLibraryCandidate(text2, text, windowsRoot)))
+						string processNameValue = GameSessionDetector.ImageNameFromVerifiedPath(pathValue);
+						if (!(whitelist ? IsWhitelistCandidate(processNameValue, pathValue, windowsRoot)
+							: GameSessionDetector.IsLibraryCandidate(processNameValue, pathValue, windowsRoot)))
 						{
 							continue;
 						}
 						RunningProgram value;
-						if (!dictionary.TryGetValue(text, out value))
+						if (!dictionary.TryGetValue(pathValue, out value))
 						{
 							RunningProgram runningProgram = new RunningProgram();
-							runningProgram.Path = text;
-							runningProgram.ProcessName = text2;
-							runningProgram.Title = text2;
+							runningProgram.Path = pathValue;
+							runningProgram.ProcessName = processNameValue;
+							runningProgram.Title = processNameValue;
 							value = runningProgram;
-							dictionary.Add(text, value);
+							dictionary.Add(pathValue, value);
 						}
 						if (!value.ProcessIds.Contains(id2))
 						{
 							value.ProcessIds.Add(id2);
 							try
 							{
-								long num = Math.Max(0L, process2.WorkingSet64);
-								value.Memory = ((num > long.MaxValue - value.Memory) ? long.MaxValue : (value.Memory + num));
+								long workingSet64Limit = Math.Max(0L, process2.WorkingSet64);
+								value.Memory = ((workingSet64Limit > long.MaxValue - value.Memory) ? long.MaxValue : (value.Memory + workingSet64Limit));
 							}
 							catch
 							{
@@ -112,7 +112,7 @@ namespace PaviseApp
 					}
 					finally
 					{
-						array[i] = null;
+						runningProcesses[i] = null;
 						if (process2 != null)
 						{
 							try
@@ -142,10 +142,10 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (array != null)
+				if (runningProcesses != null)
 				{
-					Process[] array2 = array;
-					foreach (Process process3 in array2)
+					Process[] processItems = runningProcesses;
+					foreach (Process process3 in processItems)
 					{
 						if (process3 != null)
 						{
@@ -186,10 +186,10 @@ namespace PaviseApp
 			try
 			{
 				FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(path);
-				string text = ((!string.IsNullOrWhiteSpace(versionInfo.FileDescription)) ? versionInfo.FileDescription : versionInfo.ProductName);
-				if (!string.IsNullOrWhiteSpace(text))
+				string fileDescription = ((!string.IsNullOrWhiteSpace(versionInfo.FileDescription)) ? versionInfo.FileDescription : versionInfo.ProductName);
+				if (!string.IsNullOrWhiteSpace(fileDescription))
 				{
-					return text.Trim();
+					return fileDescription.Trim();
 				}
 			}
 			catch

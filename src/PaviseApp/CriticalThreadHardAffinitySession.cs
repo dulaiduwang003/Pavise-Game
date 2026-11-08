@@ -410,17 +410,17 @@ namespace PaviseApp
 					}
 					int i = 0;
 					List<ulong> list = new List<ulong>();
-					int num2;
-					for (; i < length2; i += num2)
+					int physicalCoresValue;
+					for (; i < length2; i += physicalCoresValue)
 					{
 						if (length2 - i < 8)
 						{
 							throw new InvalidDataException("truncated physical record");
 						}
 						IntPtr intPtr2 = IntPtr.Add(intPtr, i);
-						int num = Marshal.ReadInt32(intPtr2);
-						num2 = Marshal.ReadInt32(intPtr2, 4);
-						if (num != 0 || num2 < 48 || num2 > length2 - i || Marshal.ReadInt16(intPtr2, 30) != 1)
+						int int32 = Marshal.ReadInt32(intPtr2);
+						physicalCoresValue = Marshal.ReadInt32(intPtr2, 4);
+						if (int32 != 0 || physicalCoresValue < 48 || physicalCoresValue > length2 - i || Marshal.ReadInt16(intPtr2, 30) != 1)
 						{
 							throw new InvalidDataException("unsupported physical record");
 						}
@@ -447,15 +447,15 @@ namespace PaviseApp
 			{
 				empty = false;
 				uint required;
-				bool flag = (thread ? GetThreadSelectedCpuSets(handle, null, 0u, out required) : GetProcessDefaultCpuSets(handle, null, 0u, out required));
-				if ((!flag && Marshal.GetLastWin32Error() != 122) || required > 4096)
+				bool threadSelectedCpuSets = (thread ? GetThreadSelectedCpuSets(handle, null, 0u, out required) : GetProcessDefaultCpuSets(handle, null, 0u, out required));
+				if ((!threadSelectedCpuSets && Marshal.GetLastWin32Error() != 122) || required > 4096)
 				{
 					return false;
 				}
 				if (required == 0)
 				{
-					empty = flag;
-					return flag;
+					empty = threadSelectedCpuSets;
+					return threadSelectedCpuSets;
 				}
 				uint[] ids = new uint[required];
 				uint required2;
@@ -480,15 +480,15 @@ namespace PaviseApp
 			{
 				empty = false;
 					ushort required;
-					bool flag = (thread ? GetThreadSelectedCpuSetMasks(handle, null, 0, out required) : GetProcessDefaultCpuSetMasks(handle, null, 0, out required));
-					if ((!flag && Marshal.GetLastWin32Error() != 122) || required > 64)
+					bool threadSelectedCpuSetMasks = (thread ? GetThreadSelectedCpuSetMasks(handle, null, 0, out required) : GetProcessDefaultCpuSetMasks(handle, null, 0, out required));
+					if ((!threadSelectedCpuSetMasks && Marshal.GetLastWin32Error() != 122) || required > 64)
 					{
 						return false;
 					}
 					if (required == 0)
 					{
-						empty = flag;
-						return flag;
+						empty = threadSelectedCpuSetMasks;
+						return threadSelectedCpuSetMasks;
 					}
 					GroupAffinity[] masks = new GroupAffinity[required];
 					ushort required2;
@@ -646,12 +646,12 @@ namespace PaviseApp
 
 			public void Dispose()
 			{
-				bool flag = false;
+				bool disposeReady = false;
 				foreach (IntPtr value in threads.Values)
 				{
 					if (!CloseHandle(value))
 					{
-						flag = true;
+						disposeReady = true;
 					}
 				}
 				threads.Clear();
@@ -659,11 +659,11 @@ namespace PaviseApp
 				{
 					if (!CloseHandle(process))
 					{
-						flag = true;
+						disposeReady = true;
 					}
 					process = IntPtr.Zero;
 				}
-				closeFault |= flag;
+				closeFault |= disposeReady;
 				if (closeFault)
 				{
 					throw new InvalidOperationException("some retained hard-affinity handles did not close");
@@ -751,9 +751,9 @@ namespace PaviseApp
 			{
 				lock (factsGate)
 				{
-					HardThreadOwnership[] array = new HardThreadOwnership[verified.Count];
-					verified.Values.CopyTo(array, 0);
-					return array;
+					HardThreadOwnership[] hardThreadOwnershipItems = new HardThreadOwnership[verified.Count];
+					verified.Values.CopyTo(hardThreadOwnershipItems, 0);
+					return hardThreadOwnershipItems;
 				}
 			}
 		}
@@ -1079,8 +1079,8 @@ namespace PaviseApp
 					throw InvalidRequest("original lease does not authorize worker avoidance");
 				}
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-				HardThreadIdentity[] array = threads;
-				foreach (HardThreadIdentity hardThreadIdentity in array)
+				HardThreadIdentity[] threadsSnapshot = threads;
+				foreach (HardThreadIdentity hardThreadIdentity in threadsSnapshot)
 				{
 					if (hardThreadIdentity == null || !hashSet.Add(hardThreadIdentity.Key))
 					{
@@ -1229,8 +1229,8 @@ namespace PaviseApp
 				ValidateInput(threads, coverage);
 				IHardThreadPlacementReads placementReads = plan.RequireWorkerCoverage ? native as IHardThreadPlacementReads : null;
 				var exitedWorkers = new HashSet<string>(StringComparer.Ordinal);
-				string text = null;
-				int num = 0;
+				string message = null;
+				int processedCount = 0;
 				IHardThreadPlacementBatchReads batchReads = plan.RequireWorkerCoverage && coverage == HardThreadCoverage.Complete
 					&& CompleteOwnedInput(threads) ? native as IHardThreadPlacementBatchReads : null;
 				// Share identity checks only for complete stable audits; new writes and recovery require independent full reads.
@@ -1272,21 +1272,21 @@ namespace PaviseApp
 							{
 								if (!hardThreadObserved.CpuSetsEmpty || hardThreadObserved.Group != hardThreadReceipt.Group || hardThreadObserved.Mask != hardThreadReceipt.Applied)
 								{
-									string text2 = text ?? DescribeExternalChange(hardThreadReceipt, hardThreadObserved, i);
+									string messageOffset = message ?? DescribeExternalChange(hardThreadReceipt, hardThreadObserved, i);
 									if (plan.RequireWorkerCoverage)
 									{
 										Forget(hardThreadReceipt.Thread);
 										throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable,
-											"exclusive thread placement changed externally: " + text2, true);
+											"exclusive thread placement changed externally: " + messageOffset, true);
 									}
-									string text3 = ReassertOwned(hardThreadReceipt, hardThreadObserved);
-									if (text3 != null)
+									string reassertOwnedResult = ReassertOwned(hardThreadReceipt, hardThreadObserved);
+									if (reassertOwnedResult != null)
 									{
 										Forget(hardThreadReceipt.Thread);
-										throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "owned thread state changed externally (" + text3 + "): " + text2, true);
+										throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "owned thread state changed externally (" + reassertOwnedResult + "): " + messageOffset, true);
 									}
-									text = text2;
-									num++;
+									message = messageOffset;
+									processedCount++;
 								}
 								if (batch == null) Confirm(hardThreadReceipt);
 							}
@@ -1305,9 +1305,9 @@ namespace PaviseApp
 					throw;
 				}
 				finally { if (batch != null) batch.Dispose(); }
-				if (text != null)
+				if (message != null)
 				{
-					LastReassertion = text + "; written back " + num;
+					LastReassertion = message + "; written back " + processedCount;
 				}
 				if (exitedWorkers.Count != 0)
 					threads = Array.FindAll(threads, thread => !exitedWorkers.Contains(thread.Key));
@@ -1380,8 +1380,8 @@ namespace PaviseApp
 
 		private string DescribeExternalChange(HardThreadReceipt row, HardThreadObserved current, int index)
 		{
-			int num = 0;
-			int num2 = 1;
+			int processedCount = 0;
+			int processedCount2 = 1;
 			for (int i = 0; i < journal.Rows.Count; i++)
 			{
 				HardThreadReceipt hardThreadReceipt = journal.Rows[i];
@@ -1389,7 +1389,7 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				num++;
+				processedCount++;
 				if (i <= index || hardThreadReceipt.Phase != HardThreadPhase.Applied)
 				{
 					continue;
@@ -1399,14 +1399,14 @@ namespace PaviseApp
 					HardThreadObserved hardThreadObserved = native.ReadThread(hardThreadReceipt.Thread);
 					if (hardThreadObserved != null && hardThreadObserved.Read == HardThreadRead.Known && (!hardThreadObserved.CpuSetsEmpty || hardThreadObserved.Group != hardThreadReceipt.Group || hardThreadObserved.Mask != hardThreadReceipt.Applied))
 					{
-						num2++;
+						processedCount2++;
 					}
 				}
 				catch
 				{
 				}
 			}
-			return (plan.IsCandidate(row.Thread) ? "candidate" : "worker") + " TID " + row.Thread.Tid + " applied=0x" + row.Applied.ToString("X") + " observed=0x" + current.Mask.ToString("X") + ((current.Mask == plan.ProcessMask) ? " (process mask)" : "") + ((current.Group != row.Group) ? (" group " + row.Group + "->" + current.Group) : "") + (current.CpuSetsEmpty ? "" : " thread CPU Sets assigned") + "; " + num2 + "/" + num + " owned threads changed";
+			return (plan.IsCandidate(row.Thread) ? "candidate" : "worker") + " TID " + row.Thread.Tid + " applied=0x" + row.Applied.ToString("X") + " observed=0x" + current.Mask.ToString("X") + ((current.Mask == plan.ProcessMask) ? " (process mask)" : "") + ((current.Group != row.Group) ? (" group " + row.Group + "->" + current.Group) : "") + (current.CpuSetsEmpty ? "" : " thread CPU Sets assigned") + "; " + processedCount2 + "/" + processedCount + " owned threads changed";
 		}
 
 		private bool RunForward(Func<bool> action)
@@ -1501,9 +1501,9 @@ namespace PaviseApp
 		{
 			HardThreadOperationException ex = error as HardThreadOperationException;
 			HardThreadFailureKind hardThreadFailureKind = ((ex == null) ? HardThreadFailureKind.WriteOrDurabilityFault : ex.Kind);
-			bool flag = ex == null || ex.Recover;
+			bool matchesRecover = ex == null || ex.Recover;
 			string message = error.Message;
-			if (flag)
+			if (matchesRecover)
 			{
 				if (RestoreInternal(false) && hardThreadFailureKind == HardThreadFailureKind.WriteOrDurabilityFault)
 				{
@@ -1552,8 +1552,8 @@ namespace PaviseApp
 				throw new HardThreadOperationException(HardThreadFailureKind.AuthorityUnavailable, "original worker authority revoked", true);
 			}
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-			int num = 0;
-			int num2 = 0;
+			int processedCount = 0;
+			int processedCount2 = 0;
 			foreach (HardThreadIdentity hardThreadIdentity in threads)
 			{
 				if (hardThreadIdentity == null || !hashSet.Add(hardThreadIdentity.Key))
@@ -1572,21 +1572,21 @@ namespace PaviseApp
 					}
 					if (Find(hardThreadIdentity) == null)
 					{
-						num++;
+						processedCount++;
 					}
 				}
 				if (Find(hardThreadIdentity) == null)
 				{
-					num2++;
+					processedCount2++;
 				}
 			}
-			if ((!plan.RequireWorkerCoverage && num > 8) || journal.Rows.Count + num2 > 512)
+			if ((!plan.RequireWorkerCoverage && processedCount > 8) || journal.Rows.Count + processedCount2 > 512)
 			{
-				throw InvalidRequest("bounded worker batch required (input=" + threads.Length + " rows=" + journal.Rows.Count + " new=" + num2 + " workers=" + num + ")");
+				throw InvalidRequest("bounded worker batch required (input=" + threads.Length + " rows=" + journal.Rows.Count + " new=" + processedCount2 + " workers=" + processedCount + ")");
 			}
-			if (plan.RequireWorkerCoverage && (coverage != HardThreadCoverage.Complete || num2 + journal.Rows.Count > 512))
+			if (plan.RequireWorkerCoverage && (coverage != HardThreadCoverage.Complete || processedCount2 + journal.Rows.Count > 512))
 			{
-				throw InvalidRequest("complete bounded worker snapshot required (coverage=" + coverage + " input=" + threads.Length + " rows=" + journal.Rows.Count + " new=" + num2 + ")");
+				throw InvalidRequest("complete bounded worker snapshot required (coverage=" + coverage + " input=" + threads.Length + " rows=" + journal.Rows.Count + " new=" + processedCount2 + ")");
 			}
 			if (plan.RequireWorkerCoverage)
 			{
@@ -1664,7 +1664,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			bool flag = coverage != HardThreadCoverage.Complete && coverage != HardThreadCoverage.CandidatesOnly;
+			bool allConditionsMet = coverage != HardThreadCoverage.Complete && coverage != HardThreadCoverage.CandidatesOnly;
 			bool workersVerified = !plan.RequireWorkerCoverage;
 			foreach (HardThreadIdentity thread in threads)
 			{
@@ -1690,20 +1690,20 @@ namespace PaviseApp
 				}
 				RequireForwardAuthority();
 				HardThreadObserved hardThreadObserved2 = native.ReadThread(thread);
-				bool flag2 = plan.IsCandidate(thread);
+				bool isCandidate = plan.IsCandidate(thread);
 				if (RetireConfirmedWorkerExit(thread, hardThreadObserved2)) continue;
 				if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != plan.Group || hardThreadObserved2.Mask != plan.ProcessMask)
 				{
-					if (flag2 || plan.RequireWorkerCoverage)
+					if (isCandidate || plan.RequireWorkerCoverage)
 					{
 						throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "candidate changed before admission", Pending());
 					}
-					flag = true;
+					allConditionsMet = true;
 					lastFailureKind = HardThreadFailureKind.ObservationUnavailable;
 					continue;
 				}
-				ulong num = plan.MaskFor(thread);
-				if (num == hardThreadObserved2.Mask)
+				ulong appliedValue = plan.MaskFor(thread);
+				if (appliedValue == hardThreadObserved2.Mask)
 				{
 					continue;
 				}
@@ -1711,11 +1711,11 @@ namespace PaviseApp
 				hardThreadReceipt.Thread = thread;
 				hardThreadReceipt.Group = hardThreadObserved2.Group;
 				hardThreadReceipt.Captured = hardThreadObserved2.Mask;
-				hardThreadReceipt.Applied = num;
+				hardThreadReceipt.Applied = appliedValue;
 				hardThreadReceipt.Phase = HardThreadPhase.ApplyIntent;
 				HardThreadReceipt item = hardThreadReceipt;
 				AddReceipt(item);
-				bool flag3 = false;
+				bool applyThreadsReady = false;
 				try
 				{
 					Save();
@@ -1730,16 +1730,16 @@ namespace PaviseApp
 					}
 					if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != item.Group || hardThreadObserved2.Mask != item.Captured)
 					{
-							throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "thread changed before native write", flag2 || plan.RequireWorkerCoverage);
+							throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "thread changed before native write", isCandidate || plan.RequireWorkerCoverage);
 					}
 					RequireForwardAuthority();
-					flag3 = true;
+					applyThreadsReady = true;
 					lastOperationNativeAttempt = true;
 					ushort previousGroup;
 					ulong previousMask;
 					if (!native.Set(thread, item.Group, item.Applied, out previousGroup, out previousMask))
 					{
-						if (plan.RequireWorkerCoverage && !flag2 && RetireConfirmedWorkerExit(thread, native.ReadThread(thread))) continue;
+						if (plan.RequireWorkerCoverage && !isCandidate && RetireConfirmedWorkerExit(thread, native.ReadThread(thread))) continue;
 						throw new InvalidOperationException("native apply is unconfirmed");
 					}
 					item.PreviousKnown = true;
@@ -1766,8 +1766,8 @@ namespace PaviseApp
 				}
 				catch (Exception ex2)
 				{
-					bool flag4 = false;
-					if (!flag3)
+					bool applyThreadsReady2 = false;
+					if (!applyThreadsReady)
 					{
 						try
 						{
@@ -1777,7 +1777,7 @@ namespace PaviseApp
 							{
 								hardThreadReceipt2.Phase = HardThreadPhase.NotApplied;
 								Save();
-								flag4 = true;
+								applyThreadsReady2 = true;
 							}
 						}
 						catch
@@ -1785,13 +1785,13 @@ namespace PaviseApp
 						}
 					}
 					HardThreadOperationException ex3 = ex2 as HardThreadOperationException;
-					if (!flag3 && flag4 && !flag2 && !plan.RequireWorkerCoverage && ex3 != null && ex3.Kind == HardThreadFailureKind.ObservationUnavailable)
+					if (!applyThreadsReady && applyThreadsReady2 && !isCandidate && !plan.RequireWorkerCoverage && ex3 != null && ex3.Kind == HardThreadFailureKind.ObservationUnavailable)
 					{
-						flag = true;
+						allConditionsMet = true;
 						lastFailureKind = HardThreadFailureKind.ObservationUnavailable;
 						continue;
 					}
-					if (!flag3 && !flag4 && ex3 != null && ex3.Kind == HardThreadFailureKind.ObservationUnavailable)
+					if (!applyThreadsReady && !applyThreadsReady2 && ex3 != null && ex3.Kind == HardThreadFailureKind.ObservationUnavailable)
 					{
 						throw new HardThreadOperationException(HardThreadFailureKind.WriteOrDurabilityFault, "unwritten thread intent could not be settled", true);
 					}
@@ -1799,7 +1799,7 @@ namespace PaviseApp
 				}
 			}
 			if (pendingApplied != null) Save();
-			return CompleteApply(flag);
+			return CompleteApply(allConditionsMet);
 		}
 
 		private bool CompleteApply(bool partial)
@@ -1859,9 +1859,9 @@ namespace PaviseApp
 							throw new InvalidOperationException("original process identity is unknown");
 						}
 						if (hardThreadMachine.Read == HardThreadRead.Gone) SettleExitedProcess();
-						for (int num = journal.Rows.Count - 1; num >= 0; num--)
+						for (int rowsIndex = journal.Rows.Count - 1; rowsIndex >= 0; rowsIndex--)
 						{
-							HardThreadReceipt hardThreadReceipt = journal.Rows[num];
+							HardThreadReceipt hardThreadReceipt = journal.Rows[rowsIndex];
 							if (!hardThreadReceipt.Terminal)
 							{
 								hardThreadMachine = native.ReadMachine();
@@ -1884,10 +1884,10 @@ namespace PaviseApp
 										{
 											if (hardThreadReceipt.RestorePreviousKnown)
 											{
-												bool flag = hardThreadReceipt.RestorePreviousGroup == hardThreadReceipt.Group && hardThreadReceipt.RestorePrevious == hardThreadReceipt.Applied;
-												ulong num2 = (flag ? hardThreadReceipt.Previous : hardThreadReceipt.RestorePrevious);
-												ushort num3 = (flag ? hardThreadReceipt.PreviousGroup : hardThreadReceipt.RestorePreviousGroup);
-												if (hardThreadObserved.Group == num3 && hardThreadObserved.Mask == num2)
+												bool allConditionsMet = hardThreadReceipt.RestorePreviousGroup == hardThreadReceipt.Group && hardThreadReceipt.RestorePrevious == hardThreadReceipt.Applied;
+												ulong previous = (allConditionsMet ? hardThreadReceipt.Previous : hardThreadReceipt.RestorePrevious);
+												ushort previousGroup2 = (allConditionsMet ? hardThreadReceipt.PreviousGroup : hardThreadReceipt.RestorePreviousGroup);
+												if (hardThreadObserved.Group == previousGroup2 && hardThreadObserved.Mask == previous)
 												{
 													hardThreadReceipt.Phase = HardThreadPhase.Restored;
 													Save();
@@ -1904,7 +1904,7 @@ namespace PaviseApp
 												hardThreadReceipt.Phase = HardThreadPhase.RestoreIntent;
 												hardThreadReceipt.RestorePreviousKnown = false;
 												Save();
-												hardThreadReceipt = journal.Rows[num];
+												hardThreadReceipt = journal.Rows[rowsIndex];
 												hardThreadObserved = native.ReadThread(hardThreadReceipt.Thread);
 												hardThreadMachine = native.ReadMachine();
 												if (hardThreadMachine.Read == HardThreadRead.Gone)
@@ -1929,7 +1929,7 @@ namespace PaviseApp
 														hardThreadReceipt.RestorePrevious = previousMask;
 														hardThreadReceipt.Phase = HardThreadPhase.RestorePreviousRecorded;
 														Save();
-														hardThreadReceipt = journal.Rows[num];
+														hardThreadReceipt = journal.Rows[rowsIndex];
 														hardThreadObserved = native.ReadThread(hardThreadReceipt.Thread);
 														if (previousGroup == hardThreadReceipt.Group && previousMask == hardThreadReceipt.Applied && hardThreadObserved.Read == HardThreadRead.Known && hardThreadObserved.Group == hardThreadReceipt.PreviousGroup && hardThreadObserved.Mask == hardThreadReceipt.Previous)
 														{
@@ -1944,14 +1944,14 @@ namespace PaviseApp
 								}
 							}
 						}
-						bool flag2 = !Pending();
-						Status = (flag2 ? HardThreadStatus.Stopped : HardThreadStatus.RecoveryPending);
-						Detail = (flag2 ? "original owned changes restored or exact actors exited" : "recovery pending; unknown previous or external conflict is not overwritten");
+						bool isNotPendingSucceeded = !Pending();
+						Status = (isNotPendingSucceeded ? HardThreadStatus.Stopped : HardThreadStatus.RecoveryPending);
+						Detail = (isNotPendingSucceeded ? "original owned changes restored or exact actors exited" : "recovery pending; unknown previous or external conflict is not overwritten");
 						if (resetOperation)
 						{
-							lastFailureKind = ((!flag2) ? HardThreadFailureKind.RecoveryPending : HardThreadFailureKind.None);
+							lastFailureKind = ((!isNotPendingSucceeded) ? HardThreadFailureKind.RecoveryPending : HardThreadFailureKind.None);
 						}
-						if (flag2)
+						if (isNotPendingSucceeded)
 						{
 							plan = null;
 							IHardThreadSettledStore hardThreadSettledStore = store as IHardThreadSettledStore;
@@ -1960,7 +1960,7 @@ namespace PaviseApp
 								guardian.NoteSettled(hardThreadSettledStore.CaptureSettled(gate.Target, journal.Revision));
 							}
 						}
-						return flag2;
+						return isNotPendingSucceeded;
 					}
 					catch (Exception ex)
 					{

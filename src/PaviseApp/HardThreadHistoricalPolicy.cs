@@ -16,9 +16,9 @@ namespace PaviseApp
 			{
 				if (!row.Terminal)
 				{
-					string text = row.Phase.ToString();
+					string phaseText = row.Phase.ToString();
 					row.Phase = HardThreadPhase.Gone;
-					row.Detail = string.Concat(row.Detail ?? "", "; historical original target gone: ", reason, "; prior phase=", text);
+					row.Detail = string.Concat(row.Detail ?? "", "; historical original target gone: ", reason, "; prior phase=", phaseText);
 				}
 			}
 			return hardThreadJournal;
@@ -30,8 +30,8 @@ namespace PaviseApp
 			{
 				return HardThreadGoneReason.None;
 			}
-			HardThreadProcessFact[] array = new HardThreadProcessFact[2] { first, second };
-			foreach (HardThreadProcessFact hardThreadProcessFact in array)
+			HardThreadProcessFact[] hardThreadProcessFactItems = new HardThreadProcessFact[2] { first, second };
+			foreach (HardThreadProcessFact hardThreadProcessFact in hardThreadProcessFactItems)
 			{
 				if (hardThreadProcessFact != null && hardThreadProcessFact.Opened && hardThreadProcessFact.Pid == target.ProcessId && hardThreadProcessFact.TimesKnown && hardThreadProcessFact.Birth > 0 && (hardThreadProcessFact.Wait == 0 || hardThreadProcessFact.Wait == 258))
 				{

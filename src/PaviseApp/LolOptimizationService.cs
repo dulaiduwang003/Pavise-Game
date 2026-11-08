@@ -229,12 +229,12 @@ namespace PaviseApp
 			}
 			set
 			{
-				bool flag;
+				bool matchesEnabled;
 				lock (stateLock)
 				{
-					flag = enabled != value;
+					matchesEnabled = enabled != value;
 					enabled = value;
-					if (flag && value)
+					if (matchesEnabled && value)
 					{
 						discoveryRequested = true;
 						discoveryMisses = 0;
@@ -242,7 +242,7 @@ namespace PaviseApp
 					}
 					updatedUtc = DateTime.UtcNow;
 				}
-				if (flag)
+				if (matchesEnabled)
 				{
 					Settings.Save("LolColumnEnabled", value);
 					Poke();
@@ -262,10 +262,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				bool flag;
+				bool matchesCleanupEnabled;
 				lock (stateLock)
 				{
-					flag = cleanupEnabled != value;
+					matchesCleanupEnabled = cleanupEnabled != value;
 					cleanupEnabled = value;
 					if (value)
 					{
@@ -280,7 +280,7 @@ namespace PaviseApp
 					}
 					updatedUtc = DateTime.UtcNow;
 				}
-				if (flag)
+				if (matchesCleanupEnabled)
 				{
 					Settings.Save("LolColumnCleanupEnabled", value);
 					Poke();
@@ -300,14 +300,14 @@ namespace PaviseApp
 			}
 			set
 			{
-				bool flag;
+				bool matchesHeadlessEnabled;
 				lock (stateLock)
 				{
-					flag = headlessEnabled != value;
+					matchesHeadlessEnabled = headlessEnabled != value;
 					headlessEnabled = value;
 					updatedUtc = DateTime.UtcNow;
 				}
-				if (flag)
+				if (matchesHeadlessEnabled)
 				{
 					Settings.Save("LolColumnHeadlessEnabled", value);
 					Poke();
@@ -422,11 +422,11 @@ namespace PaviseApp
 			}
 			lcuFailureStreak = 0;
 			credentialLookupFailures = 0;
-			bool flag = string.Equals(currentPhase, "InProgress", StringComparison.OrdinalIgnoreCase);
+			bool valuesEqual = string.Equals(currentPhase, "InProgress", StringComparison.OrdinalIgnoreCase);
 			if (DateTime.UtcNow >= nextSessionVerifyUtc)
 			{
 				sessionVerified = LolLcuClient.IsReady(lolLcuCredentials);
-				nextSessionVerifyUtc = DateTime.UtcNow.AddSeconds((!sessionVerified) ? 5 : (flag ? 60 : 15));
+				nextSessionVerifyUtc = DateTime.UtcNow.AddSeconds((!sessionVerified) ? 5 : (valuesEqual ? 60 : 15));
 			}
 			ready = sessionVerified;
 			return lolLcuCredentials;
@@ -606,11 +606,11 @@ namespace PaviseApp
 		public void Stop()
 		{
 			Thread thread;
-			bool flag;
+			bool matchesRunning;
 			lock (stateLock)
 			{
 				thread = worker;
-				flag = running || (thread != null && thread.IsAlive);
+				matchesRunning = running || (thread != null && thread.IsAlive);
 				running = false;
 				processWakePending = false;
 				runGeneration++;
@@ -663,7 +663,7 @@ namespace PaviseApp
 				worker = ((thread != null && thread.IsAlive) ? thread : null);
 				updatedUtc = DateTime.UtcNow;
 			}
-			if (flag)
+			if (matchesRunning)
 			{
 				RaiseChanged();
 			}
@@ -681,10 +681,10 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag = batch.Overflowed;
-			bool flag2 = batch.Overflowed;
-			bool flag3 = false;
-			bool flag4 = batch.Overflowed;
+			bool overflowed = batch.Overflowed;
+			bool overflowed2 = batch.Overflowed;
+			bool notifyProcessChangesReady = false;
+			bool overflowed3 = batch.Overflowed;
 			string root;
 			string weGame;
 			lock (stateLock)
@@ -699,66 +699,66 @@ namespace PaviseApp
 			ProcessChange[] changes = batch.Changes;
 			foreach (ProcessChange processChange in changes)
 			{
-				bool flag5 = IsCredentialDiscoveryStartEvent(processChange);
-				if (processChange != null && (flag5 || LolRuntimeProcesses.IsRelevantProcessChange(processChange.Name, processChange.Path, root, weGame)))
+				bool isCredentialDiscoveryStartEvent = IsCredentialDiscoveryStartEvent(processChange);
+				if (processChange != null && (isCredentialDiscoveryStartEvent || LolRuntimeProcesses.IsRelevantProcessChange(processChange.Name, processChange.Path, root, weGame)))
 				{
-					flag = true;
+					overflowed = true;
 					if (IsExactCleanupStartEvent(processChange, root, weGame))
 					{
-						flag2 = true;
+						overflowed2 = true;
 					}
 					if (IsCredentialSourceStartEvent(processChange, root))
 					{
-						flag3 = true;
+						notifyProcessChangesReady = true;
 					}
-					if (flag5)
+					if (isCredentialDiscoveryStartEvent)
 					{
-						flag3 = true;
-						flag4 = true;
+						notifyProcessChangesReady = true;
+						overflowed3 = true;
 					}
 				}
 			}
-			if (!flag)
+			if (!overflowed)
 			{
 				return;
 			}
-			if (flag4)
+			if (overflowed3)
 			{
 				InvalidateDiscovery();
 			}
-			if (flag3)
+			if (notifyProcessChangesReady)
 			{
 				Interlocked.Exchange(ref credentialGenerationChanged, 1);
 			}
-			bool flag6 = false;
-			bool flag7 = false;
+			bool notifyProcessChangesReady2 = false;
+			bool notifyProcessChangesReady3 = false;
 			int dueTime = -1;
 			DateTime utcNow = DateTime.UtcNow;
-			bool flag8;
+			bool matchesNotifyProcessChangesReady;
 			lock (stateLock)
 			{
 				if (batch.Overflowed)
 				{
 					nextFullProcessScanUtc = DateTime.MinValue;
 				}
-				if (flag2)
+				if (overflowed2)
 				{
 					cleanupDirty = true;
 				}
-				flag8 = flag3 || utcNow >= nextProcessWakeUtc;
-				if (flag8)
+				matchesNotifyProcessChangesReady = notifyProcessChangesReady || utcNow >= nextProcessWakeUtc;
+				if (matchesNotifyProcessChangesReady)
 				{
 					nextProcessWakeUtc = utcNow.AddMilliseconds(5000.0);
-					flag7 = processWakePending;
+					notifyProcessChangesReady3 = processWakePending;
 					processWakePending = false;
 				}
 				else if (!processWakePending)
 				{
 					processWakePending = true;
-					flag6 = true;
+					notifyProcessChangesReady2 = true;
 					dueTime = ProcessWakeDelayMs(utcNow, nextProcessWakeUtc);
 				}
-				if (flag7)
+				if (notifyProcessChangesReady3)
 				{
 					try
 					{
@@ -768,7 +768,7 @@ namespace PaviseApp
 					{
 					}
 				}
-				if (flag6)
+				if (notifyProcessChangesReady2)
 				{
 					try
 					{
@@ -779,7 +779,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (flag8)
+			if (matchesNotifyProcessChangesReady)
 			{
 				Poke();
 			}
@@ -787,8 +787,8 @@ namespace PaviseApp
 
 		private void ProcessWakeTimerElapsed(object unused)
 		{
-			bool flag = false;
-			bool flag2 = false;
+			bool processWakeTimerElapsedReady = false;
+			bool processWakeTimerElapsedReady2 = false;
 			int dueTime = -1;
 			lock (stateLock)
 			{
@@ -799,17 +799,17 @@ namespace PaviseApp
 				DateTime utcNow = DateTime.UtcNow;
 				if (utcNow < nextProcessWakeUtc)
 				{
-					flag2 = true;
+					processWakeTimerElapsedReady2 = true;
 					dueTime = ProcessWakeDelayMs(utcNow, nextProcessWakeUtc);
 				}
 				else
 				{
 					processWakePending = false;
 					nextProcessWakeUtc = utcNow.AddMilliseconds(5000.0);
-					flag = true;
+					processWakeTimerElapsedReady = true;
 				}
 			}
-			if (flag2)
+			if (processWakeTimerElapsedReady2)
 			{
 				try
 				{
@@ -819,7 +819,7 @@ namespace PaviseApp
 				{
 				}
 			}
-			if (flag)
+			if (processWakeTimerElapsedReady)
 			{
 				Poke();
 			}
@@ -827,12 +827,12 @@ namespace PaviseApp
 
 		internal static int ProcessWakeDelayMs(DateTime nowUtc, DateTime deadlineUtc)
 		{
-			long num = deadlineUtc.Ticks - nowUtc.Ticks;
-			if (num <= 0)
+			long remainingTicks = deadlineUtc.Ticks - nowUtc.Ticks;
+			if (remainingTicks <= 0)
 			{
 				return 1;
 			}
-			long val = (num + 10000 - 1) / 10000;
+			long val = (remainingTicks + 10000 - 1) / 10000;
 			return (int)Math.Min(2147483647L, Math.Max(1L, val));
 		}
 
@@ -937,13 +937,13 @@ namespace PaviseApp
 					cleanupFollowUpsRemaining = 0;
 				}
 				LolCleanupResult lolCleanupResult = LolRuntimeProcesses.Clean(root, weGame, true);
-				bool flag = LolLcuClient.IsReady(lolLcuCredentials);
+				bool isReady = LolLcuClient.IsReady(lolLcuCredentials);
 				lock (stateLock)
 				{
 					cleanedProcessCount += lolCleanupResult.Count;
 					releasedWorkingSetBytes += lolCleanupResult.WorkingSetBytes;
-					lcuReady = flag;
-					if (flag)
+					lcuReady = isReady;
+					if (isReady)
 					{
 						lastAction = ((lolCleanupResult.Count > 0) ? Lang.F("lol.act.cleaned", lolCleanupResult.Count.ToString()) : Lang.T("lol.act.cleanidle"));
 						lastError = "";
@@ -969,7 +969,7 @@ namespace PaviseApp
 				LolProcessSnapshot processes = LolRuntimeProcesses.Scan(root, weGame);
 				UpdateProcessState(processes);
 				Logger.Log("英雄联盟专栏：精准净化完成，结束 " + lolCleanupResult.Count + " 个附加进程");
-				if (!flag)
+				if (!isReady)
 				{
 					InvalidateCredentials();
 					TryRecoverLoginChain(weGame, processes, false, lolCleanupResult.Count > 0);
@@ -1001,25 +1001,25 @@ namespace PaviseApp
 					SetError(Lang.T("lol.err.nosession"));
 					return false;
 				}
-				bool flag = TryRestoreUxBounded(credentialsForRestore, root);
-				if (!flag)
+				bool tryRestoreUxBounded = TryRestoreUxBounded(credentialsForRestore, root);
+				if (!tryRestoreUxBounded)
 				{
 					InvalidateCredentials();
 					credentialsForRestore = GetCredentialsForRestore(root, true);
-					flag = TryRestoreUxBounded(credentialsForRestore, root);
-					if (!flag && credentialsForRestore != null)
+					tryRestoreUxBounded = TryRestoreUxBounded(credentialsForRestore, root);
+					if (!tryRestoreUxBounded && credentialsForRestore != null)
 					{
 						ScheduleRestoreCredentialRetry();
 					}
 				}
-				bool flag2 = flag && (LolRuntimeProcesses.IsGameRunning(root) || IsSameMatchPhase(LolLcuClient.GetGameflowPhase(credentialsForRestore)));
+				bool matchesTryRestoreUxBounded = tryRestoreUxBounded && (LolRuntimeProcesses.IsGameRunning(root) || IsSameMatchPhase(LolLcuClient.GetGameflowPhase(credentialsForRestore)));
 				lock (stateLock)
 				{
-					if (flag)
+					if (tryRestoreUxBounded)
 					{
 						headlessActive = false;
 						headlessExitSamples = 0;
-						manualUxBypassGame = flag2;
+						manualUxBypassGame = matchesTryRestoreUxBounded;
 						lastAction = Lang.T("lol.act.restored");
 						lastError = "";
 					}
@@ -1030,11 +1030,11 @@ namespace PaviseApp
 					lastActionUtc = DateTime.UtcNow;
 					updatedUtc = DateTime.UtcNow;
 				}
-				bool flag3 = flag;
-				if (flag)
+				bool restoreNowSucceeded = tryRestoreUxBounded;
+				if (tryRestoreUxBounded)
 				{
-					flag3 = ClearOwnedHeadlessMark();
-					if (!flag3)
+					restoreNowSucceeded = ClearOwnedHeadlessMark();
+					if (!restoreNowSucceeded)
 					{
 						lock (stateLock)
 						{
@@ -1046,18 +1046,18 @@ namespace PaviseApp
 					Logger.Log("英雄联盟专栏：大厅界面已恢复");
 				}
 				RaiseChanged();
-				return flag3;
+				return restoreNowSucceeded;
 			}
 		}
 
 		public bool HasRecordedHeadlessState()
 		{
-			bool flag;
+			bool matchesHeadlessActive;
 			lock (stateLock)
 			{
-				flag = headlessActive || !string.IsNullOrEmpty(headlessLeaseRoot);
+				matchesHeadlessActive = headlessActive || !string.IsNullOrEmpty(headlessLeaseRoot);
 			}
-			if (!flag)
+			if (!matchesHeadlessActive)
 			{
 				return LolHeadlessLease.Exists();
 			}
@@ -1066,8 +1066,8 @@ namespace PaviseApp
 
 		private bool StartWeGame(string weGame, bool updateAction)
 		{
-			string text = LolInstallDiscovery.FindWeGameExecutable(weGame);
-			if (text == null)
+			string weGameExecutable = LolInstallDiscovery.FindWeGameExecutable(weGame);
+			if (weGameExecutable == null)
 			{
 				if (updateAction)
 				{
@@ -1075,7 +1075,7 @@ namespace PaviseApp
 				}
 				return false;
 			}
-			if (!UserLaunch.Start(text))
+			if (!UserLaunch.Start(weGameExecutable))
 			{
 				if (updateAction)
 				{
@@ -1123,12 +1123,12 @@ namespace PaviseApp
 				disposed = true;
 			}
 			Stop();
-			bool flag;
+			bool anyConditionMet;
 			lock (stateLock)
 			{
-				flag = worker == null || !worker.IsAlive;
+				anyConditionMet = worker == null || !worker.IsAlive;
 			}
-			if (flag)
+			if (anyConditionMet)
 			{
 				DisposeWaitHandles();
 			}
@@ -1185,35 +1185,35 @@ namespace PaviseApp
 
 		private bool ClearOwnedHeadlessMark()
 		{
-			string text;
-			int num;
-			long num2;
+			string headlessLeaseRootSnapshot;
+			int headlessLeaseGamePidSnapshot;
+			long headlessLeaseGameCreationSnapshot;
 			lock (stateLock)
 			{
-				text = headlessLeaseRoot;
-				num = headlessLeaseGamePid;
-				num2 = headlessLeaseGameCreation;
+				headlessLeaseRootSnapshot = headlessLeaseRoot;
+				headlessLeaseGamePidSnapshot = headlessLeaseGamePid;
+				headlessLeaseGameCreationSnapshot = headlessLeaseGameCreation;
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(headlessLeaseRootSnapshot))
 			{
 				return true;
 			}
-			string recoveryStage = HeadlessRecoveryStage(text, num, num2, "clear-mark");
-			if (!headlessFailures.Allowed(num, num2, text, recoveryStage)) return false;
-			bool flag = num > 0 && num2 > 0 && LolHeadlessLease.ClearIfMatches(text, num, num2);
+			string recoveryStage = HeadlessRecoveryStage(headlessLeaseRootSnapshot, headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot, "clear-mark");
+			if (!headlessFailures.Allowed(headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot, headlessLeaseRootSnapshot, recoveryStage)) return false;
+			bool matchesClearIfMatches = headlessLeaseGamePidSnapshot > 0 && headlessLeaseGameCreationSnapshot > 0 && LolHeadlessLease.ClearIfMatches(headlessLeaseRootSnapshot, headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot);
 			string current; LolHeadlessLeaseInfo remaining;
 			bool confirmedReleased = Settings.TryLoadStr("LolHeadlessEngagedRoot", out current)
 				&& (string.IsNullOrEmpty(current) || LolHeadlessLease.TryParse(current, out remaining)
-				&& (!SameRootPath(remaining.Root, text) || remaining.GamePid != num || remaining.GameCreation != num2));
-			bool flag3 = flag || confirmedReleased;
-			if (flag3) headlessFailures.Succeeded(num, num2, text, recoveryStage);
-			else Logger.Warn("LoL recovery mark failure=" + headlessFailures.Failed(num, num2, text, recoveryStage) + "/3; owned mark retained");
+				&& (!SameRootPath(remaining.Root, headlessLeaseRootSnapshot) || remaining.GamePid != headlessLeaseGamePidSnapshot || remaining.GameCreation != headlessLeaseGameCreationSnapshot));
+			bool matchesMatchesClearIfMatches = matchesClearIfMatches || confirmedReleased;
+			if (matchesMatchesClearIfMatches) headlessFailures.Succeeded(headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot, headlessLeaseRootSnapshot, recoveryStage);
+			else Logger.Warn("LoL recovery mark failure=" + headlessFailures.Failed(headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot, headlessLeaseRootSnapshot, recoveryStage) + "/3; owned mark retained");
 			lock (stateLock)
 			{
-				if (SameLocalLeaseLocked(text, num, num2))
+				if (SameLocalLeaseLocked(headlessLeaseRootSnapshot, headlessLeaseGamePidSnapshot, headlessLeaseGameCreationSnapshot))
 				{
-					headlessLeaseReleasePending = !flag3;
-					if (flag3)
+					headlessLeaseReleasePending = !matchesMatchesClearIfMatches;
+					if (matchesMatchesClearIfMatches)
 					{
 						headlessLeaseRoot = null;
 						headlessLeaseGamePid = 0;
@@ -1221,7 +1221,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			return flag3;
+			return matchesMatchesClearIfMatches;
 		}
 
 		private void RememberHeadlessLease(string root)
@@ -1230,16 +1230,16 @@ namespace PaviseApp
 			LolHeadlessLeaseInfo info;
 			if (!Settings.TryLoadStr("LolHeadlessEngagedRoot", out stored)) return;
 			if (!string.IsNullOrEmpty(stored) && !LolHeadlessLease.TryParse(stored, out info)) return;
-			bool flag = LolHeadlessLease.TryParse(stored, out info) && SameRootPath(info.Root, root);
+			bool matchesTryParse = LolHeadlessLease.TryParse(stored, out info) && SameRootPath(info.Root, root);
 			lock (stateLock)
 			{
-				if (flag)
+				if (matchesTryParse)
 				{
-					bool flag2 = SameLocalLeaseLocked(info.Root, info.GamePid, info.GameCreation);
+					bool sameLocalLeaseLockedSucceeded = SameLocalLeaseLocked(info.Root, info.GamePid, info.GameCreation);
 					headlessLeaseRoot = info.Root;
 					headlessLeaseGamePid = info.GamePid;
 					headlessLeaseGameCreation = info.GameCreation;
-					if (!flag2)
+					if (!sameLocalLeaseLockedSucceeded)
 					{
 						headlessLeaseReleasePending = false;
 					}
@@ -1280,9 +1280,9 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Path.GetFullPath(left ?? "").TrimEnd('\\');
-				string text2 = Path.GetFullPath(right ?? "").TrimEnd('\\');
-				return text.Length > 2 && text2.Length > 2 && string.Equals(text, text2, StringComparison.OrdinalIgnoreCase);
+				string getFullPathTrimmed = Path.GetFullPath(left ?? "").TrimEnd('\\');
+				string getFullPathTrimmed2 = Path.GetFullPath(right ?? "").TrimEnd('\\');
+				return getFullPathTrimmed.Length > 2 && getFullPathTrimmed2.Length > 2 && string.Equals(getFullPathTrimmed, getFullPathTrimmed2, StringComparison.OrdinalIgnoreCase);
 			}
 			catch
 			{
@@ -1302,10 +1302,10 @@ namespace PaviseApp
 
 		private void GoIdle()
 		{
-			bool flag;
+			bool anyConditionMet;
 			lock (stateLock)
 			{
-				flag = clientRunning || gameRunning || lcuReady || phase.Length > 0 || weGameProcessCount != 0 || crossProcessCount != 0 || uxProcessCount != 0;
+				anyConditionMet = clientRunning || gameRunning || lcuReady || phase.Length > 0 || weGameProcessCount != 0 || crossProcessCount != 0 || uxProcessCount != 0;
 				clientRunning = false;
 				gameRunning = false;
 				lcuReady = false;
@@ -1320,7 +1320,7 @@ namespace PaviseApp
 				updatedUtc = DateTime.UtcNow;
 			}
 			InvalidateCredentials();
-			if (flag)
+			if (anyConditionMet)
 			{
 				RaiseChanged();
 			}
@@ -1538,23 +1538,23 @@ namespace PaviseApp
 						break;
 					}
 					bool serviceEnabled;
-					bool flag;
-					bool flag2;
-					bool flag3;
-					bool flag4;
-					bool flag5;
+					bool cleanupEnabledSnapshot;
+					bool headlessEnabledSnapshot;
+					bool clientRunningSnapshot;
+					bool gameRunningSnapshot;
+					bool headlessActiveSnapshot;
 					bool recoveryMarked;
 					lock (stateLock)
 					{
 						serviceEnabled = enabled;
-						flag = cleanupEnabled;
-						flag2 = headlessEnabled;
-						flag3 = clientRunning;
-						flag4 = gameRunning;
-						flag5 = headlessActive;
+						cleanupEnabledSnapshot = cleanupEnabled;
+						headlessEnabledSnapshot = headlessEnabled;
+						clientRunningSnapshot = clientRunning;
+						gameRunningSnapshot = gameRunning;
+						headlessActiveSnapshot = headlessActive;
 						recoveryMarked = !string.IsNullOrEmpty(headlessLeaseRoot);
 					}
-					int millisecondsTimeout = WorkerDelayMs(serviceEnabled, flag, flag2, flag3, flag4, flag5, recoveryMarked);
+					int millisecondsTimeout = WorkerDelayMs(serviceEnabled, cleanupEnabledSnapshot, headlessEnabledSnapshot, clientRunningSnapshot, gameRunningSnapshot, headlessActiveSnapshot, recoveryMarked);
 					if (WaitHandle.WaitAny(waitHandles, millisecondsTimeout) == 0)
 					{
 						break;
@@ -1563,16 +1563,16 @@ namespace PaviseApp
 			}
 			finally
 			{
-				bool flag6;
+				bool disposedSnapshot;
 				lock (stateLock)
 				{
 					if (object.ReferenceEquals(worker, Thread.CurrentThread))
 					{
 						worker = null;
 					}
-					flag6 = disposed;
+					disposedSnapshot = disposed;
 				}
-				if (flag6)
+				if (disposedSnapshot)
 				{
 					DisposeWaitHandles();
 				}
@@ -1649,19 +1649,19 @@ namespace PaviseApp
 			{
 				InvalidateCredentials();
 			}
-			bool flag;
-			bool flag2;
+			bool matchesEnabled;
+			bool headlessActiveSnapshot;
 			lock (stateLock)
 			{
-				flag = enabled && (cleanupEnabled || headlessEnabled);
-				flag2 = headlessActive;
+				matchesEnabled = enabled && (cleanupEnabled || headlessEnabled);
+				headlessActiveSnapshot = headlessActive;
 			}
-			bool flag3 = HasHeadlessMark();
-			if (!flag3)
+			bool hasHeadlessMark = HasHeadlessMark();
+			if (!hasHeadlessMark)
 			{
 				ForgetRememberedHeadlessLease();
 			}
-			if (!flag && !flag2 && !flag3)
+			if (!matchesEnabled && !headlessActiveSnapshot && !hasHeadlessMark)
 			{
 				GoIdle();
 				return false;
@@ -1695,12 +1695,12 @@ namespace PaviseApp
 				return false;
 			}
 			RememberHeadlessLease(root);
-			bool flag;
+			bool headlessLeaseReleasePendingSnapshot;
 			lock (stateLock)
 			{
-				flag = headlessLeaseReleasePending;
+				headlessLeaseReleasePendingSnapshot = headlessLeaseReleasePending;
 			}
-			if (flag)
+			if (headlessLeaseReleasePendingSnapshot)
 			{
 				ClearOwnedHeadlessMark();
 			}
@@ -1709,16 +1709,16 @@ namespace PaviseApp
 
 		private LolProcessSnapshot ScanProcesses(string root, string weGame)
 		{
-			bool flag;
+			bool matchesUtcNow;
 			lock (stateLock)
 			{
-				flag = DateTime.UtcNow < nextFullProcessScanUtc;
-				if (!flag)
+				matchesUtcNow = DateTime.UtcNow < nextFullProcessScanUtc;
+				if (!matchesUtcNow)
 				{
 					nextFullProcessScanUtc = DateTime.UtcNow.AddSeconds(60.0);
 				}
 			}
-			return LolRuntimeProcesses.Scan(root, weGame, flag);
+			return LolRuntimeProcesses.Scan(root, weGame, matchesUtcNow);
 		}
 
 		private void AdoptRuntimeState(LolProcessSnapshot processes, string currentPhase, bool ready, bool sameMatch, out bool serviceEnabled, out bool cleanEnabled, out bool noUxEnabled, out bool active, out bool manualBypass, out bool clientExitConfirmed, out bool matchExitConfirmed, out bool cleanupMatch)
@@ -1800,7 +1800,7 @@ namespace PaviseApp
 
 		private void HandleUxRespawn(LolLcuCredentials credentials, string root, string weGame, bool serviceEnabled, bool noUxEnabled, bool inProgress, ref bool active, ref bool manualBypass, ref LolProcessSnapshot processes)
 		{
-			bool flag = false;
+			bool handleUxRespawnReady = false;
 			if (active && serviceEnabled && noUxEnabled && !manualBypass && inProgress && processes.MainUxProcessCount > 0)
 			{
 				lock (stateLock)
@@ -1808,26 +1808,26 @@ namespace PaviseApp
 					headlessActive = false;
 					headlessExitSamples = 0;
 					nextUxKillUtc = DateTime.UtcNow.AddSeconds(10.0);
-					flag = RegisterUxRespawn(DateTime.UtcNow, uxRespawns);
-					if (flag)
+					handleUxRespawnReady = RegisterUxRespawn(DateTime.UtcNow, uxRespawns);
+					if (handleUxRespawnReady)
 					{
 						manualUxBypassGame = true;
 					}
 				}
 				active = false;
 			}
-			if (flag)
+			if (handleUxRespawnReady)
 			{
-				bool flag2 = RestoreCore(credentials, root, true);
+				bool restoreCoreSucceeded = RestoreCore(credentials, root, true);
 				lock (stateLock)
 				{
-					headlessActive = !flag2;
+					headlessActive = !restoreCoreSucceeded;
 					headlessExitSamples = 0;
 					manualUxBypassGame = true;
-					active = !flag2;
+					active = !restoreCoreSucceeded;
 					manualBypass = true;
 					lastAction = Lang.T("lol.act.uxcircuit");
-					lastError = (flag2 ? "" : Lang.T("lol.err.uxcircuitrestore"));
+					lastError = (restoreCoreSucceeded ? "" : Lang.T("lol.err.uxcircuitrestore"));
 					lastActionUtc = DateTime.UtcNow;
 					updatedUtc = DateTime.UtcNow;
 				}
@@ -1838,7 +1838,7 @@ namespace PaviseApp
 		private void RunRestoreStage(LolLcuCredentials credentials, string root, string weGame, bool serviceEnabled, bool noUxEnabled, bool manualBypass, bool active, bool ready, bool matchExitConfirmed, ref LolProcessSnapshot processes)
 		{
 			if (matchExitConfirmed) ObserveHeadlessOwnerExit();
-			bool flag = false;
+			bool runRestoreStageReady = false;
 			if (active)
 			{
 				lock (stateLock)
@@ -1846,7 +1846,7 @@ namespace PaviseApp
 					if (!serviceEnabled || !noUxEnabled || manualBypass)
 					{
 						headlessExitSamples = 0;
-						flag = true;
+						runRestoreStageReady = true;
 					}
 					else if (ready && matchExitConfirmed)
 					{
@@ -1854,7 +1854,7 @@ namespace PaviseApp
 						{
 							headlessExitSamples++;
 						}
-						flag = headlessExitSamples >= 2;
+						runRestoreStageReady = headlessExitSamples >= 2;
 					}
 					else
 					{
@@ -1862,7 +1862,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (flag)
+			if (runRestoreStageReady)
 			{
 				RestoreCore(credentials, root);
 				processes = LolRuntimeProcesses.Scan(root, weGame, true);
@@ -1880,16 +1880,16 @@ namespace PaviseApp
 
 		private void RunCleanupStage(LolLcuCredentials credentials, string root, string weGame, bool serviceEnabled, bool cleanEnabled, string currentPhase, bool cleanupMatch, bool inProgress, ref bool ready, ref LolProcessSnapshot processes)
 		{
-			bool flag = IsVerifiedCleanupSession(processes.ClientRunning, ready, currentPhase, processes.GameRunning, cleanupMatch);
+			bool isVerifiedCleanupSession = IsVerifiedCleanupSession(processes.ClientRunning, ready, currentPhase, processes.GameRunning, cleanupMatch);
 			DateTime utcNow = DateTime.UtcNow;
-			bool flag2;
-			bool flag3;
+			bool anyConditionMet;
+			bool cleanupCircuitOpenSnapshot;
 			lock (stateLock)
 			{
-				flag2 = utcNow >= nextCleanupUtc || (cleanupDirty && !cleanupBurstActive);
-				flag3 = cleanupCircuitOpen;
+				anyConditionMet = utcNow >= nextCleanupUtc || (cleanupDirty && !cleanupBurstActive);
+				cleanupCircuitOpenSnapshot = cleanupCircuitOpen;
 			}
-			if (!serviceEnabled || !cleanEnabled || !flag || flag3 || !flag2)
+			if (!serviceEnabled || !cleanEnabled || !isVerifiedCleanupSession || cleanupCircuitOpenSnapshot || !anyConditionMet)
 			{
 				return;
 			}
@@ -1907,33 +1907,33 @@ namespace PaviseApp
 				}
 			}
 			LolCleanupResult lolCleanupResult = LolRuntimeProcesses.Clean(root, weGame);
-			bool flag4 = lolCleanupResult.Count == 0 || LolLcuClient.IsReady(credentials);
+			bool matchesIsReady = lolCleanupResult.Count == 0 || LolLcuClient.IsReady(credentials);
 			DateTime utcNow2 = DateTime.UtcNow;
-			bool flag5 = false;
+			bool runCleanupStageReady = false;
 			lock (stateLock)
 			{
 				cleanedProcessCount += lolCleanupResult.Count;
 				releasedWorkingSetBytes += lolCleanupResult.WorkingSetBytes;
-				lcuReady = flag4;
+				lcuReady = matchesIsReady;
 				if (lolCleanupResult.Count > 0)
 				{
-					flag5 = RegisterCleanupKillCycle(utcNow2, cleanupKillCycles) || !flag4;
-					if (flag5)
+					runCleanupStageReady = RegisterCleanupKillCycle(utcNow2, cleanupKillCycles) || !matchesIsReady;
+					if (runCleanupStageReady)
 					{
 						cleanupCircuitOpen = true;
 					}
 				}
-				if (flag5)
+				if (runCleanupStageReady)
 				{
 					cleanupDirty = false;
 					cleanupBurstActive = false;
 					cleanupFollowUpsRemaining = 0;
 					nextCleanupUtc = DateTime.MaxValue;
 					lastAction = Lang.T("lol.act.cleanupcircuit");
-					lastError = (flag4 ? "" : Lang.T("lol.err.sessionlost"));
+					lastError = (matchesIsReady ? "" : Lang.T("lol.err.sessionlost"));
 					lastActionUtc = utcNow2;
 				}
-				else if (!flag4)
+				else if (!matchesIsReady)
 				{
 					lastAction = Lang.T("lol.act.recovering");
 					lastError = Lang.T("lol.err.sessionlost");
@@ -1946,7 +1946,7 @@ namespace PaviseApp
 					lastActionUtc = utcNow2;
 					Logger.Log("英雄联盟专栏：自动精准净化 " + lolCleanupResult.Count + " 个附加进程");
 				}
-				if (!flag5)
+				if (!runCleanupStageReady)
 				{
 					if ((lolCleanupResult.Count > 0 && cleanupFollowUpsRemaining > 0) || cleanupDirty)
 					{
@@ -1962,12 +1962,12 @@ namespace PaviseApp
 				}
 				updatedUtc = utcNow2;
 			}
-			ready = flag4;
+			ready = matchesIsReady;
 			if (lolCleanupResult.Count > 0)
 			{
 				processes = LolRuntimeProcesses.Scan(root, weGame, true);
 			}
-			if (!flag4 && lolCleanupResult.Count > 0)
+			if (!matchesIsReady && lolCleanupResult.Count > 0)
 			{
 				InvalidateCredentials(false);
 				ScheduleCredentialRetry(root);
@@ -1981,12 +1981,12 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag;
+			bool allConditionsMet;
 			lock (stateLock)
 			{
-				flag = !headlessActive && !manualUxBypassGame && processes.MainUxProcessCount > 0 && DateTime.UtcNow >= nextUxKillUtc;
+				allConditionsMet = !headlessActive && !manualUxBypassGame && processes.MainUxProcessCount > 0 && DateTime.UtcNow >= nextUxKillUtc;
 			}
-			if (!flag)
+			if (!allConditionsMet)
 			{
 				return;
 			}
@@ -2001,25 +2001,25 @@ namespace PaviseApp
 			}
 			int pid;
 			long creation;
-			bool flag2 = LolRuntimeProcesses.TryGetGameIdentity(root, processes.GameProcessId, out pid, out creation);
-			if (flag2 && !headlessFailures.Allowed(pid, creation, root, "apply")) return;
-			bool flag3 = false, flag4 = false, flag5 = false;
+			bool gameIdentity = LolRuntimeProcesses.TryGetGameIdentity(root, processes.GameProcessId, out pid, out creation);
+			if (gameIdentity && !headlessFailures.Allowed(pid, creation, root, "apply")) return;
+			bool runHeadlessKillStageReady = false, runHeadlessKillStageReady2 = false, runHeadlessKillStageReady3 = false;
 			try
 			{
-				flag3 = flag2 && SetHeadlessMark(root, pid, creation);
-				flag4 = flag3 && LolWatchdog.StartDetached(root, pid, creation);
-				flag5 = flag4 && LolLcuClient.KillUx(credentials, root);
+				runHeadlessKillStageReady = gameIdentity && SetHeadlessMark(root, pid, creation);
+				runHeadlessKillStageReady2 = runHeadlessKillStageReady && LolWatchdog.StartDetached(root, pid, creation);
+				runHeadlessKillStageReady3 = runHeadlessKillStageReady2 && LolLcuClient.KillUx(credentials, root);
 			}
 			finally
 			{
-				if (flag5) headlessFailures.Succeeded(pid, creation, root, "apply");
-				else if (flag2) Logger.Warn("LoL headless apply failure=" + headlessFailures.Failed(pid, creation, root, "apply")
+				if (runHeadlessKillStageReady3) headlessFailures.Succeeded(pid, creation, root, "apply");
+				else if (gameIdentity) Logger.Warn("LoL headless apply failure=" + headlessFailures.Failed(pid, creation, root, "apply")
 					+ "/3 target=" + pid + "/" + creation + "; recovery ownership retained where present");
 			}
 			// Timeout or request failure does not prove the helper/mutation absent; retain the lease until verified restoration.
 			lock (stateLock)
 			{
-				if (flag5)
+				if (runHeadlessKillStageReady3)
 				{
 					headlessActive = true;
 					headlessExitSamples = 0;
@@ -2029,12 +2029,12 @@ namespace PaviseApp
 				}
 				else
 				{
-					lastError = ((!flag2) ? Lang.T("lol.err.gameidentity") : ((!flag3) ? Lang.T("lol.err.lease") : ((!flag4) ? Lang.T("lol.err.watchdog") : Lang.T("lol.err.killux"))));
+					lastError = ((!gameIdentity) ? Lang.T("lol.err.gameidentity") : ((!runHeadlessKillStageReady) ? Lang.T("lol.err.lease") : ((!runHeadlessKillStageReady2) ? Lang.T("lol.err.watchdog") : Lang.T("lol.err.killux"))));
 					lastActionUtc = DateTime.UtcNow;
 				}
 				updatedUtc = DateTime.UtcNow;
 			}
-			if (flag5)
+			if (runHeadlessKillStageReady3)
 			{
 				Logger.Log("英雄联盟专栏：独立恢复器已确认守护，对局真无头已启用");
 				Thread.Sleep(400);
@@ -2058,12 +2058,12 @@ namespace PaviseApp
 			{
 				credentials = GetCredentialsForRestore(root, force);
 			}
-			bool flag = TryRestoreUxBounded(credentials, root);
+			bool tryRestoreUxBounded = TryRestoreUxBounded(credentials, root);
 			lock (stateLock)
 			{
 				string a = lastAction;
 				string a2 = lastError;
-				if (flag)
+				if (tryRestoreUxBounded)
 				{
 					headlessActive = false;
 					headlessExitSamples = 0;
@@ -2087,12 +2087,12 @@ namespace PaviseApp
 				}
 				updatedUtc = DateTime.UtcNow;
 			}
-			if (flag)
+			if (tryRestoreUxBounded)
 			{
 				ClearOwnedHeadlessMark();
 				Logger.Log("英雄联盟专栏：大厅界面已自动恢复");
 			}
-			return flag;
+			return tryRestoreUxBounded;
 		}
 
 		private string HeadlessRecoveryStage(string root, int pid, long birth, string stage)
@@ -2147,50 +2147,50 @@ namespace PaviseApp
 
 		public bool AdoptRootFromPath(string executablePath)
 		{
-			string text = null;
+			string message = null;
 			try
 			{
-				string text2 = (string.IsNullOrEmpty(executablePath) ? null : Path.GetDirectoryName(executablePath));
+				string directoryName = (string.IsNullOrEmpty(executablePath) ? null : Path.GetDirectoryName(executablePath));
 				for (int i = 0; i < 6; i++)
 				{
-					if (string.IsNullOrEmpty(text2))
+					if (string.IsNullOrEmpty(directoryName))
 					{
 						break;
 					}
-					if (LolInstallDiscovery.IsValidLolRoot(text2))
+					if (LolInstallDiscovery.IsValidLolRoot(directoryName))
 					{
-						text = text2;
+						message = directoryName;
 						break;
 					}
-					text2 = Path.GetDirectoryName(text2);
+					directoryName = Path.GetDirectoryName(directoryName);
 				}
 			}
 			catch
 			{
-				text = null;
+				message = null;
 			}
-			if (text == null)
+			if (message == null)
 			{
 				return false;
 			}
-			bool flag;
+			bool anyConditionMet;
 			lock (stateLock)
 			{
-				flag = !string.Equals(lolRoot, text, StringComparison.OrdinalIgnoreCase) || !installationFound;
-				lolRoot = text;
+				anyConditionMet = !string.Equals(lolRoot, message, StringComparison.OrdinalIgnoreCase) || !installationFound;
+				lolRoot = message;
 				installationFound = true;
 				discoveryRequested = false;
 				discoveryMisses = 0;
 				nextDiscoveryUtc = DateTime.MinValue;
 				updatedUtc = DateTime.UtcNow;
 			}
-			if (!flag)
+			if (!anyConditionMet)
 			{
 				return true;
 			}
 			InvalidateCredentials();
-			Settings.SaveStr("LolInstallPath", text);
-			Logger.Log("英雄联盟增强 按游戏库条目定位安装目录 " + text);
+			Settings.SaveStr("LolInstallPath", message);
+			Logger.Log("英雄联盟增强 按游戏库条目定位安装目录 " + message);
 			Poke();
 			RaiseChanged();
 			return true;
@@ -2235,92 +2235,92 @@ namespace PaviseApp
 
 		private void Discover(out string root, out string weGame, bool force, bool stopWithWorker = false)
 		{
-			string text;
-			string text2;
-			bool flag;
+			string lolRootSnapshot;
+			string weGameRootSnapshot;
+			bool matchesForce;
 			lock (stateLock)
 			{
-				text = lolRoot;
-				text2 = weGameRoot;
-				flag = force || DateTime.UtcNow >= nextDiscoveryUtc;
+				lolRootSnapshot = lolRoot;
+				weGameRootSnapshot = weGameRoot;
+				matchesForce = force || DateTime.UtcNow >= nextDiscoveryUtc;
 			}
-			if (flag)
+			if (matchesForce)
 			{
-				bool flag2 = LolInstallDiscovery.IsValidLolRoot(text);
-				if (!force && !flag2)
+				bool isValidLolRoot = LolInstallDiscovery.IsValidLolRoot(lolRootSnapshot);
+				if (!force && !isValidLolRoot)
 				{
-					bool flag3;
+					bool discoveryRequestedSnapshot;
 					lock (stateLock)
 					{
-						flag3 = discoveryRequested;
+						discoveryRequestedSnapshot = discoveryRequested;
 					}
-					if (!flag3)
+					if (!discoveryRequestedSnapshot)
 					{
 						lock (stateLock)
 						{
 							nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(120.0);
 						}
 						root = null;
-						weGame = text2;
+						weGame = weGameRootSnapshot;
 						return;
 					}
 				}
-				bool flag4;
+				bool discoveryRequestedSnapshot2;
 				lock (stateLock)
 				{
-					flag4 = discoveryRequested;
+					discoveryRequestedSnapshot2 = discoveryRequested;
 				}
-				bool flag5 = !flag2 || flag4;
-				bool flag6 = flag5;
+				bool matchesDiscoveryRequestedSnapshot2 = !isValidLolRoot || discoveryRequestedSnapshot2;
+				bool discoverReady = matchesDiscoveryRequestedSnapshot2;
 				Func<bool> func = null;
-				if (flag6)
+				if (discoverReady)
 				{
 					Interlocked.Exchange(ref discoveryCancelRequested, 0);
 					func = () => DiscoveryCancelRequested() || (stopWithWorker && RuntimeStopped());
 					SetDiscovering(true);
 				}
-				string text3;
-				string text4;
+				string lolRoot2;
+				string weGameRoot2;
 				try
 				{
 #if PAVISE_SELFTEST
-					text3 = FindLolRootForTest != null ? FindLolRootForTest(text, flag5, func) : LolInstallDiscovery.FindLolRoot(text, flag5, func);
-					text4 = ((func != null && func()) ? text2 : (FindWeGameRootForTest != null ? FindWeGameRootForTest(text2, text3, flag5, func) : LolInstallDiscovery.FindWeGameRoot(text2, text3, flag5, func)));
+					lolRoot2 = FindLolRootForTest != null ? FindLolRootForTest(lolRootSnapshot, matchesDiscoveryRequestedSnapshot2, func) : LolInstallDiscovery.FindLolRoot(lolRootSnapshot, matchesDiscoveryRequestedSnapshot2, func);
+					weGameRoot2 = ((func != null && func()) ? weGameRootSnapshot : (FindWeGameRootForTest != null ? FindWeGameRootForTest(weGameRootSnapshot, lolRoot2, matchesDiscoveryRequestedSnapshot2, func) : LolInstallDiscovery.FindWeGameRoot(weGameRootSnapshot, lolRoot2, matchesDiscoveryRequestedSnapshot2, func)));
 #else
-					text3 = LolInstallDiscovery.FindLolRoot(text, flag5, func);
-					text4 = ((func != null && func()) ? text2 : LolInstallDiscovery.FindWeGameRoot(text2, text3, flag5, func));
+					lolRoot2 = LolInstallDiscovery.FindLolRoot(lolRootSnapshot, matchesDiscoveryRequestedSnapshot2, func);
+					weGameRoot2 = ((func != null && func()) ? weGameRootSnapshot : LolInstallDiscovery.FindWeGameRoot(weGameRootSnapshot, lolRoot2, matchesDiscoveryRequestedSnapshot2, func));
 #endif
 				}
 				finally
 				{
-					if (flag6)
+					if (discoverReady)
 					{
 						SetDiscovering(false);
 					}
 				}
 				if (stopWithWorker && RuntimeStopped())
 				{
-					root = text;
-					weGame = text2;
+					root = lolRootSnapshot;
+					weGame = weGameRootSnapshot;
 					return;
 				}
-				bool flag7 = flag6 && func();
-				bool flag8;
-				bool flag9;
+				bool matchesDiscoverReady = discoverReady && func();
+				bool isNotValuesEqual;
+				bool isNotValuesEqual2;
 				lock (stateLock)
 				{
 					discoveryRequested = false;
-					flag8 = !string.Equals(lolRoot, text3, StringComparison.OrdinalIgnoreCase);
-					flag9 = !string.Equals(weGameRoot, text4, StringComparison.OrdinalIgnoreCase);
-					lolRoot = text3;
-					weGameRoot = text4;
-					root = text3;
-					weGame = text4;
-					installationFound = text3 != null;
-					weGameFound = LolInstallDiscovery.IsValidWeGameRoot(text4);
-					if (text3 == null)
+					isNotValuesEqual = !string.Equals(lolRoot, lolRoot2, StringComparison.OrdinalIgnoreCase);
+					isNotValuesEqual2 = !string.Equals(weGameRoot, weGameRoot2, StringComparison.OrdinalIgnoreCase);
+					lolRoot = lolRoot2;
+					weGameRoot = weGameRoot2;
+					root = lolRoot2;
+					weGame = weGameRoot2;
+					installationFound = lolRoot2 != null;
+					weGameFound = LolInstallDiscovery.IsValidWeGameRoot(weGameRoot2);
+					if (lolRoot2 == null)
 					{
-						if (flag7)
+						if (matchesDiscoverReady)
 						{
 							nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(600.0);
 						}
@@ -2330,20 +2330,20 @@ namespace PaviseApp
 							{
 								discoveryMisses++;
 							}
-							int num = 15;
+							int discoverValue = 15;
 							for (int i = 1; i < discoveryMisses; i++)
 							{
-								num *= 2;
-								if (num >= 600)
+								discoverValue *= 2;
+								if (discoverValue >= 600)
 								{
 									break;
 								}
 							}
-							if (num > 600)
+							if (discoverValue > 600)
 							{
-								num = 600;
+								discoverValue = 600;
 							}
-							nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(num);
+							nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(discoverValue);
 						}
 					}
 					else
@@ -2353,20 +2353,20 @@ namespace PaviseApp
 					}
 					updatedUtc = DateTime.UtcNow;
 				}
-				if (flag8)
+				if (isNotValuesEqual)
 				{
 					InvalidateCredentials();
 					Settings.SaveStr("LolInstallPath", root ?? "");
 				}
-				if (flag9)
+				if (isNotValuesEqual2)
 				{
 					Settings.SaveStr("LolWeGamePath", weGame ?? "");
 				}
 			}
 			else
 			{
-				root = text;
-				weGame = text2;
+				root = lolRootSnapshot;
+				weGame = weGameRootSnapshot;
 			}
 		}
 

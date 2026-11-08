@@ -23,8 +23,8 @@ namespace PaviseApp
 		private void Arrange()
 		{
 			FrameBounds = new Rectangle(1, 1, Math.Max(1, base.Width - 3), Math.Max(1, base.Height - 3));
-			int num = Math.Min(Theme.S(22), Math.Max(1, base.Height - Theme.S(10)));
-			IconBounds = new Rectangle(Theme.S(7), (base.Height - num) / 2, num, num);
+			int maxLimit = Math.Min(Theme.S(22), Math.Max(1, base.Height - Theme.S(10)));
+			IconBounds = new Rectangle(Theme.S(7), (base.Height - maxLimit) / 2, maxLimit, maxLimit);
 			CaptionBounds = new Rectangle(Theme.S(40), 0, Math.Max(1, base.Width - Theme.S(77)), base.Height);
 		}
 
@@ -46,10 +46,10 @@ namespace PaviseApp
 			graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 			DsState dsState = base.State;
 			float hoverIfEnabled = dsState.HoverIfEnabled;
-			float num = dsState.Press;
+			float press = dsState.Press;
 			Color color = (base.Enabled ? Theme.Accent : Theme.Dim);
-			Color color2 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.12f + hoverIfEnabled * 0.13f + num * 0.08f) : 0.03f);
-			Color color3 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.3f + hoverIfEnabled * 0.18f + num * 0.08f) : 0.06f);
+			Color color2 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.12f + hoverIfEnabled * 0.13f + press * 0.08f) : 0.03f);
+			Color color3 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.3f + hoverIfEnabled * 0.18f + press * 0.08f) : 0.06f);
 			using (GraphicsPath graphicsPath = Theme.TechPath(FrameBounds, Theme.S(8)))
 			{
 				using (LinearGradientBrush brush = new LinearGradientBrush(FrameBounds, color2, color3, LinearGradientMode.Horizontal))
@@ -68,8 +68,8 @@ namespace PaviseApp
 					{
 						for (int i = 0; i < 3; i++)
 						{
-							int num2 = base.Width - Theme.S(52 - i * 13);
-							graphics.DrawLine(pen2, num2, 0, num2 - Theme.S(16), base.Height);
+							int left = base.Width - Theme.S(52 - i * 13);
+							graphics.DrawLine(pen2, left, 0, left - Theme.S(16), base.Height);
 						}
 					}
 					PaintBusy(graphics, FrameBounds, graphicsPath);
@@ -88,20 +88,20 @@ namespace PaviseApp
 			}
 			Glyphs.Draw(graphics, "game", Rectangle.Inflate(IconBounds, -Theme.S(3), -Theme.S(3)), base.Enabled ? Theme.OnAccent : Theme.Inset);
 			Rectangle captionBounds = CaptionBounds;
-			captionBounds.Offset((int)(num * (float)Theme.S(1)), (int)(num * (float)Theme.S(1)));
+			captionBounds.Offset((int)(press * (float)Theme.S(1)), (int)(press * (float)Theme.S(1)));
 			TextRenderer.DrawText(graphics, Text, Theme.UI(9f, true), captionBounds, base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			int num3 = base.Height / 2;
-			int num4 = base.Width - Theme.S(13) + (int)(hoverIfEnabled * (float)Theme.S(2));
+			int heightRatio = base.Height / 2;
+			int onPaintValue = base.Width - Theme.S(13) + (int)(hoverIfEnabled * (float)Theme.S(2));
 			using (Pen pen3 = new Pen(Col.Alpha(color, base.Enabled ? 230 : 95), Math.Max(1.2f, Theme.S(1))))
 			{
 				for (int j = 0; j < 2; j++)
 				{
-					int num5 = num4 - j * Theme.S(7);
+					int remainingOnPaintValue = onPaintValue - j * Theme.S(7);
 					graphics.DrawLines(pen3, new Point[3]
 					{
-						new Point(num5 - Theme.S(4), num3 - Theme.S(4)),
-						new Point(num5, num3),
-						new Point(num5 - Theme.S(4), num3 + Theme.S(4))
+						new Point(remainingOnPaintValue - Theme.S(4), heightRatio - Theme.S(4)),
+						new Point(remainingOnPaintValue, heightRatio),
+						new Point(remainingOnPaintValue - Theme.S(4), heightRatio + Theme.S(4))
 					});
 				}
 			}

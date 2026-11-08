@@ -118,8 +118,8 @@ namespace PaviseApp
 			{
 				DropTypography();
 				typographyScale = Dpi.Scale;
-				float num = Math.Max(0.01f, typographyScale) * 96f / 72f;
-				versionFont = new Font("Consolas", 7.5f * num, FontStyle.Regular, GraphicsUnit.Pixel);
+				float ratio = Math.Max(0.01f, typographyScale) * 96f / 72f;
+				versionFont = new Font("Consolas", 7.5f * ratio, FontStyle.Regular, GraphicsUnit.Pixel);
 			}
 		}
 
@@ -144,10 +144,10 @@ namespace PaviseApp
 
 		private void ArrangeWordmark()
 		{
-			int num = Math.Max(1, Math.Min(Theme.S(46), base.Height - Theme.S(6)));
-			int num2 = num + Theme.S(12);
-			WordmarkBounds = new Rectangle(num2, Theme.S(2), Math.Max(1, base.Width - num2), Theme.S(29));
-			VersionBounds = new Rectangle(num2 + Theme.S(1), Theme.S(30), Math.Max(1, base.Width - num2 - Theme.S(1)), Theme.S(16));
+			int minLimit = Math.Max(1, Math.Min(Theme.S(46), base.Height - Theme.S(6)));
+			int minLimitOffset = minLimit + Theme.S(12);
+			WordmarkBounds = new Rectangle(minLimitOffset, Theme.S(2), Math.Max(1, base.Width - minLimitOffset), Theme.S(29));
+			VersionBounds = new Rectangle(minLimitOffset + Theme.S(1), Theme.S(30), Math.Max(1, base.Width - minLimitOffset - Theme.S(1)), Theme.S(16));
 			DropWordmark();
 		}
 
@@ -240,15 +240,15 @@ namespace PaviseApp
 		{
 			paintStage = "logo";
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
-			int num = Math.Max(1, Math.Min(Theme.S(46), base.Height - Theme.S(6)));
+			int minLimit = Math.Max(1, Math.Min(Theme.S(46), base.Height - Theme.S(6)));
 			Color color = Theme.ModeColor(mode);
-			if (logo == null || logo.Width != num || logoColor != color)
+			if (logo == null || logo.Width != minLimit || logoColor != color)
 			{
 				DropLogo();
-				logo = IconArt.Render(num, mode, enabled);
+				logo = IconArt.Render(minLimit, mode, enabled);
 				logoColor = color;
 			}
-			graphics.DrawImageUnscaled(logo, 0, (base.Height - num) / 2);
+			graphics.DrawImageUnscaled(logo, 0, (base.Height - minLimit) / 2);
 			paintStage = "typography";
 			EnsureTypography();
 			GraphicsState gstate = graphics.Save();

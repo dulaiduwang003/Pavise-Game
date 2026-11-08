@@ -158,14 +158,14 @@ namespace PaviseApp
         {
             if (loaded) return !corrupt;
             if (loadFailures >= 3 || platform.NowMilliseconds < loadNext) return false;
-            string text;
+            string receiptValue;
             device = platform.DeviceIdentity;
-            if (string.IsNullOrEmpty(device) || !store.Load(out text))
+            if (string.IsNullOrEmpty(device) || !store.Load(out receiptValue))
             { loadFailures++; loadNext = platform.NowMilliseconds + 30000; return false; }
-            if (string.IsNullOrEmpty(text)) { loaded = true; return true; }
+            if (string.IsNullOrEmpty(receiptValue)) { loaded = true; return true; }
             try
             {
-                string[] lines = text.Split('\n');
+                string[] lines = receiptValue.Split('\n');
                 if (lines.Length < 2 || lines[0] != "ACHA1|" + device || lines.Length > 1026) throw new FormatException();
                 for (int i = 1; i < lines.Length; i++)
                 {
@@ -192,15 +192,15 @@ namespace PaviseApp
         }
         private bool Save()
         {
-            StringBuilder text = new StringBuilder();
+            StringBuilder stringBuilder = new StringBuilder();
             if (rows.Count != 0)
             {
-                text.Append("ACHA1|").Append(device).Append('\n');
+                stringBuilder.Append("ACHA1|").Append(device).Append('\n');
                 List<string> keys = new List<string>(rows.Keys); keys.Sort(StringComparer.Ordinal);
                 foreach (string key in keys)
                 {
                     Receipt row = rows[key];
-                    text.Append(row.Identity.ProcessId.ToString(CultureInfo.InvariantCulture)).Append('|')
+                    stringBuilder.Append(row.Identity.ProcessId.ToString(CultureInfo.InvariantCulture)).Append('|')
                         .Append(row.Identity.CreationTime.ToString(CultureInfo.InvariantCulture)).Append('|')
                         .Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(row.Identity.ImagePath))).Append('|')
                         .Append(row.Group.ToString(CultureInfo.InvariantCulture)).Append('|')
@@ -209,7 +209,7 @@ namespace PaviseApp
                         .Append(row.Previous.ToString("X", CultureInfo.InvariantCulture)).Append('|').Append(row.Phase).Append('\n');
                 }
             }
-            return store.Save(text.ToString());
+            return store.Save(stringBuilder.ToString());
         }
         private bool Remove(Receipt row)
         {

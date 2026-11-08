@@ -32,14 +32,14 @@ namespace PaviseApp
 		{
 			List<string> list = new List<string>(Procs);
 			string[] prefixes = Prefixes;
-			foreach (string text in prefixes)
+			foreach (string entryText in prefixes)
 			{
-				list.Add(text + "*");
+				list.Add(entryText + "*");
 			}
 			string[] directories = Directories;
-			foreach (string text2 in directories)
+			foreach (string entryText2 in directories)
 			{
-				list.Add("\\" + text2 + "\\*");
+				list.Add("\\" + entryText2 + "\\*");
 			}
 			return list.ToArray();
 		}

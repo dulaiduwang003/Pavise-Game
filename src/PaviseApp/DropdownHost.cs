@@ -166,17 +166,17 @@ namespace PaviseApp
 				Close();
 				return;
 			}
-			bool flag = object.ReferenceEquals(next, menu);
+			bool referenceEqualsSucceeded = object.ReferenceEquals(next, menu);
 			if (!OwnerCanInteract)
 			{
 				Close();
-				if (!flag)
+				if (!referenceEqualsSucceeded)
 				{
 					next.Dispose();
 				}
 				return;
 			}
-			if (!flag)
+			if (!referenceEqualsSucceeded)
 			{
 				Attach(next);
 			}

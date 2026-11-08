@@ -102,11 +102,11 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					byte[] array = new byte[12];
-					byte[] array2 = new byte[12];
-					array[0] = 7;
+					byte[] rawBytes = new byte[12];
+					byte[] rawBytes2 = new byte[12];
+					rawBytes[0] = 7;
 					int returned;
-					return DeviceIoControl(safeFileHandle, 2954240u, array, array.Length, array2, array2.Length, out returned, IntPtr.Zero) && returned >= 9 && BitConverter.ToUInt32(array2, 4) >= 9 && array2[8] == 0;
+					return DeviceIoControl(safeFileHandle, 2954240u, rawBytes, rawBytes.Length, rawBytes2, rawBytes2.Length, out returned, IntPtr.Zero) && returned >= 9 && BitConverter.ToUInt32(rawBytes2, 4) >= 9 && rawBytes2[8] == 0;
 				}
 			}
 			catch
@@ -119,14 +119,14 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Path.GetFullPath(path);
-				while (!string.IsNullOrEmpty(text))
+				string fullPath = Path.GetFullPath(path);
+				while (!string.IsNullOrEmpty(fullPath))
 				{
-					if ((File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+					if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
 					{
 						return false;
 					}
-					text = Path.GetDirectoryName(text);
+					fullPath = Path.GetDirectoryName(fullPath);
 				}
 				return true;
 			}
@@ -144,12 +144,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = stringBuilder.ToString();
-			if (text.StartsWith("\\\\?\\", StringComparison.Ordinal))
+			string stringBuilderText = stringBuilder.ToString();
+			if (stringBuilderText.StartsWith("\\\\?\\", StringComparison.Ordinal))
 			{
-				text = text.Substring(4);
+				stringBuilderText = stringBuilderText.Substring(4);
 			}
-			return text.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
+			return stringBuilderText.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
 		}
 	}
 }

@@ -448,17 +448,17 @@ namespace PaviseApp
 				for (int i = 0; i < 6; i++)
 				{
 					float spokeAngle = -90 + i * 60;
-					PointF[] array = new PointF[4]
+					PointF[] pointFItems = new PointF[4]
 					{
 						Polar(91f, spokeAngle + 5f),
 						Polar(91f, spokeAngle + 45f),
 						Polar(96f, spokeAngle + 42f),
 						Polar(96f, spokeAngle + 10f)
 					};
-					Plate(g, array, c, (int)(16f * power));
+					Plate(g, pointFItems, c, (int)(16f * power));
 					using (Pen pen = new Pen(Col.Alpha(c, (int)(75f * power)), 0.75f))
 					{
-						g.DrawLine(pen, array[0], array[1]);
+						g.DrawLine(pen, pointFItems[0], pointFItems[1]);
 					}
 				}
 				using (Pen pen2 = new Pen(c, 1.5f))
@@ -490,7 +490,7 @@ namespace PaviseApp
 			Cursor = Cursors.Default;
 			timer = new Timer();
 			timer.Interval = 15;
-			Timer obj = timer;
+			Timer timerSnapshot = timer;
 			EventHandler value = delegate
 			{
 				if (!CanAnimate())
@@ -503,7 +503,7 @@ namespace PaviseApp
 					Invalidate();
 				}
 			};
-			obj.Tick += value;
+			timerSnapshot.Tick += value;
 		}
 
 		public void SetState(PerformancePreset value, bool enabled, bool active)
@@ -977,10 +977,10 @@ namespace PaviseApp
 		private void DrawCoreLabels(Graphics g, float cx, float cy, Color accent)
 		{
 			float designScale = DesignScale;
-			string text = (gameActive ? "ACTIVE" : (guardEnabled ? "STANDBY" : "OFFLINE"));
+			string message = (gameActive ? "ACTIVE" : (guardEnabled ? "STANDBY" : "OFFLINE"));
 			float labelOffset = ((artworkMode == PerformancePreset.Competitive || artworkMode == PerformancePreset.Standard) ? 106 : 50);
 			LabelText(g, ModeButton.ModeName(mode), Theme.UI(13f, true), Theme.Fg, new RectangleF(0f, base.Height - Theme.S(65), base.Width, Theme.S(25)));
-			LabelText(g, text, Theme.Mono(6f), gameActive ? Theme.Green : (guardEnabled ? accent : Theme.Faint), new RectangleF(cx - 42f * designScale, cy + labelOffset * designScale, 84f * designScale, 10f * designScale));
+			LabelText(g, message, Theme.Mono(6f), gameActive ? Theme.Green : (guardEnabled ? accent : Theme.Faint), new RectangleF(cx - 42f * designScale, cy + labelOffset * designScale, 84f * designScale, 10f * designScale));
 		}
 
 		private static void LabelText(Graphics g, string text, Font font, Color color, RectangleF box)
@@ -1001,10 +1001,10 @@ namespace PaviseApp
 
 		private void DrawFrameDetails(Graphics g, Color accent)
 		{
-			string text = ((artworkMode == PerformancePreset.Extreme) ? "04 / ARC REACTOR" : ((artworkMode == PerformancePreset.Competitive) ? "02 / TARGET LOCK" : ((artworkMode == PerformancePreset.Handheld) ? "03 / MOBILE CORE" : "01 / ADAPTIVE CORE")));
+			string message = ((artworkMode == PerformancePreset.Extreme) ? "04 / ARC REACTOR" : ((artworkMode == PerformancePreset.Competitive) ? "02 / TARGET LOCK" : ((artworkMode == PerformancePreset.Handheld) ? "03 / MOBILE CORE" : "01 / ADAPTIVE CORE")));
 			LabelText(g, "SYS / 3.0", Theme.Mono(6.5f), Theme.Faint, new RectangleF(Theme.S(12), Theme.S(12), Theme.S(64), Theme.S(14)));
 			LabelText(g, gameActive ? "LIVE LINK" : (guardEnabled ? "READY" : "OFFLINE"), Theme.Mono(6.5f), gameActive ? Theme.Green : Theme.Faint, new RectangleF(base.Width - Theme.S(84), Theme.S(12), Theme.S(72), Theme.S(14)));
-			LabelText(g, text, Theme.Mono(7f), accent, new RectangleF(0f, base.Height - Theme.S(30), base.Width, Theme.S(16)));
+			LabelText(g, message, Theme.Mono(7f), accent, new RectangleF(0f, base.Height - Theme.S(30), base.Width, Theme.S(16)));
 			using (Pen pen = new Pen(accent, Math.Max(1f, Theme.S(1))))
 			{
 				g.DrawLine(pen, Theme.S(1), Theme.S(1), Theme.S(72), Theme.S(1));
@@ -1532,7 +1532,7 @@ namespace PaviseApp
 			double turn = time * 0.23 + 0.45;
 			double tilt = 0.2 + Math.Sin(time * 0.41) * 0.12;
 			double roll = -0.13 + Math.Sin(time * 0.28) * 0.07;
-			SmartPoint[] array = new SmartPoint[6]
+			SmartPoint[] smartPointItems = new SmartPoint[6]
 			{
 				SmartTransform(0f, -62f, 0f, turn, tilt, roll),
 				SmartTransform(0f, 62f, 0f, turn, tilt, roll),
@@ -1541,21 +1541,21 @@ namespace PaviseApp
 				SmartTransform(-43f, 0f, 0f, turn, tilt, roll),
 				SmartTransform(0f, 0f, -43f, turn, tilt, roll)
 			};
-			int[] array2 = new int[8] { 0, 1, 2, 3, 4, 5, 6, 7 };
+			int[] integerValues = new int[8] { 0, 1, 2, 3, 4, 5, 6, 7 };
 			float[] depth = new float[8];
 			for (int i = 0; i < 8; i++)
 			{
-				depth[i] = (array[i / 4].Z + array[2 + i % 4].Z + array[2 + (i + 1) % 4].Z) / 3f;
+				depth[i] = (smartPointItems[i / 4].Z + smartPointItems[2 + i % 4].Z + smartPointItems[2 + (i + 1) % 4].Z) / 3f;
 			}
-			Array.Sort(array2, (int a, int b) => depth[a].CompareTo(depth[b]));
-			int[] array3 = array2;
-			foreach (int faceIndex in array3)
+			Array.Sort(integerValues, (int a, int b) => depth[a].CompareTo(depth[b]));
+			int[] integerValues2 = integerValues;
+			foreach (int faceIndex in integerValues2)
 			{
 				PointF[] points = new PointF[3]
 				{
-					array[faceIndex / 4].Screen,
-					array[2 + faceIndex % 4].Screen,
-					array[2 + (faceIndex + 1) % 4].Screen
+					smartPointItems[faceIndex / 4].Screen,
+					smartPointItems[2 + faceIndex % 4].Screen,
+					smartPointItems[2 + (faceIndex + 1) % 4].Screen
 				};
 				float faceBlend = Math.Max(0.08f, Math.Min(0.88f, 0.25f + depth[faceIndex] / 100f + ((faceIndex % 4 == 1) ? 0.17f : 0f)));
 				Color faceStart = Col.Lerp(Theme.Inset, c, faceBlend * power);
@@ -1576,7 +1576,7 @@ namespace PaviseApp
 			}
 			for (int k = 0; k < 4; k++)
 			{
-				SmartPoint smartPoint = array[2 + k];
+				SmartPoint smartPoint = smartPointItems[2 + k];
 				if (smartPoint.Z < 0f)
 				{
 					continue;
@@ -1584,7 +1584,7 @@ namespace PaviseApp
 				float highlightDepth = Math.Min(1f, smartPoint.Z / 8f);
 				for (int l = 0; l < 2; l++)
 				{
-					PointF screen = array[l].Screen;
+					PointF screen = smartPointItems[l].Screen;
 					PointF screen2 = smartPoint.Screen;
 					using (Pen pen2 = new Pen(Col.Alpha(c, (int)(65f * power * highlightDepth)), 0.55f))
 					{

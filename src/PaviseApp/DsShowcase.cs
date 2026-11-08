@@ -34,14 +34,14 @@ namespace PaviseApp
 				if (base.Width >= 2 && base.Height >= 2)
 				{
 					Font font = DsType.Mono(DsMono.Badge);
-					int num = Theme.S(17);
-					int num2 = 0;
-					string[] array = new string[2] { "ACTIVE", "IDLE" };
-					for (int i = 0; i < array.Length; i++)
+					int scaledDimension = Theme.S(17);
+					int onPaintValue = 0;
+					string[] textEntries = new string[2] { "ACTIVE", "IDLE" };
+					for (int i = 0; i < textEntries.Length; i++)
 					{
-						int num3 = DsPaint.BadgeWidth(graphics, array[i], font);
-						DsPaint.Badge(graphics, new Rectangle(num2, (base.Height - num) / 2, num3, num), array[i], font, i == 0);
-						num2 += num3 + Theme.S(8);
+						int badgeWidthResult = DsPaint.BadgeWidth(graphics, textEntries[i], font);
+						DsPaint.Badge(graphics, new Rectangle(onPaintValue, (base.Height - scaledDimension) / 2, badgeWidthResult, scaledDimension), textEntries[i], font, i == 0);
+						onPaintValue += badgeWidthResult + Theme.S(8);
 					}
 				}
 			}
@@ -111,10 +111,10 @@ namespace PaviseApp
 
 		private Entry Add(string id, string caption, Control control, int width, int height)
 		{
-			int num = Theme.S(height);
-			int num2 = Math.Max(Theme.S(24), num);
+			int height2 = Theme.S(height);
+			int height3 = Math.Max(Theme.S(24), height2);
 			control.Name = "showcase_" + id.Replace('.', '_');
-			control.SetBounds(Theme.S(206), cursor + (num2 - num) / 2, Theme.S(width), num);
+			control.SetBounds(Theme.S(206), cursor + (height3 - height2) / 2, Theme.S(width), height2);
 			Label label = new Label();
 			label.AutoSize = false;
 			label.Text = caption;
@@ -124,7 +124,7 @@ namespace PaviseApp
 			label.BackColor = Theme.Bg;
 			label.TextAlign = ContentAlignment.MiddleLeft;
 			Label label2 = label;
-			label2.SetBounds(Theme.S(16), cursor, Theme.S(190), num2);
+			label2.SetBounds(Theme.S(16), cursor, Theme.S(190), height3);
 			base.Controls.Add(label2);
 			base.Controls.Add(control);
 			Entry entry = new Entry();
@@ -133,7 +133,7 @@ namespace PaviseApp
 			entry.Control = control;
 			entry.Label = label2;
 			entries.Add(entry);
-			cursor += num2 + Theme.S(10);
+			cursor += height3 + Theme.S(10);
 			return entry;
 		}
 

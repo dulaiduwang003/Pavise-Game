@@ -69,18 +69,18 @@ namespace PaviseApp
 
 		internal int MeasureHeight(int width)
 		{
-			int num = OverviewHudDrawing.TextHeight(status, Theme.UI(8f, false), Math.Max(1, width - Theme.S(2)));
-			return Theme.S(40) + num;
+			int textHeightResult = OverviewHudDrawing.TextHeight(status, Theme.UI(8f, false), Math.Max(1, width - Theme.S(2)));
+			return Theme.S(40) + textHeightResult;
 		}
 
 		private void SetStatus(string value)
 		{
-			int num = MeasureHeight(base.Width);
+			int measureHeightResult = MeasureHeight(base.Width);
 			status = value ?? "";
 			base.AccessibleDescription = status;
 			Arrange();
 			Invalidate();
-			if (num != MeasureHeight(base.Width) && this.GeometryChanged != null)
+			if (measureHeightResult != MeasureHeight(base.Width) && this.GeometryChanged != null)
 			{
 				this.GeometryChanged(this, EventArgs.Empty);
 			}

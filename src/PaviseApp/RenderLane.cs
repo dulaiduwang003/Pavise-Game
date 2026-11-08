@@ -204,12 +204,12 @@ namespace PaviseApp
 
 		private static bool WaitAlive(int ms, int gen)
 		{
-			int num = 0;
-			while (num < ms)
+			int waitAliveValue = 0;
+			while (waitAliveValue < ms)
 			{
-				int num2 = Math.Min(2000, ms - num);
-				Thread.Sleep(num2);
-				num += num2;
+				int upperBound = Math.Min(2000, ms - waitAliveValue);
+				Thread.Sleep(upperBound);
+				waitAliveValue += upperBound;
 				if (!GenAlive(gen))
 				{
 					return false;
@@ -247,7 +247,7 @@ namespace PaviseApp
 		private static void WorkLoop(int pid, long creation, string gameName, int gen)
 		{
 			LaneJudge laneJudge = new LaneJudge();
-			int num = 0;
+			int processedCount = 0;
 			while (GenAlive(gen))
 			{
 				bool pinnedNow;
@@ -257,15 +257,15 @@ namespace PaviseApp
 				}
 				if (!pinnedNow)
 				{
-					num++;
+					processedCount++;
 					lock (sync)
 					{
 						if (trackGen == gen)
 						{
-							trackBatch = num;
+							trackBatch = processedCount;
 						}
 					}
-					bool logThis = num == 1 || num >= 5;
+					bool logThis = processedCount == 1 || processedCount >= 5;
 					if (!IdentifyBatch(pid, creation, gameName, gen, laneJudge, logThis, out pinnedNow))
 					{
 						break;
@@ -277,7 +277,7 @@ namespace PaviseApp
 							GiveUp(pid, creation, gen);
 							break;
 						}
-						if (num >= 5)
+						if (processedCount >= 5)
 						{
 							GiveUp(pid, creation, gen);
 							break;
@@ -298,12 +298,12 @@ namespace PaviseApp
 		private static bool IdentifyBatch(int pid, long creation, string gameName, int gen, LaneJudge judge, bool logThis, out bool pinnedNow)
 		{
 			pinnedNow = false;
-			int num = 0;
+			int processedCount = 0;
 			Candidate candidate = default(Candidate);
 			Candidate status = default(Candidate);
-			bool flag = false;
-			int num2 = 0;
-			long num3 = 0L;
+			bool identifyBatchReady = false;
+			int identifyBatchValue = 0;
+			long numericValue = 0L;
 			judge.ResetCandidate();
 			for (int i = 0; i < 6; i++)
 			{
@@ -315,7 +315,7 @@ namespace PaviseApp
 				double watchShare;
 				if (!TryIdentifyProcess(pid, creation, 0, out best, out watchShare))
 				{
-					num++;
+					processedCount++;
 					status = best;
 					judge.ResetCandidate();
 					if (best.Failure == SampleFailure.ProcessGone || best.Failure == SampleFailure.IdentityChanged)
@@ -328,21 +328,21 @@ namespace PaviseApp
 					}
 					if (best.Failure != SampleFailure.NoCpuProgress)
 					{
-						num = 6;
+						processedCount = 6;
 						break;
 					}
 					continue;
 				}
-				if (best.Tid != num2 || best.ThreadCreation != num3)
+				if (best.Tid != identifyBatchValue || best.ThreadCreation != numericValue)
 				{
 					judge.ResetCandidate();
 				}
-				num2 = best.Tid;
-				num3 = best.ThreadCreation;
+				identifyBatchValue = best.Tid;
+				numericValue = best.ThreadCreation;
 				candidate = best;
 				if (best.Share < 0.35)
 				{
-					flag = true;
+					identifyBatchReady = true;
 				}
 				if (judge.Observe(best.Tid, best.Share, 0.0) == LaneDecision.Pin)
 				{
@@ -368,7 +368,7 @@ namespace PaviseApp
 			}
 			if (logThis)
 			{
-				if (num >= 6)
+				if (processedCount >= 6)
 				{
 					if (status.Failure == SampleFailure.NoCpuProgress)
 					{
@@ -379,7 +379,7 @@ namespace PaviseApp
 						Logger.Warn(SampleFailureText(pid, status));
 					}
 				}
-				else if (flag || candidate.Tid != 0)
+				else if (identifyBatchReady || candidate.Tid != 0)
 				{
 					Logger.Info(Lang.T("log.renderlane.3") + (gameName ?? "?") + Lang.T("log.renderlane.4") + (candidate.Share * 100.0).ToString("F0") + Lang.T("log.renderlane.5") + candidate.ThreadCount + Lang.T("log.renderlane.6"));
 				}
@@ -460,8 +460,8 @@ namespace PaviseApp
 		{
 			if (!RecoveryAdmissionAllowed(gen)) return PinOutcome.Canceled;
 			if (ThreadPriorityReservation.Contains(pid, creation, best.Tid, best.ThreadCreation)) return PinOutcome.Canceled;
-			int num = readPriority();
-			if (num == int.MaxValue)
+			int readPriorityResult = readPriority();
+			if (readPriorityResult == int.MaxValue)
 			{
 				if (logThis)
 				{
@@ -469,7 +469,7 @@ namespace PaviseApp
 				}
 				return PinOutcome.Retryable;
 			}
-			if (num >= 2)
+			if (readPriorityResult >= 2)
 			{
 				if (logThis)
 				{
@@ -477,8 +477,8 @@ namespace PaviseApp
 				}
 				return PinOutcome.Fatal;
 			}
-			string expected = JournalLine(pid, creation, best.Tid, num);
-			if (!SaveJournal(pid, creation, best.Tid, best.ThreadCreation, num))
+			string expected = JournalLine(pid, creation, best.Tid, readPriorityResult);
+			if (!SaveJournal(pid, creation, best.Tid, best.ThreadCreation, readPriorityResult))
 			{
 				if (logThis)
 				{
@@ -494,7 +494,7 @@ namespace PaviseApp
 			}
 			if (!setPriority(2))
 			{
-				if (RestorePriorityVerified(readPriority, setPriority, num))
+				if (RestorePriorityVerified(readPriority, setPriority, readPriorityResult))
 				{
 					ClearJournal(expected);
 				}
@@ -504,25 +504,25 @@ namespace PaviseApp
 				}
 				return PinOutcome.Retryable;
 			}
-			int num2 = readPriority();
-			if (num2 != 2)
+			int readPriorityResult2 = readPriority();
+			if (readPriorityResult2 != 2)
 			{
-				if (RestorePriorityVerified(readPriority, setPriority, num))
+				if (RestorePriorityVerified(readPriority, setPriority, readPriorityResult))
 				{
 					ClearJournal(expected);
 				}
 				if (logThis)
 				{
-					Logger.Log(Lang.T("log.renderlane.12") + num2 + Lang.T("log.renderlane.13"));
+					Logger.Log(Lang.T("log.renderlane.12") + readPriorityResult2 + Lang.T("log.renderlane.13"));
 				}
 				return PinOutcome.Retryable;
 			}
-			bool flag = false;
+			bool pinPriorityLockedReady = false;
 			lock (sync)
 			{
 				if (gen != laneGen)
 				{
-					flag = true;
+					pinPriorityLockedReady = true;
 				}
 				else
 				{
@@ -530,13 +530,13 @@ namespace PaviseApp
 					laneCreation = creation;
 					laneTid = best.Tid;
 					laneThreadCreation = best.ThreadCreation;
-					laneOriginalPriority = num;
+					laneOriginalPriority = readPriorityResult;
 					laneApplied = true;
 				}
 			}
-			if (flag)
+			if (pinPriorityLockedReady)
 			{
-				if (RestorePriorityVerified(readPriority, setPriority, num))
+				if (RestorePriorityVerified(readPriority, setPriority, readPriorityResult))
 				{
 					ClearJournal(expected);
 				}
@@ -546,7 +546,7 @@ namespace PaviseApp
 				}
 				return PinOutcome.Canceled;
 			}
-			Logger.Log(Lang.T("log.renderlane.15") + (gameName ?? "?") + Lang.T("log.renderlane.16") + best.Tid + Lang.T("log.renderlane.17") + (best.Share * 100.0).ToString("F0") + Lang.T("log.renderlane.5") + best.ThreadCount + Lang.T("log.renderlane.18") + num + " " + 2);
+			Logger.Log(Lang.T("log.renderlane.15") + (gameName ?? "?") + Lang.T("log.renderlane.16") + best.Tid + Lang.T("log.renderlane.17") + (best.Share * 100.0).ToString("F0") + Lang.T("log.renderlane.5") + best.ThreadCount + Lang.T("log.renderlane.18") + readPriorityResult + " " + 2);
 			return PinOutcome.Pinned;
 		}
 
@@ -560,7 +560,7 @@ namespace PaviseApp
 
 		private static bool VerifyOnce(int pid, long creation, string gameName, int gen, LaneJudge judge)
 		{
-			int num;
+			int laneTidSnapshot;
 			long threadCreation;
 			int original;
 			lock (sync)
@@ -569,13 +569,13 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				num = laneTid;
+				laneTidSnapshot = laneTid;
 				threadCreation = laneThreadCreation;
 				original = laneOriginalPriority;
 			}
 			Candidate best;
 			double watchShare;
-			if (!TryIdentifyProcess(pid, creation, num, out best, out watchShare))
+			if (!TryIdentifyProcess(pid, creation, laneTidSnapshot, out best, out watchShare))
 			{
 				return ProcessAlive(pid, creation);
 			}
@@ -591,7 +591,7 @@ namespace PaviseApp
 				}
 				if (!RestoreLaneLocked())
 				{
-					Logger.Log(Lang.T("log.renderlane.21") + num + Lang.T("log.renderlane.22"));
+					Logger.Log(Lang.T("log.renderlane.21") + laneTidSnapshot + Lang.T("log.renderlane.22"));
 					GiveUp(pid, creation, gen);
 					return false;
 				}
@@ -606,11 +606,11 @@ namespace PaviseApp
 						laneThreadCreation = 0L;
 					}
 				}
-				if (!ClearJournal(JournalLine(pid, creation, num, original)))
+				if (!ClearJournal(JournalLine(pid, creation, laneTidSnapshot, original)))
 				{
 					return false;
 				}
-				Logger.Log(Lang.T("log.renderlane.25") + num + Lang.T("log.renderlane.26") + best.Tid + Lang.T("log.renderlane.17") + (best.Share * 100.0).ToString("F0") + "%");
+				Logger.Log(Lang.T("log.renderlane.25") + laneTidSnapshot + Lang.T("log.renderlane.26") + best.Tid + Lang.T("log.renderlane.17") + (best.Share * 100.0).ToString("F0") + "%");
 				if (judge.GaveUp)
 				{
 					Logger.Log(Lang.T("log.renderlane.27") + (gameName ?? "?") + Lang.T("log.renderlane.28"));
@@ -750,28 +750,28 @@ namespace PaviseApp
 
 		private static bool RestoreLaneCore()
 		{
-			bool flag;
+			bool laneAppliedSnapshot;
 			int pid;
 			long creation;
-			int num;
+			int laneTidSnapshot;
 			long threadCreation;
-			int num2;
+			int laneOriginalPrioritySnapshot;
 			lock (sync)
 			{
-				flag = laneApplied;
+				laneAppliedSnapshot = laneApplied;
 				pid = lanePid;
 				creation = laneCreation;
-				num = laneTid;
+				laneTidSnapshot = laneTid;
 				threadCreation = laneThreadCreation;
-				num2 = laneOriginalPriority;
+				laneOriginalPrioritySnapshot = laneOriginalPriority;
 			}
-			if (!flag)
+			if (!laneAppliedSnapshot)
 			{
 				return HealFromCrashCore();
 			}
-			RestoreResult restoreResult = RestoreThread(pid, creation, num, threadCreation, num2);
-			bool flag2 = restoreResult != RestoreResult.Failed;
-			if (flag2)
+			RestoreResult restoreResult = RestoreThread(pid, creation, laneTidSnapshot, threadCreation, laneOriginalPrioritySnapshot);
+			bool matchesRestoreResult = restoreResult != RestoreResult.Failed;
+			if (matchesRestoreResult)
 			{
 				lock (sync)
 				{
@@ -781,14 +781,14 @@ namespace PaviseApp
 					laneTid = 0;
 					laneThreadCreation = 0L;
 				}
-				flag2 = ClearJournal(JournalLine(pid, creation, num, num2));
-				Logger.Log((restoreResult == RestoreResult.Restored) ? (Lang.T("log.renderlane.19") + num + Lang.T("log.renderlane.20") + num2) : ReleasedLine(num));
+				matchesRestoreResult = ClearJournal(JournalLine(pid, creation, laneTidSnapshot, laneOriginalPrioritySnapshot));
+				Logger.Log((restoreResult == RestoreResult.Restored) ? (Lang.T("log.renderlane.19") + laneTidSnapshot + Lang.T("log.renderlane.20") + laneOriginalPrioritySnapshot) : ReleasedLine(laneTidSnapshot));
 			}
 			else
 			{
-				Logger.Log(Lang.T("log.renderlane.21") + num + Lang.T("log.renderlane.22"));
+				Logger.Log(Lang.T("log.renderlane.21") + laneTidSnapshot + Lang.T("log.renderlane.22"));
 			}
-			return flag2;
+			return matchesRestoreResult;
 		}
 
 		public static bool HasResidue()
@@ -884,12 +884,12 @@ namespace PaviseApp
 			}
 			try
 			{
-				int num = Native.QueryThreadOwnerPid(intPtr);
-				if (num < 0)
+				int threadOwnerPid = Native.QueryThreadOwnerPid(intPtr);
+				if (threadOwnerPid < 0)
 				{
 					return RestoreResult.Failed;
 				}
-				if (num != pid)
+				if (threadOwnerPid != pid)
 				{
 					return RestoreResult.Released;
 				}
@@ -945,21 +945,21 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = JournalLine(pid, creation, tid, original);
-			if (SaveThreadBirth(text, threadCreation) && Settings.SaveStr("RenderLane", text) && Settings.TryLoadStr("RenderLane", out value))
+			string journalLineResult = JournalLine(pid, creation, tid, original);
+			if (SaveThreadBirth(journalLineResult, threadCreation) && Settings.SaveStr("RenderLane", journalLineResult) && Settings.TryLoadStr("RenderLane", out value))
 			{
-				return value == text;
+				return value == journalLineResult;
 			}
 			return false;
 		}
 
 		private static bool SaveThreadBirth(string line, long threadCreation)
 		{
-			string text = ((threadCreation > 0) ? (line + "|" + threadCreation) : "");
+			string threadCreationOffset = ((threadCreation > 0) ? (line + "|" + threadCreation) : "");
 			string value;
-			if (Settings.SaveStr("RenderLaneThreadBirthV1", text) && Settings.TryLoadStr("RenderLaneThreadBirthV1", out value))
+			if (Settings.SaveStr("RenderLaneThreadBirthV1", threadCreationOffset) && Settings.TryLoadStr("RenderLaneThreadBirthV1", out value))
 			{
-				return value == text;
+				return value == threadCreationOffset;
 			}
 			return false;
 		}
@@ -972,9 +972,9 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = line + "|";
+			string lineOffset = line + "|";
 			long result;
-			if (value.StartsWith(text, StringComparison.Ordinal) && long.TryParse(value.Substring(text.Length), out result) && result > 0)
+			if (value.StartsWith(lineOffset, StringComparison.Ordinal) && long.TryParse(value.Substring(lineOffset.Length), out result) && result > 0)
 			{
 				threadCreation = result;
 			}
@@ -1032,10 +1032,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = raw.Split('|');
-			if (array.Length == 4 && int.TryParse(array[0], out pid) && pid > 0 && long.TryParse(array[1], out creation) && int.TryParse(array[2], out tid) && tid > 0)
+			string[] rawParts = raw.Split('|');
+			if (rawParts.Length == 4 && int.TryParse(rawParts[0], out pid) && pid > 0 && long.TryParse(rawParts[1], out creation) && int.TryParse(rawParts[2], out tid) && tid > 0)
 			{
-				return int.TryParse(array[3], out original);
+				return int.TryParse(rawParts[3], out original);
 			}
 			return false;
 		}
@@ -1077,9 +1077,9 @@ namespace PaviseApp
 				Failure = SampleFailure.NoCpuProgress
 			};
 			watchShare = 0.0;
-			long num = 0L;
-			long num2 = -1L;
-			long num3 = 0L;
+			long numericValue = 0L;
+			long numericValue2 = -1L;
+			long numericValue3 = 0L;
 			foreach (KeyValuePair<int, ThreadSample> item in second)
 			{
 				ThreadSample value;
@@ -1087,31 +1087,31 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				long num4 = item.Value.CpuTicks - value.CpuTicks;
-				if (num4 > 0)
+				long remainingCpuTicks = item.Value.CpuTicks - value.CpuTicks;
+				if (remainingCpuTicks > 0)
 				{
-					num += num4;
-					if (num4 > num2)
+					numericValue += remainingCpuTicks;
+					if (remainingCpuTicks > numericValue2)
 					{
-						num2 = num4;
+						numericValue2 = remainingCpuTicks;
 						best.Tid = item.Key;
 						best.ThreadCreation = item.Value.Creation;
 					}
 					if (watchTid == item.Key)
 					{
-						num3 = num4;
+						numericValue3 = remainingCpuTicks;
 					}
 				}
 			}
-			if (best.Tid == 0 || num <= 0)
+			if (best.Tid == 0 || numericValue <= 0)
 			{
 				return false;
 			}
 			best.Failure = SampleFailure.None;
-			best.Share = (double)num2 / (double)num;
+			best.Share = (double)numericValue2 / (double)numericValue;
 			if (watchTid != 0)
 			{
-				watchShare = (double)num3 / (double)num;
+				watchShare = (double)numericValue3 / (double)numericValue;
 			}
 			return true;
 		}
@@ -1147,12 +1147,12 @@ namespace PaviseApp
 						status.Failure = SampleFailure.IdentityChanged;
 						return false;
 					}
-					int num = 0;
+					int sampleThreadsValue = 0;
 					foreach (ProcessThread thread in process.Threads)
 					{
 						using (thread)
 						{
-							if (++num > 512)
+							if (++sampleThreadsValue > 512)
 							{
 								break;
 							}
@@ -1221,8 +1221,8 @@ namespace PaviseApp
 
 		private static string SampleFailureText(int pid, Candidate status)
 		{
-			string text = ((status.Failure == SampleFailure.NoCpuProgress) ? "idle" : ((status.Failure == SampleFailure.ProcessGone) ? "exited" : ((status.Failure == SampleFailure.IdentityChanged) ? "identity" : ((status.Failure == SampleFailure.ProcessUnavailable) ? "process" : "threads"))));
-			return Lang.T("log.renderlane.sample." + text) + " PID " + pid + ((status.NativeError == 0) ? "" : (" Win32=" + status.NativeError));
+			string message = ((status.Failure == SampleFailure.NoCpuProgress) ? "idle" : ((status.Failure == SampleFailure.ProcessGone) ? "exited" : ((status.Failure == SampleFailure.IdentityChanged) ? "identity" : ((status.Failure == SampleFailure.ProcessUnavailable) ? "process" : "threads"))));
+			return Lang.T("log.renderlane.sample." + message) + " PID " + pid + ((status.NativeError == 0) ? "" : (" Win32=" + status.NativeError));
 		}
 	}
 }

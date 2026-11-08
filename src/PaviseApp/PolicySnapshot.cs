@@ -371,8 +371,8 @@ namespace PaviseApp
 				string value;
 				if (!(item.Key == "PerformancePreset") && !(item.Key == "PowerPlanOn") && dictionary.TryGetValue(item.Key, out value))
 				{
-					string text = PolicyCatalog.Canonical(item.Key, value);
-					values[item.Key] = text ?? item.Fallback;
+					string canonicalResult = PolicyCatalog.Canonical(item.Key, value);
+					values[item.Key] = canonicalResult ?? item.Fallback;
 					overridden.Add(item.Key);
 				}
 			}
@@ -399,10 +399,10 @@ namespace PaviseApp
 			{
 				return "0";
 			}
-			string text = PerformancePolicy.Resolve(key, RawValueOf);
-			if (text != null)
+			string resolveResult = PerformancePolicy.Resolve(key, RawValueOf);
+			if (resolveResult != null)
 			{
-				return text;
+				return resolveResult;
 			}
 			PolicyItem policyItem = PolicyCatalog.ItemOf(key);
 			if (policyItem != null)

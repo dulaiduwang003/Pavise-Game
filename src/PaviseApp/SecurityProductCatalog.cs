@@ -62,13 +62,13 @@ namespace PaviseApp
 		private static string[] StandardBases()
 		{
 			List<string> list = new List<string>();
-			Environment.SpecialFolder[] array = new Environment.SpecialFolder[3]
+			Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[3]
 			{
 				Environment.SpecialFolder.ProgramFiles,
 				Environment.SpecialFolder.ProgramFilesX86,
 				Environment.SpecialFolder.CommonApplicationData
 			};
-			foreach (Environment.SpecialFolder folder in array)
+			foreach (Environment.SpecialFolder folder in specialFolderItems)
 			{
 				string folderPath;
 				try
@@ -93,15 +93,15 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = Environment.ExpandEnvironmentVariables(registered.Trim().Trim('"'));
-			if (text.Length < 4 || text[1] != ':' || text[2] != '\\')
+			string expandEnvironmentVariablesResult = Environment.ExpandEnvironmentVariables(registered.Trim().Trim('"'));
+			if (expandEnvironmentVariablesResult.Length < 4 || expandEnvironmentVariablesResult[1] != ':' || expandEnvironmentVariablesResult[2] != '\\')
 			{
 				return null;
 			}
 			string directoryName;
 			try
 			{
-				directoryName = Path.GetDirectoryName(text);
+				directoryName = Path.GetDirectoryName(expandEnvironmentVariablesResult);
 			}
 			catch
 			{
@@ -116,20 +116,20 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = bases ?? new string[0];
-			foreach (string text2 in array)
+			string[] basesOffset = bases ?? new string[0];
+			foreach (string entryText in basesOffset)
 			{
-				if (!string.IsNullOrEmpty(text2))
+				if (!string.IsNullOrEmpty(entryText))
 				{
-					if (WhitelistRule.PathEquals(directoryName, text2))
+					if (WhitelistRule.PathEquals(directoryName, entryText))
 					{
 						return null;
 					}
-					if (FamilyBoundary.UnderRoot(directoryName, text2))
+					if (FamilyBoundary.UnderRoot(directoryName, entryText))
 					{
-						int num = directoryName.Substring(text2.Length).Trim('\\').Split('\\')
+						int splitCount = directoryName.Substring(entryText.Length).Trim('\\').Split('\\')
 							.Length;
-						return (num >= 3) ? Path.GetDirectoryName(directoryName) : directoryName;
+						return (splitCount >= 3) ? Path.GetDirectoryName(directoryName) : directoryName;
 					}
 				}
 			}

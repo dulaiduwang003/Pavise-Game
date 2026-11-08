@@ -105,15 +105,15 @@ namespace PaviseApp
 			{
 				lock (gate)
 				{
-					int num = 0;
+					int processedCount = 0;
 					foreach (Entry value in receipts.Values)
 					{
 						if (!value.StopObserved)
 						{
-							num++;
+							processedCount++;
 						}
 					}
-					return num;
+					return processedCount;
 				}
 			}
 		}
@@ -230,14 +230,14 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				long num = nowTicks();
+				long nowTicksResult = nowTicks();
 				foreach (Entry value in receipts.Values)
 				{
 					if (!MayContinue(mayContinue))
 					{
 						return true;
 					}
-					if (value.Restoring || settled.Contains(value.Name) || (value.StopObserved && num < value.NextAuditAt && num >= value.NextAuditAt - SettledAuditTicks))
+					if (value.Restoring || settled.Contains(value.Name) || (value.StopObserved && nowTicksResult < value.NextAuditAt && nowTicksResult >= value.NextAuditAt - SettledAuditTicks))
 					{
 						continue;
 					}
@@ -259,7 +259,7 @@ namespace PaviseApp
 							value.StopObserved = true;
 							stopObservationDirty = true;
 						}
-						value.NextAuditAt = num + SettledAuditTicks;
+						value.NextAuditAt = nowTicksResult + SettledAuditTicks;
 						continue;
 					}
 					if (value.StopObserved)
@@ -267,19 +267,19 @@ namespace PaviseApp
 						lastFailure = value.Name + ": service resumed after its confirmed stop";
 						return false;
 					}
-					if (num - value.AcceptedAt < TimeSpan.FromSeconds(30.0).Ticks)
+					if (nowTicksResult - value.AcceptedAt < TimeSpan.FromSeconds(30.0).Ticks)
 					{
 						continue;
 					}
 					lastFailure = value.Name + ": stop confirmation timed out";
 					return false;
 				}
-				bool flag = SaveStopObservations();
-				if (!flag)
+				bool saveStopObservationsSucceeded = SaveStopObservations();
+				if (!saveStopObservationsSucceeded)
 				{
 					lastFailure = "Service stop confirmation could not be persisted";
 				}
-				return flag;
+				return saveStopObservationsSucceeded;
 			}
 		}
 
@@ -327,16 +327,16 @@ namespace PaviseApp
 					item.StopObserved |= value.StopObserved;
 				}
 			}
-			bool flag = Save(entries, boot);
-			if (flag)
+			bool saveSucceeded = Save(entries, boot);
+			if (saveSucceeded)
 			{
 				stopObservationDirty = false;
 			}
-			if (!flag)
+			if (!saveSucceeded)
 			{
 				Warn("log.pausesvc.ledger", null);
 			}
-			return flag;
+			return saveSucceeded;
 		}
 
 		private bool AbortAfterLedgerFailure()
@@ -363,23 +363,23 @@ namespace PaviseApp
 			if (entries.Count == 0 && receipts.Count == 0)
 			{
 				lastWarning = null;
-				bool flag = raw.Length == 0 || Save(entries, boot);
-				if (flag)
+				bool matchesSave = raw.Length == 0 || Save(entries, boot);
+				if (matchesSave)
 				{
 					settled.Clear();
 					startNotIssued.Clear();
 					stopObservationDirty = false;
 				}
-				return flag;
+				return matchesSave;
 			}
 			string boot2;
 			if (!ReadBoot(out boot2))
 			{
 				return false;
 			}
-			bool flag2 = boot != null && BootSessionIdentity.Valid(boot) != BootSessionIdentity.Valid(boot2);
-			string boot3 = (flag2 ? boot : boot2);
-			if (!flag2 && boot != null && boot != boot2)
+			bool allConditionsMet = boot != null && BootSessionIdentity.Valid(boot) != BootSessionIdentity.Valid(boot2);
+			string boot3 = (allConditionsMet ? boot : boot2);
+			if (!allConditionsMet && boot != null && boot != boot2)
 			{
 				if (!Save(new List<Entry>(), boot2))
 				{
@@ -433,12 +433,12 @@ namespace PaviseApp
 			List<string> list2 = new List<string>();
 			List<string> list3 = new List<string>();
 			List<string> list4 = new List<string>();
-			for (int num = entries.Count - 1; num >= 0; num--)
+			for (int entriesIndex = entries.Count - 1; entriesIndex >= 0; entriesIndex--)
 			{
-				Entry entry2 = entries[num];
+				Entry entry2 = entries[entriesIndex];
 				if (settled.Contains(entry2.Name))
 				{
-					entries.RemoveAt(num);
+					entries.RemoveAt(entriesIndex);
 					continue;
 				}
 				OptionalServiceSnapshot snapshot;
@@ -447,15 +447,15 @@ namespace PaviseApp
 					list2.Add(entry2.Name);
 					continue;
 				}
-				bool flag3 = false;
+				bool restoreCoreReady = false;
 				if (!snapshot.Exists || snapshot.StartType == 4 || !string.Equals(snapshot.Configuration, entry2.Configuration, StringComparison.Ordinal))
 				{
 					Logger.Log(Lang.F("log.pausesvc.changed", entry2.Name));
-					flag3 = true;
+					restoreCoreReady = true;
 				}
 				else if (entry2.Owned && !entry2.Restoring && ((entry2.StopObserved && snapshot.State >= 2 && snapshot.State <= 7) || snapshot.State == 2 || snapshot.State == 5 || snapshot.State == 6 || snapshot.State == 7))
 				{
-					flag3 = true;
+					restoreCoreReady = true;
 				}
 				else if (entry2.Owned && !entry2.StopObserved && !entry2.Restoring && snapshot.State != 1)
 				{
@@ -464,7 +464,7 @@ namespace PaviseApp
 					if (snapshot.State == 4 && StableRunning(entry2, value))
 					{
 						Logger.Log(Lang.F("log.pausesvc.running", entry2.Name));
-						flag3 = true;
+						restoreCoreReady = true;
 					}
 					else
 					{
@@ -473,9 +473,9 @@ namespace PaviseApp
 				}
 				else if (snapshot.State == 4 || snapshot.State == 7)
 				{
-					flag3 = true;
+					restoreCoreReady = true;
 				}
-				else if (flag2 || !entry2.Owned || (entry2.Restoring && snapshot.State == 1))
+				else if (allConditionsMet || !entry2.Owned || (entry2.Restoring && snapshot.State == 1))
 				{
 					list3.Add(entry2.Name);
 				}
@@ -505,28 +505,28 @@ namespace PaviseApp
 					switch (optionalServiceStartResult)
 					{
 					case OptionalServiceStartResult.OwnershipChanged:
-						flag3 = true;
+						restoreCoreReady = true;
 						break;
 					case OptionalServiceStartResult.NotIssued:
 						entry2.Restoring = false;
 						startNotIssued.Add(entry2.Name);
 						break;
 					}
-					if (!flag3)
+					if (!restoreCoreReady)
 					{
 						OptionalServiceSnapshot snapshot2;
-						bool flag4 = Query(entry2.Name, out snapshot2);
-						if (flag4 && optionalServiceStartResult == OptionalServiceStartResult.Accepted && snapshot2.State == 2)
+						bool querySucceeded = Query(entry2.Name, out snapshot2);
+						if (querySucceeded && optionalServiceStartResult == OptionalServiceStartResult.Accepted && snapshot2.State == 2)
 						{
-							flag4 = WaitStartSettled(entry2.Name, out snapshot2);
+							querySucceeded = WaitStartSettled(entry2.Name, out snapshot2);
 						}
-						if (flag4)
+						if (querySucceeded)
 						{
-							bool flag5 = !snapshot2.Exists || snapshot2.StartType == 4 || !string.Equals(snapshot2.Configuration, entry2.Configuration, StringComparison.Ordinal);
-							bool flag6 = optionalServiceStartResult == OptionalServiceStartResult.NotIssued && snapshot2.State >= 2 && snapshot2.State <= 7;
-							if (flag5 || flag6 || snapshot2.State == 4 || snapshot2.State == 7)
+							bool anyConditionMet = !snapshot2.Exists || snapshot2.StartType == 4 || !string.Equals(snapshot2.Configuration, entry2.Configuration, StringComparison.Ordinal);
+							bool allConditionsMet2 = optionalServiceStartResult == OptionalServiceStartResult.NotIssued && snapshot2.State >= 2 && snapshot2.State <= 7;
+							if (anyConditionMet || allConditionsMet2 || snapshot2.State == 4 || snapshot2.State == 7)
 							{
-								if (flag5)
+								if (anyConditionMet)
 								{
 									Logger.Log(Lang.F("log.pausesvc.changed", entry2.Name));
 								}
@@ -534,10 +534,10 @@ namespace PaviseApp
 								{
 									list4.Add(entry2.Name);
 								}
-								flag3 = true;
+								restoreCoreReady = true;
 							}
 						}
-						if (!flag3)
+						if (!restoreCoreReady)
 						{
 							list2.Add(entry2.Name);
 						}
@@ -547,31 +547,31 @@ namespace PaviseApp
 				{
 					list2.Add(entry2.Name);
 				}
-				if (flag3)
+				if (restoreCoreReady)
 				{
 					settled.Add(entry2.Name);
 					startNotIssued.Remove(entry2.Name);
 					receipts.Remove(entry2.Name);
-					entries.RemoveAt(num);
+					entries.RemoveAt(entriesIndex);
 				}
 			}
 			if (list4.Count != 0)
 			{
 				Logger.Log(Lang.F("log.pausesvc.restore", string.Join(", ", list4.ToArray())));
 			}
-			bool flag7 = Save(entries, boot3);
-			if (flag7)
+			bool saveSucceeded = Save(entries, boot3);
+			if (saveSucceeded)
 			{
 				settled.Clear();
 				stopObservationDirty = false;
 			}
-			if (!flag7)
+			if (!saveSucceeded)
 			{
 				Warn("log.pausesvc.ledger", null);
 			}
 			else if (list3.Count != 0)
 			{
-				Warn(flag2 ? "log.pausesvc.unknownboot" : "log.pausesvc.unowned", string.Join(", ", list3.ToArray()));
+				Warn(allConditionsMet ? "log.pausesvc.unknownboot" : "log.pausesvc.unowned", string.Join(", ", list3.ToArray()));
 			}
 			else if (list2.Count != 0)
 			{
@@ -581,7 +581,7 @@ namespace PaviseApp
 			{
 				lastWarning = null;
 			}
-			if (flag7)
+			if (saveSucceeded)
 			{
 				return entries.Count == 0;
 			}
@@ -590,16 +590,16 @@ namespace PaviseApp
 
 		private bool StableRunning(Entry entry, RunningWindow window)
 		{
-			long num = nowTicks();
-			if (window == null || num < window.LastSeen || !string.Equals(window.Configuration, entry.Configuration, StringComparison.Ordinal))
+			long sinceValue = nowTicks();
+			if (window == null || sinceValue < window.LastSeen || !string.Equals(window.Configuration, entry.Configuration, StringComparison.Ordinal))
 			{
 				RunningWindow runningWindow = new RunningWindow();
 				runningWindow.Configuration = entry.Configuration;
-				runningWindow.Since = num;
+				runningWindow.Since = sinceValue;
 				window = runningWindow;
 			}
-			window.LastSeen = num;
-			if (num - window.Since >= TimeSpan.FromSeconds(30.0).Ticks)
+			window.LastSeen = sinceValue;
+			if (sinceValue - window.Since >= TimeSpan.FromSeconds(30.0).Ticks)
 			{
 				return true;
 			}
@@ -610,17 +610,17 @@ namespace PaviseApp
 		private bool WaitStartSettled(string name, out OptionalServiceSnapshot snapshot)
 		{
 			snapshot = null;
-			bool flag = false;
+			bool waitStartSettledSucceeded = false;
 			for (int i = 0; i < 1500; i += 100)
 			{
 				Thread.Sleep(100);
-				flag = Query(name, out snapshot);
-				if (!flag || snapshot.State != 2)
+				waitStartSettledSucceeded = Query(name, out snapshot);
+				if (!waitStartSettledSucceeded || snapshot.State != 2)
 				{
-					return flag;
+					return waitStartSettledSucceeded;
 				}
 			}
-			return flag;
+			return waitStartSettledSucceeded;
 		}
 
 		private bool Query(string name, out OptionalServiceSnapshot snapshot)
@@ -688,8 +688,8 @@ namespace PaviseApp
 			boot = null;
 			if (BootSessionIdentity.Valid(value))
 			{
-				string[] array = value.Split(':');
-				boot = BootSessionIdentity.Create(new Guid(array[1]), uint.Parse(array[2], CultureInfo.InvariantCulture));
+				string[] valueParts = value.Split(':');
+				boot = BootSessionIdentity.Create(new Guid(valueParts[1]), uint.Parse(valueParts[2], CultureInfo.InvariantCulture));
 				return true;
 			}
 			Guid result;
@@ -716,7 +716,7 @@ namespace PaviseApp
 
 		private bool Save(List<Entry> entries, string boot)
 		{
-			string text = "";
+			string message = "";
 			if (entries.Count != 0)
 			{
 				if (string.IsNullOrEmpty(boot))
@@ -731,12 +731,12 @@ namespace PaviseApp
 						.Append('\t')
 						.Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Configuration)));
 				}
-				text = stringBuilder.ToString();
+				message = stringBuilder.ToString();
 			}
 			try
 			{
 				string raw;
-				return ledger.TryWrite(text) && ReadRaw(out raw) && string.Equals(text, raw, StringComparison.Ordinal);
+				return ledger.TryWrite(message) && ReadRaw(out raw) && string.Equals(message, raw, StringComparison.Ordinal);
 			}
 			catch
 			{
@@ -758,32 +758,32 @@ namespace PaviseApp
 			}
 			try
 			{
-				string[] array = raw.Split('\n');
-				string[] array2 = array[0].Split('\t');
-				if (array2.Length != 2 || (array2[0] != "v1" && array2[0] != "v2") || !NormalizeBoot(array2[1], out boot) || array2[0] == "v2" != BootSessionIdentity.Valid(boot) || array.Length > 9)
+				string[] rawParts = raw.Split('\n');
+				string[] parts = rawParts[0].Split('\t');
+				if (parts.Length != 2 || (parts[0] != "v1" && parts[0] != "v2") || !NormalizeBoot(parts[1], out boot) || parts[0] == "v2" != BootSessionIdentity.Valid(boot) || rawParts.Length > 9)
 				{
 					return false;
 				}
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				for (int i = 1; i < array.Length; i++)
+				for (int i = 1; i < rawParts.Length; i++)
 				{
-					string[] array3 = array[i].Split('\t');
-					if (array3.Length != 3 || (array3[0] != "O" && array3[0] != "P" && array3[0] != "A" && array3[0] != "R") || !IsAllowed(array3[1]) || !hashSet.Add(array3[1]))
+					string[] parts2 = rawParts[i].Split('\t');
+					if (parts2.Length != 3 || (parts2[0] != "O" && parts2[0] != "P" && parts2[0] != "A" && parts2[0] != "R") || !IsAllowed(parts2[1]) || !hashSet.Add(parts2[1]))
 					{
 						return false;
 					}
-					string @string = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(array3[2]));
+					string @string = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(parts2[2]));
 					if (@string.Length == 0 || @string.Length > 8192)
 					{
 						return false;
 					}
 					entries.Add(new Entry
 					{
-						Name = array3[1],
+						Name = parts2[1],
 						Configuration = @string,
-						Owned = (array3[0] != "P"),
-						StopObserved = (array3[0] == "O" || array3[0] == "R"),
-						Restoring = (array3[0] == "R")
+						Owned = (parts2[0] != "P"),
+						StopObserved = (parts2[0] == "O" || parts2[0] == "R"),
+						Restoring = (parts2[0] == "R")
 					});
 				}
 				return true;
@@ -796,11 +796,11 @@ namespace PaviseApp
 
 		private void Warn(string key, string names)
 		{
-			string text = ((names == null) ? Lang.T(key) : Lang.F(key, names));
-			if (!(text == lastWarning))
+			string tResult = ((names == null) ? Lang.T(key) : Lang.F(key, names));
+			if (!(tResult == lastWarning))
 			{
-				lastWarning = text;
-				Logger.Log(text);
+				lastWarning = tResult;
+				Logger.Log(tResult);
 			}
 		}
 	}

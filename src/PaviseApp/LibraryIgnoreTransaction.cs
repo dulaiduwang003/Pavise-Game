@@ -59,20 +59,20 @@ namespace PaviseApp
 			try
 			{
 				byte[] bytes2 = ReadOptional(profilePath);
-				byte[] array = ReadOptional(ignorePath);
-				if (Same(array, nextIgnore))
+				byte[] optional = ReadOptional(ignorePath);
+				if (Same(optional, nextIgnore))
 				{
 					return store.Save(next, canCommit);
 				}
-				string text = Hash(bytes2);
-				string text2 = Hash(bytes);
-				if (text == text2)
+				string hashResult = Hash(bytes2);
+				string hashResult2 = Hash(bytes);
+				if (hashResult == hashResult2)
 				{
 					WriteAtomic(ignorePath, nextIgnore, "apply-ignore-only", canCommit);
 					return true;
 				}
-				string text3 = string.Join("\n", "PAVISE_LIBRARY_IGNORE_TXN_V1", text, text2, Encode(array), Encode(nextIgnore));
-				byte[] bytes3 = Encoding.UTF8.GetBytes(text3 + "\n" + Hash(Encoding.UTF8.GetBytes(text3)));
+				string joinResult = string.Join("\n", "PAVISE_LIBRARY_IGNORE_TXN_V1", hashResult, hashResult2, Encode(optional), Encode(nextIgnore));
+				byte[] bytes3 = Encoding.UTF8.GetBytes(joinResult + "\n" + Hash(Encoding.UTF8.GetBytes(joinResult)));
 				if (bytes3.Length > 8388608)
 				{
 					throw new FormatException("Oversized library receipt");
@@ -112,46 +112,46 @@ namespace PaviseApp
 				{
 					throw new FormatException("Oversized library receipt");
 				}
-				string[] array = new UTF8Encoding(false, true).GetString(File.ReadAllBytes(receiptPath)).Split('\n');
-				if (array.Length != 6 || array[0] != "PAVISE_LIBRARY_IGNORE_TXN_V1" || Hash(Encoding.UTF8.GetBytes(string.Join("\n", array, 0, 5))) != array[5])
+				string[] getStringParts = new UTF8Encoding(false, true).GetString(File.ReadAllBytes(receiptPath)).Split('\n');
+				if (getStringParts.Length != 6 || getStringParts[0] != "PAVISE_LIBRARY_IGNORE_TXN_V1" || Hash(Encoding.UTF8.GetBytes(string.Join("\n", getStringParts, 0, 5))) != getStringParts[5])
 				{
 					throw new FormatException("Invalid library receipt");
 				}
-				byte[] array2 = Decode(array[3]);
-				byte[] array3 = Decode(array[4]);
-				if (array3 == null)
+				byte[] decodeResult = Decode(getStringParts[3]);
+				byte[] decodeResult2 = Decode(getStringParts[4]);
+				if (decodeResult2 == null)
 				{
 					throw new FormatException("Missing target ignore snapshot");
 				}
-				string text = Hash(ReadOptional(profilePath));
-				byte[] array4;
-				if (text == array[2])
+				string hashResult = Hash(ReadOptional(profilePath));
+				byte[] rawBytes;
+				if (hashResult == getStringParts[2])
 				{
-					array4 = array3;
+					rawBytes = decodeResult2;
 				}
 				else
 				{
-					if (!(text == array[1]))
+					if (!(hashResult == getStringParts[1]))
 					{
 						throw new IOException("Library changed outside the pending transaction; preserving receipt");
 					}
-					array4 = array2;
+					rawBytes = decodeResult;
 				}
 				byte[] a = ReadOptional(ignorePath);
-				if (!Same(a, array2) && !Same(a, array3))
+				if (!Same(a, decodeResult) && !Same(a, decodeResult2))
 				{
 					throw new IOException("Auto-ignore changed outside the pending transaction; preserving receipt");
 				}
-				if (!Same(a, array4))
+				if (!Same(a, rawBytes))
 				{
 					BeforeWrite("restore-ignore");
-					if (array4 == null)
+					if (rawBytes == null)
 					{
 						File.Delete(ignorePath);
 					}
 					else
 					{
-						WriteAtomic(ignorePath, array4, "restore-ignore-write");
+						WriteAtomic(ignorePath, rawBytes, "restore-ignore-write");
 					}
 				}
 				BeforeWrite("clear-receipt");
@@ -173,10 +173,10 @@ namespace PaviseApp
 		private void WriteAtomic(string path, byte[] bytes, string phase, Func<bool> canCommit = null)
 		{
 			BeforeWrite(phase);
-			string text = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+			string message = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 			try
 			{
-				using (FileStream fileStream = new FileStream(text, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				using (FileStream fileStream = new FileStream(message, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 				{
 					fileStream.Write(bytes, 0, bytes.Length);
 					fileStream.Flush(true);
@@ -187,10 +187,10 @@ namespace PaviseApp
 					{
 						throw new OperationCanceledException();
 					}
-					File.Move(text, path);
+					File.Move(message, path);
 					return;
 				}
-				int num = 0;
+				int processedCount = 0;
 				while (true)
 				{
 					try
@@ -199,27 +199,27 @@ namespace PaviseApp
 						{
 							throw new OperationCanceledException();
 						}
-						File.Replace(text, path, null);
+						File.Replace(message, path, null);
 						break;
 					}
 					catch (IOException error)
 					{
-						if (num >= 2 || !GameProfileStore.IsRetryableReplaceError(error) || !File.Exists(path) || !File.Exists(text))
+						if (processedCount >= 2 || !GameProfileStore.IsRetryableReplaceError(error) || !File.Exists(path) || !File.Exists(message))
 						{
 							throw;
 						}
-						Thread.Sleep(25 * (num + 1));
+						Thread.Sleep(25 * (processedCount + 1));
 					}
-					num++;
+					processedCount++;
 				}
 			}
 			finally
 			{
 				try
 				{
-					if (File.Exists(text))
+					if (File.Exists(message))
 					{
-						File.Delete(text);
+						File.Delete(message);
 					}
 				}
 				catch

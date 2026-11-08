@@ -4,24 +4,24 @@ namespace PaviseApp
 	{
 		internal static void RequireClear(GameNvCanonicalStore store)
 		{
-			bool flag = false;
-			string[] array = store.PendingJournals();
-			foreach (string text in array)
+			bool requireClearReady = false;
+			string[] pendingJournalsResult = store.PendingJournals();
+			foreach (string entryText in pendingJournalsResult)
 			{
 				try
 				{
-					GameNvRecoveryIdentity original = store.ReadOriginal(text);
+					GameNvRecoveryIdentity original = store.ReadOriginal(entryText);
 					using (GameNvNativeAuthority authority = GameNvNativeAuthority.ForRecovery(store, original))
 					{
-						GameNvProfileLease.RecoverNative(text, authority);
+						GameNvProfileLease.RecoverNative(entryText, authority);
 					}
 				}
 				catch
 				{
-					flag = true;
+					requireClearReady = true;
 				}
 			}
-			if (flag || store.PendingJournals().Length != 0)
+			if (requireClearReady || store.PendingJournals().Length != 0)
 			{
 				throw new GameNvPreparationPending(GameNvPending.Recovery);
 			}

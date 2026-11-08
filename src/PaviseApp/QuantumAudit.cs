@@ -68,15 +68,15 @@ namespace PaviseApp
 				finding.Note = Lang.T("quantum.absent");
 				return finding;
 			}
-			int num = int.Parse(current.Substring(2), CultureInfo.InvariantCulture);
+			int parseResult = int.Parse(current.Substring(2), CultureInfo.InvariantCulture);
 			if (owned != null && owned == current)
 			{
-				int num2 = Array.IndexOf(QuantumProfiles.Values, num & 0x3F);
+				int matchIndex = Array.IndexOf(QuantumProfiles.Values, parseResult & 0x3F);
 				finding.Value = PerformancePolicy.Text("由档位设置", "Set by profile");
-				finding.Note = Shown(current) + PerformancePolicy.Text("由「前台时间片」档位设置", " Set by the Foreground quantum profile") + ((num2 > 0) ? (PerformancePolicy.Text("：", ": ") + QuantumProfiles.Title(num2)) : "") + PerformancePolicy.Text("。", ".");
+				finding.Note = Shown(current) + PerformancePolicy.Text("由「前台时间片」档位设置", " Set by the Foreground quantum profile") + ((matchIndex > 0) ? (PerformancePolicy.Text("：", ": ") + QuantumProfiles.Title(matchIndex)) : "") + PerformancePolicy.Text("。", ".");
 				return finding;
 			}
-			if (QuantumDecoder.Decode(num).RawPrioSep > 2)
+			if (QuantumDecoder.Decode(parseResult).RawPrioSep > 2)
 			{
 				finding.Value = PerformancePolicy.Text("未文档化取值", "Undocumented value");
 				finding.Note = Shown(current) + PerformancePolicy.Text("前台加权位为 3，微软未定义此取值；如需调整，可在「前台时间片」选择档位。", " The foreground boost bits are 3, which Microsoft does not define. Choose a Foreground quantum profile to change it.");

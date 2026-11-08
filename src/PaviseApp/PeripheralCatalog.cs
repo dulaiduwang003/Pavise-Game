@@ -37,26 +37,26 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text = FileInfoText(path);
-			if (text.Length > 0 && DescriptionLooksInputAudio(text))
+			string fileInfoTextResult = FileInfoText(path);
+			if (fileInfoTextResult.Length > 0 && DescriptionLooksInputAudio(fileInfoTextResult))
 			{
 				return true;
 			}
-			return MatchesPresentDevice(name, text);
+			return MatchesPresentDevice(name, fileInfoTextResult);
 		}
 
 		private static bool MatchesPresentDevice(string name, string info)
 		{
-			string[] array = PeripheralVendorProbe.Tokens();
-			if (array.Length == 0)
+			string[] tokensResult = PeripheralVendorProbe.Tokens();
+			if (tokensResult.Length == 0)
 			{
 				return false;
 			}
-			string text = (name ?? "").ToLowerInvariant();
-			string[] array2 = array;
-			foreach (string value in array2)
+			string toLowerInvariantResult = (name ?? "").ToLowerInvariant();
+			string[] textEntries = tokensResult;
+			foreach (string value in textEntries)
 			{
-				if (text.Contains(value))
+				if (toLowerInvariantResult.Contains(value))
 				{
 					return true;
 				}
@@ -74,11 +74,11 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = name.ToLowerInvariant();
+			string toLowerInvariantResult = name.ToLowerInvariant();
 			string[] nameKeywords = NameKeywords;
 			foreach (string value in nameKeywords)
 			{
-				if (text.Contains(value))
+				if (toLowerInvariantResult.Contains(value))
 				{
 					return true;
 				}
@@ -92,11 +92,11 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = description.ToLowerInvariant();
+			string toLowerInvariantResult = description.ToLowerInvariant();
 			string[] descriptionWords = DescriptionWords;
 			foreach (string value in descriptionWords)
 			{
-				if (text.Contains(value))
+				if (toLowerInvariantResult.Contains(value))
 				{
 					return true;
 				}
@@ -133,14 +133,14 @@ namespace PaviseApp
 					return value;
 				}
 			}
-			string text = "";
+			string fileInfoTextResult = "";
 			try
 			{
 				FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(path);
-				text = ((versionInfo.FileDescription ?? "") + "\n" + (versionInfo.ProductName ?? "") + "\n" + (versionInfo.CompanyName ?? "")).ToLowerInvariant();
-				if (text.Length == 2)
+				fileInfoTextResult = ((versionInfo.FileDescription ?? "") + "\n" + (versionInfo.ProductName ?? "") + "\n" + (versionInfo.CompanyName ?? "")).ToLowerInvariant();
+				if (fileInfoTextResult.Length == 2)
 				{
-					text = "";
+					fileInfoTextResult = "";
 				}
 			}
 			catch
@@ -152,8 +152,8 @@ namespace PaviseApp
 				{
 					infoCache.Clear();
 				}
-				infoCache[path] = text;
-				return text;
+				infoCache[path] = fileInfoTextResult;
+				return fileInfoTextResult;
 			}
 		}
 	}

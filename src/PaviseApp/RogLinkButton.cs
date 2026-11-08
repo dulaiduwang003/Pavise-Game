@@ -109,24 +109,24 @@ namespace PaviseApp
 				}
 				GraphicsState gstate = graphics.Save();
 				graphics.SetClip(graphicsPath);
-				int num = base.Width - Theme.S(44) + (int)(hoverIfEnabled * (float)Theme.S(5));
-				int num2 = Theme.S(21);
+				int onPaintValue = base.Width - Theme.S(44) + (int)(hoverIfEnabled * (float)Theme.S(5));
+				int scaledDimension = Theme.S(21);
 				Point[] points = new Point[4]
 				{
-					new Point(num, rectangle.Top),
+					new Point(onPaintValue, rectangle.Top),
 					new Point(base.Width, rectangle.Top),
 					new Point(base.Width, rectangle.Bottom),
-					new Point(num - num2, rectangle.Bottom)
+					new Point(onPaintValue - scaledDimension, rectangle.Bottom)
 				};
-				using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, num - num2), rectangle.Top, Math.Max(1, base.Width - num + num2), rectangle.Height)), Col.Alpha(AccentColor, 0), Col.Alpha(AccentColor, (int)(16f + hoverIfEnabled * 38f)), LinearGradientMode.Horizontal))
+				using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, onPaintValue - scaledDimension), rectangle.Top, Math.Max(1, base.Width - onPaintValue + scaledDimension), rectangle.Height)), Col.Alpha(AccentColor, 0), Col.Alpha(AccentColor, (int)(16f + hoverIfEnabled * 38f)), LinearGradientMode.Horizontal))
 				{
 					graphics.FillPolygon(brush2, points);
 				}
 				graphics.Restore(gstate);
 				PaintBusy(graphics, rectangle, graphicsPath);
 			}
-			int num3 = Theme.S(26);
-			Rectangle r = new Rectangle(Theme.S(9), (base.Height - num3) / 2, num3, num3);
+			int scaledDimension2 = Theme.S(26);
+			Rectangle r = new Rectangle(Theme.S(9), (base.Height - scaledDimension2) / 2, scaledDimension2, scaledDimension2);
 			DsPaint.TechFrame(graphics, r, Theme.S(5), Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hoverIfEnabled * 0.24f), Col.Alpha(AccentColor, (int)(78f + hoverIfEnabled * 106f)));
 			Glyphs.Draw(graphics, glyph, new Rectangle(r.Left + Theme.S(6), r.Top + Theme.S(6), Theme.S(14), Theme.S(14)), AccentColor);
 			if (base.Width >= Theme.S(79))
@@ -152,13 +152,13 @@ namespace PaviseApp
 
 		private void PaintCaption(Graphics g, bool compact, float hot, float down)
 		{
-			int num = Theme.S(43);
-			int num2 = Theme.S(36);
+			int left = Theme.S(43);
+			int scaledDimension = Theme.S(36);
 			if (!compact)
 			{
-				TextRenderer.DrawText(g, code, DsType.Mono(DsMono.Code), new Rectangle(num, Theme.S(7), Math.Max(1, base.Width - num - num2), Theme.S(12)), Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				TextRenderer.DrawText(g, code, DsType.Mono(DsMono.Code), new Rectangle(left, Theme.S(7), Math.Max(1, base.Width - left - scaledDimension), Theme.S(12)), Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
-			Rectangle bounds = (compact ? new Rectangle(num, 0, Math.Max(1, base.Width - num - num2), base.Height) : new Rectangle(num, Theme.S(18), Math.Max(1, base.Width - num - num2), Theme.S(22)));
+			Rectangle bounds = (compact ? new Rectangle(left, 0, Math.Max(1, base.Width - left - scaledDimension), base.Height) : new Rectangle(left, Theme.S(18), Math.Max(1, base.Width - left - scaledDimension), Theme.S(22)));
 			TextRenderer.DrawText(g, Text, DsType.Font(DsText.Body, true), bounds, Col.Lerp(Theme.Dim, Theme.Fg, 0.55f + hot * 0.45f), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			if (External)
 			{
@@ -168,63 +168,63 @@ namespace PaviseApp
 			{
 				DrawForwardMark(g, hot, down);
 			}
-			int num3 = base.Height - Theme.S(4);
-			int num4 = Theme.S(30) + (int)(hot * (float)Theme.S(44));
+			int top = base.Height - Theme.S(4);
+			int sOffset = Theme.S(30) + (int)(hot * (float)Theme.S(44));
 			using (Pen pen = new Pen(Col.Alpha(AccentColor, (int)(92f + hot * 120f)), DsSpace.Line(1)))
 			{
-				g.DrawLine(pen, num, num3, num + num4, num3);
+				g.DrawLine(pen, left, top, left + sOffset, top);
 			}
-			int num5 = Theme.S(4);
+			int width = Theme.S(4);
 			using (SolidBrush brush = new SolidBrush(AccentColor))
 			{
-				g.FillRectangle(brush, num - Theme.S(2), num3 - Theme.S(2), num5, num5);
+				g.FillRectangle(brush, left - Theme.S(2), top - Theme.S(2), width, width);
 			}
 		}
 
 		private void DrawForwardMark(Graphics g, float hot, float down)
 		{
-			int num = Theme.S(9);
-			int num2 = base.Width - Theme.S(24) + (int)(hot * (float)Theme.S(3)) - (int)(down * (float)Theme.S(1));
-			int num3 = base.Height / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
+			int scaledDimension = Theme.S(9);
+			int left = base.Width - Theme.S(24) + (int)(hot * (float)Theme.S(3)) - (int)(down * (float)Theme.S(1));
+			int height = base.Height / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
 			using (Pen pen = new Pen(Col.Lerp(Theme.Dim, AccentColor, 0.25f + hot * 0.75f), Math.Max(1.2f, Theme.S(1))))
 			{
-				g.DrawLine(pen, num2, num3 - num / 2, num2 + num / 2, num3);
-				g.DrawLine(pen, num2 + num / 2, num3, num2, num3 + num / 2);
+				g.DrawLine(pen, left, height - scaledDimension / 2, left + scaledDimension / 2, height);
+				g.DrawLine(pen, left + scaledDimension / 2, height, left, height + scaledDimension / 2);
 			}
 		}
 
 		private void DrawUnreadDot(Graphics g)
 		{
-			int num = Theme.S(7);
-			Rectangle rect = new Rectangle(base.Width - Theme.S(17), Theme.S(9), num, num);
+			int scaledDimension = Theme.S(7);
+			Rectangle rect = new Rectangle(base.Width - Theme.S(17), Theme.S(9), scaledDimension, scaledDimension);
 			using (SolidBrush brush = new SolidBrush(AccentColor))
 			{
 				g.FillEllipse(brush, rect);
 			}
-			int num2 = Theme.S(2);
+			int scaledDimension2 = Theme.S(2);
 			using (Pen pen = new Pen(Col.Alpha(AccentColor, 90), DsSpace.Line(1)))
 			{
-				g.DrawEllipse(pen, Rectangle.Inflate(rect, num2, num2));
+				g.DrawEllipse(pen, Rectangle.Inflate(rect, scaledDimension2, scaledDimension2));
 			}
 		}
 
 		private void DrawExternalMark(Graphics g, float hot, float down)
 		{
-			int num = Theme.S(9);
-			int num2 = base.Width - Theme.S(26) + (int)(hot * (float)Theme.S(2)) - (int)(down * (float)Theme.S(1));
-			int num3 = base.Height / 2 - num / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
-			Rectangle rectangle = new Rectangle(num2, num3, num, num);
+			int scaledDimension = Theme.S(9);
+			int drawExternalMarkValue = base.Width - Theme.S(26) + (int)(hot * (float)Theme.S(2)) - (int)(down * (float)Theme.S(1));
+			int drawExternalMarkValue2 = base.Height / 2 - scaledDimension / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
+			Rectangle rectangle = new Rectangle(drawExternalMarkValue, drawExternalMarkValue2, scaledDimension, scaledDimension);
 			using (Pen pen = new Pen(Col.Lerp(Theme.Dim, AccentColor, 0.25f + hot * 0.75f), Math.Max(1.2f, Theme.S(1))))
 			{
-				int num4 = Theme.S(3);
-				g.DrawLine(pen, rectangle.Left, rectangle.Top + num4, rectangle.Left, rectangle.Bottom);
+				int scaledDimension2 = Theme.S(3);
+				g.DrawLine(pen, rectangle.Left, rectangle.Top + scaledDimension2, rectangle.Left, rectangle.Bottom);
 				g.DrawLine(pen, rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Bottom);
-				g.DrawLine(pen, rectangle.Right, rectangle.Bottom, rectangle.Right, rectangle.Top + num4);
-				int num5 = rectangle.Right + num4;
-				int num6 = rectangle.Top - num4;
-				g.DrawLine(pen, rectangle.Left + num4, rectangle.Bottom - num4, num5, num6);
-				g.DrawLine(pen, num5 - Theme.S(4), num6, num5, num6);
-				g.DrawLine(pen, num5, num6, num5, num6 + Theme.S(4));
+				g.DrawLine(pen, rectangle.Right, rectangle.Bottom, rectangle.Right, rectangle.Top + scaledDimension2);
+				int width = rectangle.Right + scaledDimension2;
+				int height = rectangle.Top - scaledDimension2;
+				g.DrawLine(pen, rectangle.Left + scaledDimension2, rectangle.Bottom - scaledDimension2, width, height);
+				g.DrawLine(pen, width - Theme.S(4), height, width, height);
+				g.DrawLine(pen, width, height, width, height + Theme.S(4));
 			}
 		}
 	}

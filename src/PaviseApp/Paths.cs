@@ -40,9 +40,9 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PaviseAuto");
-				Directory.CreateDirectory(text);
-				Data = text;
+				string paviseAutoPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PaviseAuto");
+				Directory.CreateDirectory(paviseAutoPath);
+				Data = paviseAutoPath;
 			}
 			catch
 			{
@@ -53,7 +53,7 @@ namespace PaviseApp
 
 		internal static string ResolveStartupDataArgument(string[] args)
 		{
-			string text = null;
+			string startupDataArgumentResult = null;
 			if (args == null)
 			{
 				return null;
@@ -62,14 +62,14 @@ namespace PaviseApp
 			{
 				if (string.Equals(args[i], "--autostart-data", StringComparison.OrdinalIgnoreCase))
 				{
-					if (text != null || i + 1 >= args.Length || string.IsNullOrWhiteSpace(args[i + 1]))
+					if (startupDataArgumentResult != null || i + 1 >= args.Length || string.IsNullOrWhiteSpace(args[i + 1]))
 					{
 						throw new ArgumentException("Startup data directory argument is invalid.");
 					}
-					text = args[++i];
+					startupDataArgumentResult = args[++i];
 				}
 			}
-			return text;
+			return startupDataArgumentResult;
 		}
 
 		internal static bool IsAbsoluteStartupDataPath(string path)

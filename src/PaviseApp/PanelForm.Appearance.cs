@@ -117,9 +117,9 @@ namespace PaviseApp
 			}
 			try
 			{
-				for (int num = list.Count - 1; num >= 0; num--)
+				for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
 				{
-					Control control = list[num];
+					Control control = list[listIndex];
 					Color color = previous.Remap(control.BackColor, next);
 					Color color2 = previous.Remap(control.ForeColor, next);
 					if (control.BackColor != color)
@@ -212,9 +212,9 @@ namespace PaviseApp
 			}
 			finally
 			{
-				for (int num2 = list.Count - 1; num2 >= 0; num2--)
+				for (int listIndex2 = list.Count - 1; listIndex2 >= 0; listIndex2--)
 				{
-					list[num2].ResumeLayout(false);
+					list[listIndex2].ResumeLayout(false);
 				}
 			}
 			InvalidateVisibleTheme();

@@ -45,13 +45,13 @@ namespace PaviseApp
 
 		public static ulong StrictMask(ulong all, ulong background, ulong performance, ulong cache)
 		{
-			ulong num = ((cache != 0) ? cache : ((performance != 0) ? performance : (all & ~background)));
-			num &= all;
-			if (num == 0)
+			ulong cacheSnapshot = ((cache != 0) ? cache : ((performance != 0) ? performance : (all & ~background)));
+			cacheSnapshot &= all;
+			if (cacheSnapshot == 0)
 			{
 				return all;
 			}
-			return num;
+			return cacheSnapshot;
 		}
 
 		public static int BackgroundCoreCount(int physicalCoreCount)
@@ -78,58 +78,58 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			int num = physicalCores.Length;
-			if (num < 5)
+			int physicalCoresCount = physicalCores.Length;
+			if (physicalCoresCount < 5)
 			{
 				return 0uL;
 			}
-			int num2 = ((num <= 8) ? 1 : 2);
+			int squeezeMaskValue = ((physicalCoresCount <= 8) ? 1 : 2);
 			List<ulong> list = new List<ulong>();
 			if (hybrid && effMask != 0)
 			{
-				foreach (ulong num3 in physicalCores)
+				foreach (ulong numericValueEntry in physicalCores)
 				{
-					if ((num3 & allowedMask) == num3 && (num3 & effMask) == num3)
+					if ((numericValueEntry & allowedMask) == numericValueEntry && (numericValueEntry & effMask) == numericValueEntry)
 					{
-						list.Add(num3);
+						list.Add(numericValueEntry);
 					}
 				}
 			}
-			if (list.Count < num2)
+			if (list.Count < squeezeMaskValue)
 			{
 				list.Clear();
-				foreach (ulong num4 in physicalCores)
+				foreach (ulong numericValueEntry2 in physicalCores)
 				{
-					if ((num4 & allowedMask) == num4)
+					if ((numericValueEntry2 & allowedMask) == numericValueEntry2)
 					{
-						list.Add(num4);
+						list.Add(numericValueEntry2);
 					}
 				}
 			}
-			if (list.Count < num2)
+			if (list.Count < squeezeMaskValue)
 			{
 				return 0uL;
 			}
-			List<ulong> list2 = PreferCleanCacheDomain(list, l3Domains, gameMask, num2);
+			List<ulong> list2 = PreferCleanCacheDomain(list, l3Domains, gameMask, squeezeMaskValue);
 			list2.Sort();
-			ulong num5 = 0uL;
-			for (int k = list2.Count - num2; k < list2.Count; k++)
+			ulong squeezeMaskResult = 0uL;
+			for (int k = list2.Count - squeezeMaskValue; k < list2.Count; k++)
 			{
 				if (k >= 0)
 				{
-					num5 |= list2[k];
+					squeezeMaskResult |= list2[k];
 				}
 			}
-			num5 &= allowedMask;
-			if (num5 == 0 || num5 == allowedMask)
+			squeezeMaskResult &= allowedMask;
+			if (squeezeMaskResult == 0 || squeezeMaskResult == allowedMask)
 			{
 				return 0uL;
 			}
-			if (BitCount(num5) * 2 >= BitCount(allowedMask))
+			if (BitCount(squeezeMaskResult) * 2 >= BitCount(allowedMask))
 			{
 				return 0uL;
 			}
-			return num5;
+			return squeezeMaskResult;
 		}
 
 		internal static List<ulong> PreferCleanCacheDomain(List<ulong> pool, ulong[] l3Domains, ulong gameMask, int reserve)
@@ -139,16 +139,16 @@ namespace PaviseApp
 				return pool;
 			}
 			List<ulong> list = null;
-			foreach (ulong num in l3Domains)
+			foreach (ulong numericValueEntry in l3Domains)
 			{
-				if (num == 0 || (num & gameMask) != 0)
+				if (numericValueEntry == 0 || (numericValueEntry & gameMask) != 0)
 				{
 					continue;
 				}
 				List<ulong> list2 = new List<ulong>();
 				foreach (ulong item in pool)
 				{
-					if ((item & num) == item)
+					if ((item & numericValueEntry) == item)
 					{
 						list2.Add(item);
 					}
@@ -163,13 +163,13 @@ namespace PaviseApp
 
 		internal static int BitCount(ulong mask)
 		{
-			int num = 0;
+			int processedCount = 0;
 			while (mask != 0)
 			{
 				mask &= mask - 1;
-				num++;
+				processedCount++;
 			}
-			return num;
+			return processedCount;
 		}
 
 		public static double CoreInterruptRate(double[] rates, ulong coreMask)
@@ -178,15 +178,15 @@ namespace PaviseApp
 			{
 				return 0.0;
 			}
-			double num = 0.0;
+			double coreInterruptRateResult = 0.0;
 			for (int i = 0; i < rates.Length && i < 64; i++)
 			{
-				if (((coreMask >> i) & 1) != 0 && rates[i] > num)
+				if (((coreMask >> i) & 1) != 0 && rates[i] > coreInterruptRateResult)
 				{
-					num = rates[i];
+					coreInterruptRateResult = rates[i];
 				}
 			}
-			return num;
+			return coreInterruptRateResult;
 		}
 
 		public static CorePlan Decide(CoreDesc[] cores, ulong allMask)
@@ -203,41 +203,41 @@ namespace PaviseApp
 			{
 				return result;
 			}
-			int num = int.MaxValue;
-			int num2 = int.MinValue;
-			CoreDesc[] array = cores;
-			for (int i = 0; i < array.Length; i++)
+			int maxValue = int.MaxValue;
+			int minValue = int.MinValue;
+			CoreDesc[] coresSnapshot = cores;
+			for (int i = 0; i < coresSnapshot.Length; i++)
 			{
-				CoreDesc coreDesc = array[i];
-				if (coreDesc.Eff < num)
+				CoreDesc coreDesc = coresSnapshot[i];
+				if (coreDesc.Eff < maxValue)
 				{
-					num = coreDesc.Eff;
+					maxValue = coreDesc.Eff;
 				}
-				if (coreDesc.Eff > num2)
+				if (coreDesc.Eff > minValue)
 				{
-					num2 = coreDesc.Eff;
+					minValue = coreDesc.Eff;
 				}
 			}
-			if (num2 > num)
+			if (minValue > maxValue)
 			{
-				ulong num3 = 0uL;
-				ulong num4 = 0uL;
+				ulong gameValue = 0uL;
+				ulong backgroundValue = 0uL;
 				for (int j = 0; j < cores.Length; j++)
 				{
 					CoreDesc coreDesc2 = cores[j];
-					if (coreDesc2.Eff == num2)
+					if (coreDesc2.Eff == minValue)
 					{
-						num3 |= coreDesc2.Mask;
+						gameValue |= coreDesc2.Mask;
 					}
 					else
 					{
-						num4 |= coreDesc2.Mask;
+						backgroundValue |= coreDesc2.Mask;
 					}
 				}
-				if (num3 != 0 && num4 != 0)
+				if (gameValue != 0 && backgroundValue != 0)
 				{
-					result.Game = num3;
-					result.Background = num4;
+					result.Game = gameValue;
+					result.Background = backgroundValue;
 					result.Partitioned = true;
 					result.Tag = "hybrid-pe";
 					return result;
@@ -256,52 +256,52 @@ namespace PaviseApp
 					dictionary2[coreDesc3.L3] = coreDesc3.L3Size;
 				}
 			}
-			ulong num5 = 0uL;
+			ulong numericValue = 0uL;
 			for (int l = 0; l < cores.Length; l++)
 			{
 				CoreDesc coreDesc4 = cores[l];
 				if ((coreDesc4.Mask & 1) != 0)
 				{
-					num5 = coreDesc4.Mask;
+					numericValue = coreDesc4.Mask;
 					break;
 				}
 			}
 			if (dictionary.Count >= 2)
 			{
-				uint num6 = 0u;
-				uint num7 = uint.MaxValue;
+				uint numericValue2 = 0u;
+				uint maxValue2 = uint.MaxValue;
 				foreach (uint value4 in dictionary2.Values)
 				{
-					if (value4 > num6)
+					if (value4 > numericValue2)
 					{
-						num6 = value4;
+						numericValue2 = value4;
 					}
-					if (value4 < num7)
+					if (value4 < maxValue2)
 					{
-						num7 = value4;
+						maxValue2 = value4;
 					}
 				}
-				if (num6 > num7 && num6 != 0)
+				if (numericValue2 > maxValue2 && numericValue2 != 0)
 				{
-					ulong num8 = 0uL;
-					ulong num9 = 0uL;
+					ulong gameValue2 = 0uL;
+					ulong backgroundValue2 = 0uL;
 					foreach (KeyValuePair<int, ulong> item in dictionary)
 					{
-						if (dictionary2[item.Key] == num6)
+						if (dictionary2[item.Key] == numericValue2)
 						{
-							num8 |= item.Value;
+							gameValue2 |= item.Value;
 						}
 						else
 						{
-							num9 |= item.Value;
+							backgroundValue2 |= item.Value;
 						}
 					}
-					if (num8 != 0 && num9 != 0)
+					if (gameValue2 != 0 && backgroundValue2 != 0)
 					{
-						result.Game = num8;
-						result.Background = num9;
-						result.AltGame = num9;
-						result.AltBackground = num8;
+						result.Game = gameValue2;
+						result.Background = backgroundValue2;
+						result.AltGame = backgroundValue2;
+						result.AltBackground = gameValue2;
 						result.Partitioned = true;
 						result.Tag = "x3d-cache";
 						return result;
@@ -325,102 +325,102 @@ namespace PaviseApp
 			}
 			if (dictionary3.Count >= 2)
 			{
-				int num10 = -1;
-				int num11 = -1;
+				int gameDomainValue = -1;
+				int decideValue = -1;
 				foreach (KeyValuePair<int, int> item2 in dictionary4)
 				{
-					if (item2.Value > num11 || (item2.Value == num11 && (num10 < 0 || item2.Key < num10)))
+					if (item2.Value > decideValue || (item2.Value == decideValue && (gameDomainValue < 0 || item2.Key < gameDomainValue)))
 					{
-						num10 = item2.Key;
-						num11 = item2.Value;
+						gameDomainValue = item2.Key;
+						decideValue = item2.Value;
 					}
 				}
-				ulong num12 = ((num10 >= 0) ? (dictionary3[num10] & allMask) : 0);
-				ulong num13 = allMask & ~num12;
-				if (num12 != 0 && num13 != 0 && num11 >= 6)
+				ulong gameValue3 = ((gameDomainValue >= 0) ? (dictionary3[gameDomainValue] & allMask) : 0);
+				ulong backgroundValue3 = allMask & ~gameValue3;
+				if (gameValue3 != 0 && backgroundValue3 != 0 && decideValue >= 6)
 				{
-					result.Game = num12;
-					result.Background = num13;
+					result.Game = gameValue3;
+					result.Background = backgroundValue3;
 					result.Partitioned = true;
 					result.Tag = "symmetric-ccd";
-					result.GameDomain = num10;
-					int num14 = -1;
-					int num15 = -1;
+					result.GameDomain = gameDomainValue;
+					int altDomainValue = -1;
+					int decideValue2 = -1;
 					foreach (KeyValuePair<int, int> item3 in dictionary4)
 					{
-						if (item3.Key != num10 && (item3.Value > num15 || (item3.Value == num15 && (num14 < 0 || item3.Key < num14))))
+						if (item3.Key != gameDomainValue && (item3.Value > decideValue2 || (item3.Value == decideValue2 && (altDomainValue < 0 || item3.Key < altDomainValue))))
 						{
-							num14 = item3.Key;
-							num15 = item3.Value;
+							altDomainValue = item3.Key;
+							decideValue2 = item3.Value;
 						}
 					}
-					if (num14 >= 0 && num15 >= 6)
+					if (altDomainValue >= 0 && decideValue2 >= 6)
 					{
-						ulong num16 = dictionary3[num14] & allMask;
-						ulong num17 = allMask & ~num16;
-						if (num16 != 0 && num17 != 0)
+						ulong altGameValue = dictionary3[altDomainValue] & allMask;
+						ulong altBackgroundValue = allMask & ~altGameValue;
+						if (altGameValue != 0 && altBackgroundValue != 0)
 						{
-							result.AltGame = num16;
-							result.AltBackground = num17;
-							result.AltDomain = num14;
+							result.AltGame = altGameValue;
+							result.AltBackground = altBackgroundValue;
+							result.AltDomain = altDomainValue;
 						}
 					}
 					return result;
 				}
 			}
-			if (cores.Length >= 8 && num5 != 0)
+			if (cores.Length >= 8 && numericValue != 0)
 			{
-				int num18 = Math.Max(1, BackgroundCoreCount(cores.Length));
+				int backgroundCoreCountLimit = Math.Max(1, BackgroundCoreCount(cores.Length));
 				List<ulong> list = new List<ulong>();
-				array = cores;
-				for (int i = 0; i < array.Length; i++)
+				coresSnapshot = cores;
+				for (int i = 0; i < coresSnapshot.Length; i++)
 				{
-					CoreDesc coreDesc6 = array[i];
-					if (coreDesc6.Mask != num5)
+					CoreDesc coreDesc6 = coresSnapshot[i];
+					if (coreDesc6.Mask != numericValue)
 					{
 						list.Add(coreDesc6.Mask);
 					}
 				}
 				list.Sort();
-				ulong num19 = num5;
-				for (int n = 0; n < num18 - 1 && list.Count - n - 1 >= 0; n++)
+				ulong backgroundValue4 = numericValue;
+				for (int n = 0; n < backgroundCoreCountLimit - 1 && list.Count - n - 1 >= 0; n++)
 				{
-					num19 |= list[list.Count - n - 1];
+					backgroundValue4 |= list[list.Count - n - 1];
 				}
-				ulong num20 = allMask & ~num19;
-				if (num20 != 0)
+				ulong gameValue4 = allMask & ~backgroundValue4;
+				if (gameValue4 != 0)
 				{
-					result.Game = num20;
-					result.Background = num19;
+					result.Game = gameValue4;
+					result.Background = backgroundValue4;
 					result.Partitioned = true;
 					result.Tag = "pool-iso-core0";
 					return result;
 				}
 			}
-			int num21 = BackgroundCoreCount(cores.Length);
-			if (num21 > 0)
+			int backgroundCoreCountResult = BackgroundCoreCount(cores.Length);
+			if (backgroundCoreCountResult > 0)
 			{
 				List<ulong> list2 = new List<ulong>();
-				array = cores;
-				for (int i = 0; i < array.Length; i++)
+				coresSnapshot = cores;
+				for (int i = 0; i < coresSnapshot.Length; i++)
 				{
-					CoreDesc coreDesc7 = array[i];
+					CoreDesc coreDesc7 = coresSnapshot[i];
 					list2.Add(coreDesc7.Mask);
 				}
 				list2.Sort();
-				ulong num22 = 0uL;
-				for (int num23 = list2.Count - num21; num23 < list2.Count; num23++)
+				ulong backgroundValue5 = 0uL;
+				for (int list2Index = list2.Count - backgroundCoreCountResult; list2Index < list2.Count; list2Index++)
 				{
-					if (num23 >= 0)
+					if (list2Index >= 0)
 					{
-						num22 |= list2[num23];
+						backgroundValue5 |= list2[list2Index];
 					}
 				}
-				ulong num24 = allMask & ~num22;
-				if (num22 != 0 && num24 != 0)
+				ulong gameValue5 = allMask & ~backgroundValue5;
+				if (backgroundValue5 != 0 && gameValue5 != 0)
 				{
-					result.Game = num24;
-					result.Background = num22;
+					result.Game = gameValue5;
+					result.Background = backgroundValue5;
 					result.Partitioned = true;
 					result.Tag = "tail-reserve";
 					return result;

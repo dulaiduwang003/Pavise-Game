@@ -179,21 +179,21 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string[] array = values ?? new string[0];
-			bool flag = array.Length == items.Length;
-			int num = 0;
-			while (flag && num < array.Length)
+			string[] valuesOffset = values ?? new string[0];
+			bool matchesLength = valuesOffset.Length == items.Length;
+			int processedCount = 0;
+			while (matchesLength && processedCount < valuesOffset.Length)
 			{
-				flag = (array[num] ?? "") == items[num];
-				num++;
+				matchesLength = (valuesOffset[processedCount] ?? "") == items[processedCount];
+				processedCount++;
 			}
-			if (!flag)
+			if (!matchesLength)
 			{
 				dropdown.Close();
-				items = new string[array.Length];
+				items = new string[valuesOffset.Length];
 				for (int i = 0; i < items.Length; i++)
 				{
-					items[i] = array[i] ?? "";
+					items[i] = valuesOffset[i] ?? "";
 				}
 				selectedIndex = ((items.Length == 0) ? (-1) : Math.Max(0, Math.Min(selectedIndex, items.Length - 1)));
 				UpdateSelection();
@@ -213,12 +213,12 @@ namespace PaviseApp
 		{
 			if (!base.IsDisposed && base.CanInteract && index >= 0 && index < items.Length)
 			{
-				bool flag = selectedIndex != index;
+				bool matchesSelectedIndex = selectedIndex != index;
 				selectedIndex = index;
 				dropdown.Close();
 				UpdateSelection();
 				Action<int> selectionChanged = this.SelectionChanged;
-				if (flag && selectionChanged != null)
+				if (matchesSelectedIndex && selectionChanged != null)
 				{
 					selectionChanged(index);
 				}
@@ -292,7 +292,7 @@ namespace PaviseApp
 					contextMenuStrip2.Region = new Region(path);
 				return contextMenuStrip2;
 			}
-			int num2 = contextMenuStrip2.Padding.Vertical;
+			int vertical = contextMenuStrip2.Padding.Vertical;
 			for (int j = 0; j < items.Length; j++)
 			{
 				int index = j;
@@ -308,10 +308,10 @@ namespace PaviseApp
 					SelectIndex(index);
 				};
 				contextMenuStrip2.Items.Add(toolStripMenuItem2);
-				num2 += toolStripMenuItem2.Height;
+				vertical += toolStripMenuItem2.Height;
 			}
 			int visibleRows = Math.Min(items.Length, Math.Max(1, MaximumVisibleItems));
-			int boundedHeight = Math.Min(num2, contextMenuStrip2.Padding.Vertical + visibleRows * Theme.S(34));
+			int boundedHeight = Math.Min(vertical, contextMenuStrip2.Padding.Vertical + visibleRows * Theme.S(34));
 			boundedHeight = Math.Min(boundedHeight, Math.Max(1, workingArea.Height - Theme.S(20)));
 			contextMenuStrip2.Size = new Size(val, Math.Max(1, boundedHeight));
 			contextMenuStrip2.PerformLayout();
@@ -423,7 +423,7 @@ namespace PaviseApp
 			}
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle rectangle = new Rectangle(0, 0, Math.Max(1, base.Width - 1), Math.Max(1, base.Height - 1));
-			bool flag = base.Enabled && (Focused || DropDownVisible);
+			bool matchesEnabled = base.Enabled && (Focused || DropDownVisible);
 			float hoverIfEnabled = base.State.HoverIfEnabled;
 			using (GraphicsPath graphicsPath = Theme.TechPath(rectangle, Theme.S(7)))
 			{
@@ -431,14 +431,14 @@ namespace PaviseApp
 				{
 					graphics.FillPath(brush, graphicsPath);
 				}
-				using (Pen pen = new Pen(flag ? Col.Alpha(Theme.Accent, 180) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, hoverIfEnabled)))
+				using (Pen pen = new Pen(matchesEnabled ? Col.Alpha(Theme.Accent, 180) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, hoverIfEnabled)))
 				{
 					graphics.DrawPath(pen, graphicsPath);
 				}
 				PaintBusy(graphics, rectangle, graphicsPath);
 			}
 			TextRenderer.DrawText(graphics, SelectedText, DsType.Font(DsText.Body), TextBounds, base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			DsPaint.DropArrow(graphics, base.Width - Theme.S(19), base.Height / 2, Theme.S(4), DropDownVisible, (!base.Enabled) ? Theme.Faint : (flag ? Theme.Accent : Theme.Dim));
+			DsPaint.DropArrow(graphics, base.Width - Theme.S(19), base.Height / 2, Theme.S(4), DropDownVisible, (!base.Enabled) ? Theme.Faint : (matchesEnabled ? Theme.Accent : Theme.Dim));
 		}
 
 		private void PaintRounded(Graphics graphics)

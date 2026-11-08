@@ -9,50 +9,50 @@ namespace PaviseApp
 		private static List<string> CacheDirs()
 		{
 			List<string> list = new List<string>();
-			string text = null;
-			string text2 = null;
+			string folderPath = null;
+			string folderPath2 = null;
 			try
 			{
-				text = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+				folderPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 			}
 			catch
 			{
 			}
 			try
 			{
-				text2 = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+				folderPath2 = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 			}
 			catch
 			{
 			}
-			if (!string.IsNullOrEmpty(text))
+			if (!string.IsNullOrEmpty(folderPath))
 			{
-				list.Add(Path.Combine(text, "NVIDIA\\DXCache"));
-				list.Add(Path.Combine(text, "NVIDIA\\GLCache"));
-				list.Add(Path.Combine(text, "Temp\\NVIDIA Corporation\\NV_Cache"));
-				list.Add(Path.Combine(text, "D3DSCache"));
-				list.Add(Path.Combine(text, "AMD\\DxCache"));
-				list.Add(Path.Combine(text, "AMD\\DxcCache"));
-				list.Add(Path.Combine(text, "AMD\\Dx9Cache"));
-				list.Add(Path.Combine(text, "AMD\\GLCache"));
-				list.Add(Path.Combine(text, "AMD\\VkCache"));
-				list.Add(Path.Combine(text, "Intel\\ShaderCache"));
+				list.Add(Path.Combine(folderPath, "NVIDIA\\DXCache"));
+				list.Add(Path.Combine(folderPath, "NVIDIA\\GLCache"));
+				list.Add(Path.Combine(folderPath, "Temp\\NVIDIA Corporation\\NV_Cache"));
+				list.Add(Path.Combine(folderPath, "D3DSCache"));
+				list.Add(Path.Combine(folderPath, "AMD\\DxCache"));
+				list.Add(Path.Combine(folderPath, "AMD\\DxcCache"));
+				list.Add(Path.Combine(folderPath, "AMD\\Dx9Cache"));
+				list.Add(Path.Combine(folderPath, "AMD\\GLCache"));
+				list.Add(Path.Combine(folderPath, "AMD\\VkCache"));
+				list.Add(Path.Combine(folderPath, "Intel\\ShaderCache"));
 			}
-			if (!string.IsNullOrEmpty(text2))
+			if (!string.IsNullOrEmpty(folderPath2))
 			{
-				list.Add(Path.Combine(text2, "NVIDIA Corporation\\NV_Cache"));
+				list.Add(Path.Combine(folderPath2, "NVIDIA Corporation\\NV_Cache"));
 			}
 			return list;
 		}
 
 		public static long MeasureBytes()
 		{
-			long num = 0L;
+			long measureBytesResult = 0L;
 			foreach (string item in CacheDirs())
 			{
-				num += CacheSweep.MeasureDir(item);
+				measureBytesResult += CacheSweep.MeasureDir(item);
 			}
-			return num;
+			return measureBytesResult;
 		}
 
 		public static CacheSweep.Result Clean()

@@ -47,8 +47,8 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			FillBg(graphics);
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
-			int num = Math.Min(Theme.S(15), Math.Min(base.Width - 4, base.Height - 4));
-			Rectangle rectangle = new Rectangle((base.Width - num) / 2, (base.Height - num) / 2, num, num);
+			int minLimit = Math.Min(Theme.S(15), Math.Min(base.Width - 4, base.Height - 4));
+			Rectangle rectangle = new Rectangle((base.Width - minLimit) / 2, (base.Height - minLimit) / 2, minLimit, minLimit);
 			Color color = (Focused ? Theme.Accent : Col.Lerp(Theme.Faint, Theme.Accent, hover.Value));
 			using (Pen pen = new Pen(color, Math.Max(1f, Dpi.Scale)))
 			{

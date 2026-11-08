@@ -197,8 +197,8 @@ namespace PaviseApp
 				// by recovery. A failed second write leaves only a harmless tombstone.
 				if (!SavePriorityEntry(fresh)) return false;
 				list.Add(fresh);
-				bool flag = SaveEntries(list);
-				if (flag)
+				bool saveEntriesSucceeded = SaveEntries(list);
+				if (saveEntriesSucceeded)
 				{
 					owned[pid] = creation;
 					prioritySettlements.Remove(pid);
@@ -207,7 +207,7 @@ namespace PaviseApp
 				{
 					owned.Remove(pid);
 				}
-				return flag;
+				return saveEntriesSucceeded;
 			}
 		}
 
@@ -469,16 +469,16 @@ namespace PaviseApp
 			{
 				List<BoostEntry> list = LoadEntries();
 				if (list == null) return;
-				bool flag = false;
+				bool yieldBoostPlacementReady = false;
 				foreach (BoostEntry item in list)
 				{
 					if (item.Pid == pid && item.Creation == creation && !item.PlacementYielded)
 					{
 						item.PlacementYielded = true;
-						flag = true;
+						yieldBoostPlacementReady = true;
 					}
 				}
-				if (flag)
+				if (yieldBoostPlacementReady)
 				{
 					SaveEntries(list);
 				}
@@ -493,9 +493,9 @@ namespace PaviseApp
 
 		public static bool HasPending()
 		{
-			string text;
-			if (!Settings.TryLoadStr(KBoostEntries, out text)) return true;
-			if (string.IsNullOrEmpty(text))
+			string message;
+			if (!Settings.TryLoadStr(KBoostEntries, out message)) return true;
+			if (string.IsNullOrEmpty(message))
 			{
 				List<BoostEntry> priorities = LoadPriorityEntries();
 				if (priorities == null) return true;
@@ -521,7 +521,7 @@ namespace PaviseApp
 			List<BoostEntry> list = LoadEntries();
 			if (list == null) return;
 			List<BoostEntry> list2 = new List<BoostEntry>();
-			int num = 0;
+			int processedCount = 0;
 			foreach (BoostEntry item in list)
 			{
 				IntPtr intPtr = Native.OpenProcess(12800, false, item.Pid);
@@ -565,15 +565,15 @@ namespace PaviseApp
 						list2.Add(item);
 						continue;
 					}
-					bool flag = !item.PlacementTracked || item.PlacementYielded || (RestoreOwnedAffinity(intPtr, affinity, item.AppliedAffinity) && RestoreOwnedAffinity(intPtr, affinity, item.PreviousAffinity));
-					bool flag2 = SuppressionCore.RestoreValues(intPtr, item.Priority, affinity, item.Io, item.Page, CpuTopology.AllMask, cpuSets, item.QoSControl, item.QoSState, -1, -1, !item.PlacementTracked && !item.PlacementYielded, false) && flag;
-					if (flag2 && item.Gpu >= 0)
+					bool anyConditionMet = !item.PlacementTracked || item.PlacementYielded || (RestoreOwnedAffinity(intPtr, affinity, item.AppliedAffinity) && RestoreOwnedAffinity(intPtr, affinity, item.PreviousAffinity));
+					bool matchesRestoreValues = SuppressionCore.RestoreValues(intPtr, item.Priority, affinity, item.Io, item.Page, CpuTopology.AllMask, cpuSets, item.QoSControl, item.QoSState, -1, -1, !item.PlacementTracked && !item.PlacementYielded, false) && anyConditionMet;
+					if (matchesRestoreValues && item.Gpu >= 0)
 					{
-						flag2 = Native.D3DKMTSetProcessSchedulingPriorityClass(intPtr, item.Gpu) == 0;
+						matchesRestoreValues = Native.D3DKMTSetProcessSchedulingPriorityClass(intPtr, item.Gpu) == 0;
 					}
-					if (flag2)
+					if (matchesRestoreValues)
 					{
-						num++;
+						processedCount++;
 					}
 					else
 					{
@@ -595,9 +595,9 @@ namespace PaviseApp
 			Settings.SaveStr("Crash_ThrottleMasks", "");
 			Settings.SaveStr("Crash_BoostMask", "");
 			Settings.SaveStr("Crash_BoostNames", "");
-			if (num > 0)
+			if (processedCount > 0)
 			{
-				Logger.Warn(Lang.T("log.crashguard.1") + num + Lang.T("log.crashguard.2"));
+				Logger.Warn(Lang.T("log.crashguard.1") + processedCount + Lang.T("log.crashguard.2"));
 			}
 			if (list2.Count > 0)
 			{
@@ -639,12 +639,12 @@ namespace PaviseApp
 
 		private static BoostIdentity Identify(IntPtr h, BoostEntry entry)
 		{
-			string text = Native.ImageName(h);
-			if (text == null)
+			string imageNameResult = Native.ImageName(h);
+			if (imageNameResult == null)
 			{
 				return BoostIdentity.Unknown;
 			}
-			if (!string.Equals(text, entry.Name, StringComparison.OrdinalIgnoreCase))
+			if (!string.Equals(imageNameResult, entry.Name, StringComparison.OrdinalIgnoreCase))
 			{
 				return BoostIdentity.Mismatch;
 			}
@@ -683,11 +683,11 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text;
-				if (!Settings.TryLoadStr(KBoostEntries, out text) || text == null) return null;
+				string message;
+				if (!Settings.TryLoadStr(KBoostEntries, out message) || message == null) return null;
 				List<BoostEntry> list = new List<BoostEntry>();
 				HashSet<string> identities = new HashSet<string>(StringComparer.Ordinal);
-				foreach (string line in text.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+				foreach (string line in message.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
 				{
 					string[] fields = line.TrimEnd('\r').Split('|');
 					int oldCount = fields.Length;
@@ -736,11 +736,11 @@ namespace PaviseApp
 			{
 				list.Add(entry.Pid + "|" + entry.Creation + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Name ?? "")) + "|" + entry.Priority + "|" + entry.Affinity + "|" + entry.Io + "|" + entry.Page + "|" + entry.Gpu + "|" + CpuSetsText(entry.CpuSets) + "|" + entry.QoSControl + "|" + entry.QoSState + (entry.PlacementTracked ? ("|" + (entry.PlacementYielded ? "1" : "0") + "|" + entry.AppliedAffinity + "|owned|" + entry.PreviousAffinity) : (entry.PlacementYielded ? "|1" : "")));
 			}
-			string text = string.Join("\n", list.ToArray());
+			string joinResult = string.Join("\n", list.ToArray());
 			string value;
-			if (Settings.SaveStrDurable("Crash_BoostEntriesV2", text) && Settings.TryLoadStr("Crash_BoostEntriesV2", out value))
+			if (Settings.SaveStrDurable("Crash_BoostEntriesV2", joinResult) && Settings.TryLoadStr("Crash_BoostEntriesV2", out value))
 			{
-				return value == text;
+				return value == joinResult;
 			}
 			return false;
 		}
@@ -749,11 +749,11 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text;
-				if (!Settings.TryLoadStr(PriorityOwnershipKey, out text) || text == null) return null;
+				string message;
+				if (!Settings.TryLoadStr(PriorityOwnershipKey, out message) || message == null) return null;
 				List<BoostEntry> entries = new List<BoostEntry>();
 				HashSet<string> identities = new HashSet<string>(StringComparer.Ordinal);
-				foreach (string line in text.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+				foreach (string line in message.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
 				{
 					string[] fields = line.TrimEnd('\r').Split('|');
 					BoostEntry entry = new BoostEntry();
@@ -805,10 +805,10 @@ namespace PaviseApp
 				lines.Add(PriorityVersion + "|" + entry.Pid + "|" + entry.Creation + "|"
 					+ Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Name)) + "|" + entry.PriorityPhase
 					+ "|" + entry.LastAppliedPriority + "|" + entry.PreviousPriorityForRestore);
-			string text = string.Join("\n", lines.ToArray());
+			string joinResult = string.Join("\n", lines.ToArray());
 			string readback;
-			return Settings.SaveStrDurable(PriorityOwnershipKey, text)
-				&& Settings.TryLoadStr(PriorityOwnershipKey, out readback) && readback == text;
+			return Settings.SaveStrDurable(PriorityOwnershipKey, joinResult)
+				&& Settings.TryLoadStr(PriorityOwnershipKey, out readback) && readback == joinResult;
 		}
 
 		private static void PrunePriorityTombstones(List<BoostEntry> baseline)
@@ -826,12 +826,12 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string[] array = new string[ids.Length];
+			string[] textEntries = new string[ids.Length];
 			for (int i = 0; i < ids.Length; i++)
 			{
-				array[i] = ids[i].ToString();
+				textEntries[i] = ids[i].ToString();
 			}
-			return string.Join(",", array);
+			return string.Join(",", textEntries);
 		}
 
 		private static uint[] ParseCpuSets(string text)
@@ -840,16 +840,16 @@ namespace PaviseApp
 			{
 				return new uint[0];
 			}
-			string[] array = text.Split(',');
-			uint[] array2 = new uint[array.Length];
-			for (int i = 0; i < array.Length; i++)
+			string[] parts = text.Split(',');
+			uint[] numericValueItems = new uint[parts.Length];
+			for (int i = 0; i < parts.Length; i++)
 			{
-				if (!uint.TryParse(array[i], out array2[i]))
+				if (!uint.TryParse(parts[i], out numericValueItems[i]))
 				{
 					return null;
 				}
 			}
-			return array2;
+			return numericValueItems;
 		}
 	}
 }

@@ -48,23 +48,23 @@ namespace PaviseApp
 			{
 				graphics.FillRectangle(brush, rectangle);
 			}
-			int num = Theme.S(14);
-			int[] array = SliceEdges();
+			int scaledDimension = Theme.S(14);
+			int[] sliceEdgesResult = SliceEdges();
 			for (int i = 0; i < 3; i++)
 			{
-				int num2 = array[i];
+				int onPaintValue = sliceEdgesResult[i];
 				if (i % 2 == 1)
 				{
 					using (SolidBrush brush2 = new SolidBrush(Color.FromArgb(16, 255, 255, 255)))
 					{
-						graphics.FillPolygon(brush2, Cell(num2, array[i + 1] - num2, num, i));
+						graphics.FillPolygon(brush2, Cell(onPaintValue, sliceEdgesResult[i + 1] - onPaintValue, scaledDimension, i));
 					}
 				}
 				if (i > 0)
 				{
 					using (Pen pen = new Pen(Color.FromArgb(70, accent), Math.Max(1f, Theme.S(1))))
 					{
-						graphics.DrawLine(pen, num2 + num, 0, num2 - num, base.Height);
+						graphics.DrawLine(pen, onPaintValue + scaledDimension, 0, onPaintValue - scaledDimension, base.Height);
 					}
 				}
 			}
@@ -80,17 +80,17 @@ namespace PaviseApp
 			Font font2 = Theme.UI(9.6f, true);
 			for (int j = 0; j < 3; j++)
 			{
-				int num3 = array[j];
-				int num4 = array[j + 1] - num3;
-				int num5 = Theme.S(16);
-				Glyphs_Draw(box: new Rectangle(num3 + num5, Theme.S(13), Theme.S(15), Theme.S(15)), g: graphics, name: Icons[j], color: Color.FromArgb(210, accent));
+				int onPaintValue2 = sliceEdgesResult[j];
+				int remainingOnPaintValue2 = sliceEdgesResult[j + 1] - onPaintValue2;
+				int scaledDimension2 = Theme.S(16);
+				Glyphs_Draw(box: new Rectangle(onPaintValue2 + scaledDimension2, Theme.S(13), Theme.S(15), Theme.S(15)), g: graphics, name: Icons[j], color: Color.FromArgb(210, accent));
 				using (SolidBrush brush3 = new SolidBrush(Theme.Faint))
 				{
-					graphics.DrawString(Lang.T(Keys[j]), font, brush3, num3 + num5 + Theme.S(20), Theme.S(14));
+					graphics.DrawString(Lang.T(Keys[j]), font, brush3, onPaintValue2 + scaledDimension2 + Theme.S(20), Theme.S(14));
 				}
 				using (SolidBrush brush4 = new SolidBrush(Theme.Fg))
 				{
-					RectangleF layoutRectangle = new RectangleF(num3 + num5, Theme.S(34), num4 - num5 * 2 + Theme.S(6), Theme.S(20));
+					RectangleF layoutRectangle = new RectangleF(onPaintValue2 + scaledDimension2, Theme.S(34), remainingOnPaintValue2 - scaledDimension2 * 2 + Theme.S(6), Theme.S(20));
 					StringFormat stringFormat = new StringFormat();
 					stringFormat.Trimming = StringTrimming.EllipsisCharacter;
 					stringFormat.FormatFlags = StringFormatFlags.NoWrap;

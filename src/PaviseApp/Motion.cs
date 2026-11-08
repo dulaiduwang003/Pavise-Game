@@ -36,8 +36,8 @@ namespace PaviseApp
 				Value = Target;
 				return true;
 			}
-			float num = Target - Value;
-			if (num < 0.0015f && num > -0.0015f)
+			float remainingTarget = Target - Value;
+			if (remainingTarget < 0.0015f && remainingTarget > -0.0015f)
 			{
 				if (Value != Target)
 				{
@@ -46,7 +46,7 @@ namespace PaviseApp
 				}
 				return false;
 			}
-			Value += num * StepFraction(Speed, UiClock.DeltaScale);
+			Value += remainingTarget * StepFraction(Speed, UiClock.DeltaScale);
 			return true;
 		}
 
@@ -64,11 +64,11 @@ namespace PaviseApp
 			{
 				return speed;
 			}
-			double num = Math.Pow(1.0 - (double)speed, deltaScale);
-			float num2 = (float)(1.0 - num);
-			if (!(num2 > 1f))
+			double powResult = Math.Pow(1.0 - (double)speed, deltaScale);
+			float remainingPowResult = (float)(1.0 - powResult);
+			if (!(remainingPowResult > 1f))
 			{
-				return num2;
+				return remainingPowResult;
 			}
 			return 1f;
 		}

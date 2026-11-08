@@ -102,21 +102,21 @@ namespace PaviseApp
 
 		private static string ReadWide(IntPtr buf, int offset, short lenChars, int maxChars)
 		{
-			int num = lenChars;
-			if (num < 0 || num > maxChars)
+			int lenCharsSnapshot = lenChars;
+			if (lenCharsSnapshot < 0 || lenCharsSnapshot > maxChars)
 			{
-				num = maxChars;
+				lenCharsSnapshot = maxChars;
 			}
-			if (num == 0)
+			if (lenCharsSnapshot == 0)
 			{
 				return "";
 			}
 			try
 			{
-				string text = Marshal.PtrToStringUni(new IntPtr(buf.ToInt64() + offset), num);
-				string obj = text ?? "";
+				string ptrToStringUniResult = Marshal.PtrToStringUni(new IntPtr(buf.ToInt64() + offset), lenCharsSnapshot);
+				string ptrToStringUniResultOffset = ptrToStringUniResult ?? "";
 				char[] trimChars = new char[1];
-				return obj.TrimEnd(trimChars).Trim();
+				return ptrToStringUniResultOffset.TrimEnd(trimChars).Trim();
 			}
 			catch
 			{

@@ -59,60 +59,60 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("SPI owner link missing or oversized");
 			}
-			string[] array = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
-			string[] array2 = new string[12]
+			string[] getStringParts = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
+			string[] textEntries = new string[12]
 			{
 				"user_sid", "generation", "phase", "kind", "owner_nonce", "token", "root64", "run", "trial", "receipt64",
 				"arming", "closure"
 			};
-			if (array.Length != array2.Length + 2 || array[0] != "pavise-shared-spi-owner-1" || array[array.Length - 1] != "")
+			if (getStringParts.Length != textEntries.Length + 2 || getStringParts[0] != "pavise-shared-spi-owner-1" || getStringParts[getStringParts.Length - 1] != "")
 			{
 				throw new InvalidDataException("Incomplete SPI owner link");
 			}
-			string[] array3 = new string[array2.Length];
-			for (int i = 0; i < array2.Length; i++)
+			string[] textEntries2 = new string[textEntries.Length];
+			for (int i = 0; i < textEntries.Length; i++)
 			{
-				string text = array2[i] + "\t";
-				if (!array[i + 1].StartsWith(text, StringComparison.Ordinal) || array[i + 1].IndexOf('\t', text.Length) >= 0)
+				string message = textEntries[i] + "\t";
+				if (!getStringParts[i + 1].StartsWith(message, StringComparison.Ordinal) || getStringParts[i + 1].IndexOf('\t', message.Length) >= 0)
 				{
 					throw new InvalidDataException("Invalid SPI owner link field order");
 				}
-				array3[i] = array[i + 1].Substring(text.Length);
+				textEntries2[i] = getStringParts[i + 1].Substring(message.Length);
 			}
 			long result;
 			SpiOwnerPhase result2;
-			if (!long.TryParse(array3[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result.ToString(CultureInfo.InvariantCulture) != array3[1] || !Enum.TryParse<SpiOwnerPhase>(array3[2], out result2) || result2.ToString() != array3[2])
+			if (!long.TryParse(textEntries2[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result.ToString(CultureInfo.InvariantCulture) != textEntries2[1] || !Enum.TryParse<SpiOwnerPhase>(textEntries2[2], out result2) || result2.ToString() != textEntries2[2])
 			{
 				throw new InvalidDataException("Noncanonical SPI owner generation/phase");
 			}
 			for (int j = 6; j <= 10; j++)
 			{
-				if (array3[j].Length != 0)
+				if (textEntries2[j].Length != 0)
 				{
 					throw new InvalidDataException("Retired SPI owner fields must stay empty");
 				}
 			}
 			SpiOwnerStamp owner = null;
-			if (array3[3] != "none")
+			if (textEntries2[3] != "none")
 			{
 				SpiOwnerKind result3;
-				if (!Enum.TryParse<SpiOwnerKind>(array3[3], out result3) || result3.ToString() != array3[3])
+				if (!Enum.TryParse<SpiOwnerKind>(textEntries2[3], out result3) || result3.ToString() != textEntries2[3])
 				{
 					throw new InvalidDataException("Unknown SPI owner kind");
 				}
-				owner = new SpiOwnerStamp(result, array3[5], new SpiOwnerIdentity(result3, array3[0], array3[4]));
+				owner = new SpiOwnerStamp(result, textEntries2[5], new SpiOwnerIdentity(result3, textEntries2[0], textEntries2[4]));
 			}
 			else
 			{
 				for (int k = 4; k <= 5; k++)
 				{
-					if (array3[k].Length != 0)
+					if (textEntries2[k].Length != 0)
 					{
 						throw new InvalidDataException("Initial SPI slot carries an owner");
 					}
 				}
 			}
-			SpiOwnerRecord spiOwnerRecord = new SpiOwnerRecord(array3[0], result, result2, owner, array3[11]);
+			SpiOwnerRecord spiOwnerRecord = new SpiOwnerRecord(textEntries2[0], result, result2, owner, textEntries2[11]);
 			if (!Equal(spiOwnerRecord.Bytes(), bytes))
 			{
 				throw new InvalidDataException("Noncanonical SPI owner bytes");

@@ -117,12 +117,12 @@ namespace PaviseApp
 				writer = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 				session = target.SessionId;
 			}
-			string text = Path.Combine(root, "hard-thread-" + session.ToString("N") + ".xml");
-			if (File.Exists(text) && (File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+			string combinedPath = Path.Combine(root, "hard-thread-" + session.ToString("N") + ".xml");
+			if (File.Exists(combinedPath) && (File.GetAttributes(combinedPath) & FileAttributes.ReparsePoint) != 0)
 			{
 				throw new IOException("reparse ledger refused");
 			}
-			return text;
+			return combinedPath;
 		}
 
 		public HardThreadJournal Load(HardThreadTarget target)
@@ -198,11 +198,11 @@ namespace PaviseApp
 				throw new ObjectDisposedException("original root writer");
 			}
 			RequireRoot();
-			int num = 0;
-			long num2 = 0L;
+			int historicalDebtValue = 0;
+			long numericValue = 0L;
 			foreach (string item in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
 			{
-				if (++num > 1024 || (num2 = checked(num2 + new FileInfo(item).Length)) > 16777216)
+				if (++historicalDebtValue > 1024 || (numericValue = checked(numericValue + new FileInfo(item).Length)) > 16777216)
 				{
 					throw new InvalidDataException("historical hard affinity ledger review exceeds the bounded admission budget");
 				}
@@ -229,12 +229,12 @@ namespace PaviseApp
 				throw new ObjectDisposedException("original root writer");
 			}
 			RequireRoot();
-			int num = 0;
-			long num2 = 0L;
+			int historicalJournalsValue = 0;
+			long numericValue = 0L;
 			List<HardThreadJournal> list = new List<HardThreadJournal>();
 			foreach (string item in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
 			{
-				if (++num > 1024 || (num2 = checked(num2 + new FileInfo(item).Length)) > 16777216 || (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
+				if (++historicalJournalsValue > 1024 || (numericValue = checked(numericValue + new FileInfo(item).Length)) > 16777216 || (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
 				{
 					throw new InvalidDataException("bounded historical source required");
 				}
@@ -279,32 +279,32 @@ namespace PaviseApp
 				throw new ArgumentNullException("original");
 			}
 			HardThreadJournal hardThreadJournal = ReadHistorical(original.Target);
-			string text = HistoricalHash(hardThreadJournal.Target);
-			original.RequireCommit(this, root, hardThreadJournal, text);
+			string historicalHashResult = HistoricalHash(hardThreadJournal.Target);
+			original.RequireCommit(this, root, hardThreadJournal, historicalHashResult);
 			HardThreadJournal hardThreadJournal2 = HardThreadHistoricalPolicy.MarkGone(hardThreadJournal, original.Reason);
-			string text2 = Path.Combine(root, "hard-thread-gone-" + hardThreadJournal.Target.SessionId.ToString("N") + "-" + hardThreadJournal.Revision + "-" + text + ".bak");
-			if (File.Exists(text2))
+			string combinedPath = Path.Combine(root, "hard-thread-gone-" + hardThreadJournal.Target.SessionId.ToString("N") + "-" + hardThreadJournal.Revision + "-" + historicalHashResult + ".bak");
+			if (File.Exists(combinedPath))
 			{
-				if ((File.GetAttributes(text2) & FileAttributes.ReparsePoint) != 0 || JournalHash(text2, false) != text)
+				if ((File.GetAttributes(combinedPath) & FileAttributes.ReparsePoint) != 0 || JournalHash(combinedPath, false) != historicalHashResult)
 				{
 					throw new InvalidDataException("historical original archive differs");
 				}
 			}
 			else
 			{
-				byte[] array;
+				byte[] rawBytes;
 				using (FileStream fileStream = new FileStream(LedgerPath(hardThreadJournal.Target), FileMode.Open, FileAccess.Read, FileShare.Read))
 				{
 					if (fileStream.Length < 1 || fileStream.Length > 1048576)
 					{
 						throw new InvalidDataException("bounded original archive required");
 					}
-					array = new byte[(int)fileStream.Length];
-					int num;
-					for (int i = 0; i < array.Length; i += num)
+					rawBytes = new byte[(int)fileStream.Length];
+					int commitHistoricalGoneValue;
+					for (int i = 0; i < rawBytes.Length; i += commitHistoricalGoneValue)
 					{
-						num = fileStream.Read(array, i, array.Length - i);
-						if (num <= 0)
+						commitHistoricalGoneValue = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+						if (commitHistoricalGoneValue <= 0)
 						{
 							throw new EndOfStreamException();
 						}
@@ -316,26 +316,26 @@ namespace PaviseApp
 				}
 				using (SHA256 sHA = SHA256.Create())
 				{
-					if (BitConverter.ToString(sHA.ComputeHash(array)).Replace("-", "").ToLowerInvariant() != text)
+					if (BitConverter.ToString(sHA.ComputeHash(rawBytes)).Replace("-", "").ToLowerInvariant() != historicalHashResult)
 					{
 						throw new IOException("original historical source changed before archive");
 					}
 				}
-				string text3 = Path.Combine(root, ".historical-archive-" + Guid.NewGuid().ToString("N") + ".tmp");
+				string combinedPath2 = Path.Combine(root, ".historical-archive-" + Guid.NewGuid().ToString("N") + ".tmp");
 				try
 				{
-					using (FileStream fileStream2 = new FileStream(text3, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+					using (FileStream fileStream2 = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
 					{
-						fileStream2.Write(array, 0, array.Length);
+						fileStream2.Write(rawBytes, 0, rawBytes.Length);
 						fileStream2.Flush(true);
 					}
-					File.Move(text3, text2);
+					File.Move(combinedPath2, combinedPath);
 				}
 				finally
 				{
-					if (File.Exists(text3))
+					if (File.Exists(combinedPath2))
 					{
-						File.Delete(text3);
+						File.Delete(combinedPath2);
 					}
 				}
 			}
@@ -374,7 +374,7 @@ namespace PaviseApp
 					return false;
 				}
 				string fullPath = Path.GetFullPath(canonicalRoot);
-				bool flag = false;
+				bool canonicalRootHasRecoveryDebtReady = false;
 				for (DirectoryInfo directoryInfo = new DirectoryInfo(fullPath); directoryInfo != null; directoryInfo = directoryInfo.Parent)
 				{
 					FileAttributes attributes;
@@ -396,7 +396,7 @@ namespace PaviseApp
 					}
 					if (string.Equals(directoryInfo.FullName.TrimEnd('\\'), fullPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
 					{
-						flag = true;
+						canonicalRootHasRecoveryDebtReady = true;
 					}
 				}
 				if (CriticalThreadGuardian.HasControllerDebt(fullPath))
@@ -404,7 +404,7 @@ namespace PaviseApp
 					debt = true;
 					return true;
 				}
-				if (!flag)
+				if (!canonicalRootHasRecoveryDebtReady)
 				{
 					return true;
 				}
@@ -625,7 +625,7 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("journal revision contract");
 			}
-			string text = Bind(journal.Target);
+			string bindResult = Bind(journal.Target);
 			if (sourceScopeHash != null && (journal.SourceNonce != sourceNonce || journal.SourceScopeHash != sourceScopeHash))
 			{
 				throw new InvalidDataException("journal lost its original scope");
@@ -634,10 +634,10 @@ namespace PaviseApp
 			{
 				throw new IOException("original ledger revision changed");
 			}
-			string text2 = Path.Combine(root, ".hard-thread-" + Guid.NewGuid().ToString("N") + ".tmp");
+			string combinedPath = Path.Combine(root, ".hard-thread-" + Guid.NewGuid().ToString("N") + ".tmp");
 			try
 			{
-				using (FileStream fileStream = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
 				{
 					using (XmlWriter xmlWriter = XmlWriter.Create(fileStream, new XmlWriterSettings
 					{
@@ -646,16 +646,16 @@ namespace PaviseApp
 						CloseOutput = false
 					}))
 					{
-						bool flag = Digest(journal.SourceNonce) && Digest(journal.SourceScopeHash);
+						bool matchesDigest = Digest(journal.SourceNonce) && Digest(journal.SourceScopeHash);
 						xmlWriter.WriteStartElement("hardThreads");
-						Attribute(xmlWriter, "version", flag ? "2" : "1");
+						Attribute(xmlWriter, "version", matchesDigest ? "2" : "1");
 						Attribute(xmlWriter, "session", journal.Target.SessionId.ToString("D"));
 						Attribute(xmlWriter, "pid", journal.Target.ProcessId);
 						Attribute(xmlWriter, "birth", journal.Target.ProcessCreation);
 						Attribute(xmlWriter, "path", journal.Target.ExecutablePath);
 						Attribute(xmlWriter, "allowed", journal.Target.AllowedMask);
 						Attribute(xmlWriter, "revision", journal.Revision);
-						if (flag)
+						if (matchesDigest)
 						{
 							Attribute(xmlWriter, "sourceNonce", journal.SourceNonce);
 							Attribute(xmlWriter, "sourceScopeHash", journal.SourceScopeHash);
@@ -683,20 +683,20 @@ namespace PaviseApp
 					fileStream.Flush(true);
 				}
 				RequireRoot();
-				if (File.Exists(text))
+				if (File.Exists(bindResult))
 				{
-					File.Replace(text2, text, null);
+					File.Replace(combinedPath, bindResult, null);
 				}
 				else
 				{
-					File.Move(text2, text);
+					File.Move(combinedPath, bindResult);
 				}
 			}
 			finally
 			{
-				if (File.Exists(text2))
+				if (File.Exists(combinedPath))
 				{
-					File.Delete(text2);
+					File.Delete(combinedPath);
 				}
 			}
 		}

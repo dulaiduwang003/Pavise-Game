@@ -10,10 +10,10 @@ namespace PaviseApp
 			{
 				if (report == null || !report.Completed || report.Warnings > 0)
 				{
-					string text = ((report == null) ? Lang.T("wipe.cleanupfail") : ShortReason(report.Failure));
+					string wipeCleanupfailText = ((report == null) ? Lang.T("wipe.cleanupfail") : ShortReason(report.Failure));
 					if (warn != null)
 					{
-						warn(Lang.F("wipe.failed", text));
+						warn(Lang.F("wipe.failed", wipeCleanupfailText));
 					}
 				}
 				if (runtimeStopped && requestRestart != null)
@@ -34,16 +34,16 @@ namespace PaviseApp
 		{
 			try
 			{
-				bool flag = report != null && report.RuntimeStopped;
-				bool arg = !flag || !report.Cleared || report.Warnings > 0 || !finalizerStarted;
-				string text = ((!flag) ? Lang.F("uninstall.failed", ShortReason((report == null) ? null : report.Failure)) : ((report.Warnings <= 0 && report.Cleared) ? Lang.T("uninstall.done") : Lang.F("uninstall.partial", Math.Max(1, report.Warnings))));
-				if (flag)
+				bool matchesRuntimeStopped = report != null && report.RuntimeStopped;
+				bool arg = !matchesRuntimeStopped || !report.Cleared || report.Warnings > 0 || !finalizerStarted;
+				string uninstallFailedText = ((!matchesRuntimeStopped) ? Lang.F("uninstall.failed", ShortReason((report == null) ? null : report.Failure)) : ((report.Warnings <= 0 && report.Cleared) ? Lang.T("uninstall.done") : Lang.F("uninstall.partial", Math.Max(1, report.Warnings))));
+				if (matchesRuntimeStopped)
 				{
-					text = text + "\r\n\r\n" + (finalizerStarted ? Lang.T("uninstall.selfdelete") : Lang.F("uninstall.manualdelete", ShortReason(finalizerFailure)));
+					uninstallFailedText = uninstallFailedText + "\r\n\r\n" + (finalizerStarted ? Lang.T("uninstall.selfdelete") : Lang.F("uninstall.manualdelete", ShortReason(finalizerFailure)));
 				}
 				if (showResult != null)
 				{
-					showResult(arg, text);
+					showResult(arg, uninstallFailedText);
 				}
 			}
 			finally
@@ -61,12 +61,12 @@ namespace PaviseApp
 			{
 				return Lang.T("wipe.cleanupfail");
 			}
-			string text = reason.Replace('\r', '\n').Split('\n')[0].Trim();
-			if (text.Length <= 180)
+			string trimmed = reason.Replace('\r', '\n').Split('\n')[0].Trim();
+			if (trimmed.Length <= 180)
 			{
-				return text;
+				return trimmed;
 			}
-			return text.Substring(0, 180) + "…";
+			return trimmed.Substring(0, 180) + "…";
 		}
 	}
 }

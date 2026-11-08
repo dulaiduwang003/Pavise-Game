@@ -39,17 +39,17 @@ namespace PaviseApp
 				throw new InvalidDataException("Invalid game NVIDIA journal size");
 			}
 			Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
-			string[] array = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
-			foreach (string text in array)
+			string[] getStringParts = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
+			foreach (string entryText in getStringParts)
 			{
-				if (text.Length != 0)
+				if (entryText.Length != 0)
 				{
-					string[] array2 = text.Split('\t');
-					if (array2.Length != 2 || array2[0].Length == 0 || dictionary.ContainsKey(array2[0]))
+					string[] entryTextParts = entryText.Split('\t');
+					if (entryTextParts.Length != 2 || entryTextParts[0].Length == 0 || dictionary.ContainsKey(entryTextParts[0]))
 					{
 						throw new InvalidDataException("Invalid game NVIDIA journal fields");
 					}
-					dictionary.Add(array2[0], new UTF8Encoding(false, true).GetString(Convert.FromBase64String(array2[1])));
+					dictionary.Add(entryTextParts[0], new UTF8Encoding(false, true).GetString(Convert.FromBase64String(entryTextParts[1])));
 				}
 			}
 			if (!bytes.SequenceEqual(Encode(dictionary)))

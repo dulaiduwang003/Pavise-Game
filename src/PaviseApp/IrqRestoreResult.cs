@@ -48,24 +48,24 @@ namespace PaviseApp
 			{
 				return Lang.T("irq.restore.readfailed");
 			}
-			bool flag = !AffinityFinalized;
-			bool flag2 = false;
-			bool flag3 = AffinityFinalized;
-			bool flag4 = true;
+			bool isNotAffinityFinalizedSnapshot = !AffinityFinalized;
+			bool describeReady = false;
+			bool affinityFinalizedSnapshot = AffinityFinalized;
+			bool describeReady2 = true;
 			foreach (IrqDeviceRestoreResult device in Devices)
 			{
-				flag |= device.AffinityRequested;
-				flag2 |= device.PriorityRequested;
+				isNotAffinityFinalizedSnapshot |= device.AffinityRequested;
+				describeReady |= device.PriorityRequested;
 				if (device.AffinityRequested && !device.Affinity)
 				{
-					flag3 = false;
+					affinityFinalizedSnapshot = false;
 				}
 				if (device.PriorityRequested && !device.Priority)
 				{
-					flag4 = false;
+					describeReady2 = false;
 				}
 			}
-			return Lang.F("irq.restore.result", Lang.T((!flag) ? "irq.step.skipped" : (flag3 ? "irq.step.ok" : "irq.step.failed")), Lang.T((!flag2) ? "irq.step.skipped" : (flag4 ? "irq.step.ok" : "irq.step.failed")));
+			return Lang.F("irq.restore.result", Lang.T((!isNotAffinityFinalizedSnapshot) ? "irq.step.skipped" : (affinityFinalizedSnapshot ? "irq.step.ok" : "irq.step.failed")), Lang.T((!describeReady) ? "irq.step.skipped" : (describeReady2 ? "irq.step.ok" : "irq.step.failed")));
 		}
 
 		internal static IrqRestoreResult Run(string selected, IrqReceiptReader readAffinity, IrqReceiptReader readPriority, Func<List<string>> otherOwners, Func<string, bool> restoreAffinity, Func<string, bool> restorePriority)

@@ -54,46 +54,46 @@ namespace PaviseApp
 
 		internal static ulong WholeCores(ulong mask, ulong[] cores)
 		{
-			ulong num = 0uL;
+			ulong wholeCoresResult = 0uL;
 			if (cores == null)
 			{
 				return 0uL;
 			}
-			foreach (ulong num2 in cores)
+			foreach (ulong numericValueEntry in cores)
 			{
-				if ((num2 & mask) != 0)
+				if ((numericValueEntry & mask) != 0)
 				{
-					num |= num2;
+					wholeCoresResult |= numericValueEntry;
 				}
 			}
-			return num;
+			return wholeCoresResult;
 		}
 
 		internal static int CountBits(ulong mask)
 		{
-			int num = 0;
+			int processedCount = 0;
 			while (mask != 0)
 			{
 				mask &= mask - 1;
-				num++;
+				processedCount++;
 			}
-			return num;
+			return processedCount;
 		}
 
 		internal static int PhysicalCount(ulong mask, ulong[] cores)
 		{
-			int num = 0;
+			int processedCount = 0;
 			if (cores != null)
 			{
-				foreach (ulong num2 in cores)
+				foreach (ulong numericValueEntry in cores)
 				{
-					if (num2 != 0 && (mask & num2) == num2)
+					if (numericValueEntry != 0 && (mask & numericValueEntry) == numericValueEntry)
 					{
-						num++;
+						processedCount++;
 					}
 				}
 			}
-			return num;
+			return processedCount;
 		}
 
 		internal static ulong LiveAllocated()
@@ -113,13 +113,13 @@ namespace PaviseApp
 		{
 			AutoCoreStatus autoCoreStatus = Status;
 			AutoCorePlan plan = autoCoreStatus.Plan;
-			string text = ((plan == null) ? "no manual plan" : (plan.Available ? (plan.Kind + " 0x" + plan.Exclusive.ToString("X") + " (" + plan.Cores + " cores)") : ("unavailable " + plan.Blocked)));
+			string blockedOffset = ((plan == null) ? "no manual plan" : (plan.Available ? (plan.Kind + " 0x" + plan.Exclusive.ToString("X") + " (" + plan.Cores + " cores)") : ("unavailable " + plan.Blocked)));
 			if (plan != null && plan.Allocated != 0)
 			{
-				text = text + " · allocated 0x" + plan.Allocated.ToString("X");
+				blockedOffset = blockedOffset + " · allocated 0x" + plan.Allocated.ToString("X");
 			}
-			string text2 = (autoCoreStatus.Pending ? "recovery pending" : (autoCoreStatus.ObservationOnly ? "disabled" : ((!autoCoreStatus.Watching) ? "no match" : (autoCoreStatus.Engaged ? "exclusive" : (autoCoreStatus.Exclusive ? "exclusive requested" : ((autoCoreStatus.Blocked != null) ? ("shared (" + autoCoreStatus.Blocked + ")") : "shared"))))));
-			return text + " · " + text2 + " · game 0x" + autoCoreStatus.GameMask.ToString("X") + " · hard target 0x" + autoCoreStatus.ExpectedMask.ToString("X") + " · observed " + (autoCoreStatus.AffinityRead ? ("0x" + autoCoreStatus.ObservedMask.ToString("X")) : "unreadable") + " · verified " + autoCoreStatus.AffinityVerified + " · job protected " + autoCoreStatus.JobAffinity + (string.IsNullOrEmpty(autoCoreStatus.JobFallbackReason) ? "" : " · job unavailable " + autoCoreStatus.JobFallbackReason) + " · background " + autoCoreStatus.BackgroundMoved + (string.IsNullOrEmpty(autoCoreStatus.BackgroundAffinityDetail) ? "" : " · " + autoCoreStatus.BackgroundAffinityDetail) + " · work wall " + autoCoreStatus.WorkMs.ToString("F1") + "ms" + (string.IsNullOrEmpty(autoCoreStatus.PlacementEvidence) ? "" : (" · placement {" + autoCoreStatus.PlacementEvidence + "}"));
+			string message = (autoCoreStatus.Pending ? "recovery pending" : (autoCoreStatus.ObservationOnly ? "disabled" : ((!autoCoreStatus.Watching) ? "no match" : (autoCoreStatus.Engaged ? "exclusive" : (autoCoreStatus.Exclusive ? "exclusive requested" : ((autoCoreStatus.Blocked != null) ? ("shared (" + autoCoreStatus.Blocked + ")") : "shared"))))));
+			return blockedOffset + " · " + message + " · game 0x" + autoCoreStatus.GameMask.ToString("X") + " · hard target 0x" + autoCoreStatus.ExpectedMask.ToString("X") + " · observed " + (autoCoreStatus.AffinityRead ? ("0x" + autoCoreStatus.ObservedMask.ToString("X")) : "unreadable") + " · verified " + autoCoreStatus.AffinityVerified + " · job protected " + autoCoreStatus.JobAffinity + (string.IsNullOrEmpty(autoCoreStatus.JobFallbackReason) ? "" : " · job unavailable " + autoCoreStatus.JobFallbackReason) + " · background " + autoCoreStatus.BackgroundMoved + (string.IsNullOrEmpty(autoCoreStatus.BackgroundAffinityDetail) ? "" : " · " + autoCoreStatus.BackgroundAffinityDetail) + " · work wall " + autoCoreStatus.WorkMs.ToString("F1") + "ms" + (string.IsNullOrEmpty(autoCoreStatus.PlacementEvidence) ? "" : (" · placement {" + autoCoreStatus.PlacementEvidence + "}"));
 		}
 
 		internal static string AffinityProtectionText(AutoCoreStatus status)
@@ -133,16 +133,16 @@ namespace PaviseApp
 			{
 				return "topology";
 			}
-			ulong num = 0uL;
-			foreach (ulong num2 in cores)
+			ulong numericValue = 0uL;
+			foreach (ulong numericValueEntry in cores)
 			{
-				if (num2 == 0 || (num2 & ~all) != 0 || (num & num2) != 0)
+				if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
 				{
 					return "topology";
 				}
-				num |= num2;
+				numericValue |= numericValueEntry;
 			}
-			if (num != all)
+			if (numericValue != all)
 			{
 				return "topology";
 			}
@@ -154,15 +154,15 @@ namespace PaviseApp
 			{
 				return "whole";
 			}
-			int num3 = 0;
-			foreach (ulong num4 in cores)
+			int processedCount = 0;
+			foreach (ulong numericValueEntry2 in cores)
 			{
-				if ((num4 & isolation) == 0 && (num4 & ~allocated) != 0)
+				if ((numericValueEntry2 & isolation) == 0 && (numericValueEntry2 & ~allocated) != 0)
 				{
-					num3++;
+					processedCount++;
 				}
 			}
-			if (num3 >= 2)
+			if (processedCount >= 2)
 			{
 				return null;
 			}
@@ -175,10 +175,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			long num = after.Ticks - before.Ticks;
-			if (num >= 40000000)
+			long remainingTicks = after.Ticks - before.Ticks;
+			if (remainingTicks >= 40000000)
 			{
-				return num <= 600000000;
+				return remainingTicks <= 600000000;
 			}
 			return false;
 		}

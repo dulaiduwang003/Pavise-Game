@@ -162,26 +162,26 @@ namespace PaviseApp
 		{
 			supported = false;
 			enabled = false;
-			bool flag = inventoryComplete;
-			int num = 0;
+			bool inventoryCompleteSnapshot = inventoryComplete;
+			int processedCount = 0;
 			if (observations == null)
 			{
 				return false;
 			}
 			foreach (HardwareSchedulingObservation observation in observations)
 			{
-				num++;
+				processedCount++;
 				if (observation == null || !observation.IsKnown)
 				{
-					flag = false;
+					inventoryCompleteSnapshot = false;
 					continue;
 				}
 				supported |= observation.SupportedByDriver == true;
 				enabled |= observation.State == HardwareSchedulingState.Enabled;
 			}
-			if (flag)
+			if (inventoryCompleteSnapshot)
 			{
-				return num > 0;
+				return processedCount > 0;
 			}
 			return false;
 		}

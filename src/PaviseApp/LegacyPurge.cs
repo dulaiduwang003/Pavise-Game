@@ -110,19 +110,19 @@ namespace PaviseApp
 			}
 			Settings.SuspendWritesForReset();
 			Logger.SuspendWritesForReset();
-			bool flag = (IsRoamingDataDir(root) ? TryDeleteDataTree(root, out files, out error) : DeleteDataFiles(root, out files, out error));
-			if (!flag)
+			bool tryDeleteDataTree = (IsRoamingDataDir(root) ? TryDeleteDataTree(root, out files, out error) : DeleteDataFiles(root, out files, out error));
+			if (!tryDeleteDataTree)
 			{
 				warnings++;
 			}
-			bool flag2 = DeleteRegistryTree();
-			if (!flag2)
+			bool deleteRegistryTreeSucceeded = DeleteRegistryTree();
+			if (!deleteRegistryTreeSucceeded)
 			{
 				warnings++;
 			}
-			if (flag)
+			if (tryDeleteDataTree)
 			{
-				return flag2;
+				return deleteRegistryTreeSucceeded;
 			}
 			return false;
 		}
@@ -138,14 +138,14 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = root;
-				while (!string.IsNullOrEmpty(text))
+				string rootSnapshot = root;
+				while (!string.IsNullOrEmpty(rootSnapshot))
 				{
-					if ((File.Exists(text) || Directory.Exists(text)) && (File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+					if ((File.Exists(rootSnapshot) || Directory.Exists(rootSnapshot)) && (File.GetAttributes(rootSnapshot) & FileAttributes.ReparsePoint) != 0)
 					{
 						return false;
 					}
-					text = Path.GetDirectoryName(text);
+					rootSnapshot = Path.GetDirectoryName(rootSnapshot);
 				}
 				return true;
 			}
@@ -163,12 +163,12 @@ namespace PaviseApp
 				{
 					if (registryKey != null)
 					{
-						bool flag;
+						bool matchesRegistryKey2;
 						using (RegistryKey registryKey2 = registryKey.OpenSubKey("PaviseAuto"))
 						{
-							flag = registryKey2 != null;
+							matchesRegistryKey2 = registryKey2 != null;
 						}
-						if (flag)
+						if (matchesRegistryKey2)
 						{
 							registryKey.DeleteSubKeyTree("PaviseAuto", false);
 							Settings.NoteExternalMutation();
@@ -251,10 +251,10 @@ namespace PaviseApp
 			StepIf(Lang.T("set.memcompress"), () => MemCompressTweak.OwnsState, MemCompressTweak.Restore, list);
 			Step("Extreme", delegate
 			{
-				bool flag = Settings.Save("ExtremeUnlocked", false);
-				flag &= Settings.SaveStr("ExtremeUnlockTicks", "");
-				flag &= Settings.SaveStr("ExtremeOptOut", "");
-				return flag & Settings.SaveStr("ExtremeEnvApplied", "");
+				bool extremeUnlockedEnabled = Settings.Save("ExtremeUnlocked", false);
+				extremeUnlockedEnabled &= Settings.SaveStr("ExtremeUnlockTicks", "");
+				extremeUnlockedEnabled &= Settings.SaveStr("ExtremeOptOut", "");
+				return extremeUnlockedEnabled & Settings.SaveStr("ExtremeEnvApplied", "");
 			}, list);
 			StepIf(Lang.T("set.gpupref"), () => GpuPrefStage.HasResidue, () => GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(), list);
 			StepIf(Lang.T("set.apppref"), () => AppGpuPreferences.HasResidue, () => AppGpuPreferences.RestoreAll() || AppGpuPreferences.AbandonUnprovableForReset(), list);
@@ -285,9 +285,9 @@ namespace PaviseApp
 				{
 					return !DisplaySolo.HasResidue();
 				}
-				string text2 = Settings.LoadStr("DisplaySoloSnap", "");
+				string displaySoloSnapValue = Settings.LoadStr("DisplaySoloSnap", "");
 				uint result;
-				return text2.Length != 0 && (!uint.TryParse(text2, out result) || (result != 2 && result != 4 && result != 8)) && Settings.SaveStr("DisplaySoloSnap", "");
+				return displaySoloSnapValue.Length != 0 && (!uint.TryParse(displaySoloSnapValue, out result) || (result != 2 && result != 4 && result != 8)) && Settings.SaveStr("DisplaySoloSnap", "");
 			}, list);
 			StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, list);
 			StepIf("Windowed optimizations", () => DirectXGlobalPreference.Windowed.HasResidue, DirectXGlobalPreference.Windowed.Restore, list);
@@ -311,14 +311,14 @@ namespace PaviseApp
 			}, list);
 			StepIf(Lang.T("irqpin.prio.name"), () => IrqPriorityTweak.HasResidue, IrqPriorityTweak.RestoreAll, list);
 			StepIf(Lang.T("irqcheck.purge"), () => GpuIrqCheck.HasResidue, GpuIrqCheck.RestoreAll, list);
-			string[] array = new string[12]
+			string[] textEntries = new string[12]
 			{
 				"pstate", "prerender", "lowlatcpl", "ullenable", "smooth", "shadercache", "ansel", "rebarfeat", "rebaropt", "rebarsize",
 				"dlssovr", "dlsspreset"
 			};
-			foreach (string text in array)
+			foreach (string entryText in textEntries)
 			{
-				string i = text;
+				string i = entryText;
 				Step("NVIDIA Profile:" + i, delegate
 				{
 					NvDrsTweaks.RestoreKind(i);
@@ -342,9 +342,9 @@ namespace PaviseApp
 		{
 			healBoost();
 			healSuppression();
-			bool flag = boostPending();
-			bool flag2 = suppressionPending();
-			if (!flag && !flag2)
+			bool boostPendingSucceeded = boostPending();
+			bool suppressionPendingSucceeded = suppressionPending();
+			if (!boostPendingSucceeded && !suppressionPendingSucceeded)
 			{
 				return true;
 			}
@@ -363,19 +363,19 @@ namespace PaviseApp
 				}
 			}
 			string[] atomicDataFiles = AtomicDataFiles;
-			foreach (string text in atomicDataFiles)
+			foreach (string filePath in atomicDataFiles)
 			{
-				if (string.Equals(name, text + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, text + ".stale.bak", StringComparison.OrdinalIgnoreCase))
+				if (string.Equals(name, filePath + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, filePath + ".stale.bak", StringComparison.OrdinalIgnoreCase))
 				{
 					return true;
 				}
 			}
 			string[] uniqueTempDataFiles = UniqueTempDataFiles;
-			foreach (string text2 in uniqueTempDataFiles)
+			foreach (string filePath2 in uniqueTempDataFiles)
 			{
-				string text3 = text2 + ".";
+				string filePath2Offset = filePath2 + ".";
 				Guid result;
-				if (name.Length == text3.Length + 32 + 4 && name.StartsWith(text3, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Guid.TryParseExact(name.Substring(text3.Length, 32), "N", out result))
+				if (name.Length == filePath2Offset.Length + 32 + 4 && name.StartsWith(filePath2Offset, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && Guid.TryParseExact(name.Substring(filePath2Offset.Length, 32), "N", out result))
 				{
 					return true;
 				}
@@ -461,9 +461,9 @@ namespace PaviseApp
 			error = null;
 			try
 			{
-				bool flag = !string.IsNullOrEmpty(dir) && dir.Length >= 3 && dir[1] == ':' && (dir[2] == Path.DirectorySeparatorChar || dir[2] == Path.AltDirectorySeparatorChar);
-				bool flag2 = !string.IsNullOrEmpty(dir) && dir.StartsWith("\\\\", StringComparison.Ordinal);
-				if (string.IsNullOrWhiteSpace(dir) || (!flag && !flag2))
+				bool allConditionsMet = !string.IsNullOrEmpty(dir) && dir.Length >= 3 && dir[1] == ':' && (dir[2] == Path.DirectorySeparatorChar || dir[2] == Path.AltDirectorySeparatorChar);
+				bool matchesStartsWith = !string.IsNullOrEmpty(dir) && dir.StartsWith("\\\\", StringComparison.Ordinal);
+				if (string.IsNullOrWhiteSpace(dir) || (!allConditionsMet && !matchesStartsWith))
 				{
 					error = "数据目录不是明确的绝对路径";
 					return false;
@@ -525,25 +525,25 @@ namespace PaviseApp
 					error = "拒绝越界路径: " + path;
 					return false;
 				}
-				string text = (Same(fullPath, root) ? root : Path.GetDirectoryName(fullPath));
-				while (!string.IsNullOrEmpty(text))
+				string rootSnapshot = (Same(fullPath, root) ? root : Path.GetDirectoryName(fullPath));
+				while (!string.IsNullOrEmpty(rootSnapshot))
 				{
 					FileAttributes attributes;
 					bool exists;
-					if (!TryAttributes(text, out attributes, out exists, out error))
+					if (!TryAttributes(rootSnapshot, out attributes, out exists, out error))
 					{
 						return false;
 					}
 					if (exists && ((attributes & FileAttributes.Directory) == 0 || (attributes & FileAttributes.ReparsePoint) != 0))
 					{
-						error = "数据目录结构已改变: " + text;
+						error = "数据目录结构已改变: " + rootSnapshot;
 						return false;
 					}
-					if (Same(text, root))
+					if (Same(rootSnapshot, root))
 					{
 						return true;
 					}
-					text = Path.GetDirectoryName(text);
+					rootSnapshot = Path.GetDirectoryName(rootSnapshot);
 				}
 				error = "无法核对数据目录边界: " + path;
 				return false;
@@ -653,11 +653,11 @@ namespace PaviseApp
 				try
 				{
 					string[] fileSystemEntries2 = Directory.GetFileSystemEntries(root3);
-					foreach (string text in fileSystemEntries2)
+					foreach (string filePath in fileSystemEntries2)
 					{
-						if (IsOwnedDataName(Path.GetFileName(text)))
+						if (IsOwnedDataName(Path.GetFileName(filePath)))
 						{
-							AddFailure(list, "残留: " + text);
+							AddFailure(list, "残留: " + filePath);
 						}
 					}
 				}
@@ -684,7 +684,7 @@ namespace PaviseApp
 				error = "Original runtime recovery is pending; data retained";
 				return false;
 			}
-			string[] array = new string[8]
+			string[] textEntries = new string[8]
 			{
 				Path.GetTempPath(),
 				AppDomain.CurrentDomain.BaseDirectory,
@@ -695,9 +695,9 @@ namespace PaviseApp
 				Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
 				Environment.GetFolderPath(Environment.SpecialFolder.Windows)
 			};
-			foreach (string text in array)
+			foreach (string entryText in textEntries)
 			{
-				if (!string.IsNullOrEmpty(text) && Same(root, text))
+				if (!string.IsNullOrEmpty(entryText) && Same(root, entryText))
 				{
 					error = "拒绝整树删除公共目录: " + root;
 					return false;
@@ -760,10 +760,10 @@ namespace PaviseApp
 					try
 					{
 						string[] fileSystemEntries = Directory.GetFileSystemEntries(dir);
-						foreach (string text in fileSystemEntries)
+						foreach (string filePath in fileSystemEntries)
 						{
 							FileAttributes attributes2;
-							if (!TryAttributes(text, out attributes2, out exists, out error))
+							if (!TryAttributes(filePath, out attributes2, out exists, out error))
 							{
 								AddFailure(failures, error);
 							}
@@ -771,11 +771,11 @@ namespace PaviseApp
 							{
 								if ((attributes2 & FileAttributes.Directory) != 0)
 								{
-									DeleteDataTreeLevel(root, text, ref files, failures);
+									DeleteDataTreeLevel(root, filePath, ref files, failures);
 								}
 								else
 								{
-									DeleteDataFile(root, text, ref files, failures);
+									DeleteDataFile(root, filePath, ref files, failures);
 								}
 							}
 						}
@@ -846,7 +846,7 @@ namespace PaviseApp
 				Logger.Log(why + Lang.T("log.legacypurge.38") + list.Count + Lang.T("log.legacypurge.31") + unrestored + Lang.T("log.legacypurge.39"));
 				return false;
 			}
-			bool flag = includeSettings && IsRoamingDataDir(root);
+			bool matchesIncludeSettings = includeSettings && IsRoamingDataDir(root);
 			Logger.Log(why + " 系统还原已确认，开始清理本机数据");
 			try
 			{
@@ -863,7 +863,7 @@ namespace PaviseApp
 				Settings.SuspendWritesForReset();
 				Logger.SuspendWritesForReset();
 			}
-			if (!(flag ? TryDeleteDataTree(root, out files, out error) : DeleteDataFiles(root, out files, out error)))
+			if (!(matchesIncludeSettings ? TryDeleteDataTree(root, out files, out error) : DeleteDataFiles(root, out files, out error)))
 			{
 				unrestored = "数据清理未完成，注册表设置已保留: " + error;
 				return false;

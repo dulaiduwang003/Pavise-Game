@@ -35,14 +35,14 @@ namespace PaviseApp
 
 		private static void CheckPath(string path)
 		{
-			string text = path;
-			while (!string.IsNullOrEmpty(text))
+			string pathSnapshot = path;
+			while (!string.IsNullOrEmpty(pathSnapshot))
 			{
-				if ((File.Exists(text) || Directory.Exists(text)) && (File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+				if ((File.Exists(pathSnapshot) || Directory.Exists(pathSnapshot)) && (File.GetAttributes(pathSnapshot) & FileAttributes.ReparsePoint) != 0)
 				{
 					throw new IOException("SPI ownership path crosses a reparse point");
 				}
-				text = Path.GetDirectoryName(text);
+				pathSnapshot = Path.GetDirectoryName(pathSnapshot);
 			}
 		}
 
@@ -64,17 +64,17 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Invalid SPI owner snapshot size");
 				}
-				byte[] array = new byte[(int)fileStream.Length];
-				int num;
-				for (int i = 0; i < array.Length; i += num)
+				byte[] rawBytes = new byte[(int)fileStream.Length];
+				int fileValue;
+				for (int i = 0; i < rawBytes.Length; i += fileValue)
 				{
-					num = fileStream.Read(array, i, array.Length - i);
-					if (num <= 0)
+					fileValue = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+					if (fileValue <= 0)
 					{
 						throw new EndOfStreamException();
 					}
 				}
-				return array;
+				return rawBytes;
 			}
 		}
 
@@ -113,83 +113,83 @@ namespace PaviseApp
 
 		internal string PublishLegacy(string name, byte[] bytes)
 		{
-			string text = LegacyPath(name);
+			string legacyPathResult = LegacyPath(name);
 			if (bytes == null || bytes.Length == 0 || bytes.Length > 32768)
 			{
 				throw new InvalidDataException("Invalid SPI migration metadata size");
 			}
-			byte[] array = ReadFile(text);
-			if (array != null)
+			byte[] file = ReadFile(legacyPathResult);
+			if (file != null)
 			{
-				if (!SpiOwnerRecord.Equal(array, bytes))
+				if (!SpiOwnerRecord.Equal(file, bytes))
 				{
 					throw new InvalidDataException("Immutable SPI migration metadata differs");
 				}
 				return SpiOwnerRecord.Digest(bytes);
 			}
-			string text2 = Path.Combine(Path.GetDirectoryName(text), ".spi-legacy-" + Guid.NewGuid().ToString("N") + ".tmp");
-			bool flag = false;
+			string combinedPath = Path.Combine(Path.GetDirectoryName(legacyPathResult), ".spi-legacy-" + Guid.NewGuid().ToString("N") + ".tmp");
+			bool publishLegacyReady = false;
 			try
 			{
-				CheckPath(text2);
-				using (FileStream fileStream = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				CheckPath(combinedPath);
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 				{
-					flag = true;
+					publishLegacyReady = true;
 					fileStream.Write(bytes, 0, bytes.Length);
 					fileStream.Flush(true);
 				}
-				CheckPath(text);
-				File.Move(text2, text);
+				CheckPath(legacyPathResult);
+				File.Move(combinedPath, legacyPathResult);
 				return SpiOwnerRecord.Digest(bytes);
 			}
 			finally
 			{
-				if (flag && File.Exists(text2))
+				if (publishLegacyReady && File.Exists(combinedPath))
 				{
-					File.Delete(text2);
+					File.Delete(combinedPath);
 				}
 			}
 		}
 
 		internal string PublishInitialization(byte[] bytes)
 		{
-			string text = Path.Combine(Path.GetDirectoryName(PathName), "initialization.tsv");
-			if (bytes == null || bytes.Length == 0 || bytes.Length > 32768 || ReadFile(text) != null)
+			string initializationPath = Path.Combine(Path.GetDirectoryName(PathName), "initialization.tsv");
+			if (bytes == null || bytes.Length == 0 || bytes.Length > 32768 || ReadFile(initializationPath) != null)
 			{
 				throw new InvalidDataException("SPI initialization evidence is absent, invalid or already exists");
 			}
-			string text2 = Path.Combine(Path.GetDirectoryName(text), ".spi-init-" + Guid.NewGuid().ToString("N") + ".tmp");
-			bool flag = false;
+			string combinedPath = Path.Combine(Path.GetDirectoryName(initializationPath), ".spi-init-" + Guid.NewGuid().ToString("N") + ".tmp");
+			bool publishInitializationReady = false;
 			try
 			{
-				CheckPath(text2);
-				using (FileStream fileStream = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				CheckPath(combinedPath);
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 				{
-					flag = true;
+					publishInitializationReady = true;
 					fileStream.Write(bytes, 0, bytes.Length);
 					fileStream.Flush(true);
 				}
-				CheckPath(text);
-				File.Move(text2, text);
+				CheckPath(initializationPath);
+				File.Move(combinedPath, initializationPath);
 				return SpiOwnerRecord.Digest(bytes);
 			}
 			finally
 			{
-				if (flag && File.Exists(text2))
+				if (publishInitializationReady && File.Exists(combinedPath))
 				{
-					File.Delete(text2);
+					File.Delete(combinedPath);
 				}
 			}
 		}
 
 		internal void ValidateInitialization(string sid, SpiOwnerRecord record)
 		{
-			byte[] array = ReadInitialization();
-			if (array == null)
+			byte[] initialization = ReadInitialization();
+			if (initialization == null)
 			{
 				throw new InvalidDataException("SPI owner initialization evidence is missing");
 			}
-			string @string = new UTF8Encoding(false, true).GetString(array);
+			string @string = new UTF8Encoding(false, true).GetString(initialization);
 			List<string> list = new List<string>(@string.Split('\n'));
 			if (list.Count == 8 && list[0] == "pavise-spi-initialization-2")
 			{
@@ -205,17 +205,17 @@ namespace PaviseApp
 				throw new InvalidDataException("Invalid SPI owner initialization evidence");
 			}
 			SpiOwnerIdentity.Nonce(list[2].Substring(6));
-			string text = list[3].Substring(15);
-			if (text != "none")
+			string substringResult = list[3].Substring(15);
+			if (substringResult != "none")
 			{
-				SpiOwnerIdentity.Hash(text);
-				byte[] array2 = ReadLegacy("legacy-close.tsv");
-				if (array2 == null || SpiOwnerRecord.Digest(array2) != text)
+				SpiOwnerIdentity.Hash(substringResult);
+				byte[] legacy = ReadLegacy("legacy-close.tsv");
+				if (legacy == null || SpiOwnerRecord.Digest(legacy) != substringResult)
 				{
 					throw new InvalidDataException("SPI legacy closure attachment is missing or changed");
 				}
 			}
-			if (record.Generation == 0 && SpiOwnerRecord.Digest(array) != record.ClosureDigest)
+			if (record.Generation == 0 && SpiOwnerRecord.Digest(initialization) != record.ClosureDigest)
 			{
 				throw new InvalidDataException("Initial closed slot differs from bootstrap evidence");
 			}
@@ -227,37 +227,37 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Invalid SPI closure manifest size");
 			}
-			string text = ClosurePath(stamp);
-			CheckPath(text);
-			byte[] array = ReadFile(text);
-			if (array != null)
+			string closurePathResult = ClosurePath(stamp);
+			CheckPath(closurePathResult);
+			byte[] file = ReadFile(closurePathResult);
+			if (file != null)
 			{
-				if (!SpiOwnerRecord.Equal(array, bytes))
+				if (!SpiOwnerRecord.Equal(file, bytes))
 				{
 					throw new InvalidDataException("Immutable SPI closure manifest differs");
 				}
 				return SpiOwnerRecord.Digest(bytes);
 			}
-			string text2 = Path.Combine(Path.GetDirectoryName(text), ".spi-close-" + Guid.NewGuid().ToString("N") + ".tmp");
-			bool flag = false;
+			string combinedPath = Path.Combine(Path.GetDirectoryName(closurePathResult), ".spi-close-" + Guid.NewGuid().ToString("N") + ".tmp");
+			bool publishClosureReady = false;
 			try
 			{
-				CheckPath(text2);
-				using (FileStream fileStream = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				CheckPath(combinedPath);
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 				{
-					flag = true;
+					publishClosureReady = true;
 					fileStream.Write(bytes, 0, bytes.Length);
 					fileStream.Flush(true);
 				}
-				CheckPath(text);
-				File.Move(text2, text);
+				CheckPath(closurePathResult);
+				File.Move(combinedPath, closurePathResult);
 				return SpiOwnerRecord.Digest(bytes);
 			}
 			finally
 			{
-				if (flag && File.Exists(text2))
+				if (publishClosureReady && File.Exists(combinedPath))
 				{
-					File.Delete(text2);
+					File.Delete(combinedPath);
 				}
 			}
 		}
@@ -276,14 +276,14 @@ namespace PaviseApp
 			{
 				throw new DirectoryNotFoundException("SPI ownership directory must be explicitly initialized");
 			}
-			string text = Path.Combine(directoryName, ".spi-owner-" + Guid.NewGuid().ToString("N") + ".tmp");
-			bool flag = false;
+			string combinedPath = Path.Combine(directoryName, ".spi-owner-" + Guid.NewGuid().ToString("N") + ".tmp");
+			bool publishReady = false;
 			try
 			{
-				CheckPath(text);
-				using (FileStream fileStream = new FileStream(text, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				CheckPath(combinedPath);
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 				{
-					flag = true;
+					publishReady = true;
 					fileStream.Write(after, 0, after.Length);
 					fileStream.Flush(true);
 				}
@@ -294,18 +294,18 @@ namespace PaviseApp
 				}
 				if (expected == null)
 				{
-					File.Move(text, PathName);
+					File.Move(combinedPath, PathName);
 				}
 				else
 				{
-					File.Replace(text, PathName, null);
+					File.Replace(combinedPath, PathName, null);
 				}
 			}
 			finally
 			{
-				if (flag && File.Exists(text))
+				if (publishReady && File.Exists(combinedPath))
 				{
-					File.Delete(text);
+					File.Delete(combinedPath);
 				}
 			}
 		}

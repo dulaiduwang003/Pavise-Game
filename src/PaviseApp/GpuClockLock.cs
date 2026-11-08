@@ -69,10 +69,10 @@ namespace PaviseApp
 					NvmlShutdown();
 					return false;
 				}
-				for (uint num = 0u; num < count; num++)
+				for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
 				{
 					IntPtr device;
-					if (NvmlGetHandle(num, out device) == 0)
+					if (NvmlGetHandle(iterationIndex, out device) == 0)
 					{
 						StringBuilder stringBuilder = new StringBuilder(96);
 						if (NvmlGetUuid(device, stringBuilder, (uint)stringBuilder.Capacity) == 0)
@@ -129,14 +129,14 @@ namespace PaviseApp
 			{
 				return list;
 			}
-			string[] array = raw.Split(';');
-			foreach (string text in array)
+			string[] rawParts = raw.Split(';');
+			foreach (string entryText in rawParts)
 			{
-				int num = text.IndexOf('|');
+				int matchIndex = entryText.IndexOf('|');
 				uint result;
-				if (num > 0 && uint.TryParse(text.Substring(num + 1), NumberStyles.None, CultureInfo.InvariantCulture, out result))
+				if (matchIndex > 0 && uint.TryParse(entryText.Substring(matchIndex + 1), NumberStyles.None, CultureInfo.InvariantCulture, out result))
 				{
-					list.Add(new KeyValuePair<string, uint>(text.Substring(0, num), result));
+					list.Add(new KeyValuePair<string, uint>(entryText.Substring(0, matchIndex), result));
 				}
 			}
 			return list;
@@ -154,12 +154,12 @@ namespace PaviseApp
 					}
 					Settings.Save("GpuClockLockAmd", false);
 				}
-				string text = Settings.LoadStr("GpuClockLockReceipt", "");
-				if (text.Length == 0)
+				string gpuClockLockReceiptValue = Settings.LoadStr("GpuClockLockReceipt", "");
+				if (gpuClockLockReceiptValue.Length == 0)
 				{
 					return true;
 				}
-				List<KeyValuePair<string, uint>> list = DecodeReceipt(text);
+				List<KeyValuePair<string, uint>> list = DecodeReceipt(gpuClockLockReceiptValue);
 				List<Device> list2 = new List<Device>();
 				if (!Open(list2))
 				{
@@ -168,7 +168,7 @@ namespace PaviseApp
 				}
 				try
 				{
-					bool flag = true;
+					bool restoreReady = true;
 					foreach (KeyValuePair<string, uint> item in list)
 					{
 						Device device = null;
@@ -182,14 +182,14 @@ namespace PaviseApp
 						}
 						if (device != null)
 						{
-							int num = NvmlResetLockedClocks(device.Handle);
-							if (num != 0 && num != 3)
+							int nvmlResetLockedClocksResult = NvmlResetLockedClocks(device.Handle);
+							if (nvmlResetLockedClocksResult != 0 && nvmlResetLockedClocksResult != 3)
 							{
-								flag = false;
+								restoreReady = false;
 							}
 						}
 					}
-					if (!flag)
+					if (!restoreReady)
 					{
 						Logger.Log(Lang.T("log.gpuclock.6"));
 						return false;

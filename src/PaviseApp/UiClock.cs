@@ -130,16 +130,16 @@ namespace PaviseApp
 
 		internal static float ScaleFor(double elapsedMs)
 		{
-			float num = (float)(elapsedMs / 16.66699981689453);
-			if (num < 0.25f)
+			float elapsedMsRatio = (float)(elapsedMs / 16.66699981689453);
+			if (elapsedMsRatio < 0.25f)
 			{
 				return 0.25f;
 			}
-			if (num > 4f)
+			if (elapsedMsRatio > 4f)
 			{
 				return 4f;
 			}
-			return num;
+			return elapsedMsRatio;
 		}
 
 		private static void AdvanceDelta()
@@ -285,13 +285,13 @@ namespace PaviseApp
 
 		public static bool Borrow()
 		{
-			bool flag = suspended;
-			if (flag)
+			bool suspendedSnapshot = suspended;
+			if (suspendedSnapshot)
 			{
 				Suspended = false;
 			}
 			Wake();
-			return flag;
+			return suspendedSnapshot;
 		}
 
 		public static void Return(bool was)

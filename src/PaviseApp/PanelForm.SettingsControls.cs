@@ -149,7 +149,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = false;
+			bool canBeginResetReady = false;
 			try
 			{
 				SetResetActionsEnabled(false);
@@ -177,12 +177,12 @@ namespace PaviseApp
 					return false;
 				}
 				Cursor = Cursors.WaitCursor;
-				flag = true;
+				canBeginResetReady = true;
 				return true;
 			}
 			finally
 			{
-				if (!flag)
+				if (!canBeginResetReady)
 				{
 					Interlocked.Exchange(ref wipeBusy, 0);
 					if (!runtimeShutdownBusy)
@@ -279,11 +279,11 @@ namespace PaviseApp
 				};
 				settingsWorkspaceTab2.NavigationRequested = delegate(Keys key)
 				{
-					int num = DsKeys.NavigateHorizontal(key, index2, labels.Length);
-					if (num >= 0)
+					int indexValue = DsKeys.NavigateHorizontal(key, index2, labels.Length);
+					if (indexValue >= 0)
 					{
-						settingsTabs.Index = num;
-						settingsWorkspaceTabs[num].Focus();
+						settingsTabs.Index = indexValue;
+						settingsWorkspaceTabs[indexValue].Focus();
 					}
 				};
 				settingsWorkspaceSurface.Controls.Add(settingsWorkspaceTab2);

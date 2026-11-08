@@ -56,19 +56,19 @@ namespace PaviseApp
 			{
 				throw new ArgumentException("one to " + CriticalThreadAutoPolicy.MaximumIsolated + " candidates required");
 			}
-			ulong num = 0uL;
-			ulong num2 = 0uL;
+			ulong numericValue = 0uL;
+			ulong numericValue2 = 0uL;
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
 			ulong[] physicalCores = machine.PhysicalCores;
-			foreach (ulong num3 in physicalCores)
+			foreach (ulong numericValueEntry in physicalCores)
 			{
-				if (num3 == 0 || (num2 & num3) != 0)
+				if (numericValueEntry == 0 || (numericValue2 & numericValueEntry) != 0)
 				{
 					throw new InvalidOperationException("invalid physical topology");
 				}
-				num2 |= num3;
+				numericValue2 |= numericValueEntry;
 			}
-			if ((target.AllowedMask & ~num2) != 0)
+			if ((target.AllowedMask & ~numericValue2) != 0)
 			{
 				throw new InvalidOperationException("allowed range has unknown physical processors");
 			}
@@ -78,32 +78,32 @@ namespace PaviseApp
 				{
 					throw new InvalidOperationException("invalid candidate identity or logical processor");
 				}
-				ulong num4 = 0uL;
+				ulong numericValue3 = 0uL;
 				ulong[] physicalCores2 = machine.PhysicalCores;
-				foreach (ulong num5 in physicalCores2)
+				foreach (ulong numericValueEntry2 in physicalCores2)
 				{
-					if ((num5 & hardThreadChoice.Mask) != 0)
+					if ((numericValueEntry2 & hardThreadChoice.Mask) != 0)
 					{
-						num4 = num5;
+						numericValue3 = numericValueEntry2;
 					}
 				}
-				if (num4 == 0 || (num & num4) != 0)
+				if (numericValue3 == 0 || (numericValue & numericValue3) != 0)
 				{
 					throw new InvalidOperationException("candidates must use distinct physical cores");
 				}
-				num |= num4;
+				numericValue |= numericValue3;
 			}
-			ulong num6 = target.AllowedMask & ~num;
-			int num7 = 0;
+			ulong allowedMaskMask = target.AllowedMask & ~numericValue;
+			int processedCount = 0;
 			ulong[] physicalCores3 = machine.PhysicalCores;
-			foreach (ulong num8 in physicalCores3)
+			foreach (ulong numericValueEntry3 in physicalCores3)
 			{
-				if ((num6 & num8) != 0)
+				if ((allowedMaskMask & numericValueEntry3) != 0)
 				{
-					num7++;
+					processedCount++;
 				}
 			}
-			if (num7 < 2)
+			if (processedCount < 2)
 			{
 				throw new InvalidOperationException("logical processors on at least two other physical cores required");
 			}
@@ -115,13 +115,13 @@ namespace PaviseApp
 			{
 				throw new ArgumentException("complete worker coverage requires worker avoidance");
 			}
-			return new HardThreadPlan(target, selected, num6, machine.ProcessMask, machine.Group, workerMode, requireWorkerCoverage);
+			return new HardThreadPlan(target, selected, allowedMaskMask, machine.ProcessMask, machine.Group, workerMode, requireWorkerCoverage);
 		}
 
 		internal bool IsCandidate(HardThreadIdentity thread)
 		{
-			HardThreadChoice[] array = choices;
-			foreach (HardThreadChoice hardThreadChoice in array)
+			HardThreadChoice[] choicesSnapshot = choices;
+			foreach (HardThreadChoice hardThreadChoice in choicesSnapshot)
 			{
 				if (hardThreadChoice.Thread.Tid == thread.Tid && hardThreadChoice.Thread.Creation == thread.Creation)
 				{
@@ -133,8 +133,8 @@ namespace PaviseApp
 
 		internal ulong MaskFor(HardThreadIdentity thread)
 		{
-			HardThreadChoice[] array = choices;
-			foreach (HardThreadChoice hardThreadChoice in array)
+			HardThreadChoice[] choicesSnapshot = choices;
+			foreach (HardThreadChoice hardThreadChoice in choicesSnapshot)
 			{
 				if (hardThreadChoice.Thread.Tid == thread.Tid && hardThreadChoice.Thread.Creation == thread.Creation)
 				{

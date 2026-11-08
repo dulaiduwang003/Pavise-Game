@@ -19,10 +19,10 @@ namespace PaviseApp
 			{
 				return CriticalThreadBoostCoupling.BoostDisabled;
 			}
-			bool flag = candidates != null && candidates.Length > 0;
+			bool allConditionsMet = candidates != null && candidates.Length > 0;
 			if (mode == "frame")
 			{
-				if (flag)
+				if (allConditionsMet)
 				{
 					if (!candidateFrameAssociated)
 					{
@@ -36,7 +36,7 @@ namespace PaviseApp
 			{
 				return CriticalThreadBoostCoupling.CandidateUnsupported;
 			}
-			if (!flag)
+			if (!allConditionsMet)
 			{
 				return CriticalThreadBoostCoupling.CandidateSelected;
 			}
@@ -100,8 +100,8 @@ namespace PaviseApp
 				return PerformancePolicy.Text("高负载线程提优当前未作用于本游戏", "Busy-thread boost is not applied to this game now");
 			case CriticalThreadBoostCoupling.SameThread:
 			{
-				string text = tid.ToString(CultureInfo.InvariantCulture);
-				return PerformancePolicy.Text("TID " + text + " 同时被高负载线程提优到最高优先级；两者叠加的效果未经测试", "TID " + text + " is also at highest priority from busy-thread boost; the combined effect is untested");
+				string tidText = tid.ToString(CultureInfo.InvariantCulture);
+				return PerformancePolicy.Text("TID " + tidText + " 同时被高负载线程提优到最高优先级；两者叠加的效果未经测试", "TID " + tidText + " is also at highest priority from busy-thread boost; the combined effect is untested");
 			}
 			case CriticalThreadBoostCoupling.OtherThread:
 				return PerformancePolicy.Text("高负载线程提优作用于另一条线程", "Busy-thread boost is on a different thread");

@@ -131,31 +131,31 @@ namespace PaviseApp
 			}
 			try
 			{
-				string[] array = text.Split('|');
-				if (array.Length == 3 && array[0] == "2")
+				string[] parts = text.Split('|');
+				if (parts.Length == 3 && parts[0] == "2")
 				{
-					return (array[1] == "auto" && (array[2] == "0" || array[2] == "1")) ? new CriticalThreadRule(array[2] == "1") : null;
+					return (parts[1] == "auto" && (parts[2] == "0" || parts[2] == "1")) ? new CriticalThreadRule(parts[2] == "1") : null;
 				}
-				if (array.Length != 4 || (array[0] != "1" && array[0] != "3") || (array[3] != "0" && array[3] != "1"))
+				if (parts.Length != 4 || (parts[0] != "1" && parts[0] != "3") || (parts[3] != "0" && parts[3] != "1"))
 				{
 					return null;
 				}
-				string[] array2 = array[1].Split(',');
-				if (array2.Length < 2 || array2.Length > 65)
+				string[] parts2 = parts[1].Split(',');
+				if (parts2.Length < 2 || parts2.Length > 65)
 				{
 					return null;
 				}
-				string[] array3 = array2;
-				foreach (string text2 in array3)
+				string[] textEntries = parts2;
+				foreach (string entryText in textEntries)
 				{
-					if (Hex(text2) == 0)
+					if (Hex(entryText) == 0)
 					{
 						return null;
 					}
 				}
-				CriticalThreadRule criticalThreadRule = array[0] == "3"
-					? Manual(array[1], Hex(array[2]))
-					: new CriticalThreadRule(array[1], array[3] == "1", array[2].Split(',').Select(Hex).ToArray());
+				CriticalThreadRule criticalThreadRule = parts[0] == "3"
+					? Manual(parts[1], Hex(parts[2]))
+					: new CriticalThreadRule(parts[1], parts[3] == "1", parts[2].Split(',').Select(Hex).ToArray());
 				return (criticalThreadRule.Encode() == text) ? criticalThreadRule : null;
 			}
 			catch (ArgumentException)
@@ -205,16 +205,16 @@ namespace PaviseApp
 			{
 				return PerformancePolicy.Text("至少需要三个不同物理核心：一个重点核心和两个工作核心", "At least three distinct physical cores are required: one candidate core and two worker cores");
 			}
-			ulong num = 0uL;
-			foreach (ulong num2 in physical)
+			ulong numericValue = 0uL;
+			foreach (ulong numericValueEntry in physical)
 			{
-				if (num2 == 0 || (num2 & ~all) != 0 || (num & num2) != 0)
+				if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
 				{
 					return PerformancePolicy.Text("处理器拓扑不可验证", "CPU topology could not be verified");
 				}
-				num |= num2;
+				numericValue |= numericValueEntry;
 			}
-			if (num != all || allowed == 0 || (allowed & ~all) != 0)
+			if (numericValue != all || allowed == 0 || (allowed & ~all) != 0)
 			{
 				return PerformancePolicy.Text("游戏允许的处理器范围不可验证", "The game's allowed processor range could not be verified");
 			}
@@ -228,22 +228,22 @@ namespace PaviseApp
 				}
 				return null;
 			}
-			ulong num3 = 0uL;
-			ulong[] array = targets;
-			foreach (ulong target in array)
+			ulong numericValue2 = 0uL;
+			ulong[] targetsSnapshot = targets;
+			foreach (ulong target in targetsSnapshot)
 			{
 				if ((target & allowed) != target)
 				{
 					return PerformancePolicy.Text("重点核心超出游戏允许范围", "A selected processor is outside the game's allowed range");
 				}
-				ulong num4 = physical.Single((ulong x) => (x & target) != 0);
-				if ((num4 & (num3 | reserved)) != 0)
+				ulong singleResult = physical.Single((ulong x) => (x & target) != 0);
+				if ((singleResult & (numericValue2 | reserved)) != 0)
 				{
 					return PerformancePolicy.Text("重点线程需要不同且未被占用的物理核心", "Candidates require separate, unreserved physical cores");
 				}
-				num3 |= num4;
+				numericValue2 |= singleResult;
 			}
-			ulong workers = allowed & ~(num3 | reserved);
+			ulong workers = allowed & ~(numericValue2 | reserved);
 			if (physical.Count((ulong x) => (x & workers) != 0) < 2)
 			{
 				return PerformancePolicy.Text("至少为其他线程保留两个不同物理核心上的逻辑线程", "Reserve logical processors on at least two other physical cores for other threads");

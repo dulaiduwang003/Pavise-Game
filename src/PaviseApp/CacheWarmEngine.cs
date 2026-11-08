@@ -26,11 +26,11 @@ namespace PaviseApp
 
 		private static bool SkipDirectory(string name)
 		{
-			string text = name.ToLowerInvariant();
-			switch (text)
+			string toLowerInvariantResult = name.ToLowerInvariant();
+			switch (toLowerInvariantResult)
 			{
 			default:
-				return text == "tensafe";
+				return toLowerInvariantResult == "tensafe";
 			case "logs":
 			case "crash":
 			case "cache":
@@ -50,8 +50,8 @@ namespace PaviseApp
 			Queue<KeyValuePair<string, int>> queue = new Queue<KeyValuePair<string, int>>();
 			queue.Enqueue(new KeyValuePair<string, int>(root, 0));
 			Stopwatch stopwatch = Stopwatch.StartNew();
-			int num = 0;
-			while (queue.Count > 0 && num < 5000 && stopwatch.ElapsedMilliseconds < 10000 && allowed())
+			int candidatesValue = 0;
+			while (queue.Count > 0 && candidatesValue < 5000 && stopwatch.ElapsedMilliseconds < 10000 && allowed())
 			{
 				KeyValuePair<string, int> keyValuePair = queue.Dequeue();
 				if (!CacheWarmPlatform.SafePath(keyValuePair.Key))
@@ -62,7 +62,7 @@ namespace PaviseApp
 				{
 					foreach (string item in Directory.EnumerateFileSystemEntries(keyValuePair.Key))
 					{
-						if (++num > 5000 || stopwatch.ElapsedMilliseconds >= 10000 || !allowed())
+						if (++candidatesValue > 5000 || stopwatch.ElapsedMilliseconds >= 10000 || !allowed())
 						{
 							break;
 						}
@@ -106,8 +106,8 @@ namespace PaviseApp
 			}
 			list.Sort(delegate(FileInfo a, FileInfo b)
 			{
-				int num2 = b.LastAccessTimeUtc.CompareTo(a.LastAccessTimeUtc);
-				return (num2 == 0) ? StringComparer.OrdinalIgnoreCase.Compare(a.FullName, b.FullName) : num2;
+				int compareToResult = b.LastAccessTimeUtc.CompareTo(a.LastAccessTimeUtc);
+				return (compareToResult == 0) ? StringComparer.OrdinalIgnoreCase.Compare(a.FullName, b.FullName) : compareToResult;
 			});
 			List<string> list2 = new List<string>();
 			foreach (FileInfo item2 in list)
@@ -119,11 +119,11 @@ namespace PaviseApp
 
 		internal static long Warm(string root, long budget, Func<bool> allowed, Func<int, bool> wait, Action<long> progress)
 		{
-			long num = 0L;
-			byte[] array = new byte[1048576];
+			long warmResult = 0L;
+			byte[] rawBytes = new byte[1048576];
 			foreach (string item in Candidates(root, allowed))
 			{
-				if (num >= budget || !allowed())
+				if (warmResult >= budget || !allowed())
 				{
 					break;
 				}
@@ -139,19 +139,19 @@ namespace PaviseApp
 						{
 							continue;
 						}
-						long num2 = Math.Min(fileStream.Length, 268435456L);
-						long num3 = 0L;
-						while (num < budget && num3 < num2 && allowed())
+						long lengthLimit = Math.Min(fileStream.Length, 268435456L);
+						long numericValue = 0L;
+						while (warmResult < budget && numericValue < lengthLimit && allowed())
 						{
-							int num4 = fileStream.Read(array, 0, (int)Math.Min(array.Length, Math.Min(budget - num, num2 - num3)));
-							if (num4 != 0)
+							int readResult = fileStream.Read(rawBytes, 0, (int)Math.Min(rawBytes.Length, Math.Min(budget - warmResult, lengthLimit - numericValue)));
+							if (readResult != 0)
 							{
-								num += num4;
-								num3 += num4;
-								progress(num);
+								warmResult += readResult;
+								numericValue += readResult;
+								progress(warmResult);
 								if (wait(32))
 								{
-									return num;
+									return warmResult;
 								}
 								continue;
 							}
@@ -166,7 +166,7 @@ namespace PaviseApp
 				{
 				}
 			}
-			return num;
+			return warmResult;
 		}
 	}
 }

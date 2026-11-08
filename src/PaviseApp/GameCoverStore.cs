@@ -29,23 +29,23 @@ namespace PaviseApp
 
 		public static Bitmap Load(GameProfile profile)
 		{
-			string text = CoverPath(profile);
-			if (text == null)
+			string coverPathResult = CoverPath(profile);
+			if (coverPathResult == null)
 			{
 				return null;
 			}
 			lock (Gate)
 			{
 				Bitmap value;
-				if (Cache.TryGetValue(text, out value))
+				if (Cache.TryGetValue(coverPathResult, out value))
 				{
 					return value;
 				}
 				try
 				{
-					if (File.Exists(text))
+					if (File.Exists(coverPathResult))
 					{
-						value = ReadCover(text);
+						value = ReadCover(coverPathResult);
 					}
 				}
 				catch (Exception error)
@@ -56,17 +56,17 @@ namespace PaviseApp
 					}
 					value = null;
 				}
-				Cache[text] = value;
+				Cache[coverPathResult] = value;
 				return value;
 			}
 		}
 
 		public static bool HasCustom(GameProfile profile)
 		{
-			string text = CoverPath(profile);
-			if (text != null)
+			string coverPathResult = CoverPath(profile);
+			if (coverPathResult != null)
 			{
-				return File.Exists(text);
+				return File.Exists(coverPathResult);
 			}
 			return false;
 		}
@@ -74,38 +74,38 @@ namespace PaviseApp
 		public static bool TrySet(GameProfile profile, string sourceFile, out string error)
 		{
 			error = null;
-			string text = CoverPath(profile);
-			if (text == null)
+			string coverPathResult = CoverPath(profile);
+			if (coverPathResult == null)
 			{
 				error = "游戏封面存储目录不可用。";
 				return false;
 			}
 			Bitmap bitmap = null;
-			string text2 = null;
+			string combinedPath = null;
 			try
 			{
 				bitmap = ReadCover(sourceFile);
 				lock (Gate)
 				{
-					string directoryName = Path.GetDirectoryName(text);
+					string directoryName = Path.GetDirectoryName(coverPathResult);
 					Directory.CreateDirectory(directoryName);
-					text2 = Path.Combine(directoryName, "." + Guid.NewGuid().ToString("N") + ".tmp");
-					using (FileStream fileStream = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+					combinedPath = Path.Combine(directoryName, "." + Guid.NewGuid().ToString("N") + ".tmp");
+					using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 					{
 						bitmap.Save(fileStream, ImageFormat.Png);
 						fileStream.Flush(true);
 					}
-					if (File.Exists(text))
+					if (File.Exists(coverPathResult))
 					{
-						File.Replace(text2, text, null);
+						File.Replace(combinedPath, coverPathResult, null);
 					}
 					else
 					{
-						File.Move(text2, text);
+						File.Move(combinedPath, coverPathResult);
 					}
-					text2 = null;
-					Invalidate(text);
-					Cache[text] = bitmap;
+					combinedPath = null;
+					Invalidate(coverPathResult);
+					Cache[coverPathResult] = bitmap;
 					bitmap = null;
 				}
 				return true;
@@ -125,11 +125,11 @@ namespace PaviseApp
 				{
 					bitmap.Dispose();
 				}
-				if (text2 != null)
+				if (combinedPath != null)
 				{
 					try
 					{
-						File.Delete(text2);
+						File.Delete(combinedPath);
 					}
 					catch (IOException)
 					{
@@ -144,8 +144,8 @@ namespace PaviseApp
 		public static bool TryReset(GameProfile profile, out string error)
 		{
 			error = null;
-			string text = CoverPath(profile);
-			if (text == null)
+			string coverPathResult = CoverPath(profile);
+			if (coverPathResult == null)
 			{
 				return true;
 			}
@@ -153,8 +153,8 @@ namespace PaviseApp
 			{
 				try
 				{
-					File.Delete(text);
-					Invalidate(text);
+					File.Delete(coverPathResult);
+					Invalidate(coverPathResult);
 					return true;
 				}
 				catch (Exception error2)
@@ -180,14 +180,14 @@ namespace PaviseApp
 
 		public static void DropCache(GameProfile profile)
 		{
-			string text = CoverPath(profile);
-			if (text == null)
+			string coverPathResult = CoverPath(profile);
+			if (coverPathResult == null)
 			{
 				return;
 			}
 			lock (Gate)
 			{
-				Invalidate(text);
+				Invalidate(coverPathResult);
 			}
 		}
 
@@ -225,14 +225,14 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			byte[] array;
+			byte[] hash;
 			using (SHA256 sHA = SHA256.Create())
 			{
-				array = sHA.ComputeHash(Encoding.UTF8.GetBytes(profile.Id));
+				hash = sHA.ComputeHash(Encoding.UTF8.GetBytes(profile.Id));
 			}
 			StringBuilder stringBuilder = new StringBuilder(64);
-			byte[] array2 = array;
-			foreach (byte b in array2)
+			byte[] rawBytes = hash;
+			foreach (byte b in rawBytes)
 			{
 				stringBuilder.Append(b.ToString("x2"));
 			}
@@ -241,7 +241,7 @@ namespace PaviseApp
 
 		private static Bitmap ReadCover(string path)
 		{
-			byte[] array;
+			byte[] rawBytes;
 			using (FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
 			{
 				if (fileStream.Length < 10)
@@ -252,23 +252,23 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("封面图片大小不得超过 20 MB。");
 				}
-				array = new byte[(int)fileStream.Length];
-				int num;
-				for (int i = 0; i < array.Length; i += num)
+				rawBytes = new byte[(int)fileStream.Length];
+				int coverValue;
+				for (int i = 0; i < rawBytes.Length; i += coverValue)
 				{
-					num = fileStream.Read(array, i, array.Length - i);
-					if (num == 0)
+					coverValue = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+					if (coverValue == 0)
 					{
 						throw new InvalidDataException("封面图片不完整。");
 					}
 				}
 			}
-			Size size = ReadDimensions(array);
+			Size size = ReadDimensions(rawBytes);
 			if (size.Width <= 0 || size.Height <= 0 || size.Width > 8192 || size.Height > 8192 || (long)size.Width * (long)size.Height > 24000000)
 			{
 				throw new InvalidDataException("封面图片尺寸过大，单边最多 8192 像素，总像素最多 2400 万。");
 			}
-			using (MemoryStream stream = new MemoryStream(array, false))
+			using (MemoryStream stream = new MemoryStream(rawBytes, false))
 			{
 				using (Image image = Image.FromStream(stream, false, true))
 				{
@@ -288,10 +288,10 @@ namespace PaviseApp
 								graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 								graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 								imageAttributes.SetWrapMode(WrapMode.TileFlipXY);
-								float num2 = Math.Max(960f / (float)size.Width, 540f / (float)size.Height);
-								float num3 = 960f / num2;
-								float num4 = 540f / num2;
-								graphics.DrawImage(image, new Rectangle(0, 0, 960, 540), ((float)size.Width - num3) / 2f, ((float)size.Height - num4) / 2f, num3, num4, GraphicsUnit.Pixel, imageAttributes);
+								float lowerBound = Math.Max(960f / (float)size.Width, 540f / (float)size.Height);
+								float lowerBoundRatio = 960f / lowerBound;
+								float lowerBoundRatio2 = 540f / lowerBound;
+								graphics.DrawImage(image, new Rectangle(0, 0, 960, 540), ((float)size.Width - lowerBoundRatio) / 2f, ((float)size.Height - lowerBoundRatio2) / 2f, lowerBoundRatio, lowerBoundRatio2, GraphicsUnit.Pixel, imageAttributes);
 							}
 						}
 						return bitmap;
@@ -313,8 +313,8 @@ namespace PaviseApp
 			}
 			if (bytes.Length >= 54 && bytes[0] == 66 && bytes[1] == 77 && BitConverter.ToUInt32(bytes, 14) >= 40)
 			{
-				int num = BitConverter.ToInt32(bytes, 22);
-				return new Size(BitConverter.ToInt32(bytes, 18), (num != int.MinValue) ? Math.Abs(num) : 0);
+				int toInt32Result = BitConverter.ToInt32(bytes, 22);
+				return new Size(BitConverter.ToInt32(bytes, 18), (toInt32Result != int.MinValue) ? Math.Abs(toInt32Result) : 0);
 			}
 			if (bytes[0] == byte.MaxValue && bytes[1] == 216)
 			{
@@ -328,8 +328,8 @@ namespace PaviseApp
 					{
 						break;
 					}
-					int num2 = bytes[i++];
-					switch (num2)
+					int dimensionsValue = bytes[i++];
+					switch (dimensionsValue)
 					{
 					default:
 					{
@@ -337,14 +337,14 @@ namespace PaviseApp
 						{
 							break;
 						}
-						int num3 = bytes[i] * 256 + bytes[i + 1];
-						if (num3 >= 2 && i + num3 <= bytes.Length)
+						int dimensionsValue2 = bytes[i] * 256 + bytes[i + 1];
+						if (dimensionsValue2 >= 2 && i + dimensionsValue2 <= bytes.Length)
 						{
-							if (num2 >= 192 && num2 <= 207 && num2 != 196 && num2 != 200 && num2 != 204 && num3 >= 8)
+							if (dimensionsValue >= 192 && dimensionsValue <= 207 && dimensionsValue != 196 && dimensionsValue != 200 && dimensionsValue != 204 && dimensionsValue2 >= 8)
 							{
 								return new Size(bytes[i + 5] * 256 + bytes[i + 6], bytes[i + 3] * 256 + bytes[i + 4]);
 							}
-							i += num3;
+							i += dimensionsValue2;
 							continue;
 						}
 						break;

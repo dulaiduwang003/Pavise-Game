@@ -23,27 +23,27 @@ namespace PaviseApp
 
 		public static string FindLolRoot(string preferred, bool deep, Func<bool> cancelled)
 		{
-			string text = FindLolFromProcesses();
-			if (text != null)
+			string lolFromProcesses = FindLolFromProcesses();
+			if (lolFromProcesses != null)
 			{
-				return text;
+				return lolFromProcesses;
 			}
-			text = NormalizeLolRoot(preferred);
-			if (text != null)
+			lolFromProcesses = NormalizeLolRoot(preferred);
+			if (lolFromProcesses != null)
 			{
-				return text;
+				return lolFromProcesses;
 			}
 			for (int i = 0; i < LolRegistryKeys.Length; i++)
 			{
-				text = FindRegistryLolRoot(Registry.CurrentUser, LolRegistryKeys[i]);
-				if (text != null)
+				lolFromProcesses = FindRegistryLolRoot(Registry.CurrentUser, LolRegistryKeys[i]);
+				if (lolFromProcesses != null)
 				{
-					return text;
+					return lolFromProcesses;
 				}
-				text = FindRegistryLolRoot(Registry.LocalMachine, LolRegistryKeys[i]);
-				if (text != null)
+				lolFromProcesses = FindRegistryLolRoot(Registry.LocalMachine, LolRegistryKeys[i]);
+				if (lolFromProcesses != null)
 				{
-					return text;
+					return lolFromProcesses;
 				}
 			}
 			if (!deep || (cancelled != null && cancelled()))
@@ -60,38 +60,38 @@ namespace PaviseApp
 
 		public static string FindWeGameRoot(string preferred, string lolRoot, bool deep, Func<bool> cancelled)
 		{
-			string text = FindWeGameFromProcesses();
-			if (text != null)
+			string weGameFromProcesses = FindWeGameFromProcesses();
+			if (weGameFromProcesses != null)
 			{
-				return text;
+				return weGameFromProcesses;
 			}
-			text = NormalizeWeGameRoot(preferred);
-			if (text != null)
+			weGameFromProcesses = NormalizeWeGameRoot(preferred);
+			if (weGameFromProcesses != null)
 			{
-				return text;
+				return weGameFromProcesses;
 			}
-			text = FindWeGameFromAppPaths();
-			if (text != null)
+			weGameFromProcesses = FindWeGameFromAppPaths();
+			if (weGameFromProcesses != null)
 			{
-				return text;
+				return weGameFromProcesses;
 			}
 			for (int i = 0; i < WeGameRegistryKeys.Length; i++)
 			{
-				text = FindRegistryWeGameRoot(Registry.CurrentUser, WeGameRegistryKeys[i]);
-				if (text != null)
+				weGameFromProcesses = FindRegistryWeGameRoot(Registry.CurrentUser, WeGameRegistryKeys[i]);
+				if (weGameFromProcesses != null)
 				{
-					return text;
+					return weGameFromProcesses;
 				}
-				text = FindRegistryWeGameRoot(Registry.LocalMachine, WeGameRegistryKeys[i]);
-				if (text != null)
+				weGameFromProcesses = FindRegistryWeGameRoot(Registry.LocalMachine, WeGameRegistryKeys[i]);
+				if (weGameFromProcesses != null)
 				{
-					return text;
+					return weGameFromProcesses;
 				}
 			}
-			text = FindWeGameFromLaunchFile(lolRoot);
-			if (text != null)
+			weGameFromProcesses = FindWeGameFromLaunchFile(lolRoot);
+			if (weGameFromProcesses != null)
 			{
-				return text;
+				return weGameFromProcesses;
 			}
 			if (!deep || (cancelled != null && cancelled()))
 			{
@@ -107,18 +107,18 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = new string[4]
+			string[] textEntries = new string[4]
 			{
 				Path.Combine(root, "wegame.exe"),
 				Path.Combine(root, "WeGame.exe"),
 				Path.Combine(root, "WeGameLauncher.exe"),
 				Path.Combine(root, "apps", "wegame.exe")
 			};
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < textEntries.Length; i++)
 			{
-				if (File.Exists(array[i]))
+				if (File.Exists(textEntries[i]))
 				{
-					return array[i];
+					return textEntries[i];
 				}
 			}
 			try
@@ -168,10 +168,10 @@ namespace PaviseApp
 					}
 					for (int i = 0; i < RegistryValues.Length; i++)
 					{
-						string text = NormalizeLolRoot(Convert.ToString(registryKey.GetValue(RegistryValues[i])));
-						if (text != null)
+						string lolRoot = NormalizeLolRoot(Convert.ToString(registryKey.GetValue(RegistryValues[i])));
+						if (lolRoot != null)
 						{
-							return text;
+							return lolRoot;
 						}
 					}
 				}
@@ -194,10 +194,10 @@ namespace PaviseApp
 					}
 					for (int i = 0; i < RegistryValues.Length; i++)
 					{
-						string text = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue(RegistryValues[i])));
-						if (text != null)
+						string weGameRoot = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue(RegistryValues[i])));
+						if (weGameRoot != null)
 						{
-							return text;
+							return weGameRoot;
 						}
 					}
 				}
@@ -210,41 +210,41 @@ namespace PaviseApp
 
 		private static string FindWeGameFromAppPaths()
 		{
-			string[] array = new string[2] { "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe", "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe" };
-			RegistryKey[] array2 = new RegistryKey[2]
+			string[] textEntries = new string[2] { "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe", "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe" };
+			RegistryKey[] registryKeyItems = new RegistryKey[2]
 			{
 				Registry.CurrentUser,
 				Registry.LocalMachine
 			};
-			for (int i = 0; i < array2.Length; i++)
+			for (int i = 0; i < registryKeyItems.Length; i++)
 			{
-				for (int j = 0; j < array.Length; j++)
+				for (int j = 0; j < textEntries.Length; j++)
 				{
 					try
 					{
-						using (RegistryKey registryKey = array2[i].OpenSubKey(array[j]))
+						using (RegistryKey registryKey = registryKeyItems[i].OpenSubKey(textEntries[j]))
 						{
 							if (registryKey != null)
 							{
-								string text = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue(null)));
-								if (text != null)
+								string weGameRoot = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue(null)));
+								if (weGameRoot != null)
 								{
-									return text;
+									return weGameRoot;
 								}
-								text = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("Path")));
-								if (text != null)
+								weGameRoot = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("Path")));
+								if (weGameRoot != null)
 								{
-									return text;
+									return weGameRoot;
 								}
-								text = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("ExeFile")));
-								if (text != null)
+								weGameRoot = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("ExeFile")));
+								if (weGameRoot != null)
 								{
-									return text;
+									return weGameRoot;
 								}
-								text = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("InstallPath")));
-								if (text != null)
+								weGameRoot = NormalizeWeGameRoot(Convert.ToString(registryKey.GetValue("InstallPath")));
+								if (weGameRoot != null)
 								{
-									return text;
+									return weGameRoot;
 								}
 							}
 						}
@@ -287,24 +287,24 @@ namespace PaviseApp
 				}
 				try
 				{
-					Process[] array = processesByName;
-					foreach (Process process in array)
+					Process[] processesByNameSnapshot = processesByName;
+					foreach (Process process in processesByNameSnapshot)
 					{
 						string path;
 						if (LolRuntimeProcesses.TryGetOwnedImagePath(process, sessionId, out path) && candidateName(Path.GetFileName(path)))
 						{
-							string text = normalize(path);
-							if (text != null)
+							string normalizeResult = normalize(path);
+							if (normalizeResult != null)
 							{
-								return text;
+								return normalizeResult;
 							}
 						}
 					}
 				}
 				finally
 				{
-					Process[] array2 = processesByName;
-					foreach (Process process2 in array2)
+					Process[] processesByNameSnapshot2 = processesByName;
+					foreach (Process process2 in processesByNameSnapshot2)
 					{
 						if (process2 != null)
 						{
@@ -338,23 +338,23 @@ namespace PaviseApp
 						continue;
 					}
 					string fullName = driveInfo.RootDirectory.FullName;
-					string[] array = new string[4]
+					string[] textEntries = new string[4]
 					{
 						Path.Combine(fullName, "WeGameApps", "英雄联盟"),
 						Path.Combine(fullName, "Program Files", "WeGameApps", "英雄联盟"),
 						Path.Combine(fullName, "Program Files (x86)", "WeGameApps", "英雄联盟"),
 						Path.Combine(fullName, "英雄联盟")
 					};
-					for (int j = 0; j < array.Length; j++)
+					for (int j = 0; j < textEntries.Length; j++)
 					{
 						if (cancelled != null && cancelled())
 						{
 							return null;
 						}
-						string text = NormalizeLolRoot(array[j]);
-						if (text != null)
+						string lolRoot = NormalizeLolRoot(textEntries[j]);
+						if (lolRoot != null)
 						{
-							return text;
+							return lolRoot;
 						}
 					}
 				}
@@ -392,10 +392,10 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				string text = NormalizeWeGameRoot(list[j]);
-				if (text != null)
+				string weGameRoot = NormalizeWeGameRoot(list[j]);
+				if (weGameRoot != null)
 				{
-					return text;
+					return weGameRoot;
 				}
 			}
 			return null;
@@ -407,25 +407,25 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = new string[2]
+			string[] textEntries = new string[2]
 			{
 				Path.Combine(lolRoot, "TCLS", "wegame_launch.ini"),
 				Path.Combine(lolRoot, "TCLS", "wegame_launch.tmp")
 			};
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < textEntries.Length; i++)
 			{
 				string content;
-				if (!TryReadSmall(array[i], out content))
+				if (!TryReadSmall(textEntries[i], out content))
 				{
 					continue;
 				}
 				MatchCollection matchCollection = Regex.Matches(content, "[A-Za-z]:\\\\[^\\\"\\r\\n]*?\\\\(?:wegame\\.exe|WeGameLauncher\\.exe)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 				foreach (Match item in matchCollection)
 				{
-					string text = NormalizeWeGameRoot(item.Value);
-					if (text != null)
+					string weGameRoot = NormalizeWeGameRoot(item.Value);
+					if (weGameRoot != null)
 					{
-						return text;
+						return weGameRoot;
 					}
 				}
 			}
@@ -434,32 +434,32 @@ namespace PaviseApp
 
 		private static string NormalizeLolRoot(string value)
 		{
-			string text = NormalizePath(value);
-			if (text == null)
+			string path = NormalizePath(value);
+			if (path == null)
 			{
 				return null;
 			}
-			if (File.Exists(text))
+			if (File.Exists(path))
 			{
-				text = Path.GetDirectoryName(text);
+				path = Path.GetDirectoryName(path);
 			}
 			DirectoryInfo directoryInfo;
 			try
 			{
-				directoryInfo = new DirectoryInfo(text);
+				directoryInfo = new DirectoryInfo(path);
 			}
 			catch
 			{
 				return null;
 			}
-			int num = 0;
-			while (directoryInfo != null && num < 9)
+			int processedCount = 0;
+			while (directoryInfo != null && processedCount < 9)
 			{
 				if (IsValidLolRoot(directoryInfo.FullName))
 				{
 					return directoryInfo.FullName.TrimEnd('\\');
 				}
-				num++;
+				processedCount++;
 				directoryInfo = directoryInfo.Parent;
 			}
 			return null;
@@ -467,20 +467,20 @@ namespace PaviseApp
 
 		private static string NormalizeWeGameRoot(string value)
 		{
-			string text = NormalizePath(value);
-			if (text == null)
+			string path = NormalizePath(value);
+			if (path == null)
 			{
 				return null;
 			}
 			try
 			{
-				if (File.Exists(text))
+				if (File.Exists(path))
 				{
-					text = Path.GetDirectoryName(text);
+					path = Path.GetDirectoryName(path);
 				}
-				DirectoryInfo directoryInfo = new DirectoryInfo(text);
-				int num = 0;
-				while (directoryInfo != null && num < 6)
+				DirectoryInfo directoryInfo = new DirectoryInfo(path);
+				int processedCount = 0;
+				while (directoryInfo != null && processedCount < 6)
 				{
 					if (FindWeGameExecutableUnchecked(directoryInfo.FullName) != null)
 					{
@@ -490,7 +490,7 @@ namespace PaviseApp
 						}
 						return directoryInfo.FullName.TrimEnd('\\');
 					}
-					num++;
+					processedCount++;
 					directoryInfo = directoryInfo.Parent;
 				}
 			}
@@ -524,23 +524,23 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Path.Combine(root, "wegame.exe");
-				if (File.Exists(text))
+				string wegamePath = Path.Combine(root, "wegame.exe");
+				if (File.Exists(wegamePath))
 				{
-					return text;
+					return wegamePath;
 				}
-				text = Path.Combine(root, "WeGame.exe");
-				if (File.Exists(text))
+				wegamePath = Path.Combine(root, "WeGame.exe");
+				if (File.Exists(wegamePath))
 				{
-					return text;
+					return wegamePath;
 				}
-				text = Path.Combine(root, "WeGameLauncher.exe");
-				if (File.Exists(text))
+				wegamePath = Path.Combine(root, "WeGameLauncher.exe");
+				if (File.Exists(wegamePath))
 				{
-					return text;
+					return wegamePath;
 				}
-				text = Path.Combine(root, "apps", "wegame.exe");
-				return File.Exists(text) ? text : null;
+				wegamePath = Path.Combine(root, "apps", "wegame.exe");
+				return File.Exists(wegamePath) ? wegamePath : null;
 			}
 			catch
 			{

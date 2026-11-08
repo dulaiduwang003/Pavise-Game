@@ -24,11 +24,11 @@ namespace PaviseApp
 					g.SmoothingMode = SmoothingMode.AntiAlias;
 					g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 					DrawEtchedMesh(g, bounds, p);
-					int num = bounds.Width / p.SweepDivisor;
+					int widthRatio = bounds.Width / p.SweepDivisor;
 					int thickness = Theme.S(p.BandThickness);
-					DrawArmorBand(g, bounds, -num, bounds.Height * 14 / 100, bounds.Right + num, bounds.Height * 38 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
-					DrawArmorBand(g, bounds, -num, bounds.Height * 43 / 100, bounds.Right + num, bounds.Height * 67 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
-					DrawArmorBand(g, bounds, -num, bounds.Height * 72 / 100, bounds.Right + num, bounds.Height * 96 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
+					DrawArmorBand(g, bounds, -widthRatio, bounds.Height * 14 / 100, bounds.Right + widthRatio, bounds.Height * 38 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
+					DrawArmorBand(g, bounds, -widthRatio, bounds.Height * 43 / 100, bounds.Right + widthRatio, bounds.Height * 67 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
+					DrawArmorBand(g, bounds, -widthRatio, bounds.Height * 72 / 100, bounds.Right + widthRatio, bounds.Height * 96 / 100, thickness, p.FaceAlpha, p.EdgeAlpha);
 					DrawCircuitBus(g, bounds, p);
 					DrawCornerCuts(g, bounds, p);
 				}
@@ -43,11 +43,11 @@ namespace PaviseApp
 
 		private static void DrawEtchedMesh(Graphics g, Rectangle r, DsSurfaceProfile p)
 		{
-			int num = Math.Max(1, Theme.S(p.MeshStep));
-			int num2 = r.Height + r.Width;
+			int sLimit = Math.Max(1, Theme.S(p.MeshStep));
+			int heightOffset = r.Height + r.Width;
 			using (Pen pen = new Pen(Col.Alpha(Theme.StrokeHi, p.MeshAlpha), DsSpace.Line(1)))
 			{
-				for (int i = r.Left - num2; i < r.Right + num2; i += num)
+				for (int i = r.Left - heightOffset; i < r.Right + heightOffset; i += sLimit)
 				{
 					g.DrawLine(pen, i, r.Top, i + r.Height, r.Bottom);
 				}
@@ -55,7 +55,7 @@ namespace PaviseApp
 			int a = Math.Max(2, p.MeshAlpha / 2);
 			using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, a), DsSpace.Line(1)))
 			{
-				for (int j = r.Left; j < r.Right + r.Height; j += num * 4)
+				for (int j = r.Left; j < r.Right + r.Height; j += sLimit * 4)
 				{
 					g.DrawLine(pen2, j, r.Top, j - r.Height, r.Bottom);
 				}
@@ -64,77 +64,77 @@ namespace PaviseApp
 
 		private static void DrawArmorBand(Graphics g, Rectangle clip, int x1, int y1, int x2, int y2, int thickness, int faceAlpha, int edgeAlpha)
 		{
-			double num = x2 - x1;
-			double num2 = y2 - y1;
-			double num3 = Math.Sqrt(num * num + num2 * num2);
-			if (num3 < 1.0)
+			double remainingX2 = x2 - x1;
+			double remainingY2 = y2 - y1;
+			double sqrtResult = Math.Sqrt(remainingX2 * remainingX2 + remainingY2 * remainingY2);
+			if (sqrtResult < 1.0)
 			{
 				return;
 			}
-			int num4 = (int)Math.Round((0.0 - num2) / num3 * (double)thickness);
-			int num5 = (int)Math.Round(num / num3 * (double)thickness);
-			Point[] array = new Point[4]
+			int roundedValue = (int)Math.Round((0.0 - remainingY2) / sqrtResult * (double)thickness);
+			int roundedValue2 = (int)Math.Round(remainingX2 / sqrtResult * (double)thickness);
+			Point[] pointItems = new Point[4]
 			{
-				new Point(x1 + num4, y1 + num5),
-				new Point(x2 + num4, y2 + num5),
-				new Point(x2 - num4, y2 - num5),
-				new Point(x1 - num4, y1 - num5)
+				new Point(x1 + roundedValue, y1 + roundedValue2),
+				new Point(x2 + roundedValue, y2 + roundedValue2),
+				new Point(x2 - roundedValue, y2 - roundedValue2),
+				new Point(x1 - roundedValue, y1 - roundedValue2)
 			};
 			Rectangle rect = new Rectangle(clip.Left, Math.Min(y1, y2) - thickness, Math.Max(1, clip.Width), Math.Max(1, Math.Abs(y2 - y1) + thickness * 2));
 			using (LinearGradientBrush brush = new LinearGradientBrush(rect, Col.Alpha(Theme.Accent, Math.Max(1, faceAlpha / 3)), Col.Alpha(Theme.Accent, faceAlpha), LinearGradientMode.Horizontal))
 			{
-				g.FillPolygon(brush, array);
+				g.FillPolygon(brush, pointItems);
 			}
 			using (Pen pen = new Pen(Col.Alpha(Theme.Accent, edgeAlpha), DsSpace.Line(1)))
 			{
 				using (Pen pen2 = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(4, edgeAlpha - 10)), DsSpace.Line(1)))
 				{
-					g.DrawLine(pen, array[0], array[1]);
-					g.DrawLine(pen2, array[3], array[2]);
+					g.DrawLine(pen, pointItems[0], pointItems[1]);
+					g.DrawLine(pen2, pointItems[3], pointItems[2]);
 				}
 			}
 			using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, Math.Max(4, edgeAlpha / 2)), DsSpace.Line(1)))
 			{
-				int num6 = num4 / 3;
-				int num7 = num5 / 3;
-				g.DrawLine(pen3, x1 + num6, y1 + num7, x2 + num6, y2 + num7);
+				int roundedValueRatio = roundedValue / 3;
+				int roundedValue2Ratio = roundedValue2 / 3;
+				g.DrawLine(pen3, x1 + roundedValueRatio, y1 + roundedValue2Ratio, x2 + roundedValueRatio, y2 + roundedValue2Ratio);
 			}
 		}
 
 		private static void DrawCircuitBus(Graphics g, Rectangle r, DsSurfaceProfile p)
 		{
-			int num = r.Right - Theme.S(p.BusInset);
-			int num2 = r.Top + Theme.S(p.BusTop);
-			int num3 = r.Bottom - Theme.S(p.BusBottom);
+			int left = r.Right - Theme.S(p.BusInset);
+			int top = r.Top + Theme.S(p.BusTop);
+			int height = r.Bottom - Theme.S(p.BusBottom);
 			int edgeAlpha = p.EdgeAlpha;
 			using (Pen pen = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(8, edgeAlpha - 7)), DsSpace.Line(1)))
 			{
 				using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, edgeAlpha), DsSpace.Line(1)))
 				{
-					g.DrawLine(pen, num, num2, num, num3);
-					g.DrawLine(pen2, num + Theme.S(2), num2 + Theme.S(18), num + Theme.S(2), num3 - Theme.S(26));
+					g.DrawLine(pen, left, top, left, height);
+					g.DrawLine(pen2, left + Theme.S(2), top + Theme.S(18), left + Theme.S(2), height - Theme.S(26));
 					for (int i = 0; i < p.BusLevels.Length; i++)
 					{
-						int num4 = r.Top + r.Height * p.BusLevels[i] / 100;
-						int num5 = Theme.S(p.BusReach[i]);
-						int num6 = num - num5;
-						g.DrawLine(pen, num, num4, num6 + Theme.S(18), num4);
-						g.DrawLine(pen2, num6 + Theme.S(18), num4, num6, num4 - Theme.S(18));
-						g.DrawLine(pen2, num6, num4 - Theme.S(18), num6 - Theme.S(24), num4 - Theme.S(18));
+						int top2 = r.Top + r.Height * p.BusLevels[i] / 100;
+						int scaledDimension = Theme.S(p.BusReach[i]);
+						int width = left - scaledDimension;
+						g.DrawLine(pen, left, top2, width + Theme.S(18), top2);
+						g.DrawLine(pen2, width + Theme.S(18), top2, width, top2 - Theme.S(18));
+						g.DrawLine(pen2, width, top2 - Theme.S(18), width - Theme.S(24), top2 - Theme.S(18));
 						using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Accent, edgeAlpha + 28)))
 						{
-							g.FillRectangle(brush, num6 - Theme.S(2), num4 - Theme.S(20), Theme.S(4), Theme.S(4));
-							g.FillRectangle(brush, num6 - Theme.S(28), num4 - Theme.S(20), Theme.S(4), Theme.S(4));
+							g.FillRectangle(brush, width - Theme.S(2), top2 - Theme.S(20), Theme.S(4), Theme.S(4));
+							g.FillRectangle(brush, width - Theme.S(28), top2 - Theme.S(20), Theme.S(4), Theme.S(4));
 						}
 					}
 				}
 			}
-			int num7 = Math.Max(1, Theme.S(p.TickStep));
+			int sLimit = Math.Max(1, Theme.S(p.TickStep));
 			using (Pen pen3 = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(6, edgeAlpha - 12)), DsSpace.Line(1)))
 			{
-				for (int j = num2; j < num3; j += num7)
+				for (int j = top; j < height; j += sLimit)
 				{
-					g.DrawLine(pen3, num - Theme.S(8), j, num, j);
+					g.DrawLine(pen3, left - Theme.S(8), j, left, j);
 				}
 			}
 		}
@@ -143,12 +143,12 @@ namespace PaviseApp
 		{
 			using (Pen pen = new Pen(Col.Alpha(Theme.Accent, Math.Max(8, p.EdgeAlpha - 5)), DsSpace.Line(1)))
 			{
-				int num = Theme.S(p.CornerCut);
-				int num2 = Theme.S(p.CornerReach);
-				g.DrawLine(pen, r.Left + Theme.S(10), r.Top + num, r.Left + num2, r.Top + num);
-				g.DrawLine(pen, r.Left + num2, r.Top + num, r.Left + num2 + num, r.Top);
-				g.DrawLine(pen, r.Right - Theme.S(10), r.Bottom - num, r.Right - num2, r.Bottom - num);
-				g.DrawLine(pen, r.Right - num2, r.Bottom - num, r.Right - num2 - num, r.Bottom);
+				int scaledDimension = Theme.S(p.CornerCut);
+				int scaledDimension2 = Theme.S(p.CornerReach);
+				g.DrawLine(pen, r.Left + Theme.S(10), r.Top + scaledDimension, r.Left + scaledDimension2, r.Top + scaledDimension);
+				g.DrawLine(pen, r.Left + scaledDimension2, r.Top + scaledDimension, r.Left + scaledDimension2 + scaledDimension, r.Top);
+				g.DrawLine(pen, r.Right - Theme.S(10), r.Bottom - scaledDimension, r.Right - scaledDimension2, r.Bottom - scaledDimension);
+				g.DrawLine(pen, r.Right - scaledDimension2, r.Bottom - scaledDimension, r.Right - scaledDimension2 - scaledDimension, r.Bottom);
 			}
 			if (p.CodeMinHeight == 0 || r.Height >= Theme.S(p.CodeMinHeight))
 			{

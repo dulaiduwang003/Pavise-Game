@@ -137,7 +137,7 @@ namespace PaviseApp
 				lastWrote = false;
 				List<Layer> list = new List<Layer>();
 				bool result = true;
-				bool flag = through == null;
+				bool matchesThrough = through == null;
 				try
 				{
 					foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
@@ -146,40 +146,40 @@ namespace PaviseApp
 						{
 							continue;
 						}
-						bool flag2 = through != null && SameSlot(item, through);
-						if (flag2 && PerformanceActionStore.Pack(item) != PerformanceActionStore.Pack(through))
+						bool matchesSameSlot = through != null && SameSlot(item, through);
+						if (matchesSameSlot && PerformanceActionStore.Pack(item) != PerformanceActionStore.Pack(through))
 						{
 							return Fail("Time-slice recovery record changed; newer record retained");
 						}
 						if (!Canonical(item))
 						{
-							if ((through == null || flag2) && !RestoreProfile(item))
+							if ((through == null || matchesSameSlot) && !RestoreProfile(item))
 							{
 								result = false;
 							}
 							continue;
 						}
-						string text = Normalize(item.Original);
-						string text2 = Normalize(item.Expected);
-						if (text == null || text2 == null)
+						string normalizeResult = Normalize(item.Original);
+						string normalizeResult2 = Normalize(item.Expected);
+						if (normalizeResult == null || normalizeResult2 == null)
 						{
 							return Fail("Time-slice profile record has an unknown value; records retained");
 						}
 						list.Add(new Layer
 						{
 							Receipt = item,
-							Original = text,
-							Applied = text2
+							Original = normalizeResult,
+							Applied = normalizeResult2
 						});
-						flag = flag || flag2;
+						matchesThrough = matchesThrough || matchesSameSlot;
 					}
-					string[] array = new string[2] { "PrevPrioritySep", "PrevWin32PriSep" };
-					foreach (string slot in array)
+					string[] textEntries = new string[2] { "PrevPrioritySep", "PrevWin32PriSep" };
+					foreach (string slot in textEntries)
 					{
-						string text3 = Stored(slot);
-						if (text3.Length != 0)
+						string storedResult = Stored(slot);
+						if (storedResult.Length != 0)
 						{
-							Layer layer = LegacyLayer(slot, text3);
+							Layer layer = LegacyLayer(slot, storedResult);
 							if (layer == null)
 							{
 								return Fail("Legacy time-slice record is unreadable; records retained");
@@ -192,7 +192,7 @@ namespace PaviseApp
 				{
 					return Fail("Time-slice recovery records could not be read | " + ex.Message);
 				}
-				if (list.Count == 0 || !flag)
+				if (list.Count == 0 || !matchesThrough)
 				{
 					return result;
 				}
@@ -226,16 +226,16 @@ namespace PaviseApp
 						continue;
 					}
 					Layer layer3 = null;
-					int num = 0;
+					int processedCount = 0;
 					foreach (Layer item3 in list)
 					{
 						if (item3.Applied != null && item3.Applied == value)
 						{
 							layer3 = item3;
-							num++;
+							processedCount++;
 						}
 					}
-					if (num > 1)
+					if (processedCount > 1)
 					{
 						return Fail("Several time-slice records claim the current value; records retained");
 					}
@@ -319,17 +319,17 @@ namespace PaviseApp
 					return Fail("Legacy time-slice record could not be re-read | " + ex.Message);
 				}
 				lastWrote = true;
-				bool flag;
+				bool writeSucceeded;
 				try
 				{
-					flag = PerformanceActionBackend.Write("EnvQuantumProfileV1", Target, layer.Original);
+					writeSucceeded = PerformanceActionBackend.Write("EnvQuantumProfileV1", Target, layer.Original);
 				}
 				catch
 				{
-					flag = false;
+					writeSucceeded = false;
 				}
 				string value2;
-				if (!flag || !ReadCurrent(out value2) || value2 != layer.Original)
+				if (!writeSucceeded || !ReadCurrent(out value2) || value2 != layer.Original)
 				{
 					return Fail("Legacy time-slice value could not be restored; record retained");
 				}
@@ -348,10 +348,10 @@ namespace PaviseApp
 
 		private static bool RestoreProfile(PerformanceActionStore.Receipt r)
 		{
-			bool flag;
+			bool restoreSucceeded;
 			try
 			{
-				flag = PerformanceActionStore.Restore(r, () => PerformanceActionBackend.Read(r.Id, r.Target), delegate(string value)
+				restoreSucceeded = PerformanceActionStore.Restore(r, () => PerformanceActionBackend.Read(r.Id, r.Target), delegate(string value)
 				{
 					lastWrote = true;
 					return PerformanceActionBackend.Write(r.Id, r.Target, value);
@@ -361,7 +361,7 @@ namespace PaviseApp
 			{
 				return Fail("Time-slice profile restore failed | " + ex.Message);
 			}
-			if (!flag)
+			if (!restoreSucceeded)
 			{
 				return Fail("Time-slice profile restore incomplete; record retained");
 			}
@@ -372,12 +372,12 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Stored(layer.Slot);
-				if (text.Length == 0)
+				string storedResult = Stored(layer.Slot);
+				if (storedResult.Length == 0)
 				{
 					return true;
 				}
-				if (text != layer.Stored)
+				if (storedResult != layer.Stored)
 				{
 					return Fail("Legacy time-slice record changed during recovery; record retained");
 				}
@@ -427,21 +427,21 @@ namespace PaviseApp
 
 		private static Layer LegacyLayer(string slot, string stored)
 		{
-			int num = stored.LastIndexOf('\u001f');
-			string text = LegacyValue((num < 0) ? stored : stored.Substring(0, num));
-			if (text == null)
+			int matchIndex = stored.LastIndexOf('\u001f');
+			string originalValue = LegacyValue((matchIndex < 0) ? stored : stored.Substring(0, matchIndex));
+			if (originalValue == null)
 			{
 				return null;
 			}
 			string applied = null;
-			if (num >= 0 && (applied = LegacyValue(stored.Substring(num + 1))) == null)
+			if (matchIndex >= 0 && (applied = LegacyValue(stored.Substring(matchIndex + 1))) == null)
 			{
 				return null;
 			}
 			Layer layer = new Layer();
 			layer.Slot = slot;
 			layer.Stored = stored;
-			layer.Original = text;
+			layer.Original = originalValue;
 			layer.Applied = applied;
 			return layer;
 		}

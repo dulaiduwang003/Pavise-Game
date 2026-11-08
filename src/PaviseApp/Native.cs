@@ -552,9 +552,9 @@ namespace PaviseApp
 				{
 					return processDefaultCpuSets ? new uint[0] : null;
 				}
-				uint[] array = new uint[required];
+				uint[] numericValueItems = new uint[required];
 				uint required2;
-				return (GetProcessDefaultCpuSets(h, array, (uint)array.Length, out required2) && required2 == required) ? array : null;
+				return (GetProcessDefaultCpuSets(h, numericValueItems, (uint)numericValueItems.Length, out required2) && required2 == required) ? numericValueItems : null;
 			}
 			catch
 			{
@@ -607,12 +607,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			uint[] array = QueryCpuSets(h);
-			if (array == null || array.Length != expected.Length)
+			uint[] cpuSets = QueryCpuSets(h);
+			if (cpuSets == null || cpuSets.Length != expected.Length)
 			{
 				return false;
 			}
-			HashSet<uint> hashSet = new HashSet<uint>(array);
+			HashSet<uint> hashSet = new HashSet<uint>(cpuSets);
 			foreach (uint item in expected)
 			{
 				if (!hashSet.Contains(item))
@@ -779,24 +779,24 @@ namespace PaviseApp
 
 		internal static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask, out int win32, out int ntStatus)
 		{
-			int num = Marshal.SizeOf(typeof(PowerThrottlingState));
+			int sizeOfResult = Marshal.SizeOf(typeof(PowerThrottlingState));
 			PowerThrottlingState powerThrottlingState = default(PowerThrottlingState);
 			powerThrottlingState.Version = 1u;
 			PowerThrottlingState info = powerThrottlingState;
-			bool flag = GetProcessInformation(process, 4, ref info, num);
-			win32 = flag ? 0 : Marshal.GetLastWin32Error();
+			bool processInformation = GetProcessInformation(process, 4, ref info, sizeOfResult);
+			win32 = processInformation ? 0 : Marshal.GetLastWin32Error();
 			ntStatus = 0;
-			if (!flag)
+			if (!processInformation)
 			{
 				PowerThrottlingState powerThrottlingState2 = default(PowerThrottlingState);
 				powerThrottlingState2.Version = 1u;
 				info = powerThrottlingState2;
-				ntStatus = NtQueryInformationProcessPower(process, 77, ref info, num, IntPtr.Zero);
-				flag = ntStatus == 0;
+				ntStatus = NtQueryInformationProcessPower(process, 77, ref info, sizeOfResult, IntPtr.Zero);
+				processInformation = ntStatus == 0;
 			}
 			controlMask = (int)info.ControlMask;
 			stateMask = (int)info.StateMask;
-			return flag;
+			return processInformation;
 		}
 
 		private static bool ProbePowerThrottling()
@@ -1102,25 +1102,25 @@ namespace PaviseApp
 
 		public static bool EnsureBoostPrivilege()
 		{
-			int num = Volatile.Read(ref boostPrivilegeState);
-			if (num != 0)
+			int readResult = Volatile.Read(ref boostPrivilegeState);
+			if (readResult != 0)
 			{
-				return num > 0;
+				return readResult > 0;
 			}
-			bool flag = EnablePrivilege("SeIncreaseBasePriorityPrivilege");
-			Interlocked.CompareExchange(ref boostPrivilegeState, flag ? 1 : (-1), 0);
+			bool enablePrivilegeSucceeded = EnablePrivilege("SeIncreaseBasePriorityPrivilege");
+			Interlocked.CompareExchange(ref boostPrivilegeState, enablePrivilegeSucceeded ? 1 : (-1), 0);
 			return Volatile.Read(ref boostPrivilegeState) > 0;
 		}
 
 		public static bool TryEnableDebugPrivilege()
 		{
-			int num = Volatile.Read(ref debugPrivilegeState);
-			if (num != 0)
+			int readResult = Volatile.Read(ref debugPrivilegeState);
+			if (readResult != 0)
 			{
-				return num > 0;
+				return readResult > 0;
 			}
-			bool flag = EnablePrivilege("SeDebugPrivilege");
-			Interlocked.CompareExchange(ref debugPrivilegeState, flag ? 1 : (-1), 0);
+			bool enablePrivilegeSucceeded = EnablePrivilege("SeDebugPrivilege");
+			Interlocked.CompareExchange(ref debugPrivilegeState, enablePrivilegeSucceeded ? 1 : (-1), 0);
 			return Volatile.Read(ref debugPrivilegeState) > 0;
 		}
 
@@ -1257,10 +1257,10 @@ namespace PaviseApp
 		{
 			try
 			{
-				uint num = RegisterWindowMessage("TaskbarCreated");
-				if (num != 0)
+				uint registerWindowMessageResult = RegisterWindowMessage("TaskbarCreated");
+				if (registerWindowMessageResult != 0)
 				{
-					ChangeWindowMessageFilter(num, 1u);
+					ChangeWindowMessageFilter(registerWindowMessageResult, 1u);
 				}
 			}
 			catch
@@ -1289,13 +1289,13 @@ namespace PaviseApp
 		{
 			try
 			{
-				uint num = DragQueryFileW(hDrop, uint.MaxValue, null, 0u);
+				uint dragQueryFileWResult = DragQueryFileW(hDrop, uint.MaxValue, null, 0u);
 				List<string> list = new List<string>();
 				StringBuilder stringBuilder = new StringBuilder(1024);
-				for (uint num2 = 0u; num2 < num; num2++)
+				for (uint iterationIndex = 0u; iterationIndex < dragQueryFileWResult; iterationIndex++)
 				{
 					stringBuilder.Length = 0;
-					if (DragQueryFileW(hDrop, num2, stringBuilder, (uint)stringBuilder.Capacity) != 0)
+					if (DragQueryFileW(hDrop, iterationIndex, stringBuilder, (uint)stringBuilder.Capacity) != 0)
 					{
 						list.Add(stringBuilder.ToString());
 					}
@@ -1515,8 +1515,8 @@ namespace PaviseApp
 						return null;
 					}
 				}
-				string text = stringBuilder.ToString();
-				return (text.Length == 0) ? null : text;
+				string stringBuilderText = stringBuilder.ToString();
+				return (stringBuilderText.Length == 0) ? null : stringBuilderText;
 			}
 			catch
 			{
@@ -1536,18 +1536,18 @@ namespace PaviseApp
 
 		public static string ImageName(IntPtr h)
 		{
-			string text = ImagePath(h);
-			if (text == null)
+			string imagePathResult = ImagePath(h);
+			if (imagePathResult == null)
 			{
 				return null;
 			}
-			int num = text.LastIndexOf('\\');
-			string text2 = ((num >= 0) ? text.Substring(num + 1) : text);
-			if (text2.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			int matchIndex = imagePathResult.LastIndexOf('\\');
+			string substringResult = ((matchIndex >= 0) ? imagePathResult.Substring(matchIndex + 1) : imagePathResult);
+			if (substringResult.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				text2 = text2.Substring(0, text2.Length - 4);
+				substringResult = substringResult.Substring(0, substringResult.Length - 4);
 			}
-			return text2;
+			return substringResult;
 		}
 
 		public static int ParentProcessId(IntPtr processHandle)
@@ -1603,9 +1603,9 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				uint[] array = new uint[required];
+				uint[] numericValueItems = new uint[required];
 				uint required2;
-				return (GetThreadSelectedCpuSets(thread, array, required, out required2) && required2 == required) ? array : null;
+				return (GetThreadSelectedCpuSets(thread, numericValueItems, required, out required2) && required2 == required) ? numericValueItems : null;
 			}
 			catch
 			{

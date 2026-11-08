@@ -85,12 +85,12 @@ namespace PaviseApp
 		internal static bool TrySerialize(string root, int pid, long creation, out string value)
 		{
 			value = null;
-			string text = NormalizeRoot(root);
-			if (text == null || pid <= 0 || creation <= 0)
+			string root2 = NormalizeRoot(root);
+			if (root2 == null || pid <= 0 || creation <= 0)
 			{
 				return false;
 			}
-			value = "V2|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(text)) + "|" + pid + "|" + creation;
+			value = "V2|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(root2)) + "|" + pid + "|" + creation;
 			return true;
 		}
 
@@ -101,22 +101,22 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = value.Trim();
-			if (!text.StartsWith("V2|", StringComparison.Ordinal))
+			string valueTrimmed = value.Trim();
+			if (!valueTrimmed.StartsWith("V2|", StringComparison.Ordinal))
 			{
 				return false;
 			}
-			string[] array = text.Split('|');
+			string[] valueTrimmedParts = valueTrimmed.Split('|');
 			int result;
 			long result2;
-			if (array.Length != 4 || !int.TryParse(array[2], out result) || result <= 0 || !long.TryParse(array[3], out result2) || result2 <= 0)
+			if (valueTrimmedParts.Length != 4 || !int.TryParse(valueTrimmedParts[2], out result) || result <= 0 || !long.TryParse(valueTrimmedParts[3], out result2) || result2 <= 0)
 			{
 				return false;
 			}
 			string @string;
 			try
 			{
-				@string = Encoding.UTF8.GetString(Convert.FromBase64String(array[1]));
+				@string = Encoding.UTF8.GetString(Convert.FromBase64String(valueTrimmedParts[1]));
 			}
 			catch
 			{
@@ -138,20 +138,20 @@ namespace PaviseApp
 
 		internal static string StableHash(string value)
 		{
-			uint num = 2166136261u;
-			string text = (value ?? "").ToUpperInvariant();
-			for (int i = 0; i < text.Length; i++)
+			uint numericValue = 2166136261u;
+			string toUpperInvariantResult = (value ?? "").ToUpperInvariant();
+			for (int i = 0; i < toUpperInvariantResult.Length; i++)
 			{
-				num ^= text[i];
-				num *= 16777619;
+				numericValue ^= toUpperInvariantResult[i];
+				numericValue *= 16777619;
 			}
-			return num.ToString("X8");
+			return numericValue.ToString("X8");
 		}
 
 		private static bool WithLeaseLock(Func<bool> action)
 		{
 			Mutex mutex = null;
-			bool flag = false;
+			bool withLeaseLockReady = false;
 			try
 			{
 				try
@@ -164,13 +164,13 @@ namespace PaviseApp
 				}
 				try
 				{
-					flag = mutex.WaitOne(5000);
+					withLeaseLockReady = mutex.WaitOne(5000);
 				}
 				catch (AbandonedMutexException)
 				{
-					flag = true;
+					withLeaseLockReady = true;
 				}
-				if (!flag)
+				if (!withLeaseLockReady)
 				{
 					return false;
 				}
@@ -182,7 +182,7 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (flag && mutex != null)
+				if (withLeaseLockReady && mutex != null)
 				{
 					try
 					{
@@ -213,8 +213,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Path.GetFullPath(root.Trim().Trim('"')).TrimEnd('\\');
-				return (text.Length > 2) ? text : null;
+				string getFullPathTrimmed = Path.GetFullPath(root.Trim().Trim('"')).TrimEnd('\\');
+				return (getFullPathTrimmed.Length > 2) ? getFullPathTrimmed : null;
 			}
 			catch
 			{
@@ -224,11 +224,11 @@ namespace PaviseApp
 
 		private static bool SameRoot(string left, string right)
 		{
-			string text = NormalizeRoot(left);
-			string text2 = NormalizeRoot(right);
-			if (text != null && text2 != null)
+			string root = NormalizeRoot(left);
+			string root2 = NormalizeRoot(right);
+			if (root != null && root2 != null)
 			{
-				return string.Equals(text, text2, StringComparison.OrdinalIgnoreCase);
+				return string.Equals(root, root2, StringComparison.OrdinalIgnoreCase);
 			}
 			return false;
 		}

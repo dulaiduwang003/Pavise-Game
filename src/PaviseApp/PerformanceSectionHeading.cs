@@ -66,19 +66,19 @@ namespace PaviseApp
 		{
 			int pad = Math.Min(Theme.S(18), Math.Max(0, (width - 1) / 4));
 			int inner = Math.Max(1, width - pad * 2);
-			int num = Theme.S(8);
-			int num2 = Theme.S(8);
+			int scaledDimension = Theme.S(8);
+			int scaledDimension2 = Theme.S(8);
 			int val = Theme.S(22);
-			int num3 = TextRenderer.MeasureText(ScopeText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(20);
-			int num4 = TextRenderer.MeasureText(CountText, Theme.UI(8.5f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(4);
-			bool flag = inner >= num3 + num4 + num * 2 + Theme.S(180);
-			int num5 = Math.Max(1, flag ? (inner - num3 - num4 - num * 2) : inner);
-			int num6 = Math.Max(val, TextRenderer.MeasureText(Text, Theme.UI(10f, true), new Size(num5, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height);
-			TitleBounds = new Rectangle(pad, num2, num5, num6);
-			int num7 = (flag ? num2 : (TitleBounds.Bottom + Theme.S(6)));
-			int num8 = pad + (flag ? (inner - num3) : 0);
-			ScopeBounds = new Rectangle(num8, num7, Math.Min(inner, num3), val);
-			countBounds = new Rectangle(flag ? (pad + num5 + num) : (ScopeBounds.Right + num), num7, Math.Max(0, flag ? num4 : (pad + inner - ScopeBounds.Right - num)), val);
+			int widthOffset = TextRenderer.MeasureText(ScopeText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(20);
+			int widthOffset2 = TextRenderer.MeasureText(CountText, Theme.UI(8.5f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(4);
+			bool matchesInner = inner >= widthOffset + widthOffset2 + scaledDimension * 2 + Theme.S(180);
+			int lowerBound = Math.Max(1, matchesInner ? (inner - widthOffset - widthOffset2 - scaledDimension * 2) : inner);
+			int heightLimit = Math.Max(val, TextRenderer.MeasureText(Text, Theme.UI(10f, true), new Size(lowerBound, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height);
+			TitleBounds = new Rectangle(pad, scaledDimension2, lowerBound, heightLimit);
+			int bottomOffset = (matchesInner ? scaledDimension2 : (TitleBounds.Bottom + Theme.S(6)));
+			int padOffset = pad + (matchesInner ? (inner - widthOffset) : 0);
+			ScopeBounds = new Rectangle(padOffset, bottomOffset, Math.Min(inner, widthOffset), val);
+			countBounds = new Rectangle(matchesInner ? (pad + lowerBound + scaledDimension) : (ScopeBounds.Right + scaledDimension), bottomOffset, Math.Max(0, matchesInner ? widthOffset2 : (pad + inner - ScopeBounds.Right - scaledDimension)), val);
 			return Math.Max(TitleBounds.Bottom, ScopeBounds.Bottom) + Theme.S(8);
 		}
 

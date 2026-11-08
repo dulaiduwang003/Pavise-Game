@@ -53,12 +53,12 @@ namespace PaviseApp
 					return false;
 				}
 				uint value;
-				int num = NvApi.TryGetDword(session, profile, 294973784u, out value);
-				if (num < 0)
+				int dword = NvApi.TryGetDword(session, profile, 294973784u, out value);
+				if (dword < 0)
 				{
 					return false;
 				}
-				mode = ((num == 1) ? value : 0u);
+				mode = ((dword == 1) ? value : 0u);
 				return true;
 			}
 			finally
@@ -144,12 +144,12 @@ namespace PaviseApp
 					return false;
 				}
 				uint mode3;
-				bool flag = ReadMode(out mode3) && mode3 == 2;
-				if (flag)
+				bool matchesReadMode = ReadMode(out mode3) && mode3 == 2;
+				if (matchesReadMode)
 				{
 					Logger.Log(Lang.T("log.nvvrr.3"));
 				}
-				return flag;
+				return matchesReadMode;
 			}
 		}
 
@@ -157,13 +157,13 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text = Settings.LoadStr("NvVrrModeSnap", "");
-				if (text.Length == 0)
+				string nvVrrModeSnapValue = Settings.LoadStr("NvVrrModeSnap", "");
+				if (nvVrrModeSnapValue.Length == 0)
 				{
 					return true;
 				}
 				uint result;
-				if (!uint.TryParse(text, out result) || result != 1)
+				if (!uint.TryParse(nvVrrModeSnapValue, out result) || result != 1)
 				{
 					return false;
 				}

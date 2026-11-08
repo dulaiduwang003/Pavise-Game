@@ -98,19 +98,19 @@ namespace PaviseApp
 
 		internal static int MaxRefreshRate()
 		{
-			int num = 0;
+			int maxRefreshRateResult = 0;
 			foreach (int item in AllRefreshRates())
 			{
-				if (item > num)
+				if (item > maxRefreshRateResult)
 				{
-					num = item;
+					maxRefreshRateResult = item;
 				}
 			}
-			if (num <= 0)
+			if (maxRefreshRateResult <= 0)
 			{
 				return CurrentRefreshRate();
 			}
-			return num;
+			return maxRefreshRateResult;
 		}
 
 		internal static List<int> AllRefreshRates()
@@ -172,8 +172,8 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text = Settings.LoadStr("PrevRefreshHz", "");
-				if (text.Length == 0)
+				string prevRefreshHzValue = Settings.LoadStr("PrevRefreshHz", "");
+				if (prevRefreshHzValue.Length == 0)
 				{
 					return true;
 				}

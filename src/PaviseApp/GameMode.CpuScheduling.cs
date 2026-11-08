@@ -72,8 +72,8 @@ namespace PaviseApp
 		}
 		private void BeginAutoCores(PolicySnapshot snap, bool isolationClean)
 		{
-			bool flag = RestoreAllHardPins();
-			corePinPending = !flag;
+			bool restoreAllHardPinsSucceeded = RestoreAllHardPins();
+			corePinPending = !restoreAllHardPinsSucceeded;
 			ResetCoreWatch();
 			coreManual = ((coreSessionPolicy != null) ? coreSessionPolicy.ManualCores : ((snap != null) ? snap.ManualCores : null));
 			corePlan = ((coreManual != null) ? coreManual.RuntimePlan() : new AutoCorePlan
@@ -86,7 +86,7 @@ namespace PaviseApp
 			coreObservationOnly = coreManual == null || snap == null || !snap.AutoCoresAllowed || !PresetValue.SupportsCoreScheduling(snap.Preset);
 			coreGovernor = NewCoreGovernor();
 			coreGameMask = ((coreManual != null) ? coreManual.GameMask : corePlan.Exclusive);
-			if (coreGovernor != null && (!isolationClean || !flag))
+			if (coreGovernor != null && (!isolationClean || !restoreAllHardPinsSucceeded))
 			{
 				coreGovernor.Block("schedule.auto.pending");
 			}
@@ -204,9 +204,9 @@ namespace PaviseApp
 			{
 				if (coreWatchPid > 0)
 				{
-					bool flag = ReleaseExclusive();
+					bool releaseExclusiveSucceeded = ReleaseExclusive();
 					autoCoreGovernor = (coreGovernor = NewCoreGovernor());
-					if (!flag)
+					if (!releaseExclusiveSucceeded)
 					{
 						autoCoreGovernor.Block("schedule.auto.pending");
 					}
@@ -215,12 +215,12 @@ namespace PaviseApp
 				coreWatchPid = pass.RendererPid;
 				coreWatchCreation = pass.RendererCreation;
 			}
-			bool flag2;
+			bool isInPlacementGaveUp;
 			lock (sync)
 			{
-				flag2 = placementGaveUp.Contains(pass.RendererPid);
+				isInPlacementGaveUp = placementGaveUp.Contains(pass.RendererPid);
 			}
-			if (flag2 && !coreEngaged)
+			if (isInPlacementGaveUp && !coreEngaged)
 			{
 				BlockAutoCores("schedule.auto.placementunavailable");
 			}
@@ -268,12 +268,12 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = allMask & ~corePlan.Exclusive & ~AutoCores.WholeCores(corePlan.Allocated, corePhysical);
-			if (AutoCores.CountBits(num) < 2)
+			ulong combinedMask = allMask & ~corePlan.Exclusive & ~AutoCores.WholeCores(corePlan.Allocated, corePhysical);
+			if (AutoCores.CountBits(combinedMask) < 2)
 			{
 				return 0uL;
 			}
-			return num;
+			return combinedMask;
 		}
 		private void SyncCoreBackgroundImpl(HashSet<int> protectedPids, int foreground)
 		{
@@ -283,8 +283,8 @@ namespace PaviseApp
 				ClearBackgroundSqueezes();
 				return;
 			}
-			ulong num = CoreBackgroundTarget();
-			if (num == 0)
+			ulong coreBackgroundTargetResult = CoreBackgroundTarget();
+			if (coreBackgroundTargetResult == 0)
 			{
 				ClearBackgroundSqueezes();
 				return;
@@ -292,26 +292,26 @@ namespace PaviseApp
 			core.EnforceBackgroundAffinity = true;
 			foreach (int item in core.PidsWith(SuppressReason.Background))
 			{
-				long num2 = core.CreationOf(item);
-				string text = core.NameOf(item);
-				if (num2 > 0 && !string.IsNullOrEmpty(text))
+				long creationOfResult = core.CreationOf(item);
+				string nameOfResult = core.NameOf(item);
+				if (creationOfResult > 0 && !string.IsNullOrEmpty(nameOfResult))
 				{
 					bool changed;
-					if (IsCriticalThreadGuardian(item, num2))
+					if (IsCriticalThreadGuardian(item, creationOfResult))
 					{
 						ReleaseCriticalGuardianBackground();
 					}
-					else if (GameAffinityJobLease.IsGuardian(item, num2))
+					else if (GameAffinityJobLease.IsGuardian(item, creationOfResult))
 					{
-						ReleaseJobGuardianBackground(item, num2, text);
+						ReleaseJobGuardianBackground(item, creationOfResult, nameOfResult);
 					}
-					else if (item == foreground || item == coreWatchPid || protectedPids.Contains(item) || WeGameRuntimeProtection.IsProtectedRuntimeName(text) || PeripheralCatalog.IsInputAudioLike(text))
+					else if (item == foreground || item == coreWatchPid || protectedPids.Contains(item) || WeGameRuntimeProtection.IsProtectedRuntimeName(nameOfResult) || PeripheralCatalog.IsInputAudioLike(nameOfResult))
 					{
-						core.SetSqueeze(item, num2, text, 0uL, SuppressReason.Background, out changed);
+						core.SetSqueeze(item, creationOfResult, nameOfResult, 0uL, SuppressReason.Background, out changed);
 					}
 					else if (!core.IsSqueezed(item))
 					{
-						core.SetSqueeze(item, num2, text, num, SuppressReason.Background, out changed);
+						core.SetSqueeze(item, creationOfResult, nameOfResult, coreBackgroundTargetResult, SuppressReason.Background, out changed);
 					}
 				}
 			}
@@ -334,9 +334,9 @@ namespace PaviseApp
 			AutoCoreGovernor autoCoreGovernor = coreGovernor;
 			if (autoCoreGovernor != null)
 			{
-				bool flag = autoCoreGovernor.Blocked == null;
+				bool matchesBlocked = autoCoreGovernor.Blocked == null;
 				ApplyAutoCoreStep(autoCoreGovernor.Block(reason));
-				if (flag)
+				if (matchesBlocked)
 				{
 					Logger.Log(Lang.F("log.autocore.blocked", Lang.T(reason)));
 				}
@@ -344,26 +344,26 @@ namespace PaviseApp
 		}
 		private bool ReleaseExclusive()
 		{
-			bool flag = coreEngaged;
+			bool coreEngagedSnapshot = coreEngaged;
 			exclusiveAuditRetry.Reset();
 			exclusiveAuditDeferred = false;
 			coreAffinityVerified = false;
 			ClearBackgroundSqueezes();
 			coreEngaged = false;
-			bool flag2 = StopCoreIsolation();
-			bool flag3 = RestoreAllHardPins();
-			corePinPending = !flag3;
-			if ((!flag2 || !flag3) && coreGovernor != null && coreGovernor.Blocked == null)
+			bool stopCoreIsolationSucceeded = StopCoreIsolation();
+			bool restoreAllHardPinsSucceeded = RestoreAllHardPins();
+			corePinPending = !restoreAllHardPinsSucceeded;
+			if ((!stopCoreIsolationSucceeded || !restoreAllHardPinsSucceeded) && coreGovernor != null && coreGovernor.Blocked == null)
 			{
 				coreGovernor.Block("schedule.auto.pending");
 			}
-			if (flag)
+			if (coreEngagedSnapshot)
 			{
-				Logger.Log((flag2 && flag3) ? Lang.T("log.autocore.released") : Lang.T("log.autocore.releasepending"));
+				Logger.Log((stopCoreIsolationSucceeded && restoreAllHardPinsSucceeded) ? Lang.T("log.autocore.released") : Lang.T("log.autocore.releasepending"));
 			}
-			if (flag2)
+			if (stopCoreIsolationSucceeded)
 			{
-				return flag3;
+				return restoreAllHardPinsSucceeded;
 			}
 			return false;
 		}
@@ -389,7 +389,7 @@ namespace PaviseApp
 					return false;
 				}
 				HardPin value = null;
-				int num;
+				int exclusiveDriftedValue;
 				switch ((gamePlacement.ContainsKey(pid) && hardPins.TryGetValue(pid, out value) && value.Pid == pid && value.Creation == pass.RendererCreation) ? HardPinHandleStateOf(value) : HardPinHandleState.Unknown)
 				{
 				case HardPinHandleState.Gone:
@@ -399,11 +399,11 @@ namespace PaviseApp
 					if (value.JobBound && !coreAffinityJobs.Verify(pid, value.Creation, pass.DesiredMask, out jobReason))
 					{
 						corePlacementEvidence = "pid=" + pid + " stage=job-audit reason=" + jobReason;
-						num = 0;
+						exclusiveDriftedValue = 0;
 						break;
 					}
-					num = (ReadCoreAffinity(value.RestoreHandle, out observed) ? 1 : 0);
-					if (num == 0)
+					exclusiveDriftedValue = (ReadCoreAffinity(value.RestoreHandle, out observed) ? 1 : 0);
+					if (exclusiveDriftedValue == 0)
 					{
 						int error = Marshal.GetLastWin32Error();
 						exclusiveAuditDeferred = DeferExclusiveAuditFailure(pass, "audit-read", error);
@@ -411,14 +411,14 @@ namespace PaviseApp
 					break;
 				default:
 					corePlacementEvidence = "pid=" + pid + " creation=" + pass.RendererCreation + " stage=audit-identity-or-ownership-unavailable";
-					num = 0;
+					exclusiveDriftedValue = 0;
 					break;
 				}
-				bool flag = (byte)num != 0;
-				RecordCoreAffinity(pass.DesiredMask, observed, flag);
+				bool matchesExclusiveDriftedValue = (byte)exclusiveDriftedValue != 0;
+				RecordCoreAffinity(pass.DesiredMask, observed, matchesExclusiveDriftedValue);
 				if (coreAffinityVerified) exclusiveAuditRetry.Reset();
-				unreadable = !flag;
-				return !flag || !coreAffinityVerified;
+				unreadable = !matchesExclusiveDriftedValue;
+				return !matchesExclusiveDriftedValue || !coreAffinityVerified;
 			}
 		}
 		private bool ReadCoreAffinity(IntPtr handle, out ulong observed)
@@ -457,13 +457,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			ulong num = ((original.Aff != 0) ? original.Aff : allMask);
+			ulong aff = ((original.Aff != 0) ? original.Aff : allMask);
 			if (!Native.TryQueryAffinity(h, out observed))
 			{
 				unreadable = true;
 				return false;
 			}
-			if (observed != num)
+			if (observed != aff)
 			{
 				return true;
 			}
@@ -471,13 +471,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			uint[] array = Native.QueryCpuSets(h);
-			if (array == null)
+			uint[] cpuSets = Native.QueryCpuSets(h);
+			if (cpuSets == null)
 			{
 				unreadable = true;
 				return false;
 			}
-			return !CoreThreadPlacement.Same(array, original.CpuSets ?? new uint[0]);
+			return !CoreThreadPlacement.Same(cpuSets, original.CpuSets ?? new uint[0]);
 		}
 		private bool HoldExclusive(int pid, BoostPass pass, ulong observed)
 		{
@@ -491,10 +491,10 @@ namespace PaviseApp
 				return false;
 			default:
 			{
-				int num = ++exclusiveWriteBacks;
-				if (num <= 3 || num % 20 == 0)
+				int exclusiveWriteBacksSnapshot = ++exclusiveWriteBacks;
+				if (exclusiveWriteBacksSnapshot <= 3 || exclusiveWriteBacksSnapshot % 20 == 0)
 				{
-					Logger.Log(PerformancePolicy.Text("其他程序改动了游戏亲和性 读回 0x", "Another program changed the game's affinity (read back 0x") + observed.ToString("X") + PerformancePolicy.Text(" 已改回 0x", "); written back to 0x") + pass.DesiredMask.ToString("X") + PerformancePolicy.Text(" 本局第 ", " this session: ") + num + PerformancePolicy.Text(" 次", ""));
+					Logger.Log(PerformancePolicy.Text("其他程序改动了游戏亲和性 读回 0x", "Another program changed the game's affinity (read back 0x") + observed.ToString("X") + PerformancePolicy.Text(" 已改回 0x", "); written back to 0x") + pass.DesiredMask.ToString("X") + PerformancePolicy.Text(" 本局第 ", " this session: ") + exclusiveWriteBacksSnapshot + PerformancePolicy.Text(" 次", ""));
 				}
 				return true;
 			}
@@ -542,17 +542,17 @@ namespace PaviseApp
 						corePlacementEvidence = "pid=" + pid + " stage=thread-affinity-refused reason=" + threadReason;
 						return ExclusiveWriteBack.Failed;
 					}
-					bool flag = Native.SetProcessAffinityMask(value.RestoreHandle, (UIntPtr)pass.DesiredMask);
-					int writeError = flag ? 0 : Marshal.GetLastWin32Error();
-					if (flag) criticalNextSample = 0L;
+					bool setProcessAffinityMaskSucceeded = Native.SetProcessAffinityMask(value.RestoreHandle, (UIntPtr)pass.DesiredMask);
+					int writeError = setProcessAffinityMaskSucceeded ? 0 : Marshal.GetLastWin32Error();
+					if (setProcessAffinityMaskSucceeded) criticalNextSample = 0L;
 					ulong mask;
-					bool flag2 = Native.TryQueryAffinity(value.RestoreHandle, out mask);
-					int readError = flag2 ? 0 : Marshal.GetLastWin32Error();
-					RecordCoreAffinity(pass.DesiredMask, mask, flag2);
-					if (!flag || !flag2 || mask != pass.DesiredMask)
+					bool tryQueryAffinity = Native.TryQueryAffinity(value.RestoreHandle, out mask);
+					int readError = tryQueryAffinity ? 0 : Marshal.GetLastWin32Error();
+					RecordCoreAffinity(pass.DesiredMask, mask, tryQueryAffinity);
+					if (!setProcessAffinityMaskSucceeded || !tryQueryAffinity || mask != pass.DesiredMask)
 					{
 						if (!retryMaintenance) return ExclusiveWriteBack.Failed;
-						return DeferExclusiveAuditFailure(pass, !flag ? "audit-write" : (!flag2 ? "audit-write-readback" : "audit-write-mismatch"), !flag ? writeError : readError)
+						return DeferExclusiveAuditFailure(pass, !setProcessAffinityMaskSucceeded ? "audit-write" : (!tryQueryAffinity ? "audit-write-readback" : "audit-write-mismatch"), !setProcessAffinityMaskSucceeded ? writeError : readError)
 							? ExclusiveWriteBack.Deferred : ExclusiveWriteBack.Failed;
 					}
 					exclusiveAuditRetry.Reset();
@@ -567,7 +567,7 @@ namespace PaviseApp
 		}
 		private void YieldExclusive(int pid, ulong observed)
 		{
-			long num = 0L;
+			long numericValue = 0L;
 			bool jobOwned = false;
 			lock (sync)
 			{
@@ -589,12 +589,12 @@ namespace PaviseApp
 				{
 					value.PlacementYielded = true;
 					gameBoost[pid] = value;
-					num = value.Creation;
+					numericValue = value.Creation;
 				}
 			}
-			if (num > 0)
+			if (numericValue > 0)
 			{
-				CrashGuard.YieldBoostPlacement(pid, num);
+				CrashGuard.YieldBoostPlacement(pid, numericValue);
 			}
 			ForgetHardPin(pid);
 			coreAffinityVerified = false;
@@ -795,12 +795,12 @@ namespace PaviseApp
 			{
 			if (criticalOwnsCoreIsolation) return result && !coreBackgroundPending;
 			if (criticalBorrowsCoreIsolation) return false;
-			bool flag = coreIsolation == null || coreIsolation.Stop();
-			if (flag)
+			bool matchesStop = coreIsolation == null || coreIsolation.Stop();
+			if (matchesStop)
 			{
 				coreIsolation = null;
 			}
-			if (flag && !coreBackgroundPending)
+			if (matchesStop && !coreBackgroundPending)
 			{
 				return result;
 			}
@@ -905,10 +905,10 @@ namespace PaviseApp
 						bool firstVerified;
 						if (CaptureAndTrack(intPtr, pid, currentCreation, boostPass, known, out newlyTracked, out gpuOk) && ApplyBoostStateStage(intPtr, pid, boostPass, needTweak, out stateOk, out firstVerified))
 						{
-							bool flag = boostPass.Exclusive && coreEngaged && coreAffinityVerified;
-							string placementText = (flag ? (Lang.T("t.gamemodeboost.18") + CpuTopology.CountSetBits(boostPass.DesiredMask) + Lang.T("t.gamemodeboost.16")) : Lang.T("t.gamemodeboost.17"));
+							bool matchesCoreAffinityVerified = boostPass.Exclusive && coreEngaged && coreAffinityVerified;
+							string placementText = (matchesCoreAffinityVerified ? (Lang.T("t.gamemodeboost.18") + CpuTopology.CountSetBits(boostPass.DesiredMask) + Lang.T("t.gamemodeboost.16")) : Lang.T("t.gamemodeboost.17"));
 							bool ecoCleared = ClearEfficiencyMode(intPtr, pid, boostPass);
-							EngageLaneAndReport(intPtr, pid, currentCreation, boostPass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, flag);
+							EngageLaneAndReport(intPtr, pid, currentCreation, boostPass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, matchesCoreAffinityVerified);
 							ApplyGameTweaks(intPtr, pid, boostPass, needTweak);
 						}
 					}
@@ -1014,19 +1014,19 @@ namespace PaviseApp
 		}
 		private void DropStaleBoosts(BoostPass pass)
 		{
-			bool flag = false;
+			bool dropStaleBoostsReady = false;
 			lock (sync)
 			{
 				foreach (KeyValuePair<int, Snap> item in gameBoost)
 				{
 					if (item.Key != pass.RendererPid || item.Value.Creation != pass.RendererCreation || !string.Equals(item.Value.Name, pass.RendererName, StringComparison.OrdinalIgnoreCase))
 					{
-						flag = true;
+						dropStaleBoostsReady = true;
 						break;
 					}
 				}
 			}
-			if (flag)
+			if (dropStaleBoostsReady)
 			{
 				UnboostGames(pass.RendererPid, pass.RendererCreation, pass.RendererName);
 			}
@@ -1036,17 +1036,17 @@ namespace PaviseApp
 			IntPtr intPtr = Native.OpenProcess(12800, false, pid);
 			if (intPtr == IntPtr.Zero)
 			{
-				bool flag = Native.LastOpenProcessFailureWasNoSuchProcess();
-				bool flag2;
+				bool lastOpenProcessFailureWasNoSuchProcessSucceeded = Native.LastOpenProcessFailureWasNoSuchProcess();
+				bool wasAdded;
 				lock (sync)
 				{
-					flag2 = boostDenied.Add(pid);
+					wasAdded = boostDenied.Add(pid);
 				}
-				if (flag2)
+				if (wasAdded)
 				{
 					Logger.Log(Lang.T("log.gamemodeboost.3") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.4"));
 				}
-				if (!flag)
+				if (!lastOpenProcessFailureWasNoSuchProcessSucceeded)
 				{
 					ProtectedGameRoster.Remember(pass.RendererName);
 				}
@@ -1066,10 +1066,10 @@ namespace PaviseApp
 				}
 				return true;
 			}
-			bool flag = ApplySelectedBoostAction(h, pid, pass, "GamePriority", pass.CpuBoost, (long value) => value == pass.PriorityTarget, () => WriteBoostAction("GamePriority", h, pass.PriorityTarget));
-			bool flag2 = ApplySelectedBoostAction(h, pid, pass, "GameIoPriority", pass.IoBoost, (long value) => value == 3, () => WriteBoostAction("GameIoPriority", h, 3L));
-			bool flag3 = ApplySelectedBoostAction(h, pid, pass, "GameMemoryPriority", pass.MemoryBoost, (long value) => value >= 5, () => WriteBoostAction("GameMemoryPriority", h, 5L));
-			stateOk = flag && flag2 && flag3;
+			bool applySelectedBoostActionSucceeded = ApplySelectedBoostAction(h, pid, pass, "GamePriority", pass.CpuBoost, (long value) => value == pass.PriorityTarget, () => WriteBoostAction("GamePriority", h, pass.PriorityTarget));
+			bool applySelectedBoostActionSucceeded2 = ApplySelectedBoostAction(h, pid, pass, "GameIoPriority", pass.IoBoost, (long value) => value == 3, () => WriteBoostAction("GameIoPriority", h, 3L));
+			bool applySelectedBoostActionSucceeded3 = ApplySelectedBoostAction(h, pid, pass, "GameMemoryPriority", pass.MemoryBoost, (long value) => value >= 5, () => WriteBoostAction("GameMemoryPriority", h, 5L));
+			stateOk = applySelectedBoostActionSucceeded && applySelectedBoostActionSucceeded2 && applySelectedBoostActionSucceeded3;
 			lock (sync)
 			{
 				if (stateOk)
@@ -1204,10 +1204,10 @@ namespace PaviseApp
 		}
 		private static string BoostActionTarget(IntPtr handle)
 		{
-			string text = Native.ImagePath(handle);
+			string imagePathResult = Native.ImagePath(handle);
 			try
 			{
-				return (string.IsNullOrEmpty(text) || !Path.IsPathRooted(text)) ? null : Path.GetFullPath(text);
+				return (string.IsNullOrEmpty(imagePathResult) || !Path.IsPathRooted(imagePathResult)) ? null : Path.GetFullPath(imagePathResult);
 			}
 			catch
 			{
@@ -1233,19 +1233,19 @@ namespace PaviseApp
 			}
 			case "GameIoPriority":
 			{
-				int num2 = Native.QueryIoPriority(handle);
-				if (num2 >= 0)
+				int ioPriority = Native.QueryIoPriority(handle);
+				if (ioPriority >= 0)
 				{
-					return num2;
+					return ioPriority;
 				}
 				return null;
 			}
 			case "GameMemoryPriority":
 			{
-				int num = Native.QueryPagePriority(handle);
-				if (num >= 1)
+				int pagePriority = Native.QueryPagePriority(handle);
+				if (pagePriority >= 1)
 				{
-					return num;
+					return pagePriority;
 				}
 				return null;
 			}
@@ -1319,12 +1319,12 @@ namespace PaviseApp
 		private static int WriteHighQoSBoost(IntPtr handle)
 		{
 			bool timerExemptDropped;
-			bool flag = Native.ApplyHighQoS(handle, Native.TimerExemptWanted, out timerExemptDropped);
+			bool applyHighQoSSucceeded = Native.ApplyHighQoS(handle, Native.TimerExemptWanted, out timerExemptDropped);
 			if (timerExemptDropped)
 			{
 				Logger.Log(Lang.T("log.gamemodeboost.59"));
 			}
-			if (!flag)
+			if (!applyHighQoSSucceeded)
 			{
 				return Marshal.GetLastWin32Error();
 			}
@@ -1399,29 +1399,29 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			long? num = ReadBoostAction(action, handle);
-			if (!num.HasValue)
+			long? boostAction = ReadBoostAction(action, handle);
+			if (!boostAction.HasValue)
 			{
 				return false;
 			}
-			bool flag;
+			bool matchesTryGetValue;
 			lock (sync)
 			{
 				HashSet<string> value;
-				flag = boostActionRestorePending.TryGetValue(pid, out value) && value.Contains(action);
+				matchesTryGetValue = boostActionRestorePending.TryGetValue(pid, out value) && value.Contains(action);
 			}
-			if (flag)
+			if (matchesTryGetValue)
 			{
 				if (!RestoreBoostActionTarget(handle, pid, actionTarget, action))
 				{
 					return false;
 				}
-				if (flag)
+				if (matchesTryGetValue)
 				{
 					ActionFailureStore.CancelApply(action, actionTarget);
 				}
-				num = ReadBoostAction(action, handle);
-				if (!num.HasValue)
+				boostAction = ReadBoostAction(action, handle);
+				if (!boostAction.HasValue)
 				{
 					return false;
 				}
@@ -1430,7 +1430,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			if (desired(num.Value))
+			if (desired(boostAction.Value))
 			{
 				return true;
 			}
@@ -1439,21 +1439,21 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag3 = false;
+			bool applyIsolatedBoostActionReady = false;
 			try
 			{
-				num = ReadBoostAction(action, handle);
-				if (!num.HasValue || pass.WriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0)
+				boostAction = ReadBoostAction(action, handle);
+				if (!boostAction.HasValue || pass.WriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0)
 				{
 					ActionFailureStore.CancelApply(action, actionTarget);
 					return false;
 				}
-				int num2 = 0;
-				if (!desired(num.Value))
+				int applyIsolatedBoostActionValue = 0;
+				if (!desired(boostAction.Value))
 				{
-					flag3 = true;
+					applyIsolatedBoostActionReady = true;
 					SetBoostActionRecovery(pid, action, true);
-					num2 = write();
+					applyIsolatedBoostActionValue = write();
 				}
 				switch (BoostActionIdentity(handle, pass.RendererCreation))
 				{
@@ -1462,7 +1462,7 @@ namespace PaviseApp
 					ActionFailureStore.CancelApply(action, actionTarget);
 					return false;
 				default:
-					if (!flag3)
+					if (!applyIsolatedBoostActionReady)
 					{
 						ActionFailureStore.CancelApply(action, actionTarget);
 					}
@@ -1475,7 +1475,7 @@ namespace PaviseApp
 				{
 					if (stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration)
 					{
-						if (!flag3 || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
+						if (!applyIsolatedBoostActionReady || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
 						{
 							ActionFailureStore.CancelApply(action, actionTarget);
 						}
@@ -1485,8 +1485,8 @@ namespace PaviseApp
 						}
 						return false;
 					}
-					long? num3 = ReadBoostAction(action, handle);
-					if (num2 == 0 && num3.HasValue && desired(num3.Value))
+					long? boostAction2 = ReadBoostAction(action, handle);
+					if (applyIsolatedBoostActionValue == 0 && boostAction2.HasValue && desired(boostAction2.Value))
 					{
 						if (ActionFailureStore.CompleteApply(action, actionTarget))
 						{
@@ -1499,10 +1499,10 @@ namespace PaviseApp
 						}
 						return false;
 					}
-					bool flag4 = RestoreBoostAction(handle, pid, pass.RendererCreation, action);
-					if (BoostActionSkipStatus(num2) || (action == "GamePriority" && num2 == 1237))
+					bool restoreBoostActionSucceeded = RestoreBoostAction(handle, pid, pass.RendererCreation, action);
+					if (BoostActionSkipStatus(applyIsolatedBoostActionValue) || (action == "GamePriority" && applyIsolatedBoostActionValue == 1237))
 					{
-						if (flag4)
+						if (restoreBoostActionSucceeded)
 						{
 							ActionFailureStore.CancelApply(action, actionTarget);
 						}
@@ -1512,7 +1512,7 @@ namespace PaviseApp
 						}
 						return false;
 					}
-					reason = "Game action apply/readback failed; native status " + num2 + (flag4 ? "; original restored" : "; recovery pending");
+					reason = "Game action apply/readback failed; native status " + applyIsolatedBoostActionValue + (restoreBoostActionSucceeded ? "; original restored" : "; recovery pending");
 					ActionFailureStore.Trip(action, actionTarget, reason);
 					Logger.Warn(action + " | " + actionTarget + " | " + reason);
 					return false;
@@ -1521,7 +1521,7 @@ namespace PaviseApp
 			}
 			catch (NotSupportedException)
 			{
-				if (!flag3 || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
+				if (!applyIsolatedBoostActionReady || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
 				{
 					ActionFailureStore.CancelApply(action, actionTarget);
 				}
@@ -1533,7 +1533,7 @@ namespace PaviseApp
 			}
 			catch (OperationCanceledException)
 			{
-				if (!flag3 || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
+				if (!applyIsolatedBoostActionReady || RestoreBoostAction(handle, pid, pass.RendererCreation, action))
 				{
 					ActionFailureStore.CancelApply(action, actionTarget);
 				}
@@ -1545,12 +1545,12 @@ namespace PaviseApp
 			}
 			catch (Exception ex3)
 			{
-				if (!flag3)
+				if (!applyIsolatedBoostActionReady)
 				{
 					ActionFailureStore.CancelApply(action, actionTarget);
 					return false;
 				}
-				if (flag3)
+				if (applyIsolatedBoostActionReady)
 				{
 					RestoreBoostAction(handle, pid, pass.RendererCreation, action);
 				}
@@ -1692,19 +1692,19 @@ namespace PaviseApp
 			pass.PlacementStage = stage;
 			pass.PlacementError = error;
 			uint granted;
-			string text = (Native.TryQueryGrantedAccess(handle, out granted) ? ("0x" + granted.ToString("X")) : "unknown");
+			string toStringOffset = (Native.TryQueryGrantedAccess(handle, out granted) ? ("0x" + granted.ToString("X")) : "unknown");
 			ulong mask;
-			string text2 = ((handle != IntPtr.Zero && Native.TryQueryAffinity(handle, out mask)) ? ("0x" + mask.ToString("X")) : "unknown");
-			ulong num = 0uL;
+			string toStringOffset2 = ((handle != IntPtr.Zero && Native.TryQueryAffinity(handle, out mask)) ? ("0x" + mask.ToString("X")) : "unknown");
+			ulong numericValue = 0uL;
 			lock (sync)
 			{
 				Snap value;
 				if (gameBoost.TryGetValue(pass.RendererPid, out value))
 				{
-					num = value.Aff;
+					numericValue = value.Aff;
 				}
 			}
-			corePlacementEvidence = "pid=" + pass.RendererPid + " creation=" + pass.RendererCreation + " stage=" + stage + " win32=" + error + " granted=" + text + " original=0x" + num.ToString("X") + " actual=" + text2 + " target=0x" + pass.DesiredMask.ToString("X") + " cachedBoostRestriction=" + pass.WriteDenied;
+			corePlacementEvidence = "pid=" + pass.RendererPid + " creation=" + pass.RendererCreation + " stage=" + stage + " win32=" + error + " granted=" + toStringOffset + " original=0x" + numericValue.ToString("X") + " actual=" + toStringOffset2 + " target=0x" + pass.DesiredMask.ToString("X") + " cachedBoostRestriction=" + pass.WriteDenied;
 		}
 		private static string PlacementFailureReason(BoostPass pass)
 		{
@@ -1737,12 +1737,12 @@ namespace PaviseApp
 				placementVerified = PlacementMatches(h, pass, out unreadable, out observed);
 				if (pass.Exclusive && !placementVerified && !unreadable)
 				{
-					bool flag;
+					bool matchesContainsKey;
 					lock (sync)
 					{
-						flag = !placementGaveUp.Contains(pid) && gameBoost.ContainsKey(pid);
+						matchesContainsKey = !placementGaveUp.Contains(pid) && gameBoost.ContainsKey(pid);
 					}
-					if (flag)
+					if (matchesContainsKey)
 					{
 						placementVerified = HoldExclusive(pid, pass, observed);
 					}
@@ -1769,24 +1769,24 @@ namespace PaviseApp
 			if (pass.Exclusive)
 			{
 				bool unreadable2;
-				bool flag2 = PlacementChangedOutside(h, value, out observed, out unreadable2);
+				bool placementChangedOutsideSucceeded = PlacementChangedOutside(h, value, out observed, out unreadable2);
 				if (unreadable2)
 				{
 					LogCorePlacement(pass, "read-placement", 0, h);
 					BlockAutoCores("schedule.auto.affinityread");
 					return true;
 				}
-				if (flag2)
+				if (placementChangedOutsideSucceeded)
 				{
 					YieldExclusive(pid, observed);
 					return true;
 				}
 			}
-			bool flag3 = true;
+			bool applyPlacementStageReady = true;
 			if (pass.Exclusive)
 			{
-				bool flag4 = flag3 && PinExclusive(h, pid, pass, value);
-				if (!flag4 && pass.PlacementStage == "set-affinity" && pass.PlacementError == 5)
+				bool matchesApplyPlacementStageReady = applyPlacementStageReady && PinExclusive(h, pid, pass, value);
+				if (!matchesApplyPlacementStageReady && pass.PlacementStage == "set-affinity" && pass.PlacementError == 5)
 				{
 					if (!Native.TryQueryAffinity(h, out observed) || observed != value.Aff)
 					{
@@ -1802,12 +1802,12 @@ namespace PaviseApp
 					}
 					return true;
 				}
-				placementVerified = flag4 && PlacementMatches(h, pass, out unreadable, out observed);
-				string text = ((!placementVerified) ? PlacementFailureReason(pass) : ((!EngageIsolation(pid, pass)) ? "schedule.auto.failed" : null));
-				if (text != null)
+				placementVerified = matchesApplyPlacementStageReady && PlacementMatches(h, pass, out unreadable, out observed);
+				string placementFailureReasonResult = ((!placementVerified) ? PlacementFailureReason(pass) : ((!EngageIsolation(pid, pass)) ? "schedule.auto.failed" : null));
+				if (placementFailureReasonResult != null)
 				{
 					placementVerified = false;
-					BlockAutoCores(text);
+					BlockAutoCores(placementFailureReasonResult);
 					if (coreGovernor == null)
 					{
 						ReleaseExclusive();
@@ -1840,15 +1840,15 @@ namespace PaviseApp
 				placementVerified = PlacementMatches(h, pass, out unreadable, out observed);
 				if (!placementVerified)
 				{
-					flag3 = false;
+					applyPlacementStageReady = false;
 				}
 			}
 			int value2 = 0;
-			bool flag5 = false;
-			bool flag6 = false;
+			bool applyPlacementStageReady2 = false;
+			bool applyPlacementStageReady3 = false;
 			lock (sync)
 			{
-				if (flag3)
+				if (applyPlacementStageReady)
 				{
 					gamePlacement[pid] = pass.DesiredMask;
 					placementFail.Remove(pid);
@@ -1862,24 +1862,24 @@ namespace PaviseApp
 					if (value2 >= 3)
 					{
 						placementFail.Remove(pid);
-						flag5 = placementGaveUp.Add(pid);
+						applyPlacementStageReady2 = placementGaveUp.Add(pid);
 					}
 					else
 					{
 						placementFail[pid] = value2;
-						flag6 = value2 == 1;
+						applyPlacementStageReady3 = value2 == 1;
 					}
 				}
 			}
-			if (flag5 || (!flag3 && flag6))
+			if (applyPlacementStageReady2 || (!applyPlacementStageReady && applyPlacementStageReady3))
 			{
-				Logger.Log(PlacementWarningLine(pass.RendererName, pid, unreadable, flag5));
+				Logger.Log(PlacementWarningLine(pass.RendererName, pid, unreadable, applyPlacementStageReady2));
 			}
-			if (!newlyTracked && flag3)
+			if (!newlyTracked && applyPlacementStageReady)
 			{
 				Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + placementText);
 			}
-			if (pass.Exclusive && placementVerified && flag3)
+			if (pass.Exclusive && placementVerified && applyPlacementStageReady)
 			{
 				Logger.Info("GAME placement verified pid=" + pid + " birth=" + pass.RendererCreation
 					+ " mask=0x" + pass.DesiredMask.ToString("X")
@@ -1896,10 +1896,10 @@ namespace PaviseApp
 			}
 			if (stateOk && firstVerified)
 			{
-				long num = Interlocked.Exchange(ref boostFirstStampTicks, 0L);
-				if (num != 0)
+				long exchangeResult = Interlocked.Exchange(ref boostFirstStampTicks, 0L);
+				if (exchangeResult != 0)
 				{
-					Logger.Log(Lang.T("log.gamemodeboost.60") + (DateTime.UtcNow.Ticks - num) / 10000 + Lang.T("log.gamemodeboost.61"));
+					Logger.Log(Lang.T("log.gamemodeboost.60") + (DateTime.UtcNow.Ticks - exchangeResult) / 10000 + Lang.T("log.gamemodeboost.61"));
 				}
 				Logger.Log(BoostSuccessLine(pass.RendererName, pid, (!pass.CpuBoost) ? "" : ((pass.PriorityTarget == 128) ? Lang.T("log.gamemodeboost.28") : Lang.T("log.gamemodeboost.29")), placementText, placementVerified, (pass.IoBoost ? Lang.T("log.gamemodeboost.30") : "") + (pass.MemoryBoost ? (" " + Lang.T("gm.boost.memory")) : "") + ((gpuOk && pass.GpuBoost) ? Lang.T("log.gamemodeboost.31") : "") + ((!Native.PowerThrottlingSupported) ? "" : (ecoCleared ? Lang.T("t.gamemodeboost.32") : EcoStateText(h)))));
 			}
@@ -1926,20 +1926,20 @@ namespace PaviseApp
 		}
 		private bool UnboostGames(int keepPid, long keepCreation, string keepName)
 		{
-			bool flag = RenderLane.ReleaseExcept(keepPid, keepCreation);
-			flag &= FrameCoordination.ReleaseExcept(keepPid, keepCreation);
-			bool flag2 = (keepPid == coreWatchPid && keepCreation == coreWatchCreation) || StopCoreRefinement();
-			bool flag3 = keepPid > 0 || StopCoreIsolation();
-			bool flag4 = coreEngaged && !corePinPending;
-			bool flag5 = RestoreHardPinsExcept(flag4 ? keepPid : 0, flag4 ? keepCreation : 0);
-			corePinPending = !flag5;
-			flag3 = flag3 && flag2 && flag && flag5;
+			bool releaseExceptSucceeded = RenderLane.ReleaseExcept(keepPid, keepCreation);
+			releaseExceptSucceeded &= FrameCoordination.ReleaseExcept(keepPid, keepCreation);
+			bool matchesStopCoreRefinement = (keepPid == coreWatchPid && keepCreation == coreWatchCreation) || StopCoreRefinement();
+			bool matchesStopCoreIsolation = keepPid > 0 || StopCoreIsolation();
+			bool matchesCoreEngaged = coreEngaged && !corePinPending;
+			bool restoreHardPinsExceptSucceeded = RestoreHardPinsExcept(matchesCoreEngaged ? keepPid : 0, matchesCoreEngaged ? keepCreation : 0);
+			corePinPending = !restoreHardPinsExceptSucceeded;
+			matchesStopCoreIsolation = matchesStopCoreIsolation && matchesStopCoreRefinement && releaseExceptSucceeded && restoreHardPinsExceptSucceeded;
 			List<KeyValuePair<int, Snap>> list;
 			lock (sync)
 			{
 				if (gameBoost.Count == 0 && gameGpu.Count == 0)
 				{
-					return flag3;
+					return matchesStopCoreIsolation;
 				}
 				list = new List<KeyValuePair<int, Snap>>();
 				foreach (KeyValuePair<int, Snap> item in gameBoost)
@@ -1959,7 +1959,7 @@ namespace PaviseApp
 				}
 				if (list.Count == 0 && dictionary.Count == 0)
 				{
-					return flag3;
+					return matchesStopCoreIsolation;
 				}
 				if (keepPid <= 0)
 				{
@@ -2000,14 +2000,14 @@ namespace PaviseApp
 			foreach (KeyValuePair<int, Snap> item5 in list)
 			{
 				int key = item5.Key;
-				bool flag6 = RunBoostRecovery(key, item5.Value.Creation, "snapshot", () => RestoreBoostProcess(key, item5.Value));
-				if (flag6)
+				bool runBoostRecoverySucceeded = RunBoostRecovery(key, item5.Value.Creation, "snapshot", () => RestoreBoostProcess(key, item5.Value));
+				if (runBoostRecoverySucceeded)
 				{
 					lock (coreIsolationGate)
 					if ((criticalBorrowsCoreIsolation && criticalCoreIsolationPid == key && criticalCoreIsolationBirth == item5.Value.Creation)
 						|| (!criticalOwnsCoreIsolation && coreIsolation != null && !coreIsolation.Drop(key, item5.Value.Creation)))
 					{
-						flag3 = false;
+						matchesStopCoreIsolation = false;
 					}
 					ForgetHardPin(key);
 					CrashGuard.ReleaseBoostProcess(key, item5.Value.Creation);
@@ -2023,7 +2023,7 @@ namespace PaviseApp
 			}
 			lock (sync)
 			{
-				return flag3 && gameBoost.Count == 0;
+				return matchesStopCoreIsolation && gameBoost.Count == 0;
 			}
 		}
 		internal static void CurrentPlacement(IntPtr h, ref ulong affinity, ref uint[] cpuSets)
@@ -2033,10 +2033,10 @@ namespace PaviseApp
 			{
 				affinity = mask;
 			}
-			uint[] array = Native.QueryCpuSets(h);
-			if (array != null)
+			uint[] cpuSets2 = Native.QueryCpuSets(h);
+			if (cpuSets2 != null)
 			{
-				cpuSets = array;
+				cpuSets = cpuSets2;
 			}
 		}
 		private static BoostTarget ProbeBoostTarget(int pid, long creation)
@@ -2084,8 +2084,8 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = 0;
-			int num2 = 0;
+			int processedCount = 0;
+			int processedCount2 = 0;
 			foreach (KeyValuePair<int, Snap> item2 in list)
 			{
 				BoostTarget boostTarget = ProbeBoostTarget(item2.Key, item2.Value.Creation);
@@ -2097,8 +2097,8 @@ namespace PaviseApp
 					}
 					continue;
 				}
-				bool flag = boostTarget == BoostTarget.Unopenable;
-				if (flag)
+				bool matchesBoostTarget = boostTarget == BoostTarget.Unopenable;
+				if (matchesBoostTarget)
 				{
 					int value;
 					lock (sync)
@@ -2111,11 +2111,11 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					num2++;
+					processedCount2++;
 				}
 				if (RestoreHardPin(item2.Key))
 				{
-					if (!flag)
+					if (!matchesBoostTarget)
 					{
 						CrashGuard.ReleaseBoostProcess(item2.Key, item2.Value.Creation);
 					}
@@ -2138,18 +2138,18 @@ namespace PaviseApp
 						ForgetNvTweakLocked(item2.Key);
 						ForgetBoostActionTarget(item2.Key);
 					}
-					num++;
+					processedCount++;
 				}
 			}
-			if (num2 > 0)
+			if (processedCount2 > 0)
 			{
-				Logger.Warn(Lang.T("log.gamemodeboost.58") + num);
+				Logger.Warn(Lang.T("log.gamemodeboost.58") + processedCount);
 			}
-			else if (num > 0)
+			else if (processedCount > 0)
 			{
-				Logger.Log(Lang.T("log.gamemodeboost.57") + num);
+				Logger.Log(Lang.T("log.gamemodeboost.57") + processedCount);
 			}
-			return num;
+			return processedCount;
 		}
 		private void PruneDeadBoosts(ICollection<int> live)
 		{
@@ -2259,8 +2259,8 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			long num = Interlocked.Read(ref criticalIntentEpoch);
-			if (num != expectedEpoch || Interlocked.Read(ref gameSessionStarts) != expectedSerial)
+			long criticalIntentEpochSnapshot = Interlocked.Read(ref criticalIntentEpoch);
+			if (criticalIntentEpochSnapshot != expectedEpoch || Interlocked.Read(ref gameSessionStarts) != expectedSerial)
 			{
 				return null;
 			}
@@ -2269,9 +2269,9 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = Native.ImagePath(process);
+			string imagePathResult = Native.ImagePath(process);
 			ulong mask;
-			if (string.IsNullOrEmpty(text) || !GamePerformanceTargetPolicy.AllowsGameTarget(text) || !Native.TryQueryAffinity(process, out mask) || mask != currentProcessMask)
+			if (string.IsNullOrEmpty(imagePathResult) || !GamePerformanceTargetPolicy.AllowsGameTarget(imagePathResult) || !Native.TryQueryAffinity(process, out mask) || mask != currentProcessMask)
 			{
 				return null;
 			}
@@ -2279,7 +2279,7 @@ namespace PaviseApp
 			{
 				GameDetection gameDetection = activeDetection;
 				GameProfile gameProfile = CriticalPreferenceProfileLocked(expectedProfile);
-				if (!enabled || stopping || panicReq || !active || smartSwitchedOut || ProfileStoreSaveFailed || gameDetection == null || gameDetection.Profile == null || gameProfile == null || gameDetection.Profile.Id != gameProfile.Id || !gameDetection.RendererCandidateSelected || gameDetection.RendererSafetyOnly || gameDetection.RequiresGpuConfirm || gameDetection.RendererPid != pass.RendererPid || gameDetection.RendererCreation != currentCreation || !string.Equals(gameDetection.RendererPath, text, StringComparison.OrdinalIgnoreCase) || CriticalThreadRule.Raw(gameProfile) != expectedRawRule || !StoredRuleAdmits(expectedRawRule, expectedRule) || Interlocked.Read(ref criticalIntentEpoch) != expectedEpoch || gameSessionStarts != expectedSerial)
+				if (!enabled || stopping || panicReq || !active || smartSwitchedOut || ProfileStoreSaveFailed || gameDetection == null || gameDetection.Profile == null || gameProfile == null || gameDetection.Profile.Id != gameProfile.Id || !gameDetection.RendererCandidateSelected || gameDetection.RendererSafetyOnly || gameDetection.RequiresGpuConfirm || gameDetection.RendererPid != pass.RendererPid || gameDetection.RendererCreation != currentCreation || !string.Equals(gameDetection.RendererPath, imagePathResult, StringComparison.OrdinalIgnoreCase) || CriticalThreadRule.Raw(gameProfile) != expectedRawRule || !StoredRuleAdmits(expectedRawRule, expectedRule) || Interlocked.Read(ref criticalIntentEpoch) != expectedEpoch || gameSessionStarts != expectedSerial)
 				{
 					return null;
 				}
@@ -2288,14 +2288,14 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				ulong num2 = currentProcessMask & criticalThreadAllowedRange.Mask;
-				ulong num3 = AutoCores.WholeCores(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, CpuTopology.PhysicalCoreMasks());
-				string text2 = expectedRule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), num2, num3, true);
-				if (text2 != null)
+				ulong currentProcessMaskMask = currentProcessMask & criticalThreadAllowedRange.Mask;
+				ulong wholeCoresResult = AutoCores.WholeCores(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, CpuTopology.PhysicalCoreMasks());
+				string validateResult = expectedRule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), currentProcessMaskMask, wholeCoresResult, true);
+				if (validateResult != null)
 				{
 					return null;
 				}
-				criticalMintInFlight = new CriticalThreadMint(pass.RendererPid, currentCreation, text, num2 & ~num3, num, gameSessionStarts, expectedRawRule);
+				criticalMintInFlight = new CriticalThreadMint(pass.RendererPid, currentCreation, imagePathResult, currentProcessMaskMask & ~wholeCoresResult, criticalIntentEpochSnapshot, gameSessionStarts, expectedRawRule);
 				try
 				{
 					return criticalOriginalTarget = CriticalThreadTargetLease.Issue(this, criticalMintInFlight);
@@ -2474,17 +2474,17 @@ namespace PaviseApp
 			refusal = source.Rule.Validate(allMask, topology.Physical, topology.Allowed, topology.Reserved, true);
 			if (refusal != null) return false;
 			// Preserve thread priority order when cores are scarce; discard lower-priority soft hints first.
-			ulong[] array = null;
-			for (int count = Math.Min(threads.Length, CriticalThreadAutoPolicy.MaximumIsolated); count >= 1 && array == null; count--)
+			ulong[] destinationsResult = null;
+			for (int count = Math.Min(threads.Length, CriticalThreadAutoPolicy.MaximumIsolated); count >= 1 && destinationsResult == null; count--)
 			{
-				array = CriticalThreadAutoPolicy.Destinations(source.Rule, count, topology.Physical, topology.Allowed, topology.Reserved, CpuTopology.FavoredMask, topology.Performance, topology.Domains, topology.PreferredDomain, CpuTopology.ThrottleMask);
+				destinationsResult = CriticalThreadAutoPolicy.Destinations(source.Rule, count, topology.Physical, topology.Allowed, topology.Reserved, CpuTopology.FavoredMask, topology.Performance, topology.Domains, topology.PreferredDomain, CpuTopology.ThrottleMask);
 			}
-			if (array == null)
+			if (destinationsResult == null)
 			{
 				refusal = PerformancePolicy.Text("可用物理核心不足：至少选中三个不同物理核，每核可只选一个逻辑线程", "Not enough available physical cores: select at least three distinct physical cores; one logical processor per core is enough");
 				return false;
 			}
-			CriticalThreadRule criticalThreadRule = new CriticalThreadRule(ManualCorePlan.Stamp(allMask, topology.Physical), source.Rule.WorkerAvoidance, new ulong[1] { array[0] });
+			CriticalThreadRule criticalThreadRule = new CriticalThreadRule(ManualCorePlan.Stamp(allMask, topology.Physical), source.Rule.WorkerAvoidance, new ulong[1] { destinationsResult[0] });
 			refusal = criticalThreadRule.Validate(allMask, topology.Physical, topology.Allowed, topology.Reserved, true);
 			if (refusal != null)
 			{
@@ -2492,8 +2492,8 @@ namespace PaviseApp
 			}
 			HardThreadIdentity[] chosen = threads;
 			rule = criticalThreadRule;
-			choices = new HardThreadChoice[1] { new HardThreadChoice(chosen[0], array[0]) };
-			hints = array.Skip(1).Select((ulong mask, int index) => new HardThreadChoice(chosen[index + 1], mask)).ToArray();
+			choices = new HardThreadChoice[1] { new HardThreadChoice(chosen[0], destinationsResult[0]) };
+			hints = destinationsResult.Skip(1).Select((ulong mask, int index) => new HardThreadChoice(chosen[index + 1], mask)).ToArray();
 			return true;
 		}
 		private static bool ReadCriticalProcessMask(int pid, long birth, out ulong mask)
@@ -2595,10 +2595,10 @@ namespace PaviseApp
 					{
 						return criticalThreadAllowedRange.Error;
 					}
-					string text = rule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), criticalThreadAllowedRange.Mask, AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, IntPtr.Size == 8 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled);
-					if (text != null)
+					string validateResult = rule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), criticalThreadAllowedRange.Mask, AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, IntPtr.Size == 8 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled);
+					if (validateResult != null)
 					{
-						return text;
+						return validateResult;
 					}
 				}
 				GameProfile gameProfile2 = gameProfile.Clone();
@@ -2661,18 +2661,18 @@ namespace PaviseApp
 				}
 				GameProfile gameProfile = CriticalPreferenceProfileLocked(gameDetection.Profile.Id);
 				if (gameProfile == null) { missing = "game removed"; return null; }
-				string text = CriticalThreadRule.Raw(gameProfile);
+				string rawResult = CriticalThreadRule.Raw(gameProfile);
 				CriticalRuntimeSource criticalRuntimeSource = criticalSource;
-				if (criticalRuntimeSource != null && criticalRuntimeSource.RuleText == text && criticalRuntimeSource.Profile == gameProfile.Id && criticalRuntimeSource.Pid == gameDetection.RendererPid && criticalRuntimeSource.Birth == gameDetection.RendererCreation && criticalRuntimeSource.Serial == gameSessionStarts && criticalRuntimeSource.Epoch == Interlocked.Read(ref criticalIntentEpoch) && string.Equals(criticalRuntimeSource.Path, gameDetection.RendererPath, StringComparison.OrdinalIgnoreCase))
+				if (criticalRuntimeSource != null && criticalRuntimeSource.RuleText == rawResult && criticalRuntimeSource.Profile == gameProfile.Id && criticalRuntimeSource.Pid == gameDetection.RendererPid && criticalRuntimeSource.Birth == gameDetection.RendererCreation && criticalRuntimeSource.Serial == gameSessionStarts && criticalRuntimeSource.Epoch == Interlocked.Read(ref criticalIntentEpoch) && string.Equals(criticalRuntimeSource.Path, gameDetection.RendererPath, StringComparison.OrdinalIgnoreCase))
 				{
 					return criticalRuntimeSource;
 				}
-				if (CriticalThreadRule.Parse(text) == null)
+				if (CriticalThreadRule.Parse(rawResult) == null)
 				{
 					missing = "rule unreadable";
 					return null;
 				}
-				return new CriticalRuntimeSource(gameDetection, text, gameSessionStarts, Interlocked.Read(ref criticalIntentEpoch));
+				return new CriticalRuntimeSource(gameDetection, rawResult, gameSessionStarts, Interlocked.Read(ref criticalIntentEpoch));
 			}
 		}
 		private void StepCriticalThreadRuntime()
@@ -2846,10 +2846,10 @@ namespace PaviseApp
 				if (HardThreadGuardianLaunchBlockedException.Contains(ex4))
 				{
 					criticalGuardianLaunchBlocked = true;
-					bool flag = WithdrawCriticalThreadsLocked("independent guardian launch unavailable");
+					bool withdrawCriticalThreadsLockedSucceeded = WithdrawCriticalThreadsLocked("independent guardian launch unavailable");
 					criticalObservation.Reset();
 					ResetCriticalAuto();
-					if (criticalSource != null && flag)
+					if (criticalSource != null && withdrawCriticalThreadsLockedSucceeded)
 					{
 						PublishCriticalThreadState(criticalSource, "unsupported", CriticalGuardianLaunchBlockedDetail(), false, false, 0, 0L);
 					}
@@ -2857,8 +2857,8 @@ namespace PaviseApp
 				}
 				else
 				{
-					bool flag2 = WithdrawCriticalThreadsLocked(ex4.GetType().Name + ": " + ex4.Message);
-					if (criticalSource != null && flag2)
+					bool withdrawCriticalThreadsLockedSucceeded2 = WithdrawCriticalThreadsLocked(ex4.GetType().Name + ": " + ex4.Message);
+					if (criticalSource != null && withdrawCriticalThreadsLockedSucceeded2)
 					{
 						PublishCriticalThreadState(criticalSource, "unsupported", PerformancePolicy.Text("本次未应用：", "Not applied: ") + ex4.Message, false, false, 0, 0L);
 					}
@@ -2879,14 +2879,14 @@ namespace PaviseApp
 		private void BeginCriticalThreadSession(CriticalRuntimeSource source, ThreadTimes snapshot)
 		{
 			CriticalThreadRoleFact[] roles = FrameCoordination.ReadCriticalRoles(source.Pid, source.Birth, snapshot, AutoCores.NowTicks);
-			HardThreadChoice[] array = CriticalThreadRuntimePolicy.Select(source.Rule, criticalObservation.Candidates, roles);
-			if (array.Length != source.Rule.CandidateCount)
+			HardThreadChoice[] selectResult = CriticalThreadRuntimePolicy.Select(source.Rule, criticalObservation.Candidates, roles);
+			if (selectResult.Length != source.Rule.CandidateCount)
 			{
 				PublishCriticalThreadState(source, "observing", PerformancePolicy.Text("确认持续高负载线程后再绑定", "Binding waits for sustained CPU hotspot observations"), false, false, 0, 0L);
 			}
 			else
 			{
-				BindCriticalThreads(source, snapshot, source.Rule, array, roles);
+				BindCriticalThreads(source, snapshot, source.Rule, selectResult, roles);
 			}
 		}
 		private void BindCriticalThreads(CriticalRuntimeSource source, ThreadTimes snapshot, CriticalThreadRule rule, HardThreadChoice[] choices, CriticalThreadRoleFact[] roles)
@@ -3046,14 +3046,14 @@ namespace PaviseApp
 			};
 			HardThreadOwnership[] activeReceipts = criticalSession.ActiveReceipts;
 			HardThreadCoverage coverage;
-			HardThreadIdentity[] array = CriticalThreadRuntimePolicy.Batch(snapshot, criticalPlan, activeReceipts, out coverage);
+			HardThreadIdentity[] batchResult = CriticalThreadRuntimePolicy.Batch(snapshot, criticalPlan, activeReceipts, out coverage);
 			if (criticalWorkerBudgetReached)
 			{
-				array = criticalPlan.Choices.Select((HardThreadChoice x) => x.Thread).ToArray();
+				batchResult = criticalPlan.Choices.Select((HardThreadChoice x) => x.Thread).ToArray();
 				coverage = HardThreadCoverage.Partial;
 			}
 			HashSet<string> owned = new HashSet<string>(activeReceipts.Select((HardThreadOwnership x) => x.Thread.Key), StringComparer.Ordinal);
-			if (array.Any((HardThreadIdentity x) => !owned.Contains(x.Key)) && !criticalFailureAdmitted)
+			if (batchResult.Any((HardThreadIdentity x) => !owned.Contains(x.Key)) && !criticalFailureAdmitted)
 			{
 				string reason;
 				if (!ActionFailureStore.TryBeginApply("game-critical-thread-hard-affinity", criticalFailureTarget, out reason))
@@ -3067,20 +3067,20 @@ namespace PaviseApp
 			long nowTicks = AutoCores.NowTicks;
 			long ticks = DateTime.UtcNow.Ticks;
 			long batchStarted = Stopwatch.GetTimestamp();
-			bool flag = (initial ? criticalSession.Apply(criticalPlan, array, coverage) : criticalSession.AdmitNewThreads(array, coverage));
-			TraceCriticalRuntime("batch", flag ? "ok" : criticalSession.LastFailureKind.ToString(), source.Pid, batchStarted, criticalSession.LastOperationNativeAttempt);
+			bool applySucceeded = (initial ? criticalSession.Apply(criticalPlan, batchResult, coverage) : criticalSession.AdmitNewThreads(batchResult, coverage));
+			TraceCriticalRuntime("batch", applySucceeded ? "ok" : criticalSession.LastFailureKind.ToString(), source.Pid, batchStarted, criticalSession.LastOperationNativeAttempt);
 			HardThreadFailureKind lastFailureKind = criticalSession.LastFailureKind;
-			if (!flag && !criticalPlan.RequireWorkerCoverage && lastFailureKind == HardThreadFailureKind.InvalidRequest && !criticalSession.LastOperationWriteIntent && !criticalSession.LastOperationNativeAttempt && !initial)
+			if (!applySucceeded && !criticalPlan.RequireWorkerCoverage && lastFailureKind == HardThreadFailureKind.InvalidRequest && !criticalSession.LastOperationWriteIntent && !criticalSession.LastOperationNativeAttempt && !initial)
 			{
 				criticalWorkerBudgetReached = true;
 				PublishCriticalThreadState(source, "coverage-pending", PerformancePolicy.Text("保留原候选绑定；本局不再增加工作线程", "Original candidate bindings retained; no more worker bindings this session"), false, false, 0, 0L);
 				return;
 			}
-			if (!flag)
+			if (!applySucceeded)
 			{
 				string detail = criticalSession.Detail;
 				if (criticalPlan.RequireWorkerCoverage)
-					detail += " [snapshotThreads=" + snapshot.Ids.Length + " batchThreads=" + array.Length
+					detail += " [snapshotThreads=" + snapshot.Ids.Length + " batchThreads=" + batchResult.Length
 						+ " requestedCoverage=" + coverage + " ownedBefore=" + activeReceipts.Length
 						+ " unknownBirth=" + snapshot.Created.Count(birth => birth <= 0) + "]";
 				if (criticalPlan.RequireWorkerCoverage)
@@ -3100,13 +3100,13 @@ namespace PaviseApp
 				}
 				return;
 			}
-			string text = (initial ? null : criticalSession.LastReassertion);
-			if (text != null)
+			string lastReassertion = (initial ? null : criticalSession.LastReassertion);
+			if (lastReassertion != null)
 			{
-				int num = ++criticalReassertions;
-				if (num <= 3 || num % 20 == 0)
+				int criticalReassertionsSnapshot = ++criticalReassertions;
+				if (criticalReassertionsSnapshot <= 3 || criticalReassertionsSnapshot % 20 == 0)
 				{
-					LogCriticalThreadState("reasserted", text + " (this session: " + num + ")");
+					LogCriticalThreadState("reasserted", lastReassertion + " (this session: " + criticalReassertionsSnapshot + ")");
 				}
 			}
 			criticalOriginalTarget.RequireActive();
@@ -3131,8 +3131,8 @@ namespace PaviseApp
 					return;
 				}
 			}
-			bool flag2 = CriticalThreadRuntimePolicy.Verified(verifiedSnapshot, criticalPlan, criticalSession.ActiveReceipts, ticks, out candidates, out workers, out complete);
-			if (!flag2)
+			bool verifiedSucceeded = CriticalThreadRuntimePolicy.Verified(verifiedSnapshot, criticalPlan, criticalSession.ActiveReceipts, ticks, out candidates, out workers, out complete);
+			if (!verifiedSucceeded)
 			{
 				if (criticalPlan.RequireWorkerCoverage)
 					criticalStability.Block(source.Profile, source.Pid, source.Birth, source.Serial, source.RuleText);
@@ -3197,14 +3197,14 @@ namespace PaviseApp
 			}
 			try
 			{
-				bool flag = WithdrawCriticalThreadsLocked("stopped by " + caller);
-				if (flag)
+				bool withdrawCriticalThreadsLockedSucceeded = WithdrawCriticalThreadsLocked("stopped by " + caller);
+				if (withdrawCriticalThreadsLockedSucceeded)
 				{
 					criticalSource = null;
 					criticalObservation.Reset();
 				}
 				ResetCriticalAuto();
-				return flag;
+				return withdrawCriticalThreadsLockedSucceeded;
 			}
 			finally
 			{
@@ -3257,7 +3257,7 @@ namespace PaviseApp
 		private void LogCriticalThreadState(string state, string detail)
 		{
 			if (state == "observing") return;
-			string text = state + "|" + detail;
+			string detailOffset = state + "|" + detail;
 			long nowTicks = AutoCores.NowTicks;
 			lock (criticalStateLogGate)
 			{
@@ -3266,12 +3266,12 @@ namespace PaviseApp
 					criticalStateLogged = new Dictionary<string, long>(StringComparer.Ordinal);
 				}
 				long value;
-				if (text == criticalStateLast || (criticalStateLogged.TryGetValue(text, out value) && nowTicks - value < 1200000000))
+				if (detailOffset == criticalStateLast || (criticalStateLogged.TryGetValue(detailOffset, out value) && nowTicks - value < 1200000000))
 				{
 					return;
 				}
-				criticalStateLogged[text] = nowTicks;
-				criticalStateLast = text;
+				criticalStateLogged[detailOffset] = nowTicks;
+				criticalStateLast = detailOffset;
 			}
 			Logger.Info("THREAD [" + AutomationSession + "] result=" + state + (string.IsNullOrEmpty(detail) ? "" : (" detail=" + detail)));
 		}
@@ -3313,9 +3313,9 @@ namespace PaviseApp
 		}
 		private void UpdateLaneFallback(int pid, long birth, string name)
 		{
-			bool flag = FrameCoordinationEnabled && FrameCoordination.IdentificationExhausted(pid, birth, name);
+			bool matchesFrameCoordinationEnabled = FrameCoordinationEnabled && FrameCoordination.IdentificationExhausted(pid, birth, name);
 			LaneFallbackTarget laneFallbackTarget = laneFallback;
-			if (!flag)
+			if (!matchesFrameCoordinationEnabled)
 			{
 				if (laneFallbackTarget != null)
 				{
@@ -3329,18 +3329,18 @@ namespace PaviseApp
 		}
 		internal string ThreadBoostExecutionState()
 		{
-			string text = AutomaticExecutionState("GmRenderLane");
-			string text2 = AutomaticExecutionState("FrameCoordination");
-			string[] array = new string[2] { text, text2 };
-			foreach (string text3 in array)
+			string automaticExecutionStateResult = AutomaticExecutionState("GmRenderLane");
+			string automaticExecutionStateResult2 = AutomaticExecutionState("FrameCoordination");
+			string[] textEntries = new string[2] { automaticExecutionStateResult, automaticExecutionStateResult2 };
+			foreach (string entryText in textEntries)
 			{
-				switch (text3)
+				switch (entryText)
 				{
 				case "failed":
 				case "restore-failed":
 				case "stopped":
 				case "cooldown":
-					return text3;
+					return entryText;
 				}
 			}
 			if (!AutomationPolicySnapshot.ThreadBoostOn)
@@ -3349,9 +3349,9 @@ namespace PaviseApp
 			}
 			if (laneFallback == null)
 			{
-				return text2;
+				return automaticExecutionStateResult2;
 			}
-			return text;
+			return automaticExecutionStateResult;
 		}
 		private bool AddGameExecutableCore(string name, string executablePath, string preferredRoot, out string error)
 		{
@@ -3408,14 +3408,14 @@ namespace PaviseApp
 			HashSet<string> value;
 			if (!enabled)
 			{
-				bool flag;
+				bool anyConditionMet;
 				lock (sync)
 				{
 					HashSet<string> value2;
-					flag = (boostResourceSelections.TryGetValue(pid, out value) && value.Contains(action)) || (boostActionRestorePending.TryGetValue(pid, out value2) && value2.Contains(action));
+					anyConditionMet = (boostResourceSelections.TryGetValue(pid, out value) && value.Contains(action)) || (boostActionRestorePending.TryGetValue(pid, out value2) && value2.Contains(action));
 				}
-				bool flag2 = !flag || RestoreBoostAction(handle, pid, pass.RendererCreation, action);
-				if (flag2)
+				bool matchesRestoreBoostAction = !anyConditionMet || RestoreBoostAction(handle, pid, pass.RendererCreation, action);
+				if (matchesRestoreBoostAction)
 				{
 					lock (sync)
 					{
@@ -3429,11 +3429,11 @@ namespace PaviseApp
 						ActionFailureStore.CancelApply(action, pass.ActionTarget);
 					}
 				}
-				RecordAutomation(key, (!flag2) ? "restore-failed" : (flag ? "restored" : "unchanged"));
-				return flag2;
+				RecordAutomation(key, (!matchesRestoreBoostAction) ? "restore-failed" : (anyConditionMet ? "restored" : "unchanged"));
+				return matchesRestoreBoostAction;
 			}
-			bool flag3 = ApplyIsolatedBoostAction(handle, pid, pass, action, desired, write);
-			if (flag3)
+			bool applyIsolatedBoostActionSucceeded = ApplyIsolatedBoostAction(handle, pid, pass, action, desired, write);
+			if (applyIsolatedBoostActionSucceeded)
 			{
 				lock (sync)
 				{
@@ -3444,8 +3444,8 @@ namespace PaviseApp
 					value.Add(action);
 				}
 			}
-			RecordAutomation(key, flag3 ? "applied" : (pass.WriteDenied ? "unsupported" : "unverified"));
-			return flag3;
+			RecordAutomation(key, applyIsolatedBoostActionSucceeded ? "applied" : (pass.WriteDenied ? "unsupported" : "unverified"));
+			return applyIsolatedBoostActionSucceeded;
 		}
 		private static bool CpuTicks(int pid, out long ticks, out long creation)
 		{
@@ -3493,8 +3493,8 @@ namespace PaviseApp
 			{
 				return 0.0;
 			}
-			int num = Math.Max(1, Environment.ProcessorCount);
-			double val = (double)cpuTicks * 100.0 / ((double)duration.Ticks * (double)num);
+			int processorCountLimit = Math.Max(1, Environment.ProcessorCount);
+			double val = (double)cpuTicks * 100.0 / ((double)duration.Ticks * (double)processorCountLimit);
 			return Math.Max(0.0, Math.Min(100.0, val));
 		}
 		internal static bool LaneSupported(PerformancePreset mode)
@@ -3507,16 +3507,16 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = false;
+			bool reanchorToStickyInstanceReady = false;
 			foreach (int verifiedStickyPid in verifiedStickyPids)
 			{
 				if (verifiedStickyPid == sticky.RendererPid)
 				{
-					flag = true;
+					reanchorToStickyInstanceReady = true;
 					break;
 				}
 			}
-			if (!flag)
+			if (!reanchorToStickyInstanceReady)
 			{
 				return false;
 			}

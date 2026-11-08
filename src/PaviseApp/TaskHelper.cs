@@ -43,9 +43,9 @@ namespace PaviseApp
 
 		public static bool TaskExists()
 		{
-			bool flag = Run("/Query /TN PaviseAuto") == 0;
-			cachedExists = (flag ? 1 : 0);
-			return flag;
+			bool matchesRun = Run("/Query /TN PaviseAuto") == 0;
+			cachedExists = (matchesRun ? 1 : 0);
+			return matchesRun;
 		}
 
 		public static bool TaskExistsCached()
@@ -62,11 +62,11 @@ namespace PaviseApp
 			lock (startupGate)
 			{
 				string stdout;
-				bool flag = RunCore("/Query /TN PaviseAuto /XML", true, out stdout) == 0;
-				cachedExists = (flag ? 1 : 0);
-				bool flag2 = flag && StartupTaskEnabled(stdout);
-				cachedEnabled = (flag2 ? 1 : 0);
-				return flag2;
+				bool matchesRunCore = RunCore("/Query /TN PaviseAuto /XML", true, out stdout) == 0;
+				cachedExists = (matchesRunCore ? 1 : 0);
+				bool matchesMatchesRunCore = matchesRunCore && StartupTaskEnabled(stdout);
+				cachedEnabled = (matchesMatchesRunCore ? 1 : 0);
+				return matchesMatchesRunCore;
 			}
 		}
 
@@ -100,12 +100,12 @@ namespace PaviseApp
 
 		private static int RegisterStartupTask(string executable, string arguments, bool allowFallback)
 		{
-			int num = CreateStartupTaskFromXml(executable, arguments);
-			if (num != 0 && allowFallback)
+			int startupTaskFromXml = CreateStartupTaskFromXml(executable, arguments);
+			if (startupTaskFromXml != 0 && allowFallback)
 			{
-				num = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN PaviseAuto /TR " + QuoteCommandArgument(BuildStartupCommandLine(executable, arguments)));
+				startupTaskFromXml = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN PaviseAuto /TR " + QuoteCommandArgument(BuildStartupCommandLine(executable, arguments)));
 			}
-			if (num == 0)
+			if (startupTaskFromXml == 0)
 			{
 				cachedExists = 1;
 				cachedEnabled = 1;
@@ -113,7 +113,7 @@ namespace PaviseApp
 				Settings.SaveStr("AutostartRepairFails", "0");
 				RemoveStalePayloads(executable);
 			}
-			return num;
+			return startupTaskFromXml;
 		}
 
 		private static void RemoveStalePayloads(string executable)
@@ -121,10 +121,10 @@ namespace PaviseApp
 			try
 			{
 				if (!SelfUpdateInstaller.AllowStartupMaintenance(Application.ExecutablePath)) return;
-				int num = StartupPayload.Cleanup(StartupPayload.ManagedRoot, executable, Application.ExecutablePath);
-				if (num > 0)
+				int cleanupResult = StartupPayload.Cleanup(StartupPayload.ManagedRoot, executable, Application.ExecutablePath);
+				if (cleanupResult > 0)
 				{
-					Logger.Log(((Lang.Cur == 0) ? "已删除不再使用的自启副本 " : "Removed unused autostart copies: ") + num);
+					Logger.Log(((Lang.Cur == 0) ? "已删除不再使用的自启副本 " : "Removed unused autostart copies: ") + cleanupResult);
 				}
 			}
 			catch
@@ -134,26 +134,26 @@ namespace PaviseApp
 
 		private static int CreateStartupTaskFromXml(string executable, string arguments)
 		{
-			string text = null;
+			string combinedPath = null;
 			try
 			{
-				string text2 = BuildStartupTaskXml(executable, arguments);
-				if (text2 == null)
+				string startupTaskXml = BuildStartupTaskXml(executable, arguments);
+				if (startupTaskXml == null)
 				{
 					lastSchtasksError = Lang.T("t.taskhelper.14");
 					return -1;
 				}
 				string path = (string.IsNullOrEmpty(Paths.Data) ? Path.GetTempPath() : Paths.Data);
-				text = Path.Combine(path, "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
-				using (FileStream fileStream = new FileStream(text, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+				combinedPath = Path.Combine(path, "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
 				{
 					byte[] preamble = Encoding.Unicode.GetPreamble();
-					byte[] bytes = Encoding.Unicode.GetBytes(text2);
+					byte[] bytes = Encoding.Unicode.GetBytes(startupTaskXml);
 					fileStream.Write(preamble, 0, preamble.Length);
 					fileStream.Write(bytes, 0, bytes.Length);
 					fileStream.Flush();
 				}
-				return Run("/Create /F /TN PaviseAuto /XML \"" + text + "\"");
+				return Run("/Create /F /TN PaviseAuto /XML \"" + combinedPath + "\"");
 			}
 			catch (Exception ex)
 			{
@@ -164,9 +164,9 @@ namespace PaviseApp
 			{
 				try
 				{
-					if (text != null)
+					if (combinedPath != null)
 					{
-						File.Delete(text);
+						File.Delete(combinedPath);
 					}
 				}
 				catch
@@ -182,29 +182,29 @@ namespace PaviseApp
 
 		internal static string BuildStartupTaskXml(string exePath, string arguments)
 		{
-			string text;
+			string value;
 			try
 			{
 				using (WindowsIdentity windowsIdentity = WindowsIdentity.GetCurrent())
 				{
-					text = windowsIdentity.User.Value;
+					value = windowsIdentity.User.Value;
 				}
 			}
 			catch
 			{
-				text = null;
+				value = null;
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(value))
 			{
-				text = Environment.UserDomainName + "\\" + Environment.UserName;
-				if (text.Length <= 1)
+				value = Environment.UserDomainName + "\\" + Environment.UserName;
+				if (value.Length <= 1)
 				{
 					return null;
 				}
 			}
-			string text2 = XmlText(exePath);
-			string text3 = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
-			return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo><URI>\\PaviseAuto</URI></RegistrationInfo>\r\n  <Principals><Principal id=\"Author\"><UserId>" + XmlText(text) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\r\n  <Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>\r\n  <Triggers><LogonTrigger><StartBoundary>" + text3 + "</StartBoundary></LogonTrigger></Triggers>\r\n  <Actions Context=\"Author\"><Exec><Command>" + text2 + "</Command><Arguments>" + XmlText(arguments) + "</Arguments><WorkingDirectory>" + XmlText(Path.GetDirectoryName(exePath)) + "</WorkingDirectory></Exec></Actions>\r\n</Task>";
+			string xmlTextResult = XmlText(exePath);
+			string nowText = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+			return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo><URI>\\PaviseAuto</URI></RegistrationInfo>\r\n  <Principals><Principal id=\"Author\"><UserId>" + XmlText(value) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\r\n  <Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>\r\n  <Triggers><LogonTrigger><StartBoundary>" + nowText + "</StartBoundary></LogonTrigger></Triggers>\r\n  <Actions Context=\"Author\"><Exec><Command>" + xmlTextResult + "</Command><Arguments>" + XmlText(arguments) + "</Arguments><WorkingDirectory>" + XmlText(Path.GetDirectoryName(exePath)) + "</WorkingDirectory></Exec></Actions>\r\n</Task>";
 		}
 
 		private static string XmlText(string value)
@@ -229,28 +229,28 @@ namespace PaviseApp
 		internal static string QuoteCommandArgument(string value)
 		{
 			StringBuilder stringBuilder = new StringBuilder("\"");
-			int num = 0;
-			string text = value ?? "";
-			foreach (char c in text)
+			int processedCount = 0;
+			string valueOffset = value ?? "";
+			foreach (char c in valueOffset)
 			{
 				switch (c)
 				{
 				case '\\':
-					num++;
+					processedCount++;
 					break;
 				case '"':
-					stringBuilder.Append('\\', num * 2 + 1);
+					stringBuilder.Append('\\', processedCount * 2 + 1);
 					stringBuilder.Append(c);
-					num = 0;
+					processedCount = 0;
 					break;
 				default:
-					stringBuilder.Append('\\', num);
-					num = 0;
+					stringBuilder.Append('\\', processedCount);
+					processedCount = 0;
 					stringBuilder.Append(c);
 					break;
 				}
 			}
-			stringBuilder.Append('\\', num * 2);
+			stringBuilder.Append('\\', processedCount * 2);
 			stringBuilder.Append('"');
 			return stringBuilder.ToString();
 		}
@@ -261,10 +261,10 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text = path.Replace('/', '\\').ToLowerInvariant();
-			if (!text.Contains("\\temp\\") && !text.Contains("\\tmp\\") && !text.Contains("\\xwechat_files\\") && !text.Contains("\\wechat files\\") && !text.Contains("\\inetcache\\"))
+			string toLowerInvariantResult = path.Replace('/', '\\').ToLowerInvariant();
+			if (!toLowerInvariantResult.Contains("\\temp\\") && !toLowerInvariantResult.Contains("\\tmp\\") && !toLowerInvariantResult.Contains("\\xwechat_files\\") && !toLowerInvariantResult.Contains("\\wechat files\\") && !toLowerInvariantResult.Contains("\\inetcache\\"))
 			{
-				return text.Contains("\\$recycle.bin\\");
+				return toLowerInvariantResult.Contains("\\$recycle.bin\\");
 			}
 			return true;
 		}
@@ -273,15 +273,15 @@ namespace PaviseApp
 		{
 			lock (startupGate)
 			{
-				int num = Run("/Delete /F /TN PaviseAuto");
-				if (num == 0)
+				int runResult = Run("/Delete /F /TN PaviseAuto");
+				if (runResult == 0)
 				{
 					cachedExists = 0;
 					cachedEnabled = 0;
 					Settings.SaveStr("AutostartExe", "");
 					RemoveStalePayloads(null);
 				}
-				return num;
+				return runResult;
 			}
 		}
 
@@ -290,8 +290,8 @@ namespace PaviseApp
 			lastSchtasksError = null;
 			lock (startupGate)
 			{
-				bool flag = RemoveStartupTaskForUninstall(ReadStartupTaskPresence, DeleteStartupTask);
-				if (flag)
+				bool removeStartupTaskForUninstallSucceeded = RemoveStartupTaskForUninstall(ReadStartupTaskPresence, DeleteStartupTask);
+				if (removeStartupTaskForUninstallSucceeded)
 				{
 					try
 					{
@@ -301,7 +301,7 @@ namespace PaviseApp
 					{
 					}
 				}
-				return flag;
+				return removeStartupTaskForUninstallSucceeded;
 			}
 		}
 
@@ -309,16 +309,16 @@ namespace PaviseApp
 		{
 			try
 			{
-				bool? flag = readPresence();
-				if (!flag.HasValue)
+				bool? readPresenceResult = readPresence();
+				if (!readPresenceResult.HasValue)
 				{
 					return false;
 				}
-				if (flag.Value)
+				if (readPresenceResult.Value)
 				{
 					remove();
-					flag = readPresence();
-					if (!flag.HasValue || flag.Value)
+					readPresenceResult = readPresence();
+					if (!readPresenceResult.HasValue || readPresenceResult.Value)
 					{
 						return false;
 					}
@@ -335,25 +335,25 @@ namespace PaviseApp
 
 		private static bool? ReadStartupTaskPresence()
 		{
-			object obj = null;
-			object obj2 = null;
-			object obj3 = null;
+			object instance = null;
+			object invokeMemberResult = null;
+			object invokeMemberResult2 = null;
 			try
 			{
 				Type typeFromProgID = Type.GetTypeFromProgID("Schedule.Service", true);
-				obj = Activator.CreateInstance(typeFromProgID);
-				typeFromProgID.InvokeMember("Connect", BindingFlags.InvokeMethod, null, obj, new object[4]
+				instance = Activator.CreateInstance(typeFromProgID);
+				typeFromProgID.InvokeMember("Connect", BindingFlags.InvokeMethod, null, instance, new object[4]
 				{
 					Type.Missing,
 					Type.Missing,
 					Type.Missing,
 					Type.Missing
 				});
-				obj2 = typeFromProgID.InvokeMember("GetFolder", BindingFlags.InvokeMethod, null, obj, new object[1] { "\\" });
+				invokeMemberResult = typeFromProgID.InvokeMember("GetFolder", BindingFlags.InvokeMethod, null, instance, new object[1] { "\\" });
 				try
 				{
-					obj3 = obj2.GetType().InvokeMember("GetTask", BindingFlags.InvokeMethod, null, obj2, new object[1] { "PaviseAuto" });
-					return (obj3 == null) ? null : new bool?(true);
+					invokeMemberResult2 = invokeMemberResult.GetType().InvokeMember("GetTask", BindingFlags.InvokeMethod, null, invokeMemberResult, new object[1] { "PaviseAuto" });
+					return (invokeMemberResult2 == null) ? null : new bool?(true);
 				}
 				catch (Exception innerException)
 				{
@@ -376,14 +376,14 @@ namespace PaviseApp
 			}
 			finally
 			{
-				object[] array = new object[3] { obj3, obj2, obj };
-				foreach (object obj4 in array)
+				object[] instanceItems = new object[3] { invokeMemberResult2, invokeMemberResult, instance };
+				foreach (object instanceEntry in instanceItems)
 				{
-					if (obj4 != null && Marshal.IsComObject(obj4))
+					if (instanceEntry != null && Marshal.IsComObject(instanceEntry))
 					{
 						try
 						{
-							Marshal.ReleaseComObject(obj4);
+							Marshal.ReleaseComObject(instanceEntry);
 						}
 						catch
 						{
@@ -411,47 +411,47 @@ namespace PaviseApp
 						Logger.Warn(Lang.T("log.taskhelper.1"));
 						return;
 					}
-					bool flag = StartupTaskEnabled(stdout);
-					cachedEnabled = (flag ? 1 : 0);
-					if (!flag)
+					bool startupTaskEnabledSucceeded = StartupTaskEnabled(stdout);
+					cachedEnabled = (startupTaskEnabledSucceeded ? 1 : 0);
+					if (!startupTaskEnabledSucceeded)
 					{
 						return;
 					}
-					string text = ParseTaskCommandXml(stdout);
-					if (string.IsNullOrWhiteSpace(text))
+					string taskCommandXml = ParseTaskCommandXml(stdout);
+					if (string.IsNullOrWhiteSpace(taskCommandXml))
 					{
 						Logger.Warn(Lang.T("log.taskhelper.1"));
 						return;
 					}
 					string a = ParseTaskArgumentsXml(stdout);
-					if (ShouldPreserveLegacyTarget(executablePath, text, StartupPayload.ManagedRoot))
+					if (ShouldPreserveLegacyTarget(executablePath, taskCommandXml, StartupPayload.ManagedRoot))
 					{
 						Logger.Log(Lang.T("log.taskhelper.2") + executablePath + Lang.T("log.taskhelper.3"));
 						return;
 					}
-					string text2 = BuildStartupArguments(Paths.Data);
-					string text3 = StartupPayload.Ensure(executablePath);
-					bool flag2 = !string.Equals(a, text2, StringComparison.OrdinalIgnoreCase);
-					bool flag3 = StartupTaskSettingsStale(stdout);
-					bool flag4 = NeedsStartupTaskRefresh(text3, text);
-					if (!flag4 && !flag2 && !flag3)
+					string startupArguments = BuildStartupArguments(Paths.Data);
+					string ensureResult = StartupPayload.Ensure(executablePath);
+					bool isNotValuesEqual = !string.Equals(a, startupArguments, StringComparison.OrdinalIgnoreCase);
+					bool startupTaskSettingsStaleSucceeded = StartupTaskSettingsStale(stdout);
+					bool needsStartupTaskRefresh = NeedsStartupTaskRefresh(ensureResult, taskCommandXml);
+					if (!needsStartupTaskRefresh && !isNotValuesEqual && !startupTaskSettingsStaleSucceeded)
 					{
-						Settings.SaveStr("AutostartExe", text3);
+						Settings.SaveStr("AutostartExe", ensureResult);
 						Settings.SaveStr("AutostartRepairFails", "0");
-						RemoveStalePayloads(text3);
+						RemoveStalePayloads(ensureResult);
 					}
-					else if (flag4 || flag2)
+					else if (needsStartupTaskRefresh || isNotValuesEqual)
 					{
-						Logger.Log(flag4 ? (Lang.T("t.taskhelper.4") + (text ?? Lang.T("t.taskhelper.5")) + " " + text3) : (Lang.T("t.taskhelper.6") + text2 + Lang.T("t.taskhelper.7")));
-						int num = RegisterStartupTask(text3, text2, true);
-						if (num != 0)
+						Logger.Log(needsStartupTaskRefresh ? (Lang.T("t.taskhelper.4") + (taskCommandXml ?? Lang.T("t.taskhelper.5")) + " " + ensureResult) : (Lang.T("t.taskhelper.6") + startupArguments + Lang.T("t.taskhelper.7")));
+						int registerStartupTaskResult = RegisterStartupTask(ensureResult, startupArguments, true);
+						if (registerStartupTaskResult != 0)
 						{
-							Logger.Warn((flag4 ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9")) + num + DescribeSchtasksError());
+							Logger.Warn((needsStartupTaskRefresh ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9")) + registerStartupTaskResult + DescribeSchtasksError());
 						}
 					}
 					else
 					{
-						RepairStartupTaskSettings(text3, text2);
+						RepairStartupTaskSettings(ensureResult, startupArguments);
 					}
 				}
 				catch (Exception ex)
@@ -478,11 +478,11 @@ namespace PaviseApp
 
 		private static void RepairStartupTaskSettings(string executable, string arguments)
 		{
-			int num = RepairFailCount();
-			if (num < 3)
+			int processedCount = RepairFailCount();
+			if (processedCount < 3)
 			{
-				int num2 = CreateStartupTaskFromXml(executable, arguments);
-				if (num2 == 0)
+				int startupTaskFromXml = CreateStartupTaskFromXml(executable, arguments);
+				if (startupTaskFromXml == 0)
 				{
 					cachedExists = 1;
 					cachedEnabled = 1;
@@ -493,9 +493,9 @@ namespace PaviseApp
 				}
 				else
 				{
-					num++;
-					Settings.SaveStr("AutostartRepairFails", num.ToString(CultureInfo.InvariantCulture));
-					Logger.Warn((num >= 3) ? (Lang.T("log.taskhelper.11") + num2 + DescribeSchtasksError() + Lang.T("t.taskhelper.12")) : (Lang.T("log.taskhelper.13") + num2 + DescribeSchtasksError()));
+					processedCount++;
+					Settings.SaveStr("AutostartRepairFails", processedCount.ToString(CultureInfo.InvariantCulture));
+					Logger.Warn((processedCount >= 3) ? (Lang.T("log.taskhelper.11") + startupTaskFromXml + DescribeSchtasksError() + Lang.T("t.taskhelper.12")) : (Lang.T("log.taskhelper.13") + startupTaskFromXml + DescribeSchtasksError()));
 				}
 			}
 		}
@@ -512,10 +512,10 @@ namespace PaviseApp
 
 		private static string DescribeSchtasksError()
 		{
-			string text = lastSchtasksError;
-			if (!string.IsNullOrEmpty(text))
+			string lastSchtasksErrorSnapshot = lastSchtasksError;
+			if (!string.IsNullOrEmpty(lastSchtasksErrorSnapshot))
 			{
-				return Lang.T("t.taskhelper.16") + text;
+				return Lang.T("t.taskhelper.16") + lastSchtasksErrorSnapshot;
 			}
 			return "";
 		}
@@ -811,8 +811,8 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				string text = (xmlNode.InnerText ?? "").Trim().Trim('"');
-				return (text.Length == 0) ? null : text;
+				string trimTrimmed = (xmlNode.InnerText ?? "").Trim().Trim('"');
+				return (trimTrimmed.Length == 0) ? null : trimTrimmed;
 			}
 			catch
 			{
@@ -906,27 +906,27 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = raw.Split(new char[2] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+			string[] rawParts = raw.Split(new char[2] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 			List<string> list = new List<string>();
-			string[] array2 = array;
-			foreach (string text in array2)
+			string[] textEntries = rawParts;
+			foreach (string entryText in textEntries)
 			{
-				string text2 = text.Trim();
-				if (text2.Length > 0)
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.Length > 0)
 				{
-					list.Add(text2);
+					list.Add(entryTextTrimmed);
 				}
 			}
 			if (list.Count == 0)
 			{
 				return null;
 			}
-			string text3 = string.Join(" ", list.ToArray());
-			if (text3.Length <= 240)
+			string joinResult = string.Join(" ", list.ToArray());
+			if (joinResult.Length <= 240)
 			{
-				return text3;
+				return joinResult;
 			}
-			return text3.Substring(0, 240);
+			return joinResult.Substring(0, 240);
 		}
 	}
 }

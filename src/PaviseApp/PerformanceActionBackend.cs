@@ -39,10 +39,10 @@ namespace PaviseApp
 
 		internal static string LegacyDefenderRestoreScript(string value)
 		{
-			string[] array = (value ?? "").Split(',');
+			string[] parts = (value ?? "").Split(',');
 			bool result;
 			bool result2;
-			if (array.Length != 2 || !bool.TryParse(array[0], out result) || !bool.TryParse(array[1], out result2))
+			if (parts.Length != 2 || !bool.TryParse(parts[0], out result) || !bool.TryParse(parts[1], out result2))
 			{
 				return null;
 			}
@@ -103,19 +103,19 @@ namespace PaviseApp
 							return false;
 						}
 						fileStream.Position = 60L;
-						uint num = binaryReader.ReadUInt32();
-						if (num > fileStream.Length - 26)
+						uint positionValue = binaryReader.ReadUInt32();
+						if (positionValue > fileStream.Length - 26)
 						{
 							return false;
 						}
-						fileStream.Position = num;
+						fileStream.Position = positionValue;
 						if (binaryReader.ReadUInt32() != 17744)
 						{
 							return false;
 						}
-						ushort num2 = binaryReader.ReadUInt16();
-						fileStream.Position = num + 24;
-						return num2 == 332 && binaryReader.ReadUInt16() == 267;
+						ushort uInt16 = binaryReader.ReadUInt16();
+						fileStream.Position = positionValue + 24;
+						return uInt16 == 332 && binaryReader.ReadUInt16() == 267;
 					}
 				}
 			}
@@ -132,14 +132,14 @@ namespace PaviseApp
 
 		internal static bool MitigationsOff(string value, bool includeSimExec)
 		{
-			string[] array = (value ?? "").Split(';');
-			if (array.Length != 5 && array.Length != 6)
+			string[] parts = (value ?? "").Split(';');
+			if (parts.Length != 5 && parts.Length != 6)
 			{
 				return false;
 			}
-			for (int i = 0; i < (includeSimExec ? array.Length : 5); i++)
+			for (int i = 0; i < (includeSimExec ? parts.Length : 5); i++)
 			{
-				if (!array[i].StartsWith("OFF:", StringComparison.Ordinal))
+				if (!parts[i].StartsWith("OFF:", StringComparison.Ordinal))
 				{
 					return false;
 				}
@@ -150,13 +150,13 @@ namespace PaviseApp
 		internal static string MitigationQuery(string target)
 		{
 			StringBuilder stringBuilder = new StringBuilder("Import-Module ProcessMitigations; $q=Get-ProcessMitigation -Name " + Quote(target) + "; $r=@(); ");
-			string[] array = MitigationNames(true);
-			foreach (string text in array)
+			string[] mitigationNamesResult = MitigationNames(true);
+			foreach (string entryText in mitigationNamesResult)
 			{
-				string text2 = ((text == "CFG") ? "CFG" : "Payload");
-				string text3 = ((text == "CFG") ? "Enable" : text);
-				string text4 = ((text == "CFG") ? "OverrideCFG" : ("Override" + text));
-				stringBuilder.Append("if($null-eq$q){$r+='NOTSET:False'}else{$r+=($q." + text2 + "." + text3 + ".ToString()+':'+$q." + text2 + "." + text4 + ".ToString())}; ");
+				string message = ((entryText == "CFG") ? "CFG" : "Payload");
+				string message2 = ((entryText == "CFG") ? "Enable" : entryText);
+				string entryTextOffset = ((entryText == "CFG") ? "OverrideCFG" : ("Override" + entryText));
+				stringBuilder.Append("if($null-eq$q){$r+='NOTSET:False'}else{$r+=($q." + message + "." + message2 + ".ToString()+':'+$q." + message + "." + entryTextOffset + ".ToString())}; ");
 			}
 			return stringBuilder.Append("Write-Output ($r -join ';')").ToString();
 		}
@@ -236,14 +236,14 @@ namespace PaviseApp
 				return true;
 			case "AutoDefenderSessionV1":
 			{
-				string text = LegacyDefenderRestoreScript(value);
-				if (text == null)
+				string legacyDefenderRestoreScriptResult = LegacyDefenderRestoreScript(value);
+				if (legacyDefenderRestoreScriptResult == null)
 				{
 					return false;
 				}
-				if (text.Length > 0)
+				if (legacyDefenderRestoreScriptResult.Length > 0)
 				{
-					Script(text);
+					Script(legacyDefenderRestoreScriptResult);
 				}
 				return true;
 			}
@@ -348,12 +348,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = parts;
-			foreach (string text in array)
+			string[] partsSnapshot = parts;
+			foreach (string entryText in partsSnapshot)
 			{
-				string[] array2 = text.Split(':');
+				string[] entryTextParts = entryText.Split(':');
 				bool result;
-				if (array2.Length != 2 || !bool.TryParse(array2[1], out result) || (array2[0] != "ON" && array2[0] != "OFF" && array2[0] != "NOTSET"))
+				if (entryTextParts.Length != 2 || !bool.TryParse(entryTextParts[1], out result) || (entryTextParts[0] != "ON" && entryTextParts[0] != "OFF" && entryTextParts[0] != "NOTSET"))
 				{
 					return false;
 				}
@@ -370,50 +370,50 @@ namespace PaviseApp
 				return null;
 			}
 			string[] parts3;
-			bool flag = MitigationSnapshot(receipt.Expected, out parts3);
-			if (receipt.Committed && (!flag || parts3.Length < parts.Length))
+			bool mitigationSnapshotSucceeded = MitigationSnapshot(receipt.Expected, out parts3);
+			if (receipt.Committed && (!mitigationSnapshotSucceeded || parts3.Length < parts.Length))
 			{
 				return null;
 			}
-			if (!receipt.Committed && !flag && receipt.Expected != "off32" && receipt.Expected != "off64")
+			if (!receipt.Committed && !mitigationSnapshotSucceeded && receipt.Expected != "off32" && receipt.Expected != "off64")
 			{
 				return null;
 			}
-			if (flag && parts3.Length < parts.Length)
+			if (mitigationSnapshotSucceeded && parts3.Length < parts.Length)
 			{
 				return null;
 			}
-			string[] array = (string[])parts2.Clone();
+			string[] cloneResult = (string[])parts2.Clone();
 			for (int i = 0; i < parts.Length; i++)
 			{
-				bool num;
-				if (!flag)
+				bool startsWith;
+				if (!mitigationSnapshotSucceeded)
 				{
 					if (i >= 5 && !(receipt.Expected == "off32"))
 					{
 						continue;
 					}
-					num = parts2[i].StartsWith("OFF:", StringComparison.Ordinal);
+					startsWith = parts2[i].StartsWith("OFF:", StringComparison.Ordinal);
 				}
 				else
 				{
-					num = parts2[i] == parts3[i];
+					startsWith = parts2[i] == parts3[i];
 				}
-				if (num)
+				if (startsWith)
 				{
-					array[i] = parts[i];
+					cloneResult[i] = parts[i];
 				}
 			}
-			string[] array2 = (string[])parts2.Clone();
+			string[] cloneResult2 = (string[])parts2.Clone();
 			for (int j = 0; j < ((wanted == "off32") ? 6 : 5); j++)
 			{
-				array2[j] = "OFF:" + parts2[j].Split(':')[1];
+				cloneResult2[j] = "OFF:" + parts2[j].Split(':')[1];
 			}
 			PerformanceActionStore.Receipt receipt2 = new PerformanceActionStore.Receipt();
 			receipt2.Id = receipt.Id;
 			receipt2.Target = receipt.Target;
-			receipt2.Original = string.Join(";", array);
-			receipt2.Expected = string.Join(";", array2);
+			receipt2.Original = string.Join(";", cloneResult);
+			receipt2.Expected = string.Join(";", cloneResult2);
 			receipt2.Committed = false;
 			return receipt2;
 		}
@@ -459,20 +459,20 @@ namespace PaviseApp
 				}
 				return PerformanceActionStore.RestoreComponents(r, () => Read(r.Id, r.Target), (string value) => Write(r.Id, r.Target, value), delegate(string current)
 				{
-					string[] array = current.Split(separator);
-					bool flag = r.Id == "AutoGameMitigationsV1" && original.Length == 5 && array.Length == 6;
-					if (array.Length != original.Length && !flag)
+					string[] currentParts = current.Split(separator);
+					bool allConditionsMet = r.Id == "AutoGameMitigationsV1" && original.Length == 5 && currentParts.Length == 6;
+					if (currentParts.Length != original.Length && !allConditionsMet)
 					{
 						return (string)null;
 					}
-					if (expected != null && expected.Length != array.Length && (!flag || expected.Length != 5))
+					if (expected != null && expected.Length != currentParts.Length && (!allConditionsMet || expected.Length != 5))
 					{
 						return (string)null;
 					}
-					string[] array2 = (string[])array.Clone();
+					string[] cloneResult = (string[])currentParts.Clone();
 					for (int i = 0; i < original.Length; i++)
 					{
-						bool num;
+						bool startsWith;
 						if (expected == null)
 						{
 							if (!(r.Id == "AutoDefenderSessionV1"))
@@ -481,23 +481,23 @@ namespace PaviseApp
 								{
 									continue;
 								}
-								num = array[i].StartsWith("OFF:", StringComparison.Ordinal);
+								startsWith = currentParts[i].StartsWith("OFF:", StringComparison.Ordinal);
 							}
 							else
 							{
-								num = array[i] == "True";
+								startsWith = currentParts[i] == "True";
 							}
 						}
 						else
 						{
-							num = array[i] == expected[i];
+							startsWith = currentParts[i] == expected[i];
 						}
-						if (num)
+						if (startsWith)
 						{
-							array2[i] = original[i];
+							cloneResult[i] = original[i];
 						}
 					}
-					return string.Join(separator.ToString(), array2);
+					return string.Join(separator.ToString(), cloneResult);
 				});
 			}
 			return PerformanceActionStore.Restore(r, () => Read(r.Id, r.Target), (string value) => Write(r.Id, r.Target, value), (string value) => value == r.Expected);
@@ -523,24 +523,24 @@ namespace PaviseApp
 
 		internal static string ReadRegistry(string target)
 		{
-			string[] array = target.Split('\n');
-			if (array.Length != 2 || !array[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
+			string[] targetParts = target.Split('\n');
+			if (targetParts.Length != 2 || !targetParts[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
 			{
 				throw new FormatException("Invalid registry target");
 			}
-			using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(array[0]))
+			using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(targetParts[0]))
 			{
-				object obj = ((registryKey == null) ? null : registryKey.GetValue(array[1]));
-				if (obj == null)
+				object value = ((registryKey == null) ? null : registryKey.GetValue(targetParts[1]));
+				if (value == null)
 				{
 					return "absent";
 				}
-				switch (registryKey.GetValueKind(array[1]))
+				switch (registryKey.GetValueKind(targetParts[1]))
 				{
 				case RegistryValueKind.DWord:
-					return "d:" + ((int)obj).ToString(CultureInfo.InvariantCulture);
+					return "d:" + ((int)value).ToString(CultureInfo.InvariantCulture);
 				case RegistryValueKind.Binary:
-					return "b:" + Convert.ToBase64String((byte[])obj);
+					return "b:" + Convert.ToBase64String((byte[])value);
 				default:
 					throw new InvalidOperationException("Unexpected registry value type");
 				}
@@ -549,12 +549,12 @@ namespace PaviseApp
 
 		private static bool WriteRegistry(string target, string value)
 		{
-			string[] array = target.Split('\n');
-			if (array.Length != 2 || !array[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
+			string[] targetParts = target.Split('\n');
+			if (targetParts.Length != 2 || !targetParts[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
 			{
 				return false;
 			}
-			using (RegistryKey registryKey = Registry.LocalMachine.CreateSubKey(array[0]))
+			using (RegistryKey registryKey = Registry.LocalMachine.CreateSubKey(targetParts[0]))
 			{
 				if (registryKey == null)
 				{
@@ -562,11 +562,11 @@ namespace PaviseApp
 				}
 				if (value == "absent")
 				{
-					registryKey.DeleteValue(array[1], false);
+					registryKey.DeleteValue(targetParts[1], false);
 				}
 				else if (value.StartsWith("d:", StringComparison.Ordinal))
 				{
-					registryKey.SetValue(array[1], int.Parse(value.Substring(2), CultureInfo.InvariantCulture), RegistryValueKind.DWord);
+					registryKey.SetValue(targetParts[1], int.Parse(value.Substring(2), CultureInfo.InvariantCulture), RegistryValueKind.DWord);
 				}
 				else
 				{
@@ -574,7 +574,7 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					registryKey.SetValue(array[1], Convert.FromBase64String(value.Substring(2)), RegistryValueKind.Binary);
+					registryKey.SetValue(targetParts[1], Convert.FromBase64String(value.Substring(2)), RegistryValueKind.Binary);
 				}
 			}
 			return true;
@@ -649,14 +649,14 @@ namespace PaviseApp
 						if (registryKey != null)
 						{
 							string[] subKeyNames = registryKey.GetSubKeyNames();
-							foreach (string text in subKeyNames)
+							foreach (string entryKey in subKeyNames)
 							{
-								string text2 = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e96c-e325-11ce-bfc1-08002be10318}\\" + text + "\\PowerSettings";
-								using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey(text2))
+								string message = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e96c-e325-11ce-bfc1-08002be10318}\\" + entryKey + "\\PowerSettings";
+								using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey(message))
 								{
 									if (registryKey2 != null && registryKey2.GetValue("PerformanceIdleTime") is byte[] && ((byte[])registryKey2.GetValue("PerformanceIdleTime")).Length == 4)
 									{
-										list.Add(RegistryTarget(text2, "PerformanceIdleTime"));
+										list.Add(RegistryTarget(message, "PerformanceIdleTime"));
 									}
 								}
 							}
@@ -665,27 +665,27 @@ namespace PaviseApp
 				}
 				else
 				{
-					bool flag = id == "EnvStorageIdleV1";
-					string text3 = "SYSTEM\\CurrentControlSet\\Enum\\" + (flag ? "SCSI" : "PCI");
-					string b = (flag ? "{4d36e967-e325-11ce-bfc1-08002be10318}" : "{4d36e97b-e325-11ce-bfc1-08002be10318}");
-					string name = (flag ? "DisableIdlePowerManagement" : ((id == "EnvStorageRuntimeV1") ? "DisableRuntimePowerManagement" : "DisableD3Cold"));
-					using (RegistryKey registryKey3 = Registry.LocalMachine.OpenSubKey(text3))
+					bool matchesId = id == "EnvStorageIdleV1";
+					string message2 = "SYSTEM\\CurrentControlSet\\Enum\\" + (matchesId ? "SCSI" : "PCI");
+					string b = (matchesId ? "{4d36e967-e325-11ce-bfc1-08002be10318}" : "{4d36e97b-e325-11ce-bfc1-08002be10318}");
+					string name = (matchesId ? "DisableIdlePowerManagement" : ((id == "EnvStorageRuntimeV1") ? "DisableRuntimePowerManagement" : "DisableD3Cold"));
+					using (RegistryKey registryKey3 = Registry.LocalMachine.OpenSubKey(message2))
 					{
 						if (registryKey3 != null)
 						{
 							string[] subKeyNames2 = registryKey3.GetSubKeyNames();
-							foreach (string text4 in subKeyNames2)
+							foreach (string entryKey2 in subKeyNames2)
 							{
-								using (RegistryKey registryKey4 = registryKey3.OpenSubKey(text4))
+								using (RegistryKey registryKey4 = registryKey3.OpenSubKey(entryKey2))
 								{
 									if (registryKey4 == null)
 									{
 										continue;
 									}
 									string[] subKeyNames3 = registryKey4.GetSubKeyNames();
-									foreach (string text5 in subKeyNames3)
+									foreach (string entryKey3 in subKeyNames3)
 									{
-										using (RegistryKey registryKey5 = registryKey4.OpenSubKey(text5))
+										using (RegistryKey registryKey5 = registryKey4.OpenSubKey(entryKey3))
 										{
 											if (registryKey5 == null || !string.Equals(registryKey5.GetValue("ClassGUID") as string, b, StringComparison.OrdinalIgnoreCase))
 											{
@@ -695,7 +695,7 @@ namespace PaviseApp
 											{
 												if (registryKey6 != null)
 												{
-													list.Add(RegistryTarget(text3 + "\\" + text4 + "\\" + text5 + "\\Device Parameters\\StorPort", name));
+													list.Add(RegistryTarget(message2 + "\\" + entryKey2 + "\\" + entryKey3 + "\\Device Parameters\\StorPort", name));
 												}
 											}
 										}
@@ -716,8 +716,8 @@ namespace PaviseApp
 			DriveInfo driveInfo = new DriveInfo(pathRoot);
 			using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\FileSystem"))
 			{
-				object obj = ((registryKey == null) ? null : registryKey.GetValue("NtfsDisable8dot3NameCreation"));
-				if (!(obj is int) || (int)obj != 2 || driveInfo.DriveType != DriveType.Fixed || driveInfo.DriveFormat != "NTFS")
+				object value = ((registryKey == null) ? null : registryKey.GetValue("NtfsDisable8dot3NameCreation"));
+				if (!(value is int) || (int)value != 2 || driveInfo.DriveType != DriveType.Fixed || driveInfo.DriveFormat != "NTFS")
 				{
 					return null;
 				}
@@ -761,12 +761,12 @@ namespace PaviseApp
 					throw new InvalidOperationException("NVIDIA profile unavailable");
 				}
 				uint value;
-				int num = NvApi.TryGetDword(session, profile, NvId(id), out value);
-				if (num < 0)
+				int dword = NvApi.TryGetDword(session, profile, NvId(id), out value);
+				if (dword < 0)
 				{
 					throw new InvalidOperationException("NVIDIA setting unavailable");
 				}
-				return (num == 0) ? "absent" : value.ToString(CultureInfo.InvariantCulture);
+				return (dword == 0) ? "absent" : value.ToString(CultureInfo.InvariantCulture);
 			}
 			finally
 			{
@@ -807,20 +807,20 @@ namespace PaviseApp
 
 		private static string MitigationNativeScript(string target, string value)
 		{
-			bool flag = value == "off32" || value == "off64";
-			string[] array = (flag ? null : (value ?? "").Split(';'));
-			if (!flag)
+			bool anyConditionMet = value == "off32" || value == "off64";
+			string[] parts = (anyConditionMet ? null : (value ?? "").Split(';'));
+			if (!anyConditionMet)
 			{
-				if (array.Length != 5 && array.Length != 6)
+				if (parts.Length != 5 && parts.Length != 6)
 				{
 					throw new FormatException("Invalid mitigation snapshot");
 				}
-				string[] array2 = array;
-				foreach (string text in array2)
+				string[] textEntries = parts;
+				foreach (string entryText in textEntries)
 				{
-					string[] array3 = text.Split(':');
+					string[] entryTextParts = entryText.Split(':');
 					bool result;
-					if (array3.Length != 2 || !bool.TryParse(array3[1], out result) || (array3[0] != "ON" && array3[0] != "OFF" && array3[0] != "NOTSET"))
+					if (entryTextParts.Length != 2 || !bool.TryParse(entryTextParts[1], out result) || (entryTextParts[0] != "ON" && entryTextParts[0] != "OFF" && entryTextParts[0] != "NOTSET"))
 					{
 						throw new FormatException("Invalid mitigation state");
 					}
@@ -828,20 +828,20 @@ namespace PaviseApp
 			}
 			StringBuilder stringBuilder = new StringBuilder("Import-Module ProcessMitigations -ErrorAction Stop -WarningAction Stop; if($null-eq('PaviseNativeMitigationRestore'-as[type])){Add-Type -TypeDefinition @'\n");
 			stringBuilder.Append("\nusing System;\nusing System.Reflection;\nusing System.Runtime.InteropServices;\nusing System.IO;\nusing Microsoft.Win32;\npublic static class PaviseNativeMitigationRestore\n{\nprivate const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;\nprivate const string Prefix = \"Microsoft.Samples.PowerShell.Commands.Ntdll\";\nprivate static readonly string[] Fields = { \"ControlFlowGuard\", \"EnableExportAddressFilter\", \"EnableExportAddressFilterPlus\", \"EnableImportAddressFilter\", \"EnableRopCallerCheck\", \"EnableRopSimExec\" };\nprivate sealed class Group\n{\ninternal Type Type;\ninternal object Kind, Buffer;\ninternal MethodInfo Query, Set;\ninternal string Name;\n}\nprivate static Group ReadGroup(Assembly assembly, string target, string typeName, string kindName, uint flags)\n{\nType native = assembly.GetType(Prefix, true);\nType type = assembly.GetType(Prefix + \"+\" + typeName, true);\nType kindType = assembly.GetType(Prefix + \"+IMAGE_MITIGATION_POLICY\", true);\nvar group = new Group { Type = type, Kind = Enum.Parse(kindType, kindName), Buffer = Activator.CreateInstance(type), Name = kindName };\nforeach (MethodInfo method in native.GetMethods(Flags))\n{\nif (!method.IsGenericMethodDefinition || method.GetGenericArguments().Length != 1 || method.GetParameters().Length != 4) continue;\nif (method.Name == \"QueryImageMitigationPolicy\") group.Query = method.MakeGenericMethod(type);\nif (method.Name == \"SetImageMitigationPolicy\") group.Set = method.MakeGenericMethod(type);\n}\nif (group.Query == null || group.Set == null) throw new NotSupportedException(\"Unsupported image mitigation API\");\nFieldInfo modules = type.GetField(\"ModuleList\");\nif (modules != null)\n{\nvar marshal = (MarshalAsAttribute)Attribute.GetCustomAttribute(modules, typeof(MarshalAsAttribute));\nif (marshal == null || marshal.SizeConst != 512) throw new NotSupportedException(\"Unsupported mitigation module list\");\nmodules.SetValue(group.Buffer, new char[marshal.SizeConst]);\n}\nobject[] args = { target, group.Kind, flags, group.Buffer };\nint status = (int)group.Query.Invoke(null, args);\n// An absent application has no local overrides. Every other error must retain its receipt.\nif (status != 0 && status != unchecked((int)0xc0000034)) ThrowStatus(\"Query \" + kindName, status);\nif (status == 0) group.Buffer = args[3];\nreturn group;\n}\nprivate static Group ReadCfg(Assembly assembly, string target)\n{ return ReadGroup(assembly, target, \"RTL_IMAGE_MITIGATION_CONTROL_FLOW_GUARD_POLICY\", \"ImageControlFlowGuardPolicy\", 0); }\nprivate static Group ReadPayload(Assembly assembly, string target, uint flags)\n{ return ReadGroup(assembly, target, \"RTL_IMAGE_MITIGATION_PAYLOAD_RESTRICTION_POLICY\", \"ImagePayloadRestrictionPolicy\", flags); }\nprivate static void ThrowStatus(string operation, int status)\n{ throw new InvalidOperationException(operation + \" failed: 0x\" + unchecked((uint)status).ToString(\"X8\")); }\nprivate static ulong ReadField(Group group, string name)\n{\nFieldInfo field = group.Type.GetField(name);\nif (field == null) throw new NotSupportedException(\"Missing mitigation field \" + name);\nobject policy = field.GetValue(group.Buffer);\nFieldInfo state = policy.GetType().GetField(\"PolicyState\");\nif (state == null || state.FieldType != typeof(ulong)) throw new NotSupportedException(\"Unsupported mitigation state\");\nreturn (ulong)state.GetValue(policy);\n}\nprivate static bool ChangeField(Group group, string name, ulong bits, ulong mask)\n{\nulong oldValue = ReadField(group, name), wanted = (oldValue & ~mask) | bits;\nif (wanted == oldValue) return false;\nFieldInfo field = group.Type.GetField(name);\nobject policy = field.GetValue(group.Buffer);\npolicy.GetType().GetField(\"PolicyState\").SetValue(policy, wanted);\nfield.SetValue(group.Buffer, policy);\nreturn true;\n}\nprivate static void Commit(Group group, string target, bool changed)\n{\nif (!changed) return;\nint status = (int)group.Set.Invoke(null, new object[] { target, group.Kind, (uint)0, group.Buffer });\nif (status != 0) ThrowStatus(\"Set \" + group.Name, status);\n}\nprivate static bool Same(byte[] a, byte[] b)\n{\nif (a == null || b == null || a.Length != b.Length) return false;\nfor (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;\nreturn true;\n}\nprivate static void ValidateTarget(string target)\n{\nif (string.IsNullOrEmpty(target) || !Path.IsPathRooted(target) || !string.Equals(Path.GetFullPath(target), target, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(target).Length == 0)\nthrow new NotSupportedException(\"An absolute canonical image path is required\");\n}\nprivate static void WriteCfg(Assembly assembly, string target, ulong bits, byte mask)\n{\nif (!Path.IsPathRooted(target) || Path.GetFileName(target).Length == 0)\nthrow new NotSupportedException(\"An absolute image path is required\");\nGroup cfg = ReadCfg(assembly, target);\nif ((ReadField(cfg, \"ControlFlowGuard\") & mask) == bits) return;\nstring path = Path.GetFullPath(target);\nconst string root = \"SOFTWARE\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Image File Execution Options\\\\\";\nusing (RegistryKey machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))\nusing (RegistryKey image = machine.OpenSubKey(root + Path.GetFileName(path), false))\n{\nif (image == null || !(image.GetValue(\"UseFilter\") is int) || (int)image.GetValue(\"UseFilter\") != 1)\nthrow new NotSupportedException(\"No image path mitigation filter\");\nstring match = null;\nforeach (string child in image.GetSubKeyNames())\n{\nusing (RegistryKey filter = image.OpenSubKey(child, false))\n{\nstring fullPath = filter == null ? null : filter.GetValue(\"FilterFullPath\") as string;\nif (fullPath == null || !string.Equals(fullPath, path, StringComparison.OrdinalIgnoreCase)) continue;\nif (match != null) throw new NotSupportedException(\"Multiple image mitigation filters\");\nmatch = child;\n}\n}\nif (match == null) throw new NotSupportedException(\"No exact image path mitigation filter\");\nusing (RegistryKey filter = machine.OpenSubKey(root + Path.GetFileName(path) + \"\\\\\" + match, true))\n{\nif (filter == null || !string.Equals(filter.GetValue(\"FilterFullPath\") as string, path, StringComparison.OrdinalIgnoreCase))\nthrow new NotSupportedException(\"Image mitigation filter changed\");\nfor (int attempt = 0; attempt < 3; attempt++)\n{\nbyte[] current = filter.GetValue(\"MitigationOptions\") as byte[];\nif (current == null || (current.Length != 16 && current.Length != 24) || filter.GetValueKind(\"MitigationOptions\") != RegistryValueKind.Binary)\nthrow new NotSupportedException(\"Unsupported image mitigation options\");\nulong actual = ReadField(ReadCfg(assembly, target), \"ControlFlowGuard\");\nif ((ulong)(current[5] & 7) != (actual & 7)) throw new NotSupportedException(\"Image mitigation layout does not match the native query\");\nif (!Same(current, filter.GetValue(\"MitigationOptions\") as byte[])) continue;\nbyte[] wanted = (byte[])current.Clone();\n// CFG uses bits 40..42. Changing this field through RtlSet also forces StrictCFG off.\n// Restrict this write to the exact path filter and preserve every other persisted bit.\nwanted[5] = (byte)((wanted[5] & ~mask) | (int)bits);\nif (Same(current, wanted)) return;\nfilter.SetValue(\"MitigationOptions\", wanted, RegistryValueKind.Binary);\nif (!Same(wanted, filter.GetValue(\"MitigationOptions\") as byte[]))\nthrow new InvalidOperationException(\"Image mitigation write could not be verified\");\nreturn;\n}\nthrow new InvalidOperationException(\"Image mitigation options kept changing\");\n}\n}\n}\nprivate static ulong[] Validate(string[] states)\n{\nif (states == null || states.Length != 5 && states.Length != Fields.Length) throw new FormatException(\"Invalid mitigation snapshot\");\nvar parsed = new ulong[states.Length];\nfor (int i = 0; i < states.Length; i++)\n{\nstring[] pieces = (states[i] ?? \"\").Split(':'); bool force;\nif (pieces.Length != 2 || !bool.TryParse(pieces[1], out force) || (pieces[0] != \"ON\" && pieces[0] != \"OFF\" && pieces[0] != \"NOTSET\"))\nthrow new FormatException(\"Invalid mitigation state\");\nparsed[i] = (pieces[0] == \"ON\" ? 1UL : pieces[0] == \"OFF\" ? 2UL : 0UL) | (force ? 4UL : 0UL);\n}\nreturn parsed;\n}\npublic static void Restore(Assembly assembly, string target, string[] states)\n{\nValidateTarget(target);\nulong[] wanted = Validate(states);\nGroup payload = ReadPayload(assembly, target, 0);\nbool payloadChanged = false;\nfor (int i = 1; i < wanted.Length; i++) payloadChanged |= ChangeField(payload, Fields[i], wanted[i], 7);\nCommit(payload, target, payloadChanged);\nWriteCfg(assembly, target, wanted[0], 7);\n}\npublic static void Apply(Assembly assembly, string target, bool includeSimExec)\n{\nValidateTarget(target);\nGroup payload = ReadPayload(assembly, target, 0);\nbool payloadChanged = false;\nfor (int i = 1; i < (includeSimExec ? Fields.Length : Fields.Length - 1); i++) payloadChanged |= ChangeField(payload, Fields[i], 2, 3);\nCommit(payload, target, payloadChanged);\nWriteCfg(assembly, target, 2, 3);\n}\n}\n").Append("\n'@ -ErrorAction Stop\n}; $a=(Get-Command Set-ProcessMitigation -ErrorAction Stop).ImplementingType.Assembly; [PaviseNativeMitigationRestore]::");
-			if (flag)
+			if (anyConditionMet)
 			{
 				stringBuilder.Append("Apply($a, ").Append(Quote(target)).Append((value == "off32") ? ", $true)" : ", $false)");
 			}
 			else
 			{
 				stringBuilder.Append("Restore($a, ").Append(Quote(target)).Append(", [string[]]@(");
-				for (int j = 0; j < array.Length; j++)
+				for (int j = 0; j < parts.Length; j++)
 				{
 					if (j != 0)
 					{
 						stringBuilder.Append(',');
 					}
-					stringBuilder.Append(Quote(array[j]));
+					stringBuilder.Append(Quote(parts[j]));
 				}
 				stringBuilder.Append("))");
 			}

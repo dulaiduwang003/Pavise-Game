@@ -20,8 +20,8 @@ namespace PaviseApp
 		internal static IDictionary<string, string> Read(SpiOwnership.SpiOwnerAccess closedAccess)
 		{
 			string @string = new UTF8Encoding(false, true).GetString(closedAccess.ReadClosedManifest());
-			string text = Header(closedAccess.Stamp);
-			if (!@string.StartsWith(text, StringComparison.Ordinal) || !@string.EndsWith("\n", StringComparison.Ordinal))
+			string headerResult = Header(closedAccess.Stamp);
+			if (!@string.StartsWith(headerResult, StringComparison.Ordinal) || !@string.EndsWith("\n", StringComparison.Ordinal))
 			{
 				throw new InvalidDataException("Closed manual SPI evidence has another owner");
 			}
@@ -32,21 +32,21 @@ namespace PaviseApp
 				hashSet.Add(PerformanceActionStore.Slot("MatchVisualEffectsV1", effect.Name));
 			}
 			Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
-			string text2 = @string.Substring(text.Length);
-			string text3 = null;
-			if (text2.Length != 0)
+			string substringResult = @string.Substring(headerResult.Length);
+			string message = null;
+			if (substringResult.Length != 0)
 			{
-				string[] array = text2.TrimEnd('\n').Split('\n');
-				foreach (string text4 in array)
+				string[] trimEndParts = substringResult.TrimEnd('\n').Split('\n');
+				foreach (string entryText in trimEndParts)
 				{
-					string[] array2 = text4.Split('\t');
-					if (array2.Length != 2 || !hashSet.Contains(array2[0]) || dictionary.ContainsKey(array2[0]) || (text3 != null && string.CompareOrdinal(text3, array2[0]) >= 0))
+					string[] entryTextParts = entryText.Split('\t');
+					if (entryTextParts.Length != 2 || !hashSet.Contains(entryTextParts[0]) || dictionary.ContainsKey(entryTextParts[0]) || (message != null && string.CompareOrdinal(message, entryTextParts[0]) >= 0))
 					{
 						throw new InvalidDataException("Invalid closed manual SPI receipt coordinate");
 					}
-					SpiOwnerIdentity.Hash(array2[1]);
-					dictionary.Add(array2[0], array2[1]);
-					text3 = array2[0];
+					SpiOwnerIdentity.Hash(entryTextParts[1]);
+					dictionary.Add(entryTextParts[0], entryTextParts[1]);
+					message = entryTextParts[0];
 				}
 			}
 			return dictionary;

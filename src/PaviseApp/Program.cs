@@ -147,13 +147,13 @@ namespace PaviseApp
 				{
 					while (!done)
 					{
-						int num = (int)Math.Max(0L, timeoutMs - stopwatch.ElapsedMilliseconds);
-						if (num == 0)
+						int lowerBound = (int)Math.Max(0L, timeoutMs - stopwatch.ElapsedMilliseconds);
+						if (lowerBound == 0)
 						{
 							expired = true;
 							return false;
 						}
-						Monitor.Wait(pending, num);
+						Monitor.Wait(pending, lowerBound);
 					}
 				}
 				if (error != null)
@@ -219,18 +219,18 @@ namespace PaviseApp
 
 		private static bool TryHandleCriticalThreadGuardian(string[] args)
 		{
-			bool flag = false;
+			bool handleCriticalThreadGuardianReady = false;
 			if (args != null)
 			{
 				foreach (string a in args)
 				{
 					if (string.Equals(a, "--hard-thread-guardian", StringComparison.OrdinalIgnoreCase))
 					{
-						flag = true;
+						handleCriticalThreadGuardianReady = true;
 					}
 				}
 			}
-			if (!flag)
+			if (!handleCriticalThreadGuardianReady)
 			{
 				return false;
 			}
@@ -341,17 +341,17 @@ namespace PaviseApp
 					}
 					Application.EnableVisualStyles();
 					Application.SetCompatibleTextRenderingDefault(false);
-					string text = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
-					Directory.CreateDirectory(text);
-					Paths.Data = text;
-					Logger.LogPath = Path.Combine(text, "Pavise.log");
-					int num = ((args.Length >= 3) ? int.Parse(args[2]) : 0);
+					string dataValue = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
+					Directory.CreateDirectory(dataValue);
+					Paths.Data = dataValue;
+					Logger.LogPath = Path.Combine(dataValue, "Pavise.log");
+					int parseResult = ((args.Length >= 3) ? int.Parse(args[2]) : 0);
 					SuppressionCore core = new SuppressionCore();
 					Tamer t = new Tamer(core);
 					try
 					{
-						GameMode gameMode2 = new GameMode(text, core);
-						if (num == 7)
+						GameMode gameMode2 = new GameMode(dataValue, core);
+						if (parseResult == 7)
 						{
 							Logger.Log("CORE 守护服务已开启，等待游戏进程");
 							Logger.Log("GAME 已识别 NebulaStrike-Win64-Shipping.exe");
@@ -361,19 +361,19 @@ namespace PaviseApp
 							Logger.Log("GPU 策略写入失败：驱动接口拒绝访问");
 							Logger.Log("SESSION 游戏退出，系统状态已还原");
 						}
-						if (num == 1)
+						if (parseResult == 1)
 						{
-							string text2 = Path.Combine(text, "NebulaStrike", "Binaries", "Win64");
-							Directory.CreateDirectory(text2);
-							string text3 = Path.Combine(text2, "NebulaStrike-Win64-Shipping.exe");
-							File.Copy(Application.ExecutablePath, text3, true);
-							gameMode2.AddGameExecutable("NEBULA STRIKE", text3);
+							string nebulaStrikePath = Path.Combine(dataValue, "NebulaStrike", "Binaries", "Win64");
+							Directory.CreateDirectory(nebulaStrikePath);
+							string nebulaStrikeWin64ShippingPath = Path.Combine(nebulaStrikePath, "NebulaStrike-Win64-Shipping.exe");
+							File.Copy(Application.ExecutablePath, nebulaStrikeWin64ShippingPath, true);
+							gameMode2.AddGameExecutable("NEBULA STRIKE", nebulaStrikeWin64ShippingPath);
 						}
 						using (PanelForm panelForm = new PanelForm(t, gameMode2, IconArt.MakeIcon(Dpi.S(24)), true))
 						{
 							IntPtr handle = panelForm.Handle;
 							GC.KeepAlive(handle);
-							panelForm.RenderTo(args[1], num, args.Length >= 5 && args[4] == "anticheat", args.Length >= 5 && args[4] == "mode", (args.Length >= 5) ? args[4] : null);
+							panelForm.RenderTo(args[1], parseResult, args.Length >= 5 && args[4] == "anticheat", args.Length >= 5 && args[4] == "mode", (args.Length >= 5) ? args[4] : null);
 							return;
 						}
 					}
@@ -381,7 +381,7 @@ namespace PaviseApp
 					{
 						try
 						{
-							Directory.Delete(text, true);
+							Directory.Delete(dataValue, true);
 						}
 						catch
 						{
@@ -461,7 +461,7 @@ namespace PaviseApp
 				{
 					return;
 				}
-				bool flag = IsAutostart(args);
+				bool isAutostart = IsAutostart(args);
 				bool createdNew = false;
 				Mutex mutex = null;
 				try
@@ -479,11 +479,11 @@ namespace PaviseApp
 				if (createdNew)
 				{
 					bool elevated = IsElevated();
-					bool flag2 = args.Length > 0 && args[0] == "--reset-restart";
+					bool allConditionsMet = args.Length > 0 && args[0] == "--reset-restart";
 					bool updateRestart = args.Length > 0 && (args[0] == "--update-restart" || args[0] == "--update-rollback");
 					try
 					{
-						Paths.Init((flag || flag2 || updateRestart) ? Paths.ResolveStartupDataArgument(args) : null);
+						Paths.Init((isAutostart || allConditionsMet || updateRestart) ? Paths.ResolveStartupDataArgument(args) : null);
 					}
 					catch (Exception ex)
 					{
@@ -491,26 +491,26 @@ namespace PaviseApp
 						return;
 					}
 					bool updateStartupGate = SelfUpdateInstaller.IsStartupUpdatePending(args) && SelfUpdateGate.TryBegin();
-					bool flag3 = false;
+					bool mainReady = false;
 					if (elevated)
 					{
 						try { SelfUpdateInstaller.RecordLaunch(); }
 						catch (Exception error) { Logger.Warn("Update launch identity unavailable: " + error.GetType().Name); }
 					}
-					bool flag4 = false;
+					bool mainReady2 = false;
 					if (!elevated && TaskHelper.TaskExists())
 					{
 						string command;
 						string arguments;
-						flag3 = TaskHelper.TryReadTaskTarget(out command, out arguments) && TaskHelper.IsCurrentTaskTarget(Application.ExecutablePath, Paths.Data, command, arguments);
-						flag4 = !flag3;
+						mainReady = TaskHelper.TryReadTaskTarget(out command, out arguments) && TaskHelper.IsCurrentTaskTarget(Application.ExecutablePath, Paths.Data, command, arguments);
+						mainReady2 = !mainReady;
 					}
-					if (!elevated && flag3)
+					if (!elevated && mainReady)
 					{
 						InvalidateMainInstanceBootstrap();
 						mutex.ReleaseMutex();
 						mutex.Close();
-						SetPendingPanelRequest(!flag);
+						SetPendingPanelRequest(!isAutostart);
 						if (TaskHelper.Run("/Run /TN PaviseAuto") == 0)
 						{
 							return;
@@ -526,7 +526,7 @@ namespace PaviseApp
 						}
 						if (!createdNew)
 						{
-							if (ShouldSignalExistingPanel(flag))
+							if (ShouldSignalExistingPanel(isAutostart))
 							{
 								SignalShowPanel();
 							}
@@ -575,7 +575,7 @@ namespace PaviseApp
                         try { SecurityProductCatalog.StartupScanOnce(); }
                         catch (SecurityProbeTerminationException error)
                         { Logger.Warn(error.Message); Environment.ExitCode = 15; return; }
-						if (flag4)
+						if (mainReady2)
 						{
 							Logger.Log(Lang.T("log.program.1"));
 						}
@@ -787,8 +787,8 @@ namespace PaviseApp
 						if (!jobAffinityRecovered) Logger.Warn("Game affinity Job recovery pending: " + jobAffinityRecoveryReason);
 						if (jobAffinityRecovered)
 						{
-							int num2 = SuppressionCore.HealFromCrash(Path.Combine(dir, "Pavise.suppression.state"));
-							if (num2 > 0) Logger.Log(Lang.T("log.program.2") + num2 + Lang.T("log.program.3"));
+							int healFromCrashResult = SuppressionCore.HealFromCrash(Path.Combine(dir, "Pavise.suppression.state"));
+							if (healFromCrashResult > 0) Logger.Log(Lang.T("log.program.2") + healFromCrashResult + Lang.T("log.program.3"));
 						}
 						if (jobAffinityRecovered && !new AntiCheatAffinityLease().Recover()) Logger.Warn("AC AFFINITY recovery pending");
 						if (jobAffinityRecovered && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(Path.Combine(dir, "CriticalThreadHardAffinityV1")))
@@ -834,7 +834,7 @@ namespace PaviseApp
 							{
 							}
 						};
-						bool flag5 = ShouldShowStartupPanel(flag, requested, result2, DateTime.UtcNow.Ticks);
+						bool shouldShowStartupPanel = ShouldShowStartupPanel(isAutostart, requested, result2, DateTime.UtcNow.Ticks);
 						RetiredBackgroundCpuCap.Retire();
 						SuppressionCore core3 = new SuppressionCore(Path.Combine(dir, "Pavise.suppression.state"));
 						Tamer tamer = new Tamer(core3);
@@ -846,13 +846,13 @@ namespace PaviseApp
 						{
 							int files;
 							string failure;
-							bool flag6 = TryResetUserData(dir, delegate
+							bool tryResetUserData = TryResetUserData(dir, delegate
 							{
-								bool flag9 = tamer.Stop();
-								bool flag10 = gameMode.Stop();
-								return flag9 && flag10;
+								bool stopSucceeded = tamer.Stop();
+								bool stopSucceeded2 = gameMode.Stop();
+								return stopSucceeded && stopSucceeded2;
 							}, out files, out failure);
-							PaviseDialog.Error(null, Lang.T("store.savefatal.title"), flag6 ? Lang.F("store.savefatal.body", dir) : Lang.F("store.savefatal.deletefail", dir, failure));
+							PaviseDialog.Error(null, Lang.T("store.savefatal.title"), tryResetUserData ? Lang.F("store.savefatal.body", dir) : Lang.F("store.savefatal.deletefail", dir, failure));
 							return;
 						}
 						object startGate = new object();
@@ -926,7 +926,7 @@ namespace PaviseApp
 						Icon icon3 = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
 						PanelForm panel = new PanelForm(tamer, gameMode, icon3, elevated);
 						GC.KeepAlive(panel.Handle);
-						if (flag5)
+						if (shouldShowStartupPanel)
 						{
 							panel.ShowPanel();
 						}
@@ -1024,7 +1024,7 @@ namespace PaviseApp
 								exiting = true;
 							}
 
-							bool flag8 = true;
+							bool succeeded = true;
 							try
 							{
 								if (!uiDispatcher.TrySend(delegate
@@ -1048,21 +1048,21 @@ namespace PaviseApp
 									icon.Dispose();
 								}))
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 							try
 							{
-								if (!panel.WaitForConfigurationPresetWork(8000)) flag8 = false;
+								if (!panel.WaitForConfigurationPresetWork(8000)) succeeded = false;
 								procNotify.Stop();
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 
 
@@ -1072,69 +1072,69 @@ namespace PaviseApp
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 							try
 							{
 								if (!tamer.Stop())
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 							try
 							{
 								if (!gameMode.Stop() && (Volatile.Read(ref resetStarted) == 0 || !gameMode.ShutdownWritersStopped))
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
 								if (Volatile.Read(ref resetStarted) == 0 || !gameMode.ShutdownWritersStopped)
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							try
 							{
 								if (bootThread == Thread.CurrentThread || !bootThread.Join(8000))
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 
 							try
 							{
 								if (!PerformanceTuning.CloseEnvironmentWork(8000))
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
 							try
 							{
 								if (!PrivacyControl.CloseWork(8000))
 								{
-									flag8 = false;
+									succeeded = false;
 								}
 							}
 							catch
 							{
-								flag8 = false;
+								succeeded = false;
 							}
-							Volatile.Write(ref runtimeStopped, flag8 ? 1 : 0);
-							return flag8;
+							Volatile.Write(ref runtimeStopped, succeeded ? 1 : 0);
+							return succeeded;
 						};
 						Action<bool, bool> resetDataAndExit = null;
 						Action doExit = delegate
@@ -1438,19 +1438,19 @@ namespace PaviseApp
 							thread2.Start();
 						}
 						icon.ContextMenuStrip = trayMenu.Strip;
-						bool flag7;
+						bool notificationAreaPresentSucceeded;
 						try
 						{
 							icon.Visible = true;
-							flag7 = Native.NotificationAreaPresent();
+							notificationAreaPresentSucceeded = Native.NotificationAreaPresent();
 						}
 						catch
 						{
-							flag7 = false;
+							notificationAreaPresentSucceeded = false;
 						}
-						if (!flag7)
+						if (!notificationAreaPresentSucceeded)
 						{
-							if (ShouldShowPanelForMissingTray(flag, flag5))
+							if (ShouldShowPanelForMissingTray(isAutostart, shouldShowStartupPanel))
 							{
 								Logger.Log(Lang.T("log.program.10"));
 								try
@@ -1578,10 +1578,10 @@ namespace PaviseApp
 						trayTip.Interval = 1500;
 						trayTip.Tick += delegate
 						{
-							int num3 = (gameMode.IsActive ? 6000 : 1500);
-							if (trayTip.Interval != num3)
+							int intervalValue = (gameMode.IsActive ? 6000 : 1500);
+							if (trayTip.Interval != intervalValue)
 							{
-								trayTip.Interval = num3;
+								trayTip.Interval = intervalValue;
 							}
 							PerformancePreset activePreset = gameMode.ActivePreset;
 							bool enabled = gameMode.Enabled;
@@ -1600,24 +1600,24 @@ namespace PaviseApp
 									}
 								}
 							}
-							string text4;
+							string textValue;
 							if (!elevated)
 							{
-								text4 = Lang.T("tray.noelev");
+								textValue = Lang.T("tray.noelev");
 							}
 							else
 							{
 								string activeGame = gameMode.ActiveGame;
-								string text5 = ((activeGame == null) ? gameMode.ArmedGame : null);
-								text4 = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((text5 != null) ? Lang.F("tray.armed", text5) : Lang.T("tray.idle")));
+								string armedGame = ((activeGame == null) ? gameMode.ArmedGame : null);
+								textValue = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((armedGame != null) ? Lang.F("tray.armed", armedGame) : Lang.T("tray.idle")));
 							}
-							if (text4.Length > 63)
+							if (textValue.Length > 63)
 							{
-								text4 = text4.Substring(0, 62) + " ";
+								textValue = textValue.Substring(0, 62) + " ";
 							}
-							if (icon.Text != text4)
+							if (icon.Text != textValue)
 							{
-								icon.Text = text4;
+								icon.Text = textValue;
 							}
 						};
 						trayTip.Start();
@@ -1774,7 +1774,7 @@ namespace PaviseApp
 						}
 					}
 				}
-				if (ShouldSignalExistingPanel(flag))
+				if (ShouldSignalExistingPanel(isAutostart))
 				{
 					SignalShowPanel();
 				}
@@ -1944,17 +1944,17 @@ namespace PaviseApp
 			{
 				return "0.0.0.0";
 			}
-			string text = raw.Trim();
-			if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+			string rawTrimmed = raw.Trim();
+			if (rawTrimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
 			{
-				text = text.Substring(1);
+				rawTrimmed = rawTrimmed.Substring(1);
 			}
-			int num = text.Split('.').Length;
-			for (int i = num; i < 4; i++)
+			int splitCount = rawTrimmed.Split('.').Length;
+			for (int i = splitCount; i < 4; i++)
 			{
-				text += ".0";
+				rawTrimmed += ".0";
 			}
-			return text;
+			return rawTrimmed;
 		}
 
 		private static bool TryReplaceOlderInstance()
@@ -1977,7 +1977,7 @@ namespace PaviseApp
 						process3.Dispose();
 						continue;
 					}
-					string text = null;
+					string fileVersion = null;
 					try
 					{
 						if (process3.SessionId == sessionId)
@@ -1985,14 +1985,14 @@ namespace PaviseApp
 							FileVersionInfo fileVersionInfo = process3.MainModule.FileVersionInfo;
 							if (IsOlderPaviseInstance(fileVersionInfo.ProductName, fileVersionInfo.CompanyName, fileVersionInfo.FileVersion))
 							{
-								text = fileVersionInfo.FileVersion;
+								fileVersion = fileVersionInfo.FileVersion;
 							}
 						}
 					}
 					catch
 					{
 					}
-					if (text != null && CompareVersions(App.Version, text) > 0 && process == null)
+					if (fileVersion != null && CompareVersions(App.Version, fileVersion) > 0 && process == null)
 					{
 						process = process3;
 					}
@@ -2047,38 +2047,38 @@ namespace PaviseApp
 
 		internal static bool OsBelowBaseline()
 		{
-			int num = Native.OsBuild();
-			if (num > 0)
+			int osBuildResult = Native.OsBuild();
+			if (osBuildResult > 0)
 			{
-				return num < 19041;
+				return osBuildResult < 19041;
 			}
 			return false;
 		}
 
 		private static bool BlockIfOsTooOld(string dataDir)
 		{
-			int num = Native.OsBuild();
+			int osBuildResult = Native.OsBuild();
 			if (!OsBelowBaseline())
 			{
 				return false;
 			}
-			Logger.Log(Lang.T("log.program.11") + num);
-			int num2 = 0;
+			Logger.Log(Lang.T("log.program.11") + osBuildResult);
+			int blockIfOsTooOldValue = 0;
 			try
 			{
 				List<string> list = LegacyPurge.RestorePersistent(dataDir);
-				num2 = ((list == null) ? 1 : ((list.Count == 0) ? 1 : 2));
+				blockIfOsTooOldValue = ((list == null) ? 1 : ((list.Count == 0) ? 1 : 2));
 			}
 			catch
 			{
-				num2 = 2;
+				blockIfOsTooOldValue = 2;
 			}
-			string text = Lang.F("os.old.body", num, 19041, 26100);
-			if (num2 == 2)
+			string osOldBodyText = Lang.F("os.old.body", osBuildResult, 19041, 26100);
+			if (blockIfOsTooOldValue == 2)
 			{
-				text += Lang.T("os.old.restorefail");
+				osOldBodyText += Lang.T("os.old.restorefail");
 			}
-			PaviseDialog.Warn(null, "PAVISE AUTO", text);
+			PaviseDialog.Warn(null, "PAVISE AUTO", osOldBodyText);
 			return true;
 		}
 
@@ -2153,9 +2153,9 @@ namespace PaviseApp
 					{
 						work();
 					}
-					catch (Exception obj2)
+					catch (Exception error2)
 					{
-						report(obj2);
+						report(error2);
 					}
 				});
 				thread.IsBackground = true;
@@ -2163,9 +2163,9 @@ namespace PaviseApp
 				thread.Start();
 				return true;
 			}
-			catch (Exception obj)
+			catch (Exception error2)
 			{
-				report(obj);
+				report(error2);
 				return false;
 			}
 		}

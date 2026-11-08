@@ -37,7 +37,7 @@ namespace PaviseApp
 		internal static bool Launch(string executable, out string failure)
 		{
 			failure = null;
-			string text = null;
+			string workingDirectoryValue = null;
 			try
 			{
 				string fileName = Process.GetCurrentProcess().MainModule.FileName;
@@ -55,31 +55,31 @@ namespace PaviseApp
 				}
 				plan.ManagedRoot = Path.GetFullPath(StartupPayload.ManagedRoot);
 				plan.Managed = SnapshotManaged(plan.ManagedRoot);
-				text = Path.Combine(Path.GetTempPath(), "Pavise-Uninstall-" + Guid.NewGuid().ToString("N"));
-				Directory.CreateDirectory(text);
-				RejectRedirects(text);
-				string text2 = Path.Combine(text, "Pavise.Uninstall.exe");
+				workingDirectoryValue = Path.Combine(Path.GetTempPath(), "Pavise-Uninstall-" + Guid.NewGuid().ToString("N"));
+				Directory.CreateDirectory(workingDirectoryValue);
+				RejectRedirects(workingDirectoryValue);
+				string paviseUninstallPath = Path.Combine(workingDirectoryValue, "Pavise.Uninstall.exe");
 				using (FileStream fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read))
 				{
 					plan.Hash = Hash(fileStream);
 					fileStream.Position = 0L;
-					using (FileStream fileStream2 = new FileStream(text2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+					using (FileStream fileStream2 = new FileStream(paviseUninstallPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 					{
 						fileStream.CopyTo(fileStream2);
 						fileStream2.Flush(true);
 					}
 				}
-				if (!string.Equals(HashFile(text2), plan.Hash, StringComparison.OrdinalIgnoreCase))
+				if (!string.Equals(HashFile(paviseUninstallPath), plan.Hash, StringComparison.OrdinalIgnoreCase))
 				{
 					throw new IOException("Helper copy failed verification");
 				}
-				string text3 = Path.Combine(text, "cleanup.dat");
-				WritePlan(text3, plan);
-				ProcessStartInfo processStartInfo = new ProcessStartInfo(text2, "--finish-uninstall " + Quote(text3));
+				string cleanupPath = Path.Combine(workingDirectoryValue, "cleanup.dat");
+				WritePlan(cleanupPath, plan);
+				ProcessStartInfo processStartInfo = new ProcessStartInfo(paviseUninstallPath, "--finish-uninstall " + Quote(cleanupPath));
 				processStartInfo.UseShellExecute = false;
 				processStartInfo.CreateNoWindow = true;
 				processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-				processStartInfo.WorkingDirectory = text;
+				processStartInfo.WorkingDirectory = workingDirectoryValue;
 				using (Process process2 = Process.Start(processStartInfo))
 				{
 					if (process2 == null)
@@ -92,9 +92,9 @@ namespace PaviseApp
 			catch (Exception ex)
 			{
 				failure = ex.GetType().Name;
-				if (text != null)
+				if (workingDirectoryValue != null)
 				{
-					RemoveLaunchFiles(text);
+					RemoveLaunchFiles(workingDirectoryValue);
 				}
 				return false;
 			}
@@ -102,17 +102,17 @@ namespace PaviseApp
 
 		internal static bool Run(string manifest)
 		{
-			string text = null;
-			bool flag = false;
+			string directoryName = null;
+			bool runSucceeded = false;
 			try
 			{
 				string fileName = Process.GetCurrentProcess().MainModule.FileName;
-				text = Path.GetDirectoryName(Path.GetFullPath(fileName));
-				if (!IsHelperDirectory(text) || !Same(fileName, Path.Combine(text, "Pavise.Uninstall.exe")) || !Same(manifest, Path.Combine(text, "cleanup.dat")))
+				directoryName = Path.GetDirectoryName(Path.GetFullPath(fileName));
+				if (!IsHelperDirectory(directoryName) || !Same(fileName, Path.Combine(directoryName, "Pavise.Uninstall.exe")) || !Same(manifest, Path.Combine(directoryName, "cleanup.dat")))
 				{
 					return false;
 				}
-				RejectRedirects(text);
+				RejectRedirects(directoryName);
 				RejectRedirects(manifest);
 				RejectRedirects(fileName);
 				Plan plan = ReadPlan(manifest);
@@ -120,13 +120,13 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				flag = DeleteVerified(plan.Executable, plan.Hash, 40, 100);
+				runSucceeded = DeleteVerified(plan.Executable, plan.Hash, 40, 100);
 				foreach (string item in plan.Managed)
 				{
 					string fileName2 = Path.GetFileName(Path.GetDirectoryName(item));
 					if (!DeleteVerified(item, fileName2, 2, 100))
 					{
-						flag = false;
+						runSucceeded = false;
 					}
 					TryRemoveEmpty(Path.GetDirectoryName(item));
 				}
@@ -134,7 +134,7 @@ namespace PaviseApp
 				{
 					TryRemoveEmpty(plan.ManagedRoot);
 				}
-				return flag;
+				return runSucceeded;
 			}
 			catch
 			{
@@ -142,16 +142,16 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (text != null && IsHelperDirectory(text))
+				if (directoryName != null && IsHelperDirectory(directoryName))
 				{
 					try
 					{
-						File.WriteAllText(Path.Combine(text, "result.txt"), flag ? "removed" : "skipped");
+						File.WriteAllText(Path.Combine(directoryName, "result.txt"), runSucceeded ? "removed" : "skipped");
 					}
 					catch
 					{
 					}
-					QueueHelperCleanup(text);
+					QueueHelperCleanup(directoryName);
 				}
 			}
 		}
@@ -162,14 +162,14 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PaviseAuto", "Autostart");
-			if (!Same(text, plan.ManagedRoot))
+			string paviseAutoPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PaviseAuto", "Autostart");
+			if (!Same(paviseAutoPath, plan.ManagedRoot))
 			{
 				return false;
 			}
 			foreach (string item in plan.Managed)
 			{
-				if (!StartupPayload.IsManagedExecutable(item, text))
+				if (!StartupPayload.IsManagedExecutable(item, paviseAutoPath))
 				{
 					return false;
 				}
@@ -223,10 +223,10 @@ namespace PaviseApp
 				string[] directories = Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly);
 				foreach (string path in directories)
 				{
-					string text = Path.Combine(path, "PaviseAuto.exe");
-					if (StartupPayload.IsVerifiedExecutable(text, root))
+					string paviseAutoPath = Path.Combine(path, "PaviseAuto.exe");
+					if (StartupPayload.IsVerifiedExecutable(paviseAutoPath, root))
 					{
-						list.Add(text);
+						list.Add(paviseAutoPath);
 					}
 				}
 			}
@@ -292,14 +292,14 @@ namespace PaviseApp
 
 		private static void RejectRedirects(string path)
 		{
-			string text = Path.GetFullPath(path);
-			while (!string.IsNullOrEmpty(text))
+			string fullPath = Path.GetFullPath(path);
+			while (!string.IsNullOrEmpty(fullPath))
 			{
-				if ((File.Exists(text) || Directory.Exists(text)) && (File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+				if ((File.Exists(fullPath) || Directory.Exists(fullPath)) && (File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
 				{
 					throw new IOException("Redirected cleanup path");
 				}
-				text = Path.GetDirectoryName(text);
+				fullPath = Path.GetDirectoryName(fullPath);
 			}
 		}
 
@@ -354,12 +354,12 @@ namespace PaviseApp
 					plan.Executable = binaryReader.ReadString();
 					plan.Hash = binaryReader.ReadString();
 					plan.ManagedRoot = binaryReader.ReadString();
-					int num = binaryReader.ReadInt32();
-					if (num < 0 || num > 64)
+					int int32 = binaryReader.ReadInt32();
+					if (int32 < 0 || int32 > 64)
 					{
 						throw new IOException("Invalid managed payload count");
 					}
-					for (int i = 0; i < num; i++)
+					for (int i = 0; i < int32; i++)
 					{
 						plan.Managed.Add(binaryReader.ReadString());
 					}
@@ -384,10 +384,10 @@ namespace PaviseApp
 		{
 			using (SHA256 sHA = SHA256.Create())
 			{
-				byte[] array = sHA.ComputeHash(input);
-				StringBuilder stringBuilder = new StringBuilder(array.Length * 2);
-				byte[] array2 = array;
-				foreach (byte b in array2)
+				byte[] hash = sHA.ComputeHash(input);
+				StringBuilder stringBuilder = new StringBuilder(hash.Length * 2);
+				byte[] rawBytes = hash;
+				foreach (byte b in rawBytes)
 				{
 					stringBuilder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
 				}
@@ -461,8 +461,8 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string[] array = new string[2] { "cleanup.dat", "Pavise.Uninstall.exe" };
-			foreach (string path in array)
+			string[] textEntries = new string[2] { "cleanup.dat", "Pavise.Uninstall.exe" };
+			foreach (string path in textEntries)
 			{
 				try
 				{
@@ -483,9 +483,9 @@ namespace PaviseApp
 				RejectRedirects(directory);
 				int id = Process.GetCurrentProcess().Id;
 				string s = "$p=Get-Process -Id " + id.ToString(CultureInfo.InvariantCulture) + " -ErrorAction SilentlyContinue;if($p){$p.WaitForExit()};for($i=0;$i -lt 40;$i++){@('Pavise.Uninstall.exe','cleanup.dat','result.txt')|ForEach-Object{$f=Join-Path '" + directory.Replace("'", "''") + "' $_;if(Test-Path -LiteralPath $f -PathType Leaf){Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue}};Remove-Item -LiteralPath '" + directory.Replace("'", "''") + "' -ErrorAction SilentlyContinue;if(!(Test-Path -LiteralPath '" + directory.Replace("'", "''") + "')){break};Start-Sleep -Milliseconds 100}";
-				string text = Convert.ToBase64String(Encoding.Unicode.GetBytes(s));
+				string toBase64StringResult = Convert.ToBase64String(Encoding.Unicode.GetBytes(s));
 				string fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-				ProcessStartInfo processStartInfo = new ProcessStartInfo(fileName, "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " + text);
+				ProcessStartInfo processStartInfo = new ProcessStartInfo(fileName, "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " + toBase64StringResult);
 				processStartInfo.UseShellExecute = false;
 				processStartInfo.CreateNoWindow = true;
 				processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;

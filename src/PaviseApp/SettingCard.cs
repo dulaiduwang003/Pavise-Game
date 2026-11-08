@@ -57,10 +57,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (title != text)
+				string valueOffset = value ?? "";
+				if (title != valueOffset)
 				{
-					title = text;
+					title = valueOffset;
 					Invalidate();
 				}
 			}
@@ -106,10 +106,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (desc != text)
+				string valueOffset = value ?? "";
+				if (desc != valueOffset)
 				{
-					desc = text;
+					desc = valueOffset;
 					Invalidate();
 				}
 			}
@@ -139,10 +139,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (meta != text)
+				string valueOffset = value ?? "";
+				if (meta != valueOffset)
 				{
-					meta = text;
+					meta = valueOffset;
 					Invalidate();
 				}
 			}
@@ -224,10 +224,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (val != text)
+				string valueOffset = value ?? "";
+				if (val != valueOffset)
 				{
-					val = text;
+					val = valueOffset;
 					Invalidate();
 				}
 			}
@@ -282,10 +282,10 @@ namespace PaviseApp
 
 		public void SetLock(string text, bool on)
 		{
-			string text2 = text ?? "";
-			if (!(lockText == text2) || lockOn != on)
+			string message = text ?? "";
+			if (!(lockText == message) || lockOn != on)
 			{
-				lockText = text2;
+				lockText = message;
 				lockOn = on;
 				Invalidate();
 			}
@@ -299,17 +299,17 @@ namespace PaviseApp
 
 		public void SetStatus(string text, Color ink)
 		{
-			string text2 = text ?? "";
-			bool flag = text2 != status;
-			bool flag2 = flag || ink != statusInk;
-			bool flag3 = flag && text2.Length > 0 && status.Length > 0 && !string.IsNullOrEmpty(title);
-			status = text2;
+			string message = text ?? "";
+			bool matchesMessage = message != status;
+			bool matchesMatchesMessage = matchesMessage || ink != statusInk;
+			bool allConditionsMet = matchesMessage && message.Length > 0 && status.Length > 0 && !string.IsNullOrEmpty(title);
+			status = message;
 			statusInk = ink;
-			if (flag3)
+			if (allConditionsMet)
 			{
 				Flash();
 			}
-			if (flag2)
+			if (matchesMatchesMessage)
 			{
 				Invalidate();
 			}
@@ -317,11 +317,11 @@ namespace PaviseApp
 
 		public void SetValue(string v, Color c)
 		{
-			string text = v ?? "";
-			bool flag = text != val || c != ValueColor;
+			string vOffset = v ?? "";
+			bool anyConditionMet = vOffset != val || c != ValueColor;
 			ValueColor = c;
-			val = text;
-			if (flag)
+			val = vOffset;
+			if (anyConditionMet)
 			{
 				Invalidate();
 			}
@@ -363,8 +363,8 @@ namespace PaviseApp
 		{
 			if (host != null)
 			{
-				int num = (HostTop ? Theme.S(10) : ((base.Height - host.Height) / 2));
-				host.Location = new Point(base.Width - Theme.S(18) - host.Width, num);
+				int scaledDimension = (HostTop ? Theme.S(10) : ((base.Height - host.Height) / 2));
+				host.Location = new Point(base.Width - Theme.S(18) - host.Width, scaledDimension);
 			}
 		}
 
@@ -380,12 +380,12 @@ namespace PaviseApp
 		protected override void OnMouseUp(MouseEventArgs e)
 		{
 			base.OnMouseUp(e);
-			bool flag = pressed;
+			bool pressedSnapshot = pressed;
 			if (e.Button == MouseButtons.Left)
 			{
 				pressed = false;
 			}
-			if (!flag || e.Button != MouseButtons.Left || !base.ClientRectangle.Contains(e.Location))
+			if (!pressedSnapshot || e.Button != MouseButtons.Left || !base.ClientRectangle.Contains(e.Location))
 			{
 				return;
 			}
@@ -456,75 +456,75 @@ namespace PaviseApp
 					graphics.DrawLine(pen, 0, Theme.S(14), 0, base.Height - Theme.S(14));
 				}
 			}
-			int num = Theme.S(42);
-			int num2 = num + ((host != null && host.Visible) ? (host.Width + Theme.S(14)) : 0);
-			int num3 = (collapsible ? Theme.S(20) : 0);
-			int num4 = base.Width - num - num2 - num3;
+			int scaledDimension = Theme.S(42);
+			int scaledDimensionOffset = scaledDimension + ((host != null && host.Visible) ? (host.Width + Theme.S(14)) : 0);
+			int scaledDimension2 = (collapsible ? Theme.S(20) : 0);
+			int remainingScaledDimension2 = base.Width - scaledDimension - scaledDimensionOffset - scaledDimension2;
 			Font font = DsType.Font(DsText.Title, true);
-			int num5 = ((lockText.Length != 0) ? (DsPaint.BadgeWidth(graphics, lockText, DsType.MonoFor(DsMono.Badge, lockText)) + Theme.S(9)) : 0);
+			int badgeWidthOffset = ((lockText.Length != 0) ? (DsPaint.BadgeWidth(graphics, lockText, DsType.MonoFor(DsMono.Badge, lockText)) + Theme.S(9)) : 0);
 			if (collapsible)
 			{
-				DrawChevron(graphics, num + num4 + Theme.S(4));
+				DrawChevron(graphics, scaledDimension + remainingScaledDimension2 + Theme.S(4));
 			}
-			bool flag = desc.Length > 0 && ShowDesc;
-			int num6 = 0;
+			bool matchesShowDesc = desc.Length > 0 && ShowDesc;
+			int onPaintValue = 0;
 			Font font2 = DsType.Font(DsText.Body);
 			if (val.Length > 0)
 			{
-				num6 = TextRenderer.MeasureText(graphics, val, font2).Width + Theme.S(16);
+				onPaintValue = TextRenderer.MeasureText(graphics, val, font2).Width + Theme.S(16);
 			}
-			if (!flag && !HasStatus)
+			if (!matchesShowDesc && !HasStatus)
 			{
-				if (num6 > 0)
+				if (onPaintValue > 0)
 				{
-					TextRenderer.DrawText(bounds: new Rectangle(base.Width / 3, 0, base.Width - base.Width / 3 - num2 - num3, base.Height), dc: graphics, text: val, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+					TextRenderer.DrawText(bounds: new Rectangle(base.Width / 3, 0, base.Width - base.Width / 3 - scaledDimensionOffset - scaledDimension2, base.Height), dc: graphics, text: val, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
 				}
-				Rectangle rectangle = new Rectangle(num, 0, num4 - num5 - num6, base.Height);
+				Rectangle rectangle = new Rectangle(scaledDimension, 0, remainingScaledDimension2 - badgeWidthOffset - onPaintValue, base.Height);
 				TextRenderer.DrawText(graphics, title, font, rectangle, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-				DrawLockBadge(graphics, num, rectangle, base.Height / 2);
+				DrawLockBadge(graphics, scaledDimension, rectangle, base.Height / 2);
 				return;
 			}
-			int num7 = Theme.S((HasStatus && !flag) ? 9 : 11);
-			int num8 = Theme.S(22);
-			if (num6 > 0)
+			int scaledDimension3 = Theme.S((HasStatus && !matchesShowDesc) ? 9 : 11);
+			int scaledDimension4 = Theme.S(22);
+			if (onPaintValue > 0)
 			{
-				TextRenderer.DrawText(bounds: new Rectangle(num, num7, num4, num8), dc: graphics, text: val, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+				TextRenderer.DrawText(bounds: new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2, scaledDimension4), dc: graphics, text: val, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
 			}
-			Rectangle rectangle2 = new Rectangle(num, num7, num4 - num5 - num6, num8);
+			Rectangle rectangle2 = new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2 - badgeWidthOffset - onPaintValue, scaledDimension4);
 			TextRenderer.DrawText(graphics, title, font, rectangle2, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-			DrawLockBadge(graphics, num, rectangle2, num7 + Theme.S(11));
-			int num9 = rectangle2.Bottom + Theme.S(1);
+			DrawLockBadge(graphics, scaledDimension, rectangle2, scaledDimension3 + Theme.S(11));
+			int bottomOffset = rectangle2.Bottom + Theme.S(1);
 			if (HasStatus)
 			{
-				int num10 = Theme.S(6);
-				Rectangle rect = new Rectangle(num + Theme.S(1), num9 + Theme.S(5), num10, num10);
+				int scaledDimension5 = Theme.S(6);
+				Rectangle rect = new Rectangle(scaledDimension + Theme.S(1), bottomOffset + Theme.S(5), scaledDimension5, scaledDimension5);
 				graphics.SmoothingMode = SmoothingMode.AntiAlias;
 				using (SolidBrush brush = new SolidBrush(statusInk))
 				{
 					graphics.FillEllipse(brush, rect);
 				}
-				TextRenderer.DrawText(graphics, status, DsType.Font(DsText.Status), new Rectangle(rect.Right + Theme.S(7), num9, num4 - Theme.S(14), Theme.S(17)), statusInk, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
-				num9 += Theme.S(17);
+				TextRenderer.DrawText(graphics, status, DsType.Font(DsText.Status), new Rectangle(rect.Right + Theme.S(7), bottomOffset, remainingScaledDimension2 - Theme.S(14), Theme.S(17)), statusInk, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+				bottomOffset += Theme.S(17);
 			}
-			int num11 = 0;
+			int onPaintValue2 = 0;
 			if (meta.Length > 0)
 			{
-				num11 = Theme.S(20);
-				TextRenderer.DrawText(bounds: new Rectangle(num, base.Height - Theme.S(26), Math.Max(0, base.Width - num - Theme.S(18)), Theme.S(16)), dc: graphics, text: meta, font: DsType.Mono(DsMono.Meta), foreColor: Theme.Faint, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				onPaintValue2 = Theme.S(20);
+				TextRenderer.DrawText(bounds: new Rectangle(scaledDimension, base.Height - Theme.S(26), Math.Max(0, base.Width - scaledDimension - Theme.S(18)), Theme.S(16)), dc: graphics, text: meta, font: DsType.Mono(DsMono.Meta), foreColor: Theme.Faint, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
-			if (flag)
+			if (matchesShowDesc)
 			{
 				Font font3 = DsType.Font(DsText.Description);
-				Rectangle bounds4 = new Rectangle(num, num9 + Theme.S(2), num4, base.Height - num9 - Theme.S(9) - num11);
+				Rectangle bounds4 = new Rectangle(scaledDimension, bottomOffset + Theme.S(2), remainingScaledDimension2, base.Height - bottomOffset - Theme.S(9) - onPaintValue2);
 				TextFormatFlags flags = TextFormatFlags.EndEllipsis | TextFormatFlags.WordBreak;
-				int num12 = DsType.LineHeight(DsText.Description);
-				if (num12 > 0 && bounds4.Height >= num12)
+				int lineHeightResult = DsType.LineHeight(DsText.Description);
+				if (lineHeightResult > 0 && bounds4.Height >= lineHeightResult)
 				{
-					bounds4.Height = bounds4.Height / num12 * num12;
+					bounds4.Height = bounds4.Height / lineHeightResult * lineHeightResult;
 				}
-				int num13 = TextRenderer.MeasureText(graphics, desc, font3, new Size(bounds4.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
-				DescLinesWanted = ((num12 > 0) ? ((num13 + num12 - 1) / num12) : 0);
-				DescLinesShown = ((num12 > 0) ? (bounds4.Height / num12) : 0);
+				int height = TextRenderer.MeasureText(graphics, desc, font3, new Size(bounds4.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
+				DescLinesWanted = ((lineHeightResult > 0) ? ((height + lineHeightResult - 1) / lineHeightResult) : 0);
+				DescLinesShown = ((lineHeightResult > 0) ? (bounds4.Height / lineHeightResult) : 0);
 				TextRenderer.DrawText(graphics, desc, font3, bounds4, Theme.DimTint, flags);
 			}
 		}
@@ -532,27 +532,27 @@ namespace PaviseApp
 		private void DrawTacticalSurface(Graphics g)
 		{
 			g.SmoothingMode = SmoothingMode.AntiAlias;
-			int num = Theme.S(30);
+			int left = Theme.S(30);
 			using (Pen pen = new Pen(Col.Alpha(Theme.StrokeHi, 82)))
 			{
-				g.DrawLine(pen, num, Theme.S(11), num, base.Height - Theme.S(11));
+				g.DrawLine(pen, left, Theme.S(11), left, base.Height - Theme.S(11));
 			}
 			using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, 118 + (int)(cardHover.Value * 90f))))
 			{
-				g.DrawLine(pen2, num, Theme.S(17), num, Math.Min(base.Height - Theme.S(12), Theme.S(37)));
+				g.DrawLine(pen2, left, Theme.S(17), left, Math.Min(base.Height - Theme.S(12), Theme.S(37)));
 			}
-			string text = ((Channel > 0) ? Channel.ToString("00") : "--");
-			TextRenderer.DrawText(g, text, DsType.Mono(DsMono.Channel), new Rectangle(Theme.S(7), Theme.S(9), Theme.S(18), Theme.S(15)), Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value * 0.75f), TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			int num2 = base.Width - Theme.S(170);
+			string channelText = ((Channel > 0) ? Channel.ToString("00") : "--");
+			TextRenderer.DrawText(g, channelText, DsType.Mono(DsMono.Channel), new Rectangle(Theme.S(7), Theme.S(9), Theme.S(18), Theme.S(15)), Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value * 0.75f), TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			int remainingWidth = base.Width - Theme.S(170);
 			Point[] points = new Point[5]
 			{
-				new Point(num2, 1),
+				new Point(remainingWidth, 1),
 				new Point(base.Width - Theme.S(10), 1),
 				new Point(base.Width - 1, Theme.S(11)),
 				new Point(base.Width - 1, base.Height - 1),
-				new Point(num2 + Theme.S(48), base.Height - 1)
+				new Point(remainingWidth + Theme.S(48), base.Height - 1)
 			};
-			using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, num2), 0, base.Width - num2, base.Height)), Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent, (int)((float)(Theme.LightMode ? 8 : 5) + cardHover.Value * 9f)), LinearGradientMode.Horizontal))
+			using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, remainingWidth), 0, base.Width - remainingWidth, base.Height)), Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent, (int)((float)(Theme.LightMode ? 8 : 5) + cardHover.Value * 9f)), LinearGradientMode.Horizontal))
 			{
 				g.FillPolygon(brush, points);
 			}
@@ -564,8 +564,8 @@ namespace PaviseApp
 
 		private void DrawChevron(Graphics g, int x)
 		{
-			int num = (expanded ? Theme.S(22) : (base.Height / 2));
-			DsPaint.Chevron(g, x, num, Theme.S(4), expanded, Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value));
+			int scaledDimension = (expanded ? Theme.S(22) : (base.Height / 2));
+			DsPaint.Chevron(g, x, scaledDimension, Theme.S(4), expanded, Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value));
 		}
 
 		private void DrawLockBadge(Graphics g, int padL, Rectangle titleRect, int centerY)
@@ -573,14 +573,14 @@ namespace PaviseApp
 			if (lockText.Length != 0)
 			{
 				Font font = DsType.MonoFor(DsMono.Badge, lockText);
-				int num = TextRenderer.MeasureText(g, title, DsType.Font(DsText.Title, true)).Width;
-				if (num > titleRect.Width)
+				int width = TextRenderer.MeasureText(g, title, DsType.Font(DsText.Title, true)).Width;
+				if (width > titleRect.Width)
 				{
-					num = titleRect.Width;
+					width = titleRect.Width;
 				}
-				int num2 = DsPaint.BadgeWidth(g, lockText, font);
-				int num3 = Theme.S(17);
-				Rectangle pill = new Rectangle(padL + num + Theme.S(9), centerY - num3 / 2, num2, num3);
+				int badgeWidthResult = DsPaint.BadgeWidth(g, lockText, font);
+				int scaledDimension = Theme.S(17);
+				Rectangle pill = new Rectangle(padL + width + Theme.S(9), centerY - scaledDimension / 2, badgeWidthResult, scaledDimension);
 				if (pill.Right <= base.Width - Theme.S(8))
 				{
 					DsPaint.Badge(g, pill, lockText, font, lockOn);

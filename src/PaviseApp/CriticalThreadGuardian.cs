@@ -188,13 +188,13 @@ namespace PaviseApp
 
 				private string PartPath(HardThreadCleanupPart part)
 				{
-					string text = Original.Target.SessionId.ToString("N");
+					string sessionIdText = Original.Target.SessionId.ToString("N");
 					switch (part)
 					{
 					case HardThreadCleanupPart.Ledger:
-						return Path.Combine(Original.Root, "hard-thread-" + text + ".xml");
+						return Path.Combine(Original.Root, "hard-thread-" + sessionIdText + ".xml");
 					case HardThreadCleanupPart.SessionLock:
-						return Path.Combine(Original.Root, "hard-thread-" + text + ".lock");
+						return Path.Combine(Original.Root, "hard-thread-" + sessionIdText + ".lock");
 					case HardThreadCleanupPart.Configuration:
 						return ExecutablePath + ".config";
 					case HardThreadCleanupPart.Executable:
@@ -367,8 +367,8 @@ namespace PaviseApp
 					}
 					try
 					{
-						string text = ExpectedHash(part);
-						if (text == null || !VerifyFile(PartPath(part), text))
+						string expectedHashResult = ExpectedHash(part);
+						if (expectedHashResult == null || !VerifyFile(PartPath(part), expectedHashResult))
 						{
 							return false;
 						}
@@ -602,12 +602,12 @@ namespace PaviseApp
 					unregister = Unregister;
 					arg = ((Scope == null) ? null : Scope.Child);
 				}
-				bool flag = unregister == null;
+				bool matchesUnregister = unregister == null;
 				if (unregister != null)
 				{
 					try
 					{
-						flag = unregister(arg);
+						matchesUnregister = unregister(arg);
 					}
 					catch
 					{
@@ -615,18 +615,18 @@ namespace PaviseApp
 				}
 				lock (lifetime)
 				{
-					protectionReleased = flag;
-					if (flag)
+					protectionReleased = matchesUnregister;
+					if (matchesUnregister)
 					{
 						controllerReleased = true;
 						RemoveController(this);
 					}
-					if (flag && cleanupTimer != null)
+					if (matchesUnregister && cleanupTimer != null)
 					{
 						cleanupTimer.Dispose();
 						cleanupTimer = null;
 					}
-					else if (!flag)
+					else if (!matchesUnregister)
 					{
 						ScheduleCleanupLocked();
 					}
@@ -828,13 +828,13 @@ namespace PaviseApp
 
 			public void OnLost(Action callback)
 			{
-				bool flag;
+				bool allConditionsMet;
 				lock (lifetime)
 				{
 					lost = callback;
-					flag = failed && !disposed && callback != null;
+					allConditionsMet = failed && !disposed && callback != null;
 				}
-				if (!flag)
+				if (!allConditionsMet)
 				{
 					return;
 				}
@@ -1281,8 +1281,8 @@ namespace PaviseApp
 						binaryWriter.Write(RootIdentity);
 						binaryWriter.Write(Sid);
 						binaryWriter.Write(Nonce);
-						HardThreadGuardianActor[] array = new HardThreadGuardianActor[2] { Parent, Child };
-						foreach (HardThreadGuardianActor hardThreadGuardianActor in array)
+						HardThreadGuardianActor[] hardThreadGuardianActorItems = new HardThreadGuardianActor[2] { Parent, Child };
+						foreach (HardThreadGuardianActor hardThreadGuardianActor in hardThreadGuardianActorItems)
 						{
 							binaryWriter.Write(hardThreadGuardianActor.Pid);
 							binaryWriter.Write(hardThreadGuardianActor.Creation);
@@ -1612,11 +1612,11 @@ namespace PaviseApp
 
 			public void Dispose()
 			{
-				object obj = held;
+				object heldSnapshot = held;
 				held = null;
-				if (obj != null)
+				if (heldSnapshot != null)
 				{
-					Monitor.Exit(obj);
+					Monitor.Exit(heldSnapshot);
 				}
 			}
 		}
@@ -1984,26 +1984,26 @@ namespace PaviseApp
 			{
 				throw new ArgumentNullException("original recovery operation");
 			}
-			int num = 250;
+			int retainRecoveryUntilSettledValue = 250;
 			for (int attempt = 1; attempt <= 3; attempt++)
 			{
-				bool flag = false;
+				bool retainRecoveryUntilSettledReady = false;
 				try
 				{
-					flag = restore();
+					retainRecoveryUntilSettledReady = restore();
 				}
 				catch
 				{
 				}
-				if (flag)
+				if (retainRecoveryUntilSettledReady)
 				{
 					return true;
 				}
 				Logger.Warn("Critical thread guardian recovery: attempt=" + attempt + "/3; original authority retained");
 				if (attempt < 3)
 				{
-					try { wait(num); } catch { Thread.Sleep(num); }
-					num *= 2;
+					try { wait(retainRecoveryUntilSettledValue); } catch { Thread.Sleep(retainRecoveryUntilSettledValue); }
+					retainRecoveryUntilSettledValue *= 2;
 				}
 			}
 			return false;
@@ -2044,18 +2044,18 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 		internal static bool TryRun(string[] args, string originalStartupData, out int exitCode)
 		{
 			exitCode = 0;
-			bool flag = false;
+			bool runReady = false;
 			if (args != null)
 			{
 				foreach (string a in args)
 				{
 					if (string.Equals(a, "--hard-thread-guardian", StringComparison.OrdinalIgnoreCase))
 					{
-						flag = true;
+						runReady = true;
 					}
 				}
 			}
-			if (!flag)
+			if (!runReady)
 			{
 				return false;
 			}
@@ -2179,12 +2179,12 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 
 		private static string Nonce()
 		{
-			byte[] array = new byte[32];
+			byte[] rawBytes = new byte[32];
 			using (RandomNumberGenerator randomNumberGenerator = RandomNumberGenerator.Create())
 			{
-				randomNumberGenerator.GetBytes(array);
+				randomNumberGenerator.GetBytes(rawBytes);
 			}
-			return Hex(array);
+			return Hex(rawBytes);
 		}
 
 		private static bool IsHash(string value)
@@ -2244,7 +2244,7 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 			{
 				throw new IOException("original guardian store owner is not trusted");
 			}
-			bool flag = false;
+			bool requireAclReady = false;
 			foreach (FileSystemAccessRule accessRule in accessControl.GetAccessRules(true, true, typeof(SecurityIdentifier)))
 			{
 				if (accessRule.AccessControlType == AccessControlType.Allow)
@@ -2256,11 +2256,11 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 					}
 					if (value == sid && (accessRule.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl)
 					{
-						flag = true;
+						requireAclReady = true;
 					}
 				}
 			}
-			if (!flag)
+			if (!requireAclReady)
 			{
 				throw new IOException("original user lacks full source ownership");
 			}
@@ -2275,8 +2275,8 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 				DirectorySecurity directorySecurity = new DirectorySecurity();
 				directorySecurity.SetOwner(new SecurityIdentifier(sid));
 				directorySecurity.SetAccessRuleProtection(true, false);
-				string[] array = new string[3] { sid, "S-1-5-18", "S-1-5-32-544" };
-				foreach (string sddlForm in array)
+				string[] textEntries = new string[3] { sid, "S-1-5-18", "S-1-5-32-544" };
+				foreach (string sddlForm in textEntries)
 				{
 					directorySecurity.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sddlForm), FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
 				}
@@ -2292,11 +2292,11 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 
 		private static byte[] AwaitRead(Stream stream, int count)
 		{
-			byte[] array = new byte[count];
+			byte[] rawBytes = new byte[count];
 			Task<int> task;
 			for (int i = 0; i < count; i += task.Result)
 			{
-				task = stream.ReadAsync(array, i, count - i);
+				task = stream.ReadAsync(rawBytes, i, count - i);
 				if (!task.Wait(5000))
 				{
 					stream.Dispose();
@@ -2307,17 +2307,17 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 					throw new EndOfStreamException("guardian peer disconnected");
 				}
 			}
-			return array;
+			return rawBytes;
 		}
 
 		private static byte[] ReadPacket(Stream stream)
 		{
-			int num = BitConverter.ToInt32(AwaitRead(stream, 4), 0);
-			if (num < 1 || num > 65536)
+			int toInt32Result = BitConverter.ToInt32(AwaitRead(stream, 4), 0);
+			if (toInt32Result < 1 || toInt32Result > 65536)
 			{
 				throw new InvalidDataException("guardian packet bound");
 			}
-			return AwaitRead(stream, num);
+			return AwaitRead(stream, toInt32Result);
 		}
 
 		private static void WritePacket(Stream stream, byte[] bytes)
@@ -2406,22 +2406,22 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 		{
 			originalStore = null;
 			original.RequireActive();
-			string text = Canonical(original.CanonicalStore);
-			HardThreadStorageDomain.RequireLocal(text, (string drive) => new DriveInfo(drive).DriveType);
-			string text2 = UserSid();
-			if (!string.Equals(Path.GetFileName(text), "CriticalThreadHardAffinityV1", StringComparison.Ordinal))
+			string canonicalResult = Canonical(original.CanonicalStore);
+			HardThreadStorageDomain.RequireLocal(canonicalResult, (string drive) => new DriveInfo(drive).DriveType);
+			string userSidResult = UserSid();
+			if (!string.Equals(Path.GetFileName(canonicalResult), "CriticalThreadHardAffinityV1", StringComparison.Ordinal))
 			{
 				throw new InvalidDataException("original startup store required");
 			}
-			ProvisionRoot(text, text2);
-			ParentGuardian result = new ParentGuardian(text);
+			ProvisionRoot(canonicalResult, userSidResult);
+			ParentGuardian result = new ParentGuardian(canonicalResult);
 			RegisterController(result);
 			try
 			{
-				result.Root = new RootPin(text, text2);
+				result.Root = new RootPin(canonicalResult, userSidResult);
 				try
 				{
-					originalStore = new HardThreadFileStore(text);
+					originalStore = new HardThreadFileStore(canonicalResult);
 					originalStore.RequireForwardAdmission(new HardThreadTarget(original.SessionId, original.ProcessId, original.ProcessCreation, original.ExecutablePath, original.AllowedMask));
 				}
 				catch (HardThreadOperationException)
@@ -2438,31 +2438,31 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 				{
 					throw new IOException("original parent is not alive");
 				}
-				string text3 = Nonce();
+				string nonceResult = Nonce();
 				result.Setup = new Scope
 				{
 					Target = new HardThreadTarget(original.SessionId, original.ProcessId, original.ProcessCreation, original.ExecutablePath, original.AllowedMask),
 					Parent = parent.Actor,
-					Root = text,
+					Root = canonicalResult,
 					RootIdentity = result.Root.Identity,
-					Sid = text2,
-					Nonce = text3
+					Sid = userSidResult,
+					Nonce = nonceResult
 				};
-				string text4 = Path.Combine(text, "guards", original.SessionId.ToString("N"));
-				if (Directory.Exists(text4))
+				string guardsPath = Path.Combine(canonicalResult, "guards", original.SessionId.ToString("N"));
+				if (Directory.Exists(guardsPath))
 				{
 					throw new IOException("original guardian session already registered");
 				}
-				Directory.CreateDirectory(Path.GetDirectoryName(text4));
-				if (!CreateDirectory(text4, IntPtr.Zero))
+				Directory.CreateDirectory(Path.GetDirectoryName(guardsPath));
+				if (!CreateDirectory(guardsPath, IntPtr.Zero))
 				{
 					throw new IOException("original session directory could not be created exclusively: " + Marshal.GetLastWin32Error());
 				}
 				result.DirectoryCreated = true;
-				NoReparse(text4);
-				result.GuardsDirectory = new DirectoryPin(Path.GetDirectoryName(text4), text2);
-				result.SessionDirectory = new DirectoryPin(text4, text2);
-				string executable = Path.Combine(text4, "Pavise.HardThreadGuardian.exe");
+				NoReparse(guardsPath);
+				result.GuardsDirectory = new DirectoryPin(Path.GetDirectoryName(guardsPath), userSidResult);
+				result.SessionDirectory = new DirectoryPin(guardsPath, userSidResult);
+				string executable = Path.Combine(guardsPath, "Pavise.HardThreadGuardian.exe");
 				FileStream source = null;
 				FileStream copy = null;
 				HardThreadConstructionCleanup.AcquireAndRelease(delegate
@@ -2480,21 +2480,21 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 				result.ConfigurationCreated = true;
 				PipeSecurity pipeSecurity = new PipeSecurity();
 				pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-5-2"), PipeAccessRights.FullControl, AccessControlType.Deny));
-				string[] array = new string[3] { text2, "S-1-5-18", "S-1-5-32-544" };
-				foreach (string sddlForm in array)
+				string[] textEntries = new string[3] { userSidResult, "S-1-5-18", "S-1-5-32-544" };
+				foreach (string sddlForm in textEntries)
 				{
 					pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(sddlForm), PipeAccessRights.FullControl, AccessControlType.Allow));
 				}
-				result.Pipe = new NamedPipeServerStream(PipeName(original.SessionId, text3), PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, pipeSecurity);
+				result.Pipe = new NamedPipeServerStream(PipeName(original.SessionId, nonceResult), PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, pipeSecurity);
 				StartupInfo startupInfo = default(StartupInfo);
 				startupInfo.Size = Marshal.SizeOf(typeof(StartupInfo));
 				startupInfo.Flags = 1u;
 				startupInfo.Show = 0;
 				StartupInfo startup = startupInfo;
-				string directoryName = Path.GetDirectoryName(text);
-				string value = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + text3 + " --autostart-data \"" + directoryName + "\"";
+				string directoryName = Path.GetDirectoryName(canonicalResult);
+				string value = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + nonceResult + " --autostart-data \"" + directoryName + "\"";
 				ProcessInfo child;
-				if (!CreateProcess(executable, new StringBuilder(value), IntPtr.Zero, IntPtr.Zero, false, 150994944u, IntPtr.Zero, text4, ref startup, out child))
+				if (!CreateProcess(executable, new StringBuilder(value), IntPtr.Zero, IntPtr.Zero, false, 150994944u, IntPtr.Zero, guardsPath, ref startup, out child))
 				{
 					int lastWin32Error = Marshal.GetLastWin32Error();
 					bool inJob = false;
@@ -2523,19 +2523,19 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 					Target = new HardThreadTarget(original.SessionId, original.ProcessId, original.ProcessCreation, original.ExecutablePath, original.AllowedMask),
 					Parent = parent.Actor,
 					Child = result.Child.Actor,
-					Root = text,
+					Root = canonicalResult,
 					RootIdentity = result.Root.Identity,
-					Sid = text2,
-					Nonce = text3
+					Sid = userSidResult,
+					Nonce = nonceResult
 				};
 				byte[] bytes = result.Scope.Encode();
-				originalStore.BindOriginalScope(result.Scope.Target, text3, result.Scope.Digest);
+				originalStore.BindOriginalScope(result.Scope.Target, nonceResult, result.Scope.Digest);
 				result.Unregister = original.UnregisterGuardianActor;
 				if (!original.RegisterGuardianActor(result.Child.Actor))
 				{
 					throw new IOException("original guardian background restoration is unconfirmed");
 				}
-				string path = Path.Combine(text4, "scope.xml");
+				string path = Path.Combine(guardsPath, "scope.xml");
 				WriteNew(path, bytes);
 				result.RegistrationCreated = true;
 				result.Source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -2627,8 +2627,8 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 				{
 					return true;
 				}
-				string text = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
-				RequireAcl(text, UserSid());
+				string canonicalResult = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
+				RequireAcl(canonicalResult, UserSid());
 				NamedPipeClientStream namedPipeClientStream = new NamedPipeClientStream(".", PipeName(result, args[2]), PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
 				NativeRegistration nativeRegistration2 = new NativeRegistration();
 				nativeRegistration2.Pipe = namedPipeClientStream;
@@ -2640,12 +2640,12 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 					throw new IOException("original server PID unavailable");
 				}
 				byte[] bytes = ReadPacket(namedPipeClientStream);
-				nativeRegistration.Scope = Scope.Parse(bytes, text, result, args[2], UserSid(), new NativeOrigin(), true);
+				nativeRegistration.Scope = Scope.Parse(bytes, canonicalResult, result, args[2], UserSid(), new NativeOrigin(), true);
 				if (pid != nativeRegistration.Scope.Parent.Pid || nativeRegistration.Scope.Child.Pid != Process.GetCurrentProcess().Id)
 				{
 					throw new IOException("actual guardian pipe peers differ");
 				}
-				nativeRegistration.Root = new RootPin(text, nativeRegistration.Scope.Sid);
+				nativeRegistration.Root = new RootPin(canonicalResult, nativeRegistration.Scope.Sid);
 				if (nativeRegistration.Root.Identity != nativeRegistration.Scope.RootIdentity)
 				{
 					throw new IOException("original source root was replaced");
@@ -2658,7 +2658,7 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 						throw new IOException("live original peers required");
 					}
 					nativeRegistration.Target = new TargetPin(nativeRegistration.Scope.Target);
-					string path = Path.Combine(text, "guards", result.ToString("N"), "scope.xml");
+					string path = Path.Combine(canonicalResult, "guards", result.ToString("N"), "scope.xml");
 					nativeRegistration.Source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 					if (Hash(nativeRegistration.Source) != nativeRegistration.Scope.Digest)
 					{
@@ -2673,8 +2673,8 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 					}
 				}
 				Task<byte[]> task = ReadStop(namedPipeClientStream);
-				bool flag = false;
-				long num = 0L;
+				bool runNativeReady = false;
+				long numericValue = 0L;
 				int terminalReadFailures = 0;
 				while (true)
 				{
@@ -2691,25 +2691,25 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 							task = null;
 							if (result2 == null || Text(result2) == "stop:" + nativeRegistration.Scope.Digest)
 							{
-								flag = true;
+								runNativeReady = true;
 							}
 						}
-						if (!flag || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < num)
+						if (!runNativeReady || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < numericValue)
 						{
 							break;
 						}
-						num = DateTime.UtcNow.AddSeconds(1.0).Ticks;
-						bool flag2 = false;
+						numericValue = DateTime.UtcNow.AddSeconds(1.0).Ticks;
+						bool runNativeReady2 = false;
 						try
 						{
-							using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(text))
+							using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(canonicalResult))
 							{
-								flag2 = true;
+								runNativeReady2 = true;
 								foreach (HardThreadReceipt row in hardThreadFileStore.Load(nativeRegistration.Scope.Target).Rows)
 								{
 									if (!row.Terminal)
 									{
-										flag2 = false;
+										runNativeReady2 = false;
 									}
 								}
 							}
@@ -2719,7 +2719,7 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 							terminalReadFailures++;
 							Logger.Warn("Critical guardian terminal journal read: attempt=" + terminalReadFailures + "/3; retained until parent exit");
 						}
-						if (flag2)
+						if (runNativeReady2)
 						{
 							exitCode = 0;
 							return true;
@@ -2785,53 +2785,53 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 			string enumerationKey = "cleanup-enumeration:" + originalStartupData + "/" + PerformanceTuning.RecoveryCycleSerial;
 			if (!HistoricalAttemptAllowed(enumerationKey)) return false;
 			settledLeftovers = false;
-			bool flag = false;
+			bool sweepSettledGuardsSucceeded = false;
 			try
 			{
 				if (string.IsNullOrEmpty(originalStartupData) || !Path.IsPathRooted(originalStartupData))
 				{
 					return false;
 				}
-				string text = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
-				string text2 = Path.Combine(text, "guards");
-				if (HasControllerDebt(text))
+				string canonicalResult = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
+				string guardsPath = Path.Combine(canonicalResult, "guards");
+				if (HasControllerDebt(canonicalResult))
 				{
 					return false;
 				}
-				if (!Directory.Exists(text2))
+				if (!Directory.Exists(guardsPath))
 				{
-					return flag = true;
+					return sweepSettledGuardsSucceeded = true;
 				}
 				string sid = UserSid();
-				RequireAcl(text, sid);
-				RequireAcl(text2, sid, false);
-				NoReparse(text2);
-				flag = true;
-				string[] directories = Directory.GetDirectories(text2);
+				RequireAcl(canonicalResult, sid);
+				RequireAcl(guardsPath, sid, false);
+				NoReparse(guardsPath);
+				sweepSettledGuardsSucceeded = true;
+				string[] directories = Directory.GetDirectories(guardsPath);
 				HistoricalAttemptEnded(enumerationKey, true);
-				foreach (string text3 in directories)
+				foreach (string entryText in directories)
 				{
 					Guid result;
-					if (Guid.TryParseExact(Path.GetFileName(text3), "N", out result))
+					if (Guid.TryParseExact(Path.GetFileName(entryText), "N", out result))
 					{
-						string text4 = result.ToString("N");
-						if (!File.Exists(Path.Combine(text, "hard-thread-" + text4 + ".xml")) && !File.Exists(Path.Combine(text, "hard-thread-" + text4 + ".lock")) && !SweepSettledGuard(text3))
+						string resultText = result.ToString("N");
+						if (!File.Exists(Path.Combine(canonicalResult, "hard-thread-" + resultText + ".xml")) && !File.Exists(Path.Combine(canonicalResult, "hard-thread-" + resultText + ".lock")) && !SweepSettledGuard(entryText))
 						{
-							flag = false;
+							sweepSettledGuardsSucceeded = false;
 						}
 					}
 				}
-				return flag;
+				return sweepSettledGuardsSucceeded;
 			}
 			catch
 			{
 				HistoricalAttemptEnded(enumerationKey, false);
-				flag = false;
+				sweepSettledGuardsSucceeded = false;
 				return false;
 			}
 			finally
 			{
-				if (!flag)
+				if (!sweepSettledGuardsSucceeded)
 				{
 					settledLeftovers = true;
 				}
@@ -2904,12 +2904,12 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 			{
 				throw new InvalidDataException("bounded original historical scope required");
 			}
-			byte[] array = new byte[(int)source.Length];
-			int num;
-			for (int i = 0; i < array.Length; i += num)
+			byte[] rawBytes = new byte[(int)source.Length];
+			int scopeBytesValue;
+			for (int i = 0; i < rawBytes.Length; i += scopeBytesValue)
 			{
-				num = source.Read(array, i, array.Length - i);
-				if (num <= 0)
+				scopeBytesValue = source.Read(rawBytes, i, rawBytes.Length - i);
+				if (scopeBytesValue <= 0)
 				{
 					throw new EndOfStreamException();
 				}
@@ -2918,7 +2918,7 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 			{
 				throw new InvalidDataException("historical source grew during capture");
 			}
-			return array;
+			return rawBytes;
 		}
 
 		internal static bool TrySettleHistoricalGone(string originalStartupData)
@@ -2931,57 +2931,57 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 				{
 					return false;
 				}
-				string text = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
-				string text2 = UserSid();
-				if (HasControllerDebt(text))
+				string canonicalResult = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
+				string userSidResult = UserSid();
+				if (HasControllerDebt(canonicalResult))
 				{
 					return false;
 				}
-				if (!Directory.Exists(text))
+				if (!Directory.Exists(canonicalResult))
 				{
-					return !HardThreadFileStore.CanonicalRootHasRecoveryDebt(text);
+					return !HardThreadFileStore.CanonicalRootHasRecoveryDebt(canonicalResult);
 				}
-				RequireAcl(text, text2);
-				using (RootPin root = new RootPin(text, text2))
+				RequireAcl(canonicalResult, userSidResult);
+				using (RootPin root = new RootPin(canonicalResult, userSidResult))
 				{
 					HardThreadHistoricalBudget hardThreadHistoricalBudget = new HardThreadHistoricalBudget();
 					Stopwatch stopwatch = Stopwatch.StartNew();
-					HardThreadJournal[] array;
-					using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(text))
+					HardThreadJournal[] historicalJournalsResult;
+					using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(canonicalResult))
 					{
-						array = hardThreadFileStore.HistoricalJournals();
+						historicalJournalsResult = hardThreadFileStore.HistoricalJournals();
 					}
 					HistoricalAttemptEnded(enumerationKey, true);
-					bool flag = false;
-					HardThreadJournal[] array2 = array;
-					foreach (HardThreadJournal hardThreadJournal in array2)
+					bool settleHistoricalGoneReady = false;
+					HardThreadJournal[] hardThreadJournalItems = historicalJournalsResult;
+					foreach (HardThreadJournal hardThreadJournal in hardThreadJournalItems)
 					{
-						bool flag2 = false;
+						bool settleHistoricalGoneReady2 = false;
 						foreach (HardThreadReceipt row in hardThreadJournal.Rows)
 						{
 							if (!row.Terminal)
 							{
-								flag2 = true;
+								settleHistoricalGoneReady2 = true;
 							}
 						}
-						if (!flag2)
+						if (!settleHistoricalGoneReady2)
 						{
 							continue;
 						}
-						string observationKey = "journal:" + text + "/" + hardThreadJournal.Target.SessionId + "/" + hardThreadJournal.Target.ProcessCreation;
+						string observationKey = "journal:" + canonicalResult + "/" + hardThreadJournal.Target.SessionId + "/" + hardThreadJournal.Target.ProcessCreation;
 						string retryKey = HistoricalTargetPhase(observationKey, hardThreadJournal.Target);
-						if (!HistoricalTargetReadable(observationKey)) { flag = true; continue; }
-						if (!HistoricalAttemptAllowed(retryKey)) { flag = true; continue; }
+						if (!HistoricalTargetReadable(observationKey)) { settleHistoricalGoneReady = true; continue; }
+						if (!HistoricalAttemptAllowed(retryKey)) { settleHistoricalGoneReady = true; continue; }
 						if (!hardThreadHistoricalBudget.BeginSession(stopwatch.ElapsedMilliseconds))
 						{
-							flag = true;
+							settleHistoricalGoneReady = true;
 							break;
 						}
 						bool completed = false;
-						if (!BeginHistoricalAttempt(retryKey)) { flag = true; continue; }
+						if (!BeginHistoricalAttempt(retryKey)) { settleHistoricalGoneReady = true; continue; }
 						try
 						{
-							using (HardThreadFileStore hardThreadFileStore2 = new HardThreadFileStore(text))
+							using (HardThreadFileStore hardThreadFileStore2 = new HardThreadFileStore(canonicalResult))
 							{
 								using (HistoricalRegistration historicalRegistration = new HistoricalRegistration())
 								{
@@ -2993,17 +2993,17 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 									{
 										throw new InvalidDataException("legacy historical source has no original host binding");
 									}
-									string text3 = Path.Combine(text, "guards", hardThreadJournal.Target.SessionId.ToString("N"));
-									historicalRegistration.Guards = new DirectoryPin(Path.GetDirectoryName(text3), text2);
-									historicalRegistration.Directory = new DirectoryPin(text3, text2);
-									string path = Path.Combine(text3, "scope.xml");
+									string guardsPath = Path.Combine(canonicalResult, "guards", hardThreadJournal.Target.SessionId.ToString("N"));
+									historicalRegistration.Guards = new DirectoryPin(Path.GetDirectoryName(guardsPath), userSidResult);
+									historicalRegistration.Directory = new DirectoryPin(guardsPath, userSidResult);
+									string path = Path.Combine(guardsPath, "scope.xml");
 									if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
 									{
 										throw new InvalidDataException("original scope reparse source refused");
 									}
 									historicalRegistration.Source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 									byte[] bytes = ScopeBytes(historicalRegistration.Source);
-									historicalRegistration.Scope = Scope.Parse(bytes, text, hardThreadJournal.Target.SessionId, historicalRegistration.Journal.SourceNonce, text2, new NativeOrigin(), false);
+									historicalRegistration.Scope = Scope.Parse(bytes, canonicalResult, hardThreadJournal.Target.SessionId, historicalRegistration.Journal.SourceNonce, userSidResult, new NativeOrigin(), false);
 									if ((File.GetAttributes(historicalRegistration.Scope.Child.Path) & FileAttributes.ReparsePoint) != 0)
 									{
 										throw new InvalidDataException("original guardian image reparse source refused");
@@ -3027,7 +3027,7 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 									if (nativeGoneProof == null)
 									{
 										completed = true; // A valid live target is a successful observation, not an execution failure.
-										flag = true;
+										settleHistoricalGoneReady = true;
 										continue;
 									}
 									using (nativeGoneProof)
@@ -3041,11 +3041,11 @@ internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<in
 						catch
 						{
 							completed = false;
-							flag = true;
+							settleHistoricalGoneReady = true;
 						}
 						finally { HistoricalAttemptEnded(retryKey, completed); }
 					}
-					return !flag && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(text);
+					return !settleHistoricalGoneReady && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(canonicalResult);
 				}
 			}
 			catch

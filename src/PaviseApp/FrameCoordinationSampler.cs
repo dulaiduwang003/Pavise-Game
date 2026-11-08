@@ -76,8 +76,8 @@ namespace PaviseApp
 					Invalid = true;
 					return false;
 				}
-				double num = (double)(kernel + user) / 10000.0;
-				if (num <= 500.0)
+				double ratio = (double)(kernel + user) / 10000.0;
+				if (ratio <= 500.0)
 				{
 					return true;
 				}
@@ -121,7 +121,7 @@ namespace PaviseApp
 						{
 							return;
 						}
-						int num = ((timeStamp >= Half) ? 1 : 0);
+						int receiveValue = ((timeStamp >= Half) ? 1 : 0);
 						int threadId = (int)r.EventHeader.ThreadId;
 						Guid providerId = r.EventHeader.ProviderId;
 						if (providerId == KernelThread)
@@ -130,14 +130,14 @@ namespace PaviseApp
 							{
 								return;
 							}
-							int num2 = (int)(r.BufferContext & 0xFF);
+							int bufferContextMask = (int)(r.BufferContext & 0xFF);
 							int opcode = r.EventHeader.EventDescriptor.Opcode;
-							if (timeStamp < last[num2])
+							if (timeStamp < last[bufferContextMask])
 							{
-								running[num2] = 0;
+								running[bufferContextMask] = 0;
 								return;
 							}
-							last[num2] = timeStamp;
+							last[bufferContextMask] = timeStamp;
 							switch (opcode)
 							{
 							case 36:
@@ -145,12 +145,12 @@ namespace PaviseApp
 								SchedulerSwitches++;
 								if (r.UserDataLength < 24)
 								{
-									running[num2] = 0;
+									running[bufferContextMask] = 0;
 									break;
 								}
-								int num5 = Marshal.ReadInt32(r.UserData);
-								bool flag = Sample.Threads.ContainsKey(num5);
-								running[num2] = (flag ? num5 : 0);
+								int int32 = Marshal.ReadInt32(r.UserData);
+								bool isInSampleThreads = Sample.Threads.ContainsKey(int32);
+								running[bufferContextMask] = (isInSampleThreads ? int32 : 0);
 								break;
 							}
 							case 50:
@@ -159,14 +159,14 @@ namespace PaviseApp
 								{
 									break;
 								}
-								int num4 = running[num2];
+								int receiveValue2 = running[bufferContextMask];
 								// Nonzero entries were admitted by CSwitch from this capture's fixed thread set.
-								if (FixedThreadSet && num4 == 0) break;
-								int num3 = Marshal.ReadInt32(r.UserData);
-								if (num4 != num3 && Sample.Threads.ContainsKey(num3) && (FixedThreadSet || Sample.Threads.ContainsKey(num4)) && AdmitRelevantEvent())
+								if (FixedThreadSet && receiveValue2 == 0) break;
+								int int322 = Marshal.ReadInt32(r.UserData);
+								if (receiveValue2 != int322 && Sample.Threads.ContainsKey(int322) && (FixedThreadSet || Sample.Threads.ContainsKey(receiveValue2)) && AdmitRelevantEvent())
 								{
-									long key = ((long)num3 << 32) | (uint)num4;
-									Dictionary<long, int> edges = Edges[num];
+									long key = ((long)int322 << 32) | (uint)receiveValue2;
+									Dictionary<long, int> edges = Edges[receiveValue];
 									int value;
 									bool known = edges.TryGetValue(key, out value);
 									if (edges.Count >= 2048 && !known)
@@ -189,21 +189,21 @@ namespace PaviseApp
 							{
 								return;
 							}
-							bool flag2 = providerId == Dxgi;
-							bool flag3 = providerId == D3d9;
-							if ((!flag2 && !flag3) || r.EventHeader.EventDescriptor.Version != 0)
+							bool matchesProviderId = providerId == Dxgi;
+							bool matchesProviderId2 = providerId == D3d9;
+							if ((!matchesProviderId && !matchesProviderId2) || r.EventHeader.EventDescriptor.Version != 0)
 							{
 								return;
 							}
 							int id = r.EventHeader.EventDescriptor.Id;
-							if ((id != ((!flag2) ? 1 : 42) && id != (flag2 ? 43 : 2)) || !AdmitRelevantEvent())
+							if ((id != ((!matchesProviderId) ? 1 : 42) && id != (matchesProviderId ? 43 : 2)) || !AdmitRelevantEvent())
 							{
 								return;
 							}
 							int value2;
-							if (id == ((!flag2) ? 1 : 42))
+							if (id == ((!matchesProviderId) ? 1 : 42))
 							{
-								if (flag2)
+								if (matchesProviderId)
 								{
 									Property property = default(Property);
 									property.Name = (ulong)FlagsName.ToInt64();
@@ -217,14 +217,14 @@ namespace PaviseApp
 								}
 								pending[threadId] = id;
 							}
-							else if (id == (flag2 ? 43 : 2) && pending.TryGetValue(threadId, out value2) && value2 == ((!flag2) ? 1 : 42))
+							else if (id == (matchesProviderId ? 43 : 2) && pending.TryGetValue(threadId, out value2) && value2 == ((!matchesProviderId) ? 1 : 42))
 							{
 								pending.Remove(threadId);
 								if (r.UserDataLength >= 4 && Marshal.ReadInt32(r.UserData) == 0)
 								{
 									int value3;
-									Presents[num].TryGetValue(threadId, out value3);
-									Presents[num][threadId] = value3 + 1;
+									Presents[receiveValue].TryGetValue(threadId, out value3);
+									Presents[receiveValue][threadId] = value3 + 1;
 								}
 							}
 						}
@@ -257,19 +257,19 @@ namespace PaviseApp
 
 		internal static int Dominant(Dictionary<int, int> counts, int minimum, double share)
 		{
-			int num = 0;
+			int dominantValue = 0;
 			int result = 0;
-			int num2 = 0;
+			int dominantValue2 = 0;
 			foreach (KeyValuePair<int, int> count in counts)
 			{
-				num += count.Value;
-				if (count.Value > num2)
+				dominantValue += count.Value;
+				if (count.Value > dominantValue2)
 				{
-					num2 = count.Value;
+					dominantValue2 = count.Value;
 					result = count.Key;
 				}
 			}
-			if (num2 < minimum || !((double)num2 >= (double)num * share))
+			if (dominantValue2 < minimum || !((double)dominantValue2 >= (double)dominantValue * share))
 			{
 				return 0;
 			}
@@ -300,13 +300,13 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = DominantWorker(evidence.Edges[0], presenter);
-			int num2 = DominantWorker(evidence.Edges[1], presenter);
-			if (num == 0 || num != num2)
+			int dominantWorkerResult = DominantWorker(evidence.Edges[0], presenter);
+			int dominantWorkerResult2 = DominantWorker(evidence.Edges[1], presenter);
+			if (dominantWorkerResult == 0 || dominantWorkerResult != dominantWorkerResult2)
 			{
 				return 0;
 			}
-			return num;
+			return dominantWorkerResult;
 		}
 
 		internal static FrameCaptureIssue CaptureIssue(bool admitted, int identityState, bool stopped, bool drained, int traceCode, uint lost, FrameCaptureIssue fault, double cpuMs)
@@ -400,10 +400,10 @@ namespace PaviseApp
 				{
 					return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
 				}
-				int num = NativeFrameThreads.ProcessState(pid, birth);
-				if (num != 0)
+				int processStateResult = NativeFrameThreads.ProcessState(pid, birth);
+				if (processStateResult != 0)
 				{
-					return frameCoordinationSample2.Reject((num > 0) ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.TargetUnavailable);
+					return frameCoordinationSample2.Reject((processStateResult > 0) ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.TargetUnavailable);
 				}
 				if (!presenterOnly)
 				{
@@ -464,18 +464,18 @@ namespace PaviseApp
 				{
 					return frameCoordinationSample2.Reject(frameCaptureIssue);
 				}
-				int num2 = Dominant(evidence2.Presents[0], 16, 0.7);
-				int num3 = Dominant(evidence2.Presents[1], 16, 0.7);
-				if (num2 == 0 || num2 != num3)
+				int presentTidValue = Dominant(evidence2.Presents[0], 16, 0.7);
+				int dominantResult = Dominant(evidence2.Presents[1], 16, 0.7);
+				if (presentTidValue == 0 || presentTidValue != dominantResult)
 				{
 					return frameCoordinationSample2;
 				}
-				if (presenterOnly && !AdmitPresenter(frameCoordinationSample2, num2))
+				if (presenterOnly && !AdmitPresenter(frameCoordinationSample2, presentTidValue))
 				{
 					return frameCoordinationSample2;
 				}
-				frameCoordinationSample2.PresentTid = num2;
-				frameCoordinationSample2.WorkerTid = SelectWorker(evidence2, num2);
+				frameCoordinationSample2.PresentTid = presentTidValue;
+				frameCoordinationSample2.WorkerTid = SelectWorker(evidence2, presentTidValue);
 				frameCoordinationSample2.Valid = true;
 				frameCoordinationSample2.Issue = FrameCaptureIssue.None;
 				frameCoordinationSample2.Detail = (presenterOnly ? "presenter confirmed; presenter-only capture" : ((frameCoordinationSample2.WorkerTid == 0) ? "presenter confirmed; no stable worker" : "presenter and worker confirmed"));

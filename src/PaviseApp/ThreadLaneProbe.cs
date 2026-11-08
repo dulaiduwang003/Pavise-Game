@@ -117,8 +117,8 @@ namespace PaviseApp
 			Dictionary<int, long> dictionary = new Dictionary<int, long>();
 			Dictionary<int, long> dictionary2 = new Dictionary<int, long>();
 			Dictionary<int, int> dictionary3 = new Dictionary<int, int>();
-			int num = 0;
-			int num2 = 0;
+			int leaderStableRoundsValue = 0;
+			int runValue = 0;
 			long ticks = DateTime.UtcNow.Ticks;
 			for (int i = 0; i < rounds; i++)
 			{
@@ -154,26 +154,26 @@ namespace PaviseApp
 				}
 				if (dictionary2.Count > 0)
 				{
-					int num3 = 0;
-					long num4 = -1L;
+					int runValue2 = 0;
+					long numericValue = -1L;
 					foreach (KeyValuePair<int, long> item3 in dictionary4)
 					{
 						long value2;
 						if (dictionary2.TryGetValue(item3.Key, out value2))
 						{
-							long num5 = item3.Value - value2;
-							if (num5 > num4)
+							long remainingValue = item3.Value - value2;
+							if (remainingValue > numericValue)
 							{
-								num4 = num5;
-								num3 = item3.Key;
+								numericValue = remainingValue;
+								runValue2 = item3.Key;
 							}
 						}
 					}
-					if (num3 != 0 && num3 == num2)
+					if (runValue2 != 0 && runValue2 == runValue)
 					{
-						num++;
+						leaderStableRoundsValue++;
 					}
-					num2 = num3;
+					runValue = runValue2;
 				}
 				dictionary2 = dictionary4;
 				if (i < rounds - 1)
@@ -182,35 +182,35 @@ namespace PaviseApp
 				}
 			}
 			result.WallSeconds = (double)(DateTime.UtcNow.Ticks - ticks) / 10000000.0;
-			result.LeaderStableRounds = num;
+			result.LeaderStableRounds = leaderStableRoundsValue;
 			result.SampledThreads = dictionary2.Count;
 			List<Lane> list = new List<Lane>();
-			long num6 = 0L;
+			long numericValue2 = 0L;
 			foreach (KeyValuePair<int, long> item4 in dictionary2)
 			{
 				long value3;
 				if (dictionary.TryGetValue(item4.Key, out value3))
 				{
-					long num7 = item4.Value - value3;
-					if (num7 < 0)
+					long remainingValue2 = item4.Value - value3;
+					if (remainingValue2 < 0)
 					{
-						num7 = 0L;
+						remainingValue2 = 0L;
 					}
-					num6 += num7;
+					numericValue2 += remainingValue2;
 					list.Add(new Lane
 					{
 						Tid = item4.Key,
-						Cpu100Ns = num7
+						Cpu100Ns = remainingValue2
 					});
 				}
 			}
 			list.Sort((Lane a, Lane b) => b.Cpu100Ns.CompareTo(a.Cpu100Ns));
-			double num8 = result.WallSeconds * 10000000.0;
-			result.TotalCores = ((num8 > 0.0) ? ((double)num6 / num8) : 0.0);
+			double scaledWallSeconds = result.WallSeconds * 10000000.0;
+			result.TotalCores = ((scaledWallSeconds > 0.0) ? ((double)numericValue2 / scaledWallSeconds) : 0.0);
 			for (int j = 0; j < list.Count && j < 8; j++)
 			{
 				Lane item = list[j];
-				item.SharePercent = ((num6 > 0) ? ((double)item.Cpu100Ns * 100.0 / (double)num6) : 0.0);
+				item.SharePercent = ((numericValue2 > 0) ? ((double)item.Cpu100Ns * 100.0 / (double)numericValue2) : 0.0);
 				item.CanQuery = true;
 				item.CanSet = CanOpenForSet(item.Tid, out item.SetError);
 				result.Top.Add(item);
@@ -250,41 +250,41 @@ namespace PaviseApp
 			{
 				if (!item.CanQuery)
 				{
-					object[] array = new object[5] { "  ", null, null, null, null };
+					object[] instanceItems = new object[5] { "  ", null, null, null, null };
 					int tid = item.Tid;
-					array[1] = tid.ToString().PadRight(9);
-					array[2] = Lang.T("t.threadlaneprobe.14");
-					array[3] = item.QueryError;
-					array[4] = " ";
-					stringBuilder.AppendLine(string.Concat(array));
+					instanceItems[1] = tid.ToString().PadRight(9);
+					instanceItems[2] = Lang.T("t.threadlaneprobe.14");
+					instanceItems[3] = item.QueryError;
+					instanceItems[4] = " ";
+					stringBuilder.AppendLine(string.Concat(instanceItems));
 				}
 				else
 				{
-					string[] array2 = new string[5] { "  ", null, null, null, null };
+					string[] textEntries = new string[5] { "  ", null, null, null, null };
 					int tid2 = item.Tid;
-					array2[1] = tid2.ToString().PadRight(9);
+					textEntries[1] = tid2.ToString().PadRight(9);
 					double sharePercent = item.SharePercent;
-					array2[2] = sharePercent.ToString("F1").PadLeft(8);
-					array2[3] = Lang.T("t.threadlaneprobe.15").PadRight(9);
-					array2[4] = (item.CanSet ? Lang.T("t.threadlaneprobe.16") : (Lang.T("t.threadlaneprobe.17") + item.SetError + " "));
-					stringBuilder.AppendLine(string.Concat(array2));
+					textEntries[2] = sharePercent.ToString("F1").PadLeft(8);
+					textEntries[3] = Lang.T("t.threadlaneprobe.15").PadRight(9);
+					textEntries[4] = (item.CanSet ? Lang.T("t.threadlaneprobe.16") : (Lang.T("t.threadlaneprobe.17") + item.SetError + " "));
+					stringBuilder.AppendLine(string.Concat(textEntries));
 				}
 			}
 			stringBuilder.AppendLine();
-			bool flag = false;
-			bool flag2 = false;
+			bool formatReady = false;
+			bool formatReady2 = false;
 			foreach (Lane item2 in r.Top)
 			{
 				if (item2.CanSet)
 				{
-					flag = true;
+					formatReady = true;
 				}
 				if (item2.CanQuery && !item2.CanSet)
 				{
-					flag2 = true;
+					formatReady2 = true;
 				}
 			}
-			stringBuilder.AppendLine(Lang.T("t.threadlaneprobe.18") + ((flag && !flag2) ? Lang.T("t.threadlaneprobe.19") : (flag ? Lang.T("t.threadlaneprobe.20") : Lang.T("t.threadlaneprobe.21"))));
+			stringBuilder.AppendLine(Lang.T("t.threadlaneprobe.18") + ((formatReady && !formatReady2) ? Lang.T("t.threadlaneprobe.19") : (formatReady ? Lang.T("t.threadlaneprobe.20") : Lang.T("t.threadlaneprobe.21"))));
 			return stringBuilder.ToString();
 		}
 	}

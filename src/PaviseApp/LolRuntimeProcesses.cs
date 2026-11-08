@@ -162,18 +162,18 @@ namespace PaviseApp
 				intPtr = Native.OpenProcess(1052672, false, id);
 				if (intPtr == IntPtr.Zero)
 				{
-					int num;
+					int sessionId2;
 					try
 					{
-						num = process.SessionId;
+						sessionId2 = process.SessionId;
 					}
 					catch
 					{
-						num = -1;
+						sessionId2 = -1;
 					}
-					if (num >= 0)
+					if (sessionId2 >= 0)
 					{
-						sessionRelation = ((!IsExpectedSession(expectedSession, num)) ? SessionRelation.Foreign : SessionRelation.Owned);
+						sessionRelation = ((!IsExpectedSession(expectedSession, sessionId2)) ? SessionRelation.Foreign : SessionRelation.Owned);
 					}
 					return false;
 				}
@@ -273,8 +273,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			long num = ((expectedCreation >= actualCreation) ? (expectedCreation - actualCreation) : (actualCreation - expectedCreation));
-			return num <= 10000;
+			long remainingExpectedCreation = ((expectedCreation >= actualCreation) ? (expectedCreation - actualCreation) : (actualCreation - expectedCreation));
+			return remainingExpectedCreation <= 10000;
 		}
 
 		internal static bool HasExclusiveCredentialSourceSession(string lolRoot)
@@ -289,13 +289,13 @@ namespace PaviseApp
 				return false;
 			}
 			bool result = false;
-			string[] array = new string[2] { "LeagueClient", "LeagueClientUx" };
-			for (int i = 0; i < array.Length; i++)
+			string[] textEntries = new string[2] { "LeagueClient", "LeagueClientUx" };
+			for (int i = 0; i < textEntries.Length; i++)
 			{
 				Process[] processesByName;
 				try
 				{
-					processesByName = Process.GetProcessesByName(array[i]);
+					processesByName = Process.GetProcessesByName(textEntries[i]);
 				}
 				catch
 				{
@@ -303,8 +303,8 @@ namespace PaviseApp
 				}
 				try
 				{
-					Process[] array2 = processesByName;
-					foreach (Process process in array2)
+					Process[] processesByNameSnapshot = processesByName;
+					foreach (Process process in processesByNameSnapshot)
 					{
 						string path;
 						SessionRelation sessionRelation;
@@ -409,8 +409,8 @@ namespace PaviseApp
 				return lolProcessSnapshot;
 			}
 			lolProcessSnapshot.ScanSucceeded = true;
-			Process[] array = processes;
-			foreach (Process process in array)
+			Process[] processesSnapshot = processes;
+			foreach (Process process in processesSnapshot)
 			{
 				string name = null;
 				try
@@ -540,8 +540,8 @@ namespace PaviseApp
 			List<long> list2 = new List<long>();
 			List<long> list3 = new List<long>();
 			List<string> list4 = new List<string>();
-			Process[] array = processes;
-			foreach (Process process2 in array)
+			Process[] processesSnapshot = processes;
+			foreach (Process process2 in processesSnapshot)
 			{
 				IntPtr intPtr = IntPtr.Zero;
 				try
@@ -564,11 +564,11 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					string text = Native.ImagePath(intPtr);
+					string imagePathResult = Native.ImagePath(intPtr);
 					long creation;
 					long cpu;
 					ulong io;
-					if (!string.IsNullOrEmpty(text) && IsCleanupTarget(text, Path.GetFileName(text), lolRoot, weGameRoot, includeDownloaders) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
+					if (!string.IsNullOrEmpty(imagePathResult) && IsCleanupTarget(imagePathResult, Path.GetFileName(imagePathResult), lolRoot, weGameRoot, includeDownloaders) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
 					{
 						long item = 0L;
 						try
@@ -581,7 +581,7 @@ namespace PaviseApp
 						list.Add(process2.Id);
 						list2.Add(item);
 						list3.Add(creation);
-						list4.Add(text);
+						list4.Add(imagePathResult);
 					}
 					FinishRuntimeCandidate:;
 				}
@@ -624,13 +624,13 @@ namespace PaviseApp
 					}
 					if (!Native.TryGetLiveProcessSessionId(intPtr2, list[j], out sessionId3)) { failedOperation = true; continue; }
 					if (!IsExpectedSession(sessionId, sessionId3)) continue;
-					string text2 = Native.ImagePath(intPtr2);
+					string imagePathResult2 = Native.ImagePath(intPtr2);
 					long creation2;
 					long cpu2;
 					ulong io2;
-					if (string.IsNullOrEmpty(text2) || !Native.QueryProcessSample(intPtr2, out creation2, out cpu2, out io2)) { failedOperation = true; continue; }
-					if (creation2 != list3[j] || !string.Equals(text2, list4[j], StringComparison.OrdinalIgnoreCase)
-						|| !IsCleanupTarget(text2, Path.GetFileName(text2), lolRoot, weGameRoot, includeDownloaders)) continue;
+					if (string.IsNullOrEmpty(imagePathResult2) || !Native.QueryProcessSample(intPtr2, out creation2, out cpu2, out io2)) { failedOperation = true; continue; }
+					if (creation2 != list3[j] || !string.Equals(imagePathResult2, list4[j], StringComparison.OrdinalIgnoreCase)
+						|| !IsCleanupTarget(imagePathResult2, Path.GetFileName(imagePathResult2), lolRoot, weGameRoot, includeDownloaders)) continue;
 					failedOperation = true;
 					if (TerminateProcess(intPtr2, 0u) && WaitForSingleObject(intPtr2, 1500u) == 0)
 					{
@@ -678,25 +678,25 @@ namespace PaviseApp
 			}
 			for (int i = 0; i < names.Length; i++)
 			{
-				string text = names[i];
-				if (text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+				string message = names[i];
+				if (message.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 				{
-					text = text.Substring(0, text.Length - 4);
+					message = message.Substring(0, message.Length - 4);
 				}
 				Process[] processesByName;
 				try
 				{
-					processesByName = Process.GetProcessesByName(text);
+					processesByName = Process.GetProcessesByName(message);
 				}
 				catch
 				{
 					continue;
 				}
-				bool flag = false;
+				bool anyProcessMatchesReady = false;
 				try
 				{
-					Process[] array = processesByName;
-					foreach (Process process in array)
+					Process[] processesByNameSnapshot = processesByName;
+					foreach (Process process in processesByNameSnapshot)
 					{
 						try
 						{
@@ -706,7 +706,7 @@ namespace PaviseApp
 							{
 								continue;
 							}
-							flag = true;
+							anyProcessMatchesReady = true;
 							break;
 						}
 						catch
@@ -718,7 +718,7 @@ namespace PaviseApp
 				{
 					DisposeProcesses(processesByName);
 				}
-				if (flag)
+				if (anyProcessMatchesReady)
 				{
 					return true;
 				}
@@ -755,8 +755,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				Process[] array = processesByName;
-				foreach (Process process in array)
+				Process[] processesByNameSnapshot = processesByName;
+				foreach (Process process in processesByNameSnapshot)
 				{
 					try
 					{
@@ -868,12 +868,12 @@ namespace PaviseApp
 			try
 			{
 				string fullPath = Path.GetFullPath(path);
-				string text = Path.GetFullPath(root).TrimEnd('\\') + "\\";
-				if (text.Length <= 3)
+				string trimEndOffset = Path.GetFullPath(root).TrimEnd('\\') + "\\";
+				if (trimEndOffset.Length <= 3)
 				{
 					return false;
 				}
-				return fullPath.StartsWith(text, StringComparison.OrdinalIgnoreCase);
+				return fullPath.StartsWith(trimEndOffset, StringComparison.OrdinalIgnoreCase);
 			}
 			catch
 			{
@@ -900,7 +900,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = new string[6]
+			string[] textEntries = new string[6]
 			{
 				Path.Combine(lolRoot, "Cross"),
 				Path.Combine(lolRoot, "LeagueClient", "FeedBack"),
@@ -909,9 +909,9 @@ namespace PaviseApp
 				Path.Combine(lolRoot, "LeagueClient", "DiagnosticAssistant"),
 				Path.Combine(lolRoot, "Launcher", "qbblinktrial")
 			};
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < textEntries.Length; i++)
 			{
-				if (IsUnder(path, array[i]))
+				if (IsUnder(path, textEntries[i]))
 				{
 					return true;
 				}

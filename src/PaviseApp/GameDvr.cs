@@ -45,10 +45,10 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				bool flag = values[0].Apply(0);
-				bool flag2 = values[1].Apply(0);
-				active = flag && flag2;
-				Logger.Log(active ? Lang.T("log.gamedvr.1") : (flag ? Lang.T("log.gamedvr.2") : Lang.T("log.gamedvr.3")));
+				bool applySucceeded = values[0].Apply(0);
+				bool applySucceeded2 = values[1].Apply(0);
+				active = applySucceeded && applySucceeded2;
+				Logger.Log(active ? Lang.T("log.gamedvr.1") : (applySucceeded ? Lang.T("log.gamedvr.2") : Lang.T("log.gamedvr.3")));
 				return active;
 			}
 		}
@@ -67,9 +67,9 @@ namespace PaviseApp
 					}
 					return !hasResidue;
 				}
-				bool flag = !values[0].HasBackup || values[0].Restore();
-				bool flag2 = !values[1].HasBackup || values[1].Restore();
-				if (hasResidue && flag && flag2)
+				bool matchesRestore = !values[0].HasBackup || values[0].Restore();
+				bool matchesRestore2 = !values[1].HasBackup || values[1].Restore();
+				if (hasResidue && matchesRestore && matchesRestore2)
 				{
 					Logger.Log(Lang.T("log.gamedvr.4"));
 				}

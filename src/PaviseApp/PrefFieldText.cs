@@ -8,34 +8,34 @@ namespace PaviseApp
 		public static string MergeField(string current, string field, string value)
 		{
 			List<string> list = new List<string>();
-			bool flag = false;
+			bool mergeFieldReady = false;
 			if (!string.IsNullOrEmpty(current))
 			{
-				string[] array = current.Split(';');
-				foreach (string text in array)
+				string[] currentParts = current.Split(';');
+				foreach (string entryText in currentParts)
 				{
-					string text2 = text.Trim();
-					if (text2.Length == 0)
+					string entryTextTrimmed = entryText.Trim();
+					if (entryTextTrimmed.Length == 0)
 					{
 						continue;
 					}
-					int num = text2.IndexOf('=');
-					string a = ((num > 0) ? text2.Substring(0, num).Trim() : text2);
-					if (num > 0 && string.Equals(a, field, StringComparison.OrdinalIgnoreCase))
+					int matchIndex = entryTextTrimmed.IndexOf('=');
+					string a = ((matchIndex > 0) ? entryTextTrimmed.Substring(0, matchIndex).Trim() : entryTextTrimmed);
+					if (matchIndex > 0 && string.Equals(a, field, StringComparison.OrdinalIgnoreCase))
 					{
-						if (!flag)
+						if (!mergeFieldReady)
 						{
 							list.Add(field + "=" + value);
-							flag = true;
+							mergeFieldReady = true;
 						}
 					}
 					else
 					{
-						list.Add(text2);
+						list.Add(entryTextTrimmed);
 					}
 				}
 			}
-			if (!flag)
+			if (!mergeFieldReady)
 			{
 				list.Add(field + "=" + value);
 			}
@@ -47,17 +47,17 @@ namespace PaviseApp
 			List<string> list = new List<string>();
 			if (!string.IsNullOrEmpty(current))
 			{
-				string[] array = current.Split(';');
-				foreach (string text in array)
+				string[] currentParts = current.Split(';');
+				foreach (string entryText in currentParts)
 				{
-					string text2 = text.Trim();
-					if (text2.Length != 0)
+					string entryTextTrimmed = entryText.Trim();
+					if (entryTextTrimmed.Length != 0)
 					{
-						int num = text2.IndexOf('=');
-						string a = ((num > 0) ? text2.Substring(0, num).Trim() : text2);
-						if (num <= 0 || !string.Equals(a, field, StringComparison.OrdinalIgnoreCase))
+						int matchIndex = entryTextTrimmed.IndexOf('=');
+						string a = ((matchIndex > 0) ? entryTextTrimmed.Substring(0, matchIndex).Trim() : entryTextTrimmed);
+						if (matchIndex <= 0 || !string.Equals(a, field, StringComparison.OrdinalIgnoreCase))
 						{
-							list.Add(text2);
+							list.Add(entryTextTrimmed);
 						}
 					}
 				}
@@ -75,14 +75,14 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = current.Split(';');
-			foreach (string text in array)
+			string[] currentParts = current.Split(';');
+			foreach (string entryText in currentParts)
 			{
-				string text2 = text.Trim();
-				int num = text2.IndexOf('=');
-				if (num > 0 && string.Equals(text2.Substring(0, num).Trim(), field, StringComparison.OrdinalIgnoreCase))
+				string entryTextTrimmed = entryText.Trim();
+				int matchIndex = entryTextTrimmed.IndexOf('=');
+				if (matchIndex > 0 && string.Equals(entryTextTrimmed.Substring(0, matchIndex).Trim(), field, StringComparison.OrdinalIgnoreCase))
 				{
-					return text2.Substring(num + 1).Trim();
+					return entryTextTrimmed.Substring(matchIndex + 1).Trim();
 				}
 			}
 			return null;
@@ -90,10 +90,10 @@ namespace PaviseApp
 
 		public static string RestoreField(string current, string original, string field)
 		{
-			string text = ReadField(original, field);
-			if (text != null)
+			string field2 = ReadField(original, field);
+			if (field2 != null)
 			{
-				return MergeField(current, field, text);
+				return MergeField(current, field, field2);
 			}
 			return RemoveField(current, field);
 		}

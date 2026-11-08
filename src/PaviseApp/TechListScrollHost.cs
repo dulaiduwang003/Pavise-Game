@@ -22,8 +22,8 @@ namespace PaviseApp
 			{
 				get
 				{
-					int num = Math.Min(Theme.S(4), base.ClientSize.Height / 2);
-					return new Rectangle(0, num, base.ClientSize.Width, Math.Max(0, base.ClientSize.Height - num * 2));
+					int sLimit = Math.Min(Theme.S(4), base.ClientSize.Height / 2);
+					return new Rectangle(0, sLimit, base.ClientSize.Width, Math.Max(0, base.ClientSize.Height - sLimit * 2));
 				}
 			}
 
@@ -38,10 +38,10 @@ namespace PaviseApp
 					}
 					int val = (int)Math.Round((double)trackRectangle.Height * (double)owner.VisibleRows / (double)Math.Max(1, owner.list.Items.Count));
 					val = Math.Min(trackRectangle.Height, Math.Max(Theme.S(32), val));
-					int num = Math.Max(0, Math.Min(owner.MaximumTop, owner.list.TopIndex));
-					int num2 = trackRectangle.Top + (int)Math.Round((double)(trackRectangle.Height - val) * (double)num / (double)Math.Max(1, owner.MaximumTop));
-					int num3 = Math.Min(trackRectangle.Width, Theme.S((hot || dragging) ? 8 : 6));
-					return new Rectangle(trackRectangle.Left + (trackRectangle.Width - num3) / 2, num2, num3, val);
+					int minLimit = Math.Max(0, Math.Min(owner.MaximumTop, owner.list.TopIndex));
+					int topOffset = trackRectangle.Top + (int)Math.Round((double)(trackRectangle.Height - val) * (double)minLimit / (double)Math.Max(1, owner.MaximumTop));
+					int sLimit = Math.Min(trackRectangle.Width, Theme.S((hot || dragging) ? 8 : 6));
+					return new Rectangle(trackRectangle.Left + (trackRectangle.Width - sLimit) / 2, topOffset, sLimit, val);
 				}
 			}
 
@@ -69,8 +69,8 @@ namespace PaviseApp
 					Graphics graphics = e.Graphics;
 					graphics.SmoothingMode = SmoothingMode.AntiAlias;
 					Rectangle trackRectangle = TrackRectangle;
-					int num = Math.Min(trackRectangle.Width, Math.Max(1, Theme.S(2)));
-					Rectangle bounds = new Rectangle(trackRectangle.Left + (trackRectangle.Width - num) / 2, trackRectangle.Top, num, trackRectangle.Height);
+					int maxLimit = Math.Min(trackRectangle.Width, Math.Max(1, Theme.S(2)));
+					Rectangle bounds = new Rectangle(trackRectangle.Left + (trackRectangle.Width - maxLimit) / 2, trackRectangle.Top, maxLimit, trackRectangle.Height);
 					FillPill(graphics, bounds, Col.Lerp(BackColor, Theme.Stroke, 0.55f));
 					Color color = (dragging ? Theme.Accent : (hot ? Col.Lerp(Theme.StrokeHi, Theme.Accent, 0.7f) : Theme.StrokeHi));
 					FillPill(graphics, thumbRectangle, color);
@@ -83,13 +83,13 @@ namespace PaviseApp
 				{
 					return;
 				}
-				int num = Math.Min(bounds.Width, bounds.Height);
+				int heightLimit = Math.Min(bounds.Width, bounds.Height);
 				using (GraphicsPath graphicsPath = new GraphicsPath())
 				{
 					using (SolidBrush brush = new SolidBrush(color))
 					{
-						graphicsPath.AddArc(bounds.Left, bounds.Top, num, num, 180f, 180f);
-						graphicsPath.AddArc(bounds.Left, bounds.Bottom - num, num, num, 0f, 180f);
+						graphicsPath.AddArc(bounds.Left, bounds.Top, heightLimit, heightLimit, 180f, 180f);
+						graphicsPath.AddArc(bounds.Left, bounds.Bottom - heightLimit, heightLimit, heightLimit, 0f, 180f);
 						graphicsPath.CloseFigure();
 						g.FillPath(brush, graphicsPath);
 					}
@@ -158,11 +158,11 @@ namespace PaviseApp
 				{
 					Rectangle trackRectangle = TrackRectangle;
 					Rectangle thumbRectangle = ThumbRectangle;
-					int num = trackRectangle.Height - thumbRectangle.Height;
-					if (num > 0)
+					int remainingHeight = trackRectangle.Height - thumbRectangle.Height;
+					if (remainingHeight > 0)
 					{
-						int num2 = Math.Max(0, Math.Min(num, mouseY - dragOffset - trackRectangle.Top));
-						owner.ScrollTo((int)Math.Round((double)num2 * (double)owner.MaximumTop / (double)num));
+						int minLimit = Math.Max(0, Math.Min(remainingHeight, mouseY - dragOffset - trackRectangle.Top));
+						owner.ScrollTo((int)Math.Round((double)minLimit * (double)owner.MaximumTop / (double)remainingHeight));
 					}
 				}
 			}
@@ -296,9 +296,9 @@ namespace PaviseApp
 			base.OnLayout(e);
 			if (list != null && rail != null && !list.IsDisposed && list.Parent == this)
 			{
-				int num = (scrollNeeded ? Math.Min(base.ClientSize.Width, Theme.S(14)) : 0);
-				list.SetBounds(0, 0, Math.Max(0, base.ClientSize.Width - num), base.ClientSize.Height);
-				rail.SetBounds(base.ClientSize.Width - num, 0, num, base.ClientSize.Height);
+				int width = (scrollNeeded ? Math.Min(base.ClientSize.Width, Theme.S(14)) : 0);
+				list.SetBounds(0, 0, Math.Max(0, base.ClientSize.Width - width), base.ClientSize.Height);
+				rail.SetBounds(base.ClientSize.Width - width, 0, width, base.ClientSize.Height);
 				SyncViewport();
 			}
 		}
@@ -317,21 +317,21 @@ namespace PaviseApp
 			syncing = true;
 			try
 			{
-				int num = Math.Max(1, list.ClientSize.Height / Math.Max(1, list.ItemHeight));
-				int num2 = Math.Max(0, list.Items.Count - num);
-				bool flag = num != visibleRows || num2 != maximumTop;
-				visibleRows = num;
-				maximumTop = num2;
-				bool flag2 = num2 > 0;
+				int lowerBound = Math.Max(1, list.ClientSize.Height / Math.Max(1, list.ItemHeight));
+				int lowerBound2 = Math.Max(0, list.Items.Count - lowerBound);
+				bool anyConditionMet = lowerBound != visibleRows || lowerBound2 != maximumTop;
+				visibleRows = lowerBound;
+				maximumTop = lowerBound2;
+				bool visibleValue = lowerBound2 > 0;
 				BackColor = list.BackColor;
 				rail.BackColor = list.BackColor;
-				if (flag2 != scrollNeeded)
+				if (visibleValue != scrollNeeded)
 				{
-					scrollNeeded = flag2;
-					rail.Visible = flag2;
+					scrollNeeded = visibleValue;
+					rail.Visible = visibleValue;
 					PerformLayout();
 				}
-				if (flag || !flag2)
+				if (anyConditionMet || !visibleValue)
 				{
 					rail.CancelDrag();
 				}
@@ -347,10 +347,10 @@ namespace PaviseApp
 		{
 			if (!base.IsDisposed && !base.Disposing && !list.IsDisposed && list.Parent == this && list.Items.Count != 0)
 			{
-				int num = Math.Max(0, Math.Min(maximumTop, top));
-				if (list.TopIndex != num)
+				int topIndexValue = Math.Max(0, Math.Min(maximumTop, top));
+				if (list.TopIndex != topIndexValue)
 				{
-					list.TopIndex = num;
+					list.TopIndex = topIndexValue;
 				}
 				SyncViewport();
 			}

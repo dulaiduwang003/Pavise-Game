@@ -31,11 +31,11 @@ namespace PaviseApp
 					}
 				}
 			}
-			int num = Math.Min(Theme.S(18), r.Height - Theme.S(10));
-			if (num > 0)
+			int sLimit = Math.Min(Theme.S(18), r.Height - Theme.S(10));
+			if (sLimit > 0)
 			{
-				int x = (toggle.Checked ? (r.Right - num - Theme.S(8)) : (r.Left + Theme.S(8)));
-				Rectangle r2 = new Rectangle(x, (toggle.Height - num) / 2, num, num);
+				int x = (toggle.Checked ? (r.Right - sLimit - Theme.S(8)) : (r.Left + Theme.S(8)));
+				Rectangle r2 = new Rectangle(x, (toggle.Height - sLimit) / 2, sLimit, sLimit);
 				using (GraphicsPath path2 = Theme.TechPath(r2, Theme.S(3)))
 				{
 					using (SolidBrush brush2 = new SolidBrush((!toggle.Enabled) ? Theme.Faint : (toggle.Checked ? Color.White : Theme.Dim)))

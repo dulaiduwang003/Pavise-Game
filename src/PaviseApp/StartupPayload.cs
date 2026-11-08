@@ -34,56 +34,56 @@ namespace PaviseApp
 
 		internal static string Ensure(string sourceExecutable, string managedRoot)
 		{
-			string text = NormalizeRoot(managedRoot);
+			string root = NormalizeRoot(managedRoot);
 			string fullPath = Path.GetFullPath(sourceExecutable);
 			using (FileStream fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read))
 			{
-				string text2 = Hash(fileStream);
-				string text3 = Path.Combine(text, text2);
-				string text4 = Path.Combine(text3, "PaviseAuto.exe");
-				RejectReparseChain(text);
-				RejectReparse(text3);
-				RejectReparse(text4);
-				if (File.Exists(text4))
+				string hashResult = Hash(fileStream);
+				string combinedPath = Path.Combine(root, hashResult);
+				string paviseAutoPath = Path.Combine(combinedPath, "PaviseAuto.exe");
+				RejectReparseChain(root);
+				RejectReparse(combinedPath);
+				RejectReparse(paviseAutoPath);
+				if (File.Exists(paviseAutoPath))
 				{
-					Verify(text4, text2);
-					return text4;
+					Verify(paviseAutoPath, hashResult);
+					return paviseAutoPath;
 				}
-				Directory.CreateDirectory(text3);
-				RejectReparseChain(text);
-				RejectReparse(text3);
-				string text5 = Path.Combine(text3, ".PaviseAuto." + Guid.NewGuid().ToString("N") + ".tmp");
+				Directory.CreateDirectory(combinedPath);
+				RejectReparseChain(root);
+				RejectReparse(combinedPath);
+				string combinedPath2 = Path.Combine(combinedPath, ".PaviseAuto." + Guid.NewGuid().ToString("N") + ".tmp");
 				try
 				{
 					fileStream.Position = 0L;
-					using (FileStream fileStream2 = new FileStream(text5, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+					using (FileStream fileStream2 = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
 					{
 						fileStream.CopyTo(fileStream2);
 						fileStream2.Flush(true);
 					}
-					Verify(text5, text2);
+					Verify(combinedPath2, hashResult);
 					try
 					{
-						File.Move(text5, text4);
+						File.Move(combinedPath2, paviseAutoPath);
 					}
 					catch (IOException)
 					{
-						if (!File.Exists(text4))
+						if (!File.Exists(paviseAutoPath))
 						{
 							throw;
 						}
-						Verify(text4, text2);
+						Verify(paviseAutoPath, hashResult);
 					}
-					Verify(text4, text2);
-					return text4;
+					Verify(paviseAutoPath, hashResult);
+					return paviseAutoPath;
 				}
 				finally
 				{
 					try
 					{
-						if (File.Exists(text5))
+						if (File.Exists(combinedPath2))
 						{
-							File.Delete(text5);
+							File.Delete(combinedPath2);
 						}
 					}
 					catch
@@ -154,65 +154,65 @@ namespace PaviseApp
 
 		internal static int Cleanup(string managedRoot, string keep, string alsoKeep)
 		{
-			string text;
+			string root;
 			try
 			{
-				text = NormalizeRoot(managedRoot);
-				RejectReparseChain(text);
+				root = NormalizeRoot(managedRoot);
+				RejectReparseChain(root);
 			}
 			catch
 			{
 				return 0;
 			}
-			if (!Directory.Exists(text))
+			if (!Directory.Exists(root))
 			{
 				return 0;
 			}
-			int num = 0;
+			int processedCount = 0;
 			string[] directories;
 			try
 			{
-				directories = Directory.GetDirectories(text, "*", SearchOption.TopDirectoryOnly);
+				directories = Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly);
 			}
 			catch
 			{
 				return 0;
 			}
-			string[] array = directories;
-			foreach (string text2 in array)
+			string[] directoriesSnapshot = directories;
+			foreach (string entryText in directoriesSnapshot)
 			{
 				try
 				{
-					if (!IsHash(Path.GetFileName(text2)) || !SamePath(Path.GetDirectoryName(text2), text))
+					if (!IsHash(Path.GetFileName(entryText)) || !SamePath(Path.GetDirectoryName(entryText), root))
 					{
 						continue;
 					}
-					RejectReparse(text2);
-					string[] files = Directory.GetFiles(text2, "*", SearchOption.TopDirectoryOnly);
-					foreach (string text3 in files)
+					RejectReparse(entryText);
+					string[] files = Directory.GetFiles(entryText, "*", SearchOption.TopDirectoryOnly);
+					foreach (string filePath in files)
 					{
-						string fileName = Path.GetFileName(text3);
-						if ((string.Equals(fileName, "PaviseAuto.exe", StringComparison.OrdinalIgnoreCase) || IsStageName(fileName)) && !SamePath(text3, keep) && !SamePath(text3, alsoKeep))
+						string fileName = Path.GetFileName(filePath);
+						if ((string.Equals(fileName, "PaviseAuto.exe", StringComparison.OrdinalIgnoreCase) || IsStageName(fileName)) && !SamePath(filePath, keep) && !SamePath(filePath, alsoKeep))
 						{
 							try
 							{
-								RejectReparse(text3);
-								File.Delete(text3);
-								num++;
+								RejectReparse(filePath);
+								File.Delete(filePath);
+								processedCount++;
 							}
 							catch
 							{
 							}
 						}
 					}
-					TryRemoveEmptyDirectory(text2);
+					TryRemoveEmptyDirectory(entryText);
 				}
 				catch
 				{
 				}
 			}
-			TryRemoveEmptyDirectory(text);
-			return num;
+			TryRemoveEmptyDirectory(root);
+			return processedCount;
 		}
 
 		private static void TryRemoveEmptyDirectory(string directory)
@@ -236,13 +236,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = name.Substring(".PaviseAuto.".Length, name.Length - ".PaviseAuto.".Length - ".tmp".Length);
-			if (text.Length != 32)
+			string substringResult = name.Substring(".PaviseAuto.".Length, name.Length - ".PaviseAuto.".Length - ".tmp".Length);
+			if (substringResult.Length != 32)
 			{
 				return false;
 			}
-			string text2 = text;
-			foreach (char c in text2)
+			string message = substringResult;
+			foreach (char c in message)
 			{
 				if (!IsHex(c))
 				{
@@ -258,12 +258,12 @@ namespace PaviseApp
 			{
 				throw new ArgumentException("Startup payload root is required");
 			}
-			string text = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-			if (string.Equals(text, Path.GetPathRoot(text).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+			string getFullPathTrimmed = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			if (string.Equals(getFullPathTrimmed, Path.GetPathRoot(getFullPathTrimmed).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
 			{
 				throw new ArgumentException("A drive root cannot hold startup payloads");
 			}
-			return text;
+			return getFullPathTrimmed;
 		}
 
 		private static void RejectReparse(string path)
@@ -276,11 +276,11 @@ namespace PaviseApp
 
 		private static void RejectReparseChain(string path)
 		{
-			string text = Path.GetFullPath(path);
-			while (!string.IsNullOrEmpty(text))
+			string fullPath = Path.GetFullPath(path);
+			while (!string.IsNullOrEmpty(fullPath))
 			{
-				RejectReparse(text);
-				text = Path.GetDirectoryName(text);
+				RejectReparse(fullPath);
+				fullPath = Path.GetDirectoryName(fullPath);
 			}
 		}
 
@@ -333,10 +333,10 @@ namespace PaviseApp
 		{
 			using (SHA256 sHA = SHA256.Create())
 			{
-				byte[] array = sHA.ComputeHash(stream);
-				StringBuilder stringBuilder = new StringBuilder(array.Length * 2);
-				byte[] array2 = array;
-				foreach (byte b in array2)
+				byte[] hash = sHA.ComputeHash(stream);
+				StringBuilder stringBuilder = new StringBuilder(hash.Length * 2);
+				byte[] rawBytes = hash;
+				foreach (byte b in rawBytes)
 				{
 					stringBuilder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
 				}

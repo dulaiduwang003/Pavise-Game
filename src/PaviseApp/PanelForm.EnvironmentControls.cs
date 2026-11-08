@@ -221,16 +221,16 @@ namespace PaviseApp
 			SyncHagsPresentation();
 			if (swAmdSam != null && cardAmdSam != null)
 			{
-				bool flag = Settings.LoadCached("AmdSamByPavise", false);
-				bool flag2 = snapshot != null && snapshot.AmdReadable && snapshot.AmdSupported;
-				bool flag3 = snapshot != null && snapshot.AmdOn;
-				swAmdSam.SetSilently(snapshot != null && snapshot.AmdReadable && flag3);
-				swAmdSam.Enabled = flag2;
+				bool amdSamByPaviseEnabled = Settings.LoadCached("AmdSamByPavise", false);
+				bool enabledValue = snapshot != null && snapshot.AmdReadable && snapshot.AmdSupported;
+				bool matchesAmdOn = snapshot != null && snapshot.AmdOn;
+				swAmdSam.SetSilently(snapshot != null && snapshot.AmdReadable && matchesAmdOn);
+				swAmdSam.Enabled = enabledValue;
 				LockEnvCard(cardAmdSam, swAmdSam, false);
-				cardAmdSam.Desc = ((snapshot == null || (snapshot.AmdAvailable && !snapshot.AmdReadable) || flag2 || flag) ? PerformanceGraphicsDetail("AmdSam") : Lang.T("set.amd.nosup"));
-				string text = ((snapshot == null || (snapshot.AmdAvailable && !snapshot.AmdReadable)) ? Lang.T("env.graphics.unknown") : ((!flag2) ? Lang.T("t.amdsam.unsupported") : (flag3 ? Lang.T(flag ? "t.amdsam.byus" : "t.amdsam.external") : Lang.T(flag ? "t.amdsam.reverted" : "t.amdsam.off"))));
-				cardAmdSam.SetStatus(text, StatusInk(snapshot != null && !flag3, flag && flag3));
-				if (cardAmdSam.LockText == Lang.T("lock.na") && text == Lang.T("t.amdsam.unsupported"))
+				cardAmdSam.Desc = ((snapshot == null || (snapshot.AmdAvailable && !snapshot.AmdReadable) || enabledValue || amdSamByPaviseEnabled) ? PerformanceGraphicsDetail("AmdSam") : Lang.T("set.amd.nosup"));
+				string envGraphicsUnknownText = ((snapshot == null || (snapshot.AmdAvailable && !snapshot.AmdReadable)) ? Lang.T("env.graphics.unknown") : ((!enabledValue) ? Lang.T("t.amdsam.unsupported") : (matchesAmdOn ? Lang.T(amdSamByPaviseEnabled ? "t.amdsam.byus" : "t.amdsam.external") : Lang.T(amdSamByPaviseEnabled ? "t.amdsam.reverted" : "t.amdsam.off"))));
+				cardAmdSam.SetStatus(envGraphicsUnknownText, StatusInk(snapshot != null && !matchesAmdOn, amdSamByPaviseEnabled && matchesAmdOn));
+				if (cardAmdSam.LockText == Lang.T("lock.na") && envGraphicsUnknownText == Lang.T("t.amdsam.unsupported"))
 				{
 					cardAmdSam.SetLock("", false);
 				}
@@ -270,8 +270,8 @@ namespace PaviseApp
 		}
 		private static bool HasPerformanceEnvironmentGraphics(PerformanceRestartScope scope)
 		{
-			string[] array = new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" };
-			foreach (string key in array)
+			string[] textEntries = new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" };
+			foreach (string key in textEntries)
 			{
 				if (PerformanceRestartFor(key) == scope)
 				{
@@ -282,57 +282,57 @@ namespace PaviseApp
 		}
 		private void ChangeDirectXPreference(DirectXGlobalPreference preference, Toggle toggle)
 		{
-			bool flag = (toggle.Checked ? preference.Enable() : preference.Disable());
-			Logger.Log("Environment graphics " + ((preference == DirectXGlobalPreference.Windowed) ? "windowed" : "VRR") + " request=" + toggle.Checked + " success=" + flag);
+			bool enableSucceeded = (toggle.Checked ? preference.Enable() : preference.Disable());
+			Logger.Log("Environment graphics " + ((preference == DirectXGlobalPreference.Windowed) ? "windowed" : "VRR") + " request=" + toggle.Checked + " success=" + enableSucceeded);
 			QueueEnvironmentObservation(true);
 			SyncEnvStatus();
-			if (!flag)
+			if (!enableSucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.graphics.failed"));
 			}
 		}
 		internal static HagsUiPresentation DescribeHags(bool known, bool supported, bool on, bool owned, int? configured)
 		{
-			bool flag = configured == 2;
-			bool flag2 = configured == 1;
+			bool matchesConfigured = configured == 2;
+			bool matchesConfigured2 = configured == 1;
 			HagsUiPresentation hagsUiPresentation = new HagsUiPresentation();
-			hagsUiPresentation.Checked = flag2 ? false : (owned || flag || (known && on));
-			hagsUiPresentation.External = !owned && (flag || (known && on));
+			hagsUiPresentation.Checked = matchesConfigured2 ? false : (owned || matchesConfigured || (known && on));
+			hagsUiPresentation.External = !owned && (matchesConfigured || (known && on));
 			hagsUiPresentation.Ink = Theme.Dim;
 			HagsUiPresentation hagsUiPresentation2 = hagsUiPresentation;
 			hagsUiPresentation2.Editable = known && supported;
-			if (owned && !flag)
+			if (owned && !matchesConfigured)
 			{
-				hagsUiPresentation2.Status = (flag2 ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
+				hagsUiPresentation2.Status = (matchesConfigured2 ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
 				hagsUiPresentation2.Status += ((!known) ? AutoText(" · 当前未核验", " · current state unverified") : (on ? AutoText(" · 当前已开启", " · currently on") : AutoText(" · 当前已关闭", " · currently off")));
 				hagsUiPresentation2.Ink = Theme.Warning;
 				return hagsUiPresentation2;
 			}
 			if (!known)
 			{
-				hagsUiPresentation2.Status = ((owned || flag) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (flag2 ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
-				if (owned || flag)
+				hagsUiPresentation2.Status = ((owned || matchesConfigured) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (matchesConfigured2 ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
+				if (owned || matchesConfigured)
 				{
 					hagsUiPresentation2.Ink = Theme.Warning;
 				}
 			}
 			else if (!supported)
 			{
-				hagsUiPresentation2.Status = ((owned || flag) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
-				if (owned || flag)
+				hagsUiPresentation2.Status = ((owned || matchesConfigured) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
+				if (owned || matchesConfigured)
 				{
 					hagsUiPresentation2.Ink = Theme.Warning;
 				}
 			}
 			else if (on)
 			{
-				hagsUiPresentation2.Status = (flag2 ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
-				hagsUiPresentation2.Ink = (flag2 ? Theme.Warning : Theme.Accent);
+				hagsUiPresentation2.Status = (matchesConfigured2 ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
+				hagsUiPresentation2.Ink = (matchesConfigured2 ? Theme.Warning : Theme.Accent);
 			}
 			else
 			{
-				hagsUiPresentation2.Status = ((owned || flag) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
-				if (owned || flag)
+				hagsUiPresentation2.Status = ((owned || matchesConfigured) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
+				if (owned || matchesConfigured)
 				{
 					hagsUiPresentation2.Ink = Theme.Warning;
 				}
@@ -355,23 +355,23 @@ namespace PaviseApp
 			environmentPerformanceSwitches.Add(key, toggle);
 			Control host = toggle;
 			string desc = PerformanceEnvironmentExplanation(key, description);
-			int num = FullTextCardHeight(desc, ScrollContentW, host, 88);
+			int fullTextCardHeightResult = FullTextCardHeight(desc, ScrollContentW, host, 88);
 			if (key == "AutoGlobalTimer")
 			{
 				string readback = Lang.F("env.gtimer.readback", "0.5000", "15.6250", "0.5000");
-				string[] array = new string[14]
+				string[] textEntries = new string[14]
 				{
 					"ready", "timer-locked", "timer-limited", "timer-unverified", "pending-reboot", "restore-pending-reboot", "unverified", "failed", "stopped", "restore-failed",
 					"restored", "unsupported", "timer-requested", ""
 				};
-				foreach (string text in array)
+				foreach (string entryText in textEntries)
 				{
-					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, true, readback), ScrollContentW, host, 88));
-					num = Math.Max(num, FullTextCardHeight(GlobalTimerDescription(text, false, readback), ScrollContentW, host, 88));
+					fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, true, readback), ScrollContentW, host, 88));
+					fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, false, readback), ScrollContentW, host, 88));
 				}
 			}
 			int used;
-			SettingCard settingCard = MakeAutoCard(parent, 6, y, ScrollContentW, num, Lang.T(title), desc, host, out used);
+			SettingCard settingCard = MakeAutoCard(parent, 6, y, ScrollContentW, fullTextCardHeightResult, Lang.T(title), desc, host, out used);
 			settingCard.Height += Theme.S(17);
 			y += used + 17 + 8;
 			environmentPerformanceCards.Add(key, settingCard);
@@ -382,14 +382,14 @@ namespace PaviseApp
 			bool restoredState = PerformancePolicy.EnvironmentPreference(key);
 			if (!(key != "GmCacheWarmV2") || RequireElevationFor(toggle, restoredState))
 			{
-				bool flag = gameMode.SetEnvironmentPreference(key, toggle.Checked);
-				if (flag)
+				bool setEnvironmentPreferenceSucceeded = gameMode.SetEnvironmentPreference(key, toggle.Checked);
+				if (setEnvironmentPreferenceSucceeded)
 				{
 					environmentPreferenceOverrides[key] = toggle.Checked;
 				}
 				QueueEnvironmentObservation(true);
 				SyncEnvironmentPerformanceOptions();
-				if (!flag)
+				if (!setEnvironmentPreferenceSucceeded)
 				{
 					PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.savefail"));
 				}
@@ -415,15 +415,15 @@ namespace PaviseApp
 		}
 		internal static string CondenseStoragePerformanceDetail(string original, string state, string[] memberStates)
 		{
-			bool flag = memberStates != null && memberStates.Length == 3 && (state == "off" || state == "restored" || state == "ready");
-			if (flag)
+			bool allConditionsMet = memberStates != null && memberStates.Length == 3 && (state == "off" || state == "restored" || state == "ready");
+			if (allConditionsMet)
 			{
-				foreach (string text in memberStates)
+				foreach (string entryText in memberStates)
 				{
-					flag &= ((state == "ready") ? (text == "ready" || text == "applied" || text == "configured") : (text == "" || text == "off" || (state == "restored" && text == "restored")));
+					allConditionsMet &= ((state == "ready") ? (entryText == "ready" || entryText == "applied" || entryText == "configured") : (entryText == "" || entryText == "off" || (state == "restored" && entryText == "restored")));
 				}
 			}
-			return ConcisePerformanceDetail(original, AutoText("关闭 StorPort 设备的空闲、运行时与 D3Cold 节能；需重启，可能增加功耗。关闭恢复原配置，不适用项跳过。", "Disables StorPort idle/runtime/D3Cold power saving. Restart required; power use may rise; Off restores originals and unsupported devices are skipped."), !flag);
+			return ConcisePerformanceDetail(original, AutoText("关闭 StorPort 设备的空闲、运行时与 D3Cold 节能；需重启，可能增加功耗。关闭恢复原配置，不适用项跳过。", "Disables StorPort idle/runtime/D3Cold power saving. Restart required; power use may rise; Off restores originals and unsupported devices are skipped."), !allConditionsMet);
 		}
 		private static string StoragePerformanceDetail(string state, string original = null, string[] memberStates = null)
 		{
@@ -436,7 +436,7 @@ namespace PaviseApp
 				return;
 			}
 			bool @checked = swPerformanceEnvironmentStorage.Checked;
-			bool flag = PerformanceTuning.SetStorageGroup(@checked, delegate
+			bool setStorageGroupSucceeded = PerformanceTuning.SetStorageGroup(@checked, delegate
 			{
 				try
 				{
@@ -452,13 +452,13 @@ namespace PaviseApp
 				{
 				}
 			});
-			if (flag)
+			if (setStorageGroupSucceeded)
 			{
 				environmentStorageOverride = @checked;
 				gameMode.Poke();
 			}
 			RefreshPerformanceEnvironmentObservation();
-			if (!flag)
+			if (!setStorageGroupSucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.savefail"));
 			}

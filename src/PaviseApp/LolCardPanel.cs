@@ -176,10 +176,10 @@ namespace PaviseApp
 			if (!string.Equals(b.Text, text, StringComparison.Ordinal))
 			{
 				b.Text = text;
-				int num = TextRenderer.MeasureText(text, b.Font, Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(30);
-				if (b.Width != num)
+				int widthValue = TextRenderer.MeasureText(text, b.Font, Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(30);
+				if (b.Width != widthValue)
 				{
-					b.Width = num;
+					b.Width = widthValue;
 					PerformLayout();
 				}
 				b.Invalidate();
@@ -218,46 +218,46 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = base.ClientSize.Width;
-			int num2 = Theme.S(8);
+			int width = base.ClientSize.Width;
+			int scaledDimension = Theme.S(8);
 			if (CompactLayout)
 			{
-				int num3 = Math.Max(1, (num - num2) / 2);
-				btnClean.SetBounds(0, Theme.S(46), num3, Theme.S(30));
-				btnRestore.SetBounds(num3 + num2, Theme.S(46), Math.Max(1, num - num3 - num2), Theme.S(30));
-				swCleanup.Location = new Point(Math.Max(0, num - swCleanup.Width), Theme.S(90));
-				swHeadless.Location = new Point(Math.Max(0, num - swHeadless.Width), Theme.S(124));
-				btnDelete.SetBounds(0, Theme.S(160), num, Theme.S(30));
+				int width2 = Math.Max(1, (width - scaledDimension) / 2);
+				btnClean.SetBounds(0, Theme.S(46), width2, Theme.S(30));
+				btnRestore.SetBounds(width2 + scaledDimension, Theme.S(46), Math.Max(1, width - width2 - scaledDimension), Theme.S(30));
+				swCleanup.Location = new Point(Math.Max(0, width - swCleanup.Width), Theme.S(90));
+				swHeadless.Location = new Point(Math.Max(0, width - swHeadless.Width), Theme.S(124));
+				btnDelete.SetBounds(0, Theme.S(160), width, Theme.S(30));
 				return;
 			}
-			PillButton[] array = new PillButton[3] { btnClean, btnRestore, btnDelete };
-			foreach (PillButton pillButton in array)
+			PillButton[] pillButtonItems = new PillButton[3] { btnClean, btnRestore, btnDelete };
+			foreach (PillButton pillButton in pillButtonItems)
 			{
 				pillButton.Width = TextRenderer.MeasureText(pillButton.Text, pillButton.Font, Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(30);
 			}
-			int num4 = Theme.S(10);
-			int num5 = Theme.S(58);
-			int num6 = num;
-			PillButton[] array2 = new PillButton[2] { btnRestore, btnClean };
-			foreach (PillButton pillButton2 in array2)
+			int scaledDimension2 = Theme.S(10);
+			int scaledDimension3 = Theme.S(58);
+			int onLayoutValue = width;
+			PillButton[] pillButtonItems2 = new PillButton[2] { btnRestore, btnClean };
+			foreach (PillButton pillButton2 in pillButtonItems2)
 			{
 				if (pillButton2.Visible)
 				{
-					num6 -= pillButton2.Width;
-					pillButton2.Location = new Point(num6, num4);
-					num6 -= num2;
+					onLayoutValue -= pillButton2.Width;
+					pillButton2.Location = new Point(onLayoutValue, scaledDimension2);
+					onLayoutValue -= scaledDimension;
 				}
 			}
-			btnDelete.Location = new Point(num - btnDelete.Width, num5);
-			int num7 = Theme.S(4);
+			btnDelete.Location = new Point(width - btnDelete.Width, scaledDimension3);
+			int scaledDimension4 = Theme.S(4);
 			if (swCleanup.Visible)
 			{
-				num7 += LabelWidth(Lang.T("col.cleanup")) + Theme.S(8);
-				swCleanup.Location = new Point(num7, num5 + Theme.S(4));
-				num7 += swCleanup.Width + Theme.S(22);
+				scaledDimension4 += LabelWidth(Lang.T("col.cleanup")) + Theme.S(8);
+				swCleanup.Location = new Point(scaledDimension4, scaledDimension3 + Theme.S(4));
+				scaledDimension4 += swCleanup.Width + Theme.S(22);
 			}
-			num7 += LabelWidth(Lang.T("col.headless")) + Theme.S(8);
-			swHeadless.Location = new Point(num7, num5 + Theme.S(4));
+			scaledDimension4 += LabelWidth(Lang.T("col.headless")) + Theme.S(8);
+			swHeadless.Location = new Point(scaledDimension4, scaledDimension3 + Theme.S(4));
 		}
 
 		private static int LabelWidth(string text)
@@ -285,8 +285,8 @@ namespace PaviseApp
 			int left = base.Width;
 			if (!CompactLayout)
 			{
-				PillButton[] array = new PillButton[2] { btnClean, btnRestore };
-				foreach (PillButton pillButton in array)
+				PillButton[] pillButtonItems = new PillButton[2] { btnClean, btnRestore };
+				foreach (PillButton pillButton in pillButtonItems)
 				{
 					if (pillButton.Visible && pillButton.Left < left)
 					{
@@ -295,33 +295,33 @@ namespace PaviseApp
 				}
 			}
 			left -= Theme.S(14);
-			string text;
+			string message;
 			Color color;
-			StateOf(lolOptimizationSnapshot, out text, out color);
-			int num = Theme.S(25);
-			int num2 = Theme.S(7);
+			StateOf(lolOptimizationSnapshot, out message, out color);
+			int scaledDimension = Theme.S(25);
+			int width = Theme.S(7);
 			using (SolidBrush brush = new SolidBrush(color))
 			{
-				graphics.FillEllipse(brush, Theme.S(4), num - num2 / 2, num2, num2);
+				graphics.FillEllipse(brush, Theme.S(4), scaledDimension - width / 2, width, width);
 			}
 			Font font = Theme.UI(8.6f, true);
-			int val = TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding).Width;
-			Rectangle bounds = new Rectangle(Theme.S(17), num - Theme.S(10), Math.Min(val, Math.Max(1, left - Theme.S(17))), Theme.S(20));
-			TextRenderer.DrawText(graphics, text, font, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			int num3 = bounds.Right + Theme.S(18);
+			int val = TextRenderer.MeasureText(message, font, Size.Empty, TextFormatFlags.NoPadding).Width;
+			Rectangle bounds = new Rectangle(Theme.S(17), scaledDimension - Theme.S(10), Math.Min(val, Math.Max(1, left - Theme.S(17))), Theme.S(20));
+			TextRenderer.DrawText(graphics, message, font, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			int rightOffset = bounds.Right + Theme.S(18);
 			Font capFont = Theme.UI(7.4f, false);
 			Font valFont = Theme.UI(7.4f, true);
 			if (lolOptimizationSnapshot != null)
 			{
 				if (!lolOptimizationSnapshot.InstallationFound)
 				{
-					num3 = DrawCell(graphics, num3, num, left, capFont, valFont, Lang.T("col.cell.install"), lolOptimizationSnapshot.Discovering ? Lang.T("col.install.wait") : Lang.T("col.install.none"), Theme.Faint);
+					rightOffset = DrawCell(graphics, rightOffset, scaledDimension, left, capFont, valFont, Lang.T("col.cell.install"), lolOptimizationSnapshot.Discovering ? Lang.T("col.install.wait") : Lang.T("col.install.none"), Theme.Faint);
 				}
-				num3 = DrawCell(graphics, num3, num, left, capFont, valFont, Lang.T("col.cell.lcu"), lolOptimizationSnapshot.LcuReady ? Lang.T("col.lcu.on") : Lang.T("col.lcu.off"), lolOptimizationSnapshot.LcuReady ? Theme.Green : Theme.Faint);
-				num3 = DrawCell(graphics, num3, num, left, capFont, valFont, Lang.T("col.cell.phase"), lolOptimizationSnapshot.ClientRunning ? PhaseText(lolOptimizationSnapshot.Phase) : Lang.T("col.client.off"), lolOptimizationSnapshot.GameRunning ? Theme.Green : (lolOptimizationSnapshot.ClientRunning ? Theme.Dim : Theme.Faint));
-				DrawCell(graphics, num3, num, left, capFont, valFont, Lang.T("col.cell.ux"), lolOptimizationSnapshot.HeadlessActive ? Lang.T("col.ux.closed") : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Lang.T("col.ux.visible") : Lang.T("col.proc.none")), lolOptimizationSnapshot.HeadlessActive ? Theme.Green : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Theme.Dim : Theme.Faint));
+				rightOffset = DrawCell(graphics, rightOffset, scaledDimension, left, capFont, valFont, Lang.T("col.cell.lcu"), lolOptimizationSnapshot.LcuReady ? Lang.T("col.lcu.on") : Lang.T("col.lcu.off"), lolOptimizationSnapshot.LcuReady ? Theme.Green : Theme.Faint);
+				rightOffset = DrawCell(graphics, rightOffset, scaledDimension, left, capFont, valFont, Lang.T("col.cell.phase"), lolOptimizationSnapshot.ClientRunning ? PhaseText(lolOptimizationSnapshot.Phase) : Lang.T("col.client.off"), lolOptimizationSnapshot.GameRunning ? Theme.Green : (lolOptimizationSnapshot.ClientRunning ? Theme.Dim : Theme.Faint));
+				DrawCell(graphics, rightOffset, scaledDimension, left, capFont, valFont, Lang.T("col.cell.ux"), lolOptimizationSnapshot.HeadlessActive ? Lang.T("col.ux.closed") : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Lang.T("col.ux.visible") : Lang.T("col.proc.none")), lolOptimizationSnapshot.HeadlessActive ? Theme.Green : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Theme.Dim : Theme.Faint));
 			}
-			int num4 = Theme.S(69);
+			int scaledDimension2 = Theme.S(69);
 			Font font2 = Theme.UI(8.2f, true);
 			if (CompactLayout)
 			{
@@ -334,24 +334,24 @@ namespace PaviseApp
 			}
 			if (swCleanup.Visible)
 			{
-				TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), font2, new Rectangle(Theme.S(4), num4 - Theme.S(10), LabelWidth(Lang.T("col.cleanup")) + 2, Theme.S(20)), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), font2, new Rectangle(Theme.S(4), scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.cleanup")) + 2, Theme.S(20)), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
-			int num5 = (swCleanup.Visible ? (swCleanup.Right + Theme.S(22)) : Theme.S(4));
-			TextRenderer.DrawText(graphics, Lang.T("col.headless"), font2, new Rectangle(num5, num4 - Theme.S(10), LabelWidth(Lang.T("col.headless")) + 2, Theme.S(20)), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			int rightOffset2 = (swCleanup.Visible ? (swCleanup.Right + Theme.S(22)) : Theme.S(4));
+			TextRenderer.DrawText(graphics, Lang.T("col.headless"), font2, new Rectangle(rightOffset2, scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.headless")) + 2, Theme.S(20)), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 		}
 
 		private static int DrawCell(Graphics g, int x, int cy, int limit, Font capFont, Font valFont, string cap, string val, Color valColor)
 		{
-			int num = TextRenderer.MeasureText(cap, capFont, Size.Empty, TextFormatFlags.NoPadding).Width;
-			int num2 = TextRenderer.MeasureText(val, valFont, Size.Empty, TextFormatFlags.NoPadding).Width;
-			if (x + num + Theme.S(5) + num2 > limit)
+			int width = TextRenderer.MeasureText(cap, capFont, Size.Empty, TextFormatFlags.NoPadding).Width;
+			int width2 = TextRenderer.MeasureText(val, valFont, Size.Empty, TextFormatFlags.NoPadding).Width;
+			if (x + width + Theme.S(5) + width2 > limit)
 			{
 				return limit;
 			}
-			TextRenderer.DrawText(g, cap, capFont, new Rectangle(x, cy - Theme.S(9), num + 2, Theme.S(18)), Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			x += num + Theme.S(5);
-			TextRenderer.DrawText(g, val, valFont, new Rectangle(x, cy - Theme.S(9), num2 + 2, Theme.S(18)), valColor, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			return x + num2 + Theme.S(14);
+			TextRenderer.DrawText(g, cap, capFont, new Rectangle(x, cy - Theme.S(9), width + 2, Theme.S(18)), Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			x += width + Theme.S(5);
+			TextRenderer.DrawText(g, val, valFont, new Rectangle(x, cy - Theme.S(9), width2 + 2, Theme.S(18)), valColor, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			return x + width2 + Theme.S(14);
 		}
 
 		private static void StateOf(LolOptimizationSnapshot s, out string text, out Color color)
@@ -385,36 +385,36 @@ namespace PaviseApp
 
 		private static string PhaseText(string phase)
 		{
-			string text = phase ?? "";
-			if (text.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
+			string phaseOffset = phase ?? "";
+			if (phaseOffset.Equals("InProgress", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.ingame");
 			}
-			if (text.Equals("ChampSelect", StringComparison.OrdinalIgnoreCase))
+			if (phaseOffset.Equals("ChampSelect", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.champselect");
 			}
-			if (text.Equals("Matchmaking", StringComparison.OrdinalIgnoreCase))
+			if (phaseOffset.Equals("Matchmaking", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.matchmaking");
 			}
-			if (text.Equals("ReadyCheck", StringComparison.OrdinalIgnoreCase))
+			if (phaseOffset.Equals("ReadyCheck", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.readycheck");
 			}
-			if (text.Equals("WaitingForStats", StringComparison.OrdinalIgnoreCase))
+			if (phaseOffset.Equals("WaitingForStats", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.stats");
 			}
-			if (text.Equals("Lobby", StringComparison.OrdinalIgnoreCase))
+			if (phaseOffset.Equals("Lobby", StringComparison.OrdinalIgnoreCase))
 			{
 				return Lang.T("col.phase.lobby");
 			}
-			if (text.Equals("None", StringComparison.OrdinalIgnoreCase) || text.Length == 0)
+			if (phaseOffset.Equals("None", StringComparison.OrdinalIgnoreCase) || phaseOffset.Length == 0)
 			{
 				return Lang.T("col.phase.idle");
 			}
-			return text;
+			return phaseOffset;
 		}
 
 		private void OnServiceChanged()
@@ -455,18 +455,18 @@ namespace PaviseApp
 				last = snapshot;
 				swCleanup.SetSilently(snapshot.CleanupEnabled);
 				swHeadless.SetSilently(snapshot.HeadlessEnabled);
-				bool flag = !snapshot.Enabled;
-				bool flag2 = Interlocked.CompareExchange(ref uiBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0;
-				bool flag3 = flag2 || flag || snapshot.Discovering;
-				swCleanup.Enabled = !flag;
-				swHeadless.Enabled = !flag;
+				bool isNotEnabled = !snapshot.Enabled;
+				bool anyConditionMet = Interlocked.CompareExchange(ref uiBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0;
+				bool matchesDiscovering = anyConditionMet || isNotEnabled || snapshot.Discovering;
+				swCleanup.Enabled = !isNotEnabled;
+				swHeadless.Enabled = !isNotEnabled;
 				if (swCleanup.Visible != snapshot.WeGameFound)
 				{
 					swCleanup.Visible = snapshot.WeGameFound;
 					PerformLayout();
 				}
-				btnClean.Enabled = !flag3 && snapshot.ClientRunning && snapshot.LcuReady;
-				btnRestore.Enabled = !flag3 && snapshot.ClientRunning && (snapshot.HeadlessActive || snapshot.UxProcessCount == 0);
+				btnClean.Enabled = !matchesDiscovering && snapshot.ClientRunning && snapshot.LcuReady;
+				btnRestore.Enabled = !matchesDiscovering && snapshot.ClientRunning && (snapshot.HeadlessActive || snapshot.UxProcessCount == 0);
 				if (inspectFiles)
 				{
 					QueueInspection(snapshot);
@@ -475,7 +475,7 @@ namespace PaviseApp
 				SetButtonText(btnDelete, AddonActionText(inspecting, inspectCompleted, candidateCount, inspectError));
 				btnDelete.Kind = ((candidateCount > 0) ? BtnKind.Danger : BtnKind.Normal);
 				tips.SetToolTip(btnDelete, (!string.IsNullOrEmpty(inspectError)) ? inspectError : ((inspectCompleted && candidateCount == 0) ? Lang.T("col.addon.clean") : Lang.T("col.addon.tip")));
-				btnDelete.Enabled = CanRequestAddonDeletion(snapshot, flag2, inspecting, canDelete || candidateCount > 0, inspectBlocked || blockers.Count > 0, inspectError);
+				btnDelete.Enabled = CanRequestAddonDeletion(snapshot, anyConditionMet, inspecting, canDelete || candidateCount > 0, inspectBlocked || blockers.Count > 0, inspectError);
 				PerformLayout();
 				Invalidate();
 			}
@@ -593,17 +593,17 @@ namespace PaviseApp
 				blockers.Clear();
 				return;
 			}
-			bool flag = !string.Equals(root, inspectRoot, StringComparison.OrdinalIgnoreCase);
-			int num = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | ((s.CrossProcessCount > 0) ? 16 : 0);
-			if (!inspectionFailures.Allowed(0, num, root, "availability")) return;
-			bool flag2 = num != inspectSignature;
-			TimeSpan timeSpan = ((inspectBlocked && num == 0) ? TimeSpan.FromSeconds(5.0) : TimeSpan.FromMinutes(2.0));
-			if ((!flag && !flag2 && DateTime.UtcNow - inspectUtc < timeSpan) || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref inspectBusy, 1, 0) != 0)
+			bool isNotValuesEqual = !string.Equals(root, inspectRoot, StringComparison.OrdinalIgnoreCase);
+			int combinedMask = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | ((s.CrossProcessCount > 0) ? 16 : 0);
+			if (!inspectionFailures.Allowed(0, combinedMask, root, "availability")) return;
+			bool matchesCombinedMask = combinedMask != inspectSignature;
+			TimeSpan timeSpan = ((inspectBlocked && combinedMask == 0) ? TimeSpan.FromSeconds(5.0) : TimeSpan.FromMinutes(2.0));
+			if ((!isNotValuesEqual && !matchesCombinedMask && DateTime.UtcNow - inspectUtc < timeSpan) || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref inspectBusy, 1, 0) != 0)
 			{
 				return;
 			}
-			inspectSignature = num;
-			if (flag)
+			inspectSignature = combinedMask;
+			if (isNotValuesEqual)
 			{
 				canDelete = false;
 				inspectBlocked = false;
@@ -634,8 +634,8 @@ namespace PaviseApp
 				{
 					error = ex.Message;
 				}
-				if (string.IsNullOrEmpty(error)) inspectionFailures.Succeeded(0, num, root, "availability");
-				else inspectionFailures.Failed(0, num, root, "availability");
+				if (string.IsNullOrEmpty(error)) inspectionFailures.Succeeded(0, combinedMask, root, "availability");
+				else inspectionFailures.Failed(0, combinedMask, root, "availability");
 				try
 				{
 					BeginInvoke((MethodInvoker)delegate

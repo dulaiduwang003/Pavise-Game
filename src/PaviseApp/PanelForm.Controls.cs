@@ -64,14 +64,14 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			float num = Math.Max(0.01f, acLayoutScale);
-			int num2 = Math.Max(0, -acViewport.AutoScrollPosition.Y);
+			float acLayoutScaleLimit = Math.Max(0.01f, acLayoutScale);
+			int lowerBound = Math.Max(0, -acViewport.AutoScrollPosition.Y);
 			AcViewState acViewState = new AcViewState();
 			acViewState.Drawer = acDrawerKind;
 			acViewState.BodyScroll = acDrawerBody.AutoScroll;
-			acViewState.InnerY = (float)Math.Max(0, -acDrawerBody.AutoScrollPosition.Y) / num;
-			acViewState.OuterY = (float)num2 / num;
-			acViewState.BodyOrigin = (float)(acRosterBar.Top + num2 + acDrawer.Top + acDrawerBody.Top) / num;
+			acViewState.InnerY = (float)Math.Max(0, -acDrawerBody.AutoScrollPosition.Y) / acLayoutScaleLimit;
+			acViewState.OuterY = (float)lowerBound / acLayoutScaleLimit;
+			acViewState.BodyOrigin = (float)(acRosterBar.Top + lowerBound + acDrawer.Top + acDrawerBody.Top) / acLayoutScaleLimit;
 			return acViewState;
 		}
 		private void RestoreAcViewState(AcViewState state)
@@ -91,13 +91,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = acDrawerKind;
+			string acDrawerKindSnapshot = acDrawerKind;
 			acDrawerKind = "";
 			acOtherOpen = false;
 			acDrawer.Visible = false;
 			acList.Visible = true;
 			LayoutAntiCheatViewport();
-			((text == "roster") ? acRosterEntry : acOtherToggle).Focus();
+			((acDrawerKindSnapshot == "roster") ? acRosterEntry : acOtherToggle).Focus();
 			return true;
 		}
 		private void AddAcReadOnly(string name, string description, string[] processes, bool recordOnly)
@@ -150,20 +150,20 @@ namespace PaviseApp
 		}
 		private static string GlobalTimerDescription(string state, bool on, string readback)
 		{
-			string text;
+			string message;
 			switch (state)
 			{
 			case "ready":
-				text = "ready";
+				message = "ready";
 				break;
 			case "timer-locked":
-				text = "locked";
+				message = "locked";
 				break;
 			case "timer-limited":
-				text = "limited";
+				message = "limited";
 				break;
 			case "timer-unverified":
-				text = "query-unverified";
+				message = "query-unverified";
 				break;
 			case "pending-reboot":
 			case "restore-pending-reboot":
@@ -173,16 +173,16 @@ namespace PaviseApp
 			case "restore-failed":
 			case "restored":
 			case "unsupported":
-				text = state;
+				message = state;
 				break;
 			case "timer-requested":
-				text = "requested";
+				message = "requested";
 				break;
 			default:
-				text = (on ? "pending" : "off");
+				message = (on ? "pending" : "off");
 				break;
 			}
-			return PerformanceEnvironmentExplanation("AutoGlobalTimer", "env.gtimer.manual") + "\n" + Lang.T("env.gtimer.state." + text) + ((!on && !string.IsNullOrEmpty(readback)) ? ("\n" + Lang.T("env.gtimer.state.release-pending")) : "") + (string.IsNullOrEmpty(readback) ? "" : ("\n" + readback));
+			return PerformanceEnvironmentExplanation("AutoGlobalTimer", "env.gtimer.manual") + "\n" + Lang.T("env.gtimer.state." + message) + ((!on && !string.IsNullOrEmpty(readback)) ? ("\n" + Lang.T("env.gtimer.state.release-pending")) : "") + (string.IsNullOrEmpty(readback) ? "" : ("\n" + readback));
 		}
 		private void MonoLabel(Control parent, string text, int x, int y, int w)
 		{
@@ -201,12 +201,12 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag = !gameProfile.ForceTrigger;
-			if (flag && !PaviseDialog.Confirm(this, Lang.T("v15.library.force"), Lang.F("v15.library.force.confirm", gameProfile.Name), DlgKind.Warn))
+			bool isNotForceTrigger = !gameProfile.ForceTrigger;
+			if (isNotForceTrigger && !PaviseDialog.Confirm(this, Lang.T("v15.library.force"), Lang.F("v15.library.force.confirm", gameProfile.Name), DlgKind.Warn))
 			{
 				return;
 			}
-			if (!gameMode.SetProfileForceTrigger(keepId, flag))
+			if (!gameMode.SetProfileForceTrigger(keepId, isNotForceTrigger))
 			{
 				if (!gameMode.ProfileStoreSaveFailed)
 				{
@@ -477,12 +477,12 @@ namespace PaviseApp
 		{
 			if (IsInDeepTuning)
 			{
-				int num = mainReturnPage;
-				if (num < 0 || num >= (int)PageId.Count || IsAdvancedPage(num))
+				int mainReturnPageSnapshot = mainReturnPage;
+				if (mainReturnPageSnapshot < 0 || mainReturnPageSnapshot >= (int)PageId.Count || IsAdvancedPage(mainReturnPageSnapshot))
 				{
-					num = 0;
+					mainReturnPageSnapshot = 0;
 				}
-				nav.Select(num);
+				nav.Select(mainReturnPageSnapshot);
 				nav.Focus();
 			}
 		}
@@ -557,12 +557,12 @@ namespace PaviseApp
 			}
 			DetachFormFrame();
 			List<Control> list = new List<Control>();
-			int num = ((pages != null && curPage != null) ? Array.IndexOf(pages, curPage) : ((nav != null) ? nav.Selected : 0));
-			if (num < 0)
+			int matchIndex = ((pages != null && curPage != null) ? Array.IndexOf(pages, curPage) : ((nav != null) ? nav.Selected : 0));
+			if (matchIndex < 0)
 			{
-				num = 0;
+				matchIndex = 0;
 			}
-			int num2 = mainReturnPage;
+			int mainReturnPageSnapshot = mainReturnPage;
 			AcViewState acViewState = CaptureAcViewState();
 			CoreViewState coreViewState = CaptureCoreViewState();
 			SavePagePosition(curPage);
@@ -587,8 +587,8 @@ namespace PaviseApp
 				modeSwatches[i].Clear();
 			}
 			BuildUi(appIcon);
-			mainReturnPage = num2;
-			nav.Select(num);
+			mainReturnPage = mainReturnPageSnapshot;
+			nav.Select(matchIndex);
 			RestoreAcViewState(acViewState);
 			RestoreCoreViewState(coreViewState);
 			if (UiActive)
@@ -622,26 +622,26 @@ namespace PaviseApp
 					curPage.Left = pageBaseLeft;
 				}
 			}
-			PerformancePreset? obj;
+			PerformancePreset? standard;
 			switch (previewMode)
 			{
 			default:
-				obj = null;
+				standard = null;
 				break;
 			case "standard":
-				obj = PerformancePreset.Standard;
+				standard = PerformancePreset.Standard;
 				break;
 			case "handheld":
-				obj = PerformancePreset.Handheld;
+				standard = PerformancePreset.Handheld;
 				break;
 			case "competitive":
-				obj = PerformancePreset.Competitive;
+				standard = PerformancePreset.Competitive;
 				break;
 			case "extreme":
-				obj = PerformancePreset.Extreme;
+				standard = PerformancePreset.Extreme;
 				break;
 			}
-			PerformancePreset? performancePreset = obj;
+			PerformancePreset? performancePreset = standard;
 			if (performancePreset.HasValue)
 			{
 				Theme.SetMode(performancePreset.Value, false);
@@ -701,17 +701,17 @@ namespace PaviseApp
 			StopPageReveal();
 			if (lstGames != null)
 			{
-				bool flag = false;
+				bool renderToReady = false;
 				foreach (GameLibraryItem item in lstGames.Items)
 				{
 					if (item.Profile != null && item.Profile.ExecutablePath != null && item.Profile.ExecutablePath.IndexOf("PaviseShot_", StringComparison.OrdinalIgnoreCase) >= 0)
 					{
 						gameIconCache["D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe"] = GameIcon(item.Profile.ExecutablePath);
 						item.Profile.ExecutablePath = "D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe";
-						flag = true;
+						renderToReady = true;
 					}
 				}
-				if (flag)
+				if (renderToReady)
 				{
 					lstGames.Invalidate(true);
 					Application.DoEvents();
@@ -771,15 +771,15 @@ namespace PaviseApp
 		private SettingCard MakeCard(Control parent, int x, int y, int w, int h, string title, string desc, Control host)
 		{
 			SettingCard settingCard = ((parent is PerformanceFeatureGrid) ? new PerformanceFeatureCard() : new SettingCard());
-			int num = 1;
+			int channelValue = 1;
 			foreach (Control control in parent.Controls)
 			{
 				if (control is SettingCard)
 				{
-					num++;
+					channelValue++;
 				}
 			}
-			settingCard.Channel = num;
+			settingCard.Channel = channelValue;
 			settingCard.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
 			settingCard.Title = title;
 			settingCard.Desc = desc ?? "";

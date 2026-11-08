@@ -10,17 +10,17 @@ namespace PaviseApp
 			{
 				return Lang.T("t.backgroundpressurecontroller.1");
 			}
-			bool flag = detail.IndexOf("-write", StringComparison.Ordinal) >= 0;
-			bool flag2 = detail.IndexOf("-readback", StringComparison.Ordinal) >= 0;
-			if (flag && flag2)
+			bool matchesIndexOf = detail.IndexOf("-write", StringComparison.Ordinal) >= 0;
+			bool matchesIndexOf2 = detail.IndexOf("-readback", StringComparison.Ordinal) >= 0;
+			if (matchesIndexOf && matchesIndexOf2)
 			{
 				return Lang.T("t.backgroundpressurecontroller.2");
 			}
-			if (flag2)
+			if (matchesIndexOf2)
 			{
 				return Lang.T("t.backgroundpressurecontroller.3");
 			}
-			if (flag)
+			if (matchesIndexOf)
 			{
 				return Lang.T("t.backgroundpressurecontroller.4");
 			}

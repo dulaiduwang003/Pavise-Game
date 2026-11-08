@@ -45,7 +45,7 @@ namespace PaviseApp
 		private static Probe Inspect()
 		{
 			Probe probe = new Probe();
-			int num = BestInterfaceIndex();
+			int bestInterfaceIndexResult = BestInterfaceIndex();
 			NetworkInterface[] allNetworkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
 			foreach (NetworkInterface networkInterface in allNetworkInterfaces)
 			{
@@ -58,8 +58,8 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				bool flag = false;
-				int num2 = -1;
+				bool inspectReady = false;
+				int wiredIndexValue = -1;
 				try
 				{
 					IPInterfaceProperties iPProperties = networkInterface.GetIPProperties();
@@ -67,13 +67,13 @@ namespace PaviseApp
 					{
 						if (gatewayAddress != null && gatewayAddress.Address != null && !gatewayAddress.Address.Equals(IPAddress.Any))
 						{
-							flag = true;
+							inspectReady = true;
 							break;
 						}
 					}
 					try
 					{
-						num2 = iPProperties.GetIPv4Properties().Index;
+						wiredIndexValue = iPProperties.GetIPv4Properties().Index;
 					}
 					catch
 					{
@@ -82,14 +82,14 @@ namespace PaviseApp
 				catch
 				{
 				}
-				if (!flag)
+				if (!inspectReady)
 				{
 					continue;
 				}
 				switch (networkInterfaceType)
 				{
 				case NetworkInterfaceType.Wireless80211:
-					if (num2 > 0 && num2 == num)
+					if (wiredIndexValue > 0 && wiredIndexValue == bestInterfaceIndexResult)
 					{
 						probe.DefaultRouteWireless = true;
 					}
@@ -104,7 +104,7 @@ namespace PaviseApp
 					}
 					else
 					{
-						probe.WiredIndex = num2;
+						probe.WiredIndex = wiredIndexValue;
 					}
 					break;
 				}
@@ -219,13 +219,13 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text = Settings.LoadStr("LinkMetricReceipt", "");
-				if (text.Length == 0)
+				string linkMetricReceiptValue = Settings.LoadStr("LinkMetricReceipt", "");
+				if (linkMetricReceiptValue.Length == 0)
 				{
 					return true;
 				}
 				int result;
-				if (int.TryParse(text, out result) && !RestoreIndex(result))
+				if (int.TryParse(linkMetricReceiptValue, out result) && !RestoreIndex(result))
 				{
 					Logger.Log(Lang.T("log.linkmetric.3"));
 					return false;

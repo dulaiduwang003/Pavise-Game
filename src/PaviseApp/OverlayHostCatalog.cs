@@ -19,29 +19,29 @@ namespace PaviseApp
 		internal static bool ShouldProtectProcess(string name, string imagePath, bool protectGamePlatformHosts)
 		{
 			if (StreamingToolCatalog.IsStreamingToolProcess(name, imagePath)) return true;
-			string text = WhitelistRule.NormalizeName(name);
-			if (!ProcessNames.Contains(text) && (!protectGamePlatformHosts || !PlatformRuntimePolicy.Enabled("steam") || !GamePlatformProcessNames.Contains(text)))
+			string name2 = WhitelistRule.NormalizeName(name);
+			if (!ProcessNames.Contains(name2) && (!protectGamePlatformHosts || !PlatformRuntimePolicy.Enabled("steam") || !GamePlatformProcessNames.Contains(name2)))
 			{
 				return false;
 			}
-			string text2 = WhitelistRule.NormalizeImagePath(imagePath);
-			if (text2.Length == 0)
+			string imagePath2 = WhitelistRule.NormalizeImagePath(imagePath);
+			if (imagePath2.Length == 0)
 			{
 				return false;
 			}
 			try
 			{
-				string pathRoot = Path.GetPathRoot(text2);
-				if (string.IsNullOrEmpty(pathRoot) || text2.Length <= pathRoot.Length)
+				string pathRoot = Path.GetPathRoot(imagePath2);
+				if (string.IsNullOrEmpty(pathRoot) || imagePath2.Length <= pathRoot.Length)
 				{
 					return false;
 				}
-				string fileName = Path.GetFileName(text2);
+				string fileName = Path.GetFileName(imagePath2);
 				if (!fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 				{
 					return false;
 				}
-				return string.Equals(text, fileName.Substring(0, fileName.Length - 4), StringComparison.OrdinalIgnoreCase);
+				return string.Equals(name2, fileName.Substring(0, fileName.Length - 4), StringComparison.OrdinalIgnoreCase);
 			}
 			catch
 			{

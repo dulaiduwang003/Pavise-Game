@@ -36,8 +36,8 @@ namespace PaviseApp
 			{
 				return "[" + Lang.T("white.platform.badge") + "] " + PlatformRuntimePolicy.DisplayName(PlatformId);
 			}
-			string text = ((Rule.Kind == WhitelistRuleKind.ApplicationFamily) ? Lang.T("white.kind.family") : ((Rule.Kind == WhitelistRuleKind.ExactPath) ? Lang.T("white.kind.path") : Lang.T("white.kind.name")));
-			return "[" + text + "] " + Rule.Value + " " + ((CurrentMatches < 0) ? Lang.T("white.matches.pending") : Lang.F("white.matches", CurrentMatches)) + (Required ? (" " + Lang.T("white.required.badge")) : "");
+			string whiteKindFamilyText = ((Rule.Kind == WhitelistRuleKind.ApplicationFamily) ? Lang.T("white.kind.family") : ((Rule.Kind == WhitelistRuleKind.ExactPath) ? Lang.T("white.kind.path") : Lang.T("white.kind.name")));
+			return "[" + whiteKindFamilyText + "] " + Rule.Value + " " + ((CurrentMatches < 0) ? Lang.T("white.matches.pending") : Lang.F("white.matches", CurrentMatches)) + (Required ? (" " + Lang.T("white.required.badge")) : "");
 		}
 	}
 }

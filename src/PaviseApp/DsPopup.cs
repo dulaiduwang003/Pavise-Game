@@ -20,13 +20,13 @@ namespace PaviseApp
 			size.Height = Math.Min(size.Height, Math.Max(1, work.Height));
 			int val = (alignRight ? (anchor.Right - size.Width) : anchor.Left);
 			val = Math.Max(work.Left + edgeMargin, Math.Min(val, work.Right - size.Width - edgeMargin));
-			int num = anchor.Bottom + gap;
-			if (num + size.Height > work.Bottom)
+			int bottomOffset = anchor.Bottom + gap;
+			if (bottomOffset + size.Height > work.Bottom)
 			{
-				num = anchor.Top - size.Height - gap;
+				bottomOffset = anchor.Top - size.Height - gap;
 			}
-			num = Math.Max(work.Top, Math.Min(num, work.Bottom - size.Height));
-			return new Rectangle(val, num, size.Width, size.Height);
+			bottomOffset = Math.Max(work.Top, Math.Min(bottomOffset, work.Bottom - size.Height));
+			return new Rectangle(val, bottomOffset, size.Width, size.Height);
 		}
 
 		public static Size Fit(Size size, Rectangle work, int margin, int minWidth)

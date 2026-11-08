@@ -98,14 +98,14 @@ namespace PaviseApp
 		{
 			if (!(Caption == caption) || !(Value == value) || !(Detail == detail) || Percent != percent)
 			{
-				bool flag = Caption != caption || Value != value || Detail != detail;
+				bool anyConditionMet = Caption != caption || Value != value || Detail != detail;
 				Caption = caption;
 				Value = value;
 				Detail = detail;
 				Percent = percent;
 				base.AccessibleName = Caption;
 				base.AccessibleDescription = Value + ((Detail.Length == 0) ? "" : ("\r\n" + Detail));
-				if (flag)
+				if (anyConditionMet)
 				{
 					Arrange();
 				}
@@ -126,28 +126,28 @@ namespace PaviseApp
 		private int Geometry(int width, out Rectangle caption, out Rectangle value, out Rectangle detail, out Rectangle gauge, out float pointSize)
 		{
 			width = Math.Max(1, width);
-			int num = Theme.S(2);
-			int num2 = Math.Max(1, width - num * 2);
+			int scaledDimension = Theme.S(2);
+			int lowerBound = Math.Max(1, width - scaledDimension * 2);
 			Font font = Theme.UI(Compact ? 8.5f : 9f, false);
 			Font font2 = Theme.UI(Compact ? 9f : 9.5f, false);
-			int num3 = Theme.S(4);
-			int num4 = ((Detail.Length != 0) ? Math.Min(num2 / 3, TextRenderer.MeasureText(Detail, font2, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(4)) : 0);
-			int num5 = Math.Max(1, num2 - ((num4 != 0) ? (num4 + Theme.S(8)) : 0));
+			int scaledDimension2 = Theme.S(4);
+			int upperBound = ((Detail.Length != 0) ? Math.Min(lowerBound / 3, TextRenderer.MeasureText(Detail, font2, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(4)) : 0);
+			int lowerBound2 = Math.Max(1, lowerBound - ((upperBound != 0) ? (upperBound + Theme.S(8)) : 0));
 			pointSize = (Compact ? 14f : 15f);
-			while (pointSize > 13.5f && TextRenderer.MeasureText(Value, Theme.UI(pointSize, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width > num5)
+			while (pointSize > 13.5f && TextRenderer.MeasureText(Value, Theme.UI(pointSize, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width > lowerBound2)
 			{
 				pointSize -= 0.5f;
 			}
 			Font font3 = Theme.UI(pointSize, true);
-			int num6 = OverviewHudDrawing.TextHeight(Caption, font, num2);
-			int num7 = OverviewHudDrawing.TextHeight(Value, font3, num5);
-			int num8 = ((Detail.Length != 0) ? OverviewHudDrawing.TextHeight(Detail, font2, Math.Max(1, num4)) : 0);
-			int num9 = OverviewHudDrawing.TextHeight("0", font3, num5);
-			caption = new Rectangle(num, num3, num2, num6);
-			value = new Rectangle(num, caption.Bottom + Theme.S(Compact ? 4 : 6), num5, num7);
-			detail = new Rectangle(width - num - num4, value.Top + Math.Max(0, num9 - num8 - Theme.S(3)), num4, num8);
-			gauge = new Rectangle(num, Math.Max(value.Bottom, detail.Bottom) + Theme.S(Compact ? 10 : 13), num2, Math.Max(1, Theme.S(3)));
-			return Math.Max(Theme.S(Compact ? 88 : 96), gauge.Bottom + Theme.S(21) + ((memoryAction != null) ? (memoryAction.MeasureHeight(num2) + Theme.S(4)) : 0));
+			int textHeightResult = OverviewHudDrawing.TextHeight(Caption, font, lowerBound);
+			int textHeightResult2 = OverviewHudDrawing.TextHeight(Value, font3, lowerBound2);
+			int textHeightResult3 = ((Detail.Length != 0) ? OverviewHudDrawing.TextHeight(Detail, font2, Math.Max(1, upperBound)) : 0);
+			int textHeightResult4 = OverviewHudDrawing.TextHeight("0", font3, lowerBound2);
+			caption = new Rectangle(scaledDimension, scaledDimension2, lowerBound, textHeightResult);
+			value = new Rectangle(scaledDimension, caption.Bottom + Theme.S(Compact ? 4 : 6), lowerBound2, textHeightResult2);
+			detail = new Rectangle(width - scaledDimension - upperBound, value.Top + Math.Max(0, textHeightResult4 - textHeightResult3 - Theme.S(3)), upperBound, textHeightResult3);
+			gauge = new Rectangle(scaledDimension, Math.Max(value.Bottom, detail.Bottom) + Theme.S(Compact ? 10 : 13), lowerBound, Math.Max(1, Theme.S(3)));
+			return Math.Max(Theme.S(Compact ? 88 : 96), gauge.Bottom + Theme.S(21) + ((memoryAction != null) ? (memoryAction.MeasureHeight(lowerBound) + Theme.S(4)) : 0));
 		}
 
 		private void Arrange()
@@ -193,27 +193,27 @@ namespace PaviseApp
 				}
 				if (Percent.HasValue && Percent.Value > 0.0 && GaugeBounds.Width > 0)
 				{
-					float num = (float)GaugeBounds.Left + (float)(GaugeBounds.Width - 1) * (float)(Percent.Value / 100.0);
+					float leftOffset = (float)GaugeBounds.Left + (float)(GaugeBounds.Width - 1) * (float)(Percent.Value / 100.0);
 					Pen pen = new Pen(Theme.Accent, GaugeBounds.Height);
 					pen.StartCap = LineCap.Round;
 					pen.EndCap = LineCap.Round;
 					using (Pen pen2 = pen)
 					{
-						graphics.DrawLine(pen2, (float)GaugeBounds.Left + (float)GaugeBounds.Height / 2f, (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f, Math.Max((float)GaugeBounds.Left + (float)GaugeBounds.Height / 2f, num), (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f);
+						graphics.DrawLine(pen2, (float)GaugeBounds.Left + (float)GaugeBounds.Height / 2f, (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f, Math.Max((float)GaugeBounds.Left + (float)GaugeBounds.Height / 2f, leftOffset), (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f);
 					}
-					float num2 = Math.Max(2f, Theme.S(5));
+					float width = Math.Max(2f, Theme.S(5));
 					using (SolidBrush brush2 = new SolidBrush(Theme.LightMode ? Theme.Accent : Theme.Fg))
 					{
-						graphics.FillEllipse(brush2, num - num2 / 2f, (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f - num2 / 2f, num2, num2);
+						graphics.FillEllipse(brush2, leftOffset - width / 2f, (float)GaugeBounds.Top + (float)GaugeBounds.Height / 2f - width / 2f, width, width);
 					}
 				}
 				using (Pen pen3 = new Pen(Col.Alpha(Theme.Faint, Theme.LightMode ? 110 : 75), Math.Max(1, Theme.S(1))))
 				{
 					for (int i = 0; i <= 10; i++)
 					{
-						float num3 = (float)GaugeBounds.Left + (float)((GaugeBounds.Width - 1) * i) / 10f;
-						float num4 = GaugeBounds.Bottom + Theme.S(8);
-						graphics.DrawLine(pen3, num3, num4, num3, num4 + (float)Theme.S((i % 5 == 0) ? 5 : 3));
+						float left = (float)GaugeBounds.Left + (float)((GaugeBounds.Width - 1) * i) / 10f;
+						float top = GaugeBounds.Bottom + Theme.S(8);
+						graphics.DrawLine(pen3, left, top, left, top + (float)Theme.S((i % 5 == 0) ? 5 : 3));
 					}
 				}
 			}

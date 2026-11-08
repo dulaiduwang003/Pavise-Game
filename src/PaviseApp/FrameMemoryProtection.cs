@@ -42,17 +42,17 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = raw.Split(';');
-			if (array.Length < 2 || array.Length > 3 || array[0] != "v1")
+			string[] rawParts = raw.Split(';');
+			if (rawParts.Length < 2 || rawParts.Length > 3 || rawParts[0] != "v1")
 			{
 				return false;
 			}
 			HashSet<int> hashSet = new HashSet<int>();
-			for (int i = 1; i < array.Length; i++)
+			for (int i = 1; i < rawParts.Length; i++)
 			{
-				string[] array2 = array[i].Split('|');
+				string[] parts = rawParts[i].Split('|');
 				FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
-				if (array2.Length != 5 || !int.TryParse(array2[0], out frameThreadReceipt.Pid) || !long.TryParse(array2[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(array2[2], out frameThreadReceipt.Tid) || !long.TryParse(array2[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(array2[4], out frameThreadReceipt.Original) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < 1 || frameThreadReceipt.Original >= 5 || !hashSet.Add(frameThreadReceipt.Tid))
+				if (parts.Length != 5 || !int.TryParse(parts[0], out frameThreadReceipt.Pid) || !long.TryParse(parts[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(parts[2], out frameThreadReceipt.Tid) || !long.TryParse(parts[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(parts[4], out frameThreadReceipt.Original) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < 1 || frameThreadReceipt.Original >= 5 || !hashSet.Add(frameThreadReceipt.Tid))
 				{
 					return false;
 				}
@@ -110,13 +110,13 @@ namespace PaviseApp
 				{
 					list3.Add(item2.Encode());
 				}
-				string text = string.Join(";", list3.ToArray());
+				string joinResult = string.Join(";", list3.ToArray());
 				if (!alive())
 				{
 					return false;
 				}
 				string value;
-				if (!Settings.SaveStrDurable("FrameMemoryProtectionJournalV1", text) || !Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value) || text != value)
+				if (!Settings.SaveStrDurable("FrameMemoryProtectionJournalV1", joinResult) || !Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value) || joinResult != value)
 				{
 					executionFailure = "Memory protection recovery record could not be saved or verified";
 					return false;
@@ -133,8 +133,8 @@ namespace PaviseApp
 					if (!platform.SetMemory(item3, item3.Original, 5))
 					{
 						int priority2;
-						int num = platform.ReadMemory(item3, out priority2);
-						if (num <= 0 && (num < 0 || priority2 == item3.Original || priority2 == 5))
+						int memory = platform.ReadMemory(item3, out priority2);
+						if (memory <= 0 && (memory < 0 || priority2 == item3.Original || priority2 == 5))
 						{
 							executionFailure = "Memory protection apply or readback failed";
 						}
@@ -254,22 +254,22 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			bool flag = true;
+			bool restoreCoreReady = true;
 			foreach (FrameThreadReceipt item in rows)
 			{
 				int priority;
-				int num = platform.ReadMemory(item, out priority);
-				if (num < 0)
+				int memory = platform.ReadMemory(item, out priority);
+				if (memory < 0)
 				{
-					flag = false;
+					restoreCoreReady = false;
 				}
-				else if (num == 0 && priority == 5 && !platform.SetMemory(item, 5, item.Original))
+				else if (memory == 0 && priority == 5 && !platform.SetMemory(item, 5, item.Original))
 				{
-					flag = false;
+					restoreCoreReady = false;
 				}
 			}
 			string value2;
-			if (flag && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameMemoryProtectionJournalV1", "") && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2))
+			if (restoreCoreReady && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameMemoryProtectionJournalV1", "") && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2))
 			{
 				return value2 == "";
 			}

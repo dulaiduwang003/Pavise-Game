@@ -118,13 +118,13 @@ namespace PaviseApp
 			bitmap.Dispose();
 			try
 			{
-				string text = ImagePath + ".tmp";
-				File.WriteAllBytes(text, bytes);
+				string imagePathOffset = ImagePath + ".tmp";
+				File.WriteAllBytes(imagePathOffset, bytes);
 				if (File.Exists(ImagePath))
 				{
 					File.Delete(ImagePath);
 				}
-				File.Move(text, ImagePath);
+				File.Move(imagePathOffset, ImagePath);
 				Settings.SaveStr("DonateImageId", id);
 				return true;
 			}

@@ -64,14 +64,14 @@ namespace PaviseApp
 				stamp = tickCount;
 				scanned = true;
 			}
-			string[] array = Scan();
+			string[] scanResult = Scan();
 			lock (sync)
 			{
-				if (!SameSet(tokens, array))
+				if (!SameSet(tokens, scanResult))
 				{
-					tokens = array;
+					tokens = scanResult;
 					generation++;
-					Logger.Log(Lang.T("log.peripheralvendorprobe.1") + array.Length + Lang.T("log.peripheralvendorprobe.2") + string.Join(" ", array));
+					Logger.Log(Lang.T("log.peripheralvendorprobe.1") + scanResult.Length + Lang.T("log.peripheralvendorprobe.2") + string.Join(" ", scanResult));
 				}
 				return tokens;
 			}
@@ -143,21 +143,21 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = -1;
+			int addTokensValue = -1;
 			for (int i = 0; i <= raw.Length; i++)
 			{
 				char c = ((i < raw.Length) ? raw[i] : ' ');
 				if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
 				{
-					if (num < 0)
+					if (addTokensValue < 0)
 					{
-						num = i;
+						addTokensValue = i;
 					}
 				}
-				else if (num >= 0)
+				else if (addTokensValue >= 0)
 				{
-					Take(raw, num, i - num, set);
-					num = -1;
+					Take(raw, addTokensValue, i - addTokensValue, set);
+					addTokensValue = -1;
 				}
 			}
 		}

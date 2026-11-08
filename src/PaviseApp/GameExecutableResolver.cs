@@ -98,37 +98,37 @@ namespace PaviseApp
 				error = Lang.T("t.gameexecutableresolver.1");
 				return false;
 			}
-			string text;
+			string fullPath;
 			try
 			{
-				text = Path.GetFullPath(Environment.ExpandEnvironmentVariables(selectedPath.Trim().Trim('"')));
+				fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(selectedPath.Trim().Trim('"')));
 			}
 			catch
 			{
 				error = Lang.T("t.gameexecutableresolver.2");
 				return false;
 			}
-			if (Directory.Exists(text))
+			if (Directory.Exists(fullPath))
 			{
-				string text2 = ExecutableCandidateProbe.PickMainExecutable(text);
-				if (text2 == null)
+				string pickMainExecutableResult = ExecutableCandidateProbe.PickMainExecutable(fullPath);
+				if (pickMainExecutableResult == null)
 				{
 					error = Lang.T("t.gameexecutableresolver.8");
 					return false;
 				}
-				suggestedName = Path.GetFileName(text.TrimEnd('\\', '/'));
-				text = text2;
+				suggestedName = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+				fullPath = pickMainExecutableResult;
 			}
-			if (!File.Exists(text))
+			if (!File.Exists(fullPath))
 			{
 				error = Lang.T("t.gameexecutableresolver.3");
 				return false;
 			}
-			string extension = Path.GetExtension(text);
-			string executablePath2 = text;
+			string extension = Path.GetExtension(fullPath);
+			string executablePath2 = fullPath;
 			if (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
 			{
-				if (!TryResolveShortcut(text, out executablePath2))
+				if (!TryResolveShortcut(fullPath, out executablePath2))
 				{
 					error = Lang.T("t.gameexecutableresolver.4");
 					return false;
@@ -136,7 +136,7 @@ namespace PaviseApp
 			}
 			else if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
 			{
-				if (!SteamShortcut.TryResolve(text, out executablePath2, out error, out suggestedName))
+				if (!SteamShortcut.TryResolve(fullPath, out executablePath2, out error, out suggestedName))
 				{
 					return false;
 				}
@@ -182,12 +182,12 @@ namespace PaviseApp
 							return false;
 						}
 						fileStream.Position = 60L;
-						int num = binaryReader.ReadInt32();
-						if (num < 64 || num > fileStream.Length - 4)
+						int positionValue = binaryReader.ReadInt32();
+						if (positionValue < 64 || positionValue > fileStream.Length - 4)
 						{
 							return false;
 						}
-						fileStream.Position = num;
+						fileStream.Position = positionValue;
 						return binaryReader.ReadUInt32() == 17744;
 					}
 				}

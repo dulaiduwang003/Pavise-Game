@@ -58,20 +58,20 @@ namespace PaviseApp
 
 			public override AccessibleObject GetChild(int row)
 			{
-				object obj;
+				object instance;
 				if (row >= 0 && row <= 2)
 				{
-					obj = children[row];
-					if (obj == null)
+					instance = children[row];
+					if (instance == null)
 					{
 						return children[row] = new StrengthChoiceAccessibility(owner, row);
 					}
 				}
 				else
 				{
-					obj = null;
+					instance = null;
 				}
-				return (AccessibleObject)obj;
+				return (AccessibleObject)instance;
 			}
 
 			public override AccessibleObject GetSelected()
@@ -325,20 +325,20 @@ namespace PaviseApp
 		{
 			if (Labels == null || row >= Labels.Length || Labels[row] == null)
 			{
-				object obj;
+				object instance;
 				switch (row)
 				{
 				default:
-					obj = "isolated";
+					instance = "isolated";
 					break;
 				case 1:
-					obj = "balanced";
+					instance = "balanced";
 					break;
 				case 0:
-					obj = "gentle";
+					instance = "gentle";
 					break;
 				}
-				return Lang.T("ac.mode." + (string)obj);
+				return Lang.T("ac.mode." + (string)instance);
 			}
 			return Labels[row];
 		}
@@ -352,19 +352,19 @@ namespace PaviseApp
 		private void EnsureRows(int width)
 		{
 			Font font = Theme.UI(10f, true);
-			bool flag = measuredWidth == width && measuredScale == Dpi.Scale && object.ReferenceEquals(measuredFont, font) && measuredLabels != null;
-			if (flag)
+			bool allConditionsMet = measuredWidth == width && measuredScale == Dpi.Scale && object.ReferenceEquals(measuredFont, font) && measuredLabels != null;
+			if (allConditionsMet)
 			{
 				for (int i = 0; i < 3; i++)
 				{
 					if (measuredLabels[i] != Label(i))
 					{
-						flag = false;
+						allConditionsMet = false;
 						break;
 					}
 				}
 			}
-			if (flag)
+			if (allConditionsMet)
 			{
 				return;
 			}
@@ -372,36 +372,36 @@ namespace PaviseApp
 			measuredScale = Dpi.Scale;
 			measuredFont = font;
 			measuredLabels = new string[3];
-			int num = 0;
-			int num2 = Theme.S(12);
-			int num3 = Math.Max(1, (width - num2 * 2) / 3);
-			int num4 = Math.Max(1, (Horizontal ? num3 : width) - Theme.S(64));
+			int ensureRowsValue = 0;
+			int scaledDimension = Theme.S(12);
+			int lowerBound = Math.Max(1, (width - scaledDimension * 2) / 3);
+			int lowerBound2 = Math.Max(1, (Horizontal ? lowerBound : width) - Theme.S(64));
 			int val = Theme.S(52);
 			for (int j = 0; j < 3; j++)
 			{
 				measuredLabels[j] = Label(j);
-				int num5 = TextRenderer.MeasureText(measuredLabels[j], font, new Size(num4, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
-				int num6 = Math.Max(Theme.S(52), num5 + Theme.S(24));
+				int height = TextRenderer.MeasureText(measuredLabels[j], font, new Size(lowerBound2, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
+				int sLimit = Math.Max(Theme.S(52), height + Theme.S(24));
 				if (Horizontal)
 				{
-					val = Math.Max(val, num6);
+					val = Math.Max(val, sLimit);
 					continue;
 				}
-				rows[j] = new Rectangle(0, num, Math.Max(1, width), num6);
-				num += num6 + num2;
+				rows[j] = new Rectangle(0, ensureRowsValue, Math.Max(1, width), sLimit);
+				ensureRowsValue += sLimit + scaledDimension;
 			}
 			if (Horizontal)
 			{
 				for (int k = 0; k < 3; k++)
 				{
-					int num7 = k * (num3 + num2);
-					rows[k] = new Rectangle(num7, 0, Math.Max(1, (k == 2) ? (width - num7) : num3), val);
+					int scaledK = k * (lowerBound + scaledDimension);
+					rows[k] = new Rectangle(scaledK, 0, Math.Max(1, (k == 2) ? (width - scaledK) : lowerBound), val);
 				}
 				contentHeight = val;
 			}
 			else
 			{
-				contentHeight = num - num2;
+				contentHeight = ensureRowsValue - scaledDimension;
 			}
 		}
 
@@ -443,24 +443,24 @@ namespace PaviseApp
 
 		protected override bool StepAll()
 		{
-			bool flag = base.StepAll();
+			bool stepAllSucceeded = base.StepAll();
 			for (int i = 0; i < glows.Length; i++)
 			{
-				flag |= glows[i].Step();
+				stepAllSucceeded |= glows[i].Step();
 			}
-			return flag;
+			return stepAllSucceeded;
 		}
 
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
-			int num = Hit(e.Location);
-			if (num != hoverRow)
+			int hitResult = Hit(e.Location);
+			if (hitResult != hoverRow)
 			{
-				hoverRow = num;
+				hoverRow = hitResult;
 				for (int i = 0; i < 3; i++)
 				{
-					glows[i].To((i == num) ? 1 : 0);
+					glows[i].To((i == hitResult) ? 1 : 0);
 				}
 				UiClock.Wake();
 				Invalidate();
@@ -495,13 +495,13 @@ namespace PaviseApp
 			base.OnMouseUp(e);
 			if (e.Button == MouseButtons.Left)
 			{
-				int num = Hit(e.Location);
-				int num2 = pressedRow;
+				int hitResult = Hit(e.Location);
+				int pressedRowSnapshot = pressedRow;
 				pressedRow = -1;
 				base.Capture = false;
-				if (num >= 0 && num == num2)
+				if (hitResult >= 0 && hitResult == pressedRowSnapshot)
 				{
-					Activate(num, true);
+					Activate(hitResult, true);
 				}
 			}
 		}
@@ -578,22 +578,22 @@ namespace PaviseApp
 				Rectangle rectangle = rows[i];
 				rectangle.Width = Math.Max(1, rectangle.Width - 1);
 				rectangle.Height = Math.Max(1, rectangle.Height - 1);
-				bool flag = index == i;
-				Color color = (flag ? Col.Lerp(Theme.Card, Theme.Accent, Theme.LightMode ? 0.08f : 0.12f) : Col.Lerp(Theme.Card, Theme.CardHover, glows[i].Value * 0.65f));
-				Color stroke = (flag ? Col.Lerp(Theme.Stroke, Theme.Accent, 0.82f) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, glows[i].Value));
+				bool matchesIndex = index == i;
+				Color color = (matchesIndex ? Col.Lerp(Theme.Card, Theme.Accent, Theme.LightMode ? 0.08f : 0.12f) : Col.Lerp(Theme.Card, Theme.CardHover, glows[i].Value * 0.65f));
+				Color stroke = (matchesIndex ? Col.Lerp(Theme.Stroke, Theme.Accent, 0.82f) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, glows[i].Value));
 				DsPaint.TechFrame(graphics, rectangle, Theme.S(7), color, stroke);
-				Color color2 = ((!base.Enabled) ? Theme.Faint : (flag ? Theme.Accent : Theme.Dim));
-				int num = i + 1;
-				int num2 = rectangle.Top + (rectangle.Height - (num - 1) * Theme.S(5)) / 2;
+				Color color2 = ((!base.Enabled) ? Theme.Faint : (matchesIndex ? Theme.Accent : Theme.Dim));
+				int iOffset = i + 1;
+				int topOffset = rectangle.Top + (rectangle.Height - (iOffset - 1) * Theme.S(5)) / 2;
 				using (Pen pen = new Pen(color2, Math.Max(1f, Dpi.Scale * 1.5f)))
 				{
-					for (int j = 0; j < num; j++)
+					for (int j = 0; j < iOffset; j++)
 					{
-						graphics.DrawLine(pen, rectangle.Left + Theme.S(18), num2 + j * Theme.S(5), rectangle.Left + Theme.S(34), num2 + j * Theme.S(5));
+						graphics.DrawLine(pen, rectangle.Left + Theme.S(18), topOffset + j * Theme.S(5), rectangle.Left + Theme.S(34), topOffset + j * Theme.S(5));
 					}
 				}
-				TextRenderer.DrawText(graphics, Label(i), Theme.UI(10f, flag), new Rectangle(rectangle.Left + Theme.S(48), rectangle.Top + Theme.S(10), Math.Max(1, rectangle.Width - Theme.S(64)), rectangle.Height - Theme.S(20)), (!base.Enabled) ? Theme.Faint : (flag ? Theme.Fg : Theme.Dim), TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-				if (base.WantsFocusCue && flag)
+				TextRenderer.DrawText(graphics, Label(i), Theme.UI(10f, matchesIndex), new Rectangle(rectangle.Left + Theme.S(48), rectangle.Top + Theme.S(10), Math.Max(1, rectangle.Width - Theme.S(64)), rectangle.Height - Theme.S(20)), (!base.Enabled) ? Theme.Faint : (matchesIndex ? Theme.Fg : Theme.Dim), TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+				if (base.WantsFocusCue && matchesIndex)
 				{
 					ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(rectangle, -Theme.S(4), -Theme.S(4)), Theme.Accent, color);
 				}

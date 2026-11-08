@@ -415,10 +415,10 @@ namespace PaviseApp
         }
         private bool Load(out Journal journal)
         {
-            journal = new Journal(); string text;
-            if (!platform.Load(out text) || text == null) return false;
-            if (text.Length == 0) return true;
-            string[] header = text.Split('|'); string encoded;
+            journal = new Journal(); string receiptValue;
+            if (!platform.Load(out receiptValue) || receiptValue == null) return false;
+            if (receiptValue.Length == 0) return true;
+            string[] header = receiptValue.Split('|'); string encoded;
             if (header.Length == 3 && header[0] == "1")
             {
                 journal.Legacy = true;
@@ -458,12 +458,12 @@ namespace PaviseApp
             if (!journal.Legacy && values.Count > 0 && (current == null || !NormalizeDevice(current.DeviceIdentity, out device)
                 || journal.Device != null && journal.Device != device)) return false;
             if (!journal.Legacy && device != null) journal.Device = device;
-            var text = new List<string>();
+            var list = new List<string>();
             foreach (Value value in values)
-                text.Add(value.Text + (journal.Legacy ? "" : value.ManagedOnly ? ":m" : ":c"));
-            string encoded = text.Count == 0 ? "" : journal.Legacy
-                ? "1|" + journal.Owner.ToString("N") + "|" + string.Join(";", text.ToArray())
-                : "2|" + device + "|" + journal.Owner.ToString("N") + "|" + string.Join(";", text.ToArray());
+                list.Add(value.Text + (journal.Legacy ? "" : value.ManagedOnly ? ":m" : ":c"));
+            string encoded = list.Count == 0 ? "" : journal.Legacy
+                ? "1|" + journal.Owner.ToString("N") + "|" + string.Join(";", list.ToArray())
+                : "2|" + device + "|" + journal.Owner.ToString("N") + "|" + string.Join(";", list.ToArray());
             if (!platform.Save(encoded)) return false;
             string read; return platform.Load(out read) && read == encoded;
         }

@@ -8,43 +8,43 @@ namespace PaviseApp
 	{
 		public static void Draw(Graphics g, string name, Rectangle b, Color c)
 		{
-			float num = (float)b.Width / 24f;
+			float widthRatio = (float)b.Width / 24f;
 			SmoothingMode smoothingMode = g.SmoothingMode;
 			g.SmoothingMode = SmoothingMode.AntiAlias;
-			using (Pen pen = new Pen(c, Math.Max(1.4f, 1.9f * num)))
+			using (Pen pen = new Pen(c, Math.Max(1.4f, 1.9f * widthRatio)))
 			{
 				using (SolidBrush solidBrush = new SolidBrush(c))
 				{
 					pen.StartCap = LineCap.Round;
 					pen.EndCap = LineCap.Round;
 					pen.LineJoin = LineJoin.Round;
-					float num2 = b.X;
-					float num3 = b.Y;
+					float left = b.X;
+					float top = b.Y;
 					switch (name)
 					{
 					case "game":
 					{
 						PointF[] points3 = new PointF[6]
 						{
-							P(num2, num3, num, 13f, 2f),
-							P(num2, num3, num, 6f, 13.5f),
-							P(num2, num3, num, 11f, 13.5f),
-							P(num2, num3, num, 10f, 22f),
-							P(num2, num3, num, 17f, 10.5f),
-							P(num2, num3, num, 12f, 10.5f)
+							P(left, top, widthRatio, 13f, 2f),
+							P(left, top, widthRatio, 6f, 13.5f),
+							P(left, top, widthRatio, 11f, 13.5f),
+							P(left, top, widthRatio, 10f, 22f),
+							P(left, top, widthRatio, 17f, 10.5f),
+							P(left, top, widthRatio, 12f, 10.5f)
 						};
 						g.FillPolygon(solidBrush, points3);
 						break;
 					}
 					case "tiles":
 					{
-						float num10 = 7.4f * num;
-						float num11 = 2.2f * num;
+						float scaledWidthRatio = 7.4f * widthRatio;
+						float scaledWidthRatio2 = 2.2f * widthRatio;
 						for (int m = 0; m < 4; m++)
 						{
-							float x3 = num2 + 3.5f * num + (float)(m % 2) * (num10 + num11);
-							float y3 = num3 + 3.5f * num + (float)(m / 2) * (num10 + num11);
-							using (GraphicsPath path6 = Theme.Rounded(Rectangle.Round(new RectangleF(x3, y3, num10, num10)), (int)(2f * num)))
+							float x3 = left + 3.5f * widthRatio + (float)(m % 2) * (scaledWidthRatio + scaledWidthRatio2);
+							float y3 = top + 3.5f * widthRatio + (float)(m / 2) * (scaledWidthRatio + scaledWidthRatio2);
+							using (GraphicsPath path6 = Theme.Rounded(Rectangle.Round(new RectangleF(x3, y3, scaledWidthRatio, scaledWidthRatio)), (int)(2f * widthRatio)))
 							{
 								g.DrawPath(pen, path6);
 							}
@@ -53,209 +53,209 @@ namespace PaviseApp
 					}
 					case "gamepad":
 					{
-						RectangleF value3 = new RectangleF(num2 + 2.8f * num, num3 + 7.2f * num, 18.4f * num, 9.6f * num);
-						using (GraphicsPath path4 = Theme.Rounded(Rectangle.Round(value3), (int)(4.4f * num)))
+						RectangleF value3 = new RectangleF(left + 2.8f * widthRatio, top + 7.2f * widthRatio, 18.4f * widthRatio, 9.6f * widthRatio);
+						using (GraphicsPath path4 = Theme.Rounded(Rectangle.Round(value3), (int)(4.4f * widthRatio)))
 						{
 							g.DrawPath(pen, path4);
 						}
-						using (Pen pen9 = new Pen(c, Math.Max(1.2f, 1.6f * num)))
+						using (Pen pen9 = new Pen(c, Math.Max(1.2f, 1.6f * widthRatio)))
 						{
 							pen9.StartCap = LineCap.Round;
 							pen9.EndCap = LineCap.Round;
-							g.DrawLine(pen9, P(num2, num3, num, 6.4f, 12f), P(num2, num3, num, 10.2f, 12f));
-							g.DrawLine(pen9, P(num2, num3, num, 8.3f, 10.1f), P(num2, num3, num, 8.3f, 13.9f));
+							g.DrawLine(pen9, P(left, top, widthRatio, 6.4f, 12f), P(left, top, widthRatio, 10.2f, 12f));
+							g.DrawLine(pen9, P(left, top, widthRatio, 8.3f, 10.1f), P(left, top, widthRatio, 8.3f, 13.9f));
 						}
-						g.FillEllipse(solidBrush, num2 + 14.4f * num, num3 + 9.6f * num, 2.5f * num, 2.5f * num);
-						g.FillEllipse(solidBrush, num2 + 16.9f * num, num3 + 12f * num, 2.5f * num, 2.5f * num);
+						g.FillEllipse(solidBrush, left + 14.4f * widthRatio, top + 9.6f * widthRatio, 2.5f * widthRatio, 2.5f * widthRatio);
+						g.FillEllipse(solidBrush, left + 16.9f * widthRatio, top + 12f * widthRatio, 2.5f * widthRatio, 2.5f * widthRatio);
 						break;
 					}
 					case "lol":
 					{
-						using (Pen pen8 = new Pen(c, Math.Max(1.2f, 1.45f * num)))
+						using (Pen pen8 = new Pen(c, Math.Max(1.2f, 1.45f * widthRatio)))
 						{
-							g.DrawArc(pen8, num2 + 3.5f * num, num3 + 3.5f * num, 17f * num, 17f * num, -68f, 272f);
+							g.DrawArc(pen8, left + 3.5f * widthRatio, top + 3.5f * widthRatio, 17f * widthRatio, 17f * widthRatio, -68f, 272f);
 						}
 						PointF[] points2 = new PointF[6]
 						{
-							P(num2, num3, num, 10.5f, 2.5f),
-							P(num2, num3, num, 14.5f, 2.5f),
-							P(num2, num3, num, 13.4f, 16.8f),
-							P(num2, num3, num, 19.4f, 16.8f),
-							P(num2, num3, num, 17.5f, 21.2f),
-							P(num2, num3, num, 8.8f, 21.2f)
+							P(left, top, widthRatio, 10.5f, 2.5f),
+							P(left, top, widthRatio, 14.5f, 2.5f),
+							P(left, top, widthRatio, 13.4f, 16.8f),
+							P(left, top, widthRatio, 19.4f, 16.8f),
+							P(left, top, widthRatio, 17.5f, 21.2f),
+							P(left, top, widthRatio, 8.8f, 21.2f)
 						};
 						g.FillPolygon(solidBrush, points2);
 						break;
 					}
 					case "shield":
-						DrawShield(g, pen, num2, num3, num);
+						DrawShield(g, pen, left, top, widthRatio);
 						break;
 					case "acshield":
 					{
-						DrawShield(g, pen, num2, num3, num);
-						using (Pen pen10 = new Pen(c, Math.Max(1.2f, 1.6f * num)))
+						DrawShield(g, pen, left, top, widthRatio);
+						using (Pen pen10 = new Pen(c, Math.Max(1.2f, 1.6f * widthRatio)))
 						{
 							pen10.StartCap = LineCap.Round;
 							pen10.EndCap = LineCap.Round;
-							g.DrawLine(pen10, P(num2, num3, num, 10.2f, 8.2f), P(num2, num3, num, 10.2f, 13.2f));
-							g.DrawLine(pen10, P(num2, num3, num, 13.8f, 8.2f), P(num2, num3, num, 13.8f, 13.2f));
+							g.DrawLine(pen10, P(left, top, widthRatio, 10.2f, 8.2f), P(left, top, widthRatio, 10.2f, 13.2f));
+							g.DrawLine(pen10, P(left, top, widthRatio, 13.8f, 8.2f), P(left, top, widthRatio, 13.8f, 13.2f));
 						}
 						break;
 					}
 					case "white":
 					{
-						RectangleF value4 = new RectangleF(num2 + 3.5f * num, num3 + 3.5f * num, 17f * num, 17f * num);
-						using (GraphicsPath path5 = Theme.Rounded(Rectangle.Round(value4), (int)(4f * num)))
+						RectangleF value4 = new RectangleF(left + 3.5f * widthRatio, top + 3.5f * widthRatio, 17f * widthRatio, 17f * widthRatio);
+						using (GraphicsPath path5 = Theme.Rounded(Rectangle.Round(value4), (int)(4f * widthRatio)))
 						{
 							g.DrawPath(pen, path5);
 						}
 						g.DrawLines(pen, new PointF[3]
 						{
-							P(num2, num3, num, 8.5f, 12f),
-							P(num2, num3, num, 11f, 15f),
-							P(num2, num3, num, 16f, 8.5f)
+							P(left, top, widthRatio, 8.5f, 12f),
+							P(left, top, widthRatio, 11f, 15f),
+							P(left, top, widthRatio, 16f, 8.5f)
 						});
 						break;
 					}
 					case "log":
-						g.DrawLine(pen, P(num2, num3, num, 5f, 7f).X, P(num2, num3, num, 5f, 7f).Y, P(num2, num3, num, 19f, 7f).X, P(num2, num3, num, 19f, 7f).Y);
-						g.DrawLine(pen, P(num2, num3, num, 5f, 12f).X, P(num2, num3, num, 5f, 12f).Y, P(num2, num3, num, 19f, 12f).X, P(num2, num3, num, 19f, 12f).Y);
-						g.DrawLine(pen, P(num2, num3, num, 5f, 17f).X, P(num2, num3, num, 5f, 17f).Y, P(num2, num3, num, 14f, 17f).X, P(num2, num3, num, 14f, 17f).Y);
+						g.DrawLine(pen, P(left, top, widthRatio, 5f, 7f).X, P(left, top, widthRatio, 5f, 7f).Y, P(left, top, widthRatio, 19f, 7f).X, P(left, top, widthRatio, 19f, 7f).Y);
+						g.DrawLine(pen, P(left, top, widthRatio, 5f, 12f).X, P(left, top, widthRatio, 5f, 12f).Y, P(left, top, widthRatio, 19f, 12f).X, P(left, top, widthRatio, 19f, 12f).Y);
+						g.DrawLine(pen, P(left, top, widthRatio, 5f, 17f).X, P(left, top, widthRatio, 5f, 17f).Y, P(left, top, widthRatio, 14f, 17f).X, P(left, top, widthRatio, 14f, 17f).Y);
 						break;
 					case "chart":
-						g.DrawLine(pen, P(num2, num3, num, 4f, 19f), P(num2, num3, num, 4f, 5f));
-						g.DrawLine(pen, P(num2, num3, num, 4f, 19f), P(num2, num3, num, 20f, 19f));
+						g.DrawLine(pen, P(left, top, widthRatio, 4f, 19f), P(left, top, widthRatio, 4f, 5f));
+						g.DrawLine(pen, P(left, top, widthRatio, 4f, 19f), P(left, top, widthRatio, 20f, 19f));
 						g.DrawLines(pen, new PointF[4]
 						{
-							P(num2, num3, num, 6f, 15f),
-							P(num2, num3, num, 10f, 11f),
-							P(num2, num3, num, 13f, 13f),
-							P(num2, num3, num, 19f, 6f)
+							P(left, top, widthRatio, 6f, 15f),
+							P(left, top, widthRatio, 10f, 11f),
+							P(left, top, widthRatio, 13f, 13f),
+							P(left, top, widthRatio, 19f, 6f)
 						});
 						break;
 					case "pulse":
 						g.DrawLines(pen, new PointF[6]
 						{
-							P(num2, num3, num, 3f, 14f),
-							P(num2, num3, num, 7f, 14f),
-							P(num2, num3, num, 9f, 6f),
-							P(num2, num3, num, 12f, 19f),
-							P(num2, num3, num, 15f, 14f),
-							P(num2, num3, num, 21f, 14f)
+							P(left, top, widthRatio, 3f, 14f),
+							P(left, top, widthRatio, 7f, 14f),
+							P(left, top, widthRatio, 9f, 6f),
+							P(left, top, widthRatio, 12f, 19f),
+							P(left, top, widthRatio, 15f, 14f),
+							P(left, top, widthRatio, 21f, 14f)
 						});
 						break;
 					case "settings":
-						g.DrawLine(pen, P(num2, num3, num, 4f, 8f).X, P(num2, num3, num, 4f, 8f).Y, P(num2, num3, num, 20f, 8f).X, P(num2, num3, num, 20f, 8f).Y);
-						g.DrawLine(pen, P(num2, num3, num, 4f, 16f).X, P(num2, num3, num, 4f, 16f).Y, P(num2, num3, num, 20f, 16f).X, P(num2, num3, num, 20f, 16f).Y);
-						Knob(g, solidBrush, c, P(num2, num3, num, 9f, 8f), 2.6f * num);
-						Knob(g, solidBrush, c, P(num2, num3, num, 15f, 16f), 2.6f * num);
+						g.DrawLine(pen, P(left, top, widthRatio, 4f, 8f).X, P(left, top, widthRatio, 4f, 8f).Y, P(left, top, widthRatio, 20f, 8f).X, P(left, top, widthRatio, 20f, 8f).Y);
+						g.DrawLine(pen, P(left, top, widthRatio, 4f, 16f).X, P(left, top, widthRatio, 4f, 16f).Y, P(left, top, widthRatio, 20f, 16f).X, P(left, top, widthRatio, 20f, 16f).Y);
+						Knob(g, solidBrush, c, P(left, top, widthRatio, 9f, 8f), 2.6f * widthRatio);
+						Knob(g, solidBrush, c, P(left, top, widthRatio, 15f, 16f), 2.6f * widthRatio);
 						break;
 					case "gear":
 					{
-						g.DrawEllipse(pen, num2 + 5.5f * num, num3 + 5.5f * num, 13f * num, 13f * num);
-						g.DrawEllipse(pen, num2 + 9.5f * num, num3 + 9.5f * num, 5f * num, 5f * num);
+						g.DrawEllipse(pen, left + 5.5f * widthRatio, top + 5.5f * widthRatio, 13f * widthRatio, 13f * widthRatio);
+						g.DrawEllipse(pen, left + 9.5f * widthRatio, top + 9.5f * widthRatio, 5f * widthRatio, 5f * widthRatio);
 						for (int l = 0; l < 8; l++)
 						{
-							double num9 = (double)l * Math.PI / 4.0;
-							float x = num2 + (12f + (float)Math.Cos(num9) * 8f) * num;
-							float y = num3 + (12f + (float)Math.Sin(num9) * 8f) * num;
-							float x2 = num2 + (12f + (float)Math.Cos(num9) * 10f) * num;
-							float y2 = num3 + (12f + (float)Math.Sin(num9) * 10f) * num;
+							double ratio = (double)l * Math.PI / 4.0;
+							float x = left + (12f + (float)Math.Cos(ratio) * 8f) * widthRatio;
+							float y = top + (12f + (float)Math.Sin(ratio) * 8f) * widthRatio;
+							float x2 = left + (12f + (float)Math.Cos(ratio) * 10f) * widthRatio;
+							float y2 = top + (12f + (float)Math.Sin(ratio) * 10f) * widthRatio;
 							g.DrawLine(pen, x, y, x2, y2);
 						}
 						break;
 					}
 					case "gpu":
 					{
-						RectangleF value2 = new RectangleF(num2 + 2.5f * num, num3 + 6.5f * num, 19f * num, 11f * num);
-						using (GraphicsPath path3 = Theme.Rounded(Rectangle.Round(value2), (int)(2.5f * num)))
+						RectangleF value2 = new RectangleF(left + 2.5f * widthRatio, top + 6.5f * widthRatio, 19f * widthRatio, 11f * widthRatio);
+						using (GraphicsPath path3 = Theme.Rounded(Rectangle.Round(value2), (int)(2.5f * widthRatio)))
 						{
 							g.DrawPath(pen, path3);
 						}
-						using (Pen pen6 = new Pen(c, Math.Max(1.2f, 1.5f * num)))
+						using (Pen pen6 = new Pen(c, Math.Max(1.2f, 1.5f * widthRatio)))
 						{
-							g.DrawEllipse(pen6, num2 + 5.2f * num, num3 + 8.7f * num, 6.6f * num, 6.6f * num);
+							g.DrawEllipse(pen6, left + 5.2f * widthRatio, top + 8.7f * widthRatio, 6.6f * widthRatio, 6.6f * widthRatio);
 						}
-						using (Pen pen7 = new Pen(c, Math.Max(1f, 1.3f * num)))
+						using (Pen pen7 = new Pen(c, Math.Max(1f, 1.3f * widthRatio)))
 						{
 							for (int k = 0; k < 3; k++)
 							{
-								float num8 = num3 + (9.6f + (float)k * 2.4f) * num;
-								g.DrawLine(pen7, num2 + 14.6f * num, num8, num2 + 18.6f * num, num8);
+								float top2 = top + (9.6f + (float)k * 2.4f) * widthRatio;
+								g.DrawLine(pen7, left + 14.6f * widthRatio, top2, left + 18.6f * widthRatio, top2);
 							}
 						}
 						break;
 					}
 					case "chip":
 					{
-						RectangleF value = new RectangleF(num2 + 6.5f * num, num3 + 6.5f * num, 11f * num, 11f * num);
-						using (GraphicsPath path2 = Theme.Rounded(Rectangle.Round(value), (int)(2f * num)))
+						RectangleF value = new RectangleF(left + 6.5f * widthRatio, top + 6.5f * widthRatio, 11f * widthRatio, 11f * widthRatio);
+						using (GraphicsPath path2 = Theme.Rounded(Rectangle.Round(value), (int)(2f * widthRatio)))
 						{
 							g.DrawPath(pen, path2);
 						}
-						g.FillRectangle(solidBrush, num2 + 10.6f * num, num3 + 10.6f * num, 2.8f * num, 2.8f * num);
-						using (Pen pen5 = new Pen(c, Math.Max(1f, 1.4f * num)))
+						g.FillRectangle(solidBrush, left + 10.6f * widthRatio, top + 10.6f * widthRatio, 2.8f * widthRatio, 2.8f * widthRatio);
+						using (Pen pen5 = new Pen(c, Math.Max(1f, 1.4f * widthRatio)))
 						{
 							for (int j = 0; j < 3; j++)
 							{
-								float num7 = (9.4f + (float)j * 2.6f) * num;
-								g.DrawLine(pen5, num2 + num7, num3 + 6.5f * num, num2 + num7, num3 + 3.4f * num);
-								g.DrawLine(pen5, num2 + num7, num3 + 17.5f * num, num2 + num7, num3 + 20.6f * num);
-								g.DrawLine(pen5, num2 + 6.5f * num, num3 + num7, num2 + 3.4f * num, num3 + num7);
-								g.DrawLine(pen5, num2 + 17.5f * num, num3 + num7, num2 + 20.6f * num, num3 + num7);
+								float scaledWidthRatio3 = (9.4f + (float)j * 2.6f) * widthRatio;
+								g.DrawLine(pen5, left + scaledWidthRatio3, top + 6.5f * widthRatio, left + scaledWidthRatio3, top + 3.4f * widthRatio);
+								g.DrawLine(pen5, left + scaledWidthRatio3, top + 17.5f * widthRatio, left + scaledWidthRatio3, top + 20.6f * widthRatio);
+								g.DrawLine(pen5, left + 6.5f * widthRatio, top + scaledWidthRatio3, left + 3.4f * widthRatio, top + scaledWidthRatio3);
+								g.DrawLine(pen5, left + 17.5f * widthRatio, top + scaledWidthRatio3, left + 20.6f * widthRatio, top + scaledWidthRatio3);
 							}
 						}
 						break;
 					}
 					case "info":
-						g.DrawEllipse(pen, num2 + 3.5f * num, num3 + 3.5f * num, 17f * num, 17f * num);
-						g.DrawLine(pen, P(num2, num3, num, 12f, 11.2f), P(num2, num3, num, 12f, 16.8f));
-						g.FillEllipse(solidBrush, num2 + 10.6f * num, num3 + 6.2f * num, 2.8f * num, 2.8f * num);
+						g.DrawEllipse(pen, left + 3.5f * widthRatio, top + 3.5f * widthRatio, 17f * widthRatio, 17f * widthRatio);
+						g.DrawLine(pen, P(left, top, widthRatio, 12f, 11.2f), P(left, top, widthRatio, 12f, 16.8f));
+						g.FillEllipse(solidBrush, left + 10.6f * widthRatio, top + 6.2f * widthRatio, 2.8f * widthRatio, 2.8f * widthRatio);
 						break;
 					case "search":
-						g.DrawEllipse(pen, num2 + 4.5f * num, num3 + 4.5f * num, 11.5f * num, 11.5f * num);
-						g.DrawLine(pen, P(num2, num3, num, 14.8f, 14.8f), P(num2, num3, num, 20.2f, 20.2f));
+						g.DrawEllipse(pen, left + 4.5f * widthRatio, top + 4.5f * widthRatio, 11.5f * widthRatio, 11.5f * widthRatio);
+						g.DrawLine(pen, P(left, top, widthRatio, 14.8f, 14.8f), P(left, top, widthRatio, 20.2f, 20.2f));
 						break;
 					case "power":
 					{
-						g.DrawLine(pen, P(num2, num3, num, 9.2f, 2.8f), P(num2, num3, num, 9.2f, 6.8f));
-						g.DrawLine(pen, P(num2, num3, num, 14.8f, 2.8f), P(num2, num3, num, 14.8f, 6.8f));
+						g.DrawLine(pen, P(left, top, widthRatio, 9.2f, 2.8f), P(left, top, widthRatio, 9.2f, 6.8f));
+						g.DrawLine(pen, P(left, top, widthRatio, 14.8f, 2.8f), P(left, top, widthRatio, 14.8f, 6.8f));
 						PointF[] points = new PointF[6]
 						{
-							P(num2, num3, num, 6.4f, 6.8f),
-							P(num2, num3, num, 17.6f, 6.8f),
-							P(num2, num3, num, 17.6f, 11.6f),
-							P(num2, num3, num, 15.2f, 14.6f),
-							P(num2, num3, num, 8.8f, 14.6f),
-							P(num2, num3, num, 6.4f, 11.6f)
+							P(left, top, widthRatio, 6.4f, 6.8f),
+							P(left, top, widthRatio, 17.6f, 6.8f),
+							P(left, top, widthRatio, 17.6f, 11.6f),
+							P(left, top, widthRatio, 15.2f, 14.6f),
+							P(left, top, widthRatio, 8.8f, 14.6f),
+							P(left, top, widthRatio, 6.4f, 11.6f)
 						};
 						g.DrawPolygon(pen, points);
-						g.DrawLine(pen, P(num2, num3, num, 12f, 14.6f), P(num2, num3, num, 12f, 17.8f));
-						g.DrawBezier(pen, P(num2, num3, num, 12f, 17.8f), P(num2, num3, num, 12f, 21.2f), P(num2, num3, num, 14.6f, 21.4f), P(num2, num3, num, 18.2f, 21f));
+						g.DrawLine(pen, P(left, top, widthRatio, 12f, 14.6f), P(left, top, widthRatio, 12f, 17.8f));
+						g.DrawBezier(pen, P(left, top, widthRatio, 12f, 17.8f), P(left, top, widthRatio, 12f, 21.2f), P(left, top, widthRatio, 14.6f, 21.4f), P(left, top, widthRatio, 18.2f, 21f));
 						break;
 					}
 					case "sun":
 					{
-						using (Pen pen4 = new Pen(c, Math.Max(1.1f, 1.55f * num)))
+						using (Pen pen4 = new Pen(c, Math.Max(1.1f, 1.55f * widthRatio)))
 						{
 							pen4.StartCap = LineCap.Round;
 							pen4.EndCap = LineCap.Round;
-							g.DrawEllipse(pen4, num2 + 7.6f * num, num3 + 7.6f * num, 8.8f * num, 8.8f * num);
+							g.DrawEllipse(pen4, left + 7.6f * widthRatio, top + 7.6f * widthRatio, 8.8f * widthRatio, 8.8f * widthRatio);
 							for (int i = 0; i < 8; i++)
 							{
-								double num4 = (double)i * Math.PI / 4.0;
-								float num5 = (float)Math.Cos(num4);
-								float num6 = (float)Math.Sin(num4);
-								g.DrawLine(pen4, num2 + (12f + num5 * 7.6f) * num, num3 + (12f + num6 * 7.6f) * num, num2 + (12f + num5 * 10.4f) * num, num3 + (12f + num6 * 10.4f) * num);
+								double ratio2 = (double)i * Math.PI / 4.0;
+								float cosResult = (float)Math.Cos(ratio2);
+								float sinResult = (float)Math.Sin(ratio2);
+								g.DrawLine(pen4, left + (12f + cosResult * 7.6f) * widthRatio, top + (12f + sinResult * 7.6f) * widthRatio, left + (12f + cosResult * 10.4f) * widthRatio, top + (12f + sinResult * 10.4f) * widthRatio);
 							}
 						}
 						break;
 					}
 					case "moon":
 					{
-						using (Pen pen3 = new Pen(c, Math.Max(1.1f, 1.55f * num)))
+						using (Pen pen3 = new Pen(c, Math.Max(1.1f, 1.55f * widthRatio)))
 						{
-							using (GraphicsPath path = Crescent(num2 + 12f * num, num3 + 12f * num, 8.6f * num, 7.4f * num, -38f))
+							using (GraphicsPath path = Crescent(left + 12f * widthRatio, top + 12f * widthRatio, 8.6f * widthRatio, 7.4f * widthRatio, -38f))
 							{
 								pen3.LineJoin = LineJoin.Round;
 								g.DrawPath(pen3, path);
@@ -267,10 +267,10 @@ namespace PaviseApp
 					{
 						using (GraphicsPath graphicsPath = new GraphicsPath())
 						{
-							graphicsPath.AddBezier(P(num2, num3, num, 12f, 20.5f), P(num2, num3, num, 3.5f, 14.5f), P(num2, num3, num, 2.5f, 6.5f), P(num2, num3, num, 7.5f, 4.5f));
-							graphicsPath.AddBezier(P(num2, num3, num, 7.5f, 4.5f), P(num2, num3, num, 10.2f, 3.6f), P(num2, num3, num, 11.6f, 5.6f), P(num2, num3, num, 12f, 7f));
-							graphicsPath.AddBezier(P(num2, num3, num, 12f, 7f), P(num2, num3, num, 12.4f, 5.6f), P(num2, num3, num, 13.8f, 3.6f), P(num2, num3, num, 16.5f, 4.5f));
-							graphicsPath.AddBezier(P(num2, num3, num, 16.5f, 4.5f), P(num2, num3, num, 21.5f, 6.5f), P(num2, num3, num, 20.5f, 14.5f), P(num2, num3, num, 12f, 20.5f));
+							graphicsPath.AddBezier(P(left, top, widthRatio, 12f, 20.5f), P(left, top, widthRatio, 3.5f, 14.5f), P(left, top, widthRatio, 2.5f, 6.5f), P(left, top, widthRatio, 7.5f, 4.5f));
+							graphicsPath.AddBezier(P(left, top, widthRatio, 7.5f, 4.5f), P(left, top, widthRatio, 10.2f, 3.6f), P(left, top, widthRatio, 11.6f, 5.6f), P(left, top, widthRatio, 12f, 7f));
+							graphicsPath.AddBezier(P(left, top, widthRatio, 12f, 7f), P(left, top, widthRatio, 12.4f, 5.6f), P(left, top, widthRatio, 13.8f, 3.6f), P(left, top, widthRatio, 16.5f, 4.5f));
+							graphicsPath.AddBezier(P(left, top, widthRatio, 16.5f, 4.5f), P(left, top, widthRatio, 21.5f, 6.5f), P(left, top, widthRatio, 20.5f, 14.5f), P(left, top, widthRatio, 12f, 20.5f));
 							graphicsPath.CloseFigure();
 							g.FillPath(solidBrush, graphicsPath);
 						}
@@ -278,13 +278,13 @@ namespace PaviseApp
 					}
 					case "globe":
 					{
-						g.DrawEllipse(pen, num2 + 3.5f * num, num3 + 3.5f * num, 17f * num, 17f * num);
-						using (Pen pen2 = new Pen(c, Math.Max(1.1f, 1.55f * num)))
+						g.DrawEllipse(pen, left + 3.5f * widthRatio, top + 3.5f * widthRatio, 17f * widthRatio, 17f * widthRatio);
+						using (Pen pen2 = new Pen(c, Math.Max(1.1f, 1.55f * widthRatio)))
 						{
 							pen2.StartCap = LineCap.Round;
 							pen2.EndCap = LineCap.Round;
-							g.DrawEllipse(pen2, num2 + 8.4f * num, num3 + 3.5f * num, 7.2f * num, 17f * num);
-							g.DrawLine(pen2, P(num2, num3, num, 3.5f, 12f), P(num2, num3, num, 20.5f, 12f));
+							g.DrawEllipse(pen2, left + 8.4f * widthRatio, top + 3.5f * widthRatio, 7.2f * widthRatio, 17f * widthRatio);
+							g.DrawLine(pen2, P(left, top, widthRatio, 3.5f, 12f), P(left, top, widthRatio, 20.5f, 12f));
 						}
 						break;
 					}
@@ -322,13 +322,13 @@ namespace PaviseApp
 			{
 				d = r * 0.2f;
 			}
-			float num = (float)(Math.Acos((double)d / (2.0 * (double)r)) * 180.0 / Math.PI);
-			double num2 = (double)tilt * Math.PI / 180.0;
-			float num3 = cx + d * (float)Math.Cos(num2);
-			float num4 = cy + d * (float)Math.Sin(num2);
+			float pIRatio = (float)(Math.Acos((double)d / (2.0 * (double)r)) * 180.0 / Math.PI);
+			double ratio = (double)tilt * Math.PI / 180.0;
+			float cxOffset = cx + d * (float)Math.Cos(ratio);
+			float cyOffset = cy + d * (float)Math.Sin(ratio);
 			GraphicsPath graphicsPath = new GraphicsPath();
-			graphicsPath.AddArc(cx - r, cy - r, r * 2f, r * 2f, tilt + num, 360f - 2f * num);
-			graphicsPath.AddArc(num3 - r, num4 - r, r * 2f, r * 2f, 180f + tilt + num, -2f * num);
+			graphicsPath.AddArc(cx - r, cy - r, r * 2f, r * 2f, tilt + pIRatio, 360f - 2f * pIRatio);
+			graphicsPath.AddArc(cxOffset - r, cyOffset - r, r * 2f, r * 2f, 180f + tilt + pIRatio, -2f * pIRatio);
 			graphicsPath.CloseFigure();
 			RectangleF bounds = graphicsPath.GetBounds();
 			using (Matrix matrix = new Matrix())

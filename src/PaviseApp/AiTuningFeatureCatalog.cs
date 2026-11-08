@@ -17,32 +17,32 @@ namespace PaviseApp
 
         internal static string Describe(GameMode mode)
         {
-            var text = new StringBuilder(12000);
-            text.AppendLine("条目非开关数；开关指独立开关；偏好非生效，—无单值。恢复仅撤回工具记录，非强制开启/出厂重置；HAGS/SAM/窗口化优化/系统VRR关闭则请求关闭，原值另走恢复维护。会话退局恢复，持久项按重启提示。");
+            var stringBuilder = new StringBuilder(12000);
+            stringBuilder.AppendLine("条目非开关数；开关指独立开关；偏好非生效，—无单值。恢复仅撤回工具记录，非强制开启/出厂重置；HAGS/SAM/窗口化优化/系统VRR关闭则请求关闭，原值另走恢复维护。会话退局恢复，持久项按重启提示。");
             int count = 0;
             using (PolicyResolver.BeginReadScope())
             {
                 foreach (PolicyItem item in PolicyCatalog.All)
                 {
                     if (PerformancePolicy.IsRetired(item.Key)) continue;
-                    Append(text, ref count, PolicyFeature(item), Configuration(item.Key, mode));
+                    Append(stringBuilder, ref count, PolicyFeature(item), Configuration(item.Key, mode));
                 }
                 foreach (PerformanceAction action in PerformanceActionCatalog.All)
-                    Append(text, ref count, ActionFeature(action), Configuration(action.Key, mode));
+                    Append(stringBuilder, ref count, ActionFeature(action), Configuration(action.Key, mode));
                 foreach (PrivacyAction action in PrivacyActionCatalog.All)
                 {
                     Feature feature = action.Key == PrivacyActionCatalog.BackgroundGlobal
                         ? F(action.Key, action.Zh, "限制UWP后台活动，保留逐应用例外，不管普通桌面软件", "UWP后台活跃；可能延迟通知/同步，重启相关应用；家庭版必要时注销，不要求统一重启电脑")
                         : F(action.Key, action.Zh, "扩大NTFS文件系统缓存池", "内存充足、文件元数据负载高；增加内存占用，需重启");
-                    Append(text, ref count, feature, BoolConfiguration(PrivacyControl.PreferencePrefix + action.Key, false));
+                    Append(stringBuilder, ref count, feature, BoolConfiguration(PrivacyControl.PreferencePrefix + action.Key, false));
                 }
-                foreach (Feature feature in ExtraFeatures()) Append(text, ref count, feature, Configuration(feature.Key, mode));
-                foreach (Feature feature in CheckupFeatures()) Append(text, ref count, feature, "未复查");
-                AppendProfiles(text, mode);
+                foreach (Feature feature in ExtraFeatures()) Append(stringBuilder, ref count, feature, Configuration(feature.Key, mode));
+                foreach (Feature feature in CheckupFeatures()) Append(stringBuilder, ref count, feature, "未复查");
+                AppendProfiles(stringBuilder, mode);
             }
-            text.AppendLine("功能条目：" + count.ToString(CultureInfo.InvariantCulture));
-            text.AppendLine("不可开启：通用/手动LOL脱壳、文件过滤/计时修复/音效减负、Defender、全局ETW、网络旁路/统一限速、后台全冻结/工作集修剪、旧极限档、AMD Anti-Lag；仅恢复旧记录。");
-            return text.ToString();
+            stringBuilder.AppendLine("功能条目：" + count.ToString(CultureInfo.InvariantCulture));
+            stringBuilder.AppendLine("不可开启：通用/手动LOL脱壳、文件过滤/计时修复/音效减负、Defender、全局ETW、网络旁路/统一限速、后台全冻结/工作集修剪、旧极限档、AMD Anti-Lag；仅恢复旧记录。");
+            return stringBuilder.ToString();
         }
 
         private static void Append(StringBuilder text, ref int count, Feature feature, string configuration)
@@ -335,14 +335,14 @@ namespace PaviseApp
 
         private static string AntiCheatConfiguration()
         {
-            var text = new StringBuilder();
+            var stringBuilder = new StringBuilder();
             foreach (AcGroup group in AntiCheatCatalog.Groups)
             {
-                if (text.Length > 0) text.Append("；");
-                text.Append(group.Key).Append('=');
-                text.Append(group.Suppressible ? BoolConfiguration("Tame_" + group.Key, group.Default) : group.RecordOnly ? "仅记录，不可压制" : "仅保护，不可压制");
+                if (stringBuilder.Length > 0) stringBuilder.Append("；");
+                stringBuilder.Append(group.Key).Append('=');
+                stringBuilder.Append(group.Suppressible ? BoolConfiguration("Tame_" + group.Key, group.Default) : group.RecordOnly ? "仅记录，不可压制" : "仅保护，不可压制");
             }
-            return text.ToString();
+            return stringBuilder.ToString();
         }
 
         private static string PowerConfiguration()
@@ -404,9 +404,9 @@ namespace PaviseApp
 
         private static string SafeName(string value)
         {
-            string text = (value ?? "未命名游戏").Replace('\r', ' ').Replace('\n', ' ');
-            if (Regex.IsMatch(text, @"[A-Za-z]:[\\/]|\\\\")) return "名称含路径，已省略";
-            return text;
+            string replaceResult = (value ?? "未命名游戏").Replace('\r', ' ').Replace('\n', ' ');
+            if (Regex.IsMatch(replaceResult, @"[A-Za-z]:[\\/]|\\\\")) return "名称含路径，已省略";
+            return replaceResult;
         }
 
         private static string QuantumConfiguration()

@@ -47,16 +47,16 @@ namespace PaviseApp
 		protected override void OnPaint(PaintEventArgs e)
 		{
 			base.OnPaint(e);
-			float num = Math.Max(2, Theme.S(3));
-			float num2 = Theme.S(5);
-			float num3 = ((float)base.Width - num) / 2f;
-			float num4 = ((float)base.Height - num) / 2f;
+			float width = Math.Max(2, Theme.S(3));
+			float scaledDimension = Theme.S(5);
+			float ratio = ((float)base.Width - width) / 2f;
+			float top = ((float)base.Height - width) / 2f;
 			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			using (SolidBrush brush = new SolidBrush(base.Enabled ? Theme.Fg : Theme.Faint))
 			{
 				for (int i = -1; i <= 1; i++)
 				{
-					e.Graphics.FillEllipse(brush, num3 + (float)i * num2, num4, num, num);
+					e.Graphics.FillEllipse(brush, ratio + (float)i * scaledDimension, top, width, width);
 				}
 			}
 		}

@@ -229,38 +229,38 @@ namespace PaviseApp
 			SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
 			base.KeyPreview = true;
 			Rectangle workingArea = GetWorkingArea(owner);
-			int num = Math.Min(Theme.S(width), Math.Max(1, workingArea.Width - Theme.S(40)));
-			int num2 = Math.Max(1, num - Theme.S(26) * 2);
+			int maxLimit = Math.Min(Theme.S(width), Math.Max(1, workingArea.Width - Theme.S(40)));
+			int widthValue = Math.Max(1, maxLimit - Theme.S(26) * 2);
 			Font headingFont = DsType.Font(DsText.Heading, true);
-			int titleHeight = TextRenderer.MeasureText(title, headingFont, new Size(num2, int.MaxValue), BodyTextFlags).Height;
+			int titleHeight = TextRenderer.MeasureText(title, headingFont, new Size(widthValue, int.MaxValue), BodyTextFlags).Height;
 			int headingLine = TextRenderer.MeasureText("Ag", headingFont, Size.Empty, TextFormatFlags.NoPadding).Height;
-			titleRect = new Rectangle(Theme.S(26), Theme.S(43), num2, Math.Max(Theme.S(22), Math.Min(titleHeight, headingLine * 2)));
+			titleRect = new Rectangle(Theme.S(26), Theme.S(43), widthValue, Math.Max(Theme.S(22), Math.Min(titleHeight, headingLine * 2)));
 			int contentTop = Math.Max(Theme.S(75), titleRect.Bottom + Theme.S(8));
-			int num3 = MeasureBody(num2);
-			int num4 = Theme.S(34) + Theme.S(22) + Theme.S(16);
-			int available = Math.Max(1, GetHeightLimit(workingArea) - contentTop - num4);
-			int extraGap = extra != null && num3 > 0 ? Theme.S(12) : 0;
-			if (extra != null) extra.Width = num2;
-			int fullContentHeight = num3 + extraGap + (extra == null ? 0 : extra.Height);
-			int innerWidth = num2;
+			int height = MeasureBody(widthValue);
+			int sOffset = Theme.S(34) + Theme.S(22) + Theme.S(16);
+			int available = Math.Max(1, GetHeightLimit(workingArea) - contentTop - sOffset);
+			int extraGap = extra != null && height > 0 ? Theme.S(12) : 0;
+			if (extra != null) extra.Width = widthValue;
+			int fullContentHeight = height + extraGap + (extra == null ? 0 : extra.Height);
+			int innerWidth = widthValue;
 			if (fullContentHeight > available)
 			{
-				innerWidth = Math.Max(1, num2 - SystemInformation.VerticalScrollBarWidth);
-				num3 = MeasureBody(innerWidth);
+				innerWidth = Math.Max(1, widthValue - SystemInformation.VerticalScrollBarWidth);
+				height = MeasureBody(innerWidth);
 				if (extra != null) extra.Width = innerWidth;
-				fullContentHeight = num3 + extraGap + (extra == null ? 0 : extra.Height);
+				fullContentHeight = height + extraGap + (extra == null ? 0 : extra.Height);
 			}
 			int viewportHeight = Math.Min(available, Math.Max(1, fullContentHeight));
-			int num9 = contentTop + viewportHeight + num4;
-			base.ClientSize = new Size(num, num9);
+			int sOffsetOffset = contentTop + viewportHeight + sOffset;
+			base.ClientSize = new Size(maxLimit, sOffsetOffset);
 			DialogContentPanel viewport = new DialogContentPanel();
-			viewport.SetBounds(Theme.S(26), contentTop, num2, viewportHeight);
+			viewport.SetBounds(Theme.S(26), contentTop, widthValue, viewportHeight);
 			DialogBodyText bodyText = new DialogBodyText(body);
-			bodyText.SetBounds(0, 0, innerWidth, num3);
+			bodyText.SetBounds(0, 0, innerWidth, height);
 			viewport.Controls.Add(bodyText);
 			if (extra != null)
 			{
-				extra.Location = new Point(0, num3 + extraGap);
+				extra.Location = new Point(0, height + extraGap);
 				viewport.Controls.Add(extra);
 			}
 			viewport.AutoScrollMinSize = new Size(0, fullContentHeight);
@@ -349,12 +349,12 @@ namespace PaviseApp
 				};
 				base.Controls.Add(pillButton);
 			}
-			int num10 = num9 - Theme.S(22) - Theme.S(34);
-			int num11 = num - Theme.S(26) - ok.Width;
-			ok.Location = new Point(num11, num10);
+			int remainingS = sOffsetOffset - Theme.S(22) - Theme.S(34);
+			int remainingWidth = maxLimit - Theme.S(26) - ok.Width;
+			ok.Location = new Point(remainingWidth, remainingS);
 			if (pillButton != null)
 			{
-				pillButton.Location = new Point(num11 - Theme.S(10) - pillButton.Width, num10);
+				pillButton.Location = new Point(remainingWidth - Theme.S(10) - pillButton.Width, remainingS);
 			}
 			base.AcceptButton = null;
 			base.KeyDown += delegate(object s, KeyEventArgs e)
@@ -481,28 +481,28 @@ namespace PaviseApp
 			{
 				graphics.FillRectangle(brush, rect);
 			}
-			int num = Theme.S(4);
+			int height = Theme.S(4);
 			using (SolidBrush brush2 = new SolidBrush(kindColor))
 			{
-				graphics.FillRectangle(brush2, 0, 0, base.Width, num);
+				graphics.FillRectangle(brush2, 0, 0, base.Width, height);
 			}
-			using (LinearGradientBrush brush3 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(0, 0, base.Width, num)), Color.FromArgb(0, 255, 255, 255), Color.FromArgb(150, 255, 255, 255), LinearGradientMode.Horizontal))
+			using (LinearGradientBrush brush3 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(0, 0, base.Width, height)), Color.FromArgb(0, 255, 255, 255), Color.FromArgb(150, 255, 255, 255), LinearGradientMode.Horizontal))
 			{
-				int num2 = Theme.S(150);
-				Rectangle rect2 = new Rectangle((int)(sweep * (float)(base.Width + num2)) - num2, 0, num2, num);
+				int scaledDimension = Theme.S(150);
+				Rectangle rect2 = new Rectangle((int)(sweep * (float)(base.Width + scaledDimension)) - scaledDimension, 0, scaledDimension, height);
 				Region clip = graphics.Clip;
-				graphics.SetClip(new Rectangle(0, 0, base.Width, num), CombineMode.Replace);
+				graphics.SetClip(new Rectangle(0, 0, base.Width, height), CombineMode.Replace);
 				graphics.FillRectangle(brush3, rect2);
 				graphics.Clip = clip;
 			}
-			int num3 = Theme.S(9);
-			int num4 = Theme.S(74);
+			int scaledDimension2 = Theme.S(9);
+			int scaledDimension3 = Theme.S(74);
 			Point[] points = new Point[4]
 			{
-				new Point(Theme.S(26) + num3, Theme.S(17)),
-				new Point(Theme.S(26) + num4 + num3, Theme.S(17)),
-				new Point(Theme.S(26) + num4 - num3, Theme.S(33)),
-				new Point(Theme.S(26) - num3, Theme.S(33))
+				new Point(Theme.S(26) + scaledDimension2, Theme.S(17)),
+				new Point(Theme.S(26) + scaledDimension3 + scaledDimension2, Theme.S(17)),
+				new Point(Theme.S(26) + scaledDimension3 - scaledDimension2, Theme.S(33)),
+				new Point(Theme.S(26) - scaledDimension2, Theme.S(33))
 			};
 			using (SolidBrush brush4 = new SolidBrush(Color.FromArgb(38, kindColor)))
 			{
@@ -513,14 +513,14 @@ namespace PaviseApp
 				graphics.DrawPolygon(pen, points);
 			}
 			Font font = DsType.Font(DsText.Tag, true);
-			TextRenderer.DrawText(graphics, KindTag, font, new Rectangle(Theme.S(26), Theme.S(17), num4, Theme.S(16)), kindColor,
+			TextRenderer.DrawText(graphics, KindTag, font, new Rectangle(Theme.S(26), Theme.S(17), scaledDimension3, Theme.S(16)), kindColor,
 				TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
 			Font font2 = DsType.Font(DsText.Heading, true);
 			TextRenderer.DrawText(graphics, title, font2, titleRect, Theme.Fg, Theme.Bg, BodyTextFlags | TextFormatFlags.EndEllipsis);
-			int num5 = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
+			int top = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
 			using (Pen pen2 = new Pen(Theme.Stroke))
 			{
-				graphics.DrawLine(pen2, Theme.S(26), num5, base.Width - Theme.S(26), num5);
+				graphics.DrawLine(pen2, Theme.S(26), top, base.Width - Theme.S(26), top);
 			}
 			using (Pen pen3 = new Pen(Theme.StrokeHi))
 			{

@@ -52,14 +52,14 @@ namespace PaviseApp
 
 		private static Rectangle PlacePolicy(int preferredWidth, int available, ref int x, ref int y)
 		{
-			int num = Theme.S(14);
-			int num2 = Math.Min(preferredWidth, available);
-			if (x > num && x + num2 > num + available)
+			int scaledDimension = Theme.S(14);
+			int availableLimit = Math.Min(preferredWidth, available);
+			if (x > scaledDimension && x + availableLimit > scaledDimension + available)
 			{
-				x = num;
+				x = scaledDimension;
 				y += Theme.S(32) + Theme.S(8);
 			}
-			Rectangle result = new Rectangle(x, y, num2, Theme.S(32));
+			Rectangle result = new Rectangle(x, y, availableLimit, Theme.S(32));
 			x = result.Right + Theme.S(10);
 			return result;
 		}
@@ -86,16 +86,16 @@ namespace PaviseApp
 		public static GameLibraryRowLayout ForSize(Size size)
 		{
 			GameLibraryRowLayout result = PolicyLayout(size.Width);
-			int num = Theme.S(14);
-			int num2 = Theme.S(70);
-			int num3 = size.Width - num;
-			int width = Math.Max(1, num3 - num2);
+			int scaledDimension = Theme.S(14);
+			int scaledDimension2 = Theme.S(70);
+			int remainingWidth = size.Width - scaledDimension;
+			int width = Math.Max(1, remainingWidth - scaledDimension2);
 			result.Icon = new Rectangle(Theme.S(18), Theme.S(16), Theme.S(36), Theme.S(36));
-			result.More = new Rectangle(num3 - Theme.S(28), Theme.S(10), Theme.S(28), Theme.S(22));
+			result.More = new Rectangle(remainingWidth - Theme.S(28), Theme.S(10), Theme.S(28), Theme.S(22));
 			result.Running = new Rectangle(result.More.Left - Theme.S(80), Theme.S(12), Theme.S(72), Theme.S(20));
-			result.Name = new Rectangle(num2, Theme.S(10), Math.Max(1, result.Running.Left - num2 - Theme.S(10)), Theme.S(22));
-			result.Path = new Rectangle(num2, Theme.S(32), width, Theme.S(18));
-			result.Metadata = new Rectangle(num2, Theme.S(52), width, Theme.S(16));
+			result.Name = new Rectangle(scaledDimension2, Theme.S(10), Math.Max(1, result.Running.Left - scaledDimension2 - Theme.S(10)), Theme.S(22));
+			result.Path = new Rectangle(scaledDimension2, Theme.S(32), width, Theme.S(18));
+			result.Metadata = new Rectangle(scaledDimension2, Theme.S(52), width, Theme.S(16));
 			return result;
 		}
 	}

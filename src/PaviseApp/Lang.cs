@@ -3540,7 +3540,7 @@ namespace PaviseApp
 			},
 			{
 				"about.desc",
-				new string[2] { "面向 Windows 的游戏资源调度工具", "A Windows resource scheduling tool for games" }
+				new string[3] { "开源 Windows 游戏运行时资源编排器", "Open-source Windows game runtime orchestrator", "オープンソースの Windows ゲーム実行時リソース管理ツール" }
 			},
 			{
 				"about.author",

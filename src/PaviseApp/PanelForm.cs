@@ -184,9 +184,9 @@ namespace PaviseApp
 					labelWidth = TextRenderer.MeasureText(label, Theme.UI(9f, false), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
 					badgeWidth = Math.Max(Theme.S(28), TextRenderer.MeasureText(countText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(16));
 				}
-				int num = Math.Max(1, Math.Min(labelWidth, base.Width - Theme.S(92) - badgeWidth));
-				TextRenderer.DrawText(graphics, label, Theme.UI(9f, false), new Rectangle(Theme.S(48), 0, num, base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-				Rectangle rectangle = new Rectangle(Theme.S(48) + num + Theme.S(9), (base.Height - Theme.S(22)) / 2, badgeWidth, Theme.S(22));
+				int minLimit = Math.Max(1, Math.Min(labelWidth, base.Width - Theme.S(92) - badgeWidth));
+				TextRenderer.DrawText(graphics, label, Theme.UI(9f, false), new Rectangle(Theme.S(48), 0, minLimit, base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				Rectangle rectangle = new Rectangle(Theme.S(48) + minLimit + Theme.S(9), (base.Height - Theme.S(22)) / 2, badgeWidth, Theme.S(22));
 				DsPaint.TechFrame(graphics, rectangle, Theme.S(5), Theme.Inset, Theme.Stroke);
 				TextRenderer.DrawText(graphics, countText, Theme.UI(8f, false), rectangle, Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 				TextRenderer.DrawText(graphics, "›", Theme.UI(16f, false), new Rectangle(Math.Max(0, base.Width - Theme.S(30)), 0, Theme.S(20), base.Height), Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
@@ -225,11 +225,11 @@ namespace PaviseApp
 				graphics.Clear(Theme.Card);
 				DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(6), Col.Lerp(Theme.Card, Theme.CardHover, hover.Value), Focused ? Theme.Accent : Theme.Stroke);
 				AntiCheatFeatureIcons.Draw(graphics, new Rectangle(Theme.S(12), (base.Height - Theme.S(20)) / 2, Theme.S(20), Theme.S(20)), record ? "records" : "master", Theme.Dim);
-				int num = ((tag.Length != 0) ? Math.Min(Theme.S(94), base.Width / 3) : 0);
-				TextRenderer.DrawText(graphics, title, Theme.UI(9f, true), new Rectangle(Theme.S(42), 0, Math.Max(1, base.Width - Theme.S(54) - num), base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-				if (num > 0)
+				int sLimit = ((tag.Length != 0) ? Math.Min(Theme.S(94), base.Width / 3) : 0);
+				TextRenderer.DrawText(graphics, title, Theme.UI(9f, true), new Rectangle(Theme.S(42), 0, Math.Max(1, base.Width - Theme.S(54) - sLimit), base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				if (sLimit > 0)
 				{
-					TextRenderer.DrawText(graphics, tag, Theme.UI(8f, false), new Rectangle(base.Width - num - Theme.S(10), 0, num, base.Height), Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+					TextRenderer.DrawText(graphics, tag, Theme.UI(8f, false), new Rectangle(base.Width - sLimit - Theme.S(10), 0, sLimit, base.Height), Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 				}
 				if (base.WantsFocusCue)
 				{
@@ -479,11 +479,11 @@ namespace PaviseApp
 				e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 				using (Pen pen = new Pen(Theme.Dim, Math.Max(1.2f, Theme.S(1))))
 				{
-					int num = Theme.S(14);
-					int num2 = Theme.S(10);
-					int num3 = Theme.S(12);
-					e.Graphics.DrawEllipse(pen, num, num2, num3, num3);
-					e.Graphics.DrawLine(pen, num + num3 - Theme.S(1), num2 + num3 - Theme.S(1), num + num3 + Theme.S(5), num2 + num3 + Theme.S(5));
+					int left = Theme.S(14);
+					int top = Theme.S(10);
+					int width = Theme.S(12);
+					e.Graphics.DrawEllipse(pen, left, top, width, width);
+					e.Graphics.DrawLine(pen, left + width - Theme.S(1), top + width - Theme.S(1), left + width + Theme.S(5), top + width + Theme.S(5));
 				}
 			}
 		}
@@ -601,29 +601,29 @@ namespace PaviseApp
 				family.Enabled = !owner.familyChangeBusy;
 				rebar.Enabled = !owner.rebarChangeBusy;
 				fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
-				FamilySuppressionSwitch[] array = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-				string[] array2 = new string[4]
+				FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
+				string[] textEntries = new string[4]
 				{
 					"lib.cores.toggle.tip",
 					item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
 					"lib.rebar.tip",
 					"lib.fso.tip"
 				};
-				for (int i = 0; i < array.Length; i++)
+				for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
 				{
-					array[i].AccessibleName = profile.Name + " · " + array[i].Text;
-					array[i].AccessibleDescription = Lang.T(array2[i]);
-					tips.SetToolTip(array[i], array[i].AccessibleDescription);
+					familySuppressionSwitchItems[i].AccessibleName = profile.Name + " · " + familySuppressionSwitchItems[i].Text;
+					familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(textEntries[i]);
+					tips.SetToolTip(familySuppressionSwitchItems[i], familySuppressionSwitchItems[i].AccessibleDescription);
 				}
-				string text = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath + "|" + profile.LearnedExecutablePath;
-				if (extensionKey != text)
+				string learnedExecutablePathOffset = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath + "|" + profile.LearnedExecutablePath;
+				if (extensionKey != learnedExecutablePathOffset)
 				{
 					if (extension != null)
 					{
 						extension.Dispose();
 					}
 					extension = null;
-					extensionKey = text;
+					extensionKey = learnedExecutablePathOffset;
 					extension = GameExtension.CreateCard(profile);
 					if (extension != null)
 					{
@@ -651,25 +651,25 @@ namespace PaviseApp
 				arranging = true;
 				try
 				{
-					int num = Math.Max(1, base.Width);
-					FamilySuppressionSwitch[] array = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-					for (int i = 0; i < array.Length; i++)
+					int width = Math.Max(1, base.Width);
+					FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
+					for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
 					{
-						array[i].SetBounds(0, Theme.S(4 + i * 48), num, Theme.S(40));
+						familySuppressionSwitchItems[i].SetBounds(0, Theme.S(4 + i * 48), width, Theme.S(40));
 					}
 					coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), Theme.S(2), Theme.S(64), Theme.S(36));
-					owner.criticalThreadEditor.SetBounds(0, fullscreen.Bottom + Theme.S(8), num, owner.criticalThreadEditor.Height);
-					int num2 = Dpi.U(owner.criticalThreadEditor.Bottom) + 8;
+					owner.criticalThreadEditor.SetBounds(0, fullscreen.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
+					int uOffset = Dpi.U(owner.criticalThreadEditor.Bottom) + 8;
 					extensionTitle.Visible = extension != null;
 					if (extension != null)
 					{
-						extensionTitle.SetBounds(Theme.S(4), Theme.S(num2 + 8), Math.Max(1, num - Theme.S(8)), Theme.S(24));
-						int px = extension.PreferredHeightForWidth(num);
-						extension.SetBounds(0, Theme.S(num2 + 40), num, px);
+						extensionTitle.SetBounds(Theme.S(4), Theme.S(uOffset + 8), Math.Max(1, width - Theme.S(8)), Theme.S(24));
+						int px = extension.PreferredHeightForWidth(width);
+						extension.SetBounds(0, Theme.S(uOffset + 40), width, px);
 						extension.Visible = true;
-						num2 += 44 + Dpi.U(px);
+						uOffset += 44 + Dpi.U(px);
 					}
-					base.Height = Theme.S(num2);
+					base.Height = Theme.S(uOffset);
 				}
 				finally
 				{
@@ -783,10 +783,10 @@ namespace PaviseApp
 				{
 					return source;
 				}
-				int num = source.ToArgb() & 0xFFFFFF;
+				int toArgbMask = source.ToArgb() & 0xFFFFFF;
 				for (int i = 0; i < colors.Length; i++)
 				{
-					if ((colors[i].ToArgb() & 0xFFFFFF) == num)
+					if ((colors[i].ToArgb() & 0xFFFFFF) == toArgbMask)
 					{
 						return Color.FromArgb(source.A, next.colors[i].R, next.colors[i].G, next.colors[i].B);
 					}
@@ -1617,9 +1617,9 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = Theme.S(WinW);
-				int num2 = ((nav == null) ? Theme.S(76) : nav.MeasureFloatingDock(Math.Max(1, num - Theme.S(32))).Height);
-				return num2 + Theme.S(24);
+				int scaledDimension = Theme.S(WinW);
+				int scaledDimension2 = ((nav == null) ? Theme.S(76) : nav.MeasureFloatingDock(Math.Max(1, scaledDimension - Theme.S(32))).Height);
+				return scaledDimension2 + Theme.S(24);
 			}
 		}
 

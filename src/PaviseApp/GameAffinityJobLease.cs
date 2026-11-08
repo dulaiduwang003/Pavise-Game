@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -107,9 +107,9 @@ namespace PaviseApp
                         if (!write) return true;
                         string[] rows = new string[records.Count];
                         for (int i = 0; i < rows.Length; i++) rows[i] = records[i].Encode();
-                        string text = string.Join("\n", rows), verify;
-                        return Settings.SaveStrDurable(GameAffinityJobLease.ReceiptKey, text)
-                            && Settings.TryLoadStr(GameAffinityJobLease.ReceiptKey, out verify) && verify == text;
+                        string joinResult = string.Join("\n", rows), verify;
+                        return Settings.SaveStrDurable(GameAffinityJobLease.ReceiptKey, joinResult)
+                            && Settings.TryLoadStr(GameAffinityJobLease.ReceiptKey, out verify) && verify == joinResult;
                     }
                     finally { mutex.ReleaseMutex(); }
                 }

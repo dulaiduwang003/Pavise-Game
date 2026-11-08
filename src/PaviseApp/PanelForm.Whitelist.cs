@@ -110,24 +110,24 @@ namespace PaviseApp
 			List<string> list = new List<string>(files);
 			RunWhitelistOp(delegate
 			{
-				int num = 0;
-				string text = null;
+				int processedCount = 0;
+				string whitelistLastError = null;
 				foreach (string item in list)
 				{
-					string text2 = ResolveWhitelistTarget(item);
-					if (!string.IsNullOrEmpty(text2))
+					string whitelistTarget = ResolveWhitelistTarget(item);
+					if (!string.IsNullOrEmpty(whitelistTarget))
 					{
-						if (gameMode.AddWhitelistAuto(text2))
+						if (gameMode.AddWhitelistAuto(whitelistTarget))
 						{
-							num++;
+							processedCount++;
 						}
-						else if (text == null)
+						else if (whitelistLastError == null)
 						{
-							text = gameMode.WhitelistLastError;
+							whitelistLastError = gameMode.WhitelistLastError;
 						}
 					}
 				}
-				return (num != 0) ? null : text;
+				return (processedCount != 0) ? null : whitelistLastError;
 			});
 		}
 		internal static string ResolveWhitelistTarget(string raw)
@@ -136,26 +136,26 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = raw.Trim().Trim('"');
+			string trimTrimmed = raw.Trim().Trim('"');
 			try
 			{
-				if (text.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+				if (trimTrimmed.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
 				{
-					string text2 = GameExecutableResolver.ResolveShortcut(text);
-					if (!string.IsNullOrEmpty(text2))
+					string shortcut = GameExecutableResolver.ResolveShortcut(trimTrimmed);
+					if (!string.IsNullOrEmpty(shortcut))
 					{
-						text = text2;
+						trimTrimmed = shortcut;
 					}
 				}
 			}
 			catch
 			{
 			}
-			if (!text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			if (!trimTrimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
 				return null;
 			}
-			return text;
+			return trimTrimmed;
 		}
 		private void BrowseForWhitelist()
 		{
@@ -256,21 +256,21 @@ namespace PaviseApp
 				return;
 			}
 			WhitelistItem item = lstWhite.SelectedItem as WhitelistItem;
-			string text = WhitelistSelectionKey(item);
+			string whitelistSelectionKeyResult = WhitelistSelectionKey(item);
 			int topIndex = lstWhite.TopIndex;
 			List<WhitelistItem> list = whiteRows;
-			string text2 = (whiteSearchText ?? "").Trim();
+			string trimmed = (whiteSearchText ?? "").Trim();
 			lstWhite.BeginUpdate();
 			try
 			{
 				lstWhite.Items.Clear();
 				foreach (WhitelistItem item2 in list)
 				{
-					int num = ((item2.View != null && item2.View.PlatformId != null) ? 2 : ((!item2.Automatic && (item2.View == null || !item2.View.Required)) ? 1 : 3));
-					if ((whiteFilterIndex == 0 || whiteFilterIndex == num) && (text2.Length <= 0 || WhitelistContains(item2.Title, text2) || WhitelistContains(item2.Subtitle, text2) || WhitelistContains(item2.Details, text2) || (item2.View != null && WhitelistContains(item2.View.Rule.Value, text2))))
+					int filterWhitelistRowsValue = ((item2.View != null && item2.View.PlatformId != null) ? 2 : ((!item2.Automatic && (item2.View == null || !item2.View.Required)) ? 1 : 3));
+					if ((whiteFilterIndex == 0 || whiteFilterIndex == filterWhitelistRowsValue) && (trimmed.Length <= 0 || WhitelistContains(item2.Title, trimmed) || WhitelistContains(item2.Subtitle, trimmed) || WhitelistContains(item2.Details, trimmed) || (item2.View != null && WhitelistContains(item2.View.Rule.Value, trimmed))))
 					{
 						int selectedIndex = lstWhite.Items.Add(item2);
-						if (text != null && string.Equals(WhitelistSelectionKey(item2), text, StringComparison.OrdinalIgnoreCase))
+						if (whitelistSelectionKeyResult != null && string.Equals(WhitelistSelectionKey(item2), whitelistSelectionKeyResult, StringComparison.OrdinalIgnoreCase))
 						{
 							lstWhite.SelectedIndex = selectedIndex;
 						}
@@ -336,10 +336,10 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle bounds = e.Bounds;
-			bool flag = (e.State & DrawItemState.Selected) != 0;
-			bool flag2 = !flag && e.Index == Theme.HoverIndex(lstWhite);
-			bool flag3 = !whitelistItem.Automatic && whitelistItem.View.Required;
-			bool flag4 = !whitelistItem.Automatic && whitelistItem.View.CurrentMatches > 0;
+			bool valuesMatch = (e.State & DrawItemState.Selected) != 0;
+			bool allConditionsMet = !valuesMatch && e.Index == Theme.HoverIndex(lstWhite);
+			bool matchesRequired = !whitelistItem.Automatic && whitelistItem.View.Required;
+			bool allConditionsMet2 = !whitelistItem.Automatic && whitelistItem.View.CurrentMatches > 0;
 			using (SolidBrush brush = new SolidBrush(Theme.Card))
 			{
 				graphics.FillRectangle(brush, bounds);
@@ -347,27 +347,27 @@ namespace PaviseApp
 			Rectangle r = new Rectangle(bounds.Left + Theme.S(2), bounds.Top + Theme.S(2), Math.Max(1, bounds.Width - Theme.S(4)), Math.Max(1, bounds.Height - Theme.S(4)));
 			using (GraphicsPath path = Theme.TechPath(r, Theme.S(6)))
 			{
-				if (flag || flag2)
+				if (valuesMatch || allConditionsMet)
 				{
-					using (SolidBrush brush2 = new SolidBrush(flag ? Theme.Sel : Theme.CardHover))
+					using (SolidBrush brush2 = new SolidBrush(valuesMatch ? Theme.Sel : Theme.CardHover))
 					{
 						graphics.FillPath(brush2, path);
 					}
-					using (Pen pen = new Pen(flag ? Col.Alpha(Theme.Accent, 140) : Theme.StrokeHi))
+					using (Pen pen = new Pen(valuesMatch ? Col.Alpha(Theme.Accent, 140) : Theme.StrokeHi))
 					{
 						graphics.DrawPath(pen, path);
 					}
 				}
 			}
-			if (flag)
+			if (valuesMatch)
 			{
 				using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
 				{
 					graphics.DrawLine(pen2, r.Left, r.Top + Theme.S(8), r.Left, r.Bottom - Theme.S(8));
 				}
 			}
-			int num = Theme.S(28);
-			Rectangle rectangle = new Rectangle(bounds.Left + Theme.S(13), bounds.Top + (bounds.Height - num) / 2, num, num);
+			int scaledDimension = Theme.S(28);
+			Rectangle rectangle = new Rectangle(bounds.Left + Theme.S(13), bounds.Top + (bounds.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
 			if (whitelistItem.Automatic)
 			{
 				DrawWhitelistAutomaticIcon(graphics, rectangle, whitelistItem.Glyph);
@@ -377,26 +377,26 @@ namespace PaviseApp
 				Bitmap bitmap = WhitelistIcon(whitelistItem.View.Rule);
 				if (bitmap == null)
 				{
-					DrawWhitelistDefaultIcon(graphics, rectangle, flag3, flag4);
+					DrawWhitelistDefaultIcon(graphics, rectangle, matchesRequired, allConditionsMet2);
 				}
 				else
 				{
 					graphics.DrawImage(bitmap, rectangle);
 				}
 			}
-			int num2 = Dpi.U(bounds.Width);
-			bool flag5 = num2 >= 420;
-			bool flag6 = num2 >= 640;
-			int num3 = (flag5 ? Theme.S(82) : 0);
-			int num4 = (flag6 ? Theme.S(100) : 0);
-			int num5 = rectangle.Right + Theme.S(12);
-			int num6 = Math.Max(Theme.S(30), bounds.Right - num5 - num3 - num4 - Theme.S(22));
-			TextRenderer.DrawText(graphics, whitelistItem.Title, Theme.UI(9.3f, true), new Rectangle(num5, bounds.Top + Theme.S(6), num6, Theme.S(22)), flag3 ? Theme.Dim : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			TextRenderer.DrawText(graphics, whitelistItem.Subtitle, Theme.UI(7.7f, false), new Rectangle(num5, bounds.Top + Theme.S(29), num6, Theme.S(18)), Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			if (flag5)
+			int uResult = Dpi.U(bounds.Width);
+			bool matchesUResult = uResult >= 420;
+			bool matchesUResult2 = uResult >= 640;
+			int scaledDimension2 = (matchesUResult ? Theme.S(82) : 0);
+			int scaledDimension3 = (matchesUResult2 ? Theme.S(100) : 0);
+			int rightOffset = rectangle.Right + Theme.S(12);
+			int sLimit = Math.Max(Theme.S(30), bounds.Right - rightOffset - scaledDimension2 - scaledDimension3 - Theme.S(22));
+			TextRenderer.DrawText(graphics, whitelistItem.Title, Theme.UI(9.3f, true), new Rectangle(rightOffset, bounds.Top + Theme.S(6), sLimit, Theme.S(22)), matchesRequired ? Theme.Dim : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, whitelistItem.Subtitle, Theme.UI(7.7f, false), new Rectangle(rightOffset, bounds.Top + Theme.S(29), sLimit, Theme.S(18)), Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			if (matchesUResult)
 			{
-				Rectangle rectangle2 = new Rectangle(bounds.Right - num4 - num3 - Theme.S(11), bounds.Top + (bounds.Height - Theme.S(23)) / 2, num3 - Theme.S(10), Theme.S(23));
-				Color color = ((flag3 || whitelistItem.Automatic || whitelistItem.View.PlatformId != null) ? Theme.Dim : Theme.Accent);
+				Rectangle rectangle2 = new Rectangle(bounds.Right - scaledDimension3 - scaledDimension2 - Theme.S(11), bounds.Top + (bounds.Height - Theme.S(23)) / 2, scaledDimension2 - Theme.S(10), Theme.S(23));
+				Color color = ((matchesRequired || whitelistItem.Automatic || whitelistItem.View.PlatformId != null) ? Theme.Dim : Theme.Accent);
 				using (GraphicsPath path2 = Theme.TechPath(rectangle2, Theme.S(4)))
 				{
 					using (SolidBrush brush3 = new SolidBrush(Col.Alpha(color, 15)))
@@ -410,25 +410,25 @@ namespace PaviseApp
 				}
 				TextRenderer.DrawText(graphics, whitelistItem.Badge, Theme.UI(7.3f, false), rectangle2, color, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
 			}
-			if (flag6 && !flag3 && !whitelistItem.Automatic)
+			if (matchesUResult2 && !matchesRequired && !whitelistItem.Automatic)
 			{
-				Rectangle rectangle3 = new Rectangle(bounds.Right - num4 - Theme.S(10), bounds.Top, num4, bounds.Height);
-				int num7 = Theme.S(5);
-				Color color2 = (flag4 ? Theme.Green : Theme.Faint);
+				Rectangle rectangle3 = new Rectangle(bounds.Right - scaledDimension3 - Theme.S(10), bounds.Top, scaledDimension3, bounds.Height);
+				int width = Theme.S(5);
+				Color color2 = (allConditionsMet2 ? Theme.Green : Theme.Faint);
 				using (SolidBrush brush4 = new SolidBrush(color2))
 				{
-					graphics.FillEllipse(brush4, rectangle3.Left, rectangle3.Top + (rectangle3.Height - num7) / 2, num7, num7);
+					graphics.FillEllipse(brush4, rectangle3.Left, rectangle3.Top + (rectangle3.Height - width) / 2, width, width);
 				}
 				TextRenderer.DrawText(graphics, whitelistItem.StateText, Theme.UI(7.6f, false), new Rectangle(rectangle3.Left + Theme.S(11), rectangle3.Top, rectangle3.Width - Theme.S(11), rectangle3.Height), color2, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
-			if (!flag && !flag2)
+			if (!valuesMatch && !allConditionsMet)
 			{
 				using (Pen pen4 = new Pen(Col.Alpha(Theme.Stroke, 100)))
 				{
 					graphics.DrawLine(pen4, bounds.Left + Theme.S(13), bounds.Bottom - 1, bounds.Right - Theme.S(12), bounds.Bottom - 1);
 				}
 			}
-			if (flag && lstWhite.Focused && (e.State & DrawItemState.Focus) != 0)
+			if (valuesMatch && lstWhite.Focused && (e.State & DrawItemState.Focus) != 0)
 			{
 				e.DrawFocusRectangle();
 			}
@@ -449,8 +449,8 @@ namespace PaviseApp
 					g.DrawPath(pen, path);
 				}
 			}
-			int num = Theme.S(19);
-			Glyphs.Draw(g, string.IsNullOrEmpty(glyph) ? "shield" : glyph, new Rectangle(box.Left + (box.Width - num) / 2, box.Top + (box.Height - num) / 2, num, num), Col.Alpha(Theme.Accent, 210));
+			int scaledDimension = Theme.S(19);
+			Glyphs.Draw(g, string.IsNullOrEmpty(glyph) ? "shield" : glyph, new Rectangle(box.Left + (box.Width - scaledDimension) / 2, box.Top + (box.Height - scaledDimension) / 2, scaledDimension, scaledDimension), Col.Alpha(Theme.Accent, 210));
 		}
 		private static void DrawWhitelistDefaultIcon(Graphics g, Rectangle box, bool required, bool live)
 		{
@@ -469,21 +469,21 @@ namespace PaviseApp
 					g.DrawPath(pen, path);
 				}
 			}
-			int num = Theme.S(19);
-			Rectangle b = new Rectangle(box.Left + (box.Width - num) / 2, box.Top + (box.Height - num) / 2, num, num);
+			int scaledDimension = Theme.S(19);
+			Rectangle b = new Rectangle(box.Left + (box.Width - scaledDimension) / 2, box.Top + (box.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
 			Glyphs.Draw(g, "shield", b, Col.Alpha(c, required ? 145 : 205));
-			int num2 = Math.Max(2, Theme.S(2));
-			int num3 = box.Top + box.Height / 2;
-			int num4 = box.Left + box.Width / 2;
+			int width = Math.Max(2, Theme.S(2));
+			int top = box.Top + box.Height / 2;
+			int leftOffset = box.Left + box.Width / 2;
 			using (Pen pen2 = new Pen(Col.Alpha(c, required ? 112 : 172), Math.Max(1f, Theme.S(1))))
 			{
-				g.DrawLine(pen2, num4 - Theme.S(4), num3, num4 + Theme.S(4), num3);
+				g.DrawLine(pen2, leftOffset - Theme.S(4), top, leftOffset + Theme.S(4), top);
 			}
 			using (SolidBrush brush2 = new SolidBrush(Col.Alpha(c, required ? 160 : 225)))
 			{
-				g.FillEllipse(brush2, num4 - Theme.S(5) - num2 / 2, num3 - num2 / 2, num2, num2);
-				g.FillEllipse(brush2, num4 - num2 / 2, num3 - num2 / 2, num2, num2);
-				g.FillEllipse(brush2, num4 + Theme.S(5) - num2 / 2, num3 - num2 / 2, num2, num2);
+				g.FillEllipse(brush2, leftOffset - Theme.S(5) - width / 2, top - width / 2, width, width);
+				g.FillEllipse(brush2, leftOffset - width / 2, top - width / 2, width, width);
+				g.FillEllipse(brush2, leftOffset + Theme.S(5) - width / 2, top - width / 2, width, width);
 			}
 		}
 		private static void DrawWhitelistGroupHeader(Control owner, DrawItemEventArgs e, string text)
@@ -495,12 +495,12 @@ namespace PaviseApp
 				graphics.FillRectangle(brush, bounds);
 			}
 			Size size = TextRenderer.MeasureText(graphics, text, Theme.UI(7.8f, false));
-			int num = bounds.Left + Theme.S(14);
-			int num2 = bounds.Top + bounds.Height / 2;
-			TextRenderer.DrawText(graphics, text, Theme.UI(7.8f, false), new Rectangle(num, bounds.Top, size.Width + Theme.S(8), bounds.Height), Theme.Faint, TextFormatFlags.VerticalCenter);
+			int leftOffset = bounds.Left + Theme.S(14);
+			int top = bounds.Top + bounds.Height / 2;
+			TextRenderer.DrawText(graphics, text, Theme.UI(7.8f, false), new Rectangle(leftOffset, bounds.Top, size.Width + Theme.S(8), bounds.Height), Theme.Faint, TextFormatFlags.VerticalCenter);
 			using (Pen pen = new Pen(Col.Alpha(Theme.Stroke, 150)))
 			{
-				graphics.DrawLine(pen, num + size.Width + Theme.S(12), num2, bounds.Right - Theme.S(14), num2);
+				graphics.DrawLine(pen, leftOffset + size.Width + Theme.S(12), top, bounds.Right - Theme.S(14), top);
 			}
 		}
 		private Bitmap WhitelistIcon(WhitelistRule rule)
@@ -541,32 +541,32 @@ namespace PaviseApp
 			{
 				return value2;
 			}
-			string text = null;
+			string productName = null;
 			try
 			{
 				FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(value);
-				text = (string.IsNullOrEmpty(versionInfo.FileDescription) ? versionInfo.ProductName : versionInfo.FileDescription);
-				if (!string.IsNullOrEmpty(text))
+				productName = (string.IsNullOrEmpty(versionInfo.FileDescription) ? versionInfo.ProductName : versionInfo.FileDescription);
+				if (!string.IsNullOrEmpty(productName))
 				{
-					text = text.Trim();
+					productName = productName.Trim();
 				}
 			}
 			catch
 			{
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(productName))
 			{
 				try
 				{
-					text = Path.GetFileNameWithoutExtension(value);
+					productName = Path.GetFileNameWithoutExtension(value);
 				}
 				catch
 				{
-					text = value;
+					productName = value;
 				}
 			}
-			whiteNameCache[value] = text;
-			return text;
+			whiteNameCache[value] = productName;
+			return productName;
 		}
 		private static string PlatformDisplayName(string id)
 		{

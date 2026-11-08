@@ -120,23 +120,23 @@ namespace PaviseApp
 
 		internal static string RecordKey(string action, string target)
 		{
-			string text = Normalize(action) + "\n" + Normalize(target);
+			string normalizeOffset = Normalize(action) + "\n" + Normalize(target);
 			lock (gate)
 			{
 				string value;
-				if (recordKeys.TryGetValue(text, out value))
+				if (recordKeys.TryGetValue(normalizeOffset, out value))
 				{
 					return value;
 				}
-				value = ComputeRecordKey(text);
-				if (text.Length <= 2048)
+				value = ComputeRecordKey(normalizeOffset);
+				if (normalizeOffset.Length <= 2048)
 				{
 					if (recordKeys.Count >= 512)
 					{
 						recordKeys.Remove(recordKeyOrder.Dequeue());
 					}
-					recordKeys.Add(text, value);
-					recordKeyOrder.Enqueue(text);
+					recordKeys.Add(normalizeOffset, value);
+					recordKeyOrder.Enqueue(normalizeOffset);
 				}
 				return value;
 			}
@@ -148,8 +148,8 @@ namespace PaviseApp
 			using (SHA256 sHA = SHA256.Create())
 			{
 				StringBuilder stringBuilder = new StringBuilder();
-				byte[] array = sHA.ComputeHash(bytes);
-				foreach (byte b in array)
+				byte[] hash = sHA.ComputeHash(bytes);
+				foreach (byte b in hash)
 				{
 					stringBuilder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
 				}
@@ -185,19 +185,19 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				string[] array = value.Split('|');
+				string[] valueParts = value.Split('|');
 				long result;
-				if (array.Length != 6 || array[0] != "1" || !long.TryParse(array[4], NumberStyles.None, CultureInfo.InvariantCulture, out result))
+				if (valueParts.Length != 6 || valueParts[0] != "1" || !long.TryParse(valueParts[4], NumberStyles.None, CultureInfo.InvariantCulture, out result))
 				{
 					return null;
 				}
 				ActionFailureRecord actionFailureRecord = new ActionFailureRecord();
 				actionFailureRecord.Key = key;
-				actionFailureRecord.Action = Decode(array[1]);
-				actionFailureRecord.Target = Decode(array[2]);
-				actionFailureRecord.Environment = Decode(array[3]);
+				actionFailureRecord.Action = Decode(valueParts[1]);
+				actionFailureRecord.Target = Decode(valueParts[2]);
+				actionFailureRecord.Environment = Decode(valueParts[3]);
 				actionFailureRecord.OccurredUtc = new DateTime(result, DateTimeKind.Utc);
-				actionFailureRecord.Reason = Decode(array[5]);
+				actionFailureRecord.Reason = Decode(valueParts[5]);
 				ActionFailureRecord actionFailureRecord2 = actionFailureRecord;
 				if (string.IsNullOrEmpty(actionFailureRecord2.Action) || string.IsNullOrEmpty(actionFailureRecord2.Target) || !string.Equals(RecordKey(actionFailureRecord2.Action, actionFailureRecord2.Target), key, StringComparison.OrdinalIgnoreCase))
 				{
@@ -271,21 +271,21 @@ namespace PaviseApp
 
 		private static string BlockKey(string action, string target)
 		{
-			string text = RecordKey(action, target);
-			if (!admissions.ContainsKey(text))
+			string recordKeyResult = RecordKey(action, target);
+			if (!admissions.ContainsKey(recordKeyResult))
 			{
 				RecoverIntent(IntentKey(action, target), action, target);
 			}
-			if (Read(text, action, target) != null)
+			if (Read(recordKeyResult, action, target) != null)
 			{
-				return text;
+				return recordKeyResult;
 			}
-			string text2 = RecordKey(action, "*");
-			if (Read(text2, action, "*") == null)
+			string recordKeyResult2 = RecordKey(action, "*");
+			if (Read(recordKeyResult2, action, "*") == null)
 			{
 				return null;
 			}
-			return text2;
+			return recordKeyResult2;
 		}
 
 		internal static bool IsBlocked(string action, string target)
@@ -293,8 +293,8 @@ namespace PaviseApp
 			lock (gate)
 			{
 				MigrateLegacy();
-				string text = BlockKey(action, target);
-				return Blocked(action, target, text);
+				string blockKeyResult = BlockKey(action, target);
+				return Blocked(action, target, blockKeyResult);
 			}
 		}
 
@@ -322,8 +322,8 @@ namespace PaviseApp
 			lock (gate)
 			{
 				MigrateLegacy();
-				string text = BlockKey(action, target);
-				return (text == null) ? "" : Read(text, action, target).Reason;
+				string blockKeyResult = BlockKey(action, target);
+				return (blockKeyResult == null) ? "" : Read(blockKeyResult, action, target).Reason;
 			}
 		}
 
@@ -344,24 +344,24 @@ namespace PaviseApp
 					reason = "Action already running";
 					return false;
 				}
-				string text = BlockKey(action, target);
-				if (Blocked(action, target, text) || (text != null && admissions.ContainsValue(text)))
+				string blockKeyResult = BlockKey(action, target);
+				if (Blocked(action, target, blockKeyResult) || (blockKeyResult != null && admissions.ContainsValue(blockKeyResult)))
 				{
-					reason = text == null ? "Automatic phase stopped or action already running" : Read(text, action, target).Reason;
+					reason = blockKeyResult == null ? "Automatic phase stopped or action already running" : Read(blockKeyResult, action, target).Reason;
 					return false;
 				}
 				ActionFailureRecord record = NewRecord(action, target, "Execution admitted; verified completion pending", null);
 				Phase(action, target).Attempts++;
-				string text2 = Serialize(record);
+				string serializeResult = Serialize(record);
 				string name = IntentKey(action, target);
 				string value;
-				if (!SaveIntent(action, target, text2) || !Settings.TryLoadStr(name, out value) || value != text2)
+				if (!SaveIntent(action, target, serializeResult) || !Settings.TryLoadStr(name, out value) || value != serializeResult)
 				{
 					Trip(action, target, "Execution intent could not be persisted; no apply attempted");
 					reason = "Execution intent could not be persisted";
 					return false;
 				}
-				admissions[key] = text;
+				admissions[key] = blockKeyResult;
 				return true;
 			}
 		}
@@ -370,26 +370,26 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				string text = RecordKey(action, target);
-				string text2;
-				if (failedCompletions.Remove(text))
+				string recordKeyResult = RecordKey(action, target);
+				string message;
+				if (failedCompletions.Remove(recordKeyResult))
 				{
-					text2 = admissions.ContainsKey(text) && admissions[text] != null ? admissions[text] : text;
-					ActionFailureRecord actionFailureRecord = Read(text2, action, target);
+					message = admissions.ContainsKey(recordKeyResult) && admissions[recordKeyResult] != null ? admissions[recordKeyResult] : recordKeyResult;
+					ActionFailureRecord actionFailureRecord = Read(message, action, target);
 					if (actionFailureRecord != null && actionFailureRecord.PersistenceFailed)
 					{
-						actionFailureRecord.PersistenceFailed = !Save(text2, Serialize(actionFailureRecord));
-						volatileFailures[text2] = actionFailureRecord;
+						actionFailureRecord.PersistenceFailed = !Save(message, Serialize(actionFailureRecord));
+						volatileFailures[message] = actionFailureRecord;
 					}
 					if (actionFailureRecord != null && !actionFailureRecord.PersistenceFailed)
 					{
-						if (SaveIntent(action, target, "")) recoveredIntents.Remove(text);
+						if (SaveIntent(action, target, "")) recoveredIntents.Remove(recordKeyResult);
 					}
-					admissions.Remove(text);
+					admissions.Remove(recordKeyResult);
 					return;
 				}
-				ActionFailureRecord actionFailureRecord2 = Read(text, action, target);
-				if (actionFailureRecord2 != null && actionFailureRecord2.PersistenceFailed && !admissions.ContainsKey(text))
+				ActionFailureRecord actionFailureRecord2 = Read(recordKeyResult, action, target);
+				if (actionFailureRecord2 != null && actionFailureRecord2.PersistenceFailed && !admissions.ContainsKey(recordKeyResult))
 				{
 					return;
 				}
@@ -398,8 +398,8 @@ namespace PaviseApp
 					Trip(action, target, "Cancelled execution intent could not be cleared");
 					return;
 				}
-				admissions.Remove(text);
-				recoveredIntents.Remove(text);
+				admissions.Remove(recordKeyResult);
+				recoveredIntents.Remove(recordKeyResult);
 			}
 		}
 
@@ -407,34 +407,34 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				string text = RecordKey(action, target);
-				if (!admissions.ContainsKey(text))
+				string recordKeyResult = RecordKey(action, target);
+				if (!admissions.ContainsKey(recordKeyResult))
 				{
 					return false;
 				}
-				string value = admissions[text];
-				bool flag = value != null;
+				string value = admissions[recordKeyResult];
+				bool matchesValue = value != null;
 				string value2;
 				if (!Settings.TryLoadStr(IntentKey(action, target), out value2) || string.IsNullOrEmpty(value2))
 				{
-					PreserveCompletionFailure(action, target, flag ? value : text, null, "Verified execution intent unreadable or missing");
+					PreserveCompletionFailure(action, target, matchesValue ? value : recordKeyResult, null, "Verified execution intent unreadable or missing");
 					return false;
 				}
-				if (flag && !Save(value, ""))
+				if (matchesValue && !Save(value, ""))
 				{
 					PreserveCompletionFailure(action, target, value, value2, "Verified failure record could not be cleared");
 					return false;
 				}
 				if (!SaveIntent(action, target, ""))
 				{
-					PreserveCompletionFailure(action, target, flag ? value : text, value2, "Verified execution intent could not be cleared");
+					PreserveCompletionFailure(action, target, matchesValue ? value : recordKeyResult, value2, "Verified execution intent could not be cleared");
 					return false;
 				}
-				admissions.Remove(text);
-				failedCompletions.Remove(text);
+				admissions.Remove(recordKeyResult);
+				failedCompletions.Remove(recordKeyResult);
 				// A successful observation does not consume the failure budget or refund earlier failures.
 				Phase(action, target).Attempts = Math.Max(0, Phase(action, target).Attempts - 1);
-				if (flag)
+				if (matchesValue)
 				{
 					volatileFailures.Remove(value);
 				}
@@ -444,8 +444,8 @@ namespace PaviseApp
 
 		private static void PreserveCompletionFailure(string action, string target, string failureKey, string intent, string reason)
 		{
-			string text = RecordKey(action, target);
-			string target2 = (string.Equals(text, failureKey, StringComparison.OrdinalIgnoreCase) ? target : "*");
+			string recordKeyResult = RecordKey(action, target);
+			string target2 = (string.Equals(recordKeyResult, failureKey, StringComparison.OrdinalIgnoreCase) ? target : "*");
 			if (string.IsNullOrEmpty(intent))
 			{
 				intent = Serialize(NewRecord(action, target, "Completion could not be confirmed; recovery required", null));
@@ -454,7 +454,7 @@ namespace PaviseApp
 			ActionFailureRecord actionFailureRecord = NewRecord(action, target2, reason, null);
 			actionFailureRecord.PersistenceFailed = !Save(failureKey, Serialize(actionFailureRecord));
 			volatileFailures[failureKey] = actionFailureRecord;
-			failedCompletions.Add(text);
+			failedCompletions.Add(recordKeyResult);
 			AutomaticPhase phase = Phase(action, target);
 			phase.Attempts = Math.Max(phase.Attempts, phase.MaxFailures);
 			phase.FailureSequence = ++automaticSequence;
@@ -468,12 +468,12 @@ namespace PaviseApp
 			}
 			lock (gate)
 			{
-				string text = RecordKey(action, target);
+				string recordKeyResult = RecordKey(action, target);
 				string target2 = target;
 				string value;
-				if (admissions.TryGetValue(text, out value) && value != null)
+				if (admissions.TryGetValue(recordKeyResult, out value) && value != null)
 				{
-					if (!string.Equals(value, text, StringComparison.OrdinalIgnoreCase))
+					if (!string.Equals(value, recordKeyResult, StringComparison.OrdinalIgnoreCase))
 					{
 						target2 = "*";
 					}
@@ -482,19 +482,19 @@ namespace PaviseApp
 				{
 					target2 = "*";
 				}
-				bool admitted = admissions.Remove(text);
-				failedCompletions.Remove(text);
-				text = RecordKey(action, target2);
+				bool admitted = admissions.Remove(recordKeyResult);
+				failedCompletions.Remove(recordKeyResult);
+				recordKeyResult = RecordKey(action, target2);
 				ActionFailureRecord previous;
 				AutomaticPhase phase = Phase(action, target);
 				// Without an admission ticket there is no safely attributable retry allowance.
 				// Stop this phase; duplicate logging must not create an unlimited external path.
 				phase.Attempts = Math.Max(admitted ? 1 : phase.MaxFailures, phase.Attempts);
 				phase.FailureSequence = ++automaticSequence;
-				if (!admitted && volatileFailures.TryGetValue(text, out previous) && previous.Reason == reason) return;
+				if (!admitted && volatileFailures.TryGetValue(recordKeyResult, out previous) && previous.Reason == reason) return;
 				ActionFailureRecord actionFailureRecord = NewRecord(action, target2, reason, environmentContext);
-				actionFailureRecord.PersistenceFailed = !Save(text, Serialize(actionFailureRecord));
-				volatileFailures[text] = actionFailureRecord;
+				actionFailureRecord.PersistenceFailed = !Save(recordKeyResult, Serialize(actionFailureRecord));
+				volatileFailures[recordKeyResult] = actionFailureRecord;
 				if (!actionFailureRecord.PersistenceFailed)
 				{
 					SaveIntent(action, target, "");
@@ -577,8 +577,8 @@ namespace PaviseApp
 				{
 					throw new InvalidOperationException("Unfinished execution intents could not be read; isolation remains active.");
 				}
-				string[] array = names;
-				foreach (string intentKey in array)
+				string[] namesSnapshot = names;
+				foreach (string intentKey in namesSnapshot)
 				{
 					RecoverIntent(intentKey, null, null);
 				}
@@ -588,15 +588,15 @@ namespace PaviseApp
 				{
 					throw new InvalidOperationException("Action isolation records could not be read; isolation remains active.");
 				}
-				string[] array2 = names2;
-				foreach (string text in array2)
+				string[] names2Snapshot = names2;
+				foreach (string entryText in names2Snapshot)
 				{
-					if (!text.StartsWith("ActionFailure_Migrated_", StringComparison.OrdinalIgnoreCase))
+					if (!entryText.StartsWith("ActionFailure_Migrated_", StringComparison.OrdinalIgnoreCase))
 					{
-						ActionFailureRecord actionFailureRecord = Read(text, null, null);
+						ActionFailureRecord actionFailureRecord = Read(entryText, null, null);
 						if (actionFailureRecord != null)
 						{
-							dictionary[text] = actionFailureRecord;
+							dictionary[entryText] = actionFailureRecord;
 						}
 					}
 				}
@@ -636,9 +636,9 @@ namespace PaviseApp
 
 		private static void ImportLegacy(string oldKey, string action, bool failed)
 		{
-			string text = "ActionFailure_Migrated_" + oldKey;
+			string oldKeyOffset = "ActionFailure_Migrated_" + oldKey;
 			string value;
-			if (failed && Settings.TryLoadStr(text, out value) && !(value == "1"))
+			if (failed && Settings.TryLoadStr(oldKeyOffset, out value) && !(value == "1"))
 			{
 				// Migration is diagnostic history, not a newly attempted execution.
 				string key = RecordKey(action, "*");
@@ -651,7 +651,7 @@ namespace PaviseApp
 				ActionFailureRecord actionFailureRecord = Read(RecordKey(action, "*"), action, "*");
 				if (actionFailureRecord != null && !actionFailureRecord.PersistenceFailed)
 				{
-					Save(text, "1");
+					Save(oldKeyOffset, "1");
 				}
 			}
 		}
@@ -663,8 +663,8 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string[] array = names;
-			foreach (string name in array)
+			string[] namesSnapshot = names;
+			foreach (string name in namesSnapshot)
 			{
 				string value;
 				if (Settings.TryLoadStr(name, out value) && value.Length == 0)
@@ -681,26 +681,26 @@ namespace PaviseApp
 				migrated = true;
 				PruneEmptyRecords("ActionAttempt_");
 				PruneEmptyRecords("ActionFailure_");
-				string[] array = new string[17]
+				string[] textEntries = new string[17]
 				{
 					"do", "wu", "services", "standby", "awake", "dwmboost", "gpupower", "amdalag", "amdafmf", "maint",
 					"intelend", "laptopperf", "gamedvr", "mmcss", "pqos", "rsr", "nvvrr"
 				};
-				string[] array2 = new string[17]
+				string[] textEntries2 = new string[17]
 				{
 					"GmPauseDl", "GmPauseUpdate", "GmPauseServices", "GmStandbyCleanerV2", "GmAwake", "GmDwmBoost", "GmGpuPowerMax", "AmdAntiLag", "AmdAfmf", "GmPauseMaintenanceV1",
 					"GmIntelEnduranceV1", "GmLaptopPerfV1", "GameDvrOff", "GmMmcss", "PresenceQos", "GmRsr", "NvVrrWindowed"
 				};
-				for (int i = 0; i < array.Length; i++)
+				for (int i = 0; i < textEntries.Length; i++)
 				{
-					ImportLegacy("EnvFuse_" + array[i], array2[i], Settings.Load("EnvFuse_" + array[i], false));
+					ImportLegacy("EnvFuse_" + textEntries[i], textEntries2[i], Settings.Load("EnvFuse_" + textEntries[i], false));
 				}
 				ImportLegacy("PowerPlanFailStreak", "PowerPlanOn", CounterFailed("PowerPlanFailStreak"));
-				string[] array3 = new string[7] { "NvMaxPerf", "NvLowLat", "NvSmoothMotion", "NvShaderCache", "NvRebar", "NvDlss", "NvAnsel" };
-				string[] array4 = new string[7] { "pstate", "prerender", "smooth", "shadercache", "rebarfeat", "dlssovr", "ansel" };
-				for (int j = 0; j < array3.Length; j++)
+				string[] textEntries3 = new string[7] { "NvMaxPerf", "NvLowLat", "NvSmoothMotion", "NvShaderCache", "NvRebar", "NvDlss", "NvAnsel" };
+				string[] textEntries4 = new string[7] { "pstate", "prerender", "smooth", "shadercache", "rebarfeat", "dlssovr", "ansel" };
+				for (int j = 0; j < textEntries3.Length; j++)
 				{
-					ImportLegacy("NvFailStreak_" + array4[j], array3[j], CounterFailed("NvFailStreak_" + array4[j]));
+					ImportLegacy("NvFailStreak_" + textEntries4[j], textEntries3[j], CounterFailed("NvFailStreak_" + textEntries4[j]));
 				}
 			}
 		}

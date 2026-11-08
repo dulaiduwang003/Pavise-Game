@@ -76,14 +76,14 @@ namespace PaviseApp
 			base.KeyPreview = true;
 			base.Paint += PaintChrome;
 			base.MouseDown += DragMove;
-			int num = Theme.S(420);
-			int num2 = num - Theme.S(26) * 2;
+			int scaledDimension = Theme.S(420);
+			int remainingScaledDimension = scaledDimension - Theme.S(26) * 2;
 			bodyTop = Theme.S(43) + MeasureLine(TitleFont) + Theme.S(12);
-			bodyH = MeasureBody(num2);
+			bodyH = MeasureBody(remainingScaledDimension);
 			qrTop = bodyTop + bodyH + Theme.S(16);
 			hintTop = qrTop + Theme.S(260) + Theme.S(10);
-			int num3 = hintTop + Theme.S(22) + Theme.S(18) + Theme.S(34) + Theme.S(22);
-			base.ClientSize = new Size(num, num3);
+			int sOffset = hintTop + Theme.S(22) + Theme.S(18) + Theme.S(34) + Theme.S(22);
+			base.ClientSize = new Size(scaledDimension, sOffset);
 			Label close = new Label();
 			close.Text = "✕";
 			close.ForeColor = Theme.Faint;
@@ -91,7 +91,7 @@ namespace PaviseApp
 			close.Font = Theme.UI(10f, false);
 			close.TextAlign = ContentAlignment.MiddleCenter;
 			close.Cursor = Cursors.Hand;
-			close.SetBounds(num - Theme.S(42), Theme.S(12), Theme.S(26), Theme.S(26));
+			close.SetBounds(scaledDimension - Theme.S(42), Theme.S(12), Theme.S(26), Theme.S(26));
 			close.MouseEnter += delegate
 			{
 				close.ForeColor = Theme.Accent;
@@ -107,7 +107,7 @@ namespace PaviseApp
 			base.Controls.Add(close);
 			PillButton pillButton = new PillButton(Lang.T("dlg.ok"), BtnKind.Primary);
 			pillButton.Size = new Size(Theme.S(108), Theme.S(34));
-			pillButton.Location = new Point(num - Theme.S(26) - pillButton.Width, num3 - Theme.S(22) - Theme.S(34));
+			pillButton.Location = new Point(scaledDimension - Theme.S(26) - pillButton.Width, sOffset - Theme.S(22) - Theme.S(34));
 			pillButton.Click += delegate
 			{
 				Close();
@@ -209,31 +209,31 @@ namespace PaviseApp
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 			Color accent = Theme.Accent;
-			int num = Theme.S(26);
-			int num2 = Theme.S(4);
+			int scaledDimension = Theme.S(26);
+			int height = Theme.S(4);
 			using (SolidBrush brush = new SolidBrush(accent))
 			{
-				graphics.FillRectangle(brush, 0, 0, base.Width, num2);
+				graphics.FillRectangle(brush, 0, 0, base.Width, height);
 			}
-			using (LinearGradientBrush brush2 = new LinearGradientBrush(new Rectangle(0, 0, Math.Max(1, base.Width), num2), Color.FromArgb(0, 255, 255, 255), Color.FromArgb(150, 255, 255, 255), LinearGradientMode.Horizontal))
+			using (LinearGradientBrush brush2 = new LinearGradientBrush(new Rectangle(0, 0, Math.Max(1, base.Width), height), Color.FromArgb(0, 255, 255, 255), Color.FromArgb(150, 255, 255, 255), LinearGradientMode.Horizontal))
 			{
-				int num3 = Theme.S(150);
-				Rectangle rect = new Rectangle((int)(sweep * (float)(base.Width + num3)) - num3, 0, num3, num2);
+				int scaledDimension2 = Theme.S(150);
+				Rectangle rect = new Rectangle((int)(sweep * (float)(base.Width + scaledDimension2)) - scaledDimension2, 0, scaledDimension2, height);
 				Region clip = graphics.Clip;
-				graphics.SetClip(new Rectangle(0, 0, base.Width, num2), CombineMode.Replace);
+				graphics.SetClip(new Rectangle(0, 0, base.Width, height), CombineMode.Replace);
 				graphics.FillRectangle(brush2, rect);
 				graphics.Clip = clip;
 			}
-			int num4 = Theme.S(9);
+			int scaledDimension3 = Theme.S(9);
 			string s = Lang.T("donate.entry");
 			Font font = Theme.UI(7.2f, true);
-			int num5 = Math.Max(Theme.S(74), TextRenderer.MeasureText(graphics, s, font, Size.Empty, TextFormatFlags.NoPadding).Width + num4 * 3);
+			int sLimit = Math.Max(Theme.S(74), TextRenderer.MeasureText(graphics, s, font, Size.Empty, TextFormatFlags.NoPadding).Width + scaledDimension3 * 3);
 			Point[] points = new Point[4]
 			{
-				new Point(num + num4, Theme.S(17)),
-				new Point(num + num5 + num4, Theme.S(17)),
-				new Point(num + num5 - num4, Theme.S(33)),
-				new Point(num - num4, Theme.S(33))
+				new Point(scaledDimension + scaledDimension3, Theme.S(17)),
+				new Point(scaledDimension + sLimit + scaledDimension3, Theme.S(17)),
+				new Point(scaledDimension + sLimit - scaledDimension3, Theme.S(33)),
+				new Point(scaledDimension - scaledDimension3, Theme.S(33))
 			};
 			using (SolidBrush brush3 = new SolidBrush(Color.FromArgb(38, accent)))
 			{
@@ -250,14 +250,14 @@ namespace PaviseApp
 				stringFormat.LineAlignment = StringAlignment.Center;
 				using (StringFormat format = stringFormat)
 				{
-					graphics.DrawString(s, font, brush4, new RectangleF(num, Theme.S(17), num5, Theme.S(16)), format);
+					graphics.DrawString(s, font, brush4, new RectangleF(scaledDimension, Theme.S(17), sLimit, Theme.S(16)), format);
 				}
 			}
-			int num6 = base.Width - num * 2;
-			TextRenderer.DrawText(graphics, Lang.T("donate.title"), TitleFont, new Rectangle(num, Theme.S(43), num6, bodyTop - Theme.S(43)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-			TextRenderer.DrawText(graphics, Lang.T("donate.body"), BodyFont, new Rectangle(num, bodyTop, num6, bodyH), Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-			int num7 = Theme.S(260);
-			Rectangle r = new Rectangle((base.Width - num7) / 2, qrTop, num7, num7);
+			int remainingWidth = base.Width - scaledDimension * 2;
+			TextRenderer.DrawText(graphics, Lang.T("donate.title"), TitleFont, new Rectangle(scaledDimension, Theme.S(43), remainingWidth, bodyTop - Theme.S(43)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, Lang.T("donate.body"), BodyFont, new Rectangle(scaledDimension, bodyTop, remainingWidth, bodyH), Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+			int scaledDimension4 = Theme.S(260);
+			Rectangle r = new Rectangle((base.Width - scaledDimension4) / 2, qrTop, scaledDimension4, scaledDimension4);
 			using (GraphicsPath path = Theme.TechPath(r, Theme.S(10)))
 			{
 				using (SolidBrush brush5 = new SolidBrush(Color.White))
@@ -280,7 +280,7 @@ namespace PaviseApp
 			{
 				TextRenderer.DrawText(graphics, status, Theme.UI(9f, false), rectangle, Color.FromArgb(120, 120, 120), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
 			}
-			TextRenderer.DrawText(graphics, Lang.T("donate.hint"), Theme.UI(8.5f, false), new Rectangle(num, hintTop, num6, Theme.S(22)), Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, Lang.T("donate.hint"), Theme.UI(8.5f, false), new Rectangle(scaledDimension, hintTop, remainingWidth, Theme.S(22)), Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			using (Pen pen3 = new Pen(Theme.StrokeHi))
 			{
 				graphics.DrawRectangle(pen3, 0, 0, base.Width - 1, base.Height - 1);

@@ -201,10 +201,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			uint num = hResult & 0xFFFFu;
-			if (num != 32 && num != 33)
+			uint hResultMask = hResult & 0xFFFFu;
+			if (hResultMask != 32 && hResultMask != 33)
 			{
-				return num == 1175;
+				return hResultMask == 1175;
 			}
 			return true;
 		}
@@ -233,8 +233,8 @@ namespace PaviseApp
 				}
 				else
 				{
-					int[] array = new int[4] { 25, 50, 100, 200 };
-					int num = 0;
+					int[] integerValues = new int[4] { 25, 50, 100, 200 };
+					int processedCount = 0;
 					while (true)
 					{
 						try
@@ -251,16 +251,16 @@ namespace PaviseApp
 							{
 								throw;
 							}
-							if (num == array.Length)
+							if (processedCount == integerValues.Length)
 							{
 								throw new ProfileCommitBusyException(ex);
 							}
-							Thread.Sleep(array[num]);
+							Thread.Sleep(integerValues[processedCount]);
 							goto CountMatchingEntry;
 						}
 						break;
 						CountMatchingEntry:
-						num++;
+						processedCount++;
 					}
 				}
 				return true;
@@ -323,8 +323,8 @@ namespace PaviseApp
 					{
 						throw new FormatException("retired override key in live profile");
 					}
-					string text = PolicyCatalog.Canonical(@override.Key, @override.Value);
-					if (text == null || !string.Equals(text, @override.Value, StringComparison.Ordinal))
+					string canonicalResult = PolicyCatalog.Canonical(@override.Key, @override.Value);
+					if (canonicalResult == null || !string.Equals(canonicalResult, @override.Value, StringComparison.Ordinal))
 					{
 						throw new FormatException("invalid profile override");
 					}
@@ -336,8 +336,8 @@ namespace PaviseApp
 		{
 			if (value != null)
 			{
-				string text = NormalizeRoot(value);
-				if (text == null || !string.Equals(text, value, StringComparison.Ordinal))
+				string root = NormalizeRoot(value);
+				if (root == null || !string.Equals(root, value, StringComparison.Ordinal))
 				{
 					throw new FormatException("invalid profile root");
 				}
@@ -348,8 +348,8 @@ namespace PaviseApp
 		{
 			if (value != null)
 			{
-				string text = NormalizePath(value);
-				if (text == null || !string.Equals(text, value, StringComparison.Ordinal))
+				string path2 = NormalizePath(value);
+				if (path2 == null || !string.Equals(path2, value, StringComparison.Ordinal))
 				{
 					throw new FormatException("invalid profile executable path");
 				}
@@ -378,8 +378,8 @@ namespace PaviseApp
 				{
 					return list;
 				}
-				string[] array = File.ReadAllLines(path, StrictUtf8);
-				if (array.Length == 0 || array[0] != "PAVISE_PROFILES_V5")
+				string[] allLines = File.ReadAllLines(path, StrictUtf8);
+				if (allLines.Length == 0 || allLines[0] != "PAVISE_PROFILES_V5")
 				{
 					throw new FormatException("invalid profile header");
 				}
@@ -388,118 +388,118 @@ namespace PaviseApp
 				Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 				HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 				Dictionary<string, Dictionary<string, string>> dictionary3 = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
-				int num = 0;
-				for (int i = 1; i < array.Length; i++)
+				int processedCount = 0;
+				for (int i = 1; i < allLines.Length; i++)
 				{
-					if (array[i].Length == 0)
+					if (allLines[i].Length == 0)
 					{
 						throw new FormatException("empty profile record");
 					}
-					string[] array2 = array[i].Split('|');
-					if (array2[0] == "P")
+					string[] parts = allLines[i].Split('|');
+					if (parts[0] == "P")
 					{
-						if (array2.Length != 6)
+						if (parts.Length != 6)
 						{
 							throw new FormatException("invalid P record");
 						}
-						string text = Decode(array2[1]);
-						string text2 = Decode(array2[2]);
-						string text3 = NullIfEmpty(Decode(array2[3]));
-						string text4 = NullIfEmpty(Decode(array2[4]));
-						if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(text2))
+						string idValue = Decode(parts[1]);
+						string nameValue = Decode(parts[2]);
+						string rootValue = NullIfEmpty(Decode(parts[3]));
+						string executablePathValue = NullIfEmpty(Decode(parts[4]));
+						if (string.IsNullOrWhiteSpace(idValue) || string.IsNullOrWhiteSpace(nameValue))
 						{
 							throw new FormatException("profile identity missing");
 						}
-						ValidateRootPath(text3);
-						ValidateExecutablePath(text4);
+						ValidateRootPath(rootValue);
+						ValidateExecutablePath(executablePathValue);
 						GameProfile gameProfile = new GameProfile();
-						gameProfile.Id = text;
-						gameProfile.Name = text2;
-						gameProfile.Root = text3;
-						gameProfile.ExecutablePath = text4;
+						gameProfile.Id = idValue;
+						gameProfile.Name = nameValue;
+						gameProfile.Root = rootValue;
+						gameProfile.ExecutablePath = executablePathValue;
 						GameProfile gameProfile2 = gameProfile;
-						ParseEntries(gameProfile2.Entries, Decode(array2[5]));
-						if (dictionary.ContainsKey(text))
+						ParseEntries(gameProfile2.Entries, Decode(parts[5]));
+						if (dictionary.ContainsKey(idValue))
 						{
 							throw new FormatException("duplicate profile id");
 						}
-						if (!hashSet.Add(IdentityKey(text, text3, text4)))
+						if (!hashSet.Add(IdentityKey(idValue, rootValue, executablePathValue)))
 						{
 							throw new FormatException("duplicate profile identity");
 						}
-						dictionary.Add(text, gameProfile2);
+						dictionary.Add(idValue, gameProfile2);
 						list.Add(gameProfile2);
 						continue;
 					}
-					if (array2[0] == "L")
+					if (parts[0] == "L")
 					{
-						if (array2.Length != 3)
+						if (parts.Length != 3)
 						{
 							throw new FormatException("invalid L record");
 						}
-						string text5 = Decode(array2[1]);
-						string text6 = NullIfEmpty(Decode(array2[2]));
-						if (string.IsNullOrWhiteSpace(text5) || text6 == null)
+						string decodeResult = Decode(parts[1]);
+						string nullIfEmptyResult = NullIfEmpty(Decode(parts[2]));
+						if (string.IsNullOrWhiteSpace(decodeResult) || nullIfEmptyResult == null)
 						{
 							throw new FormatException("invalid L value");
 						}
-						ValidateExecutablePath(text6);
-						if (dictionary2.ContainsKey(text5))
+						ValidateExecutablePath(nullIfEmptyResult);
+						if (dictionary2.ContainsKey(decodeResult))
 						{
 							throw new FormatException("duplicate L record");
 						}
-						dictionary2.Add(text5, text6);
+						dictionary2.Add(decodeResult, nullIfEmptyResult);
 						continue;
 					}
-					if (array2[0] == "F")
+					if (parts[0] == "F")
 					{
-						if (array2.Length != 2)
+						if (parts.Length != 2)
 						{
 							throw new FormatException("invalid F record");
 						}
-						string text7 = Decode(array2[1]);
-						if (string.IsNullOrWhiteSpace(text7) || !hashSet2.Add(text7))
+						string decodeResult2 = Decode(parts[1]);
+						if (string.IsNullOrWhiteSpace(decodeResult2) || !hashSet2.Add(decodeResult2))
 						{
 							throw new FormatException("invalid or duplicate F record");
 						}
 						continue;
 					}
-					if (array2[0] == "O")
+					if (parts[0] == "O")
 					{
-						if (array2.Length != 4)
+						if (parts.Length != 4)
 						{
 							throw new FormatException("invalid O record");
 						}
-						string text8 = Decode(array2[1]);
-						string text9 = Decode(array2[2]);
-						string text10 = Decode(array2[3]);
-						if (string.IsNullOrWhiteSpace(text8) || string.IsNullOrEmpty(text9))
+						string decodeResult3 = Decode(parts[1]);
+						string decodeResult4 = Decode(parts[2]);
+						string decodeResult5 = Decode(parts[3]);
+						if (string.IsNullOrWhiteSpace(decodeResult3) || string.IsNullOrEmpty(decodeResult4))
 						{
 							throw new FormatException("invalid O value");
 						}
-						if (!ThreadBoostSelection.IsLegacy(text9) && GameProfile.IsRetiredOverrideKey(text9))
+						if (!ThreadBoostSelection.IsLegacy(decodeResult4) && GameProfile.IsRetiredOverrideKey(decodeResult4))
 						{
-							if (PerformancePolicy.IsRetiredSceneRule(text9))
+							if (PerformancePolicy.IsRetiredSceneRule(decodeResult4))
 							{
-								num++;
+								processedCount++;
 							}
 							continue;
 						}
-						string text11 = ((!ThreadBoostSelection.IsLegacy(text9)) ? PolicyCatalog.Canonical(text9, text10) : ((text10 == "0" || text10 == "1") ? text10 : null));
-						if (text11 == null || !string.Equals(text11, text10, StringComparison.Ordinal))
+						string canonicalResult = ((!ThreadBoostSelection.IsLegacy(decodeResult4)) ? PolicyCatalog.Canonical(decodeResult4, decodeResult5) : ((decodeResult5 == "0" || decodeResult5 == "1") ? decodeResult5 : null));
+						if (canonicalResult == null || !string.Equals(canonicalResult, decodeResult5, StringComparison.Ordinal))
 						{
 							throw new FormatException("invalid O value");
 						}
 						Dictionary<string, string> value;
-						if (!dictionary3.TryGetValue(text8, out value))
+						if (!dictionary3.TryGetValue(decodeResult3, out value))
 						{
-							value = (dictionary3[text8] = new Dictionary<string, string>(StringComparer.Ordinal));
+							value = (dictionary3[decodeResult3] = new Dictionary<string, string>(StringComparer.Ordinal));
 						}
-						if (value.ContainsKey(text9))
+						if (value.ContainsKey(decodeResult4))
 						{
 							throw new FormatException("duplicate O record");
 						}
-						value.Add(text9, text10);
+						value.Add(decodeResult4, decodeResult5);
 						continue;
 					}
 					throw new FormatException("unknown profile record");
@@ -539,9 +539,9 @@ namespace PaviseApp
 					}
 				}
 				ValidateProfiles(list);
-				if (num > 0)
+				if (processedCount > 0)
 				{
-					Logger.Log(PerformancePolicy.Text("游戏库：已忽略 ", "Game library: ignored ") + num + PerformancePolicy.Text(" 条旧的逐游戏“扩大后台范围／智能自适应升档”覆盖，已改由场景规则决定", " old per-game broader-scope / Smart adaptive escalation override(s); the scene rules now decide"));
+					Logger.Log(PerformancePolicy.Text("游戏库：已忽略 ", "Game library: ignored ") + processedCount + PerformancePolicy.Text(" 条旧的逐游戏“扩大后台范围／智能自适应升档”覆盖，已改由场景规则决定", " old per-game broader-scope / Smart adaptive escalation override(s); the scene rules now decide"));
 				}
 			}
 			catch (Exception error)
@@ -607,12 +607,12 @@ namespace PaviseApp
 
 		private static string StripExe(string s)
 		{
-			string text = (s ?? "").Trim();
-			if (!text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			string trimmed = (s ?? "").Trim();
+			if (!trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				return text;
+				return trimmed;
 			}
-			return text.Substring(0, text.Length - 4);
+			return trimmed.Substring(0, trimmed.Length - 4);
 		}
 
 		private static void ParseEntries(HashSet<string> set, string text)
@@ -621,10 +621,10 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string[] array = text.Split(new char[1] { '\n' }, StringSplitOptions.None);
-			foreach (string text2 in array)
+			string[] parts = text.Split(new char[1] { '\n' }, StringSplitOptions.None);
+			foreach (string entryText in parts)
 			{
-				if (string.IsNullOrWhiteSpace(text2) || text2.IndexOf('\r') >= 0 || !set.Add(text2))
+				if (string.IsNullOrWhiteSpace(entryText) || entryText.IndexOf('\r') >= 0 || !set.Add(entryText))
 				{
 					throw new FormatException("invalid or duplicate profile entry");
 				}
@@ -645,12 +645,12 @@ namespace PaviseApp
 
 		private static string Decode(string s)
 		{
-			byte[] array = Convert.FromBase64String(s ?? "");
-			if (!string.Equals(Convert.ToBase64String(array), s, StringComparison.Ordinal))
+			byte[] fromBase64StringResult = Convert.FromBase64String(s ?? "");
+			if (!string.Equals(Convert.ToBase64String(fromBase64StringResult), s, StringComparison.Ordinal))
 			{
 				throw new FormatException("non-canonical base64");
 			}
-			return StrictUtf8.GetString(array);
+			return StrictUtf8.GetString(fromBase64StringResult);
 		}
 
 		private static string NullIfEmpty(string value)

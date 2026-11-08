@@ -192,8 +192,8 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string text = ((base.Hosted == null) ? "" : (base.Hosted.AccessibleDescription ?? ""));
-			if (!(detailsTitle == base.Title) || !(detailsProvider == Provider) || !(detailsDescription == base.Desc) || !(detailsStatus == base.StatusText) || !(detailsLock == base.LockText) || !(detailsExtra == AdditionalDetails) || !(detailsHost == text))
+			string accessibleDescriptionOffset = ((base.Hosted == null) ? "" : (base.Hosted.AccessibleDescription ?? ""));
+			if (!(detailsTitle == base.Title) || !(detailsProvider == Provider) || !(detailsDescription == base.Desc) || !(detailsStatus == base.StatusText) || !(detailsLock == base.LockText) || !(detailsExtra == AdditionalDetails) || !(detailsHost == accessibleDescriptionOffset))
 			{
 				detailsTitle = base.Title;
 				detailsProvider = Provider;
@@ -201,11 +201,11 @@ namespace PaviseApp
 				detailsStatus = base.StatusText;
 				detailsLock = base.LockText;
 				detailsExtra = AdditionalDetails;
-				detailsHost = text;
+				detailsHost = accessibleDescriptionOffset;
 				detailsText = base.Title + (string.IsNullOrEmpty(Provider) ? "" : ("\r\n" + Provider)) + "\r\n\r\n" + base.Desc + ((base.StatusText.Length == 0) ? "" : ("\r\n\r\n" + base.StatusText)) + ((base.LockText.Length == 0) ? "" : ("\r\n" + base.LockText)) + (string.IsNullOrEmpty(AdditionalDetails) ? "" : ("\r\n\r\n" + AdditionalDetails));
-				if (text.Length > 0 && text != base.Desc && !detailsText.Contains(text))
+				if (accessibleDescriptionOffset.Length > 0 && accessibleDescriptionOffset != base.Desc && !detailsText.Contains(accessibleDescriptionOffset))
 				{
-					detailsText = detailsText + "\r\n\r\n" + text;
+					detailsText = detailsText + "\r\n\r\n" + accessibleDescriptionOffset;
 				}
 				base.AccessibleName = base.Title;
 				base.AccessibleDescription = detailsText;
@@ -277,139 +277,139 @@ namespace PaviseApp
 
 		private Measurement Measure(int width)
 		{
-			int num = Theme.S((width < Theme.S(500)) ? 18 : 24);
-			int num2 = Theme.S(44);
-			int num3 = num + num2 + Theme.S(18);
-			int num4 = Math.Max(1, width - num - num3);
-			int num5 = Theme.S(28);
-			int num6 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(94) : Math.Min(base.Hosted.Width, num4)) : 0);
-			int num7 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(40) : Math.Max(Theme.S(28), base.Hosted.Height)) : 0);
+			int scaledDimension = Theme.S((width < Theme.S(500)) ? 18 : 24);
+			int scaledDimension2 = Theme.S(44);
+			int sOffset = scaledDimension + scaledDimension2 + Theme.S(18);
+			int lowerBound = Math.Max(1, width - scaledDimension - sOffset);
+			int scaledDimension3 = Theme.S(28);
+			int scaledDimension4 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(94) : Math.Min(base.Hosted.Width, lowerBound)) : 0);
+			int scaledDimension5 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(40) : Math.Max(Theme.S(28), base.Hosted.Height)) : 0);
 			Font font = Theme.UI(12f, true);
 			Font font2 = Theme.UI(8.5f, false);
 			Font font3 = Theme.UI(9f, false);
 			Font font4 = Theme.UI(8.5f, false);
-			if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale && measured.Host == base.Hosted && measured.HostWidth == num6 && measured.HostHeight == num7 && measured.Title == base.Title && measured.Provider == Provider && measured.Description == base.Desc && measured.Status == base.StatusText && measured.Lock == base.LockText && object.ReferenceEquals(measured.TitleFont, font) && object.ReferenceEquals(measured.ProviderFont, font2) && object.ReferenceEquals(measured.BodyFont, font3) && object.ReferenceEquals(measured.StatusFont, font4))
+			if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale && measured.Host == base.Hosted && measured.HostWidth == scaledDimension4 && measured.HostHeight == scaledDimension5 && measured.Title == base.Title && measured.Provider == Provider && measured.Description == base.Desc && measured.Status == base.StatusText && measured.Lock == base.LockText && object.ReferenceEquals(measured.TitleFont, font) && object.ReferenceEquals(measured.ProviderFont, font2) && object.ReferenceEquals(measured.BodyFont, font3) && object.ReferenceEquals(measured.StatusFont, font4))
 			{
 				return measured;
 			}
 			int val = TextRenderer.MeasureText(base.StatusText, font4, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-			int num8 = Math.Max(Theme.S(110), Math.Min(Theme.S(160), val));
-			int num9 = num8 + Theme.S(18) + num6;
-			bool flag = base.Hosted != null && width >= Theme.S(500) && num4 - num9 - Theme.S(24) >= Theme.S(200);
-			int num10 = Math.Max(1, num4 - (flag ? (num9 + Theme.S(24)) : 0));
-			int val2 = Math.Max(1, num10 - num5 - Theme.S(6));
+			int minLimit = Math.Max(Theme.S(110), Math.Min(Theme.S(160), val));
+			int scaledDimension4Offset = minLimit + Theme.S(18) + scaledDimension4;
+			bool allConditionsMet = base.Hosted != null && width >= Theme.S(500) && lowerBound - scaledDimension4Offset - Theme.S(24) >= Theme.S(200);
+			int lowerBound2 = Math.Max(1, lowerBound - (allConditionsMet ? (scaledDimension4Offset + Theme.S(24)) : 0));
+			int val2 = Math.Max(1, lowerBound2 - scaledDimension3 - Theme.S(6));
 			int val3 = TextHeight(base.Title, font, val2, Theme.S(24));
 			int val4 = TextRenderer.MeasureText(base.Title, font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-			Rectangle heading = new Rectangle(num3, 0, Math.Max(1, Math.Min(val2, val4)), val3);
-			Rectangle info = new Rectangle(num3 + Math.Min(val2, val4) + Theme.S(6), 0, num5, num5);
-			int num11 = Math.Max(val3, num5);
+			Rectangle heading = new Rectangle(sOffset, 0, Math.Max(1, Math.Min(val2, val4)), val3);
+			Rectangle info = new Rectangle(sOffset + Math.Min(val2, val4) + Theme.S(6), 0, scaledDimension3, scaledDimension3);
+			int scaledDimension3Limit = Math.Max(val3, scaledDimension3);
 			Rectangle providerLine = Rectangle.Empty;
 			if (!string.IsNullOrEmpty(Provider))
 			{
-				providerLine = new Rectangle(num3, num11 + Theme.S(3), num10, TextHeight(Provider, font2, num10, Theme.S(16)));
-				num11 = providerLine.Bottom;
+				providerLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(3), lowerBound2, TextHeight(Provider, font2, lowerBound2, Theme.S(16)));
+				scaledDimension3Limit = providerLine.Bottom;
 			}
-			Rectangle descriptionLine = new Rectangle(num3, num11 + ((base.Desc.Length != 0) ? Theme.S(7) : 0), num10, TextHeight(base.Desc, font3, num10, Theme.S(18)));
-			num11 = descriptionLine.Bottom;
+			Rectangle descriptionLine = new Rectangle(sOffset, scaledDimension3Limit + ((base.Desc.Length != 0) ? Theme.S(7) : 0), lowerBound2, TextHeight(base.Desc, font3, lowerBound2, Theme.S(18)));
+			scaledDimension3Limit = descriptionLine.Bottom;
 			Rectangle hostBounds = Rectangle.Empty;
 			Rectangle statusLine = Rectangle.Empty;
 			Rectangle locked = Rectangle.Empty;
-			int val5 = num11;
-			if (flag)
+			int val5 = scaledDimension3Limit;
+			if (allConditionsMet)
 			{
-				int num12 = width - num - num6;
-				int num13 = num12 - Theme.S(18) - num8;
-				int num14 = 0;
+				int remainingScaledDimension4 = width - scaledDimension - scaledDimension4;
+				int remainingMinLimit = remainingScaledDimension4 - Theme.S(18) - minLimit;
+				int measureValue = 0;
 				if (base.StatusText.Length > 0)
 				{
-					statusLine = new Rectangle(num13, 0, num8, TextHeight(base.StatusText, font4, num8, Theme.S(18)));
-					num14 = statusLine.Bottom;
+					statusLine = new Rectangle(remainingMinLimit, 0, minLimit, TextHeight(base.StatusText, font4, minLimit, Theme.S(18)));
+					measureValue = statusLine.Bottom;
 				}
 				if (base.LockText.Length > 0)
 				{
-					locked = new Rectangle(num13, num14 + Theme.S(5), num8, TextHeight(base.LockText, font4, num8, Theme.S(18)));
-					num14 = locked.Bottom;
+					locked = new Rectangle(remainingMinLimit, measureValue + Theme.S(5), minLimit, TextHeight(base.LockText, font4, minLimit, Theme.S(18)));
+					measureValue = locked.Bottom;
 				}
-				int num15 = Math.Max(num7, num14);
-				hostBounds = new Rectangle(num12, (num15 - num7) / 2, num6, num7);
-				int num16 = Math.Max(0, (num15 - num14) / 2);
+				int measureValueLimit = Math.Max(scaledDimension5, measureValue);
+				hostBounds = new Rectangle(remainingScaledDimension4, (measureValueLimit - scaledDimension5) / 2, scaledDimension4, scaledDimension5);
+				int lowerBound3 = Math.Max(0, (measureValueLimit - measureValue) / 2);
 				if (!statusLine.IsEmpty)
 				{
-					statusLine.Offset(0, num16);
+					statusLine.Offset(0, lowerBound3);
 				}
 				if (!locked.IsEmpty)
 				{
-					locked.Offset(0, num16);
+					locked.Offset(0, lowerBound3);
 				}
-				val5 = Math.Max(val5, num15);
-				int num17 = Math.Max(0, (val5 - num15) / 2);
-				hostBounds.Offset(0, num17);
+				val5 = Math.Max(val5, measureValueLimit);
+				int lowerBound4 = Math.Max(0, (val5 - measureValueLimit) / 2);
+				hostBounds.Offset(0, lowerBound4);
 				if (!statusLine.IsEmpty)
 				{
-					statusLine.Offset(0, num17);
+					statusLine.Offset(0, lowerBound4);
 				}
 				if (!locked.IsEmpty)
 				{
-					locked.Offset(0, num17);
+					locked.Offset(0, lowerBound4);
 				}
 			}
 			else
 			{
 				if (base.Hosted != null)
 				{
-					hostBounds = new Rectangle(num3, num11 + Theme.S(12), num6, num7);
-					num11 = hostBounds.Bottom;
+					hostBounds = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(12), scaledDimension4, scaledDimension5);
+					scaledDimension3Limit = hostBounds.Bottom;
 				}
-				int num18 = num4 - num6 - Theme.S(14);
-				int num19 = TextHeight(base.StatusText, font4, num18, Theme.S(18));
+				int remainingS = lowerBound - scaledDimension4 - Theme.S(14);
+				int textHeightResult = TextHeight(base.StatusText, font4, remainingS, Theme.S(18));
 				if (base.StatusText.Length > 0)
 				{
-					if (base.Hosted != null && num18 >= Theme.S(90) && num19 <= num7)
+					if (base.Hosted != null && remainingS >= Theme.S(90) && textHeightResult <= scaledDimension5)
 					{
-						statusLine = new Rectangle(hostBounds.Right + Theme.S(14), hostBounds.Top + (num7 - num19) / 2, num18, num19);
+						statusLine = new Rectangle(hostBounds.Right + Theme.S(14), hostBounds.Top + (scaledDimension5 - textHeightResult) / 2, remainingS, textHeightResult);
 					}
 					else
 					{
-						statusLine = new Rectangle(num3, num11 + Theme.S(7), num4, TextHeight(base.StatusText, font4, num4, Theme.S(18)));
-						num11 = statusLine.Bottom;
+						statusLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(7), lowerBound, TextHeight(base.StatusText, font4, lowerBound, Theme.S(18)));
+						scaledDimension3Limit = statusLine.Bottom;
 					}
 				}
 				if (base.LockText.Length > 0)
 				{
-					locked = new Rectangle(num3, num11 + Theme.S(5), num4, TextHeight(base.LockText, font4, num4, Theme.S(18)));
-					num11 = locked.Bottom;
+					locked = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(5), lowerBound, TextHeight(base.LockText, font4, lowerBound, Theme.S(18)));
+					scaledDimension3Limit = locked.Bottom;
 				}
-				val5 = num11;
+				val5 = scaledDimension3Limit;
 			}
-			int num20 = Math.Max(Theme.S(132), val5 + Theme.S(36));
-			int num21 = (num20 - val5) / 2;
-			heading.Offset(0, num21);
-			info.Offset(0, num21);
-			descriptionLine.Offset(0, num21);
+			int sLimit = Math.Max(Theme.S(132), val5 + Theme.S(36));
+			int ratio = (sLimit - val5) / 2;
+			heading.Offset(0, ratio);
+			info.Offset(0, ratio);
+			descriptionLine.Offset(0, ratio);
 			if (!providerLine.IsEmpty)
 			{
-				providerLine.Offset(0, num21);
+				providerLine.Offset(0, ratio);
 			}
 			if (!hostBounds.IsEmpty)
 			{
-				hostBounds.Offset(0, num21);
+				hostBounds.Offset(0, ratio);
 			}
 			if (!statusLine.IsEmpty)
 			{
-				statusLine.Offset(0, num21);
+				statusLine.Offset(0, ratio);
 			}
 			if (!locked.IsEmpty)
 			{
-				locked.Offset(0, num21);
+				locked.Offset(0, ratio);
 			}
 			measured = new Measurement
 			{
 				Width = width,
-				Height = num20,
+				Height = sLimit,
 				Scale = Dpi.Scale,
 				Host = base.Hosted,
-				HostWidth = num6,
-				HostHeight = num7,
+				HostWidth = scaledDimension4,
+				HostHeight = scaledDimension5,
 				TitleFont = font,
 				ProviderFont = font2,
 				BodyFont = font3,
@@ -419,7 +419,7 @@ namespace PaviseApp
 				Description = base.Desc,
 				Status = base.StatusText,
 				Lock = base.LockText,
-				Icon = new Rectangle(num, (num20 - num2) / 2, num2, num2),
+				Icon = new Rectangle(scaledDimension, (sLimit - scaledDimension2) / 2, scaledDimension2, scaledDimension2),
 				Heading = heading,
 				ProviderLine = providerLine,
 				DescriptionLine = descriptionLine,

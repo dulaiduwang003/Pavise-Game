@@ -21,32 +21,32 @@ namespace PaviseApp
 	{
 		private static void AssertNavMatchesPageIds(NavRail rail)
 		{
-			int num = (int)PageId.Count;
-			if (rail.ItemCount != num)
+			int pageIdCount = (int)PageId.Count;
+			if (rail.ItemCount != pageIdCount)
 			{
-				throw new InvalidOperationException(Lang.T("t.panelform.1") + rail.ItemCount + Lang.T("t.panelform.2") + num + Lang.T("t.panelform.3"));
+				throw new InvalidOperationException(Lang.T("t.panelform.1") + rail.ItemCount + Lang.T("t.panelform.2") + pageIdCount + Lang.T("t.panelform.3"));
 			}
-			bool[] array = new bool[num];
-			int num2 = 0;
-			for (int i = 0; i < num; i++)
+			bool[] conditionMetItems = new bool[pageIdCount];
+			int processedCount = 0;
+			for (int i = 0; i < pageIdCount; i++)
 			{
-				int num3 = rail.ItemAtSlot(i);
-				if (num3 < 0)
+				int itemAtSlotResult = rail.ItemAtSlot(i);
+				if (itemAtSlotResult < 0)
 				{
 					break;
 				}
-				if (num3 < 0 || num3 >= num)
+				if (itemAtSlotResult < 0 || itemAtSlotResult >= pageIdCount)
 				{
-					throw new InvalidOperationException(Lang.T("t.panelform.4") + num3);
+					throw new InvalidOperationException(Lang.T("t.panelform.4") + itemAtSlotResult);
 				}
-				if (array[num3])
+				if (conditionMetItems[itemAtSlotResult])
 				{
-					throw new InvalidOperationException(Lang.T("t.panelform.5") + (PageId)num3);
+					throw new InvalidOperationException(Lang.T("t.panelform.5") + (PageId)itemAtSlotResult);
 				}
-				array[num3] = true;
-				num2++;
+				conditionMetItems[itemAtSlotResult] = true;
+				processedCount++;
 			}
-			if (num2 == 0)
+			if (processedCount == 0)
 			{
 				throw new InvalidOperationException(Lang.T("t.panelform.1") + "0");
 			}
@@ -367,10 +367,10 @@ namespace PaviseApp
 		{
 			if (pages != null && page != null && !page.IsDisposed)
 			{
-				int num = Array.IndexOf(pages, page);
-				if (num >= 0)
+				int matchIndex = Array.IndexOf(pages, page);
+				if (matchIndex >= 0)
 				{
-					pagePositions[num] = PageViewPosition.Capture(page, navigationScale);
+					pagePositions[matchIndex] = PageViewPosition.Capture(page, navigationScale);
 				}
 			}
 		}
@@ -385,8 +385,8 @@ namespace PaviseApp
 			DBPanel[] value2;
 			if (pageTabPanels.TryGetValue(pages[index], out value2))
 			{
-				DBPanel[] array = value2;
-				foreach (DBPanel dBPanel in array)
+				DBPanel[] value2Snapshot = value2;
+				foreach (DBPanel dBPanel in value2Snapshot)
 				{
 					tabScrollPositions[dBPanel] = new Point(-dBPanel.AutoScrollPosition.X, -dBPanel.AutoScrollPosition.Y);
 				}

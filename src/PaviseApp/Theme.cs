@@ -291,8 +291,8 @@ namespace PaviseApp
 		{
 			get
 			{
-				double num = 0.299 * (double)(int)toAccent.R + 0.587 * (double)(int)toAccent.G + 0.114 * (double)(int)toAccent.B;
-				if (!(num > 150.0))
+				double measuredValue = 0.299 * (double)(int)toAccent.R + 0.587 * (double)(int)toAccent.G + 0.114 * (double)(int)toAccent.B;
+				if (!(measuredValue > 150.0))
 				{
 					return Color.White;
 				}
@@ -617,9 +617,9 @@ namespace PaviseApp
 		{
 			try
 			{
-				int num = (int)Math.Max(1.0, Math.Round(size * Dpi.Scale * 96f / 72f));
+				int roundLimit = (int)Math.Max(1.0, Math.Round(size * Dpi.Scale * 96f / 72f));
 				LogFont logFont = new LogFont();
-				logFont.lfHeight = -num;
+				logFont.lfHeight = -roundLimit;
 				logFont.lfWeight = (((style & FontStyle.Bold) != 0) ? 700 : 400);
 				logFont.lfItalic = (byte)(((style & FontStyle.Italic) != 0) ? 1u : 0u);
 				logFont.lfCharSet = 1;
@@ -641,24 +641,24 @@ namespace PaviseApp
 				graphicsPath.AddRectangle(r);
 				return graphicsPath;
 			}
-			int num = rad * 2;
-			if (num > r.Width)
+			int scaledRad = rad * 2;
+			if (scaledRad > r.Width)
 			{
-				num = r.Width;
+				scaledRad = r.Width;
 			}
-			if (num > r.Height)
+			if (scaledRad > r.Height)
 			{
-				num = r.Height;
+				scaledRad = r.Height;
 			}
-			if (num <= 0)
+			if (scaledRad <= 0)
 			{
 				graphicsPath.AddRectangle(r);
 				return graphicsPath;
 			}
-			graphicsPath.AddArc(r.X, r.Y, num, num, 180f, 90f);
-			graphicsPath.AddArc(r.Right - num, r.Y, num, num, 270f, 90f);
-			graphicsPath.AddArc(r.Right - num, r.Bottom - num, num, num, 0f, 90f);
-			graphicsPath.AddArc(r.X, r.Bottom - num, num, num, 90f, 90f);
+			graphicsPath.AddArc(r.X, r.Y, scaledRad, scaledRad, 180f, 90f);
+			graphicsPath.AddArc(r.Right - scaledRad, r.Y, scaledRad, scaledRad, 270f, 90f);
+			graphicsPath.AddArc(r.Right - scaledRad, r.Bottom - scaledRad, scaledRad, scaledRad, 0f, 90f);
+			graphicsPath.AddArc(r.X, r.Bottom - scaledRad, scaledRad, scaledRad, 90f, 90f);
 			graphicsPath.CloseFigure();
 			return graphicsPath;
 		}
@@ -713,31 +713,31 @@ namespace PaviseApp
 			lb.MouseMove += delegate(object s, MouseEventArgs e)
 			{
 				ListBox listBox2 = (ListBox)s;
-				int num2 = listBox2.IndexFromPoint(e.Location);
-				int num3 = ((listBox2.Tag is int) ? ((int)listBox2.Tag) : (-1));
-				if (num3 != num2)
+				int tagValue = listBox2.IndexFromPoint(e.Location);
+				int tag = ((listBox2.Tag is int) ? ((int)listBox2.Tag) : (-1));
+				if (tag != tagValue)
 				{
-					listBox2.Tag = num2;
-					if (num3 >= 0 && num3 < listBox2.Items.Count)
+					listBox2.Tag = tagValue;
+					if (tag >= 0 && tag < listBox2.Items.Count)
 					{
-						listBox2.Invalidate(listBox2.GetItemRectangle(num3));
+						listBox2.Invalidate(listBox2.GetItemRectangle(tag));
 					}
-					if (num2 >= 0 && num2 < listBox2.Items.Count)
+					if (tagValue >= 0 && tagValue < listBox2.Items.Count)
 					{
-						listBox2.Invalidate(listBox2.GetItemRectangle(num2));
+						listBox2.Invalidate(listBox2.GetItemRectangle(tagValue));
 					}
 				}
 			};
 			lb.MouseLeave += delegate(object s, EventArgs e)
 			{
 				ListBox listBox = (ListBox)s;
-				int num = ((listBox.Tag is int) ? ((int)listBox.Tag) : (-1));
-				if (num >= 0)
+				int tag = ((listBox.Tag is int) ? ((int)listBox.Tag) : (-1));
+				if (tag >= 0)
 				{
 					listBox.Tag = -1;
-					if (num < listBox.Items.Count)
+					if (tag < listBox.Items.Count)
 					{
-						listBox.Invalidate(listBox.GetItemRectangle(num));
+						listBox.Invalidate(listBox.GetItemRectangle(tag));
 					}
 				}
 			};
@@ -763,18 +763,18 @@ namespace PaviseApp
 			if (e.Index >= 0)
 			{
 				e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-				bool flag = (e.State & DrawItemState.Selected) != 0;
-				int num = ((listBox.Tag is int) ? ((int)listBox.Tag) : (-1));
+				bool valuesMatch = (e.State & DrawItemState.Selected) != 0;
+				int tag = ((listBox.Tag is int) ? ((int)listBox.Tag) : (-1));
 				Rectangle r = Rectangle.Inflate(e.Bounds, -S(4), -S(2));
-				if (flag)
+				if (valuesMatch)
 				{
 					FillRound(e.Graphics, r, S(8), Sel);
 				}
-				else if (e.Index == num)
+				else if (e.Index == tag)
 				{
 					FillRound(e.Graphics, r, S(8), CardHover);
 				}
-				TextRenderer.DrawText(e.Graphics, listBox.Items[e.Index].ToString(), listBox.Font, new Rectangle(e.Bounds.X + S(14), e.Bounds.Y, e.Bounds.Width - S(20), e.Bounds.Height), flag ? Color.White : Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+				TextRenderer.DrawText(e.Graphics, listBox.Items[e.Index].ToString(), listBox.Font, new Rectangle(e.Bounds.X + S(14), e.Bounds.Y, e.Bounds.Width - S(20), e.Bounds.Height), valuesMatch ? Color.White : Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
 			}
 		}
 

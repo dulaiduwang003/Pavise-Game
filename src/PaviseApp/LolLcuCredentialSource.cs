@@ -33,30 +33,30 @@ namespace PaviseApp
 			{
 				return 0L;
 			}
-			long num = 17L;
-			string[] array = new string[3]
+			long numericValue = 17L;
+			string[] textEntries = new string[3]
 			{
 				Path.Combine(lolRoot, "lockfile"),
 				Path.Combine(lolRoot, "LeagueClient", "lockfile"),
 				Path.Combine(lolRoot, "Riot Client", "lockfile")
 			};
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < textEntries.Length; i++)
 			{
 				try
 				{
-					FileInfo fileInfo = new FileInfo(array[i]);
+					FileInfo fileInfo = new FileInfo(textEntries[i]);
 					if (fileInfo.Exists)
 					{
-						num = (num * 31) ^ fileInfo.LastWriteTimeUtc.Ticks;
-						num = (num * 31) ^ fileInfo.Length;
+						numericValue = (numericValue * 31) ^ fileInfo.LastWriteTimeUtc.Ticks;
+						numericValue = (numericValue * 31) ^ fileInfo.Length;
 					}
 				}
 				catch
 				{
 				}
 			}
-			num = (num * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClient");
-			return (num * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClientUx");
+			numericValue = (numericValue * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClient");
+			return (numericValue * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClientUx");
 		}
 
 		private static long CredentialProcessStamp(string lolRoot, string processName)
@@ -70,12 +70,12 @@ namespace PaviseApp
 			{
 				return 0L;
 			}
-			long num = 0L;
-			int num2 = 0;
+			long numericValue = 0L;
+			int credentialProcessStampValue = 0;
 			try
 			{
-				Process[] array = processesByName;
-				foreach (Process process in array)
+				Process[] processesByNameSnapshot = processesByName;
+				foreach (Process process in processesByNameSnapshot)
 				{
 					IntPtr intPtr = IntPtr.Zero;
 					try
@@ -88,10 +88,10 @@ namespace PaviseApp
 							long creation;
 							long cpu;
 							ulong io;
-							if (LolRuntimeProcesses.IsUnder(path, lolRoot) && string.Equals(fileName, processName + ".exe", StringComparison.OrdinalIgnoreCase) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > num)
+							if (LolRuntimeProcesses.IsUnder(path, lolRoot) && string.Equals(fileName, processName + ".exe", StringComparison.OrdinalIgnoreCase) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > numericValue)
 							{
-								num = creation;
-								num2 = process.Id;
+								numericValue = creation;
+								credentialProcessStampValue = process.Id;
 							}
 						}
 					}
@@ -109,8 +109,8 @@ namespace PaviseApp
 			}
 			finally
 			{
-				Process[] array2 = processesByName;
-				foreach (Process process2 in array2)
+				Process[] processesByNameSnapshot2 = processesByName;
+				foreach (Process process2 in processesByNameSnapshot2)
 				{
 					if (process2 != null)
 					{
@@ -124,7 +124,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			return num ^ ((long)num2 << 32);
+			return numericValue ^ ((long)credentialProcessStampValue << 32);
 		}
 
 		public static LolLcuCredentials Find(string lolRoot)
@@ -179,11 +179,11 @@ namespace PaviseApp
 						{
 							string a = Convert.ToString(left["Name"]);
 							string a2 = Convert.ToString(right["Name"]);
-							bool flag = string.Equals(a, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
-							bool flag2 = string.Equals(a2, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
-							if (flag != flag2)
+							bool valuesEqual = string.Equals(a, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
+							bool valuesEqual2 = string.Equals(a2, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
+							if (valuesEqual != valuesEqual2)
 							{
-								if (!flag)
+								if (!valuesEqual)
 								{
 									return 1;
 								}
@@ -241,12 +241,12 @@ namespace PaviseApp
 			fileTimeUtc = 0L;
 			try
 			{
-				string text = Convert.ToString(value);
-				if (string.IsNullOrWhiteSpace(text))
+				string convertText = Convert.ToString(value);
+				if (string.IsNullOrWhiteSpace(convertText))
 				{
 					return false;
 				}
-				fileTimeUtc = ManagementDateTimeConverter.ToDateTime(text).ToUniversalTime().ToFileTimeUtc();
+				fileTimeUtc = ManagementDateTimeConverter.ToDateTime(convertText).ToUniversalTime().ToFileTimeUtc();
 				return fileTimeUtc > 0;
 			}
 			catch
@@ -295,22 +295,22 @@ namespace PaviseApp
 			{
 				seen = new HashSet<string>(StringComparer.Ordinal);
 			}
-			string[] array;
+			string[] cachedLogPathsSnapshot;
 			lock (LogCacheLock)
 			{
 				if (cachedLogPaths != null && DateTime.UtcNow < cachedLogPathsUntilUtc && string.Equals(cachedLogRoot, lolRoot, StringComparison.OrdinalIgnoreCase))
 				{
-					array = cachedLogPaths;
+					cachedLogPathsSnapshot = cachedLogPaths;
 				}
 				else
 				{
-					array = SelectRecentLogPaths(lolRoot, 8);
+					cachedLogPathsSnapshot = SelectRecentLogPaths(lolRoot, 8);
 					cachedLogRoot = lolRoot;
-					cachedLogPaths = array;
+					cachedLogPaths = cachedLogPathsSnapshot;
 					cachedLogPathsUntilUtc = DateTime.UtcNow.AddSeconds(10.0);
 				}
 			}
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < cachedLogPathsSnapshot.Length; i++)
 			{
 				if (probed >= maximumProbes)
 				{
@@ -319,7 +319,7 @@ namespace PaviseApp
 				string content;
 				int port;
 				string token;
-				if (!TryReadHeadAndTail(array[i], 65536, 458752, out content) || !LolCredentialParser.TryParseCommandLine(content, out port, out token))
+				if (!TryReadHeadAndTail(cachedLogPathsSnapshot[i], 65536, 458752, out content) || !LolCredentialParser.TryParseCommandLine(content, out port, out token))
 				{
 					continue;
 				}
@@ -367,15 +367,15 @@ namespace PaviseApp
 			}
 			list.Sort(delegate(FileInfo left, FileInfo right)
 			{
-				int num = right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc);
-				return (num == 0) ? StringComparer.OrdinalIgnoreCase.Compare(left.FullName, right.FullName) : num;
+				int compareToResult = right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc);
+				return (compareToResult == 0) ? StringComparer.OrdinalIgnoreCase.Compare(left.FullName, right.FullName) : compareToResult;
 			});
-			string[] array = new string[list.Count];
+			string[] textEntries = new string[list.Count];
 			for (int j = 0; j < list.Count; j++)
 			{
-				array[j] = list[j].FullName;
+				textEntries[j] = list[j].FullName;
 			}
-			return array;
+			return textEntries;
 		}
 
 		internal static LolLcuCredentials SelectReachable(IList<LolLcuCredentials> candidates, Func<LolLcuCredentials, bool> probe, int maximumProbes, out int probed)
@@ -434,12 +434,12 @@ namespace PaviseApp
 			List<FileInfo> list = new List<FileInfo>(limit);
 			AddRecentLogs(list, Path.Combine(lolRoot, "LeagueClient"), limit);
 			AddRecentLogs(list, Path.Combine(lolRoot, "LeagueClient", "Logs"), limit);
-			string[] array = new string[list.Count];
+			string[] textEntries = new string[list.Count];
 			for (int i = 0; i < list.Count; i++)
 			{
-				array[i] = list[i].FullName;
+				textEntries[i] = list[i].FullName;
 			}
-			return array;
+			return textEntries;
 		}
 
 		private static void AddRecentLogs(List<FileInfo> output, string directory, int limit)
@@ -488,11 +488,11 @@ namespace PaviseApp
 				}
 				using (FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
 				{
-					long num = Math.Max(0L, fileStream.Length - maximumBytes);
-					fileStream.Seek(num, SeekOrigin.Begin);
+					long lowerBound = Math.Max(0L, fileStream.Length - maximumBytes);
+					fileStream.Seek(lowerBound, SeekOrigin.Begin);
 					using (StreamReader streamReader = new StreamReader(fileStream, Encoding.UTF8, true))
 					{
-						if (num > 0)
+						if (lowerBound > 0)
 						{
 							streamReader.ReadLine();
 						}
@@ -518,8 +518,8 @@ namespace PaviseApp
 			{
 				using (FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
 				{
-					long num = (long)headBytes + (long)tailBytes;
-					if (fileStream.Length <= num)
+					long headBytesOffset = (long)headBytes + (long)tailBytes;
+					if (fileStream.Length <= headBytesOffset)
 					{
 						using (StreamReader streamReader = new StreamReader(fileStream, Encoding.UTF8, true))
 						{
@@ -527,17 +527,17 @@ namespace PaviseApp
 						}
 						return true;
 					}
-					byte[] array = new byte[headBytes];
-					int count = ReadAtMost(fileStream, array, array.Length);
+					byte[] rawBytes = new byte[headBytes];
+					int count = ReadAtMost(fileStream, rawBytes, rawBytes.Length);
 					fileStream.Seek(-tailBytes, SeekOrigin.End);
-					byte[] array2 = new byte[tailBytes];
-					int count2 = ReadAtMost(fileStream, array2, array2.Length);
-					string text = Encoding.UTF8.GetString(array, 0, count);
-					if (text.Length > 0 && text[0] == '\ufeff')
+					byte[] rawBytes2 = new byte[tailBytes];
+					int count2 = ReadAtMost(fileStream, rawBytes2, rawBytes2.Length);
+					string stringValue = Encoding.UTF8.GetString(rawBytes, 0, count);
+					if (stringValue.Length > 0 && stringValue[0] == '\ufeff')
 					{
-						text = text.Substring(1);
+						stringValue = stringValue.Substring(1);
 					}
-					content = text + Environment.NewLine + Encoding.UTF8.GetString(array2, 0, count2);
+					content = stringValue + Environment.NewLine + Encoding.UTF8.GetString(rawBytes2, 0, count2);
 					return true;
 				}
 			}
@@ -550,11 +550,11 @@ namespace PaviseApp
 		private static int ReadAtMost(Stream stream, byte[] buffer, int count)
 		{
 			int i;
-			int num;
-			for (i = 0; i < count; i += num)
+			int atMostValue;
+			for (i = 0; i < count; i += atMostValue)
 			{
-				num = stream.Read(buffer, i, count - i);
-				if (num <= 0)
+				atMostValue = stream.Read(buffer, i, count - i);
+				if (atMostValue <= 0)
 				{
 					break;
 				}

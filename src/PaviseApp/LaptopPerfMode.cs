@@ -422,11 +422,11 @@ namespace PaviseApp
 					if (!ReadSnapshot(out value)) return RecoveryFailed();
 					if (sessionReceipt != null && !string.Equals(value, sessionReceipt, StringComparison.Ordinal)) return RecoveryFailed();
 					if (value.Length == 0) return true;
-					string[] array = value.Split('|');
+					string[] valueParts = value.Split('|');
 					int vendorRaw, original;
-					if ((array.Length != 2 && array.Length != 3) || !int.TryParse(array[0], out vendorRaw) || !int.TryParse(array[1], out original) || !KnownMode(vendorRaw, original)) return RecoveryFailed();
+					if ((valueParts.Length != 2 && valueParts.Length != 3) || !int.TryParse(valueParts[0], out vendorRaw) || !int.TryParse(valueParts[1], out original) || !KnownMode(vendorRaw, original)) return RecoveryFailed();
 					int target = PerformanceModeOf((Vendor)vendorRaw);
-					if (array.Length == 3 && (!int.TryParse(array[2], out target) || target != PerformanceModeOf((Vendor)vendorRaw))) return RecoveryFailed();
+					if (valueParts.Length == 3 && (!int.TryParse(valueParts[2], out target) || target != PerformanceModeOf((Vendor)vendorRaw))) return RecoveryFailed();
 					IBackend device = Backend;
 					int current;
 					if (!device.Read(vendorRaw, out current) || current < 0) return RecoveryFailed();

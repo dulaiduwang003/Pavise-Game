@@ -39,8 +39,8 @@ namespace PaviseApp
 						query = IntPtr.Zero;
 						return false;
 					}
-					string text = ((targetPid > 4) ? ("pid_" + targetPid.ToString(CultureInfo.InvariantCulture) + "_*engtype_3D") : "*engtype_3D");
-					if (PdhAddEnglishCounterW(query, "\\GPU Engine(" + text + ")\\Utilization Percentage", IntPtr.Zero, out counter) != 0)
+					string message = ((targetPid > 4) ? ("pid_" + targetPid.ToString(CultureInfo.InvariantCulture) + "_*engtype_3D") : "*engtype_3D");
+					if (PdhAddEnglishCounterW(query, "\\GPU Engine(" + message + ")\\Utilization Percentage", IntPtr.Zero, out counter) != 0)
 					{
 						Close();
 						return false;
@@ -165,40 +165,40 @@ namespace PaviseApp
 			IntPtr query = IntPtr.Zero;
 			try
 			{
-				uint num = PdhOpenQueryW(null, IntPtr.Zero, out query);
-				if (num != 0 || query == IntPtr.Zero)
+				uint pdhOpenQueryWResult = PdhOpenQueryW(null, IntPtr.Zero, out query);
+				if (pdhOpenQueryWResult != 0 || query == IntPtr.Zero)
 				{
 					if (diagnostics != null)
 					{
-						diagnostics.Failure("PdhOpenQuery", num);
+						diagnostics.Failure("PdhOpenQuery", pdhOpenQueryWResult);
 					}
 					return null;
 				}
 				IntPtr counter;
-				num = PdhAddEnglishCounterW(query, "\\GPU Engine(*engtype_3D)\\Utilization Percentage", IntPtr.Zero, out counter);
-				if (num != 0)
+				pdhOpenQueryWResult = PdhAddEnglishCounterW(query, "\\GPU Engine(*engtype_3D)\\Utilization Percentage", IntPtr.Zero, out counter);
+				if (pdhOpenQueryWResult != 0)
 				{
 					if (diagnostics != null)
 					{
-						diagnostics.Failure("PdhAddEnglishCounter", num);
+						diagnostics.Failure("PdhAddEnglishCounter", pdhOpenQueryWResult);
 					}
 					return null;
 				}
-				num = PdhCollectQueryData(query);
-				if (IsUnavailableObservation(num))
+				pdhOpenQueryWResult = PdhCollectQueryData(query);
+				if (IsUnavailableObservation(pdhOpenQueryWResult))
 				{
-					if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.prime", num);
+					if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.prime", pdhOpenQueryWResult);
 				}
-				else if (num != 0)
+				else if (pdhOpenQueryWResult != 0)
 				{
 					if (diagnostics != null)
 					{
-						diagnostics.Failure("PdhCollectQueryData.prime", num);
+						diagnostics.Failure("PdhCollectQueryData.prime", pdhOpenQueryWResult);
 					}
 					return null;
 				}
 				Dictionary<int, double> dictionary = null;
-				int num2 = 0;
+				int processedCount = 0;
 				bool failedRound = false;
 				for (int i = 0; i < rounds; i++)
 				{
@@ -207,19 +207,19 @@ namespace PaviseApp
 						break;
 					}
 					Thread.Sleep(intervalMs);
-					num = PdhCollectQueryData(query);
-					if (IsUnavailableObservation(num))
+					pdhOpenQueryWResult = PdhCollectQueryData(query);
+					if (IsUnavailableObservation(pdhOpenQueryWResult))
 					{
-						if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.sample", num);
+						if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.sample", pdhOpenQueryWResult);
 						if (dictionary == null || sustained) dictionary = new Dictionary<int, double>();
 						continue;
 					}
-					if (num != 0)
+					if (pdhOpenQueryWResult != 0)
 					{
 						failedRound = true;
 						if (diagnostics != null)
 						{
-							diagnostics.Failure("PdhCollectQueryData.sample", num);
+							diagnostics.Failure("PdhCollectQueryData.sample", pdhOpenQueryWResult);
 						}
 						continue;
 					}
@@ -233,7 +233,7 @@ namespace PaviseApp
 						failedRound = true;
 						continue;
 					}
-					num2++;
+					processedCount++;
 					if (diagnostics != null)
 					{
 						diagnostics.ValidRounds++;
@@ -266,7 +266,7 @@ namespace PaviseApp
 						}
 					}
 				}
-				if (sustained && num2 < 2)
+				if (sustained && processedCount < 2)
 				{
 					return dictionary == null || failedRound ? null : new Dictionary<int, double>();
 				}
@@ -299,44 +299,44 @@ namespace PaviseApp
 		{
 			uint bufferSize = 0u;
 			uint itemCount = 0u;
-			uint num = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
-			if (num == 0 && itemCount == 0) return new Dictionary<int, double>();
-			if (IsUnavailableObservation(num))
+			uint pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
+			if (pdhGetFormattedCounterArrayWResult == 0 && itemCount == 0) return new Dictionary<int, double>();
+			if (IsUnavailableObservation(pdhGetFormattedCounterArrayWResult))
 			{
-				if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.size", num);
+				if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.size", pdhGetFormattedCounterArrayWResult);
 				return new Dictionary<int, double>();
 			}
-			if (num != 2147485650u || bufferSize == 0)
+			if (pdhGetFormattedCounterArrayWResult != 2147485650u || bufferSize == 0)
 			{
 				if (diagnostics != null)
 				{
-					diagnostics.Failure("PdhGetFormattedCounterArray.size", num);
+					diagnostics.Failure("PdhGetFormattedCounterArray.size", pdhGetFormattedCounterArrayWResult);
 				}
 				return null;
 			}
 			IntPtr intPtr = Marshal.AllocHGlobal((int)bufferSize);
 			try
 			{
-				num = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
-				if (IsUnavailableObservation(num))
+				pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
+				if (IsUnavailableObservation(pdhGetFormattedCounterArrayWResult))
 				{
-					if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.data", num);
+					if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.data", pdhGetFormattedCounterArrayWResult);
 					return new Dictionary<int, double>();
 				}
-				if (num != 0)
+				if (pdhGetFormattedCounterArrayWResult != 0)
 				{
 					if (diagnostics != null)
 					{
-						diagnostics.Failure("PdhGetFormattedCounterArray.data", num);
+						diagnostics.Failure("PdhGetFormattedCounterArray.data", pdhGetFormattedCounterArrayWResult);
 					}
 					return null;
 				}
 				Dictionary<int, double> dictionary = new Dictionary<int, double>();
 				bool observed = itemCount == 0, failedInstance = false;
-				int num2 = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
-				for (uint num3 = 0u; num3 < itemCount; num3++)
+				int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
+				for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
 				{
-					PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + num3 * num2), typeof(PdhFmtCounterValueItem));
+					PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
 					if (IsUnavailableObservation(pdhFmtCounterValueItem.Value.CStatus))
 					{
 						observed = true;
@@ -346,12 +346,12 @@ namespace PaviseApp
 					if (pdhFmtCounterValueItem.Value.CStatus <= 1) observed = true;
 					else failedInstance = true;
 					string instanceName = Marshal.PtrToStringUni(pdhFmtCounterValueItem.Name);
-					int num4 = ParsePid(instanceName);
+					int pid = ParsePid(instanceName);
 					if (diagnostics != null)
 					{
 						diagnostics.Instances++;
 					}
-					if (diagnostics != null && num4 > 0 && num4 == diagnostics.TargetPid)
+					if (diagnostics != null && pid > 0 && pid == diagnostics.TargetPid)
 					{
 						diagnostics.TargetInstances++;
 						if (pdhFmtCounterValueItem.Value.CStatus > 1)
@@ -371,7 +371,7 @@ namespace PaviseApp
 							diagnostics.Failure("counter.CStatus", pdhFmtCounterValueItem.Value.CStatus);
 						}
 					}
-					else if (num4 <= 0)
+					else if (pid <= 0)
 					{
 						if (diagnostics != null)
 						{
@@ -384,8 +384,8 @@ namespace PaviseApp
 						if (!(doubleValue < 0.0))
 						{
 							double value;
-							dictionary.TryGetValue(num4, out value);
-							dictionary[num4] = value + doubleValue;
+							dictionary.TryGetValue(pid, out value);
+							dictionary[pid] = value + doubleValue;
 						}
 					}
 				}
@@ -407,13 +407,13 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = instanceName.IndexOf('_', 4);
-			if (num <= 4)
+			int matchIndex = instanceName.IndexOf('_', 4);
+			if (matchIndex <= 4)
 			{
 				return 0;
 			}
 			int result;
-			if (!int.TryParse(instanceName.Substring(4, num - 4), out result) || result <= 0)
+			if (!int.TryParse(instanceName.Substring(4, matchIndex - 4), out result) || result <= 0)
 			{
 				return 0;
 			}
@@ -429,47 +429,47 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = instanceName.ToLowerInvariant();
-			int num = text.IndexOf("_luid_", StringComparison.Ordinal);
-			if (num < 0)
+			string toLowerInvariantResult = instanceName.ToLowerInvariant();
+			int matchIndex = toLowerInvariantResult.IndexOf("_luid_", StringComparison.Ordinal);
+			if (matchIndex < 0)
 			{
 				return false;
 			}
-			int num2 = num + 6;
-			int num3 = text.IndexOf('_', num2);
-			if (num3 <= num2)
+			int matchIndexOffset = matchIndex + 6;
+			int matchIndex2 = toLowerInvariantResult.IndexOf('_', matchIndexOffset);
+			if (matchIndex2 <= matchIndexOffset)
 			{
 				return false;
 			}
-			int num4 = text.IndexOf('_', num3 + 1);
-			if (num4 <= num3 + 1)
+			int matchIndex3 = toLowerInvariantResult.IndexOf('_', matchIndex2 + 1);
+			if (matchIndex3 <= matchIndex2 + 1)
 			{
 				return false;
 			}
-			if (!TryParseHex(text.Substring(num2, num3 - num2), out luidLow))
+			if (!TryParseHex(toLowerInvariantResult.Substring(matchIndexOffset, matchIndex2 - matchIndexOffset), out luidLow))
 			{
 				return false;
 			}
 			luidHigh = (int)luidLow;
 			uint value;
-			if (!TryParseHex(text.Substring(num3 + 1, num4 - num3 - 1), out value))
+			if (!TryParseHex(toLowerInvariantResult.Substring(matchIndex2 + 1, matchIndex3 - matchIndex2 - 1), out value))
 			{
 				return false;
 			}
 			luidLow = value;
-			int num5 = text.IndexOf("_phys_", num4, StringComparison.Ordinal);
-			if (num5 < 0)
+			int matchIndex4 = toLowerInvariantResult.IndexOf("_phys_", matchIndex3, StringComparison.Ordinal);
+			if (matchIndex4 < 0)
 			{
 				return false;
 			}
-			int num6 = num5 + 6;
-			int num7 = text.IndexOf('_', num6);
-			if (num7 <= num6)
+			int matchIndex4Offset = matchIndex4 + 6;
+			int matchIndex5 = toLowerInvariantResult.IndexOf('_', matchIndex4Offset);
+			if (matchIndex5 <= matchIndex4Offset)
 			{
 				return false;
 			}
 			uint result;
-			if (!uint.TryParse(text.Substring(num6, num7 - num6), out result))
+			if (!uint.TryParse(toLowerInvariantResult.Substring(matchIndex4Offset, matchIndex5 - matchIndex4Offset), out result))
 			{
 				return false;
 			}
@@ -484,19 +484,19 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = (token.StartsWith("0x", StringComparison.Ordinal) ? token.Substring(2) : token);
-			if (text.Length == 0 || text.Length > 8)
+			string substringResult = (token.StartsWith("0x", StringComparison.Ordinal) ? token.Substring(2) : token);
+			if (substringResult.Length == 0 || substringResult.Length > 8)
 			{
 				return false;
 			}
-			uint num = 0u;
-			string text2 = text;
-			foreach (char c in text2)
+			uint numericValue = 0u;
+			string message = substringResult;
+			foreach (char c in message)
 			{
-				int num2;
+				int remainingC;
 				if (c >= '0' && c <= '9')
 				{
-					num2 = c - 48;
+					remainingC = c - 48;
 				}
 				else
 				{
@@ -504,11 +504,11 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					num2 = c - 97 + 10;
+					remainingC = c - 97 + 10;
 				}
-				num = (num << 4) | (uint)num2;
+				numericValue = (numericValue << 4) | (uint)remainingC;
 			}
-			value = num;
+			value = numericValue;
 			return true;
 		}
 
@@ -564,8 +564,8 @@ namespace PaviseApp
 		{
 			uint bufferSize = 0u;
 			uint itemCount = 0u;
-			uint num = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
-			if (num != 2147485650u || bufferSize == 0)
+			uint pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
+			if (pdhGetFormattedCounterArrayWResult != 2147485650u || bufferSize == 0)
 			{
 				return null;
 			}
@@ -577,10 +577,10 @@ namespace PaviseApp
 					return null;
 				}
 				Dictionary<long, RenderAdapter> dictionary = new Dictionary<long, RenderAdapter>();
-				int num2 = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
-				for (uint num3 = 0u; num3 < itemCount; num3++)
+				int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
+				for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
 				{
-					PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + num3 * num2), typeof(PdhFmtCounterValueItem));
+					PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
 					if (pdhFmtCounterValueItem.Value.CStatus > 1)
 					{
 						continue;
@@ -593,12 +593,12 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					double num4 = pdhFmtCounterValueItem.Value.DoubleValue;
-					if (!double.IsNaN(num4) && !double.IsInfinity(num4))
+					double utilValue = pdhFmtCounterValueItem.Value.DoubleValue;
+					if (!double.IsNaN(utilValue) && !double.IsInfinity(utilValue))
 					{
-						if (num4 < 0.0)
+						if (utilValue < 0.0)
 						{
-							num4 = 0.0;
+							utilValue = 0.0;
 						}
 						long key = ((long)luidHigh << 32) | luidLow;
 						RenderAdapter value;
@@ -610,7 +610,7 @@ namespace PaviseApp
 							renderAdapter.PhysIndex = phys;
 							value = (dictionary[key] = renderAdapter);
 						}
-						value.Util += num4;
+						value.Util += utilValue;
 					}
 				}
 				if (dictionary.Count == 0)

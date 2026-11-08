@@ -27,10 +27,10 @@ namespace PaviseApp
 
 		protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
 		{
-			int num = Theme.S(12);
+			int left = Theme.S(12);
 			using (Pen pen = new Pen(Theme.Stroke))
 			{
-				e.Graphics.DrawLine(pen, num, e.Item.Height / 2, e.Item.Width - num, e.Item.Height / 2);
+				e.Graphics.DrawLine(pen, left, e.Item.Height / 2, e.Item.Width - left, e.Item.Height / 2);
 			}
 		}
 
@@ -64,10 +64,10 @@ namespace PaviseApp
 				return;
 			}
 			Font font = DsType.MonoFor(DsMono.Badge, menuBadge.Text);
-			int num = DsPaint.BadgeWidth(graphics, menuBadge.Text, font);
-			int num2 = Theme.S(17);
-			Rectangle pill = new Rectangle(bounds.Right - num, (e.Item.Height - num2) / 2, num, num2);
-			bounds.Width -= num + Theme.S(8);
+			int badgeWidthResult = DsPaint.BadgeWidth(graphics, menuBadge.Text, font);
+			int scaledDimension = Theme.S(17);
+			Rectangle pill = new Rectangle(bounds.Right - badgeWidthResult, (e.Item.Height - scaledDimension) / 2, badgeWidthResult, scaledDimension);
+			bounds.Width -= badgeWidthResult + Theme.S(8);
 			TextRenderer.DrawText(graphics, e.Text, e.TextFont, bounds, e.TextColor, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			DsPaint.Badge(graphics, pill, menuBadge.Text, font, menuBadge.Strong);
 		}

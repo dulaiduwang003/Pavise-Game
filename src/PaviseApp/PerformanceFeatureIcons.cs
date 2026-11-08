@@ -109,10 +109,10 @@ namespace PaviseApp
 		{
 			get
 			{
-				string[] array = new string[Designs.Count];
-				Designs.Keys.CopyTo(array, 0);
-				Array.Sort(array, StringComparer.Ordinal);
-				return array;
+				string[] textEntries = new string[Designs.Count];
+				Designs.Keys.CopyTo(textEntries, 0);
+				Array.Sort(textEntries, StringComparer.Ordinal);
+				return textEntries;
 			}
 		}
 
@@ -136,9 +136,9 @@ namespace PaviseApp
 			try
 			{
 				g.SetClip(bounds, CombineMode.Intersect);
-				float num = (float)Math.Min(bounds.Width, bounds.Height) / 32f;
-				g.TranslateTransform((float)bounds.Left + ((float)bounds.Width - 32f * num) / 2f, (float)bounds.Top + ((float)bounds.Height - 32f * num) / 2f);
-				g.ScaleTransform(num, num);
+				float minRatio = (float)Math.Min(bounds.Width, bounds.Height) / 32f;
+				g.TranslateTransform((float)bounds.Left + ((float)bounds.Width - 32f * minRatio) / 2f, (float)bounds.Top + ((float)bounds.Height - 32f * minRatio) / 2f);
+				g.ScaleTransform(minRatio, minRatio);
 				g.SmoothingMode = SmoothingMode.AntiAlias;
 				g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 				using (Pen pen = new Pen(ink, 1.65f))
@@ -288,28 +288,28 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string text = key.Trim();
-			if (Designs.ContainsKey(text))
+			string keyTrimmed = key.Trim();
+			if (Designs.ContainsKey(keyTrimmed))
 			{
-				return text;
+				return keyTrimmed;
 			}
 			string value;
-			if (Aliases.TryGetValue(text, out value))
+			if (Aliases.TryGetValue(keyTrimmed, out value))
 			{
 				return value;
 			}
 			string[] controlPrefixes = ControlPrefixes;
-			foreach (string text2 in controlPrefixes)
+			foreach (string entryText in controlPrefixes)
 			{
-				if (text.StartsWith(text2, StringComparison.OrdinalIgnoreCase))
+				if (keyTrimmed.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
 				{
-					text = text.Substring(text2.Length);
+					keyTrimmed = keyTrimmed.Substring(entryText.Length);
 					break;
 				}
 			}
-			if (!Aliases.TryGetValue(text, out value))
+			if (!Aliases.TryGetValue(keyTrimmed, out value))
 			{
-				return text;
+				return keyTrimmed;
 			}
 			return value;
 		}
@@ -819,14 +819,14 @@ namespace PaviseApp
 
 		private static void Poly(Graphics g, Pen p, params float[] coordinates)
 		{
-			PointF[] array = new PointF[coordinates.Length / 2];
-			for (int i = 0; i < array.Length; i++)
+			PointF[] pointFItems = new PointF[coordinates.Length / 2];
+			for (int i = 0; i < pointFItems.Length; i++)
 			{
-				array[i] = new PointF(coordinates[i * 2], coordinates[i * 2 + 1]);
+				pointFItems[i] = new PointF(coordinates[i * 2], coordinates[i * 2 + 1]);
 			}
-			if (array.Length > 1)
+			if (pointFItems.Length > 1)
 			{
-				g.DrawLines(p, array);
+				g.DrawLines(p, pointFItems);
 			}
 		}
 
@@ -840,22 +840,22 @@ namespace PaviseApp
 			Cut(g, p, x, y, w, h, 2f);
 			for (int i = 1; i <= 3; i++)
 			{
-				float num = x + w * (float)i / 4f;
-				float num2 = y + h * (float)i / 4f;
-				Line(g, p, num, y - 3f, num, y);
-				Line(g, p, num, y + h, num, y + h + 3f);
-				Line(g, p, x - 3f, num2, x, num2);
-				Line(g, p, x + w, num2, x + w + 3f, num2);
+				float xOffset = x + w * (float)i / 4f;
+				float yOffset = y + h * (float)i / 4f;
+				Line(g, p, xOffset, y - 3f, xOffset, y);
+				Line(g, p, xOffset, y + h, xOffset, y + h + 3f);
+				Line(g, p, x - 3f, yOffset, x, yOffset);
+				Line(g, p, x + w, yOffset, x + w + 3f, yOffset);
 			}
 		}
 
 		private static void Memory(Graphics g, Pen p, float x, float y, float w, float h)
 		{
 			Cut(g, p, x, y, w, h, 1.5f);
-			float num = Math.Min(h * 0.4f, w / 5f);
+			float width = Math.Min(h * 0.4f, w / 5f);
 			for (int i = 0; i < 3; i++)
 			{
-				g.DrawRectangle(p, x + w * (float)(i + 1) / 4f - num / 2f, y + h * 0.25f, num, num);
+				g.DrawRectangle(p, x + w * (float)(i + 1) / 4f - width / 2f, y + h * 0.25f, width, width);
 			}
 			for (int j = 1; j < 5; j++)
 			{
@@ -866,8 +866,8 @@ namespace PaviseApp
 		private static void Gpu(Graphics g, Pen p, float x, float y, float w, float h)
 		{
 			Cut(g, p, x, y, w, h, 2f);
-			float num = h * 0.55f;
-			g.DrawEllipse(p, x + w * 0.3f - num / 2f, y + (h - num) / 2f, num, num);
+			float width = h * 0.55f;
+			g.DrawEllipse(p, x + w * 0.3f - width / 2f, y + (h - width) / 2f, width, width);
 			Line(g, p, x + w * 0.67f, y + 4f, x + w * 0.67f, y + h - 4f);
 			Line(g, p, x + w * 0.83f, y + 4f, x + w * 0.83f, y + h - 4f);
 			Line(g, p, x + 3f, y + h + 2f, x + w - 3f, y + h + 2f);
@@ -916,11 +916,11 @@ namespace PaviseApp
 		private static void Arrow(Graphics g, Pen p, float x1, float y1, float x2, float y2)
 		{
 			Line(g, p, x1, y1, x2, y2);
-			double num = Math.Atan2(y2 - y1, x2 - x1);
+			double atan2Result = Math.Atan2(y2 - y1, x2 - x1);
 			for (int i = -1; i <= 1; i += 2)
 			{
-				double num2 = num + (double)i * Math.PI * 0.75;
-				Line(g, p, x2, y2, x2 + (float)Math.Cos(num2) * 4f, y2 + (float)Math.Sin(num2) * 4f);
+				double atan2ResultOffset = atan2Result + (double)i * Math.PI * 0.75;
+				Line(g, p, x2, y2, x2 + (float)Math.Cos(atan2ResultOffset) * 4f, y2 + (float)Math.Sin(atan2ResultOffset) * 4f);
 			}
 		}
 
@@ -942,14 +942,14 @@ namespace PaviseApp
 
 		private static void Gear(Graphics g, Pen p, float x, float y, float radius)
 		{
-			PointF[] array = new PointF[32];
-			for (int i = 0; i < array.Length; i++)
+			PointF[] pointFItems = new PointF[32];
+			for (int i = 0; i < pointFItems.Length; i++)
 			{
-				double num = (double)i * Math.PI / 16.0;
-				float num2 = radius * ((i % 4 < 2) ? 1f : 0.78f);
-				array[i] = new PointF(x + (float)Math.Cos(num) * num2, y + (float)Math.Sin(num) * num2);
+				double ratio = (double)i * Math.PI / 16.0;
+				float scaledRadius = radius * ((i % 4 < 2) ? 1f : 0.78f);
+				pointFItems[i] = new PointF(x + (float)Math.Cos(ratio) * scaledRadius, y + (float)Math.Sin(ratio) * scaledRadius);
 			}
-			g.DrawPolygon(p, array);
+			g.DrawPolygon(p, pointFItems);
 			g.DrawEllipse(p, x - radius * 0.3f, y - radius * 0.3f, radius * 0.6f, radius * 0.6f);
 		}
 
@@ -1005,10 +1005,10 @@ namespace PaviseApp
 		{
 			for (int i = 0; i < 3; i++)
 			{
-				double num = (double)i * Math.PI / 3.0;
-				float num2 = (float)Math.Cos(num) * radius;
-				float num3 = (float)Math.Sin(num) * radius;
-				Line(g, p, x - num2, y - num3, x + num2, y + num3);
+				double ratio = (double)i * Math.PI / 3.0;
+				float scaledCos = (float)Math.Cos(ratio) * radius;
+				float scaledSin = (float)Math.Sin(ratio) * radius;
+				Line(g, p, x - scaledCos, y - scaledSin, x + scaledCos, y + scaledSin);
 			}
 		}
 

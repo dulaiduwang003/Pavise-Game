@@ -22,19 +22,19 @@ namespace PaviseApp
 		private void BuildAuditPage()
 		{
 			Native.Dark(pageAudit);
-			int num = PageHeader(pageAudit, Lang.T("nav.audit"), Lang.T("audit.sub"), 2, false);
+			int pageHeaderResult = PageHeader(pageAudit, Lang.T("nav.audit"), Lang.T("audit.sub"), 2, false);
 			btnAuditRun = new PillButton(Lang.F("audit.rerun", 120), BtnKind.Primary);
-			btnAuditRun.SetBounds(Theme.S(30), Theme.S(num), Theme.S(150), Theme.S(34));
+			btnAuditRun.SetBounds(Theme.S(30), Theme.S(pageHeaderResult), Theme.S(150), Theme.S(34));
 			btnAuditRun.Click += delegate
 			{
 				StartAudit();
 			};
 			pageAudit.Controls.Add(btnAuditRun);
-			int num2 = 158;
-			int num3 = 150;
-			lblAuditStatus = CardLabel(pageAudit, "", 30 + num2, num + 8, ContentW - num2 - num3 - 12, 20, 8f, false, Theme.Dim);
+			int auditPageValue = 158;
+			int auditPageValue2 = 150;
+			lblAuditStatus = CardLabel(pageAudit, "", 30 + auditPageValue, pageHeaderResult + 8, ContentW - auditPageValue - auditPageValue2 - 12, 20, 8f, false, Theme.Dim);
 			btnAuditFixAll = new PillButton(Lang.T("audit.fixall.none"), BtnKind.Primary);
-			btnAuditFixAll.SetBounds(Theme.S(30 + ContentW - num3), Theme.S(num), Theme.S(num3), Theme.S(34));
+			btnAuditFixAll.SetBounds(Theme.S(30 + ContentW - auditPageValue2), Theme.S(pageHeaderResult), Theme.S(auditPageValue2), Theme.S(34));
 			btnAuditFixAll.Enabled = false;
 			btnAuditFixAll.Click += delegate
 			{
@@ -52,16 +52,16 @@ namespace PaviseApp
 				auditScan.ReportProgress(0f, Lang.T("irqcheck.dialog.stopping"));
 			};
 			pageAudit.Controls.Add(btnAuditCancel);
-			num += 44;
+			pageHeaderResult += 44;
 			auditScroll = new DBPanel();
-			auditScroll.SetBounds(Theme.S(20), Theme.S(num), Theme.S(PageW - 40), Theme.S(Math.Max(180, PageH - num - 8)));
+			auditScroll.SetBounds(Theme.S(20), Theme.S(pageHeaderResult), Theme.S(PageW - 40), Theme.S(Math.Max(180, PageH - pageHeaderResult - 8)));
 			auditScroll.BackColor = Theme.Bg;
 			auditScroll.AutoScroll = true;
 			auditScroll.Visible = false;
 			Native.Dark(auditScroll);
 			pageAudit.Controls.Add(auditScroll);
 			auditScan = new ScanView();
-			auditScan.SetBounds(Theme.S(30), Theme.S(num + 6), Theme.S(ContentW), Theme.S(Math.Max(380, PageH - num - 20)));
+			auditScan.SetBounds(Theme.S(30), Theme.S(pageHeaderResult + 6), Theme.S(ContentW), Theme.S(Math.Max(380, PageH - pageHeaderResult - 20)));
 			pageAudit.Controls.Add(auditScan);
 			btnAuditStart = new PillButton(Lang.T("audit.start"), BtnKind.Primary);
 			btnAuditStart.Bg = Theme.Card;
@@ -181,30 +181,30 @@ namespace PaviseApp
 		}
 		private void BuildPerformanceSystemOptions(Control scroll, ref int sy)
 		{
-			PerformanceRestartScope[] array = new PerformanceRestartScope[3]
+			PerformanceRestartScope[] performanceRestartScopeItems = new PerformanceRestartScope[3]
 			{
 				PerformanceRestartScope.None,
 				PerformanceRestartScope.ProcessRestart,
 				PerformanceRestartScope.SystemRestart
 			};
-			foreach (PerformanceRestartScope performanceRestartScope in array)
+			foreach (PerformanceRestartScope performanceRestartScope in performanceRestartScopeItems)
 			{
-				bool flag = false;
+				bool performanceSystemOptionsReady = false;
 				PrivacyAction[] all = PrivacyActionCatalog.All;
 				foreach (PrivacyAction privacyAction in all)
 				{
 					if (privacyAction.Key != PrivacyActionCatalog.BackgroundGlobal && PerformanceRestartFor(privacyAction.Key) == performanceRestartScope)
 					{
-						flag = true;
+						performanceSystemOptionsReady = true;
 						break;
 					}
 				}
-				bool flag2 = PerformanceRestartFor("NvLowLat") == performanceRestartScope;
-				if (flag || flag2 || performanceRestartScope == PerformanceRestartScope.SystemRestart || performanceRestartScope == PerformanceRestartScope.None)
+				bool matchesPerformanceRestartFor = PerformanceRestartFor("NvLowLat") == performanceRestartScope;
+				if (performanceSystemOptionsReady || matchesPerformanceRestartFor || performanceRestartScope == PerformanceRestartScope.SystemRestart || performanceRestartScope == PerformanceRestartScope.None)
 				{
 					AddAutomationSection(scroll, ref sy, PerformanceScopeTitle(performanceRestartScope), performanceRestartScope);
 					if (performanceRestartScope == PerformanceRestartScope.None) BuildPerformanceQuantumEnvironment(scroll, ref sy);
-					if (flag2)
+					if (matchesPerformanceRestartFor)
 					{
 						swGameLowLatency = MakeSwitch(PerformancePolicy.GameLowLatency, OnGameLowLatencyToggle);
 						swGameLowLatency.Name = "environmentGameLowLatency";
@@ -220,7 +220,7 @@ namespace PaviseApp
 						BuildPerformanceStorageEnvironment(scroll, ref sy);
 						BuildEnvironmentTimerOptions(scroll, ref sy);
 					}
-					if (flag)
+					if (performanceSystemOptionsReady)
 					{
 						PrivacyOptionsPanel privacyOptionsPanel = BuildEnvironmentPrivacy(scroll, performanceRestartScope);
 						if (performanceRestartScope == PerformanceRestartScope.SystemRestart && scroll is PerformanceFeatureGrid)
@@ -296,10 +296,10 @@ namespace PaviseApp
 			}
 			if (PerformanceRestartFor("AmdSam") == scope)
 			{
-				bool flag = Settings.LoadCached("AmdSamByPavise", false);
-				swAmdSam = MakeSwitch(flag, OnAmdSamToggle);
+				bool enabledValue = Settings.LoadCached("AmdSamByPavise", false);
+				swAmdSam = MakeSwitch(enabledValue, OnAmdSamToggle);
 				swAmdSam.Name = "environmentAmdSam";
-				swAmdSam.Enabled = flag;
+				swAmdSam.Enabled = enabledValue;
 				cardAmdSam = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdsam"), PerformanceGraphicsDetail("AmdSam"), swAmdSam, out used);
 				sy += used + 8;
 			}
@@ -347,10 +347,10 @@ namespace PaviseApp
 			swEnvironmentGameDvr = MakeSwitch(gameMode.KillGameDvr, OnEnvironmentGameDvrToggle);
 			swEnvironmentGameDvr.Name = "environmentGameDvrOff";
 			swEnvironmentGameDvr.AccessibleName = Lang.T("set.dvr");
-			string text = PerformanceRecordingDetail();
-			swEnvironmentGameDvr.AccessibleDescription = text;
+			string accessibleDescriptionValue = PerformanceRecordingDetail();
+			swEnvironmentGameDvr.AccessibleDescription = accessibleDescriptionValue;
 			int used;
-			cardEnvironmentGameDvr = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(text, ScrollContentW, swEnvironmentGameDvr, 88), Lang.T("set.dvr"), text, swEnvironmentGameDvr, out used);
+			cardEnvironmentGameDvr = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(accessibleDescriptionValue, ScrollContentW, swEnvironmentGameDvr, 88), Lang.T("set.dvr"), accessibleDescriptionValue, swEnvironmentGameDvr, out used);
 			cardEnvironmentGameDvr.Height += Theme.S(17);
 			y += used + 17 + 8;
 			SyncEnvironmentGameDvr();
@@ -371,16 +371,16 @@ namespace PaviseApp
 		private void BuildPerformanceQuantumEnvironment(Control parent, ref int y)
 		{
 			PerformanceAction performanceAction = PerformanceActionCatalog.Find("EnvQuantumProfileV1");
-			string text = performanceAction.Title;
-			string text2 = AutoText("游戏/日常选短可变 3:1，后台计算选长固定 1:1；比例不是帧率倍数。优先在线应用和恢复，系统拒绝或原值无法在线还原时提示重启电脑。“恢复原配置”也撤销旧版校正。", "Use short variable 3:1 for games/daily use or long fixed 1:1 for background work; these are turn ratios, not FPS multipliers. Apply and restore online where supported; a PC restart is shown if Windows rejects the update or the original cannot be restored online. Restore original also undoes legacy corrections.");
+			string accessibleNameValue = performanceAction.Title;
+			string accessibleDescriptionValue = AutoText("游戏/日常选短可变 3:1，后台计算选长固定 1:1；比例不是帧率倍数。优先在线应用和恢复，系统拒绝或原值无法在线还原时提示重启电脑。“恢复原配置”也撤销旧版校正。", "Use short variable 3:1 for games/daily use or long fixed 1:1 for background work; these are turn ratios, not FPS multipliers. Apply and restore online where supported; a PC restart is shown if Windows rejects the update or the original cannot be restored online. Restore original also undoes legacy corrections.");
 			int used;
 			swPerformanceEnvironmentQuantum = new QuantumProfilePicker();
 			swPerformanceEnvironmentQuantum.SetSilently(0);
 			swPerformanceEnvironmentQuantum.SelectionChanged += ChangePerformanceTuningQuantum;
 			swPerformanceEnvironmentQuantum.Name = "environment" + performanceAction.Key;
-			swPerformanceEnvironmentQuantum.AccessibleName = text;
-			swPerformanceEnvironmentQuantum.AccessibleDescription = text2;
-			cardPerformanceEnvironmentQuantum = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(text2, ScrollContentW, swPerformanceEnvironmentQuantum, 88), text, text2, swPerformanceEnvironmentQuantum, out used);
+			swPerformanceEnvironmentQuantum.AccessibleName = accessibleNameValue;
+			swPerformanceEnvironmentQuantum.AccessibleDescription = accessibleDescriptionValue;
+			cardPerformanceEnvironmentQuantum = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(accessibleDescriptionValue, ScrollContentW, swPerformanceEnvironmentQuantum, 88), accessibleNameValue, accessibleDescriptionValue, swPerformanceEnvironmentQuantum, out used);
 			cardPerformanceEnvironmentQuantum.Height += Theme.S(17);
 			y += used + 17 + 8;
 			SyncPerformanceTuningEnvironment();
@@ -411,12 +411,12 @@ namespace PaviseApp
 			{
 				Name = "GameExitGracePicker"
 			};
-			string[] array = new string[exitGraceChoices.Length];
+			string[] labelsValue = new string[exitGraceChoices.Length];
 			for (int i = 0; i < exitGraceChoices.Length; i++)
 			{
-				array[i] = Lang.F("set.exitgrace.seconds", exitGraceChoices[i]);
+				labelsValue[i] = Lang.F("set.exitgrace.seconds", exitGraceChoices[i]);
 			}
-			pickExitGrace.Labels = array;
+			pickExitGrace.Labels = labelsValue;
 			pickExitGrace.Index = Array.IndexOf(exitGraceChoices, gameMode.ExitGraceSeconds);
 			pickExitGrace.Size = new Size(Theme.S(404), Theme.S(40));
 			pickExitGrace.IndexChanged = delegate(int index)

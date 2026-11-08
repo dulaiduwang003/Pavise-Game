@@ -106,12 +106,12 @@ namespace PaviseApp
 			internal byte[] ReadClosedManifest()
 			{
 				SpiOwnerRecord spiOwnerRecord = RecordForEvidence(true);
-				byte[] array = owner.store.ReadClosure(Stamp);
-				if (array == null || SpiOwnerRecord.Digest(array) != spiOwnerRecord.ClosureDigest)
+				byte[] closure = owner.store.ReadClosure(Stamp);
+				if (closure == null || SpiOwnerRecord.Digest(closure) != spiOwnerRecord.ClosureDigest)
 				{
 					throw new InvalidDataException("SPI closed manifest is missing or changed");
 				}
-				return array;
+				return closure;
 			}
 
 			public void Dispose()
@@ -198,13 +198,13 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Legacy upgrade cannot repair an existing or interrupted initialized owner");
 				}
-				bool flag = Directory.Exists(directoryName);
-				if (flag && !SpiOwnerRecord.Equal(store.ReadLegacy("legacy-migration.tsv"), proof.Migration.Manifest))
+				bool existsSucceeded = Directory.Exists(directoryName);
+				if (existsSucceeded && !SpiOwnerRecord.Equal(store.ReadLegacy("legacy-migration.tsv"), proof.Migration.Manifest))
 				{
 					throw new InvalidDataException("Existing canonical directory is not this exact upgrade transaction");
 				}
 				proof.Migration.RequireAllCurrent();
-				if (!flag)
+				if (!existsSucceeded)
 				{
 					Directory.CreateDirectory(directoryName);
 					NoReparse.CheckPath(directoryName);
@@ -254,15 +254,15 @@ namespace PaviseApp
 				{
 					return;
 				}
-				bool flag = false;
+				bool finishLegacyMetadataFromMainReady = false;
 				foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
 				{
 					if (item.Id == "MatchVisualEffectsV1" && string.IsNullOrEmpty(item.VisualOwner))
 					{
-						flag = true;
+						finishLegacyMetadataFromMainReady = true;
 					}
 				}
-				if (flag)
+				if (finishLegacyMetadataFromMainReady)
 				{
 					if (spiOwnerRecord.Generation != 0 || spiOwnerRecord.Phase != SpiOwnerPhase.Closed || spiOwnerRecord.Owner != null)
 					{
@@ -345,19 +345,19 @@ namespace PaviseApp
 			SecurityIdentifier user = new SecurityIdentifier(userSid);
 			bool createdNew;
 			Mutex mutex = new Mutex(false, "Global\\Pavise.SharedSpi.VisualEffects." + userSid, out createdNew, UserMutexSecurity.Create(user));
-			bool flag = false;
+			bool enterGlobalReady = false;
 			try
 			{
 				UserMutexSecurity.Verify(mutex.GetAccessControl(), user);
 				try
 				{
-					flag = mutex.WaitOne(3000);
+					enterGlobalReady = mutex.WaitOne(3000);
 				}
 				catch (AbandonedMutexException)
 				{
-					flag = true;
+					enterGlobalReady = true;
 				}
-				if (!flag)
+				if (!enterGlobalReady)
 				{
 					throw new TimeoutException("Shared SPI mutation gate timed out; owner remains pending");
 				}
@@ -368,7 +368,7 @@ namespace PaviseApp
 			{
 				try
 				{
-					if (flag)
+					if (enterGlobalReady)
 					{
 						mutex.ReleaseMutex();
 					}

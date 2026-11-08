@@ -56,16 +56,16 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text;
+			string getFullPathTrimmed;
 			try
 			{
-				text = Path.GetFullPath(args[1]).TrimEnd('\\');
+				getFullPathTrimmed = Path.GetFullPath(args[1]).TrimEnd('\\');
 			}
 			catch
 			{
 				return true;
 			}
-			if (!LolInstallDiscovery.IsValidLolRoot(text))
+			if (!LolInstallDiscovery.IsValidLolRoot(getFullPathTrimmed))
 			{
 				return true;
 			}
@@ -75,12 +75,12 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text2 = ((args.Length == 5) ? args[4] : null);
-			if (text2 != null && !IsReadyToken(text2))
+			string message = ((args.Length == 5) ? args[4] : null);
+			if (message != null && !IsReadyToken(message))
 			{
 				return true;
 			}
-			Run(text, result, result2, text2);
+			Run(getFullPathTrimmed, result, result2, message);
 			return true;
 		}
 
@@ -140,8 +140,8 @@ namespace PaviseApp
 			Process process = null;
 			try
 			{
-				string text = CreateReadyToken();
-				string name = ReadyEventName(lolRoot, pid, creation, text);
+				string readyToken = CreateReadyToken();
+				string name = ReadyEventName(lolRoot, pid, creation, readyToken);
 				bool createdNew;
 				eventWaitHandle = new EventWaitHandle(false, EventResetMode.ManualReset, name, out createdNew);
 				if (!createdNew)
@@ -151,7 +151,7 @@ namespace PaviseApp
 				string executablePath = Application.ExecutablePath;
 				ProcessStartInfo processStartInfo = new ProcessStartInfo();
 				processStartInfo.FileName = executablePath;
-				processStartInfo.Arguments = "--lol-watchdog " + Quote(lolRoot) + " " + pid + " " + creation + " " + text;
+				processStartInfo.Arguments = "--lol-watchdog " + Quote(lolRoot) + " " + pid + " " + creation + " " + readyToken;
 				processStartInfo.WorkingDirectory = Path.GetDirectoryName(executablePath);
 				processStartInfo.UseShellExecute = false;
 				processStartInfo.CreateNoWindow = true;
@@ -340,17 +340,17 @@ namespace PaviseApp
 		{
 			DateTime dateTime = DateTime.MinValue;
 			LolLcuCredentials lolLcuCredentials = null;
-			int num = 0;
-			int num2 = 0;
+			int waitForGameExitValue = 0;
+			int waitForGameExitValue2 = 0;
 			int failures = 0;
-			long num3 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
+			long credentialGenerationStampResult = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
 			DateTime dateTime2 = DateTime.MinValue;
 			IntPtr handle = preparedGameHandle;
 			if (initialPid <= 0 || initialCreation <= 0)
 			{
 				return false;
 			}
-			bool flag = false;
+			bool waitForGameExitReady = false;
 			try
 			{
 				if (!LeaseStillOwned(lolRoot, initialPid, initialCreation))
@@ -359,11 +359,11 @@ namespace PaviseApp
 				}
 				if (handle != IntPtr.Zero || TryOpenGameWaitHandle(lolRoot, initialPid, initialCreation, out handle))
 				{
-					flag = true;
-					uint num4 = WaitForOwnedGameExit(handle, lolRoot, initialPid, initialCreation);
+					waitForGameExitReady = true;
+					uint waitForOwnedGameExitResult = WaitForOwnedGameExit(handle, lolRoot, initialPid, initialCreation);
 					Native.CloseHandle(handle);
 					handle = IntPtr.Zero;
-					if (num4 != 0)
+					if (waitForOwnedGameExitResult != 0)
 					{
 						return false;
 					}
@@ -374,13 +374,13 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					flag = true;
+					waitForGameExitReady = true;
 				}
 				DateTime utcNow = DateTime.UtcNow;
 				DateTime dateTime3 = DateTime.MinValue;
 				DateTime dateTime4 = DateTime.MinValue;
 				DateTime dateTime5 = utcNow.AddSeconds(20.0);
-				bool flag2 = false;
+				bool waitForGameExitReady2 = false;
 				while (true)
 				{
 					if (!LeaseStillOwned(lolRoot, initialPid, initialCreation))
@@ -403,12 +403,12 @@ namespace PaviseApp
 					dateTime3 = DateTime.MinValue;
 					if (DateTime.UtcNow >= dateTime2)
 					{
-						long num5 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
-						if (num5 != num3)
+						long credentialGenerationStampResult2 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
+						if (credentialGenerationStampResult2 != credentialGenerationStampResult)
 						{
-							num3 = num5;
+							credentialGenerationStampResult = credentialGenerationStampResult2;
 							lolLcuCredentials = null;
-							num2 = 0;
+							waitForGameExitValue2 = 0;
 							failures = 0;
 							dateTime = DateTime.MinValue;
 						}
@@ -424,46 +424,46 @@ namespace PaviseApp
 						else
 						{
 							failures = 0;
-							num2 = 0;
+							waitForGameExitValue2 = 0;
 						}
 					}
-					string text = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
+					string gameflowPhase = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
 					if (lolLcuCredentials != null)
 					{
-						if (text == null)
+						if (gameflowPhase == null)
 						{
-							if (++num2 >= 3)
+							if (++waitForGameExitValue2 >= 3)
 							{
 								lolLcuCredentials = null;
-								num2 = 0;
+								waitForGameExitValue2 = 0;
 								dateTime = NextCredentialLookup(ref failures);
 							}
 						}
 						else
 						{
-							num2 = 0;
+							waitForGameExitValue2 = 0;
 						}
 					}
-					bool flag3 = !string.IsNullOrEmpty(text);
-					bool flag4 = LolOptimizationService.IsSameMatchPhase(text);
+					bool isNotIsNullOrEmpty = !string.IsNullOrEmpty(gameflowPhase);
+					bool isSameMatchPhase = LolOptimizationService.IsSameMatchPhase(gameflowPhase);
 					int pid;
 					long creation;
-					if (flag && !flag2 && flag4 && DateTime.UtcNow < dateTime5 && LolRuntimeProcesses.TryGetGameIdentity(lolRoot, 0, out pid, out creation) && creation > initialCreation && TryOpenGameWaitHandle(lolRoot, pid, creation, out handle))
+					if (waitForGameExitReady && !waitForGameExitReady2 && isSameMatchPhase && DateTime.UtcNow < dateTime5 && LolRuntimeProcesses.TryGetGameIdentity(lolRoot, 0, out pid, out creation) && creation > initialCreation && TryOpenGameWaitHandle(lolRoot, pid, creation, out handle))
 					{
-						flag2 = true;
-						uint num6 = WaitForOwnedGameExit(handle, lolRoot, initialPid, initialCreation);
+						waitForGameExitReady2 = true;
+						uint waitForOwnedGameExitResult2 = WaitForOwnedGameExit(handle, lolRoot, initialPid, initialCreation);
 						Native.CloseHandle(handle);
 						handle = IntPtr.Zero;
-						if (num6 != 0)
+						if (waitForOwnedGameExitResult2 != 0)
 						{
 							return false;
 						}
 						utcNow = DateTime.UtcNow;
-						num = 0;
+						waitForGameExitValue = 0;
 						continue;
 					}
-					bool flag5 = LolRuntimeProcesses.IsGameRunning(lolRoot);
-					if (flag4 && !flag5)
+					bool isGameRunning = LolRuntimeProcesses.IsGameRunning(lolRoot);
+					if (isSameMatchPhase && !isGameRunning)
 					{
 						if (dateTime4 == DateTime.MinValue)
 						{
@@ -478,18 +478,18 @@ namespace PaviseApp
 					{
 						dateTime4 = DateTime.MinValue;
 					}
-					if (!flag5 && flag3 && LolOptimizationService.IsConfirmedMatchExitPhase(text))
+					if (!isGameRunning && isNotIsNullOrEmpty && LolOptimizationService.IsConfirmedMatchExitPhase(gameflowPhase))
 					{
-						if (++num >= 2)
+						if (++waitForGameExitValue >= 2)
 						{
 							return true;
 						}
 					}
 					else
 					{
-						num = 0;
+						waitForGameExitValue = 0;
 					}
-					if (!flag5 && (DateTime.UtcNow - utcNow).TotalSeconds >= 12.0 && !flag3)
+					if (!isGameRunning && (DateTime.UtcNow - utcNow).TotalSeconds >= 12.0 && !isNotIsNullOrEmpty)
 					{
 						break;
 					}
@@ -511,13 +511,13 @@ namespace PaviseApp
 		{
 			do
 			{
-				uint num = WaitForSingleObject(handle, 5000u);
-				switch (num)
+				uint waitForSingleObjectResult = WaitForSingleObject(handle, 5000u);
+				switch (waitForSingleObjectResult)
 				{
 				case 0u:
-					return num;
+					return waitForSingleObjectResult;
 				default:
-					return num;
+					return waitForSingleObjectResult;
 				case 258u:
 					break;
 				}
@@ -572,9 +572,9 @@ namespace PaviseApp
 			DateTime dateTime4 = DateTime.MinValue;
 			LolLcuCredentials lolLcuCredentials = null;
 			int failures = 0;
-			int num = 0;
-			bool flag = false;
-			long num2 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
+			int processedCount = 0;
+			bool restoreReady = false;
+			long credentialGenerationStampResult = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
 			DateTime dateTime5 = DateTime.MinValue;
 			while (DateTime.UtcNow < dateTime && DateTime.UtcNow < dateTime2)
 			{
@@ -590,13 +590,13 @@ namespace PaviseApp
 				}
 				if (DateTime.UtcNow >= dateTime5)
 				{
-					long num3 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
-					if (num3 != num2)
+					long credentialGenerationStampResult2 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
+					if (credentialGenerationStampResult2 != credentialGenerationStampResult)
 					{
-						num2 = num3;
+						credentialGenerationStampResult = credentialGenerationStampResult2;
 						lolLcuCredentials = null;
 						failures = 0;
-						num = 0;
+						processedCount = 0;
 						dateTime3 = DateTime.MinValue;
 						dateTime4 = DateTime.MinValue;
 					}
@@ -615,14 +615,14 @@ namespace PaviseApp
 						dateTime3 = DateTime.MaxValue;
 					}
 				}
-				string text = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
+				string gameflowPhase = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
 				int pid;
 				long creation;
 				if (leaseCreation > 0 && LolRuntimeProcesses.TryGetGameIdentity(lolRoot, 0, out pid, out creation) && creation > leaseCreation)
 				{
 					return false;
 				}
-				if (lolLcuCredentials != null && text == null)
+				if (lolLcuCredentials != null && gameflowPhase == null)
 				{
 					lolLcuCredentials = null;
 					dateTime3 = NextCredentialLookup(ref failures);
@@ -630,18 +630,18 @@ namespace PaviseApp
 					Thread.Sleep(1500);
 					continue;
 				}
-				if (LolOptimizationService.IsSameMatchPhase(text))
+				if (LolOptimizationService.IsSameMatchPhase(gameflowPhase))
 				{
 					dateTime = DateTime.UtcNow.AddMinutes(2.0);
 					Thread.Sleep(6000);
 					continue;
 				}
-				bool flag2 = !flag && lolLcuCredentials != null && DateTime.UtcNow >= dateTime4;
-				if (flag2 && ++restoreAttempts <= 3 && LolLcuClient.RestoreUx(lolLcuCredentials, lolRoot))
+				bool allConditionsMet = !restoreReady && lolLcuCredentials != null && DateTime.UtcNow >= dateTime4;
+				if (allConditionsMet && ++restoreAttempts <= 3 && LolLcuClient.RestoreUx(lolLcuCredentials, lolRoot))
 				{
-					flag = true;
+					restoreReady = true;
 				}
-				if (flag)
+				if (restoreReady)
 				{
 					if (++clearAttempts > 3) return false;
 					if (LolHeadlessLease.ClearIfMatches(lolRoot, leasePid, leaseCreation) || !LeaseStillOwned(lolRoot, leasePid, leaseCreation))
@@ -651,14 +651,14 @@ namespace PaviseApp
 					Thread.Sleep(1500);
 					continue;
 				}
-				if (flag2)
+				if (allConditionsMet)
 				{
 					if (restoreAttempts >= 3) return false;
-					if (num < int.MaxValue)
+					if (processedCount < int.MaxValue)
 					{
-						num++;
+						processedCount++;
 					}
-					dateTime4 = DateTime.UtcNow.AddSeconds(LolOptimizationService.RestoreCredentialRetrySeconds(num));
+					dateTime4 = DateTime.UtcNow.AddSeconds(LolOptimizationService.RestoreCredentialRetrySeconds(processedCount));
 				}
 				if (lolLcuCredentials == null)
 				{
@@ -716,8 +716,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				Process[] array = processesByName;
-				foreach (Process process2 in array)
+				Process[] processesByNameSnapshot = processesByName;
+				foreach (Process process2 in processesByNameSnapshot)
 				{
 					try
 					{
@@ -732,8 +732,8 @@ namespace PaviseApp
 						}
 						try
 						{
-							string text = Native.ImagePath(intPtr);
-							if (text != null && string.Equals(Path.GetFullPath(text), fullPath, StringComparison.OrdinalIgnoreCase))
+							string imagePathResult = Native.ImagePath(intPtr);
+							if (imagePathResult != null && string.Equals(Path.GetFullPath(imagePathResult), fullPath, StringComparison.OrdinalIgnoreCase))
 							{
 								return true;
 							}
@@ -750,8 +750,8 @@ namespace PaviseApp
 			}
 			finally
 			{
-				Process[] array2 = processesByName;
-				foreach (Process process3 in array2)
+				Process[] processesByNameSnapshot2 = processesByName;
+				foreach (Process process3 in processesByNameSnapshot2)
 				{
 					try
 					{
@@ -782,7 +782,7 @@ namespace PaviseApp
 		{
 			EventWaitHandle eventWaitHandle = null;
 			Mutex mutex = null;
-			bool flag = false;
+			bool guardObjectsReadyReady = false;
 			try
 			{
 				eventWaitHandle = EventWaitHandle.OpenExisting(aliveEventName);
@@ -793,13 +793,13 @@ namespace PaviseApp
 				mutex = Mutex.OpenExisting(mutexName);
 				try
 				{
-					flag = mutex.WaitOne(0, false);
+					guardObjectsReadyReady = mutex.WaitOne(0, false);
 				}
 				catch (AbandonedMutexException)
 				{
-					flag = true;
+					guardObjectsReadyReady = true;
 				}
-				if (!flag)
+				if (!guardObjectsReadyReady)
 				{
 					return true;
 				}
@@ -810,7 +810,7 @@ namespace PaviseApp
 				catch
 				{
 				}
-				flag = false;
+				guardObjectsReadyReady = false;
 				return false;
 			}
 			catch
@@ -819,7 +819,7 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (flag && mutex != null)
+				if (guardObjectsReadyReady && mutex != null)
 				{
 					try
 					{
@@ -869,15 +869,15 @@ namespace PaviseApp
 
 		internal static string CreateReadyToken()
 		{
-			byte[] array = new byte[32];
+			byte[] rawBytes = new byte[32];
 			using (RandomNumberGenerator randomNumberGenerator = RandomNumberGenerator.Create())
 			{
-				randomNumberGenerator.GetBytes(array);
+				randomNumberGenerator.GetBytes(rawBytes);
 			}
-			StringBuilder stringBuilder = new StringBuilder(array.Length * 2);
-			for (int i = 0; i < array.Length; i++)
+			StringBuilder stringBuilder = new StringBuilder(rawBytes.Length * 2);
+			for (int i = 0; i < rawBytes.Length; i++)
 			{
-				stringBuilder.Append(array[i].ToString("x2"));
+				stringBuilder.Append(rawBytes[i].ToString("x2"));
 			}
 			return stringBuilder.ToString();
 		}
@@ -909,15 +909,15 @@ namespace PaviseApp
 
 		internal static bool SignalReady(string lolRoot, int pid, long creation, string readyToken)
 		{
-			string text = ReadyEventName(lolRoot, pid, creation, readyToken);
-			if (text == null)
+			string yEventName = ReadyEventName(lolRoot, pid, creation, readyToken);
+			if (yEventName == null)
 			{
 				return false;
 			}
 			EventWaitHandle eventWaitHandle = null;
 			try
 			{
-				eventWaitHandle = EventWaitHandle.OpenExisting(text);
+				eventWaitHandle = EventWaitHandle.OpenExisting(yEventName);
 				return eventWaitHandle.Set();
 			}
 			catch

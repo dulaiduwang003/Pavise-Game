@@ -6,14 +6,14 @@ namespace PaviseApp
 	{
 		internal static void CheckPath(string path)
 		{
-			string text = Path.GetFullPath(path);
-			while (!string.IsNullOrEmpty(text))
+			string fullPath = Path.GetFullPath(path);
+			while (!string.IsNullOrEmpty(fullPath))
 			{
-				if ((File.Exists(text) || Directory.Exists(text)) && (File.GetAttributes(text) & FileAttributes.ReparsePoint) != 0)
+				if ((File.Exists(fullPath) || Directory.Exists(fullPath)) && (File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
 				{
 					throw new InvalidDataException("Path crosses a reparse point");
 				}
-				text = Path.GetDirectoryName(text);
+				fullPath = Path.GetDirectoryName(fullPath);
 			}
 		}
 
@@ -26,17 +26,17 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("File too large");
 				}
-				byte[] array = new byte[(int)fileStream.Length];
-				int num;
-				for (int i = 0; i < array.Length; i += num)
+				byte[] rawBytes = new byte[(int)fileStream.Length];
+				int bytesValue;
+				for (int i = 0; i < rawBytes.Length; i += bytesValue)
 				{
-					num = fileStream.Read(array, i, array.Length - i);
-					if (num <= 0)
+					bytesValue = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+					if (bytesValue <= 0)
 					{
 						throw new EndOfStreamException();
 					}
 				}
-				return array;
+				return rawBytes;
 			}
 		}
 	}

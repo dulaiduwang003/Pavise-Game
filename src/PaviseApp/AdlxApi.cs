@@ -251,10 +251,10 @@ namespace PaviseApp
 				FnInitialize fnInitialize = (FnInitialize)Marshal.GetDelegateForFunctionPointer(procAddress, typeof(FnInitialize));
 				terminate = (FnTerminate)Marshal.GetDelegateForFunctionPointer(procAddress2, typeof(FnTerminate));
 				IntPtr intPtr2;
-				int num = fnInitialize(281496451547260uL, out intPtr2);
-				if (!Succeeded(num) || intPtr2 == IntPtr.Zero)
+				int fnInitializeResult = fnInitialize(281496451547260uL, out intPtr2);
+				if (!Succeeded(fnInitializeResult) || intPtr2 == IntPtr.Zero)
 				{
-					Logger.Warn(Lang.T("log.adlxapi.1") + num + Lang.T("log.adlxapi.2"));
+					Logger.Warn(Lang.T("log.adlxapi.1") + fnInitializeResult + Lang.T("log.adlxapi.2"));
 					return false;
 				}
 				system = intPtr2;
@@ -318,18 +318,18 @@ namespace PaviseApp
 				}
 				try
 				{
-					uint num = VMethod<FnUIntProp>(value, 5)(value);
-					uint num2 = VMethod<FnUIntProp>(value, 6)(value);
-					if (num2 <= num || num2 - num > 16)
+					uint numericValue = VMethod<FnUIntProp>(value, 5)(value);
+					uint numericValue2 = VMethod<FnUIntProp>(value, 6)(value);
+					if (numericValue2 <= numericValue || numericValue2 - numericValue > 16)
 					{
 						return new IntPtr[0];
 					}
 					FnAtList fnAtList = VMethod<FnAtList>(value, 11);
 					List<IntPtr> list = new List<IntPtr>();
-					for (uint num3 = num; num3 < num2; num3++)
+					for (uint iterationIndex = numericValue; iterationIndex < numericValue2; iterationIndex++)
 					{
 						IntPtr item;
-						if (Succeeded(fnAtList(value, num3, out item)) && item != IntPtr.Zero)
+						if (Succeeded(fnAtList(value, iterationIndex, out item)) && item != IntPtr.Zero)
 						{
 							list.Add(item);
 						}
@@ -636,12 +636,12 @@ namespace PaviseApp
 			{
 				if (on)
 				{
-					bool flag = Succeeded(VMethod<FnInInt>(feature, 9)(feature, minFps)) && Succeeded(VMethod<FnInInt>(feature, 10)(feature, maxFps));
-					if (!flag)
+					bool matchesSucceeded = Succeeded(VMethod<FnInInt>(feature, 9)(feature, minFps)) && Succeeded(VMethod<FnInInt>(feature, 10)(feature, maxFps));
+					if (!matchesSucceeded)
 					{
-						flag = Succeeded(VMethod<FnInInt>(feature, 10)(feature, maxFps)) && Succeeded(VMethod<FnInInt>(feature, 9)(feature, minFps));
+						matchesSucceeded = Succeeded(VMethod<FnInInt>(feature, 10)(feature, maxFps)) && Succeeded(VMethod<FnInInt>(feature, 9)(feature, minFps));
 					}
-					if (!flag)
+					if (!matchesSucceeded)
 					{
 						return false;
 					}

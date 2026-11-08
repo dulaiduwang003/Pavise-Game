@@ -36,11 +36,11 @@ namespace PaviseApp
 			Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
 			Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.Ordinal);
 			Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.Ordinal);
-			string text = "";
-			string text2 = "";
-			string text3 = "";
-			int num = -1;
-			bool flag = false;
+			string message = "";
+			string message2 = "";
+			string message3 = "";
+			int assignSessionsValue = -1;
+			bool assignSessionsReady = false;
 			for (int i = 0; i < chronological.Count; i++)
 			{
 				LogEventEntry logEventEntry = chronological[i];
@@ -49,44 +49,44 @@ namespace PaviseApp
 					continue;
 				}
 				logEventEntry.SessionToken = (logEventEntry.SessionName = (logEventEntry.Phase = ""));
-				string text4 = Body(logEventEntry.Raw);
-				Boundary boundary = SessionBoundary(text4);
+				string bodyResult = Body(logEventEntry.Raw);
+				Boundary boundary = SessionBoundary(bodyResult);
 				string token;
 				string action;
 				string state;
-				bool flag2 = Auto(text4, out token, out action, out state);
+				bool autoSucceeded = Auto(bodyResult, out token, out action, out state);
 				string remaining;
-				bool flag3 = StripPrefix(text4, new string[2] { "游戏模式激活 检测到 ", "Game mode activated, detected " }, out remaining);
+				bool stripPrefixSucceeded = StripPrefix(bodyResult, new string[2] { "游戏模式激活 检测到 ", "Game mode activated, detected " }, out remaining);
 				string remaining2;
-				bool flag4 = StripPrefix(text4, new string[2] { "游戏模式 检测目标变更 ", "Game mode detection target changed " }, out remaining2);
+				bool stripPrefixSucceeded2 = StripPrefix(bodyResult, new string[2] { "游戏模式 检测目标变更 ", "Game mode detection target changed " }, out remaining2);
 				if (boundary != null)
 				{
 					if (boundary.State == "start")
 					{
-						string text5 = text;
-						if (text5.StartsWith("legacy:", StringComparison.Ordinal) && num < 0 && Phase(dictionary2, text5) == "active" && (boundary.Name.Length == 0 || Name(dictionary, text5) == boundary.Name))
+						string message4 = message;
+						if (message4.StartsWith("legacy:", StringComparison.Ordinal) && assignSessionsValue < 0 && Phase(dictionary2, message4) == "active" && (boundary.Name.Length == 0 || Name(dictionary, message4) == boundary.Name))
 						{
-							Remap(chronological, i, text5, boundary.Token);
+							Remap(chronological, i, message4, boundary.Token);
 						}
-						text = boundary.Token;
-						text2 = "";
+						message = boundary.Token;
+						message2 = "";
 						if (!string.IsNullOrEmpty(boundary.Name))
 						{
-							dictionary[text] = boundary.Name;
+							dictionary[message] = boundary.Name;
 						}
-						else if (!string.IsNullOrEmpty(text3))
+						else if (!string.IsNullOrEmpty(message3))
 						{
-							dictionary[text] = text3;
+							dictionary[message] = message3;
 						}
-						else if (dictionary.ContainsKey(text5))
+						else if (dictionary.ContainsKey(message4))
 						{
-							dictionary[text] = dictionary[text5];
+							dictionary[message] = dictionary[message4];
 						}
-						dictionary2[text] = "active";
-						AttachPendingChange(chronological, num, text, Name(dictionary, text));
-						text3 = "";
-						num = -1;
-						flag = false;
+						dictionary2[message] = "active";
+						AttachPendingChange(chronological, assignSessionsValue, message, Name(dictionary, message));
+						message3 = "";
+						assignSessionsValue = -1;
+						assignSessionsReady = false;
 					}
 					else
 					{
@@ -101,118 +101,118 @@ namespace PaviseApp
 					logEventEntry.Phase = boundary.State;
 					if (boundary.State == "restored" || boundary.State == "restore-failed")
 					{
-						if (text == boundary.Token)
+						if (message == boundary.Token)
 						{
-							text = "";
+							message = "";
 						}
-						text2 = ((boundary.State == "restore-failed") ? boundary.Token : "");
+						message2 = ((boundary.State == "restore-failed") ? boundary.Token : "");
 					}
-					else if (boundary.State == "end" && text.Length == 0)
+					else if (boundary.State == "end" && message.Length == 0)
 					{
-						text = boundary.Token;
+						message = boundary.Token;
 					}
 					continue;
 				}
-				if (flag4)
+				if (stripPrefixSucceeded2)
 				{
-					text3 = remaining2;
-					num = i;
-					flag = false;
+					message3 = remaining2;
+					assignSessionsValue = i;
+					assignSessionsReady = false;
 				}
-				else if (flag3)
+				else if (stripPrefixSucceeded)
 				{
-					text = SyntheticToken(logEventEntry, remaining, counts);
-					dictionary[text] = remaining;
-					dictionary2[text] = "active";
-					text2 = "";
+					message = SyntheticToken(logEventEntry, remaining, counts);
+					dictionary[message] = remaining;
+					dictionary2[message] = "active";
+					message2 = "";
 				}
-				if (flag2)
+				if (autoSucceeded)
 				{
-					bool flag5 = IsSessionAction(action);
-					if (flag5 && IsStarted(state))
+					bool isSessionAction = IsSessionAction(action);
+					if (isSessionAction && IsStarted(state))
 					{
-						string text6 = text;
-						if (text6.StartsWith("legacy:", StringComparison.Ordinal) && num < 0 && Phase(dictionary2, text6) == "active")
+						string message5 = message;
+						if (message5.StartsWith("legacy:", StringComparison.Ordinal) && assignSessionsValue < 0 && Phase(dictionary2, message5) == "active")
 						{
-							Remap(chronological, i, text6, token);
+							Remap(chronological, i, message5, token);
 						}
-						text = token;
-						if (!dictionary.ContainsKey(text))
+						message = token;
+						if (!dictionary.ContainsKey(message))
 						{
-							dictionary[text] = ((text3.Length > 0) ? text3 : Name(dictionary, text6));
+							dictionary[message] = ((message3.Length > 0) ? message3 : Name(dictionary, message5));
 						}
-						dictionary2[text] = "active";
-						text2 = "";
-						AttachPendingChange(chronological, num, text, Name(dictionary, text));
-						text3 = "";
-						num = -1;
-						flag = false;
+						dictionary2[message] = "active";
+						message2 = "";
+						AttachPendingChange(chronological, assignSessionsValue, message, Name(dictionary, message));
+						message3 = "";
+						assignSessionsValue = -1;
+						assignSessionsReady = false;
 					}
-					else if (token.Length > 0 && text.Length == 0 && !dictionary2.ContainsKey(token))
+					else if (token.Length > 0 && message.Length == 0 && !dictionary2.ContainsKey(token))
 					{
-						text = token;
-						dictionary2[text] = "fragment";
+						message = token;
+						dictionary2[message] = "fragment";
 					}
 					logEventEntry.SessionToken = token;
 					logEventEntry.SessionName = Name(dictionary, token);
 					logEventEntry.Phase = Phase(dictionary2, token);
-					if (flag5 && (IsRestored(state) || IsRestoreFailed(state)))
+					if (isSessionAction && (IsRestored(state) || IsRestoreFailed(state)))
 					{
 						logEventEntry.Phase = (IsRestored(state) ? "restored" : "restore-failed");
 						dictionary2[token] = logEventEntry.Phase;
-						if (text == token)
+						if (message == token)
 						{
-							text = "";
+							message = "";
 						}
-						text2 = (IsRestoreFailed(state) ? token : "");
+						message2 = (IsRestoreFailed(state) ? token : "");
 					}
-					else if (flag5 && IsStarted(state))
+					else if (isSessionAction && IsStarted(state))
 					{
 						logEventEntry.Phase = "start";
 					}
 					continue;
 				}
-				if (flag && !flag4 && !ReliableStartAhead(chronological, i))
+				if (assignSessionsReady && !stripPrefixSucceeded2 && !ReliableStartAhead(chronological, i))
 				{
-					text = SyntheticToken(chronological[num], text3, counts);
-					dictionary[text] = text3;
-					dictionary2[text] = "active";
-					AttachPendingChange(chronological, num, text, text3);
-					text3 = "";
-					num = -1;
-					flag = false;
+					message = SyntheticToken(chronological[assignSessionsValue], message3, counts);
+					dictionary[message] = message3;
+					dictionary2[message] = "active";
+					AttachPendingChange(chronological, assignSessionsValue, message, message3);
+					message3 = "";
+					assignSessionsValue = -1;
+					assignSessionsReady = false;
 				}
-				string text7 = text;
-				if (text7.Length == 0 && text2.Length > 0 && RestorationText(text4))
+				string sessionTokenValue = message;
+				if (sessionTokenValue.Length == 0 && message2.Length > 0 && RestorationText(bodyResult))
 				{
-					text7 = text2;
+					sessionTokenValue = message2;
 				}
-				logEventEntry.SessionToken = text7;
-				logEventEntry.SessionName = Name(dictionary, text7);
-				logEventEntry.Phase = Phase(dictionary2, text7);
-				if (flag3)
+				logEventEntry.SessionToken = sessionTokenValue;
+				logEventEntry.SessionName = Name(dictionary, sessionTokenValue);
+				logEventEntry.Phase = Phase(dictionary2, sessionTokenValue);
+				if (stripPrefixSucceeded)
 				{
 					logEventEntry.Phase = "start";
 				}
-				if (text4.StartsWith("本局结束 ", StringComparison.Ordinal) || text4.StartsWith("Match ended ", StringComparison.Ordinal))
+				if (bodyResult.StartsWith("本局结束 ", StringComparison.Ordinal) || bodyResult.StartsWith("Match ended ", StringComparison.Ordinal))
 				{
-					if (text7.Length > 0)
+					if (sessionTokenValue.Length > 0)
 					{
-						dictionary2[text7] = "restore";
+						dictionary2[sessionTokenValue] = "restore";
 					}
 					logEventEntry.Phase = "end";
-					if (num >= 0)
+					if (assignSessionsValue >= 0)
 					{
-						flag = true;
+						assignSessionsReady = true;
 					}
 				}
-				else if (text4.StartsWith("游戏模式解除 ", StringComparison.Ordinal) || text4.StartsWith("Game mode ended ", StringComparison.Ordinal))
+				else if (bodyResult.StartsWith("游戏模式解除 ", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode ended ", StringComparison.Ordinal))
 				{
 					logEventEntry.Phase = "restore";
-					if (text7.StartsWith("legacy:", StringComparison.Ordinal))
+					if (sessionTokenValue.StartsWith("legacy:", StringComparison.Ordinal))
 					{
-						text = "";
-						text2 = text7;
+						message = "";
+						message2 = sessionTokenValue;
 					}
 				}
 			}
@@ -232,35 +232,35 @@ namespace PaviseApp
 			{
 				return list;
 			}
-			string text = SelectSession(chronological, activeSession);
-			if (filter == 4 && text.Length == 0)
+			string selectSessionResult = SelectSession(chronological, activeSession);
+			if (filter == 4 && selectSessionResult.Length == 0)
 			{
 				return list;
 			}
-			int num = -1;
-			int num2 = chronological.Count;
-			if (text.Length > 0)
+			int projectValue = -1;
+			int chronologicalCount = chronological.Count;
+			if (selectSessionResult.Length > 0)
 			{
 				for (int i = 0; i < chronological.Count; i++)
 				{
 					LogEventEntry logEventEntry = chronological[i];
-					if (logEventEntry != null && logEventEntry.SessionToken == text)
+					if (logEventEntry != null && logEventEntry.SessionToken == selectSessionResult)
 					{
-						num = i;
+						projectValue = i;
 						break;
 					}
 				}
-				for (int j = num + 1; j < chronological.Count; j++)
+				for (int j = projectValue + 1; j < chronological.Count; j++)
 				{
 					LogEventEntry logEventEntry2 = chronological[j];
-					if (logEventEntry2 != null && logEventEntry2.SessionToken.Length > 0 && logEventEntry2.SessionToken != text && logEventEntry2.Phase == "start")
+					if (logEventEntry2 != null && logEventEntry2.SessionToken.Length > 0 && logEventEntry2.SessionToken != selectSessionResult && logEventEntry2.Phase == "start")
 					{
-						num2 = j;
+						chronologicalCount = j;
 						break;
 					}
 				}
 			}
-			if (filter == 4 && num < 0)
+			if (filter == 4 && projectValue < 0)
 			{
 				return list;
 			}
@@ -281,37 +281,37 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				bool flag = logEventEntry3.Severity == LogEventSeverity.Warning || logEventEntry3.Severity == LogEventSeverity.Error;
-				string text2 = Body(logEventEntry3.Raw);
+				bool anyConditionMet = logEventEntry3.Severity == LogEventSeverity.Warning || logEventEntry3.Severity == LogEventSeverity.Error;
+				string bodyResult = Body(logEventEntry3.Raw);
 				string token;
 				string action;
 				string state;
-				bool flag2 = Auto(text2, out token, out action, out state);
-				string text3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Module;
-				string[] array = new string[5];
+				bool autoSucceeded = Auto(bodyResult, out token, out action, out state);
+				string moduleOffset = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Module;
+				string[] textEntries = new string[5];
 				int severity = (int)logEventEntry3.Severity;
-				array[0] = severity.ToString(CultureInfo.InvariantCulture);
-				array[1] = "\u001f";
-				array[2] = logEventEntry3.Phase;
-				array[3] = "\u001f";
-				array[4] = CaptureTelemetry.Replace(text2, "$1=*");
-				string text4 = string.Concat(array);
+				textEntries[0] = severity.ToString(CultureInfo.InvariantCulture);
+				textEntries[1] = "\u001f";
+				textEntries[2] = logEventEntry3.Phase;
+				textEntries[3] = "\u001f";
+				textEntries[4] = CaptureTelemetry.Replace(bodyResult, "$1=*");
+				string concatResult = string.Concat(textEntries);
 				string value;
-				bool flag3 = !dictionary2.TryGetValue(text3, out value) || value != text4;
-				dictionary2[text3] = text4;
+				bool anyConditionMet2 = !dictionary2.TryGetValue(moduleOffset, out value) || value != concatResult;
+				dictionary2[moduleOffset] = concatResult;
 				int value2;
 				dictionary8.TryGetValue(logEventEntry3.SessionToken, out value2);
-				bool flag4 = false;
-				if (flag2)
+				bool projectReady = false;
+				if (autoSucceeded)
 				{
 					string key = logEventEntry3.SessionToken + "\u001f" + action;
-					flag4 = dictionary7.TryGetValue(key, out value) && value != state;
+					projectReady = dictionary7.TryGetValue(key, out value) && value != state;
 					dictionary7[key] = state;
 				}
-				bool flag5 = logEventEntry3.SessionToken.Length > 0 && (SessionBoundary(text2) != null || (flag2 && IsSessionAction(action)) || (logEventEntry3.Phase == "start" && (text2.StartsWith("游戏模式", StringComparison.Ordinal) || text2.StartsWith("Game mode ", StringComparison.Ordinal))) || (logEventEntry3.Phase == "end" && (text2.StartsWith("本局结束 ", StringComparison.Ordinal) || text2.StartsWith("Match ended ", StringComparison.Ordinal)))) && (logEventEntry3.Phase == "start" || logEventEntry3.Phase == "end" || logEventEntry3.Phase == "restored" || logEventEntry3.Phase == "restore-failed");
+				bool allConditionsMet = logEventEntry3.SessionToken.Length > 0 && (SessionBoundary(bodyResult) != null || (autoSucceeded && IsSessionAction(action)) || (logEventEntry3.Phase == "start" && (bodyResult.StartsWith("游戏模式", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode ", StringComparison.Ordinal))) || (logEventEntry3.Phase == "end" && (bodyResult.StartsWith("本局结束 ", StringComparison.Ordinal) || bodyResult.StartsWith("Match ended ", StringComparison.Ordinal)))) && (logEventEntry3.Phase == "start" || logEventEntry3.Phase == "end" || logEventEntry3.Phase == "restored" || logEventEntry3.Phase == "restore-failed");
 				int value3;
 				dictionary6.TryGetValue(logEventEntry3.SessionToken, out value3);
-				if (flag5)
+				if (allConditionsMet)
 				{
 					if (dictionary5.TryGetValue(logEventEntry3.SessionToken, out value) && value != logEventEntry3.Phase)
 					{
@@ -320,11 +320,11 @@ namespace PaviseApp
 					}
 					dictionary5[logEventEntry3.SessionToken] = logEventEntry3.Phase;
 				}
-				if ((filter == 1 && !flag) || (filter == 2 && logEventEntry3.Severity != LogEventSeverity.Error) || (filter == 3 && !flag2) || (filter == 4 && text.Length > 0 && logEventEntry3.SessionToken != text && (!flag || logEventEntry3.SessionToken.Length != 0 || k < num || k >= num2)))
+				if ((filter == 1 && !anyConditionMet) || (filter == 2 && logEventEntry3.Severity != LogEventSeverity.Error) || (filter == 3 && !autoSucceeded) || (filter == 4 && selectSessionResult.Length > 0 && logEventEntry3.SessionToken != selectSessionResult && (!anyConditionMet || logEventEntry3.SessionToken.Length != 0 || k < projectValue || k >= chronologicalCount)))
 				{
 					continue;
 				}
-				if (flag5)
+				if (allConditionsMet)
 				{
 					string key2 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + value3;
 					Bucket value4;
@@ -343,16 +343,16 @@ namespace PaviseApp
 					value4.Row.Message = BoundaryMessage(logEventEntry3.SessionName, logEventEntry3.Phase);
 					value4.Row.Severity = BoundarySeverity(value4.Row.Severity, logEventEntry3.Severity, logEventEntry3.Phase);
 				}
-				else if ((!flag2 && logEventEntry3.Severity == LogEventSeverity.Success && logEventEntry3.SessionToken.Length > 0 && (logEventEntry3.Phase == "active" || logEventEntry3.Phase == "restore") && !string.Equals(logEventEntry3.Module, "FRAME", StringComparison.OrdinalIgnoreCase) && !string.Equals(logEventEntry3.Module, "SESSION", StringComparison.OrdinalIgnoreCase)) || (logEventEntry3.Severity == LogEventSeverity.Success && flag2 && logEventEntry3.SessionToken.Length > 0 && !IsSessionAction(action) && (IsApplied(state) || IsRestored(state))))
+				else if ((!autoSucceeded && logEventEntry3.Severity == LogEventSeverity.Success && logEventEntry3.SessionToken.Length > 0 && (logEventEntry3.Phase == "active" || logEventEntry3.Phase == "restore") && !string.Equals(logEventEntry3.Module, "FRAME", StringComparison.OrdinalIgnoreCase) && !string.Equals(logEventEntry3.Module, "SESSION", StringComparison.OrdinalIgnoreCase)) || (logEventEntry3.Severity == LogEventSeverity.Success && autoSucceeded && logEventEntry3.SessionToken.Length > 0 && !IsSessionAction(action) && (IsApplied(state) || IsRestored(state))))
 				{
-					string text5 = ((!flag2) ? ((logEventEntry3.Phase == "restore" || RestorationText(text2)) ? "restored" : "applied") : (IsApplied(state) ? "applied" : "restored"));
-					string key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + text5 + "\u001f" + value2;
+					string message = ((!autoSucceeded) ? ((logEventEntry3.Phase == "restore" || RestorationText(bodyResult)) ? "restored" : "applied") : (IsApplied(state) ? "applied" : "restored"));
+					string key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + message + "\u001f" + value2;
 					Bucket value5;
-					if (flag4 && dictionary3.TryGetValue(key3, out value5) && value5.Actions.Contains(action))
+					if (projectReady && dictionary3.TryGetValue(key3, out value5) && value5.Actions.Contains(action))
 					{
 						value2++;
 						dictionary8[logEventEntry3.SessionToken] = value2;
-						key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + text5 + "\u001f" + value2;
+						key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + message + "\u001f" + value2;
 					}
 					if (!dictionary3.TryGetValue(key3, out value5))
 					{
@@ -367,17 +367,17 @@ namespace PaviseApp
 					{
 						Append(value5, logEventEntry3, k);
 					}
-					if (flag2)
+					if (autoSucceeded)
 					{
 						value5.Actions.Add(action);
 					}
-					value5.Row.Message = SummaryMessage(value5.Row.SessionName, value5.Row.Phase, text5, value5.Actions.Count);
+					value5.Row.Message = SummaryMessage(value5.Row.SessionName, value5.Row.Phase, message, value5.Actions.Count);
 				}
 				else
 				{
-					string key4 = text3 + "\u001f" + text4;
+					string key4 = moduleOffset + "\u001f" + concatResult;
 					Bucket value6;
-					if (!flag3 && dictionary.TryGetValue(key4, out value6))
+					if (!anyConditionMet2 && dictionary.TryGetValue(key4, out value6))
 					{
 						Append(value6, logEventEntry3, k);
 						value6.Row.Message = logEventEntry3.Message;
@@ -402,11 +402,11 @@ namespace PaviseApp
 			LogEventEntry logEventEntry = Copy(source);
 			logEventEntry.FirstTime = (logEventEntry.LastTime = Stamp(source));
 			logEventEntry.RepeatCount = 1;
-			string text = prefix + source.SessionToken + "\u001f" + source.Raw;
+			string rawOffset = prefix + source.SessionToken + "\u001f" + source.Raw;
 			int value;
-			occurrences.TryGetValue(text, out value);
-			occurrences[text] = value + 1;
-			logEventEntry.StableKey = text + "\u001f" + value.ToString(CultureInfo.InvariantCulture);
+			occurrences.TryGetValue(rawOffset, out value);
+			occurrences[rawOffset] = value + 1;
+			logEventEntry.StableKey = rawOffset + "\u001f" + value.ToString(CultureInfo.InvariantCulture);
 			Bucket bucket = new Bucket();
 			bucket.Row = logEventEntry;
 			bucket.LastIndex = index;
@@ -457,7 +457,7 @@ namespace PaviseApp
 			{
 				return active;
 			}
-			string text = "";
+			string selectSessionResult = "";
 			string result = "";
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
 			for (int i = 0; i < events.Count; i++)
@@ -468,47 +468,47 @@ namespace PaviseApp
 					result = logEventEntry.SessionToken;
 					if (logEventEntry.Phase == "start" || (logEventEntry.Phase == "fragment" && hashSet.Add(logEventEntry.SessionToken)))
 					{
-						text = logEventEntry.SessionToken;
+						selectSessionResult = logEventEntry.SessionToken;
 					}
 				}
 			}
-			if (text.Length <= 0)
+			if (selectSessionResult.Length <= 0)
 			{
 				return result;
 			}
-			return text;
+			return selectSessionResult;
 		}
 
 		private static string SummaryMessage(string name, string phase, string state, int actions)
 		{
-			string text = ((state == "applied") ? Text("已应用", "Applied", "適用済み") : ((phase == "restore") ? Text("退局还原记录", "Exit restoration records", "終了時の復元記録") : Text("局部还原记录", "Individual restoration records", "個別の復元記録")));
+			string textResult = ((state == "applied") ? Text("已应用", "Applied", "適用済み") : ((phase == "restore") ? Text("退局还原记录", "Exit restoration records", "終了時の復元記録") : Text("局部还原记录", "Individual restoration records", "個別の復元記録")));
 			if (actions == 0)
 			{
 				return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + ((state == "restored") ? Text("还原记录", "Restoration records", "復元記録") : Text("执行记录", "Execution records", "実行記録"));
 			}
-			return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + text + " " + actions.ToString(CultureInfo.InvariantCulture) + Text(" 项", " actions", " 項目");
+			return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + textResult + " " + actions.ToString(CultureInfo.InvariantCulture) + Text(" 项", " actions", " 項目");
 		}
 
 		private static string BoundaryMessage(string name, string phase)
 		{
-			string text;
+			string textResult;
 			switch (phase)
 			{
 			default:
-				text = Text("还原未完成", "Restoration incomplete", "復元未完了");
+				textResult = Text("还原未完成", "Restoration incomplete", "復元未完了");
 				break;
 			case "restored":
-				text = Text("恢复检查通过", "Restoration checks passed", "復元チェック完了");
+				textResult = Text("恢复检查通过", "Restoration checks passed", "復元チェック完了");
 				break;
 			case "end":
-				text = Text("退局，开始还原", "Game ended; restoring", "ゲーム終了、復元を開始");
+				textResult = Text("退局，开始还原", "Game ended; restoring", "ゲーム終了、復元を開始");
 				break;
 			case "start":
-				text = Text("开始接管", "Management started", "管理を開始");
+				textResult = Text("开始接管", "Management started", "管理を開始");
 				break;
 			}
-			string text2 = text;
-			return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + text2;
+			string message = textResult;
+			return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + message;
 		}
 
 		private static LogEventSeverity BoundarySeverity(LogEventSeverity existing, LogEventSeverity incoming, string phase)
@@ -539,21 +539,21 @@ namespace PaviseApp
 
 		private static string Body(string raw)
 		{
-			string text = (raw ?? "").Trim();
+			string trimmed = (raw ?? "").Trim();
 			DateTime result;
-			if (text.Length >= 19 && DateTime.TryParseExact(text.Substring(0, 19), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+			if (trimmed.Length >= 19 && DateTime.TryParseExact(trimmed.Substring(0, 19), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
 			{
-				text = text.Substring(19).Trim();
+				trimmed = trimmed.Substring(19).Trim();
 			}
-			string[] array = new string[4] { "WARN ", "FAIL ", "INFO ", "PASS " };
-			for (int i = 0; i < array.Length; i++)
+			string[] textEntries = new string[4] { "WARN ", "FAIL ", "INFO ", "PASS " };
+			for (int i = 0; i < textEntries.Length; i++)
 			{
-				if (text.StartsWith(array[i], StringComparison.Ordinal))
+				if (trimmed.StartsWith(textEntries[i], StringComparison.Ordinal))
 				{
-					return text.Substring(array[i].Length).Trim();
+					return trimmed.Substring(textEntries[i].Length).Trim();
 				}
 			}
-			return text;
+			return trimmed;
 		}
 
 		private static Boundary SessionBoundary(string body)
@@ -562,21 +562,21 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			int num = body.IndexOf(']', 9);
-			if (num <= 9)
+			int matchIndex = body.IndexOf(']', 9);
+			if (matchIndex <= 9)
 			{
 				return null;
 			}
-			int num2 = body.IndexOf('|', num + 1);
-			string text = ((num2 < 0) ? body.Substring(num + 1) : body.Substring(num + 1, num2 - num - 1)).Trim();
-			if (text != "start" && text != "end" && text != "restored" && text != "restore-failed")
+			int matchIndex2 = body.IndexOf('|', matchIndex + 1);
+			string stateValue = ((matchIndex2 < 0) ? body.Substring(matchIndex + 1) : body.Substring(matchIndex + 1, matchIndex2 - matchIndex - 1)).Trim();
+			if (stateValue != "start" && stateValue != "end" && stateValue != "restored" && stateValue != "restore-failed")
 			{
 				return null;
 			}
 			Boundary boundary = new Boundary();
-			boundary.Token = body.Substring(9, num - 9);
-			boundary.State = text;
-			boundary.Name = ((num2 < 0) ? "" : body.Substring(num2 + 1).Trim());
+			boundary.Token = body.Substring(9, matchIndex - 9);
+			boundary.State = stateValue;
+			boundary.Name = ((matchIndex2 < 0) ? "" : body.Substring(matchIndex2 + 1).Trim());
 			return boundary;
 		}
 
@@ -587,19 +587,19 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = body.IndexOf(']', 6);
-			int num2 = ((num >= 0) ? body.IndexOf('|', num + 1) : (-1));
-			if (num < 6)
+			int matchIndex = body.IndexOf(']', 6);
+			int matchIndex2 = ((matchIndex >= 0) ? body.IndexOf('|', matchIndex + 1) : (-1));
+			if (matchIndex < 6)
 			{
 				return false;
 			}
-			token = body.Substring(6, num - 6);
-			if (num2 <= num + 1)
+			token = body.Substring(6, matchIndex - 6);
+			if (matchIndex2 <= matchIndex + 1)
 			{
 				return true;
 			}
-			action = body.Substring(num + 1, num2 - num - 1).Trim();
-			state = body.Substring(num2 + 1).Trim();
+			action = body.Substring(matchIndex + 1, matchIndex2 - matchIndex - 1).Trim();
+			state = body.Substring(matchIndex2 + 1).Trim();
 			return true;
 		}
 
@@ -684,20 +684,20 @@ namespace PaviseApp
 
 		private static string SyntheticToken(LogEventEntry e, string name, Dictionary<string, int> counts)
 		{
-			string text = Stamp(e) + "\u001f" + name;
+			string nameOffset = Stamp(e) + "\u001f" + name;
 			int value;
-			counts.TryGetValue(text, out value);
-			counts[text] = value + 1;
-			return "legacy:" + text + "\u001f" + value.ToString(CultureInfo.InvariantCulture);
+			counts.TryGetValue(nameOffset, out value);
+			counts[nameOffset] = value + 1;
+			return "legacy:" + nameOffset + "\u001f" + value.ToString(CultureInfo.InvariantCulture);
 		}
 
 		private static void Remap(IList<LogEventEntry> events, int end, string old, string replacement)
 		{
-			for (int num = end - 1; num >= 0; num--)
+			for (int eventsIndex = end - 1; eventsIndex >= 0; eventsIndex--)
 			{
-				if (events[num] != null && events[num].SessionToken == old)
+				if (events[eventsIndex] != null && events[eventsIndex].SessionToken == old)
 				{
-					events[num].SessionToken = replacement;
+					events[eventsIndex].SessionToken = replacement;
 				}
 			}
 		}
@@ -718,8 +718,8 @@ namespace PaviseApp
 			{
 				if (events[i] != null)
 				{
-					string text = Body(events[i].Raw);
-					Boundary boundary = SessionBoundary(text);
+					string bodyResult = Body(events[i].Raw);
+					Boundary boundary = SessionBoundary(bodyResult);
 					if (boundary != null && boundary.State == "start")
 					{
 						return true;
@@ -727,11 +727,11 @@ namespace PaviseApp
 					string token;
 					string action;
 					string state;
-					if (Auto(text, out token, out action, out state) && IsSessionAction(action) && IsStarted(state))
+					if (Auto(bodyResult, out token, out action, out state) && IsSessionAction(action) && IsStarted(state))
 					{
 						return true;
 					}
-					if (text.StartsWith("游戏模式激活 检测到 ", StringComparison.Ordinal) || text.StartsWith("Game mode activated, detected ", StringComparison.Ordinal) || text.StartsWith("游戏模式 检测目标变更 ", StringComparison.Ordinal) || text.StartsWith("Game mode detection target changed ", StringComparison.Ordinal) || text.StartsWith("游戏模式解除 ", StringComparison.Ordinal) || text.StartsWith("Game mode ended ", StringComparison.Ordinal))
+					if (bodyResult.StartsWith("游戏模式激活 检测到 ", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode activated, detected ", StringComparison.Ordinal) || bodyResult.StartsWith("游戏模式 检测目标变更 ", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode detection target changed ", StringComparison.Ordinal) || bodyResult.StartsWith("游戏模式解除 ", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode ended ", StringComparison.Ordinal))
 					{
 						return false;
 					}

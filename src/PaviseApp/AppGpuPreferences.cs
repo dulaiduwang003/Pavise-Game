@@ -91,7 +91,7 @@ namespace PaviseApp
 			public AppGpuPreferenceWriteResult CompareExchange(string path, string expected, string replacement)
 			{
 				RefuseNativeInTests();
-				bool flag = false;
+				bool compareExchangeReady = false;
 				try
 				{
 					using (RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences"))
@@ -109,7 +109,7 @@ namespace PaviseApp
 						{
 							return AppGpuPreferenceWriteResult.Changed;
 						}
-						flag = true;
+						compareExchangeReady = true;
 						if (replacement == null)
 						{
 							registryKey.DeleteValue(path, false);
@@ -123,7 +123,7 @@ namespace PaviseApp
 				}
 				catch
 				{
-					return (!flag) ? AppGpuPreferenceWriteResult.NotIssued : AppGpuPreferenceWriteResult.Unknown;
+					return (!compareExchangeReady) ? AppGpuPreferenceWriteResult.NotIssued : AppGpuPreferenceWriteResult.Unknown;
 				}
 			}
 

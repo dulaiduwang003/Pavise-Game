@@ -192,9 +192,9 @@ namespace PaviseApp
 				}
 				gameNvProfileReader.Reload();
 				GameNvProfile gameNvProfile = gameNvProfileReader.FindApplication(plan.Executable);
-				bool flag = gameNvProfile == null;
-				string profileName = (flag ? (OwnName(plan.Executable) + "." + Guid.NewGuid().ToString("N")) : gameNvProfile.Name);
-				if (flag)
+				bool matchesGameNvProfile = gameNvProfile == null;
+				string profileName = (matchesGameNvProfile ? (OwnName(plan.Executable) + "." + Guid.NewGuid().ToString("N")) : gameNvProfile.Name);
+				if (matchesGameNvProfile)
 				{
 					if (gameNvProfileReader.FindApplication(Path.GetFileName(plan.Executable)) != null || gameNvProfileReader.FindProfile(profileName) != null)
 					{
@@ -208,54 +208,54 @@ namespace PaviseApp
 				Dictionary<uint, GameNvSetting> dictionary = new Dictionary<uint, GameNvSetting>();
 				Dictionary<uint, uint> dictionary2 = new Dictionary<uint, uint>();
 				Dictionary<uint, GameNvProfileDecision> dictionary3 = new Dictionary<uint, GameNvProfileDecision>();
-				uint[] array = ids;
-				foreach (uint num in array)
+				uint[] idsSnapshot = ids;
+				foreach (uint numericValueEntry in idsSnapshot)
 				{
-					GameNvSetting gameNvSetting = (flag ? gameNvProfileReader.Reference(num) : gameNvProfileReader.Read(profileName, num));
+					GameNvSetting gameNvSetting = (matchesGameNvProfile ? gameNvProfileReader.Reference(numericValueEntry) : gameNvProfileReader.Read(profileName, numericValueEntry));
 					if (gameNvSetting == null)
 					{
 						throw new InvalidDataException("Missing original setting provenance");
 					}
-					if (flag)
+					if (matchesGameNvProfile)
 					{
 						gameNvSetting = InheritedOriginal(gameNvSetting);
 					}
-					dictionary.Add(num, gameNvSetting);
+					dictionary.Add(numericValueEntry, gameNvSetting);
 					uint value;
-					GameNvProfileDecision gameNvProfileDecision = ((!plan.Targets.TryGetValue(num, out value)) ? new GameNvProfileDecision(plan.Members[(num != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(gameNvSetting)) : (mechanismOnly ? new GameNvProfileDecision((!gameNvSetting.Resolved || gameNvSetting.Value != value) ? GameNvPending.Ready : GameNvPending.AlreadyMatches, GameNvProfilePolicy.Source(gameNvSetting)) : GameNvProfilePolicy.Evaluate(num, value, gameNvSetting)));
-					dictionary3.Add(num, gameNvProfileDecision);
+					GameNvProfileDecision gameNvProfileDecision = ((!plan.Targets.TryGetValue(numericValueEntry, out value)) ? new GameNvProfileDecision(plan.Members[(numericValueEntry != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(gameNvSetting)) : (mechanismOnly ? new GameNvProfileDecision((!gameNvSetting.Resolved || gameNvSetting.Value != value) ? GameNvPending.Ready : GameNvPending.AlreadyMatches, GameNvProfilePolicy.Source(gameNvSetting)) : GameNvProfilePolicy.Evaluate(numericValueEntry, value, gameNvSetting)));
+					dictionary3.Add(numericValueEntry, gameNvProfileDecision);
 					if (gameNvProfileDecision.State == GameNvPending.Ready)
 					{
-						dictionary2.Add(num, value);
+						dictionary2.Add(numericValueEntry, value);
 					}
 				}
 				gameNvProfileReader.Reload();
 				GameNvProfile gameNvProfile2 = gameNvProfileReader.FindApplication(plan.Executable);
-				bool num2;
-				if (!flag)
+				bool matchesScopeHash;
+				if (!matchesGameNvProfile)
 				{
 					if (gameNvProfile2 == null)
 					{
 						goto RejectChangedProfileScope;
 					}
-					num2 = gameNvProfile2.ScopeHash != gameNvProfile.ScopeHash;
+					matchesScopeHash = gameNvProfile2.ScopeHash != gameNvProfile.ScopeHash;
 				}
 				else
 				{
-					num2 = gameNvProfile2 != null;
+					matchesScopeHash = gameNvProfile2 != null;
 				}
-				if (!num2)
+				if (!matchesScopeHash)
 				{
-					uint[] array2 = ids;
-					foreach (uint num3 in array2)
+					uint[] idsSnapshot2 = ids;
+					foreach (uint numericValueEntry2 in idsSnapshot2)
 					{
-						if ((flag ? InheritedOriginal(gameNvProfileReader.Reference(num3)) : gameNvProfileReader.Read(profileName, num3)).Text != dictionary[num3].Text)
+						if ((matchesGameNvProfile ? InheritedOriginal(gameNvProfileReader.Reference(numericValueEntry2)) : gameNvProfileReader.Read(profileName, numericValueEntry2)).Text != dictionary[numericValueEntry2].Text)
 						{
 							throw new IOException("Game NVIDIA originals changed during inspection");
 						}
 					}
 					GameNvPending state = ((dictionary2.Count > 0) ? GameNvPending.Integration : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.ProfileRule) ? GameNvPending.ProfileRule : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.UserPreference) ? GameNvPending.UserPreference : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.Observation) ? GameNvPending.Observation : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.ApiEvidence) ? GameNvPending.ApiEvidence : GameNvPending.AlreadyMatches)))));
-					return Result(state, gameNvProfile, profileName, flag, dictionary2, dictionary, dictionary3, !mechanismOnly, plan.Hash);
+					return Result(state, gameNvProfile, profileName, matchesGameNvProfile, dictionary2, dictionary, dictionary3, !mechanismOnly, plan.Hash);
 				}
 				goto RejectChangedProfileScope;
 				RejectChangedProfileScope:
@@ -372,13 +372,13 @@ namespace PaviseApp
 			scopeHash = ((inspection.Profile == null) ? "absent" : inspection.Profile.ScopeHash);
 			originals = new Dictionary<uint, GameNvSetting>(inspection.Originals);
 			targets = new Dictionary<uint, uint>(inspection.EligibleTargets);
-			string text = ProfileRoot(store, name, predefined);
-			directory = Path.Combine(text, token);
+			string profileRootResult = ProfileRoot(store, name, predefined);
+			directory = Path.Combine(profileRootResult, token);
 			try
 			{
-				storeLock = heldStore ?? LockStore(Path.GetDirectoryName(text));
-				profileLock = Lock(text);
-				RequireStoreNoDebt(Path.GetDirectoryName(text));
+				storeLock = heldStore ?? LockStore(Path.GetDirectoryName(profileRootResult));
+				profileLock = Lock(profileRootResult);
+				RequireStoreNoDebt(Path.GetDirectoryName(profileRootResult));
 				Directory.CreateDirectory(directory);
 				Dictionary<string, string> dictionary = new Dictionary<string, string>
 				{
@@ -399,13 +399,13 @@ namespace PaviseApp
 					{ "plan", planHash },
 					{ "plan_text", plan.Text }
 				};
-				uint[] array = ids;
-				for (int i = 0; i < array.Length; i++)
+				uint[] idsSnapshot = ids;
+				for (int i = 0; i < idsSnapshot.Length; i++)
 				{
-					uint key = array[i];
-					string text2 = key.ToString("X8");
-					dictionary.Add("original." + text2, originals[key].Text);
-					dictionary.Add("target." + text2, targets.ContainsKey(key) ? "1" : "leave");
+					uint key = idsSnapshot[i];
+					string keyText = key.ToString("X8");
+					dictionary.Add("original." + keyText, originals[key].Text);
+					dictionary.Add("target." + keyText, targets.ContainsKey(key) ? "1" : "leave");
 				}
 				byte[] bytes = GameNvText.Encode(dictionary);
 				GameNvText.Create(Path.Combine(directory, "original.tsv"), bytes);
@@ -463,18 +463,18 @@ namespace PaviseApp
 				}
 				originals = new Dictionary<uint, GameNvSetting>();
 				targets = new Dictionary<uint, uint>();
-				uint[] array = ids;
-				for (int i = 0; i < array.Length; i++)
+				uint[] idsSnapshot = ids;
+				for (int i = 0; i < idsSnapshot.Length; i++)
 				{
-					uint key = array[i];
-					string text = key.ToString("X8");
-					originals.Add(key, GameNvSetting.Parse(dictionary["original." + text]));
-					string text2 = dictionary["target." + text];
-					if (text2 == "1")
+					uint key = idsSnapshot[i];
+					string keyText = key.ToString("X8");
+					originals.Add(key, GameNvSetting.Parse(dictionary["original." + keyText]));
+					string message = dictionary["target." + keyText];
+					if (message == "1")
 					{
 						targets.Add(key, 1u);
 					}
-					else if (text2 != "leave")
+					else if (message != "leave")
 					{
 						throw new InvalidDataException("Unknown original game NVIDIA target");
 					}
@@ -532,8 +532,8 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Game NVIDIA profile history exceeds bound");
 			}
-			string[] array = directories;
-			foreach (string root2 in array)
+			string[] directoriesSnapshot = directories;
+			foreach (string root2 in directoriesSnapshot)
 			{
 				if (!GameNvText.IsHash(Path.GetFileName(root2)))
 				{
@@ -550,19 +550,19 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Game NVIDIA journal history exceeds bound");
 			}
-			string[] array = directories;
-			foreach (string path in array)
+			string[] directoriesSnapshot = directories;
+			foreach (string path in directoriesSnapshot)
 			{
 				NoReparse.CheckPath(path);
-				string text = Path.Combine(path, "original.tsv");
-				if (File.Exists(text))
+				string originalPath = Path.Combine(path, "original.tsv");
+				if (File.Exists(originalPath))
 				{
-					string text2 = Path.Combine(path, "terminal.tsv");
-					if (!File.Exists(text2))
+					string terminalPath = Path.Combine(path, "terminal.tsv");
+					if (!File.Exists(terminalPath))
 					{
 						throw new GameNvPreparationPending(GameNvPending.Recovery);
 					}
-					byte[] bytes = ReadFile(text, 1048576);
+					byte[] bytes = ReadFile(originalPath, 1048576);
 					Dictionary<string, string> dictionary = GameNvText.Decode(bytes);
 					Dictionary<string, string> dictionary2 = new Dictionary<string, string>();
 					dictionary2.Add("schema", "game-nv-phase-1");
@@ -570,12 +570,12 @@ namespace PaviseApp
 					dictionary2.Add("original", GameNvText.Hash(bytes));
 					dictionary2.Add("operation", "terminal");
 					byte[] second = GameNvText.Encode(dictionary2);
-					if (!ReadFile(text2, 4096).SequenceEqual(second) || dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != Path.GetFileName(path))
+					if (!ReadFile(terminalPath, 4096).SequenceEqual(second) || dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != Path.GetFileName(path))
 					{
 						throw new InvalidDataException("Invalid terminal game NVIDIA journal");
 					}
 				}
-				if (!File.Exists(text) && Directory.GetFileSystemEntries(path).Length != 0)
+				if (!File.Exists(originalPath) && Directory.GetFileSystemEntries(path).Length != 0)
 				{
 					throw new InvalidDataException("Unrecognized partial game NVIDIA journal");
 				}
@@ -584,9 +584,9 @@ namespace PaviseApp
 
 		private FileStream PinOriginal()
 		{
-			string text = Path.Combine(directory, "original.tsv");
-			NoReparse.CheckPath(text);
-			FileStream fileStream = new FileStream(text, FileMode.Open, FileAccess.Read, FileShare.Read);
+			string originalPath = Path.Combine(directory, "original.tsv");
+			NoReparse.CheckPath(originalPath);
+			FileStream fileStream = new FileStream(originalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
 			try
 			{
 				byte[] bytes = ReadPinned(fileStream);
@@ -610,18 +610,18 @@ namespace PaviseApp
 				throw new InvalidDataException("Invalid game NVIDIA original bytes");
 			}
 			stream.Position = 0L;
-			byte[] array = new byte[(int)stream.Length];
-			int num;
-			for (int i = 0; i < array.Length; i += num)
+			byte[] rawBytes = new byte[(int)stream.Length];
+			int pinnedValue;
+			for (int i = 0; i < rawBytes.Length; i += pinnedValue)
 			{
-				num = stream.Read(array, i, array.Length - i);
-				if (num <= 0)
+				pinnedValue = stream.Read(rawBytes, i, rawBytes.Length - i);
+				if (pinnedValue <= 0)
 				{
 					throw new EndOfStreamException();
 				}
 			}
 			stream.Position = 0L;
-			return array;
+			return rawBytes;
 		}
 
 		private static byte[] ReadFile(string path, int maximum)
@@ -649,12 +649,12 @@ namespace PaviseApp
 
 		private bool Has(string op)
 		{
-			string text = Path.Combine(directory, op + ".tsv");
-			if (!File.Exists(text))
+			string combinedPath = Path.Combine(directory, op + ".tsv");
+			if (!File.Exists(combinedPath))
 			{
 				return false;
 			}
-			if (!ReadFile(text, 4096).SequenceEqual(Event(op)))
+			if (!ReadFile(combinedPath, 4096).SequenceEqual(Event(op)))
 			{
 				throw new InvalidDataException("Game NVIDIA phase does not bind original receipt");
 			}
@@ -672,24 +672,24 @@ namespace PaviseApp
 		private void ValidateDirectory()
 		{
 			HashSet<string> hashSet = new HashSet<string>(new string[6] { "original.tsv", "terminal.tsv", "issued-create.tsv", "issued-bind.tsv", "issued-unbind.tsv", "issued-delete.tsv" }, StringComparer.Ordinal);
-			uint[] array = ids;
-			for (int i = 0; i < array.Length; i++)
+			uint[] idsSnapshot = ids;
+			for (int i = 0; i < idsSnapshot.Length; i++)
 			{
-				uint num = array[i];
-				hashSet.Add("issued-set-" + num.ToString("X8") + ".tsv");
-				hashSet.Add("issued-restore-" + num.ToString("X8") + ".tsv");
+				uint numericValue = idsSnapshot[i];
+				hashSet.Add("issued-set-" + numericValue.ToString("X8") + ".tsv");
+				hashSet.Add("issued-restore-" + numericValue.ToString("X8") + ".tsv");
 			}
 			string[] files = Directory.GetFiles(directory);
-			foreach (string text in files)
+			foreach (string filePath in files)
 			{
-				string fileName = Path.GetFileName(text);
+				string fileName = Path.GetFileName(filePath);
 				if (!hashSet.Contains(fileName))
 				{
 					throw new InvalidDataException("Unknown game NVIDIA phase file");
 				}
 				if (fileName != "original.tsv")
 				{
-					Has(Path.GetFileNameWithoutExtension(text));
+					Has(Path.GetFileNameWithoutExtension(filePath));
 				}
 			}
 			if (Directory.GetDirectories(directory).Length != 0)
@@ -730,25 +730,25 @@ namespace PaviseApp
 				}
 				goto ReturnOwnedProfile;
 			}
-			bool num;
+			bool isNotIsPlainExactPath;
 			if (gameNvProfile.Applications.Count != 0)
 			{
 				if (gameNvProfile.Applications.Count == 1)
 				{
-					num = !gameNvProfile.Applications[0].IsPlainExactPath(path);
+					isNotIsPlainExactPath = !gameNvProfile.Applications[0].IsPlainExactPath(path);
 					goto CheckUnexpectedApplications;
 				}
 			}
 			else if (allowEmpty)
 			{
-				num = gameNvProfile.LocalSettingCount != 0;
+				isNotIsPlainExactPath = gameNvProfile.LocalSettingCount != 0;
 				goto CheckUnexpectedApplications;
 			}
 			goto RejectForeignProfileContents;
 			RejectForeignProfileContents:
 			throw new IOException("Owned game NVIDIA profile gained another application or unbound settings");
 			CheckUnexpectedApplications:
-			if (num)
+			if (isNotIsPlainExactPath)
 			{
 				goto RejectForeignProfileContents;
 			}
@@ -792,37 +792,37 @@ namespace PaviseApp
 			{
 				throw new IOException("Original borrowed game NVIDIA profile disappeared");
 			}
-			uint[] array = ids;
-			for (int i = 0; i < array.Length; i++)
+			uint[] idsSnapshot = ids;
+			for (int i = 0; i < idsSnapshot.Length; i++)
 			{
-				uint num = array[i];
+				uint numericValue = idsSnapshot[i];
 				uint value;
-				if (targets.TryGetValue(num, out value))
+				if (targets.TryGetValue(numericValue, out value))
 				{
 					BeforeWrite();
 					Current(false);
-					GameNvSetting observed = backend.Read(name, num);
-					if (!OriginalMatches(observed, num))
+					GameNvSetting observed = backend.Read(name, numericValue);
+					if (!OriginalMatches(observed, numericValue))
 					{
 						throw new IOException("Original game NVIDIA setting changed before staging");
 					}
-					Mark("issued-set-" + num.ToString("X8"));
+					Mark("issued-set-" + numericValue.ToString("X8"));
 					BeforeWrite();
-					backend.SetUserOverride(name, num, value);
+					backend.SetUserOverride(name, numericValue, value);
 					BeforeWrite();
 					backend.Save();
 					Current(false);
-					GameNvSetting gameNvSetting = backend.Read(name, num);
+					GameNvSetting gameNvSetting = backend.Read(name, numericValue);
 					if (!gameNvSetting.UserOverride || gameNvSetting.Value != value)
 					{
 						throw new IOException("Game NVIDIA override did not persist after reload");
 					}
 				}
 			}
-			uint[] array2 = ids;
-			foreach (uint num2 in array2)
+			uint[] idsSnapshot2 = ids;
+			foreach (uint numericValueEntry in idsSnapshot2)
 			{
-				if (!targets.ContainsKey(num2) && !OriginalMatches(backend.Read(name, num2), num2))
+				if (!targets.ContainsKey(numericValueEntry) && !OriginalMatches(backend.Read(name, numericValueEntry), numericValueEntry))
 				{
 					throw new IOException("Unselected game NVIDIA setting changed");
 				}

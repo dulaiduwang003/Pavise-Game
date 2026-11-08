@@ -7,12 +7,12 @@ namespace PaviseApp
 	{
 		internal static Exception Failed(int code, bool membershipKnown, bool inJob)
 		{
-			string text = "hidden independent guardian could not start: " + code;
+			string codeOffset = "hidden independent guardian could not start: " + code;
 			if (code != 5 || !membershipKnown || !inJob)
 			{
-				return new IOException(text);
+				return new IOException(codeOffset);
 			}
-			return new HardThreadGuardianLaunchBlockedException(text + " (Pavise is running inside a job)");
+			return new HardThreadGuardianLaunchBlockedException(codeOffset + " (Pavise is running inside a job)");
 		}
 
 		internal static void RequireIndependent(bool membershipKnown, bool inJob)

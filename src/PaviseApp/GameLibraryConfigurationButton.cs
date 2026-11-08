@@ -134,27 +134,27 @@ namespace PaviseApp
 			}
 			Glyphs.Draw(graphics, Attention ? "lol" : "settings", new Rectangle(Theme.S(13), (base.Height - Theme.S(15)) / 2, Theme.S(15), Theme.S(15)), Attention ? accent : (expanded ? Theme.Accent : Theme.Dim));
 			TextRenderer.DrawText(graphics, Text, Font, new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(74)), base.Height), ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			int num = base.Width - Theme.S(19);
-			int num2 = base.Height / 2;
-			int num3 = ((!expanded) ? 1 : (-1));
+			int remainingWidth = base.Width - Theme.S(19);
+			int heightRatio = base.Height / 2;
+			int onPaintValue = ((!expanded) ? 1 : (-1));
 			using (Pen pen2 = new Pen(Attention ? accent : (expanded ? Theme.Accent : Theme.Dim), Math.Max(1f, Theme.S(1))))
 			{
 				if (modalPresentation)
 				{
 					graphics.DrawLines(pen2, new Point[3]
 					{
-						new Point(num - Theme.S(2), num2 - Theme.S(4)),
-						new Point(num + Theme.S(2), num2),
-						new Point(num - Theme.S(2), num2 + Theme.S(4))
+						new Point(remainingWidth - Theme.S(2), heightRatio - Theme.S(4)),
+						new Point(remainingWidth + Theme.S(2), heightRatio),
+						new Point(remainingWidth - Theme.S(2), heightRatio + Theme.S(4))
 					});
 				}
 				else
 				{
 					graphics.DrawLines(pen2, new Point[3]
 					{
-						new Point(num - Theme.S(4), num2 - num3 * Theme.S(2)),
-						new Point(num, num2 + num3 * Theme.S(2)),
-						new Point(num + Theme.S(4), num2 - num3 * Theme.S(2))
+						new Point(remainingWidth - Theme.S(4), heightRatio - onPaintValue * Theme.S(2)),
+						new Point(remainingWidth, heightRatio + onPaintValue * Theme.S(2)),
+						new Point(remainingWidth + Theme.S(4), heightRatio - onPaintValue * Theme.S(2))
 					});
 				}
 			}

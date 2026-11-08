@@ -51,13 +51,13 @@ namespace PaviseApp
 			DoubleBuffered = true;
 			SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
 			base.KeyPreview = true;
-			int num = Theme.S(540);
-			int num2 = 410;
-			int num3 = Theme.S(num2 + 44 + 34 + 22 + 14);
-			base.ClientSize = new Size(num, num3);
+			int scaledDimension = Theme.S(540);
+			int ctorValue = 410;
+			int scaledDimension2 = Theme.S(ctorValue + 44 + 34 + 22 + 14);
+			base.ClientSize = new Size(scaledDimension, scaledDimension2);
 			scan = new ScanView();
 			scan.Name = "irqCheckScan";
-			scan.SetBounds(Theme.S(26), Theme.S(78), num - Theme.S(26) * 2, Theme.S(320));
+			scan.SetBounds(Theme.S(26), Theme.S(78), scaledDimension - Theme.S(26) * 2, Theme.S(320));
 			base.Controls.Add(scan);
 			hint = new Label();
 			hint.Name = "irqCheckHint";
@@ -67,13 +67,13 @@ namespace PaviseApp
 			hint.Font = Theme.UI(9.5f, true);
 			hint.TextAlign = ContentAlignment.MiddleCenter;
 			hint.UseCompatibleTextRendering = false;
-			hint.SetBounds(Theme.S(26), Theme.S(num2), num - Theme.S(26) * 2, Theme.S(40));
+			hint.SetBounds(Theme.S(26), Theme.S(ctorValue), scaledDimension - Theme.S(26) * 2, Theme.S(40));
 			base.Controls.Add(hint);
 			cancel = new PillButton(Lang.T("dlg.cancel"), BtnKind.Normal);
 			cancel.Name = "irqCheckCancel";
 			cancel.Bg = Theme.Card;
 			cancel.Size = new Size(Theme.S(108), Theme.S(34));
-			cancel.Location = new Point(num - Theme.S(26) - cancel.Width, num3 - Theme.S(22) - cancel.Height);
+			cancel.Location = new Point(scaledDimension - Theme.S(26) - cancel.Width, scaledDimension2 - Theme.S(22) - cancel.Height);
 			PillButton pillButton = cancel;
 			EventHandler value = delegate
 			{
@@ -142,9 +142,9 @@ namespace PaviseApp
 				{
 					if (!base.IsDisposed)
 					{
-						string text = (cancelRequested ? Lang.T("irqcheck.dialog.stopping") : ((value >= 1f) ? Lang.T("irqcheck.dialog.analyzing") : ((left != lastSeconds) ? Lang.F("irqcheck.dialog.caption", left) : null)));
+						string irqcheckDialogStoppingText = (cancelRequested ? Lang.T("irqcheck.dialog.stopping") : ((value >= 1f) ? Lang.T("irqcheck.dialog.analyzing") : ((left != lastSeconds) ? Lang.F("irqcheck.dialog.caption", left) : null)));
 						lastSeconds = left;
-						scan.ReportProgress(value, text);
+						scan.ReportProgress(value, irqcheckDialogStoppingText);
 					}
 				});
 			}
@@ -199,17 +199,17 @@ namespace PaviseApp
 			{
 				graphics.FillRectangle(brush2, 0, 0, base.Width, Theme.S(4));
 			}
-			int num = Theme.S(9);
-			int num2 = Theme.S(17);
-			int num3 = Theme.S(16);
-			int num4 = Theme.S(92);
-			int num5 = Theme.S(26);
+			int scaledDimension = Theme.S(9);
+			int scaledDimension2 = Theme.S(17);
+			int scaledDimension3 = Theme.S(16);
+			int scaledDimension4 = Theme.S(92);
+			int left = Theme.S(26);
 			Point[] points = new Point[4]
 			{
-				new Point(num5 + num, num2),
-				new Point(num5 + num4 + num, num2),
-				new Point(num5 + num4 - num, num2 + num3),
-				new Point(num5 - num, num2 + num3)
+				new Point(left + scaledDimension, scaledDimension2),
+				new Point(left + scaledDimension4 + scaledDimension, scaledDimension2),
+				new Point(left + scaledDimension4 - scaledDimension, scaledDimension2 + scaledDimension3),
+				new Point(left - scaledDimension, scaledDimension2 + scaledDimension3)
 			};
 			using (SolidBrush brush3 = new SolidBrush(Color.FromArgb(38, accent)))
 			{
@@ -226,17 +226,17 @@ namespace PaviseApp
 				stringFormat.LineAlignment = StringAlignment.Center;
 				using (StringFormat format = stringFormat)
 				{
-					graphics.DrawString("IRQ // CHECK", Theme.Mono(6.4f), brush4, new RectangleF(num5, num2, num4, num3), format);
+					graphics.DrawString("IRQ // CHECK", Theme.Mono(6.4f), brush4, new RectangleF(left, scaledDimension2, scaledDimension4, scaledDimension3), format);
 				}
 			}
 			using (SolidBrush brush5 = new SolidBrush(Theme.Fg))
 			{
-				graphics.DrawString(Lang.T("irqcheck.dialog.title"), Theme.UI(12.5f, true), brush5, num5 - Theme.S(2), Theme.S(43));
+				graphics.DrawString(Lang.T("irqcheck.dialog.title"), Theme.UI(12.5f, true), brush5, left - Theme.S(2), Theme.S(43));
 			}
-			int num6 = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
+			int top = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
 			using (Pen pen2 = new Pen(Theme.Stroke))
 			{
-				graphics.DrawLine(pen2, num5, num6, base.Width - num5, num6);
+				graphics.DrawLine(pen2, left, top, base.Width - left, top);
 			}
 			using (Pen pen3 = new Pen(Theme.StrokeHi))
 			{

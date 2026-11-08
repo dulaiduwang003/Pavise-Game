@@ -72,14 +72,14 @@ namespace PaviseApp
 			{
 				string value;
 				automationEvidence.TryGetValue(key, out value);
-				bool flag = key == "awake" && state == "restored" && automationSessionEnding && !awakeFinalRestoreLogged;
+				bool allConditionsMet = key == "awake" && state == "restored" && automationSessionEnding && !awakeFinalRestoreLogged;
 				string powerDetail = key == "PowerPlanOn" ? PowerPlanFailureDetail(state) : "";
 				string powerSignature = powerDetail.Length == 0 ? "" : state + "|" + powerDetail;
 				bool powerFailureChanged = powerSignature.Length > 0 && powerFailureLogSignature != powerSignature;
 				string timerDetail = key == "AutoGlobalTimer" ? GlobalTimerFailureDetail(state) : "";
 				string timerSignature = timerDetail.Length == 0 ? "" : state + "|" + timerDetail;
 				bool timerFailureChanged = timerSignature.Length > 0 && timerFailureLogSignature != timerSignature;
-				if (value == state && !flag && !powerFailureChanged && !timerFailureChanged)
+				if (value == state && !allConditionsMet && !powerFailureChanged && !timerFailureChanged)
 				{
 					return;
 				}
@@ -92,30 +92,30 @@ namespace PaviseApp
 				}
 				if (key == "session" && !string.IsNullOrEmpty(automationSession))
 				{
-					string text = ((state == "started") ? "start" : state);
-					string text2 = "SESSION [" + automationSession + "] " + text + " | " + automationSessionName;
+					string stateSnapshot = ((state == "started") ? "start" : state);
+					string automationSessionNameOffset = "SESSION [" + automationSession + "] " + stateSnapshot + " | " + automationSessionName;
 					if (state == "restore-failed")
 					{
-						Logger.Warn(text2);
+						Logger.Warn(automationSessionNameOffset);
 					}
 					else if (state == "restored")
 					{
-						Logger.Log("PASS " + text2);
+						Logger.Log("PASS " + automationSessionNameOffset);
 					}
 					else
 					{
-						Logger.Info(text2);
+						Logger.Info(automationSessionNameOffset);
 					}
 					if (state == "started") Logger.RuntimeIdentity();
 					return;
 				}
-				string text3 = "AUTO [" + automationSession + "] " + key + " | " + state;
+				string stateOffset = "AUTO [" + automationSession + "] " + key + " | " + state;
 				if (key == "PowerPlanOn")
 				{
-					if (powerDetail.Length > 0) text3 += " | " + powerDetail;
+					if (powerDetail.Length > 0) stateOffset += " | " + powerDetail;
 					if (state == "stopped")
 					{
-						Logger.Warn(text3);
+						Logger.Warn(stateOffset);
 						return;
 					}
 				}
@@ -123,25 +123,25 @@ namespace PaviseApp
 				{
 					bool verified; uint actual, finest;
 					bool leaseActive = timerLease.Readback(out verified, out actual, out finest);
-					text3 += " | desired100ns=" + TimerResolutionLease.Desired + " active=" + leaseActive
+					stateOffset += " | desired100ns=" + TimerResolutionLease.Desired + " active=" + leaseActive
 						+ " verified=" + verified + " actual100ns=" + actual + " finest100ns=" + finest;
-					if (timerDetail.Length > 0) text3 += " | " + timerDetail;
-					if (state == "stopped") { Logger.Warn(text3); return; }
+					if (timerDetail.Length > 0) stateOffset += " | " + timerDetail;
+					if (state == "stopped") { Logger.Warn(stateOffset); return; }
 				}
 				switch (state)
 				{
 				case "failed":
 				case "restore-failed":
-					Logger.Warn(text3);
+					Logger.Warn(stateOffset);
 					break;
 				case "applied":
 				case "restored":
 				case "started":
 				case "timer-locked":
-					Logger.Log("PASS " + text3);
+					Logger.Log("PASS " + stateOffset);
 					break;
 				default:
-					Logger.Info(text3);
+					Logger.Info(stateOffset);
 					break;
 				}
 			}
@@ -192,8 +192,8 @@ namespace PaviseApp
 		}
 		internal string AutomaticExecutionState(string key)
 		{
-			bool flag = key == "GmPauseServices" && OptionalServicePause.Active;
-			int num = (flag ? OptionalServicePause.PendingStopCount : 0);
+			bool matchesActive = key == "GmPauseServices" && OptionalServicePause.Active;
+			int pendingStopCount = (matchesActive ? OptionalServicePause.PendingStopCount : 0);
 			lock (sync)
 			{
 				switch (key)
@@ -208,30 +208,30 @@ namespace PaviseApp
 					return GlobalTimerExecutionState();
 				default:
 				{
-					string text = null;
+					string message = null;
 					string[] envKeys = EnvKeys;
-					foreach (string text2 in envKeys)
+					foreach (string entryKey in envKeys)
 					{
-						if (EnvPolicyKey(text2) == key)
+						if (EnvPolicyKey(entryKey) == key)
 						{
-							text = text2;
+							message = entryKey;
 							break;
 						}
 					}
-					if (text != null && envRestorePending.Contains(text))
+					if (message != null && envRestorePending.Contains(message))
 					{
 						return "restore-failed";
 					}
-					if (text != null && envFused.Contains(text))
+					if (message != null && envFused.Contains(message))
 					{
 						return "stopped";
 					}
-					if (flag)
+					if (matchesActive)
 					{
-						return (num > 0) ? "unverified" : "applied";
+						return (pendingStopCount > 0) ? "unverified" : "applied";
 					}
 					string value;
-					if (automationEvidence.TryGetValue(text ?? key, out value))
+					if (automationEvidence.TryGetValue(message ?? key, out value))
 					{
 						return value;
 					}
@@ -259,8 +259,8 @@ namespace PaviseApp
 			{
 				if (!PerformancePolicy.IsIntent(item.Key) && !PerformancePolicy.IsRetired(item.Key))
 				{
-					string text = automationPolicySnapshot.ValueOf(item.Key);
-					if (text == "0" || text == "off")
+					string valueOfResult = automationPolicySnapshot.ValueOf(item.Key);
+					if (valueOfResult == "0" || valueOfResult == "off")
 					{
 						RecordAutomation(item.Key, "unchanged");
 					}
@@ -365,8 +365,8 @@ namespace PaviseApp
 				}
 				GameDetection gameDetection = activeDetection;
 				GameProfile gameProfile = ((gameDetection == null || gameDetection.Profile == null) ? null : FindProfileLocked(gameDetection.Profile.Id));
-				bool flag = gameDetection != null && gameDetection.Profile != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameProfile != null && gameProfile.DisableFullscreenOptimizations && RendererHandoffTracker.SameProfile(gameDetection.Profile, gameProfile);
-				if ((!discoverTargets || !flag || string.IsNullOrEmpty(gameDetection.RendererPath) || automaticFsoEntries.ContainsKey(gameDetection.RendererPath)) && nowTicks < automaticFsoCheckAt)
+				bool matchesSameProfile = gameDetection != null && gameDetection.Profile != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameProfile != null && gameProfile.DisableFullscreenOptimizations && RendererHandoffTracker.SameProfile(gameDetection.Profile, gameProfile);
+				if ((!discoverTargets || !matchesSameProfile || string.IsNullOrEmpty(gameDetection.RendererPath) || automaticFsoEntries.ContainsKey(gameDetection.RendererPath)) && nowTicks < automaticFsoCheckAt)
 				{
 					return;
 				}
@@ -379,21 +379,21 @@ namespace PaviseApp
 						AddAutomaticFsoPath(hashSet, profile.LearnedExecutablePath);
 					}
 				}
-				if (flag)
+				if (matchesSameProfile)
 				{
 					AddAutomaticFsoPath(hashSet, gameDetection.RendererPath);
 				}
 				HashSet<string> hashSet2 = new HashSet<string>(hashSet, StringComparer.OrdinalIgnoreCase);
-				bool flag2 = false;
+				bool syncAutomaticFullscreenOptimizationsReady = false;
 				try
 				{
-					string[] array = FsoTweak.TrackedExes();
-					foreach (string item in array)
+					string[] trackedExesResult = FsoTweak.TrackedExes();
+					foreach (string item in trackedExesResult)
 					{
 						hashSet2.Add(item);
 						if (!hashSet.Contains(item))
 						{
-							flag2 = true;
+							syncAutomaticFullscreenOptimizationsReady = true;
 						}
 					}
 				}
@@ -411,7 +411,7 @@ namespace PaviseApp
 						automaticFsoEntries.Remove(item2);
 					}
 				}
-				bool flag3 = true;
+				bool syncAutomaticFullscreenOptimizationsReady2 = true;
 				automaticFsoCheckAt = nowTicks + 600000000;
 				foreach (string item3 in hashSet2)
 				{
@@ -419,33 +419,33 @@ namespace PaviseApp
 					{
 						return;
 					}
-					bool flag4 = hashSet.Contains(item3);
+					bool disableValue = hashSet.Contains(item3);
 					AutomaticFsoEntry value;
 					if (!automaticFsoEntries.TryGetValue(item3, out value))
 					{
 						AutomaticFsoEntry automaticFsoEntry = new AutomaticFsoEntry();
-						automaticFsoEntry.Disable = flag4;
+						automaticFsoEntry.Disable = disableValue;
 						value = automaticFsoEntry;
 						automaticFsoEntries[item3] = value;
 					}
-					if (value.Disable != flag4)
+					if (value.Disable != disableValue)
 					{
-						value.Disable = flag4;
+						value.Disable = disableValue;
 						value.Configured = false;
 						value.Failures = 0;
 						value.CheckAt = 0L;
 					}
 					if (nowTicks >= value.CheckAt)
 					{
-						value.Configured = FsoTweak.SetForExe(item3, flag4);
+						value.Configured = FsoTweak.SetForExe(item3, disableValue);
 						value.Failures = ((!value.Configured) ? Math.Min(value.Failures + 1, 5) : 0);
-						int num = (value.Configured ? 60 : Math.Min(300, 30 << value.Failures - 1));
-						value.CheckAt = nowTicks + (long)num * 10000000L;
+						int upperBound = (value.Configured ? 60 : Math.Min(300, 30 << value.Failures - 1));
+						value.CheckAt = nowTicks + (long)upperBound * 10000000L;
 					}
-					flag3 &= value.Configured;
+					syncAutomaticFullscreenOptimizationsReady2 &= value.Configured;
 					automaticFsoCheckAt = Math.Min(automaticFsoCheckAt, value.CheckAt);
 				}
-				automaticFsoState = ((!flag3) ? "failed" : ((hashSet.Count > 0) ? "fso-configured" : (flag2 ? "restored" : "")));
+				automaticFsoState = ((!syncAutomaticFullscreenOptimizationsReady2) ? "failed" : ((hashSet.Count > 0) ? "fso-configured" : (syncAutomaticFullscreenOptimizationsReady ? "restored" : "")));
 				RecordAutomation("AutoDisableFullscreenOptimizations", automaticFsoState);
 			}
 		}
@@ -460,15 +460,15 @@ namespace PaviseApp
 		{
 			SyncLaboratory();
 			string[] games = null;
-			bool flag;
-			bool flag2;
+			bool allConditionsMet;
+			bool matchesAllConditionsMet;
 			bool visualMatch;
 			lock (sync)
 			{
-				flag = enabled && !stopping && !panicReq && !ProfileStoreSaveFailed && !autoIgnoreLoadFailed && (libraryIgnoreTransaction == null || !libraryIgnoreTransaction.RecoveryPending);
-				flag2 = flag && active;
+				allConditionsMet = enabled && !stopping && !panicReq && !ProfileStoreSaveFailed && !autoIgnoreLoadFailed && (libraryIgnoreTransaction == null || !libraryIgnoreTransaction.RecoveryPending);
+				matchesAllConditionsMet = allConditionsMet && active;
                 visualMatch = false; // Desktop visual simplification is retired; only restore old records.
-				if (flag && !flag2 && (PerformanceTuning.ActionSelected("AutoGameMitigationsV1") || PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1") || PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1")))
+				if (allConditionsMet && !matchesAllConditionsMet && (PerformanceTuning.ActionSelected("AutoGameMitigationsV1") || PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1") || PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1")))
 				{
 					HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 					foreach (GameProfile profile in profiles)
@@ -484,7 +484,7 @@ namespace PaviseApp
 					games = new List<string>(hashSet).ToArray();
 				}
 			}
-			performanceActions.Queue(flag, flag2, games, visualMatch, true);
+			performanceActions.Queue(allConditionsMet, matchesAllConditionsMet, games, visualMatch, true);
 		}
 		internal bool SetVisualEffectsReduction(bool value)
 		{

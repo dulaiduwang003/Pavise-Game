@@ -42,13 +42,13 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text = Settings.LoadStr("DisplaySoloSnap", "");
-				if (text.Length == 0)
+				string displaySoloSnapValue = Settings.LoadStr("DisplaySoloSnap", "");
+				if (displaySoloSnapValue.Length == 0)
 				{
 					return true;
 				}
 				uint result;
-				if (!uint.TryParse(text, out result) || (result != 2 && result != 4 && result != 8))
+				if (!uint.TryParse(displaySoloSnapValue, out result) || (result != 2 && result != 4 && result != 8))
 				{
 					return false;
 				}

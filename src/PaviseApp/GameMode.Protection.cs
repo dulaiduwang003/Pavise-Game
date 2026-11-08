@@ -18,13 +18,13 @@ namespace PaviseApp
 			try
 			{
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				string[] array = (File.Exists(autoIgnorePath) ? File.ReadAllLines(autoIgnorePath) : new string[0]);
-				foreach (string text in array)
+				string[] allLines = (File.Exists(autoIgnorePath) ? File.ReadAllLines(autoIgnorePath) : new string[0]);
+				foreach (string entryText in allLines)
 				{
-					string text2 = text.Trim();
-					if (text2.Length != 0 && !text2.StartsWith("#"))
+					string entryTextTrimmed = entryText.Trim();
+					if (entryTextTrimmed.Length != 0 && !entryTextTrimmed.StartsWith("#"))
 					{
-						hashSet.Add(text2);
+						hashSet.Add(entryTextTrimmed);
 					}
 				}
 				autoAddIgnore.Clear();
@@ -85,7 +85,7 @@ namespace PaviseApp
 		}
 		public bool SetProfileFamilySuppression(string profileId, bool on, string expectedExecutablePath)
 		{
-			bool flag = false;
+			bool setProfileFamilySuppressionReady = false;
 			lock (familyPolicyGate)
 			{
 				lock (sync)
@@ -130,10 +130,10 @@ namespace PaviseApp
 					}
 					Interlocked.Increment(ref familyPolicyEpoch);
 					firstSweep = true;
-					flag = true;
+					setProfileFamilySuppressionReady = true;
 				}
 			}
-			if (flag)
+			if (setProfileFamilySuppressionReady)
 			{
 				RequestPolicyApply("SetProfileFamilySuppression");
 				RaiseLibraryChanged();
@@ -157,8 +157,8 @@ namespace PaviseApp
 			List<WhitelistRuleView> list = SnapshotWhitelistRuleViews();
 			list.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
 			{
-				int num = a.Rule.Kind.CompareTo(b.Rule.Kind);
-				return (num == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : num;
+				int compareToResult = a.Rule.Kind.CompareTo(b.Rule.Kind);
+				return (compareToResult == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : compareToResult;
 			});
 			return list;
 		}
@@ -175,8 +175,8 @@ namespace PaviseApp
 			}
 			list.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
 			{
-				int num = a.Rule.Kind.CompareTo(b.Rule.Kind);
-				return (num == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : num;
+				int compareToResult = a.Rule.Kind.CompareTo(b.Rule.Kind);
+				return (compareToResult == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : compareToResult;
 			});
 			return list;
 		}
@@ -261,7 +261,7 @@ namespace PaviseApp
 				}
 				return false;
 			}
-			int num;
+			int releaseCurrentWhitelistMatchesResult;
 			int matched;
 			lock (whiteEvalSync)
 			{
@@ -287,9 +287,9 @@ namespace PaviseApp
 					AddWhiteRuleNoSave(rule);
 					whitelistLastError = "";
 				}
-				num = ReleaseCurrentWhitelistMatches(out matched);
+				releaseCurrentWhitelistMatchesResult = ReleaseCurrentWhitelistMatches(out matched);
 			}
-			Logger.Log(string.Concat(Lang.T("log.gamemodelibrary.17"), rule.Kind, " ", rule.Value, Lang.T("log.gamemodelibrary.18"), matched, Lang.T("log.gamemodelibrary.19"), num, Lang.T("log.gamemodelibrary.20")));
+			Logger.Log(string.Concat(Lang.T("log.gamemodelibrary.17"), rule.Kind, " ", rule.Value, Lang.T("log.gamemodelibrary.18"), matched, Lang.T("log.gamemodelibrary.19"), releaseCurrentWhitelistMatchesResult, Lang.T("log.gamemodelibrary.20")));
 			RequestPolicyApply("AddWhitelistRule");
 			return true;
 		}
@@ -353,7 +353,7 @@ namespace PaviseApp
 					list.Add(rule);
 				}
 			}
-			int num;
+			int releaseCurrentWhitelistMatchesResult;
 			int matched;
 			lock (whiteEvalSync)
 			{
@@ -380,35 +380,35 @@ namespace PaviseApp
 					}
 					whitelistLastError = "";
 				}
-				num = ReleaseCurrentWhitelistMatches(out matched);
+				releaseCurrentWhitelistMatchesResult = ReleaseCurrentWhitelistMatches(out matched);
 			}
-			Logger.Log(Lang.T("log.gamemodelibrary.21") + SystemProcessCatalog.PresetWhitelist.Length + Lang.T("log.gamemodelibrary.22") + matched + Lang.T("log.gamemodelibrary.19") + num + Lang.T("log.gamemodelibrary.20"));
+			Logger.Log(Lang.T("log.gamemodelibrary.21") + SystemProcessCatalog.PresetWhitelist.Length + Lang.T("log.gamemodelibrary.22") + matched + Lang.T("log.gamemodelibrary.19") + releaseCurrentWhitelistMatchesResult + Lang.T("log.gamemodelibrary.20"));
 			RequestPolicyApply("ResetWhitelist");
 			return true;
 		}
 		internal static string BuildWhitelistFooter(IList<WhitelistRule> rules)
 		{
-			ulong num = 1469598103934665603uL;
-			int num2 = 0;
+			ulong numericValue = 1469598103934665603uL;
+			int processedCount = 0;
 			if (rules != null)
 			{
 				foreach (WhitelistRule rule in rules)
 				{
 					if (rule != null)
 					{
-						string text = rule.Serialize();
-						num2++;
-						for (int i = 0; i < text.Length; i++)
+						string serializeResult = rule.Serialize();
+						processedCount++;
+						for (int i = 0; i < serializeResult.Length; i++)
 						{
-							num ^= (byte)text[i];
-							num *= 1099511628211L;
+							numericValue ^= (byte)serializeResult[i];
+							numericValue *= 1099511628211L;
 						}
-						num ^= 0xA;
-						num *= 1099511628211L;
+						numericValue ^= 0xA;
+						numericValue *= 1099511628211L;
 					}
 				}
 			}
-			return "PAVISE_WHITELIST_END|" + num2 + "|" + num.ToString("X16");
+			return "PAVISE_WHITELIST_END|" + processedCount + "|" + numericValue.ToString("X16");
 		}
 		internal static bool IsActiveFamilyChildStart(GameDetection detection, ProcessChange change, int ownerSession)
 		{
@@ -469,31 +469,31 @@ namespace PaviseApp
 			SuppressionCore.BackgroundBoostLimit = (policySnapshot ?? PolicyResolver.Global()).BackgroundBoostLimitRequested;
 			bool preserveOnForeground = performancePreset == PerformancePreset.Competitive;
 			int foregroundPid = GameSessionDetector.ForegroundPid();
-			bool flag = WideBackgroundScope(policySnapshot ?? PolicyResolver.Global());
+			bool wideBackgroundScopeSucceeded = WideBackgroundScope(policySnapshot ?? PolicyResolver.Global());
 			WhitelistEvaluation whitelistEvaluation = EvaluateWhitelist(all);
 			int epoch = FamilyPolicyEpoch;
 			List<KeyValuePair<string, int>> services = (BackgroundServicePolicy.SupportedMode(performancePreset) ? BackgroundServiceHosts(all) : null);
-			bool flag2 = true;
+			bool sweepWithStableWhitelistCoreReady = true;
 			int rendererPid = 0;
-			string text = null;
+			string root = null;
 			GameProfile profile = null;
 			List<string> list = new List<string>();
 			List<GameProfile> exactGameProfiles = new List<GameProfile>();
 			bool lockTaken = false;
-			object obj = default(object);
+			object instance = default(object);
 			List<GameProfile> list2;
 			try
 			{
-				Monitor.Enter(obj = sync, ref lockTaken);
+				Monitor.Enter(instance = sync, ref lockTaken);
 				if (activeDetection != null)
 				{
 					rendererPid = activeDetection.RendererPid;
 					GameProfile gameProfile = ((activeDetection.Profile == null) ? null : FindProfileLocked(activeDetection.Profile.Id));
 					profile = ((gameProfile == null) ? null : gameProfile.Clone());
-					flag2 = FamilyBoundary.FamilyExemptFor(profile);
-					if (flag2 && activeDetection.Profile != null && FamilyBoundary.SafeFamilyDir(activeDetection.Profile.Root))
+					sweepWithStableWhitelistCoreReady = FamilyBoundary.FamilyExemptFor(profile);
+					if (sweepWithStableWhitelistCoreReady && activeDetection.Profile != null && FamilyBoundary.SafeFamilyDir(activeDetection.Profile.Root))
 					{
-						text = activeDetection.Profile.Root;
+						root = activeDetection.Profile.Root;
 					}
 				}
 				list2 = new List<GameProfile>();
@@ -515,7 +515,7 @@ namespace PaviseApp
 			{
 				if (lockTaken)
 				{
-					Monitor.Exit(obj);
+					Monitor.Exit(instance);
 				}
 			}
 			HashSet<int> hashSet = FamilyBoundary.CollectProtectedLibraryFamily(list2, all, selfPid, selfSession, FamilyEvidence);
@@ -526,42 +526,42 @@ namespace PaviseApp
 			gameCreationSeeds.UnionWith(gamePids ?? EmptyPidSet);
 			if (rendererPid > 0) gameCreationSeeds.Add(rendererPid);
 			HashSet<int> gameCreationHosts = FamilyBoundary.CollectGameCreationHosts(all, gameCreationSeeds, selfPid, selfSession);
-			bool flag3 = rendererPid > 0;
-			bool flag4 = flag2 && flag3;
-			bool flag5 = flag3 && (flag2 || !flag);
-			Dictionary<int, long> creations = (flag5 ? whitelistEvaluation.Creations : null);
-			HashSet<int> hashSet2 = (flag5 ? FamilyBoundary.WalkAncestorChain(whitelistEvaluation.Parents, rendererPid, selfPid, 24, creations) : EmptyPidSet);
+			bool matchesRendererPid = rendererPid > 0;
+			bool matchesSweepWithStableWhitelistCoreReady = sweepWithStableWhitelistCoreReady && matchesRendererPid;
+			bool matchesMatchesRendererPid = matchesRendererPid && (sweepWithStableWhitelistCoreReady || !wideBackgroundScopeSucceeded);
+			Dictionary<int, long> creations = (matchesMatchesRendererPid ? whitelistEvaluation.Creations : null);
+			HashSet<int> hashSet2 = (matchesMatchesRendererPid ? FamilyBoundary.WalkAncestorChain(whitelistEvaluation.Parents, rendererPid, selfPid, 24, creations) : EmptyPidSet);
 			HashSet<int> hashSet3 = null;
-			if (flag5)
+			if (matchesMatchesRendererPid)
 			{
 				hashSet3 = new HashSet<int>(gamePids ?? EmptyPidSet);
 				hashSet3.Add(rendererPid);
 			}
-			HashSet<int> gameDescendants = (flag5 ? FamilyBoundary.WalkDescendants(whitelistEvaluation.Parents, hashSet3, selfPid, 24, creations) : EmptyPidSet);
-			HashSet<int> hashSet4 = (flag ? EmptyPidSet : CollectUserFacingFamily(foregroundPid, whitelistEvaluation, (!flag2) ? rendererPid : 0));
+			HashSet<int> gameDescendants = (matchesMatchesRendererPid ? FamilyBoundary.WalkDescendants(whitelistEvaluation.Parents, hashSet3, selfPid, 24, creations) : EmptyPidSet);
+			HashSet<int> hashSet4 = (wideBackgroundScopeSucceeded ? EmptyPidSet : CollectUserFacingFamily(foregroundPid, whitelistEvaluation, (!sweepWithStableWhitelistCoreReady) ? rendererPid : 0));
 			FamilyBoundary.FilterUserFacingGameFamily(hashSet4, profile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, hashSet2, FamilyEvidence);
 			bool lockTaken2 = false;
-			bool flag6;
+			bool firstSweepSnapshot;
 			try
 			{
-				Monitor.Enter(obj = sync, ref lockTaken2);
-				flag6 = firstSweep;
+				Monitor.Enter(instance = sync, ref lockTaken2);
+				firstSweepSnapshot = firstSweep;
 			}
 			finally
 			{
 				if (lockTaken2)
 				{
-					Monitor.Exit(obj);
+					Monitor.Exit(instance);
 				}
 			}
-			int num = 0;
-			int num2 = 0;
-			int num3 = 0;
-			int num4 = 0;
-			int num5 = 0;
+			int processedCount = 0;
+			int processedCount2 = 0;
+			int processedCount3 = 0;
+			int processedCount4 = 0;
+			int processedCount5 = 0;
 			HashSet<int> hashSet5 = new HashSet<int>();
 			List<BackgroundRequest> pending = new List<BackgroundRequest>();
-			long num6 = DateTime.UtcNow.ToFileTimeUtc();
+			long toFileTimeUtcResult = DateTime.UtcNow.ToFileTimeUtc();
 			ProcEntry[] entries = all.Entries;
 			foreach (ProcEntry procEntry in entries)
 			{
@@ -589,7 +589,7 @@ namespace PaviseApp
 					}
 					else
 					{
-						if (procEntry.Creation > 0 && num6 - procEntry.Creation < 20000000)
+						if (procEntry.Creation > 0 && toFileTimeUtcResult - procEntry.Creation < 20000000)
 						{
 							continue;
 						}
@@ -616,23 +616,23 @@ namespace PaviseApp
 							}
 							continue;
 						}
-						bool flag7 = value != null && selfSession >= 0 && value.Session == selfSession;
+						bool allConditionsMet = value != null && selfSession >= 0 && value.Session == selfSession;
 						if (value == null)
 						{
-							flag7 = selfSession >= 0 && procEntry.Session == selfSession;
+							allConditionsMet = selfSession >= 0 && procEntry.Session == selfSession;
 						}
-						string imagePath = (flag7 ? null : ServiceImagePath(procEntry, performancePreset));
-						bool flag8 = !flag7 && BackgroundServicePolicy.Eligible(performancePreset, procEntry, imagePath, services, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-						if (!flag7 && !flag8)
+						string imagePath = (allConditionsMet ? null : ServiceImagePath(procEntry, performancePreset));
+						bool matchesEligible = !allConditionsMet && BackgroundServicePolicy.Eligible(performancePreset, procEntry, imagePath, services, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+						if (!allConditionsMet && !matchesEligible)
 						{
 							ReleaseBackgroundExemption(pid, nm, null);
 							continue;
 						}
-						long num7 = ((value != null) ? value.Creation : procEntry.Creation);
+						long creation2 = ((value != null) ? value.Creation : procEntry.Creation);
 						string path = ((value != null) ? value.Path : procEntry.Path);
-						if (IsRendererHandoffProtected(pid, num7, path))
+						if (IsRendererHandoffProtected(pid, creation2, path))
 						{
-							BackgroundReleaseState backgroundReleaseState2 = core.ReleaseBackgroundForRenderer(pid, num7, nm);
+							BackgroundReleaseState backgroundReleaseState2 = core.ReleaseBackgroundForRenderer(pid, creation2, nm);
 							if (backgroundReleaseState2 == BackgroundReleaseState.Ready || backgroundReleaseState2 == BackgroundReleaseState.Gone)
 							{
 								ReportUntrack(pid);
@@ -640,20 +640,20 @@ namespace PaviseApp
 							continue;
 						}
 						bool lockTaken3 = false;
-						bool flag9;
+						bool isInGameBoost;
 						try
 						{
-							Monitor.Enter(obj = sync, ref lockTaken3);
-							flag9 = gameBoost.ContainsKey(pid);
+							Monitor.Enter(instance = sync, ref lockTaken3);
+							isInGameBoost = gameBoost.ContainsKey(pid);
 						}
 						finally
 						{
 							if (lockTaken3)
 							{
-								Monitor.Exit(obj);
+								Monitor.Exit(instance);
 							}
 						}
-						if (flag9)
+						if (isInGameBoost)
 						{
 							continue;
 						}
@@ -665,8 +665,8 @@ namespace PaviseApp
 							continue;
 						}
 						bool platformRemoved = whitelistEvaluation.PlatformProcesses.TryGetValue(pid, out value2) && !PlatformRuntimePolicy.Enabled(value2.Platform);
-						bool whitelisted = whitelistEvaluation.Protected.Contains(pid) || (flag8 && ServiceWhitelisted(nm, imagePath));
-						if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, whitelisted, hashSet.Contains(pid), flag2, gamePids, gameDescendants, platformRemoved))
+						bool whitelisted = whitelistEvaluation.Protected.Contains(pid) || (matchesEligible && ServiceWhitelisted(nm, imagePath));
+						if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, whitelisted, hashSet.Contains(pid), sweepWithStableWhitelistCoreReady, gamePids, gameDescendants, platformRemoved))
 						{
 							if (core.Release(pid, SuppressReason.Background))
 							{
@@ -674,7 +674,7 @@ namespace PaviseApp
 							}
 							continue;
 						}
-						string text2 = ((value != null) ? value.Path : null);
+						string path2 = ((value != null) ? value.Path : null);
 						creation = ((value != null) ? value.Creation : 0);
 						cpu = ((value != null) ? value.Cpu : 0);
 						ulong io = ((value != null) ? value.Io : 0);
@@ -685,7 +685,7 @@ namespace PaviseApp
 							{
 								try
 								{
-									text2 = Native.ImagePath(intPtr);
+									path2 = Native.ImagePath(intPtr);
 									Native.QueryProcessSample(intPtr, out creation, out cpu, out io);
 								}
 								finally
@@ -694,29 +694,29 @@ namespace PaviseApp
 								}
 							}
 						}
-						if (SelfBuildGuard.IsOwnBuild(nm, text2))
+						if (SelfBuildGuard.IsOwnBuild(nm, path2))
 						{
 							if (core.Release(pid, SuppressReason.Background))
 							{
 								ReportUntrack(pid);
 							}
 						}
-						else if (!PerformanceScopeAllows(text2))
+						else if (!PerformanceScopeAllows(path2))
 						{
 							ReleaseBackgroundExemption(pid, nm, null);
 						}
 						else
 						{
-							if (TryProtectOverlayHost(pid, creation, nm, text2, flag2))
+							if (TryProtectOverlayHost(pid, creation, nm, path2, sweepWithStableWhitelistCoreReady))
 							{
 								continue;
 							}
-							string text3 = FamilyBoundary.LibraryRootOf(text2, list);
-							if (text3 == null && flag2)
+							string libraryRootOfResult = FamilyBoundary.LibraryRootOf(path2, list);
+							if (libraryRootOfResult == null && sweepWithStableWhitelistCoreReady)
 							{
-								text3 = text;
+								libraryRootOfResult = root;
 							}
-							if (!FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, text2, (flag7 || flag8) ? selfSession : (-1), selfSession, foregroundPid, hashSet4.Contains(pid), windowsPrefix, flag4 && hashSet2.Contains(pid), text3, flag, flag2, creation, platformRemoved, preserveOnForeground))
+							if (!FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, path2, (allConditionsMet || matchesEligible) ? selfSession : (-1), selfSession, foregroundPid, hashSet4.Contains(pid), windowsPrefix, matchesSweepWithStableWhitelistCoreReady && hashSet2.Contains(pid), libraryRootOfResult, wideBackgroundScopeSucceeded, sweepWithStableWhitelistCoreReady, creation, platformRemoved, preserveOnForeground))
 							{
 								ReleaseBackgroundExemption(pid, nm, null);
 								continue;
@@ -724,20 +724,20 @@ namespace PaviseApp
 							if (SelfProtectedRoster.Contains(nm))
 							{
 								ReleaseBackgroundExemption(pid, nm, null);
-								num4++;
+								processedCount4++;
 								continue;
 							}
-							if (flag8)
+							if (matchesEligible)
 							{
-								num5++;
+								processedCount5++;
 							}
 							suppressionLevel = (EffSuppress ? BackgroundLevel() : SuppressionLevel.None);
-							string text4 = core.NameOf(pid);
-							if (text4 == null)
+							string nameOfResult = core.NameOf(pid);
+							if (nameOfResult == null)
 							{
 								goto ApplyBackgroundDecision;
 							}
-							if (!string.Equals(text4, nm, StringComparison.OrdinalIgnoreCase))
+							if (!string.Equals(nameOfResult, nm, StringComparison.OrdinalIgnoreCase))
 							{
 								ReportUntrack(pid);
 								goto ApplyBackgroundDecision;
@@ -819,21 +819,21 @@ namespace PaviseApp
 			{
 				if ((item2.Result == AcquireResult.NewlyThrottled || item2.Result == AcquireResult.AlreadyThrottled) && (batchResult == null || !batchResult.WasApplied(item2.Pid)))
 				{
-					string text5 = ((batchResult != null) ? batchResult.FailureOf(item2.Pid) : "batch-missing");
-					if (text5 == "self-protected")
+					string failureDetailValue = ((batchResult != null) ? batchResult.FailureOf(item2.Pid) : "batch-missing");
+					if (failureDetailValue == "self-protected")
 					{
 						item2.Result = AcquireResult.NewlyProtected;
 						continue;
 					}
 					item2.Result = AcquireResult.ApplyFailed;
-					item2.FailureDetail = text5;
+					item2.FailureDetail = failureDetailValue;
 				}
 			}
 			foreach (BackgroundRequest item3 in pending)
 			{
 				if (item3.Result == AcquireResult.NewlyThrottled)
 				{
-					num++;
+					processedCount++;
 					ReportTrack(item3.Pid, item3.Name);
 					SuccessLogBatch.Record("background-applied", item3.Name, item3.Pid, item3.Creation,
 						"level=" + item3.Desired);
@@ -854,11 +854,11 @@ namespace PaviseApp
 				}
 				else if (item3.Result == AcquireResult.NewlyProtected)
 				{
-					num2++;
+					processedCount2++;
 				}
 				else if (item3.Result == AcquireResult.ApplyFailed)
 				{
-					num3++;
+					processedCount3++;
 					SuccessLogBatch.FlushPending();
 					Logger.Log(Lang.T("log.gamemodesweep.1") + item3.Name + "(pid " + item3.Pid + ") " + ApplyFailureText.Of(item3.FailureDetail) + Lang.T("log.gamemodeboost.24"));
 				}
@@ -887,29 +887,29 @@ namespace PaviseApp
 					ReportUntrack(item4);
 				}
 			}
-			if (!flag6)
+			if (!firstSweepSnapshot)
 			{
 				return;
 			}
 			if (EffSuppress)
 			{
-				string text6 = ((performancePreset == PerformancePreset.Extreme) ? Lang.T("preset.extreme") : (PresetValue.IsCompetitive(performancePreset) ? Lang.T("preset.competitive") : ((performancePreset == PerformancePreset.Handheld) ? Lang.T("preset.handheld") : Lang.T("preset.standard"))));
-				bool flag10 = PresetValue.IsCompetitive(performancePreset) || performancePreset == PerformancePreset.Handheld;
-				string text7 = text6 + (flag10 ? Lang.T("t.gamemodesweep.2") : Lang.T("t.gamemodesweep.3")) + (flag ? Lang.T("t.gamemodesweep.5") : "");
-				Logger.Log(Lang.F("background.scope", num5, SuppressionCore.DisableDynamicBoost(BackgroundLevel(), false)));
-				Logger.Log(Lang.T("log.gamemodesweep.1") + text7 + (SuppressionCore.GpuDemoteEnabled ? Lang.T("log.gamemodesweep.6") : "") + Lang.T("log.gamemodesweep.7") + num + Lang.T("log.gamemodesweep.8") + ((num3 > 0) ? (" " + num3 + Lang.T("log.gamemodesweep.9")) : "") + ((num2 > 0) ? (" " + num2 + Lang.T("log.gamemodesweep.10")) : "") + ((num4 > 0) ? (" " + num4 + Lang.T("t.gamemodesweep.11")) : ""));
+				string presetExtremeText = ((performancePreset == PerformancePreset.Extreme) ? Lang.T("preset.extreme") : (PresetValue.IsCompetitive(performancePreset) ? Lang.T("preset.competitive") : ((performancePreset == PerformancePreset.Handheld) ? Lang.T("preset.handheld") : Lang.T("preset.standard"))));
+				bool matchesIsCompetitive = PresetValue.IsCompetitive(performancePreset) || performancePreset == PerformancePreset.Handheld;
+				string message = presetExtremeText + (matchesIsCompetitive ? Lang.T("t.gamemodesweep.2") : Lang.T("t.gamemodesweep.3")) + (wideBackgroundScopeSucceeded ? Lang.T("t.gamemodesweep.5") : "");
+				Logger.Log(Lang.F("background.scope", processedCount5, SuppressionCore.DisableDynamicBoost(BackgroundLevel(), false)));
+				Logger.Log(Lang.T("log.gamemodesweep.1") + message + (SuppressionCore.GpuDemoteEnabled ? Lang.T("log.gamemodesweep.6") : "") + Lang.T("log.gamemodesweep.7") + processedCount + Lang.T("log.gamemodesweep.8") + ((processedCount3 > 0) ? (" " + processedCount3 + Lang.T("log.gamemodesweep.9")) : "") + ((processedCount2 > 0) ? (" " + processedCount2 + Lang.T("log.gamemodesweep.10")) : "") + ((processedCount4 > 0) ? (" " + processedCount4 + Lang.T("t.gamemodesweep.11")) : ""));
 			}
 			bool lockTaken4 = false;
 			try
 			{
-				Monitor.Enter(obj = sync, ref lockTaken4);
+				Monitor.Enter(instance = sync, ref lockTaken4);
 				firstSweep = false;
 			}
 			finally
 			{
 				if (lockTaken4)
 				{
-					Monitor.Exit(obj);
+					Monitor.Exit(instance);
 				}
 			}
 		}
@@ -979,12 +979,12 @@ namespace PaviseApp
 			{
 				if (all != null && object.ReferenceEquals(all, whiteEvalSnapshot) && whiteEvalCached != null)
 				{
-					bool flag;
+					bool allConditionsMet;
 					lock (sync)
 					{
-						flag = whiteEvalRevision == whiteRevision && whiteEvalMembersVersion == whiteFamilyMembersVersion && whiteEvalPlatformMask == PlatformRuntimePolicy.Mask && whiteEvalPlatformRenderer == ((activeDetection != null) ? activeDetection.RendererPid : 0) && whiteEvalPlatformRendererCreation == ((activeDetection == null) ? 0 : activeDetection.RendererCreation);
+						allConditionsMet = whiteEvalRevision == whiteRevision && whiteEvalMembersVersion == whiteFamilyMembersVersion && whiteEvalPlatformMask == PlatformRuntimePolicy.Mask && whiteEvalPlatformRenderer == ((activeDetection != null) ? activeDetection.RendererPid : 0) && whiteEvalPlatformRendererCreation == ((activeDetection == null) ? 0 : activeDetection.RendererCreation);
 					}
-					if (flag)
+					if (allConditionsMet)
 					{
 						return whiteEvalCached;
 					}
@@ -999,12 +999,12 @@ namespace PaviseApp
 		{
 			WhitelistEvaluation whitelistEvaluation = BuildWhitelistProcessSnapshot(all);
 			int mask = PlatformRuntimePolicy.Mask;
-			int num;
-			long num2;
+			int rendererPid;
+			long rendererCreation;
 			lock (sync)
 			{
-				num = ((activeDetection != null) ? activeDetection.RendererPid : 0);
-				num2 = ((activeDetection == null) ? 0 : activeDetection.RendererCreation);
+				rendererPid = ((activeDetection != null) ? activeDetection.RendererPid : 0);
+				rendererCreation = ((activeDetection == null) ? 0 : activeDetection.RendererCreation);
 			}
 			whitelistEvaluation.PlatformProcesses = CollectPlatformMembers(all);
 			Dictionary<int, long> dictionary = new Dictionary<int, long>(runtimeFamilyMembers);
@@ -1032,13 +1032,13 @@ namespace PaviseApp
 			}
 			whitelistEvaluation.Protected.UnionWith(whitelistEvaluation.RuntimeProtected);
 			Dictionary<string, Dictionary<int, long>> dictionary2 = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
-			int num3;
-			int num4;
+			int whiteRevisionSnapshot;
+			int whiteFamilyMembersVersionSnapshot;
 			List<WhitelistRule> list;
 			lock (sync)
 			{
-				num3 = whiteRevision;
-				num4 = whiteFamilyMembersVersion;
+				whiteRevisionSnapshot = whiteRevision;
+				whiteFamilyMembersVersionSnapshot = whiteFamilyMembersVersion;
 				list = new List<WhitelistRule>(whiteRules);
 				foreach (KeyValuePair<string, Dictionary<int, long>> whiteFamilyMember in whiteFamilyMembers)
 				{
@@ -1116,8 +1116,8 @@ namespace PaviseApp
 			}
 			lock (sync)
 			{
-				bool flag = num3 == whiteRevision && num4 == whiteFamilyMembersVersion;
-				if (flag)
+				bool allConditionsMet = whiteRevisionSnapshot == whiteRevision && whiteFamilyMembersVersionSnapshot == whiteFamilyMembersVersion;
+				if (allConditionsMet)
 				{
 					whiteFamilyMembers.Clear();
 					foreach (KeyValuePair<string, Dictionary<int, long>> item5 in dictionary3)
@@ -1126,11 +1126,11 @@ namespace PaviseApp
 					}
 					whiteFamilyMembersVersion++;
 				}
-				whiteEvalRevision = (flag ? num3 : (whiteRevision - 1));
+				whiteEvalRevision = (allConditionsMet ? whiteRevisionSnapshot : (whiteRevision - 1));
 				whiteEvalMembersVersion = whiteFamilyMembersVersion;
 				whiteEvalPlatformMask = mask;
-				whiteEvalPlatformRenderer = num;
-				whiteEvalPlatformRendererCreation = num2;
+				whiteEvalPlatformRenderer = rendererPid;
+				whiteEvalPlatformRendererCreation = rendererCreation;
 				return whitelistEvaluation;
 			}
 		}
@@ -1188,10 +1188,10 @@ namespace PaviseApp
 					}
 				}
 			}
-			bool flag;
+			bool expandApplicationFamilyReady;
 			do
 			{
-				flag = false;
+				expandApplicationFamilyReady = false;
 				if (parents == null)
 				{
 					break;
@@ -1203,11 +1203,11 @@ namespace PaviseApp
 					if (!hashSet.Contains(parent.Key) && hashSet.Contains(parent.Value) && currentCreation != null && currentCreation.TryGetValue(parent.Key, out value2) && currentCreation.TryGetValue(parent.Value, out value3) && value2 > 0 && value3 > 0 && value2 > value3)
 					{
 						hashSet.Add(parent.Key);
-						flag = true;
+						expandApplicationFamilyReady = true;
 					}
 				}
 			}
-			while (flag);
+			while (expandApplicationFamilyReady);
 			return hashSet;
 		}
 		private bool ServiceWhitelisted(string name, string imagePath)
@@ -1256,7 +1256,7 @@ namespace PaviseApp
 				ProcessSnapshot all = ProcessSnapshotSource.Capture(selfSession);
 				WhitelistEvaluation whitelistEvaluation = EvaluateWhitelist(all);
 				matched = whitelistEvaluation.Protected.Count;
-				int num = 0;
+				int processedCount = 0;
 				foreach (int item in whitelistEvaluation.Protected)
 				{
 					WhitelistProcessInfo value;
@@ -1265,11 +1265,11 @@ namespace PaviseApp
 						if (core.ReleaseIfCreation(item, SuppressReason.Background, value.Creation))
 						{
 							ReportUntrack(item);
-							num++;
+							processedCount++;
 						}
 					}
 				}
-				return num;
+				return processedCount;
 			}
 		}
 		private void ObserveWhitelistProcessChanges(ProcessChangeBatch batch)
@@ -1283,10 +1283,10 @@ namespace PaviseApp
 				List<WhitelistRule> list = new List<WhitelistRule>();
 				Dictionary<int, long> dictionary = new Dictionary<int, long>();
 				HashSet<int> hashSet = new HashSet<int>();
-				int num;
+				int whiteRevisionSnapshot;
 				lock (sync)
 				{
-					num = whiteRevision;
+					whiteRevisionSnapshot = whiteRevision;
 					foreach (WhitelistRule whiteRule in whiteRules)
 					{
 						if (RuleProtectsFamily(whiteRule))
@@ -1319,7 +1319,7 @@ namespace PaviseApp
 				Dictionary<int, long> stopIdentity = CaptureStoppedProcessIdentity(hashSet);
 				lock (sync)
 				{
-					if (num != whiteRevision)
+					if (whiteRevisionSnapshot != whiteRevision)
 					{
 						return;
 					}
@@ -1395,33 +1395,33 @@ namespace PaviseApp
 					}
 					dictionary2[item.Pid] = item;
 					string normalizedName = WhitelistRule.NormalizeName(item.Name);
-					string text = WhitelistRule.NormalizeImagePath(item.Path);
-					if ((rule.MatchesNormalized(normalizedName, text) && !WhitelistRule.IsUnsafeFamilyAnchor(text)) || HasVerifiedFamilyParent(item, members, dictionary2))
+					string imagePath = WhitelistRule.NormalizeImagePath(item.Path);
+					if ((rule.MatchesNormalized(normalizedName, imagePath) && !WhitelistRule.IsUnsafeFamilyAnchor(imagePath)) || HasVerifiedFamilyParent(item, members, dictionary2))
 					{
-						bool flag = !members.TryGetValue(item.Pid, out value3) || value3 != item.Creation;
+						bool anyConditionMet = !members.TryGetValue(item.Pid, out value3) || value3 != item.Creation;
 						members[item.Pid] = item.Creation;
-						if (flag)
+						if (anyConditionMet)
 						{
 							dictionary[item.Pid] = item.Creation;
 						}
 					}
 				}
 			}
-			bool flag2;
+			bool applyApplicationFamilyEventsReady;
 			do
 			{
-				flag2 = false;
+				applyApplicationFamilyEventsReady = false;
 				foreach (ProcessChange value4 in dictionary2.Values)
 				{
 					if (!members.ContainsKey(value4.Pid) && HasVerifiedFamilyParent(value4, members, dictionary2))
 					{
 						members[value4.Pid] = value4.Creation;
 						dictionary[value4.Pid] = value4.Creation;
-						flag2 = true;
+						applyApplicationFamilyEventsReady = true;
 					}
 				}
 			}
-			while (flag2);
+			while (applyApplicationFamilyEventsReady);
 			return dictionary;
 		}
 		private void PruneWhitelistFamilyMembersIfDue(ProcessSnapshot all)
@@ -1431,8 +1431,8 @@ namespace PaviseApp
 				return;
 			}
 			long ticks = DateTime.UtcNow.Ticks;
-			long num = Interlocked.Read(ref lastWhiteFamilyPruneTicks);
-			if ((num > 0 && ticks >= num && ticks - num < 200000000) || Interlocked.CompareExchange(ref lastWhiteFamilyPruneTicks, ticks, num) != num)
+			long lastWhiteFamilyPruneTicksSnapshot = Interlocked.Read(ref lastWhiteFamilyPruneTicks);
+			if ((lastWhiteFamilyPruneTicksSnapshot > 0 && ticks >= lastWhiteFamilyPruneTicksSnapshot && ticks - lastWhiteFamilyPruneTicksSnapshot < 200000000) || Interlocked.CompareExchange(ref lastWhiteFamilyPruneTicks, ticks, lastWhiteFamilyPruneTicksSnapshot) != lastWhiteFamilyPruneTicksSnapshot)
 			{
 				return;
 			}
@@ -1499,13 +1499,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			long num = change.ParentCreation;
+			long parentCreation = change.ParentCreation;
 			ProcessChange value2;
-			if (num <= 0 && liveStarts != null && liveStarts.TryGetValue(change.ParentPid, out value2))
+			if (parentCreation <= 0 && liveStarts != null && liveStarts.TryGetValue(change.ParentPid, out value2))
 			{
-				num = value2.Creation;
+				parentCreation = value2.Creation;
 			}
-			return num == value;
+			return parentCreation == value;
 		}
 	}
 }

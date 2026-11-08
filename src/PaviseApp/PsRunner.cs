@@ -20,12 +20,12 @@ namespace PaviseApp
 		public static bool Run(string script, string label, int timeoutMs, IDictionary<string, string> args, out string stdout)
 		{
 			string failure;
-			bool flag = RunCore(script, label, timeoutMs, args, out stdout, out failure);
-			if (!flag)
+			bool runCoreSucceeded = RunCore(script, label, timeoutMs, args, out stdout, out failure);
+			if (!runCoreSucceeded)
 			{
 				Logger.Warn(failure);
 			}
-			return flag;
+			return runCoreSucceeded;
 		}
 
 		internal static bool RunWithFailure(string script, string label, int timeoutMs, out string stdout, out string failure)
@@ -179,11 +179,11 @@ namespace PaviseApp
 		internal static string NormalizeError(string text)
 		{
 			text = (text ?? "").Replace("#< CLIXML", "").Trim();
-			int num = text.IndexOf("<Objs", StringComparison.Ordinal);
-			if (num >= 0)
+			int matchIndex = text.IndexOf("<Objs", StringComparison.Ordinal);
+			if (matchIndex >= 0)
 			{
-				int num2 = text.IndexOf("</Objs>", num, StringComparison.Ordinal);
-				if (num2 < 0)
+				int matchIndex2 = text.IndexOf("</Objs>", matchIndex, StringComparison.Ordinal);
+				if (matchIndex2 < 0)
 				{
 					return "Unrecognized PowerShell error output";
 				}
@@ -196,14 +196,14 @@ namespace PaviseApp
 					XmlDocument xmlDocument = new XmlDocument();
 					xmlDocument.XmlResolver = null;
 					XmlDocument xmlDocument2 = xmlDocument;
-					using (StringReader input = new StringReader(text.Substring(num, num2 + 7 - num)))
+					using (StringReader input = new StringReader(text.Substring(matchIndex, matchIndex2 + 7 - matchIndex)))
 					{
 						using (XmlReader reader = XmlReader.Create(input, settings))
 						{
 							xmlDocument2.Load(reader);
 						}
 					}
-					StringBuilder stringBuilder = new StringBuilder(text.Substring(0, num));
+					StringBuilder stringBuilder = new StringBuilder(text.Substring(0, matchIndex));
 					foreach (XmlNode item in xmlDocument2.GetElementsByTagName("S"))
 					{
 						XmlAttribute xmlAttribute = ((item.Attributes == null) ? null : item.Attributes["S"]);
@@ -212,7 +212,7 @@ namespace PaviseApp
 							stringBuilder.Append(' ').Append(Regex.Replace(item.InnerText, "_x([0-9a-fA-F]{4})_", (Match match) => ((char)Convert.ToInt32(match.Groups[1].Value, 16)).ToString()));
 						}
 					}
-					stringBuilder.Append(' ').Append(text.Substring(num2 + 7));
+					stringBuilder.Append(' ').Append(text.Substring(matchIndex2 + 7));
 					text = stringBuilder.ToString();
 				}
 				catch (XmlException)

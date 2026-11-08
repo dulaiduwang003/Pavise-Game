@@ -16,8 +16,8 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = ((originalAffinity != 0) ? originalAffinity : allMask);
-			if ((squeezeMask & num) != squeezeMask || squeezeMask == num)
+			ulong originalAffinitySnapshot = ((originalAffinity != 0) ? originalAffinity : allMask);
+			if ((squeezeMask & originalAffinitySnapshot) != squeezeMask || squeezeMask == originalAffinitySnapshot)
 			{
 				return 0uL;
 			}

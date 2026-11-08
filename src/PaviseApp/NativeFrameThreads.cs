@@ -34,12 +34,12 @@ namespace PaviseApp
 		private static int ThreadState(IntPtr h, FrameThreadReceipt id, out int priority)
 		{
 			priority = 0;
-			int num = Native.QueryThreadOwnerPid(h);
-			if (num < 0)
+			int threadOwnerPid = Native.QueryThreadOwnerPid(h);
+			if (threadOwnerPid < 0)
 			{
 				return -1;
 			}
-			if (num != id.Pid)
+			if (threadOwnerPid != id.Pid)
 			{
 				return 1;
 			}
@@ -66,10 +66,10 @@ namespace PaviseApp
 		public int Read(FrameThreadReceipt id, out int priority)
 		{
 			priority = 0;
-			int num = ProcessState(id.Pid, id.ProcessBirth);
-			if (num != 0)
+			int processStateResult = ProcessState(id.Pid, id.ProcessBirth);
+			if (processStateResult != 0)
 			{
-				return num;
+				return processStateResult;
 			}
 			IntPtr intPtr = Native.OpenThread(2048, false, id.Tid);
 			if (intPtr == IntPtr.Zero)
@@ -162,10 +162,10 @@ namespace PaviseApp
 		public int ReadMemory(FrameThreadReceipt id, out int priority)
 		{
 			priority = 0;
-			int num = ProcessState(id.Pid, id.ProcessBirth);
-			if (num != 0)
+			int processStateResult = ProcessState(id.Pid, id.ProcessBirth);
+			if (processStateResult != 0)
 			{
-				return num;
+				return processStateResult;
 			}
 			IntPtr intPtr = Native.OpenThread(2112, false, id.Tid);
 			if (intPtr == IntPtr.Zero)
@@ -179,10 +179,10 @@ namespace PaviseApp
 			try
 			{
 				int priority2;
-				num = ThreadState(intPtr, id, out priority2);
-				if (num != 0)
+				processStateResult = ThreadState(intPtr, id, out priority2);
+				if (processStateResult != 0)
 				{
-					return num;
+					return processStateResult;
 				}
 				MemoryPriorityInfo info;
 				if (!GetThreadInformation(intPtr, 0, out info, 4u) || info.Priority < 1 || info.Priority > 5)

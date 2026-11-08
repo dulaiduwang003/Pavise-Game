@@ -35,10 +35,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (!(caption == text))
+				string valueOffset = value ?? "";
+				if (!(caption == valueOffset))
 				{
-					caption = text;
+					caption = valueOffset;
 					Invalidate();
 				}
 			}
@@ -52,10 +52,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				string text = value ?? "";
-				if (!(hint == text))
+				string valueOffset = value ?? "";
+				if (!(hint == valueOffset))
 				{
-					hint = text;
+					hint = valueOffset;
 					Invalidate();
 				}
 			}
@@ -65,10 +65,10 @@ namespace PaviseApp
 		{
 			get
 			{
-				float num = (float)Math.Min(base.Width, base.Height) * 0.19f;
-				if (!(num < (float)Theme.S(34)))
+				float scaledMin = (float)Math.Min(base.Width, base.Height) * 0.19f;
+				if (!(scaledMin < (float)Theme.S(34)))
 				{
-					return num;
+					return scaledMin;
 				}
 				return Theme.S(34);
 			}
@@ -86,12 +86,12 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = RingCenterY + (int)CoreRadius + Theme.S(22) + Theme.S(24);
+				int sOffset = RingCenterY + (int)CoreRadius + Theme.S(22) + Theme.S(24);
 				if (hint.Length > 0)
 				{
-					num += Theme.S(26);
+					sOffset += Theme.S(26);
 				}
-				return num + Theme.S(30);
+				return sOffset + Theme.S(30);
 			}
 		}
 
@@ -141,16 +141,16 @@ namespace PaviseApp
 
 		public void ReportProgress(float value, string text)
 		{
-			float num = ((float.IsNaN(value) || value < 0f) ? 0f : ((value > 1f) ? 1f : value));
-			bool flag = Math.Abs(num - progress) > 0.0005f;
-			progress = num;
-			fill.To(num);
+			float valueSnapshot = ((float.IsNaN(value) || value < 0f) ? 0f : ((value > 1f) ? 1f : value));
+			bool matchesAbs = Math.Abs(valueSnapshot - progress) > 0.0005f;
+			progress = valueSnapshot;
+			fill.To(valueSnapshot);
 			if (text != null && text != caption)
 			{
 				caption = text;
-				flag = true;
+				matchesAbs = true;
 			}
-			if (flag)
+			if (matchesAbs)
 			{
 				Invalidate();
 			}
@@ -199,8 +199,8 @@ namespace PaviseApp
 				UiClock.Frame -= OnFrame;
 				return;
 			}
-			bool flag = shown.Step();
-			flag |= fill.Step();
+			bool stepSucceeded = shown.Step();
+			stepSucceeded |= fill.Step();
 			if (state == AuditScanState.Scanning)
 			{
 				phase += 0.022f;
@@ -211,7 +211,7 @@ namespace PaviseApp
 				UiClock.Wake();
 				Invalidate();
 			}
-			else if (flag)
+			else if (stepSucceeded)
 			{
 				Invalidate();
 			}
@@ -311,13 +311,13 @@ namespace PaviseApp
 			{
 				g.FillRectangle(brush, base.ClientRectangle);
 			}
-			int num = Math.Min(Theme.S(20), Math.Max(0, (base.Width - 1) / 2));
-			int num2 = Math.Max(1, base.Width - num * 2);
-			int num3 = Math.Max(1, Theme.S(28));
-			int num4 = Math.Max(0, base.Height / 2 - num3 * 2);
-			Rectangle bounds = new Rectangle(num, num4, num2, num3);
+			int maxLimit = Math.Min(Theme.S(20), Math.Max(0, (base.Width - 1) / 2));
+			int lowerBound = Math.Max(1, base.Width - maxLimit * 2);
+			int yValue = Math.Max(1, Theme.S(28));
+			int lowerBound2 = Math.Max(0, base.Height / 2 - yValue * 2);
+			Rectangle bounds = new Rectangle(maxLimit, lowerBound2, lowerBound, yValue);
 			TextRenderer.DrawText(g, caption, Font, bounds, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.PreserveGraphicsClipping);
-			bounds.Y += num3;
+			bounds.Y += yValue;
 			if (state != AuditScanState.Scanning)
 			{
 				TextRenderer.DrawText(g, hint, Font, bounds, Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.PreserveGraphicsClipping);
@@ -325,24 +325,24 @@ namespace PaviseApp
 			}
 			TextRenderer.DrawText(g, (int)(progress * 100f) + "%", Font, bounds, Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.PreserveGraphicsClipping);
 			int val = Math.Max(1, Theme.S(6));
-			int num5 = bounds.Bottom + Theme.S(8);
-			if (num5 >= base.Height)
+			int bottomOffset = bounds.Bottom + Theme.S(8);
+			if (bottomOffset >= base.Height)
 			{
 				return;
 			}
-			Rectangle rect = new Rectangle(num, num5, num2, Math.Min(val, base.Height - num5));
+			Rectangle rect = new Rectangle(maxLimit, bottomOffset, lowerBound, Math.Min(val, base.Height - bottomOffset));
 			using (SolidBrush brush2 = new SolidBrush(Theme.Stroke))
 			{
 				g.FillRectangle(brush2, rect);
 			}
-			int num6 = (int)((float)num2 * progress);
-			if (num6 <= 0)
+			int scaledLowerBound = (int)((float)lowerBound * progress);
+			if (scaledLowerBound <= 0)
 			{
 				return;
 			}
 			using (SolidBrush brush3 = new SolidBrush(Theme.Accent))
 			{
-				g.FillRectangle(brush3, new Rectangle(rect.X, rect.Y, num6, rect.Height));
+				g.FillRectangle(brush3, new Rectangle(rect.X, rect.Y, scaledLowerBound, rect.Height));
 			}
 		}
 
@@ -367,7 +367,7 @@ namespace PaviseApp
 			g.SmoothingMode = SmoothingMode.AntiAlias;
 			g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 			g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-			bool flag = state == AuditScanState.Scanning;
+			bool matchesState = state == AuditScanState.Scanning;
 			paintStage = "panel";
 			Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
 			using (GraphicsPath path = Theme.TechPath(rectangle, Theme.S(14)))
@@ -383,7 +383,7 @@ namespace PaviseApp
 					paintStage = "scan-field";
 					DrawHexField(g);
 					DrawSlashes(g);
-					if (flag)
+					if (matchesState)
 					{
 						DrawSweep(g);
 					}
@@ -392,99 +392,99 @@ namespace PaviseApp
 				{
 					g.Restore(gstate);
 				}
-				using (Pen pen = new Pen(Col.Alpha(Theme.Stroke, flag ? 255 : 190)))
+				using (Pen pen = new Pen(Col.Alpha(Theme.Stroke, matchesState ? 255 : 190)))
 				{
 					g.DrawPath(pen, path);
 				}
 			}
 			float cx = (float)base.Width * 0.5f;
-			float num = RingCenterY;
+			float ringCenterYSnapshot = RingCenterY;
 			float coreRadius = CoreRadius;
 			paintStage = "brackets";
-			DrawBrackets(g, cx, num, coreRadius);
+			DrawBrackets(g, cx, ringCenterYSnapshot, coreRadius);
 			paintStage = "rings";
-			if (flag)
+			if (matchesState)
 			{
-				DrawArcs(g, cx, num, coreRadius);
+				DrawArcs(g, cx, ringCenterYSnapshot, coreRadius);
 			}
 			paintStage = "core-glow";
-			DrawCore(g, cx, num, coreRadius, flag);
+			DrawCore(g, cx, ringCenterYSnapshot, coreRadius, matchesState);
 			paintStage = "caption";
-			DrawText(g, num + coreRadius);
+			DrawText(g, ringCenterYSnapshot + coreRadius);
 			paintStage = "progress";
-			if (flag)
+			if (matchesState)
 			{
-				DrawProgressBar(g, num + coreRadius);
+				DrawProgressBar(g, ringCenterYSnapshot + coreRadius);
 			}
 		}
 
 		private void DrawHexField(Graphics g)
 		{
-			int num = Math.Max(Theme.S(17), 14);
-			float num2 = (float)num * 1.5f;
-			float num3 = (float)(Math.Sqrt(3.0) * (double)num);
+			int sLimit = Math.Max(Theme.S(17), 14);
+			float scaledSLimit = (float)sLimit * 1.5f;
+			float scaledSqrt = (float)(Math.Sqrt(3.0) * (double)sLimit);
 			using (Pen p = new Pen(Col.Alpha(Theme.StrokeHi, 16)))
 			{
-				int num4 = 0;
-				float num5 = -num;
-				while (num5 < (float)(base.Width + num))
+				int processedCount = 0;
+				float measuredValue = -sLimit;
+				while (measuredValue < (float)(base.Width + sLimit))
 				{
-					float num6 = (((num4 & 1) == 0) ? 0f : (num3 * 0.5f));
-					for (float num7 = 0f - num3; num7 < (float)base.Height + num3; num7 += num3)
+					float scaledScaledSqrt = (((processedCount & 1) == 0) ? 0f : (scaledSqrt * 0.5f));
+					for (float iterationIndex = 0f - scaledSqrt; iterationIndex < (float)base.Height + scaledSqrt; iterationIndex += scaledSqrt)
 					{
-						DrawHex(g, p, num5, num7 + num6, (float)num * 0.94f, 0f);
+						DrawHex(g, p, measuredValue, iterationIndex + scaledScaledSqrt, (float)sLimit * 0.94f, 0f);
 					}
-					num5 += num2;
-					num4++;
+					measuredValue += scaledSLimit;
+					processedCount++;
 				}
 			}
 		}
 
 		private static void DrawHex(Graphics g, Pen p, float cx, float cy, float r, float rot)
 		{
-			PointF[] array = new PointF[6];
+			PointF[] pointFItems = new PointF[6];
 			for (int i = 0; i < 6; i++)
 			{
-				double num = (double)rot + (double)i * Math.PI / 3.0;
-				array[i] = new PointF(cx + (float)(Math.Cos(num) * (double)r), cy + (float)(Math.Sin(num) * (double)r));
+				double rotOffset = (double)rot + (double)i * Math.PI / 3.0;
+				pointFItems[i] = new PointF(cx + (float)(Math.Cos(rotOffset) * (double)r), cy + (float)(Math.Sin(rotOffset) * (double)r));
 			}
-			g.DrawPolygon(p, array);
+			g.DrawPolygon(p, pointFItems);
 		}
 
 		private static void FillHex(Graphics g, Brush b, float cx, float cy, float r, float rot)
 		{
-			PointF[] array = new PointF[6];
+			PointF[] pointFItems = new PointF[6];
 			for (int i = 0; i < 6; i++)
 			{
-				double num = (double)rot + (double)i * Math.PI / 3.0;
-				array[i] = new PointF(cx + (float)(Math.Cos(num) * (double)r), cy + (float)(Math.Sin(num) * (double)r));
+				double rotOffset = (double)rot + (double)i * Math.PI / 3.0;
+				pointFItems[i] = new PointF(cx + (float)(Math.Cos(rotOffset) * (double)r), cy + (float)(Math.Sin(rotOffset) * (double)r));
 			}
-			g.FillPolygon(b, array);
+			g.FillPolygon(b, pointFItems);
 		}
 
 		private void DrawSlashes(Graphics g)
 		{
-			int num = Math.Max(Theme.S(26), 20);
-			int num2 = Math.Max(Theme.S(7), 6);
-			int num3 = Theme.S(16);
-			float num4 = ((state == AuditScanState.Scanning) ? ((float)Math.Sin(phase * 2.4f) * (float)Theme.S(3)) : 0f);
+			int sLimit = Math.Max(Theme.S(26), 20);
+			int sLimit2 = Math.Max(Theme.S(7), 6);
+			int height = Theme.S(16);
+			float scaledSin = ((state == AuditScanState.Scanning) ? ((float)Math.Sin(phase * 2.4f) * (float)Theme.S(3)) : 0f);
 			using (Pen pen = new Pen(Col.Alpha(Theme.Accent, 70), Math.Max(2f, Theme.S(2))))
 			{
 				for (int i = 0; i < 3; i++)
 				{
-					float num5 = (float)(i * num2) + num4;
-					g.DrawLine(pen, (float)num3 + num5, num3 + num, (float)num3 + num5 + (float)num, num3);
-					g.DrawLine(pen, (float)(base.Width - num3) - num5, base.Height - num3 - num, (float)(base.Width - num3) - num5 - (float)num, base.Height - num3);
+					float scaledSinOffset = (float)(i * sLimit2) + scaledSin;
+					g.DrawLine(pen, (float)height + scaledSinOffset, height + sLimit, (float)height + scaledSinOffset + (float)sLimit, height);
+					g.DrawLine(pen, (float)(base.Width - height) - scaledSinOffset, base.Height - height - sLimit, (float)(base.Width - height) - scaledSinOffset - (float)sLimit, base.Height - height);
 				}
 			}
 		}
 
 		private void DrawSweep(Graphics g)
 		{
-			float num = phase * 0.42f % 1f;
-			int num2 = Math.Max(Theme.S(88), 56);
-			int num3 = (int)(num * (float)(base.Height + num2)) - num2;
-			Rectangle rect = new Rectangle(0, num3, base.Width, num2);
+			float measuredValue = phase * 0.42f % 1f;
+			int sLimit = Math.Max(Theme.S(88), 56);
+			int remainingSLimit = (int)(measuredValue * (float)(base.Height + sLimit)) - sLimit;
+			Rectangle rect = new Rectangle(0, remainingSLimit, base.Width, sLimit);
 			if (rect.Height <= 0)
 			{
 				return;
@@ -505,24 +505,24 @@ namespace PaviseApp
 
 		private void DrawBrackets(Graphics g, float cx, float cy, float r)
 		{
-			float num = r * 1.62f;
-			float num2 = r * 0.42f;
-			float num3 = ((state == AuditScanState.Scanning) ? (1f + (float)Math.Sin(phase * 3.1f) * 0.035f) : 1f);
-			num *= num3;
+			float scaledR = r * 1.62f;
+			float scaledR2 = r * 0.42f;
+			float measuredValue = ((state == AuditScanState.Scanning) ? (1f + (float)Math.Sin(phase * 3.1f) * 0.035f) : 1f);
+			scaledR *= measuredValue;
 			using (Pen pen = new Pen(Col.Alpha(Theme.StrokeHi, 200), Math.Max(1.5f, Theme.S(2))))
 			{
-				float num4 = cx - num;
-				float num5 = cx + num;
-				float num6 = cy - num;
-				float num7 = cy + num;
-				g.DrawLine(pen, num4, num6, num4 + num2, num6);
-				g.DrawLine(pen, num4, num6, num4, num6 + num2);
-				g.DrawLine(pen, num5, num6, num5 - num2, num6);
-				g.DrawLine(pen, num5, num6, num5, num6 + num2);
-				g.DrawLine(pen, num4, num7, num4 + num2, num7);
-				g.DrawLine(pen, num4, num7, num4, num7 - num2);
-				g.DrawLine(pen, num5, num7, num5 - num2, num7);
-				g.DrawLine(pen, num5, num7, num5, num7 - num2);
+				float left = cx - scaledR;
+				float left2 = cx + scaledR;
+				float top = cy - scaledR;
+				float top2 = cy + scaledR;
+				g.DrawLine(pen, left, top, left + scaledR2, top);
+				g.DrawLine(pen, left, top, left, top + scaledR2);
+				g.DrawLine(pen, left2, top, left2 - scaledR2, top);
+				g.DrawLine(pen, left2, top, left2, top + scaledR2);
+				g.DrawLine(pen, left, top2, left + scaledR2, top2);
+				g.DrawLine(pen, left, top2, left, top2 - scaledR2);
+				g.DrawLine(pen, left2, top2, left2 - scaledR2, top2);
+				g.DrawLine(pen, left2, top2, left2, top2 - scaledR2);
 			}
 		}
 
@@ -543,24 +543,24 @@ namespace PaviseApp
 		{
 			using (Pen pen = new Pen(c, w))
 			{
-				float num = 360f / (float)count;
+				float countRatio = 360f / (float)count;
 				for (int i = 0; i < count; i++)
 				{
-					double num2 = (double)(rot + (float)i * num) * Math.PI / 180.0;
-					double num3 = (double)(rot + (float)i * num + num * duty) * Math.PI / 180.0;
-					g.DrawLine(pen, cx + (float)(Math.Cos(num2) * (double)r), cy + (float)(Math.Sin(num2) * (double)r), cx + (float)(Math.Cos(num3) * (double)r), cy + (float)(Math.Sin(num3) * (double)r));
+					double ratio = (double)(rot + (float)i * countRatio) * Math.PI / 180.0;
+					double ratio2 = (double)(rot + (float)i * countRatio + countRatio * duty) * Math.PI / 180.0;
+					g.DrawLine(pen, cx + (float)(Math.Cos(ratio) * (double)r), cy + (float)(Math.Sin(ratio) * (double)r), cx + (float)(Math.Cos(ratio2) * (double)r), cy + (float)(Math.Sin(ratio2) * (double)r));
 				}
 			}
 		}
 
 		private void DrawCore(Graphics g, float cx, float cy, float r, bool scanning)
 		{
-			float num = (scanning ? (phase * 0.9f) : (phase * 0.25f));
-			float num2 = (scanning ? (1f + (float)Math.Sin(phase * 2.2f) * 0.045f) : 1f);
-			float num3 = r * 0.72f * num2;
+			float scaledPhase = (scanning ? (phase * 0.9f) : (phase * 0.25f));
+			float measuredValue = (scanning ? (1f + (float)Math.Sin(phase * 2.2f) * 0.045f) : 1f);
+			float scaledMeasuredValue = r * 0.72f * measuredValue;
 			using (GraphicsPath graphicsPath = new GraphicsPath())
 			{
-				graphicsPath.AddEllipse(cx - num3 * 1.9f, cy - num3 * 1.9f, num3 * 3.8f, num3 * 3.8f);
+				graphicsPath.AddEllipse(cx - scaledMeasuredValue * 1.9f, cy - scaledMeasuredValue * 1.9f, scaledMeasuredValue * 3.8f, scaledMeasuredValue * 3.8f);
 				using (PathGradientBrush pathGradientBrush = new PathGradientBrush(graphicsPath))
 				{
 					pathGradientBrush.CenterColor = Col.Alpha(Theme.Accent, scanning ? 62 : 26);
@@ -570,47 +570,47 @@ namespace PaviseApp
 			}
 			using (SolidBrush b = new SolidBrush(Col.Alpha(Theme.Accent, scanning ? 34 : 18)))
 			{
-				FillHex(g, b, cx, cy, num3, num);
+				FillHex(g, b, cx, cy, scaledMeasuredValue, scaledPhase);
 			}
 			using (Pen p = new Pen(Col.Alpha(Theme.Accent, scanning ? 235 : 150), Math.Max(2f, (float)Theme.S(3) * 0.85f)))
 			{
-				DrawHex(g, p, cx, cy, num3, num);
+				DrawHex(g, p, cx, cy, scaledMeasuredValue, scaledPhase);
 			}
 			using (Pen p2 = new Pen(Col.Alpha(Theme.Accent2, scanning ? 170 : 90), Math.Max(1f, Theme.S(1))))
 			{
-				DrawHex(g, p2, cx, cy, num3 * 0.62f, (0f - num) * 1.6f);
+				DrawHex(g, p2, cx, cy, scaledMeasuredValue * 0.62f, (0f - scaledPhase) * 1.6f);
 			}
 			if (!scanning)
 			{
 				return;
 			}
-			float num4 = Math.Max(2.5f, Theme.S(3)) * num2;
+			float scaledMax = Math.Max(2.5f, Theme.S(3)) * measuredValue;
 			using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Accent2, 220)))
 			{
-				g.FillEllipse(brush, cx - num4, cy - num4, num4 * 2f, num4 * 2f);
+				g.FillEllipse(brush, cx - scaledMax, cy - scaledMax, scaledMax * 2f, scaledMax * 2f);
 			}
 		}
 
 		private void DrawProgressBar(Graphics g, float top)
 		{
-			int num = (int)((float)base.Width * 0.52f);
-			if (num < Theme.S(140))
+			int scaledWidth = (int)((float)base.Width * 0.52f);
+			if (scaledWidth < Theme.S(140))
 			{
-				num = Math.Min(base.Width - Theme.S(40), Theme.S(140));
+				scaledWidth = Math.Min(base.Width - Theme.S(40), Theme.S(140));
 			}
-			if (num <= 0)
-			{
-				return;
-			}
-			int num2 = Math.Max(Theme.S(8), 7);
-			int num3 = (base.Width - num) / 2;
-			int num4 = (int)top + Theme.S(22) + Theme.S(24) + ((hint.Length > 0) ? Theme.S(26) : 0);
-			if (num4 + num2 > base.Height)
+			if (scaledWidth <= 0)
 			{
 				return;
 			}
-			Rectangle r = new Rectangle(num3, num4, num, num2);
-			using (GraphicsPath path = Skew(r, num2 / 2))
+			int sLimit = Math.Max(Theme.S(8), 7);
+			int ratio = (base.Width - scaledWidth) / 2;
+			int top2 = (int)top + Theme.S(22) + Theme.S(24) + ((hint.Length > 0) ? Theme.S(26) : 0);
+			if (top2 + sLimit > base.Height)
+			{
+				return;
+			}
+			Rectangle r = new Rectangle(ratio, top2, scaledWidth, sLimit);
+			using (GraphicsPath path = Skew(r, sLimit / 2))
 			{
 				using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Stroke, 150)))
 				{
@@ -620,19 +620,19 @@ namespace PaviseApp
 				try
 				{
 					g.SetClip(path, CombineMode.Intersect);
-					int num5 = (int)((float)num * fill.Value);
-					if (num5 > 0)
+					int scaledScaledWidth = (int)((float)scaledWidth * fill.Value);
+					if (scaledScaledWidth > 0)
 					{
-						Rectangle rect = new Rectangle(num3, num4, num5, num2);
-						using (LinearGradientBrush brush2 = new LinearGradientBrush(new Rectangle(num3, num4, Math.Max(1, num5), num2), Theme.Accent, Theme.Accent2, LinearGradientMode.Horizontal))
+						Rectangle rect = new Rectangle(ratio, top2, scaledScaledWidth, sLimit);
+						using (LinearGradientBrush brush2 = new LinearGradientBrush(new Rectangle(ratio, top2, Math.Max(1, scaledScaledWidth), sLimit), Theme.Accent, Theme.Accent2, LinearGradientMode.Horizontal))
 						{
 							g.FillRectangle(brush2, rect);
 						}
 						using (Pen pen = new Pen(Col.Alpha(Theme.Inset, 200), Math.Max(1f, Theme.S(1))))
 						{
-							for (int i = num3 + Theme.S(10); i < num3 + num5; i += Theme.S(10))
+							for (int i = ratio + Theme.S(10); i < ratio + scaledScaledWidth; i += Theme.S(10))
 							{
-								g.DrawLine(pen, i, num4, i - num2, num4 + num2);
+								g.DrawLine(pen, i, top2, i - sLimit, top2 + sLimit);
 							}
 						}
 					}
@@ -663,12 +663,12 @@ namespace PaviseApp
 
 		private void DrawText(Graphics g, float ringBottom)
 		{
-			int num = (int)ringBottom + Theme.S(22);
+			int ringBottomOffset = (int)ringBottom + Theme.S(22);
 			if (base.Width <= Theme.S(32))
 			{
 				return;
 			}
-			Rectangle rectangle = new Rectangle(Theme.S(16), num, base.Width - Theme.S(32), Theme.S(24));
+			Rectangle rectangle = new Rectangle(Theme.S(16), ringBottomOffset, base.Width - Theme.S(32), Theme.S(24));
 			Font font = Theme.UI(11f, true);
 			using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Fg, (int)(255f * Math.Max(0.25f, shown.Value)))))
 			{
@@ -686,7 +686,7 @@ namespace PaviseApp
 			{
 				return;
 			}
-			Rectangle rectangle2 = new Rectangle(Theme.S(24), num + Theme.S(24), base.Width - Theme.S(48), Theme.S(24));
+			Rectangle rectangle2 = new Rectangle(Theme.S(24), ringBottomOffset + Theme.S(24), base.Width - Theme.S(48), Theme.S(24));
 			Font font2 = Theme.UI(8.6f, false);
 			using (SolidBrush brush2 = new SolidBrush(Col.Alpha(Theme.Dim, (int)(255f * Math.Max(0.25f, shown.Value)))))
 			{

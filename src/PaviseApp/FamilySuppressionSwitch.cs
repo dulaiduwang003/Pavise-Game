@@ -65,9 +65,9 @@ namespace PaviseApp
 		{
 			if (base.Visible)
 			{
-				bool flag = switchMotion.Step();
-				bool flag2 = hoverMotion.Step();
-				if (flag || flag2)
+				bool stepSucceeded = switchMotion.Step();
+				bool stepSucceeded2 = hoverMotion.Step();
+				if (stepSucceeded || stepSucceeded2)
 				{
 					Invalidate();
 				}
@@ -95,8 +95,8 @@ namespace PaviseApp
 
 		internal static int PreferredWidth(string text, bool isCorePolicy)
 		{
-			int num = TextRenderer.MeasureText(text, Theme.UI(8f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-			return num + Theme.S(32) + Theme.S(8) + Theme.S(44) + (isCorePolicy ? Theme.S(26) : 0);
+			int width = TextRenderer.MeasureText(text, Theme.UI(8f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+			return width + Theme.S(32) + Theme.S(8) + Theme.S(44) + (isCorePolicy ? Theme.S(26) : 0);
 		}
 
 		public override Size GetPreferredSize(Size proposedSize)
@@ -183,8 +183,8 @@ namespace PaviseApp
 					graphics.DrawPath(pen, path);
 				}
 			}
-			int num = (corePolicy ? Theme.S(DetailsWidth) : 0);
-			Rectangle r = new Rectangle(base.Width - num - Theme.S(44), (base.Height - Theme.S(16)) / 2, Theme.S(32), Theme.S(16));
+			int scaledDimension = (corePolicy ? Theme.S(DetailsWidth) : 0);
+			Rectangle r = new Rectangle(base.Width - scaledDimension - Theme.S(44), (base.Height - Theme.S(16)) / 2, Theme.S(32), Theme.S(16));
 			Rectangle rectangle2 = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
 			if (!string.IsNullOrEmpty(IconKey))
 			{
@@ -194,10 +194,10 @@ namespace PaviseApp
 			{
 				Glyphs.Draw(graphics, corePolicy ? "chip" : "tiles", rectangle2, base.Checked ? Theme.Accent : Theme.Dim);
 			}
-			int num2 = Theme.S(32);
-			int num3 = Math.Max(1, r.Left - num2 - Theme.S(8));
+			int scaledDimension2 = Theme.S(32);
+			int lowerBound = Math.Max(1, r.Left - scaledDimension2 - Theme.S(8));
 			bool locked = Locked;
-			TextRenderer.DrawText(graphics, Text, Theme.UI(8f, true), new Rectangle(num2, 0, num3, base.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, Text, Theme.UI(8f, true), new Rectangle(scaledDimension2, 0, lowerBound, base.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			using (GraphicsPath path2 = Theme.TechPath(r, Theme.S(4)))
 			{
 				using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.TrackOff, Col.Lerp(Surface, Theme.Accent, 0.24f), value)))
@@ -209,9 +209,9 @@ namespace PaviseApp
 					graphics.DrawPath(pen2, path2);
 				}
 			}
-			int num4 = Theme.S(10);
-			int num5 = Theme.S(3);
-			Rectangle r2 = new Rectangle(r.Left + num5 + (int)((float)(r.Width - num5 * 2 - num4) * value), r.Top + num5, num4, num4);
+			int scaledDimension3 = Theme.S(10);
+			int scaledDimension4 = Theme.S(3);
+			Rectangle r2 = new Rectangle(r.Left + scaledDimension4 + (int)((float)(r.Width - scaledDimension4 * 2 - scaledDimension3) * value), r.Top + scaledDimension4, scaledDimension3, scaledDimension3);
 			using (GraphicsPath path3 = Theme.TechPath(r2, Theme.S(3)))
 			{
 				using (SolidBrush brush3 = new SolidBrush(Col.Lerp(Theme.Dim, Theme.Accent, value)))

@@ -44,25 +44,25 @@ namespace PaviseApp
 				}
 				guardDvrActive = EnvStep("gamedvr", killGameDvr, guardDvrActive || (!killGameDvr && GameDvr.HasResidue), GameDvr.Activate, GameDvr.Restore);
 				guardMmcssActive = EnvStep("mmcss", mmcssOn, guardMmcssActive || (!mmcssOn && Mmcss.HasResidue()), Mmcss.Activate, Mmcss.Restore);
-				bool flag = guardDvrActive == killGameDvr && !envFused.Contains("gamedvr") && !envRestorePending.Contains("gamedvr");
-				bool flag2 = guardMmcssActive == mmcssOn && !envFused.Contains("mmcss") && !envRestorePending.Contains("mmcss");
-				if (flag)
+				bool allConditionsMet = guardDvrActive == killGameDvr && !envFused.Contains("gamedvr") && !envRestorePending.Contains("gamedvr");
+				bool allConditionsMet2 = guardMmcssActive == mmcssOn && !envFused.Contains("mmcss") && !envRestorePending.Contains("mmcss");
+				if (allConditionsMet)
 				{
 					RecordAutomation("gamedvr", killGameDvr ? "applied" : "restored");
 				}
-				if (flag2)
+				if (allConditionsMet2)
 				{
 					RecordAutomation("mmcss", mmcssOn ? "applied" : "restored");
 				}
-				return flag && flag2;
+				return allConditionsMet && allConditionsMet2;
 			}
 		}
 		private bool SetGuardScheduling(bool dvr, bool mmcss)
 		{
 			bool skipped; string reason;
-			bool flag = dvr ? RunGuarded(GameDvr.Activate) : RunAutomaticRestoreCore("gamedvr", GameDvr.Restore, out skipped, out reason);
-			bool flag2 = mmcss ? RunGuarded(Mmcss.Activate) : RunAutomaticRestoreCore("mmcss", Mmcss.Restore, out skipped, out reason);
-			if (flag)
+			bool runGuardedSucceeded = dvr ? RunGuarded(GameDvr.Activate) : RunAutomaticRestoreCore("gamedvr", GameDvr.Restore, out skipped, out reason);
+			bool runGuardedSucceeded2 = mmcss ? RunGuarded(Mmcss.Activate) : RunAutomaticRestoreCore("mmcss", Mmcss.Restore, out skipped, out reason);
+			if (runGuardedSucceeded)
 			{
 				guardDvrActive = dvr;
 				envRestorePending.Remove("gamedvr");
@@ -70,7 +70,7 @@ namespace PaviseApp
 				envNextAttempt.Remove("gamedvr");
 				envFailures.Remove("gamedvr");
 			}
-			if (flag2)
+			if (runGuardedSucceeded2)
 			{
 				guardMmcssActive = mmcss;
 				envRestorePending.Remove("mmcss");
@@ -78,11 +78,11 @@ namespace PaviseApp
 				envNextAttempt.Remove("mmcss");
 				envFailures.Remove("mmcss");
 			}
-			RecordAutomation("gamedvr", (!flag) ? (dvr ? "failed" : "restore-failed") : (dvr ? "applied" : "restored"));
-			RecordAutomation("mmcss", (!flag2) ? (mmcss ? "failed" : "restore-failed") : (mmcss ? "applied" : "restored"));
-			if (flag)
+			RecordAutomation("gamedvr", (!runGuardedSucceeded) ? (dvr ? "failed" : "restore-failed") : (dvr ? "applied" : "restored"));
+			RecordAutomation("mmcss", (!runGuardedSucceeded2) ? (mmcss ? "failed" : "restore-failed") : (mmcss ? "applied" : "restored"));
+			if (runGuardedSucceeded)
 			{
-				return flag2;
+				return runGuardedSucceeded2;
 			}
 			return false;
 		}
@@ -157,25 +157,25 @@ namespace PaviseApp
 		}
 		private bool UpdateSessionForeground(ProcessSnapshot all, int rendererPid, HashSet<int> gamePids)
 		{
-			int num = RendererForegroundPid();
-			bool flag = num > 4;
-			bool flag2 = flag && rendererPid > 0 && (num == rendererPid || (gamePids != null && gamePids.Contains(num)));
+			int rendererForegroundPidResult = RendererForegroundPid();
+			bool matchesRendererForegroundPidResult = rendererForegroundPidResult > 4;
+			bool allConditionsMet = matchesRendererForegroundPidResult && rendererPid > 0 && (rendererForegroundPidResult == rendererPid || (gamePids != null && gamePids.Contains(rendererForegroundPidResult)));
 			long ticks = DateTime.UtcNow.Ticks;
 			bool returning = sessionForeground.State == SessionForegroundState.SwitchedOut;
-			bool flag3 = sessionForeground.Observe(flag2, flag, ticks);
-			if (flag && !flag2)
+			bool observeSucceeded = sessionForeground.Observe(allConditionsMet, matchesRendererForegroundPidResult, ticks);
+			if (matchesRendererForegroundPidResult && !allConditionsMet)
 			{
-				switchedOutForegroundPid = num;
-				ProcEntry procEntry = ((all == null) ? null : all.Find(num));
+				switchedOutForegroundPid = rendererForegroundPidResult;
+				ProcEntry procEntry = ((all == null) ? null : all.Find(rendererForegroundPidResult));
 				switchedOutForegroundName = ((procEntry == null || string.IsNullOrEmpty(procEntry.Name)) ? "" : procEntry.Name);
 			}
-			bool flag4 = sessionForeground.State == SessionForegroundState.SwitchedOut;
-			bool smart = flag4 && EffPreset == PerformancePreset.Standard;
-			sessionSwitchedOut = flag4;
+			bool matchesState = sessionForeground.State == SessionForegroundState.SwitchedOut;
+			bool smart = matchesState && EffPreset == PerformancePreset.Standard;
+			sessionSwitchedOut = matchesState;
 			smartSwitchedOut = smart;
-			if (flag3)
+			if (observeSucceeded)
 			{
-				if (flag4)
+				if (matchesState)
 				{
 					OnSessionSwitchedOut(smart);
 				}
@@ -184,18 +184,18 @@ namespace PaviseApp
 					OnSessionSwitchedBack(returning);
 				}
 			}
-			return !flag4;
+			return !matchesState;
 		}
 		private void OnSessionSwitchedOut(bool smart)
 		{
 			Interlocked.Increment(ref optionalServiceGeneration);
-			string text = " foregroundPid=" + switchedOutForegroundPid + " foregroundExe=" + switchedOutForegroundName;
+			string switchedOutForegroundNameOffset = " foregroundPid=" + switchedOutForegroundPid + " foregroundExe=" + switchedOutForegroundName;
 			if (!smart)
 			{
-				Logger.Info("FOCUS [" + AutomationSession + "] event=switched-out scene=competitive backgroundPolicy=retain powerPolicy=retain affinityPolicy=retain" + text);
+				Logger.Info("FOCUS [" + AutomationSession + "] event=switched-out scene=competitive backgroundPolicy=retain powerPolicy=retain affinityPolicy=retain" + switchedOutForegroundNameOffset);
 				return;
 			}
-			Logger.Info("FOCUS [" + AutomationSession + "] event=switched-out scene=smart backgroundPolicy=release powerPolicy=retain affinityPolicy=retain" + text);
+			Logger.Info("FOCUS [" + AutomationSession + "] event=switched-out scene=smart backgroundPolicy=release powerPolicy=retain affinityPolicy=retain" + switchedOutForegroundNameOffset);
 			ResetAdaptiveGuard();
 		}
 		private void OnSessionSwitchedBack(bool returning)
@@ -236,7 +236,7 @@ namespace PaviseApp
 		public int AddScannedGames(IList<ScanHit> hits, out string lastError)
 		{
 			lastError = null;
-			int num = 0;
+			int processedCount = 0;
 			if (hits == null)
 			{
 				return 0;
@@ -256,7 +256,7 @@ namespace PaviseApp
 						string error;
 						if (StageGameExecutable(hit.Name, hit.Exe, hit.Root, next, nextIgnore, out error))
 						{
-							num++;
+							processedCount++;
 						}
 						else if (!string.IsNullOrEmpty(error))
 						{
@@ -264,16 +264,16 @@ namespace PaviseApp
 						}
 					}
 				}
-				if (num > 0 && !CommitLibraryLocked(next, nextIgnore))
+				if (processedCount > 0 && !CommitLibraryLocked(next, nextIgnore))
 				{
 					return 0;
 				}
 			}
-			if (num > 0)
+			if (processedCount > 0)
 			{
 				KickLibraryChanged();
 			}
-			return num;
+			return processedCount;
 		}
 		public void Start()
 		{
@@ -322,43 +322,43 @@ namespace PaviseApp
 			catch { }
 			// A stopped writer may retain debt; only a running writer blocks unrelated cleanup.
 			if (!manualRestored && LaboratoryManualActions.Busy) return false;
-			bool flag = true;
-			try { if (laboratory != null && !laboratory.Close(8000)) flag = false; }
-			catch { flag = false; }
+			bool stopReady = true;
+			try { if (laboratory != null && !laboratory.Close(8000)) stopReady = false; }
+			catch { stopReady = false; }
 			try
 			{
 				if (!FrameCoordination.Close(8000))
 				{
-					flag = false;
+					stopReady = false;
 				}
 			}
 			catch
 			{
-				flag = false;
+				stopReady = false;
 			}
 			try
 			{
 				if (!RenderLane.CloseForShutdown(8000))
 				{
-					flag = false;
+					stopReady = false;
 				}
 			}
 			catch
 			{
-				flag = false;
+				stopReady = false;
 			}
 			try
 			{
 				if (standbyCleaner != null && !standbyCleaner.Close(8000))
 				{
-					flag = false;
+					stopReady = false;
 				}
 			}
 			catch
 			{
-				flag = false;
+				stopReady = false;
 			}
-			if (!flag)
+			if (!stopReady)
 			{
 				return false;
 			}
@@ -366,10 +366,10 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag2 = StopGameNvDelivery(RemainingShutdownMs(elapsed, 8000));
-			bool flag3 = DrainHistoricalCriticalThreads(RemainingShutdownMs(elapsed, 8000));
-			bool flag4 = StopCriticalThreads(RemainingShutdownMs(elapsed, 8000), "Stop");
-			if (!flag2 || !flag3 || !flag4)
+			bool stopGameNvDeliverySucceeded = StopGameNvDelivery(RemainingShutdownMs(elapsed, 8000));
+			bool drainHistoricalCriticalThreadsSucceeded = DrainHistoricalCriticalThreads(RemainingShutdownMs(elapsed, 8000));
+			bool stopCriticalThreadsSucceeded = StopCriticalThreads(RemainingShutdownMs(elapsed, 8000), "Stop");
+			if (!stopGameNvDeliverySucceeded || !drainHistoricalCriticalThreadsSucceeded || !stopCriticalThreadsSucceeded)
 			{
 				return false;
 			}
@@ -471,12 +471,12 @@ namespace PaviseApp
 					if (!enabled || ProfileStoreSaveFailed)
 					{
 						InvalidateRendererHandoff();
-						bool flag;
+						bool matchesActive;
 						lock (sync)
 						{
-							flag = active || gameBoost.Count > 0;
+							matchesActive = active || gameBoost.Count > 0;
 						}
-						if (flag || EnvActive() || core.AnyWith(SuppressReason.Background))
+						if (matchesActive || EnvActive() || core.AnyWith(SuppressReason.Background))
 						{
 							RetryDeactivate(Lang.T("t.gamemode.43"));
 						}
@@ -507,12 +507,12 @@ namespace PaviseApp
 					PruneWhitelistFamilyMembersIfDue(processSnapshot);
 					antiCheatProcessSnapshot = processSnapshot;
 					HashSet<int> gamePids;
-					string text = FindRunningGame(processSnapshot, out gamePids);
+					string runningGame = FindRunningGame(processSnapshot, out gamePids);
 					if (!enabled || stopping || panicReq || ProfileStoreSaveFailed)
 					{
 						continue;
 					}
-					if (text != null)
+					if (runningGame != null)
 					{
 						string detectedProfileId;
 						lock (sync)
@@ -537,14 +537,14 @@ namespace PaviseApp
 							{
 								if (manualLaboratoryMutation) continue;
 								active = true;
-								activeGame = text;
+								activeGame = runningGame;
 								firstSweep = true;
 							}
-							Logger.Log(Lang.T("log.gamemode.45") + text);
+							Logger.Log(Lang.T("log.gamemode.45") + runningGame);
 							ResetAdaptiveGuard();
 							Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
 							BeginSessionPolicy();
-							ReportBegin(text);
+							ReportBegin(runningGame);
 							NotifyExtensionSession(true);
 							slowEnvAtTicks = DateTime.UtcNow.AddSeconds(20.0).Ticks;
 						}
@@ -552,31 +552,31 @@ namespace PaviseApp
 						{
 							lock (sync)
 							{
-								activeGame = text;
+								activeGame = runningGame;
 							}
-							Logger.Log(Lang.T("log.gamemode.46") + text);
+							Logger.Log(Lang.T("log.gamemode.46") + runningGame);
 							ResetAdaptiveGuard();
 							Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
 							ReportFinish();
 							BeginSessionPolicy();
-							ReportBegin(text);
+							ReportBegin(runningGame);
 							NotifyExtensionSession(true);
 						}
-						else if (!string.Equals(activeGame, text, StringComparison.Ordinal))
+						else if (!string.Equals(activeGame, runningGame, StringComparison.Ordinal))
 						{
 							lock (sync)
 							{
-								activeGame = text;
+								activeGame = runningGame;
 							}
 						}
-						int num;
+						int rendererPid;
 						long birth;
 						lock (sync)
 						{
-							num = ((activeDetection != null) ? activeDetection.RendererPid : 0);
+							rendererPid = ((activeDetection != null) ? activeDetection.RendererPid : 0);
 							birth = ((activeDetection != null) ? activeDetection.RendererCreation : 0);
 						}
-						UpdateSessionForeground(processSnapshot, num, gamePids);
+						UpdateSessionForeground(processSnapshot, rendererPid, gamePids);
 						bool smartSceneSwitchedOut = SmartSceneSwitchedOut;
 						StepEnglishInputSession();
 						ApplyEnv();
@@ -592,7 +592,7 @@ namespace PaviseApp
 						{
 							ReleaseBackground(smartSceneSwitchedOut ? SwitchOutReleaseText : Lang.T("t.gamemodeenv.41"));
 						}
-						SelfYield.TrackHelperRenderer(num, birth);
+						SelfYield.TrackHelperRenderer(rendererPid, birth);
 						SelfYield.Engage();
 						ApplyGameProcessActions(processSnapshot);
 						StepCriticalThreadRuntime();
@@ -629,12 +629,12 @@ namespace PaviseApp
 					else
 					{
 						DropVanishedBoosts();
-						bool flag2;
+						bool matchesCount;
 						lock (sync)
 						{
-							flag2 = gameBoost.Count > 0;
+							matchesCount = gameBoost.Count > 0;
 						}
-						if (flag2 || EnvActive() || core.AnyWith(SuppressReason.Background))
+						if (matchesCount || EnvActive() || core.AnyWith(SuppressReason.Background))
 						{
 							RetryDeactivate(Lang.T("t.gamemode.51"));
 						}
@@ -659,21 +659,21 @@ namespace PaviseApp
 				WaitForNextScan:
 				kick.WaitOne(LoopWaitMs(enabled ? ProcessScanWaitMs() : 4000));
 			}
-			bool flag3;
+			bool matchesActive2;
 			lock (sync)
 			{
-				flag3 = active || gameBoost.Count > 0;
+				matchesActive2 = active || gameBoost.Count > 0;
 			}
-			bool flag4 = true;
-			if (flag3 || core.AnyWith(SuppressReason.Background) || EnvActive())
+			bool loopReady = true;
+			if (matchesActive2 || core.AnyWith(SuppressReason.Background) || EnvActive())
 			{
-				flag4 = Deactivate(Lang.T("t.gamemode.53"));
+				loopReady = Deactivate(Lang.T("t.gamemode.53"));
 			}
 			if (panicReq)
 			{
 				int value2 = Volatile.Read(ref panicSeq);
 				panicReq = false;
-				panicResult = flag4;
+				panicResult = loopReady;
 				Volatile.Write(ref panicServed, value2);
 				panicDone.Set();
 			}
@@ -715,12 +715,12 @@ namespace PaviseApp
 			}
 			ObserveWhitelistProcessChanges(batch);
 			ObserveGameFamilyChanges(batch);
-			bool flag = batch.Overflowed;
+			bool overflowed = batch.Overflowed;
 			bool gameSessionBoundary = false;
-			bool flag2 = false;
+			bool notifyProcessChangesReady = false;
 			lock (sync)
 			{
-				flag |= active || armedAwaitingElection;
+				overflowed |= active || armedAwaitingElection;
 				ProcessChange[] changes = batch.Changes;
 				foreach (ProcessChange processChange in changes)
 				{
@@ -738,13 +738,13 @@ namespace PaviseApp
 					}
 					if (IsActiveFamilyChildStart(activeDetection, processChange, selfSession))
 					{
-						flag = true;
+						overflowed = true;
 						long rendererCreation = activeDetection.RendererCreation;
 						if (!IsSameTransitionEpoch(transitionProbeRendererPid, transitionProbeRendererCreation, activeDetection.RendererPid, rendererCreation))
 						{
 							transitionProbeRendererPid = activeDetection.RendererPid;
 							transitionProbeRendererCreation = rendererCreation;
-							flag2 = true;
+							notifyProcessChangesReady = true;
 						}
 					}
 					if (string.IsNullOrEmpty(processChange.Name))
@@ -756,7 +756,7 @@ namespace PaviseApp
 						if (GameSessionDetector.IsProfileEntryProcess(profile, processChange.Name, processChange.Path))
 						{
 
-							flag = true;
+							overflowed = true;
 							gameSessionBoundary = true;
 							break;
 						}
@@ -767,7 +767,7 @@ namespace PaviseApp
 			{
 				Interlocked.Exchange(ref gameDetectionDirty, 1);
 			}
-			if (flag2)
+			if (notifyProcessChangesReady)
 			{
 				Interlocked.Exchange(ref gameDetectionDirty, 1);
 				Interlocked.Exchange(ref transitionScanPending, 1);
@@ -777,7 +777,7 @@ namespace PaviseApp
 				Interlocked.Exchange(ref gameDetectionDirty, 1);
 				Interlocked.Exchange(ref urgentProcessScan, 1);
 			}
-			if (flag)
+			if (overflowed)
 			{
 				Interlocked.Exchange(ref processSetDirty, 1);
 				kick.Set();
@@ -847,51 +847,51 @@ namespace PaviseApp
 		{
 			fallbackOnly = false;
 			long ticks = DateTime.UtcNow.Ticks;
-			long num = Interlocked.Read(ref processScanRetryAfterTicks);
-			if (num > ticks)
+			long processScanRetryAfterTicksSnapshot = Interlocked.Read(ref processScanRetryAfterTicks);
+			if (processScanRetryAfterTicksSnapshot > ticks)
 			{
 				return false;
 			}
-			if (num > 0)
+			if (processScanRetryAfterTicksSnapshot > 0)
 			{
-				Interlocked.CompareExchange(ref processScanRetryAfterTicks, 0L, num);
+				Interlocked.CompareExchange(ref processScanRetryAfterTicks, 0L, processScanRetryAfterTicksSnapshot);
 			}
-			long num2 = Interlocked.Read(ref lastProcessScanTicks);
-			long num3 = ticks - num2;
-			bool flag = Interlocked.Exchange(ref urgentProcessScan, 0) != 0;
-			bool flag2 = Interlocked.Exchange(ref processSetDirty, 0) != 0;
-			if (flag)
-			{
-				Interlocked.Exchange(ref transitionScanPending, 0);
-				Interlocked.Exchange(ref lastProcessScanTicks, ticks);
-				return true;
-			}
-			if (Interlocked.CompareExchange(ref transitionScanPending, 0, 0) != 0 && (num2 <= 0 || num3 < 0 || num3 >= 50000000))
+			long lastProcessScanTicksSnapshot = Interlocked.Read(ref lastProcessScanTicks);
+			long remainingTicks = ticks - lastProcessScanTicksSnapshot;
+			bool matchesExchange = Interlocked.Exchange(ref urgentProcessScan, 0) != 0;
+			bool matchesExchange2 = Interlocked.Exchange(ref processSetDirty, 0) != 0;
+			if (matchesExchange)
 			{
 				Interlocked.Exchange(ref transitionScanPending, 0);
 				Interlocked.Exchange(ref lastProcessScanTicks, ticks);
 				return true;
 			}
-			if (DirtyScanDue(ProcessEventsAvailable, flag2, ElapsedMsOrMax(num2, num3)))
+			if (Interlocked.CompareExchange(ref transitionScanPending, 0, 0) != 0 && (lastProcessScanTicksSnapshot <= 0 || remainingTicks < 0 || remainingTicks >= 50000000))
 			{
 				Interlocked.Exchange(ref transitionScanPending, 0);
 				Interlocked.Exchange(ref lastProcessScanTicks, ticks);
 				return true;
 			}
-			int num4 = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
+			if (DirtyScanDue(ProcessEventsAvailable, matchesExchange2, ElapsedMsOrMax(lastProcessScanTicksSnapshot, remainingTicks)))
+			{
+				Interlocked.Exchange(ref transitionScanPending, 0);
+				Interlocked.Exchange(ref lastProcessScanTicks, ticks);
+				return true;
+			}
+			int processScanIntervalMsResult = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
 			if (armedAwaitingElection)
 			{
-				num4 = Math.Min(num4, 4000);
+				processScanIntervalMsResult = Math.Min(processScanIntervalMsResult, 4000);
 			}
-			long num5 = (long)num4 * 10000L;
-			if (num2 <= 0 || num3 < 0 || num3 >= num5)
+			long scaledProcessScanIntervalMsResult = (long)processScanIntervalMsResult * 10000L;
+			if (lastProcessScanTicksSnapshot <= 0 || remainingTicks < 0 || remainingTicks >= scaledProcessScanIntervalMsResult)
 			{
 				fallbackOnly = !armedAwaitingElection;
 				Interlocked.Exchange(ref transitionScanPending, 0);
 				Interlocked.Exchange(ref lastProcessScanTicks, ticks);
 				return true;
 			}
-			if (flag2)
+			if (matchesExchange2)
 			{
 				Interlocked.Exchange(ref processSetDirty, 1);
 			}
@@ -900,40 +900,40 @@ namespace PaviseApp
 		private int ProcessScanWaitMs()
 		{
 			long ticks = DateTime.UtcNow.Ticks;
-			long num = Interlocked.Read(ref processScanRetryAfterTicks);
-			if (num > ticks)
+			long processScanRetryAfterTicksSnapshot = Interlocked.Read(ref processScanRetryAfterTicks);
+			if (processScanRetryAfterTicksSnapshot > ticks)
 			{
-				return TicksToWaitMilliseconds(num - ticks);
+				return TicksToWaitMilliseconds(processScanRetryAfterTicksSnapshot - ticks);
 			}
 			if (Interlocked.CompareExchange(ref urgentProcessScan, 0, 0) != 0)
 			{
 				return 1;
 			}
-			int num2 = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
+			int processScanIntervalMsResult = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
 			if (armedAwaitingElection)
 			{
-				num2 = Math.Min(num2, 4000);
+				processScanIntervalMsResult = Math.Min(processScanIntervalMsResult, 4000);
 			}
-			long num3 = Interlocked.Read(ref lastProcessScanTicks);
-			if (num3 <= 0 || ticks < num3)
+			long lastProcessScanTicksSnapshot = Interlocked.Read(ref lastProcessScanTicks);
+			if (lastProcessScanTicksSnapshot <= 0 || ticks < lastProcessScanTicksSnapshot)
 			{
 				return 1;
 			}
-			long num4 = (ticks - num3) / 10000;
-			long num5 = num2 - num4;
+			long ratio = (ticks - lastProcessScanTicksSnapshot) / 10000;
+			long remainingProcessScanIntervalMsResult = processScanIntervalMsResult - ratio;
 			if (Interlocked.CompareExchange(ref transitionScanPending, 0, 0) != 0)
 			{
-				num5 = Math.Min(num5, 5000 - num4);
+				remainingProcessScanIntervalMsResult = Math.Min(remainingProcessScanIntervalMsResult, 5000 - ratio);
 			}
 			if (ProcessEventsAvailable && Interlocked.CompareExchange(ref processSetDirty, 0, 0) != 0)
 			{
-				num5 = Math.Min(num5, 500 - num4);
+				remainingProcessScanIntervalMsResult = Math.Min(remainingProcessScanIntervalMsResult, 500 - ratio);
 			}
-			if (num5 <= 0)
+			if (remainingProcessScanIntervalMsResult <= 0)
 			{
 				return 1;
 			}
-			return (int)Math.Min(num2, num5);
+			return (int)Math.Min(processScanIntervalMsResult, remainingProcessScanIntervalMsResult);
 		}
 		private void RequeueProcessScanAfterFailure()
 		{
@@ -1002,7 +1002,7 @@ namespace PaviseApp
 		{
 			BeginCacheWarmSession();
 			ResetBoostIdentity();
-			long num = CurrentProcessCpuTicks();
+			long currentProcessCpuTicksResult = CurrentProcessCpuTicks();
 			lock (sync)
 			{
 				repCpu.Clear();
@@ -1011,7 +1011,7 @@ namespace PaviseApp
 				repSealed.Clear();
 				repGame = game;
 				repStart = Stopwatch.GetTimestamp();
-				repPaviseCpuStart = num;
+				repPaviseCpuStart = currentProcessCpuTicksResult;
 				repProfileId = ((activeDetection != null && activeDetection.Profile != null) ? activeDetection.Profile.Id : null);
 			}
 		}
@@ -1039,18 +1039,18 @@ namespace PaviseApp
 				repCpu.Remove(pid);
 				repCreation.Remove(pid);
 			}
-			long num = 0L;
+			long numericValue = 0L;
 			long ticks;
 			long creation;
 			if (CpuTicks(pid, out ticks, out creation) && creation == value2 && ticks > value)
 			{
-				num = ticks - value;
+				numericValue = ticks - value;
 			}
 			lock (sync)
 			{
 				long value3;
 				repSealed.TryGetValue(pid, out value3);
-				repSealed[pid] = value3 + num;
+				repSealed[pid] = value3 + numericValue;
 			}
 		}
 		private void ReportTrack(int pid, string name)
@@ -1080,22 +1080,22 @@ namespace PaviseApp
 		}
 		private void ReportFinish()
 		{
-			string text;
-			long num;
+			string repGameSnapshot;
+			long repStartSnapshot;
 			Dictionary<int, long> dictionary;
 			Dictionary<int, string> dictionary2;
 			Dictionary<int, long> dictionary3;
 			Dictionary<int, long> dictionary4;
-			long num2;
+			long repPaviseCpuStartSnapshot;
 			lock (sync)
 			{
-				text = repGame;
-				num = repStart;
+				repGameSnapshot = repGame;
+				repStartSnapshot = repStart;
 				dictionary = new Dictionary<int, long>(repCpu);
 				dictionary2 = new Dictionary<int, string>(repProc);
 				dictionary3 = new Dictionary<int, long>(repCreation);
 				dictionary4 = new Dictionary<int, long>(repSealed);
-				num2 = repPaviseCpuStart;
+				repPaviseCpuStartSnapshot = repPaviseCpuStart;
 				repCpu.Clear();
 				repCreation.Clear();
 				repProc.Clear();
@@ -1104,11 +1104,11 @@ namespace PaviseApp
 				repPaviseCpuStart = 0L;
 				repProfileId = null;
 			}
-			if (text == null)
+			if (repGameSnapshot == null)
 			{
 				return;
 			}
-			TimeSpan timeSpan = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - num) / (double)Stopwatch.Frequency);
+			TimeSpan timeSpan = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - repStartSnapshot) / (double)Stopwatch.Frequency);
 			foreach (KeyValuePair<int, long> item in dictionary)
 			{
 				long value;
@@ -1122,47 +1122,47 @@ namespace PaviseApp
 				long value2;
 				if (CpuTicks(item.Key, out ticks, out creation) && dictionary3.TryGetValue(item.Key, out value2) && creation == value2)
 				{
-					long num3 = ticks - item.Value;
-					if (num3 >= 0)
+					long remainingTicks = ticks - item.Value;
+					if (remainingTicks >= 0)
 					{
-						dictionary4[item.Key] = value + num3;
+						dictionary4[item.Key] = value + remainingTicks;
 					}
 				}
 			}
-			long num4 = 0L;
-			long num5 = 0L;
-			string text2 = null;
+			long numericValue = 0L;
+			long numericValue2 = 0L;
+			string value3Snapshot = null;
 			foreach (KeyValuePair<int, long> item2 in dictionary4)
 			{
-				num4 += item2.Value;
-				if (item2.Value > num5)
+				numericValue += item2.Value;
+				if (item2.Value > numericValue2)
 				{
-					num5 = item2.Value;
+					numericValue2 = item2.Value;
 					string value3;
 					if (dictionary2.TryGetValue(item2.Key, out value3))
 					{
-						text2 = value3;
+						value3Snapshot = value3;
 					}
 				}
 			}
-			string text3 = Lang.F("rep.done", text, FmtDur(timeSpan), dictionary4.Count, FmtCpu(num4));
-			if (text2 != null && num5 >= 10000000)
+			string repDoneText = Lang.F("rep.done", repGameSnapshot, FmtDur(timeSpan), dictionary4.Count, FmtCpu(numericValue));
+			if (value3Snapshot != null && numericValue2 >= 10000000)
 			{
-				text3 += Lang.F("rep.top", text2, FmtCpu(num5));
+				repDoneText += Lang.F("rep.top", value3Snapshot, FmtCpu(numericValue2));
 			}
-			long num6 = CurrentProcessCpuTicks();
-			long cpuTicks = ((num2 > 0 && num6 >= num2) ? (num6 - num2) : 0);
-			double num7 = AverageCpuPercent(cpuTicks, timeSpan);
-			text3 += Lang.F("rep.pavise.cpu", num7.ToString("0.00", CultureInfo.InvariantCulture));
-			Logger.Log(Lang.T("log.gamemodesession.1") + text3);
+			long currentProcessCpuTicksResult = CurrentProcessCpuTicks();
+			long cpuTicks = ((repPaviseCpuStartSnapshot > 0 && currentProcessCpuTicksResult >= repPaviseCpuStartSnapshot) ? (currentProcessCpuTicksResult - repPaviseCpuStartSnapshot) : 0);
+			double averageCpuPercentResult = AverageCpuPercent(cpuTicks, timeSpan);
+			repDoneText += Lang.F("rep.pavise.cpu", averageCpuPercentResult.ToString("0.00", CultureInfo.InvariantCulture));
+			Logger.Log(Lang.T("log.gamemodesession.1") + repDoneText);
 			if (!(timeSpan.TotalSeconds >= 60.0))
 			{
 				return;
 			}
-			string text4 = Lang.F("rep.brief", text, FmtDur(timeSpan), dictionary4.Count);
+			string repBriefText = Lang.F("rep.brief", repGameSnapshot, FmtDur(timeSpan), dictionary4.Count);
 			try
 			{
-				Settings.SaveStr("LastSessionBrief", text4);
+				Settings.SaveStr("LastSessionBrief", repBriefText);
 			}
 			catch
 			{
@@ -1172,7 +1172,7 @@ namespace PaviseApp
 			{
 				try
 				{
-					sessionBriefed(text4);
+					sessionBriefed(repBriefText);
 				}
 				catch
 				{
@@ -1185,7 +1185,7 @@ namespace PaviseApp
 			}
 			try
 			{
-				sessionEnded(text3);
+				sessionEnded(repDoneText);
 			}
 			catch
 			{
@@ -1226,22 +1226,22 @@ namespace PaviseApp
 		}
 		internal static bool IsTrustedPresetProcessPath(string name, string imagePath)
 		{
-			string text = WhitelistRule.NormalizeImagePath(imagePath);
-			if (text.Length == 0)
+			string imagePath2 = WhitelistRule.NormalizeImagePath(imagePath);
+			if (imagePath2.Length == 0)
 			{
 				return false;
 			}
-			string text2 = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-			if (string.IsNullOrEmpty(text2))
+			string folderPath2 = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+			if (string.IsNullOrEmpty(folderPath2))
 			{
-				text2 = "C:\\Windows";
+				folderPath2 = "C:\\Windows";
 			}
-			text2 = text2.TrimEnd('\\');
-			if (string.Equals(name, "explorer", StringComparison.OrdinalIgnoreCase) && WhitelistRule.PathEquals(text, Path.Combine(text2, "explorer.exe")))
+			folderPath2 = folderPath2.TrimEnd('\\');
+			if (string.Equals(name, "explorer", StringComparison.OrdinalIgnoreCase) && WhitelistRule.PathEquals(imagePath2, Path.Combine(folderPath2, "explorer.exe")))
 			{
 				return true;
 			}
-			if (FamilyBoundary.UnderRoot(text, Path.Combine(text2, "System32")) || FamilyBoundary.UnderRoot(text, Path.Combine(text2, "SysWOW64")) || FamilyBoundary.UnderRoot(text, Path.Combine(text2, "SystemApps")))
+			if (FamilyBoundary.UnderRoot(imagePath2, Path.Combine(folderPath2, "System32")) || FamilyBoundary.UnderRoot(imagePath2, Path.Combine(folderPath2, "SysWOW64")) || FamilyBoundary.UnderRoot(imagePath2, Path.Combine(folderPath2, "SystemApps")))
 			{
 				return true;
 			}
@@ -1252,13 +1252,13 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				if (FamilyBoundary.UnderRoot(text, Path.Combine(folderPath, "WindowsApps")))
+				if (FamilyBoundary.UnderRoot(imagePath2, Path.Combine(folderPath, "WindowsApps")))
 				{
 					return true;
 				}
 				if (string.Equals(name, "wslservice", StringComparison.OrdinalIgnoreCase))
 				{
-					return WhitelistRule.PathEquals(text, Path.Combine(folderPath, "WSL", "wslservice.exe"));
+					return WhitelistRule.PathEquals(imagePath2, Path.Combine(folderPath, "WSL", "wslservice.exe"));
 				}
 				return false;
 			}

@@ -74,15 +74,15 @@ namespace PaviseApp
 					{
 						return;
 					}
-					int num = Interlocked.Increment(ref lifecycleGeneration);
+					int incrementResult = Interlocked.Increment(ref lifecycleGeneration);
 					coalesce = new Timer(delegate(object state)
 					{
 						OnWindow(state);
-					}, num, -1, -1);
+					}, incrementResult, -1, -1);
 					try
 					{
-						startW = Watch("Win32_ProcessStartTrace", ProcessChangeKind.Started, num);
-						stopW = Watch("Win32_ProcessStopTrace", ProcessChangeKind.Stopped, num);
+						startW = Watch("Win32_ProcessStartTrace", ProcessChangeKind.Started, incrementResult);
+						stopW = Watch("Win32_ProcessStopTrace", ProcessChangeKind.Stopped, incrementResult);
 						Interlocked.Exchange(ref accepting, 1);
 						active = true;
 						StartFastPath();
@@ -180,8 +180,8 @@ namespace PaviseApp
 				if (fastTrack != null && fastStart != null && !string.IsNullOrEmpty(name) && fastTrack(name, session))
 				{
 					long ticks = DateTime.UtcNow.Ticks;
-					long num = Interlocked.Read(ref lastFastStartTicks);
-					if ((num == 0 || ticks - num >= 2500000) && Interlocked.CompareExchange(ref lastFastStartTicks, ticks, num) == num)
+					long lastFastStartTicksSnapshot = Interlocked.Read(ref lastFastStartTicks);
+					if ((lastFastStartTicksSnapshot == 0 || ticks - lastFastStartTicksSnapshot >= 2500000) && Interlocked.CompareExchange(ref lastFastStartTicks, ticks, lastFastStartTicksSnapshot) == lastFastStartTicksSnapshot)
 					{
 						fastStart();
 					}
@@ -233,12 +233,12 @@ namespace PaviseApp
 				{
 					try
 					{
-						int num = Convert.ToInt32(newEvent["ProcessID"]);
+						int pidValue = Convert.ToInt32(newEvent["ProcessID"]);
 						string name = Convert.ToString(newEvent["ProcessName"]);
-						if (num > 0)
+						if (pidValue > 0)
 						{
 							ProcessChange processChange2 = new ProcessChange();
-							processChange2.Pid = num;
+							processChange2.Pid = pidValue;
 							processChange2.Name = StripExe(name);
 							processChange2.Kind = kind;
 							processChange2.Sequence = Interlocked.Increment(ref sequence);
@@ -259,25 +259,25 @@ namespace PaviseApp
 							}
 							if (kind == ProcessChangeKind.Started)
 							{
-								bool flag = false;
+								bool onEventReady = false;
 								try
 								{
 									Func<string, int, bool> captureStartIdentity = CaptureStartIdentity;
-									flag = captureStartIdentity != null && captureStartIdentity(processChange.Name, processChange.Session);
+									onEventReady = captureStartIdentity != null && captureStartIdentity(processChange.Name, processChange.Session);
 								}
 								catch
 								{
 								}
-								bool flag2 = false;
+								bool onEventReady2 = false;
 								try
 								{
 									Func<int, string, int, bool> captureParentIdentity = CaptureParentIdentity;
-									flag2 = captureParentIdentity != null && captureParentIdentity(processChange.ParentPid, processChange.Name, processChange.Session);
+									onEventReady2 = captureParentIdentity != null && captureParentIdentity(processChange.ParentPid, processChange.Name, processChange.Session);
 								}
 								catch
 								{
 								}
-								if (flag || flag2)
+								if (onEventReady || onEventReady2)
 								{
 									int parentPid = processChange.ParentPid;
 									int session = processChange.Session;
@@ -287,23 +287,23 @@ namespace PaviseApp
 									processChange.Name = "";
 									processChange.Path = null;
 									processChange.Creation = 0L;
-									IntPtr intPtr = Native.OpenProcess(1052672, false, num);
+									IntPtr intPtr = Native.OpenProcess(1052672, false, pidValue);
 									if (intPtr != IntPtr.Zero)
 									{
 										try
 										{
-											string text = Native.ImagePath(intPtr);
-											string text2 = ResolveCurrentProcessName(text);
+											string pathValue = Native.ImagePath(intPtr);
+											string nameValue = ResolveCurrentProcessName(pathValue);
 											int sessionId;
-											int num2 = ResolveVerifiedSessionId(session, Native.TryGetLiveProcessSessionId(intPtr, num, out sessionId), sessionId);
+											int sessionValue = ResolveVerifiedSessionId(session, Native.TryGetLiveProcessSessionId(intPtr, pidValue, out sessionId), sessionId);
 											long creation;
 											long cpu;
 											ulong io;
-											if (num2 >= 0 && text2.Length > 0 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
+											if (sessionValue >= 0 && nameValue.Length > 0 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
 											{
-												processChange.Session = num2;
-												processChange.Name = text2;
-												processChange.Path = text;
+												processChange.Session = sessionValue;
+												processChange.Name = nameValue;
+												processChange.Path = pathValue;
 												processChange.Creation = creation;
 												processChange.ParentPid = ResolveVerifiedParentPid(parentPid, Native.ParentProcessId(intPtr));
 											}
@@ -314,7 +314,7 @@ namespace PaviseApp
 										}
 									}
 								}
-								if (flag2 && processChange.ParentPid > 0)
+								if (onEventReady2 && processChange.ParentPid > 0)
 								{
 									IntPtr intPtr2 = Native.OpenProcess(4096, false, processChange.ParentPid);
 									if (intPtr2 != IntPtr.Zero)
@@ -352,7 +352,7 @@ namespace PaviseApp
 				FastTrackMaybe(processChange.Name, processChange.Session);
 			}
 			Timer timer = null;
-			bool flag3 = false;
+			bool onEventReady3 = false;
 			lock (batchSync)
 			{
 				if (!IsAccepting(generation))
@@ -371,10 +371,10 @@ namespace PaviseApp
 				if (Interlocked.Exchange(ref pending, 1) == 0)
 				{
 					timer = coalesce;
-					flag3 = true;
+					onEventReady3 = true;
 				}
 			}
-			if (!flag3)
+			if (!onEventReady3)
 			{
 				return;
 			}
@@ -402,10 +402,10 @@ namespace PaviseApp
 				ProcessChangeBatch processChangeBatch;
 				lock (batchSync)
 				{
-					ProcessChange[] array = new ProcessChange[changes.Count];
-					changes.Values.CopyTo(array, 0);
-					Array.Sort(array, (ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
-					processChangeBatch = new ProcessChangeBatch(array, overflowed);
+					ProcessChange[] processChangeItems = new ProcessChange[changes.Count];
+					changes.Values.CopyTo(processChangeItems, 0);
+					Array.Sort(processChangeItems, (ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
+					processChangeBatch = new ProcessChangeBatch(processChangeItems, overflowed);
 					changes.Clear();
 					overflowed = false;
 					Interlocked.Exchange(ref pending, 0);

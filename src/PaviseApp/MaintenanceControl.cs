@@ -22,12 +22,12 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\Maintenance"))
 				{
-					object obj = ((registryKey == null) ? null : registryKey.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+					object value2 = ((registryKey == null) ? null : registryKey.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
 					value = new MaintenanceValue
 					{
-						Exists = (obj != null),
-						Value = obj,
-						Kind = ((obj != null) ? registryKey.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
+						Exists = (value2 != null),
+						Value = value2,
+						Kind = ((value2 != null) ? registryKey.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
 					};
 					return true;
 				}
@@ -96,12 +96,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			object obj = ((key == null) ? null : key.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+			object value = ((key == null) ? null : key.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
 			return expected.SameAs(new MaintenanceValue
 			{
-				Exists = (obj != null),
-				Value = obj,
-				Kind = ((obj != null) ? key.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
+				Exists = (value != null),
+				Value = value,
+				Kind = ((value != null) ? key.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
 			});
 		}
 
@@ -114,43 +114,43 @@ namespace PaviseApp
 				maintenanceRuntimeSnapshot.State = MaintenanceRuntimeState.Unsupported;
 				return maintenanceRuntimeSnapshot;
 			}
-			object obj = null;
-			object obj2 = null;
+			object instance = null;
+			object invokeResult = null;
 			List<object> list = new List<object>();
 			try
 			{
-				obj = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", true));
-				Invoke(obj, "Connect", BindingFlags.InvokeMethod, new object[0]);
-				obj2 = Invoke(obj, "GetRunningTasks", BindingFlags.InvokeMethod, new object[1] { 1 });
-				int num = Convert.ToInt32(Invoke(obj2, "Count", BindingFlags.GetProperty, new object[0]));
-				if (num < 0 || num > 1024)
+				instance = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", true));
+				Invoke(instance, "Connect", BindingFlags.InvokeMethod, new object[0]);
+				invokeResult = Invoke(instance, "GetRunningTasks", BindingFlags.InvokeMethod, new object[1] { 1 });
+				int toInt32Result = Convert.ToInt32(Invoke(invokeResult, "Count", BindingFlags.GetProperty, new object[0]));
+				if (toInt32Result < 0 || toInt32Result > 1024)
 				{
 					throw new InvalidOperationException("Unexpected task count");
 				}
-				int num2 = 0;
-				for (int i = 1; i <= num; i++)
+				int runningTaskCountValue = 0;
+				for (int i = 1; i <= toInt32Result; i++)
 				{
-					object obj3 = Invoke(obj2, "Item", BindingFlags.GetProperty, new object[1] { i });
-					list.Add(obj3);
-					string text = Convert.ToString(Invoke(obj3, "Path", BindingFlags.GetProperty, new object[0]));
-					int num3 = text.LastIndexOf('\\');
-					if (num3 < 0 || num3 == text.Length - 1)
+					object invokeResult2 = Invoke(invokeResult, "Item", BindingFlags.GetProperty, new object[1] { i });
+					list.Add(invokeResult2);
+					string convertText = Convert.ToString(Invoke(invokeResult2, "Path", BindingFlags.GetProperty, new object[0]));
+					int matchIndex = convertText.LastIndexOf('\\');
+					if (matchIndex < 0 || matchIndex == convertText.Length - 1)
 					{
 						throw new InvalidOperationException("Invalid task path");
 					}
-					object obj4 = Invoke(obj, "GetFolder", BindingFlags.InvokeMethod, new object[1] { (num3 == 0) ? "\\" : text.Substring(0, num3) });
-					list.Add(obj4);
-					object obj5 = Invoke(obj4, "GetTask", BindingFlags.InvokeMethod, new object[1] { text.Substring(num3 + 1) });
-					list.Add(obj5);
-					string xml = Convert.ToString(Invoke(obj5, "Xml", BindingFlags.GetProperty, new object[0]));
+					object invokeResult3 = Invoke(instance, "GetFolder", BindingFlags.InvokeMethod, new object[1] { (matchIndex == 0) ? "\\" : convertText.Substring(0, matchIndex) });
+					list.Add(invokeResult3);
+					object invokeResult4 = Invoke(invokeResult3, "GetTask", BindingFlags.InvokeMethod, new object[1] { convertText.Substring(matchIndex + 1) });
+					list.Add(invokeResult4);
+					string xml = Convert.ToString(Invoke(invokeResult4, "Xml", BindingFlags.GetProperty, new object[0]));
 					if (IsMaintenanceTaskXml(xml))
 					{
-						num2++;
+						runningTaskCountValue++;
 					}
 				}
 				MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot2 = new MaintenanceRuntimeSnapshot();
-				maintenanceRuntimeSnapshot2.State = ((num2 == 0) ? MaintenanceRuntimeState.NotObservedRunning : MaintenanceRuntimeState.Running);
-				maintenanceRuntimeSnapshot2.RunningTaskCount = num2;
+				maintenanceRuntimeSnapshot2.State = ((runningTaskCountValue == 0) ? MaintenanceRuntimeState.NotObservedRunning : MaintenanceRuntimeState.Running);
+				maintenanceRuntimeSnapshot2.RunningTaskCount = runningTaskCountValue;
 				maintenanceRuntimeSnapshot2.Detail = "Read-only observation of visible maintenance-tagged tasks; other servicing activity may still run";
 				return maintenanceRuntimeSnapshot2;
 			}
@@ -163,12 +163,12 @@ namespace PaviseApp
 			}
 			finally
 			{
-				for (int num4 = list.Count - 1; num4 >= 0; num4--)
+				for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
 				{
-					Release(list[num4]);
+					Release(list[listIndex]);
 				}
-				Release(obj2);
-				Release(obj);
+				Release(invokeResult);
+				Release(instance);
 			}
 		}
 

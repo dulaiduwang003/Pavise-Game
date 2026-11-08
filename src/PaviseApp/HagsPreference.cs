@@ -88,8 +88,8 @@ namespace PaviseApp
         {
             get
             {
-                string text = Settings.LoadStr(Slot, "");
-                return text == ReversibleReg.Absent || text == "=0" || text == "=1" || text == "=2" || text == "0" || text == "1" || text == "2";
+                string value = Settings.LoadStr(Slot, "");
+                return value == ReversibleReg.Absent || value == "=0" || value == "=1" || value == "=2" || value == "0" || value == "1" || value == "2";
             }
         }
     }

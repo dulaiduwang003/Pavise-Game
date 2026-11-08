@@ -46,18 +46,18 @@ namespace PaviseApp
 					return null;
 				}
 				Remaining -= length;
-				byte[] array = new byte[length];
+				byte[] rawBytes = new byte[length];
 				Stream.Position = offset;
-				int num;
-				for (int i = 0; i < length; i += num)
+				int value;
+				for (int i = 0; i < length; i += value)
 				{
-					num = Stream.Read(array, i, length - i);
-					if (num <= 0)
+					value = Stream.Read(rawBytes, i, length - i);
+					if (value <= 0)
 					{
 						return null;
 					}
 				}
-				return array;
+				return rawBytes;
 			}
 
 			internal long FileOffset(uint rva, long length)
@@ -66,15 +66,15 @@ namespace PaviseApp
 				{
 					return -1L;
 				}
-				ulong num = (ulong)(rva + length);
-				if (num > 4294967296L)
+				ulong rvaOffset = (ulong)(rva + length);
+				if (rvaOffset > 4294967296L)
 				{
 					return -1L;
 				}
-				long num2 = -1L;
-				if (rva < HeaderSize && num <= HeaderSize && num <= (ulong)Length)
+				long fileOffsetResult = -1L;
+				if (rva < HeaderSize && rvaOffset <= HeaderSize && rvaOffset <= (ulong)Length)
 				{
-					num2 = rva;
+					fileOffsetResult = rva;
 				}
 				foreach (Section section in Sections)
 				{
@@ -82,22 +82,22 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					ulong num3 = (ulong)rva - (ulong)section.Address;
-					if (num3 >= Math.Max(section.RawSize, section.VirtualSize) || (ulong)((long)num3 + length) > (ulong)section.RawSize)
+					ulong remainingRva = (ulong)rva - (ulong)section.Address;
+					if (remainingRva >= Math.Max(section.RawSize, section.VirtualSize) || (ulong)((long)remainingRva + length) > (ulong)section.RawSize)
 					{
 						continue;
 					}
-					ulong num4 = section.RawPointer + num3;
-					if ((ulong)((long)num4 + length) <= (ulong)Length)
+					ulong rawPointerOffset = section.RawPointer + remainingRva;
+					if ((ulong)((long)rawPointerOffset + length) <= (ulong)Length)
 					{
-						if (num2 >= 0)
+						if (fileOffsetResult >= 0)
 						{
 							return -1L;
 						}
-						num2 = (long)num4;
+						fileOffsetResult = (long)rawPointerOffset;
 					}
 				}
-				return num2;
+				return fileOffsetResult;
 			}
 
 			internal string ImportName(uint rva)
@@ -105,25 +105,25 @@ namespace PaviseApp
 				StringBuilder stringBuilder = new StringBuilder();
 				while (stringBuilder.Length < 260)
 				{
-					ulong num = (ulong)rva + (ulong)(uint)stringBuilder.Length;
-					if (num > uint.MaxValue)
+					ulong rvaOffset = (ulong)rva + (ulong)(uint)stringBuilder.Length;
+					if (rvaOffset > uint.MaxValue)
 					{
 						return null;
 					}
-					int num2 = 260 - stringBuilder.Length;
-					long num3 = FileOffset((uint)num, num2);
-					while (num3 < 0 && num2 > 1)
+					int remainingLength = 260 - stringBuilder.Length;
+					long fileOffsetResult = FileOffset((uint)rvaOffset, remainingLength);
+					while (fileOffsetResult < 0 && remainingLength > 1)
 					{
-						num2 /= 2;
-						num3 = FileOffset((uint)num, num2);
+						remainingLength /= 2;
+						fileOffsetResult = FileOffset((uint)rvaOffset, remainingLength);
 					}
-					byte[] array = Read(num3, num2);
-					if (array == null)
+					byte[] readResult = Read(fileOffsetResult, remainingLength);
+					if (readResult == null)
 					{
 						return null;
 					}
-					byte[] array2 = array;
-					foreach (byte b in array2)
+					byte[] rawBytes = readResult;
+					foreach (byte b in rawBytes)
 					{
 						switch (b)
 						{
@@ -289,84 +289,84 @@ namespace PaviseApp
 				peReader.Stream = stream;
 				peReader.Length = stream.Length;
 				PeReader peReader2 = peReader;
-				byte[] array = peReader2.Read(0L, 64);
-				if (array == null || U16(array, 0) != 23117)
+				byte[] readResult = peReader2.Read(0L, 64);
+				if (readResult == null || U16(readResult, 0) != 23117)
 				{
 					return executableCandidateFacts;
 				}
-				uint num = U32(array, 60);
-				if (num < 64 || num > 1048576)
+				uint u32Result = U32(readResult, 60);
+				if (u32Result < 64 || u32Result > 1048576)
 				{
 					return executableCandidateFacts;
 				}
-				byte[] array2 = peReader2.Read(num, 24);
-				if (array2 == null || U32(array2, 0) != 17744)
+				byte[] readResult2 = peReader2.Read(u32Result, 24);
+				if (readResult2 == null || U32(readResult2, 0) != 17744)
 				{
 					return executableCandidateFacts;
 				}
-				ushort num2 = U16(array2, 6);
-				ushort num3 = U16(array2, 20);
-				ushort num4 = U16(array2, 22);
-				if (num2 == 0 || num2 > 96 || num3 > 4096 || (num4 & 2) == 0 || (num4 & 0x2000u) != 0)
+				ushort u16Result = U16(readResult2, 6);
+				ushort u16Result2 = U16(readResult2, 20);
+				ushort u16Result3 = U16(readResult2, 22);
+				if (u16Result == 0 || u16Result > 96 || u16Result2 > 4096 || (u16Result3 & 2) == 0 || (u16Result3 & 0x2000u) != 0)
 				{
 					return executableCandidateFacts;
 				}
-				byte[] array3 = peReader2.Read((long)num + 24L, num3);
-				if (array3 == null || array3.Length < 96)
+				byte[] readResult3 = peReader2.Read((long)u32Result + 24L, u16Result2);
+				if (readResult3 == null || readResult3.Length < 96)
 				{
 					return executableCandidateFacts;
 				}
-				ushort num5 = U16(array3, 0);
-				int num6;
-				switch (num5)
+				ushort u16Result4 = U16(readResult3, 0);
+				int factsValue;
+				switch (u16Result4)
 				{
 				case 267:
-					num6 = 96;
+					factsValue = 96;
 					break;
 				case 523:
-					num6 = 112;
+					factsValue = 112;
 					break;
 				default:
 					return executableCandidateFacts;
 				}
-				if (array3.Length < num6)
+				if (readResult3.Length < factsValue)
 				{
 					return executableCandidateFacts;
 				}
-				uint num7 = U32(array3, num6 - 4);
-				if (num7 > (array3.Length - num6) / 8)
+				uint u32Result2 = U32(readResult3, factsValue - 4);
+				if (u32Result2 > (readResult3.Length - factsValue) / 8)
 				{
 					return executableCandidateFacts;
 				}
-				peReader2.HeaderSize = U32(array3, 60);
-				peReader2.ImageBase = ((num5 == 267) ? U32(array3, 28) : U64(array3, 24));
-				long num8 = (long)num + 24L + num3;
-				for (int i = 0; i < num2; i++)
+				peReader2.HeaderSize = U32(readResult3, 60);
+				peReader2.ImageBase = ((u16Result4 == 267) ? U32(readResult3, 28) : U64(readResult3, 24));
+				long u16Result2Offset = (long)u32Result + 24L + u16Result2;
+				for (int i = 0; i < u16Result; i++)
 				{
-					byte[] array4 = peReader2.Read(num8 + i * 40, 40);
-					if (array4 == null)
+					byte[] readResult4 = peReader2.Read(u16Result2Offset + i * 40, 40);
+					if (readResult4 == null)
 					{
 						return executableCandidateFacts;
 					}
 					peReader2.Sections.Add(new Section
 					{
-						VirtualSize = U32(array4, 8),
-						Address = U32(array4, 12),
-						RawSize = U32(array4, 16),
-						RawPointer = U32(array4, 20)
+						VirtualSize = U32(readResult4, 8),
+						Address = U32(readResult4, 12),
+						RawSize = U32(readResult4, 16),
+						RawPointer = U32(readResult4, 20)
 					});
 				}
 				bool graphics = false;
-				if (num7 > 1 && !ReadImports(peReader2, U32(array3, num6 + 8), U32(array3, num6 + 12), false, ref graphics))
+				if (u32Result2 > 1 && !ReadImports(peReader2, U32(readResult3, factsValue + 8), U32(readResult3, factsValue + 12), false, ref graphics))
 				{
 					return executableCandidateFacts;
 				}
-				if (num7 > 13 && !ReadImports(peReader2, U32(array3, num6 + 104), U32(array3, num6 + 104 + 4), true, ref graphics))
+				if (u32Result2 > 13 && !ReadImports(peReader2, U32(readResult3, factsValue + 104), U32(readResult3, factsValue + 104 + 4), true, ref graphics))
 				{
 					return executableCandidateFacts;
 				}
 				executableCandidateFacts.Executable = true;
-				executableCandidateFacts.Gui = U16(array3, 68) == 2;
+				executableCandidateFacts.Gui = U16(readResult3, 68) == 2;
 				executableCandidateFacts.GraphicsImports = graphics;
 				return executableCandidateFacts;
 			}
@@ -392,53 +392,53 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			int num = (delayed ? 32 : 20);
-			if (address == 0 || size < num || reader.FileOffset(address, size) < 0)
+			int importsValue = (delayed ? 32 : 20);
+			if (address == 0 || size < importsValue || reader.FileOffset(address, size) < 0)
 			{
 				return false;
 			}
-			int num2 = (int)Math.Min(256u, size / (uint)num);
-			for (int i = 0; i < num2; i++)
+			int upperBound = (int)Math.Min(256u, size / (uint)importsValue);
+			for (int i = 0; i < upperBound; i++)
 			{
-				ulong num3 = (ulong)address + (ulong)(uint)(i * num);
-				if (num3 > uint.MaxValue)
+				ulong addressOffset = (ulong)address + (ulong)(uint)(i * importsValue);
+				if (addressOffset > uint.MaxValue)
 				{
 					return false;
 				}
-				byte[] array = reader.Read(reader.FileOffset((uint)num3, num), num);
-				if (array == null)
+				byte[] readResult = reader.Read(reader.FileOffset((uint)addressOffset, importsValue), importsValue);
+				if (readResult == null)
 				{
 					return false;
 				}
-				bool flag = true;
-				byte[] array2 = array;
-				for (int j = 0; j < array2.Length; j++)
+				bool importsReady = true;
+				byte[] rawBytes = readResult;
+				for (int j = 0; j < rawBytes.Length; j++)
 				{
-					if (array2[j] != 0)
+					if (rawBytes[j] != 0)
 					{
-						flag = false;
+						importsReady = false;
 						break;
 					}
 				}
-				if (flag)
+				if (importsReady)
 				{
 					return true;
 				}
-				uint num4 = U32(array, delayed ? 4 : 12);
-				if (delayed && (U32(array, 0) & 1) == 0)
+				uint u32Result = U32(readResult, delayed ? 4 : 12);
+				if (delayed && (U32(readResult, 0) & 1) == 0)
 				{
-					if (num4 < reader.ImageBase || num4 - reader.ImageBase > uint.MaxValue)
+					if (u32Result < reader.ImageBase || u32Result - reader.ImageBase > uint.MaxValue)
 					{
 						return false;
 					}
-					num4 = (uint)(num4 - reader.ImageBase);
+					u32Result = (uint)(u32Result - reader.ImageBase);
 				}
-				string text = reader.ImportName(num4);
-				if (text == null)
+				string importNameResult = reader.ImportName(u32Result);
+				if (importNameResult == null)
 				{
 					return false;
 				}
-				if (GraphicsDependency(text))
+				if (GraphicsDependency(importNameResult))
 				{
 					graphics = true;
 				}
@@ -468,8 +468,8 @@ namespace PaviseApp
 				return null;
 			}
 			ExecutableCandidateFacts executableCandidateFacts = null;
-			int num = 0;
-			bool flag = false;
+			int pickUniqueValue = 0;
+			bool pickUniqueReady = false;
 			Dictionary<string, ExecutableCandidateFacts> dictionary = new Dictionary<string, ExecutableCandidateFacts>(StringComparer.OrdinalIgnoreCase);
 			foreach (ExecutableCandidateFacts candidate in candidates)
 			{
@@ -487,22 +487,22 @@ namespace PaviseApp
 					continue;
 				}
 				dictionary.Add(candidate.Path, candidate);
-				int num2 = ((candidate.GraphicsImports || candidate.EngineDataPair) ? 2 : (candidate.Gui ? 1 : 0));
-				if (num2 != 0)
+				int pickUniqueValue2 = ((candidate.GraphicsImports || candidate.EngineDataPair) ? 2 : (candidate.Gui ? 1 : 0));
+				if (pickUniqueValue2 != 0)
 				{
-					if (num2 > num)
+					if (pickUniqueValue2 > pickUniqueValue)
 					{
 						executableCandidateFacts = candidate;
-						num = num2;
-						flag = false;
+						pickUniqueValue = pickUniqueValue2;
+						pickUniqueReady = false;
 					}
-					else if (num2 == num)
+					else if (pickUniqueValue2 == pickUniqueValue)
 					{
-						flag = true;
+						pickUniqueReady = true;
 					}
 				}
 			}
-			if (executableCandidateFacts != null && !flag && (num >= 2 || (complete && dictionary.Count <= 1)))
+			if (executableCandidateFacts != null && !pickUniqueReady && (pickUniqueValue >= 2 || (complete && dictionary.Count <= 1)))
 			{
 				return executableCandidateFacts.Path;
 			}
@@ -563,9 +563,9 @@ namespace PaviseApp
 			}
 			list2.Sort(delegate(ExecutableCandidateFacts a, ExecutableCandidateFacts b)
 			{
-				int num = Rank(a);
-				int num2 = Rank(b);
-				return (num != num2) ? (num2 - num) : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+				int rankResult = Rank(a);
+				int rankResult2 = Rank(b);
+				return (rankResult != rankResult2) ? (rankResult2 - rankResult) : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
 			});
 			if (max > 0 && list2.Count > max)
 			{
@@ -668,8 +668,8 @@ namespace PaviseApp
 			{
 				Queue<DirectoryWork> queue = new Queue<DirectoryWork>();
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				int num = 0;
-				int num2 = 1;
+				int processedCount = 0;
+				int processedCount2 = 1;
 				hashSet.Add(root);
 				queue.Enqueue(new DirectoryWork
 				{
@@ -698,12 +698,12 @@ namespace PaviseApp
 					{
 						foreach (string item in files(directoryWork.Path))
 						{
-							if (num >= 400)
+							if (processedCount >= 400)
 							{
 								complete = false;
 								return result;
 							}
-							num++;
+							processedCount++;
 							try
 							{
 								if ((attributes(item) & FileAttributes.ReparsePoint) != 0)
@@ -732,12 +732,12 @@ namespace PaviseApp
 					{
 						foreach (string item2 in directories(directoryWork.Path))
 						{
-							if (directoryWork.Depth >= 8 || num2 >= 512)
+							if (directoryWork.Depth >= 8 || processedCount2 >= 512)
 							{
 								complete = false;
 								break;
 							}
-							num2++;
+							processedCount2++;
 							if (hashSet.Add(item2))
 							{
 								queue.Enqueue(new DirectoryWork

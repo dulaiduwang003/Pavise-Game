@@ -45,25 +45,25 @@ namespace PaviseApp
 
 			internal string Text(CpuIdlePhase phase)
 			{
-				object obj;
+				object instance;
 				switch (phase)
 				{
 				default:
-					obj = "S";
+					instance = "S";
 					break;
 				case CpuIdlePhase.Restoring:
-					obj = "R";
+					instance = "R";
 					break;
 				case CpuIdlePhase.Owned:
-					obj = "O";
+					instance = "O";
 					break;
 				case CpuIdlePhase.Prepared:
-					obj = "P";
+					instance = "P";
 					break;
 				}
-				string text = (string)obj;
-				return PendingMask < 0 ? "2|" + Scheme.ToString("D") + "|0|" + text
-					: "3|" + Scheme.ToString("D") + "|0|" + text + "|" + PendingMask.ToString(CultureInfo.InvariantCulture);
+				string message = (string)instance;
+				return PendingMask < 0 ? "2|" + Scheme.ToString("D") + "|0|" + message
+					: "3|" + Scheme.ToString("D") + "|0|" + message + "|" + PendingMask.ToString(CultureInfo.InvariantCulture);
 			}
 		}
 
@@ -109,8 +109,8 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				string[] array = new string[1] { "PgPlanGuid" };
-				foreach (string name in array)
+				string[] textEntries = new string[1] { "PgPlanGuid" };
+				foreach (string name in textEntries)
 				{
 					Guid result;
 					if (Guid.TryParse(Settings.LoadStr(name, ""), out result) && result == scheme)
@@ -152,10 +152,10 @@ namespace PaviseApp
 			public bool Delete(Guid scheme)
 			{
 				Guid guid = scheme;
-				uint num = PowerDeleteScheme(IntPtr.Zero, ref guid);
-				if (num != 0)
+				uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref guid);
+				if (powerDeleteSchemeResult != 0)
 				{
-					return num == 2;
+					return powerDeleteSchemeResult == 2;
 				}
 				return true;
 			}
@@ -184,25 +184,25 @@ namespace PaviseApp
                 if (stored == null) return null;
                 List<Guid> list = new List<Guid>(stored);
                 var enumerated = new HashSet<Guid>();
-				uint num = 0u;
-				while (num < 2048)
+				uint processedCount = 0u;
+				while (processedCount < 2048)
 				{
 					uint size = 16u;
-					byte[] array = new byte[16];
-					switch (EnumerateProcessorSetting(IntPtr.Zero, ref scheme, ref processor, 18u, num, array, ref size))
+					byte[] rawBytes = new byte[16];
+					switch (EnumerateProcessorSetting(IntPtr.Zero, ref scheme, ref processor, 18u, processedCount, rawBytes, ref size))
 					{
                     case 2u: case 3u: case 259u:
                         return list.ToArray();
 					case 0u:
 						if (size == 16)
 						{
-							Guid guid = new Guid(array);
+							Guid guid = new Guid(rawBytes);
 							if (guid == Guid.Empty || !enumerated.Add(guid))
 							{
 								return null;
 							}
                             if (!list.Contains(guid)) list.Add(guid);
-							num++;
+							processedCount++;
 							break;
 						}
 						goto default;
@@ -591,8 +591,8 @@ namespace PaviseApp
 					}
 					try
 					{
-						string text;
-						return !CpuIdleReadLedger(out text) || text == null || text.Length != 0;
+						string message;
+						return !CpuIdleReadLedger(out message) || message == null || message.Length != 0;
 					}
 					catch
 					{
@@ -661,27 +661,27 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text;
-				if (!Settings.TryLoadStr("CoreParkSnap", out text) || text == null)
+				string message;
+				if (!Settings.TryLoadStr("CoreParkSnap", out message) || message == null)
 				{
 					return false;
 				}
-				if (text.Length == 0)
+				if (message.Length == 0)
 				{
 					return true;
 				}
-				string[] array = text.Split('|');
-				bool valuesRestored = array.Length == 7 && array[0] == "2" && array[6] == "F";
+				string[] messageParts = message.Split('|');
+				bool valuesRestored = messageParts.Length == 7 && messageParts[0] == "2" && messageParts[6] == "F";
 				if (valuesRestored)
 				{
-					array = new[] { array[1], array[2], array[3], array[4], array[5] };
+					messageParts = new[] { messageParts[1], messageParts[2], messageParts[3], messageParts[4], messageParts[5] };
 				}
 				Guid guid;
-				if (array.Length != 5 || !Guid.TryParse(array[0], out guid) || guid == Guid.Empty)
+				if (messageParts.Length != 5 || !Guid.TryParse(messageParts[0], out guid) || guid == Guid.Empty)
 				{
 					return ParkRestoreFailed();
 				}
-				foreach (string original in new[] { array[1], array[2], array[3], array[4] })
+				foreach (string original in new[] { messageParts[1], messageParts[2], messageParts[3], messageParts[4] })
 				{
 					uint value;
 					if (original != "-" && (!uint.TryParse(original, out value) || value > 100))
@@ -691,15 +691,15 @@ namespace PaviseApp
 				}
 				if (!valuesRestored)
 				{
-					bool primary = WriteBack(guid, CpMinCores, array[1], array[2]);
-					bool secondary = WriteBack(guid, CpMinCores1, array[3], array[4]);
+					bool primary = WriteBack(guid, CpMinCores, messageParts[1], messageParts[2]);
+					bool secondary = WriteBack(guid, CpMinCores1, messageParts[3], messageParts[4]);
 					if (!primary || !secondary)
 					{
 						return ParkRestoreFailed();
 					}
 					// Once values are restored, a failed activation must only retry the
 					// activation, even if another owner later chooses the old value 100.
-					string flushReceipt = "2|" + text + "|F";
+					string flushReceipt = "2|" + message + "|F";
 					string persisted;
 					if (!Settings.SaveStrDurable("CoreParkSnap", flushReceipt)
 						|| !Settings.TryLoadStr("CoreParkSnap", out persisted) || persisted != flushReceipt)
@@ -794,39 +794,39 @@ namespace PaviseApp
 			{
 				return machineSig;
 			}
-			string text = "";
+			string message = "";
 			try
 			{
 				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
 				{
 					if (registryKey != null)
 					{
-						text = (registryKey.GetValue("MachineGuid") as string) ?? "";
+						message = (registryKey.GetValue("MachineGuid") as string) ?? "";
 					}
 				}
 			}
 			catch
 			{
 			}
-			if (text.Length == 0)
+			if (message.Length == 0)
 			{
 				try
 				{
-					text = Environment.MachineName;
+					message = Environment.MachineName;
 				}
 				catch
 				{
-					text = "PAVISE";
+					message = "PAVISE";
 				}
 			}
-			uint num = 2166136261u;
-			string text2 = text;
-			foreach (char c in text2)
+			uint numericValue = 2166136261u;
+			string message2 = message;
+			foreach (char c in message2)
 			{
-				num ^= c;
-				num *= 16777619;
+				numericValue ^= c;
+				numericValue *= 16777619;
 			}
-			machineSig = (num & 0xFFFFu).ToString("X4");
+			machineSig = (numericValue & 0xFFFFu).ToString("X4");
 			return machineSig;
 		}
 
@@ -859,12 +859,12 @@ namespace PaviseApp
 			{
 				return Lang.T("t.powerplan.5");
 			}
-			string text = ReadName(value);
-			if (text.Length <= 0)
+			string name = ReadName(value);
+			if (name.Length <= 0)
 			{
 				return Lang.T("t.powerplan.6");
 			}
-			return text;
+			return name;
 		}
 
 		private static string PlanLabel(Guid g)
@@ -877,12 +877,12 @@ namespace PaviseApp
 			{
 				return Lang.T("t.powerplan.3");
 			}
-			string text = ReadName(g);
-			if (text.Length <= 0)
+			string name = ReadName(g);
+			if (name.Length <= 0)
 			{
 				return g.ToString();
 			}
-			return text;
+			return name;
 		}
 
 		public static List<PowerPlanEntry> ListUserPlans()
@@ -893,10 +893,10 @@ namespace PaviseApp
 			{
 				if (!ManagedPolicyOwns(item) && (!(guid != Guid.Empty) || !(item == guid)))
 				{
-					string text = ReadName(item);
-					if (!string.Equals(text, "由软件调度 " + MachineSignature(), StringComparison.OrdinalIgnoreCase) && !string.Equals(text, "Scheduled by Pavise " + MachineSignature(), StringComparison.OrdinalIgnoreCase))
+					string name = ReadName(item);
+					if (!string.Equals(name, "由软件调度 " + MachineSignature(), StringComparison.OrdinalIgnoreCase) && !string.Equals(name, "Scheduled by Pavise " + MachineSignature(), StringComparison.OrdinalIgnoreCase))
 					{
-						list.Add(new PowerPlanEntry(item, (text.Length > 0) ? text : item.ToString()));
+						list.Add(new PowerPlanEntry(item, (name.Length > 0) ? name : item.ToString()));
 					}
 				}
 			}
@@ -905,10 +905,10 @@ namespace PaviseApp
 
 		public static bool SelectPlan(string id)
 		{
-			string text = id ?? "";
-			if (HandheldBypass && text != "off") return false;
+			string idOffset = id ?? "";
+			if (HandheldBypass && idOffset != "off") return false;
 			Guid g;
-			if (text.Length > 0 && text != "managed" && text != "off" && (!TryGuid(text, out g) || g == Guid.Empty))
+			if (idOffset.Length > 0 && idOffset != "managed" && idOffset != "off" && (!TryGuid(idOffset, out g) || g == Guid.Empty))
 			{
 				return false;
 			}
@@ -917,12 +917,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text2 = "v2:" + ((text.Length == 0) ? "managed" : text);
-			if (value != text2 && !Settings.SaveStr("PowerPlanChoice", text2))
+			string message = "v2:" + ((idOffset.Length == 0) ? "managed" : idOffset);
+			if (value != message && !Settings.SaveStr("PowerPlanChoice", message))
 			{
 				return false;
 			}
-            if (value == text2) return true;
+            if (value == message) return true;
 			lock (lk)
 			{
 				managedCreationBlocked = false;
@@ -931,30 +931,30 @@ namespace PaviseApp
 				targetOwned = false;
 				tuneState = -1;
 			}
-			if (text == "off")
+			if (idOffset == "off")
 			{
 				Logger.Log(Lang.T("log.powerplan.off"));
 			}
-			else if (text == "managed")
+			else if (idOffset == "managed")
 			{
 				Logger.Log(Lang.T("log.powerplan.7") + ManagedPlanTitle + Lang.T("log.powerplan.8"));
 			}
-			else if (text.Length == 0)
+			else if (idOffset.Length == 0)
 			{
 				Logger.Log(Lang.T("log.powerplan.9") + ManagedPlanTitle);
 			}
 			else
 			{
-				Logger.Log(Lang.T("log.powerplan.10") + PlanLabelOf(text) + Lang.T("log.powerplan.11"));
+				Logger.Log(Lang.T("log.powerplan.10") + PlanLabelOf(idOffset) + Lang.T("log.powerplan.11"));
 			}
 			return true;
 		}
 
 		private static Guid ManagedPlanGuid()
 		{
-			string text = Settings.LoadStr("PgPlanGuid", "");
+			string pgPlanGuidValue = Settings.LoadStr("PgPlanGuid", "");
 			Guid g;
-			if (text.Length == 0 || !TryGuid(text, out g))
+			if (pgPlanGuidValue.Length == 0 || !TryGuid(pgPlanGuidValue, out g))
 			{
 				return Guid.Empty;
 			}
@@ -989,13 +989,13 @@ namespace PaviseApp
 
 		private static bool RemoveManagedPlanCore()
 		{
-			string text = Settings.LoadStr("PgPlanGuid", "");
-			if (text.Length == 0)
+			string pgPlanGuidValue = Settings.LoadStr("PgPlanGuid", "");
+			if (pgPlanGuidValue.Length == 0)
 			{
 				return true;
 			}
 			Guid g;
-			if (!TryGuid(text, out g))
+			if (!TryGuid(pgPlanGuidValue, out g))
 			{
 				Settings.SaveStr("PgPlanGuid", "");
 				return true;
@@ -1006,8 +1006,8 @@ namespace PaviseApp
 				return false;
 			}
 			Guid guid2 = g;
-			uint num = PowerDeleteScheme(IntPtr.Zero, ref guid2);
-			if (num != 0 && num != 2)
+			uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref guid2);
+			if (powerDeleteSchemeResult != 0 && powerDeleteSchemeResult != 2)
 			{
 				return false;
 			}
@@ -1077,13 +1077,13 @@ namespace PaviseApp
 
 		private static bool RemoveCreatedPlanCore()
 		{
-			string text = Settings.LoadStr("DefaultPlanGuid", "");
-			if (text.Length == 0)
+			string defaultPlanGuidValue = Settings.LoadStr("DefaultPlanGuid", "");
+			if (defaultPlanGuidValue.Length == 0)
 			{
 				return true;
 			}
 			Guid g;
-			if (!TryGuid(text, out g))
+			if (!TryGuid(defaultPlanGuidValue, out g))
 			{
 				Settings.SaveStr("DefaultPlanGuid", "");
 				return true;
@@ -1248,9 +1248,9 @@ namespace PaviseApp
 			bool prepared = !targetOwned || PrepareManagedScheme(guid, aggressive);
 			if (HandheldBypass) return RestoreHandheldApply();
 			if (!prepared) return PowerApplyFailed("managed-preparation", "Managed parameter preparation failed");
-			bool flag = RestoreSetPlan(guid);
-			Guid? guid3 = (flag ? RestoreCurrentPlan() : null);
-			if (flag && guid3.HasValue && guid3.Value == guid)
+			bool restoreSetPlanSucceeded = RestoreSetPlan(guid);
+			Guid? guid3 = (restoreSetPlanSucceeded ? RestoreCurrentPlan() : null);
+			if (restoreSetPlanSucceeded && guid3.HasValue && guid3.Value == guid)
 			{
                 active = true;
                 if (targetOwned) CleanupPreviousPresetPlan();
@@ -1258,8 +1258,8 @@ namespace PaviseApp
 				return true;
 			}
 			Logger.Log(Lang.T("log.powerplan.27"));
-			return PowerApplyFailed(flag ? "activation-readback" : "activation",
-                flag ? "Active power-plan readback mismatch" : "Selected power-plan activation rejected");
+			return PowerApplyFailed(restoreSetPlanSucceeded ? "activation-readback" : "activation",
+                restoreSetPlanSucceeded ? "Active power-plan readback mismatch" : "Selected power-plan activation rejected");
 		}
 
 		private static bool RestoreHandheldApply()
@@ -1374,10 +1374,10 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				bool num;
+				bool idlePolicyHasResidueSnapshot;
 				if (!targetOwned)
 				{
-					num = IdlePolicyHasResidue;
+					idlePolicyHasResidueSnapshot = IdlePolicyHasResidue;
 				}
 				else
 				{
@@ -1385,9 +1385,9 @@ namespace PaviseApp
 					{
 						goto RejectUnrecognizedPlan;
 					}
-					num = tuneState != TuneCode(aggressive);
+					idlePolicyHasResidueSnapshot = tuneState != TuneCode(aggressive);
 				}
-				if (!num)
+				if (!idlePolicyHasResidueSnapshot)
 				{
 					Guid? guid2 = RestoreCurrentPlan();
 						return guid2.HasValue && guid2.Value == guid
@@ -1410,31 +1410,31 @@ namespace PaviseApp
 				return true;
 			}
 			ManagedPolicyRecord record;
-			bool flag = !ReadManagedPolicy(out record);
-			string[] array = new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" };
-			foreach (string text in array)
+			bool isNotManagedPolicy = !ReadManagedPolicy(out record);
+			string[] textEntries = new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" };
+			foreach (string entryText in textEntries)
 			{
 				string value;
-				if (!Settings.TryLoadStr(text, out value) || value == null)
+				if (!Settings.TryLoadStr(entryText, out value) || value == null)
 				{
-					flag = true;
+					isNotManagedPolicy = true;
 					continue;
 				}
-				if (text == "PowerPlanChoice" && value.StartsWith("v2:", StringComparison.Ordinal))
+				if (entryText == "PowerPlanChoice" && value.StartsWith("v2:", StringComparison.Ordinal))
 				{
 					value = value.Substring("v2:".Length);
 					if (value.Length == 0)
 					{
-						flag = true;
+						isNotManagedPolicy = true;
 						continue;
 					}
 				}
-				if (value.Length != 0 && (!(text == "PowerPlanChoice") || (!(value == "managed") && !(value == "off"))))
+				if (value.Length != 0 && (!(entryText == "PowerPlanChoice") || (!(value == "managed") && !(value == "off"))))
 				{
 					Guid g2;
 					if (!TryGuid(value, out g2) || g2 == Guid.Empty)
 					{
-						flag = true;
+						isNotManagedPolicy = true;
 					}
 					else if (g == g2)
 					{
@@ -1442,7 +1442,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (!flag)
+			if (!isNotManagedPolicy)
 			{
 				return false;
 			}
@@ -1455,14 +1455,14 @@ namespace PaviseApp
 			{
 				if (!RestoreLaboratoryBeforeCoreChange()) return false;
                 if (!RecoverPresetCreation(ManagedPlans)) return false;
-				bool flag = RestoreLegacyCpuIdle();
-				flag &= RestoreOwnedIdlePolicy();
-				bool flag2 = RestorePlanCore();
-				if (flag && flag2)
+				bool restoreLegacyCpuIdleSucceeded = RestoreLegacyCpuIdle();
+				restoreLegacyCpuIdleSucceeded &= RestoreOwnedIdlePolicy();
+				bool restorePlanCoreSucceeded = RestorePlanCore();
+				if (restoreLegacyCpuIdleSucceeded && restorePlanCoreSucceeded)
 				{
 					managedCreationBlocked = false;
 				}
-				return flag && flag2;
+				return restoreLegacyCpuIdleSucceeded && restorePlanCoreSucceeded;
 			}
 		}
 
@@ -1537,12 +1537,12 @@ namespace PaviseApp
 				{
 					return ClearRestoredPlan(g);
 				}
-				bool? flag = (active ? new bool?(true) : RestorePlanIsOwned(guid.Value));
-				if (!flag.HasValue)
+				bool? nullable = (active ? new bool?(true) : RestorePlanIsOwned(guid.Value));
+				if (!nullable.HasValue)
 				{
 					return false;
 				}
-				if (!flag.Value)
+				if (!nullable.Value)
 				{
 					Logger.Log(Lang.T("log.powerplan.36") + RestorePlanLabel(guid.Value));
 					return ClearRestoredPlan(g);
@@ -1554,8 +1554,8 @@ namespace PaviseApp
 				}
 				if (!RestoreSetPlan(g))
 				{
-					bool? flag2 = RestorePlanIsUsable(g);
-					if (flag2.HasValue && !flag2.Value)
+					bool? restorePlanIsUsableResult = RestorePlanIsUsable(g);
+					if (restorePlanIsUsableResult.HasValue && !restorePlanIsUsableResult.Value)
 					{
 						ClearRestoredPlan(g);
 						Logger.Warn(Lang.T("log.powerplan.30"));
@@ -1641,23 +1641,23 @@ namespace PaviseApp
 
 		private static bool? RestorePlanIsUsable(Guid scheme)
 		{
-			uint num = 0u;
-			while (num < 128)
+			uint processedCount = 0u;
+			while (processedCount < 128)
 			{
 				uint size = 16u;
-				byte[] array = new byte[16];
-				switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, num, array, ref size))
+				byte[] rawBytes = new byte[16];
+				switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, processedCount, rawBytes, ref size))
 				{
 				case 259u:
 					return false;
 				case 0u:
 					if (size == 16)
 					{
-						if (new Guid(array) == scheme)
+						if (new Guid(rawBytes) == scheme)
 						{
 							return true;
 						}
-						num++;
+						processedCount++;
 						break;
 					}
 					goto default;
@@ -1724,18 +1724,18 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = value.Split('|');
+			string[] valueParts = value.Split('|');
 			Guid result;
-			if (array.Length == 3 && array[0] == "2")
+			if (valueParts.Length == 3 && valueParts[0] == "2")
 			{
-				if (!Guid.TryParse(array[1], out result) || result == Guid.Empty)
+				if (!Guid.TryParse(valueParts[1], out result) || result == Guid.Empty)
 				{
 					return false;
 				}
 			}
 			else
 			{
-				if (array.Length != 1)
+				if (valueParts.Length != 1)
 				{
 					return false;
 				}
@@ -1775,28 +1775,28 @@ namespace PaviseApp
 			}
 			if (value.IndexOf('|') >= 0)
 			{
-				string[] array = value.Split('|');
+				string[] valueParts = value.Split('|');
 				Guid result;
-				if (array.Length != 3 || array[0] != "2" || !Guid.TryParse(array[1], out result) || result == Guid.Empty || result != scheme)
+				if (valueParts.Length != 3 || valueParts[0] != "2" || !Guid.TryParse(valueParts[1], out result) || result == Guid.Empty || result != scheme)
 				{
 					return false;
 				}
-				value = array[2];
+				value = valueParts[2];
 			}
 			HashSet<Guid> hashSet = new HashSet<Guid>();
-			string[] array2 = value.Split(';');
-			foreach (string text in array2)
+			string[] valueParts2 = value.Split(';');
+			foreach (string entryText in valueParts2)
 			{
-				string[] array3 = text.Split('=');
+				string[] entryTextParts = entryText.Split('=');
 				Guid result2;
-				if (array3.Length != 2 || !Guid.TryParse(array3[0], out result2) || !hashSet.Add(result2) || !IsRetiredIdleKnob(result2))
+				if (entryTextParts.Length != 2 || !Guid.TryParse(entryTextParts[0], out result2) || !hashSet.Add(result2) || !IsRetiredIdleKnob(result2))
 				{
 					return false;
 				}
-				string[] array4 = array3[1].Split(',');
+				string[] parts = entryTextParts[1].Split(',');
 				uint result3;
 				uint result4;
-				if (array4.Length != 2 || !uint.TryParse(array4[0], NumberStyles.None, CultureInfo.InvariantCulture, out result3) || !uint.TryParse(array4[1], NumberStyles.None, CultureInfo.InvariantCulture, out result4))
+				if (parts.Length != 2 || !uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out result3) || !uint.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out result4))
 				{
 					return false;
 				}
@@ -1846,9 +1846,9 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = value.Split('|');
+			string[] valueParts = value.Split('|');
 			Guid result;
-			if (array.Length != 3 || array[0] != "2" || !Guid.TryParse(array[1], out result) || result == Guid.Empty || result == configuringScheme)
+			if (valueParts.Length != 3 || valueParts[0] != "2" || !Guid.TryParse(valueParts[1], out result) || result == Guid.Empty || result == configuringScheme)
 			{
 				return false;
 			}
@@ -1867,13 +1867,13 @@ namespace PaviseApp
 
 		private static bool PrepareExtremeKnobs(Guid scheme)
 		{
-			bool flag = RestoreExtremeKnobs(scheme);
-			if (!flag && DropOrphanExtremeSnapshot(scheme))
+			bool restoreExtremeKnobsSucceeded = RestoreExtremeKnobs(scheme);
+			if (!restoreExtremeKnobsSucceeded && DropOrphanExtremeSnapshot(scheme))
 			{
-				flag = RestoreExtremeKnobs(scheme);
+				restoreExtremeKnobsSucceeded = RestoreExtremeKnobs(scheme);
 			}
-			extremeTunePending = !flag;
-			return flag;
+			extremeTunePending = !restoreExtremeKnobsSucceeded;
+			return restoreExtremeKnobsSucceeded;
 		}
 
 		private static bool RestoreExtremeKnobs(Guid scheme)
@@ -1911,12 +1911,12 @@ namespace PaviseApp
 
 		private static bool RestoreExtremeIndex(Guid scheme, Guid setting, bool ac, uint original)
 		{
-			uint? num = ReadExtremeIndex(scheme, setting, ac);
-			if (!num.HasValue)
+			uint? extremeIndex = ReadExtremeIndex(scheme, setting, ac);
+			if (!extremeIndex.HasValue)
 			{
 				return false;
 			}
-			if (num.Value == original)
+			if (extremeIndex.Value == original)
 			{
 				return true;
 			}
@@ -2008,35 +2008,35 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string text;
-			if (!CpuIdleReadLedger(out text) || text == null)
+			string message;
+			if (!CpuIdleReadLedger(out message) || message == null)
 			{
 				return false;
 			}
-			if (text.Length == 0)
+			if (message.Length == 0)
 			{
 				return true;
 			}
-			if (text.Length > 80)
+			if (message.Length > 80)
 			{
 				return false;
 			}
-			string[] array = text.Split('|');
+			string[] messageParts = message.Split('|');
 			Guid result;
-			bool legacy = array.Length == 4 && (array[0] == "1" || array[0] == "2");
-			bool current = array.Length == 5 && array[0] == "3";
-			if ((!legacy && !current) || array[2] != "0" || !Guid.TryParseExact(array[1], "D", out result) || result == Guid.Empty
-				|| (array[0] == "1" && array[3] != "A" && array[3] != "R" && array[3] != "S")
-				|| (array[0] == "2" && array[3] != "P" && array[3] != "O" && array[3] != "R" && array[3] != "S")
-				|| (current && ((array[3] != "R" && array[3] != "S") || array[4].Length != 1 || array[4][0] < '0' || array[4][0] > '3' || (array[3] == "S" && array[4] != "0"))))
+			bool legacy = messageParts.Length == 4 && (messageParts[0] == "1" || messageParts[0] == "2");
+			bool current = messageParts.Length == 5 && messageParts[0] == "3";
+			if ((!legacy && !current) || messageParts[2] != "0" || !Guid.TryParseExact(messageParts[1], "D", out result) || result == Guid.Empty
+				|| (messageParts[0] == "1" && messageParts[3] != "A" && messageParts[3] != "R" && messageParts[3] != "S")
+				|| (messageParts[0] == "2" && messageParts[3] != "P" && messageParts[3] != "O" && messageParts[3] != "R" && messageParts[3] != "S")
+				|| (current && ((messageParts[3] != "R" && messageParts[3] != "S") || messageParts[4].Length != 1 || messageParts[4][0] < '0' || messageParts[4][0] > '3' || (messageParts[3] == "S" && messageParts[4] != "0"))))
 			{
 				return false;
 			}
-			CpuIdlePhase cpuIdlePhase = ((array[3] == "R") ? CpuIdlePhase.Restoring : ((array[3] == "S") ? CpuIdlePhase.Settled : ((array[3] == "O") ? CpuIdlePhase.Owned : CpuIdlePhase.Prepared)));
+			CpuIdlePhase cpuIdlePhase = ((messageParts[3] == "R") ? CpuIdlePhase.Restoring : ((messageParts[3] == "S") ? CpuIdlePhase.Settled : ((messageParts[3] == "O") ? CpuIdlePhase.Owned : CpuIdlePhase.Prepared)));
 			CpuIdleReceipt cpuIdleReceipt = new CpuIdleReceipt();
 			cpuIdleReceipt.Scheme = result;
 			cpuIdleReceipt.Phase = cpuIdlePhase;
-			cpuIdleReceipt.PendingMask = current ? array[4][0] - '0' : -1;
+			cpuIdleReceipt.PendingMask = current ? messageParts[4][0] - '0' : -1;
 			PowerPlan.cpuIdleReceipt = cpuIdleReceipt;
 			return true;
 		}
@@ -2061,10 +2061,10 @@ namespace PaviseApp
 
 		private static bool WriteCpuIdleLedgerVerified(string text)
 		{
-			string text2;
-			if (CpuIdleWriteLedger(text) && CpuIdleReadLedger(out text2))
+			string message;
+			if (CpuIdleWriteLedger(text) && CpuIdleReadLedger(out message))
 			{
-				return string.Equals(text2, text, StringComparison.Ordinal);
+				return string.Equals(message, text, StringComparison.Ordinal);
 			}
 			return false;
 		}
@@ -2170,24 +2170,24 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = value.Split('|');
+			string[] valueParts = value.Split('|');
 			Guid result;
 			Guid result2;
 			Guid result3;
-            bool modern = array.Length == 6 && array[0] == "presets2";
-            bool legacy = array.Length == 4 && (array[0] == "3" || array[0] == "2223" || array[0] == "preset1");
-            bool legacy3110 = modern && array[4] == Legacy3110Source
-                && array[5].StartsWith("legacy3110:", StringComparison.Ordinal);
-            bool legacy3110Envelope = legacy && array[0] == "2223";
-            ManagedPowerPreset storedPreset = modern && !legacy3110 ? ManagedPowerPreset.FromPolicyRecord(array[4], array[5]) : null;
-            if ((!modern && !legacy) || !Guid.TryParse(array[1], out result) || result == Guid.Empty
-                || !Guid.TryParse(array[2], out result2) || result2 == Guid.Empty || result2 == result
-                || !Guid.TryParse(array[3], out result3) || result3 == result2 || result3 == result
+            bool modern = valueParts.Length == 6 && valueParts[0] == "presets2";
+            bool legacy = valueParts.Length == 4 && (valueParts[0] == "3" || valueParts[0] == "2223" || valueParts[0] == "preset1");
+            bool legacy3110 = modern && valueParts[4] == Legacy3110Source
+                && valueParts[5].StartsWith("legacy3110:", StringComparison.Ordinal);
+            bool legacy3110Envelope = legacy && valueParts[0] == "2223";
+            ManagedPowerPreset storedPreset = modern && !legacy3110 ? ManagedPowerPreset.FromPolicyRecord(valueParts[4], valueParts[5]) : null;
+            if ((!modern && !legacy) || !Guid.TryParse(valueParts[1], out result) || result == Guid.Empty
+                || !Guid.TryParse(valueParts[2], out result2) || result2 == Guid.Empty || result2 == result
+                || !Guid.TryParse(valueParts[3], out result3) || result3 == result2 || result3 == result
                 || IsBuiltInPlan(result) || IsBuiltInPlan(result3)
                 || modern && !legacy3110 && storedPreset == null) return false;
             record = new ManagedPolicyRecord {
                 Plan = result, Base = result2, Previous = result3, CurrentTemplate = modern || legacy3110Envelope,
-                Source = legacy3110 || legacy3110Envelope ? Legacy3110Source : modern ? storedPreset.Id : "", Fingerprint = modern ? array[5] : ""
+                Source = legacy3110 || legacy3110Envelope ? Legacy3110Source : modern ? storedPreset.Id : "", Fingerprint = modern ? valueParts[5] : ""
             };
 			return true;
 		}
@@ -2652,12 +2652,12 @@ namespace PaviseApp
 			code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, ac);
 			if (code == 87)
 			{
-				uint num = Clamp(sub, setting, ac);
-				if (num != ac)
+				uint acLimit = Clamp(sub, setting, ac);
+				if (acLimit != ac)
 				{
 					sub2 = sub;
 					setting2 = setting;
-					code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, num);
+					code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, acLimit);
 				}
 			}
 			if (code != 0)
@@ -2669,12 +2669,12 @@ namespace PaviseApp
 			code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, dc);
 			if (code == 87)
 			{
-				uint num2 = Clamp(sub, setting, dc);
-				if (num2 != dc)
+				uint dcLimit = Clamp(sub, setting, dc);
+				if (dcLimit != dc)
 				{
 					sub2 = sub;
 					setting2 = setting;
-					code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, num2);
+					code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sub2, ref setting2, dcLimit);
 				}
 			}
 			return code == 0;
@@ -2686,8 +2686,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" };
-			foreach (string value in array)
+			string[] textEntries = new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" };
+			foreach (string value in textEntries)
 			{
 				if (name.StartsWith(value, StringComparison.Ordinal))
 				{
@@ -2741,7 +2741,7 @@ namespace PaviseApp
 
 		internal static int DeleteManagedPlansByName()
 		{
-			int num = 0;
+			int processedCount = 0;
 			lock (lk)
 			{
 				if (HandheldBypass) return 0;
@@ -2764,10 +2764,10 @@ namespace PaviseApp
 					Guid guid2 = item;
 					if (PowerDeleteScheme(IntPtr.Zero, ref guid2) == 0)
 					{
-						num++;
+						processedCount++;
 					}
 				}
-				return num;
+				return processedCount;
 			}
 		}
 
@@ -2818,10 +2818,10 @@ namespace PaviseApp
 		private static bool SchemeUsable(Guid g)
 		{
 			uint size = 0u;
-			uint num = PowerReadFriendlyName(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ref size);
-			if (num != 0)
+			uint powerReadFriendlyNameResult = PowerReadFriendlyName(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, ref size);
+			if (powerReadFriendlyNameResult != 0)
 			{
-				return num == 234;
+				return powerReadFriendlyNameResult == 234;
 			}
 			return true;
 		}
@@ -2857,17 +2857,17 @@ namespace PaviseApp
 			try
 			{
 				uint size = 0u;
-				uint num = PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, null, ref size);
-				if ((num != 0 && num != 234) || size == 0 || size > 4096)
+				uint powerReadFriendlyNameBufResult = PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, null, ref size);
+				if ((powerReadFriendlyNameBufResult != 0 && powerReadFriendlyNameBufResult != 234) || size == 0 || size > 4096)
 				{
 					return "";
 				}
-				byte[] array = new byte[size];
-				if (PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, array, ref size) != 0)
+				byte[] rawBytes = new byte[size];
+				if (PowerReadFriendlyNameBuf(IntPtr.Zero, ref g, IntPtr.Zero, IntPtr.Zero, rawBytes, ref size) != 0)
 				{
 					return "";
 				}
-				string @string = Encoding.Unicode.GetString(array);
+				string @string = Encoding.Unicode.GetString(rawBytes);
 				char[] trimChars = new char[1];
 				return @string.TrimEnd(trimChars);
 			}
@@ -2910,25 +2910,25 @@ namespace PaviseApp
 			list = new List<Guid>();
 			try
 			{
-				uint num = 0u;
-				while (num < 128)
+				uint processedCount = 0u;
+				while (processedCount < 128)
 				{
 					uint size = 16u;
-					byte[] array = new byte[16];
-					switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, num, array, ref size))
+					byte[] rawBytes = new byte[16];
+					switch (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 16u, processedCount, rawBytes, ref size))
 					{
 					case 259u:
 						return true;
 					case 0u:
 						if (size == 16)
 						{
-							Guid guid = new Guid(array);
+							Guid guid = new Guid(rawBytes);
 							if (guid == Guid.Empty || list.Contains(guid))
 							{
 								return false;
 							}
 							list.Add(guid);
-							num++;
+							processedCount++;
 							break;
 						}
 						goto default;
@@ -2945,9 +2945,9 @@ namespace PaviseApp
 
 		internal static void SyncDisplayFeel(Guid src, Guid dst)
 		{
-			Guid[] array = new Guid[3] { VideoBrightness, VideoDimBrightness, VideoAdaptive };
-			Guid[] array2 = array;
-			foreach (Guid guid in array2)
+			Guid[] guidItems = new Guid[3] { VideoBrightness, VideoDimBrightness, VideoAdaptive };
+			Guid[] guidItems2 = guidItems;
+			foreach (Guid guid in guidItems2)
 			{
 				Guid scheme = src;
 				Guid scheme2 = dst;

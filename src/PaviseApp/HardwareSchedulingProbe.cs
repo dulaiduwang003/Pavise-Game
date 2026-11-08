@@ -195,10 +195,10 @@ namespace PaviseApp
 						HwsCloseAdapter hwsCloseAdapter = default(HwsCloseAdapter);
 						hwsCloseAdapter.Adapter = ownedAdapter;
 						HwsCloseAdapter args = hwsCloseAdapter;
-						int num = bridge.CloseAdapter(ref args);
-						if (num != 0 || args.Adapter != ownedAdapter)
+						int closeAdapterResult = bridge.CloseAdapter(ref args);
+						if (closeAdapterResult != 0 || args.Adapter != ownedAdapter)
 						{
-							hardwareSchedulingObservation = Unavailable(verifiedRendererLuid, HardwareSchedulingProbeReason.CloseFailed, "Closing the exact adapter did not confirm success", hardwareSchedulingObservation.FeatureVersion, hardwareSchedulingObservation.RawResultBits, num);
+							hardwareSchedulingObservation = Unavailable(verifiedRendererLuid, HardwareSchedulingProbeReason.CloseFailed, "Closing the exact adapter did not confirm success", hardwareSchedulingObservation.FeatureVersion, hardwareSchedulingObservation.RawResultBits, closeAdapterResult);
 						}
 					}
 					catch (Exception ex2)
@@ -248,22 +248,22 @@ namespace PaviseApp
 			hwsOpenAdapter.AdapterLuid = luid2;
 			hwsOpenAdapter.Adapter = 0u;
 			HwsOpenAdapter args = hwsOpenAdapter;
-			int num;
+			int adapter;
 			try
 			{
-				num = bridge.OpenAdapter(ref args);
+				adapter = bridge.OpenAdapter(ref args);
 			}
 			finally
 			{
 				ownedAdapter = args.Adapter;
 			}
-			if (num != 0)
+			if (adapter != 0)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.OpenFailed, "Opening the renderer adapter failed", null, null, num);
+				return Unavailable(luid, HardwareSchedulingProbeReason.OpenFailed, "Opening the renderer adapter failed", null, null, adapter);
 			}
 			if (ownedAdapter == 0)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.InvalidAdapterHandle, "The renderer adapter open returned no handle", null, null, num);
+				return Unavailable(luid, HardwareSchedulingProbeReason.InvalidAdapterHandle, "The renderer adapter open returned no handle", null, null, adapter);
 			}
 			if (args.AdapterLuid.LowPart != luid2.LowPart || args.AdapterLuid.HighPart != luid2.HighPart)
 			{
@@ -273,10 +273,10 @@ namespace PaviseApp
 			hwsFeatureQuery.Adapter = ownedAdapter;
 			hwsFeatureQuery.FeatureId = 0u;
 			HwsFeatureQuery args2 = hwsFeatureQuery;
-			int num2 = bridge.QueryFeature(ref args2);
-			if (num2 != 0)
+			int feature = bridge.QueryFeature(ref args2);
+			if (feature != 0)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.QueryFailed, "The formal HWSCH query failed", null, null, num2);
+				return Unavailable(luid, HardwareSchedulingProbeReason.QueryFailed, "The formal HWSCH query failed", null, null, feature);
 			}
 			if (args2.Adapter != ownedAdapter || args2.FeatureId != 0)
 			{
@@ -286,22 +286,22 @@ namespace PaviseApp
 			ushort version = args2.Result.Version;
 			if ((bits & 0xFFFFFFC0u) != 0)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.UnsupportedResultBits, "The result contains unreviewed flag bits", version, bits, num2);
+				return Unavailable(luid, HardwareSchedulingProbeReason.UnsupportedResultBits, "The result contains unreviewed flag bits", version, bits, feature);
 			}
 			if ((bits & 2) == 0)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.FeatureUnknown, "The OS did not confirm a known HWSCH feature", version, bits, num2);
+				return Unavailable(luid, HardwareSchedulingProbeReason.FeatureUnknown, "The OS did not confirm a known HWSCH feature", version, bits, feature);
 			}
-			bool flag = (bits & 1) != 0;
-			if (version > 1 || (flag && version != 1))
+			bool valuesMatch = (bits & 1) != 0;
+			if (version > 1 || (valuesMatch && version != 1))
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.UnsupportedFeatureVersion, "The HWSCH feature version is outside the reviewed contract", version, bits, num2);
+				return Unavailable(luid, HardwareSchedulingProbeReason.UnsupportedFeatureVersion, "The HWSCH feature version is outside the reviewed contract", version, bits, feature);
 			}
-			if (flag && (bits & 0xC) != 12)
+			if (valuesMatch && (bits & 0xC) != 12)
 			{
-				return Unavailable(luid, HardwareSchedulingProbeReason.InconsistentFeatureResult, "Enabled HWSCH lacks its required driver/config support observations", version, bits, num2);
+				return Unavailable(luid, HardwareSchedulingProbeReason.InconsistentFeatureResult, "Enabled HWSCH lacks its required driver/config support observations", version, bits, feature);
 			}
-			return new HardwareSchedulingObservation(flag ? HardwareSchedulingState.Enabled : HardwareSchedulingState.Disabled, HardwareSchedulingProbeReason.None, luid, "The exact renderer adapter reported HWSCH " + (flag ? "enabled" : "disabled"), version, bits, num2);
+			return new HardwareSchedulingObservation(valuesMatch ? HardwareSchedulingState.Enabled : HardwareSchedulingState.Disabled, HardwareSchedulingProbeReason.None, luid, "The exact renderer adapter reported HWSCH " + (valuesMatch ? "enabled" : "disabled"), version, bits, feature);
 		}
 
 		private static bool TryParseLuid(string value, out HwsLuid luid)
@@ -311,22 +311,22 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			ulong num = 0uL;
+			ulong numericValue = 0uL;
 			foreach (char c in value)
 			{
-				int num2 = ((c >= '0' && c <= '9') ? (c - 48) : ((c >= 'a' && c <= 'f') ? (c - 97 + 10) : (-1)));
-				if (num2 < 0)
+				int remainingC = ((c >= '0' && c <= '9') ? (c - 48) : ((c >= 'a' && c <= 'f') ? (c - 97 + 10) : (-1)));
+				if (remainingC < 0)
 				{
 					return false;
 				}
-				num = (num << 4) | (uint)num2;
+				numericValue = (numericValue << 4) | (uint)remainingC;
 			}
-			if (num == 0)
+			if (numericValue == 0)
 			{
 				return false;
 			}
-			luid.LowPart = (uint)num;
-			luid.HighPart = (int)(num >> 32);
+			luid.LowPart = (uint)numericValue;
+			luid.HighPart = (int)(numericValue >> 32);
 			return true;
 		}
 

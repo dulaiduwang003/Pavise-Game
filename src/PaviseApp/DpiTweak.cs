@@ -50,16 +50,16 @@ namespace PaviseApp
 			{
 				try
 				{
-					bool flag = true;
-					string[] array = TrackedExes();
-					foreach (string exePath in array)
+					bool restoreAllReady = true;
+					string[] trackedExesResult = TrackedExes();
+					foreach (string exePath in trackedExesResult)
 					{
 						if (!SetForExe(exePath, false))
 						{
-							flag = false;
+							restoreAllReady = false;
 						}
 					}
-					return flag && TrackedExes().Length == 0;
+					return restoreAllReady && TrackedExes().Length == 0;
 				}
 				catch
 				{
@@ -86,31 +86,31 @@ namespace PaviseApp
 		private static bool Track(string exePath, bool aware)
 		{
 			List<string> list = new List<string>();
-			string[] array = TrackedExes();
-			foreach (string text in array)
+			string[] trackedExesResult = TrackedExes();
+			foreach (string entryText in trackedExesResult)
 			{
-				if (!string.Equals(text, exePath, StringComparison.OrdinalIgnoreCase))
+				if (!string.Equals(entryText, exePath, StringComparison.OrdinalIgnoreCase))
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			if (aware)
 			{
 				list.Add(exePath);
 			}
-			string text2 = string.Join('\u001f'.ToString(), list.ToArray());
+			string joinResult = string.Join('\u001f'.ToString(), list.ToArray());
 			string value;
-			if (Settings.SaveStr("DpiExeList", text2) && Settings.TryLoadStr("DpiExeList", out value))
+			if (Settings.SaveStr("DpiExeList", joinResult) && Settings.TryLoadStr("DpiExeList", out value))
 			{
-				return value == text2;
+				return value == joinResult;
 			}
 			return false;
 		}
 
 		private static bool IsTracked(string exePath)
 		{
-			string[] array = TrackedExes();
-			foreach (string a in array)
+			string[] trackedExesResult = TrackedExes();
+			foreach (string a in trackedExesResult)
 			{
 				if (string.Equals(a, exePath, StringComparison.OrdinalIgnoreCase))
 				{
@@ -124,12 +124,12 @@ namespace PaviseApp
 		{
 			using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers"))
 			{
-				object obj = ((registryKey == null) ? null : registryKey.GetValue(exePath));
-				if (obj != null && !(obj is string))
+				object value = ((registryKey == null) ? null : registryKey.GetValue(exePath));
+				if (value != null && !(value is string))
 				{
 					throw new InvalidOperationException("Unexpected DPI compatibility-layer value type");
 				}
-				return obj as string;
+				return value as string;
 			}
 		}
 
@@ -156,10 +156,10 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = ReadLayer(exePath);
-				if (HasToken(text))
+				string layer = ReadLayer(exePath);
+				if (HasToken(layer))
 				{
-					WriteLayer(exePath, RemoveToken(text));
+					WriteLayer(exePath, RemoveToken(layer));
 				}
 				if (!HasToken(ReadLayer(exePath)))
 				{
@@ -199,21 +199,21 @@ namespace PaviseApp
 			}
 			lock (sync)
 			{
-				bool flag = false;
+				bool setForExeReady = false;
 				try
 				{
-					string text = ReadLayer(exePath);
-					bool flag2 = IsTracked(exePath);
-					if (HasToken(text) == aware)
+					string layer = ReadLayer(exePath);
+					bool isTracked = IsTracked(exePath);
+					if (HasToken(layer) == aware)
 					{
-						return aware || !flag2 || Track(exePath, false);
+						return aware || !isTracked || Track(exePath, false);
 					}
-					if (aware && !flag2 && !Track(exePath, true))
+					if (aware && !isTracked && !Track(exePath, true))
 					{
 						return false;
 					}
-					flag = aware;
-					WriteLayer(exePath, aware ? AddToken(text) : RemoveToken(text));
+					setForExeReady = aware;
+					WriteLayer(exePath, aware ? AddToken(layer) : RemoveToken(layer));
 					if (HasToken(ReadLayer(exePath)) != aware)
 					{
 						throw new InvalidOperationException("DPI compatibility-layer verification failed");
@@ -222,7 +222,7 @@ namespace PaviseApp
 					{
 						throw new InvalidOperationException("DPI recovery ledger changed during apply");
 					}
-					if (!aware && flag2 && !Track(exePath, false))
+					if (!aware && isTracked && !Track(exePath, false))
 					{
 						return false;
 					}
@@ -231,7 +231,7 @@ namespace PaviseApp
 				}
 				catch (Exception ex)
 				{
-					if (flag)
+					if (setForExeReady)
 					{
 						RollbackToken(exePath);
 					}
@@ -252,8 +252,8 @@ namespace PaviseApp
 
 		internal static bool HasToken(string s)
 		{
-			string[] array = Split(s);
-			foreach (string a in array)
+			string[] textParts = Split(s);
+			foreach (string a in textParts)
 			{
 				if (string.Equals(a, "HIGHDPIAWARE", StringComparison.OrdinalIgnoreCase))
 				{
@@ -266,12 +266,12 @@ namespace PaviseApp
 		private static List<string> OtherTokens(string cur)
 		{
 			List<string> list = new List<string>();
-			string[] array = Split(cur);
-			foreach (string text in array)
+			string[] textParts = Split(cur);
+			foreach (string entryText in textParts)
 			{
-				if (!(text == "~") && !string.Equals(text, "HIGHDPIAWARE", StringComparison.OrdinalIgnoreCase))
+				if (!(entryText == "~") && !string.Equals(entryText, "HIGHDPIAWARE", StringComparison.OrdinalIgnoreCase))
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			return list;

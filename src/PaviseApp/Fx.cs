@@ -38,14 +38,14 @@ namespace PaviseApp
 					Finish();
 					return;
 				}
-				double num = watch.Elapsed.TotalMilliseconds / 180.0;
-				if (num >= 1.0)
+				double totalMillisecondsRatio = watch.Elapsed.TotalMilliseconds / 180.0;
+				if (totalMillisecondsRatio >= 1.0)
 				{
 					Finish();
 					return;
 				}
-				double num2 = 1.0 - num;
-				form.Opacity = 1.0 - num2 * num2 * num2;
+				double remainingTotalMillisecondsRatio = 1.0 - totalMillisecondsRatio;
+				form.Opacity = 1.0 - remainingTotalMillisecondsRatio * remainingTotalMillisecondsRatio * remainingTotalMillisecondsRatio;
 			}
 
 			private void OnGone(object sender, EventArgs e)

@@ -130,14 +130,14 @@ namespace PaviseApp
 			{
 				return double.NaN;
 			}
-			long num = kernel + user;
+			long kernelOffset = kernel + user;
 			double result = double.NaN;
 			if (lastIdle >= 0)
 			{
-				result = Utilization(idle - lastIdle, num - lastTotal);
+				result = Utilization(idle - lastIdle, kernelOffset - lastTotal);
 			}
 			lastIdle = idle;
-			lastTotal = num;
+			lastTotal = kernelOffset;
 			return result;
 		}
 

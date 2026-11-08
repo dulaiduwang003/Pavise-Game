@@ -26,19 +26,19 @@ namespace PaviseApp
 				{
 					return selfProduct;
 				}
-				string text = "";
+				string message = "";
 				try
 				{
 					object[] customAttributes = Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(AssemblyProductAttribute), false);
 					if (customAttributes.Length > 0)
 					{
-						text = ((AssemblyProductAttribute)customAttributes[0]).Product ?? "";
+						message = ((AssemblyProductAttribute)customAttributes[0]).Product ?? "";
 					}
 				}
 				catch
 				{
 				}
-				selfProduct = text;
+				selfProduct = message;
 				return selfProduct;
 			}
 		}
@@ -73,12 +73,12 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			int num = processName.IndexOf('.');
-			if (num <= 0)
+			int matchIndex = processName.IndexOf('.');
+			if (matchIndex <= 0)
 			{
 				return processName;
 			}
-			return processName.Substring(0, num);
+			return processName.Substring(0, matchIndex);
 		}
 
 		internal static bool NameCouldBeOurs(string processName, string selfPrefixValue)
@@ -92,10 +92,10 @@ namespace PaviseApp
 
 		internal static bool ProductMatches(string product)
 		{
-			string text = SelfProduct;
-			if (text.Length > 0)
+			string selfProductSnapshot = SelfProduct;
+			if (selfProductSnapshot.Length > 0)
 			{
-				return string.Equals(text, product, StringComparison.Ordinal);
+				return string.Equals(selfProductSnapshot, product, StringComparison.Ordinal);
 			}
 			return false;
 		}

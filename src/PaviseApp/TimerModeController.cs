@@ -146,7 +146,7 @@ namespace PaviseApp
 			bool admitted = false;
 			try
 			{
-				string text = Settings.LoadStr(slot, "");
+				string value = Settings.LoadStr(slot, "");
 				if (want)
 				{
 					if (ActionFailureStore.IsBlocked(action, "system"))
@@ -166,21 +166,21 @@ namespace PaviseApp
 						return "stopped";
 					}
 					admitted = true;
-					bool flag = read();
-					if (!flag)
+					bool readSucceeded = read();
+					if (!readSucceeded)
 					{
 						if (!BootSessionIdentity.Valid(boot))
 						{
 							ActionFailureStore.CancelApply(action, "system");
 							return "unverified";
 						}
-						string text2 = "on|" + boot;
-						if (!Settings.SaveStrDurable(slot, text2) || Settings.LoadStr(slot, "") != text2)
+						string bootOffset = "on|" + boot;
+						if (!Settings.SaveStrDurable(slot, bootOffset) || Settings.LoadStr(slot, "") != bootOffset)
 						{
 							throw new InvalidOperationException("Timer boot journal persistence failed");
 						}
-						text = text2;
-						if (!flag && !enable())
+						value = bootOffset;
+						if (!readSucceeded && !enable())
 						{
 							throw new InvalidOperationException("Timer setting apply failed");
 						}
@@ -189,19 +189,19 @@ namespace PaviseApp
 					{
 						throw new InvalidOperationException("Timer setting readback failed");
 					}
-					string text3 = RebootStatus(slot, text, boot, "on", "ready", "pending-reboot");
-					if (text3 == "failed")
+					string rebootStatusResult = RebootStatus(slot, value, boot, "on", "ready", "pending-reboot");
+					if (rebootStatusResult == "failed")
 					{
 						throw new InvalidOperationException("Timer observation journal persistence failed");
 					}
-					if (text3 == "unverified")
+					if (rebootStatusResult == "unverified")
 					{
 						ActionFailureStore.CancelApply(action, "system");
-						return text3;
+						return rebootStatusResult;
 					}
 					if (ActionFailureStore.CompleteApply(action, "system"))
 					{
-						return ActionFailureStore.IsBlocked(action, "system") ? "stopped" : text3;
+						return ActionFailureStore.IsBlocked(action, "system") ? "stopped" : rebootStatusResult;
 					}
 					if (!RestoreOwnedTimer(owned, restore, recovery))
 					{
@@ -217,22 +217,22 @@ namespace PaviseApp
 						if (recovery != null) recovery.Record(false);
 						return "restore-failed";
 					}
-					string text4 = "off|" + boot;
-					if (!Settings.SaveStrDurable(slot, text4) || Settings.LoadStr(slot, "") != text4)
+					string bootOffset2 = "off|" + boot;
+					if (!Settings.SaveStrDurable(slot, bootOffset2) || Settings.LoadStr(slot, "") != bootOffset2)
 					{
 						if (recovery != null) recovery.Record(false);
 						return "restore-failed";
 					}
-					text = text4;
+					value = bootOffset2;
 					if (!RestoreOwnedTimer(owned, restore, recovery))
 					{
 						return "restore-failed";
 					}
 					ActionFailureStore.CancelApply(action, "system");
 				}
-				if (text.StartsWith("off|", StringComparison.Ordinal) || text.StartsWith("seen-off|", StringComparison.Ordinal))
+				if (value.StartsWith("off|", StringComparison.Ordinal) || value.StartsWith("seen-off|", StringComparison.Ordinal))
 				{
-					string status = RebootStatus(slot, text, boot, "off", "restored", "restore-pending-reboot");
+					string status = RebootStatus(slot, value, boot, "off", "restored", "restore-pending-reboot");
 					if ((status == "unverified" || status == "restore-failed") && recovery != null) recovery.Record(false);
 					return status;
 				}
@@ -303,24 +303,24 @@ namespace PaviseApp
 
 		private static string RebootStatus(string slot, string saved, string boot, string direction, string confirmed, string pending)
 		{
-			bool flag = saved.StartsWith("seen-" + direction + "|", StringComparison.Ordinal);
-			string text = (flag ? "seen-" : "") + direction + "|";
-			string text2 = (saved.StartsWith(text, StringComparison.Ordinal) ? saved.Substring(text.Length) : "");
-			switch (BootSessionIdentity.Compare(text2, boot))
+			bool startsWith = saved.StartsWith("seen-" + direction + "|", StringComparison.Ordinal);
+			string message = (startsWith ? "seen-" : "") + direction + "|";
+			string substringResult = (saved.StartsWith(message, StringComparison.Ordinal) ? saved.Substring(message.Length) : "");
+			switch (BootSessionIdentity.Compare(substringResult, boot))
 			{
 			case IrqRebootState.Rebooted:
 				return confirmed;
 			case IrqRebootState.AwaitingReboot:
-				if (!flag)
+				if (!startsWith)
 				{
 					return pending;
 				}
 				return "unverified";
 			default:
-				if (BootSessionIdentity.Valid(boot) && !BootSessionIdentity.Valid(text2))
+				if (BootSessionIdentity.Valid(boot) && !BootSessionIdentity.Valid(substringResult))
 				{
-					string text3 = "seen-" + direction + "|" + boot;
-					if (!Settings.SaveStrDurable(slot, text3) || Settings.LoadStr(slot, "") != text3)
+					string bootOffset = "seen-" + direction + "|" + boot;
+					if (!Settings.SaveStrDurable(slot, bootOffset) || Settings.LoadStr(slot, "") != bootOffset)
 					{
 						if (!(direction == "on"))
 						{

@@ -12,18 +12,18 @@ namespace PaviseApp
 
 		public static QuantumShape Decode(int raw)
 		{
-			int num = raw & 0x3F;
-			int num2 = (num >> 4) & 3;
-			int num3 = (num >> 2) & 3;
-			int num4 = num & 3;
+			int rawMask = raw & 0x3F;
+			int combinedMask = (rawMask >> 4) & 3;
+			int combinedMask2 = (rawMask >> 2) & 3;
+			int rawPrioSepValue = rawMask & 3;
 			QuantumShape result = default(QuantumShape);
-			result.ShortInterval = num2 != 1;
-			result.VariableLength = num3 != 2;
-			result.RawPrioSep = num4;
-			result.PrioSep = ((num4 > 2) ? 2 : num4);
-			int[] array = ((!result.ShortInterval) ? (result.VariableLength ? LongVariable : LongFixed) : (result.VariableLength ? ShortVariable : ShortFixed));
-			result.ForegroundQuantum = array[result.PrioSep];
-			result.BackgroundQuantum = array[0];
+			result.ShortInterval = combinedMask != 1;
+			result.VariableLength = combinedMask2 != 2;
+			result.RawPrioSep = rawPrioSepValue;
+			result.PrioSep = ((rawPrioSepValue > 2) ? 2 : rawPrioSepValue);
+			int[] longVariableSnapshot = ((!result.ShortInterval) ? (result.VariableLength ? LongVariable : LongFixed) : (result.VariableLength ? ShortVariable : ShortFixed));
+			result.ForegroundQuantum = longVariableSnapshot[result.PrioSep];
+			result.BackgroundQuantum = longVariableSnapshot[0];
 			return result;
 		}
 

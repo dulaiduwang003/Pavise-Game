@@ -18,7 +18,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			IntPtr[] array;
+			IntPtr[] gpusSnapshot;
 			lock (lk)
 			{
 				if (!gpusResolved)
@@ -26,9 +26,9 @@ namespace PaviseApp
 					gpus = NvApi.EnumGpuHandles();
 					gpusResolved = true;
 				}
-				array = gpus;
+				gpusSnapshot = gpus;
 			}
-			if (array == null)
+			if (gpusSnapshot == null)
 			{
 				lock (lk)
 				{
@@ -36,18 +36,18 @@ namespace PaviseApp
 				}
 				return false;
 			}
-			bool flag = false;
-			IntPtr[] array2 = array;
-			foreach (IntPtr gpu in array2)
+			bool readMaskSucceeded = false;
+			IntPtr[] nativeHandleItems = gpusSnapshot;
+			foreach (IntPtr gpu in nativeHandleItems)
 			{
 				uint mask;
 				if (NvApi.TryGetPerfDecrease(gpu, out mask))
 				{
 					combined |= mask;
-					flag = true;
+					readMaskSucceeded = true;
 				}
 			}
-			if (!flag)
+			if (!readMaskSucceeded)
 			{
 				lock (lk)
 				{
@@ -55,7 +55,7 @@ namespace PaviseApp
 					gpus = null;
 				}
 			}
-			return flag;
+			return readMaskSucceeded;
 		}
 
 		public static string InstantText()

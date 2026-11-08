@@ -146,37 +146,37 @@ namespace PaviseApp
 			try
 			{
 				Rectangle workingArea = Screen.FromControl(base.Owner ?? this).WorkingArea;
-				int num = Theme.S(24);
-				int num2 = Theme.S(24);
-				int num3 = Theme.S(126);
-				int num4 = Theme.S(74);
-				int num5 = Math.Max(1, Math.Min(Theme.S(672), workingArea.Width - num * 2));
-				int num6 = Math.Max(1, num5 - num2 * 2);
+				int scaledDimension = Theme.S(24);
+				int left = Theme.S(24);
+				int top = Theme.S(126);
+				int scaledDimension2 = Theme.S(74);
+				int minLimit = Math.Max(1, Math.Min(Theme.S(672), workingArea.Width - scaledDimension * 2));
+				int width = Math.Max(1, minLimit - left * 2);
 				Point point = new Point(0, Math.Max(0, -viewport.AutoScrollPosition.Y));
 				viewport.AutoScrollPosition = Point.Empty;
-				ConfigurationContent.SetBounds(0, 0, num6 - Theme.S(24), Math.Max(1, ConfigurationContent.Height));
-				int num7 = ConfigurationContent.Height + Theme.S(20);
-				int val = Math.Max(1, workingArea.Height - num * 2);
-				int num8 = Math.Min(val, num3 + num7 + num4);
-				int num9 = Math.Max(1, num8 - num3 - num4);
-				bool flag = num7 > num9;
-				int val2 = num6 - Theme.S(24) - (flag ? SystemInformation.VerticalScrollBarWidth : 0);
+				ConfigurationContent.SetBounds(0, 0, width - Theme.S(24), Math.Max(1, ConfigurationContent.Height));
+				int heightOffset = ConfigurationContent.Height + Theme.S(20);
+				int val = Math.Max(1, workingArea.Height - scaledDimension * 2);
+				int valLimit = Math.Min(val, top + heightOffset + scaledDimension2);
+				int lowerBound = Math.Max(1, valLimit - top - scaledDimension2);
+				bool matchesHeightOffset = heightOffset > lowerBound;
+				int val2 = width - Theme.S(24) - (matchesHeightOffset ? SystemInformation.VerticalScrollBarWidth : 0);
 				ConfigurationContent.SetBounds(Theme.S(12), Theme.S(10), Math.Max(1, val2), Math.Max(1, ConfigurationContent.Height));
-				num7 = ConfigurationContent.Height + Theme.S(20);
-				num8 = Math.Min(val, num3 + num7 + num4);
-				int num10 = base.Top + base.Height / 2;
-				base.ClientSize = new Size(num5, num8);
-				title.SetBounds(num2, Theme.S(20), Math.Max(1, num5 - num2 * 2 - Theme.S(50)), Theme.S(34));
-				dismiss.SetBounds(num5 - num2 - Theme.S(40), Theme.S(16), Theme.S(40), Theme.S(36));
-				gameName.SetBounds(num2 + Theme.S(52), Theme.S(65), Math.Max(1, num6 - Theme.S(52)), Theme.S(26));
+				heightOffset = ConfigurationContent.Height + Theme.S(20);
+				valLimit = Math.Min(val, top + heightOffset + scaledDimension2);
+				int topOffset = base.Top + base.Height / 2;
+				base.ClientSize = new Size(minLimit, valLimit);
+				title.SetBounds(left, Theme.S(20), Math.Max(1, minLimit - left * 2 - Theme.S(50)), Theme.S(34));
+				dismiss.SetBounds(minLimit - left - Theme.S(40), Theme.S(16), Theme.S(40), Theme.S(36));
+				gameName.SetBounds(left + Theme.S(52), Theme.S(65), Math.Max(1, width - Theme.S(52)), Theme.S(26));
 				platform.SetBounds(gameName.Left, Theme.S(94), gameName.Width, Theme.S(20));
-				viewport.SetBounds(num2, num3, num6, Math.Max(1, num8 - num3 - num4));
-				viewport.AutoScrollMinSize = new Size(0, num7);
-				viewport.AutoScrollPosition = new Point(0, Math.Min(point.Y, Math.Max(0, num7 - viewport.ClientSize.Height)));
-				close.SetBounds(num5 - num2 - Theme.S(112), num8 - Theme.S(56), Theme.S(112), Theme.S(36));
+				viewport.SetBounds(left, top, width, Math.Max(1, valLimit - top - scaledDimension2));
+				viewport.AutoScrollMinSize = new Size(0, heightOffset);
+				viewport.AutoScrollPosition = new Point(0, Math.Min(point.Y, Math.Max(0, heightOffset - viewport.ClientSize.Height)));
+				close.SetBounds(minLimit - left - Theme.S(112), valLimit - Theme.S(56), Theme.S(112), Theme.S(36));
 				if (base.Visible)
 				{
-					base.Top = Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - base.Height, num10 - base.Height / 2));
+					base.Top = Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - base.Height, topOffset - base.Height / 2));
 				}
 				Invalidate();
 			}

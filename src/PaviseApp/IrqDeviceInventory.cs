@@ -45,26 +45,26 @@ namespace PaviseApp
 				{
 					return;
 				}
-				int num = 0;
+				int walkValue = 0;
 				string[] subKeyNames = registryKey.GetSubKeyNames();
-				foreach (string text in subKeyNames)
+				foreach (string entryKey in subKeyNames)
 				{
 					try
 					{
-						using (RegistryKey registryKey2 = registryKey.OpenSubKey(text))
+						using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
 						{
 							if (registryKey2 == null)
 							{
 								continue;
 							}
 							string[] subKeyNames2 = registryKey2.GetSubKeyNames();
-							foreach (string text2 in subKeyNames2)
+							foreach (string entryKey2 in subKeyNames2)
 							{
-								if (++num > 512)
+								if (++walkValue > 512)
 								{
 									return;
 								}
-								AddDevice(bus + "\\" + text + "\\" + text2, bus, list, Read);
+								AddDevice(bus + "\\" + entryKey + "\\" + entryKey2, bus, list, Read);
 							}
 						}
 					}
@@ -117,10 +117,10 @@ namespace PaviseApp
 					if (registryKey3 != null)
 					{
 						irqDevice.Name = (registryKey3.GetValue("FriendlyName") as string) ?? (registryKey3.GetValue("DeviceDesc") as string) ?? "";
-						int num = irqDevice.Name.LastIndexOf(';');
-						if (num >= 0 && num + 1 < irqDevice.Name.Length)
+						int matchIndex = irqDevice.Name.LastIndexOf(';');
+						if (matchIndex >= 0 && matchIndex + 1 < irqDevice.Name.Length)
 						{
-							irqDevice.Name = irqDevice.Name.Substring(num + 1);
+							irqDevice.Name = irqDevice.Name.Substring(matchIndex + 1);
 						}
 						irqDevice.Service = (registryKey3.GetValue("Service") as string) ?? "";
 					}
@@ -135,10 +135,10 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = ReadStr(instanceId, "Driver");
-				if (text.Length > 0)
+				string str = ReadStr(instanceId, "Driver");
+				if (str.Length > 0)
 				{
-					using (RegistryKey registryKey4 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\" + text))
+					using (RegistryKey registryKey4 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\" + str))
 					{
 						if (registryKey4 != null)
 						{
@@ -172,14 +172,14 @@ namespace PaviseApp
 							}
 						}
 						object value2 = registryKey5.GetValue("AssignmentSetOverride");
-						byte[] array = value2 as byte[];
-						if (value2 != null && (array == null || array.Length != 8))
+						byte[] value2Offset = value2 as byte[];
+						if (value2 != null && (value2Offset == null || value2Offset.Length != 8))
 						{
 							irqDevice.ConfigurationKnown = false;
 						}
-						if (array != null)
+						if (value2Offset != null)
 						{
-							irqDevice.Mask = IrqAffinityEngine.BytesToMask(array);
+							irqDevice.Mask = IrqAffinityEngine.BytesToMask(value2Offset);
 						}
 						object value3 = registryKey5.GetValue("DevicePriority");
 						if (value3 != null && !(value3 is int))

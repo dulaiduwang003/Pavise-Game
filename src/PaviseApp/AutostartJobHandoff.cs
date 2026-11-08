@@ -113,10 +113,10 @@ namespace PaviseApp
 
         internal static void LogOutcome()
         {
-            string text = Interlocked.Exchange(ref outcome, null);
-            if (text == null) return;
-            if (outcomeIsWarning) Logger.Warn("STARTUP event=job-handoff " + text);
-            else Logger.Info("STARTUP event=job-handoff " + text);
+            string exchangeResult = Interlocked.Exchange(ref outcome, null);
+            if (exchangeResult == null) return;
+            if (outcomeIsWarning) Logger.Warn("STARTUP event=job-handoff " + exchangeResult);
+            else Logger.Info("STARTUP event=job-handoff " + exchangeResult);
         }
 
         private static void Record(bool warning, string text)

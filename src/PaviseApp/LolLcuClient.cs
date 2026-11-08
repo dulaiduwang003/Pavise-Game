@@ -61,12 +61,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = body.Trim();
-			if (text.Length < 3 || text[0] != '"' || text[text.Length - 1] != '"')
+			string bodyTrimmed = body.Trim();
+			if (bodyTrimmed.Length < 3 || bodyTrimmed[0] != '"' || bodyTrimmed[bodyTrimmed.Length - 1] != '"')
 			{
 				return false;
 			}
-			string a = text.Substring(1, text.Length - 2);
+			string a = bodyTrimmed.Substring(1, bodyTrimmed.Length - 2);
 			for (int i = 0; i < GameflowPhases.Length; i++)
 			{
 				if (string.Equals(a, GameflowPhases[i], StringComparison.OrdinalIgnoreCase))
@@ -90,27 +90,27 @@ namespace PaviseApp
 		public static bool RestoreUx(LolLcuCredentials credentials, string lolRoot)
 		{
 			Mutex mutex = null;
-			bool flag = false;
+			bool restoreUxReady = false;
 			try
 			{
-				string text = LolHeadlessLease.StableHash(lolRoot);
+				string stableHashResult = LolHeadlessLease.StableHash(lolRoot);
 				try
 				{
-					mutex = new Mutex(false, "Global\\Pavise_LolUxRestore_" + text);
+					mutex = new Mutex(false, "Global\\Pavise_LolUxRestore_" + stableHashResult);
 				}
 				catch
 				{
-					mutex = new Mutex(false, "Pavise_LolUxRestore_" + text);
+					mutex = new Mutex(false, "Pavise_LolUxRestore_" + stableHashResult);
 				}
 				try
 				{
-					flag = mutex.WaitOne(15000);
+					restoreUxReady = mutex.WaitOne(15000);
 				}
 				catch (AbandonedMutexException)
 				{
-					flag = true;
+					restoreUxReady = true;
 				}
-				if (!flag)
+				if (!restoreUxReady)
 				{
 					return false;
 				}
@@ -122,7 +122,7 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (flag && mutex != null)
+				if (restoreUxReady && mutex != null)
 				{
 					try
 					{
@@ -207,14 +207,14 @@ namespace PaviseApp
 		private static bool WaitForUxExit(string lolRoot, int timeoutMs)
 		{
 			int i = 0;
-			int num = 0;
+			int waitForUxExitValue = 0;
 			for (; i < timeoutMs; i += 250)
 			{
 				if (LolRuntimeProcesses.IsUxRunning(lolRoot))
 				{
-					num = 0;
+					waitForUxExitValue = 0;
 				}
-				else if (++num >= 2)
+				else if (++waitForUxExitValue >= 2)
 				{
 					return true;
 				}
@@ -307,15 +307,15 @@ namespace PaviseApp
 					using (StreamReader streamReader = new StreamReader(stream, Encoding.UTF8))
 					{
 						StringBuilder stringBuilder = new StringBuilder(Math.Min(32768, (int)((response.ContentLength > 0) ? Math.Min(response.ContentLength, 32768L) : 1024)));
-						char[] array = new char[2048];
+						char[] charItems = new char[2048];
 						while (stringBuilder.Length < 32768)
 						{
-							int num = streamReader.Read(array, 0, Math.Min(array.Length, 32768 - stringBuilder.Length));
-							if (num <= 0)
+							int readResult = streamReader.Read(charItems, 0, Math.Min(charItems.Length, 32768 - stringBuilder.Length));
+							if (readResult <= 0)
 							{
 								break;
 							}
-							stringBuilder.Append(array, 0, num);
+							stringBuilder.Append(charItems, 0, readResult);
 						}
 						return stringBuilder.ToString();
 					}

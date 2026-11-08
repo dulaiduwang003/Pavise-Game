@@ -18,8 +18,8 @@ namespace PaviseApp
 		protected override void OnPaint(PaintEventArgs e)
 		{
 			base.OnPaint(e);
-			int num = Theme.S(16);
-			Glyphs.Draw(e.Graphics, "gear", new Rectangle((base.Width - num) / 2, (base.Height - num) / 2, num, num), base.Enabled ? Col.Lerp(Theme.Dim, Theme.Fg, hover.Value) : Theme.Faint);
+			int scaledDimension = Theme.S(16);
+			Glyphs.Draw(e.Graphics, "gear", new Rectangle((base.Width - scaledDimension) / 2, (base.Height - scaledDimension) / 2, scaledDimension, scaledDimension), base.Enabled ? Col.Lerp(Theme.Dim, Theme.Fg, hover.Value) : Theme.Faint);
 		}
 
 		protected override void Dispose(bool disposing)

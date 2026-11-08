@@ -15,9 +15,9 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = MouseQueue.Restore();
-				flag &= KbdQueue.Restore();
-				if (flag)
+				bool restoreSucceeded = MouseQueue.Restore();
+				restoreSucceeded &= KbdQueue.Restore();
+				if (restoreSucceeded)
 				{
 					Settings.Save("InputMythRepaired", false);
 					Logger.Log(Lang.T("log.inputmythtweak.11"));
@@ -26,7 +26,7 @@ namespace PaviseApp
 				{
 					Logger.Log(Lang.T("log.inputmythtweak.12"));
 				}
-				return flag;
+				return restoreSucceeded;
 			}
 		}
 

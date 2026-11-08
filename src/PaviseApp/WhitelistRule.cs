@@ -48,20 +48,20 @@ namespace PaviseApp
 		public static bool TryCreate(WhitelistRuleKind kind, string value, out WhitelistRule rule)
 		{
 			rule = null;
-			string text = ((kind == WhitelistRuleKind.LegacyName) ? NormalizeName(value) : NormalizeImagePath(value));
-			if (string.IsNullOrEmpty(text))
+			string name = ((kind == WhitelistRuleKind.LegacyName) ? NormalizeName(value) : NormalizeImagePath(value));
+			if (string.IsNullOrEmpty(name))
 			{
 				return false;
 			}
-			if (kind != 0 && !string.Equals(Path.GetExtension(text), ".exe", StringComparison.OrdinalIgnoreCase))
+			if (kind != 0 && !string.Equals(Path.GetExtension(name), ".exe", StringComparison.OrdinalIgnoreCase))
 			{
 				return false;
 			}
-			if (kind == WhitelistRuleKind.ApplicationFamily && IsUnsafeFamilyAnchor(text))
+			if (kind == WhitelistRuleKind.ApplicationFamily && IsUnsafeFamilyAnchor(name))
 			{
 				return false;
 			}
-			rule = new WhitelistRule(kind, text);
+			rule = new WhitelistRule(kind, name);
 			return true;
 		}
 
@@ -72,8 +72,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = line.IndexOf('|');
-			if (num != 1 || line.Length <= 2)
+			int matchIndex = line.IndexOf('|');
+			if (matchIndex != 1 || line.Length <= 2)
 			{
 				return false;
 			}
@@ -125,76 +125,76 @@ namespace PaviseApp
 
 		internal static string NormalizeName(string value)
 		{
-			string text = (value ?? "").Trim();
-			if (text.Length == 0)
+			string trimmed = (value ?? "").Trim();
+			if (trimmed.Length == 0)
 			{
 				return "";
 			}
 			try
 			{
-				string fileName = Path.GetFileName(text);
+				string fileName = Path.GetFileName(trimmed);
 				if (!string.IsNullOrEmpty(fileName))
 				{
-					text = fileName;
+					trimmed = fileName;
 				}
 			}
 			catch
 			{
 			}
-			if (text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			if (trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
-				text = text.Substring(0, text.Length - 4);
+				trimmed = trimmed.Substring(0, trimmed.Length - 4);
 			}
-			return text.Trim();
+			return trimmed.Trim();
 		}
 
 		internal static string NormalizeImagePath(string value)
 		{
-			string text = (value ?? "").Trim().Trim('"');
-			if (text.Length == 0 || text.IndexOf('\0') >= 0)
+			string trimTrimmed = (value ?? "").Trim().Trim('"');
+			if (trimTrimmed.Length == 0 || trimTrimmed.IndexOf('\0') >= 0)
 			{
 				return "";
 			}
-			text = text.Replace('/', '\\');
-			if (text.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
+			trimTrimmed = trimTrimmed.Replace('/', '\\');
+			if (trimTrimmed.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase))
 			{
-				text = "\\\\" + text.Substring(8);
+				trimTrimmed = "\\\\" + trimTrimmed.Substring(8);
 			}
-			else if (text.StartsWith("\\??\\UNC\\", StringComparison.OrdinalIgnoreCase))
+			else if (trimTrimmed.StartsWith("\\??\\UNC\\", StringComparison.OrdinalIgnoreCase))
 			{
-				text = "\\\\" + text.Substring(8);
+				trimTrimmed = "\\\\" + trimTrimmed.Substring(8);
 			}
-			else if (text.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase))
+			else if (trimTrimmed.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase))
 			{
-				string text2 = text.Substring(4);
-				if (text2.Length < 3 || !char.IsLetter(text2[0]) || text2[1] != ':' || text2[2] != '\\')
+				string substringResult = trimTrimmed.Substring(4);
+				if (substringResult.Length < 3 || !char.IsLetter(substringResult[0]) || substringResult[1] != ':' || substringResult[2] != '\\')
 				{
 					return "";
 				}
-				text = text2;
+				trimTrimmed = substringResult;
 			}
-			else if (text.StartsWith("\\??\\", StringComparison.OrdinalIgnoreCase))
+			else if (trimTrimmed.StartsWith("\\??\\", StringComparison.OrdinalIgnoreCase))
 			{
-				string text3 = text.Substring(4);
-				if (text3.Length < 3 || !char.IsLetter(text3[0]) || text3[1] != ':' || text3[2] != '\\')
+				string substringResult2 = trimTrimmed.Substring(4);
+				if (substringResult2.Length < 3 || !char.IsLetter(substringResult2[0]) || substringResult2[1] != ':' || substringResult2[2] != '\\')
 				{
 					return "";
 				}
-				text = text3;
+				trimTrimmed = substringResult2;
 			}
-			if (text.StartsWith("\\\\.\\", StringComparison.OrdinalIgnoreCase))
+			if (trimTrimmed.StartsWith("\\\\.\\", StringComparison.OrdinalIgnoreCase))
 			{
 				return "";
 			}
-			bool flag = text.Length >= 3 && char.IsLetter(text[0]) && text[1] == ':' && text[2] == '\\';
-			bool flag2 = text.StartsWith("\\\\", StringComparison.Ordinal) && text.Length > 3;
-			if (!flag && !flag2)
+			bool allConditionsMet = trimTrimmed.Length >= 3 && char.IsLetter(trimTrimmed[0]) && trimTrimmed[1] == ':' && trimTrimmed[2] == '\\';
+			bool matchesStartsWith = trimTrimmed.StartsWith("\\\\", StringComparison.Ordinal) && trimTrimmed.Length > 3;
+			if (!allConditionsMet && !matchesStartsWith)
 			{
 				return "";
 			}
 			try
 			{
-				text = Path.GetFullPath(text);
+				trimTrimmed = Path.GetFullPath(trimTrimmed);
 			}
 			catch
 			{
@@ -203,7 +203,7 @@ namespace PaviseApp
 			string fileName;
 			try
 			{
-				fileName = Path.GetFileName(text);
+				fileName = Path.GetFileName(trimTrimmed);
 			}
 			catch
 			{
@@ -211,18 +211,18 @@ namespace PaviseApp
 			}
 			if (!string.IsNullOrEmpty(fileName))
 			{
-				return text;
+				return trimTrimmed;
 			}
 			return "";
 		}
 
 		internal static bool PathEquals(string left, string right)
 		{
-			string text = NormalizeImagePath(left);
-			string text2 = NormalizeImagePath(right);
-			if (text.Length > 0 && text2.Length > 0)
+			string imagePath = NormalizeImagePath(left);
+			string imagePath2 = NormalizeImagePath(right);
+			if (imagePath.Length > 0 && imagePath2.Length > 0)
 			{
-				return string.Equals(text, text2, StringComparison.OrdinalIgnoreCase);
+				return string.Equals(imagePath, imagePath2, StringComparison.OrdinalIgnoreCase);
 			}
 			return false;
 		}

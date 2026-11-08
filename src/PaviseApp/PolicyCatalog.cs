@@ -200,11 +200,11 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = (value ?? "").Trim();
+			string trimmed = (value ?? "").Trim();
 			switch (policyItem.Kind)
 			{
 			case PolicyValueKind.Bool:
-				if (text.Length != 0 && !(text == "0") && !text.Equals("false", StringComparison.OrdinalIgnoreCase))
+				if (trimmed.Length != 0 && !(trimmed == "0") && !trimmed.Equals("false", StringComparison.OrdinalIgnoreCase))
 				{
 					return "1";
 				}
@@ -212,17 +212,17 @@ namespace PaviseApp
 			case PolicyValueKind.Enum:
 			{
 				int result;
-				if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
+				if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
 				{
 					return policyItem.Fallback;
 				}
-				string text3 = result.ToString(CultureInfo.InvariantCulture);
+				string resultText = result.ToString(CultureInfo.InvariantCulture);
 				string[] choices2 = policyItem.Choices;
-				foreach (string text4 in choices2)
+				foreach (string entryText in choices2)
 				{
-					if (text4 == text3)
+					if (entryText == resultText)
 					{
-						return text3;
+						return resultText;
 					}
 				}
 				if (!(key == "PerformancePreset"))
@@ -234,11 +234,11 @@ namespace PaviseApp
 			case PolicyValueKind.Choice:
 			{
 				string[] choices = policyItem.Choices;
-				foreach (string text2 in choices)
+				foreach (string entryText2 in choices)
 				{
-					if (string.Equals(text2, text, StringComparison.OrdinalIgnoreCase))
+					if (string.Equals(entryText2, trimmed, StringComparison.OrdinalIgnoreCase))
 					{
-						return text2;
+						return entryText2;
 					}
 				}
 				return policyItem.Fallback;

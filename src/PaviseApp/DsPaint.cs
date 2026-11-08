@@ -222,35 +222,35 @@ namespace PaviseApp
 
 		public static void DropArrow(Graphics g, int x, int y, int delta, bool open, Color color)
 		{
-			int num = ((!open) ? 1 : (-1));
+			int dropArrowValue = ((!open) ? 1 : (-1));
 			using (Pen pen = new Pen(color, DsSpace.Line(1)))
 			{
 				g.DrawLines(pen, new Point[3]
 				{
-					new Point(x - delta, y - num * delta / 2),
-					new Point(x, y + num * delta / 2),
-					new Point(x + delta, y - num * delta / 2)
+					new Point(x - delta, y - dropArrowValue * delta / 2),
+					new Point(x, y + dropArrowValue * delta / 2),
+					new Point(x + delta, y - dropArrowValue * delta / 2)
 				});
 			}
 		}
 
 		public static void BusyRail(Graphics g, Rectangle bounds, float phase, Color accent)
 		{
-			int num = Theme.S(8);
-			int num2 = bounds.Bottom - Theme.S(3);
-			int num3 = bounds.Left + num;
-			int num4 = bounds.Right - num;
-			if (num4 - num3 < Theme.S(8) || num2 <= bounds.Top)
+			int scaledDimension = Theme.S(8);
+			int top = bounds.Bottom - Theme.S(3);
+			int left = bounds.Left + scaledDimension;
+			int width2 = bounds.Right - scaledDimension;
+			if (width2 - left < Theme.S(8) || top <= bounds.Top)
 			{
 				return;
 			}
 			float width = DsSpace.Line(2);
 			using (Pen pen = new Pen(Col.Alpha(accent, 110), width))
 			{
-				g.DrawLine(pen, num3, num2, num4, num2);
+				g.DrawLine(pen, left, top, width2, top);
 			}
-			int num5 = num4 - num3;
-			int num6 = Math.Max(Theme.S(16), num5 / 3);
+			int remainingWidth2 = width2 - left;
+			int sLimit = Math.Max(Theme.S(16), remainingWidth2 / 3);
 			if (phase < 0f)
 			{
 				phase = 0f;
@@ -259,16 +259,16 @@ namespace PaviseApp
 			{
 				phase = 1f;
 			}
-			int num7 = num3 - num6 + (int)Math.Round(phase * (float)(num5 + num6));
-			int num8 = Math.Max(num3, num7);
-			int num9 = Math.Min(num4, num7 + num6);
-			if (num9 <= num8)
+			int roundOffset = left - sLimit + (int)Math.Round(phase * (float)(remainingWidth2 + sLimit));
+			int left2 = Math.Max(left, roundOffset);
+			int width3 = Math.Min(width2, roundOffset + sLimit);
+			if (width3 <= left2)
 			{
 				return;
 			}
 			using (Pen pen2 = new Pen(Col.Alpha(accent, 235), width))
 			{
-				g.DrawLine(pen2, num8, num2, num9, num2);
+				g.DrawLine(pen2, left2, top, width3, top);
 			}
 		}
 	}

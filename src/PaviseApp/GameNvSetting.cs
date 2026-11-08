@@ -53,12 +53,12 @@ namespace PaviseApp
 
 		internal static GameNvSetting Parse(string value)
 		{
-			string[] array = value.Split(',');
-			if (array.Length != 6 || (array[0] != "0" && array[0] != "1"))
+			string[] valueParts = value.Split(',');
+			if (valueParts.Length != 6 || (valueParts[0] != "0" && valueParts[0] != "1"))
 			{
 				throw new InvalidDataException("Invalid game NVIDIA original setting");
 			}
-			GameNvSetting gameNvSetting = new GameNvSetting(array[0] == "1", uint.Parse(array[1], CultureInfo.InvariantCulture), uint.Parse(array[2], CultureInfo.InvariantCulture), uint.Parse(array[3], CultureInfo.InvariantCulture), uint.Parse(array[4], CultureInfo.InvariantCulture), uint.Parse(array[5], CultureInfo.InvariantCulture));
+			GameNvSetting gameNvSetting = new GameNvSetting(valueParts[0] == "1", uint.Parse(valueParts[1], CultureInfo.InvariantCulture), uint.Parse(valueParts[2], CultureInfo.InvariantCulture), uint.Parse(valueParts[3], CultureInfo.InvariantCulture), uint.Parse(valueParts[4], CultureInfo.InvariantCulture), uint.Parse(valueParts[5], CultureInfo.InvariantCulture));
 			if (gameNvSetting.Text != value)
 			{
 				throw new InvalidDataException("Noncanonical game NVIDIA original setting");

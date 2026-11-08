@@ -10,20 +10,20 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = 0;
-			while (num <= value.Length - word.Length)
+			int wordValue = 0;
+			while (wordValue <= value.Length - word.Length)
 			{
-				int num2 = value.IndexOf(word, num, StringComparison.OrdinalIgnoreCase);
-				if (num2 < 0)
+				int matchIndex = value.IndexOf(word, wordValue, StringComparison.OrdinalIgnoreCase);
+				if (matchIndex < 0)
 				{
 					return false;
 				}
-				int at = num2 + word.Length;
-				if (Boundary(value, num2, camelCase) && Boundary(value, at, camelCase))
+				int at = matchIndex + word.Length;
+				if (Boundary(value, matchIndex, camelCase) && Boundary(value, at, camelCase))
 				{
 					return true;
 				}
-				num = num2 + 1;
+				wordValue = matchIndex + 1;
 			}
 			return false;
 		}
@@ -57,35 +57,35 @@ namespace PaviseApp
 
 		internal static bool RuntimeVariant(string name, string product)
 		{
-			string text = WhitelistRule.NormalizeName(name);
-			if (!text.StartsWith(product, StringComparison.OrdinalIgnoreCase))
+			string name2 = WhitelistRule.NormalizeName(name);
+			if (!name2.StartsWith(product, StringComparison.OrdinalIgnoreCase))
 			{
 				return false;
 			}
-			string text2 = text.Substring(product.Length).TrimStart('.', '-', '_', ' ');
-			if (text2.Length == 0)
+			string substringTrimmed = name2.Substring(product.Length).TrimStart('.', '-', '_', ' ');
+			if (substringTrimmed.Length == 0)
 			{
 				return true;
 			}
-			string[] array = new string[4] { "service", "svc", "engine", "daemon" };
-			foreach (string text3 in array)
+			string[] textEntries = new string[4] { "service", "svc", "engine", "daemon" };
+			foreach (string entryText in textEntries)
 			{
-				if (text2.StartsWith(text3, StringComparison.OrdinalIgnoreCase))
+				if (substringTrimmed.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
 				{
-					text2 = text2.Substring(text3.Length).TrimStart('.', '-', '_', ' ');
+					substringTrimmed = substringTrimmed.Substring(entryText.Length).TrimStart('.', '-', '_', ' ');
 					break;
 				}
 			}
-			if (text2.Length == 0)
+			if (substringTrimmed.Length == 0)
 			{
 				return true;
 			}
-			if (text2.Equals("x86", StringComparison.OrdinalIgnoreCase) || text2.Equals("x64", StringComparison.OrdinalIgnoreCase))
+			if (substringTrimmed.Equals("x86", StringComparison.OrdinalIgnoreCase) || substringTrimmed.Equals("x64", StringComparison.OrdinalIgnoreCase))
 			{
 				return true;
 			}
-			string text4 = text2;
-			foreach (char c in text4)
+			string message = substringTrimmed;
+			foreach (char c in message)
 			{
 				if (!char.IsDigit(c) && c != '.')
 				{
@@ -101,8 +101,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" };
-			foreach (string value in array)
+			string[] textEntries = new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" };
+			foreach (string value in textEntries)
 			{
 				if (name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
 				{

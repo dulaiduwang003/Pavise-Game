@@ -69,12 +69,12 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Product policy vector is outside the two-key contract");
 			}
-			uint[] array = new uint[2] { 274197361u, 549528094u };
-			foreach (uint num in array)
+			uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
+			foreach (uint numericValueEntry in numericValueItems)
 			{
 				uint value;
-				GameNvProfileDecision gameNvProfileDecision = (originalPlan.Targets.TryGetValue(num, out value) ? GameNvProfilePolicy.Evaluate(num, value, Originals[num]) : new GameNvProfileDecision(originalPlan.Members[(num != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(Originals[num])));
-				if (Decisions[num].State != gameNvProfileDecision.State || Decisions[num].Source != gameNvProfileDecision.Source || EligibleTargets.ContainsKey(num) != (gameNvProfileDecision.State == GameNvPending.Ready) || (EligibleTargets.ContainsKey(num) && EligibleTargets[num] != value))
+				GameNvProfileDecision gameNvProfileDecision = (originalPlan.Targets.TryGetValue(numericValueEntry, out value) ? GameNvProfilePolicy.Evaluate(numericValueEntry, value, Originals[numericValueEntry]) : new GameNvProfileDecision(originalPlan.Members[(numericValueEntry != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(Originals[numericValueEntry])));
+				if (Decisions[numericValueEntry].State != gameNvProfileDecision.State || Decisions[numericValueEntry].Source != gameNvProfileDecision.Source || EligibleTargets.ContainsKey(numericValueEntry) != (gameNvProfileDecision.State == GameNvPending.Ready) || (EligibleTargets.ContainsKey(numericValueEntry) && EligibleTargets[numericValueEntry] != value))
 				{
 					throw new InvalidDataException("Product game NVIDIA policy result changed");
 				}

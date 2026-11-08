@@ -69,8 +69,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				IntelGraphicsAdapter[] array = adapters;
-				foreach (IntelGraphicsAdapter intelGraphicsAdapter in array)
+				IntelGraphicsAdapter[] adaptersSnapshot = adapters;
+				foreach (IntelGraphicsAdapter intelGraphicsAdapter in adaptersSnapshot)
 				{
 					if (intelGraphicsAdapter != null && intelGraphicsAdapter.VendorId == 32902)
 					{
@@ -247,8 +247,8 @@ namespace PaviseApp
 			IntPtr intPtr = AllocateZeroed(checked((int)count * IntPtr.Size));
 			try
 			{
-				uint num = count;
-				if (enumerate(api, ref count, intPtr) != 0 || count > num)
+				uint countSnapshot = count;
+				if (enumerate(api, ref count, intPtr) != 0 || count > countSnapshot)
 				{
 					return false;
 				}
@@ -266,19 +266,19 @@ namespace PaviseApp
 					}
 					if (info.DeviceType == 1)
 					{
-						string text = ((info.VendorId == 32902) ? AdapterIdentity(info) : ("other:" + info.VendorId.ToString("X", CultureInfo.InvariantCulture) + ":" + i));
-						if (text == null)
+						string adapterIdentityResult = ((info.VendorId == 32902) ? AdapterIdentity(info) : ("other:" + info.VendorId.ToString("X", CultureInfo.InvariantCulture) + ":" + i));
+						if (adapterIdentityResult == null)
 						{
 							return false;
 						}
-						List<NativeAdapter> obj = result;
+						List<NativeAdapter> resultSnapshot = result;
 						NativeAdapter nativeAdapter = new NativeAdapter
 						{
 							Handle = intPtr2
 						};
 						IntelGraphicsAdapter intelGraphicsAdapter = new IntelGraphicsAdapter
 						{
-							Id = text
+							Id = adapterIdentityResult
 						};
 						string @string = Encoding.ASCII.GetString(info.Name);
 						char[] trimChars = new char[1];
@@ -286,7 +286,7 @@ namespace PaviseApp
 						intelGraphicsAdapter.VendorId = info.VendorId;
 						intelGraphicsAdapter.Integrated = (info.AdapterFlags & 1) != 0;
 						nativeAdapter.Description = intelGraphicsAdapter;
-						obj.Add(nativeAdapter);
+						resultSnapshot.Add(nativeAdapter);
 					}
 				}
 				cachedDevices = result;

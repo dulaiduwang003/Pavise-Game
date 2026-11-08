@@ -184,7 +184,7 @@ namespace PaviseApp
 					{
 						return;
 					}
-					string text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + (msg ?? "").Replace("\r\n", " ⏎ ").Replace("\r", " ⏎ ").Replace("\n", " ⏎ ") + Environment.NewLine;
+					string newLineOffset = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + (msg ?? "").Replace("\r\n", " ⏎ ").Replace("\r", " ⏎ ").Replace("\n", " ⏎ ") + Environment.NewLine;
 					if (knownLength < 0 || !string.Equals(knownPath, LogPath, StringComparison.OrdinalIgnoreCase))
 					{
 						FileInfo fileInfo = new FileInfo(LogPath);
@@ -196,14 +196,14 @@ namespace PaviseApp
 						FileInfo fileInfo2 = new FileInfo(LogPath);
 						if (fileInfo2.Exists && fileInfo2.Length > 524288)
 						{
-							string text2 = LogPath + ".old";
+							string logPathOffset = LogPath + ".old";
 							try
 							{
-								if (File.Exists(text2))
+								if (File.Exists(logPathOffset))
 								{
-									File.Delete(text2);
+									File.Delete(logPathOffset);
 								}
-								fileInfo2.MoveTo(text2);
+								fileInfo2.MoveTo(logPathOffset);
 							}
 							catch
 							{
@@ -218,8 +218,8 @@ namespace PaviseApp
 						}
 						knownLength = 0L;
 					}
-					File.AppendAllText(LogPath, text);
-					knownLength += Encoding.UTF8.GetByteCount(text);
+					File.AppendAllText(LogPath, newLineOffset);
+					knownLength += Encoding.UTF8.GetByteCount(newLineOffset);
 					Interlocked.Increment(ref version);
 				}
 			}
@@ -234,8 +234,8 @@ namespace PaviseApp
 
 		public static void LogFailure(string context, Exception error)
 		{
-			string text = context + " " + error.GetType().Name + " - " + error.Message;
-			Log("FAIL " + text);
+			string messageOffset = context + " " + error.GetType().Name + " - " + error.Message;
+			Log("FAIL " + messageOffset);
 		}
 
 		internal static void AppendCrash(string path, string details)
@@ -333,57 +333,57 @@ namespace PaviseApp
 					}
 					using (FileStream fileStream = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
 					{
-						long num = 0L;
-						long num2 = 0L;
+						long positionValue = 0L;
+						long positionValue2 = 0L;
 						long length = fileStream.Length;
 						if (length > 0)
 						{
-							byte[] array = new byte[4096];
-							int num3 = 0;
-							long num4 = length;
-							while (num4 > 0 && num3 <= maxLines)
+							byte[] rawBytes = new byte[4096];
+							int processedCount = 0;
+							long lengthSnapshot = length;
+							while (lengthSnapshot > 0 && processedCount <= maxLines)
 							{
-								int num5 = (int)Math.Min(array.Length, num4);
-								num4 = (fileStream.Position = num4 - num5);
-								int num7 = fileStream.Read(array, 0, num5);
-								for (int num8 = num7 - 1; num8 >= 0; num8--)
+								int lengthSnapshotLimit = (int)Math.Min(rawBytes.Length, lengthSnapshot);
+								lengthSnapshot = (fileStream.Position = lengthSnapshot - lengthSnapshotLimit);
+								int readResult = fileStream.Read(rawBytes, 0, lengthSnapshotLimit);
+								for (int rawBytesIndex = readResult - 1; rawBytesIndex >= 0; rawBytesIndex--)
 								{
-									long num9 = num4 + num8;
-									if (array[num8] == 10 && num9 != length - 1)
+									long lengthSnapshotOffset = lengthSnapshot + rawBytesIndex;
+									if (rawBytes[rawBytesIndex] == 10 && lengthSnapshotOffset != length - 1)
 									{
-										num3++;
-										if (num3 == maxLines)
+										processedCount++;
+										if (processedCount == maxLines)
 										{
-											num = num9 + 1;
+											positionValue = lengthSnapshotOffset + 1;
 										}
-										else if (num3 == maxLines + 1)
+										else if (processedCount == maxLines + 1)
 										{
-											num2 = num9 + 1;
+											positionValue2 = lengthSnapshotOffset + 1;
 											break;
 										}
 									}
 								}
 							}
 						}
-						fileStream.Position = num;
-						string text;
+						fileStream.Position = positionValue;
+						string readToEndTrimmed;
 						using (StreamReader streamReader = new StreamReader(fileStream, Encoding.UTF8, true, 4096, true))
 						{
-							text = streamReader.ReadToEnd().TrimEnd('\r', '\n');
+							readToEndTrimmed = streamReader.ReadToEnd().TrimEnd('\r', '\n');
 						}
-						if (num > num2 && text.TrimStart().StartsWith("<Objs", StringComparison.Ordinal))
+						if (positionValue > positionValue2 && readToEndTrimmed.TrimStart().StartsWith("<Objs", StringComparison.Ordinal))
 						{
-							fileStream.Position = num2;
+							fileStream.Position = positionValue2;
 							using (StreamReader streamReader2 = new StreamReader(fileStream, Encoding.UTF8, true, 4096, true))
 							{
-								string text2 = streamReader2.ReadLine();
-								if (text2 != null && text2.IndexOf("#< CLIXML", StringComparison.Ordinal) >= 0)
+								string line = streamReader2.ReadLine();
+								if (line != null && line.IndexOf("#< CLIXML", StringComparison.Ordinal) >= 0)
 								{
-									text = text2 + Environment.NewLine + text;
+									readToEndTrimmed = line + Environment.NewLine + readToEndTrimmed;
 								}
 							}
 						}
-						return text;
+						return readToEndTrimmed;
 					}
 				}
 			}

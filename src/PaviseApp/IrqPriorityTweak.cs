@@ -68,8 +68,8 @@ namespace PaviseApp
 					return false;
 				}
 				string remaining;
-				bool flag = RestoreJournal(value, deviceId, RestoreOne, out remaining);
-				return Settings.SaveStr("IrqPrio", remaining) && Settings.LoadStr("IrqPrio", "") == remaining && flag;
+				bool restoreJournalSucceeded = RestoreJournal(value, deviceId, RestoreOne, out remaining);
+				return Settings.SaveStr("IrqPrio", remaining) && Settings.LoadStr("IrqPrio", "") == remaining && restoreJournalSucceeded;
 			}
 		}
 
@@ -101,21 +101,21 @@ namespace PaviseApp
 				return false;
 			}
 			bool result = true;
-			for (int num = entries.Count - 1; num >= 0; num--)
+			for (int entriesIndex = entries.Count - 1; entriesIndex >= 0; entriesIndex--)
 			{
-				if (selected == null || string.Equals(entries[num].Key, selected, StringComparison.OrdinalIgnoreCase))
+				if (selected == null || string.Equals(entries[entriesIndex].Key, selected, StringComparison.OrdinalIgnoreCase))
 				{
-					bool flag = false;
+					bool restoreJournalReady = false;
 					try
 					{
-						flag = restore(entries[num].Key, entries[num].Value);
+						restoreJournalReady = restore(entries[entriesIndex].Key, entries[entriesIndex].Value);
 					}
 					catch
 					{
 					}
-					if (flag)
+					if (restoreJournalReady)
 					{
-						entries.RemoveAt(num);
+						entries.RemoveAt(entriesIndex);
 					}
 					else
 					{
@@ -176,20 +176,20 @@ namespace PaviseApp
 			{
 				return list;
 			}
-			string[] array = raw.Split(';');
-			foreach (string text in array)
+			string[] rawParts = raw.Split(';');
+			foreach (string entryText in rawParts)
 			{
-				string[] array2 = text.Split('|');
-				if (array2.Length != 2)
+				string[] entryTextParts = entryText.Split('|');
+				if (entryTextParts.Length != 2)
 				{
 					continue;
 				}
 				try
 				{
-					string @string = Encoding.UTF8.GetString(Convert.FromBase64String(array2[0]));
+					string @string = Encoding.UTF8.GetString(Convert.FromBase64String(entryTextParts[0]));
 					if (@string.Length > 0)
 					{
-						list.Add(new KeyValuePair<string, string>(@string, array2[1]));
+						list.Add(new KeyValuePair<string, string>(@string, entryTextParts[1]));
 					}
 				}
 				catch

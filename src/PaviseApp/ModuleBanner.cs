@@ -97,10 +97,10 @@ namespace PaviseApp
 
 		private void SetText(ref string field, string value, string fallback)
 		{
-			string text = value ?? fallback;
-			if (!(field == text))
+			string valueOffset = value ?? fallback;
+			if (!(field == valueOffset))
 			{
-				field = text;
+				field = valueOffset;
 				Invalidate();
 			}
 		}
@@ -125,30 +125,30 @@ namespace PaviseApp
 			{
 				GraphicsState gstate = graphics.Save();
 				graphics.SetClip(clip);
-				int num = base.Width - Theme.S(280);
+				int remainingWidth = base.Width - Theme.S(280);
 				Point[] points = new Point[5]
 				{
-					new Point(num, 0),
+					new Point(remainingWidth, 0),
 					new Point(base.Width, 0),
 					new Point(base.Width, base.Height),
-					new Point(num + Theme.S(88), base.Height),
-					new Point(num + Theme.S(36), base.Height / 2)
+					new Point(remainingWidth + Theme.S(88), base.Height),
+					new Point(remainingWidth + Theme.S(36), base.Height / 2)
 				};
-				using (LinearGradientBrush brush = new LinearGradientBrush(new Rectangle(Math.Max(0, num), 0, Math.Max(1, base.Width - num), base.Height), Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent, Theme.LightMode ? 18 : 11), LinearGradientMode.Horizontal))
+				using (LinearGradientBrush brush = new LinearGradientBrush(new Rectangle(Math.Max(0, remainingWidth), 0, Math.Max(1, base.Width - remainingWidth), base.Height), Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent, Theme.LightMode ? 18 : 11), LinearGradientMode.Horizontal))
 				{
 					graphics.FillPolygon(brush, points);
 				}
 				using (Pen pen = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 20 : 13)))
 				{
-					for (int i = num - base.Height; i < base.Width + base.Height; i += Theme.S(18))
+					for (int i = remainingWidth - base.Height; i < base.Width + base.Height; i += Theme.S(18))
 					{
 						graphics.DrawLine(pen, i, 0, i + base.Height, base.Height);
 					}
 				}
 				graphics.Restore(gstate);
 			}
-			int num2 = Theme.S(42);
-			Rectangle r2 = new Rectangle(Theme.S(16), (base.Height - num2) / 2, num2, num2);
+			int scaledDimension = Theme.S(42);
+			Rectangle r2 = new Rectangle(Theme.S(16), (base.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
 			using (GraphicsPath path = Theme.TechPath(r2, Theme.S(6)))
 			{
 				using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.Inset, Theme.Sel, 0.28f)))
@@ -161,24 +161,24 @@ namespace PaviseApp
 				}
 			}
 			Glyphs.Draw(graphics, glyph, new Rectangle(r2.Left + Theme.S(11), r2.Top + Theme.S(11), Theme.S(20), Theme.S(20)), Theme.Accent);
-			int num3 = Theme.S(74);
-			int num4 = Theme.S(300);
-			TextRenderer.DrawText(graphics, code, Theme.Mono(6.2f), new Rectangle(num3, Theme.S(9), base.Width - num3 - num4, Theme.S(14)), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			TextRenderer.DrawText(graphics, title, Theme.UI(10.2f, true), new Rectangle(num3, Theme.S(24), base.Width - num3 - num4, Theme.S(23)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			TextRenderer.DrawText(graphics, detail, Theme.UI(7.7f, false), new Rectangle(num3, Theme.S(48), base.Width - num3 - Theme.S(40), Theme.S(18)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-			int num5 = base.Width - Theme.S(276);
+			int scaledDimension2 = Theme.S(74);
+			int scaledDimension3 = Theme.S(300);
+			TextRenderer.DrawText(graphics, code, Theme.Mono(6.2f), new Rectangle(scaledDimension2, Theme.S(9), base.Width - scaledDimension2 - scaledDimension3, Theme.S(14)), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, title, Theme.UI(10.2f, true), new Rectangle(scaledDimension2, Theme.S(24), base.Width - scaledDimension2 - scaledDimension3, Theme.S(23)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, detail, Theme.UI(7.7f, false), new Rectangle(scaledDimension2, Theme.S(48), base.Width - scaledDimension2 - Theme.S(40), Theme.S(18)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			int left = base.Width - Theme.S(276);
 			using (SolidBrush brush3 = new SolidBrush(Col.Alpha(stateColor, 28)))
 			{
-				graphics.FillEllipse(brush3, num5, Theme.S(18), Theme.S(20), Theme.S(20));
+				graphics.FillEllipse(brush3, left, Theme.S(18), Theme.S(20), Theme.S(20));
 			}
 			using (SolidBrush brush4 = new SolidBrush(stateColor))
 			{
-				graphics.FillEllipse(brush4, num5 + Theme.S(6), Theme.S(24), Theme.S(8), Theme.S(8));
+				graphics.FillEllipse(brush4, left + Theme.S(6), Theme.S(24), Theme.S(8), Theme.S(8));
 			}
-			TextRenderer.DrawText(graphics, state.ToUpperInvariant(), Theme.MonoFor(state, 7.2f), new Rectangle(num5 + Theme.S(28), Theme.S(15), Theme.S(230), Theme.S(28)), stateColor, TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(graphics, state.ToUpperInvariant(), Theme.MonoFor(state, 7.2f), new Rectangle(left + Theme.S(28), Theme.S(15), Theme.S(230), Theme.S(28)), stateColor, TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			using (Pen pen3 = new Pen(Col.Alpha(stateColor, 128)))
 			{
-				graphics.DrawLine(pen3, num5 + Theme.S(28), Theme.S(48), base.Width - Theme.S(18), Theme.S(48));
+				graphics.DrawLine(pen3, left + Theme.S(28), Theme.S(48), base.Width - Theme.S(18), Theme.S(48));
 			}
 		}
 	}

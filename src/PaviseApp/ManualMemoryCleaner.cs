@@ -51,10 +51,10 @@ namespace PaviseApp
 				return manualMemoryReport;
 			}
 			Stopwatch stopwatch = Stopwatch.StartNew();
-			bool flag = false;
+			bool runReady = false;
 			try
 			{
-				while (!(flag = Monitor.TryEnter(StandbyMemoryControl.OperationGate, 100)))
+				while (!(runReady = Monitor.TryEnter(StandbyMemoryControl.OperationGate, 100)))
 				{
 					if (!MayContinue(mayContinue))
 					{
@@ -106,23 +106,23 @@ namespace PaviseApp
 						stepIndex = -1;
 						continue;
 					}
-					int num;
+					int executeResult;
 					try
 					{
-						num = native.Execute(manualMemoryStep);
+						executeResult = native.Execute(manualMemoryStep);
 					}
 					catch
 					{
-						num = -1073741823;
+						executeResult = -1073741823;
 					}
 					manualMemoryReport.Steps.Add(new ManualMemoryStepResult
 					{
 						Step = manualMemoryStep,
-						NativeStatus = num,
-						State = Classify(num),
+						NativeStatus = executeResult,
+						State = Classify(executeResult),
 						ElapsedMilliseconds = stopwatch2.ElapsedMilliseconds
 					});
-					if (!manualMemoryReport.GameProtected && (num == StatusGameProtected || ProtectGame(gamePresent)))
+					if (!manualMemoryReport.GameProtected && (executeResult == StatusGameProtected || ProtectGame(gamePresent)))
 					{
 						manualMemoryReport.GameProtected = true;
 						manualMemoryReport.EscalatedToGameProtection = true;
@@ -131,7 +131,7 @@ namespace PaviseApp
 						stepIndex = -1;
 						continue;
 					}
-					if (manualMemoryStep == ManualMemoryStep.ModifiedPages && num >= 0 && !Pause(500, mayContinue))
+					if (manualMemoryStep == ManualMemoryStep.ModifiedPages && executeResult >= 0 && !Pause(500, mayContinue))
 					{
 						manualMemoryReport.Cancelled = true;
 						break;
@@ -150,7 +150,7 @@ namespace PaviseApp
 			finally
 			{
 				manualMemoryReport.ElapsedMilliseconds = stopwatch.ElapsedMilliseconds;
-				if (flag)
+				if (runReady)
 				{
 					Monitor.Exit(StandbyMemoryControl.OperationGate);
 				}

@@ -101,28 +101,28 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Legacy SPI migration evidence missing");
 			}
-			string[] array = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
-			if (array.Length < 5 || array.Length > 14 || array[0] != "pavise-spi-legacy-migration-1" || array[1] != "user_sid\t" + sid || !array[2].StartsWith("nonce\t", StringComparison.Ordinal) || array[array.Length - 1] != "")
+			string[] getStringParts = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
+			if (getStringParts.Length < 5 || getStringParts.Length > 14 || getStringParts[0] != "pavise-spi-legacy-migration-1" || getStringParts[1] != "user_sid\t" + sid || !getStringParts[2].StartsWith("nonce\t", StringComparison.Ordinal) || getStringParts[getStringParts.Length - 1] != "")
 			{
 				throw new InvalidDataException("Invalid legacy SPI migration header");
 			}
 			SortedDictionary<string, SpiLegacyMigrationMember> sortedDictionary = new SortedDictionary<string, SpiLegacyMigrationMember>(StringComparer.Ordinal);
-			for (int i = 3; i < array.Length - 1; i++)
+			for (int i = 3; i < getStringParts.Length - 1; i++)
 			{
-				string[] array2 = array[i].Split('\t');
-				if (array2.Length != 4)
+				string[] parts = getStringParts[i].Split('\t');
+				if (parts.Length != 4)
 				{
 					throw new InvalidDataException("Invalid legacy SPI coordinate");
 				}
-				ValidateTarget(array2[1]);
-				SpiLegacyMigrationMember spiLegacyMigrationMember = new SpiLegacyMigrationMember(array2[1], array2[2], array2[3]);
-				if (array2[0] != spiLegacyMigrationMember.Slot || sortedDictionary.ContainsKey(spiLegacyMigrationMember.Slot))
+				ValidateTarget(parts[1]);
+				SpiLegacyMigrationMember spiLegacyMigrationMember = new SpiLegacyMigrationMember(parts[1], parts[2], parts[3]);
+				if (parts[0] != spiLegacyMigrationMember.Slot || sortedDictionary.ContainsKey(spiLegacyMigrationMember.Slot))
 				{
 					throw new InvalidDataException("Legacy SPI coordinate hash differs");
 				}
 				sortedDictionary.Add(spiLegacyMigrationMember.Slot, spiLegacyMigrationMember);
 			}
-			SpiLegacyMigrationPlan spiLegacyMigrationPlan = new SpiLegacyMigrationPlan(sid, array[2].Substring(6), sortedDictionary);
+			SpiLegacyMigrationPlan spiLegacyMigrationPlan = new SpiLegacyMigrationPlan(sid, getStringParts[2].Substring(6), sortedDictionary);
 			if (!SpiOwnerRecord.Equal(spiLegacyMigrationPlan.Manifest, bytes))
 			{
 				throw new InvalidDataException("Noncanonical legacy SPI migration bytes");
@@ -148,8 +148,8 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Legacy SPI receipt domain is invalid");
 				}
-				string text = ReceiptHash(item);
-				if (item.VisualRestored ? (text != value.TerminalHash) : (text != value.SourceHash))
+				string receiptHashResult = ReceiptHash(item);
+				if (item.VisualRestored ? (receiptHashResult != value.TerminalHash) : (receiptHashResult != value.SourceHash))
 				{
 					throw new InvalidDataException("Legacy SPI receipt changed or was reassigned");
 				}
@@ -165,9 +165,9 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Legacy terminal digest cannot bind these originals");
 				}
-				bool flag = false;
-				bool[] array = new bool[2] { false, true };
-				foreach (bool committed in array)
+				bool currentReady = false;
+				bool[] conditionMetItems = new bool[2] { false, true };
+				foreach (bool committed in conditionMetItems)
 				{
 					PerformanceActionStore.Receipt receipt2 = new PerformanceActionStore.Receipt();
 					receipt2.Id = item.Id;
@@ -178,10 +178,10 @@ namespace PaviseApp
 					PerformanceActionStore.Receipt r2 = receipt2;
 					if (SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r2))) == value.SourceHash)
 					{
-						flag = true;
+						currentReady = true;
 					}
 				}
-				if (!flag)
+				if (!currentReady)
 				{
 					throw new InvalidDataException("Legacy source digest is not the exact former receipt shape");
 				}
@@ -192,16 +192,16 @@ namespace PaviseApp
 
 		internal void RequireAllCurrent()
 		{
-			int num = 0;
+			int processedCount = 0;
 			foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
 			{
 				if (item.Id == "MatchVisualEffectsV1")
 				{
 					Current(item.Target);
-					num++;
+					processedCount++;
 				}
 			}
-			if (num != Members.Count)
+			if (processedCount != Members.Count)
 			{
 				throw new InvalidDataException("Legacy SPI snapshot is incomplete; absence is not no debt");
 			}

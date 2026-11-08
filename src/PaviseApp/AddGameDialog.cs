@@ -243,13 +243,13 @@ namespace PaviseApp
 			lst.DrawItem += DrawRow;
 			lst.MouseMove += delegate(object s, MouseEventArgs e)
 			{
-				int num2 = lst.IndexFromPoint(e.Location);
-				if (num2 != hover)
+				int indexFromPointResult = lst.IndexFromPoint(e.Location);
+				if (indexFromPointResult != hover)
 				{
 					int index2 = hover;
-					hover = num2;
+					hover = indexFromPointResult;
 					InvalidateRow(index2);
-					InvalidateRow(num2);
+					InvalidateRow(indexFromPointResult);
 				}
 			};
 			lst.MouseLeave += delegate
@@ -265,10 +265,10 @@ namespace PaviseApp
 			{
 				if (e.Button == MouseButtons.Left)
 				{
-					int num = lst.IndexFromPoint(e.Location);
-					if (num >= 0)
+					int indexFromPointResult = lst.IndexFromPoint(e.Location);
+					if (indexFromPointResult >= 0)
 					{
-						ToggleAt(num);
+						ToggleAt(indexFromPointResult);
 					}
 				}
 			};
@@ -568,18 +568,18 @@ namespace PaviseApp
 						{
 							foreach (KeyValuePair<string, List<int>> item2 in dictionary)
 							{
-								double num = 0.0;
+								double measuredValue = 0.0;
 								foreach (int item3 in item2.Value)
 								{
 									double value;
 									if (dictionary2.TryGetValue(item3, out value))
 									{
-										num = Math.Max(num, value);
+										measuredValue = Math.Max(measuredValue, value);
 									}
 								}
-								if (num > 0.0)
+								if (measuredValue > 0.0)
 								{
-									utilByPath[item2.Key] = num;
+									utilByPath[item2.Key] = measuredValue;
 								}
 							}
 						}
@@ -604,36 +604,36 @@ namespace PaviseApp
 
 		private void UpdateInfoLabel()
 		{
-			string text = null;
+			string scanStageRunningText = null;
 			if (collectingRunning)
 			{
-				text = Lang.T("scan.stage.running");
+				scanStageRunningText = Lang.T("scan.stage.running");
 			}
 			else if (probingGpu)
 			{
-				text = Lang.T("scan.stage.gpu");
+				scanStageRunningText = Lang.T("scan.stage.gpu");
 			}
 			else if (scanning)
 			{
-				text = Lang.T("scan.busy");
+				scanStageRunningText = Lang.T("scan.busy");
 			}
-			if (text != null)
+			if (scanStageRunningText != null)
 			{
-				string text2 = new string('·', dots);
+				string message = new string('·', dots);
 				lblInfo.ForeColor = Theme.Accent;
-				lblInfo.Text = ((rows.Count == 0) ? (text + text2) : Lang.F("scan.stage.count", text + text2, rows.Count));
+				lblInfo.Text = ((rows.Count == 0) ? (scanStageRunningText + message) : Lang.F("scan.stage.count", scanStageRunningText + message, rows.Count));
 				return;
 			}
-			int num = 0;
+			int processedCount = 0;
 			foreach (Row row in rows)
 			{
 				if (!row.Already)
 				{
-					num++;
+					processedCount++;
 				}
 			}
 			lblInfo.ForeColor = Theme.Dim;
-			lblInfo.Text = ((rows.Count == 0) ? Lang.T("scan.none") : (Lang.F("scan.count", rows.Count, num) + "   " + Lang.T("scan.live")));
+			lblInfo.Text = ((rows.Count == 0) ? Lang.T("scan.none") : (Lang.F("scan.count", rows.Count, processedCount) + "   " + Lang.T("scan.live")));
 		}
 
 		private void ApplyGpuTags(Dictionary<string, double> utilByPath)
@@ -767,18 +767,18 @@ namespace PaviseApp
 			}
 			List<string> files = new List<string>();
 			List<string> folders = new List<string>();
-			foreach (string text in paths)
+			foreach (string entryPath in paths)
 			{
-				if (!string.IsNullOrWhiteSpace(text))
+				if (!string.IsNullOrWhiteSpace(entryPath))
 				{
-					string text2 = text.Trim().Trim('"');
-					if (Directory.Exists(text2))
+					string trimTrimmed = entryPath.Trim().Trim('"');
+					if (Directory.Exists(trimTrimmed))
 					{
-						folders.Add(text2);
+						folders.Add(trimTrimmed);
 					}
 					else
 					{
-						files.Add(text2);
+						files.Add(trimTrimmed);
 					}
 				}
 			}
@@ -901,7 +901,7 @@ namespace PaviseApp
 				dictionary[row3.Path] = row3;
 			}
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			bool flag = false;
+			bool mergeReady = false;
 			foreach (Candidate hit in hits)
 			{
 				if (hit == null || string.IsNullOrEmpty(hit.Path) || (kind == RowKind.Installed && string.IsNullOrEmpty(hit.Root)))
@@ -917,9 +917,9 @@ namespace PaviseApp
 					value = row;
 					rows.Add(value);
 					dictionary[value.Path] = value;
-					flag = true;
+					mergeReady = true;
 				}
-				int num = RowGroup(value);
+				int rowGroupResult = RowGroup(value);
 				string name = value.Name;
 				if (kind == RowKind.Installed || !value.Installed)
 				{
@@ -927,7 +927,7 @@ namespace PaviseApp
 					value.Root = hit.Root;
 					if (value.NeedsChoice != hit.NeedsChoice)
 					{
-						flag = true;
+						mergeReady = true;
 					}
 					value.NeedsChoice = hit.NeedsChoice;
 				}
@@ -951,16 +951,16 @@ namespace PaviseApp
 					hashSet.Add(value.Path);
 					break;
 				}
-				if (num != RowGroup(value) || name != value.Name)
+				if (rowGroupResult != RowGroup(value) || name != value.Name)
 				{
-					flag = true;
+					mergeReady = true;
 				}
 			}
 			if (kind == RowKind.Running)
 			{
-				for (int num2 = rows.Count - 1; num2 >= 0; num2--)
+				for (int rowsIndex = rows.Count - 1; rowsIndex >= 0; rowsIndex--)
 				{
-					Row row2 = rows[num2];
+					Row row2 = rows[rowsIndex];
 					if (!hashSet.Contains(row2.Path))
 					{
 						if (row2.Running)
@@ -970,17 +970,17 @@ namespace PaviseApp
 							row2.Count = 0;
 							row2.Gpu = 0.0;
 							row2.RendererLike = false;
-							flag = true;
+							mergeReady = true;
 						}
 						if (!row2.Installed && !row2.Checked && !row2.Pinned)
 						{
-							rows.RemoveAt(num2);
-							flag = true;
+							rows.RemoveAt(rowsIndex);
+							mergeReady = true;
 						}
 					}
 				}
 			}
-			if (flag)
+			if (mergeReady)
 			{
 				SortRows();
 				Refill();
@@ -997,14 +997,14 @@ namespace PaviseApp
 		{
 			rows.Sort(delegate(Row a, Row b)
 			{
-				int num = RowGroup(a);
-				int num2 = RowGroup(b);
-				if (num != num2)
+				int rowGroupResult = RowGroup(a);
+				int rowGroupResult2 = RowGroup(b);
+				if (rowGroupResult != rowGroupResult2)
 				{
-					return num - num2;
+					return rowGroupResult - rowGroupResult2;
 				}
-				int num3 = string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
-				return (num3 == 0) ? string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase) : num3;
+				int compareResult = string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+				return (compareResult == 0) ? string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase) : compareResult;
 			});
 		}
 
@@ -1068,10 +1068,10 @@ namespace PaviseApp
 				{
 					lst.SelectedIndex = shown.IndexOf(row);
 				}
-				int num = ((row2 == null) ? (-1) : shown.IndexOf(row2));
+				int matchIndex = ((row2 == null) ? (-1) : shown.IndexOf(row2));
 				if (shown.Count > 0)
 				{
-					lst.TopIndex = ((num >= 0) ? num : Math.Min(Math.Max(0, topIndex), shown.Count - 1));
+					lst.TopIndex = ((matchIndex >= 0) ? matchIndex : Math.Min(Math.Max(0, topIndex), shown.Count - 1));
 				}
 				hover = -1;
 			}
@@ -1114,20 +1114,20 @@ namespace PaviseApp
 		private void ToggleAll()
 		{
 			selectionEdited = true;
-			bool flag = false;
+			bool checkedValue = false;
 			foreach (Row item in shown)
 			{
 				if (!item.Already && !item.NeedsChoice && !item.Checked)
 				{
-					flag = true;
+					checkedValue = true;
 					break;
 				}
 			}
 			foreach (Row item2 in shown)
 			{
-				if (!item2.Already && (!flag || !item2.NeedsChoice))
+				if (!item2.Already && (!checkedValue || !item2.NeedsChoice))
 				{
-					item2.Checked = flag;
+					item2.Checked = checkedValue;
 				}
 			}
 			lst.Invalidate();
@@ -1136,16 +1136,16 @@ namespace PaviseApp
 
 		private void UpdateAddButton()
 		{
-			int num = 0;
+			int processedCount = 0;
 			foreach (Row row in rows)
 			{
 				if (row.Checked && !row.Already)
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			btnAdd.Text = ((num > 0) ? Lang.F("scan.add.n", num) : Lang.T("btn.add"));
-			btnAdd.Enabled = num > 0;
+			btnAdd.Text = ((processedCount > 0) ? Lang.F("scan.add.n", processedCount) : Lang.T("btn.add"));
+			btnAdd.Enabled = processedCount > 0;
 			btnAdd.Invalidate();
 		}
 
@@ -1240,26 +1240,26 @@ namespace PaviseApp
 		private static RowLayout LayoutRow(Rectangle bounds, string status, string details)
 		{
 			RowLayout result = default(RowLayout);
-			int num = Theme.S(16);
-			int num2 = Theme.S(26);
-			int num3 = Theme.S(12);
-			result.Check = new Rectangle(bounds.Left + Theme.S(14), bounds.Top + (bounds.Height - num) / 2, num, num);
-			result.Icon = new Rectangle(result.Check.Right + num3, bounds.Top + (bounds.Height - num2) / 2, num2, num2);
-			int num4 = result.Icon.Right + num3;
-			int num5 = bounds.Right - Theme.S(14);
+			int scaledDimension = Theme.S(16);
+			int scaledDimension2 = Theme.S(26);
+			int scaledDimension3 = Theme.S(12);
+			result.Check = new Rectangle(bounds.Left + Theme.S(14), bounds.Top + (bounds.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
+			result.Icon = new Rectangle(result.Check.Right + scaledDimension3, bounds.Top + (bounds.Height - scaledDimension2) / 2, scaledDimension2, scaledDimension2);
+			int rightOffset = result.Icon.Right + scaledDimension3;
+			int remainingRight = bounds.Right - Theme.S(14);
 			TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
-			int num6 = ((!string.IsNullOrEmpty(status)) ? TextRenderer.MeasureText(status, Theme.UI(7.6f, true), new Size(int.MaxValue, int.MaxValue), flags).Width : 0);
-			int num7 = ((!string.IsNullOrEmpty(details)) ? TextRenderer.MeasureText(details, Theme.UI(7.6f, false), new Size(int.MaxValue, int.MaxValue), flags).Width : 0);
-			int num8 = Math.Min(Math.Max(num6, num7) + Theme.S(2), Math.Max(0, (num5 - num4) / 2));
-			if (num6 == 0 && num7 == 0)
+			int width = ((!string.IsNullOrEmpty(status)) ? TextRenderer.MeasureText(status, Theme.UI(7.6f, true), new Size(int.MaxValue, int.MaxValue), flags).Width : 0);
+			int width2 = ((!string.IsNullOrEmpty(details)) ? TextRenderer.MeasureText(details, Theme.UI(7.6f, false), new Size(int.MaxValue, int.MaxValue), flags).Width : 0);
+			int maxLimit = Math.Min(Math.Max(width, width2) + Theme.S(2), Math.Max(0, (remainingRight - rightOffset) / 2));
+			if (width == 0 && width2 == 0)
 			{
-				num8 = 0;
+				maxLimit = 0;
 			}
-			int num9 = Math.Max(1, num5 - num4 - ((num8 > 0) ? (num8 + num3) : 0));
-			result.Name = new Rectangle(num4, bounds.Top + Theme.S(6), num9, Theme.S(20));
-			result.Path = new Rectangle(num4, bounds.Top + Theme.S(28), num9, Theme.S(18));
-			result.Status = new Rectangle(num5 - num8, result.Name.Top, num8, result.Name.Height);
-			result.Details = new Rectangle(num5 - num8, result.Path.Top, num8, result.Path.Height);
+			int lowerBound = Math.Max(1, remainingRight - rightOffset - ((maxLimit > 0) ? (maxLimit + scaledDimension3) : 0));
+			result.Name = new Rectangle(rightOffset, bounds.Top + Theme.S(6), lowerBound, Theme.S(20));
+			result.Path = new Rectangle(rightOffset, bounds.Top + Theme.S(28), lowerBound, Theme.S(18));
+			result.Status = new Rectangle(remainingRight - maxLimit, result.Name.Top, maxLimit, result.Name.Height);
+			result.Details = new Rectangle(remainingRight - maxLimit, result.Path.Top, maxLimit, result.Path.Height);
 			return result;
 		}
 
@@ -1270,7 +1270,7 @@ namespace PaviseApp
 				return;
 			}
 			Row row = shown[e.Index];
-			bool flag = (e.State & DrawItemState.Selected) != 0;
+			bool valuesMatch = (e.State & DrawItemState.Selected) != 0;
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle r = Rectangle.Inflate(e.Bounds, -Theme.S(4), -Theme.S(2));
@@ -1278,14 +1278,14 @@ namespace PaviseApp
 			{
 				graphics.FillRectangle(brush, e.Bounds);
 			}
-			Theme.FillRound(graphics, r, Theme.S(8), (flag || row.Checked) ? Theme.Sel : ((e.Index == hover) ? Theme.CardHover : Theme.Card));
-			string text = (row.Already ? Lang.T("scan.already") : (row.RendererLike ? Lang.F("scan.renderer.tag", (int)row.Gpu) : (row.Running ? Lang.T("scan.running.tag") : (row.NeedsChoice ? Lang.T("scan.choice.tag") : (row.Pinned ? Lang.T("scan.picked.tag") : ((!row.Installed) ? Lang.T("scan.stopped.tag") : ""))))));
-			string text2 = (row.Running ? RunningProgram.FormatMemory(row.Memory) : "");
+			Theme.FillRound(graphics, r, Theme.S(8), (valuesMatch || row.Checked) ? Theme.Sel : ((e.Index == hover) ? Theme.CardHover : Theme.Card));
+			string scanAlreadyText = (row.Already ? Lang.T("scan.already") : (row.RendererLike ? Lang.F("scan.renderer.tag", (int)row.Gpu) : (row.Running ? Lang.T("scan.running.tag") : (row.NeedsChoice ? Lang.T("scan.choice.tag") : (row.Pinned ? Lang.T("scan.picked.tag") : ((!row.Installed) ? Lang.T("scan.stopped.tag") : ""))))));
+			string formatMemoryResult = (row.Running ? RunningProgram.FormatMemory(row.Memory) : "");
 			if (row.Running && row.Count > 1)
 			{
-				text2 = text2 + ((text2.Length > 0) ? " · " : "") + Lang.F("white.pick.procs", row.Count);
+				formatMemoryResult = formatMemoryResult + ((formatMemoryResult.Length > 0) ? " · " : "") + Lang.F("white.pick.procs", row.Count);
 			}
-			RowLayout rowLayout = LayoutRow(e.Bounds, text, text2);
+			RowLayout rowLayout = LayoutRow(e.Bounds, scanAlreadyText, formatMemoryResult);
 			Rectangle check = rowLayout.Check;
 			using (GraphicsPath path = Theme.Rounded(check, Theme.S(4)))
 			{
@@ -1326,13 +1326,13 @@ namespace PaviseApp
 			TextRenderer.DrawText(graphics, DisplayRowName(row), Theme.UI(9.2f, true), rowLayout.Name, row.Already ? Theme.Faint : Theme.Fg, textFormatFlags | TextFormatFlags.EndEllipsis);
 			TextRenderer.DrawText(graphics, row.Path, Theme.UI(7.6f, false), rowLayout.Path, Theme.Dim, textFormatFlags | TextFormatFlags.PathEllipsis);
 			Color foreColor = (row.Already ? Theme.Faint : (row.RendererLike ? Theme.Accent : (row.Running ? Theme.Green : Theme.Dim)));
-			if (text.Length > 0)
+			if (scanAlreadyText.Length > 0)
 			{
-				TextRenderer.DrawText(graphics, text, Theme.UI(7.6f, true), rowLayout.Status, foreColor, textFormatFlags | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
+				TextRenderer.DrawText(graphics, scanAlreadyText, Theme.UI(7.6f, true), rowLayout.Status, foreColor, textFormatFlags | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
 			}
-			if (text2.Length > 0)
+			if (formatMemoryResult.Length > 0)
 			{
-				TextRenderer.DrawText(graphics, text2, Theme.UI(7.6f, false), rowLayout.Details, Theme.Faint, textFormatFlags | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
+				TextRenderer.DrawText(graphics, formatMemoryResult, Theme.UI(7.6f, false), rowLayout.Details, Theme.Faint, textFormatFlags | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
 			}
 		}
 

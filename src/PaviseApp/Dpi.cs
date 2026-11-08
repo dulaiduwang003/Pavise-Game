@@ -46,12 +46,12 @@ namespace PaviseApp
 		{
 			fitW = width;
 			fitH = height;
-			float num = Fit(Scale);
-			if (Math.Abs(num - Scale) < 0.001f)
+			float fitResult = Fit(Scale);
+			if (Math.Abs(fitResult - Scale) < 0.001f)
 			{
 				return false;
 			}
-			Scale = num;
+			Scale = fitResult;
 			return true;
 		}
 
@@ -71,12 +71,12 @@ namespace PaviseApp
 
 		public static float ScaleFor(int dpi)
 		{
-			float num = (float)dpi / 96f;
-			if (num < 1f)
+			float dpiRatio = (float)dpi / 96f;
+			if (dpiRatio < 1f)
 			{
-				num = 1f;
+				dpiRatio = 1f;
 			}
-			return Fit(num);
+			return Fit(dpiRatio);
 		}
 
 		public static float FitScale(int clientW, int clientH)
@@ -85,16 +85,16 @@ namespace PaviseApp
 			{
 				return Scale;
 			}
-			float num = Math.Min((float)clientW / (float)fitW, (float)clientH / (float)fitH);
-			if (num < 1f)
+			float upperBound = Math.Min((float)clientW / (float)fitW, (float)clientH / (float)fitH);
+			if (upperBound < 1f)
 			{
-				num = 1f;
+				upperBound = 1f;
 			}
-			if (num > 3f)
+			if (upperBound > 3f)
 			{
-				num = 3f;
+				upperBound = 3f;
 			}
-			return num;
+			return upperBound;
 		}
 
 		public static bool FitDiffers(int clientW, int clientH)
@@ -153,8 +153,8 @@ namespace PaviseApp
 
 		public static float CrispPoint(float points)
 		{
-			float num = (float)Math.Max(1.0, Math.Round(points * Scale * 96f / 72f));
-			return num * 72f / (96f * Scale);
+			float roundLimit = (float)Math.Max(1.0, Math.Round(points * Scale * 96f / 72f));
+			return roundLimit * 72f / (96f * Scale);
 		}
 	}
 }

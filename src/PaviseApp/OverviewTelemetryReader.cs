@@ -275,12 +275,12 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			ulong num = kernelDelta + userDelta;
-			if (num == 0 || idleDelta > num)
+			ulong kernelDeltaOffset = kernelDelta + userDelta;
+			if (kernelDeltaOffset == 0 || idleDelta > kernelDeltaOffset)
 			{
 				return null;
 			}
-			return Math.Max(0.0, Math.Min(100.0, 100.0 * (1.0 - (double)idleDelta / (double)num)));
+			return Math.Max(0.0, Math.Min(100.0, 100.0 * (1.0 - (double)idleDelta / (double)kernelDeltaOffset)));
 		}
 
 		private double? SampleGpu()
@@ -328,8 +328,8 @@ namespace PaviseApp
 		{
 			uint bytes = 0u;
 			uint count = 0u;
-			uint num = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, IntPtr.Zero);
-			if (num != 2147485650u || bytes == 0 || bytes > 4194304)
+			uint pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, IntPtr.Zero);
+			if (pdhGetFormattedCounterArrayWResult != 2147485650u || bytes == 0 || bytes > 4194304)
 			{
 				return null;
 			}
@@ -346,24 +346,24 @@ namespace PaviseApp
 					gpuBufferCapacity = bytes;
 				}
 				bytes = gpuBufferCapacity;
-				num = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, gpuBuffer);
-				if (num == 2147485650u && bytes > gpuBufferCapacity && bytes <= 4194304)
+				pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, gpuBuffer);
+				if (pdhGetFormattedCounterArrayWResult == 2147485650u && bytes > gpuBufferCapacity && bytes <= 4194304)
 				{
 					continue;
 				}
-				if (num != 0)
+				if (pdhGetFormattedCounterArrayWResult != 0)
 				{
 					return null;
 				}
-				int num2 = Marshal.SizeOf(typeof(PdhValueItem));
-				if (count == 0 || (ulong)(count * num2) > (ulong)gpuBufferCapacity)
+				int sizeOfResult = Marshal.SizeOf(typeof(PdhValueItem));
+				if (count == 0 || (ulong)(count * sizeOfResult) > (ulong)gpuBufferCapacity)
 				{
 					return null;
 				}
 				List<KeyValuePair<string, double>> list = new List<KeyValuePair<string, double>>((int)count);
-				for (uint num3 = 0u; num3 < count; num3++)
+				for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
 				{
-					PdhValueItem pdhValueItem = (PdhValueItem)Marshal.PtrToStructure(new IntPtr(gpuBuffer.ToInt64() + num3 * num2), typeof(PdhValueItem));
+					PdhValueItem pdhValueItem = (PdhValueItem)Marshal.PtrToStructure(new IntPtr(gpuBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhValueItem));
 					if (pdhValueItem.Value.Status <= 1 && !(pdhValueItem.Name == IntPtr.Zero))
 					{
 						list.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
@@ -383,25 +383,25 @@ namespace PaviseApp
 			Dictionary<string, double> dictionary = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 			foreach (KeyValuePair<string, double> value2 in values)
 			{
-				string text = GpuEngineKey(value2.Key);
-				if (text != null && !double.IsNaN(value2.Value) && !double.IsInfinity(value2.Value) && !(value2.Value < 0.0))
+				string gpuEngineKeyResult = GpuEngineKey(value2.Key);
+				if (gpuEngineKeyResult != null && !double.IsNaN(value2.Value) && !double.IsInfinity(value2.Value) && !(value2.Value < 0.0))
 				{
 					double value;
-					dictionary.TryGetValue(text, out value);
-					dictionary[text] = Math.Min(100.0, value + Math.Min(100.0, value2.Value));
+					dictionary.TryGetValue(gpuEngineKeyResult, out value);
+					dictionary[gpuEngineKeyResult] = Math.Min(100.0, value + Math.Min(100.0, value2.Value));
 				}
 			}
 			if (dictionary.Count == 0)
 			{
 				return null;
 			}
-			double num = 0.0;
+			double aggregateGpu3DResult = 0.0;
 			foreach (double value3 in dictionary.Values)
 			{
 				double val = value3;
-				num = Math.Max(num, val);
+				aggregateGpu3DResult = Math.Max(aggregateGpu3DResult, val);
 			}
-			return num;
+			return aggregateGpu3DResult;
 		}
 
 		internal static string GpuEngineKey(string instance)
@@ -410,38 +410,38 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			int num = instance.IndexOf('_', 4);
-			if (num <= 4 || !Digits(instance, 4, num))
+			int matchIndex = instance.IndexOf('_', 4);
+			if (matchIndex <= 4 || !Digits(instance, 4, matchIndex))
 			{
 				return null;
 			}
-			int num2 = instance.IndexOf("_engtype_3D", num, StringComparison.OrdinalIgnoreCase);
-			if (num2 < 0)
+			int matchIndex2 = instance.IndexOf("_engtype_3D", matchIndex, StringComparison.OrdinalIgnoreCase);
+			if (matchIndex2 < 0)
 			{
 				return null;
 			}
-			int num3 = num2 + "_engtype_3D".Length;
-			if (num3 < instance.Length && (instance[num3] != '#' || !Digits(instance, num3 + 1, instance.Length)))
+			int matchIndex2Offset = matchIndex2 + "_engtype_3D".Length;
+			if (matchIndex2Offset < instance.Length && (instance[matchIndex2Offset] != '#' || !Digits(instance, matchIndex2Offset + 1, instance.Length)))
 			{
 				return null;
 			}
-			string text = instance.Substring(num + 1, num2 - num - 1);
-			if (!text.StartsWith("luid_", StringComparison.OrdinalIgnoreCase))
+			string substringResult = instance.Substring(matchIndex + 1, matchIndex2 - matchIndex - 1);
+			if (!substringResult.StartsWith("luid_", StringComparison.OrdinalIgnoreCase))
 			{
 				return null;
 			}
-			int num4 = text.IndexOf("_phys_", StringComparison.OrdinalIgnoreCase);
-			int num5 = text.IndexOf("_eng_", StringComparison.OrdinalIgnoreCase);
-			if (num4 <= 5 || num5 <= num4 + 6 || !Digits(text, num4 + 6, num5) || !Digits(text, num5 + 5, text.Length))
+			int matchIndex3 = substringResult.IndexOf("_phys_", StringComparison.OrdinalIgnoreCase);
+			int matchIndex4 = substringResult.IndexOf("_eng_", StringComparison.OrdinalIgnoreCase);
+			if (matchIndex3 <= 5 || matchIndex4 <= matchIndex3 + 6 || !Digits(substringResult, matchIndex3 + 6, matchIndex4) || !Digits(substringResult, matchIndex4 + 5, substringResult.Length))
 			{
 				return null;
 			}
-			int num6 = text.IndexOf('_', 5);
-			if (num6 < 0 || !HexWord(text, 5, num6) || !HexWord(text, num6 + 1, num4))
+			int matchIndex5 = substringResult.IndexOf('_', 5);
+			if (matchIndex5 < 0 || !HexWord(substringResult, 5, matchIndex5) || !HexWord(substringResult, matchIndex5 + 1, matchIndex3))
 			{
 				return null;
 			}
-			return text;
+			return substringResult;
 		}
 
 		private static bool HexWord(string value, int first, int end)
@@ -558,23 +558,23 @@ namespace PaviseApp
 				{
 					return 0;
 				}
-				int num = 0;
-				long num2;
-				int num3;
-				for (num2 = 0L; num2 + 8 <= bytes; num2 += num3)
+				int processedCount = 0;
+				long numericValue;
+				int physicalCoreCountValue;
+				for (numericValue = 0L; numericValue + 8 <= bytes; numericValue += physicalCoreCountValue)
 				{
-					IntPtr ptr = new IntPtr(intPtr.ToInt64() + num2);
-					num3 = Marshal.ReadInt32(ptr, 4);
-					if (num3 < 8 || num2 + num3 > bytes)
+					IntPtr ptr = new IntPtr(intPtr.ToInt64() + numericValue);
+					physicalCoreCountValue = Marshal.ReadInt32(ptr, 4);
+					if (physicalCoreCountValue < 8 || numericValue + physicalCoreCountValue > bytes)
 					{
 						return 0;
 					}
 					if (Marshal.ReadInt32(ptr) == 0)
 					{
-						num++;
+						processedCount++;
 					}
 				}
-				return (num2 == bytes) ? num : 0;
+				return (numericValue == bytes) ? processedCount : 0;
 			}
 			finally
 			{
@@ -596,52 +596,52 @@ namespace PaviseApp
 				{
 					using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
 					{
-						string text = null;
-						int num = int.MaxValue;
-						int num2 = 0;
-						bool flag = true;
-						bool flag2 = true;
-						bool flag3 = true;
-						ulong num3 = 0uL;
+						string message = null;
+						int maxValue = int.MaxValue;
+						int processedCount = 0;
+						bool memoryFactsReady = true;
+						bool memoryFactsReady2 = true;
+						bool memoryFactsReady3 = true;
+						ulong numericValue = 0uL;
 						foreach (ManagementObject item in managementObjectCollection)
 						{
 							using (item)
 							{
-								ulong num4 = ToUnsigned(item["Capacity"]);
-								if (num4 == 0 || num4 > (ulong)(-1L - (long)num3))
+								ulong toUnsignedResult = ToUnsigned(item["Capacity"]);
+								if (toUnsignedResult == 0 || toUnsignedResult > (ulong)(-1L - (long)numericValue))
 								{
-									flag3 = false;
+									memoryFactsReady3 = false;
 								}
 								else
 								{
-									num3 += num4;
+									numericValue += toUnsignedResult;
 								}
-								string text2 = MemoryTypeName((int)ToUnsigned(item["SMBIOSMemoryType"]));
-								if (text2 == null || (text != null && text != text2))
+								string memoryTypeNameResult = MemoryTypeName((int)ToUnsigned(item["SMBIOSMemoryType"]));
+								if (memoryTypeNameResult == null || (message != null && message != memoryTypeNameResult))
 								{
-									flag = false;
+									memoryFactsReady = false;
 								}
 								else
 								{
-									text = text2;
+									message = memoryTypeNameResult;
 								}
-								ulong num5 = ToUnsigned(item["ConfiguredClockSpeed"]);
-								if (num5 == 0 || num5 > 100000)
+								ulong toUnsignedResult2 = ToUnsigned(item["ConfiguredClockSpeed"]);
+								if (toUnsignedResult2 == 0 || toUnsignedResult2 > 100000)
 								{
-									flag2 = false;
+									memoryFactsReady2 = false;
 								}
 								else
 								{
-									num = Math.Min(num, (int)num5);
+									maxValue = Math.Min(maxValue, (int)toUnsignedResult2);
 								}
-								num2++;
+								processedCount++;
 							}
 						}
-						if (num2 > 0)
+						if (processedCount > 0)
 						{
-							memoryFacts.Type = (flag ? text : null);
-							memoryFacts.Speed = ((flag2 && num != int.MaxValue) ? num : 0);
-							memoryFacts.Capacity = (flag3 ? num3 : 0);
+							memoryFacts.Type = (memoryFactsReady ? message : null);
+							memoryFacts.Speed = ((memoryFactsReady2 && maxValue != int.MaxValue) ? maxValue : 0);
+							memoryFacts.Capacity = (memoryFactsReady3 ? numericValue : 0);
 						}
 					}
 				}

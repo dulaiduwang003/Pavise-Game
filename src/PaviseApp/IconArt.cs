@@ -94,18 +94,18 @@ namespace PaviseApp
 		private static GraphicsPath Squircle(float x, float y, float w, float h, float r)
 		{
 			GraphicsPath graphicsPath = new GraphicsPath();
-			float num = r * 2f;
-			graphicsPath.AddArc(x, y, num, num, 180f, 90f);
-			graphicsPath.AddArc(x + w - num, y, num, num, 270f, 90f);
-			graphicsPath.AddArc(x + w - num, y + h - num, num, num, 0f, 90f);
-			graphicsPath.AddArc(x, y + h - num, num, num, 90f, 90f);
+			float scaledR = r * 2f;
+			graphicsPath.AddArc(x, y, scaledR, scaledR, 180f, 90f);
+			graphicsPath.AddArc(x + w - scaledR, y, scaledR, scaledR, 270f, 90f);
+			graphicsPath.AddArc(x + w - scaledR, y + h - scaledR, scaledR, scaledR, 0f, 90f);
+			graphicsPath.AddArc(x, y + h - scaledR, scaledR, scaledR, 90f, 90f);
 			graphicsPath.CloseFigure();
 			return graphicsPath;
 		}
 
 		private static PointF[] BoltPts()
 		{
-			PointF[] array = new PointF[6]
+			PointF[] pointFItems = new PointF[6]
 			{
 				new PointF(58f, 26f),
 				new PointF(38f, 54f),
@@ -114,11 +114,11 @@ namespace PaviseApp
 				new PointF(65f, 44f),
 				new PointF(53f, 44f)
 			};
-			for (int i = 0; i < array.Length; i++)
+			for (int i = 0; i < pointFItems.Length; i++)
 			{
-				array[i] = new PointF(50f + (array[i].X - 50f) * 1.36f, 50f + (array[i].Y - 50f) * 1.36f);
+				pointFItems[i] = new PointF(50f + (pointFItems[i].X - 50f) * 1.36f, 50f + (pointFItems[i].Y - 50f) * 1.36f);
 			}
-			return array;
+			return pointFItems;
 		}
 	}
 }

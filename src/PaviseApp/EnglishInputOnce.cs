@@ -98,11 +98,11 @@ namespace PaviseApp
 			long deadline = clock() + 15000;
 			lock (operationGate)
 			{
-				int num;
-				Session[] array;
+				int cancellationVersionSnapshot;
+				Session[] historyItems;
 				lock (stateGate)
 				{
-					num = cancellationVersion;
+					cancellationVersionSnapshot = cancellationVersion;
 					if (current != null && SameProfile(current.ProfileId, profileId))
 					{
 						Remember(current, process);
@@ -114,12 +114,12 @@ namespace PaviseApp
 						current.Revoked = true;
 					}
 					current = null;
-					array = history.ToArray();
+					historyItems = history.ToArray();
 				}
 				Session session = null;
 				List<Session> list = new List<Session>();
-				Session[] array2 = array;
-				foreach (Session session2 in array2)
+				Session[] sessionItems = historyItems;
+				foreach (Session session2 in sessionItems)
 				{
 					if (session != null)
 					{
@@ -133,16 +133,16 @@ namespace PaviseApp
 						}
 						continue;
 					}
-					bool flag = false;
+					bool beginReady = false;
 					foreach (GameInputProcess process4 in session2.Processes)
 					{
 						if (process4.Equals(process))
 						{
 							session = session2;
-							flag = true;
+							beginReady = true;
 							break;
 						}
-						if (!flag)
+						if (!beginReady)
 						{
 							GameInputProcessState gameInputProcessState;
 							try
@@ -155,11 +155,11 @@ namespace PaviseApp
 							}
 							if (gameInputProcessState != GameInputProcessState.Gone)
 							{
-								flag = true;
+								beginReady = true;
 							}
 						}
 					}
-					if (!flag)
+					if (!beginReady)
 					{
 						list.Add(session2);
 					}
@@ -168,10 +168,10 @@ namespace PaviseApp
 						session = session2;
 					}
 				}
-				bool flag2 = enabledAtEntry && Evaluate(admission);
+				bool matchesEnabledAtEntry = enabledAtEntry && Evaluate(admission);
 				lock (stateGate)
 				{
-					flag2 = flag2 && num == cancellationVersion;
+					matchesEnabledAtEntry = matchesEnabledAtEntry && cancellationVersionSnapshot == cancellationVersion;
 					foreach (Session item in list)
 					{
 						history.Remove(item);
@@ -192,8 +192,8 @@ namespace PaviseApp
 					Session session3 = new Session();
 					session3.ProfileId = profileId;
 					session3.Deadline = deadline;
-					session3.Consumed = !flag2;
-					session3.Revoked = !flag2;
+					session3.Consumed = !matchesEnabledAtEntry;
+					session3.Revoked = !matchesEnabledAtEntry;
 					session3.OriginalAdmission = admission;
 					session3.HistoryFull = historyExhausted;
 					Session session4 = session3;
@@ -209,12 +209,12 @@ namespace PaviseApp
 
 		private bool Allowed(Session session, Func<bool> admission)
 		{
-			bool flag;
+			bool matchesReferenceEquals;
 			lock (stateGate)
 			{
-				flag = object.ReferenceEquals(current, session) && !session.Revoked;
+				matchesReferenceEquals = object.ReferenceEquals(current, session) && !session.Revoked;
 			}
-			if (flag && clock() <= session.Deadline && Evaluate(session.OriginalAdmission))
+			if (matchesReferenceEquals && clock() <= session.Deadline && Evaluate(session.OriginalAdmission))
 			{
 				return Evaluate(admission);
 			}

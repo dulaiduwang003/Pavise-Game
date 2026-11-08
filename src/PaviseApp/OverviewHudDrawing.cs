@@ -61,10 +61,10 @@ namespace PaviseApp
 						graphics.DrawLine(pen2, 1, 6, 1, 28);
 						for (int l = 0; l < 2; l++)
 						{
-							int num = 10 + l * 12;
-							graphics.DrawEllipse(pen2, num - 5, 11, 10, 10);
-							graphics.DrawLine(pen2, num - 3, 13, num + 3, 19);
-							graphics.DrawLine(pen2, num - 3, 19, num + 3, 13);
+							int iconValue = 10 + l * 12;
+							graphics.DrawEllipse(pen2, iconValue - 5, 11, 10, 10);
+							graphics.DrawLine(pen2, iconValue - 3, 13, iconValue + 3, 19);
+							graphics.DrawLine(pen2, iconValue - 3, 19, iconValue + 3, 13);
 						}
 						graphics.DrawLine(pen2, 7, 28, 15, 28);
 						break;

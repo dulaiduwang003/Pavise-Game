@@ -16,12 +16,12 @@ namespace PaviseApp
 
 		public static Rectangle Inset(Rectangle r, int logicalInset)
 		{
-			int num = Theme.S(logicalInset);
-			if (r.Width <= num * 2 + 2 || r.Height <= num * 2 + 2)
+			int scaledDimension = Theme.S(logicalInset);
+			if (r.Width <= scaledDimension * 2 + 2 || r.Height <= scaledDimension * 2 + 2)
 			{
 				return Rectangle.Empty;
 			}
-			return Rectangle.Inflate(r, -num, -num);
+			return Rectangle.Inflate(r, -scaledDimension, -scaledDimension);
 		}
 
 		public static void Draw(Graphics g, Rectangle r, Color ink, Color back)

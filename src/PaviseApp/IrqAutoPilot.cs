@@ -35,12 +35,12 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = engine.Disable(null);
-				if (flag && !Settings.SaveStr("IrqAutoPlanV1", ""))
+				bool disableSucceeded = engine.Disable(null);
+				if (disableSucceeded && !Settings.SaveStr("IrqAutoPlanV1", ""))
 				{
-					flag = false;
+					disableSucceeded = false;
 				}
-				return flag;
+				return disableSucceeded;
 			}
 		}
 

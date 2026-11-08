@@ -190,34 +190,34 @@ namespace PaviseApp
 
 		private static int TryGetDwordOf(IntPtr session, IntPtr profile, string key, out uint value)
 		{
-			uint num = SettingIdOf(key);
-			if (num == 0)
+			uint settingIdOfResult = SettingIdOf(key);
+			if (settingIdOfResult == 0)
 			{
 				value = 0u;
 				return -1;
 			}
-			return Driver.TryGetDword(session, profile, num, out value);
+			return Driver.TryGetDword(session, profile, settingIdOfResult, out value);
 		}
 
 		private static bool SetDwordOf(IntPtr session, IntPtr profile, string key, uint value, out int status)
 		{
-			uint num = SettingIdOf(key);
-			if (num == 0)
+			uint settingIdOfResult = SettingIdOf(key);
+			if (settingIdOfResult == 0)
 			{
 				status = 0;
 				return false;
 			}
-			return Driver.SetDword(session, profile, num, value, out status);
+			return Driver.SetDword(session, profile, settingIdOfResult, value, out status);
 		}
 
 		private static bool DeleteSettingOf(IntPtr session, IntPtr profile, string key)
 		{
-			uint num = SettingIdOf(key);
-			if (num == 0)
+			uint settingIdOfResult = SettingIdOf(key);
+			if (settingIdOfResult == 0)
 			{
 				return false;
 			}
-			return Driver.DeleteSetting(session, profile, num);
+			return Driver.DeleteSetting(session, profile, settingIdOfResult);
 		}
 
 		internal static bool IsDlssCapableName(string gpuName)
@@ -233,8 +233,8 @@ namespace PaviseApp
 		{
 			try
 			{
-				GpuAdapter[] array = GpuInventory.Adapters();
-				foreach (GpuAdapter gpuAdapter in array)
+				GpuAdapter[] adaptersResult = GpuInventory.Adapters();
+				foreach (GpuAdapter gpuAdapter in adaptersResult)
 				{
 					if (gpuAdapter.Vendor == GpuVendor.Nvidia && IsDlssCapableName(gpuAdapter.Name))
 					{
@@ -295,18 +295,18 @@ namespace PaviseApp
 
 		internal static uint SmoothMotionMinDriver()
 		{
-			uint num = 0u;
+			uint smoothMotionMinDriverResult = 0u;
 			try
 			{
-				GpuAdapter[] array = GpuInventory.Adapters();
-				foreach (GpuAdapter gpuAdapter in array)
+				GpuAdapter[] adaptersResult = GpuInventory.Adapters();
+				foreach (GpuAdapter gpuAdapter in adaptersResult)
 				{
 					if (gpuAdapter.Vendor == GpuVendor.Nvidia && !string.IsNullOrEmpty(gpuAdapter.Name))
 					{
-						uint num2 = SmoothMotionMinDriverForName(gpuAdapter.Name);
-						if (num2 != 0 && (num == 0 || num2 < num))
+						uint smoothMotionMinDriverForNameResult = SmoothMotionMinDriverForName(gpuAdapter.Name);
+						if (smoothMotionMinDriverForNameResult != 0 && (smoothMotionMinDriverResult == 0 || smoothMotionMinDriverForNameResult < smoothMotionMinDriverResult))
 						{
-							num = num2;
+							smoothMotionMinDriverResult = smoothMotionMinDriverForNameResult;
 						}
 					}
 				}
@@ -314,17 +314,17 @@ namespace PaviseApp
 			catch
 			{
 			}
-			return num;
+			return smoothMotionMinDriverResult;
 		}
 
 		public static bool SmoothMotionSupported()
 		{
-			uint num = SmoothMotionMinDriver();
-			if (num == 0 || !Driver.Available)
+			uint smoothMotionMinDriverResult = SmoothMotionMinDriver();
+			if (smoothMotionMinDriverResult == 0 || !Driver.Available)
 			{
 				return false;
 			}
-			return IsSmoothMotionSupported(num, true, CurrentDriverVersion(), NvApi.SmoothMotionSettingSupported);
+			return IsSmoothMotionSupported(smoothMotionMinDriverResult, true, CurrentDriverVersion(), NvApi.SmoothMotionSettingSupported);
 		}
 
 		internal static bool IsSmoothMotionSupported(uint minDriver, bool available, uint driverVersion, Func<bool> settingSupported)
@@ -437,20 +437,20 @@ namespace PaviseApp
 
 		private static void MarkUltraGone()
 		{
-			string text = "d" + CurrentDriverVersion();
-			if (!(Settings.LoadStr("NvUllUnsupDrv", "") == text))
+			string currentDriverVersionOffset = "d" + CurrentDriverVersion();
+			if (!(Settings.LoadStr("NvUllUnsupDrv", "") == currentDriverVersionOffset))
 			{
-				Settings.SaveStr("NvUllUnsupDrv", text);
+				Settings.SaveStr("NvUllUnsupDrv", currentDriverVersionOffset);
 				Logger.Log(Lang.T("log.nvdrstweaks.48"));
 			}
 		}
 
 		internal static string SnapOrig(string stored)
 		{
-			int num = stored.IndexOf('~');
-			if (num >= 0)
+			int matchIndex = stored.IndexOf('~');
+			if (matchIndex >= 0)
 			{
-				return stored.Substring(0, num);
+				return stored.Substring(0, matchIndex);
 			}
 			return stored;
 		}
@@ -458,25 +458,25 @@ namespace PaviseApp
 		internal static bool TrySnapApplied(string stored, out uint applied)
 		{
 			applied = 0u;
-			int num = stored.IndexOf('~');
-			if (num < 0)
+			int matchIndex = stored.IndexOf('~');
+			if (matchIndex < 0)
 			{
 				return false;
 			}
-			string text = stored.Substring(num + 1);
-			int num2 = text.IndexOf(',');
-			return uint.TryParse((num2 < 0) ? text : text.Substring(0, num2), out applied);
+			string substringResult = stored.Substring(matchIndex + 1);
+			int matchIndex2 = substringResult.IndexOf(',');
+			return uint.TryParse((matchIndex2 < 0) ? substringResult : substringResult.Substring(0, matchIndex2), out applied);
 		}
 
 		private static bool MatchesApplied(string stored, uint current)
 		{
-			int num = stored.IndexOf('~');
-			if (num < 0)
+			int matchIndex = stored.IndexOf('~');
+			if (matchIndex < 0)
 			{
 				return false;
 			}
-			string[] array = stored.Substring(num + 1).Split(',');
-			foreach (string s in array)
+			string[] substringParts = stored.Substring(matchIndex + 1).Split(',');
+			foreach (string s in substringParts)
 			{
 				uint result;
 				if (uint.TryParse(s, out result) && result == current)
@@ -489,13 +489,13 @@ namespace PaviseApp
 
 		private static string PrepareWriteReceipt(string stored, uint desired)
 		{
-			string text = desired.ToString();
+			string desiredText = desired.ToString();
 			uint applied;
 			if (TrySnapApplied(stored, out applied) && applied != desired)
 			{
-				text = text + "," + applied;
+				desiredText = desiredText + "," + applied;
 			}
-			return SnapOrig(stored) + '~' + text;
+			return SnapOrig(stored) + '~' + desiredText;
 		}
 
 		private static string SatSignature(List<KeyValuePair<string, uint>> desired)
@@ -627,8 +627,8 @@ namespace PaviseApp
 			}
 			List<string> list = new List<string>();
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			bool flag = false;
-			bool flag2 = true;
+			bool restoreGameKeysReady = false;
+			bool restoreGameKeysSucceeded = true;
 			try
 			{
 				foreach (string key in keys)
@@ -639,34 +639,34 @@ namespace PaviseApp
 						continue;
 					}
 					uint value2;
-					int num = TryGetDwordOf(session, profile, key, out value2);
-					if (num < 0)
+					int dwordOf = TryGetDwordOf(session, profile, key, out value2);
+					if (dwordOf < 0)
 					{
-						flag2 = false;
+						restoreGameKeysSucceeded = false;
 						continue;
 					}
 					uint applied;
-					if (!force && TrySnapApplied(value, out applied) && (num == 0 || (num == 1 && !MatchesApplied(value, value2))))
+					if (!force && TrySnapApplied(value, out applied) && (dwordOf == 0 || (dwordOf == 1 && !MatchesApplied(value, value2))))
 					{
 						list.Add(key);
 						hashSet.Add(key);
 						continue;
 					}
-					string text = SnapOrig(value);
-					bool num2;
-					if (!(text == "absent"))
+					string snapOrigResult = SnapOrig(value);
+					bool matchesValue2;
+					if (!(snapOrigResult == "absent"))
 					{
-						if (num != 1)
+						if (dwordOf != 1)
 						{
 							goto VerifyAppliedSnapshot;
 						}
-						num2 = value2 == ParseUInt(text);
+						matchesValue2 = value2 == ParseUInt(snapOrigResult);
 					}
 					else
 					{
-						num2 = num == 0;
+						matchesValue2 = dwordOf == 0;
 					}
-					if (num2)
+					if (matchesValue2)
 					{
 						list.Add(key);
 						continue;
@@ -675,33 +675,33 @@ namespace PaviseApp
 					VerifyAppliedSnapshot:
 					if (!force && (key == "pstate" || key == "forcep2") && !TrySnapApplied(value, out applied))
 					{
-						flag2 = false;
+						restoreGameKeysSucceeded = false;
 						continue;
 					}
-					bool num3;
-					if (!(text == "absent"))
+					bool restoreDwordSucceeded;
+					if (!(snapOrigResult == "absent"))
 					{
-						num3 = RestoreDword(session, profile, key, text);
+						restoreDwordSucceeded = RestoreDword(session, profile, key, snapOrigResult);
 					}
 					else
 					{
-						if (num == 0)
+						if (dwordOf == 0)
 						{
 							goto RecordRestoredSetting;
 						}
-						num3 = DeleteSettingOf(session, profile, key);
+						restoreDwordSucceeded = DeleteSettingOf(session, profile, key);
 					}
-					if (!num3)
+					if (!restoreDwordSucceeded)
 					{
-						flag2 = false;
+						restoreGameKeysSucceeded = false;
 						continue;
 					}
 					goto RecordRestoredSetting;
 					RecordRestoredSetting:
 					list.Add(key);
-					flag = true;
+					restoreGameKeysReady = true;
 				}
-				if (flag && !Driver.SaveSession(session))
+				if (restoreGameKeysReady && !Driver.SaveSession(session))
 				{
 					ScheduleRestore(exeName, action);
 					return false;
@@ -711,24 +711,24 @@ namespace PaviseApp
 				{
 					string stored = snapshot[item];
 					uint value3;
-					int num4 = TryGetDwordOf(session, profile, item, out value3);
-					string text2 = SnapOrig(stored);
+					int dwordOf2 = TryGetDwordOf(session, profile, item, out value3);
+					string snapOrigResult2 = SnapOrig(stored);
 					if (!hashSet.Contains(item))
 					{
-						bool num5;
-						if (!(text2 == "absent"))
+						bool matchesValue3;
+						if (!(snapOrigResult2 == "absent"))
 						{
-							if (num4 != 1)
+							if (dwordOf2 != 1)
 							{
 								goto RecordRestoreFailure;
 							}
-							num5 = value3 == ParseUInt(text2);
+							matchesValue3 = value3 == ParseUInt(snapOrigResult2);
 						}
 						else
 						{
-							num5 = num4 == 0;
+							matchesValue3 = dwordOf2 == 0;
 						}
-						if (!num5)
+						if (!matchesValue3)
 						{
 							goto RecordRestoreFailure;
 						}
@@ -736,7 +736,7 @@ namespace PaviseApp
 					list2.Add(item);
 					continue;
 					RecordRestoreFailure:
-					flag2 = false;
+					restoreGameKeysSucceeded = false;
 				}
 				Dictionary<string, string> dictionary = new Dictionary<string, string>(snapshot, StringComparer.OrdinalIgnoreCase);
 				foreach (string item2 in list2)
@@ -753,7 +753,7 @@ namespace PaviseApp
 					snapshot.Remove(item3);
 				}
 				Settings.SaveStr(SatKey(exeName), "");
-				if (flag2)
+				if (restoreGameKeysSucceeded)
 				{
 					if (action == DriverFailureAction ? snapshot.Count == 0 : SnapshotKeysFor(snapshot, action).Count == 0)
 					{
@@ -765,7 +765,7 @@ namespace PaviseApp
 				{
 					ScheduleRestore(exeName, action);
 				}
-				return flag2;
+				return restoreGameKeysSucceeded;
 			}
 			catch
 			{
@@ -795,30 +795,30 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string text in array)
+			string[] valueParts = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string entryText in valueParts)
 			{
-				int num = text.IndexOf('=');
-				if (num <= 0 || num == text.Length - 1)
+				int matchIndex = entryText.IndexOf('=');
+				if (matchIndex <= 0 || matchIndex == entryText.Length - 1)
 				{
 					return false;
 				}
-				string key = text.Substring(0, num);
-				string text2 = text.Substring(num + 1);
+				string key = entryText.Substring(0, matchIndex);
+				string substringResult = entryText.Substring(matchIndex + 1);
 				uint result;
-				if (snapshot.ContainsKey(key) || SettingIdOf(key) == 0 || (SnapOrig(text2) != "absent" && !uint.TryParse(SnapOrig(text2), out result)) || (text2.IndexOf('~') >= 0 && !TrySnapApplied(text2, out result)))
+				if (snapshot.ContainsKey(key) || SettingIdOf(key) == 0 || (SnapOrig(substringResult) != "absent" && !uint.TryParse(SnapOrig(substringResult), out result)) || (substringResult.IndexOf('~') >= 0 && !TrySnapApplied(substringResult, out result)))
 				{
 					return false;
 				}
-				if (text2.IndexOf('~') >= 0)
+				if (substringResult.IndexOf('~') >= 0)
 				{
-					string[] array2 = text2.Substring(text2.IndexOf('~') + 1).Split(',');
-					if (array2.Length > 2)
+					string[] substringParts = substringResult.Substring(substringResult.IndexOf('~') + 1).Split(',');
+					if (substringParts.Length > 2)
 					{
 						return false;
 					}
-					string[] array3 = array2;
-					foreach (string s in array3)
+					string[] textEntries = substringParts;
+					foreach (string s in textEntries)
 					{
 						if (!uint.TryParse(s, out result))
 						{
@@ -826,7 +826,7 @@ namespace PaviseApp
 						}
 					}
 				}
-				snapshot[key] = text2;
+				snapshot[key] = substringResult;
 			}
 			return true;
 		}
@@ -887,41 +887,41 @@ namespace PaviseApp
 					}
 					value.Add(item);
 				}
-				uint num = CurrentDriverVersion();
-				string environmentContext = "NVIDIA DRS | " + ((num == 0) ? "GPU/driver context unavailable" : ("driver " + FormatDriver(num)));
-				bool flag2 = !ActionFailureStore.IsBlocked("NvDriverProfile", fileName);
-				bool flag3 = false;
+				uint currentDriverVersionResult = CurrentDriverVersion();
+				string environmentContext = "NVIDIA DRS | " + ((currentDriverVersionResult == 0) ? "GPU/driver context unavailable" : ("driver " + FormatDriver(currentDriverVersionResult)));
+				bool isNotIsBlocked = !ActionFailureStore.IsBlocked("NvDriverProfile", fileName);
+				bool applyForGameReady = false;
 				foreach (string key4 in dictionary.Keys)
 				{
-					flag3 |= !ActionFailureStore.IsBlocked(key4, fileName);
+					applyForGameReady |= !ActionFailureStore.IsBlocked(key4, fileName);
 				}
-				string text = SatSignature(list);
-				bool flag5 = flag2;
+				string satSignatureResult = SatSignature(list);
+				bool applyForGameReady2 = isNotIsBlocked;
 				foreach (string key5 in dictionary.Keys)
 				{
-					flag5 &= !ActionFailureStore.IsBlocked(key5, fileName);
+					applyForGameReady2 &= !ActionFailureStore.IsBlocked(key5, fileName);
 				}
-				if (list.Count > 0 && flag5 && Settings.LoadStr(SatKey(fileName), "") == text)
+				if (list.Count > 0 && applyForGameReady2 && Settings.LoadStr(SatKey(fileName), "") == satSignatureResult)
 				{
 					return new List<string>();
 				}
-				bool flag6 = flag2 && flag3;
-				bool flag7 = false;
-				bool flag8 = true;
+				bool matchesIsNotIsBlocked = isNotIsBlocked && applyForGameReady;
+				bool applyForGameReady3 = false;
+				bool applyForGameReady4 = true;
 				string reason;
-				if (flag6)
+				if (matchesIsNotIsBlocked)
 				{
-					flag7 = ActionFailureStore.TryBeginApply("NvDriverProfile", fileName, out reason);
+					applyForGameReady3 = ActionFailureStore.TryBeginApply("NvDriverProfile", fileName, out reason);
 				}
-				if (flag6 && !flag7)
+				if (matchesIsNotIsBlocked && !applyForGameReady3)
 				{
-					flag6 = false;
+					matchesIsNotIsBlocked = false;
 				}
-				if (!flag6 && snapshot.Count == 0)
+				if (!matchesIsNotIsBlocked && snapshot.Count == 0)
 				{
 					return null;
 				}
-				if (!flag6)
+				if (!matchesIsNotIsBlocked)
 				{
 					bool recoveryDue = false;
 					foreach (string key in snapshot.Keys) recoveryDue |= RestoreDue(fileName, FailureActionFor(key));
@@ -933,7 +933,7 @@ namespace PaviseApp
 					if (!Driver.TryOpenSession(out session))
 					{
 						ScheduleRestore(fileName, DriverFailureAction);
-						if (flag7)
+						if (applyForGameReady3)
 						{
 							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA driver session could not be opened", environmentContext);
 						}
@@ -948,7 +948,7 @@ namespace PaviseApp
 					if (!Driver.FindOrCreateAppProfile(session, fileName, out profile))
 					{
 						ScheduleRestore(fileName, DriverFailureAction);
-						if (flag7 || snapshot.Count > 0)
+						if (applyForGameReady3 || snapshot.Count > 0)
 						{
 							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA game profile could not be opened", environmentContext);
 						}
@@ -959,7 +959,7 @@ namespace PaviseApp
 					HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 					foreach (KeyValuePair<string, uint> item2 in list)
 					{
-						if (flag6 && !ActionFailureStore.IsBlocked(FailureActionFor(item2.Key), fileName))
+						if (matchesIsNotIsBlocked && !ActionFailureStore.IsBlocked(FailureActionFor(item2.Key), fileName))
 						{
 							hashSet.Add(item2.Key);
 						}
@@ -980,10 +980,10 @@ namespace PaviseApp
 					}
 					foreach (KeyValuePair<string, List<string>> item3 in dictionary2)
 					{
-						bool flag9 = RestoreDue(fileName, item3.Key);
+						bool restoreDueSucceeded = RestoreDue(fileName, item3.Key);
 						if (!RestoreGameKeys(session, profile, fileName, snapshot, item3.Value, item3.Key, false))
 						{
-							if (flag9)
+							if (restoreDueSucceeded)
 							{
 								ActionFailureStore.Trip(item3.Key, fileName, "NVIDIA stale setting recovery remains incomplete", environmentContext);
 							}
@@ -998,7 +998,7 @@ namespace PaviseApp
 					foreach (KeyValuePair<string, List<KeyValuePair<string, uint>>> item4 in dictionary)
 					{
 						string key3 = item4.Key;
-						if (!flag6 || ActionFailureStore.IsBlocked(key3, fileName))
+						if (!matchesIsNotIsBlocked || ActionFailureStore.IsBlocked(key3, fileName))
 						{
 							foreach (KeyValuePair<string, uint> item5 in item4.Value)
 							{
@@ -1020,11 +1020,11 @@ namespace PaviseApp
 							}
 							continue;
 						}
-						bool flag10 = false;
-						bool flag11 = false;
-						bool flag12 = false;
+						bool applyForGameReady5 = false;
+						bool applyForGameReady6 = false;
+						bool applyForGameReady7 = false;
 						bool force = false;
-						string text2 = "";
+						string message = "";
 						HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 						try
 						{
@@ -1033,22 +1033,22 @@ namespace PaviseApp
 								if (!snapshot.ContainsKey(item8.Key))
 								{
 									uint value3;
-									int num2 = TryGetDwordOf(session, profile, item8.Key, out value3);
-									if (num2 < 0)
+									int dwordOf = TryGetDwordOf(session, profile, item8.Key, out value3);
+									if (dwordOf < 0)
 									{
-										flag10 = true;
-										text2 = "NVIDIA original setting could not be read: " + item8.Key;
+										applyForGameReady5 = true;
+										message = "NVIDIA original setting could not be read: " + item8.Key;
 										break;
 									}
-									snapshot[item8.Key] = ((num2 == 1) ? value3.ToString() : "absent");
+									snapshot[item8.Key] = ((dwordOf == 1) ? value3.ToString() : "absent");
 								}
 							}
-							if (!flag10 && !SaveGameSnapshot(fileName, snapshot))
+							if (!applyForGameReady5 && !SaveGameSnapshot(fileName, snapshot))
 							{
 								ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA recovery journal could not be saved", environmentContext);
 								ActionFailureStore.CancelApply(key3, fileName);
 								RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, false);
-								flag6 = false;
+								matchesIsNotIsBlocked = false;
 								retryLater = true;
 								foreach (KeyValuePair<string, uint> item9 in item4.Value)
 								{
@@ -1059,19 +1059,19 @@ namespace PaviseApp
 								}
 								continue;
 							}
-							if (!flag10)
+							if (!applyForGameReady5)
 							{
 								foreach (KeyValuePair<string, uint> item10 in item4.Value)
 								{
 									uint value4;
-									int num3 = TryGetDwordOf(session, profile, item10.Key, out value4);
-									if (num3 < 0)
+									int dwordOf2 = TryGetDwordOf(session, profile, item10.Key, out value4);
+									if (dwordOf2 < 0)
 									{
-										flag10 = true;
-										text2 = "NVIDIA current setting became unreadable: " + item10.Key;
+										applyForGameReady5 = true;
+										message = "NVIDIA current setting became unreadable: " + item10.Key;
 										break;
 									}
-									if (num3 == 1 && value4 == item10.Value)
+									if (dwordOf2 == 1 && value4 == item10.Value)
 									{
 										continue;
 									}
@@ -1084,7 +1084,7 @@ namespace PaviseApp
 									int status;
 									if (SetDwordOf(session, profile, item10.Key, item10.Value, out status))
 									{
-										flag11 = true;
+										applyForGameReady6 = true;
 										continue;
 									}
 									if (status == -160)
@@ -1096,12 +1096,12 @@ namespace PaviseApp
 										}
 										continue;
 									}
-									flag10 = true;
-									text2 = "NVIDIA setting write failed: " + item10.Key + " (" + status + ")";
+									applyForGameReady5 = true;
+									message = "NVIDIA setting write failed: " + item10.Key + " (" + status + ")";
 									break;
 								}
 							}
-							if (!flag10 && flag11 && !Driver.SaveSession(session))
+							if (!applyForGameReady5 && applyForGameReady6 && !Driver.SaveSession(session))
 							{
 								ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA driver session could not be saved", environmentContext);
 								if (RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, true))
@@ -1111,9 +1111,9 @@ namespace PaviseApp
 								else
 								{
 									ActionFailureStore.Trip(key3, fileName, "NVIDIA driver save failed and action rollback remains incomplete", environmentContext);
-									flag8 = false;
+									applyForGameReady4 = false;
 								}
-								flag6 = false;
+								matchesIsNotIsBlocked = false;
 								retryLater = true;
 								foreach (KeyValuePair<string, uint> item11 in item4.Value)
 								{
@@ -1124,23 +1124,23 @@ namespace PaviseApp
 								}
 								continue;
 							}
-							if (!flag10)
+							if (!applyForGameReady5)
 							{
 								foreach (KeyValuePair<string, uint> item12 in item4.Value)
 								{
 									uint value5;
 									if (!hashSet2.Contains(item12.Key) && (TryGetDwordOf(session, profile, item12.Key, out value5) != 1 || value5 != item12.Value))
 									{
-										flag10 = true;
-										text2 = "NVIDIA setting verification failed: " + item12.Key;
+										applyForGameReady5 = true;
+										message = "NVIDIA setting verification failed: " + item12.Key;
 									}
 								}
 							}
-							if (!flag10 && hashSet2.Count == item4.Value.Count)
+							if (!applyForGameReady5 && hashSet2.Count == item4.Value.Count)
 							{
-								flag12 = true;
+								applyForGameReady7 = true;
 							}
-							if (!flag10 && !flag12)
+							if (!applyForGameReady5 && !applyForGameReady7)
 							{
 								foreach (KeyValuePair<string, uint> item13 in item4.Value)
 								{
@@ -1152,34 +1152,34 @@ namespace PaviseApp
 								}
 								if (!SaveGameSnapshot(fileName, snapshot))
 								{
-									flag10 = true;
-									text2 = "NVIDIA verified setting receipt could not be saved";
+									applyForGameReady5 = true;
+									message = "NVIDIA verified setting receipt could not be saved";
 								}
 							}
 						}
 						catch (NotSupportedException)
 						{
-							flag12 = true;
+							applyForGameReady7 = true;
 						}
 						catch (OperationCanceledException)
 						{
-							flag12 = true;
+							applyForGameReady7 = true;
 						}
 						catch (Exception ex3)
 						{
-							flag10 = true;
-							text2 = ex3.GetType().Name + ": " + ex3.Message;
+							applyForGameReady5 = true;
+							message = ex3.GetType().Name + ": " + ex3.Message;
 						}
-						if (flag10)
+						if (applyForGameReady5)
 						{
-							ActionFailureStore.Trip(key3, fileName, text2, environmentContext);
+							ActionFailureStore.Trip(key3, fileName, message, environmentContext);
 							if (RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, force))
 							{
 								ActionFailureStore.CancelApply(key3, fileName);
 							}
 							else
 							{
-								ActionFailureStore.Trip(key3, fileName, text2 + "; rollback remains incomplete", environmentContext);
+								ActionFailureStore.Trip(key3, fileName, message + "; rollback remains incomplete", environmentContext);
 							}
 							foreach (KeyValuePair<string, uint> item14 in item4.Value)
 							{
@@ -1188,10 +1188,10 @@ namespace PaviseApp
 									list3.Add(item14.Key);
 								}
 							}
-							Logger.Warn(key3 + " | " + fileName + " | " + text2);
+							Logger.Warn(key3 + " | " + fileName + " | " + message);
 							retryLater = true;
 						}
-						else if (flag12)
+						else if (applyForGameReady7)
 						{
 							if (RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, force))
 							{
@@ -1236,24 +1236,24 @@ namespace PaviseApp
 							}
 						}
 					}
-					if (flag7 && flag6 && !ActionFailureStore.CompleteApply("NvDriverProfile", fileName))
+					if (applyForGameReady3 && matchesIsNotIsBlocked && !ActionFailureStore.CompleteApply("NvDriverProfile", fileName))
 					{
-						flag6 = false;
+						matchesIsNotIsBlocked = false;
 						retryLater = true;
-						flag8 = RestoreGameKeys(session, profile, fileName, snapshot, new List<string>(snapshot.Keys), "NvDriverProfile", false);
-						if (!flag8)
+						applyForGameReady4 = RestoreGameKeys(session, profile, fileName, snapshot, new List<string>(snapshot.Keys), "NvDriverProfile", false);
+						if (!applyForGameReady4)
 						{
 							ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA session completion could not be persisted and rollback remains incomplete", environmentContext);
 						}
 					}
-					bool flag13 = list3.Count == 0 && list.Count > 0 && flag6;
-					Settings.SaveStr(SatKey(fileName), flag13 ? text : "");
+					bool matchesMatchesIsNotIsBlocked = list3.Count == 0 && list.Count > 0 && matchesIsNotIsBlocked;
+					Settings.SaveStr(SatKey(fileName), matchesMatchesIsNotIsBlocked ? satSignatureResult : "");
 					return list3;
 				}
 				catch (NotSupportedException)
 				{
 					ScheduleRestore(fileName, DriverFailureAction);
-					if (flag7)
+					if (applyForGameReady3)
 					{
 						ActionFailureStore.CancelApply("NvDriverProfile", fileName);
 					}
@@ -1262,7 +1262,7 @@ namespace PaviseApp
 				catch (OperationCanceledException)
 				{
 					ScheduleRestore(fileName, DriverFailureAction);
-					if (flag7)
+					if (applyForGameReady3)
 					{
 						ActionFailureStore.CancelApply("NvDriverProfile", fileName);
 					}
@@ -1271,7 +1271,7 @@ namespace PaviseApp
 				catch (Exception ex6)
 				{
 					ScheduleRestore(fileName, DriverFailureAction);
-					if (flag7)
+					if (applyForGameReady3)
 					{
 						ActionFailureStore.Trip("NvDriverProfile", fileName, ex6.GetType().Name + ": " + ex6.Message, environmentContext);
 					}
@@ -1280,7 +1280,7 @@ namespace PaviseApp
 				}
 				finally
 				{
-					if (flag7 && flag8)
+					if (applyForGameReady3 && applyForGameReady4)
 					{
 						ActionFailureStore.CancelApply("NvDriverProfile", fileName);
 					}
@@ -1436,11 +1436,11 @@ namespace PaviseApp
 		{
 			lock (sync)
 			{
-				string[] array = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				string[] array2 = array;
-				foreach (string text in array2)
+				string[] loadStrParts = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+				string[] textEntries = loadStrParts;
+				foreach (string entryText in textEntries)
 				{
-					if (ParseSnapshot(Settings.LoadStr("NvDrs_" + text, "")).ContainsKey(key))
+					if (ParseSnapshot(Settings.LoadStr("NvDrs_" + entryText, "")).ContainsKey(key))
 					{
 						return true;
 					}
@@ -1487,13 +1487,13 @@ namespace PaviseApp
 
 		private static bool NvidiaAbsent()
 		{
-			GpuAdapter[] array = GpuInventory.Adapters();
-			if (array == null || array.Length == 0)
+			GpuAdapter[] adaptersResult = GpuInventory.Adapters();
+			if (adaptersResult == null || adaptersResult.Length == 0)
 			{
 				return false;
 			}
-			GpuAdapter[] array2 = array;
-			foreach (GpuAdapter gpuAdapter in array2)
+			GpuAdapter[] gpuAdapterItems = adaptersResult;
+			foreach (GpuAdapter gpuAdapter in gpuAdapterItems)
 			{
 				if (gpuAdapter.Vendor == GpuVendor.Nvidia)
 				{
@@ -1507,20 +1507,20 @@ namespace PaviseApp
 		{
 			lock (sync)
 			{
-				string[] array = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				int num = 0;
-				string[] array2 = array;
-				foreach (string text in array2)
+				string[] loadStrParts = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+				int processedCount = 0;
+				string[] textEntries = loadStrParts;
+				foreach (string entryText in textEntries)
 				{
-					if (Settings.LoadStr("NvDrs_" + text, "").Length > 0)
+					if (Settings.LoadStr("NvDrs_" + entryText, "").Length > 0)
 					{
-						num++;
+						processedCount++;
 					}
-					Settings.SaveStr("NvDrs_" + text, "");
-					Settings.SaveStr(SatKey(text), "");
+					Settings.SaveStr("NvDrs_" + entryText, "");
+					Settings.SaveStr(SatKey(entryText), "");
 				}
 				Settings.SaveStr("NvDrsList", "");
-				return num;
+				return processedCount;
 			}
 		}
 
@@ -1551,13 +1551,13 @@ namespace PaviseApp
 			{
 				return dictionary;
 			}
-			string[] array = raw.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-			foreach (string text in array)
+			string[] rawParts = raw.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string entryText in rawParts)
 			{
-				int num = text.IndexOf('=');
-				if (num > 0)
+				int matchIndex = entryText.IndexOf('=');
+				if (matchIndex > 0)
 				{
-					dictionary[text.Substring(0, num)] = text.Substring(num + 1);
+					dictionary[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
 				}
 			}
 			return dictionary;
@@ -1606,18 +1606,18 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string[] array = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				HashSet<string> hashSet = new HashSet<string>(array, StringComparer.OrdinalIgnoreCase);
-				if (hashSet.Count != array.Length || hashSet.Count > 4096 || names.Length > 4096)
+				string[] valueParts = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+				HashSet<string> hashSet = new HashSet<string>(valueParts, StringComparer.OrdinalIgnoreCase);
+				if (hashSet.Count != valueParts.Length || hashSet.Count > 4096 || names.Length > 4096)
 				{
 					return false;
 				}
-				string[] array2 = names;
-				foreach (string text in array2)
+				string[] namesSnapshot = names;
+				foreach (string entryText in namesSnapshot)
 				{
-					string item = text.Substring("NvDrs_".Length);
+					string item = entryText.Substring("NvDrs_".Length);
 					string value2;
-					if (!hashSet.Contains(item) && (!Settings.TryLoadStr(text, out value2) || value2.Length != 0))
+					if (!hashSet.Contains(item) && (!Settings.TryLoadStr(entryText, out value2) || value2.Length != 0))
 					{
 						return false;
 					}

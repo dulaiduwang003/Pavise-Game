@@ -97,15 +97,15 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				bool flag = rendererFileStamp != null && value.Stamp.Same(rendererFileStamp);
-				bool flag2 = value.Validated != flag;
-				value.Validated = flag;
+				bool validatedValue = rendererFileStamp != null && value.Stamp.Same(rendererFileStamp);
+				bool matchesValidated = value.Validated != validatedValue;
+				value.Validated = validatedValue;
 				value.CheckedTicks = DateTime.UtcNow.Ticks;
-				if (!flag)
+				if (!validatedValue)
 				{
 					records.Remove(profileId);
 				}
-				return flag2 || !flag;
+				return matchesValidated || !validatedValue;
 			}
 		}
 
@@ -269,23 +269,23 @@ namespace PaviseApp
 					{
 						return;
 					}
-					string text;
-					while ((text = streamReader.ReadLine()) != null && records.Count < 2048 && text.Length <= 32768)
+					string line;
+					while ((line = streamReader.ReadLine()) != null && records.Count < 2048 && line.Length <= 32768)
 					{
-						string[] array = text.Split('|');
+						string[] lineParts = line.Split('|');
 						long result;
 						long result2;
 						long result3;
-						if (array.Length == 6 && !(array[5] != "gpu3d") && long.TryParse(array[2], out result) && result > 0 && long.TryParse(array[3], out result2) && result2 > 0 && long.TryParse(array[4], out result3) && result3 > 0)
+						if (lineParts.Length == 6 && !(lineParts[5] != "gpu3d") && long.TryParse(lineParts[2], out result) && result > 0 && long.TryParse(lineParts[3], out result2) && result2 > 0 && long.TryParse(lineParts[4], out result3) && result3 > 0)
 						{
-							string text2 = Un64(array[0]);
-							string text3 = Un64(array[1]);
-							if (!string.IsNullOrWhiteSpace(text2) && !string.IsNullOrWhiteSpace(text3) && Path.IsPathRooted(text3) && SamePath(Path.GetFullPath(text3), text3))
+							string un64Result = Un64(lineParts[0]);
+							string un64Result2 = Un64(lineParts[1]);
+							if (!string.IsNullOrWhiteSpace(un64Result) && !string.IsNullOrWhiteSpace(un64Result2) && Path.IsPathRooted(un64Result2) && SamePath(Path.GetFullPath(un64Result2), un64Result2))
 							{
-								records[text2] = new Record
+								records[un64Result] = new Record
 								{
-									Id = text2,
-									Exe = text3,
+									Id = un64Result,
+									Exe = un64Result2,
 									Stamp = new RendererFileStamp
 									{
 										Length = result,

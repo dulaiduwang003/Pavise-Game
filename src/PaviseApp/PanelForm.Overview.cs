@@ -144,16 +144,16 @@ namespace PaviseApp
 				AddCoreShortcut("perf", Lang.T("schedule.quick.perf"), CpuTopology.PerfMask, 0);
 				AddCoreShortcut("eff", Lang.T("schedule.quick.eff"), CpuTopology.EffMask, 0);
 			}
-			ulong[] array = CpuTopology.DieMasks();
-			ulong num = CpuTopology.CacheHeavyMask();
-			for (int i = 0; i < array.Length; i++)
+			ulong[] dieMasksResult = CpuTopology.DieMasks();
+			ulong cacheHeavyMaskResult = CpuTopology.CacheHeavyMask();
+			for (int i = 0; i < dieMasksResult.Length; i++)
 			{
-				AddCoreShortcut("ccd" + i, Lang.F(((array[i] & num) != 0) ? "core.band.ccd.cache" : "core.band.ccd", i), array[i], 0);
+				AddCoreShortcut("ccd" + i, Lang.F(((dieMasksResult[i] & cacheHeavyMaskResult) != 0) ? "core.band.ccd.cache" : "core.band.ccd", i), dieMasksResult[i], 0);
 			}
-			ulong[] array2 = CpuTopology.PhysicalCoreMasks();
-			foreach (ulong num2 in array2)
+			ulong[] physicalCoreMasksResult = CpuTopology.PhysicalCoreMasks();
+			foreach (ulong numericValueEntry in physicalCoreMasksResult)
 			{
-				if (CpuTopology.CountSetBits(num2 & CpuTopology.AllMask) > 1)
+				if (CpuTopology.CountSetBits(numericValueEntry & CpuTopology.AllMask) > 1)
 				{
 					AddCoreShortcut("noSmt", Lang.T("schedule.quick.nosmt"), 0uL, 1);
 					AddCoreShortcut("withSmt", Lang.T("schedule.quick.smt"), 0uL, 2);
@@ -243,12 +243,12 @@ namespace PaviseApp
 			overviewHudGeneration++;
 			overviewSpecs = new OverviewSpecItem[4];
 			overviewUsage = new OverviewUsageItem[3];
-			string[] array = new string[4] { "cpu", "gpu", "memory", "display" };
+			string[] textEntries = new string[4] { "cpu", "gpu", "memory", "display" };
 			for (int i = 0; i < overviewSpecs.Length; i++)
 			{
 				overviewSpecs[i] = new OverviewSpecItem
 				{
-					Name = "overviewSpec" + array[i]
+					Name = "overviewSpec" + textEntries[i]
 				};
 				pageOverview.Controls.Add(overviewSpecs[i]);
 			}
@@ -316,29 +316,29 @@ namespace PaviseApp
 			if (overviewSpecs != null)
 			{
 				hardware = hardware ?? new OverviewHardwareInfo();
-				string text = ((hardware.PhysicalCores > 0 && hardware.LogicalProcessors > 0) ? (hardware.PhysicalCores + PerformancePolicy.Text(" 核 · ", " cores · ") + hardware.LogicalProcessors + PerformancePolicy.Text(" 线程", " threads")) : "");
-				bool flag = SetOverviewSpec(0, "CPU", OverviewModelName(hardware.CpuName, false), text, "cpu");
-				string text2 = ((hardware.GpuMemoryBytes != 0) ? (OverviewCapacity(hardware.GpuMemoryBytes, "0.#") + " GB" + PerformancePolicy.Text(" 显存", " VRAM")) : "");
+				string textOffset = ((hardware.PhysicalCores > 0 && hardware.LogicalProcessors > 0) ? (hardware.PhysicalCores + PerformancePolicy.Text(" 核 · ", " cores · ") + hardware.LogicalProcessors + PerformancePolicy.Text(" 线程", " threads")) : "");
+				bool setOverviewSpecSucceeded = SetOverviewSpec(0, "CPU", OverviewModelName(hardware.CpuName, false), textOffset, "cpu");
+				string textOffset2 = ((hardware.GpuMemoryBytes != 0) ? (OverviewCapacity(hardware.GpuMemoryBytes, "0.#") + " GB" + PerformancePolicy.Text(" 显存", " VRAM")) : "");
 				if (!string.IsNullOrEmpty(hardware.GpuName) && hardware.GpuName.IndexOf("Max-Q", StringComparison.OrdinalIgnoreCase) >= 0)
 				{
-					text2 = text2 + ((text2.Length > 0) ? " · " : "") + "Max-Q";
+					textOffset2 = textOffset2 + ((textOffset2.Length > 0) ? " · " : "") + "Max-Q";
 				}
-				flag |= SetOverviewSpec(1, "GPU", OverviewModelName(hardware.GpuName, true), text2, "gpu");
+				setOverviewSpecSucceeded |= SetOverviewSpec(1, "GPU", OverviewModelName(hardware.GpuName, true), textOffset2, "gpu");
 				if (!string.IsNullOrWhiteSpace(hardware.CpuName))
 				{
-					overviewSpecs[0].AccessibleDescription = overviewSpecs[0].Value + "\r\n" + hardware.CpuName.Trim() + "\r\n" + text;
+					overviewSpecs[0].AccessibleDescription = overviewSpecs[0].Value + "\r\n" + hardware.CpuName.Trim() + "\r\n" + textOffset;
 				}
 				if (!string.IsNullOrWhiteSpace(hardware.GpuName))
 				{
-					overviewSpecs[1].AccessibleDescription = overviewSpecs[1].Value + "\r\n" + hardware.GpuName.Trim() + "\r\n" + text2;
+					overviewSpecs[1].AccessibleDescription = overviewSpecs[1].Value + "\r\n" + hardware.GpuName.Trim() + "\r\n" + textOffset2;
 				}
-				string text3 = ((hardware.InstalledMemoryBytes != 0) ? (OverviewCapacity(hardware.InstalledMemoryBytes, "0") + " GB") : "--");
+				string overviewCapacityOffset = ((hardware.InstalledMemoryBytes != 0) ? (OverviewCapacity(hardware.InstalledMemoryBytes, "0") + " GB") : "--");
 				if (!string.IsNullOrWhiteSpace(hardware.MemoryType))
 				{
-					text3 = text3 + " " + hardware.MemoryType.Trim();
+					overviewCapacityOffset = overviewCapacityOffset + " " + hardware.MemoryType.Trim();
 				}
-				flag |= SetOverviewSpec(2, "MEMORY", text3, (hardware.MemorySpeedMts > 0) ? (hardware.MemorySpeedMts + " MT/s") : "", "memory");
-				if (flag | SetOverviewSpec(3, "DISPLAY", (hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0) ? (hardware.DisplayWidth + " × " + hardware.DisplayHeight) : "--", (hardware.DisplayRefreshRate > 0) ? (hardware.DisplayRefreshRate + " Hz") : "", "display"))
+				setOverviewSpecSucceeded |= SetOverviewSpec(2, "MEMORY", overviewCapacityOffset, (hardware.MemorySpeedMts > 0) ? (hardware.MemorySpeedMts + " MT/s") : "", "memory");
+				if (setOverviewSpecSucceeded | SetOverviewSpec(3, "DISPLAY", (hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0) ? (hardware.DisplayWidth + " × " + hardware.DisplayHeight) : "--", (hardware.DisplayRefreshRate > 0) ? (hardware.DisplayRefreshRate + " Hz") : "", "display"))
 				{
 					overviewViewport = Size.Empty;
 					LayoutOverviewPage();
@@ -367,28 +367,28 @@ namespace PaviseApp
 			if (overviewUsage != null)
 			{
 				resources = resources ?? new OverviewResourceSnapshot();
-				int[] array = new int[overviewUsage.Length];
+				int[] integerValues = new int[overviewUsage.Length];
 				for (int i = 0; i < overviewUsage.Length; i++)
 				{
-					array[i] = overviewUsage[i].MeasureHeight(overviewUsage[i].Width);
+					integerValues[i] = overviewUsage[i].MeasureHeight(overviewUsage[i].Width);
 				}
-				double? num = OverviewPercent(resources.CpuPercent);
-				double? num2 = OverviewPercent(resources.GpuPercent);
-				overviewUsage[0].SetReading(PerformancePolicy.Text("CPU 占用", "CPU usage"), OverviewPercentText(num), "", num);
-				overviewUsage[1].SetReading(PerformancePolicy.Text("GPU 占用", "GPU usage"), OverviewPercentText(num2), "", num2);
+				double? overviewPercentResult = OverviewPercent(resources.CpuPercent);
+				double? overviewPercentResult2 = OverviewPercent(resources.GpuPercent);
+				overviewUsage[0].SetReading(PerformancePolicy.Text("CPU 占用", "CPU usage"), OverviewPercentText(overviewPercentResult), "", overviewPercentResult);
+				overviewUsage[1].SetReading(PerformancePolicy.Text("GPU 占用", "GPU usage"), OverviewPercentText(overviewPercentResult2), "", overviewPercentResult2);
 				if (!string.IsNullOrEmpty(resources.GpuUsageDescription))
 				{
 					overviewUsage[1].AccessibleDescription = overviewUsage[1].Value + "\r\n" + resources.GpuUsageDescription;
 				}
-				double? num3 = ((resources.TotalMemoryBytes != 0 && resources.UsedMemoryBytes <= resources.TotalMemoryBytes) ? new double?((double)resources.UsedMemoryBytes * 100.0 / (double)resources.TotalMemoryBytes) : null);
-				string value = (num3.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
-				overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), value, num3.HasValue ? OverviewPercentText(num3) : "", num3);
-				bool flag = false;
+				double? nullable = ((resources.TotalMemoryBytes != 0 && resources.UsedMemoryBytes <= resources.TotalMemoryBytes) ? new double?((double)resources.UsedMemoryBytes * 100.0 / (double)resources.TotalMemoryBytes) : null);
+				string value = (nullable.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
+				overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), value, nullable.HasValue ? OverviewPercentText(nullable) : "", nullable);
+				bool presentOverviewResourcesReady = false;
 				for (int j = 0; j < overviewUsage.Length; j++)
 				{
-					flag |= array[j] != overviewUsage[j].MeasureHeight(overviewUsage[j].Width);
+					presentOverviewResourcesReady |= integerValues[j] != overviewUsage[j].MeasureHeight(overviewUsage[j].Width);
 				}
-				if (flag)
+				if (presentOverviewResourcesReady)
 				{
 					overviewViewport = Size.Empty;
 					LayoutOverviewPage();
@@ -399,8 +399,8 @@ namespace PaviseApp
 		{
 			OverviewSpecItem overviewSpecItem = control as OverviewSpecItem;
 			OverviewUsageItem overviewUsageItem = control as OverviewUsageItem;
-			int num = ((overviewSpecItem != null) ? overviewSpecItem.MeasureHeight(Theme.S(width)) : overviewUsageItem.MeasureHeight(Theme.S(width)));
-			return Math.Max(1, (int)Math.Ceiling((float)num / Math.Max(0.1f, Dpi.Scale)));
+			int measureHeightResult = ((overviewSpecItem != null) ? overviewSpecItem.MeasureHeight(Theme.S(width)) : overviewUsageItem.MeasureHeight(Theme.S(width)));
+			return Math.Max(1, (int)Math.Ceiling((float)measureHeightResult / Math.Max(0.1f, Dpi.Scale)));
 		}
 		private int ArrangeOverviewHud(int pageWidth, int pageHeight, ref int coreWidth, ref int coreHeight, ref int coreY, ref int statusY)
 		{
@@ -408,83 +408,83 @@ namespace PaviseApp
 			{
 				return pageHeight;
 			}
-			int num = ((pageWidth >= 1100) ? 64 : 28);
-			int num2 = 20;
-			int num3 = Math.Min(264, Math.Max(188, (pageWidth - 560 - (num + num2) * 2) / 2));
-			int num4 = Math.Min(coreWidth, pageWidth - (num + num2 + num3) * 2);
-			bool flag = pageWidth >= 900 && num4 >= 340;
-			int num5 = 0;
-			int num6 = 0;
-			int num7 = Math.Min(208, num3);
-			OverviewSpecItem[] array = overviewSpecs;
-			foreach (OverviewSpecItem overviewSpecItem in array)
+			int arrangeOverviewHudValue = ((pageWidth >= 1100) ? 64 : 28);
+			int arrangeOverviewHudValue2 = 20;
+			int maxLimit = Math.Min(264, Math.Max(188, (pageWidth - 560 - (arrangeOverviewHudValue + arrangeOverviewHudValue2) * 2) / 2));
+			int coreWidthLimit = Math.Min(coreWidth, pageWidth - (arrangeOverviewHudValue + arrangeOverviewHudValue2 + maxLimit) * 2);
+			bool allConditionsMet = pageWidth >= 900 && coreWidthLimit >= 340;
+			int arrangeOverviewHudValue3 = 0;
+			int arrangeOverviewHudValue4 = 0;
+			int maxLimitLimit = Math.Min(208, maxLimit);
+			OverviewSpecItem[] overviewSpecsSnapshot = overviewSpecs;
+			foreach (OverviewSpecItem overviewSpecItem in overviewSpecsSnapshot)
 			{
-				overviewSpecItem.Compact = !flag || pageWidth < 1080;
-				num5 += OverviewMeasuredHeight(overviewSpecItem, num3);
+				overviewSpecItem.Compact = !allConditionsMet || pageWidth < 1080;
+				arrangeOverviewHudValue3 += OverviewMeasuredHeight(overviewSpecItem, maxLimit);
 			}
-			OverviewUsageItem[] array2 = overviewUsage;
-			foreach (OverviewUsageItem overviewUsageItem in array2)
+			OverviewUsageItem[] overviewUsageSnapshot = overviewUsage;
+			foreach (OverviewUsageItem overviewUsageItem in overviewUsageSnapshot)
 			{
-				overviewUsageItem.Compact = !flag || pageWidth < 1080;
-				num6 += OverviewMeasuredHeight(overviewUsageItem, num7);
+				overviewUsageItem.Compact = !allConditionsMet || pageWidth < 1080;
+				arrangeOverviewHudValue4 += OverviewMeasuredHeight(overviewUsageItem, maxLimitLimit);
 			}
-			num5 += 36;
-			num6 += 36;
-			if (flag & (Math.Max(num5, num6) + 32 <= statusY))
+			arrangeOverviewHudValue3 += 36;
+			arrangeOverviewHudValue4 += 36;
+			if (allConditionsMet & (Math.Max(arrangeOverviewHudValue3, arrangeOverviewHudValue4) + 32 <= statusY))
 			{
-				coreWidth = num4;
+				coreWidth = coreWidthLimit;
 				coreHeight = Math.Min(coreHeight, (int)Math.Round((float)coreWidth * 450f / 580f));
 				coreY = Math.Max(0, (statusY - (overviewSecurityWarningShown ? 44 : 0) - coreHeight) / 2);
-				int num8 = Math.Max(8, Math.Min((statusY - num5) / 2 + 24, statusY - num5 - 16));
-				OverviewSpecItem[] array3 = overviewSpecs;
-				foreach (OverviewSpecItem control in array3)
+				int minLimit = Math.Max(8, Math.Min((statusY - arrangeOverviewHudValue3) / 2 + 24, statusY - arrangeOverviewHudValue3 - 16));
+				OverviewSpecItem[] overviewSpecsSnapshot2 = overviewSpecs;
+				foreach (OverviewSpecItem control in overviewSpecsSnapshot2)
 				{
-					int num9 = OverviewMeasuredHeight(control, num3);
-					SetOverviewBounds(control, num, num8, num3, num9);
-					num8 += num9 + 12;
+					int overviewMeasuredHeightResult = OverviewMeasuredHeight(control, maxLimit);
+					SetOverviewBounds(control, arrangeOverviewHudValue, minLimit, maxLimit, overviewMeasuredHeightResult);
+					minLimit += overviewMeasuredHeightResult + 12;
 				}
-				num8 = Math.Max(8, Math.Min((statusY - num6) / 2 + 24, statusY - num6 - 16));
-				OverviewUsageItem[] array4 = overviewUsage;
-				foreach (OverviewUsageItem control2 in array4)
+				minLimit = Math.Max(8, Math.Min((statusY - arrangeOverviewHudValue4) / 2 + 24, statusY - arrangeOverviewHudValue4 - 16));
+				OverviewUsageItem[] overviewUsageSnapshot2 = overviewUsage;
+				foreach (OverviewUsageItem control2 in overviewUsageSnapshot2)
 				{
-					int num10 = OverviewMeasuredHeight(control2, num7);
-					SetOverviewBounds(control2, pageWidth - num - num7, num8, num7, num10);
-					num8 += num10 + 18;
+					int overviewMeasuredHeightResult2 = OverviewMeasuredHeight(control2, maxLimitLimit);
+					SetOverviewBounds(control2, pageWidth - arrangeOverviewHudValue - maxLimitLimit, minLimit, maxLimitLimit, overviewMeasuredHeightResult2);
+					minLimit += overviewMeasuredHeightResult2 + 18;
 				}
 				return pageHeight;
 			}
-			int num11 = Math.Max(1, pageWidth - Dpi.U(SystemInformation.VerticalScrollBarWidth));
-			num = ((num11 >= 760) ? 32 : 20);
-			bool flag2 = num11 >= 760;
-			coreWidth = Math.Min(460, Math.Max(180, num11 - num * 2));
+			int lowerBound = Math.Max(1, pageWidth - Dpi.U(SystemInformation.VerticalScrollBarWidth));
+			arrangeOverviewHudValue = ((lowerBound >= 760) ? 32 : 20);
+			bool matchesLowerBound = lowerBound >= 760;
+			coreWidth = Math.Min(460, Math.Max(180, lowerBound - arrangeOverviewHudValue * 2));
 			coreHeight = Math.Min((int)Math.Round((float)coreWidth * 450f / 580f), Math.Max(1, pageHeight - 16));
 			coreWidth = Math.Min(coreWidth, (int)Math.Round((float)coreHeight * 580f / 450f));
 			coreY = 8;
 			statusY = coreY + coreHeight + 8 + (overviewSecurityWarningShown ? 44 : 0);
-			int num12 = statusY + 62 + (overviewActivityShown ? 30 : 0);
-			int num13 = Math.Max(1, num11 - num * 2);
-			int num14 = (flag2 ? ((num13 - 48) / 2) : num13);
-			int num15 = num12;
-			int num16 = num12;
-			OverviewSpecItem[] array5 = overviewSpecs;
-			foreach (OverviewSpecItem overviewSpecItem2 in array5)
+			int arrangeOverviewHudValue5 = statusY + 62 + (overviewActivityShown ? 30 : 0);
+			int lowerBound2 = Math.Max(1, lowerBound - arrangeOverviewHudValue * 2);
+			int ratio = (matchesLowerBound ? ((lowerBound2 - 48) / 2) : lowerBound2);
+			int arrangeOverviewHudValue6 = arrangeOverviewHudValue5;
+			int arrangeOverviewHudValue7 = arrangeOverviewHudValue5;
+			OverviewSpecItem[] overviewSpecsSnapshot3 = overviewSpecs;
+			foreach (OverviewSpecItem overviewSpecItem2 in overviewSpecsSnapshot3)
 			{
 				overviewSpecItem2.Compact = true;
-				int num17 = OverviewMeasuredHeight(overviewSpecItem2, num14);
-				SetOverviewBounds(overviewSpecItem2, num, num16, num14, num17);
-				num16 += num17 + 12;
+				int overviewMeasuredHeightResult3 = OverviewMeasuredHeight(overviewSpecItem2, ratio);
+				SetOverviewBounds(overviewSpecItem2, arrangeOverviewHudValue, arrangeOverviewHudValue7, ratio, overviewMeasuredHeightResult3);
+				arrangeOverviewHudValue7 += overviewMeasuredHeightResult3 + 12;
 			}
-			num15 = num16;
-			num16 = (flag2 ? num12 : (num16 + 16));
-			OverviewUsageItem[] array6 = overviewUsage;
-			foreach (OverviewUsageItem overviewUsageItem2 in array6)
+			arrangeOverviewHudValue6 = arrangeOverviewHudValue7;
+			arrangeOverviewHudValue7 = (matchesLowerBound ? arrangeOverviewHudValue5 : (arrangeOverviewHudValue7 + 16));
+			OverviewUsageItem[] overviewUsageSnapshot3 = overviewUsage;
+			foreach (OverviewUsageItem overviewUsageItem2 in overviewUsageSnapshot3)
 			{
 				overviewUsageItem2.Compact = true;
-				int num18 = OverviewMeasuredHeight(overviewUsageItem2, num14);
-				SetOverviewBounds(overviewUsageItem2, flag2 ? (num + num14 + 48) : num, num16, num14, num18);
-				num16 += num18 + 18;
+				int overviewMeasuredHeightResult4 = OverviewMeasuredHeight(overviewUsageItem2, ratio);
+				SetOverviewBounds(overviewUsageItem2, matchesLowerBound ? (arrangeOverviewHudValue + ratio + 48) : arrangeOverviewHudValue, arrangeOverviewHudValue7, ratio, overviewMeasuredHeightResult4);
+				arrangeOverviewHudValue7 += overviewMeasuredHeightResult4 + 18;
 			}
-			return Math.Max(pageHeight, Math.Max(num15, num16) + 12);
+			return Math.Max(pageHeight, Math.Max(arrangeOverviewHudValue6, arrangeOverviewHudValue7) + 12);
 		}
 		private void SetOverviewTelemetryActive(bool active)
 		{
@@ -675,8 +675,8 @@ namespace PaviseApp
 				BackColor = Theme.StrokeHi
 			};
 			pageOverview.Controls.Add(overviewStatusDivider);
-			string text = ((Lang.Cur == 0) ? "守护" : ((Lang.Cur == 2) ? "保護" : "Guard"));
-			lblOverviewGuard = CardLabel(pageOverview, text, 0, 0, 42, 42, 11.5f, false, Theme.Dim);
+			string message = ((Lang.Cur == 0) ? "守护" : ((Lang.Cur == 2) ? "保護" : "Guard"));
+			lblOverviewGuard = CardLabel(pageOverview, message, 0, 0, 42, 42, 11.5f, false, Theme.Dim);
 			lblOverviewGuard.Name = "overviewGuardLabel";
 			lblOverviewGuard.TextAlign = ContentAlignment.MiddleLeft;
 			swGame = MakeSwitch(gameMode.Enabled, delegate

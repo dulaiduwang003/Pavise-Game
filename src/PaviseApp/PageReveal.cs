@@ -161,10 +161,10 @@ namespace PaviseApp
 				return;
 			}
 			WorkspacePanel workspacePanel = surface;
-			bool flag;
+			bool redrawWindowSucceeded;
 			try
 			{
-				flag = RedrawWindow(workspacePanel.Handle, IntPtr.Zero, IntPtr.Zero, 385u);
+				redrawWindowSucceeded = RedrawWindow(workspacePanel.Handle, IntPtr.Zero, IntPtr.Zero, 385u);
 			}
 			catch
 			{
@@ -178,7 +178,7 @@ namespace PaviseApp
 			{
 				return;
 			}
-			if (!flag || workspacePanel.IsDisposed || !workspacePanel.Visible || !base.Visible || !CanReveal)
+			if (!redrawWindowSucceeded || workspacePanel.IsDisposed || !workspacePanel.Visible || !base.Visible || !CanReveal)
 			{
 				Cancel();
 				return;
@@ -199,14 +199,14 @@ namespace PaviseApp
 				Cancel();
 				return;
 			}
-			double num = watch.Elapsed.TotalMilliseconds / 160.0;
-			if (num >= 1.0)
+			double totalMillisecondsRatio = watch.Elapsed.TotalMilliseconds / 160.0;
+			if (totalMillisecondsRatio >= 1.0)
 			{
 				Cancel();
 				return;
 			}
-			double num2 = 1.0 - num;
-			byte b = (byte)Math.Max(1, (int)Math.Round(255.0 * num2 * num2 * num2));
+			double remainingTotalMillisecondsRatio = 1.0 - totalMillisecondsRatio;
+			byte b = (byte)Math.Max(1, (int)Math.Round(255.0 * remainingTotalMillisecondsRatio * remainingTotalMillisecondsRatio * remainingTotalMillisecondsRatio));
 			if (b != alpha && !SetAlpha(b))
 			{
 				Cancel();

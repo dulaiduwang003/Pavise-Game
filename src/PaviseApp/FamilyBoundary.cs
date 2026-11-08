@@ -88,21 +88,21 @@ namespace PaviseApp
 
 		internal static bool CatalogProtected(int pid, long creation, string name, string path)
 		{
-			int num = PeripheralVendorProbe.CurrentGeneration();
-			int num2 = SecurityProductCatalog.CurrentGeneration();
+			int currentGenerationResult = PeripheralVendorProbe.CurrentGeneration();
+			int currentGenerationResult2 = SecurityProductCatalog.CurrentGeneration();
 			int mask = PlatformRuntimePolicy.Mask;
 			if (creation > 0)
 			{
 				lock (catalogSync)
 				{
 					CatalogVerdict value;
-					if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == num && value.SecurityGeneration == num2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
+					if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == currentGenerationResult && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
 					{
 						return value.Protected;
 					}
 				}
 			}
-			bool flag = AntiCheatCatalog.IsAntiCheatProcess(name, path) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name) || StreamingToolCatalog.IsStreamingToolProcess(name, path);
+			bool matchesIsStreamingToolProcess = AntiCheatCatalog.IsAntiCheatProcess(name, path) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name) || StreamingToolCatalog.IsStreamingToolProcess(name, path);
 			if (creation > 0)
 			{
 				lock (catalogSync)
@@ -116,14 +116,14 @@ namespace PaviseApp
 						Creation = creation,
 						Name = name,
 						Path = path,
-						VendorGeneration = num,
-						SecurityGeneration = num2,
+						VendorGeneration = currentGenerationResult,
+						SecurityGeneration = currentGenerationResult2,
 						PlatformMask = mask,
-						Protected = flag
+						Protected = matchesIsStreamingToolProcess
 					};
 				}
 			}
-			return flag;
+			return matchesIsStreamingToolProcess;
 		}
 
 		internal static void PruneCatalogVerdicts(HashSet<int> live)
@@ -167,20 +167,20 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = root.Length;
-			while (num > 0 && root[num - 1] == '\\')
+			int rootCount = root.Length;
+			while (rootCount > 0 && root[rootCount - 1] == '\\')
 			{
-				num--;
+				rootCount--;
 			}
-			if (num == 0 || path.Length <= num)
-			{
-				return false;
-			}
-			if (path[num] != '\\')
+			if (rootCount == 0 || path.Length <= rootCount)
 			{
 				return false;
 			}
-			return string.Compare(path, 0, root, 0, num, StringComparison.OrdinalIgnoreCase) == 0;
+			if (path[rootCount] != '\\')
+			{
+				return false;
+			}
+			return string.Compare(path, 0, root, 0, rootCount, StringComparison.OrdinalIgnoreCase) == 0;
 		}
 
 		internal static string LibraryRootOf(string path, IList<string> roots)
@@ -364,10 +364,10 @@ namespace PaviseApp
 					}
 				}
 			}
-			bool flag;
+			bool expandUserFacingFamilyReady;
 			do
 			{
-				flag = false;
+				expandUserFacingFamilyReady = false;
 				if (parents == null || names == null)
 				{
 					break;
@@ -378,11 +378,11 @@ namespace PaviseApp
 					if (!hashSet.Contains(parent.Key) && hashSet.Contains(parent.Value) && names.TryGetValue(parent.Value, out value2) && !SystemProcessCatalog.IsShellProcess(value2))
 					{
 						hashSet.Add(parent.Key);
-						flag = true;
+						expandUserFacingFamilyReady = true;
 					}
 				}
 			}
-			while (flag);
+			while (expandUserFacingFamilyReady);
 			return hashSet;
 		}
 
@@ -426,12 +426,12 @@ namespace PaviseApp
 					}
 				}
 			}
-			bool flag = SafeFamilyDir(profile.Root);
+			bool safeFamilyDirSucceeded = SafeFamilyDir(profile.Root);
 			HashSet<int> hashSet2 = new HashSet<int>();
 			Dictionary<int, int> dictionary2 = new Dictionary<int, int>();
 			foreach (ProcEntry value2 in dictionary.Values)
 			{
-				if (string.Equals(value2.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || string.Equals(value2.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || (flag && UnderRoot(value2.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, value2.Pid, value2.Creation, value2.Path)))
+				if (string.Equals(value2.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || string.Equals(value2.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || (safeFamilyDirSucceeded && UnderRoot(value2.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, value2.Pid, value2.Creation, value2.Path)))
 				{
 					hashSet2.Add(value2.Pid);
 				}
@@ -483,8 +483,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = dir.TrimEnd('\\');
-			if (text.Length <= 2)
+			string dirTrimmed = dir.TrimEnd('\\');
+			if (dirTrimmed.Length <= 2)
 			{
 				return false;
 			}
@@ -500,7 +500,7 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				if (!string.IsNullOrEmpty(folderPath) && string.Equals(text, folderPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+				if (!string.IsNullOrEmpty(folderPath) && string.Equals(dirTrimmed, folderPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
 				{
 					return false;
 				}
@@ -553,11 +553,11 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				int num = key;
+				int keySnapshot = key;
 				for (int i = 0; i < maxDepth; i++)
 				{
 					int value;
-					if (!parents.TryGetValue(num, out value))
+					if (!parents.TryGetValue(keySnapshot, out value))
 					{
 						break;
 					}
@@ -565,11 +565,11 @@ namespace PaviseApp
 					{
 						break;
 					}
-					if (value == num)
+					if (value == keySnapshot)
 					{
 						break;
 					}
-					if (!ParentNotNewer(creations, value, num))
+					if (!ParentNotNewer(creations, value, keySnapshot))
 					{
 						break;
 					}
@@ -582,7 +582,7 @@ namespace PaviseApp
 					{
 						break;
 					}
-					num = value;
+					keySnapshot = value;
 				}
 			}
 			return hashSet;
@@ -600,11 +600,11 @@ namespace PaviseApp
 			{
 				return hashSet;
 			}
-			int num = startPid;
+			int startPidSnapshot = startPid;
 			for (int i = 0; i < maxHops; i++)
 			{
 				int value;
-				if (!parents.TryGetValue(num, out value))
+				if (!parents.TryGetValue(startPidSnapshot, out value))
 				{
 					break;
 				}
@@ -624,12 +624,12 @@ namespace PaviseApp
 				{
 					break;
 				}
-				if (!ParentNotNewer(creations, value, num))
+				if (!ParentNotNewer(creations, value, startPidSnapshot))
 				{
 					break;
 				}
 				hashSet.Add(value);
-				num = value;
+				startPidSnapshot = value;
 			}
 			return hashSet;
 		}

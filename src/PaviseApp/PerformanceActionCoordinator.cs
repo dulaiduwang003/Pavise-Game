@@ -167,20 +167,20 @@ namespace PaviseApp
 				publishedDetails[id] = detail;
 			}
 			PerformanceAction performanceAction = PerformanceActionCatalog.Find(id);
-			string text = "AUTO " + ((performanceAction == null) ? id : performanceAction.Title) + " | " + PerformanceTuning.Label(value);
+			string labelOffset = "AUTO " + ((performanceAction == null) ? id : performanceAction.Title) + " | " + PerformanceTuning.Label(value);
 			if (!string.IsNullOrEmpty(detail))
 			{
-				text = text + " | " + PsRunner.NormalizeError(detail);
+				labelOffset = labelOffset + " | " + PsRunner.NormalizeError(detail);
 			}
 			switch (value)
 			{
 			case "failed":
 			case "stopped":
 			case "restore-failed":
-				Logger.Warn(text);
+				Logger.Warn(labelOffset);
 				break;
 			default:
-				Logger.Info(text);
+				Logger.Info(labelOffset);
 				break;
 			}
 		}
@@ -193,11 +193,11 @@ namespace PaviseApp
 				Array.Sort(games, StringComparer.OrdinalIgnoreCase);
 			}
 			long sessionSerial = PerformanceTuning.RecoveryCycleSerial;
-			string text = sessionSerial + "|" + guard + "|" + match + "|" + visualMatch + "|" + requireExistingGames + "|" + string.Join("\n", games) + "|selected:" + PerformanceTuning.ActionSelectionSignature();
+			string actionSelectionSignatureOffset = sessionSerial + "|" + guard + "|" + match + "|" + visualMatch + "|" + requireExistingGames + "|" + string.Join("\n", games) + "|selected:" + PerformanceTuning.ActionSelectionSignature();
 			lock (gate)
 			{
-				long num = Now();
-				if (closing || (latest != null && latest.Signature == text && num < nextCheck))
+				long nowResult = Now();
+				if (closing || (latest != null && latest.Signature == actionSelectionSignatureOffset && nowResult < nextCheck))
 				{
 					return;
 				}
@@ -208,11 +208,11 @@ namespace PaviseApp
 					VisualMatch = visualMatch,
 					RequireExistingGames = requireExistingGames,
 					Games = games,
-					Signature = text
+					Signature = actionSelectionSignatureOffset
 					, SessionSerial = sessionSerial
 				};
 				sessionRestored.Reset();
-				nextCheck = num + TimeSpan.FromMinutes(1.0).Ticks;
+				nextCheck = nowResult + TimeSpan.FromMinutes(1.0).Ticks;
 				if (!running)
 				{
 					running = true;
@@ -363,8 +363,8 @@ namespace PaviseApp
 			ActionFailureStore.BeginAutomaticCycle(id, target, request.SessionSerial + "\n" + wanted);
 			if (ActionFailureStore.IsBlocked(id, target))
 			{
-				bool flag = RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false);
-				Record(id, flag ? "stopped" : "restore-failed", target + " | " + ActionFailureStore.FailureReason(id, target));
+				bool restoreSelectedSucceeded = RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false);
+				Record(id, restoreSelectedSucceeded ? "stopped" : "restore-failed", target + " | " + ActionFailureStore.FailureReason(id, target));
 			}
 			else
 			{
@@ -483,19 +483,19 @@ namespace PaviseApp
 					Record(id, "restore-failed", value2);
 					continue;
 				}
-				bool flag = false;
-				string text = null;
+				bool restoreSelectedReady = false;
+				string message = null;
 				using (var attemptTrace = new RecoveryAttemptTrace())
 				{
-					try { flag = PerformanceTuning.RestorePerformanceReceipt(item); }
-					catch (Exception ex2) { text = ex2.Message; }
-					if (!flag && attemptTrace.Reported && attemptTrace.Next == long.MaxValue)
+					try { restoreSelectedReady = PerformanceTuning.RestorePerformanceReceipt(item); }
+					catch (Exception ex2) { message = ex2.Message; }
+					if (!restoreSelectedReady && attemptTrace.Reported && attemptTrace.Next == long.MaxValue)
 					{
 						value.Failures = 5;
 						value.RecoveryObservers = attemptTrace.PhaseObservers.ToArray();
 					}
 				}
-				if (flag)
+				if (restoreSelectedReady)
 				{
 					restoreAttempts.Remove(key);
 					restoreDetails.Remove(key);
@@ -509,7 +509,7 @@ namespace PaviseApp
 				}
 				value.Next = Now() + TimeSpan.FromSeconds(Math.Min(300, 30 << value.Failures - 1)).Ticks;
 				ReportRestoreSchedule(value);
-				RestoreFailure(id, key, item.Target + " | " + (text ?? PerformancePolicy.Text("配置恢复未完成", "Configuration restore incomplete")));
+				RestoreFailure(id, key, item.Target + " | " + (message ?? PerformancePolicy.Text("配置恢复未完成", "Configuration restore incomplete")));
 			}
 			return result;
 		}
@@ -546,19 +546,19 @@ namespace PaviseApp
 
 		private bool RestoreRetired(bool force)
 		{
-			bool flag = true;
-			string[] array = new string[3] { "AutoDefenderSessionV1", "AutoDefenderResourcesV1", "AutoBackgroundFpsV1" };
-			foreach (string id in array)
+			bool restoreRetiredSucceeded = true;
+			string[] textEntries = new string[3] { "AutoDefenderSessionV1", "AutoDefenderResourcesV1", "AutoBackgroundFpsV1" };
+			foreach (string id in textEntries)
 			{
 				int count;
-				flag &= RestoreSelected(id, null, force, out count);
+				restoreRetiredSucceeded &= RestoreSelected(id, null, force, out count);
 				if (count > 0)
 				{
 					Record(id, "restored");
 				}
 				DropAction(id);
 			}
-			return flag;
+			return restoreRetiredSucceeded;
 		}
 
 		private void RestoreFailure(string id, string key, string detail)
@@ -596,35 +596,35 @@ namespace PaviseApp
 
 		private void ProcessCore(Request request)
 		{
-			bool flag = guardWasOn && !request.Guard;
+			bool matchesGuardWasOn = guardWasOn && !request.Guard;
 			if (request.Guard && !guardWasOn)
 			{
 				attempts.Clear();
 			}
 			guardWasOn = request.Guard;
-            bool flag2 = visualWasOn;
+            bool visualWasOnSnapshot = visualWasOn;
             visualWasOn = false;
             // Reject ON for retired desktop effects while retaining receipt-backed restoration.
-            bool flag3 = RestoreSelected("MatchVisualEffectsV1", null, flag2);
-            if (!flag3 || flag2 || State("MatchVisualEffectsV1").Length > 0)
+            bool restoreSelectedSucceeded = RestoreSelected("MatchVisualEffectsV1", null, visualWasOnSnapshot);
+            if (!restoreSelectedSucceeded || visualWasOnSnapshot || State("MatchVisualEffectsV1").Length > 0)
 			{
-                Record("MatchVisualEffectsV1", (!flag3) ? "restore-failed" : "off");
+                Record("MatchVisualEffectsV1", (!restoreSelectedSucceeded) ? "restore-failed" : "off");
 			}
             DropAction("MatchVisualEffectsV1");
-			bool flag4 = HasRetiredDefenderRecords() && PerformanceActionBackend.DefenderRunning();
-			bool flag5 = flag4 && !defenderWasRunning;
-			defenderWasRunning = flag4;
-			bool flag6 = RestoreRetired(flag5 || flag);
+			bool matchesHasRetiredDefenderRecords = HasRetiredDefenderRecords() && PerformanceActionBackend.DefenderRunning();
+			bool matchesMatchesHasRetiredDefenderRecords = matchesHasRetiredDefenderRecords && !defenderWasRunning;
+			defenderWasRunning = matchesHasRetiredDefenderRecords;
+			bool restoreRetiredSucceeded = RestoreRetired(matchesMatchesHasRetiredDefenderRecords || matchesGuardWasOn);
 			if (!request.Match || !request.Guard)
 			{
-				sessionRestoreOk = flag6 && flag3;
+				sessionRestoreOk = restoreRetiredSucceeded && restoreSelectedSucceeded;
 			}
 			if (!request.Guard || !Current(request))
 			{
 				return;
 			}
-			string[] array = new string[3] { "AutoGameMitigationsV1", "AutoOpenGlThreadsV1", "AutoNtfsShortNamesV1" };
-			foreach (string id in array)
+			string[] textEntries = new string[3] { "AutoGameMitigationsV1", "AutoOpenGlThreadsV1", "AutoNtfsShortNamesV1" };
+			foreach (string id in textEntries)
 			{
 				if (!PerformanceTuning.LegacyActionSelected(id))
 				{
@@ -648,21 +648,21 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag7 = PerformanceTuning.ActionSelected("AutoGameMitigationsV1");
-			bool flag8 = PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1");
-			bool flag9 = PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1");
-			if (!flag7 && !flag8 && !flag9)
+			bool actionSelectedSucceeded = PerformanceTuning.ActionSelected("AutoGameMitigationsV1");
+			bool legacyActionSelectedSucceeded = PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1");
+			bool actionSelectedSucceeded2 = PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1");
+			if (!actionSelectedSucceeded && !legacyActionSelectedSucceeded && !actionSelectedSucceeded2)
 			{
 				return;
 			}
-			string[] array2 = GamePerformanceTargetPolicy.FilterGameTargets(request.Games, request.RequireExistingGames);
-			foreach (string path in array2)
+			string[] filterGameTargetsResult = GamePerformanceTargetPolicy.FilterGameTargets(request.Games, request.RequireExistingGames);
+			foreach (string path in filterGameTargetsResult)
 			{
 				if (!Current(request))
 				{
 					break;
 				}
-				if (flag7)
+				if (actionSelectedSucceeded)
 				{
 					Try("AutoGameMitigationsV1", path, PerformanceActionBackend.Is32Bit(path) ? "off32" : "off64", request, "configured");
 				}
@@ -670,11 +670,11 @@ namespace PaviseApp
 				{
 					break;
 				}
-				if (flag8)
+				if (legacyActionSelectedSucceeded)
 				{
 					Try("AutoOpenGlThreadsV1", path, "1", request, "configured");
 				}
-				if (flag9)
+				if (actionSelectedSucceeded2)
 				{
 					string target;
 					try
@@ -739,9 +739,9 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = RestoreRetired(true);
+			bool restoreRetiredSucceeded = RestoreRetired(true);
 			bool result = RestoreSelected("MatchVisualEffectsV1", null, true);
-			if (flag)
+			if (restoreRetiredSucceeded)
 			{
 				return result;
 			}

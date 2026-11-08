@@ -27,32 +27,32 @@ namespace PaviseApp
 
 		internal string Encode()
 		{
-			string[] array = new string[20]
+			string[] textEntries = new string[20]
 			{
 				"1|", null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null
 			};
 			int phase = (int)Phase;
-			array[1] = phase.ToString(CultureInfo.InvariantCulture);
-			array[2] = "|";
-			array[3] = Uri.EscapeDataString(DeviceId ?? "");
-			array[4] = "|";
-			array[5] = Uri.EscapeDataString(DeviceName ?? "");
-			array[6] = "|";
-			array[7] = Uri.EscapeDataString(DriverVersion ?? "");
-			array[8] = "|";
-			array[9] = Uri.EscapeDataString(Reason ?? "");
-			array[10] = "|";
-			array[11] = Target.ToString("X");
-			array[12] = "|";
-			array[13] = Region.ToString("X");
-			array[14] = "|";
-			array[15] = Seen.ToString("X");
-			array[16] = "|";
-			array[17] = BaselineP99.ToString("R", CultureInfo.InvariantCulture);
-			array[18] = "|";
-			array[19] = CheckedTicks.ToString(CultureInfo.InvariantCulture);
-			return string.Concat(array);
+			textEntries[1] = phase.ToString(CultureInfo.InvariantCulture);
+			textEntries[2] = "|";
+			textEntries[3] = Uri.EscapeDataString(DeviceId ?? "");
+			textEntries[4] = "|";
+			textEntries[5] = Uri.EscapeDataString(DeviceName ?? "");
+			textEntries[6] = "|";
+			textEntries[7] = Uri.EscapeDataString(DriverVersion ?? "");
+			textEntries[8] = "|";
+			textEntries[9] = Uri.EscapeDataString(Reason ?? "");
+			textEntries[10] = "|";
+			textEntries[11] = Target.ToString("X");
+			textEntries[12] = "|";
+			textEntries[13] = Region.ToString("X");
+			textEntries[14] = "|";
+			textEntries[15] = Seen.ToString("X");
+			textEntries[16] = "|";
+			textEntries[17] = BaselineP99.ToString("R", CultureInfo.InvariantCulture);
+			textEntries[18] = "|";
+			textEntries[19] = CheckedTicks.ToString(CultureInfo.InvariantCulture);
+			return string.Concat(textEntries);
 		}
 
 		internal static GpuIrqState Parse(string raw)
@@ -62,23 +62,23 @@ namespace PaviseApp
 			{
 				return gpuIrqState;
 			}
-			string[] array = raw.Split('|');
+			string[] rawParts = raw.Split('|');
 			int result;
 			ulong result2;
 			ulong result3;
 			ulong result4;
 			double result5;
 			long result6;
-			if (array.Length != 11 || array[0] != "1" || !int.TryParse(array[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result < 0 || result > 6 || !ulong.TryParse(array[6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result2) || !ulong.TryParse(array[7], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result3) || !ulong.TryParse(array[8], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4) || !double.TryParse(array[9], NumberStyles.Float, CultureInfo.InvariantCulture, out result5) || !long.TryParse(array[10], NumberStyles.None, CultureInfo.InvariantCulture, out result6))
+			if (rawParts.Length != 11 || rawParts[0] != "1" || !int.TryParse(rawParts[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result < 0 || result > 6 || !ulong.TryParse(rawParts[6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result2) || !ulong.TryParse(rawParts[7], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result3) || !ulong.TryParse(rawParts[8], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result4) || !double.TryParse(rawParts[9], NumberStyles.Float, CultureInfo.InvariantCulture, out result5) || !long.TryParse(rawParts[10], NumberStyles.None, CultureInfo.InvariantCulture, out result6))
 			{
 				return gpuIrqState;
 			}
 			try
 			{
-				gpuIrqState.DeviceId = Uri.UnescapeDataString(array[2]);
-				gpuIrqState.DeviceName = Uri.UnescapeDataString(array[3]);
-				gpuIrqState.DriverVersion = Uri.UnescapeDataString(array[4]);
-				gpuIrqState.Reason = Uri.UnescapeDataString(array[5]);
+				gpuIrqState.DeviceId = Uri.UnescapeDataString(rawParts[2]);
+				gpuIrqState.DeviceName = Uri.UnescapeDataString(rawParts[3]);
+				gpuIrqState.DriverVersion = Uri.UnescapeDataString(rawParts[4]);
+				gpuIrqState.Reason = Uri.UnescapeDataString(rawParts[5]);
 			}
 			catch
 			{

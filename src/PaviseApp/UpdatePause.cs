@@ -42,10 +42,10 @@ namespace PaviseApp
 		{
 			bool hadLedger = pauser.HadLedger;
 			List<string> remain;
-			bool flag = pauser.Restore(out remain);
+			bool restoreSucceeded = pauser.Restore(out remain);
 			if (hadLedger)
 			{
-				if (flag)
+				if (restoreSucceeded)
 				{
 					Logger.Log(Lang.T("log.updatepause.3"));
 				}
@@ -54,7 +54,7 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.updatepause.4") + ((remain.Count == 0) ? Lang.T("t.versionmigrations.2") : string.Join(",", remain.ToArray())) + Lang.T("log.svcpause.6"));
 				}
 			}
-			return flag;
+			return restoreSucceeded;
 		}
 
 		public static void HealFromCrash()

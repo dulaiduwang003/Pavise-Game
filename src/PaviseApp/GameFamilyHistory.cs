@@ -263,9 +263,9 @@ namespace PaviseApp
 					if (processChange2.ParentCreation > 0)
 					{
 						Identity identity = new Identity(ownerSession, value.ParentPid, processChange2.ParentCreation);
-						bool flag = value2 != null && value2.Key.Creation <= value.Key.Creation && !value2.Key.Equals(identity);
+						bool allConditionsMet = value2 != null && value2.Key.Creation <= value.Key.Creation && !value2.Key.Equals(identity);
 						Identity value3;
-						if (flag | (lastLive.TryGetValue(value.ParentPid, out value3) && value3.Creation <= value.Key.Creation && !value3.Equals(identity)))
+						if (allConditionsMet | (lastLive.TryGetValue(value.ParentPid, out value3) && value3.Creation <= value.Key.Creation && !value3.Equals(identity)))
 						{
 							BreakParent(value);
 						}
@@ -418,8 +418,8 @@ namespace PaviseApp
 		private GameFamilyEvidence BuildEvidence(IList<GameProfile> configured, Dictionary<int, Node> live)
 		{
 			Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>> dictionary = new Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>>();
-			int num = 0;
-			int num2 = 0;
+			int evidenceValue = 0;
+			int evidenceValue2 = 0;
 			foreach (GameProfile item in configured)
 			{
 				if (item == null || string.IsNullOrEmpty(item.Id))
@@ -438,7 +438,7 @@ namespace PaviseApp
 					Node value = value2;
 					for (int i = 0; i <= 24; i++)
 					{
-						if (++num > 1048576)
+						if (++evidenceValue > 1048576)
 						{
 							return GameFamilyEvidence.Empty;
 						}
@@ -448,7 +448,7 @@ namespace PaviseApp
 						}
 						if (key.Owns(value.Path, rootPrefix))
 						{
-							if (++num2 > 16384)
+							if (++evidenceValue2 > 16384)
 							{
 								return GameFamilyEvidence.Empty;
 							}

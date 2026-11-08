@@ -23,13 +23,13 @@ namespace PaviseApp
 			}
 			names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			order = new List<string>();
-			string[] array = Settings.LoadStr("SelfProtectedProcs", "").Split(';');
-			foreach (string text in array)
+			string[] loadStrParts = Settings.LoadStr("SelfProtectedProcs", "").Split(';');
+			foreach (string entryText in loadStrParts)
 			{
-				string text2 = text.Trim();
-				if (text2.Length > 0 && names.Add(text2))
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.Length > 0 && names.Add(entryTextTrimmed))
 				{
-					order.Add(text2);
+					order.Add(entryTextTrimmed);
 				}
 			}
 		}

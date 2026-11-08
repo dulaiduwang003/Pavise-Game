@@ -21,12 +21,12 @@ namespace PaviseApp
 	{
 		private void BuildAboutPage()
 		{
-			int num = (aboutContentTop = PageHeader(pageAbout, Lang.T("nav.about"), Lang.T("site.about.originalSub"), 1));
+			int aboutPageValue = (aboutContentTop = PageHeader(pageAbout, Lang.T("nav.about"), Lang.T("site.about.originalSub"), 1));
 			aboutViewport = Size.Empty;
 			pageAbout.AutoScroll = false;
 			Native.Dark(pageAbout);
 			AboutHeroPanel aboutHeroPanel = (this.aboutHeroPanel = new AboutHeroPanel());
-			aboutHeroPanel.SetBounds(Theme.S(30), Theme.S(num), Theme.S(ContentW), Theme.S(130));
+			aboutHeroPanel.SetBounds(Theme.S(30), Theme.S(aboutPageValue), Theme.S(ContentW), Theme.S(130));
 			pageAbout.Controls.Add(aboutHeroPanel);
 			PictureBox pictureBox = new PictureBox();
 			pictureBox.SetBounds(Theme.S(24), Theme.S(23), Theme.S(84), Theme.S(84));
@@ -48,19 +48,19 @@ namespace PaviseApp
 				AddAboutMetric(aboutHeroPanel, Lang.T("v20.about.platform"), "WINDOWS x64", 706, 27, 124, false),
 				AddAboutMetric(aboutHeroPanel, Lang.T("v20.about.state"), Lang.T("v20.about.ready"), 838, 27, 108, true)
 			};
-			int num2 = num + 130 + 12;
-			int num3 = 454;
-			int num4 = 14;
-			int num5 = ContentW - num3 - num4;
-			int num6 = 366;
-			RoundPanel roundPanel = (aboutIdentityPanel = MakeConsolePanel(pageAbout, 30, num2, num3, num6, false));
-			Label label = CardLabel(roundPanel, "PROJECT // IDENTITY", 20, 15, num3 - 126, 20, 7.6f, true, Theme.Faint);
+			int aboutPageValue2 = aboutPageValue + 130 + 12;
+			int aboutPageValue3 = 454;
+			int aboutPageValue4 = 14;
+			int remainingAboutPageValue4 = ContentW - aboutPageValue3 - aboutPageValue4;
+			int aboutPageValue5 = 366;
+			RoundPanel roundPanel = (aboutIdentityPanel = MakeConsolePanel(pageAbout, 30, aboutPageValue2, aboutPageValue3, aboutPageValue5, false));
+			Label label = CardLabel(roundPanel, "PROJECT // IDENTITY", 20, 15, aboutPageValue3 - 126, 20, 7.6f, true, Theme.Faint);
 			label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			Label label2 = CardLabel(roundPanel, "NODE 01", num3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
+			Label label2 = CardLabel(roundPanel, "NODE 01", aboutPageValue3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
 			label2.TextAlign = ContentAlignment.MiddleRight;
 			label2.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-			string[] array = new string[4] { "about.author", "about.douyin", "about.repo", "about.lic" };
-			string[] array2 = new string[4]
+			string[] textEntries = new string[4] { "about.author", "about.douyin", "about.repo", "about.lic" };
+			string[] textEntries2 = new string[4]
 			{
 				"bdth 2074055628@qq.com",
 				"44601770838",
@@ -69,8 +69,8 @@ namespace PaviseApp
 			};
 			for (int i = 0; i < 4; i++)
 			{
-				int num7 = 47 + i * 44;
-				Label label3 = AddAboutRow(roundPanel, Lang.T(array[i]).ToUpperInvariant(), array2[i], num7, num3, i == 2 || i == 3);
+				int aboutPageValue6 = 47 + i * 44;
+				Label label3 = AddAboutRow(roundPanel, Lang.T(textEntries[i]).ToUpperInvariant(), textEntries2[i], aboutPageValue6, aboutPageValue3, i == 2 || i == 3);
 				if (i == 2 || i == 3)
 				{
 					string targetUrl = ((i == 2) ? App.RepoUrl : App.RepoUrl + "/blob/dev/LICENSE");
@@ -81,55 +81,55 @@ namespace PaviseApp
 					};
 				}
 			}
-			Label freeLabel = CardLabel(roundPanel, Lang.T("about.free"), 20, 231, num3 - 40, 22, 9.5f, true, Theme.Green);
+			Label freeLabel = CardLabel(roundPanel, Lang.T("about.free"), 20, 231, aboutPageValue3 - 40, 22, 9.5f, true, Theme.Green);
 			freeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			Label refundHint = CardLabel(roundPanel, Lang.T("about.refund.hint"), 20, 258, num3 - 40, 44, 7.8f, false, Theme.Fg);
+			Label refundHint = CardLabel(roundPanel, Lang.T("about.refund.hint"), 20, 258, aboutPageValue3 - 40, 44, 7.8f, false, Theme.Fg);
 			refundHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, num3 - 40, 40, 7.8f, false, Theme.Dim);
+			Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, aboutPageValue3 - 40, 40, 7.8f, false, Theme.Dim);
 			label4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + num3 + num4, num2, num5, num6, true));
-			Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, num5 - 126, 20, 7.6f, true, Theme.Faint);
+			RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + aboutPageValue3 + aboutPageValue4, aboutPageValue2, remainingAboutPageValue4, aboutPageValue5, true));
+			Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
 			label5.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			StatusDot statusDot = new StatusDot();
-			statusDot.SetBounds(Theme.S(num5 - 126), Theme.S(12), Theme.S(22), Theme.S(22));
+			statusDot.SetBounds(Theme.S(remainingAboutPageValue4 - 126), Theme.S(12), Theme.S(22), Theme.S(22));
 			statusDot.Bg = Theme.Card;
 			statusDot.Color = Theme.Green;
 			statusDot.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 			roundPanel2.Controls.Add(statusDot);
-			Label label6 = CardLabel(roundPanel2, Lang.T("v20.about.online"), num5 - 102, 12, 82, 24, 6.7f, true, Theme.Green);
+			Label label6 = CardLabel(roundPanel2, Lang.T("v20.about.online"), remainingAboutPageValue4 - 102, 12, 82, 24, 6.7f, true, Theme.Green);
 			label6.TextAlign = ContentAlignment.MiddleRight;
 			label6.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 			AccentLabel(roundPanel2, App.VersionTag, 20, 45, 254, 43, 23f, true);
-			Label label7 = CardLabel(roundPanel2, Lang.T("v15.about.identity"), 22, 87, num5 - 44, 22, 8.2f, false, Theme.Dim);
+			Label label7 = CardLabel(roundPanel2, Lang.T("v15.about.identity"), 22, 87, remainingAboutPageValue4 - 44, 22, 8.2f, false, Theme.Dim);
 			label7.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			Panel panel = new Panel();
 			panel.BackColor = Theme.StrokeHi;
-			panel.SetBounds(Theme.S(20), Theme.S(119), Theme.S(num5 - 40), 1);
+			panel.SetBounds(Theme.S(20), Theme.S(119), Theme.S(remainingAboutPageValue4 - 40), 1);
 			panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			roundPanel2.Controls.Add(panel);
-			CardLabel(roundPanel2, Lang.T("site.about.source"), 20, 132, num5 - 40, 18, 7f, true, Theme.Faint);
-			RoundPanel roundPanel3 = MakeConsolePanel(roundPanel2, 20, 153, num5 - 40, 54, false);
+			CardLabel(roundPanel2, Lang.T("site.about.source"), 20, 132, remainingAboutPageValue4 - 40, 18, 7f, true, Theme.Faint);
+			RoundPanel roundPanel3 = MakeConsolePanel(roundPanel2, 20, 153, remainingAboutPageValue4 - 40, 54, false);
 			roundPanel3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			CardLabel(roundPanel3, "PAVISE // OFFICIAL WEBSITE", 14, 6, num5 - 68, 18, 7.3f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			AccentLabel(roundPanel3, "pavise.club", 14, 25, num5 - 68, 25, 10f, true).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			RoundPanel roundPanel4 = MakeConsolePanel(roundPanel2, 20, 218, num5 - 40, 60, false);
+			CardLabel(roundPanel3, "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			AccentLabel(roundPanel3, "pavise.club", 14, 25, remainingAboutPageValue4 - 68, 25, 10f, true).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			RoundPanel roundPanel4 = MakeConsolePanel(roundPanel2, 20, 218, remainingAboutPageValue4 - 40, 60, false);
 			roundPanel4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			StatusDot statusDot2 = new StatusDot();
 			statusDot2.SetBounds(Theme.S(14), Theme.S(18), Theme.S(22), Theme.S(22));
 			statusDot2.Bg = Theme.Card;
 			statusDot2.FollowAccent = true;
 			roundPanel4.Controls.Add(statusDot2);
-			CardLabel(roundPanel4, Lang.T("v20.about.privacy"), 44, 8, num5 - 116, 19, 7f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			CardLabel(roundPanel4, Lang.T("v20.about.privacy.value"), 44, 27, num5 - 116, 25, 9.4f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-			lblAboutUpdate = CardLabel(roundPanel2, "", 20, num6 - 76, num5 - 40, 18, 7.7f, false, Theme.Faint);
+			CardLabel(roundPanel4, Lang.T("v20.about.privacy"), 44, 8, remainingAboutPageValue4 - 116, 19, 7f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			CardLabel(roundPanel4, Lang.T("v20.about.privacy.value"), 44, 27, remainingAboutPageValue4 - 116, 25, 9.4f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			lblAboutUpdate = CardLabel(roundPanel2, "", 20, aboutPageValue5 - 76, remainingAboutPageValue4 - 40, 18, 7.7f, false, Theme.Faint);
 			lblAboutUpdate.Name = "aboutUpdateStatus";
 			lblAboutUpdate.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-			int num8 = (num5 - 52) / 2;
+			int ratio = (remainingAboutPageValue4 - 52) / 2;
 			PillButton pillButton = new PillButton(Lang.T("notes.open"), BtnKind.Primary);
 			pillButton.Name = "aboutReleaseNotes";
 			pillButton.Bg = Theme.Card;
 			PillButton pillButton2 = pillButton;
-			pillButton2.SetBounds(Theme.S(20), Theme.S(num6 - 50), Theme.S(num8), Theme.S(36));
+			pillButton2.SetBounds(Theme.S(20), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
 			pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			pillButton2.Click += delegate
 			{
@@ -140,7 +140,7 @@ namespace PaviseApp
 			pillButton3.Name = "aboutWebsiteDownload";
 			pillButton3.Bg = Theme.Card;
 			PillButton pillButton4 = pillButton3;
-			pillButton4.SetBounds(Theme.S(32 + num8), Theme.S(num6 - 50), Theme.S(num8), Theme.S(36));
+			pillButton4.SetBounds(Theme.S(32 + ratio), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
 			pillButton4.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 			pillButton4.Click += delegate
 			{
@@ -340,8 +340,8 @@ namespace PaviseApp
 			ResetEnvironmentObservation();
 			performancePrivacyPanels.Clear();
 			environmentPrivacy = null;
-			int num = 16;
-			string[] array = new string[5]
+			int automationPageValue = 16;
+			string[] textEntries = new string[5]
 			{
 				AutoText("游戏性能", "Game"),
 				AutoText("后台管理", "Background"),
@@ -355,7 +355,7 @@ namespace PaviseApp
 				Visible = false,
 				TabStop = false
 			};
-			performanceTabs.SetTabs(array, new string[5]
+			performanceTabs.SetTabs(textEntries, new string[5]
 			{
 				AutoText("调度与加载", "Scheduling and loading"),
 				AutoText("管理竞争游戏资源的后台任务", "Manage competing background tasks"),
@@ -364,15 +364,15 @@ namespace PaviseApp
 				AutoText("手动选择实验策略，按条件执行", "Explicit experimental strategies")
 			});
 			pagePolicy.Controls.Add(performanceTabs);
-			performanceCategories = new PerformanceCategoryBar(array)
+			performanceCategories = new PerformanceCategoryBar(textEntries)
 			{
 				Name = "PerformanceCategories"
 			};
-			performanceCategories.SetBounds(Theme.S(30), Theme.S(num), Theme.S(ContentW), Theme.S(44));
+			performanceCategories.SetBounds(Theme.S(30), Theme.S(automationPageValue), Theme.S(ContentW), Theme.S(44));
 			pagePolicy.Controls.Add(performanceCategories);
 			BuildConfigurationPresetControls();
-			num += 58;
-			performanceViewportTop = Theme.S(num);
+			automationPageValue += 58;
+			performanceViewportTop = Theme.S(automationPageValue);
 			performanceTabPanels = new DBPanel[5];
 			for (int i = 0; i < performanceTabPanels.Length; i++)
 			{
@@ -380,7 +380,7 @@ namespace PaviseApp
 				performanceFeatureGrid.Name = "PerformanceCategory" + i;
 				performanceFeatureGrid.Visible = i == 0;
 				PerformanceFeatureGrid performanceFeatureGrid2 = performanceFeatureGrid;
-				performanceFeatureGrid2.SetBounds(Theme.S(20), performanceViewportTop, Theme.S(PageW - 40), Theme.S(PageH - num - 8));
+				performanceFeatureGrid2.SetBounds(Theme.S(20), performanceViewportTop, Theme.S(PageW - 40), Theme.S(PageH - automationPageValue - 8));
 				pagePolicy.Controls.Add(performanceFeatureGrid2);
 				performanceTabPanels[i] = performanceFeatureGrid2;
 			}
@@ -424,18 +424,18 @@ namespace PaviseApp
 						list.Add(item);
 					}
 				}
-				PerformanceRestartScope[] array2 = new PerformanceRestartScope[3]
+				PerformanceRestartScope[] performanceRestartScopeItems = new PerformanceRestartScope[3]
 				{
 					PerformanceRestartScope.None,
 					PerformanceRestartScope.ProcessRestart,
 					PerformanceRestartScope.SystemRestart
 				};
-				foreach (PerformanceRestartScope scope in array2)
+				foreach (PerformanceRestartScope scope in performanceRestartScopeItems)
 				{
 					Predicate<PolicyItem> match = (PolicyItem item) => PerformanceRestartFor(item.Key) == scope;
 					List<PolicyItem> list2 = list.FindAll(match);
-					bool flag = HasAutomationInventory(j, scope) || (j == 0 && scope == PerformanceRestartScope.None) || (j == 2 && HasPerformanceEnvironmentGraphics(scope));
-					if (list2.Count == 0 && !flag)
+					bool anyConditionMet = HasAutomationInventory(j, scope) || (j == 0 && scope == PerformanceRestartScope.None) || (j == 2 && HasPerformanceEnvironmentGraphics(scope));
+					if (list2.Count == 0 && !anyConditionMet)
 					{
 						continue;
 					}
@@ -470,8 +470,8 @@ namespace PaviseApp
 			backgroundPrivacy.Top = Theme.S(2);
 			int labY = 2;
 			BuildLaboratoryOptions(performanceTabPanels[4], ref labY);
-			DBPanel[] array3 = performanceTabPanels;
-			foreach (DBPanel dBPanel in array3)
+			DBPanel[] performanceTabPanelsSnapshot = performanceTabPanels;
+			foreach (DBPanel dBPanel in performanceTabPanelsSnapshot)
 			{
 				ConfigurePerformanceCards(dBPanel);
 			}
@@ -485,10 +485,10 @@ namespace PaviseApp
 				LayoutPerformanceViewport();
 			};
 			LayoutPerformanceViewport();
-			DBPanel[] array4 = performanceTabPanels;
-			for (int m = 0; m < array4.Length; m++)
+			DBPanel[] performanceTabPanelsSnapshot2 = performanceTabPanels;
+			for (int m = 0; m < performanceTabPanelsSnapshot2.Length; m++)
 			{
-				PerformanceFeatureGrid performanceFeatureGrid3 = (PerformanceFeatureGrid)array4[m];
+				PerformanceFeatureGrid performanceFeatureGrid3 = (PerformanceFeatureGrid)performanceTabPanelsSnapshot2[m];
 				performanceFeatureGrid3.Complete();
 			}
 			RefreshAutomationPage();
@@ -529,9 +529,9 @@ namespace PaviseApp
 			Label label = criticalThreadTitle;
 			Label label2 = criticalThreadHelp;
 			Label label3 = criticalThreadCompanion;
-			bool flag2 = (criticalThreadRuntime.Visible = false);
-			bool flag4 = (label3.Visible = flag2);
-			bool visible = (label2.Visible = flag4);
+			bool visibleValue = (criticalThreadRuntime.Visible = false);
+			bool visibleValue2 = (label3.Visible = visibleValue);
+			bool visible = (label2.Visible = visibleValue2);
 			label.Visible = visible;
 			criticalThreadInfo = new PerformanceInfoButton
 			{
@@ -560,9 +560,9 @@ namespace PaviseApp
 		private void BuildLogPage()
 		{
 			pageLog.SetBounds(0, Theme.S(TopH), Theme.S(WinW), Theme.S(PageH));
-			int num = ContentW + RailW;
-			int num2 = PageHeader(pageLog, Lang.T("nav.log"), Lang.T("v20.log.sub"), 1, true, 0, num);
-			RoundPanel roundPanel = MakeConsolePanel(pageLog, 30, num2, num, 64, true);
+			int contentWOffset = ContentW + RailW;
+			int pageHeaderResult = PageHeader(pageLog, Lang.T("nav.log"), Lang.T("v20.log.sub"), 1, true, 0, contentWOffset);
+			RoundPanel roundPanel = MakeConsolePanel(pageLog, 30, pageHeaderResult, contentWOffset, 64, true);
 			roundPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			logActionsButton = new PillButton(Lang.T("log.category.actions"));
 			logActionsButton.Name = "showActionLog";
@@ -573,7 +573,7 @@ namespace PaviseApp
 			logDiagnosticsButton.SetBounds(Theme.S(154), Theme.S(14), Theme.S(144), Theme.S(36));
 			logDiagnosticsButton.Click += delegate { SelectLogCategory(true); };
 			roundPanel.Controls.AddRange(new Control[] { logActionsButton, logDiagnosticsButton });
-			CardLabel(roundPanel, Lang.T("log.latest.session"), 320, 7, num - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+			CardLabel(roundPanel, Lang.T("log.latest.session"), 320, 7, contentWOffset - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			lblLogStreamHint = new Label
 			{
 				Name = "logSessionHint",
@@ -583,13 +583,13 @@ namespace PaviseApp
 				TextAlign = ContentAlignment.MiddleLeft,
 				AutoEllipsis = true
 			};
-			lblLogStreamHint.SetBounds(Theme.S(320), Theme.S(31), Theme.S(num - 338), Theme.S(24));
+			lblLogStreamHint.SetBounds(Theme.S(320), Theme.S(31), Theme.S(contentWOffset - 338), Theme.S(24));
 			lblLogStreamHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 			roundPanel.Controls.Add(lblLogStreamHint);
-			int num4 = num2 + 76;
-			int num5 = Math.Max(PageH - 48, num4 + 190);
+			int pageHeaderResultOffset = pageHeaderResult + 76;
+			int lowerBound = Math.Max(PageH - 48, pageHeaderResultOffset + 190);
 			logWrap = new RoundPanel();
-			logWrap.SetBounds(Theme.S(30), Theme.S(num4), Theme.S(num), Theme.S(num5 - num4 - 10));
+			logWrap.SetBounds(Theme.S(30), Theme.S(pageHeaderResultOffset), Theme.S(contentWOffset), Theme.S(lowerBound - pageHeaderResultOffset - 10));
 			logWrap.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 			logWrap.BackColor = Theme.Bg;
 			logWrap.Fill = Theme.Inset;
@@ -605,7 +605,7 @@ namespace PaviseApp
 			PillButton pillButton = new PillButton(Lang.T("v20.log.refresh"));
 			pillButton.Name = "refreshSessionLog";
 			PillButton pillButton2 = pillButton;
-			pillButton2.SetBounds(Theme.S(30), Theme.S(num5), Theme.S(96), Theme.S(36));
+			pillButton2.SetBounds(Theme.S(30), Theme.S(lowerBound), Theme.S(96), Theme.S(36));
 			pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			pillButton2.Click += delegate
 			{
@@ -615,11 +615,11 @@ namespace PaviseApp
 			logExportButton = exportLog;
 			exportLog.Name = "exportLogFile";
 			exportLog.AccessibleName = Lang.T("log.export.file");
-			exportLog.SetBounds(Theme.S(136), Theme.S(num5), Theme.S(112), Theme.S(36));
+			exportLog.SetBounds(Theme.S(136), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
 			exportLog.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			exportLog.Click += ExportLogFile;
 			PillButton pillButton3 = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
-			pillButton3.SetBounds(Theme.S(258), Theme.S(num5), Theme.S(112), Theme.S(36));
+			pillButton3.SetBounds(Theme.S(258), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
 			pillButton3.Name = "clearSessionLog";
 			pillButton3.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 			pillButton3.Click += delegate
@@ -633,7 +633,7 @@ namespace PaviseApp
 				}
 			};
 			swLogWrites = MakeSwitch(Settings.Load("LogWritesEnabled", true), OnLogWritesToggle);
-			swLogWrites.Location = new Point(Theme.S(30 + num) - swLogWrites.Width, Theme.S(num5 + 6));
+			swLogWrites.Location = new Point(Theme.S(30 + contentWOffset) - swLogWrites.Width, Theme.S(lowerBound + 6));
 			swLogWrites.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 			Label label = new Label();
 			label.Text = Lang.T("set.logwrites");
@@ -642,7 +642,7 @@ namespace PaviseApp
 			label.Font = Theme.UI(8.6f, false);
 			label.TextAlign = ContentAlignment.MiddleRight;
 			Label label2 = label;
-			label2.SetBounds(Theme.S(30 + num - 162) - swLogWrites.Width, Theme.S(num5), Theme.S(152), Theme.S(36));
+			label2.SetBounds(Theme.S(30 + contentWOffset - 162) - swLogWrites.Width, Theme.S(lowerBound), Theme.S(152), Theme.S(36));
 			label2.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 			pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton2, exportLog, pillButton3, label2, swLogWrites });
 			RefreshLog(true);
@@ -743,54 +743,54 @@ namespace PaviseApp
 		}
 		private void BuildThemeColorRows(Control parent, int startY)
 		{
-			PerformancePreset[] array = PresetValue.VisibleOrder();
-			int num = 0;
-			PerformancePreset[] array2 = array;
-			foreach (PerformancePreset performancePreset in array2)
+			PerformancePreset[] visibleOrderResult = PresetValue.VisibleOrder();
+			int processedCount = 0;
+			PerformancePreset[] performancePresetItems = visibleOrderResult;
+			foreach (PerformancePreset performancePreset in performancePresetItems)
 			{
 				PerformancePreset capMode = performancePreset;
 				modeSwatches[(int)performancePreset].Clear();
-				int v = startY + num * 34;
-				bool flag = performancePreset == gameMode.ActivePreset;
+				int v = startY + processedCount * 34;
+				bool matchesPerformancePreset = performancePreset == gameMode.ActivePreset;
 				Label label = new Label();
 				label.Text = ModeName(performancePreset);
-				label.ForeColor = (flag ? Theme.ModeColor(performancePreset) : Theme.Fg);
+				label.ForeColor = (matchesPerformancePreset ? Theme.ModeColor(performancePreset) : Theme.Fg);
 				label.BackColor = Color.Transparent;
-				label.Font = Theme.UI(8.6f, flag);
+				label.Font = Theme.UI(8.6f, matchesPerformancePreset);
 				label.TextAlign = ContentAlignment.MiddleLeft;
 				label.SetBounds(Theme.S(18), Theme.S(v), Theme.S(82), Theme.S(26));
 				parent.Controls.Add(label);
 				modeAccentLabels[(int)performancePreset] = label;
-				int num2 = 108;
-				bool flag2 = Theme.HasModeColorOverride(performancePreset);
+				int themeColorRowsValue = 108;
+				bool hasModeColorOverride = Theme.HasModeColorOverride(performancePreset);
 				ColorSwatch colorSwatch = new ColorSwatch(Theme.ModeColorBuiltin(performancePreset));
 				colorSwatch.IsDefault = true;
-				colorSwatch.Selected = !flag2;
-				colorSwatch.SetBounds(Theme.S(num2), Theme.S(v), Theme.S(26), Theme.S(26));
+				colorSwatch.Selected = !hasModeColorOverride;
+				colorSwatch.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
 				colorSwatch.Picked = delegate
 				{
 					OnModeColorPick(capMode, Color.Empty);
 				};
 				parent.Controls.Add(colorSwatch);
 				modeSwatches[(int)performancePreset].Add(colorSwatch);
-				num2 += 32;
+				themeColorRowsValue += 32;
 				Color a = Theme.ModeColor(performancePreset);
 				Color[] accentPalette = AccentPalette;
 				foreach (Color color in accentPalette)
 				{
 					Color cc = color;
 					ColorSwatch colorSwatch2 = new ColorSwatch(cc);
-					colorSwatch2.Selected = flag2 && SameRgb(a, cc);
-					colorSwatch2.SetBounds(Theme.S(num2), Theme.S(v), Theme.S(26), Theme.S(26));
+					colorSwatch2.Selected = hasModeColorOverride && SameRgb(a, cc);
+					colorSwatch2.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
 					colorSwatch2.Picked = delegate
 					{
 						OnModeColorPick(capMode, cc);
 					};
 					parent.Controls.Add(colorSwatch2);
 					modeSwatches[(int)performancePreset].Add(colorSwatch2);
-					num2 += 32;
+					themeColorRowsValue += 32;
 				}
-				num++;
+				processedCount++;
 			}
 		}
 		private void BuildUi(Icon appIcon)
@@ -865,11 +865,11 @@ namespace PaviseApp
 			themeSwitch.Toggled = OnThemeToggled;
 			BuildHeaderLinks();
 			BuildStrategyControls();
-			int num = Theme.S(WinW - RailW);
+			int scaledDimension = Theme.S(WinW - RailW);
 			CaptionButton captionButton = new CaptionButton(false);
 			captionButton.Name = "WindowMinimize";
 			captionButton.AccessibleName = AutoText("最小化", "Minimize");
-			captionButton.SetBounds(num - Theme.S(92), 0, Theme.S(44), Theme.S(64));
+			captionButton.SetBounds(scaledDimension - Theme.S(92), 0, Theme.S(44), Theme.S(64));
 			captionButton.Click += delegate
 			{
 				base.WindowState = FormWindowState.Minimized;
@@ -877,7 +877,7 @@ namespace PaviseApp
 			CaptionButton captionButton4 = new CaptionButton(true);
 			captionButton4.Name = "WindowClose";
 			captionButton4.AccessibleName = AutoText("关闭窗口", "Close window");
-			captionButton4.SetBounds(num - Theme.S(48), 0, Theme.S(44), Theme.S(64));
+			captionButton4.SetBounds(scaledDimension - Theme.S(48), 0, Theme.S(44), Theme.S(64));
 			captionButton4.Click += delegate
 			{
 				BeginOutro();
@@ -912,8 +912,8 @@ namespace PaviseApp
 			root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
 			root.BackColor = Theme.Bg;
 			root.Controls.Add(topBar);
-			DBPanel[] array = pages;
-			foreach (DBPanel value in array)
+			DBPanel[] pagesSnapshot = pages;
+			foreach (DBPanel value in pagesSnapshot)
 			{
 				root.Controls.Add(value);
 			}
@@ -1014,7 +1014,7 @@ namespace PaviseApp
 		private void BuildNavigation()
 		{
 			navigationScale = Dpi.Scale;
-			string[] array = new string[(int)PageId.Count]
+			string[] textEntries = new string[(int)PageId.Count]
 			{
 				Lang.T("nav.overview"),
 				Lang.T("nav.library"),
@@ -1035,11 +1035,11 @@ namespace PaviseApp
 				"game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info",
 				"white", "chip", "chip"
 			};
-			string[] array2 = (string[])array.Clone();
-			array2[1] = PerformancePolicy.Text("游戏库", "Library");
-			array2[2] = PerformancePolicy.Text("性能", "Performance");
-			array2[10] = Lang.T("nav.white");
-			nav = new NavRail(array2, icons, new int[8] { 0, 1, 10, 2, 3, 6, 8, 9 }, new int[1] { 7 }, new string[1] { "" }, 0);
+			string[] cloneResult = (string[])textEntries.Clone();
+			cloneResult[1] = PerformancePolicy.Text("游戏库", "Library");
+			cloneResult[2] = PerformancePolicy.Text("性能", "Performance");
+			cloneResult[10] = Lang.T("nav.white");
+			nav = new NavRail(cloneResult, icons, new int[8] { 0, 1, 10, 2, 3, 6, 8, 9 }, new int[1] { 7 }, new string[1] { "" }, 0);
 			nav.Name = "MainNavigation";
 			nav.ShowBranding = false;
 			nav.SelectionChanged = ShowPage;
@@ -1047,7 +1047,7 @@ namespace PaviseApp
 			{
 				nav.Select(page);
 			};
-			tuningNav = new NavRail(array, icons, new int[4] { 2, 4, 5, 11 }, null, null, 0);
+			tuningNav = new NavRail(textEntries, icons, new int[4] { 2, 4, 5, 11 }, null, null, 0);
 			tuningNav.Name = "TuningNavigation";
 			tuningNav.ShowBranding = false;
 			tuningNav.SectionTitle = Lang.T("v20.advanced.title");
@@ -1058,8 +1058,8 @@ namespace PaviseApp
 					nav.Select(page);
 				}
 			};
-			NavRail[] array3 = new NavRail[2] { nav, tuningNav };
-			foreach (NavRail navRail in array3)
+			NavRail[] navRailItems = new NavRail[2] { nav, tuningNav };
+			foreach (NavRail navRail in navRailItems)
 			{
 				AssertNavMatchesPageIds(navRail);
 				navRail.SetBounds(Theme.S((WinW - 920) / 2), Theme.S(WinH - 88), Theme.S(920), Theme.S(72));

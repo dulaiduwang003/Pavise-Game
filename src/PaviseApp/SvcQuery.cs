@@ -74,14 +74,14 @@ namespace PaviseApp
 						return null;
 					}
 					List<KeyValuePair<string, int>> list = new List<KeyValuePair<string, int>>((int)servicesReturned);
-					int num = Marshal.SizeOf(typeof(ENUM_SERVICE_STATUS_PROCESS));
-					for (uint num2 = 0u; num2 < servicesReturned; num2++)
+					int sizeOfResult = Marshal.SizeOf(typeof(ENUM_SERVICE_STATUS_PROCESS));
+					for (uint iterationIndex = 0u; iterationIndex < servicesReturned; iterationIndex++)
 					{
-						ENUM_SERVICE_STATUS_PROCESS eNUM_SERVICE_STATUS_PROCESS = (ENUM_SERVICE_STATUS_PROCESS)Marshal.PtrToStructure(new IntPtr(intPtr2.ToInt64() + num2 * num), typeof(ENUM_SERVICE_STATUS_PROCESS));
-						string text = Marshal.PtrToStringUni(eNUM_SERVICE_STATUS_PROCESS.ServiceName);
-						if (!string.IsNullOrEmpty(text))
+						ENUM_SERVICE_STATUS_PROCESS eNUM_SERVICE_STATUS_PROCESS = (ENUM_SERVICE_STATUS_PROCESS)Marshal.PtrToStructure(new IntPtr(intPtr2.ToInt64() + iterationIndex * sizeOfResult), typeof(ENUM_SERVICE_STATUS_PROCESS));
+						string ptrToStringUniResult = Marshal.PtrToStringUni(eNUM_SERVICE_STATUS_PROCESS.ServiceName);
+						if (!string.IsNullOrEmpty(ptrToStringUniResult))
 						{
-							list.Add(new KeyValuePair<string, int>(text, (int)eNUM_SERVICE_STATUS_PROCESS.Status.ProcessId));
+							list.Add(new KeyValuePair<string, int>(ptrToStringUniResult, (int)eNUM_SERVICE_STATUS_PROCESS.Status.ProcessId));
 						}
 					}
 					return list;

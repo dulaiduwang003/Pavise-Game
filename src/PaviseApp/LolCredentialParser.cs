@@ -17,19 +17,19 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = value.Length;
-			while (num > 0)
+			int valueCount = value.Length;
+			while (valueCount > 0)
 			{
-				int num2 = value.LastIndexOfAny(new char[2] { '\r', '\n' }, num - 1);
-				int num3 = num2 + 1;
-				if (TryParseSegment(value, num3, num - num3, out port, out token))
+				int lastIndexOfAnyResult = value.LastIndexOfAny(new char[2] { '\r', '\n' }, valueCount - 1);
+				int lastIndexOfAnyResultOffset = lastIndexOfAnyResult + 1;
+				if (TryParseSegment(value, lastIndexOfAnyResultOffset, valueCount - lastIndexOfAnyResultOffset, out port, out token))
 				{
 					return true;
 				}
-				num = num2;
-				while (num > 0 && (value[num - 1] == '\r' || value[num - 1] == '\n'))
+				valueCount = lastIndexOfAnyResult;
+				while (valueCount > 0 && (value[valueCount - 1] == '\r' || value[valueCount - 1] == '\n'))
 				{
-					num--;
+					valueCount--;
 				}
 			}
 			return false;
@@ -77,26 +77,26 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = value.Trim();
-			int num = text.IndexOfAny(new char[2] { '\r', '\n' });
-			if (num >= 0)
+			string valueTrimmed = value.Trim();
+			int indexOfAnyResult = valueTrimmed.IndexOfAny(new char[2] { '\r', '\n' });
+			if (indexOfAnyResult >= 0)
 			{
-				text = text.Substring(0, num);
+				valueTrimmed = valueTrimmed.Substring(0, indexOfAnyResult);
 			}
-			string[] array = text.Split(':');
-			if (array.Length != 5)
-			{
-				return false;
-			}
-			if (!int.TryParse(array[1], out pid) || pid <= 0)
+			string[] valueTrimmedParts = valueTrimmed.Split(':');
+			if (valueTrimmedParts.Length != 5)
 			{
 				return false;
 			}
-			if (!int.TryParse(array[2], out port) || !ValidPort(port))
+			if (!int.TryParse(valueTrimmedParts[1], out pid) || pid <= 0)
 			{
 				return false;
 			}
-			token = array[3];
+			if (!int.TryParse(valueTrimmedParts[2], out port) || !ValidPort(port))
+			{
+				return false;
+			}
+			token = valueTrimmedParts[3];
 			if (!ValidToken(token))
 			{
 				port = 0;
@@ -104,7 +104,7 @@ namespace PaviseApp
 				token = null;
 				return false;
 			}
-			return string.Equals(array[4], "https", StringComparison.OrdinalIgnoreCase);
+			return string.Equals(valueTrimmedParts[4], "https", StringComparison.OrdinalIgnoreCase);
 		}
 
 		private static bool ValidPort(int port)

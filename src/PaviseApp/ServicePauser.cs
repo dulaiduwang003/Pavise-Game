@@ -121,25 +121,25 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					string[] array = names;
-					foreach (string text in array)
+					string[] namesSnapshot = names;
+					foreach (string entryText in namesSnapshot)
 					{
-						if (Query(text) != 4)
+						if (Query(entryText) != 4)
 						{
 							continue;
 						}
-						string text2 = lastRead;
+						string lastReadSnapshot = lastRead;
 						Receipt receipt = new Receipt();
-						receipt.Name = text;
+						receipt.Name = entryText;
 						receipt.State = Phase.Prepared;
 						Receipt receipt2 = receipt;
-						receipts.Add(text, receipt2);
+						receipts.Add(entryText, receipt2);
 						if (!Save())
 						{
 							string value;
-							if (Read(out value) && value == text2)
+							if (Read(out value) && value == lastReadSnapshot)
 							{
-								receipts.Remove(text);
+								receipts.Remove(entryText);
 							}
 							else
 							{
@@ -150,7 +150,7 @@ namespace PaviseApp
 							return false;
 						}
 						bool confirmed;
-						if (Query(text) != 4)
+						if (Query(entryText) != 4)
 						{
 							Settle(receipt2);
 							if (!FlushSettled())
@@ -160,15 +160,15 @@ namespace PaviseApp
 								return false;
 							}
 						}
-						else if (Stop(text, out confirmed))
+						else if (Stop(entryText, out confirmed))
 						{
 							receipt2.State = Phase.Owned;
 							receipt2.CanStart = true;
-							receipt2.StopObserved = confirmed || Query(text) == 1;
-							justStopped.Add(text);
+							receipt2.StopObserved = confirmed || Query(entryText) == 1;
+							justStopped.Add(entryText);
 							if (receipt2.StopObserved)
 							{
-								confirmedStopped.Add(text);
+								confirmedStopped.Add(entryText);
 							}
 							if (!Save())
 							{
@@ -179,7 +179,7 @@ namespace PaviseApp
 						}
 						else
 						{
-							if (Query(text) == 4)
+							if (Query(entryText) == 4)
 							{
 								receipt2.State = Phase.Settled;
 							}
@@ -239,20 +239,20 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = true;
-			string[] array = names;
-			foreach (string text in array)
+			bool restoreCoreReady = true;
+			string[] namesSnapshot = names;
+			foreach (string entryText in namesSnapshot)
 			{
 				Receipt value;
-				if (!receipts.TryGetValue(text, out value) || value.State == Phase.Settled)
+				if (!receipts.TryGetValue(entryText, out value) || value.State == Phase.Settled)
 				{
 					continue;
 				}
-				int num = Query(text);
-				switch (num)
+				int queryResult = Query(entryText);
+				switch (queryResult)
 				{
 				case 0:
-					flag = false;
+					restoreCoreReady = false;
 					continue;
 				default:
 					value.RunningSeen = 0;
@@ -260,12 +260,12 @@ namespace PaviseApp
 				case 4:
 					break;
 				}
-				switch (num)
+				switch (queryResult)
 				{
 				case 4:
 					if (value.State == Phase.Owned && !value.StopObserved && ++value.RunningSeen < 2)
 					{
-						flag = false;
+						restoreCoreReady = false;
 					}
 					else
 					{
@@ -273,9 +273,9 @@ namespace PaviseApp
 					}
 					break;
 				default:
-					if ((value.State == Phase.Owned && !value.StopObserved && num == 3) || (value.State == Phase.Prepared && (num == 2 || num == 3)) || (value.State == Phase.Restoring && (num == 2 || num == 3)))
+					if ((value.State == Phase.Owned && !value.StopObserved && queryResult == 3) || (value.State == Phase.Prepared && (queryResult == 2 || queryResult == 3)) || (value.State == Phase.Restoring && (queryResult == 2 || queryResult == 3)))
 					{
-						flag = false;
+						restoreCoreReady = false;
 					}
 					else
 					{
@@ -285,20 +285,20 @@ namespace PaviseApp
 				case 1:
 					if (!value.CanStart)
 					{
-						flag = false;
+						restoreCoreReady = false;
 						break;
 					}
 					value.StopObserved = true;
 					value.State = Phase.Restoring;
 					if (!Save())
 					{
-						flag = false;
+						restoreCoreReady = false;
 						break;
 					}
-					switch (Query(text))
+					switch (Query(entryText))
 					{
 					case 0:
-						flag = false;
+						restoreCoreReady = false;
 						break;
 					default:
 						Settle(value);
@@ -306,15 +306,15 @@ namespace PaviseApp
 					case 1:
 					{
 						value.CanStart = false;
-						Start(text);
-						int num2 = Query(text);
-						if (num2 == 4 || num2 == 7)
+						Start(entryText);
+						int queryResult2 = Query(entryText);
+						if (queryResult2 == 4 || queryResult2 == 7)
 						{
 							Settle(value);
 						}
 						else
 						{
-							flag = false;
+							restoreCoreReady = false;
 						}
 						break;
 					}
@@ -324,10 +324,10 @@ namespace PaviseApp
 			}
 			if (!FlushSettled())
 			{
-				flag = false;
+				restoreCoreReady = false;
 			}
 			remain = PendingNames();
-			if (flag)
+			if (restoreCoreReady)
 			{
 				return receipts.Count == 0;
 			}
@@ -360,12 +360,12 @@ namespace PaviseApp
 		private List<string> PendingNames()
 		{
 			List<string> list = new List<string>();
-			string[] array = names;
-			foreach (string text in array)
+			string[] namesSnapshot = names;
+			foreach (string entryText in namesSnapshot)
 			{
-				if (receipts.ContainsKey(text))
+				if (receipts.ContainsKey(entryText))
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			return list;
@@ -423,66 +423,66 @@ namespace PaviseApp
 			}
 			if (!raw.StartsWith("2\n", StringComparison.Ordinal))
 			{
-				string[] array = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
-				string[] array2 = array;
-				foreach (string text in array2)
+				string[] textEntries = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
+				string[] textEntries2 = textEntries;
+				foreach (string entryText in textEntries2)
 				{
-					if (!allowed.Contains(text) || result.ContainsKey(text))
+					if (!allowed.Contains(entryText) || result.ContainsKey(entryText))
 					{
 						return false;
 					}
-					result.Add(text, new Receipt
+					result.Add(entryText, new Receipt
 					{
-						Name = text,
+						Name = entryText,
 						State = Phase.Prepared,
 						CanStart = true
 					});
 				}
 				return result.Count > 0;
 			}
-			string[] array3 = raw.Split('\n');
-			if (array3.Length < 2 || array3.Length - 1 > allowed.Count)
+			string[] rawParts = raw.Split('\n');
+			if (rawParts.Length < 2 || rawParts.Length - 1 > allowed.Count)
 			{
 				return false;
 			}
-			for (int j = 1; j < array3.Length; j++)
+			for (int j = 1; j < rawParts.Length; j++)
 			{
-				string[] array4 = array3[j].Split('\t');
-				if (array4.Length != 3 || !allowed.Contains(array4[1]) || result.ContainsKey(array4[1]) || (array4[2] != "0" && array4[2] != "1"))
+				string[] parts = rawParts[j].Split('\t');
+				if (parts.Length != 3 || !allowed.Contains(parts[1]) || result.ContainsKey(parts[1]) || (parts[2] != "0" && parts[2] != "1"))
 				{
 					return false;
 				}
 				Phase phase;
-				if (array4[0] == "P")
+				if (parts[0] == "P")
 				{
 					phase = Phase.Prepared;
 				}
-				else if (array4[0] == "O")
+				else if (parts[0] == "O")
 				{
 					phase = Phase.Owned;
 				}
-				else if (array4[0] == "R")
+				else if (parts[0] == "R")
 				{
 					phase = Phase.Restoring;
 				}
 				else
 				{
-					if (!(array4[0] == "S"))
+					if (!(parts[0] == "S"))
 					{
 						return false;
 					}
 					phase = Phase.Settled;
 				}
-				if (phase == Phase.Prepared && array4[2] != "0")
+				if (phase == Phase.Prepared && parts[2] != "0")
 				{
 					return false;
 				}
-				result.Add(array4[1], new Receipt
+				result.Add(parts[1], new Receipt
 				{
-					Name = array4[1],
+					Name = parts[1],
 					State = phase,
 					CanStart = (phase == Phase.Owned),
-					StopObserved = (array4[2] == "1")
+					StopObserved = (parts[2] == "1")
 				});
 			}
 			return true;
@@ -497,14 +497,14 @@ namespace PaviseApp
 			List<string> list = new List<string>();
 			list.Add("2");
 			List<string> list2 = list;
-			string[] array = names;
-			foreach (string text in array)
+			string[] namesSnapshot = names;
+			foreach (string entryText in namesSnapshot)
 			{
 				Receipt value;
-				if (receipts.TryGetValue(text, out value))
+				if (receipts.TryGetValue(entryText, out value))
 				{
-					string text2 = ((value.State == Phase.Prepared) ? "P" : ((value.State == Phase.Owned) ? "O" : ((value.State == Phase.Restoring) ? "R" : "S")));
-					list2.Add(text2 + "\t" + text + "\t" + (value.StopObserved ? "1" : "0"));
+					string message = ((value.State == Phase.Prepared) ? "P" : ((value.State == Phase.Owned) ? "O" : ((value.State == Phase.Restoring) ? "R" : "S")));
+					list2.Add(message + "\t" + entryText + "\t" + (value.StopObserved ? "1" : "0"));
 				}
 			}
 			return string.Join("\n", list2.ToArray());
@@ -512,9 +512,9 @@ namespace PaviseApp
 
 		private bool Save()
 		{
-			string text = Encode();
+			string encodeResult = Encode();
 			string value;
-			if (!Write(text) || !Read(out value) || value != text)
+			if (!Write(encodeResult) || !Read(out value) || value != encodeResult)
 			{
 				return false;
 			}

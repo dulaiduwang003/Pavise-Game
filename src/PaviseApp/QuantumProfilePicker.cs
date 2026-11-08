@@ -118,12 +118,12 @@ namespace PaviseApp
 				{
 					return -1;
 				}
-				int num = (point.Y - header + offset) / row;
-				if (num >= order.Length)
+				int rowRatio = (point.Y - header + offset) / row;
+				if (rowRatio >= order.Length)
 				{
 					return -1;
 				}
-				return num;
+				return rowRatio;
 			}
 
 			protected override void OnPaint(PaintEventArgs e)
@@ -136,16 +136,16 @@ namespace PaviseApp
 				graphics.SetClip(new Rectangle(0, header, base.Width, ViewHeight));
 				for (int i = 0; i < order.Length; i++)
 				{
-					int num = order[i];
-					int num2 = header + i * row - offset;
-					bool flag = num == selected;
-					bool flag2 = (keyboard ? (i == active) : (i == hoverRow));
-					Rectangle r = new Rectangle(Theme.S(5), num2 + Theme.S(2), base.Width - Theme.S(16), row - Theme.S(4));
-					if (flag || flag2)
+					int onPaintValue = order[i];
+					int top = header + i * row - offset;
+					bool matchesOnPaintValue = onPaintValue == selected;
+					bool matchesI = (keyboard ? (i == active) : (i == hoverRow));
+					Rectangle r = new Rectangle(Theme.S(5), top + Theme.S(2), base.Width - Theme.S(16), row - Theme.S(4));
+					if (matchesOnPaintValue || matchesI)
 					{
-						Theme.FillRound(graphics, r, Theme.S(6), flag ? Col.Lerp(Theme.Card, Theme.Accent, flag2 ? 0.16f : 0.09f) : Theme.CardHover);
+						Theme.FillRound(graphics, r, Theme.S(6), matchesOnPaintValue ? Col.Lerp(Theme.Card, Theme.Accent, matchesI ? 0.16f : 0.09f) : Theme.CardHover);
 					}
-					if (flag2)
+					if (matchesI)
 					{
 						using (Pen pen = new Pen(Theme.StrokeHi))
 						{
@@ -159,14 +159,14 @@ namespace PaviseApp
 					{
 						using (Pen pen2 = new Pen(Theme.Stroke))
 						{
-							graphics.DrawLine(pen2, Theme.S(12), num2, base.Width - Theme.S(12), num2);
+							graphics.DrawLine(pen2, Theme.S(12), top, base.Width - Theme.S(12), top);
 						}
 					}
-					TextRenderer.DrawText(graphics, QuantumProfiles.Title(num), Theme.UI(10f, true), new Rectangle(Theme.S(14), num2 + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), flag ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-					TextRenderer.DrawText(graphics, QuantumProfiles.Description(num), Theme.UI(9f, false), new Rectangle(Theme.S(14), num2 + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-					if (flag)
+					TextRenderer.DrawText(graphics, QuantumProfiles.Title(onPaintValue), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), matchesOnPaintValue ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+					TextRenderer.DrawText(graphics, QuantumProfiles.Description(onPaintValue), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+					if (matchesOnPaintValue)
 					{
-						TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), num2 + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent);
+						TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), top + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent);
 					}
 				}
 				if (MaxOffset > 0)
@@ -191,10 +191,10 @@ namespace PaviseApp
 					Invalidate();
 					return;
 				}
-				int num = Hit(e.Location);
-				if (num != hoverRow)
+				int hitResult = Hit(e.Location);
+				if (hitResult != hoverRow)
 				{
-					hoverRow = num;
+					hoverRow = hitResult;
 					keyboard = false;
 					Invalidate();
 				}
@@ -220,8 +220,8 @@ namespace PaviseApp
 				}
 				if (MaxOffset > 0 && e.X >= base.Width - Theme.S(10) && e.Y >= header && e.Y < base.Height - footer)
 				{
-					int num = header + offset * (ViewHeight - ThumbHeight) / MaxOffset;
-					if (e.Y < num || e.Y > num + ThumbHeight)
+					int headerOffset = header + offset * (ViewHeight - ThumbHeight) / MaxOffset;
+					if (e.Y < headerOffset || e.Y > headerOffset + ThumbHeight)
 					{
 						offset = Math.Max(0, Math.Min(MaxOffset, (e.Y - header - ThumbHeight / 2) * MaxOffset / Math.Max(1, ViewHeight - ThumbHeight)));
 					}
@@ -245,14 +245,14 @@ namespace PaviseApp
 				base.OnMouseUp(e);
 				if (e.Button == MouseButtons.Left)
 				{
-					int num = Hit(e.Location);
-					int num2 = pressedRow;
+					int hitResult = Hit(e.Location);
+					int pressedRowSnapshot = pressedRow;
 					pressedRow = -1;
 					dragY = -1;
 					base.Capture = false;
-					if (Interactive && num >= 0 && num == num2 && this.Picked != null)
+					if (Interactive && hitResult >= 0 && hitResult == pressedRowSnapshot && this.Picked != null)
 					{
-						this.Picked(order[num]);
+						this.Picked(order[hitResult]);
 					}
 				}
 			}
@@ -290,26 +290,26 @@ namespace PaviseApp
 				{
 					return base.ProcessCmdKey(ref msg, keyData);
 				}
-				int num = active;
+				int processedCount = active;
 				switch (keyData)
 				{
 				case Keys.Down:
-					num++;
+					processedCount++;
 					break;
 				case Keys.Up:
-					num--;
+					processedCount--;
 					break;
 				case Keys.Home:
-					num = 0;
+					processedCount = 0;
 					break;
 				case Keys.End:
-					num = order.Length - 1;
+					processedCount = order.Length - 1;
 					break;
 				case Keys.Next:
-					num += Math.Max(1, ViewHeight / row);
+					processedCount += Math.Max(1, ViewHeight / row);
 					break;
 				case Keys.Prior:
-					num -= Math.Max(1, ViewHeight / row);
+					processedCount -= Math.Max(1, ViewHeight / row);
 					break;
 				case Keys.Return:
 				case Keys.Space:
@@ -336,7 +336,7 @@ namespace PaviseApp
 				default:
 					return base.ProcessCmdKey(ref msg, keyData);
 				}
-				active = Math.Max(0, Math.Min(order.Length - 1, num));
+				active = Math.Max(0, Math.Min(order.Length - 1, processedCount));
 				keyboard = true;
 				EnsureActiveVisible();
 				Invalidate();
@@ -420,17 +420,17 @@ namespace PaviseApp
 				PaintBusy(e.Graphics, base.ClientRectangle, graphicsPath);
 			}
 			TextRenderer.DrawText(e.Graphics, QuantumProfiles.Title(selected), Theme.UI(9.5f, false), new Rectangle(Theme.S(11), 0, base.Width - Theme.S(40), base.Height), base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | ((base.Width < Theme.S(200)) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine));
-			int num = base.Width - Theme.S(21);
-			int num2 = base.Height / 2;
+			int remainingWidth = base.Width - Theme.S(21);
+			int heightRatio = base.Height / 2;
 			using (Pen pen2 = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
 			{
-				int num3 = Theme.S(4);
-				int num4 = ((!open) ? 1 : (-1));
+				int scaledDimension = Theme.S(4);
+				int onPaintValue = ((!open) ? 1 : (-1));
 				e.Graphics.DrawLines(pen2, new Point[3]
 				{
-					new Point(num - num3, num2 - num4 * num3 / 2),
-					new Point(num, num2 + num4 * num3 / 2),
-					new Point(num + num3, num2 - num4 * num3 / 2)
+					new Point(remainingWidth - scaledDimension, heightRatio - onPaintValue * scaledDimension / 2),
+					new Point(remainingWidth, heightRatio + onPaintValue * scaledDimension / 2),
+					new Point(remainingWidth + scaledDimension, heightRatio - onPaintValue * scaledDimension / 2)
 				});
 			}
 		}

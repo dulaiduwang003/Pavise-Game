@@ -72,8 +72,8 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string text = control + "|" + mode;
-				if (!Settings.SaveStrDurable("IntelEnduranceSnap", text) || Settings.LoadStr("IntelEnduranceSnap", "") != text)
+				string modeOffset = control + "|" + mode;
+				if (!Settings.SaveStrDurable("IntelEnduranceSnap", modeOffset) || Settings.LoadStr("IntelEnduranceSnap", "") != modeOffset)
 				{
 					return false;
 				}
@@ -102,10 +102,10 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				string[] array = value.Split('|');
+				string[] valueParts = value.Split('|');
 				int result;
 				int result2;
-				if (array.Length != 2 || !int.TryParse(array[0], out result) || !int.TryParse(array[1], out result2) || !Wanted(result))
+				if (valueParts.Length != 2 || !int.TryParse(valueParts[0], out result) || !int.TryParse(valueParts[1], out result2) || !Wanted(result))
 				{
 					return false;
 				}

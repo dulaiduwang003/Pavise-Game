@@ -103,10 +103,10 @@ namespace PaviseApp
 						return false;
 					}
 				}
-				string text = exePath;
+				string exePathSnapshot = exePath;
 				try
 				{
-					text = Path.GetFileName(exePath);
+					exePathSnapshot = Path.GetFileName(exePath);
 				}
 				catch
 				{
@@ -122,12 +122,12 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					string text2 = PrefFieldText.ReadField(value2, "GpuPreference");
-					if (text2 == "1" || text2 == "2")
+					string field = PrefFieldText.ReadField(value2, "GpuPreference");
+					if (field == "1" || field == "2")
 					{
 						return true;
 					}
-					if (!string.IsNullOrEmpty(text2) && text2 != "0")
+					if (!string.IsNullOrEmpty(field) && field != "0")
 					{
 						return false;
 					}
@@ -158,7 +158,7 @@ namespace PaviseApp
 						return false;
 					}
 					pendingApplyReceipt = null;
-					Logger.Log(Lang.T("log.gpuprefstage.1") + text + Lang.T("log.gpuprefstage.2"));
+					Logger.Log(Lang.T("log.gpuprefstage.1") + exePathSnapshot + Lang.T("log.gpuprefstage.2"));
 					return true;
 				}
 				catch
@@ -277,7 +277,7 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				string text = null;
+				string path = null;
 				StageRecord record;
 				if (TryDecodeRecord(value, out record))
 				{
@@ -285,10 +285,10 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					text = record.Path;
+					path = record.Path;
 					try
 					{
-						text = Path.GetFileName(record.Path);
+						path = Path.GetFileName(record.Path);
 					}
 					catch
 					{
@@ -298,7 +298,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				Logger.Warn(Lang.T("log.gpuprefstage.6") + (text ?? "?") + Lang.T("log.gpuprefstage.7"));
+				Logger.Warn(Lang.T("log.gpuprefstage.6") + (path ?? "?") + Lang.T("log.gpuprefstage.7"));
 				return true;
 			}
 		}
@@ -329,10 +329,10 @@ namespace PaviseApp
 			}
 			string path = record.Path;
 			string original = record.Original;
-			string text = path;
+			string pathSnapshot = path;
 			try
 			{
-				text = Path.GetFileName(path);
+				pathSnapshot = Path.GetFileName(path);
 			}
 			catch
 			{
@@ -356,15 +356,15 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string text2 = (pendingRestoreNotIssued = EncodeRecord('R', path, original));
-				if (!SaveJournal(text2))
+				string message = (pendingRestoreNotIssued = EncodeRecord('R', path, original));
+				if (!SaveJournal(message))
 				{
 					return false;
 				}
 				string value3;
 				if (!TryReadPreference(path, out value3))
 				{
-					MarkRestoreNotIssued(record, text2);
+					MarkRestoreNotIssued(record, message);
 					return false;
 				}
 				if (PrefFieldText.ReadField(value3, "GpuPreference") != "2")
@@ -373,17 +373,17 @@ namespace PaviseApp
 				}
 				if (!ValidPreferenceFields(value3) || !string.Equals(value3, value2, StringComparison.Ordinal))
 				{
-					MarkRestoreNotIssued(record, text2);
+					MarkRestoreNotIssued(record, message);
 					return false;
 				}
-				string text3 = ((original != null) ? PrefFieldText.RestoreField(value2, original, "GpuPreference") : PrefFieldText.RemoveField(value2, "GpuPreference"));
+				string restoreFieldResult = ((original != null) ? PrefFieldText.RestoreField(value2, original, "GpuPreference") : PrefFieldText.RemoveField(value2, "GpuPreference"));
 				pendingRestoreNotIssued = null;
-				WriteResult writeResult = WriteAndVerify(path, (text3.Length == 0 && original == null) ? null : text3);
+				WriteResult writeResult = WriteAndVerify(path, (restoreFieldResult.Length == 0 && original == null) ? null : restoreFieldResult);
 				if (writeResult != 0)
 				{
 					if (writeResult == WriteResult.NotIssued)
 					{
-						MarkRestoreNotIssued(record, text2);
+						MarkRestoreNotIssued(record, message);
 					}
 					return false;
 				}
@@ -391,7 +391,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				Logger.Log(Lang.T("log.gpuprefstage.3") + text);
+				Logger.Log(Lang.T("log.gpuprefstage.3") + pathSnapshot);
 				return true;
 			}
 			catch
@@ -427,31 +427,31 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = raw.Split('|');
-			bool flag = array.Length == 2;
-			if (!flag && (array.Length != 4 || array[0] != "2" || array[1].Length != 1 || "PORS".IndexOf(array[1][0]) < 0))
+			string[] rawParts = raw.Split('|');
+			bool matchesLength = rawParts.Length == 2;
+			if (!matchesLength && (rawParts.Length != 4 || rawParts[0] != "2" || rawParts[1].Length != 1 || "PORS".IndexOf(rawParts[1][0]) < 0))
 			{
 				return false;
 			}
 			try
 			{
-				int num = ((!flag) ? 2 : 0);
-				string path = UnB64(array[num]);
-				string text = ((array[num + 1] == "-") ? null : UnB64(array[num + 1]));
-				if (!ValidExecutablePath(path) || !ValidPreferenceFields(text))
+				int decodeRecordValue = ((!matchesLength) ? 2 : 0);
+				string path = UnB64(rawParts[decodeRecordValue]);
+				string unB64Result = ((rawParts[decodeRecordValue + 1] == "-") ? null : UnB64(rawParts[decodeRecordValue + 1]));
+				if (!ValidExecutablePath(path) || !ValidPreferenceFields(unB64Result))
 				{
 					return false;
 				}
-				string text2 = PrefFieldText.ReadField(text, "GpuPreference");
-				if (text2 == "1" || text2 == "2")
+				string field = PrefFieldText.ReadField(unB64Result, "GpuPreference");
+				if (field == "1" || field == "2")
 				{
 					return false;
 				}
 				record = new StageRecord
 				{
-					Phase = (flag ? 'P' : array[1][0]),
+					Phase = (matchesLength ? 'P' : rawParts[1][0]),
 					Path = path,
-					Original = text
+					Original = unB64Result
 				};
 				return true;
 			}
@@ -506,13 +506,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = 0;
-			string[] array = value.Split(';');
-			foreach (string text in array)
+			int validPreferenceFieldsValue = 0;
+			string[] valueParts = value.Split(';');
+			foreach (string entryText in valueParts)
 			{
-				int num2 = text.IndexOf('=');
-				string a = ((num2 < 0) ? text : text.Substring(0, num2)).Trim();
-				if (string.Equals(a, "GpuPreference", StringComparison.OrdinalIgnoreCase) && (num2 < 0 || ++num > 1 || text.Substring(num2 + 1).Trim().Length == 0))
+				int matchIndex = entryText.IndexOf('=');
+				string a = ((matchIndex < 0) ? entryText : entryText.Substring(0, matchIndex)).Trim();
+				if (string.Equals(a, "GpuPreference", StringComparison.OrdinalIgnoreCase) && (matchIndex < 0 || ++validPreferenceFieldsValue > 1 || entryText.Substring(matchIndex + 1).Trim().Length == 0))
 				{
 					return false;
 				}
@@ -564,12 +564,12 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences"))
 				{
-					object obj = ((registryKey == null) ? null : registryKey.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames));
-					if (obj != null && (!(obj is string) || registryKey.GetValueKind(path) != RegistryValueKind.String))
+					object value2 = ((registryKey == null) ? null : registryKey.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+					if (value2 != null && (!(value2 is string) || registryKey.GetValueKind(path) != RegistryValueKind.String))
 					{
 						return false;
 					}
-					value = obj as string;
+					value = value2 as string;
 					return true;
 				}
 			}
@@ -581,7 +581,7 @@ namespace PaviseApp
 
 		private static WriteResult TryWritePreference(string path, string value)
 		{
-			bool flag = false;
+			bool writePreferenceReady = false;
 			try
 			{
 				using (RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences"))
@@ -590,7 +590,7 @@ namespace PaviseApp
 					{
 						return WriteResult.NotIssued;
 					}
-					flag = true;
+					writePreferenceReady = true;
 					if (value == null)
 					{
 						registryKey.DeleteValue(path, false);
@@ -604,7 +604,7 @@ namespace PaviseApp
 			}
 			catch
 			{
-				return (!flag) ? WriteResult.NotIssued : WriteResult.Unconfirmed;
+				return (!writePreferenceReady) ? WriteResult.NotIssued : WriteResult.Unconfirmed;
 			}
 		}
 

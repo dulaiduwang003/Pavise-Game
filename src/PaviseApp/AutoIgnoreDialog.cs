@@ -45,24 +45,24 @@ namespace PaviseApp
 				{
 					return;
 				}
-				int num = base.Width / 2;
-				int num2 = base.Height / 2 - Theme.S(47);
+				int widthRatio = base.Width / 2;
+				int remainingS = base.Height / 2 - Theme.S(47);
 				using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
 				{
 					e.Graphics.DrawLines(pen2, new Point[6]
 					{
-						new Point(num - Theme.S(15), num2),
-						new Point(num + Theme.S(9), num2),
-						new Point(num + Theme.S(16), num2 + Theme.S(7)),
-						new Point(num + Theme.S(16), num2 + Theme.S(29)),
-						new Point(num - Theme.S(15), num2 + Theme.S(29)),
-						new Point(num - Theme.S(15), num2)
+						new Point(widthRatio - Theme.S(15), remainingS),
+						new Point(widthRatio + Theme.S(9), remainingS),
+						new Point(widthRatio + Theme.S(16), remainingS + Theme.S(7)),
+						new Point(widthRatio + Theme.S(16), remainingS + Theme.S(29)),
+						new Point(widthRatio - Theme.S(15), remainingS + Theme.S(29)),
+						new Point(widthRatio - Theme.S(15), remainingS)
 					});
 					e.Graphics.DrawLines(pen2, new Point[3]
 					{
-						new Point(num - Theme.S(8), num2 + Theme.S(15)),
-						new Point(num - Theme.S(2), num2 + Theme.S(21)),
-						new Point(num + Theme.S(8), num2 + Theme.S(10))
+						new Point(widthRatio - Theme.S(8), remainingS + Theme.S(15)),
+						new Point(widthRatio - Theme.S(2), remainingS + Theme.S(21)),
+						new Point(widthRatio + Theme.S(8), remainingS + Theme.S(10))
 					});
 				}
 			}
@@ -181,12 +181,12 @@ namespace PaviseApp
 			{
 				// Opaque Button painting must not retain a previous buffer's glyph.
 				e.Graphics.Clear(Theme.Card);
-				int num = Theme.S(11);
-				int num2 = base.Width - num;
+				int left = Theme.S(11);
+				int width = base.Width - left;
 				using (Pen pen = new Pen(Focused ? Theme.Accent : Theme.Dim, Math.Max(1, Theme.S(1))))
 				{
-					e.Graphics.DrawLine(pen, num, num, num2, num2);
-					e.Graphics.DrawLine(pen, num2, num, num, num2);
+					e.Graphics.DrawLine(pen, left, left, width, width);
+					e.Graphics.DrawLine(pen, width, left, left, width);
 				}
 				if (Focused && ShowFocusCues)
 				{
@@ -359,37 +359,37 @@ namespace PaviseApp
 		{
 			Point autoScrollPosition = new Point(0, -content.AutoScrollPosition.Y);
 			content.AutoScrollPosition = Point.Empty;
-			int num = Theme.S(24);
-			int num2 = base.ClientSize.Width - num * 2;
-			int num3 = base.ClientSize.Height - Theme.S(64);
-			int num4 = Theme.S(40);
-			int num5 = (num2 - Theme.S(12)) / 2;
-			close.SetBounds(num, num3, num5, num4);
-			resume.SetBounds(close.Right + Theme.S(12), num3, num2 - num5 - Theme.S(12), num4);
-			status.SetBounds(num, num3 - Theme.S(32), num2, Theme.S(26));
+			int left = Theme.S(24);
+			int width = base.ClientSize.Width - left * 2;
+			int top = base.ClientSize.Height - Theme.S(64);
+			int height = Theme.S(40);
+			int width2 = (width - Theme.S(12)) / 2;
+			close.SetBounds(left, top, width2, height);
+			resume.SetBounds(close.Right + Theme.S(12), top, width - width2 - Theme.S(12), height);
+			status.SetBounds(left, top - Theme.S(32), width, Theme.S(26));
 			content.SetBounds(Theme.S(2), Theme.S(2), base.ClientSize.Width - Theme.S(4), Math.Max(1, status.Top - Theme.S(14)));
-			int num6 = Math.Max(Theme.S(20), SystemInformation.VerticalScrollBarWidth + 2);
-			int num7 = num2 - num6;
-			int num8 = Math.Max(Theme.S(36), TextRenderer.MeasureText(title.Text, title.Font, new Size(num7 - Theme.S(42), int.MaxValue), TextFormatFlags.WordBreak).Height + Theme.S(4));
-			title.SetBounds(num, Theme.S(20), num7 - Theme.S(42), num8);
-			dismiss.SetBounds(num + num7 - Theme.S(32), Theme.S(20), Theme.S(32), Theme.S(32));
-			int num9 = TextRenderer.MeasureText(description.Text, description.Font, new Size(num7, int.MaxValue), TextFormatFlags.WordBreak).Height + Theme.S(6);
-			description.SetBounds(num, title.Bottom + Theme.S(8), num7, num9);
-			int num10 = description.Bottom + Theme.S(16);
-			bool flag = list.SelectedItem != null;
-			int num11 = (flag ? Theme.S(128) : ((list.Items.Count > 0) ? Theme.S(48) : Theme.S(20)));
-			int num12 = Math.Max(Theme.S(146), content.Height - num10 - num11);
-			listWrap.SetBounds(num, num10, num7, num12);
-			empty.SetBounds(Theme.S(20), num12 / 2 - Theme.S(6), num7 - Theme.S(40), Theme.S(28));
-			emptyHint.SetBounds(Theme.S(24), empty.Bottom + Theme.S(5), num7 - Theme.S(48), Theme.S(48));
-			pathTitle.SetBounds(num, listWrap.Bottom + Theme.S(12), num7, Theme.S(22));
-			path.SetBounds(num, pathTitle.Bottom + Theme.S(4), num7, Theme.S(66));
-			selectionHint.SetBounds(num, listWrap.Bottom + Theme.S(12), num7, Theme.S(28));
+			int sLimit = Math.Max(Theme.S(20), SystemInformation.VerticalScrollBarWidth + 2);
+			int width3 = width - sLimit;
+			int height2 = Math.Max(Theme.S(36), TextRenderer.MeasureText(title.Text, title.Font, new Size(width3 - Theme.S(42), int.MaxValue), TextFormatFlags.WordBreak).Height + Theme.S(4));
+			title.SetBounds(left, Theme.S(20), width3 - Theme.S(42), height2);
+			dismiss.SetBounds(left + width3 - Theme.S(32), Theme.S(20), Theme.S(32), Theme.S(32));
+			int height3 = TextRenderer.MeasureText(description.Text, description.Font, new Size(width3, int.MaxValue), TextFormatFlags.WordBreak).Height + Theme.S(6);
+			description.SetBounds(left, title.Bottom + Theme.S(8), width3, height3);
+			int top2 = description.Bottom + Theme.S(16);
+			bool visibleValue = list.SelectedItem != null;
+			int scaledDimension = (visibleValue ? Theme.S(128) : ((list.Items.Count > 0) ? Theme.S(48) : Theme.S(20)));
+			int height4 = Math.Max(Theme.S(146), content.Height - top2 - scaledDimension);
+			listWrap.SetBounds(left, top2, width3, height4);
+			empty.SetBounds(Theme.S(20), height4 / 2 - Theme.S(6), width3 - Theme.S(40), Theme.S(28));
+			emptyHint.SetBounds(Theme.S(24), empty.Bottom + Theme.S(5), width3 - Theme.S(48), Theme.S(48));
+			pathTitle.SetBounds(left, listWrap.Bottom + Theme.S(12), width3, Theme.S(22));
+			path.SetBounds(left, pathTitle.Bottom + Theme.S(4), width3, Theme.S(66));
+			selectionHint.SetBounds(left, listWrap.Bottom + Theme.S(12), width3, Theme.S(28));
 			TextBox textBox = path;
-			bool visible = (pathTitle.Visible = flag);
+			bool visible = (pathTitle.Visible = visibleValue);
 			textBox.Visible = visible;
-			selectionHint.Visible = !flag && list.Items.Count > 0;
-			content.AutoScrollMinSize = new Size(0, (flag ? path.Bottom : (selectionHint.Visible ? selectionHint.Bottom : listWrap.Bottom)) + Theme.S(16));
+			selectionHint.Visible = !visibleValue && list.Items.Count > 0;
+			content.AutoScrollMinSize = new Size(0, (visibleValue ? path.Bottom : (selectionHint.Visible ? selectionHint.Bottom : listWrap.Bottom)) + Theme.S(16));
 			content.AutoScrollPosition = autoScrollPosition;
 		}
 
@@ -458,12 +458,12 @@ namespace PaviseApp
 				return;
 			}
 			string executable = (string)list.Items[e.Index];
-			bool flag = (e.State & DrawItemState.Selected) != 0;
-			using (SolidBrush brush = new SolidBrush(flag ? Col.Lerp(Theme.Inset, Theme.Accent, Theme.LightMode ? 0.13f : 0.16f) : Theme.Inset))
+			bool valuesMatch = (e.State & DrawItemState.Selected) != 0;
+			using (SolidBrush brush = new SolidBrush(valuesMatch ? Col.Lerp(Theme.Inset, Theme.Accent, Theme.LightMode ? 0.13f : 0.16f) : Theme.Inset))
 			{
 				e.Graphics.FillRectangle(brush, e.Bounds);
 			}
-			if (flag)
+			if (valuesMatch)
 			{
 				using (SolidBrush brush2 = new SolidBrush(Theme.Accent))
 				{
@@ -476,7 +476,7 @@ namespace PaviseApp
 			{
 				e.Graphics.DrawLine(pen, e.Bounds.Left + Theme.S(14), e.Bounds.Bottom - 1, e.Bounds.Right - Theme.S(14), e.Bounds.Bottom - 1);
 			}
-			if (flag)
+			if (valuesMatch)
 			{
 				e.DrawFocusRectangle();
 			}
@@ -525,10 +525,10 @@ namespace PaviseApp
 
 		private void UpdateSelection()
 		{
-			string text = (list.SelectedItem as string) ?? "";
-			if (path.Text != text)
+			string textValue = (list.SelectedItem as string) ?? "";
+			if (path.Text != textValue)
 			{
-				path.Text = text;
+				path.Text = textValue;
 				path.Select(0, 0);
 				path.ScrollToCaret();
 			}
@@ -586,9 +586,9 @@ namespace PaviseApp
 								if (!base.IsDisposed && !base.Disposing)
 								{
 									RefreshEntries(selected);
-									bool flag = mode.GetAutoAddIgnoredPaths().Exists((string p) => string.Equals(p, selected, StringComparison.OrdinalIgnoreCase));
-									status.Text = Lang.T((saved || !flag) ? "autoignore.removed" : "autoignore.failed");
-									status.ForeColor = ((saved || !flag) ? Theme.Accent : Theme.Warning);
+									bool existsSucceeded = mode.GetAutoAddIgnoredPaths().Exists((string p) => string.Equals(p, selected, StringComparison.OrdinalIgnoreCase));
+									status.Text = Lang.T((saved || !existsSucceeded) ? "autoignore.removed" : "autoignore.failed");
+									status.ForeColor = ((saved || !existsSucceeded) ? Theme.Accent : Theme.Warning);
 								}
 							}
 							finally

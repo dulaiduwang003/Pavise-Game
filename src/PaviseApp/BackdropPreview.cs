@@ -67,8 +67,8 @@ namespace PaviseApp
 			}
 			if (!Backdrop.Active)
 			{
-				int num = Theme.S(24);
-				Glyphs.Draw(graphics, "settings", new Rectangle((base.Width - num) / 2, Theme.S(22), num, num), Theme.Faint);
+				int scaledDimension = Theme.S(24);
+				Glyphs.Draw(graphics, "settings", new Rectangle((base.Width - scaledDimension) / 2, Theme.S(22), scaledDimension, scaledDimension), Theme.Faint);
 				TextRenderer.DrawText(graphics, EmptyText ?? "", Theme.Mono(7f), new Rectangle(Theme.S(8), Theme.S(56), base.Width - Theme.S(16), Theme.S(20)), Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
 			TextRenderer.DrawText(graphics, "LIVE PREVIEW", Theme.Mono(5.9f), new Rectangle(Theme.S(8), Theme.S(6), base.Width - Theme.S(16), Theme.S(14)), Backdrop.Active ? Theme.Accent : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);

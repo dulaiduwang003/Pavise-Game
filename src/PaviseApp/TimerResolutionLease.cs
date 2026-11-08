@@ -344,8 +344,8 @@ namespace PaviseApp
 					}
 					return !Failed;
 				}
-				bool flag = Release();
-				if (!flag)
+				bool releaseSucceeded = Release();
+				if (!releaseSucceeded)
 				{
 					RecordFailure(CurrentFailure("release"));
 					DelayRelease(now);
@@ -356,7 +356,7 @@ namespace PaviseApp
 					releaseFailures = 0;
 					releaseRetryAt = 0L;
 				}
-				return flag;
+				return releaseSucceeded;
 			}
 			if (ActionFailureStore.IsBlocked("GlobalTimerResolutionLeaseV1", "system"))
 			{
@@ -514,9 +514,9 @@ namespace PaviseApp
 
 		private void DelayRelease(long now)
 		{
-			int num = Math.Min(300, 30 * (1 << releaseFailures));
+			int upperBound = Math.Min(300, 30 * (1 << releaseFailures));
 			releaseFailures = Math.Min(4, releaseFailures + 1);
-			releaseRetryAt = now + TimeSpan.FromSeconds(num).Ticks;
+			releaseRetryAt = now + TimeSpan.FromSeconds(upperBound).Ticks;
 		}
 
 		private bool Release(bool cleanup = true)

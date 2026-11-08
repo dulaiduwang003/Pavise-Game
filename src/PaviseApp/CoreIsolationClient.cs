@@ -106,12 +106,12 @@ namespace PaviseApp
 			{
 				worker.StandardInput.WriteLine(command);
 				worker.StandardInput.Flush();
-				string text = ReadReply();
-				if (text == "OK")
+				string reply = ReadReply();
+				if (reply == "OK")
 				{
 					return true;
 				}
-				LastError = text ?? "worker-exited";
+				LastError = reply ?? "worker-exited";
 			}
 			catch (Exception ex)
 			{
@@ -157,9 +157,9 @@ namespace PaviseApp
 			failed = true;
             lock (phaseGate) { if (applyScope != null) failedScopes.Add(applyScope); }
 			active = false;
-			bool flag = CloseWorker(false);
-            if (flag) ActiveMask = 0uL;
-			State = (flag ? "schedule.isolation.failed" : "schedule.isolation.pending");
+			bool closeWorkerSucceeded = CloseWorker(false);
+            if (closeWorkerSucceeded) ActiveMask = 0uL;
+			State = (closeWorkerSucceeded ? "schedule.isolation.failed" : "schedule.isolation.pending");
 			Logger.Warn(Lang.T(State) + " (" + reason + ")");
 			return false;
 		}
@@ -221,8 +221,8 @@ namespace PaviseApp
 			lock (gate)
 			{
 				active = false;
-				bool flag = CloseWorker(true);
-				if (flag)
+				bool closeWorkerSucceeded = CloseWorker(true);
+				if (closeWorkerSucceeded)
 				{
 					failed = false;
 					ActiveMask = 0uL;
@@ -233,7 +233,7 @@ namespace PaviseApp
 					failed = true;
 					State = "schedule.isolation.pending";
 				}
-				return flag;
+				return closeWorkerSucceeded;
 			}
 		}
 	}

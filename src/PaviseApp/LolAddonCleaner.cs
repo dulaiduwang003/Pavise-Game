@@ -121,20 +121,20 @@ namespace PaviseApp
 					root = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 					return true;
 				}
-				string text;
+				string fullName;
 				try
 				{
-					text = ((Directory.GetParent(path) == null) ? null : Directory.GetParent(path).FullName);
+					fullName = ((Directory.GetParent(path) == null) ? null : Directory.GetParent(path).FullName);
 				}
 				catch
 				{
-					text = null;
+					fullName = null;
 				}
-				if (string.IsNullOrEmpty(text) || SamePath(text, path))
+				if (string.IsNullOrEmpty(fullName) || SamePath(fullName, path))
 				{
 					break;
 				}
-				path = text;
+				path = fullName;
 			}
 			error = Lang.T("lolq.err.notroot");
 			return false;
@@ -209,22 +209,22 @@ namespace PaviseApp
 			}
 			try
 			{
-				Process[] array = processes;
-				foreach (Process process in array)
+				Process[] processesSnapshot = processes;
+				foreach (Process process in processesSnapshot)
 				{
-					string text = null;
-					int num = 0;
+					string processName = null;
+					int hasBlockingProcessesValue = 0;
 					string path = null;
 					try
 					{
-						text = process.ProcessName;
+						processName = process.ProcessName;
 					}
 					catch
 					{
 					}
 					try
 					{
-						num = process.Id;
+						hasBlockingProcessesValue = process.Id;
 					}
 					catch
 					{
@@ -236,16 +236,16 @@ namespace PaviseApp
 					catch
 					{
 					}
-					if (IsBlockingProcess(text, path, rootPrefix))
+					if (IsBlockingProcess(processName, path, rootPrefix))
 					{
-						names.Add((string.IsNullOrEmpty(text) ? Lang.T("lolq.proc.unknown") : text) + " PID " + num);
+						names.Add((string.IsNullOrEmpty(processName) ? Lang.T("lolq.proc.unknown") : processName) + " PID " + hasBlockingProcessesValue);
 					}
 				}
 			}
 			finally
 			{
-				Process[] array2 = processes;
-				foreach (Process process2 in array2)
+				Process[] processesSnapshot2 = processes;
+				foreach (Process process2 in processesSnapshot2)
 				{
 					try
 					{
@@ -379,12 +379,12 @@ namespace PaviseApp
 					return false;
 				}
 				string path2 = Path.Combine(directoryInfo.FullName, "Game");
-				string text = Path.Combine(directoryInfo.FullName, "LeagueClient");
-				if (!SafeDirectory(path2) || !SafeDirectory(text))
+				string leagueClientPath = Path.Combine(directoryInfo.FullName, "LeagueClient");
+				if (!SafeDirectory(path2) || !SafeDirectory(leagueClientPath))
 				{
 					return false;
 				}
-				if (!File.Exists(Path.Combine(text, "LeagueClient.exe")))
+				if (!File.Exists(Path.Combine(leagueClientPath, "LeagueClient.exe")))
 				{
 					return false;
 				}
@@ -467,8 +467,8 @@ namespace PaviseApp
 					error = Lang.F("lolq.err.scanfail", ex.Message);
 					return false;
 				}
-				FileInfo[] array = files;
-				foreach (FileInfo fileInfo in array)
+				FileInfo[] filesSnapshot = files;
+				foreach (FileInfo fileInfo in filesSnapshot)
 				{
 					try
 					{
@@ -490,8 +490,8 @@ namespace PaviseApp
 						return false;
 					}
 				}
-				DirectoryInfo[] array2 = directories;
-				foreach (DirectoryInfo directoryInfo2 in array2)
+				DirectoryInfo[] directoriesSnapshot = directories;
+				foreach (DirectoryInfo directoryInfo2 in directoriesSnapshot)
 				{
 					try
 					{
@@ -537,8 +537,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			FileInfo[] array = files;
-			foreach (FileInfo fileInfo in array)
+			FileInfo[] filesSnapshot = files;
+			foreach (FileInfo fileInfo in filesSnapshot)
 			{
 				try
 				{
@@ -554,8 +554,8 @@ namespace PaviseApp
 					result = false;
 				}
 			}
-			DirectoryInfo[] array2 = directories;
-			foreach (DirectoryInfo directory2 in array2)
+			DirectoryInfo[] directoriesSnapshot = directories;
+			foreach (DirectoryInfo directory2 in directoriesSnapshot)
 			{
 				if (!DeleteTree(directory2))
 				{
@@ -584,12 +584,12 @@ namespace PaviseApp
 
 		private static bool IsBlockingProcess(string name, string path, string rootPrefix)
 		{
-			string text = (string.IsNullOrEmpty(name) ? "" : name.Trim().ToLowerInvariant());
-			if (text.StartsWith("wegame", StringComparison.Ordinal))
+			string toLowerInvariantResult = (string.IsNullOrEmpty(name) ? "" : name.Trim().ToLowerInvariant());
+			if (toLowerInvariantResult.StartsWith("wegame", StringComparison.Ordinal))
 			{
 				goto MarkProcessAlive;
 			}
-			switch (text)
+			switch (toLowerInvariantResult)
 			{
 			case "pallas":
 			case "rail":
@@ -607,41 +607,41 @@ namespace PaviseApp
 			case "yxqxunyou":
 				goto MarkProcessAlive;
 			}
-			int num = ((text == "sguard64") ? 1 : 0);
+			int isBlockingProcessValue = ((toLowerInvariantResult == "sguard64") ? 1 : 0);
 			goto InspectProcessPath;
 			InspectProcessPath:
-			bool flag = (byte)num != 0;
-			string text2 = null;
+			bool matchesIsBlockingProcessValue = (byte)isBlockingProcessValue != 0;
+			string fullPath = null;
 			if (!string.IsNullOrEmpty(path))
 			{
 				try
 				{
-					text2 = Path.GetFullPath(path);
+					fullPath = Path.GetFullPath(path);
 				}
 				catch
 				{
-					text2 = path;
+					fullPath = path;
 				}
 			}
-			if (text2 != null && text2.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+			if (fullPath != null && fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
 			{
 				return true;
 			}
-			if (flag)
+			if (matchesIsBlockingProcessValue)
 			{
 				return true;
 			}
-			if (text2 == null)
+			if (fullPath == null)
 			{
 				return false;
 			}
-			string text3 = text2.Replace('/', '\\');
-			if (text3.IndexOf("\\WeGame\\", StringComparison.OrdinalIgnoreCase) >= 0)
+			string replaceResult = fullPath.Replace('/', '\\');
+			if (replaceResult.IndexOf("\\WeGame\\", StringComparison.OrdinalIgnoreCase) >= 0)
 			{
-				switch (text)
+				switch (toLowerInvariantResult)
 				{
 				default:
-					return text == "tgp_daemon";
+					return toLowerInvariantResult == "tgp_daemon";
 				case "browser":
 				case "teniodl":
 				case "crashpad_handler":
@@ -650,7 +650,7 @@ namespace PaviseApp
 			}
 			return false;
 			MarkProcessAlive:
-			num = 1;
+			isBlockingProcessValue = 1;
 			goto InspectProcessPath;
 		}
 
@@ -662,10 +662,10 @@ namespace PaviseApp
 				intPtr = Native.OpenProcess(4096, false, process.Id);
 				if (intPtr != IntPtr.Zero)
 				{
-					string text = Native.ImagePath(intPtr);
-					if (!string.IsNullOrEmpty(text))
+					string imagePathResult = Native.ImagePath(intPtr);
+					if (!string.IsNullOrEmpty(imagePathResult))
 					{
-						return text;
+						return imagePathResult;
 					}
 				}
 			}
@@ -691,9 +691,9 @@ namespace PaviseApp
 
 		private static string CombineRelative(string root, string relativePath)
 		{
-			string text = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-			string fullPath = Path.GetFullPath(Path.Combine(text, relativePath));
-			if (!fullPath.StartsWith(EnsureSeparator(text), StringComparison.OrdinalIgnoreCase))
+			string getFullPathTrimmed = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			string fullPath = Path.GetFullPath(Path.Combine(getFullPathTrimmed, relativePath));
+			if (!fullPath.StartsWith(EnsureSeparator(getFullPathTrimmed), StringComparison.OrdinalIgnoreCase))
 			{
 				throw new InvalidOperationException(Lang.T("lolq.err.outsideroot"));
 			}
@@ -702,15 +702,15 @@ namespace PaviseApp
 
 		private static void EnsureSafeParent(string root, string parent)
 		{
-			string text = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-			string text2 = Path.GetFullPath(parent);
-			if (!text2.StartsWith(EnsureSeparator(text), StringComparison.OrdinalIgnoreCase) && !SamePath(text2, text))
+			string getFullPathTrimmed = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			string fullPath = Path.GetFullPath(parent);
+			if (!fullPath.StartsWith(EnsureSeparator(getFullPathTrimmed), StringComparison.OrdinalIgnoreCase) && !SamePath(fullPath, getFullPathTrimmed))
 			{
 				throw new InvalidOperationException(Lang.T("lolq.err.outsiderootr"));
 			}
-			while (!SamePath(text2, text))
+			while (!SamePath(fullPath, getFullPathTrimmed))
 			{
-				DirectoryInfo directoryInfo = new DirectoryInfo(text2);
+				DirectoryInfo directoryInfo = new DirectoryInfo(fullPath);
 				if (directoryInfo.Exists && IsReparse(directoryInfo))
 				{
 					throw new IOException(Lang.T("lolq.err.pathreparse"));
@@ -720,7 +720,7 @@ namespace PaviseApp
 				{
 					throw new IOException(Lang.T("lolq.err.pathinvalid"));
 				}
-				text2 = parent2.FullName;
+				fullPath = parent2.FullName;
 			}
 		}
 

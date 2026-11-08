@@ -29,15 +29,15 @@ namespace PaviseApp
             if (e.Index < 0 || e.Index >= Items.Count) return;
             bool highlighted = (e.State & DrawItemState.Selected) != 0;
             using (var fill = new SolidBrush(highlighted ? Theme.CardHover : Theme.Card)) e.Graphics.FillRectangle(fill, e.Bounds);
-            Rectangle text = Rectangle.Inflate(e.Bounds, -Theme.S(10), 0);
+            Rectangle inflateResult = Rectangle.Inflate(e.Bounds, -Theme.S(10), 0);
             bool current = e.Index == owner.SelectedIndex;
             string badge = current ? owner.CurrentBadge : "";
             int badgeWidth = String.IsNullOrEmpty(badge) ? 0 : TextRenderer.MeasureText(badge, Font).Width + Theme.S(16);
-            text.Width = Math.Max(1, text.Width - badgeWidth);
-            TextRenderer.DrawText(e.Graphics, (string)Items[e.Index], Font, text, current ? Theme.Accent : Theme.Fg,
+            inflateResult.Width = Math.Max(1, inflateResult.Width - badgeWidth);
+            TextRenderer.DrawText(e.Graphics, (string)Items[e.Index], Font, inflateResult, current ? Theme.Accent : Theme.Fg,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if (badgeWidth > 0)
-                TextRenderer.DrawText(e.Graphics, badge, Font, new Rectangle(text.Right, e.Bounds.Top, badgeWidth, e.Bounds.Height), Theme.Accent,
+                TextRenderer.DrawText(e.Graphics, badge, Font, new Rectangle(inflateResult.Right, e.Bounds.Top, badgeWidth, e.Bounds.Height), Theme.Accent,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
             if (highlighted && Focused) ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(e.Bounds, -2, -2), Theme.Dim, Theme.CardHover);
         }

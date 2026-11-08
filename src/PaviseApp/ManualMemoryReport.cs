@@ -38,15 +38,15 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = 0;
+				int processedCount = 0;
 				foreach (ManualMemoryStepResult step in Steps)
 				{
 					if (step.State == ManualMemoryStepState.Succeeded)
 					{
-						num++;
+						processedCount++;
 					}
 				}
-				return num;
+				return processedCount;
 			}
 		}
 

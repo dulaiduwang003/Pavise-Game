@@ -82,13 +82,13 @@ namespace PaviseApp
 			{
 				return target;
 			}
-			string[] array = target.Split(new char[1] { '|' }, 4);
+			string[] targetParts = target.Split(new char[1] { '|' }, 4);
 			Guid result;
-			if (array.Length != 4 || !Guid.TryParseExact(array[1], "N", out result) || result == Guid.Empty || string.IsNullOrEmpty(array[2]) || string.IsNullOrEmpty(array[3]) || array[3].StartsWith("ctx|", StringComparison.Ordinal))
+			if (targetParts.Length != 4 || !Guid.TryParseExact(targetParts[1], "N", out result) || result == Guid.Empty || string.IsNullOrEmpty(targetParts[2]) || string.IsNullOrEmpty(targetParts[3]) || targetParts[3].StartsWith("ctx|", StringComparison.Ordinal))
 			{
 				throw new FormatException("Invalid privacy target context");
 			}
-			return array[3];
+			return targetParts[3];
 		}
 
 		private static IPrivacyBackend EnsureBackend()
@@ -141,11 +141,11 @@ namespace PaviseApp
 
 		private static bool SavePreference(string action, bool enabled)
 		{
-			string text = (enabled ? "1" : "0");
+			string message = (enabled ? "1" : "0");
 			string value;
-			if (Settings.SaveStrDurable(PreferenceKey(action), text) && Settings.TryLoadStr(PreferenceKey(action), out value))
+			if (Settings.SaveStrDurable(PreferenceKey(action), message) && Settings.TryLoadStr(PreferenceKey(action), out value))
 			{
-				return value == text;
+				return value == message;
 			}
 			return false;
 		}
@@ -293,13 +293,13 @@ namespace PaviseApp
 
 		private static void SetResult(string action, string selectedTarget, PrivacyPlan plan, string state, string detail)
 		{
-			bool flag = false;
+			bool setResultReady = false;
 			if (plan != null && plan.Targets != null)
 			{
 				PrivacyTarget[] targets = plan.Targets;
 				foreach (PrivacyTarget privacyTarget in targets)
 				{
-					flag |= privacyTarget.RestartRequired;
+					setResultReady |= privacyTarget.RestartRequired;
 				}
 			}
 			bool hasRecovery = HasRecovery(action);
@@ -315,7 +315,7 @@ namespace PaviseApp
 					Limited = (plan != null && plan.Limited),
 					Supported = (plan != null && plan.Supported),
 					Managed = (plan != null && plan.Managed),
-					RestartRequired = flag
+					RestartRequired = setResultReady
 				};
 			}
 		}
@@ -344,10 +344,10 @@ namespace PaviseApp
 				working = true;
 				activeAction = action;
 			}
-			bool flag = false;
+			bool queueSucceeded = false;
 			try
 			{
-				flag = ThreadPool.QueueUserWorkItem(work);
+				queueSucceeded = ThreadPool.QueueUserWorkItem(work);
 			}
 			catch (Exception ex)
 			{
@@ -355,12 +355,12 @@ namespace PaviseApp
 			}
 			finally
 			{
-				if (!flag)
+				if (!queueSucceeded)
 				{
 					Finish();
 				}
 			}
-			return flag;
+			return queueSucceeded;
 		}
 
 		private static void Finish()
@@ -473,22 +473,22 @@ namespace PaviseApp
 			{
 				return "unsupported";
 			}
-			bool flag = true;
-			bool flag2 = false;
-			bool flag3 = false;
+			bool inspectStateReady = true;
+			bool inspectStateReady2 = false;
+			bool inspectStateReady3 = false;
 			PrivacyTarget[] targets = plan.Targets;
 			foreach (PrivacyTarget privacyTarget in targets)
 			{
-				flag3 |= ActionFailureStore.IsIsolated(action, privacyTarget.Key);
-				bool flag4 = Satisfied(action, privacyTarget.Key, ReadTarget(action, privacyTarget.Key), privacyTarget.Wanted);
-				flag = flag && flag4;
-				flag2 = flag2 || flag4;
+				inspectStateReady3 |= ActionFailureStore.IsIsolated(action, privacyTarget.Key);
+				bool satisfiedSucceeded = Satisfied(action, privacyTarget.Key, ReadTarget(action, privacyTarget.Key), privacyTarget.Wanted);
+				inspectStateReady = inspectStateReady && satisfiedSucceeded;
+				inspectStateReady2 = inspectStateReady2 || satisfiedSucceeded;
 			}
-			if (flag3)
+			if (inspectStateReady3)
 			{
 				return "stopped";
 			}
-			if (flag)
+			if (inspectStateReady)
 			{
 				if (!plan.Limited)
 				{
@@ -496,7 +496,7 @@ namespace PaviseApp
 				}
 				return "partial";
 			}
-			if (!flag2)
+			if (!inspectStateReady2)
 			{
 				return "ready";
 			}
@@ -612,8 +612,8 @@ namespace PaviseApp
 				return;
 			}
 			List<string> list = new List<string>();
-			bool flag = false;
-			string text = null;
+			bool applyReady = false;
+			string target2 = null;
 			try
 			{
 				PrivacyTarget[] targets = plan.Targets;
@@ -627,7 +627,7 @@ namespace PaviseApp
 					}
 				}
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				bool flag2 = false;
+				bool applyReady2 = false;
 				PrivacyTarget[] targets2 = plan.Targets;
 				foreach (PrivacyTarget privacyTarget2 in targets2)
 				{
@@ -637,15 +637,15 @@ namespace PaviseApp
 				foreach (PrivacyTarget privacyTarget3 in targets3)
 				{
 					ActionFailureStore.BeginAutomaticCycle(action, privacyTarget3.Key, PerformanceTuning.RecoveryCycleSerial + "\n" + privacyTarget3.Wanted);
-					flag2 |= ActionFailureStore.IsIsolated(action, privacyTarget3.Key);
+					applyReady2 |= ActionFailureStore.IsIsolated(action, privacyTarget3.Key);
 				}
 				List<PerformanceActionStore.Receipt> list2 = PerformanceActionStore.All();
 				list2.Reverse();
 				foreach (PerformanceActionStore.Receipt item in list2)
 				{
-					if (item.Id == action && (flag2 || !hashSet.Contains(item.Target)) && !RestoreReceipt(item))
+					if (item.Id == action && (applyReady2 || !hashSet.Contains(item.Target)) && !RestoreReceipt(item))
 					{
-						text = item.Target;
+						target2 = item.Target;
 						throw new InvalidOperationException("Recovery incomplete before privacy apply");
 					}
 				}
@@ -681,7 +681,7 @@ namespace PaviseApp
 				PrivacyTarget[] targets5 = plan.Targets;
 				foreach (PrivacyTarget target in targets5)
 				{
-					text = target.Key;
+					target2 = target.Key;
 					if (IsClosing || !MayApply())
 					{
 						throw new OperationCanceledException("Privacy work cancelled");
@@ -732,7 +732,7 @@ namespace PaviseApp
 				PrivacyTarget[] targets6 = plan.Targets;
 				foreach (PrivacyTarget privacyTarget5 in targets6)
 				{
-					text = privacyTarget5.Key;
+					target2 = privacyTarget5.Key;
 					try
 					{
 						if (!Satisfied(action, privacyTarget5.Key, ReadTarget(action, privacyTarget5.Key), privacyTarget5.Wanted))
@@ -751,20 +751,20 @@ namespace PaviseApp
 				}
 				foreach (string item2 in list)
 				{
-					text = item2;
+					target2 = item2;
 					if (!ActionFailureStore.CompleteApply(action, item2))
 					{
 						throw new InvalidOperationException("Privacy completion could not be persisted");
 					}
 				}
-				flag = true;
-				bool flag3 = false;
+				applyReady = true;
+				bool applyReady3 = false;
 				PrivacyTarget[] targets7 = plan.Targets;
 				foreach (PrivacyTarget privacyTarget6 in targets7)
 				{
-					flag3 |= privacyTarget6.RestartRequired;
+					applyReady3 |= privacyTarget6.RestartRequired;
 				}
-				string state = (flag3 ? "pending-reboot" : (plan.Limited ? "partial" : "configured"));
+				string state = (applyReady3 ? "pending-reboot" : (plan.Limited ? "partial" : "configured"));
 				if (RequiresReboot(action) || action == PrivacyActionCatalog.BackgroundGlobal)
 				{
 					state = RebootState(action, plan.Limited ? "partial" : "configured");
@@ -773,35 +773,35 @@ namespace PaviseApp
 			}
 			catch (OperationCanceledException ex)
 			{
-				bool flag4 = RestoreAction(action, selectedTarget);
-				if (!flag4 && text != null)
+				bool restoreActionSucceeded = RestoreAction(action, selectedTarget);
+				if (!restoreActionSucceeded && target2 != null)
 				{
-					ActionFailureStore.Trip(action, text, "Recovery incomplete after cancelled privacy change");
+					ActionFailureStore.Trip(action, target2, "Recovery incomplete after cancelled privacy change");
 				}
-				SetResult(action, selectedTarget, plan, flag4 ? "unverified" : "restore-failed", ex.Message);
+				SetResult(action, selectedTarget, plan, restoreActionSucceeded ? "unverified" : "restore-failed", ex.Message);
 			}
 			catch (NotSupportedException ex2)
 			{
-				bool flag5 = RestoreAction(action, selectedTarget);
-				if (!flag5 && text != null)
+				bool restoreActionSucceeded2 = RestoreAction(action, selectedTarget);
+				if (!restoreActionSucceeded2 && target2 != null)
 				{
-					ActionFailureStore.Trip(action, text, "Recovery incomplete after unsupported privacy change");
+					ActionFailureStore.Trip(action, target2, "Recovery incomplete after unsupported privacy change");
 				}
-				SetResult(action, selectedTarget, plan, flag5 ? "unsupported" : "restore-failed", ex2.Message);
+				SetResult(action, selectedTarget, plan, restoreActionSucceeded2 ? "unsupported" : "restore-failed", ex2.Message);
 			}
 			catch (Exception ex3)
 			{
-				if (text != null)
+				if (target2 != null)
 				{
-					ActionFailureStore.Trip(action, text, ex3.Message);
+					ActionFailureStore.Trip(action, target2, ex3.Message);
 				}
-				bool flag6 = RestoreAction(action, selectedTarget);
-				SetResult(action, selectedTarget, plan, (!flag6) ? "restore-failed" : ((text == null) ? "unverified" : "stopped"), ex3.Message);
+				bool restoreActionSucceeded3 = RestoreAction(action, selectedTarget);
+				SetResult(action, selectedTarget, plan, (!restoreActionSucceeded3) ? "restore-failed" : ((target2 == null) ? "unverified" : "stopped"), ex3.Message);
 				Logger.Warn("Privacy | " + action + " | " + ex3.Message);
 			}
 			finally
 			{
-				if (!flag)
+				if (!applyReady)
 				{
 					foreach (string item3 in list)
 					{
@@ -819,12 +819,12 @@ namespace PaviseApp
 			{
 				throw new InvalidOperationException("Unknown privacy target");
 			}
-			string text = EnsureBackend().Read(action, target);
-			if (text == null)
+			string readResult = EnsureBackend().Read(action, target);
+			if (readResult == null)
 			{
 				throw new InvalidOperationException("Privacy setting is unreadable");
 			}
-			return text;
+			return readResult;
 		}
 
 		internal static bool WriteTarget(string action, string target, string value)
@@ -863,14 +863,14 @@ namespace PaviseApp
 			}
 			if (RequiresReboot(action))
 			{
-				string text = CurrentBoot();
-				if (!BootSessionIdentity.Valid(text))
+				string currentBootResult = CurrentBoot();
+				if (!BootSessionIdentity.Valid(currentBootResult))
 				{
 					throw new InvalidOperationException("Boot identity unavailable; restart requirement cannot be tracked");
 				}
-				string text2 = (restoring ? "restore" : "apply");
+				string message = (restoring ? "restore" : "apply");
 				string value;
-				if (!Settings.SaveStrDurable("PrivacySetting_" + action + "Boot", text) || !Settings.TryLoadStr("PrivacySetting_" + action + "Boot", out value) || value != text || !Settings.SaveStrDurable("PrivacySetting_" + action + "Phase", text2) || !Settings.TryLoadStr("PrivacySetting_" + action + "Phase", out value) || value != text2)
+				if (!Settings.SaveStrDurable("PrivacySetting_" + action + "Boot", currentBootResult) || !Settings.TryLoadStr("PrivacySetting_" + action + "Boot", out value) || value != currentBootResult || !Settings.SaveStrDurable("PrivacySetting_" + action + "Phase", message) || !Settings.TryLoadStr("PrivacySetting_" + action + "Phase", out value) || value != message)
 				{
 					throw new InvalidOperationException("Reboot tracking could not be persisted");
 				}
@@ -909,8 +909,8 @@ namespace PaviseApp
 			{
 				lock (SystemConfigurationGate.Sync)
 				{
-					string text = CanonicalTarget(receipt.Target);
-					if ((receipt.Id == "EnvPrivacyServiceV1" && text == "svc|DiagTrack") || (receipt.Id == "EnvPrivacyCompatibilityV1" && text == "svc|PcaSvc"))
+					string canonicalTargetResult = CanonicalTarget(receipt.Target);
+					if ((receipt.Id == "EnvPrivacyServiceV1" && canonicalTargetResult == "svc|DiagTrack") || (receipt.Id == "EnvPrivacyCompatibilityV1" && canonicalTargetResult == "svc|PcaSvc"))
 					{
 						string value2;
 						if (!Settings.TryLoadStr(PerformanceActionStore.Slot(receipt.Id, receipt.Target), out value2))
@@ -925,7 +925,7 @@ namespace PaviseApp
 						{
 							return false;
 						}
-						string b = receipt.Target.Substring(0, receipt.Target.Length - text.Length) + "start|" + text.Substring(4);
+						string b = receipt.Target.Substring(0, receipt.Target.Length - canonicalTargetResult.Length) + "start|" + canonicalTargetResult.Substring(4);
 						foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
 						{
 							if (item.Id == receipt.Id && string.Equals(item.Target, b, StringComparison.OrdinalIgnoreCase) && !RestoreReceipt(item))
@@ -951,7 +951,7 @@ namespace PaviseApp
 
 		private static bool RestoreAction(string action, string selectedTarget)
 		{
-			bool flag = true;
+			bool restoreActionSucceeded = true;
 			try
 			{
 				List<PerformanceActionStore.Receipt> list = PerformanceActionStore.All();
@@ -960,10 +960,10 @@ namespace PaviseApp
 				{
 					if (item.Id == action)
 					{
-						flag &= RestoreReceipt(item);
+						restoreActionSucceeded &= RestoreReceipt(item);
 					}
 				}
-				return flag;
+				return restoreActionSucceeded;
 			}
 			catch (Exception ex)
 			{
@@ -1005,7 +1005,7 @@ namespace PaviseApp
 			}
 			return Queue("EnvPrivacyServiceV1", delegate
 			{
-				bool flag = true;
+				bool ready = true;
 				try
 				{
 					lock (SystemConfigurationGate.Sync)
@@ -1024,24 +1024,24 @@ namespace PaviseApp
 								{
 									break;
 								}
-								bool flag2 = RestoreReceipt(item);
-								flag = flag && flag2;
-								SetResult(item.Id, "", RetiredPlan(), flag2 ? "restored" : "restore-failed", flag2 ? "" : PerformancePolicy.Text("旧配置恢复未完成，记录已保留。", "Legacy settings remain pending restoration; records are retained."));
+								bool restoreReceiptSucceeded = RestoreReceipt(item);
+								ready = ready && restoreReceiptSucceeded;
+								SetResult(item.Id, "", RetiredPlan(), restoreReceiptSucceeded ? "restored" : "restore-failed", restoreReceiptSucceeded ? "" : PerformancePolicy.Text("旧配置恢复未完成，记录已保留。", "Legacy settings remain pending restoration; records are retained."));
 							}
 						}
 					}
 				}
 				catch (Exception ex)
 				{
-					flag = false;
+					ready = false;
 					Logger.Warn("Retired environment recovery | " + ex.Message);
 				}
 				finally
 				{
 					lock (gate)
 					{
-						if (!flag) retiredRecoveryFailures = Math.Min(5, retiredRecoveryFailures + 1);
-						retiredRecoveryAt = DateTime.UtcNow.AddSeconds(flag ? 60 : Math.Min(300, 30 * (1 << retiredRecoveryFailures))).Ticks;
+						if (!ready) retiredRecoveryFailures = Math.Min(5, retiredRecoveryFailures + 1);
+						retiredRecoveryAt = DateTime.UtcNow.AddSeconds(ready ? 60 : Math.Min(300, 30 * (1 << retiredRecoveryFailures))).Ticks;
 					}
 					Finish();
 				}
@@ -1065,21 +1065,21 @@ namespace PaviseApp
 			{
 				lock (SystemConfigurationGate.Sync)
 				{
-					bool flag = true;
+					bool restoreAllSucceeded = true;
 					List<PerformanceActionStore.Receipt> list = PerformanceActionStore.All();
 					list.Reverse();
 					foreach (PerformanceActionStore.Receipt item in list)
 					{
 						if (IsAction(item.Id))
 						{
-							flag &= RestoreReceipt(item);
+							restoreAllSucceeded &= RestoreReceipt(item);
 						}
 					}
-					if (!flag)
+					if (!restoreAllSucceeded)
 					{
 						failure = "Privacy originals remain pending recovery";
 					}
-					return flag;
+					return restoreAllSucceeded;
 				}
 			}
 			catch (Exception ex)
@@ -1096,18 +1096,18 @@ namespace PaviseApp
 		internal static bool CloseWork(int timeoutMilliseconds)
 		{
 			Stopwatch stopwatch = Stopwatch.StartNew();
-			int num = Math.Max(0, timeoutMilliseconds);
+			int timeoutMillisecondsLimit = Math.Max(0, timeoutMilliseconds);
 			lock (gate)
 			{
 				closing = true;
 				while (working)
 				{
-					int num2 = (int)Math.Max(0L, num - stopwatch.ElapsedMilliseconds);
-					if (num2 == 0)
+					int lowerBound = (int)Math.Max(0L, timeoutMillisecondsLimit - stopwatch.ElapsedMilliseconds);
+					if (lowerBound == 0)
 					{
 						return false;
 					}
-					Monitor.Wait(gate, num2);
+					Monitor.Wait(gate, lowerBound);
 				}
 				return true;
 			}

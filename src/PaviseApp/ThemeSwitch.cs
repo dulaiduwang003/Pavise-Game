@@ -63,9 +63,9 @@ namespace PaviseApp
 
 		protected override bool StepAll()
 		{
-			bool flag = base.StepAll();
+			bool stepAllSucceeded = base.StepAll();
 			bool result = flash.Step();
-			if (!flag)
+			if (!stepAllSucceeded)
 			{
 				return result;
 			}
@@ -113,7 +113,7 @@ namespace PaviseApp
 			{
 				return;
 			}
-			float num = (lightOn ? 1f : 0f);
+			float measuredValue = (lightOn ? 1f : 0f);
 			float value = hover.Value;
 			float value2 = flash.Value;
 			if (Compact)
@@ -131,8 +131,8 @@ namespace PaviseApp
 					}
 					PaintBusy(graphics, rectangle, graphicsPath);
 				}
-				int num2 = Theme.S(21);
-				Glyphs.Draw(graphics, lightOn ? "moon" : "sun", new Rectangle((base.Width - num2) / 2, (base.Height - num2) / 2 - Theme.S(1), num2, num2), Col.Lerp(Theme.Dim, Theme.Fg, 0.35f + value * 0.65f));
+				int scaledDimension = Theme.S(21);
+				Glyphs.Draw(graphics, lightOn ? "moon" : "sun", new Rectangle((base.Width - scaledDimension) / 2, (base.Height - scaledDimension) / 2 - Theme.S(1), scaledDimension, scaledDimension), Col.Lerp(Theme.Dim, Theme.Fg, 0.35f + value * 0.65f));
 				if (base.WantsFocusCue)
 				{
 					DsFocus.Draw(graphics, DsFocus.Inset(rectangle, 3), Theme.Fg, Theme.Card);
@@ -140,8 +140,8 @@ namespace PaviseApp
 				return;
 			}
 			Rectangle rectangle2 = new Rectangle(0, Theme.S(2), base.Width - 1, base.Height - Theme.S(5));
-			int num3 = Theme.S(9);
-			using (GraphicsPath graphicsPath2 = Theme.TechPath(rectangle2, num3))
+			int scaledDimension2 = Theme.S(9);
+			using (GraphicsPath graphicsPath2 = Theme.TechPath(rectangle2, scaledDimension2))
 			{
 				using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, value)))
 				{
@@ -159,16 +159,16 @@ namespace PaviseApp
 			}
 			using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, (int)(110f + 110f * value)), Math.Max(1f, Theme.S(1))))
 			{
-				graphics.DrawLine(pen4, rectangle2.Right - num3, rectangle2.Top, rectangle2.Right, rectangle2.Top + num3);
+				graphics.DrawLine(pen4, rectangle2.Right - scaledDimension2, rectangle2.Top, rectangle2.Right, rectangle2.Top + scaledDimension2);
 			}
-			int num4 = Theme.S(7);
-			int num5 = Theme.S(7);
-			RectangleF bounds = new RectangleF(rectangle2.X + num4, rectangle2.Y + num4, rectangle2.Width - num4 * 2, rectangle2.Height - num4 * 2);
+			int scaledDimension3 = Theme.S(7);
+			int scaledDimension4 = Theme.S(7);
+			RectangleF bounds = new RectangleF(rectangle2.X + scaledDimension3, rectangle2.Y + scaledDimension3, rectangle2.Width - scaledDimension3 * 2, rectangle2.Height - scaledDimension3 * 2);
 			if (bounds.Width < (float)Theme.S(12) || bounds.Height < (float)Theme.S(8))
 			{
 				return;
 			}
-			using (GraphicsPath path = TechPathF(bounds, num5))
+			using (GraphicsPath path = TechPathF(bounds, scaledDimension4))
 			{
 				using (SolidBrush brush3 = new SolidBrush(Theme.Inset))
 				{
@@ -178,9 +178,9 @@ namespace PaviseApp
 				graphics.SetClip(path, CombineMode.Intersect);
 				using (Pen pen5 = new Pen(Col.Alpha(Theme.Accent, (int)(13f + 15f * value)), Math.Max(1f, Theme.S(1))))
 				{
-					for (float num6 = bounds.Left - bounds.Height; num6 < bounds.Right; num6 += (float)Theme.S(6))
+					for (float left = bounds.Left - bounds.Height; left < bounds.Right; left += (float)Theme.S(6))
 					{
-						graphics.DrawLine(pen5, num6, bounds.Bottom, num6 + bounds.Height, bounds.Top);
+						graphics.DrawLine(pen5, left, bounds.Bottom, left + bounds.Height, bounds.Top);
 					}
 				}
 				graphics.Restore(gstate);
@@ -189,13 +189,13 @@ namespace PaviseApp
 					graphics.DrawPath(pen6, path);
 				}
 			}
-			float num7 = bounds.Width / 2f;
-			RectangleF bounds2 = new RectangleF(bounds.X + num7 * num, bounds.Y, num7, bounds.Height);
-			using (GraphicsPath path2 = TechPathF(bounds2, num5))
+			float widthRatio = bounds.Width / 2f;
+			RectangleF bounds2 = new RectangleF(bounds.X + widthRatio * measuredValue, bounds.Y, widthRatio, bounds.Height);
+			using (GraphicsPath path2 = TechPathF(bounds2, scaledDimension4))
 			{
-				for (int num8 = 3; num8 >= 1; num8--)
+				for (int iterationIndex = 3; iterationIndex >= 1; iterationIndex--)
 				{
-					using (Pen pen7 = new Pen(Col.Alpha(Theme.Accent, (int)((24f + 30f * value + 55f * value2) / (float)num8)), Theme.S(2) * num8))
+					using (Pen pen7 = new Pen(Col.Alpha(Theme.Accent, (int)((24f + 30f * value + 55f * value2) / (float)iterationIndex)), Theme.S(2) * iterationIndex))
 					{
 						graphics.DrawPath(pen7, path2);
 					}
@@ -206,7 +206,7 @@ namespace PaviseApp
 				}
 				using (Pen pen8 = new Pen(Col.Alpha(Color.White, (int)(64f + 90f * value2)), Math.Max(1f, Theme.S(1))))
 				{
-					graphics.DrawLine(pen8, bounds2.Left + (float)Theme.S(2), bounds2.Top + 0.5f, bounds2.Right - (float)num5 - (float)Theme.S(1), bounds2.Top + 0.5f);
+					graphics.DrawLine(pen8, bounds2.Left + (float)Theme.S(2), bounds2.Top + 0.5f, bounds2.Right - (float)scaledDimension4 - (float)Theme.S(1), bounds2.Top + 0.5f);
 				}
 				using (Pen pen9 = new Pen(Col.Alpha(Theme.Accent, 235), Math.Max(1f, Theme.S(1))))
 				{
@@ -215,8 +215,8 @@ namespace PaviseApp
 			}
 			int size = Theme.S(17);
 			Color a = Col.Lerp(Theme.Faint, Theme.Fg, 0.25f + value * 0.45f);
-			Glyphs.Draw(graphics, "moon", IconBox(bounds.X, bounds.Y, num7, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, 1f - num));
-			Glyphs.Draw(graphics, "sun", IconBox(bounds.X + num7, bounds.Y, num7, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, num));
+			Glyphs.Draw(graphics, "moon", IconBox(bounds.X, bounds.Y, widthRatio, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, 1f - measuredValue));
+			Glyphs.Draw(graphics, "sun", IconBox(bounds.X + widthRatio, bounds.Y, widthRatio, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, measuredValue));
 			if (!base.Enabled)
 			{
 				DsPaint.Veil(graphics, rectangle2, Col.Alpha(Theme.Card, DsAlpha.VeilTier));

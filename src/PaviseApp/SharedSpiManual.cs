@@ -50,15 +50,15 @@ namespace PaviseApp
 				}
 				using (SpiOwnership.SpiOwnerAccess access = spiOwnership.Enter(liveOwner, SpiOwnerOperation.Apply))
 				{
-					bool flag = false;
+					bool applySucceeded = false;
 					try
 					{
-						flag = PerformanceActionStore.ChangeVisualOwned(access, target, wanted, () => PerformanceActionBackend.Read("MatchVisualEffectsV1", target), (string value) => PerformanceActionBackend.Write("MatchVisualEffectsV1", target, value));
-						return flag;
+						applySucceeded = PerformanceActionStore.ChangeVisualOwned(access, target, wanted, () => PerformanceActionBackend.Read("MatchVisualEffectsV1", target), (string value) => PerformanceActionBackend.Write("MatchVisualEffectsV1", target, value));
+						return applySucceeded;
 					}
 					finally
 					{
-						if (!flag)
+						if (!applySucceeded)
 						{
 							spiOwnership.RestrictToRestore(liveOwner);
 						}
@@ -82,23 +82,23 @@ namespace PaviseApp
 				{
 					using (SpiOwnership.SpiOwnerAccess closedAccess = spiOwnership.EnterClosedMetadata(spiOwnerStamp))
 					{
-						bool flag = PerformanceActionStore.ClearVisualTerminalAfterClose(closedAccess);
-						if (flag && liveOwner != null && liveOwner.Same(spiOwnerStamp))
+						bool clearVisualTerminalAfterCloseSucceeded = PerformanceActionStore.ClearVisualTerminalAfterClose(closedAccess);
+						if (clearVisualTerminalAfterCloseSucceeded && liveOwner != null && liveOwner.Same(spiOwnerStamp))
 						{
 							liveOwner = null;
 						}
-						return flag;
+						return clearVisualTerminalAfterCloseSucceeded;
 					}
 				}
 				spiOwnership.RestrictToRestore(spiOwnerStamp);
-				bool flag2 = false;
+				bool restoreReady = false;
 				using (SpiOwnership.SpiOwnerAccess access = spiOwnership.Enter(spiOwnerStamp, SpiOwnerOperation.Restore))
 				{
 					if (!PerformanceActionStore.RestoreVisualOwned(access, receipt, () => PerformanceActionBackend.Read(receipt.Id, receipt.Target), (string value) => PerformanceActionBackend.Write(receipt.Id, receipt.Target, value)))
 					{
 						return false;
 					}
-					bool flag3 = true;
+					bool restoreReady2 = true;
 					foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
 					{
 						if (item.Id == "MatchVisualEffectsV1")
@@ -109,28 +109,28 @@ namespace PaviseApp
 							}
 							if (!item.VisualRestored)
 							{
-								flag3 = false;
+								restoreReady2 = false;
 							}
 						}
 					}
-					if (flag3)
+					if (restoreReady2)
 					{
 						spiOwnership.Close(spiOwnerStamp, SpiOwnerEvidence.FromRestoredVisualReceipts(access));
-						flag2 = true;
+						restoreReady = true;
 					}
 				}
-				if (!flag2)
+				if (!restoreReady)
 				{
 					return true;
 				}
 				using (SpiOwnership.SpiOwnerAccess closedAccess2 = spiOwnership.EnterClosedMetadata(spiOwnerStamp))
 				{
-					bool flag4 = PerformanceActionStore.ClearVisualTerminalAfterClose(closedAccess2);
-					if (flag4 && liveOwner != null && liveOwner.Same(spiOwnerStamp))
+					bool clearVisualTerminalAfterCloseSucceeded2 = PerformanceActionStore.ClearVisualTerminalAfterClose(closedAccess2);
+					if (clearVisualTerminalAfterCloseSucceeded2 && liveOwner != null && liveOwner.Same(spiOwnerStamp))
 					{
 						liveOwner = null;
 					}
-					return flag4;
+					return clearVisualTerminalAfterCloseSucceeded2;
 				}
 			}
 		}

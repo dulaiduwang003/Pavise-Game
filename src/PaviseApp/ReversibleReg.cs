@@ -46,8 +46,8 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					string text = OriginalPart(Settings.LoadStr(slot, ""));
-					if (text.Length == 0)
+					string originalPartResult = OriginalPart(Settings.LoadStr(slot, ""));
+					if (originalPartResult.Length == 0)
 					{
 						object value = registryKey.GetValue(valName);
 						if (value != null)
@@ -70,9 +70,9 @@ namespace PaviseApp
 								return true;
 							}
 						}
-						text = Encode(value);
-						Settings.SaveStr(slot, text);
-						if (Settings.LoadStr(slot, "") != text)
+						originalPartResult = Encode(value);
+						Settings.SaveStr(slot, originalPartResult);
+						if (Settings.LoadStr(slot, "") != originalPartResult)
 						{
 							Logger.Log(Lang.T("log.reversiblereg.3") + valName + Lang.T("log.reversiblereg.4"));
 							return false;
@@ -84,12 +84,12 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					bool flag = SameByKind(value2, newVal);
-					if (flag)
+					bool sameByKindSucceeded = SameByKind(value2, newVal);
+					if (sameByKindSucceeded)
 					{
-						Settings.SaveStr(slot, text + '\u001f' + Encode(newVal));
+						Settings.SaveStr(slot, originalPartResult + '\u001f' + Encode(newVal));
 					}
-					return flag;
+					return sameByKindSucceeded;
 				}
 			}
 			catch
@@ -113,20 +113,20 @@ namespace PaviseApp
 
 		private static string OriginalPart(string stored)
 		{
-			int num = stored.LastIndexOf('\u001f');
-			if (num >= 0)
+			int matchIndex = stored.LastIndexOf('\u001f');
+			if (matchIndex >= 0)
 			{
-				return stored.Substring(0, num);
+				return stored.Substring(0, matchIndex);
 			}
 			return stored;
 		}
 
 		private static string AppliedPart(string stored)
 		{
-			int num = stored.LastIndexOf('\u001f');
-			if (num >= 0)
+			int matchIndex = stored.LastIndexOf('\u001f');
+			if (matchIndex >= 0)
 			{
-				return stored.Substring(num + 1);
+				return stored.Substring(matchIndex + 1);
 			}
 			return "";
 		}
@@ -149,18 +149,18 @@ namespace PaviseApp
 					value = Convert.FromBase64String(repr.Substring(1));
 					return true;
 				}
-				string text = ((repr[0] == '=') ? repr.Substring(1) : repr);
+				string substringResult = ((repr[0] == '=') ? repr.Substring(1) : repr);
 				if (kind == RegistryValueKind.DWord)
 				{
 					long result;
-					if (!long.TryParse(text, out result))
+					if (!long.TryParse(substringResult, out result))
 					{
 						return false;
 					}
 					value = (int)result;
 					return true;
 				}
-				value = text;
+				value = substringResult;
 				return true;
 			}
 			catch
@@ -215,20 +215,20 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey = hive.OpenSubKey(subKey))
 				{
-					object obj = ((registryKey == null) ? null : registryKey.GetValue(valName));
-					if (obj == null)
+					object value = ((registryKey == null) ? null : registryKey.GetValue(valName));
+					if (value == null)
 					{
 						return false;
 					}
 					if (kind == RegistryValueKind.DWord)
 					{
-						return Convert.ToInt64(obj) == Convert.ToInt64(expected);
+						return Convert.ToInt64(value) == Convert.ToInt64(expected);
 					}
 					if (kind == RegistryValueKind.Binary)
 					{
-						return BytesEqual(obj as byte[], expected as byte[]);
+						return BytesEqual(value as byte[], expected as byte[]);
 					}
-					return string.Equals(obj.ToString(), (expected == null) ? "" : expected.ToString(), StringComparison.Ordinal);
+					return string.Equals(value.ToString(), (expected == null) ? "" : expected.ToString(), StringComparison.Ordinal);
 				}
 			}
 			catch
@@ -239,20 +239,20 @@ namespace PaviseApp
 
 		public bool Restore()
 		{
-			string text = Settings.LoadStr(slot, "");
-			if (text.Length == 0)
+			string value4 = Settings.LoadStr(slot, "");
+			if (value4.Length == 0)
 			{
 				return true;
 			}
-			string text2 = OriginalPart(text);
-			string text3 = AppliedPart(text);
-			bool flag = text2 == "__pavise_absent__";
-			object obj = null;
-			if (!flag)
+			string originalPartResult = OriginalPart(value4);
+			string appliedPartResult = AppliedPart(value4);
+			bool matchesOriginalPartResult = originalPartResult == "__pavise_absent__";
+			object fromBase64StringResult = null;
+			if (!matchesOriginalPartResult)
 			{
 				if (kind == RegistryValueKind.Binary)
 				{
-					if (text2.Length < 1 || text2[0] != 'b')
+					if (originalPartResult.Length < 1 || originalPartResult[0] != 'b')
 					{
 						Settings.SaveStr(slot, "");
 						Logger.Log(Lang.T("log.reversiblereg.5") + valName + Lang.T("log.reversiblereg.6"));
@@ -260,7 +260,7 @@ namespace PaviseApp
 					}
 					try
 					{
-						obj = Convert.FromBase64String(text2.Substring(1));
+						fromBase64StringResult = Convert.FromBase64String(originalPartResult.Substring(1));
 					}
 					catch
 					{
@@ -271,31 +271,31 @@ namespace PaviseApp
 				}
 				else
 				{
-					string text4 = ((text2[0] == '=') ? text2.Substring(1) : text2);
+					string substringResult = ((originalPartResult[0] == '=') ? originalPartResult.Substring(1) : originalPartResult);
 					if (kind == RegistryValueKind.DWord)
 					{
 						long result;
-						if (!long.TryParse(text4, out result))
+						if (!long.TryParse(substringResult, out result))
 						{
 							Settings.SaveStr(slot, "");
-							Logger.Log(Lang.T("log.reversiblereg.5") + valName + Lang.T("log.reversiblereg.8") + text4 + "\" ");
+							Logger.Log(Lang.T("log.reversiblereg.5") + valName + Lang.T("log.reversiblereg.8") + substringResult + "\" ");
 							return false;
 						}
-						obj = (int)result;
+						fromBase64StringResult = (int)result;
 					}
 					else
 					{
-						obj = text4;
+						fromBase64StringResult = substringResult;
 					}
 				}
 			}
 			try
 			{
-				bool flag2 = false;
+				bool restoreReady = false;
 				using (RegistryKey registryKey = hive.OpenSubKey(subKey, true))
 				{
 					object value;
-					if (registryKey != null && text3.Length > 0 && TryDecode(text3, out value))
+					if (registryKey != null && appliedPartResult.Length > 0 && TryDecode(appliedPartResult, out value))
 					{
 						object value2 = registryKey.GetValue(valName);
 						if (value2 == null || !SameByKind(value2, value))
@@ -307,19 +307,19 @@ namespace PaviseApp
 					}
 					if (registryKey == null)
 					{
-						flag2 = true;
+						restoreReady = true;
 					}
-					else if (flag)
+					else if (matchesOriginalPartResult)
 					{
 						if (registryKey.GetValue(valName) != null)
 						{
 							registryKey.DeleteValue(valName, false);
 						}
-						flag2 = registryKey.GetValue(valName) == null;
+						restoreReady = registryKey.GetValue(valName) == null;
 					}
 					else
 					{
-						registryKey.SetValue(valName, obj, kind);
+						registryKey.SetValue(valName, fromBase64StringResult, kind);
 						object value3 = registryKey.GetValue(valName);
 						RegistryValueKind registryValueKind = RegistryValueKind.Unknown;
 						try
@@ -329,22 +329,22 @@ namespace PaviseApp
 						catch
 						{
 						}
-						flag2 = value3 != null && registryValueKind == kind;
-						if (flag2 && kind == RegistryValueKind.DWord)
+						restoreReady = value3 != null && registryValueKind == kind;
+						if (restoreReady && kind == RegistryValueKind.DWord)
 						{
-							flag2 = Convert.ToInt64(value3) == Convert.ToInt64(obj);
+							restoreReady = Convert.ToInt64(value3) == Convert.ToInt64(fromBase64StringResult);
 						}
-						else if (flag2 && kind == RegistryValueKind.Binary)
+						else if (restoreReady && kind == RegistryValueKind.Binary)
 						{
-							flag2 = BytesEqual((byte[])value3, (byte[])obj);
+							restoreReady = BytesEqual((byte[])value3, (byte[])fromBase64StringResult);
 						}
-						else if (flag2)
+						else if (restoreReady)
 						{
-							flag2 = string.Equals(value3.ToString(), (obj == null) ? "" : obj.ToString(), StringComparison.Ordinal);
+							restoreReady = string.Equals(value3.ToString(), (fromBase64StringResult == null) ? "" : fromBase64StringResult.ToString(), StringComparison.Ordinal);
 						}
 					}
 				}
-				if (!flag2)
+				if (!restoreReady)
 				{
 					Logger.Log(Lang.T("log.suppressioncore.1") + valName + Lang.T("log.reversiblereg.10"));
 					return false;

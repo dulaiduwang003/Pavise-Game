@@ -55,8 +55,8 @@ namespace PaviseApp
 				}
 				if (!(values[0].Apply(10) & values[2].Apply("High") & values[4].Apply(1)))
 				{
-					ReversibleReg[] array = values;
-					foreach (ReversibleReg reversibleReg in array)
+					ReversibleReg[] valuesSnapshot = values;
+					foreach (ReversibleReg reversibleReg in valuesSnapshot)
 					{
 						reversibleReg.Restore();
 					}
@@ -74,28 +74,28 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = HasResidue();
+				bool hasResidue = HasResidue();
 				ReversibleReg[] values = Values;
 				if (values == null)
 				{
-					if (!flag)
+					if (!hasResidue)
 					{
 						active = false;
 					}
-					return !flag;
+					return !hasResidue;
 				}
-				bool flag2 = true;
-				ReversibleReg[] array = values;
-				foreach (ReversibleReg reversibleReg in array)
+				bool restoreSucceeded = true;
+				ReversibleReg[] valuesSnapshot = values;
+				foreach (ReversibleReg reversibleReg in valuesSnapshot)
 				{
-					flag2 &= reversibleReg.Restore();
+					restoreSucceeded &= reversibleReg.Restore();
 				}
 				active = false;
-				if (flag)
+				if (hasResidue)
 				{
-					Logger.Log(Lang.T(flag2 ? "log.mmcss.3" : "log.mmcss.4"));
+					Logger.Log(Lang.T(restoreSucceeded ? "log.mmcss.3" : "log.mmcss.4"));
 				}
-				return flag2;
+				return restoreSucceeded;
 			}
 		}
 

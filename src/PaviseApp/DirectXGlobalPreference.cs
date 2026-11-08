@@ -89,12 +89,12 @@ namespace PaviseApp
 			on = false;
 			try
 			{
-				string text = store.ReadValue();
-				if (text != null && text != "0" && text != "1")
+				string value = store.ReadValue();
+				if (value != null && value != "0" && value != "1")
 				{
 					return false;
 				}
-				on = text == "1" || (text == null && Supported && defaultOn);
+				on = value == "1" || (value == null && Supported && defaultOn);
 				return true;
 			}
 			catch
@@ -131,12 +131,12 @@ namespace PaviseApp
 		{
 			using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences"))
 			{
-				object obj = ((registryKey == null) ? null : registryKey.GetValue("DirectXUserGlobalSettings"));
-				if (obj != null && !(obj is string))
+				object value = ((registryKey == null) ? null : registryKey.GetValue("DirectXUserGlobalSettings"));
+				if (value != null && !(value is string))
 				{
 					throw new InvalidOperationException("Unexpected graphics preference type");
 				}
-				return obj as string;
+				return value as string;
 			}
 		}
 

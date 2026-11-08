@@ -41,17 +41,17 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			string[] array = items[index];
-			if (array == null || array.Length == 0)
+			string[] textEntries = items[index];
+			if (textEntries == null || textEntries.Length == 0)
 			{
 				return "";
 			}
 			int cur = Lang.Cur;
-			if (cur < 0 || cur >= array.Length || string.IsNullOrEmpty(array[cur]))
+			if (cur < 0 || cur >= textEntries.Length || string.IsNullOrEmpty(textEntries[cur]))
 			{
-				return array[0];
+				return textEntries[0];
 			}
-			return array[cur];
+			return textEntries[cur];
 		}
 	}
 }

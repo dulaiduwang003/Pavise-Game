@@ -71,28 +71,28 @@ namespace PaviseApp
 
 		internal static string[] ParseValues(string enumText)
 		{
-			string[] array = new string[3] { "__pavise_absent__", "__pavise_absent__", "__pavise_absent__" };
+			string[] textEntries = new string[3] { "__pavise_absent__", "__pavise_absent__", "__pavise_absent__" };
 			if (string.IsNullOrEmpty(enumText))
 			{
-				return array;
+				return textEntries;
 			}
-			string[] array2 = enumText.Split('\n');
-			foreach (string text in array2)
+			string[] enumTextParts = enumText.Split('\n');
+			foreach (string entryText in enumTextParts)
 			{
-				string text2 = text.Trim();
+				string entryTextTrimmed = entryText.Trim();
 				for (int j = 0; j < Names.Length; j++)
 				{
-					if (text2.StartsWith(Names[j], StringComparison.OrdinalIgnoreCase))
+					if (entryTextTrimmed.StartsWith(Names[j], StringComparison.OrdinalIgnoreCase))
 					{
-						string text3 = text2.Substring(Names[j].Length).Trim();
-						if (text3.Length != 0 && array[j] == "__pavise_absent__")
+						string substringTrimmed = entryTextTrimmed.Substring(Names[j].Length).Trim();
+						if (substringTrimmed.Length != 0 && textEntries[j] == "__pavise_absent__")
 						{
-							array[j] = Normalize(text3);
+							textEntries[j] = Normalize(substringTrimmed);
 						}
 					}
 				}
 			}
-			return array;
+			return textEntries;
 		}
 
 		internal static string Normalize(string s)
@@ -101,16 +101,16 @@ namespace PaviseApp
 			{
 				return "__pavise_absent__";
 			}
-			string text = s.Trim().ToLowerInvariant();
-			if (YesTokens.Contains(text))
+			string toLowerInvariantResult = s.Trim().ToLowerInvariant();
+			if (YesTokens.Contains(toLowerInvariantResult))
 			{
 				return "yes";
 			}
-			if (NoTokens.Contains(text))
+			if (NoTokens.Contains(toLowerInvariantResult))
 			{
 				return "no";
 			}
-			return text;
+			return toLowerInvariantResult;
 		}
 
 		internal static bool AllOn(string[] vals)
@@ -132,13 +132,13 @@ namespace PaviseApp
 		private static string[] ReadValues(out bool ok)
 		{
 			int code;
-			string text = Bcd("/enum {current}", out code);
-			ok = code == 0 && !string.IsNullOrEmpty(text);
+			string bcdResult = Bcd("/enum {current}", out code);
+			ok = code == 0 && !string.IsNullOrEmpty(bcdResult);
 			if (!ok)
 			{
 				return null;
 			}
-			return ParseValues(text);
+			return ParseValues(bcdResult);
 		}
 
 		public static bool CurrentlyOn()
@@ -155,25 +155,25 @@ namespace PaviseApp
 			lock (lk)
 			{
 				bool ok;
-				string[] array = ReadValues(out ok);
+				string[] values = ReadValues(out ok);
 				if (!ok)
 				{
 					Logger.Warn(Lang.T("log.timerticktweak.1"));
 					return false;
 				}
-				if (AllOn(array))
+				if (AllOn(values))
 				{
 					lastOn = true;
 					return true;
 				}
 				if (Settings.LoadStr("PrevTimerTick", "").Length == 0)
 				{
-					string text = string.Join("|", array);
-					if (!Settings.SaveStrDurable("PrevTimerTick", text))
+					string joinResult = string.Join("|", values);
+					if (!Settings.SaveStrDurable("PrevTimerTick", joinResult))
 					{
 						return false;
 					}
-					if (Settings.LoadStr("PrevTimerTick", "") != text)
+					if (Settings.LoadStr("PrevTimerTick", "") != joinResult)
 					{
 						Logger.Log(Lang.T("log.timerticktweak.2"));
 						return false;
@@ -233,50 +233,50 @@ namespace PaviseApp
 		private static bool WriteBack()
 		{
 			bool ok;
-			string[] array = ReadValues(out ok);
+			string[] values = ReadValues(out ok);
 			if (!ok)
 			{
 				return false;
 			}
-			string text = Settings.LoadStr("PrevTimerTick", "");
-			string[] array2 = ((text.Length > 0) ? text.Split('|') : null);
-			if (array2 == null || array2.Length != Names.Length)
+			string prevTimerTickValue = Settings.LoadStr("PrevTimerTick", "");
+			string[] prevTimerTickValueParts = ((prevTimerTickValue.Length > 0) ? prevTimerTickValue.Split('|') : null);
+			if (prevTimerTickValueParts == null || prevTimerTickValueParts.Length != Names.Length)
 			{
 				return false;
 			}
 			bool result = true;
 			for (int i = 0; i < Names.Length; i++)
 			{
-				string text2 = ((array2 != null && i < array2.Length) ? array2[i] : "__pavise_absent__");
-				if (array[i] != Targets[i])
+				string message = ((prevTimerTickValueParts != null && i < prevTimerTickValueParts.Length) ? prevTimerTickValueParts[i] : "__pavise_absent__");
+				if (values[i] != Targets[i])
 				{
 					continue;
 				}
 				int code = 0;
-				if (text2 == "__pavise_absent__")
+				if (message == "__pavise_absent__")
 				{
-					if (array[i] != "__pavise_absent__")
+					if (values[i] != "__pavise_absent__")
 					{
 						Bcd("/deletevalue {current} " + Names[i], out code);
 					}
 				}
-				else if (array[i] != text2)
+				else if (values[i] != message)
 				{
-					Bcd("/set {current} " + Names[i] + " " + text2, out code);
+					Bcd("/set {current} " + Names[i] + " " + message, out code);
 				}
 				if (code != 0)
 				{
 					result = false;
 				}
 			}
-			string[] array3 = ReadValues(out ok);
+			string[] values2 = ReadValues(out ok);
 			if (!ok)
 			{
 				return false;
 			}
 			for (int j = 0; j < Names.Length; j++)
 			{
-				if (array[j] == Targets[j] && array3[j] != array2[j])
+				if (values[j] == Targets[j] && values2[j] != prevTimerTickValueParts[j])
 				{
 					result = false;
 				}

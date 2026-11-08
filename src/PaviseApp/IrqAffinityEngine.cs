@@ -73,13 +73,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = (value ?? "").Split('\n');
-			foreach (string text in array)
+			string[] parts = (value ?? "").Split('\n');
+			foreach (string entryText in parts)
 			{
-				string text2 = text.Trim();
-				if (text2.Length > 0 && !ids.Contains(text2))
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.Length > 0 && !ids.Contains(entryTextTrimmed))
 				{
-					ids.Add(text2);
+					ids.Add(entryTextTrimmed);
 				}
 			}
 			return true;
@@ -87,22 +87,22 @@ namespace PaviseApp
 
 		private static string StableSlot(string deviceId)
 		{
-			int num = 17;
+			int stableSlotValue = 17;
 			foreach (char c in deviceId)
 			{
-				num = num * 31 + c;
+				stableSlotValue = stableSlotValue * 31 + c;
 			}
-			return num.ToString("X8");
+			return stableSlotValue.ToString("X8");
 		}
 
 		internal static byte[] MaskToBytes(ulong mask)
 		{
-			byte[] array = new byte[8];
+			byte[] rawBytes = new byte[8];
 			for (int i = 0; i < 8; i++)
 			{
-				array[i] = (byte)((mask >> i * 8) & 0xFF);
+				rawBytes[i] = (byte)((mask >> i * 8) & 0xFF);
 			}
-			return array;
+			return rawBytes;
 		}
 
 		internal static ulong BytesToMask(byte[] b)
@@ -111,12 +111,12 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = 0uL;
+			ulong bytesToMaskResult = 0uL;
 			for (int i = 0; i < 8; i++)
 			{
-				num |= (ulong)b[i] << i * 8;
+				bytesToMaskResult |= (ulong)b[i] << i * 8;
 			}
-			return num;
+			return bytesToMaskResult;
 		}
 
 		private List<Target> BuildTargets(List<string> deviceIds)
@@ -125,12 +125,12 @@ namespace PaviseApp
 			foreach (string deviceId in deviceIds)
 			{
 				string subKey = "SYSTEM\\CurrentControlSet\\Enum\\" + deviceId + "\\Device Parameters\\Interrupt Management\\Affinity Policy";
-				string text = slotPrefix + StableSlot(deviceId);
+				string slotPrefixOffset = slotPrefix + StableSlot(deviceId);
 				list.Add(new Target
 				{
 					DeviceId = deviceId,
-					Policy = new ReversibleReg(Registry.LocalMachine, subKey, "DevicePolicy", RegistryValueKind.DWord, text + "_Policy"),
-					Mask = new ReversibleReg(Registry.LocalMachine, subKey, "AssignmentSetOverride", RegistryValueKind.Binary, text + "_Mask")
+					Policy = new ReversibleReg(Registry.LocalMachine, subKey, "DevicePolicy", RegistryValueKind.DWord, slotPrefixOffset + "_Policy"),
+					Mask = new ReversibleReg(Registry.LocalMachine, subKey, "AssignmentSetOverride", RegistryValueKind.Binary, slotPrefixOffset + "_Mask")
 				});
 			}
 			return list;
@@ -149,12 +149,12 @@ namespace PaviseApp
 					string name = "SYSTEM\\CurrentControlSet\\Enum\\" + deviceId + "\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties";
 					using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(name))
 					{
-						object obj = ((registryKey == null) ? null : registryKey.GetValue("MSISupported"));
-						if (obj == null)
+						object value = ((registryKey == null) ? null : registryKey.GetValue("MSISupported"));
+						if (value == null)
 						{
 							Logger.Log(Lang.T("log.irqaffinityengine.1") + deviceId + Lang.T("log.irqaffinityengine.2"));
 						}
-						else if (Convert.ToInt64(obj) == 0)
+						else if (Convert.ToInt64(value) == 0)
 						{
 							Logger.Log(Lang.T("log.irqaffinityengine.1") + deviceId + Lang.T("log.irqaffinityengine.3"));
 						}
@@ -220,7 +220,7 @@ namespace PaviseApp
 			}
 			object policyValue = 4;
 			byte[] maskBytes = MaskToBytes(preferredMask);
-			bool flag = false;
+			bool enableReady = false;
 			string stamp = BootStamp();
 			List<Target> list3 = new List<Target>();
 			List<string> list4 = new List<string>();
@@ -232,7 +232,7 @@ namespace PaviseApp
 				bool attempted;
 				if (ApplyTarget(LastResult, configured, stamp, (string value) => Settings.SaveStr(bootKey, value), () => Settings.LoadStr(bootKey, ""), () => t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes), () => t.Policy.Restore() & t.Mask.Restore(), out attempted))
 				{
-					flag = true;
+					enableReady = true;
 					if (attempted)
 					{
 						list3.Add(t);
@@ -247,7 +247,7 @@ namespace PaviseApp
 					Logger.Log(logPrefix + t.DeviceId + " " + LastResult.Describe());
 				}
 			}
-			if (!flag)
+			if (!enableReady)
 			{
 				foreach (string item2 in list4)
 				{
@@ -273,9 +273,9 @@ namespace PaviseApp
 					ids.Add(item4);
 				}
 			}
-			bool flag2 = SaveTouched(ids);
+			bool saveTouchedSucceeded = SaveTouched(ids);
 			Settings.Save(settingsKey, true);
-			if (!flag2 || !Settings.Load(settingsKey, false))
+			if (!saveTouchedSucceeded || !Settings.Load(settingsKey, false))
 			{
 				List<string> list5 = new List<string>();
 				foreach (Target item5 in list3)
@@ -288,16 +288,16 @@ namespace PaviseApp
 				List<string> list6 = new List<string>();
 				foreach (string item6 in ids)
 				{
-					bool flag3 = false;
+					bool enableReady2 = false;
 					foreach (Target item7 in list3)
 					{
 						if (string.Equals(item7.DeviceId, item6, StringComparison.OrdinalIgnoreCase))
 						{
-							flag3 = true;
+							enableReady2 = true;
 							break;
 						}
 					}
-					if (!flag3 || list5.Contains(item6))
+					if (!enableReady2 || list5.Contains(item6))
 					{
 						list6.Add(item6);
 					}
@@ -345,10 +345,10 @@ namespace PaviseApp
 		internal static bool ApplyTarget(IrqWriteResult result, bool configured, string stamp, Func<string, bool> save, Func<string> load, Func<bool> apply, Func<bool> restore, out bool attempted)
 		{
 			attempted = false;
-			bool flag = false;
+			bool applyTargetReady = false;
 			try
 			{
-				flag = ApplyWithBootStamp(configured, stamp, save, load, apply, out attempted);
+				applyTargetReady = ApplyWithBootStamp(configured, stamp, save, load, apply, out attempted);
 			}
 			catch
 			{
@@ -357,7 +357,7 @@ namespace PaviseApp
 			{
 				result.Attempted++;
 			}
-			if (flag)
+			if (applyTargetReady)
 			{
 				result.Succeeded++;
 				if (!attempted)
@@ -369,15 +369,15 @@ namespace PaviseApp
 			result.Failed++;
 			if (attempted)
 			{
-				bool flag2 = false;
+				bool applyTargetReady2 = false;
 				try
 				{
-					flag2 = restore();
+					applyTargetReady2 = restore();
 				}
 				catch
 				{
 				}
-				if (flag2)
+				if (applyTargetReady2)
 				{
 					result.RolledBack++;
 				}
@@ -433,13 +433,13 @@ namespace PaviseApp
 		private List<string> LoadTouched()
 		{
 			List<string> list = new List<string>();
-			string[] array = Settings.LoadStr(TouchedKey, "").Split('\n');
-			foreach (string text in array)
+			string[] loadStrParts = Settings.LoadStr(TouchedKey, "").Split('\n');
+			foreach (string entryText in loadStrParts)
 			{
-				string text2 = text.Trim();
-				if (text2.Length > 0 && !list.Contains(text2))
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.Length > 0 && !list.Contains(entryTextTrimmed))
 				{
-					list.Add(text2);
+					list.Add(entryTextTrimmed);
 				}
 			}
 			return list;
@@ -447,11 +447,11 @@ namespace PaviseApp
 
 		private bool SaveTouched(List<string> ids)
 		{
-			string text = string.Join("\n", ids.ToArray());
+			string joinResult = string.Join("\n", ids.ToArray());
 			string value;
-			if (Settings.SaveStr(TouchedKey, text) && Settings.TryLoadStr(TouchedKey, out value))
+			if (Settings.SaveStr(TouchedKey, joinResult) && Settings.TryLoadStr(TouchedKey, out value))
 			{
-				return value == text;
+				return value == joinResult;
 			}
 			return false;
 		}
@@ -481,20 +481,20 @@ namespace PaviseApp
 				return false;
 			}
 			List<string> list = new List<string>(touched);
-			bool flag = true;
+			bool restoreTouchedScopeSucceeded = true;
 			foreach (string item in selected)
 			{
-				bool flag2 = false;
+				bool restoreTouchedScopeReady = false;
 				try
 				{
-					flag2 = restore(item);
+					restoreTouchedScopeReady = restore(item);
 				}
 				catch
 				{
 				}
-				if (!flag2)
+				if (!restoreTouchedScopeReady)
 				{
-					flag = false;
+					restoreTouchedScopeSucceeded = false;
 					continue;
 				}
 				try
@@ -506,18 +506,18 @@ namespace PaviseApp
 				}
 				catch
 				{
-					flag = false;
+					restoreTouchedScopeSucceeded = false;
 					continue;
 				}
-				for (int num = list.Count - 1; num >= 0; num--)
+				for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
 				{
-					if (string.Equals(list[num], item, StringComparison.OrdinalIgnoreCase))
+					if (string.Equals(list[listIndex], item, StringComparison.OrdinalIgnoreCase))
 					{
-						list.RemoveAt(num);
+						list.RemoveAt(listIndex);
 					}
 				}
 			}
-			if (flag && list.Count == 0)
+			if (restoreTouchedScopeSucceeded && list.Count == 0)
 			{
 				try
 				{
@@ -535,14 +535,14 @@ namespace PaviseApp
 			{
 				if (save == null || !save(list))
 				{
-					flag = false;
+					restoreTouchedScopeSucceeded = false;
 				}
 			}
 			catch
 			{
-				flag = false;
+				restoreTouchedScopeSucceeded = false;
 			}
-			return flag;
+			return restoreTouchedScopeSucceeded;
 		}
 
 		public bool Disable(List<string> deviceIds)
@@ -563,45 +563,45 @@ namespace PaviseApp
 				}
 			}
 			List<Target> list = BuildTargets(ids);
-			bool flag = true;
-			int num = 0;
+			bool disableSucceeded = true;
+			int processedCount = 0;
 			List<string> list2 = new List<string>();
 			foreach (Target item in list)
 			{
-				bool flag2 = item.Policy.HasBackup || item.Mask.HasBackup;
-				bool flag3 = item.Policy.Restore() & item.Mask.Restore();
-				if (flag2 && flag3)
+				bool matchesHasBackup = item.Policy.HasBackup || item.Mask.HasBackup;
+				bool matchesRestore = item.Policy.Restore() & item.Mask.Restore();
+				if (matchesHasBackup && matchesRestore)
 				{
-					num++;
+					processedCount++;
 				}
-				if (flag3)
+				if (matchesRestore)
 				{
 					ForgetBootStamp(item.DeviceId);
 				}
-				if (!flag3)
+				if (!matchesRestore)
 				{
-					flag = false;
+					disableSucceeded = false;
 					list2.Add(item.DeviceId);
 				}
 			}
 			if (!SaveTouched(list2))
 			{
-				flag = false;
+				disableSucceeded = false;
 			}
-			if (flag)
+			if (disableSucceeded)
 			{
 				Settings.Save(settingsKey, false);
 				if (Settings.Load(settingsKey, true))
 				{
 					return false;
 				}
-				Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.22") + num + Lang.T("log.irqaffinityengine.23"));
+				Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.22") + processedCount + Lang.T("log.irqaffinityengine.23"));
 			}
 			else
 			{
 				Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.24") + list2.Count + Lang.T("log.irqaffinityengine.25"));
 			}
-			return flag;
+			return disableSucceeded;
 		}
 	}
 }

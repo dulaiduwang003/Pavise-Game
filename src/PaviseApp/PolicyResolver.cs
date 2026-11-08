@@ -60,12 +60,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = PolicyCatalog.Canonical(key, value);
-			if (text == null)
+			string canonicalResult = PolicyCatalog.Canonical(key, value);
+			if (canonicalResult == null)
 			{
 				return false;
 			}
-			profile.Overrides[key] = text;
+			profile.Overrides[key] = canonicalResult;
 			return true;
 		}
 
@@ -116,14 +116,14 @@ namespace PaviseApp
 			List<string> list = new List<string>(profile.Overrides.Keys);
 			foreach (string item in list)
 			{
-				string text = (GameProfile.IsRetiredOverrideKey(item) ? null : PolicyCatalog.Canonical(item, profile.Overrides[item]));
-				if (text == null)
+				string canonicalResult = (GameProfile.IsRetiredOverrideKey(item) ? null : PolicyCatalog.Canonical(item, profile.Overrides[item]));
+				if (canonicalResult == null)
 				{
 					profile.Overrides.Remove(item);
 				}
 				else
 				{
-					profile.Overrides[item] = text;
+					profile.Overrides[item] = canonicalResult;
 				}
 			}
 		}
@@ -140,13 +140,13 @@ namespace PaviseApp
 				string value;
 				if (profile.Overrides.TryGetValue(item.Key, out value))
 				{
-					string text = GlobalValue(item.Key);
+					string globalValueResult = GlobalValue(item.Key);
 					list.Add(new PolicyDiff
 					{
 						Key = item.Key,
 						Value = value,
-						GlobalValue = text,
-						SameAsGlobal = string.Equals(value, text, StringComparison.Ordinal)
+						GlobalValue = globalValueResult,
+						SameAsGlobal = string.Equals(value, globalValueResult, StringComparison.Ordinal)
 					});
 				}
 			}

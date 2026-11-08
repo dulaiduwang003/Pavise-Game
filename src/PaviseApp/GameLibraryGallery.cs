@@ -159,10 +159,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				int num = Math.Max(128, Math.Min(170, value));
-				if (preferredCardHeight != num)
+				int minLimit = Math.Max(128, Math.Min(170, value));
+				if (preferredCardHeight != minLimit)
 				{
-					preferredCardHeight = num;
+					preferredCardHeight = minLimit;
 					PerformLayout();
 				}
 			}
@@ -176,10 +176,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				int num = Math.Max(6, Math.Min(12, value));
-				if (cardGap != num)
+				int minLimit = Math.Max(6, Math.Min(12, value));
+				if (cardGap != minLimit)
 				{
-					cardGap = num;
+					cardGap = minLimit;
 					PerformLayout();
 				}
 			}
@@ -249,17 +249,17 @@ namespace PaviseApp
 				fresh = new List<GameLibraryItem>();
 			}
 			GameLibraryItem selectedItem = SelectedItem;
-			int num = selectedIndex;
-			string text = ((selectedItem == null || selectedItem.Profile == null) ? null : selectedItem.Profile.Id);
-			int num2 = -base.AutoScrollPosition.Y;
-			bool flag = fresh.Count != items.Count;
-			if (!flag)
+			int selectedIndexSnapshot = selectedIndex;
+			string id = ((selectedItem == null || selectedItem.Profile == null) ? null : selectedItem.Profile.Id);
+			int setItemsValue = -base.AutoScrollPosition.Y;
+			bool matchesCount = fresh.Count != items.Count;
+			if (!matchesCount)
 			{
 				for (int i = 0; i < fresh.Count; i++)
 				{
 					if (!SameIdentity(fresh[i], items[i]))
 					{
-						flag = true;
+						matchesCount = true;
 						break;
 					}
 				}
@@ -268,7 +268,7 @@ namespace PaviseApp
 			updatingItems = true;
 			try
 			{
-				if (flag)
+				if (matchesCount)
 				{
 					expandedCard = null;
 					foreach (GameLibraryTile card in cards)
@@ -293,19 +293,19 @@ namespace PaviseApp
 						cards[j].SetItem(fresh[j]);
 					}
 				}
-				int num3 = -1;
+				int setItemsValue2 = -1;
 				if (selectedItem != null)
 				{
 					for (int k = 0; k < items.Count; k++)
 					{
-						if ((!string.IsNullOrEmpty(text) && items[k] != null && items[k].Profile != null && string.Equals(items[k].Profile.Id, text, StringComparison.OrdinalIgnoreCase)) || (text == null && object.ReferenceEquals(selectedItem, items[k])))
+						if ((!string.IsNullOrEmpty(id) && items[k] != null && items[k].Profile != null && string.Equals(items[k].Profile.Id, id, StringComparison.OrdinalIgnoreCase)) || (id == null && object.ReferenceEquals(selectedItem, items[k])))
 						{
-							num3 = k;
+							setItemsValue2 = k;
 							break;
 						}
 					}
 				}
-				selectedIndex = num3;
+				selectedIndex = setItemsValue2;
 				ApplyFilter(true);
 				RefreshRows();
 			}
@@ -314,8 +314,8 @@ namespace PaviseApp
 				updatingItems = false;
 				ResumeLayout(true);
 			}
-			base.AutoScrollPosition = new Point(0, num2);
-			if ((num != selectedIndex || !SameIdentity(selectedItem, SelectedItem)) && this.SelectedIndexChanged != null)
+			base.AutoScrollPosition = new Point(0, setItemsValue);
+			if ((selectedIndexSnapshot != selectedIndex || !SameIdentity(selectedItem, SelectedItem)) && this.SelectedIndexChanged != null)
 			{
 				this.SelectedIndexChanged(this, EventArgs.Empty);
 			}
@@ -421,12 +421,12 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = cards.IndexOf(card);
-			if (num < 0 || !visibleIndices.Contains(num))
+			int matchIndex = cards.IndexOf(card);
+			if (matchIndex < 0 || !visibleIndices.Contains(matchIndex))
 			{
 				return;
 			}
-			SelectIndex(num, false);
+			SelectIndex(matchIndex, false);
 			if (configurationPresenter != null)
 			{
 				configurationPresenter(card.Item, card.ConfigurationButton);
@@ -446,8 +446,8 @@ namespace PaviseApp
 				card.SetConfigurationContent(control);
 				RefreshConfiguration();
 				PerformLayout();
-				int num2 = card.Top - base.AutoScrollPosition.Y;
-				base.AutoScrollPosition = new Point(0, Math.Max(0, num2 - top));
+				int remainingTop = card.Top - base.AutoScrollPosition.Y;
+				base.AutoScrollPosition = new Point(0, Math.Max(0, remainingTop - top));
 			}
 		}
 
@@ -512,8 +512,8 @@ namespace PaviseApp
 
 		private void ApplyFilter(bool preserveScroll)
 		{
-			int num = (preserveScroll ? (-base.AutoScrollPosition.Y) : 0);
-			bool flag = false;
+			int applyFilterValue = (preserveScroll ? (-base.AutoScrollPosition.Y) : 0);
+			bool applyFilterReady = false;
 			SuspendLayout();
 			applyingFilter = true;
 			try
@@ -521,23 +521,23 @@ namespace PaviseApp
 				visibleIndices.Clear();
 				for (int i = 0; i < items.Count; i++)
 				{
-					bool flag2 = Matches(items[i]);
-					cards[i].Visible = flag2;
-					if (flag2)
+					bool visibleValue = Matches(items[i]);
+					cards[i].Visible = visibleValue;
+					if (visibleValue)
 					{
 						visibleIndices.Add(i);
 						continue;
 					}
 					if (selectedIndex == i)
 					{
-						flag = true;
+						applyFilterReady = true;
 					}
 					if (expandedCard == cards[i])
 					{
 						CollapseConfiguration();
 					}
 				}
-				if (flag)
+				if (applyFilterReady)
 				{
 					SelectIndex(-1, false);
 				}
@@ -547,7 +547,7 @@ namespace PaviseApp
 				applyingFilter = false;
 				ResumeLayout(true);
 			}
-			base.AutoScrollPosition = new Point(0, num);
+			base.AutoScrollPosition = new Point(0, applyFilterValue);
 			Invalidate();
 		}
 
@@ -557,7 +557,7 @@ namespace PaviseApp
 			{
 				value = -1;
 			}
-			bool flag = value != selectedIndex;
+			bool matchesValue = value != selectedIndex;
 			selectedIndex = value;
 			for (int i = 0; i < cards.Count; i++)
 			{
@@ -568,7 +568,7 @@ namespace PaviseApp
 				ScrollControlIntoView(cards[value]);
 				cards[value].Focus();
 			}
-			if (flag && !updatingItems && this.SelectedIndexChanged != null)
+			if (matchesValue && !updatingItems && this.SelectedIndexChanged != null)
 			{
 				this.SelectedIndexChanged(this, EventArgs.Empty);
 			}
@@ -576,14 +576,14 @@ namespace PaviseApp
 
 		private void HandleCardKey(GameLibraryTile card, KeyEventArgs e)
 		{
-			int num = ((card == null) ? selectedIndex : cards.IndexOf(card));
-			int num2 = visibleIndices.IndexOf(num);
-			int num3 = num2;
+			int selectedIndexSnapshot = ((card == null) ? selectedIndex : cards.IndexOf(card));
+			int matchIndex = visibleIndices.IndexOf(selectedIndexSnapshot);
+			int processedCount = matchIndex;
 			if (e.KeyCode == Keys.F2 && e.Modifiers == Keys.None)
 			{
-				if (num >= 0)
+				if (selectedIndexSnapshot >= 0)
 				{
-					((PillButton)cards[num].ConfigurationButton).PerformClick();
+					((PillButton)cards[selectedIndexSnapshot].ConfigurationButton).PerformClick();
 				}
 				e.Handled = true;
 				e.SuppressKeyPress = true;
@@ -591,48 +591,48 @@ namespace PaviseApp
 			}
 			if ((e.KeyCode == Keys.Apps && e.Modifiers == Keys.None) || (e.KeyCode == Keys.F10 && e.Modifiers == Keys.Shift))
 			{
-				if (num >= 0)
+				if (selectedIndexSnapshot >= 0)
 				{
-					cards[num].OpenMore();
+					cards[selectedIndexSnapshot].OpenMore();
 				}
 				e.Handled = true;
 				e.SuppressKeyPress = true;
 				return;
 			}
-			int num4 = Math.Max(1, base.ClientSize.Height / Math.Max(1, Theme.S(preferredCardHeight + cardGap)));
+			int lowerBound = Math.Max(1, base.ClientSize.Height / Math.Max(1, Theme.S(preferredCardHeight + cardGap)));
 			switch (e.KeyCode)
 			{
 			case Keys.Left:
-				num3--;
+				processedCount--;
 				break;
 			case Keys.Right:
-				num3++;
+				processedCount++;
 				break;
 			case Keys.Up:
-				num3 -= columns;
+				processedCount -= columns;
 				break;
 			case Keys.Down:
-				num3 += columns;
+				processedCount += columns;
 				break;
 			case Keys.Home:
-				num3 = 0;
+				processedCount = 0;
 				break;
 			case Keys.End:
-				num3 = visibleIndices.Count - 1;
+				processedCount = visibleIndices.Count - 1;
 				break;
 			case Keys.Prior:
-				num3 -= columns * num4;
+				processedCount -= columns * lowerBound;
 				break;
 			case Keys.Next:
-				num3 += columns * num4;
+				processedCount += columns * lowerBound;
 				break;
 			case Keys.Return:
 			case Keys.Space:
-				if (num < 0 && visibleIndices.Count > 0)
+				if (selectedIndexSnapshot < 0 && visibleIndices.Count > 0)
 				{
-					num = visibleIndices[0];
+					selectedIndexSnapshot = visibleIndices[0];
 				}
-				SelectIndex(num, true);
+				SelectIndex(selectedIndexSnapshot, true);
 				e.Handled = true;
 				e.SuppressKeyPress = true;
 				return;
@@ -647,12 +647,12 @@ namespace PaviseApp
 			e.SuppressKeyPress = true;
 			if (visibleIndices.Count != 0)
 			{
-				if (num2 < 0 && e.KeyCode != Keys.End)
+				if (matchIndex < 0 && e.KeyCode != Keys.End)
 				{
-					num3 = 0;
+					processedCount = 0;
 				}
-				num3 = Math.Max(0, Math.Min(visibleIndices.Count - 1, num3));
-				SelectIndex(visibleIndices[num3], true);
+				processedCount = Math.Max(0, Math.Min(visibleIndices.Count - 1, processedCount));
+				SelectIndex(visibleIndices[processedCount], true);
 			}
 		}
 
@@ -690,50 +690,50 @@ namespace PaviseApp
 			arranging = true;
 			try
 			{
-				int num = Theme.S(cardGap);
-				int num2 = Theme.S(238);
+				int scaledDimension = Theme.S(cardGap);
+				int scaledDimension2 = Theme.S(238);
 				int baseHeight = Theme.S(preferredCardHeight);
 				for (int i = 0; i < 3; i++)
 				{
 					base.OnLayout(levent);
-					int num3 = Math.Max(1, base.ClientSize.Width - base.Padding.Horizontal);
-					columns = Math.Max(1, Math.Min(4, (num3 + num) / Math.Max(1, num2 + num)));
-					int num4 = Math.Max(1, (num3 - num * (columns - 1)) / columns);
-					int num5 = (visibleIndices.Count + columns - 1) / columns;
-					int[] array = new int[num5];
-					int[] array2 = new int[visibleIndices.Count];
+					int lowerBound = Math.Max(1, base.ClientSize.Width - base.Padding.Horizontal);
+					columns = Math.Max(1, Math.Min(4, (lowerBound + scaledDimension) / Math.Max(1, scaledDimension2 + scaledDimension)));
+					int width = Math.Max(1, (lowerBound - scaledDimension * (columns - 1)) / columns);
+					int columnsRatio = (visibleIndices.Count + columns - 1) / columns;
+					int[] integerValues = new int[columnsRatio];
+					int[] integerValues2 = new int[visibleIndices.Count];
 					for (int j = 0; j < visibleIndices.Count; j++)
 					{
-						int num6 = (array2[j] = cards[visibleIndices[j]].HeightForWidth(num4, baseHeight));
-						int num7 = j / columns;
-						if (num6 > array[num7])
+						int onLayoutValue = (integerValues2[j] = cards[visibleIndices[j]].HeightForWidth(width, baseHeight));
+						int jRatio = j / columns;
+						if (onLayoutValue > integerValues[jRatio])
 						{
-							array[num7] = num6;
+							integerValues[jRatio] = onLayoutValue;
 						}
 					}
-					int num8 = ((num5 != 0) ? (base.Padding.Vertical + (num5 - 1) * num) : 0);
-					int[] array3 = array;
-					foreach (int num9 in array3)
+					int verticalOffset = ((columnsRatio != 0) ? (base.Padding.Vertical + (columnsRatio - 1) * scaledDimension) : 0);
+					int[] integerValues3 = integerValues;
+					foreach (int numericValueEntry in integerValues3)
 					{
-						num8 += num9;
+						verticalOffset += numericValueEntry;
 					}
-					if (base.AutoScrollMinSize.Height != num8)
+					if (base.AutoScrollMinSize.Height != verticalOffset)
 					{
-						base.AutoScrollMinSize = new Size(0, num8);
+						base.AutoScrollMinSize = new Size(0, verticalOffset);
 					}
-					int num10 = base.Padding.Top + base.AutoScrollPosition.Y;
-					int num11 = num10;
+					int topOffset = base.Padding.Top + base.AutoScrollPosition.Y;
+					int top = topOffset;
 					for (int l = 0; l < visibleIndices.Count; l++)
 					{
-						int num12 = base.Padding.Left + l % columns * (num4 + num);
+						int left = base.Padding.Left + l % columns * (width + scaledDimension);
 						if (l > 0 && l % columns == 0)
 						{
-							num11 += array[l / columns - 1] + num;
+							top += integerValues[l / columns - 1] + scaledDimension;
 						}
-						cards[visibleIndices[l]].SetBounds(num12, num11, num4, array2[l]);
+						cards[visibleIndices[l]].SetBounds(left, top, width, integerValues2[l]);
 					}
 					base.OnLayout(levent);
-					if (num3 == base.ClientSize.Width - base.Padding.Horizontal && !base.HorizontalScroll.Visible)
+					if (lowerBound == base.ClientSize.Width - base.Padding.Horizontal && !base.HorizontalScroll.Visible)
 					{
 						break;
 					}
@@ -769,10 +769,10 @@ namespace PaviseApp
 			base.OnPaint(e);
 			if (visibleIndices.Count <= 0)
 			{
-				string text = ((filterText.Length > 0 || filter != null) ? PerformancePolicy.Text("没有匹配的游戏", "No matching games") : PerformancePolicy.Text("添加游戏，开始守护", "Add a game to get started"));
+				string textResult = ((filterText.Length > 0 || filter != null) ? PerformancePolicy.Text("没有匹配的游戏", "No matching games") : PerformancePolicy.Text("添加游戏，开始守护", "Add a game to get started"));
 				Rectangle b = new Rectangle(Math.Max(0, (base.ClientSize.Width - Theme.S(38)) / 2), Math.Max(Theme.S(24), base.ClientSize.Height / 2 - Theme.S(50)), Theme.S(38), Theme.S(38));
 				Glyphs.Draw(e.Graphics, "gamepad", b, Theme.Faint);
-				TextRenderer.DrawText(e.Graphics, text, Theme.UI(10f, false), new Rectangle(Theme.S(12), b.Bottom + Theme.S(15), Math.Max(1, base.ClientSize.Width - Theme.S(24)), Theme.S(28)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+				TextRenderer.DrawText(e.Graphics, textResult, Theme.UI(10f, false), new Rectangle(Theme.S(12), b.Bottom + Theme.S(15), Math.Max(1, base.ClientSize.Width - Theme.S(24)), Theme.S(28)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 			}
 		}
 
@@ -818,10 +818,10 @@ namespace PaviseApp
 
 		internal static string PlatformName(GameProfile profile)
 		{
-			string text = SourceOf(profile);
-			if (!(text == "Local"))
+			string sourceOfResult = SourceOf(profile);
+			if (!(sourceOfResult == "Local"))
 			{
-				return text;
+				return sourceOfResult;
 			}
 			return PerformancePolicy.Text("本地游戏", "Local game");
 		}

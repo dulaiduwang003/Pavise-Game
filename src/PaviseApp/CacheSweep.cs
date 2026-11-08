@@ -106,27 +106,27 @@ namespace PaviseApp
 			{
 				return 0L;
 			}
-			long num = 0L;
-			FileInfo[] array = null;
-			DirectoryInfo[] array2 = null;
+			long sizeOfResult = 0L;
+			FileInfo[] filePaths = null;
+			DirectoryInfo[] directoryPaths = null;
 			try
 			{
-				array = di.GetFiles();
-				array2 = di.GetDirectories();
+				filePaths = di.GetFiles();
+				directoryPaths = di.GetDirectories();
 			}
 			catch
 			{
 			}
-			if (array != null)
+			if (filePaths != null)
 			{
-				FileInfo[] array3 = array;
-				foreach (FileInfo fileInfo in array3)
+				FileInfo[] fileInfoItems = filePaths;
+				foreach (FileInfo fileInfo in fileInfoItems)
 				{
 					try
 					{
 						if (!IsReparse(fileInfo))
 						{
-							num += fileInfo.Length;
+							sizeOfResult += fileInfo.Length;
 						}
 					}
 					catch
@@ -134,18 +134,18 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (array2 != null)
+			if (directoryPaths != null)
 			{
-				DirectoryInfo[] array4 = array2;
-				foreach (DirectoryInfo directoryInfo in array4)
+				DirectoryInfo[] directoryInfoItems = directoryPaths;
+				foreach (DirectoryInfo directoryInfo in directoryInfoItems)
 				{
 					if (!IsReparse(directoryInfo))
 					{
-						num += SizeOf(directoryInfo);
+						sizeOfResult += SizeOf(directoryInfo);
 					}
 				}
 			}
-			return num;
+			return sizeOfResult;
 		}
 
 		internal static void CleanInner(DirectoryInfo di, Result r, bool deleteSelf)
@@ -161,21 +161,21 @@ namespace PaviseApp
 				{
 					return;
 				}
-				FileInfo[] array = null;
-				DirectoryInfo[] array2 = null;
+				FileInfo[] filePaths = null;
+				DirectoryInfo[] directoryPaths = null;
 				try
 				{
-					array = di.GetFiles();
-					array2 = di.GetDirectories();
+					filePaths = di.GetFiles();
+					directoryPaths = di.GetDirectories();
 				}
 				catch
 				{
 					r.FailedFiles++;
 				}
-				if (array != null)
+				if (filePaths != null)
 				{
-					FileInfo[] array3 = array;
-					foreach (FileInfo fileInfo in array3)
+					FileInfo[] fileInfoItems = filePaths;
+					foreach (FileInfo fileInfo in fileInfoItems)
 					{
 						if (!TryDirectoryChain(di, out exists))
 						{
@@ -192,12 +192,12 @@ namespace PaviseApp
 							r.FailedFiles++;
 							continue;
 						}
-						long num = 0L;
+						long freedBytesValue = 0L;
 						try
 						{
-							num = fileInfo.Length;
+							freedBytesValue = fileInfo.Length;
 							fileInfo.Delete();
-							r.FreedBytes += num;
+							r.FreedBytes += freedBytesValue;
 						}
 						catch
 						{
@@ -205,7 +205,7 @@ namespace PaviseApp
 							{
 								fileInfo.Attributes = FileAttributes.Normal;
 								fileInfo.Delete();
-								r.FreedBytes += num;
+								r.FreedBytes += freedBytesValue;
 							}
 							catch
 							{
@@ -214,10 +214,10 @@ namespace PaviseApp
 						}
 					}
 				}
-				if (array2 != null)
+				if (directoryPaths != null)
 				{
-					DirectoryInfo[] array4 = array2;
-					foreach (DirectoryInfo directoryInfo in array4)
+					DirectoryInfo[] directoryInfoItems = directoryPaths;
+					foreach (DirectoryInfo directoryInfo in directoryInfoItems)
 					{
 						directoryInfo.Refresh();
 						if (!IsReparse(directoryInfo))

@@ -50,10 +50,10 @@ namespace PaviseApp
 			{
 				return new CriticalThreadAllowedRange(0uL, PerformancePolicy.Text("已启用的游戏选核规则无效", "The enabled game processor rule is invalid"));
 			}
-			string text = manual.Validate(all, physical, reserved, supported, trusted);
-			if (text != null)
+			string validateResult = manual.Validate(all, physical, reserved, supported, trusted);
+			if (validateResult != null)
 			{
-				return new CriticalThreadAllowedRange(0uL, PerformancePolicy.Text("请先修正或关闭原游戏选核规则：", "Correct or disable the original game processor rule first: ") + Lang.T(text));
+				return new CriticalThreadAllowedRange(0uL, PerformancePolicy.Text("请先修正或关闭原游戏选核规则：", "Correct or disable the original game processor rule first: ") + Lang.T(validateResult));
 			}
 			return new CriticalThreadAllowedRange(manual.GameMask, null);
 		}

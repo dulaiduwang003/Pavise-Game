@@ -94,16 +94,16 @@ namespace PaviseApp
 					}
 				}
 				FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(path);
-				bool flag = MetadataMatches(Path.GetFileNameWithoutExtension(path), versionInfo.OriginalFilename, versionInfo.CompanyName, versionInfo.ProductName);
+				bool metadataMatchesSucceeded = MetadataMatches(Path.GetFileNameWithoutExtension(path), versionInfo.OriginalFilename, versionInfo.CompanyName, versionInfo.ProductName);
 				lock (gate)
 				{
 					if (identities.Count >= 256)
 					{
 						identities.Clear();
 					}
-					identities[key] = flag;
+					identities[key] = metadataMatchesSucceeded;
 				}
-				return flag;
+				return metadataMatchesSucceeded;
 			}
 			catch
 			{

@@ -82,16 +82,16 @@ namespace PaviseApp
 
 		public void SetItems(List<GameLibraryItem> fresh)
 		{
-			string text = ((SelectedItem == null) ? null : SelectedItem.Profile.Id);
-			int num = -base.AutoScrollPosition.Y;
-			bool flag = fresh.Count != items.Count;
-			if (!flag)
+			string id = ((SelectedItem == null) ? null : SelectedItem.Profile.Id);
+			int setItemsValue = -base.AutoScrollPosition.Y;
+			bool matchesCount = fresh.Count != items.Count;
+			if (!matchesCount)
 			{
 				for (int i = 0; i < fresh.Count; i++)
 				{
 					if (!string.Equals(fresh[i].Profile.Id, items[i].Profile.Id, StringComparison.OrdinalIgnoreCase))
 					{
-						flag = true;
+						matchesCount = true;
 						break;
 					}
 				}
@@ -99,7 +99,7 @@ namespace PaviseApp
 			SuspendLayout();
 			try
 			{
-				if (flag)
+				if (matchesCount)
 				{
 					foreach (GameLibraryRow row2 in rows)
 					{
@@ -211,11 +211,11 @@ namespace PaviseApp
 				ResumeLayout(true);
 			}
 			int value = -1;
-			if (text != null)
+			if (id != null)
 			{
 				for (int k = 0; k < items.Count; k++)
 				{
-					if (string.Equals(items[k].Profile.Id, text, StringComparison.OrdinalIgnoreCase))
+					if (string.Equals(items[k].Profile.Id, id, StringComparison.OrdinalIgnoreCase))
 					{
 						value = k;
 						break;
@@ -223,9 +223,9 @@ namespace PaviseApp
 				}
 			}
 			SelectIndex(value, false);
-			if (flag)
+			if (matchesCount)
 			{
-				base.AutoScrollPosition = new Point(0, num);
+				base.AutoScrollPosition = new Point(0, setItemsValue);
 			}
 			RefreshRows();
 		}
@@ -245,7 +245,7 @@ namespace PaviseApp
 			{
 				value = -1;
 			}
-			bool flag = value != selectedIndex;
+			bool matchesValue = value != selectedIndex;
 			selectedIndex = value;
 			for (int i = 0; i < rows.Count; i++)
 			{
@@ -256,7 +256,7 @@ namespace PaviseApp
 				ScrollControlIntoView(rows[value]);
 				rows[value].Focus();
 			}
-			if (flag && this.SelectedIndexChanged != null)
+			if (matchesValue && this.SelectedIndexChanged != null)
 			{
 				this.SelectedIndexChanged(this, EventArgs.Empty);
 			}
@@ -264,26 +264,26 @@ namespace PaviseApp
 
 		private void HandleRowKey(GameLibraryRow row, KeyEventArgs e)
 		{
-			int num = rows.IndexOf(row);
+			int processedCount = rows.IndexOf(row);
 			switch (e.KeyCode)
 			{
 			case Keys.Up:
-				num--;
+				processedCount--;
 				break;
 			case Keys.Down:
-				num++;
+				processedCount++;
 				break;
 			case Keys.Home:
-				num = 0;
+				processedCount = 0;
 				break;
 			case Keys.End:
-				num = rows.Count - 1;
+				processedCount = rows.Count - 1;
 				break;
 			case Keys.Prior:
-				num -= Math.Max(1, base.ClientSize.Height / Math.Max(1, row.Height));
+				processedCount -= Math.Max(1, base.ClientSize.Height / Math.Max(1, row.Height));
 				break;
 			case Keys.Next:
-				num += Math.Max(1, base.ClientSize.Height / Math.Max(1, row.Height));
+				processedCount += Math.Max(1, base.ClientSize.Height / Math.Max(1, row.Height));
 				break;
 			default:
 				OnKeyDown(e);
@@ -291,7 +291,7 @@ namespace PaviseApp
 			}
 			e.Handled = true;
 			e.SuppressKeyPress = true;
-			SelectIndex(Math.Max(0, Math.Min(rows.Count - 1, num)), true);
+			SelectIndex(Math.Max(0, Math.Min(rows.Count - 1, processedCount)), true);
 		}
 
 		protected override void OnLayout(LayoutEventArgs levent)
@@ -306,27 +306,27 @@ namespace PaviseApp
 				for (int i = 0; i < 3; i++)
 				{
 					base.OnLayout(levent);
-					int num = Math.Max(1, base.ClientSize.Width - base.Padding.Horizontal);
-					int num2 = GameLibraryRowLayout.HeightForWidth(num);
-					int num3 = Theme.S(8);
-					int num4 = ((rows.Count != 0) ? (base.Padding.Vertical - num3) : 0);
+					int width = Math.Max(1, base.ClientSize.Width - base.Padding.Horizontal);
+					int heightForWidthResult = GameLibraryRowLayout.HeightForWidth(width);
+					int scaledDimension = Theme.S(8);
+					int remainingVertical = ((rows.Count != 0) ? (base.Padding.Vertical - scaledDimension) : 0);
 					foreach (GameLibraryRow row in rows)
 					{
-						num4 += num2 + row.ExtraHeightForWidth(num) + num3;
+						remainingVertical += heightForWidthResult + row.ExtraHeightForWidth(width) + scaledDimension;
 					}
-					if (base.AutoScrollMinSize.Height != num4)
+					if (base.AutoScrollMinSize.Height != remainingVertical)
 					{
-						base.AutoScrollMinSize = new Size(0, num4);
+						base.AutoScrollMinSize = new Size(0, remainingVertical);
 					}
-					int num5 = base.Padding.Top + base.AutoScrollPosition.Y;
+					int top = base.Padding.Top + base.AutoScrollPosition.Y;
 					foreach (GameLibraryRow row2 in rows)
 					{
-						int num6 = num2 + row2.ExtraHeightForWidth(num);
-						row2.SetBounds(base.Padding.Left, num5, num, num6);
-						num5 += num6 + num3;
+						int height = heightForWidthResult + row2.ExtraHeightForWidth(width);
+						row2.SetBounds(base.Padding.Left, top, width, height);
+						top += height + scaledDimension;
 					}
 					base.OnLayout(levent);
-					if (num == base.ClientSize.Width - base.Padding.Horizontal && !base.HorizontalScroll.Visible)
+					if (width == base.ClientSize.Width - base.Padding.Horizontal && !base.HorizontalScroll.Visible)
 					{
 						break;
 					}

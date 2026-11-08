@@ -43,18 +43,18 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			ToolStripItem item = e.Item;
-			bool flag = item is ToolStripMenuItem && ((ToolStripMenuItem)item).DropDown.Visible;
-			if (item.Selected || flag)
+			bool matchesVisible = item is ToolStripMenuItem && ((ToolStripMenuItem)item).DropDown.Visible;
+			if (item.Selected || matchesVisible)
 			{
 				Rectangle r = new Rectangle(Theme.S(4), Theme.S(2), item.Width - Theme.S(8), item.Height - Theme.S(4));
-				Theme.FillRound(graphics, r, Theme.S(7), flag ? Theme.Sel : Theme.CardHover);
+				Theme.FillRound(graphics, r, Theme.S(7), matchesVisible ? Theme.Sel : Theme.CardHover);
 			}
 			ToolStripMenuItem toolStripMenuItem = item as ToolStripMenuItem;
 			if (toolStripMenuItem != null && toolStripMenuItem.Checked)
 			{
-				int num = Theme.S(13);
-				int x = item.Width - Theme.S(14) - num;
-				DrawCheck(graphics, new Rectangle(x, (item.Height - num) / 2, num, num));
+				int scaledDimension = Theme.S(13);
+				int x = item.Width - Theme.S(14) - scaledDimension;
+				DrawCheck(graphics, new Rectangle(x, (item.Height - scaledDimension) / 2, scaledDimension, scaledDimension));
 			}
 		}
 
@@ -83,10 +83,10 @@ namespace PaviseApp
 			Rectangle textRectangle = e.TextRectangle;
 			if (textRectangle.Height > 0 && textRectangle.Height < e.Item.Height)
 			{
-				int num = (e.Item.Height - textRectangle.Height) / 2;
-				if (num != textRectangle.Y)
+				int ratio = (e.Item.Height - textRectangle.Height) / 2;
+				if (ratio != textRectangle.Y)
 				{
-					e.TextRectangle = new Rectangle(textRectangle.X, num, textRectangle.Width, textRectangle.Height);
+					e.TextRectangle = new Rectangle(textRectangle.X, ratio, textRectangle.Width, textRectangle.Height);
 				}
 			}
 			base.OnRenderItemText(e);
@@ -94,10 +94,10 @@ namespace PaviseApp
 
 		protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
 		{
-			int num = e.Item.Height / 2;
+			int top = e.Item.Height / 2;
 			using (Pen pen = new Pen(Col.Alpha(Theme.Stroke, 150)))
 			{
-				e.Graphics.DrawLine(pen, Theme.S(12), num, e.Item.Width - Theme.S(12), num);
+				e.Graphics.DrawLine(pen, Theme.S(12), top, e.Item.Width - Theme.S(12), top);
 			}
 		}
 

@@ -121,9 +121,9 @@ namespace PaviseApp
 				tip = toolTip;
 				tip.Popup += delegate(object sender, PopupEventArgs e)
 				{
-					int num = Math.Min(Theme.S(460), Math.Max(Theme.S(200), Screen.FromControl(e.AssociatedControl).WorkingArea.Width - Theme.S(32)));
-					Size size = TextRenderer.MeasureText(text, Theme.UI(9f, false), new Size(Math.Max(1, num - Theme.S(28)), int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-					e.ToolTipSize = new Size(Math.Min(num, Math.Max(Theme.S(200), size.Width + Theme.S(28))), size.Height + Theme.S(24));
+					int maxLimit = Math.Min(Theme.S(460), Math.Max(Theme.S(200), Screen.FromControl(e.AssociatedControl).WorkingArea.Width - Theme.S(32)));
+					Size size = TextRenderer.MeasureText(text, Theme.UI(9f, false), new Size(Math.Max(1, maxLimit - Theme.S(28)), int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+					e.ToolTipSize = new Size(Math.Min(maxLimit, Math.Max(Theme.S(200), size.Width + Theme.S(28))), size.Height + Theme.S(24));
 				};
 				tip.Draw += delegate(object sender, DrawToolTipEventArgs e)
 				{

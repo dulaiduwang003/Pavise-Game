@@ -200,13 +200,13 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-				if (!File.Exists(text))
+				string fileNameValue = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+				if (!File.Exists(fileNameValue))
 				{
 					return false;
 				}
 				ProcessStartInfo processStartInfo = new ProcessStartInfo();
-				processStartInfo.FileName = text;
+				processStartInfo.FileName = fileNameValue;
 				processStartInfo.Arguments = "\"" + executable + "\"";
 				processStartInfo.UseShellExecute = false;
 				processStartInfo.CreateNoWindow = true;

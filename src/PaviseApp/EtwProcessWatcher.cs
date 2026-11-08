@@ -49,16 +49,16 @@ namespace PaviseApp
 
 		public bool Start()
 		{
-			int num = Marshal.SizeOf(typeof(Native.EventTraceProperties));
-			int num2 = num + (sessionName.Length + 1) * 2 + 2;
-			StopStaleSession(num, num2);
-			propsBuffer = Marshal.AllocHGlobal(num2);
-			for (int i = 0; i < num2; i++)
+			int sizeOfResult = Marshal.SizeOf(typeof(Native.EventTraceProperties));
+			int startValue = sizeOfResult + (sessionName.Length + 1) * 2 + 2;
+			StopStaleSession(sizeOfResult, startValue);
+			propsBuffer = Marshal.AllocHGlobal(startValue);
+			for (int i = 0; i < startValue; i++)
 			{
 				Marshal.WriteByte(propsBuffer, i, 0);
 			}
 			Native.EventTraceProperties structure = default(Native.EventTraceProperties);
-			structure.WnodeBufferSize = (uint)num2;
+			structure.WnodeBufferSize = (uint)startValue;
 			structure.WnodeFlags = 131072u;
 			structure.WnodeClientContext = 1u;
 			structure.LogFileMode = 256u;
@@ -66,22 +66,22 @@ namespace PaviseApp
 			structure.MinimumBuffers = 2u;
 			structure.MaximumBuffers = 8u;
 			structure.FlushTimer = 1u;
-			structure.LoggerNameOffset = (uint)num;
+			structure.LoggerNameOffset = (uint)sizeOfResult;
 			Marshal.StructureToPtr(structure, propsBuffer, false);
-			int num3 = Native.StartTrace(out session, sessionName, propsBuffer);
-			if (num3 != 0)
+			int startTraceResult = Native.StartTrace(out session, sessionName, propsBuffer);
+			if (startTraceResult != 0)
 			{
-				LastError = Lang.T("t.etwprocesswatcher.1") + num3;
+				LastError = Lang.T("t.etwprocesswatcher.1") + startTraceResult;
 				Cleanup();
 				return false;
 			}
 			Native.EnableTraceParameters enableParameters = default(Native.EnableTraceParameters);
 			enableParameters.Version = 2u;
 			Guid providerId = KernelProcessProvider;
-			num3 = Native.EnableTraceEx2(session, ref providerId, 1u, 4, Keywords, 0uL, 0u, ref enableParameters);
-			if (num3 != 0)
+			startTraceResult = Native.EnableTraceEx2(session, ref providerId, 1u, 4, Keywords, 0uL, 0u, ref enableParameters);
+			if (startTraceResult != 0)
 			{
-				LastError = Lang.T("t.etwprocesswatcher.2") + num3;
+				LastError = Lang.T("t.etwprocesswatcher.2") + startTraceResult;
 				Cleanup();
 				return false;
 			}

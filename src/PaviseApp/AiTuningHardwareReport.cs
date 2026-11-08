@@ -19,8 +19,8 @@ namespace PaviseApp
 
         internal static string Read(string displayDeviceName)
         {
-            var text = new StringBuilder();
-            Append(text, "系统", ReadWindows);
+            var stringBuilder = new StringBuilder();
+            Append(stringBuilder, "系统", ReadWindows);
 
             OverviewHardwareInfo hardware = null;
             try
@@ -30,30 +30,30 @@ namespace PaviseApp
             }
             catch { }
 
-            text.AppendLine("CPU 型号：" + Safe(hardware == null ? null : hardware.CpuName));
-            text.AppendLine("物理核心／逻辑线程：" + Number(hardware == null ? 0 : hardware.PhysicalCores)
+            stringBuilder.AppendLine("CPU 型号：" + Safe(hardware == null ? null : hardware.CpuName));
+            stringBuilder.AppendLine("物理核心／逻辑线程：" + Number(hardware == null ? 0 : hardware.PhysicalCores)
                 + " 核／" + Number(hardware == null ? 0 : hardware.LogicalProcessors) + " 线程");
-            Append(text, "CPU 拓扑", ReadTopology);
-            Append(text, "GPU", ReadGpus);
-            text.AppendLine("物理内存：" + Capacity(hardware == null ? 0UL : hardware.InstalledMemoryBytes)
+            Append(stringBuilder, "CPU 拓扑", ReadTopology);
+            Append(stringBuilder, "GPU", ReadGpus);
+            stringBuilder.AppendLine("物理内存：" + Capacity(hardware == null ? 0UL : hardware.InstalledMemoryBytes)
                 + "；类型 " + Safe(hardware == null ? null : hardware.MemoryType)
                 + "；配置速度 " + (hardware != null && hardware.MemorySpeedMts > 0
                     ? hardware.MemorySpeedMts.ToString(CultureInfo.InvariantCulture) + " MT/s" : Unknown));
-            text.AppendLine("桌面显示模式（不是游戏分辨率/限帧设置）：" + (hardware != null && hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0
+            stringBuilder.AppendLine("桌面显示模式（不是游戏分辨率/限帧设置）：" + (hardware != null && hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0
                 ? hardware.DisplayWidth.ToString(CultureInfo.InvariantCulture) + " × " + hardware.DisplayHeight.ToString(CultureInfo.InvariantCulture)
                     + "；" + (hardware.DisplayRefreshRate > 0 ? hardware.DisplayRefreshRate.ToString(CultureInfo.InvariantCulture) + " Hz" : "刷新率" + Unknown)
                 : Unknown));
-            Append(text, "供电", ReadPowerStatus);
-            Append(text, "当前活动电源计划", ReadActivePlan);
-            Append(text, "Pavise 电源选择策略", ReadPlanChoice);
-            Append(text, "EPP 功耗让路适用性", delegate
+            Append(stringBuilder, "供电", ReadPowerStatus);
+            Append(stringBuilder, "当前活动电源计划", ReadActivePlan);
+            Append(stringBuilder, "Pavise 电源选择策略", ReadPlanChoice);
+            Append(stringBuilder, "EPP 功耗让路适用性", delegate
             {
                 LaboratoryEppAvailability value = LaboratoryEppEligibility.Current;
                 return value.Available ? "当前核验允许使用（笔记本、可核验电池及交流供电）"
                     : Safe(value.Chinese);
             });
-            text.AppendLine("来源：现有缓存与Windows只读接口；缓存域不等于CCD，核显显存不等于独立显存。游戏设置、磁盘类型、温度、负载瓶颈和帧时间未采集，未知不代表关闭/不支持；未导出设备标识和路径。");
-            return text.ToString();
+            stringBuilder.AppendLine("来源：现有缓存与Windows只读接口；缓存域不等于CCD，核显显存不等于独立显存。游戏设置、磁盘类型、温度、负载瓶颈和帧时间未采集，未知不代表关闭/不支持；未导出设备标识和路径。");
+            return stringBuilder.ToString();
         }
 
         private static void Append(StringBuilder text, string label, Func<string> read)

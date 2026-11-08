@@ -152,22 +152,22 @@ namespace PaviseApp
 			};
 			label.Click += value;
 			base.Controls.Add(close);
-			int num = 192;
-			int num2 = 216 + num + 10;
-			int num3 = 102;
-			AddRow(216, num3, 394, Lang.T("contact.douyin"), "44601770838", CopyAction("44601770838"), Lang.T("contact.copy"));
-			num3 += 58;
-			AddRow(216, num3, num, Lang.T("contact.qq"), "1051472054", CopyAction("1051472054"), Lang.T("contact.copy"));
-			AddRow(num2, num3, num, Lang.T("contact.qq2"), "1101249532", CopyAction("1101249532"), Lang.T("contact.copy"));
-			num3 += 58;
-			AddRow(216, num3, num, Lang.T("contact.qq3"), "383761286", CopyAction("383761286"), Lang.T("contact.copy"));
-			AddRow(num2, num3, num, Lang.T("contact.qq4"), "166255062", CopyAction("166255062"), Lang.T("contact.copy"));
-			num3 += 58;
-			AddRow(216, num3, num, Lang.T("contact.qq5"), "1109874913", CopyAction("1109874913"), Lang.T("contact.copy"));
-			num3 += 58;
-			AddRow(216, num3, 394, Lang.T("site.entry"), "pavise.club", OpenAction("https://pavise.club/"), Lang.T("contact.open"));
-			num3 += 70;
-			BuildUpdateArea(216, num3, 394);
+			int ctorValue = 192;
+			int ctorValue2 = 216 + ctorValue + 10;
+			int ctorValue3 = 102;
+			AddRow(216, ctorValue3, 394, Lang.T("contact.douyin"), "44601770838", CopyAction("44601770838"), Lang.T("contact.copy"));
+			ctorValue3 += 58;
+			AddRow(216, ctorValue3, ctorValue, Lang.T("contact.qq"), "1051472054", CopyAction("1051472054"), Lang.T("contact.copy"));
+			AddRow(ctorValue2, ctorValue3, ctorValue, Lang.T("contact.qq2"), "1101249532", CopyAction("1101249532"), Lang.T("contact.copy"));
+			ctorValue3 += 58;
+			AddRow(216, ctorValue3, ctorValue, Lang.T("contact.qq3"), "383761286", CopyAction("383761286"), Lang.T("contact.copy"));
+			AddRow(ctorValue2, ctorValue3, ctorValue, Lang.T("contact.qq4"), "166255062", CopyAction("166255062"), Lang.T("contact.copy"));
+			ctorValue3 += 58;
+			AddRow(216, ctorValue3, ctorValue, Lang.T("contact.qq5"), "1109874913", CopyAction("1109874913"), Lang.T("contact.copy"));
+			ctorValue3 += 58;
+			AddRow(216, ctorValue3, 394, Lang.T("site.entry"), "pavise.club", OpenAction("https://pavise.club/"), Lang.T("contact.open"));
+			ctorValue3 += 70;
+			BuildUpdateArea(216, ctorValue3, 394);
 			Label label2 = new Label();
 			label2.Text = Lang.T("contact.free.n");
 			label2.ForeColor = Theme.Dim;
@@ -281,20 +281,20 @@ namespace PaviseApp
 
 		private void ApplyWindowRegion()
 		{
-			int num = base.ClientSize.Width;
-			int num2 = base.ClientSize.Height;
-			if (num <= 0 || num2 <= 0)
+			int width = base.ClientSize.Width;
+			int height = base.ClientSize.Height;
+			if (width <= 0 || height <= 0)
 			{
 				return;
 			}
-			int num3 = Theme.S(26);
+			int scaledDimension = Theme.S(26);
 			using (GraphicsPath graphicsPath = new GraphicsPath())
 			{
-				graphicsPath.AddLine(num3, 0, num, 0);
-				graphicsPath.AddLine(num, 0, num, num2 - num3);
-				graphicsPath.AddLine(num, num2 - num3, num - num3, num2);
-				graphicsPath.AddLine(num - num3, num2, 0, num2);
-				graphicsPath.AddLine(0, num2, 0, num3);
+				graphicsPath.AddLine(scaledDimension, 0, width, 0);
+				graphicsPath.AddLine(width, 0, width, height - scaledDimension);
+				graphicsPath.AddLine(width, height - scaledDimension, width - scaledDimension, height);
+				graphicsPath.AddLine(width - scaledDimension, height, 0, height);
+				graphicsPath.AddLine(0, height, 0, scaledDimension);
 				graphicsPath.CloseFigure();
 				base.Region = new Region(graphicsPath);
 			}
@@ -305,16 +305,16 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-			int num = base.ClientSize.Width;
-			int num2 = base.ClientSize.Height;
-			int num3 = Theme.S(26);
+			int width = base.ClientSize.Width;
+			int height = base.ClientSize.Height;
+			int scaledDimension = Theme.S(26);
 			using (GraphicsPath graphicsPath = new GraphicsPath())
 			{
-				graphicsPath.AddLine(num3, 0, num, 0);
-				graphicsPath.AddLine(num, 0, num, num2 - num3);
-				graphicsPath.AddLine(num, num2 - num3, num - num3, num2);
-				graphicsPath.AddLine(num - num3, num2, 0, num2);
-				graphicsPath.AddLine(0, num2, 0, num3);
+				graphicsPath.AddLine(scaledDimension, 0, width, 0);
+				graphicsPath.AddLine(width, 0, width, height - scaledDimension);
+				graphicsPath.AddLine(width, height - scaledDimension, width - scaledDimension, height);
+				graphicsPath.AddLine(width - scaledDimension, height, 0, height);
+				graphicsPath.AddLine(0, height, 0, scaledDimension);
 				graphicsPath.CloseFigure();
 				using (SolidBrush brush = new SolidBrush(Theme.Bg))
 				{
@@ -325,14 +325,14 @@ namespace PaviseApp
 					graphics.DrawPath(pen, graphicsPath);
 				}
 			}
-			int num4 = Theme.S(190);
-			int num5 = Theme.S(32);
+			int left = Theme.S(190);
+			int scaledDimension2 = Theme.S(32);
 			using (GraphicsPath graphicsPath2 = new GraphicsPath())
 			{
-				graphicsPath2.AddLine(num3, 0, num4, 0);
-				graphicsPath2.AddLine(num4, 0, num4 - num5, num2);
-				graphicsPath2.AddLine(num4 - num5, num2, 0, num2);
-				graphicsPath2.AddLine(0, num2, 0, num3);
+				graphicsPath2.AddLine(scaledDimension, 0, left, 0);
+				graphicsPath2.AddLine(left, 0, left - scaledDimension2, height);
+				graphicsPath2.AddLine(left - scaledDimension2, height, 0, height);
+				graphicsPath2.AddLine(0, height, 0, scaledDimension);
 				graphicsPath2.CloseFigure();
 				using (SolidBrush brush2 = new SolidBrush(Theme.Nav))
 				{
@@ -341,21 +341,21 @@ namespace PaviseApp
 			}
 			using (Pen pen2 = new Pen(Theme.Accent, Theme.S(2)))
 			{
-				graphics.DrawLine(pen2, num4, 0, num4 - num5, num2);
+				graphics.DrawLine(pen2, left, 0, left - scaledDimension2, height);
 			}
 			using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 60), Theme.S(1)))
 			{
-				graphics.DrawLine(pen3, num4 + Theme.S(5), 0, num4 - num5 + Theme.S(5), num2);
+				graphics.DrawLine(pen3, left + Theme.S(5), 0, left - scaledDimension2 + Theme.S(5), height);
 			}
 			using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, 30), Theme.S(1)))
 			{
 				for (int i = 0; i < 5; i++)
 				{
-					int num6 = Theme.S(24 + i * 10);
-					graphics.DrawLine(pen4, num6, num2 - Theme.S(60), num6 - Theme.S(12), num2 - Theme.S(16));
+					int left2 = Theme.S(24 + i * 10);
+					graphics.DrawLine(pen4, left2, height - Theme.S(60), left2 - Theme.S(12), height - Theme.S(16));
 				}
 			}
-			int num7 = Theme.S(24);
+			int scaledDimension3 = Theme.S(24);
 			if (logo != null)
 			{
 				graphics.DrawImageUnscaled(logo, Theme.S(50), Theme.S(44));
@@ -378,8 +378,8 @@ namespace PaviseApp
 			}
 			using (SolidBrush brush6 = new SolidBrush(Theme.Accent))
 			{
-				graphics.DrawString(Lang.T("t.contactdialog.1"), Theme.UI(8.4f, true), brush6, num7 - Theme.S(6), num2 - Theme.S(132));
-				graphics.DrawString(Lang.T("t.contactdialog.2"), Theme.UI(8.4f, true), brush6, num7 - Theme.S(6), num2 - Theme.S(112));
+				graphics.DrawString(Lang.T("t.contactdialog.1"), Theme.UI(8.4f, true), brush6, scaledDimension3 - Theme.S(6), height - Theme.S(132));
+				graphics.DrawString(Lang.T("t.contactdialog.2"), Theme.UI(8.4f, true), brush6, scaledDimension3 - Theme.S(6), height - Theme.S(112));
 			}
 			using (SolidBrush brush7 = new SolidBrush(Theme.Faint))
 			{
@@ -393,10 +393,10 @@ namespace PaviseApp
 			{
 				graphics.DrawString(Lang.T("contact.sub"), Theme.UI(8.2f, false), brush9, Theme.S(216), Theme.S(74));
 			}
-			int num8 = Theme.S(336);
-			using (LinearGradientBrush brush10 = new LinearGradientBrush(new Rectangle(Theme.S(216), num8, Theme.S(394), Theme.S(2)), Theme.Accent, Col.Alpha(Theme.Accent, 0), LinearGradientMode.Horizontal))
+			int top = Theme.S(336);
+			using (LinearGradientBrush brush10 = new LinearGradientBrush(new Rectangle(Theme.S(216), top, Theme.S(394), Theme.S(2)), Theme.Accent, Col.Alpha(Theme.Accent, 0), LinearGradientMode.Horizontal))
 			{
-				graphics.FillRectangle(brush10, Theme.S(216), num8, Theme.S(394), Theme.S(2));
+				graphics.FillRectangle(brush10, Theme.S(216), top, Theme.S(394), Theme.S(2));
 			}
 		}
 

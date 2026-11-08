@@ -75,7 +75,7 @@ namespace PaviseApp
 			{
 				return;
 			}
-			bool flag = false;
+			bool handlePidReuseReady = false;
 			Snap value;
 			lock (sync)
 			{
@@ -95,12 +95,12 @@ namespace PaviseApp
 					placementFail.Remove(pid);
 					placementGaveUp.Remove(pid);
 					ForgetNvTweakLocked(pid);
-					flag = true;
+					handlePidReuseReady = true;
 					known = false;
 					ForgetBoostActionTarget(pid);
 				}
 			}
-			if (flag)
+			if (handlePidReuseReady)
 			{
 				needPlacement = true;
 				CrashGuard.ReleaseBoostProcess(pid, value.Creation);
@@ -123,27 +123,27 @@ namespace PaviseApp
 			}
 			else
 			{
-				uint num = Native.GetPriorityClass(h);
-				if (num == 0)
+				uint priValue = Native.GetPriorityClass(h);
+				if (priValue == 0)
 				{
 					return false;
 				}
-				ulong num2 = Native.QueryAffinity(h);
-				uint[] array = Native.QueryCpuSets(h);
-				if (array == null)
+				ulong affValue = Native.QueryAffinity(h);
+				uint[] cpuSetsValue = Native.QueryCpuSets(h);
+				if (cpuSetsValue == null)
 				{
 					Logger.Warn(Lang.T("log.gamemodeboost.9") + pass.RendererName + " pid " + pid);
 					return false;
 				}
-				int num3 = Native.QueryIoPriority(h);
-				int num4 = Native.QueryPagePriority(h);
-				if (num3 < 0 || num4 < 0)
+				int ioValue = Native.QueryIoPriority(h);
+				int pgValue = Native.QueryPagePriority(h);
+				if (ioValue < 0 || pgValue < 0)
 				{
 					return false;
 				}
 				int cls;
-				bool flag = Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0;
-				if (!flag)
+				bool matchesD3DKMTGetProcessSchedulingPriorityClass = Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0;
+				if (!matchesD3DKMTGetProcessSchedulingPriorityClass)
 				{
 					cls = -1;
 				}
@@ -159,31 +159,31 @@ namespace PaviseApp
 					stateMask = -1;
 				}
 				CrashGuard.OriginalBoostState recovered;
-				if (!CrashGuard.MarkBoostProcess(pid, currentCreation, pass.RendererName, num, num2, num3, num4, cls, array, controlMask, stateMask, out recovered))
+				if (!CrashGuard.MarkBoostProcess(pid, currentCreation, pass.RendererName, priValue, affValue, ioValue, pgValue, cls, cpuSetsValue, controlMask, stateMask, out recovered))
 				{
 					Logger.Log(Lang.T("log.gamemodeboost.10") + pass.RendererName + " pid " + pid);
 					return false;
 				}
 				if (recovered != null)
 				{
-					num = recovered.Priority;
-					num2 = recovered.Affinity;
-					num3 = recovered.Io;
-					num4 = recovered.Page;
+					priValue = recovered.Priority;
+					affValue = recovered.Affinity;
+					ioValue = recovered.Io;
+					pgValue = recovered.Page;
 					cls = recovered.Gpu;
-					flag = cls >= 0;
-					array = recovered.CpuSets;
+					matchesD3DKMTGetProcessSchedulingPriorityClass = cls >= 0;
+					cpuSetsValue = recovered.CpuSets;
 					controlMask = recovered.QoSControl;
 					stateMask = recovered.QoSState;
 				}
 				Snap snap = default(Snap);
-				snap.Pri = num;
-				snap.Aff = num2;
-				snap.Io = num3;
-				snap.Pg = num4;
+				snap.Pri = priValue;
+				snap.Aff = affValue;
+				snap.Io = ioValue;
+				snap.Pg = pgValue;
 				snap.Name = pass.RendererName;
 				snap.Creation = currentCreation;
-				snap.CpuSets = array;
+				snap.CpuSets = cpuSetsValue;
 				snap.QoSControl = controlMask;
 				snap.QoSState = stateMask;
 				Snap value2 = snap;
@@ -194,7 +194,7 @@ namespace PaviseApp
 					{
 						boostActionTargets[pid] = pass.ActionTarget;
 					}
-					if (flag)
+					if (matchesD3DKMTGetProcessSchedulingPriorityClass)
 					{
 						gameGpu[pid] = cls;
 					}
@@ -204,13 +204,13 @@ namespace PaviseApp
 			uint granted;
 			if (Native.HandleWriteAccessStripped(h, out granted))
 			{
-				bool flag2;
+				bool wasAdded;
 				lock (sync)
 				{
-					flag2 = boostHandleStripped.Add(pid);
+					wasAdded = boostHandleStripped.Add(pid);
 				}
 				pass.WriteDenied = true;
-				if (flag2)
+				if (wasAdded)
 				{
 					OnGameHandleStripped(pid, pass.RendererName, granted);
 				}
@@ -231,8 +231,8 @@ namespace PaviseApp
 		}
 		private void OnGameHandleStripped(int pid, string rendererName, uint granted)
 		{
-			string text = KernelAntiCheat.DescribeForLog(rendererName);
-			Logger.Log(Lang.T("log.gamemodeboost.3") + rendererName + " pid " + pid + Lang.T("log.gamemodeboost.34") + ((text == null) ? Lang.T("nav.tame") : text) + Lang.T("log.gamemodeboost.35") + granted.ToString("X") + Lang.T("log.gamemodeboost.36"));
+			string describeForLogResult = KernelAntiCheat.DescribeForLog(rendererName);
+			Logger.Log(Lang.T("log.gamemodeboost.3") + rendererName + " pid " + pid + Lang.T("log.gamemodeboost.34") + ((describeForLogResult == null) ? Lang.T("nav.tame") : describeForLogResult) + Lang.T("log.gamemodeboost.35") + granted.ToString("X") + Lang.T("log.gamemodeboost.36"));
 			ProtectedGameRoster.Remember(rendererName);
 		}
 		private static string EcoStateText(IntPtr process)
@@ -332,12 +332,12 @@ namespace PaviseApp
 			{
 				applied = true;
 			}
-			bool flag = EnvStep("services", want, applied, activate, restore);
+			bool envStepSucceeded = EnvStep("services", want, applied, activate, restore);
 			if (!want)
 			{
-				return flag;
+				return envStepSucceeded;
 			}
-			if (flag)
+			if (envStepSucceeded)
 			{
 				return isApplied();
 			}
@@ -349,11 +349,11 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string text = WhitelistRule.NormalizeName(foregroundName).ToLowerInvariant();
+			string toLowerInvariantResult = WhitelistRule.NormalizeName(foregroundName).ToLowerInvariant();
 			string[][] foregroundServiceConsumers = ForegroundServiceConsumers;
-			foreach (string[] array in foregroundServiceConsumers)
+			foreach (string[] textEntriesEntry in foregroundServiceConsumers)
 			{
-				if (array[0] == text && array[1] == envKey)
+				if (textEntriesEntry[0] == toLowerInvariantResult && textEntriesEntry[1] == envKey)
 				{
 					return true;
 				}
@@ -370,13 +370,13 @@ namespace PaviseApp
 		}
 		private void SyncFrameCoordination(BoostPass pass)
 		{
-			bool flag = CriticalRolesWanted(pass.RendererPid, pass.RendererCreation);
+			bool criticalRolesWantedSucceeded = CriticalRolesWanted(pass.RendererPid, pass.RendererCreation);
 			UpdateLaneFallback(pass.RendererPid, pass.RendererCreation, pass.RendererName);
-			bool flag2 = FrameCoordinationEnabled && !LaneFallbackFor(pass.RendererPid, pass.RendererCreation);
-			if (flag2 && (!RenderLane.Release() || RenderLane.HasResidue()))
+			bool matchesFrameCoordinationEnabled = FrameCoordinationEnabled && !LaneFallbackFor(pass.RendererPid, pass.RendererCreation);
+			if (matchesFrameCoordinationEnabled && (!RenderLane.Release() || RenderLane.HasResidue()))
 			{
 				pass.LaneRestorationReady = false;
-				if (flag)
+				if (criticalRolesWantedSucceeded)
 				{
 					FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
 				}
@@ -395,14 +395,14 @@ namespace PaviseApp
 				return FrameCoordinationEnabled && enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed && EffBoost && !pass.WriteDenied && epoch == Volatile.Read(ref rendererHandoffEpoch) && gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameDetection.RendererPid == pid && gameDetection.RendererCreation == birth
 					&& ThreadBoostRecoveryAllowed(pid, birth);
 			};
-			if (flag2 && pid > 0 && birth > 0 && func())
+			if (matchesFrameCoordinationEnabled && pid > 0 && birth > 0 && func())
 			{
 				FrameCoordination.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), pid, birth, FrameAutomaticConfiguration());
 				FrameCoordination.Ensure(pid, birth, pass.RendererName, func);
 			}
 			else
 			{
-				pass.LaneRestorationReady = (flag ? FrameCoordination.ReleaseBoost(pid, birth) : FrameCoordination.ReleaseExcept(0, 0L));
+				pass.LaneRestorationReady = (criticalRolesWantedSucceeded ? FrameCoordination.ReleaseBoost(pid, birth) : FrameCoordination.ReleaseExcept(0, 0L));
 			}
 		}
 		private void InvalidateOverrideWorkLocked(string key)
@@ -494,10 +494,10 @@ namespace PaviseApp
 			try
 			{
 				FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(executablePath);
-				string text = ((!string.IsNullOrWhiteSpace(versionInfo.FileDescription)) ? versionInfo.FileDescription : versionInfo.ProductName);
-				if (!string.IsNullOrWhiteSpace(text))
+				string fileDescription = ((!string.IsNullOrWhiteSpace(versionInfo.FileDescription)) ? versionInfo.FileDescription : versionInfo.ProductName);
+				if (!string.IsNullOrWhiteSpace(fileDescription))
 				{
-					return text.Trim();
+					return fileDescription.Trim();
 				}
 			}
 			catch
@@ -513,8 +513,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Path.GetFullPath(root.Trim().Trim('"')).TrimEnd('\\');
-				return FamilyBoundary.SafeFamilyDir(text) ? text : null;
+				string getFullPathTrimmed = Path.GetFullPath(root.Trim().Trim('"')).TrimEnd('\\');
+				return FamilyBoundary.SafeFamilyDir(getFullPathTrimmed) ? getFullPathTrimmed : null;
 			}
 			catch
 			{
@@ -568,27 +568,27 @@ namespace PaviseApp
 		private void AppendPlatformRuleViews(List<WhitelistRuleView> views, Dictionary<int, PlatformProcessOwner> members)
 		{
 			string[] ids = PlatformRuntimePolicy.Ids;
-			foreach (string text in ids)
+			foreach (string entryText in ids)
 			{
-				if (!PlatformRuntimePolicy.Enabled(text))
+				if (!PlatformRuntimePolicy.Enabled(entryText))
 				{
 					continue;
 				}
-				int num = ((members == null) ? (-1) : 0);
+				int processedCount = ((members == null) ? (-1) : 0);
 				if (members != null)
 				{
 					foreach (PlatformProcessOwner value in members.Values)
 					{
-						if (value.Platform == text)
+						if (value.Platform == entryText)
 						{
-							num++;
+							processedCount++;
 						}
 					}
 				}
 				WhitelistRule rule;
-				if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, text, out rule))
+				if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entryText, out rule))
 				{
-					views.Add(new WhitelistRuleView(rule, num, false, text));
+					views.Add(new WhitelistRuleView(rule, processedCount, false, entryText));
 				}
 			}
 		}
@@ -688,12 +688,12 @@ namespace PaviseApp
 		{
 			policy = policy ?? PolicyResolver.Global();
 			pass.CpuBoost = pass.MemoryBoost = pass.IoBoost = pass.GpuBoost = policy.BoostGame;
-			int num = (pass.CpuBoost ? 1 : 0) | (pass.MemoryBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
+			int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.MemoryBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
 			lock (sync)
 			{
-				if (num != boostResourceSelection)
+				if (combinedMask != boostResourceSelection)
 				{
-					boostResourceSelection = num;
+					boostResourceSelection = combinedMask;
 					gameBoostNextAudit.Clear();
 					boostStateVerified.Clear();
 				}
@@ -704,9 +704,9 @@ namespace PaviseApp
 			string source = "platform-runtime-" + process.Pid + "-" + process.Creation;
 			if (!RuntimeBackgroundExempt(backgroundState))
 			{
-				string text = "pid=" + process.Pid + " born=" + process.Creation + " exe=" + Path.GetFileName(process.Path ?? "");
-				string text2 = " background=" + backgroundState;
-				Logger.RepeatedError(source, "AUTO [" + AutomationSession + "] [PLATFORM] restore-pending " + text + text2, -1L);
+				string getFileNameOffset = "pid=" + process.Pid + " born=" + process.Creation + " exe=" + Path.GetFileName(process.Path ?? "");
+				string backgroundStateOffset = " background=" + backgroundState;
+				Logger.RepeatedError(source, "AUTO [" + AutomationSession + "] [PLATFORM] restore-pending " + getFileNameOffset + backgroundStateOffset, -1L);
 			}
 			else
 			{
@@ -763,15 +763,15 @@ namespace PaviseApp
 				stickyMiss = 0;
 				if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase) && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
 				{
-					bool flag = false;
+					bool applyStickinessReady = false;
 					GameId value;
 					string name;
 					long creation;
 					if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out value) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, value.Creation, RendererForegroundHeldMs(hit.RendererPid)))
 					{
-						flag = true;
+						applyStickinessReady = true;
 					}
-					if (hit.RendererPid != stickyDetection.RendererPid && !flag)
+					if (hit.RendererPid != stickyDetection.RendererPid && !applyStickinessReady)
 					{
 						List<int> verifiedStickyPids = LiveStickyFamily();
 						if (!ReanchorToStickyInstance(hit, stickyDetection, verifiedStickyPids))
@@ -896,7 +896,7 @@ namespace PaviseApp
 			{
 				return value.Value;
 			}
-			string text = null;
+			string imagePathResult = null;
 			IntPtr intPtr = Native.OpenProcess(4096, false, p.Pid);
 			if (intPtr != IntPtr.Zero)
 			{
@@ -907,7 +907,7 @@ namespace PaviseApp
 					ulong io;
 					if (Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == p.Creation && !Native.IsProtectedProcess(intPtr))
 					{
-						text = Native.ImagePath(intPtr);
+						imagePathResult = Native.ImagePath(intPtr);
 					}
 				}
 				finally
@@ -919,8 +919,8 @@ namespace PaviseApp
 			{
 				serviceImagePaths.Clear();
 			}
-			serviceImagePaths[p.Pid] = new KeyValuePair<long, string>(p.Creation, text);
-			return text;
+			serviceImagePaths[p.Pid] = new KeyValuePair<long, string>(p.Creation, imagePathResult);
+			return imagePathResult;
 		}
 		private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath, bool familyExempt)
 		{

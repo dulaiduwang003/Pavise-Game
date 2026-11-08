@@ -47,18 +47,18 @@ namespace PaviseApp
 				{
 					if (!e.Handled && e.Modifiers == Keys.None && button.CanInteract)
 					{
-						int num = selected;
+						int selectedSnapshot = selected;
 						if (e.KeyCode == Keys.Right)
 						{
-							num = Math.Min(buttons.Count - 1, selected + 1);
+							selectedSnapshot = Math.Min(buttons.Count - 1, selected + 1);
 						}
 						else if (e.KeyCode == Keys.Left)
 						{
-							num = Math.Max(0, selected - 1);
+							selectedSnapshot = Math.Max(0, selected - 1);
 						}
 						else if (e.KeyCode == Keys.Home)
 						{
-							num = 0;
+							selectedSnapshot = 0;
 						}
 						else
 						{
@@ -66,12 +66,12 @@ namespace PaviseApp
 							{
 								return;
 							}
-							num = buttons.Count - 1;
+							selectedSnapshot = buttons.Count - 1;
 						}
 						e.Handled = true;
 						e.SuppressKeyPress = true;
-						Select(num, true);
-						buttons[num].Focus();
+						Select(selectedSnapshot, true);
+						buttons[selectedSnapshot].Focus();
 					}
 				};
 				buttons.Add(button);
@@ -85,7 +85,7 @@ namespace PaviseApp
 		{
 			if (index >= 0 && index < buttons.Count)
 			{
-				bool flag = selected != index;
+				bool matchesSelected = selected != index;
 				selected = index;
 				for (int i = 0; i < buttons.Count; i++)
 				{
@@ -95,7 +95,7 @@ namespace PaviseApp
 					buttons[i].TabStop = i == index;
 					buttons[i].Invalidate();
 				}
-				if (flag && notify && SelectionChanged != null)
+				if (matchesSelected && notify && SelectionChanged != null)
 				{
 					SelectionChanged(index);
 				}

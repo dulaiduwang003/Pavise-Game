@@ -40,10 +40,10 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				bool flag = false;
+				bool activateReady = false;
 				if (!IsDomainJoined())
 				{
-					flag = ApplyBandwidth();
+					activateReady = ApplyBandwidth();
 				}
 				else
 				{
@@ -52,13 +52,13 @@ namespace PaviseApp
 				List<string> justStopped;
 				List<string> confirmedStopped;
 				bool ledgerLost;
-				bool flag2 = pauser.Activate(out justStopped, out confirmedStopped, out ledgerLost);
+				bool activateSucceeded = pauser.Activate(out justStopped, out confirmedStopped, out ledgerLost);
 				if (ledgerLost)
 				{
 					Logger.Log(Lang.T("log.dotweak.1"));
 				}
-				active = flag || (flag2 && justStopped.Count > 0);
-				Logger.Log(active ? (Lang.T("log.dotweak.2") + (flag ? Lang.T("log.dotweak.3") : Lang.T("log.dotweak.4")) + ((flag2 && confirmedStopped.Count > 0) ? Lang.T("log.dotweak.5") : "") + " ") : Lang.T("log.dotweak.6"));
+				active = activateReady || (activateSucceeded && justStopped.Count > 0);
+				Logger.Log(active ? (Lang.T("log.dotweak.2") + (activateReady ? Lang.T("log.dotweak.3") : Lang.T("log.dotweak.4")) + ((activateSucceeded && confirmedStopped.Count > 0) ? Lang.T("log.dotweak.5") : "") + " ") : Lang.T("log.dotweak.6"));
 				return active;
 			}
 		}
@@ -67,22 +67,22 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = HasBandwidthBackup();
-				bool flag2 = !flag || RestoreBandwidth();
+				bool hasBandwidthBackup = HasBandwidthBackup();
+				bool matchesRestoreBandwidth = !hasBandwidthBackup || RestoreBandwidth();
 				bool hasResidue = pauser.HasResidue;
 				List<string> remain;
-				bool flag3 = pauser.Restore(out remain);
-				if (!flag3)
+				bool restoreSucceeded = pauser.Restore(out remain);
+				if (!restoreSucceeded)
 				{
 					Logger.Log(Lang.T("log.dotweak.7"));
 				}
 				active = false;
-				bool flag4 = flag2 && !HasBandwidthBackup() && flag3 && !pauser.HasResidue;
-				if (flag4 && (flag || hasResidue))
+				bool allConditionsMet = matchesRestoreBandwidth && !HasBandwidthBackup() && restoreSucceeded && !pauser.HasResidue;
+				if (allConditionsMet && (hasBandwidthBackup || hasResidue))
 				{
 					Logger.Log(Lang.T("log.dotweak.8"));
 				}
-				return flag4;
+				return allConditionsMet;
 			}
 		}
 

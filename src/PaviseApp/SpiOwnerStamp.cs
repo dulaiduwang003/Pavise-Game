@@ -47,13 +47,13 @@ namespace PaviseApp
 
 		internal static SpiOwnerStamp FromManualReceiptOwner(string value)
 		{
-			string[] array = (value ?? "").Split(':');
+			string[] parts = (value ?? "").Split(':');
 			long result;
-			if (array.Length != 4 || !long.TryParse(array[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result.ToString(CultureInfo.InvariantCulture) != array[1])
+			if (parts.Length != 4 || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result.ToString(CultureInfo.InvariantCulture) != parts[1])
 			{
 				throw new InvalidDataException("Invalid manual SPI receipt epoch");
 			}
-			return new SpiOwnerStamp(result, array[2], new SpiOwnerIdentity(SpiOwnerKind.Manual, array[0], array[3]));
+			return new SpiOwnerStamp(result, parts[2], new SpiOwnerIdentity(SpiOwnerKind.Manual, parts[0], parts[3]));
 		}
 	}
 }

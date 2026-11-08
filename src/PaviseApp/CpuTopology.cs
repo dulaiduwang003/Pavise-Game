@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -96,12 +96,12 @@ namespace PaviseApp
 		{
 			get
 			{
-				ulong num = 0uL;
+				ulong getParsedUnionResult = 0uL;
 				foreach (ulong parsedCoreMask in parsedCoreMasks)
 				{
-					num |= parsedCoreMask;
+					getParsedUnionResult |= parsedCoreMask;
 				}
-				return num;
+				return getParsedUnionResult;
 			}
 		}
 
@@ -144,15 +144,15 @@ namespace PaviseApp
 		{
 			try
 			{
-				uint num = 0u;
+				uint numericValue = 0u;
 				foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
 				{
-					if (cacheDomain.Key > num)
+					if (cacheDomain.Key > numericValue)
 					{
-						num = cacheDomain.Key;
+						numericValue = cacheDomain.Key;
 					}
 				}
-				return (int)(num / 1048576);
+				return (int)(numericValue / 1048576);
 			}
 			catch
 			{
@@ -165,10 +165,10 @@ namespace PaviseApp
 			List<ulong> list = new List<ulong>();
 			foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
 			{
-				ulong num = cacheDomain.Value & AllMask;
-				if (num != 0)
+				ulong valueMask = cacheDomain.Value & AllMask;
+				if (valueMask != 0)
 				{
-					list.Add(num);
+					list.Add(valueMask);
 				}
 			}
 			return list.ToArray();
@@ -186,12 +186,12 @@ namespace PaviseApp
 				squeezeCache = new SqueezeCache();
 				if (!MultiGroup)
 				{
-					ulong num = BackgroundSqueezeMask();
-					if (num != 0)
+					ulong backgroundSqueezeMaskResult = BackgroundSqueezeMask();
+					if (backgroundSqueezeMaskResult != 0)
 					{
 						try
 						{
-							squeezeCache.Ids = CpuSetIdsFor(num);
+							squeezeCache.Ids = CpuSetIdsFor(backgroundSqueezeMaskResult);
 						}
 						catch
 						{
@@ -233,22 +233,22 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			int[] array = new int[logical.Length];
-			for (int i = 0; i < array.Length; i++)
+			int[] integerValues = new int[logical.Length];
+			for (int i = 0; i < integerValues.Length; i++)
 			{
-				array[i] = i;
+				integerValues[i] = i;
 			}
-			Array.Sort(array, (int a, int b) => logical[a].CompareTo(logical[b]));
+			Array.Sort(integerValues, (int a, int b) => logical[a].CompareTo(logical[b]));
 			List<string> list = new List<string>();
-			int num = 0;
-			for (int j = 1; j <= array.Length; j++)
+			int describeCoreClassesValue = 0;
+			for (int j = 1; j <= integerValues.Length; j++)
 			{
-				if (j == array.Length || efficiency[array[j]] != efficiency[array[num]] || scheduling[array[j]] != scheduling[array[num]] || logical[array[j]] != logical[array[j - 1]] + 1)
+				if (j == integerValues.Length || efficiency[integerValues[j]] != efficiency[integerValues[describeCoreClassesValue]] || scheduling[integerValues[j]] != scheduling[integerValues[describeCoreClassesValue]] || logical[integerValues[j]] != logical[integerValues[j - 1]] + 1)
 				{
-					int num2 = logical[array[num]];
-					int num3 = logical[array[j - 1]];
-					list.Add(((num2 == num3) ? num2.ToString() : (num2 + "-" + num3)) + ":" + efficiency[array[num]] + "/" + scheduling[array[num]]);
-					num = j;
+					int describeCoreClassesValue2 = logical[integerValues[describeCoreClassesValue]];
+					int describeCoreClassesValue3 = logical[integerValues[j - 1]];
+					list.Add(((describeCoreClassesValue2 == describeCoreClassesValue3) ? describeCoreClassesValue2.ToString() : (describeCoreClassesValue2 + "-" + describeCoreClassesValue3)) + ":" + efficiency[integerValues[describeCoreClassesValue]] + "/" + scheduling[integerValues[describeCoreClassesValue]]);
+					describeCoreClassesValue = j;
 				}
 			}
 			return string.Join(" ", list.ToArray());
@@ -288,15 +288,15 @@ namespace PaviseApp
 			{
 				return 0uL;
 			}
-			ulong num = 0uL;
+			ulong favoredMaskOfResult = 0uL;
 			for (int k = 0; k < logical.Length; k++)
 			{
 				if (efficiency[k] == b && scheduling[k] == b4 && logical[k] >= 0 && logical[k] < 64)
 				{
-					num |= (ulong)(1L << logical[k]);
+					favoredMaskOfResult |= (ulong)(1L << logical[k]);
 				}
 			}
-			return num;
+			return favoredMaskOfResult;
 		}
 
 		private static void BuildCpuSetPolicies()
@@ -315,11 +315,11 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = returned;
-			IntPtr intPtr = Marshal.AllocHGlobal(num);
+			int returnedSnapshot = returned;
+			IntPtr intPtr = Marshal.AllocHGlobal(returnedSnapshot);
 			try
 			{
-				if (!GetSystemCpuSetInformation(intPtr, num, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > num)
+				if (!GetSystemCpuSetInformation(intPtr, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
 				{
 					return;
 				}
@@ -329,17 +329,17 @@ namespace PaviseApp
                 MultiGroup |= evidence.MultiGroup;
                 if (!evidence.Valid) { CoreTypeDetail = evidence.Reason; return; }
 				List<CpuSetRec> list = new List<CpuSetRec>();
-				int num3;
-				for (long num2 = 0L; num2 + 20 <= returned; num2 += num3)
+				int cpuSetPoliciesValue;
+				for (long iterationIndex = 0L; iterationIndex + 20 <= returned; iterationIndex += cpuSetPoliciesValue)
 				{
-					IntPtr ptr = (IntPtr)((long)intPtr + num2);
-					num3 = Marshal.ReadInt32(ptr, 0);
-					int num4 = Marshal.ReadInt32(ptr, 4);
-					if (num3 <= 0 || num2 + num3 > returned)
+					IntPtr ptr = (IntPtr)((long)intPtr + iterationIndex);
+					cpuSetPoliciesValue = Marshal.ReadInt32(ptr, 0);
+					int int32 = Marshal.ReadInt32(ptr, 4);
+					if (cpuSetPoliciesValue <= 0 || iterationIndex + cpuSetPoliciesValue > returned)
 					{
 						break;
 					}
-					if (num4 == 0 && num3 >= 20)
+					if (int32 == 0 && cpuSetPoliciesValue >= 20)
 					{
 						list.Add(new CpuSetRec
 						{
@@ -348,7 +348,7 @@ namespace PaviseApp
 							Logical = Marshal.ReadByte(ptr, 14),
 							Core = Marshal.ReadByte(ptr, 15),
 							Efficiency = Marshal.ReadByte(ptr, 18),
-							Scheduling = (byte)((num3 >= 21) ? Marshal.ReadByte(ptr, 20) : 0)
+							Scheduling = (byte)((cpuSetPoliciesValue >= 21) ? Marshal.ReadByte(ptr, 20) : 0)
 						});
 					}
 				}
@@ -440,21 +440,21 @@ namespace PaviseApp
 					CpuPartitionPolicy.CorePlan corePlan = CpuPartitionPolicy.Decide(list5.ToArray(), AllMask);
 					if (corePlan.Partitioned)
 					{
-						uint[] array = CpuSetIdsFor(corePlan.Background);
-						uint[] array2 = CpuSetIdsFor(corePlan.Game);
-						if (array != null && array.Length > 0 && array2 != null && array2.Length > 0)
+						uint[] cpuSetIdsForResult = CpuSetIdsFor(corePlan.Background);
+						uint[] cpuSetIdsForResult2 = CpuSetIdsFor(corePlan.Game);
+						if (cpuSetIdsForResult != null && cpuSetIdsForResult.Length > 0 && cpuSetIdsForResult2 != null && cpuSetIdsForResult2.Length > 0)
 						{
-							backgroundIds = array;
-							partitionGameIds = array2;
+							backgroundIds = cpuSetIdsForResult;
+							partitionGameIds = cpuSetIdsForResult2;
 							ThrottleMask = corePlan.Background;
 							StrictBoostMask = corePlan.Game;
 							PartitionTag = corePlan.Tag;
 							if (corePlan.AltBackground != 0)
 							{
-								uint[] array3 = CpuSetIdsFor(corePlan.AltBackground);
-								if (array3 != null && array3.Length > 0)
+								uint[] cpuSetIdsForResult3 = CpuSetIdsFor(corePlan.AltBackground);
+								if (cpuSetIdsForResult3 != null && cpuSetIdsForResult3.Length > 0)
 								{
-									altBackgroundIds = array3;
+									altBackgroundIds = cpuSetIdsForResult3;
 									AltThrottleMask = corePlan.AltBackground;
 								}
 							}
@@ -466,22 +466,22 @@ namespace PaviseApp
 					List<CpuSetRec> list6 = new List<CpuSetRec>(dictionary.Values);
 					list6.Sort(delegate(CpuSetRec a, CpuSetRec b)
 					{
-						int num9 = a.Group.CompareTo(b.Group);
-						return (num9 == 0) ? a.Core.CompareTo(b.Core) : num9;
+						int compareToResult = a.Group.CompareTo(b.Group);
+						return (compareToResult == 0) ? a.Core.CompareTo(b.Core) : compareToResult;
 					});
-					int num6 = CpuPartitionPolicy.BackgroundCoreCount(list6.Count);
-					for (int k = Math.Max(0, list6.Count - num6); k < list6.Count; k++)
+					int backgroundCoreCountResult = CpuPartitionPolicy.BackgroundCoreCount(list6.Count);
+					for (int k = Math.Max(0, list6.Count - backgroundCoreCountResult); k < list6.Count; k++)
 					{
 						hashSet.Add(list6[k].Group + ":" + list6[k].Core);
 					}
 				}
-				ulong num7 = 0uL;
-				ulong num8 = 0uL;
+				ulong numericValue = 0uL;
+				ulong numericValue2 = 0uL;
 				foreach (CpuSetRec item5 in list)
 				{
 					string item = item5.Group + ":" + item5.Core;
-					bool flag = hashSet.Contains(item);
-					if (flag)
+					bool isInHashSet = hashSet.Contains(item);
+					if (isInHashSet)
 					{
 						list3.Add(item5.Id);
 					}
@@ -491,32 +491,32 @@ namespace PaviseApp
 					}
 					if (item5.Group == 0 && item5.Logical < 64)
 					{
-						if (flag)
+						if (isInHashSet)
 						{
-							num7 |= (ulong)(1L << (int)item5.Logical);
+							numericValue |= (ulong)(1L << (int)item5.Logical);
 						}
 						else if (hashSet.Count > 0 && (!Hybrid || (item5.Group == 0 && item5.Logical < 64 && (PerfMask & (1UL << item5.Logical)) != 0)))
 						{
-							num8 |= (ulong)(1L << (int)item5.Logical);
+							numericValue2 |= (ulong)(1L << (int)item5.Logical);
 						}
 					}
 				}
 				if (AsymCache && !MultiGroup)
 				{
-					uint[] array4 = CpuSetIdsFor(ThrottleMask);
-					uint[] array5 = CpuSetIdsFor(BigL3Mask);
-					if (array4 != null && array4.Length > 0)
+					uint[] cpuSetIdsForResult4 = CpuSetIdsFor(ThrottleMask);
+					uint[] cpuSetIdsForResult5 = CpuSetIdsFor(BigL3Mask);
+					if (cpuSetIdsForResult4 != null && cpuSetIdsForResult4.Length > 0)
 					{
-						backgroundIds = array4;
+						backgroundIds = cpuSetIdsForResult4;
 					}
-					if (array5 != null && array5.Length > 0)
+					if (cpuSetIdsForResult5 != null && cpuSetIdsForResult5.Length > 0)
 					{
-						partitionGameIds = array5;
+						partitionGameIds = cpuSetIdsForResult5;
 					}
-					uint[] array6 = CpuSetIdsFor(BigL3Mask);
-					if (array6 != null && array6.Length > 0)
+					uint[] cpuSetIdsForResult6 = CpuSetIdsFor(BigL3Mask);
+					if (cpuSetIdsForResult6 != null && cpuSetIdsForResult6.Length > 0)
 					{
-						altBackgroundIds = array6;
+						altBackgroundIds = cpuSetIdsForResult6;
 						AltThrottleMask = BigL3Mask;
 					}
 				}
@@ -525,12 +525,12 @@ namespace PaviseApp
 					backgroundIds = list3.ToArray();
 					partitionGameIds = list4.ToArray();
 				}
-				if (!MultiGroup && !AsymCache && num7 != 0 && num8 != 0)
+				if (!MultiGroup && !AsymCache && numericValue != 0 && numericValue2 != 0)
 				{
-					if (PartitionAgreesWithEfficiency(num8, num7))
+					if (PartitionAgreesWithEfficiency(numericValue2, numericValue))
 					{
-						ThrottleMask = num7;
-						StrictBoostMask = num8;
+						ThrottleMask = numericValue;
+						StrictBoostMask = numericValue2;
 					}
 					else
 					{
@@ -558,11 +558,11 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = length;
-			IntPtr intPtr = Marshal.AllocHGlobal(num);
+			int lengthSnapshot = length;
+			IntPtr intPtr = Marshal.AllocHGlobal(lengthSnapshot);
 			try
 			{
-				if (!GetLogicalProcessorInformationEx(65535, intPtr, ref length) || length <= 0 || length > num)
+				if (!GetLogicalProcessorInformationEx(65535, intPtr, ref length) || length <= 0 || length > lengthSnapshot)
 				{
 					return;
 				}
@@ -576,153 +576,153 @@ namespace PaviseApp
 				List<ulong> list = new List<ulong>();
 				List<KeyValuePair<uint, ulong>> list2 = new List<KeyValuePair<uint, ulong>>();
 				List<ulong> list3 = new List<ulong>();
-				bool flag = false;
-				long num2 = 0L;
-				while (num2 + 8 <= length)
+				bool ready = false;
+				long numericValue = 0L;
+				while (numericValue + 8 <= length)
 				{
-					IntPtr intPtr2 = (IntPtr)((long)intPtr + num2);
-					int num3 = Marshal.ReadInt32(intPtr2, 0);
-					int num4 = Marshal.ReadInt32(intPtr2, 4);
-					if (num4 <= 0 || num2 + num4 > length)
+					IntPtr intPtr2 = (IntPtr)((long)intPtr + numericValue);
+					int int32 = Marshal.ReadInt32(intPtr2, 0);
+					int int322 = Marshal.ReadInt32(intPtr2, 4);
+					if (int322 <= 0 || numericValue + int322 > length)
 					{
 						break;
 					}
 					IntPtr intPtr3 = (IntPtr)((long)intPtr2 + 8);
-					switch (num3)
+					switch (int32)
 					{
 					case 0:
 					{
-						if (!RecordFits(num4, 30, 2))
+						if (!RecordFits(int322, 30, 2))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
 						int key2 = Marshal.ReadByte(intPtr3, 1);
-						int num9 = Marshal.ReadInt16(intPtr3, 22);
-						if (!RecordArrayFits(num4, 32, num9, 16))
+						int int16 = Marshal.ReadInt16(intPtr3, 22);
+						if (!RecordArrayFits(int322, 32, int16, 16))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
-						ulong num10 = 0uL;
-						for (int k = 0; k < num9; k++)
+						ulong numericValue2 = 0uL;
+						for (int k = 0; k < int16; k++)
 						{
 							IntPtr ptr4 = (IntPtr)((long)intPtr3 + 24 + k * 16);
 							if (Marshal.ReadInt16(ptr4, 8) != 0)
 							{
-								flag = true;
+								ready = true;
 								continue;
 							}
-							ulong num11 = (ulong)Marshal.ReadInt64(ptr4, 0);
+							ulong int64 = (ulong)Marshal.ReadInt64(ptr4, 0);
 							ulong value;
 							dictionary.TryGetValue(key2, out value);
-							dictionary[key2] = value | num11;
-							num10 |= num11;
+							dictionary[key2] = value | int64;
+							numericValue2 |= int64;
 						}
-						if (num10 != 0)
+						if (numericValue2 != 0)
 						{
-							list.Add(num10);
+							list.Add(numericValue2);
 						}
 						break;
 					}
 					case 5:
 					{
-						if (!RecordFits(num4, 30, 2))
+						if (!RecordFits(int322, 30, 2))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
-						int num7 = Marshal.ReadInt16(intPtr3, 22);
-						if (!RecordArrayFits(num4, 32, num7, 16))
+						int int162 = Marshal.ReadInt16(intPtr3, 22);
+						if (!RecordArrayFits(int322, 32, int162, 16))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
-						ulong num8 = 0uL;
-						for (int j = 0; j < num7; j++)
+						ulong numericValue3 = 0uL;
+						for (int j = 0; j < int162; j++)
 						{
 							IntPtr ptr3 = (IntPtr)((long)intPtr3 + 24 + j * 16);
 							if (Marshal.ReadInt16(ptr3, 8) != 0)
 							{
-								flag = true;
+								ready = true;
 							}
 							else
 							{
-								num8 |= (ulong)Marshal.ReadInt64(ptr3, 0);
+								numericValue3 |= (ulong)Marshal.ReadInt64(ptr3, 0);
 							}
 						}
-						if (num8 != 0)
+						if (numericValue3 != 0)
 						{
-							list3.Add(num8);
+							list3.Add(numericValue3);
 						}
 						break;
 					}
 					case 2:
 					{
-						if (!RecordFits(num4, 8, 1))
+						if (!RecordFits(int322, 8, 1))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
 						if (Marshal.ReadByte(intPtr3, 0) != 3)
 						{
 							break;
 						}
-						if (!RecordFits(num4, 38, 2))
+						if (!RecordFits(int322, 38, 2))
 						{
-							num2 += num4;
+							numericValue += int322;
 							continue;
 						}
 						uint key = (uint)Marshal.ReadInt32(intPtr3, 4);
-						int num5 = Marshal.ReadInt16(intPtr3, 30);
-						ulong num6 = 0uL;
-						if (num5 == 0)
+						int int163 = Marshal.ReadInt16(intPtr3, 30);
+						ulong numericValue4 = 0uL;
+						if (int163 == 0)
 						{
-							if (!RecordFits(num4, 40, 16))
+							if (!RecordFits(int322, 40, 16))
 							{
-								num2 += num4;
+								numericValue += int322;
 								continue;
 							}
 							IntPtr ptr = (IntPtr)((long)intPtr3 + 32);
 							if (Marshal.ReadInt16(ptr, 8) != 0)
 							{
-								flag = true;
+								ready = true;
 							}
 							else
 							{
-								num6 = (ulong)Marshal.ReadInt64(ptr, 0);
+								numericValue4 = (ulong)Marshal.ReadInt64(ptr, 0);
 							}
 						}
 						else
 						{
-							if (!RecordArrayFits(num4, 40, num5, 16))
+							if (!RecordArrayFits(int322, 40, int163, 16))
 							{
-								num2 += num4;
+								numericValue += int322;
 								continue;
 							}
-							for (int i = 0; i < num5; i++)
+							for (int i = 0; i < int163; i++)
 							{
 								IntPtr ptr2 = (IntPtr)((long)intPtr3 + 32 + i * 16);
 								if (Marshal.ReadInt16(ptr2, 8) != 0)
 								{
-									flag = true;
+									ready = true;
 								}
 								else
 								{
-									num6 |= (ulong)Marshal.ReadInt64(ptr2, 0);
+									numericValue4 |= (ulong)Marshal.ReadInt64(ptr2, 0);
 								}
 							}
 						}
-						if (num6 != 0)
+						if (numericValue4 != 0)
 						{
-							list2.Add(new KeyValuePair<uint, ulong>(key, num6));
+							list2.Add(new KeyValuePair<uint, ulong>(key, numericValue4));
 						}
 						break;
 					}
 					}
-					num2 += num4;
+					numericValue += int322;
 				}
-				if (flag)
+				if (ready)
 				{
 					return;
 				}
@@ -731,31 +731,31 @@ namespace PaviseApp
 				processorDieDomains = list3;
 				if (dictionary.Count >= 2)
 				{
-					int num12 = int.MinValue;
+					int minValue = int.MinValue;
 					foreach (KeyValuePair<int, ulong> item in dictionary)
 					{
-						if (item.Key > num12)
+						if (item.Key > minValue)
 						{
-							num12 = item.Key;
+							minValue = item.Key;
 						}
 					}
-					ulong num13 = 0uL;
-					ulong num14 = 0uL;
+					ulong numericValue5 = 0uL;
+					ulong numericValue6 = 0uL;
 					foreach (KeyValuePair<int, ulong> item2 in dictionary)
 					{
-						if (item2.Key == num12)
+						if (item2.Key == minValue)
 						{
-							num13 |= item2.Value;
+							numericValue5 |= item2.Value;
 						}
 						else
 						{
-							num14 |= item2.Value;
+							numericValue6 |= item2.Value;
 						}
 					}
-					if (num13 != 0 && num14 != 0)
+					if (numericValue5 != 0 && numericValue6 != 0)
 					{
-						PerfMask = num13;
-						EffMask = num14;
+						PerfMask = numericValue5;
+						EffMask = numericValue6;
 						Hybrid = true;
 					}
 				}
@@ -763,40 +763,40 @@ namespace PaviseApp
 				{
 					return;
 				}
-				uint num15 = 0u;
-				uint num16 = uint.MaxValue;
+				uint numericValue7 = 0u;
+				uint maxValue = uint.MaxValue;
 				foreach (KeyValuePair<uint, ulong> item3 in list2)
 				{
-					if (item3.Key > num15)
+					if (item3.Key > numericValue7)
 					{
-						num15 = item3.Key;
+						numericValue7 = item3.Key;
 					}
-					if (item3.Key < num16)
+					if (item3.Key < maxValue)
 					{
-						num16 = item3.Key;
+						maxValue = item3.Key;
 					}
 				}
-				if (num15 <= num16)
+				if (numericValue7 <= maxValue)
 				{
 					return;
 				}
-				ulong num17 = 0uL;
-				ulong num18 = 0uL;
+				ulong numericValue8 = 0uL;
+				ulong numericValue9 = 0uL;
 				foreach (KeyValuePair<uint, ulong> item4 in list2)
 				{
-					if (item4.Key == num15)
+					if (item4.Key == numericValue7)
 					{
-						num17 |= item4.Value;
+						numericValue8 |= item4.Value;
 					}
 					else
 					{
-						num18 |= item4.Value;
+						numericValue9 |= item4.Value;
 					}
 				}
-				if (num17 != 0 && num18 != 0)
+				if (numericValue8 != 0 && numericValue9 != 0)
 				{
-					BigL3Mask = num17;
-					SmallL3Mask = num18;
+					BigL3Mask = numericValue8;
+					SmallL3Mask = numericValue9;
 					AsymCache = true;
 				}
 			}
@@ -836,12 +836,12 @@ namespace PaviseApp
 
 		private static ulong UnionOf(List<ulong> masks)
 		{
-			ulong num = 0uL;
+			ulong unionOfResult = 0uL;
 			foreach (ulong mask in masks)
 			{
-				num |= mask;
+				unionOfResult |= mask;
 			}
-			return num;
+			return unionOfResult;
 		}
 
 		public static uint[] BackgroundCpuSetIds()
@@ -998,11 +998,11 @@ namespace PaviseApp
 
 		private static void ValidateMasks()
 		{
-			ulong num = SafeStrictMask(StrictBoostMask, ThrottleMask, AllMask, EffMask, Hybrid);
-			if (num != StrictBoostMask)
+			ulong safeStrictMaskResult = SafeStrictMask(StrictBoostMask, ThrottleMask, AllMask, EffMask, Hybrid);
+			if (safeStrictMaskResult != StrictBoostMask)
 			{
 				StrictMaskUnsafe = true;
-				StrictBoostMask = num;
+				StrictBoostMask = safeStrictMaskResult;
 				partitionGameIds = null;
 				backgroundIds = null;
 			}
@@ -1016,31 +1016,31 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			int num = returned;
-			IntPtr intPtr = Marshal.AllocHGlobal(num);
+			int returnedSnapshot = returned;
+			IntPtr intPtr = Marshal.AllocHGlobal(returnedSnapshot);
 			try
 			{
-				if (!GetSystemCpuSetInformation(intPtr, num, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > num)
+				if (!GetSystemCpuSetInformation(intPtr, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
 				{
 					return null;
 				}
 				List<uint> list = new List<uint>();
-				int num3;
-				for (long num2 = 0L; num2 + 8 <= returned; num2 += num3)
+				int cpuSetIdsForValue;
+				for (long iterationIndex = 0L; iterationIndex + 8 <= returned; iterationIndex += cpuSetIdsForValue)
 				{
-					IntPtr ptr = (IntPtr)((long)intPtr + num2);
-					num3 = Marshal.ReadInt32(ptr, 0);
-					int num4 = Marshal.ReadInt32(ptr, 4);
-					if (num3 <= 0 || num2 + num3 > returned)
+					IntPtr ptr = (IntPtr)((long)intPtr + iterationIndex);
+					cpuSetIdsForValue = Marshal.ReadInt32(ptr, 0);
+					int int32 = Marshal.ReadInt32(ptr, 4);
+					if (cpuSetIdsForValue <= 0 || iterationIndex + cpuSetIdsForValue > returned)
 					{
 						break;
 					}
-					if (num4 == 0 && num3 >= 16)
+					if (int32 == 0 && cpuSetIdsForValue >= 16)
 					{
 						uint item = (uint)Marshal.ReadInt32(ptr, 8);
-						short num5 = Marshal.ReadInt16(ptr, 12);
+						short int16 = Marshal.ReadInt16(ptr, 12);
 						byte b = Marshal.ReadByte(ptr, 14);
-						if (num5 == 0 && b < 64 && ((mask >> (int)b) & 1) != 0)
+						if (int16 == 0 && b < 64 && ((mask >> (int)b) & 1) != 0)
 						{
 							list.Add(item);
 						}
@@ -1056,10 +1056,10 @@ namespace PaviseApp
 
 		public static ulong[] DieMasks()
 		{
-			ulong[] array = DomainMasks(processorDieDomains);
-			if (array.Length >= 2)
+			ulong[] domainMasksResult = DomainMasks(processorDieDomains);
+			if (domainMasksResult.Length >= 2)
 			{
-				return array;
+				return domainMasksResult;
 			}
 			List<ulong> list = new List<ulong>();
 			foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
@@ -1074,10 +1074,10 @@ namespace PaviseApp
 			List<ulong> list = new List<ulong>();
 			foreach (ulong domain in domains)
 			{
-				ulong num = domain & AllMask;
-				if (num != 0 && !list.Contains(num))
+				ulong domainMask = domain & AllMask;
+				if (domainMask != 0 && !list.Contains(domainMask))
 				{
-					list.Add(num);
+					list.Add(domainMask);
 				}
 			}
 			if (list.Count < 2)
@@ -1099,13 +1099,13 @@ namespace PaviseApp
 
 		internal static int CountSetBits(ulong v)
 		{
-			int num = 0;
+			int countSetBitsResult = 0;
 			while (v != 0)
 			{
-				num += (int)(v & 1);
+				countSetBitsResult += (int)(v & 1);
 				v >>= 1;
 			}
-			return num;
+			return countSetBitsResult;
 		}
 
 		public static string DescribeMask(ulong mask)
@@ -1123,11 +1123,11 @@ namespace PaviseApp
 					i++;
 					continue;
 				}
-				int num = i;
+				int iSnapshot = i;
 				for (; i + 1 < 64 && (mask & (ulong)(1L << i + 1)) != 0; i++)
 				{
 				}
-				list.Add((i > num + 1) ? (num + "-" + i) : ((i == num + 1) ? (num + "," + i) : num.ToString()));
+				list.Add((i > iSnapshot + 1) ? (iSnapshot + "-" + i) : ((i == iSnapshot + 1) ? (iSnapshot + "," + i) : iSnapshot.ToString()));
 				i++;
 			}
 			return CountSetBits(mask) + Lang.T("t.cputopology.2") + string.Join(",", list.ToArray());

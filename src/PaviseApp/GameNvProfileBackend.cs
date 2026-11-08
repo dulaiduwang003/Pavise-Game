@@ -336,9 +336,9 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("Native transaction lacks exact original resource binding");
 				}
-				string text = Path.Combine(original.JournalDirectory, "original.tsv");
-				NoReparse.CheckPath(text);
-				originalPin = new FileStream(text, FileMode.Open, FileAccess.Read, FileShare.Read);
+				string originalPath = Path.Combine(original.JournalDirectory, "original.tsv");
+				NoReparse.CheckPath(originalPath);
+				originalPin = new FileStream(originalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
 				try
 				{
 					RequireOriginal();
@@ -357,34 +357,34 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("No pinned native original");
 				}
-				byte[] array = new byte[(int)originalPin.Length];
+				byte[] rawBytes = new byte[(int)originalPin.Length];
 				originalPin.Position = 0L;
-				int num;
-				for (int i = 0; i < array.Length; i += num)
+				int requireOriginalValue;
+				for (int i = 0; i < rawBytes.Length; i += requireOriginalValue)
 				{
-					num = originalPin.Read(array, i, array.Length - i);
-					if (num <= 0)
+					requireOriginalValue = originalPin.Read(rawBytes, i, rawBytes.Length - i);
+					if (requireOriginalValue <= 0)
 					{
 						throw new EndOfStreamException();
 					}
 				}
 				originalPin.Position = 0L;
-				if (GameNvText.Hash(array) != original.OriginalHash)
+				if (GameNvText.Hash(rawBytes) != original.OriginalHash)
 				{
 					throw new InvalidDataException("Native original bytes changed");
 				}
-				Dictionary<string, string> dictionary = GameNvText.Decode(array);
+				Dictionary<string, string> dictionary = GameNvText.Decode(rawBytes);
 				if (dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != original.LeaseToken || dictionary["profile"] != name || dictionary["predefined"] != predefined.ToString(CultureInfo.InvariantCulture) || dictionary["scope"] != scope || dictionary["own"] != (own ? "1" : "0") || dictionary["target"] != path || dictionary["image"] != original.ImageHash || dictionary["plan"] != original.PlanHash)
 				{
 					throw new InvalidDataException("Native original resource fields differ");
 				}
 				new GameNvRecoveryIdentity(dictionary["plan_text"], original.PlanHash, path, original.ImageHash);
-				uint[] array2 = new uint[2] { 274197361u, 549528094u };
-				for (int j = 0; j < array2.Length; j++)
+				uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
+				for (int j = 0; j < numericValueItems.Length; j++)
 				{
-					uint key = array2[j];
-					string text = key.ToString("X8");
-					if (dictionary["original." + text] != originals[key].Text || dictionary["target." + text] != (targets.ContainsKey(key) ? "1" : "leave"))
+					uint key = numericValueItems[j];
+					string keyText = key.ToString("X8");
+					if (dictionary["original." + keyText] != originals[key].Text || dictionary["target." + keyText] != (targets.ContainsKey(key) ? "1" : "leave"))
 					{
 						throw new InvalidDataException("Native original key vector differs");
 					}
@@ -394,23 +394,23 @@ namespace PaviseApp
 			private void RequireIssued(string operation)
 			{
 				RequireOriginal();
-				string text = Path.Combine(original.JournalDirectory, "issued-" + operation + ".tsv");
-				NoReparse.CheckPath(text);
+				string combinedPath = Path.Combine(original.JournalDirectory, "issued-" + operation + ".tsv");
+				NoReparse.CheckPath(combinedPath);
 				Dictionary<string, string> dictionary = new Dictionary<string, string>();
 				dictionary.Add("schema", "game-nv-phase-1");
 				dictionary.Add("lease", original.LeaseToken);
 				dictionary.Add("original", original.OriginalHash);
 				dictionary.Add("operation", "issued-" + operation);
-				byte[] array = GameNvText.Encode(dictionary);
-				using (FileStream fileStream = new FileStream(text, FileMode.Open, FileAccess.Read, FileShare.Read))
+				byte[] encodeResult = GameNvText.Encode(dictionary);
+				using (FileStream fileStream = new FileStream(combinedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
 				{
-					if (fileStream.Length != array.Length)
+					if (fileStream.Length != encodeResult.Length)
 					{
 						throw new InvalidDataException("Native issued operation changed");
 					}
-					for (int i = 0; i < array.Length; i++)
+					for (int i = 0; i < encodeResult.Length; i++)
 					{
-						if (fileStream.ReadByte() != array[i])
+						if (fileStream.ReadByte() != encodeResult[i])
 						{
 							throw new InvalidDataException("Native issued operation is not bound to original");
 						}
@@ -623,12 +623,12 @@ namespace PaviseApp
 						throw new IOException("No exact target binding");
 					}
 					GameNvSetting gameNvSetting2 = api.Read(name, id);
-					bool num;
+					bool matchesText;
 					if (!recovery)
 					{
 						if (!own)
 						{
-							num = gameNvSetting2.Text != baseline.Text;
+							matchesText = gameNvSetting2.Text != baseline.Text;
 						}
 						else
 						{
@@ -640,7 +640,7 @@ namespace PaviseApp
 							{
 								goto ApplyOwnedOverride;
 							}
-							num = gameNvSetting2.Value != baseline.Value;
+							matchesText = gameNvSetting2.Value != baseline.Value;
 						}
 					}
 					else
@@ -649,9 +649,9 @@ namespace PaviseApp
 						{
 							goto RejectOverrideOwnershipChange;
 						}
-						num = gameNvSetting2.Value != expected;
+						matchesText = gameNvSetting2.Value != expected;
 					}
-					if (num)
+					if (matchesText)
 					{
 						goto RejectOverrideOwnershipChange;
 					}
@@ -954,33 +954,33 @@ namespace PaviseApp
 				}
 				list.Add(new GameNvApplication(app.Name, app.Friendly, app.Launcher, app.Folder, app.Flags, app.Command, app.Predefined));
 			}
-			uint num = 0u;
+			uint processedCount = 0u;
 			bool completeLocalSettings = false;
 			if (profile3.Settings <= 4096)
 			{
 				HashSet<uint> hashSet = new HashSet<uint>();
-				for (uint num2 = 0u; num2 <= 4096; num2++)
+				for (uint iterationIndex = 0u; iterationIndex <= 4096; iterationIndex++)
 				{
 					uint count2 = 1u;
 					Setting setting = NewSetting(0u);
-					int num3 = enumSettings(session, profile, num2, ref count2, ref setting);
-					if (num3 == -7 || (num3 == 0 && count2 == 0))
+					int enumSettingsResult = enumSettings(session, profile, iterationIndex, ref count2, ref setting);
+					if (enumSettingsResult == -7 || (enumSettingsResult == 0 && count2 == 0))
 					{
 						completeLocalSettings = true;
 						break;
 					}
-					Ok(num3, "enumerate profile settings");
+					Ok(enumSettingsResult, "enumerate profile settings");
 					if (count2 != 1 || setting.Version != Version<Setting>() || setting.Location > 3 || !hashSet.Add(setting.Id))
 					{
 						throw new InvalidDataException("Incomplete or inconsistent NVIDIA local setting enumeration");
 					}
-					if (num2 == 4096)
+					if (iterationIndex == 4096)
 					{
 						break;
 					}
 					if (setting.Location == 0)
 					{
-						num++;
+						processedCount++;
 					}
 				}
 			}
@@ -992,7 +992,7 @@ namespace PaviseApp
 			{
 				throw new IOException("NVIDIA application/settings membership changed during metadata read");
 			}
-			return new GameNvProfile(profile3.Name, profile3.Predefined, profile3.Settings, list, profile3.Apps <= 1, num, completeLocalSettings);
+			return new GameNvProfile(profile3.Name, profile3.Predefined, profile3.Settings, list, profile3.Apps <= 1, processedCount, completeLocalSettings);
 		}
 
 		private static Setting NewSetting(uint id)

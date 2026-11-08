@@ -39,13 +39,13 @@ namespace PaviseApp
 				return false;
 			}
 			int length = "USB\\".Length;
-			int num = instanceId.IndexOf('\\', length);
-			if (num < 0 || num + 1 >= instanceId.Length)
+			int matchIndex = instanceId.IndexOf('\\', length);
+			if (matchIndex < 0 || matchIndex + 1 >= instanceId.Length)
 			{
 				return false;
 			}
-			hardware = instanceId.Substring(length, num - length);
-			instance = instanceId.Substring(num + 1);
+			hardware = instanceId.Substring(length, matchIndex - length);
+			instance = instanceId.Substring(matchIndex + 1);
 			if (hardware.Length > 0)
 			{
 				return instance.Length > 0;
@@ -88,15 +88,15 @@ namespace PaviseApp
 			{
 				return raw;
 			}
-			int num = raw.LastIndexOf(';');
-			if (num < 0 || num + 1 >= raw.Length)
+			int matchIndex = raw.LastIndexOf(';');
+			if (matchIndex < 0 || matchIndex + 1 >= raw.Length)
 			{
 				return null;
 			}
-			string text = raw.Substring(num + 1).Trim();
-			if (text.Length != 0)
+			string substringTrimmed = raw.Substring(matchIndex + 1).Trim();
+			if (substringTrimmed.Length != 0)
 			{
-				return text;
+				return substringTrimmed;
 			}
 			return null;
 		}
@@ -107,44 +107,44 @@ namespace PaviseApp
 			{
 				return InputTransport.Unknown;
 			}
-			string text = instanceId.ToUpperInvariant();
-			if (text.StartsWith("ROOT\\", StringComparison.Ordinal) || text.StartsWith("SWD\\", StringComparison.Ordinal))
+			string toUpperInvariantResult = instanceId.ToUpperInvariant();
+			if (toUpperInvariantResult.StartsWith("ROOT\\", StringComparison.Ordinal) || toUpperInvariantResult.StartsWith("SWD\\", StringComparison.Ordinal))
 			{
 				return InputTransport.Virtual;
 			}
-			if (text.StartsWith("BTHLEDEVICE", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("BTHLEDEVICE", StringComparison.Ordinal))
 			{
 				return InputTransport.BluetoothLe;
 			}
-			if (text.StartsWith("BTHENUM", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("BTHENUM", StringComparison.Ordinal))
 			{
 				return InputTransport.BluetoothClassic;
 			}
-			if (text.IndexOf("{00001812-0000-1000-8000-00805f9b34fb}".ToUpperInvariant(), StringComparison.Ordinal) >= 0)
+			if (toUpperInvariantResult.IndexOf("{00001812-0000-1000-8000-00805f9b34fb}".ToUpperInvariant(), StringComparison.Ordinal) >= 0)
 			{
 				return InputTransport.BluetoothLe;
 			}
-			if (text.IndexOf("{00001124-0000-1000-8000-00805f9b34fb}".ToUpperInvariant(), StringComparison.Ordinal) >= 0)
+			if (toUpperInvariantResult.IndexOf("{00001124-0000-1000-8000-00805f9b34fb}".ToUpperInvariant(), StringComparison.Ordinal) >= 0)
 			{
 				return InputTransport.BluetoothClassic;
 			}
-			if (text.StartsWith("ACPI\\", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("ACPI\\", StringComparison.Ordinal))
 			{
-				if (text.IndexOf("PNP0303", StringComparison.Ordinal) >= 0 || text.IndexOf("PNP0F03", StringComparison.Ordinal) >= 0 || text.IndexOf("PNP0F13", StringComparison.Ordinal) >= 0)
+				if (toUpperInvariantResult.IndexOf("PNP0303", StringComparison.Ordinal) >= 0 || toUpperInvariantResult.IndexOf("PNP0F03", StringComparison.Ordinal) >= 0 || toUpperInvariantResult.IndexOf("PNP0F13", StringComparison.Ordinal) >= 0)
 				{
 					return InputTransport.Ps2;
 				}
 				return InputTransport.Internal;
 			}
-			if (text.StartsWith("USB\\", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("USB\\", StringComparison.Ordinal))
 			{
 				return InputTransport.Usb;
 			}
-			if (text.StartsWith("HID\\VID_", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("HID\\VID_", StringComparison.Ordinal))
 			{
 				return InputTransport.Usb;
 			}
-			if (text.StartsWith("HID\\", StringComparison.Ordinal))
+			if (toUpperInvariantResult.StartsWith("HID\\", StringComparison.Ordinal))
 			{
 				return ClassifyBareHid(instanceId);
 			}
@@ -155,24 +155,24 @@ namespace PaviseApp
 		{
 			foreach (string item in PresentDevices.ParentChain(instanceId))
 			{
-				string text = item.ToUpperInvariant();
-				if (text.StartsWith("ACPI\\", StringComparison.Ordinal))
+				string toUpperInvariantResult = item.ToUpperInvariant();
+				if (toUpperInvariantResult.StartsWith("ACPI\\", StringComparison.Ordinal))
 				{
 					return InputTransport.Internal;
 				}
-				if (text.StartsWith("USB\\", StringComparison.Ordinal))
+				if (toUpperInvariantResult.StartsWith("USB\\", StringComparison.Ordinal))
 				{
 					return InputTransport.Usb;
 				}
-				if (text.StartsWith("BTHENUM", StringComparison.Ordinal))
+				if (toUpperInvariantResult.StartsWith("BTHENUM", StringComparison.Ordinal))
 				{
 					return InputTransport.BluetoothClassic;
 				}
-				if (text.StartsWith("BTHLE", StringComparison.Ordinal))
+				if (toUpperInvariantResult.StartsWith("BTHLE", StringComparison.Ordinal))
 				{
 					return InputTransport.BluetoothLe;
 				}
-				if (text.StartsWith("ROOT\\", StringComparison.Ordinal) || text.StartsWith("SWD\\", StringComparison.Ordinal))
+				if (toUpperInvariantResult.StartsWith("ROOT\\", StringComparison.Ordinal) || toUpperInvariantResult.StartsWith("SWD\\", StringComparison.Ordinal))
 				{
 					return InputTransport.Virtual;
 				}
@@ -191,16 +191,16 @@ namespace PaviseApp
 				return null;
 			}
 			int length = "HID\\".Length;
-			int num = hidInstanceId.IndexOf('\\', length);
-			string text = ((num < 0) ? hidInstanceId.Substring(length) : hidInstanceId.Substring(length, num - length));
-			string[] array = text.Split('&');
+			int matchIndex = hidInstanceId.IndexOf('\\', length);
+			string substringResult = ((matchIndex < 0) ? hidInstanceId.Substring(length) : hidInstanceId.Substring(length, matchIndex - length));
+			string[] substringResultParts = substringResult.Split('&');
 			List<string> list = new List<string>();
-			string[] array2 = array;
-			foreach (string text2 in array2)
+			string[] textEntries = substringResultParts;
+			foreach (string entryText in textEntries)
 			{
-				if (!text2.StartsWith("COL", StringComparison.OrdinalIgnoreCase))
+				if (!entryText.StartsWith("COL", StringComparison.OrdinalIgnoreCase))
 				{
-					list.Add(text2);
+					list.Add(entryText);
 				}
 			}
 			if (list.Count == 0)
@@ -216,15 +216,15 @@ namespace PaviseApp
 			try
 			{
 				int flags;
-				bool flag = ReadFlags("Control Panel\\Accessibility\\Keyboard Response", out flags);
+				bool flags5 = ReadFlags("Control Panel\\Accessibility\\Keyboard Response", out flags);
 				int flags2;
-				bool flag2 = ReadFlags("Control Panel\\Accessibility\\StickyKeys", out flags2);
+				bool flags6 = ReadFlags("Control Panel\\Accessibility\\StickyKeys", out flags2);
 				int flags3;
-				bool flag3 = ReadFlags("Control Panel\\Accessibility\\ToggleKeys", out flags3);
+				bool flags7 = ReadFlags("Control Panel\\Accessibility\\ToggleKeys", out flags3);
 				accessibilityState.FilterKeys = flags;
 				accessibilityState.StickyKeys = flags2;
 				accessibilityState.ToggleKeys = flags3;
-				accessibilityState.Read = flag || flag2 || flag3;
+				accessibilityState.Read = flags5 || flags6 || flags7;
 				using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("Control Panel\\Accessibility\\Keyboard Response"))
 				{
 					int flags4;
@@ -337,25 +337,25 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag = false;
-			bool flag2 = false;
+			bool bluetoothIsOnlyOptionReady = false;
+			bool bluetoothIsOnlyOptionReady2 = false;
 			foreach (InputDevice device in devices)
 			{
 				if (device.IsMouse == mouse)
 				{
 					if (device.Transport == InputTransport.BluetoothClassic || device.Transport == InputTransport.BluetoothLe)
 					{
-						flag = true;
+						bluetoothIsOnlyOptionReady = true;
 					}
 					else if (device.Transport == InputTransport.Usb || device.Transport == InputTransport.Ps2 || device.Transport == InputTransport.Internal)
 					{
-						flag2 = true;
+						bluetoothIsOnlyOptionReady2 = true;
 					}
 				}
 			}
-			if (flag)
+			if (bluetoothIsOnlyOptionReady)
 			{
-				return !flag2;
+				return !bluetoothIsOnlyOptionReady2;
 			}
 			return false;
 		}

@@ -13,11 +13,11 @@ namespace PaviseApp
 
 		internal HardThreadOriginContext(string machine, string name, string boot)
 		{
-			string[] array = (boot ?? "").Split(':');
+			string[] parts = (boot ?? "").Split(':');
 			Guid result;
 			Guid result2;
 			uint result3;
-			if (!Guid.TryParseExact(machine, "N", out result) || result == Guid.Empty || string.IsNullOrEmpty(name) || name.Length > 255 || array.Length != 3 || array[0] != "boot2" || !Guid.TryParseExact(array[1], "N", out result2) || result2 == Guid.Empty || !uint.TryParse(array[2], NumberStyles.None, CultureInfo.InvariantCulture, out result3) || result3 == 0)
+			if (!Guid.TryParseExact(machine, "N", out result) || result == Guid.Empty || string.IsNullOrEmpty(name) || name.Length > 255 || parts.Length != 3 || parts[0] != "boot2" || !Guid.TryParseExact(parts[1], "N", out result2) || result2 == Guid.Empty || !uint.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out result3) || result3 == 0)
 			{
 				throw new ArgumentException("original Windows protection and kernel domains are unknown");
 			}

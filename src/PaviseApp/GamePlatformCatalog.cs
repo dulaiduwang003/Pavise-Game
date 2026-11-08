@@ -174,17 +174,17 @@ namespace PaviseApp
 		{
 			try
 			{
-				string[] array = spec.Split('|');
-				if (array.Length != 3)
+				string[] specParts = spec.Split('|');
+				if (specParts.Length != 3)
 				{
 					return;
 				}
-				RegistryKey registryKey = ((array[0] == "U") ? Registry.CurrentUser : Registry.LocalMachine);
-				using (RegistryKey registryKey2 = registryKey.OpenSubKey(array[1]))
+				RegistryKey registryKey = ((specParts[0] == "U") ? Registry.CurrentUser : Registry.LocalMachine);
+				using (RegistryKey registryKey2 = registryKey.OpenSubKey(specParts[1]))
 				{
 					if (registryKey2 != null)
 					{
-						AddRoot(into, registryKey2.GetValue(array[2]) as string);
+						AddRoot(into, registryKey2.GetValue(specParts[2]) as string);
 					}
 				}
 			}
@@ -197,13 +197,13 @@ namespace PaviseApp
 		{
 			try
 			{
-				int num = spec.IndexOf('|');
-				if (num > 0)
+				int matchIndex = spec.IndexOf('|');
+				if (matchIndex > 0)
 				{
-					string text = BaseFolder(spec.Substring(0, num));
-					if (!string.IsNullOrEmpty(text))
+					string baseFolderResult = BaseFolder(spec.Substring(0, matchIndex));
+					if (!string.IsNullOrEmpty(baseFolderResult))
 					{
-						AddRoot(into, Path.Combine(text, spec.Substring(num + 1)));
+						AddRoot(into, Path.Combine(baseFolderResult, spec.Substring(matchIndex + 1)));
 					}
 				}
 			}
@@ -244,29 +244,29 @@ namespace PaviseApp
 
 		private static string SystemDrive()
 		{
-			string text = null;
+			string environmentVariable = null;
 			try
 			{
-				text = Environment.GetEnvironmentVariable("SystemDrive");
+				environmentVariable = Environment.GetEnvironmentVariable("SystemDrive");
 			}
 			catch
 			{
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(environmentVariable))
 			{
 				try
 				{
-					text = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+					environmentVariable = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
 				}
 				catch
 				{
 				}
 			}
-			if (string.IsNullOrEmpty(text))
+			if (string.IsNullOrEmpty(environmentVariable))
 			{
 				return null;
 			}
-			return text.TrimEnd('\\') + "\\";
+			return environmentVariable.TrimEnd('\\') + "\\";
 		}
 
 		private static void AddRoot(List<string> into, string raw)
@@ -275,22 +275,22 @@ namespace PaviseApp
 			{
 				return;
 			}
-			string text;
+			string getFullPathTrimmed;
 			try
 			{
-				text = Path.GetFullPath(raw.Trim().Trim('"').Replace('/', '\\')).TrimEnd('\\');
+				getFullPathTrimmed = Path.GetFullPath(raw.Trim().Trim('"').Replace('/', '\\')).TrimEnd('\\');
 			}
 			catch
 			{
 				return;
 			}
-			if (text.Length <= 3 || IsTooBroad(text))
+			if (getFullPathTrimmed.Length <= 3 || IsTooBroad(getFullPathTrimmed))
 			{
 				return;
 			}
 			try
 			{
-				if (!Directory.Exists(text))
+				if (!Directory.Exists(getFullPathTrimmed))
 				{
 					return;
 				}
@@ -301,12 +301,12 @@ namespace PaviseApp
 			}
 			foreach (string item in into)
 			{
-				if (string.Equals(item, text, StringComparison.OrdinalIgnoreCase))
+				if (string.Equals(item, getFullPathTrimmed, StringComparison.OrdinalIgnoreCase))
 				{
 					return;
 				}
 			}
-			into.Add(text);
+			into.Add(getFullPathTrimmed);
 		}
 
 		private static bool IsTooBroad(string dir)
@@ -396,34 +396,34 @@ namespace PaviseApp
 								{
 									continue;
 								}
-								string text = registryKey2.GetValue("DisplayName") as string;
-								if (string.IsNullOrEmpty(text))
+								string getValueOffset = registryKey2.GetValue("DisplayName") as string;
+								if (string.IsNullOrEmpty(getValueOffset))
 								{
 									continue;
 								}
-								string text2 = registryKey2.GetValue("InstallLocation") as string;
-								if (string.IsNullOrEmpty(text2))
+								string getValueOffset2 = registryKey2.GetValue("InstallLocation") as string;
+								if (string.IsNullOrEmpty(getValueOffset2))
 								{
-									text2 = DirFromCommand(registryKey2.GetValue("UninstallString") as string);
+									getValueOffset2 = DirFromCommand(registryKey2.GetValue("UninstallString") as string);
 								}
-								if (string.IsNullOrEmpty(text2))
+								if (string.IsNullOrEmpty(getValueOffset2))
 								{
-									text2 = DirFromCommand(registryKey2.GetValue("DisplayIcon") as string);
+									getValueOffset2 = DirFromCommand(registryKey2.GetValue("DisplayIcon") as string);
 								}
-								if (string.IsNullOrEmpty(text2))
+								if (string.IsNullOrEmpty(getValueOffset2))
 								{
 									continue;
 								}
 								foreach (string tag in tags)
 								{
-									if (text.IndexOf(tag, StringComparison.OrdinalIgnoreCase) >= 0)
+									if (getValueOffset.IndexOf(tag, StringComparison.OrdinalIgnoreCase) >= 0)
 									{
 										List<string> value;
 										if (!into.TryGetValue(tag, out value))
 										{
 											value = (into[tag] = new List<string>());
 										}
-										value.Add(text2);
+										value.Add(getValueOffset2);
 									}
 								}
 							}
@@ -445,32 +445,32 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = command.Trim();
-			string text2 = null;
-			if (text.Length > 1 && text[0] == '"')
+			string commandTrimmed = command.Trim();
+			string substringResult = null;
+			if (commandTrimmed.Length > 1 && commandTrimmed[0] == '"')
 			{
-				int num = text.IndexOf('"', 1);
-				if (num > 1)
+				int matchIndex = commandTrimmed.IndexOf('"', 1);
+				if (matchIndex > 1)
 				{
-					text2 = text.Substring(1, num - 1);
+					substringResult = commandTrimmed.Substring(1, matchIndex - 1);
 				}
 			}
 			else
 			{
-				int num2 = text.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-				if (num2 > 0)
+				int matchIndex2 = commandTrimmed.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+				if (matchIndex2 > 0)
 				{
-					text2 = text.Substring(0, num2 + 4);
+					substringResult = commandTrimmed.Substring(0, matchIndex2 + 4);
 				}
 			}
-			text2 = ((text2 == null) ? null : text2.Trim());
-			if (string.IsNullOrEmpty(text2))
+			substringResult = ((substringResult == null) ? null : substringResult.Trim());
+			if (string.IsNullOrEmpty(substringResult))
 			{
 				return null;
 			}
 			try
 			{
-				string directoryName = Path.GetDirectoryName(text2);
+				string directoryName = Path.GetDirectoryName(substringResult);
 				return string.IsNullOrEmpty(directoryName) ? null : directoryName;
 			}
 			catch

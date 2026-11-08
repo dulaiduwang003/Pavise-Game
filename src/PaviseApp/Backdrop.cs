@@ -64,11 +64,11 @@ namespace PaviseApp
 			}
 			set
 			{
-				int num = ((value >= 0) ? ((value > 2) ? 2 : value) : 0);
-				if (num != dim)
+				int valueSnapshot = ((value >= 0) ? ((value > 2) ? 2 : value) : 0);
+				if (valueSnapshot != dim)
 				{
-					dim = num;
-					Settings.SaveStr("BackdropDim", num.ToString(CultureInfo.InvariantCulture));
+					dim = valueSnapshot;
+					Settings.SaveStr("BackdropDim", valueSnapshot.ToString(CultureInfo.InvariantCulture));
 					DropFitted();
 				}
 			}
@@ -183,16 +183,16 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = 0;
-			int num2 = 0;
+			int paintValue = 0;
+			int paintValue2 = 0;
 			Control control = c;
 			while (control != null && !(control is Form))
 			{
-				num += control.Left;
-				num2 += control.Top;
+				paintValue += control.Left;
+				paintValue2 += control.Top;
 				control = control.Parent;
 			}
-			Rectangle srcRect = new Rectangle(client.X + num, client.Y + num2, client.Width, client.Height);
+			Rectangle srcRect = new Rectangle(client.X + paintValue, client.Y + paintValue2, client.Width, client.Height);
 			if (srcRect.X < bitmap.Width && srcRect.Y < bitmap.Height)
 			{
 				if (srcRect.X < 0)
@@ -286,14 +286,14 @@ namespace PaviseApp
 			{
 				using (Image image = Image.FromStream(stream, false, true))
 				{
-					int num = Math.Max(image.Width, image.Height);
-					if (num <= 2560)
+					int heightLimit = Math.Max(image.Width, image.Height);
+					if (heightLimit <= 2560)
 					{
 						return new Bitmap(image);
 					}
-					double num2 = 2560.0 / (double)num;
-					int width = Math.Max(1, (int)Math.Round((double)image.Width * num2));
-					int height = Math.Max(1, (int)Math.Round((double)image.Height * num2));
+					double heightLimitRatio = 2560.0 / (double)heightLimit;
+					int width = Math.Max(1, (int)Math.Round((double)image.Width * heightLimitRatio));
+					int height = Math.Max(1, (int)Math.Round((double)image.Height * heightLimitRatio));
 					Bitmap bitmap = new Bitmap(width, height, PixelFormat.Format32bppPArgb);
 					using (Graphics graphics = Graphics.FromImage(bitmap))
 					{
@@ -379,26 +379,26 @@ namespace PaviseApp
 
 		private static void DrawCover(Graphics g, Rectangle target, bool lightTone)
 		{
-			float num = Math.Max((float)target.Width / (float)source.Width, (float)target.Height / (float)source.Height);
-			int num2 = (int)Math.Ceiling((float)source.Width * num);
-			int num3 = (int)Math.Ceiling((float)source.Height * num);
-			Rectangle rectangle = new Rectangle(target.X + (target.Width - num2) / 2, target.Y + (target.Height - num3) / 2, num2, num3);
+			float lowerBound = Math.Max((float)target.Width / (float)source.Width, (float)target.Height / (float)source.Height);
+			int roundedValue = (int)Math.Ceiling((float)source.Width * lowerBound);
+			int roundedValue2 = (int)Math.Ceiling((float)source.Height * lowerBound);
+			Rectangle rectangle = new Rectangle(target.X + (target.Width - roundedValue) / 2, target.Y + (target.Height - roundedValue2) / 2, roundedValue, roundedValue2);
 			if (!lightTone)
 			{
 				g.DrawImage(source, rectangle);
 				return;
 			}
 			Color color = Col.Lerp(Color.Black, Theme.Bg, LightFloorMix[dim]);
-			float num4 = (float)(int)color.R / 255f;
-			float num5 = (float)(int)color.G / 255f;
-			float num6 = (float)(int)color.B / 255f;
+			float rRatio = (float)(int)color.R / 255f;
+			float gRatio = (float)(int)color.G / 255f;
+			float bRatio = (float)(int)color.B / 255f;
 			using (ImageAttributes imageAttributes = new ImageAttributes())
 			{
 				imageAttributes.SetColorMatrix(new ColorMatrix(new float[5][]
 				{
 					new float[5]
 					{
-						1f - num4,
+						1f - rRatio,
 						0f,
 						0f,
 						0f,
@@ -407,7 +407,7 @@ namespace PaviseApp
 					new float[5]
 					{
 						0f,
-						1f - num5,
+						1f - gRatio,
 						0f,
 						0f,
 						0f
@@ -416,12 +416,12 @@ namespace PaviseApp
 					{
 						0f,
 						0f,
-						1f - num6,
+						1f - bRatio,
 						0f,
 						0f
 					},
 					new float[5] { 0f, 0f, 0f, 1f, 0f },
-					new float[5] { num4, num5, num6, 0f, 1f }
+					new float[5] { rRatio, gRatio, bRatio, 0f, 1f }
 				}), ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
 				g.DrawImage(source, rectangle, 0, 0, source.Width, source.Height, GraphicsUnit.Pixel, imageAttributes);
 			}

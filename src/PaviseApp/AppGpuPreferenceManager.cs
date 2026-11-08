@@ -132,12 +132,12 @@ namespace PaviseApp
 					{
 						return AppGpuPreferenceResult.Busy;
 					}
-					string text = (staged ? RestoreText(value, original) : value);
-					if (!ValidPreference(text))
+					string restoreTextResult = (staged ? RestoreText(value, original) : value);
+					if (!ValidPreference(restoreTextResult))
 					{
 						return AppGpuPreferenceResult.ReadFailed;
 					}
-					change = new AppGpuPreferenceChange(this, path, value, text, staged, original);
+					change = new AppGpuPreferenceChange(this, path, value, restoreTextResult, staged, original);
 					return AppGpuPreferenceResult.Success;
 				}
 				catch
@@ -296,20 +296,20 @@ namespace PaviseApp
 				busy = true;
 				try
 				{
-					bool flag = false;
+					bool getEntriesReady = false;
 					foreach (Record record in records)
 					{
 						string value;
-						bool flag2 = Read(record.Path, out value);
-						if (flag2 && (record.Phase == 'O' || record.Phase == 'U') && PrefFieldText.ReadField(value, "GpuPreference") != "1")
+						bool readSucceeded = Read(record.Path, out value);
+						if (readSucceeded && (record.Phase == 'O' || record.Phase == 'U') && PrefFieldText.ReadField(value, "GpuPreference") != "1")
 						{
 							record.Phase = 'E';
-							flag = true;
+							getEntriesReady = true;
 						}
 						AppGpuPreferenceState state = State(record);
-						entries.Add(new AppGpuPreferenceEntry(record.Path, record.Name, state, value, !flag2));
+						entries.Add(new AppGpuPreferenceEntry(record.Path, record.Name, state, value, !readSucceeded));
 					}
-					return !flag || Save();
+					return !getEntriesReady || Save();
 				}
 				finally
 				{
@@ -391,15 +391,15 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					bool flag = true;
+					bool restoreAllReady = true;
 					foreach (Record item in new List<Record>(records))
 					{
 						if (RemoveRecord(item) != 0)
 						{
-							flag = false;
+							restoreAllReady = false;
 						}
 					}
-					return flag && records.Count == 0 && !dirty;
+					return restoreAllReady && records.Count == 0 && !dirty;
 				}
 				finally
 				{
@@ -460,7 +460,7 @@ namespace PaviseApp
 						return false;
 					}
 					bool result = true;
-					bool flag = false;
+					bool healFromCrashReady = false;
 					foreach (Record item in new List<Record>(records))
 					{
 						if (item.Phase == 'S')
@@ -477,15 +477,15 @@ namespace PaviseApp
 							result = false;
 							continue;
 						}
-						string text = PrefFieldText.ReadField(value, "GpuPreference");
+						string field = PrefFieldText.ReadField(value, "GpuPreference");
 						if (item.Phase == 'P')
 						{
-							if (item.Receipt && text == "1")
+							if (item.Receipt && field == "1")
 							{
 								item.Phase = 'O';
-								flag = true;
+								healFromCrashReady = true;
 							}
-							else if (value == item.Original || text != "1")
+							else if (value == item.Original || field != "1")
 							{
 								if (!Settle(item))
 								{
@@ -499,7 +499,7 @@ namespace PaviseApp
 						}
 						else if (item.Phase == 'R')
 						{
-							if (value == item.RestoreTarget || text != "1")
+							if (value == item.RestoreTarget || field != "1")
 							{
 								if (!Settle(item))
 								{
@@ -511,13 +511,13 @@ namespace PaviseApp
 								result = false;
 							}
 						}
-						else if ((item.Phase == 'O' || item.Phase == 'U') && text != "1")
+						else if ((item.Phase == 'O' || item.Phase == 'U') && field != "1")
 						{
 							item.Phase = 'E';
-							flag = true;
+							healFromCrashReady = true;
 						}
 					}
-					if ((flag || dirty) && !Save())
+					if ((healFromCrashReady || dirty) && !Save())
 					{
 						result = false;
 					}
@@ -545,8 +545,8 @@ namespace PaviseApp
 			{
 				return AppGpuPreferenceResult.ReadFailed;
 			}
-			string text = PrefFieldText.ReadField(value, "GpuPreference");
-			if (text != "1" || (record.Phase == 'P' && value == record.Original) || (record.Phase == 'R' && value == record.RestoreTarget))
+			string field = PrefFieldText.ReadField(value, "GpuPreference");
+			if (field != "1" || (record.Phase == 'P' && value == record.Original) || (record.Phase == 'R' && value == record.RestoreTarget))
 			{
 				if (!Settle(record))
 				{
@@ -693,10 +693,10 @@ namespace PaviseApp
 
 		private static string RestoreText(string current, string original)
 		{
-			string text = PrefFieldText.RestoreField(current, original, "GpuPreference");
-			if (text.Length != 0 || original != null)
+			string restoreFieldResult = PrefFieldText.RestoreField(current, original, "GpuPreference");
+			if (restoreFieldResult.Length != 0 || original != null)
 			{
-				return text;
+				return restoreFieldResult;
 			}
 			return null;
 		}
@@ -710,9 +710,9 @@ namespace PaviseApp
 			}
 			try
 			{
-				bool flag = input.Length >= 3 && char.IsLetter(input[0]) && input[1] == ':' && (input[2] == '\\' || input[2] == '/');
-				bool flag2 = input.StartsWith("\\\\", StringComparison.Ordinal) && !input.StartsWith("\\\\.\\", StringComparison.Ordinal) && !input.StartsWith("\\\\?\\", StringComparison.Ordinal);
-				if ((!flag && !flag2) || !string.Equals(Path.GetExtension(input), ".exe", StringComparison.OrdinalIgnoreCase))
+				bool allConditionsMet = input.Length >= 3 && char.IsLetter(input[0]) && input[1] == ':' && (input[2] == '\\' || input[2] == '/');
+				bool allConditionsMet2 = input.StartsWith("\\\\", StringComparison.Ordinal) && !input.StartsWith("\\\\.\\", StringComparison.Ordinal) && !input.StartsWith("\\\\?\\", StringComparison.Ordinal);
+				if ((!allConditionsMet && !allConditionsMet2) || !string.Equals(Path.GetExtension(input), ".exe", StringComparison.OrdinalIgnoreCase))
 				{
 					return false;
 				}
@@ -735,12 +735,12 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = 0;
-			string[] array = raw.Split(';');
-			foreach (string text in array)
+			int validPreferenceValue = 0;
+			string[] rawParts = raw.Split(';');
+			foreach (string entryText in rawParts)
 			{
-				int num2 = text.IndexOf('=');
-				if (num2 > 0 && string.Equals(text.Substring(0, num2).Trim(), "GpuPreference", StringComparison.OrdinalIgnoreCase) && ++num > 1)
+				int matchIndex = entryText.IndexOf('=');
+				if (matchIndex > 0 && string.Equals(entryText.Substring(0, matchIndex).Trim(), "GpuPreference", StringComparison.OrdinalIgnoreCase) && ++validPreferenceValue > 1)
 				{
 					return false;
 				}
@@ -792,11 +792,11 @@ namespace PaviseApp
 
 		private bool Save()
 		{
-			string text = (attemptedLedger = Encode(records));
+			string message = (attemptedLedger = Encode(records));
 			dirty = true;
 			try
 			{
-				ledger.TryWrite(text);
+				ledger.TryWrite(message);
 			}
 			catch
 			{
@@ -804,7 +804,7 @@ namespace PaviseApp
 			try
 			{
 				string value;
-				if (!ledger.TryRead(out value) || value != text)
+				if (!ledger.TryRead(out value) || value != message)
 				{
 					return false;
 				}
@@ -853,49 +853,49 @@ namespace PaviseApp
 				return false;
 			}
 			HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			string[] array = raw.Split('\n');
-			if (array.Length < 3 || array[array.Length - 1] != "" || array.Length > 130)
+			string[] rawParts = raw.Split('\n');
+			if (rawParts.Length < 3 || rawParts[rawParts.Length - 1] != "" || rawParts.Length > 130)
 			{
 				return false;
 			}
 			try
 			{
-				for (int i = 1; i < array.Length - 1; i++)
+				for (int i = 1; i < rawParts.Length - 1; i++)
 				{
-					string[] array2 = array[i].Split('\t');
-					if (array2.Length != 5 || array2[0].Length != 1 || "UOPRES".IndexOf(array2[0][0]) < 0)
+					string[] parts = rawParts[i].Split('\t');
+					if (parts.Length != 5 || parts[0].Length != 1 || "UOPRES".IndexOf(parts[0][0]) < 0)
 					{
 						return false;
 					}
-					string text = UnB64(array2[1]);
-					string text2 = UnB64(array2[2]);
-					string text3 = UnB64(array2[3]);
-					string text4 = UnB64(array2[4]);
+					string unB64Result = UnB64(parts[1]);
+					string unB64Result2 = UnB64(parts[2]);
+					string unB64Result3 = UnB64(parts[3]);
+					string unB64Result4 = UnB64(parts[4]);
 					string path;
-					if (!NormalizePath(text, out path) || !string.Equals(text, path, StringComparison.OrdinalIgnoreCase) || !hashSet.Add(text) || text2 == null || text2.Length > 260 || !ValidPreference(text3) || !ValidPreference(text4))
+					if (!NormalizePath(unB64Result, out path) || !string.Equals(unB64Result, path, StringComparison.OrdinalIgnoreCase) || !hashSet.Add(unB64Result) || unB64Result2 == null || unB64Result2.Length > 260 || !ValidPreference(unB64Result3) || !ValidPreference(unB64Result4))
 					{
 						return false;
 					}
-					char c = array2[0][0];
-					string text5 = PrefFieldText.ReadField(text3, "GpuPreference");
-					if ((c == 'U' && text5 != "1") || ((c == 'O' || c == 'P' || c == 'R') && text5 == "1"))
+					char c = parts[0][0];
+					string field = PrefFieldText.ReadField(unB64Result3, "GpuPreference");
+					if ((c == 'U' && field != "1") || ((c == 'O' || c == 'P' || c == 'R') && field == "1"))
 					{
 						return false;
 					}
-					if (c != 'R' && text4 != null)
+					if (c != 'R' && unB64Result4 != null)
 					{
 						return false;
 					}
-					if (c == 'R' && PrefFieldText.ReadField(text4, "GpuPreference") != text5)
+					if (c == 'R' && PrefFieldText.ReadField(unB64Result4, "GpuPreference") != field)
 					{
 						return false;
 					}
 					items.Add(new Record
 					{
-						Path = text,
-						Name = text2,
-						Original = text3,
-						RestoreTarget = text4,
+						Path = unB64Result,
+						Name = unB64Result2,
+						Original = unB64Result3,
+						RestoreTarget = unB64Result4,
 						Phase = c,
 						Receipt = (c == 'O')
 					});

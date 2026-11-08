@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
@@ -33,8 +33,8 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			string[] array = prefixes;
-			foreach (string value in array)
+			string[] prefixesSnapshot = prefixes;
+			foreach (string value in prefixesSnapshot)
 			{
 				if (name.StartsWith(value, StringComparison.OrdinalIgnoreCase))
 				{

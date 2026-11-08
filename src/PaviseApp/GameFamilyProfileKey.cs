@@ -28,10 +28,10 @@ namespace PaviseApp
 		{
 			if (!string.IsNullOrEmpty(root))
 			{
-				string text = root.TrimEnd('\\');
-				if (GameFamilyHistory.CanonicalPath(text) && !string.Equals(text, Path.GetPathRoot(text).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+				string rootTrimmed = root.TrimEnd('\\');
+				if (GameFamilyHistory.CanonicalPath(rootTrimmed) && !string.Equals(rootTrimmed, Path.GetPathRoot(rootTrimmed).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
 				{
-					return text + "\\";
+					return rootTrimmed + "\\";
 				}
 			}
 			return null;
@@ -74,11 +74,11 @@ namespace PaviseApp
 
 		public override int GetHashCode()
 		{
-			int num = (force ? 1 : 0);
-			num = num * 31 + Hash(id);
-			num = num * 31 + Hash(root);
-			num = num * 31 + Hash(executable);
-			return num * 31 + Hash(learned);
+			int hashCodeValue = (force ? 1 : 0);
+			hashCodeValue = hashCodeValue * 31 + Hash(id);
+			hashCodeValue = hashCodeValue * 31 + Hash(root);
+			hashCodeValue = hashCodeValue * 31 + Hash(executable);
+			return hashCodeValue * 31 + Hash(learned);
 		}
 
 		private static bool Equal(string a, string b)

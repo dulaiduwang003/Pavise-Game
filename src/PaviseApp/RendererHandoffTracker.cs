@@ -212,20 +212,20 @@ namespace PaviseApp
 				}
 				current.Attempts++;
 				nextProbeMs = nowMs + 8000;
-				int num = 8000;
+				int beginProbeValue = 8000;
 				if (current.Attempts >= 2 || nowMs - current.FirstSeenMs >= 10000)
 				{
-					num = 30000;
+					beginProbeValue = 30000;
 					for (int i = 2; i < current.Attempts; i++)
 					{
-						if (num >= 120000)
+						if (beginProbeValue >= 120000)
 						{
 							break;
 						}
-						num = Math.Min(120000, num * 2);
+						beginProbeValue = Math.Min(120000, beginProbeValue * 2);
 					}
 				}
-				current.NextAttemptMs = nowMs + num;
+				current.NextAttemptMs = nowMs + beginProbeValue;
 				inFlight = new RendererProbeTicket(current.Generation, nowMs, current.Detection);
 				return inFlight;
 			}
@@ -314,8 +314,8 @@ namespace PaviseApp
 				{
 					return null;
 				}
-				bool flag = current.Detection.RendererCandidateSelected && !current.Detection.RequiresGpuConfirm;
-				if (!flag && (!current.Verified || nowMs < current.ProofMs || nowMs - current.ProofMs > 3000))
+				bool matchesRendererCandidateSelected = current.Detection.RendererCandidateSelected && !current.Detection.RequiresGpuConfirm;
+				if (!matchesRendererCandidateSelected && (!current.Verified || nowMs < current.ProofMs || nowMs - current.ProofMs > 3000))
 				{
 					return null;
 				}
@@ -323,7 +323,7 @@ namespace PaviseApp
 				gameDetection.RendererForeground = current.Foreground;
 				gameDetection.RendererCandidateSelected = true;
 				gameDetection.RequiresGpuConfirm = false;
-				if (!flag)
+				if (!matchesRendererCandidateSelected)
 				{
 					gameDetection.Evidence = current.Proof == RendererProof.Present
 						? Lang.F("detect.present", (int)Math.Round(current.PresentFps))

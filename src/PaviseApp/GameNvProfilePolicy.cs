@@ -12,29 +12,29 @@ namespace PaviseApp
 			{
 				return GameNvValueSource.Unavailable;
 			}
-			bool flag = value.CurrentPredefined != 0;
+			bool matchesCurrentPredefined = value.CurrentPredefined != 0;
 			switch (value.Location)
 			{
 			case 0u:
-				if (!flag)
+				if (!matchesCurrentPredefined)
 				{
 					return GameNvValueSource.ProfileUser;
 				}
 				return GameNvValueSource.ProfilePredefined;
 			case 1u:
-				if (!flag)
+				if (!matchesCurrentPredefined)
 				{
 					return GameNvValueSource.GlobalUser;
 				}
 				return GameNvValueSource.GlobalPredefined;
 			case 2u:
-				if (!flag)
+				if (!matchesCurrentPredefined)
 				{
 					return GameNvValueSource.BaseUser;
 				}
 				return GameNvValueSource.BasePredefined;
 			case 3u:
-				if (!flag)
+				if (!matchesCurrentPredefined)
 				{
 					return GameNvValueSource.DefaultUser;
 				}

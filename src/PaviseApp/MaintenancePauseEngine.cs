@@ -83,8 +83,8 @@ namespace PaviseApp
 						return true;
 					}
 					MaintenanceValue maintenanceValue = value;
-					string text = (value.Exists ? ("=" + ((int)value.Value).ToString(CultureInfo.InvariantCulture)) : "__pavise_absent__");
-					if (!SaveLedger(text + '\u001f' + "=1"))
+					string toStringOffset = (value.Exists ? ("=" + ((int)value.Value).ToString(CultureInfo.InvariantCulture)) : "__pavise_absent__");
+					if (!SaveLedger(toStringOffset + '\u001f' + "=1"))
 					{
 						return false;
 					}
@@ -141,20 +141,20 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					bool num;
+					bool matchesValue;
 					if (!absent)
 					{
 						if (!value.Exists || value.Kind != RegistryValueKind.DWord || !(value.Value is int))
 						{
 							goto RejectUnconfirmedService;
 						}
-						num = (int)value.Value == original;
+						matchesValue = (int)value.Value == original;
 					}
 					else
 					{
-						num = !value.Exists;
+						matchesValue = !value.Exists;
 					}
-					if (num)
+					if (matchesValue)
 					{
 						return SaveLedger("");
 					}
@@ -225,22 +225,22 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			int num = raw.IndexOf('\u001f');
-			if (num >= 0 && (raw.IndexOf('\u001f', num + 1) >= 0 || raw.Substring(num + 1) != "=1"))
+			int matchIndex = raw.IndexOf('\u001f');
+			if (matchIndex >= 0 && (raw.IndexOf('\u001f', matchIndex + 1) >= 0 || raw.Substring(matchIndex + 1) != "=1"))
 			{
 				return false;
 			}
-			string text = ((num < 0) ? raw : raw.Substring(0, num));
-			if (text == "__pavise_absent__")
+			string rawSnapshot = ((matchIndex < 0) ? raw : raw.Substring(0, matchIndex));
+			if (rawSnapshot == "__pavise_absent__")
 			{
 				absent = true;
 				return true;
 			}
-			if (text.StartsWith("=", StringComparison.Ordinal))
+			if (rawSnapshot.StartsWith("=", StringComparison.Ordinal))
 			{
-				text = text.Substring(1);
+				rawSnapshot = rawSnapshot.Substring(1);
 			}
-			return int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out original);
+			return int.TryParse(rawSnapshot, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out original);
 		}
 	}
 }

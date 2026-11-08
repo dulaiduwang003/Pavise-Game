@@ -198,14 +198,14 @@ namespace PaviseApp
 			{
 				int mouseWheelScrollDelta = SystemInformation.MouseWheelScrollDelta;
 				wheelDelta += e.Delta;
-				int num = (int)(wheelDelta / mouseWheelScrollDelta);
+				int wheelDeltaRatio = (int)(wheelDelta / mouseWheelScrollDelta);
 				wheelDelta %= mouseWheelScrollDelta;
-				if (num != 0 && base.Items.Count != 0)
+				if (wheelDeltaRatio != 0 && base.Items.Count != 0)
 				{
-					int num2 = Math.Max(1, base.ClientSize.Height / Math.Max(1, ItemHeight));
-					int num3 = ((mouseWheelScrollLines < 0) ? num2 : mouseWheelScrollLines);
-					long val = base.TopIndex - (long)num * (long)num3;
-					base.TopIndex = (int)Math.Max(0L, Math.Min(Math.Max(0, base.Items.Count - num2), val));
+					int lowerBound = Math.Max(1, base.ClientSize.Height / Math.Max(1, ItemHeight));
+					int mouseWheelScrollLinesSnapshot = ((mouseWheelScrollLines < 0) ? lowerBound : mouseWheelScrollLines);
+					long val = base.TopIndex - (long)wheelDeltaRatio * (long)mouseWheelScrollLinesSnapshot;
+					base.TopIndex = (int)Math.Max(0L, Math.Min(Math.Max(0, base.Items.Count - lowerBound), val));
 					QueueViewportChanged();
 				}
 			}
@@ -257,13 +257,13 @@ namespace PaviseApp
 
 		private bool EnsureBuffer(Graphics target, Rectangle bounds)
 		{
-			int num = Math.Max(base.ClientSize.Width, bounds.Right);
-			int num2 = Math.Max(base.ClientSize.Height, bounds.Bottom);
-			if (num <= 0 || num2 <= 0)
+			int rightLimit = Math.Max(base.ClientSize.Width, bounds.Right);
+			int bottomLimit = Math.Max(base.ClientSize.Height, bounds.Bottom);
+			if (rightLimit <= 0 || bottomLimit <= 0)
 			{
 				return false;
 			}
-			if (memDc != IntPtr.Zero && bufW >= num && bufH >= num2)
+			if (memDc != IntPtr.Zero && bufW >= rightLimit && bufH >= bottomLimit)
 			{
 				return true;
 			}
@@ -276,7 +276,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				IntPtr intPtr2 = CreateCompatibleBitmap(hdc, num, num2);
+				IntPtr intPtr2 = CreateCompatibleBitmap(hdc, rightLimit, bottomLimit);
 				if (intPtr2 == IntPtr.Zero)
 				{
 					DeleteDC(intPtr);
@@ -285,8 +285,8 @@ namespace PaviseApp
 				memDc = intPtr;
 				memBmp = intPtr2;
 				oldBmp = SelectObject(intPtr, intPtr2);
-				bufW = num;
-				bufH = num2;
+				bufW = rightLimit;
+				bufH = bottomLimit;
 			}
 			finally
 			{
@@ -348,38 +348,38 @@ namespace PaviseApp
 
 		private void FillTail(IntPtr hdc)
 		{
-			int num = base.ClientSize.Height;
-			int num2 = base.ClientSize.Width;
-			if (num <= 0 || num2 <= 0)
+			int height = base.ClientSize.Height;
+			int width = base.ClientSize.Width;
+			if (height <= 0 || width <= 0)
 			{
 				return;
 			}
-			int num3 = 0;
+			int fillTailValue = 0;
 			int count = base.Items.Count;
 			if (count > 0 && ItemHeight > 0)
 			{
-				int num4 = base.TopIndex;
-				if (num4 < 0)
+				int topIndex = base.TopIndex;
+				if (topIndex < 0)
 				{
-					num4 = 0;
+					topIndex = 0;
 				}
-				int num5 = count - num4;
-				if (num5 > 0)
+				int remainingCount = count - topIndex;
+				if (remainingCount > 0)
 				{
-					num3 = ((num5 > num / ItemHeight + 2) ? num : (num5 * ItemHeight));
+					fillTailValue = ((remainingCount > height / ItemHeight + 2) ? height : (remainingCount * ItemHeight));
 				}
-				if (num3 > num)
+				if (fillTailValue > height)
 				{
-					num3 = num;
+					fillTailValue = height;
 				}
 			}
-			if (num3 >= num)
+			if (fillTailValue >= height)
 			{
 				return;
 			}
 			try
 			{
-				Rectangle rectangle = new Rectangle(0, num3, num2, num - num3);
+				Rectangle rectangle = new Rectangle(0, fillTailValue, width, height - fillTailValue);
 				using (Graphics graphics = Graphics.FromHdc(hdc))
 				{
 					if (Backdrop.AppliesTo(this))

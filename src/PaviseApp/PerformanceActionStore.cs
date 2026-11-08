@@ -91,11 +91,11 @@ namespace PaviseApp
 			{
 				throw new FormatException("Invalid owned visual effect receipt");
 			}
-			string[] array = (r.VisualOwner ?? "").Split(':');
+			string[] parts = (r.VisualOwner ?? "").Split(':');
 			long result;
 			Guid result2;
 			Guid result3;
-			if (array.Length != 4 || !long.TryParse(array[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result <= 0 || result.ToString(CultureInfo.InvariantCulture) != array[1] || !Guid.TryParseExact(array[2], "N", out result2) || result2 == Guid.Empty || result2.ToString("N") != array[2] || !Guid.TryParseExact(array[3], "N", out result3) || result3 == Guid.Empty || result3.ToString("N") != array[3] || new SecurityIdentifier(array[0]).Value != array[0])
+			if (parts.Length != 4 || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || result <= 0 || result.ToString(CultureInfo.InvariantCulture) != parts[1] || !Guid.TryParseExact(parts[2], "N", out result2) || result2 == Guid.Empty || result2.ToString("N") != parts[2] || !Guid.TryParseExact(parts[3], "N", out result3) || result3 == Guid.Empty || result3.ToString("N") != parts[3] || new SecurityIdentifier(parts[0]).Value != parts[0])
 			{
 				throw new FormatException("Invalid owned visual effect receipt epoch");
 			}
@@ -103,14 +103,14 @@ namespace PaviseApp
 
 		internal static Receipt Unpack(string text)
 		{
-			string[] array = (text ?? "").Split('|');
-			if (array.Length == 6 && array[0] == "visual-legacy-terminal1" && array[1] == "1")
+			string[] parts = (text ?? "").Split('|');
+			if (parts.Length == 6 && parts[0] == "visual-legacy-terminal1" && parts[1] == "1")
 			{
 				Receipt receipt = new Receipt();
-				receipt.Id = Decode(array[2]);
-				receipt.Target = Decode(array[3]);
-				receipt.Original = Decode(array[4]);
-				receipt.Expected = Decode(array[5]);
+				receipt.Id = Decode(parts[2]);
+				receipt.Target = Decode(parts[3]);
+				receipt.Original = Decode(parts[4]);
+				receipt.Expected = Decode(parts[5]);
 				receipt.Committed = true;
 				receipt.VisualRestored = true;
 				Receipt receipt2 = receipt;
@@ -120,20 +120,20 @@ namespace PaviseApp
 				}
 				return receipt2;
 			}
-			if (array.Length == 8 && array[0] == "visual2")
+			if (parts.Length == 8 && parts[0] == "visual2")
 			{
-				if ((array[1] != "0" && array[1] != "1") || (array[7] != "0" && array[7] != "1"))
+				if ((parts[1] != "0" && parts[1] != "1") || (parts[7] != "0" && parts[7] != "1"))
 				{
 					throw new FormatException("Invalid owned visual effect receipt state");
 				}
 				Receipt receipt3 = new Receipt();
-				receipt3.Committed = array[1] == "1";
-				receipt3.Id = Decode(array[2]);
-				receipt3.Target = Decode(array[3]);
-				receipt3.Original = Decode(array[4]);
-				receipt3.Expected = Decode(array[5]);
-				receipt3.VisualOwner = Decode(array[6]);
-				receipt3.VisualRestored = array[7] == "1";
+				receipt3.Committed = parts[1] == "1";
+				receipt3.Id = Decode(parts[2]);
+				receipt3.Target = Decode(parts[3]);
+				receipt3.Original = Decode(parts[4]);
+				receipt3.Expected = Decode(parts[5]);
+				receipt3.VisualOwner = Decode(parts[6]);
+				receipt3.VisualRestored = parts[7] == "1";
 				Receipt receipt4 = receipt3;
 				ValidateVisualOwner(receipt4);
 				if (Pack(receipt4) != text)
@@ -142,16 +142,16 @@ namespace PaviseApp
 				}
 				return receipt4;
 			}
-			if (array.Length != 5 || (array[0] != "0" && array[0] != "1"))
+			if (parts.Length != 5 || (parts[0] != "0" && parts[0] != "1"))
 			{
 				throw new FormatException("Invalid performance receipt");
 			}
 			Receipt receipt5 = new Receipt();
-			receipt5.Committed = array[0] == "1";
-			receipt5.Id = Decode(array[1]);
-			receipt5.Target = Decode(array[2]);
-			receipt5.Original = Decode(array[3]);
-			receipt5.Expected = Decode(array[4]);
+			receipt5.Committed = parts[0] == "1";
+			receipt5.Id = Decode(parts[1]);
+			receipt5.Target = Decode(parts[2]);
+			receipt5.Original = Decode(parts[3]);
+			receipt5.Expected = Decode(parts[4]);
 			return receipt5;
 		}
 
@@ -181,8 +181,8 @@ namespace PaviseApp
 				List<Receipt> list = new List<Receipt>();
 				List<string> list2 = new List<string>();
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				string[] array = Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-				foreach (string item in array)
+				string[] readParts = Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+				foreach (string item in readParts)
 				{
 					if (hashSet.Add(item))
 					{
@@ -194,8 +194,8 @@ namespace PaviseApp
 				{
 					throw new InvalidOperationException("Unreadable performance receipt names");
 				}
-				string[] array2 = names;
-				foreach (string item2 in array2)
+				string[] namesSnapshot = names;
+				foreach (string item2 in namesSnapshot)
 				{
 					if (hashSet.Add(item2))
 					{
@@ -204,21 +204,21 @@ namespace PaviseApp
 				}
 				foreach (string item3 in list2)
 				{
-					bool flag = item3.StartsWith("PerformanceReceipt_", StringComparison.OrdinalIgnoreCase) && item3.Length == "PerformanceReceipt_".Length + 64;
-					int num = "PerformanceReceipt_".Length;
-					while (flag && num < item3.Length)
+					bool matchesStartsWith = item3.StartsWith("PerformanceReceipt_", StringComparison.OrdinalIgnoreCase) && item3.Length == "PerformanceReceipt_".Length + 64;
+					int processedCount = "PerformanceReceipt_".Length;
+					while (matchesStartsWith && processedCount < item3.Length)
 					{
-						flag = (item3[num] >= '0' && item3[num] <= '9') || (item3[num] >= 'a' && item3[num] <= 'f') || (item3[num] >= 'A' && item3[num] <= 'F');
-						num++;
+						matchesStartsWith = (item3[processedCount] >= '0' && item3[processedCount] <= '9') || (item3[processedCount] >= 'a' && item3[processedCount] <= 'f') || (item3[processedCount] >= 'A' && item3[processedCount] <= 'F');
+						processedCount++;
 					}
-					if (!flag)
+					if (!matchesStartsWith)
 					{
 						throw new FormatException("Invalid performance receipt key: " + item3);
 					}
-					string text = Read(item3);
-					if (text.Length != 0)
+					string readResult = Read(item3);
+					if (readResult.Length != 0)
 					{
-						Receipt receipt = Unpack(text);
+						Receipt receipt = Unpack(readResult);
 						if (string.IsNullOrEmpty(receipt.Id) || string.IsNullOrEmpty(receipt.Target) || !string.Equals(item3, Slot(receipt.Id, receipt.Target), StringComparison.OrdinalIgnoreCase))
 						{
 							throw new FormatException("Invalid performance receipt ownership: " + item3);
@@ -262,12 +262,12 @@ namespace PaviseApp
 		{
 			if (expected != null)
 			{
-				string text = Read(key);
-				if (text.Length == 0)
+				string readResult = Read(key);
+				if (readResult.Length == 0)
 				{
 					return true;
 				}
-				if (text != expected)
+				if (readResult != expected)
 				{
 					return false;
 				}
@@ -292,18 +292,18 @@ namespace PaviseApp
 			{
 				lastChangeFailure = null;
 				string key = Slot(id, target);
-				string text = Read(key);
-				Receipt receipt = ((text.Length == 0) ? null : Unpack(text));
+				string readResult = Read(key);
+				Receipt receipt = ((readResult.Length == 0) ? null : Unpack(readResult));
 				if (receipt != null && (!string.IsNullOrEmpty(receipt.VisualOwner) || receipt.VisualRestored))
 				{
 					return ChangeFailed("Owned visual receipts require the shared SPI capability path");
 				}
-				string text2 = read();
+				string originalValue = read();
 				if (receipt != null && (receipt.Id != id || !string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase)))
 				{
 					return ChangeFailed("Recovery record ownership does not match the target");
 				}
-				if (satisfied(text2))
+				if (satisfied(originalValue))
 				{
 					if (receipt == null || receipt.Committed)
 					{
@@ -314,24 +314,24 @@ namespace PaviseApp
 						Id = id,
 						Target = target,
 						Original = receipt.Original,
-						Expected = text2,
+						Expected = originalValue,
 						Committed = true
 					})) || ChangeFailed("Could not commit the recovery record");
 				}
-				bool flag = false;
+				bool changeReady = false;
 				if (receipt != null && reconcile != null)
 				{
 					for (int i = 0; i < 3; i++)
 					{
-						Receipt receipt2 = reconcile(receipt, text2);
+						Receipt receipt2 = reconcile(receipt, originalValue);
 						if (receipt2 == null || receipt2.Id != id || !string.Equals(receipt2.Target, target, StringComparison.OrdinalIgnoreCase))
 						{
 							return ChangeFailed("Recovery snapshot cannot be reconciled");
 						}
-						string text3 = read();
-						if (text3 != text2)
+						string readResult2 = read();
+						if (readResult2 != originalValue)
 						{
-							text2 = text3;
+							originalValue = readResult2;
 							continue;
 						}
 						if (!Track(key) || !Save(key, Pack(receipt2)))
@@ -339,23 +339,23 @@ namespace PaviseApp
 							return ChangeFailed("Could not save the reconciled recovery record");
 						}
 						receipt = receipt2;
-						flag = true;
+						changeReady = true;
 						break;
 					}
-					if (!flag)
+					if (!changeReady)
 					{
 						return ChangeFailed("Configuration kept changing during reconciliation");
 					}
 				}
-				if (!flag && receipt != null && id == "AutoGameMitigationsV1" && wanted == "off32" && receipt.Original.Split(';').Length == 5)
+				if (!changeReady && receipt != null && id == "AutoGameMitigationsV1" && wanted == "off32" && receipt.Original.Split(';').Length == 5)
 				{
 					return ChangeFailed("Legacy recovery record must be reconciled before enabling SimExec");
 				}
-				if (!flag && receipt != null && receipt.Committed && text2 != receipt.Expected)
+				if (!changeReady && receipt != null && receipt.Committed && originalValue != receipt.Expected)
 				{
 					if (id != "AutoGameMitigationsV1")
 					{
-						return ChangeFailed(Clear(key, text) ? "Configuration changed externally; previous ownership released" : "Configuration changed externally; recovery record could not be cleared");
+						return ChangeFailed(Clear(key, readResult) ? "Configuration changed externally; previous ownership released" : "Configuration changed externally; recovery record could not be cleared");
 					}
 					return ChangeFailed("Configuration changed externally; recovery record retained");
 				}
@@ -364,17 +364,17 @@ namespace PaviseApp
 					Receipt receipt3 = new Receipt();
 					receipt3.Id = id;
 					receipt3.Target = target;
-					receipt3.Original = text2;
+					receipt3.Original = originalValue;
 					receipt3.Expected = wanted;
 					receipt = receipt3;
 				}
-				if (!flag && (!Track(key) || !Save(key, Pack(receipt))))
+				if (!changeReady && (!Track(key) || !Save(key, Pack(receipt))))
 				{
 					return ChangeFailed("Could not save the recovery record");
 				}
-				if (!satisfied(text2))
+				if (!satisfied(originalValue))
 				{
-					if (!flag && (receipt.Committed || receipt.Expected != wanted))
+					if (!changeReady && (receipt.Committed || receipt.Expected != wanted))
 					{
 						Receipt receipt4 = new Receipt();
 						receipt4.Id = id;
@@ -393,12 +393,12 @@ namespace PaviseApp
 						return ChangeFailed("Configuration write did not complete");
 					}
 				}
-				text2 = read();
-				if (!satisfied(text2))
+				originalValue = read();
+				if (!satisfied(originalValue))
 				{
 					return ChangeFailed("Configuration did not match the requested state after writing");
 				}
-				receipt.Expected = text2;
+				receipt.Expected = originalValue;
 				receipt.Committed = true;
 				return Save(key, Pack(receipt)) || ChangeFailed("Could not commit the recovery record");
 			}
@@ -412,21 +412,21 @@ namespace PaviseApp
 			}
 			lock (gate)
 			{
-				string text = Read(Slot(r.Id, r.Target));
-				if (text.Length == 0)
+				string readResult = Read(Slot(r.Id, r.Target));
+				if (readResult.Length == 0)
 				{
 					return true;
 				}
-				if (text != Pack(r))
+				if (readResult != Pack(r))
 				{
 					return false;
 				}
-				string text2 = read();
-				if ((r.Committed ? (text2 == r.Expected) : preparedMatch(text2)) && text2 != r.Original && (!write(r.Original) || read() != r.Original))
+				string readResult2 = read();
+				if ((r.Committed ? (readResult2 == r.Expected) : preparedMatch(readResult2)) && readResult2 != r.Original && (!write(r.Original) || read() != r.Original))
 				{
 					return false;
 				}
-				return Clear(Slot(r.Id, r.Target), text);
+				return Clear(Slot(r.Id, r.Target), readResult);
 			}
 		}
 
@@ -438,30 +438,30 @@ namespace PaviseApp
 			}
 			lock (gate)
 			{
-				string text = Read(Slot(r.Id, r.Target));
-				if (text.Length == 0)
+				string readResult = Read(Slot(r.Id, r.Target));
+				if (readResult.Length == 0)
 				{
 					return true;
 				}
-				if (text != Pack(r))
+				if (readResult != Pack(r))
 				{
 					return false;
 				}
 				for (int i = 0; i < 3; i++)
 				{
-					string text2 = read();
-					string text3 = merge(text2);
-					if (text3 == null)
+					string readResult2 = read();
+					string mergeResult = merge(readResult2);
+					if (mergeResult == null)
 					{
 						return false;
 					}
-					if (!(read() != text2))
+					if (!(read() != readResult2))
 					{
-						if (text3 != text2 && (!write(text3) || read() != text3))
+						if (mergeResult != readResult2 && (!write(mergeResult) || read() != mergeResult))
 						{
 							return false;
 						}
-						return Clear(Slot(r.Id, r.Target), text);
+						return Clear(Slot(r.Id, r.Target), readResult);
 					}
 				}
 				return false;
@@ -482,18 +482,18 @@ namespace PaviseApp
 				{
 					lastChangeFailure = null;
 					string key = Slot("MatchVisualEffectsV1", target);
-					string text = Read(key);
-					Receipt receipt = ((text.Length == 0) ? null : Unpack(text));
+					string readResult = Read(key);
+					Receipt receipt = ((readResult.Length == 0) ? null : Unpack(readResult));
 					if (receipt != null && (receipt.Id != "MatchVisualEffectsV1" || receipt.Target != target || receipt.VisualOwner != manualReceiptOwner || receipt.VisualRestored || !receipt.Committed))
 					{
 						return ChangeFailed("Visual recovery owner or pending state differs");
 					}
-					string text2 = read();
-					if (text2 != "0" && text2 != "1")
+					string originalValue = read();
+					if (originalValue != "0" && originalValue != "1")
 					{
 						return ChangeFailed("Visual original readback unavailable");
 					}
-					if (receipt != null && text2 != receipt.Expected)
+					if (receipt != null && originalValue != receipt.Expected)
 					{
 						return ChangeFailed("Visual value changed; retain exact recovery owner");
 					}
@@ -502,14 +502,14 @@ namespace PaviseApp
 						Receipt receipt2 = new Receipt();
 						receipt2.Id = "MatchVisualEffectsV1";
 						receipt2.Target = target;
-						receipt2.Original = text2;
+						receipt2.Original = originalValue;
 						receipt2.Expected = wanted;
 						receipt2.VisualOwner = manualReceiptOwner;
 						receipt = receipt2;
 					}
 					else
 					{
-						if (text2 == wanted)
+						if (originalValue == wanted)
 						{
 							return true;
 						}
@@ -521,7 +521,7 @@ namespace PaviseApp
 						return ChangeFailed("Could not save owned visual write intent");
 					}
 					access.Assert(access.Stamp, true);
-					if (text2 != wanted && !write(wanted))
+					if (originalValue != wanted && !write(wanted))
 					{
 						return ChangeFailed("Owned visual write was not confirmed");
 					}
@@ -550,8 +550,8 @@ namespace PaviseApp
 			lock (gate)
 			{
 				string key = Slot(receipt.Id, receipt.Target);
-				string text = Read(key);
-				if (text.Length == 0 || text != Pack(receipt) || receipt.Id != "MatchVisualEffectsV1")
+				string readResult = Read(key);
+				if (readResult.Length == 0 || readResult != Pack(receipt) || receipt.Id != "MatchVisualEffectsV1")
 				{
 					return false;
 				}
@@ -559,10 +559,10 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				string text2 = read();
-				if (text2 != receipt.Original)
+				string readResult2 = read();
+				if (readResult2 != receipt.Original)
 				{
-					if (text2 != receipt.Expected)
+					if (readResult2 != receipt.Expected)
 					{
 						return false;
 					}
@@ -620,12 +620,12 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				string text = Read(Slot(row.Id, row.Target));
-				if (row.Id != "MatchVisualEffectsV1" || text != Pack(row))
+				string readResult = Read(Slot(row.Id, row.Target));
+				if (row.Id != "MatchVisualEffectsV1" || readResult != Pack(row))
 				{
 					throw new InvalidDataException("Visual receipt is not its exact canonical stored bytes");
 				}
-				return text;
+				return readResult;
 			}
 		}
 
@@ -638,12 +638,12 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				string text = PerformanceActionBackend.Read(row.Id, row.Target);
+				string readResult = PerformanceActionBackend.Read(row.Id, row.Target);
 				if (row.VisualRestored)
 				{
-					return text == row.Original;
+					return readResult == row.Original;
 				}
-				if (text != row.Original && (text != row.Expected || !PerformanceActionBackend.Write(row.Id, row.Target, row.Original) || PerformanceActionBackend.Read(row.Id, row.Target) != row.Original))
+				if (readResult != row.Original && (readResult != row.Expected || !PerformanceActionBackend.Write(row.Id, row.Target, row.Original) || PerformanceActionBackend.Read(row.Id, row.Target) != row.Original))
 				{
 					return false;
 				}

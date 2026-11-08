@@ -65,28 +65,28 @@ namespace PaviseApp
 			{
 				return Cancelled(out nativeStatus);
 			}
-			bool flag;
+			bool tryQuery;
 			try
 			{
-				flag = control.TryQuery(out snapshot);
+				tryQuery = control.TryQuery(out snapshot);
 			}
 			catch
 			{
-				flag = false;
+				tryQuery = false;
 			}
 			if (!MayContinue(mayContinue))
 			{
 				return Cancelled(out nativeStatus);
 			}
-			if (!flag || !ValidSnapshot(snapshot))
+			if (!tryQuery || !ValidSnapshot(snapshot))
 			{
 				snapshot = null;
 				nativeStatus = -1073741823;
 				return StandbyCleanerResult.QueryFailed;
 			}
-			ulong num = (ulong)options.ListMegabytes * 1048576uL;
-			ulong num2 = (ulong)options.FreeMegabytes * 1048576uL;
-			if (snapshot.ListBytes < num || snapshot.FreeBytes >= num2)
+			ulong scaledListMegabytes = (ulong)options.ListMegabytes * 1048576uL;
+			ulong scaledFreeMegabytes = (ulong)options.FreeMegabytes * 1048576uL;
+			if (snapshot.ListBytes < scaledListMegabytes || snapshot.FreeBytes >= scaledFreeMegabytes)
 			{
 				return StandbyCleanerResult.BelowThreshold;
 			}
@@ -98,18 +98,18 @@ namespace PaviseApp
 			{
 				return Cancelled(out nativeStatus);
 			}
-			bool flag2 = false;
+			bool pollCoreReady = false;
 			int nativeStatus2 = -1073741536;
 			try
 			{
-				flag2 = control.TryPurge(mayContinue, out nativeStatus2);
+				pollCoreReady = control.TryPurge(mayContinue, out nativeStatus2);
 			}
 			catch
 			{
 				nativeStatus2 = -1073741823;
 			}
 			nativeStatus = nativeStatus2;
-			if (flag2)
+			if (pollCoreReady)
 			{
 				return StandbyCleanerResult.Purged;
 			}

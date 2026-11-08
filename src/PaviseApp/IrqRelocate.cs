@@ -25,12 +25,12 @@ namespace PaviseApp
 			IrqRestoreResult irqRestoreResult = IrqRestoreResult.Run(selected, engine.TryTouchedDevices, IrqPriorityTweak.TryTouchedDevices, OwnedByOtherTweaks, (string id) => engine.RestoreOnly(new List<string> { id }), IrqPriorityTweak.RestoreOnly);
 			if (selected == null && irqRestoreResult.ScopeReadSucceeded)
 			{
-				bool flag = false;
+				bool restoreDevicesReady = false;
 				foreach (IrqDeviceRestoreResult device in irqRestoreResult.Devices)
 				{
-					flag |= device.AffinityRequested;
+					restoreDevicesReady |= device.AffinityRequested;
 				}
-				if (!flag)
+				if (!restoreDevicesReady)
 				{
 					try
 					{
@@ -135,29 +135,29 @@ namespace PaviseApp
 				return "?";
 			}
 			StringBuilder stringBuilder = new StringBuilder();
-			int num = -1;
+			int maskTextValue = -1;
 			for (int i = 0; i <= 64; i++)
 			{
-				bool flag = i < 64 && (mask & (ulong)(1L << i)) != 0;
-				if (flag && num < 0)
+				bool allConditionsMet = i < 64 && (mask & (ulong)(1L << i)) != 0;
+				if (allConditionsMet && maskTextValue < 0)
 				{
-					num = i;
+					maskTextValue = i;
 				}
-				else if (!flag && num >= 0)
+				else if (!allConditionsMet && maskTextValue >= 0)
 				{
 					if (stringBuilder.Length > 0)
 					{
 						stringBuilder.Append(',');
 					}
-					if (i - 1 == num)
+					if (i - 1 == maskTextValue)
 					{
-						stringBuilder.Append(num);
+						stringBuilder.Append(maskTextValue);
 					}
 					else
 					{
-						stringBuilder.Append(num).Append('-').Append(i - 1);
+						stringBuilder.Append(maskTextValue).Append('-').Append(i - 1);
 					}
-					num = -1;
+					maskTextValue = -1;
 				}
 			}
 			return stringBuilder.ToString();

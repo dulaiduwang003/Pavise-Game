@@ -34,8 +34,8 @@ namespace PaviseApp
 						return removed;
 					}
 					removed = 0;
-					string[] array = Settings.LoadStr("PlatformRuntimeRemovedV1", "").Split(';');
-					foreach (string id in array)
+					string[] loadStrParts = Settings.LoadStr("PlatformRuntimeRemovedV1", "").Split(';');
+					foreach (string id in loadStrParts)
 					{
 						removed |= Bit(id);
 					}
@@ -57,10 +57,10 @@ namespace PaviseApp
 
 		internal static bool Enabled(string id)
 		{
-			int num = Bit(id);
-			if (num != 0)
+			int bitResult = Bit(id);
+			if (bitResult != 0)
 			{
-				return (Mask & num) == 0;
+				return (Mask & bitResult) == 0;
 			}
 			return false;
 		}
@@ -92,12 +92,12 @@ namespace PaviseApp
 		{
 			lock (gate)
 			{
-				int num = Bit(id);
-				if (num == 0)
+				int bitResult = Bit(id);
+				if (bitResult == 0)
 				{
 					return false;
 				}
-				return Save(Mask | num);
+				return Save(Mask | bitResult);
 			}
 		}
 
@@ -113,11 +113,11 @@ namespace PaviseApp
 		{
 			List<string> list = new List<string>();
 			string[] ids = Ids;
-			foreach (string text in ids)
+			foreach (string entryText in ids)
 			{
-				if ((mask & Bit(text)) != 0)
+				if ((mask & Bit(entryText)) != 0)
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			return Settings.SaveStr("PlatformRuntimeRemovedV1", string.Join(";", list.ToArray()));
@@ -155,8 +155,8 @@ namespace PaviseApp
 				}
 				else if (procEntry.Pid > 4 && procEntry.Pid != self && procEntry.Session == session && procEntry.Creation > 0)
 				{
-					string text = WhitelistRule.NormalizeImagePath(procEntry.Path);
-					if (text.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(text)), StringComparison.OrdinalIgnoreCase))
+					string imagePath = WhitelistRule.NormalizeImagePath(procEntry.Path);
+					if (imagePath.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(imagePath)), StringComparison.OrdinalIgnoreCase))
 					{
 						dictionary2[procEntry.Pid] = procEntry;
 					}
@@ -165,17 +165,17 @@ namespace PaviseApp
 			HashSet<int> hashSet2 = new HashSet<int>(gameRoots ?? new HashSet<int>());
 			for (int j = 0; j < 24; j++)
 			{
-				bool flag = false;
+				bool collectReady = false;
 				foreach (ProcEntry value5 in dictionary2.Values)
 				{
 					ProcEntry value;
 					if (!hashSet2.Contains(value5.Pid) && hashSet2.Contains(value5.ParentPid) && RuntimePlatform(value5.Name) == null && dictionary2.TryGetValue(value5.ParentPid, out value) && value.Creation < value5.Creation)
 					{
 						hashSet2.Add(value5.Pid);
-						flag = true;
+						collectReady = true;
 					}
 				}
-				if (!flag)
+				if (!collectReady)
 				{
 					break;
 				}
@@ -186,14 +186,14 @@ namespace PaviseApp
 			}
 			foreach (ProcEntry value6 in dictionary2.Values)
 			{
-				string text2 = RuntimePlatform(value6.Name);
-				if (text2 != null)
+				string runtimePlatformResult = RuntimePlatform(value6.Name);
+				if (runtimePlatformResult != null)
 				{
-					dictionary[value6.Pid] = Owner(value6, text2);
+					dictionary[value6.Pid] = Owner(value6, runtimePlatformResult);
 					string directoryName = Path.GetDirectoryName(WhitelistRule.NormalizeImagePath(value6.Path));
-					if (FamilyBoundary.SafeFamilyDir(directoryName) && (text2 != "steam" || string.Equals(WhitelistRule.NormalizeName(value6.Name), "steam", StringComparison.OrdinalIgnoreCase)))
+					if (FamilyBoundary.SafeFamilyDir(directoryName) && (runtimePlatformResult != "steam" || string.Equals(WhitelistRule.NormalizeName(value6.Name), "steam", StringComparison.OrdinalIgnoreCase)))
 					{
-						dictionary3[directoryName] = text2;
+						dictionary3[directoryName] = runtimePlatformResult;
 					}
 				}
 				PlatformProcessOwner value2;
@@ -219,7 +219,7 @@ namespace PaviseApp
 			}
 			for (int k = 0; k < 24; k++)
 			{
-				bool flag2 = false;
+				bool collectReady2 = false;
 				foreach (ProcEntry value8 in dictionary2.Values)
 				{
 					PlatformProcessOwner value3;
@@ -227,10 +227,10 @@ namespace PaviseApp
 					if (!dictionary.ContainsKey(value8.Pid) && dictionary.TryGetValue(value8.ParentPid, out value3) && dictionary2.TryGetValue(value8.ParentPid, out value4) && value4.Creation < value8.Creation)
 					{
 						dictionary[value8.Pid] = Owner(value8, value3.Platform);
-						flag2 = true;
+						collectReady2 = true;
 					}
 				}
-				if (!flag2)
+				if (!collectReady2)
 				{
 					break;
 				}

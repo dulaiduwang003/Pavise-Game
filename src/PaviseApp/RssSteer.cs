@@ -23,12 +23,12 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				string text = Settings.LoadStr("RssSteerReceipt", "");
-				if (text.Length == 0)
+				string rssSteerReceiptValue = Settings.LoadStr("RssSteerReceipt", "");
+				if (rssSteerReceiptValue.Length == 0)
 				{
 					return true;
 				}
-				if (!RestoreWithReceipt(text))
+				if (!RestoreWithReceipt(rssSteerReceiptValue))
 				{
 					Logger.Log(Lang.T("log.rsssteer.5"));
 					return false;
@@ -66,17 +66,17 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string[] array = output.Split('\n');
-			foreach (string text in array)
+			string[] outputParts = output.Split('\n');
+			foreach (string entryText in outputParts)
 			{
-				string text2 = text.Trim();
-				if (text2 == "NONE")
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed == "NONE")
 				{
 					return "";
 				}
-				if (text2.StartsWith("RECEIPT:", StringComparison.Ordinal))
+				if (entryTextTrimmed.StartsWith("RECEIPT:", StringComparison.Ordinal))
 				{
-					return text2.Substring("RECEIPT:".Length);
+					return entryTextTrimmed.Substring("RECEIPT:".Length);
 				}
 			}
 			return null;

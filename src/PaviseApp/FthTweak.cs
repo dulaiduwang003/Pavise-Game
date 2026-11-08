@@ -138,8 +138,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = Exclusions();
-			foreach (string a in array)
+			string[] exclusionsResult = Exclusions();
+			foreach (string a in exclusionsResult)
 			{
 				if (string.Equals(a, exe, StringComparison.OrdinalIgnoreCase))
 				{
@@ -161,19 +161,19 @@ namespace PaviseApp
 						return hashSet;
 					}
 					string[] valueNames = registryKey.GetValueNames();
-					foreach (string text in valueNames)
+					foreach (string entryText in valueNames)
 					{
-						if (text.Length > 0)
+						if (entryText.Length > 0)
 						{
-							hashSet.Add(text);
+							hashSet.Add(entryText);
 						}
 					}
 					string[] subKeyNames = registryKey.GetSubKeyNames();
-					foreach (string text2 in subKeyNames)
+					foreach (string entryKey in subKeyNames)
 					{
-						if (text2.Length > 0)
+						if (entryKey.Length > 0)
 						{
-							hashSet.Add(text2);
+							hashSet.Add(entryKey);
 						}
 					}
 				}
@@ -187,30 +187,30 @@ namespace PaviseApp
 		internal static SdbVerdict ClassifySdb(string valueName, out string sdbPath)
 		{
 			sdbPath = null;
-			string text = valueName;
-			if (text.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase))
+			string valueNameSnapshot = valueName;
+			if (valueNameSnapshot.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase))
 			{
-				text = text.Substring(0, text.Length - 4);
+				valueNameSnapshot = valueNameSnapshot.Substring(0, valueNameSnapshot.Length - 4);
 			}
-			if (text.Length == 0)
+			if (valueNameSnapshot.Length == 0)
 			{
 				return SdbVerdict.Unknown;
 			}
 			try
 			{
-				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\InstalledSDB\\" + text))
+				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\InstalledSDB\\" + valueNameSnapshot))
 				{
 					if (registryKey == null)
 					{
 						return SdbVerdict.Unknown;
 					}
-					string text2 = registryKey.GetValue("DatabaseDescription") as string;
+					string getValueOffset = registryKey.GetValue("DatabaseDescription") as string;
 					sdbPath = registryKey.GetValue("DatabasePath") as string;
-					if (string.IsNullOrEmpty(text2))
+					if (string.IsNullOrEmpty(getValueOffset))
 					{
 						return SdbVerdict.Unknown;
 					}
-					return (text2.IndexOf("fault tolerant heap", StringComparison.OrdinalIgnoreCase) >= 0 || text2.IndexOf("faulttolerantheap", StringComparison.OrdinalIgnoreCase) >= 0) ? SdbVerdict.Fth : SdbVerdict.NotFth;
+					return (getValueOffset.IndexOf("fault tolerant heap", StringComparison.OrdinalIgnoreCase) >= 0 || getValueOffset.IndexOf("faulttolerantheap", StringComparison.OrdinalIgnoreCase) >= 0) ? SdbVerdict.Fth : SdbVerdict.NotFth;
 				}
 			}
 			catch
@@ -259,27 +259,27 @@ namespace PaviseApp
 						return list;
 					}
 					string[] subKeyNames = registryKey.GetSubKeyNames();
-					foreach (string text in subKeyNames)
+					foreach (string entryKey in subKeyNames)
 					{
-						using (RegistryKey registryKey2 = registryKey.OpenSubKey(text))
+						using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
 						{
 							if (registryKey2 == null)
 							{
 								continue;
 							}
 							string[] valueNames = registryKey2.GetValueNames();
-							foreach (string text2 in valueNames)
+							foreach (string entryText in valueNames)
 							{
-								if (text2.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase))
+								if (entryText.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase))
 								{
 									string sdbPath;
-									SdbVerdict sdbVerdict = ClassifySdb(text2, out sdbPath);
-									if (sdbVerdict != 0 && (sdbVerdict != SdbVerdict.Unknown || hashSet.Contains(text)))
+									SdbVerdict sdbVerdict = ClassifySdb(entryText, out sdbPath);
+									if (sdbVerdict != 0 && (sdbVerdict != SdbVerdict.Unknown || hashSet.Contains(entryKey)))
 									{
 										list.Add(new Shim
 										{
-											Exe = text,
-											ValueName = text2,
+											Exe = entryKey,
+											ValueName = entryText,
 											SdbPath = sdbPath
 										});
 									}
@@ -354,12 +354,12 @@ namespace PaviseApp
 					Logger.Log(Lang.T("log.fthtweak.1"));
 					return false;
 				}
-				int num = 0;
+				int processedCount = 0;
 				foreach (Shim item2 in list)
 				{
 					if (DropPointer(item2))
 					{
-						num++;
+						processedCount++;
 					}
 					else
 					{
@@ -367,8 +367,8 @@ namespace PaviseApp
 					}
 				}
 				InvalidateCache();
-				Logger.Log(Lang.F("log.fthtweak.3", num, string.Join(" ", list2.ToArray())));
-				return num == list.Count;
+				Logger.Log(Lang.F("log.fthtweak.3", processedCount, string.Join(" ", list2.ToArray())));
+				return processedCount == list.Count;
 			}
 		}
 
@@ -376,10 +376,10 @@ namespace PaviseApp
 		{
 			lock (lk)
 			{
-				bool flag = RestorePointers();
-				flag &= RestoreExclusions();
+				bool restorePointersSucceeded = RestorePointers();
+				restorePointersSucceeded &= RestoreExclusions();
 				InvalidateCache();
-				if (flag)
+				if (restorePointersSucceeded)
 				{
 					Logger.Log(Lang.T("log.fthtweak.4"));
 				}
@@ -387,7 +387,7 @@ namespace PaviseApp
 				{
 					Logger.Log(Lang.T("log.fthtweak.5"));
 				}
-				return flag;
+				return restorePointersSucceeded;
 			}
 		}
 
@@ -418,20 +418,20 @@ namespace PaviseApp
 							return false;
 						}
 					}
-					string[] array = value as string[];
+					string[] valueOffset = value as string[];
 					if (Settings.LoadStr("FthExclusionBak", "").Length == 0)
 					{
-						string text = ((array == null) ? "__pavise_absent__" : EncodeList(array));
-						Settings.SaveStr("FthExclusionBak", text);
-						if (Settings.LoadStr("FthExclusionBak", "") != text)
+						string encodeListResult = ((valueOffset == null) ? "__pavise_absent__" : EncodeList(valueOffset));
+						Settings.SaveStr("FthExclusionBak", encodeListResult);
+						if (Settings.LoadStr("FthExclusionBak", "") != encodeListResult)
 						{
 							return false;
 						}
 					}
 					List<string> list = new List<string>();
-					if (array != null)
+					if (valueOffset != null)
 					{
-						list.AddRange(array);
+						list.AddRange(valueOffset);
 					}
 					foreach (string ex in exes)
 					{
@@ -440,19 +440,19 @@ namespace PaviseApp
 							list.Add(ex);
 						}
 					}
-					if (array != null && ListsEqual(array, list.ToArray()))
+					if (valueOffset != null && ListsEqual(valueOffset, list.ToArray()))
 					{
 						return true;
 					}
 					registryKey.SetValue("ExclusionList", list.ToArray(), RegistryValueKind.MultiString);
-					string[] array2 = registryKey.GetValue("ExclusionList") as string[];
-					if (array2 == null)
+					string[] getValueOffset = registryKey.GetValue("ExclusionList") as string[];
+					if (getValueOffset == null)
 					{
 						return false;
 					}
 					foreach (string ex2 in exes)
 					{
-						if (!HasName(array2, ex2))
+						if (!HasName(getValueOffset, ex2))
 						{
 							return false;
 						}
@@ -468,8 +468,8 @@ namespace PaviseApp
 
 		private static bool RestoreExclusions()
 		{
-			string text = Settings.LoadStr("FthExclusionBak", "");
-			if (text.Length == 0)
+			string fthExclusionBakValue = Settings.LoadStr("FthExclusionBak", "");
+			if (fthExclusionBakValue.Length == 0)
 			{
 				return true;
 			}
@@ -481,7 +481,7 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					if (text == "__pavise_absent__")
+					if (fthExclusionBakValue == "__pavise_absent__")
 					{
 						registryKey.DeleteValue("ExclusionList", false);
 						if (registryKey.GetValue("ExclusionList") != null)
@@ -491,14 +491,14 @@ namespace PaviseApp
 					}
 					else
 					{
-						string[] array = DecodeList(text);
-						if (array == null)
+						string[] decodeListResult = DecodeList(fthExclusionBakValue);
+						if (decodeListResult == null)
 						{
 							return false;
 						}
-						registryKey.SetValue("ExclusionList", array, RegistryValueKind.MultiString);
+						registryKey.SetValue("ExclusionList", decodeListResult, RegistryValueKind.MultiString);
 						string[] a = registryKey.GetValue("ExclusionList") as string[];
-						if (!ListsEqual(a, array))
+						if (!ListsEqual(a, decodeListResult))
 						{
 							return false;
 						}
@@ -542,18 +542,18 @@ namespace PaviseApp
 					{
 						return false;
 					}
-					object[] array = new object[7] { shim.Exe, '\u001f', shim.ValueName, '\u001f', null, null, null };
-					int num = (int)valueKind;
-					array[4] = num.ToString();
-					array[5] = '\u001f';
-					array[6] = EncodeValue(value);
-					string text = string.Concat(array);
-					string text2 = Settings.LoadStr("FthCustomBak", "");
-					if (!HasBackupRecord(text2, shim.Exe, shim.ValueName))
+					object[] instanceItems = new object[7] { shim.Exe, '\u001f', shim.ValueName, '\u001f', null, null, null };
+					int valueKindSnapshot = (int)valueKind;
+					instanceItems[4] = valueKindSnapshot.ToString();
+					instanceItems[5] = '\u001f';
+					instanceItems[6] = EncodeValue(value);
+					string concatResult = string.Concat(instanceItems);
+					string fthCustomBakValue = Settings.LoadStr("FthCustomBak", "");
+					if (!HasBackupRecord(fthCustomBakValue, shim.Exe, shim.ValueName))
 					{
-						string text3 = ((text2.Length == 0) ? text : (text2 + '\u001e' + text));
-						Settings.SaveStr("FthCustomBak", text3);
-						if (Settings.LoadStr("FthCustomBak", "") != text3)
+						string concatResultOffset = ((fthCustomBakValue.Length == 0) ? concatResult : (fthCustomBakValue + '\u001e' + concatResult));
+						Settings.SaveStr("FthCustomBak", concatResultOffset);
+						if (Settings.LoadStr("FthCustomBak", "") != concatResultOffset)
 						{
 							return false;
 						}
@@ -570,68 +570,68 @@ namespace PaviseApp
 
 		private static bool RestorePointers()
 		{
-			string text = Settings.LoadStr("FthCustomBak", "");
-			if (text.Length == 0)
+			string fthCustomBakValue = Settings.LoadStr("FthCustomBak", "");
+			if (fthCustomBakValue.Length == 0)
 			{
 				return true;
 			}
-			bool flag = true;
-			string[] array = text.Split('\u001e');
-			foreach (string text2 in array)
+			bool restorePointersSucceeded = true;
+			string[] fthCustomBakValueParts = fthCustomBakValue.Split('\u001e');
+			foreach (string entryText in fthCustomBakValueParts)
 			{
-				if (text2.Length == 0)
+				if (entryText.Length == 0)
 				{
 					continue;
 				}
-				string[] array2 = text2.Split('\u001f');
-				if (array2.Length < 4)
+				string[] entryTextParts = entryText.Split('\u001f');
+				if (entryTextParts.Length < 4)
 				{
-					flag = false;
+					restorePointersSucceeded = false;
 					continue;
 				}
 				int result;
-				if (!int.TryParse(array2[2], out result))
+				if (!int.TryParse(entryTextParts[2], out result))
 				{
-					flag = false;
+					restorePointersSucceeded = false;
 					continue;
 				}
 				if (!Enum.IsDefined(typeof(RegistryValueKind), result) || result == 0)
 				{
-					flag = false;
+					restorePointersSucceeded = false;
 					continue;
 				}
-				object obj = DecodeValue(array2[3], (RegistryValueKind)result);
-				if (obj == null)
+				object decodeValueResult = DecodeValue(entryTextParts[3], (RegistryValueKind)result);
+				if (decodeValueResult == null)
 				{
-					flag = false;
+					restorePointersSucceeded = false;
 					continue;
 				}
 				try
 				{
-					using (RegistryKey registryKey = Registry.LocalMachine.CreateSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Custom\\" + array2[0]))
+					using (RegistryKey registryKey = Registry.LocalMachine.CreateSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Custom\\" + entryTextParts[0]))
 					{
 						if (registryKey == null)
 						{
-							flag = false;
+							restorePointersSucceeded = false;
 							continue;
 						}
-						registryKey.SetValue(array2[1], obj, (RegistryValueKind)result);
-						if (registryKey.GetValue(array2[1]) == null)
+						registryKey.SetValue(entryTextParts[1], decodeValueResult, (RegistryValueKind)result);
+						if (registryKey.GetValue(entryTextParts[1]) == null)
 						{
-							flag = false;
+							restorePointersSucceeded = false;
 						}
 					}
 				}
 				catch
 				{
-					flag = false;
+					restorePointersSucceeded = false;
 				}
 			}
-			if (flag)
+			if (restorePointersSucceeded)
 			{
 				Settings.Remove("FthCustomBak");
 			}
-			return flag;
+			return restorePointersSucceeded;
 		}
 
 		internal static string EncodeValue(object value)
@@ -757,13 +757,13 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = stored.Split('\u001e');
-			foreach (string text in array)
+			string[] storedParts = stored.Split('\u001e');
+			foreach (string entryText in storedParts)
 			{
-				if (text.Length != 0)
+				if (entryText.Length != 0)
 				{
-					string[] array2 = text.Split('\u001f');
-					if (array2.Length >= 2 && string.Equals(array2[0], exe, StringComparison.OrdinalIgnoreCase) && string.Equals(array2[1], valueName, StringComparison.OrdinalIgnoreCase))
+					string[] entryTextParts = entryText.Split('\u001f');
+					if (entryTextParts.Length >= 2 && string.Equals(entryTextParts[0], exe, StringComparison.OrdinalIgnoreCase) && string.Equals(entryTextParts[1], valueName, StringComparison.OrdinalIgnoreCase))
 					{
 						return true;
 					}

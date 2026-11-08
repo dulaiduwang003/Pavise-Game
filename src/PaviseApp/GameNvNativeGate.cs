@@ -64,7 +64,7 @@ namespace PaviseApp
 				throw new TimeoutException("A Pavise DRS transaction is still active");
 			}
 			Mutex mutex = null;
-			bool flag = false;
+			bool enterReady = false;
 			try
 			{
 				SecurityIdentifier user;
@@ -81,13 +81,13 @@ namespace PaviseApp
 				UserMutexSecurity.Verify(mutex.GetAccessControl(), user);
 				try
 				{
-					flag = mutex.WaitOne(3000);
+					enterReady = mutex.WaitOne(3000);
 				}
 				catch (AbandonedMutexException)
 				{
-					flag = true;
+					enterReady = true;
 				}
-				if (!flag)
+				if (!enterReady)
 				{
 					throw new TimeoutException("A Pavise DRS transaction is active in another session");
 				}
@@ -98,7 +98,7 @@ namespace PaviseApp
 			{
 				try
 				{
-					if (flag)
+					if (enterReady)
 					{
 						mutex.ReleaseMutex();
 					}

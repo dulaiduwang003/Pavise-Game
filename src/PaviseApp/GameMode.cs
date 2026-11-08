@@ -167,9 +167,9 @@ namespace PaviseApp
 					{
 						throw new InvalidOperationException("Placement pin must close on its original thread");
 					}
-					object obj = held;
+					object heldSnapshot = held;
 					held = null;
-					Monitor.Exit(obj);
+					Monitor.Exit(heldSnapshot);
 				}
 			}
 		}
@@ -283,10 +283,10 @@ namespace PaviseApp
 			internal void RequireActive()
 			{
 				RequireRecovery();
-				string text = ((Volatile.Read(ref revoked) != 0) ? "revoked" : ((Interlocked.Read(ref owner.criticalIntentEpoch) != epoch) ? "intent changed" : ((!object.ReferenceEquals(owner.criticalOriginalTarget, this)) ? "superseded" : ((!owner.enabled || owner.stopping || owner.panicReq) ? "game mode stopped" : ((!Volatile.Read(ref owner.active)) ? "session ended" : ((Interlocked.Read(ref owner.gameSessionStarts) != gameSerial) ? "another session" : (owner.ProfileStoreSaveFailed ? "profile store unavailable" : null)))))));
-				if (text != null)
+				string message = ((Volatile.Read(ref revoked) != 0) ? "revoked" : ((Interlocked.Read(ref owner.criticalIntentEpoch) != epoch) ? "intent changed" : ((!object.ReferenceEquals(owner.criticalOriginalTarget, this)) ? "superseded" : ((!owner.enabled || owner.stopping || owner.panicReq) ? "game mode stopped" : ((!Volatile.Read(ref owner.active)) ? "session ended" : ((Interlocked.Read(ref owner.gameSessionStarts) != gameSerial) ? "another session" : (owner.ProfileStoreSaveFailed ? "profile store unavailable" : null)))))));
+				if (message != null)
 				{
-					throw new OperationCanceledException("The original game-thread intent is no longer active: " + text);
+					throw new OperationCanceledException("The original game-thread intent is no longer active: " + message);
 				}
 			}
 
@@ -1336,8 +1336,8 @@ namespace PaviseApp
 			{
 				lock (sync)
 				{
-					string text = ((!enabled) ? PerformancePolicy.Text("守护已暂停", "Guard paused") : (active ? (PerformancePolicy.Text("正在守护 · ", "Guarding · ") + activeGame) : PerformancePolicy.Text("自动策略就绪 · 等待游戏", "Automatic policy ready · no active game")));
-					return text + ((envFused.Count == 0) ? "" : PerformancePolicy.Text(" · 有受限动作，查看记录", " · actions blocked; see records"));
+					string textResult = ((!enabled) ? PerformancePolicy.Text("守护已暂停", "Guard paused") : (active ? (PerformancePolicy.Text("正在守护 · ", "Guarding · ") + activeGame) : PerformancePolicy.Text("自动策略就绪 · 等待游戏", "Automatic policy ready · no active game")));
+					return textResult + ((envFused.Count == 0) ? "" : PerformancePolicy.Text(" · 有受限动作，查看记录", " · actions blocked; see records"));
 				}
 			}
 		}
@@ -1441,12 +1441,12 @@ namespace PaviseApp
 			}
 			set
 			{
-				bool flag;
+				bool matchesEnabled;
 				lock (sync)
 				{
-					flag = enabled != value;
+					matchesEnabled = enabled != value;
 					enabled = value;
-					if (flag)
+					if (matchesEnabled)
 					{
 						Interlocked.Increment(ref autoAddEpoch);
 						InvalidatePowerPlanSession();
@@ -1463,7 +1463,7 @@ namespace PaviseApp
 						InvalidateRendererHandoff();
 					}
 				}
-				if (flag)
+				if (matchesEnabled)
 				{
 					if (value)
 					{
@@ -1472,11 +1472,11 @@ namespace PaviseApp
 					}
 					SyncGameDvr();
 				}
-				if (flag && value)
+				if (matchesEnabled && value)
 				{
 					RequestFullGameDetection();
 				}
-				if (flag && value)
+				if (matchesEnabled && value)
 				{
 					RequestPolicyApply("Enabled");
 				}
@@ -1537,8 +1537,8 @@ namespace PaviseApp
 						return;
 					}
 					InvalidateEnglishInputWork();
-					bool flag = Settings.Save("GmEnglishInputV1", value);
-					englishInputOn = value && flag;
+					bool gmEnglishInputV1Enabled = Settings.Save("GmEnglishInputV1", value);
+					englishInputOn = value && gmEnglishInputV1Enabled;
 				}
 				RequestPolicyApply("EnglishInputEnabled");
 			}
@@ -1744,23 +1744,23 @@ namespace PaviseApp
 				{
 					if (!active)
 					{
-						string text = armedGameName;
-						return (text != null) ? Lang.F("st.armed", text) : Lang.T("st.mon");
+						string armedGameNameSnapshot = armedGameName;
+						return (armedGameNameSnapshot != null) ? Lang.F("st.armed", armedGameNameSnapshot) : Lang.T("st.mon");
 					}
-					long num = gameGoneSinceTicks;
-					if (num != 0)
+					long gameGoneSinceTicksSnapshot = gameGoneSinceTicks;
+					if (gameGoneSinceTicksSnapshot != 0)
 					{
-						int num2 = ExitGraceSeconds - (int)((DateTime.UtcNow.Ticks - num) / 10000000);
-						if (num2 < 0)
+						int remainingExitGraceSeconds = ExitGraceSeconds - (int)((DateTime.UtcNow.Ticks - gameGoneSinceTicksSnapshot) / 10000000);
+						if (remainingExitGraceSeconds < 0)
 						{
-							num2 = 0;
+							remainingExitGraceSeconds = 0;
 						}
-						return Lang.F("st.grace", activeGame, num2);
+						return Lang.F("st.grace", activeGame, remainingExitGraceSeconds);
 					}
-					int num3 = core.ThrottledCountCached();
+					int throttledCountCachedResult = core.ThrottledCountCached();
 					int count = boostStateVerified.Count;
-					string text2 = Lang.F("st.active", activeGame, num3);
-					return text2 + Lang.T("st.sep") + Lang.F("st.boost", count, PowerPlanStatusText);
+					string stActiveText = Lang.F("st.active", activeGame, throttledCountCachedResult);
+					return stActiveText + Lang.T("st.sep") + Lang.F("st.boost", count, PowerPlanStatusText);
 				}
 			}
 		}
@@ -1805,20 +1805,20 @@ namespace PaviseApp
 					{
 						return Lang.T("v14.boost.no.renderer");
 					}
-					string text = activeDetection.RendererName ?? activeGame ?? "Game";
+					string rendererNameOffset = activeDetection.RendererName ?? activeGame ?? "Game";
 					if (ProtectedGameRoster.Contains(activeDetection.RendererName))
 					{
-						return Lang.F("v14.boost.protected", text);
+						return Lang.F("v14.boost.protected", rendererNameOffset);
 					}
 					if (boostStateVerified.Contains(activeDetection.RendererPid))
 					{
-						return Lang.F("v14.boost.verified", text);
+						return Lang.F("v14.boost.verified", rendererNameOffset);
 					}
 					if (boostHandleStripped.Contains(activeDetection.RendererPid) || boostStateWarned.Contains(activeDetection.RendererPid))
 					{
-						return Lang.F("v14.boost.protected", text);
+						return Lang.F("v14.boost.protected", rendererNameOffset);
 					}
-					return Lang.F("v14.boost.applying", text);
+					return Lang.F("v14.boost.applying", rendererNameOffset);
 				}
 			}
 		}
@@ -2229,21 +2229,21 @@ namespace PaviseApp
 			}
 			set
 			{
-				object obj;
+				object instance;
 				switch (value)
 				{
 				default:
-					obj = "off";
+					instance = "off";
 					break;
 				case "latest":
 				case "j":
 				case "k":
-					obj = value;
+					instance = value;
 					break;
 				}
-				string text = (nvDlssMode = (string)obj);
-				Settings.SaveStr("NvDlss", text);
-				if (text == "off")
+				string message = (nvDlssMode = (string)instance);
+				Settings.SaveStr("NvDlss", message);
+				if (message == "off")
 				{
 					NvDrsTweaks.RestoreKinds(NvDrsTweaks.DlssKeys);
 				}
@@ -2611,7 +2611,7 @@ namespace PaviseApp
 			powerSessionEnding = true;
 			InvalidatePowerPlanSession();
 			RevokeCriticalThreadIntent("Deactivate");
-			bool flag = RunSessionRecoveryRoute("critical", () => StopCriticalThreads(0, "Deactivate"));
+			bool runSessionRecoveryRouteSucceeded = RunSessionRecoveryRoute("critical", () => StopCriticalThreads(0, "Deactivate"));
 			EndAutomationEvidence();
 			ResetSessionForeground();
 			InvalidateCacheWarm();
@@ -2634,7 +2634,7 @@ namespace PaviseApp
 				coreSessionPolicy = null;
 				criticalSessionPreference = null;
 			}
-            bool flag4 = RunSessionRecoveryRoute("guard", delegate
+            bool runSessionRecoveryRouteSucceeded2 = RunSessionRecoveryRoute("guard", delegate
             {
                 if (enabled && !stopping && !ProfileStoreSaveFailed) { SyncGameDvr(); return !GuardSchedulingRecoveryPending; }
                 return RestoreGuardScheduling();
@@ -2650,28 +2650,28 @@ namespace PaviseApp
 				preStagedNvPath = null;
 			}
 			ResetAdaptiveGuard();
-			bool flag5 = RunSessionRecoveryRoute("unboost", () => UnboostGames());
+			bool runSessionRecoveryRouteSucceeded3 = RunSessionRecoveryRoute("unboost", () => UnboostGames());
 			EndAutoCores();
 			slowEnvAtTicks = 0L;
-            int num = 0;
-            bool flag6 = RunSessionRecoveryRoute("background", delegate
+            int deactivateCoreValue = 0;
+            bool runSessionRecoveryRouteSucceeded4 = RunSessionRecoveryRoute("background", delegate
             {
                 List<int> list = core.PidsWith(SuppressReason.Background);
-                num += core.ReleaseReason(SuppressReason.Background);
+                deactivateCoreValue += core.ReleaseReason(SuppressReason.Background);
                 foreach (int item in list) if (core.IsThrottled(item)) return false;
                 return true;
             });
-			bool flag7 = RestoreEnv();
+			bool restoreEnvSucceeded = RestoreEnv();
 			ClearEnvRetryState();
-			if (flag5)
+			if (runSessionRecoveryRouteSucceeded3)
 			{
 				CrashGuard.ClearBoost();
 			}
-			int num2 = num + gracePreReleased;
+			int deactivateCoreValueOffset = deactivateCoreValue + gracePreReleased;
 			gracePreReleased = 0;
-			if (!quiet || num2 > 0)
+			if (!quiet || deactivateCoreValueOffset > 0)
 			{
-				Logger.Log(Lang.T("log.gamemodeboost.52") + reason + Lang.T("log.gamemodeboost.53") + num2 + Lang.T("log.gamemodeboost.54"));
+				Logger.Log(Lang.T("log.gamemodeboost.52") + reason + Lang.T("log.gamemodeboost.53") + deactivateCoreValueOffset + Lang.T("log.gamemodeboost.54"));
 			}
 			lock (sync)
 			{
@@ -2681,17 +2681,17 @@ namespace PaviseApp
 			}
 			ClearSticky();
 			NotifyExtensionSession(false);
-			bool flag8 = RunRecoveryWait("standby-worker", () => standbyCleaner == null || standbyCleaner.Drain(0));
-			bool flag9 = RunRecoveryWait("input-worker", () => DrainEnglishInput(0));
-			bool flag10 = RunRecoveryWait("cache-worker", () => cacheWarm == null || cacheWarm.Drain(0));
-			bool flag11 = RunSessionRecoveryRoute("performance-worker", () => performanceActions.WaitForSessionRestore(0));
+			bool runRecoveryWaitSucceeded = RunRecoveryWait("standby-worker", () => standbyCleaner == null || standbyCleaner.Drain(0));
+			bool runRecoveryWaitSucceeded2 = RunRecoveryWait("input-worker", () => DrainEnglishInput(0));
+			bool runRecoveryWaitSucceeded3 = RunRecoveryWait("cache-worker", () => cacheWarm == null || cacheWarm.Drain(0));
+			bool runSessionRecoveryRouteSucceeded5 = RunSessionRecoveryRoute("performance-worker", () => performanceActions.WaitForSessionRestore(0));
             bool verified = RunSessionRecoveryRoute("verify", () => EnvRestoreCompleted(true) && !SelfYield.HasResidue, "*");
-			bool flag12 = flag5 && flag7 && flag6 && flag8 && flag9 && flag10 && flag4 && flag11 && flag && reportClean && verified && !SelfYield.HasResidue;
+			bool allConditionsMet = runSessionRecoveryRouteSucceeded3 && restoreEnvSucceeded && runSessionRecoveryRouteSucceeded4 && runRecoveryWaitSucceeded && runRecoveryWaitSucceeded2 && runRecoveryWaitSucceeded3 && runSessionRecoveryRouteSucceeded2 && runSessionRecoveryRouteSucceeded5 && runSessionRecoveryRouteSucceeded && reportClean && verified && !SelfYield.HasResidue;
 			// Report failure only after bounded retries are exhausted; queued retries remain restoring.
 			RecoveryRouteSet captured = recoveryCaptureRoutes;
-			bool retrying = !flag12 && CapturingSessionRecovery && captured != null && captured.RetryScheduled;
-			RecordAutomation("session", flag12 ? "restored" : (retrying ? "restoring" : "restore-failed"));
-			return flag12;
+			bool retrying = !allConditionsMet && CapturingSessionRecovery && captured != null && captured.RetryScheduled;
+			RecordAutomation("session", allConditionsMet ? "restored" : (retrying ? "restoring" : "restore-failed"));
+			return allConditionsMet;
 		}
 
 		private sealed class CriticalAutoTopology
@@ -2824,11 +2824,11 @@ namespace PaviseApp
 			renderLaneOn = PolicyResolver.Global().RenderLane;
 			SuppressionCore.GpuDemoteEnabled = bgSuppressOn;
 			string[] envKeys = EnvKeys;
-			foreach (string text in envKeys)
+			foreach (string entryKey in envKeys)
 			{
-				if (Settings.Load("EnvFuse_" + text, false))
+				if (Settings.Load("EnvFuse_" + entryKey, false))
 				{
-					envFused.Add(text);
+					envFused.Add(entryKey);
 				}
 			}
 			int result2;
@@ -2839,113 +2839,113 @@ namespace PaviseApp
 				{
 					throw new IOException(Lang.T("t.gamemode.10"));
 				}
-				bool flag = false;
-				bool flag2 = false;
-				bool flag3 = true;
-				bool flag4 = false;
-				bool flag5 = false;
-				bool flag6 = false;
+				bool ctorReady = false;
+				bool ctorReady2 = false;
+				bool ctorReady3 = true;
+				bool ctorReady4 = false;
+				bool ctorReady5 = false;
+				bool ctorReady6 = false;
 				string a = null;
 				List<WhitelistRule> list = new List<WhitelistRule>();
 				HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				string[] array = File.ReadAllLines(whitePath);
-				foreach (string text2 in array)
+				string[] allLines = File.ReadAllLines(whitePath);
+				foreach (string entryText in allLines)
 				{
-					string text3 = text2.Trim();
-					if (text3.Length == 0 || text3.StartsWith("#"))
+					string entryTextTrimmed = entryText.Trim();
+					if (entryTextTrimmed.Length == 0 || entryTextTrimmed.StartsWith("#"))
 					{
 						continue;
 					}
-					if (string.Equals(text3, "PAVISE_WHITELIST_V4", StringComparison.Ordinal) || string.Equals(text3, "PAVISE_WHITELIST_V3", StringComparison.Ordinal) || string.Equals(text3, "PAVISE_WHITELIST_V2", StringComparison.Ordinal))
+					if (string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V3", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V2", StringComparison.Ordinal))
 					{
-						if (flag || flag4 || flag5)
+						if (ctorReady || ctorReady4 || ctorReady5)
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.11"));
 						}
-						flag = true;
-						flag3 = !string.Equals(text3, "PAVISE_WHITELIST_V4", StringComparison.Ordinal);
-						flag2 = string.Equals(text3, "PAVISE_WHITELIST_V2", StringComparison.Ordinal);
+						ctorReady = true;
+						ctorReady3 = !string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal);
+						ctorReady2 = string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V2", StringComparison.Ordinal);
 						continue;
 					}
-					if (text3.StartsWith("PAVISE_WHITELIST_END|", StringComparison.Ordinal))
+					if (entryTextTrimmed.StartsWith("PAVISE_WHITELIST_END|", StringComparison.Ordinal))
 					{
-						if (!flag || flag5)
+						if (!ctorReady || ctorReady5)
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.12"));
 						}
-						flag5 = true;
-						a = text3;
+						ctorReady5 = true;
+						a = entryTextTrimmed;
 						continue;
 					}
-					if (flag5)
+					if (ctorReady5)
 					{
 						throw new InvalidDataException(Lang.T("t.gamemode.13"));
 					}
 					WhitelistRule rule2;
-					if (flag)
+					if (ctorReady)
 					{
-						if (!WhitelistRule.TryParseVersioned(text3, out rule2))
+						if (!WhitelistRule.TryParseVersioned(entryTextTrimmed, out rule2))
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.14"));
 						}
 					}
 					else
 					{
-						if (text3.Length > 1 && text3[1] == '|' && (text3[0] == 'N' || text3[0] == 'n' || text3[0] == 'P' || text3[0] == 'p' || text3[0] == 'F' || text3[0] == 'f'))
+						if (entryTextTrimmed.Length > 1 && entryTextTrimmed[1] == '|' && (entryTextTrimmed[0] == 'N' || entryTextTrimmed[0] == 'n' || entryTextTrimmed[0] == 'P' || entryTextTrimmed[0] == 'p' || entryTextTrimmed[0] == 'F' || entryTextTrimmed[0] == 'f'))
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.15"));
 						}
-						if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, text3, out rule2))
+						if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entryTextTrimmed, out rule2))
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.16"));
 						}
 					}
-					flag4 = true;
+					ctorReady4 = true;
 					if (!hashSet.Add(rule2.Key))
 					{
 						throw new InvalidDataException(Lang.T("t.gamemode.17"));
 					}
 					list.Add(rule2);
 				}
-				if (flag && flag5)
+				if (ctorReady && ctorReady5)
 				{
 					if (!string.Equals(a, BuildWhitelistFooter(list), StringComparison.Ordinal))
 					{
 						throw new InvalidDataException(Lang.T("t.gamemode.18"));
 					}
-					flag6 = flag2;
+					ctorReady6 = ctorReady2;
 				}
 				else
 				{
-					if (flag && !flag2)
+					if (ctorReady && !ctorReady2)
 					{
 						throw new InvalidDataException(Lang.T("t.gamemode.19"));
 					}
-					if (flag)
+					if (ctorReady)
 					{
-						if (!flag4)
+						if (!ctorReady4)
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.20"));
 						}
-						flag6 = true;
+						ctorReady6 = true;
 					}
 					else
 					{
-						if (!flag4)
+						if (!ctorReady4)
 						{
 							throw new InvalidDataException(Lang.T("t.gamemode.21"));
 						}
-						flag6 = true;
+						ctorReady6 = true;
 					}
 				}
-				if (flag3)
+				if (ctorReady3)
 				{
 					hashSet.Clear();
 					foreach (WhitelistRule item in list)
 					{
 						hashSet.Add(item.Key);
 					}
-					flag6 = true;
+					ctorReady6 = true;
 				}
 				string[] presetWhitelist = SystemProcessCatalog.PresetWhitelist;
 				foreach (string value in presetWhitelist)
@@ -2954,14 +2954,14 @@ namespace PaviseApp
 					if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, value, out rule3) && hashSet.Add(rule3.Key))
 					{
 						list.Add(rule3);
-						flag6 = true;
+						ctorReady6 = true;
 					}
 				}
 				foreach (WhitelistRule item2 in list)
 				{
 					AddWhiteRuleNoSave(item2);
 				}
-				if (flag6 && !SaveWhite(list))
+				if (ctorReady6 && !SaveWhite(list))
 				{
 					Logger.Log(Lang.T("log.gamemode.24"));
 				}

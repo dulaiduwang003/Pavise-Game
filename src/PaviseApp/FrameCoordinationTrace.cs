@@ -148,16 +148,16 @@ namespace PaviseApp
         private static IntPtr Props(string name, bool start, bool presenterOnly)
         {
             int bytes = Marshal.SizeOf(typeof(Native.EventTraceProperties));
-            byte[] text = System.Text.Encoding.Unicode.GetBytes(name + "\0");
-            IntPtr p = Marshal.AllocHGlobal(bytes + text.Length);
-            Marshal.Copy(new byte[bytes + text.Length], 0, p, bytes + text.Length);
-            var value = new Native.EventTraceProperties { WnodeBufferSize = (uint)(bytes + text.Length),
+            byte[] bytes2 = System.Text.Encoding.Unicode.GetBytes(name + "\0");
+            IntPtr p = Marshal.AllocHGlobal(bytes + bytes2.Length);
+            Marshal.Copy(new byte[bytes + bytes2.Length], 0, p, bytes + bytes2.Length);
+            var value = new Native.EventTraceProperties { WnodeBufferSize = (uint)(bytes + bytes2.Length),
                 WnodeFlags = Native.WnodeFlagTracedGuid, WnodeClientContext = 1, WnodeGuid = Guid.NewGuid(),
                 BufferSize = 64, MinimumBuffers = 8, MaximumBuffers = 32, FlushTimer = 1,
                 LogFileMode = Native.EventTraceRealTimeMode | (presenterOnly ? 0u : 0x02000000u),
                 EnableFlags = start && !presenterOnly ? 0x0812u : 0u,
                 LoggerNameOffset = (uint)bytes };
-            Marshal.StructureToPtr(value, p, false); Marshal.Copy(text, 0, IntPtr.Add(p, bytes), text.Length); return p;
+            Marshal.StructureToPtr(value, p, false); Marshal.Copy(bytes2, 0, IntPtr.Add(p, bytes), bytes2.Length); return p;
         }
         internal bool Start(int pid, Native.EventRecordCallback receive)
         { return Start(pid, receive, false); }

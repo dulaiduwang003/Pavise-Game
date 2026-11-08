@@ -37,12 +37,12 @@ namespace PaviseApp
 
 		public static bool Restore()
 		{
-			bool flag = QuantumRecovery.RestoreAll();
-			if (flag && QuantumRecovery.LastWrote)
+			bool restoreAllSucceeded = QuantumRecovery.RestoreAll();
+			if (restoreAllSucceeded && QuantumRecovery.LastWrote)
 			{
 				Logger.Log(Lang.T("log.quantumtweak.7"));
 			}
-			return flag;
+			return restoreAllSucceeded;
 		}
 
 		public static bool HasRetiredModeResidue()

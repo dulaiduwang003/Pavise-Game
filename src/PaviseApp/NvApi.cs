@@ -362,13 +362,13 @@ namespace PaviseApp
 		{
 			get
 			{
-				int num = Volatile.Read(ref state);
-				if (num != 0)
+				int readResult = Volatile.Read(ref state);
+				if (readResult != 0)
 				{
-					return num > 0;
+					return readResult > 0;
 				}
-				bool flag = Probe();
-				Interlocked.CompareExchange(ref state, flag ? 1 : (-1), 0);
+				bool probeSucceeded = Probe();
+				Interlocked.CompareExchange(ref state, probeSucceeded ? 1 : (-1), 0);
 				return Volatile.Read(ref state) > 0;
 			}
 		}
@@ -617,8 +617,8 @@ namespace PaviseApp
 			try
 			{
 				RequireDrsPermit(session);
-				int num = drsDeleteSetting(session, profile, settingId);
-				return num == 0;
+				int drsDeleteSettingResult = drsDeleteSetting(session, profile, settingId);
+				return drsDeleteSettingResult == 0;
 			}
 			catch
 			{
@@ -628,13 +628,13 @@ namespace PaviseApp
 
 		internal static bool SmoothMotionSettingSupported()
 		{
-			int num = Volatile.Read(ref smoothMotionSettingSupport);
-			if (num != 0)
+			int readResult = Volatile.Read(ref smoothMotionSettingSupport);
+			if (readResult != 0)
 			{
-				return num > 0;
+				return readResult > 0;
 			}
-			bool flag = SupportsDwordSetting(2966652096u);
-			Interlocked.CompareExchange(ref smoothMotionSettingSupport, flag ? 1 : (-1), 0);
+			bool supportsDwordSettingSucceeded = SupportsDwordSetting(2966652096u);
+			Interlocked.CompareExchange(ref smoothMotionSettingSupport, supportsDwordSettingSucceeded ? 1 : (-1), 0);
 			return Volatile.Read(ref smoothMotionSettingSupport) > 0;
 		}
 
@@ -745,14 +745,14 @@ namespace PaviseApp
 			try
 			{
 				uint maxCount = 2048u;
-				uint[] array = new uint[2048];
-				if (drsEnumSettingIds(array, ref maxCount) != 0 || maxCount == 0 || maxCount > 2048)
+				uint[] numericValueItems = new uint[2048];
+				if (drsEnumSettingIds(numericValueItems, ref maxCount) != 0 || maxCount == 0 || maxCount > 2048)
 				{
 					return null;
 				}
-				uint[] array2 = new uint[maxCount];
-				Array.Copy(array, array2, (int)maxCount);
-				return array2;
+				uint[] numericValueItems2 = new uint[maxCount];
+				Array.Copy(numericValueItems, numericValueItems2, (int)maxCount);
+				return numericValueItems2;
 			}
 			catch
 			{
@@ -769,15 +769,15 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = new IntPtr[64];
+				IntPtr[] nativeHandleItems = new IntPtr[64];
 				uint count;
-				if (enumGpus(array, out count) != 0 || count == 0 || count > 64)
+				if (enumGpus(nativeHandleItems, out count) != 0 || count == 0 || count > 64)
 				{
 					return null;
 				}
-				IntPtr[] array2 = new IntPtr[count];
-				Array.Copy(array, array2, (int)count);
-				return array2;
+				IntPtr[] nativeHandleItems2 = new IntPtr[count];
+				Array.Copy(nativeHandleItems, nativeHandleItems2, (int)count);
+				return nativeHandleItems2;
 			}
 			catch
 			{
@@ -829,13 +829,13 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = new IntPtr[64];
+				IntPtr[] nativeHandleItems = new IntPtr[64];
 				uint count;
-				if (enumGpus(array, out count) != 0 || count == 0)
+				if (enumGpus(nativeHandleItems, out count) != 0 || count == 0)
 				{
 					return IntPtr.Zero;
 				}
-				return array[0];
+				return nativeHandleItems[0];
 			}
 			catch
 			{
@@ -916,12 +916,12 @@ namespace PaviseApp
 
 		public static uint DriverVersion()
 		{
-			int num = Volatile.Read(ref driverVersionCache);
-			if (num >= 0)
+			int readResult = Volatile.Read(ref driverVersionCache);
+			if (readResult >= 0)
 			{
-				return (uint)num;
+				return (uint)readResult;
 			}
-			uint num2 = 0u;
+			uint driverVersionResult = 0u;
 			EnsureExtResolved();
 			if (sysDriverVersion != null)
 			{
@@ -931,7 +931,7 @@ namespace PaviseApp
 					uint version;
 					if (sysDriverVersion(out version, intPtr) == 0)
 					{
-						num2 = version;
+						driverVersionResult = version;
 					}
 				}
 				catch
@@ -942,8 +942,8 @@ namespace PaviseApp
 					Marshal.FreeHGlobal(intPtr);
 				}
 			}
-			Interlocked.CompareExchange(ref driverVersionCache, (int)num2, -1);
-			return num2;
+			Interlocked.CompareExchange(ref driverVersionCache, (int)driverVersionResult, -1);
+			return driverVersionResult;
 		}
 	}
 }

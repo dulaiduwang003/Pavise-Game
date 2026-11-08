@@ -34,11 +34,11 @@ namespace PaviseApp
 		private void CoreDraftChanged()
 		{
 			ManualCorePlan manualCorePlan = CoreDraftPlan();
-			string text = manualCorePlan.ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
-			bool flag = manualCorePlan.Encode() != coreDraftExpected;
-			coreEditorResult.Text = ((coreSaveError == "schedule.manual.changed") ? Lang.T(coreSaveError) : ((coreSaveError != null) ? Lang.F("schedule.manual.autofailed", Lang.T(coreSaveError)) : ((text == null) ? Lang.T(coreEnableToggle.Checked ? "schedule.manual.autosaved" : "schedule.manual.savedoff") : ((coreDraftExpected == null && coreEditMatrix.Selected == 0) ? Lang.T("schedule.manual.required") : Lang.F(flag ? "schedule.manual.unsaved" : "schedule.manual.invalid", Lang.T(text))))));
-			coreEditorResult.ForeColor = ((coreSaveError != null || (text != null && (coreEditMatrix.Selected != 0 || coreDraftExpected != null))) ? Theme.Warning : Theme.Dim);
-			coreEditorResult.Visible = coreSaveError != null || text != null;
+			string validateCurrentResult = manualCorePlan.ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
+			bool matchesEncode = manualCorePlan.Encode() != coreDraftExpected;
+			coreEditorResult.Text = ((coreSaveError == "schedule.manual.changed") ? Lang.T(coreSaveError) : ((coreSaveError != null) ? Lang.F("schedule.manual.autofailed", Lang.T(coreSaveError)) : ((validateCurrentResult == null) ? Lang.T(coreEnableToggle.Checked ? "schedule.manual.autosaved" : "schedule.manual.savedoff") : ((coreDraftExpected == null && coreEditMatrix.Selected == 0) ? Lang.T("schedule.manual.required") : Lang.F(matchesEncode ? "schedule.manual.unsaved" : "schedule.manual.invalid", Lang.T(validateCurrentResult))))));
+			coreEditorResult.ForeColor = ((coreSaveError != null || (validateCurrentResult != null && (coreEditMatrix.Selected != 0 || coreDraftExpected != null))) ? Theme.Warning : Theme.Dim);
+			coreEditorResult.Visible = coreSaveError != null || validateCurrentResult != null;
 			coreEditorHelp.Text = Lang.T("schedule.manual.help");
 			SyncCoreRuntimePresentation();
 			coreIsolationToggle.Enabled = coreIsolationToggle.Checked || new ManualCorePlan(coreEditMatrix.Selected, true, coreDraftTopology).ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask) == null;
@@ -69,8 +69,8 @@ namespace PaviseApp
 			}
 			GameProfile profile = FindLibraryProfile(coreDraftProfile);
 			bool enabled = profile != null && ManualCorePlan.Parse(coreDraftExpected) != null && PolicyResolver.For(profile).AutoCoresAllowed;
-			string text = SaveCoreConfigurationWithRender(profile, coreDraftExpected, manualCorePlan, enabled);
-			if (text == null)
+			string saveCoreConfigurationWithRenderResult = SaveCoreConfigurationWithRender(profile, coreDraftExpected, manualCorePlan, enabled);
+			if (saveCoreConfigurationWithRenderResult == null)
 			{
 				coreDraftExpected = manualCorePlan.Encode();
 			}
@@ -79,7 +79,7 @@ namespace PaviseApp
 				RestoreCoreSelection();
 			}
 			SyncCoreEditor(CorePageProfile());
-			coreSaveError = text;
+			coreSaveError = saveCoreConfigurationWithRenderResult;
 			CoreDraftChanged();
 		}
 		private static string CpuDisplayName()
@@ -88,10 +88,10 @@ namespace PaviseApp
 			{
 				using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"))
 				{
-					string text = ((registryKey == null) ? null : (registryKey.GetValue("ProcessorNameString") as string));
-					if (!string.IsNullOrEmpty(text))
+					string getValueOffset = ((registryKey == null) ? null : (registryKey.GetValue("ProcessorNameString") as string));
+					if (!string.IsNullOrEmpty(getValueOffset))
 					{
-						return Regex.Replace(text, "\\s+", " ").Trim();
+						return Regex.Replace(getValueOffset, "\\s+", " ").Trim();
 					}
 				}
 			}
@@ -112,17 +112,17 @@ namespace PaviseApp
 			int smt = 0;
 			foreach (ulong core in cores)
 				if (CpuTopology.CountSetBits(core & CpuTopology.AllMask) > 1) smt++;
-			string text = cores.Length + PerformancePolicy.Text(" 物理核 · ", " physical cores · ") + logical
+			string textOffset = cores.Length + PerformancePolicy.Text(" 物理核 · ", " physical cores · ") + logical
 				+ PerformancePolicy.Text(" 逻辑核 · 当前 ", " logical CPUs · ") + smt
 				+ PerformancePolicy.Text(" 个物理核含多个逻辑线程", " physical cores currently have multiple logical threads");
 			if (!CpuTopology.CoreTypesConfirmed)
-				text += PerformancePolicy.Text(" · 核心类型未确认", " · core types unconfirmed");
-			return text;
+				textOffset += PerformancePolicy.Text(" · 核心类型未确认", " · core types unconfirmed");
+			return textOffset;
 		}
 		private void ClearSuspectReservedCores()
 		{
-			ulong num = LegacyReservedCores.Suspect();
-			if (num != 0 && PaviseDialog.Confirm(this, Lang.T("schedule.auto.reserved.clear"), Lang.F("schedule.auto.reserved.confirm", CpuTopology.DescribeMask(num)), DlgKind.Warn))
+			ulong suspectResult = LegacyReservedCores.Suspect();
+			if (suspectResult != 0 && PaviseDialog.Confirm(this, Lang.T("schedule.auto.reserved.clear"), Lang.F("schedule.auto.reserved.confirm", CpuTopology.DescribeMask(suspectResult)), DlgKind.Warn))
 			{
 				if (!LegacyReservedCores.ClearSuspect())
 				{
@@ -170,25 +170,25 @@ namespace PaviseApp
 		}
 		private ulong CoreShortcutTarget(CoreQuickChoice choice)
 		{
-			ulong num = CpuTopology.AllMask & ~(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
+			ulong allMaskMask = CpuTopology.AllMask & ~(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
 			if (choice.Threads != 0)
 			{
-				return CoreShortcutThreads(coreEditMatrix.Selected, num, CpuTopology.PhysicalCoreMasks(), choice.Threads == 2);
+				return CoreShortcutThreads(coreEditMatrix.Selected, allMaskMask, CpuTopology.PhysicalCoreMasks(), choice.Threads == 2);
 			}
-			return choice.Mask & num;
+			return choice.Mask & allMaskMask;
 		}
 		internal static ulong CoreShortcutThreads(ulong selected, ulong available, ulong[] physical, bool includeSiblings)
 		{
-			ulong num = 0uL;
-			foreach (ulong num2 in physical)
+			ulong coreShortcutThreadsResult = 0uL;
+			foreach (ulong numericValueEntry in physical)
 			{
-				ulong num3 = num2 & selected & available;
-				if (num3 != 0)
+				ulong availableMask = numericValueEntry & selected & available;
+				if (availableMask != 0)
 				{
-					num |= (includeSiblings ? (num2 & available) : (num3 & (~num3 + 1)));
+					coreShortcutThreadsResult |= (includeSiblings ? (numericValueEntry & available) : (availableMask & (~availableMask + 1)));
 				}
 			}
-			return num;
+			return coreShortcutThreadsResult;
 		}
 		private static string ThreadUi(string zh, string en)
 		{
@@ -245,58 +245,58 @@ namespace PaviseApp
 				return ThreadUi("原会话恢复待办：新绑定被阻止。", "An earlier session has recovery pending; new affinity is blocked.") + "\n" + criticalThreadUiState.Detail;
 			}
 			long nowTicks = AutoCores.NowTicks;
-			bool flag = criticalThreadUiState.SnapshotTicks > 0 && nowTicks >= criticalThreadUiState.SnapshotTicks && nowTicks - criticalThreadUiState.SnapshotTicks <= 65000000;
+			bool allConditionsMet = criticalThreadUiState.SnapshotTicks > 0 && nowTicks >= criticalThreadUiState.SnapshotTicks && nowTicks - criticalThreadUiState.SnapshotTicks <= 65000000;
 			CriticalThreadRule criticalThreadRule = CriticalThreadRule.ParseForRuntime(criticalThreadExpected);
-			bool flag2 = criticalThreadRule != null && criticalThreadRule.Automatic && !criticalThreadUiState.Applied;
-			string text = (criticalThreadUiState.Pending ? ThreadUi("恢复待办：新绑定被阻止。", "Recovery pending: new affinity is blocked.") : ((criticalThreadUiState.State == "off" || criticalThreadUiState.State == "waiting-game" || flag2) ? criticalThreadUiState.StateText : ((!flag) ? ThreadUi("运行快照待复核；当前硬绑定未确认。", "Runtime snapshot needs rechecking; current affinity is unconfirmed.") : criticalThreadUiState.StateText)));
-			if (!flag && criticalThreadUiState.SnapshotTicks > 0)
+			bool allConditionsMet2 = criticalThreadRule != null && criticalThreadRule.Automatic && !criticalThreadUiState.Applied;
+			string threadUiResult = (criticalThreadUiState.Pending ? ThreadUi("恢复待办：新绑定被阻止。", "Recovery pending: new affinity is blocked.") : ((criticalThreadUiState.State == "off" || criticalThreadUiState.State == "waiting-game" || allConditionsMet2) ? criticalThreadUiState.StateText : ((!allConditionsMet) ? ThreadUi("运行快照待复核；当前硬绑定未确认。", "Runtime snapshot needs rechecking; current affinity is unconfirmed.") : criticalThreadUiState.StateText)));
+			if (!allConditionsMet && criticalThreadUiState.SnapshotTicks > 0)
 			{
-				text = text + "\n" + ThreadUi("上次状态：", "Previous status: ") + criticalThreadUiState.StateText;
+				threadUiResult = threadUiResult + "\n" + ThreadUi("上次状态：", "Previous status: ") + criticalThreadUiState.StateText;
 			}
-			if (flag && criticalThreadUiState.Applied)
+			if (allConditionsMet && criticalThreadUiState.Applied)
 			{
-				text = text + "\n" + ThreadUi("最近原生回读已匹配；不代表性能收益。", "Last native readback matched; this does not prove a performance gain.");
+				threadUiResult = threadUiResult + "\n" + ThreadUi("最近原生回读已匹配；不代表性能收益。", "Last native readback matched; this does not prove a performance gain.");
 			}
-			string text2 = ThreadUi("运行状态（缓存快照）", "Runtime state (cached snapshot)") + "\n" + text;
+			string threadUiResultOffset = ThreadUi("运行状态（缓存快照）", "Runtime state (cached snapshot)") + "\n" + threadUiResult;
 			if (criticalThreadUiState.SessionActive && criticalThreadRule != null && criticalThreadRule.Encode() != criticalThreadUiState.RuleSignature)
 			{
-				text2 = text2 + "\n" + ThreadUi("本局策略与新保存规则不同；保存不等于已经应用。", "The session policy differs from the saved rule; saving does not mean it has been applied.");
+				threadUiResultOffset = threadUiResultOffset + "\n" + ThreadUi("本局策略与新保存规则不同；保存不等于已经应用。", "The session policy differs from the saved rule; saving does not mean it has been applied.");
 			}
-			object obj = text2;
-			text2 = string.Concat(obj, "\n", ThreadUi("候选数：", "Candidates: "), criticalThreadUiState.Candidates);
+			object instance = threadUiResultOffset;
+			threadUiResultOffset = string.Concat(instance, "\n", ThreadUi("候选数：", "Candidates: "), criticalThreadUiState.Candidates);
 			if (!string.IsNullOrEmpty(criticalThreadUiState.CoverageText))
 			{
-				text2 = text2 + "\n" + (flag ? "" : ThreadUi("上次覆盖：", "Previous coverage: ")) + criticalThreadUiState.CoverageText;
+				threadUiResultOffset = threadUiResultOffset + "\n" + (allConditionsMet ? "" : ThreadUi("上次覆盖：", "Previous coverage: ")) + criticalThreadUiState.CoverageText;
 			}
-			string text3 = ((criticalThreadUiState.SnapshotTicks > 0) ? criticalThreadUiState.CouplingText : "");
-			if (!string.IsNullOrEmpty(text3))
+			string couplingText = ((criticalThreadUiState.SnapshotTicks > 0) ? criticalThreadUiState.CouplingText : "");
+			if (!string.IsNullOrEmpty(couplingText))
 			{
-				text2 = text2 + "\n" + ((flag && !criticalThreadUiState.Pending && criticalThreadUiState.SessionActive) ? "" : ThreadUi("上次提优关系：", "Previous thread boost relation: ")) + text3;
+				threadUiResultOffset = threadUiResultOffset + "\n" + ((allConditionsMet && !criticalThreadUiState.Pending && criticalThreadUiState.SessionActive) ? "" : ThreadUi("上次提优关系：", "Previous thread boost relation: ")) + couplingText;
 			}
 			if (criticalThreadUiState.RequestedWorkerAvoid)
 			{
-				text2 = text2 + "\n" + ((criticalThreadUiState.SnapshotTicks > 0) ? (ThreadUi("工作线程观测数（快照）：", "Observed workers (snapshot): ") + criticalThreadUiState.Workers) : ThreadUi("工作线程避让尚未核验。", "Worker avoidance has not been verified."));
+				threadUiResultOffset = threadUiResultOffset + "\n" + ((criticalThreadUiState.SnapshotTicks > 0) ? (ThreadUi("工作线程观测数（快照）：", "Observed workers (snapshot): ") + criticalThreadUiState.Workers) : ThreadUi("工作线程避让尚未核验。", "Worker avoidance has not been verified."));
 				if (criticalThreadUiState.WorkerMask != 0)
 				{
-					text2 = text2 + "\n" + ThreadUi("工作线程目标范围（快照）：", "Worker target range (snapshot): ") + CpuTopology.DescribeMask(criticalThreadUiState.WorkerMask);
+					threadUiResultOffset = threadUiResultOffset + "\n" + ThreadUi("工作线程目标范围（快照）：", "Worker target range (snapshot): ") + CpuTopology.DescribeMask(criticalThreadUiState.WorkerMask);
 				}
 			}
 			else if (criticalThreadUiState.Coverage != CriticalThreadCoverageState.CandidatesOnly)
 			{
-				text2 = text2 + "\n" + ThreadUi("该游戏进程的其他线程：未请求限制。", "Other threads in this game process: no restrictions requested.");
+				threadUiResultOffset = threadUiResultOffset + "\n" + ThreadUi("该游戏进程的其他线程：未请求限制。", "Other threads in this game process: no restrictions requested.");
 			}
 			string[] candidateLabels = criticalThreadUiState.CandidateLabels;
 			ulong[] candidateMasks = criticalThreadUiState.CandidateMasks;
 			for (int i = 0; i < candidateMasks.Length; i++)
 			{
-				object obj2 = text2;
-				text2 = string.Concat(obj2, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
+				object instance2 = threadUiResultOffset;
+				threadUiResultOffset = string.Concat(instance2, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
 			}
 			if (!string.IsNullOrEmpty(criticalThreadUiState.Detail))
 			{
-				text2 = text2 + "\n" + criticalThreadUiState.Detail;
+				threadUiResultOffset = threadUiResultOffset + "\n" + criticalThreadUiState.Detail;
 			}
-			return text2;
+			return threadUiResultOffset;
 		}
 		private void SaveCriticalThreadSwitch(bool enabled)
 		{
@@ -340,21 +340,21 @@ namespace PaviseApp
 		{
 			if (!cell.IsEmpty && coreMatrixViewport != null)
 			{
-				int num = Math.Max(0, -coreMatrixViewport.AutoScrollPosition.Y);
-				int val = num;
-				int num2 = coreMatrixViewport.ClientSize.Height;
+				int lowerBound = Math.Max(0, -coreMatrixViewport.AutoScrollPosition.Y);
+				int val = lowerBound;
+				int height = coreMatrixViewport.ClientSize.Height;
 				int top = cell.Top;
 				int bottom = cell.Bottom;
-				if (top < num)
+				if (top < lowerBound)
 				{
 					val = Math.Max(0, top - Theme.S(4));
 				}
-				else if (bottom > num + num2)
+				else if (bottom > lowerBound + height)
 				{
-					val = bottom - num2 + Theme.S(4);
+					val = bottom - height + Theme.S(4);
 				}
 				val = Math.Min(val, DockScrollLimit(coreMatrixViewport));
-				if (val != num)
+				if (val != lowerBound)
 				{
 					coreMatrixViewport.AutoScrollPosition = new Point(0, val);
 				}
@@ -366,10 +366,10 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			float num = Math.Max(0.01f, coreLayoutScale);
+			float coreLayoutScaleLimit = Math.Max(0.01f, coreLayoutScale);
 			CoreViewState coreViewState = new CoreViewState();
-			coreViewState.MatrixY = (float)Math.Max(0, -coreMatrixViewport.AutoScrollPosition.Y) / num;
-			coreViewState.RailY = (float)Math.Max(0, -coreRightRail.AutoScrollPosition.Y) / num;
+			coreViewState.MatrixY = (float)Math.Max(0, -coreMatrixViewport.AutoScrollPosition.Y) / coreLayoutScaleLimit;
+			coreViewState.RailY = (float)Math.Max(0, -coreRightRail.AutoScrollPosition.Y) / coreLayoutScaleLimit;
 			return coreViewState;
 		}
 		private void RestoreCoreViewState(CoreViewState state)

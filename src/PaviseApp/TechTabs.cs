@@ -175,19 +175,19 @@ namespace PaviseApp
 
 		protected override void OnFrame(object s, EventArgs e)
 		{
-			bool flag = StepBusy();
+			bool stepBusySucceeded = StepBusy();
 			if (selection.Value != selection.Target)
 			{
 				if (!CanAnimateSelection)
 				{
 					selection.Set(idx);
-					flag = true;
+					stepBusySucceeded = true;
 				}
 				else
 				{
 					if (selection.Step())
 					{
-						flag = true;
+						stepBusySucceeded = true;
 					}
 					if (Math.Abs(selection.Value - selection.Target) * (float)(TabW + TabGap) < 0.75f)
 					{
@@ -199,10 +199,10 @@ namespace PaviseApp
 			{
 				if (glow[i].Step())
 				{
-					flag = true;
+					stepBusySucceeded = true;
 				}
 			}
-			if (flag)
+			if (stepBusySucceeded)
 			{
 				Invalidate();
 			}
@@ -227,17 +227,17 @@ namespace PaviseApp
 
 		public void SetHot(bool[] value)
 		{
-			bool flag = false;
+			bool setHotReady = false;
 			for (int i = 0; i < hot.Length; i++)
 			{
-				bool flag2 = value != null && i < value.Length && value[i];
-				if (hot[i] != flag2)
+				bool allConditionsMet = value != null && i < value.Length && value[i];
+				if (hot[i] != allConditionsMet)
 				{
-					hot[i] = flag2;
-					flag = true;
+					hot[i] = allConditionsMet;
+					setHotReady = true;
 				}
 			}
-			if (flag)
+			if (setHotReady)
 			{
 				Invalidate();
 			}
@@ -271,10 +271,10 @@ namespace PaviseApp
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
-			int num = HitIndex(e.Location);
-			if (num != hoverIdx)
+			int hitIndexResult = HitIndex(e.Location);
+			if (hitIndexResult != hoverIdx)
 			{
-				hoverIdx = num;
+				hoverIdx = hitIndexResult;
 				SyncGlow();
 				Invalidate();
 			}
@@ -332,12 +332,12 @@ namespace PaviseApp
 			base.OnKeyDown(e);
 			if (!e.Handled && e.Modifiers == Keys.None)
 			{
-				int num = DsKeys.NavigateHorizontal(e.KeyCode, idx, labels.Length);
-				if (num >= 0)
+				int navigateHorizontalResult = DsKeys.NavigateHorizontal(e.KeyCode, idx, labels.Length);
+				if (navigateHorizontalResult >= 0)
 				{
 					e.Handled = true;
 					e.SuppressKeyPress = true;
-					Activate(num);
+					Activate(navigateHorizontalResult);
 				}
 			}
 		}
@@ -360,17 +360,17 @@ namespace PaviseApp
 				return;
 			}
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
-			int num = Theme.S(9);
+			int scaledDimension = Theme.S(9);
 			for (int i = 0; i < labels.Length; i++)
 			{
 				Rectangle r = TabRect(i);
 				r.Width--;
 				r.Height--;
-				float num2 = GlowAt(i);
-				DsPaint.TechFrame(graphics, r, num, Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.CardHover, num2)), Col.Lerp(Theme.Stroke, Theme.StrokeHi, num2));
-				using (Pen pen = new Pen(Col.Alpha(Theme.Accent, (int)(70f + 60f * num2)), DsSpace.Line(1)))
+				float glowAtResult = GlowAt(i);
+				DsPaint.TechFrame(graphics, r, scaledDimension, Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.CardHover, glowAtResult)), Col.Lerp(Theme.Stroke, Theme.StrokeHi, glowAtResult));
+				using (Pen pen = new Pen(Col.Alpha(Theme.Accent, (int)(70f + 60f * glowAtResult)), DsSpace.Line(1)))
 				{
-					graphics.DrawLine(pen, r.Right - num, r.Top, r.Right, r.Top + num);
+					graphics.DrawLine(pen, r.Right - scaledDimension, r.Top, r.Right, r.Top + scaledDimension);
 				}
 			}
 			Rectangle r2 = Rectangle.Empty;
@@ -380,14 +380,14 @@ namespace PaviseApp
 				r2.X = (int)Math.Round(selection.Value * (float)(TabW + TabGap));
 				r2.Width--;
 				r2.Height--;
-				DsPaint.TechFrame(graphics, r2, num, Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.Accent, 0.16f)), Col.Alpha(Theme.Accent, 220));
+				DsPaint.TechFrame(graphics, r2, scaledDimension, Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.Accent, 0.16f)), Col.Alpha(Theme.Accent, 220));
 				using (Pen pen2 = new Pen(Theme.Accent, DsSpace.Line(2)))
 				{
-					graphics.DrawLine(pen2, r2.Left, r2.Top + num, r2.Left, r2.Bottom - num);
+					graphics.DrawLine(pen2, r2.Left, r2.Top + scaledDimension, r2.Left, r2.Bottom - scaledDimension);
 				}
 				using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 200), DsSpace.Line(1)))
 				{
-					graphics.DrawLine(pen3, r2.Right - num, r2.Top, r2.Right, r2.Top + num);
+					graphics.DrawLine(pen3, r2.Right - scaledDimension, r2.Top, r2.Right, r2.Top + scaledDimension);
 				}
 			}
 			for (int j = 0; j < labels.Length; j++)
@@ -395,13 +395,13 @@ namespace PaviseApp
 				Rectangle rectangle = TabRect(j);
 				rectangle.Width--;
 				rectangle.Height--;
-				bool flag = j == idx;
-				string text = (j + 1).ToString("00");
+				bool matchesJ = j == idx;
+				string text2 = (j + 1).ToString("00");
 				Font font = DsType.Mono(DsMono.TabNumber);
-				Size size = TextRenderer.MeasureText(graphics, text, font, Size.Empty, TextFormatFlags.NoPadding);
-				int num3 = rectangle.Left + Theme.S(14);
-				TextRenderer.DrawText(graphics, text, font, new Rectangle(num3, rectangle.Top, size.Width, rectangle.Height), flag ? Theme.Accent : Theme.Faint, TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-				TextRenderer.DrawText(graphics, labels[j], DsType.Font(DsText.Label, flag), new Rectangle(num3 + size.Width + Theme.S(7), rectangle.Top, rectangle.Right - num3 - size.Width - Theme.S(10), rectangle.Height), flag ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				Size size = TextRenderer.MeasureText(graphics, text2, font, Size.Empty, TextFormatFlags.NoPadding);
+				int leftOffset = rectangle.Left + Theme.S(14);
+				TextRenderer.DrawText(graphics, text2, font, new Rectangle(leftOffset, rectangle.Top, size.Width, rectangle.Height), matchesJ ? Theme.Accent : Theme.Faint, TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				TextRenderer.DrawText(graphics, labels[j], DsType.Font(DsText.Label, matchesJ), new Rectangle(leftOffset + size.Width + Theme.S(7), rectangle.Top, rectangle.Right - leftOffset - size.Width - Theme.S(10), rectangle.Height), matchesJ ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 				if (j < hot.Length && hot[j])
 				{
 					Rectangle rect = new Rectangle(rectangle.Left + Theme.S(6), rectangle.Top + Theme.S(5), Theme.S(5), Theme.S(5));
@@ -413,8 +413,8 @@ namespace PaviseApp
 			}
 			if (idx < hints.Length && !string.IsNullOrEmpty(hints[idx]))
 			{
-				int num4 = labels.Length * (TabW + TabGap);
-				Rectangle bounds = new Rectangle(num4 + Theme.S(8), 0, base.Width - num4 - Theme.S(10), base.Height);
+				int scaledLength = labels.Length * (TabW + TabGap);
+				Rectangle bounds = new Rectangle(scaledLength + Theme.S(8), 0, base.Width - scaledLength - Theme.S(10), base.Height);
 				if (bounds.Width > Theme.S(60))
 				{
 					TextRenderer.DrawText(graphics, hints[idx], DsType.Font(DsText.Hint), bounds, Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);

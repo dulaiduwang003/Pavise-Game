@@ -18,9 +18,9 @@ namespace PaviseApp
 
 		internal void Record(long start)
 		{
-			long num = Math.Max(0L, AutoCores.NowTicks - start);
-			TotalTicks += num;
-			MaxMs = Math.Max(MaxMs, (double)num / 10000.0);
+			long lowerBound = Math.Max(0L, AutoCores.NowTicks - start);
+			TotalTicks += lowerBound;
+			MaxMs = Math.Max(MaxMs, (double)lowerBound / 10000.0);
 		}
 	}
 }

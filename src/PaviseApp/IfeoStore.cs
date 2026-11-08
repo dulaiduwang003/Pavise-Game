@@ -28,12 +28,12 @@ namespace PaviseApp
 		public static void RemoveFromList(string listKey, string exe)
 		{
 			List<string> list = new List<string>();
-			string[] array = ParseList(Settings.LoadStr(listKey, ""));
-			foreach (string text in array)
+			string[] list2 = ParseList(Settings.LoadStr(listKey, ""));
+			foreach (string entryText in list2)
 			{
-				if (!string.Equals(text, exe, StringComparison.OrdinalIgnoreCase))
+				if (!string.Equals(entryText, exe, StringComparison.OrdinalIgnoreCase))
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			Settings.SaveStr(listKey, string.Join(";", list.ToArray()));

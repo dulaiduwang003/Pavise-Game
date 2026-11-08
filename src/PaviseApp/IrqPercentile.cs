@@ -10,26 +10,26 @@ namespace PaviseApp
 			{
 				return maxUs;
 			}
-			long num = 0L;
-			foreach (long num2 in buckets)
+			long numericValue = 0L;
+			foreach (long numericValueEntry in buckets)
 			{
-				num += num2;
+				numericValue += numericValueEntry;
 			}
-			if (num <= 0)
+			if (numericValue <= 0)
 			{
 				return maxUs;
 			}
-			long num3 = (long)Math.Ceiling((double)num * q);
-			long num4 = 0L;
+			long roundedValue = (long)Math.Ceiling((double)numericValue * q);
+			long numericValue2 = 0L;
 			for (int j = 0; j < buckets.Length; j++)
 			{
-				num4 += buckets[j];
-				if (num4 >= num3)
+				numericValue2 += buckets[j];
+				if (numericValue2 >= roundedValue)
 				{
-					double num5 = ((j < InterruptAttribution.BucketUpperUs.Length) ? InterruptAttribution.BucketUpperUs[j] : double.MaxValue);
-					if (!double.IsInfinity(num5) && num5 != double.MaxValue)
+					double maxValue = ((j < InterruptAttribution.BucketUpperUs.Length) ? InterruptAttribution.BucketUpperUs[j] : double.MaxValue);
+					if (!double.IsInfinity(maxValue) && maxValue != double.MaxValue)
 					{
-						return Math.Min(num5, maxUs);
+						return Math.Min(maxValue, maxUs);
 					}
 					return maxUs;
 				}

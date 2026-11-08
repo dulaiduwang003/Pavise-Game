@@ -90,15 +90,15 @@ namespace PaviseApp
 
 		public static string[] VisibleChoices()
 		{
-			PerformancePreset[] array = Order();
-			string[] array2 = new string[array.Length];
-			for (int i = 0; i < array.Length; i++)
+			PerformancePreset[] orderResult = Order();
+			string[] textEntries = new string[orderResult.Length];
+			for (int i = 0; i < orderResult.Length; i++)
 			{
-				int num = i;
-				int num2 = (int)array[i];
-				array2[num] = num2.ToString(CultureInfo.InvariantCulture);
+				int iSnapshot = i;
+				int visibleChoicesValue = (int)orderResult[i];
+				textEntries[iSnapshot] = visibleChoicesValue.ToString(CultureInfo.InvariantCulture);
 			}
-			return array2;
+			return textEntries;
 		}
 
 		public static PerformancePreset[] VisibleOrder()

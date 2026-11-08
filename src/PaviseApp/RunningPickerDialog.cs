@@ -436,11 +436,11 @@ namespace PaviseApp
 
 		private void ApplyFilter()
 		{
-			string text = search.Text.Trim();
+			string textTrimmed = search.Text.Trim();
 			shown.Clear();
 			foreach (Entry item in all)
 			{
-				if (text.Length <= 0 || item.Title.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0 || item.Path.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0)
+				if (textTrimmed.Length <= 0 || item.Title.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0 || item.Path.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0)
 				{
 					shown.Add(item);
 				}
@@ -460,23 +460,23 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = list.IndexFromPoint(e.Location);
-			if (num < 0 || num >= shown.Count)
+			int indexFromPointResult = list.IndexFromPoint(e.Location);
+			if (indexFromPointResult < 0 || indexFromPointResult >= shown.Count)
 			{
 				return;
 			}
-			shown[num].Checked = !shown[num].Checked;
+			shown[indexFromPointResult].Checked = !shown[indexFromPointResult].Checked;
 			list.Invalidate();
-			int num2 = 0;
+			int processedCount = 0;
 			foreach (Entry item in all)
 			{
 				if (item.Checked)
 				{
-					num2++;
+					processedCount++;
 				}
 			}
-			confirm.Text = ((num2 > 0) ? Lang.F("white.pick.add.n", num2) : confirmLabel);
-			confirm.Enabled = num2 > 0;
+			confirm.Text = ((processedCount > 0) ? Lang.F("white.pick.add.n", processedCount) : confirmLabel);
+			confirm.Enabled = processedCount > 0;
 			confirm.Invalidate();
 		}
 
@@ -490,13 +490,13 @@ namespace PaviseApp
 			Graphics graphics = e.Graphics;
 			graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			Rectangle bounds = e.Bounds;
-			bool flag = (e.State & DrawItemState.Selected) != 0 || e.Index == Theme.HoverIndex(list);
-			using (SolidBrush brush = new SolidBrush(entry.Checked ? Theme.Sel : (flag ? Theme.CardHover : Theme.Card)))
+			bool anyConditionMet = (e.State & DrawItemState.Selected) != 0 || e.Index == Theme.HoverIndex(list);
+			using (SolidBrush brush = new SolidBrush(entry.Checked ? Theme.Sel : (anyConditionMet ? Theme.CardHover : Theme.Card)))
 			{
 				graphics.FillRectangle(brush, bounds);
 			}
-			int num = Theme.S(16);
-			Rectangle r = new Rectangle(bounds.Left + Theme.S(14), bounds.Top + (bounds.Height - num) / 2, num, num);
+			int scaledDimension = Theme.S(16);
+			Rectangle r = new Rectangle(bounds.Left + Theme.S(14), bounds.Top + (bounds.Height - scaledDimension) / 2, scaledDimension, scaledDimension);
 			using (GraphicsPath path = Theme.Rounded(r, Theme.S(4)))
 			{
 				using (SolidBrush brush2 = new SolidBrush(entry.Checked ? Theme.Accent : Theme.Bg))
@@ -520,19 +520,19 @@ namespace PaviseApp
 					});
 				}
 			}
-			int num2 = Theme.S(26);
-			Rectangle rect = new Rectangle(r.Right + Theme.S(12), bounds.Top + (bounds.Height - num2) / 2, num2, num2);
+			int scaledDimension2 = Theme.S(26);
+			Rectangle rect = new Rectangle(r.Right + Theme.S(12), bounds.Top + (bounds.Height - scaledDimension2) / 2, scaledDimension2, scaledDimension2);
 			if (entry.Icon != null)
 			{
 				graphics.DrawImage(entry.Icon, rect);
 			}
-			int num3 = Theme.S(90);
-			int num4 = rect.Right + Theme.S(12);
-			int num5 = bounds.Right - num4 - num3 - Theme.S(24);
-			TextRenderer.DrawText(graphics, entry.Title, Theme.UI(9.2f, true), new Rectangle(num4, bounds.Top + Theme.S(6), num5, Theme.S(20)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-			TextRenderer.DrawText(graphics, entry.Path, Theme.UI(7.6f, false), new Rectangle(num4, bounds.Top + Theme.S(25), num5, Theme.S(18)), Theme.Faint, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
-			string text = FormatMemory(entry.Memory) + ((entry.Count > 1) ? (" " + Lang.F("white.pick.procs", entry.Count)) : "");
-			TextRenderer.DrawText(graphics, text, Theme.UI(7.8f, false), new Rectangle(bounds.Right - num3 - Theme.S(14), bounds.Top, num3, bounds.Height), Theme.Dim, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+			int scaledDimension3 = Theme.S(90);
+			int rightOffset = rect.Right + Theme.S(12);
+			int remainingS = bounds.Right - rightOffset - scaledDimension3 - Theme.S(24);
+			TextRenderer.DrawText(graphics, entry.Title, Theme.UI(9.2f, true), new Rectangle(rightOffset, bounds.Top + Theme.S(6), remainingS, Theme.S(20)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+			TextRenderer.DrawText(graphics, entry.Path, Theme.UI(7.6f, false), new Rectangle(rightOffset, bounds.Top + Theme.S(25), remainingS, Theme.S(18)), Theme.Faint, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
+			string formatMemoryOffset = FormatMemory(entry.Memory) + ((entry.Count > 1) ? (" " + Lang.F("white.pick.procs", entry.Count)) : "");
+			TextRenderer.DrawText(graphics, formatMemoryOffset, Theme.UI(7.8f, false), new Rectangle(bounds.Right - scaledDimension3 - Theme.S(14), bounds.Top, scaledDimension3, bounds.Height), Theme.Dim, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
 		}
 
 		internal static string FormatMemory(long bytes)

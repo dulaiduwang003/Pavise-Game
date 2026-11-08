@@ -40,17 +40,17 @@ namespace PaviseApp
         {
             lock (gate)
             {
-                var text = new StringBuilder("samples=" + samples + " candidateAudits=" + audits
+                var stringBuilder = new StringBuilder("samples=" + samples + " candidateAudits=" + audits
                     + " forwardBatches=" + forwardBatches + " maxMs=" + Milliseconds(maxTicks));
                 for (int index = 0; index < count; index++)
                 {
                     Entry item = recent[(next - count + index + recent.Length) % recent.Length];
-                    text.Append(" | ").Append(new DateTime(item.LocalTicks).ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture))
+                    stringBuilder.Append(" | ").Append(new DateTime(item.LocalTicks).ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture))
                         .Append(' ').Append(item.Stage).Append('/').Append(item.Result).Append(" pid=").Append(item.Pid)
                         .Append(' ').Append(Milliseconds(item.ElapsedTicks)).Append("ms");
-                    if (item.ForwardAttempt) text.Append(" forward");
+                    if (item.ForwardAttempt) stringBuilder.Append(" forward");
                 }
-                return text.ToString();
+                return stringBuilder.ToString();
             }
         }
 

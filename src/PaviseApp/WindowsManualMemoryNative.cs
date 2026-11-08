@@ -44,9 +44,9 @@ namespace PaviseApp
 			public bool FileCache(UIntPtr minimum, UIntPtr maximum, uint flags, out int error)
 			{
 				RuntimeOnly();
-				bool flag = SetSystemFileCacheSize(minimum, maximum, flags);
-				error = ((!flag) ? Marshal.GetLastWin32Error() : 0);
-				return flag;
+				bool setSystemFileCacheSizeSucceeded = SetSystemFileCacheSize(minimum, maximum, flags);
+				error = ((!setSystemFileCacheSizeSucceeded) ? Marshal.GetLastWin32Error() : 0);
+				return setSystemFileCacheSizeSucceeded;
 			}
 
 			public int EmptyInformation(int informationClass)
@@ -118,8 +118,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			ulong num = information.PageSize.ToUInt64();
-			if (num == 0 || (num & (num - 1)) != 0)
+			ulong toUInt64Result = information.PageSize.ToUInt64();
+			if (toUInt64Result == 0 || (toUInt64Result & (toUInt64Result - 1)) != 0)
 			{
 				return false;
 			}
@@ -129,10 +129,10 @@ namespace PaviseApp
 				{
 					snapshot = new ManualMemorySnapshot
 					{
-						TotalBytes = information.PhysicalTotal.ToUInt64() * num,
-						AvailableBytes = information.PhysicalAvailable.ToUInt64() * num,
-						CommittedBytes = information.CommitTotal.ToUInt64() * num,
-						CommitLimitBytes = information.CommitLimit.ToUInt64() * num
+						TotalBytes = information.PhysicalTotal.ToUInt64() * toUInt64Result,
+						AvailableBytes = information.PhysicalAvailable.ToUInt64() * toUInt64Result,
+						CommittedBytes = information.CommitTotal.ToUInt64() * toUInt64Result,
+						CommitLimitBytes = information.CommitLimit.ToUInt64() * toUInt64Result
 					};
 					if (!snapshot.IsValid)
 					{
@@ -145,16 +145,16 @@ namespace PaviseApp
 						int returnedBytes;
 						if (api.QueryLists(out information2, out returnedBytes) >= 0 && returnedBytes >= unchecked(13 * IntPtr.Size) && returnedBytes <= Marshal.SizeOf(typeof(StandbyMemoryListInformation)) && information2.PageCountByPriority != null && information2.PageCountByPriority.Length == 8)
 						{
-							ulong num2 = 0uL;
+							ulong standbyBytesValue = 0uL;
 							UIntPtr[] pageCountByPriority = information2.PageCountByPriority;
 							foreach (UIntPtr uIntPtr in pageCountByPriority)
 							{
-								num2 += uIntPtr.ToUInt64();
+								standbyBytesValue += uIntPtr.ToUInt64();
 							}
-							num2 *= num;
-							if (num2 <= snapshot.TotalBytes)
+							standbyBytesValue *= toUInt64Result;
+							if (standbyBytesValue <= snapshot.TotalBytes)
 							{
-								snapshot.StandbyBytes = num2;
+								snapshot.StandbyBytes = standbyBytesValue;
 							}
 						}
 					}
@@ -186,34 +186,34 @@ namespace PaviseApp
 			if (ManualMemoryCleaner.ProtectGame(gamePresent)) return ManualMemoryCleaner.StatusGameProtected;
 			uint privilege = ((step == ManualMemoryStep.FileCache) ? 5u : 13u);
 			IntPtr state = IntPtr.Zero;
-			int num = api.AcquirePrivilege(ref privilege, out state);
-			if (num < 0 || state == IntPtr.Zero)
+			int acquirePrivilegeResult = api.AcquirePrivilege(ref privilege, out state);
+			if (acquirePrivilegeResult < 0 || state == IntPtr.Zero)
 			{
 				if (state != IntPtr.Zero)
 				{
 					api.ReleasePrivilege(state);
 				}
-				if (num >= 0)
+				if (acquirePrivilegeResult >= 0)
 				{
 					return -1073741727;
 				}
-				return num;
+				return acquirePrivilegeResult;
 			}
 			try
 			{
 				if (ManualMemoryCleaner.ProtectGame(gamePresent)) return ManualMemoryCleaner.StatusGameProtected;
-				int num2;
+				int executeValue;
 				int command;
 				switch (step)
 				{
 				case ManualMemoryStep.StandbyLists:
-					num2 = 4;
+					executeValue = 4;
 					goto ApplyMemoryCommand;
 				case ManualMemoryStep.ModifiedPages:
-					num2 = 3;
+					executeValue = 3;
 					goto ApplyMemoryCommand;
 				case ManualMemoryStep.WorkingSets:
-					num2 = 2;
+					executeValue = 2;
 					goto ApplyMemoryCommand;
 				case ManualMemoryStep.FileCache:
 				{
@@ -237,7 +237,7 @@ namespace PaviseApp
 						return -1073741811;
 					}
 					ApplyMemoryCommand:
-					command = num2;
+					command = executeValue;
 					return api.MemoryCommand(80, ref command, 4);
 				}
 			}

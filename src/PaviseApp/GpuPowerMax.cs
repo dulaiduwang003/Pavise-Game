@@ -22,8 +22,8 @@ namespace PaviseApp
 		private static string VendorGpuId(GpuVendor vendor)
 		{
 			GpuAdapter gpuAdapter = null;
-			GpuAdapter[] array = GpuInventory.Adapters();
-			foreach (GpuAdapter gpuAdapter2 in array)
+			GpuAdapter[] adaptersResult = GpuInventory.Adapters();
+			foreach (GpuAdapter gpuAdapter2 in adaptersResult)
 			{
 				if (gpuAdapter2.Vendor == vendor)
 				{
@@ -34,28 +34,28 @@ namespace PaviseApp
 					gpuAdapter = gpuAdapter2;
 				}
 			}
-			object obj;
+			object venDevKeyResult;
 			if (gpuAdapter != null)
 			{
-				obj = GpuInventory.VenDevKey(gpuAdapter.HardwareId);
-				if (obj == null)
+				venDevKeyResult = GpuInventory.VenDevKey(gpuAdapter.HardwareId);
+				if (venDevKeyResult == null)
 				{
 					return "";
 				}
 			}
 			else
 			{
-				obj = "";
+				venDevKeyResult = "";
 			}
-			return (string)obj;
+			return (string)venDevKeyResult;
 		}
 
 		private static bool Read(string vendor, out State state)
 		{
 			state = null;
 			GpuVendor vendor2 = ((vendor == "nv") ? GpuVendor.Nvidia : GpuVendor.Amd);
-			string text = VendorGpuId(vendor2);
-			if (text.Length == 0)
+			string vendorGpuIdResult = VendorGpuId(vendor2);
+			if (vendorGpuIdResult.Length == 0)
 			{
 				return false;
 			}
@@ -71,7 +71,7 @@ namespace PaviseApp
 				state = new State
 				{
 					Vendor = vendor,
-					Id = text,
+					Id = vendorGpuIdResult,
 					Current = current,
 					Maximum = max
 				};
@@ -87,7 +87,7 @@ namespace PaviseApp
 				state = new State
 				{
 					Vendor = vendor,
-					Id = text,
+					Id = vendorGpuIdResult,
 					Current = current2,
 					Maximum = max2
 				};
@@ -139,15 +139,15 @@ namespace PaviseApp
 				{
 					return true;
 				}
-				string[] array = value.Split(':');
+				string[] valueParts = value.Split(':');
 				long result;
 				long result2;
-				if (array.Length != 4 || (array[0] != "nv" && array[0] != "amd") || array[1].Length == 0 || !long.TryParse(array[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !long.TryParse(array[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2) || result > result2)
+				if (valueParts.Length != 4 || (valueParts[0] != "nv" && valueParts[0] != "amd") || valueParts[1].Length == 0 || !long.TryParse(valueParts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !long.TryParse(valueParts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2) || result > result2)
 				{
 					return false;
 				}
 				State state;
-				if (!Read(array[0], out state) || state.Id != array[1])
+				if (!Read(valueParts[0], out state) || state.Id != valueParts[1])
 				{
 					return false;
 				}
@@ -160,7 +160,7 @@ namespace PaviseApp
 					return false;
 				}
 				State state2;
-				if (!Read(array[0], out state2) || state2.Id != array[1] || state2.Current != result)
+				if (!Read(valueParts[0], out state2) || state2.Id != valueParts[1] || state2.Current != result)
 				{
 					return false;
 				}

@@ -46,24 +46,24 @@ namespace PaviseApp
 			{
 				return cached;
 			}
-			string text = CpuName();
-			string text2 = GpuForDisplay();
-			if (string.IsNullOrEmpty(text2) && allowSlow)
+			string cpuNameResult = CpuName();
+			string gpuForDisplayResult = GpuForDisplay();
+			if (string.IsNullOrEmpty(gpuForDisplayResult) && allowSlow)
 			{
-				text2 = GpuFromWmi();
+				gpuForDisplayResult = GpuFromWmi();
 			}
-			string text3 = MemoryText();
-			string[] array = new string[3]
+			string memoryTextResult = MemoryText();
+			string[] textEntries = new string[3]
 			{
-				string.IsNullOrEmpty(text) ? " " : text,
-				string.IsNullOrEmpty(text2) ? " " : text2,
-				string.IsNullOrEmpty(text3) ? " " : text3
+				string.IsNullOrEmpty(cpuNameResult) ? " " : cpuNameResult,
+				string.IsNullOrEmpty(gpuForDisplayResult) ? " " : gpuForDisplayResult,
+				string.IsNullOrEmpty(memoryTextResult) ? " " : memoryTextResult
 			};
-			if (array[1] != " ")
+			if (textEntries[1] != " ")
 			{
-				cached = array;
+				cached = textEntries;
 			}
-			return array;
+			return textEntries;
 		}
 
 		private static string CpuName()
@@ -76,8 +76,8 @@ namespace PaviseApp
 					{
 						return null;
 					}
-					string text = registryKey.GetValue("ProcessorNameString") as string;
-					return (text == null) ? null : Compact(text);
+					string getValueOffset = registryKey.GetValue("ProcessorNameString") as string;
+					return (getValueOffset == null) ? null : Compact(getValueOffset);
 				}
 			}
 			catch
@@ -94,7 +94,7 @@ namespace PaviseApp
 
 		private static string GpuFromWmi()
 		{
-			string text = null;
+			string gpuFromWmiResult = null;
 			try
 			{
 				using (ManagementObjectSearcher managementObjectSearcher = new ManagementObjectSearcher("SELECT Name, PNPDeviceID FROM Win32_VideoController"))
@@ -110,16 +110,16 @@ namespace PaviseApp
 								{
 									continue;
 								}
-								string text2 = Compact(item["Name"] as string);
-								if (text2.Length != 0)
+								string compactResult = Compact(item["Name"] as string);
+								if (compactResult.Length != 0)
 								{
 									if (GpuInventory.VendorOf(hardwareId) == GpuVendor.Nvidia)
 									{
-										return text2;
+										return compactResult;
 									}
-									if (text == null)
+									if (gpuFromWmiResult == null)
 									{
-										text = text2;
+										gpuFromWmiResult = compactResult;
 									}
 								}
 							}
@@ -130,7 +130,7 @@ namespace PaviseApp
 			catch
 			{
 			}
-			return text;
+			return gpuFromWmiResult;
 		}
 
 		[DllImport("kernel32.dll", SetLastError = true)]
@@ -157,15 +157,15 @@ namespace PaviseApp
 
 		private static string Compact(string value)
 		{
-			string text = (value ?? "").Replace("(R)", "").Replace("(TM)", "").Replace("(C)", "")
+			string replaceResult = (value ?? "").Replace("(R)", "").Replace("(TM)", "").Replace("(C)", "")
 				.Replace("®", "")
 				.Replace("™", "");
-			text = text.Replace(" CPU", "").Replace(" Processor", "");
-			while (text.IndexOf("  ", StringComparison.Ordinal) >= 0)
+			replaceResult = replaceResult.Replace(" CPU", "").Replace(" Processor", "");
+			while (replaceResult.IndexOf("  ", StringComparison.Ordinal) >= 0)
 			{
-				text = text.Replace("  ", " ");
+				replaceResult = replaceResult.Replace("  ", " ");
 			}
-			return text.Trim();
+			return replaceResult.Trim();
 		}
 	}
 }

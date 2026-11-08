@@ -77,7 +77,7 @@ namespace PaviseApp
 					status = "cachewarm.waiting";
 					worker = new Thread((ThreadStart)delegate
 					{
-						bool flag = false;
+						bool ready = false;
 						try
 						{
 							if (token.WaitOne(90000) || !allowed())
@@ -86,16 +86,16 @@ namespace PaviseApp
 							}
 							else
 							{
-								flag = CacheWarmPlatform.Background(true);
-								if (!flag)
+								ready = CacheWarmPlatform.Background(true);
+								if (!ready)
 								{
 									SetStatus("cachewarm.skipped");
 								}
 								else
 								{
-									string text = GameInstallScope.RestrictFallback(executable, root);
+									string restrictFallbackResult = GameInstallScope.RestrictFallback(executable, root);
 									CacheWarmEnvironment cacheWarmEnvironment = CacheWarmPlatform.Sample();
-									if (text == null || !CacheWarmPlatform.SafePath(text) || !CacheWarmPlatform.SolidState(text) || !cacheWarmEnvironment.Ready || cacheWarmEnvironment.Budget < 1048576)
+									if (restrictFallbackResult == null || !CacheWarmPlatform.SafePath(restrictFallbackResult) || !CacheWarmPlatform.SolidState(restrictFallbackResult) || !cacheWarmEnvironment.Ready || cacheWarmEnvironment.Budget < 1048576)
 									{
 										SetStatus("cachewarm.skipped");
 									}
@@ -103,11 +103,11 @@ namespace PaviseApp
 									{
 										Func<bool> func = () => !token.WaitOne(0) && allowed() && CacheWarmPlatform.Sample().Ready;
 										SetStatus("cachewarm.running");
-										long num = CacheWarmEngine.Warm(text, cacheWarmEnvironment.Budget, func, token.WaitOne, delegate
+										long warmResult = CacheWarmEngine.Warm(restrictFallbackResult, cacheWarmEnvironment.Budget, func, token.WaitOne, delegate
 										{
 										});
 										SetStatus(func() ? "cachewarm.done" : "cachewarm.stopped");
-										Logger.Log(Lang.T("gm.cachewarm") + " · " + Lang.T(Status) + " · " + num / 1048576 + " MiB");
+										Logger.Log(Lang.T("gm.cachewarm") + " · " + Lang.T(Status) + " · " + warmResult / 1048576 + " MiB");
 									}
 								}
 							}
@@ -119,7 +119,7 @@ namespace PaviseApp
 						}
 						finally
 						{
-							if (flag)
+							if (ready)
 							{
 								CacheWarmPlatform.Background(false);
 							}
@@ -160,10 +160,10 @@ namespace PaviseApp
 				}
 				thread = worker;
 			}
-			bool flag = thread == null || thread == Thread.CurrentThread || thread.Join(milliseconds);
+			bool matchesJoin = thread == null || thread == Thread.CurrentThread || thread.Join(milliseconds);
 			lock (gate)
 			{
-				if (flag && worker == thread)
+				if (matchesJoin && worker == thread)
 				{
 					worker = null;
 					if (cancel != null)
@@ -173,7 +173,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			return flag;
+			return matchesJoin;
 		}
 	}
 }

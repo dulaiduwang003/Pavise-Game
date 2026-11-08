@@ -39,8 +39,8 @@ namespace PaviseApp
 			internal PreviewPane()
 			{
 				BackColor = Theme.Card;
-				Label[] array = new Label[3] { Caption, Value, Detail };
-				foreach (Label label in array)
+				Label[] labelItems = new Label[3] { Caption, Value, Detail };
+				foreach (Label label in labelItems)
 				{
 					label.BackColor = Color.Transparent;
 					label.AutoSize = false;
@@ -83,8 +83,8 @@ namespace PaviseApp
 				{
 					return TextHeight(Caption, width) + Theme.S(6) + TextHeight(Value, width) + Theme.S(5) + TextHeight(Detail, width) + Theme.S(4);
 				}
-				int num = width - Theme.S(28);
-				return Theme.S(38) + TextHeight(Value, num) + Theme.S(6) + TextHeight(Detail, num) + Theme.S(14);
+				int remainingWidth = width - Theme.S(28);
+				return Theme.S(38) + TextHeight(Value, remainingWidth) + Theme.S(6) + TextHeight(Detail, remainingWidth) + Theme.S(14);
 			}
 
 			protected override void OnSizeChanged(EventArgs e)
@@ -99,18 +99,18 @@ namespace PaviseApp
 				{
 					if (compact)
 					{
-						int num = Math.Max(1, base.Width);
-						Caption.SetBounds(0, 0, num, TextHeight(Caption, num));
-						Value.SetBounds(0, Caption.Bottom + Theme.S(6), num, TextHeight(Value, num));
-						Detail.SetBounds(0, Value.Bottom + Theme.S(5), num, TextHeight(Detail, num));
+						int width = Math.Max(1, base.Width);
+						Caption.SetBounds(0, 0, width, TextHeight(Caption, width));
+						Value.SetBounds(0, Caption.Bottom + Theme.S(6), width, TextHeight(Value, width));
+						Detail.SetBounds(0, Value.Bottom + Theme.S(5), width, TextHeight(Detail, width));
 					}
 					else
 					{
-						int num2 = Theme.S(14);
-						int num3 = Math.Max(1, base.Width - 2 * num2);
-						Caption.SetBounds(num2, Theme.S(11), num3, Theme.S(19));
-						Value.SetBounds(num2, Theme.S(36), num3, TextHeight(Value, num3));
-						Detail.SetBounds(num2, Value.Bottom + Theme.S(6), num3, TextHeight(Detail, num3));
+						int left = Theme.S(14);
+						int width2 = Math.Max(1, base.Width - 2 * left);
+						Caption.SetBounds(left, Theme.S(11), width2, Theme.S(19));
+						Value.SetBounds(left, Theme.S(36), width2, TextHeight(Value, width2));
+						Detail.SetBounds(left, Value.Bottom + Theme.S(6), width2, TextHeight(Detail, width2));
 					}
 				}
 			}
@@ -172,8 +172,8 @@ namespace PaviseApp
 				{
 					compact = value;
 					PreviewPane previewPane = current;
-					bool flag2 = (saved.Compact = value);
-					previewPane.Compact = flag2;
+					bool compactValue = (saved.Compact = value);
+					previewPane.Compact = compactValue;
 					Arrange();
 					Invalidate();
 				}
@@ -208,8 +208,8 @@ namespace PaviseApp
 
 		internal void SetState(string currentCaption, string currentValue, string currentDetail, Color currentTone, string savedCaption, string savedValue, string savedDetail, Color savedTone)
 		{
-			bool flag = current.SetState(currentCaption, currentValue, currentDetail, currentTone);
-			if (saved.SetState(savedCaption, savedValue, savedDetail, savedTone) || flag)
+			bool setStateSucceeded = current.SetState(currentCaption, currentValue, currentDetail, currentTone);
+			if (saved.SetState(savedCaption, savedValue, savedDetail, savedTone) || setStateSucceeded)
 			{
 				Arrange();
 			}
@@ -230,35 +230,35 @@ namespace PaviseApp
 			arranging = true;
 			try
 			{
-				int num4;
+				int height;
 				if (compact && base.Width < Theme.S(310))
 				{
-					int num = Theme.S(18);
-					int num2 = saved.RequiredHeight(base.Width);
-					int num3 = current.RequiredHeight(base.Width);
-					saved.SetBounds(0, 0, base.Width, num2);
-					current.SetBounds(0, num2 + num, base.Width, num3);
-					num4 = current.Bottom;
+					int scaledDimension = Theme.S(18);
+					int height2 = saved.RequiredHeight(base.Width);
+					int height3 = current.RequiredHeight(base.Width);
+					saved.SetBounds(0, 0, base.Width, height2);
+					current.SetBounds(0, height2 + scaledDimension, base.Width, height3);
+					height = current.Bottom;
 				}
 				else
 				{
-					int num5 = Theme.S(compact ? 24 : 12);
-					int num6 = (base.Width - num5) / 2;
-					num4 = (compact ? Math.Max(saved.RequiredHeight(num6), current.RequiredHeight(base.Width - num6 - num5)) : Math.Max(current.RequiredHeight(num6), saved.RequiredHeight(base.Width - num6 - num5)));
+					int scaledDimension2 = Theme.S(compact ? 24 : 12);
+					int width = (base.Width - scaledDimension2) / 2;
+					height = (compact ? Math.Max(saved.RequiredHeight(width), current.RequiredHeight(base.Width - width - scaledDimension2)) : Math.Max(current.RequiredHeight(width), saved.RequiredHeight(base.Width - width - scaledDimension2)));
 					if (compact)
 					{
-						saved.SetBounds(0, 0, num6, num4);
-						current.SetBounds(num6 + num5, 0, base.Width - num6 - num5, num4);
+						saved.SetBounds(0, 0, width, height);
+						current.SetBounds(width + scaledDimension2, 0, base.Width - width - scaledDimension2, height);
 					}
 					else
 					{
-						current.SetBounds(0, 0, num6, num4);
-						saved.SetBounds(num6 + num5, 0, base.Width - num6 - num5, num4);
+						current.SetBounds(0, 0, width, height);
+						saved.SetBounds(width + scaledDimension2, 0, base.Width - width - scaledDimension2, height);
 					}
 				}
-				if (base.Height != num4)
+				if (base.Height != height)
 				{
-					base.Height = num4;
+					base.Height = height;
 				}
 				if (compact)
 				{
@@ -295,13 +295,13 @@ namespace PaviseApp
 			{
 				if (base.Width < Theme.S(310))
 				{
-					int num = saved.Bottom + Theme.S(9);
-					e.Graphics.DrawLine(pen, 0, num, base.Width - 1, num);
+					int top = saved.Bottom + Theme.S(9);
+					e.Graphics.DrawLine(pen, 0, top, base.Width - 1, top);
 				}
 				else
 				{
-					int num2 = saved.Right + Theme.S(12);
-					e.Graphics.DrawLine(pen, num2, Theme.S(3), num2, Math.Max(Theme.S(3), base.Height - Theme.S(3)));
+					int left = saved.Right + Theme.S(12);
+					e.Graphics.DrawLine(pen, left, Theme.S(3), left, Math.Max(Theme.S(3), base.Height - Theme.S(3)));
 				}
 			}
 		}

@@ -76,24 +76,24 @@ namespace PaviseApp
         { return ReadSavedExtra(); }
         private static string ReadSavedExtra()
         {
-            StringBuilder text = new StringBuilder();
-            foreach (string key in bundle) { string value = Boolean(key, false); if (value == null) return null; text.Append(key).Append('=').Append(value).Append('\n'); }
-            foreach (string key in PerformanceTuning.StorageMembers()) { string value = Boolean(key, false); if (value == null) return null; text.Append(key).Append('=').Append(value).Append('\n'); }
-            return text.ToString();
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (string key in bundle) { string value = Boolean(key, false); if (value == null) return null; stringBuilder.Append(key).Append('=').Append(value).Append('\n'); }
+            foreach (string key in PerformanceTuning.StorageMembers()) { string value = Boolean(key, false); if (value == null) return null; stringBuilder.Append(key).Append('=').Append(value).Append('\n'); }
+            return stringBuilder.ToString();
         }
         // Read durable preferences only; exclude capability probes, receipts and last-applied metadata.
         internal static string SavedIdentityPhase()
         {
-            StringBuilder text = new StringBuilder();
+            StringBuilder stringBuilder = new StringBuilder();
             foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
             {
                 string value = ReadSavedValue(entry);
                 int quantum;
                 if (entry.Key == "EnvQuantumProfileV1" && int.TryParse(value, out quantum))
                     value = quantum.ToString(CultureInfo.InvariantCulture);
-                text.Append(entry.Key).Append('=').Append(value ?? "?").Append('\n');
+                stringBuilder.Append(entry.Key).Append('=').Append(value ?? "?").Append('\n');
             }
-            return text.Append(ReadSavedExtra() ?? "?").ToString();
+            return stringBuilder.Append(ReadSavedExtra() ?? "?").ToString();
         }
         private static ConfigurationPresetAvailability Available(bool yes, string zh, string en)
         { return yes ? ConfigurationPresetAvailability.Yes() : ConfigurationPresetAvailability.No(PerformancePolicy.Text(zh, en)); }

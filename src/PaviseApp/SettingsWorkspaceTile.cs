@@ -133,19 +133,19 @@ namespace PaviseApp
 				int titleWidth;
 				int hostWidth;
 				int titleHeight;
-				bool flag = CompactMetrics(width, out titleWidth, out hostWidth, out titleHeight);
-				int num = titleHeight + ((SecondaryText.Length > 0) ? (SecondaryHeight + Theme.S(4)) : 0);
-				return Math.Max(Theme.S(72), (flag ? (num + Theme.S(44)) : Math.Max(num, Theme.S(34))) + Theme.S(24));
+				bool compactMetricsSucceeded = CompactMetrics(width, out titleWidth, out hostWidth, out titleHeight);
+				int titleHeightOffset = titleHeight + ((SecondaryText.Length > 0) ? (SecondaryHeight + Theme.S(4)) : 0);
+				return Math.Max(Theme.S(72), (compactMetricsSucceeded ? (titleHeightOffset + Theme.S(44)) : Math.Max(titleHeightOffset, Theme.S(34))) + Theme.S(24));
 			}
-			int num2 = Theme.S(22);
-			int num3 = num2 + Theme.S(86);
-			int num4 = HostWidth(width);
-			int num5 = Theme.S(28);
-			bool flag2 = StackHost || (base.Hosted != null && !(base.Hosted is Toggle) && (width < Theme.S(500) || width - num3 - num2 - num5 - Theme.S(28) - num4 < Theme.S(96)));
-			int num6 = Math.Max(Theme.S(60), width - num3 - num2 - num5 - Theme.S(8) - ((!flag2 && base.Hosted != null) ? (num4 + Theme.S(20)) : 0));
-			int num7 = TextRenderer.MeasureText(base.Title, Theme.UI(12f, true), new Size(num6, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
-			int num8 = Math.Max(Theme.S(64), num7 + ((Summary.Length > 0) ? Theme.S(27) : 0) + ((flag2 && base.Hosted != null) ? Theme.S(58) : 0));
-			return Math.Max(Theme.S(112), num8 + Theme.S(36));
+			int scaledDimension = Theme.S(22);
+			int scaledDimensionOffset = scaledDimension + Theme.S(86);
+			int hostWidthResult = HostWidth(width);
+			int scaledDimension2 = Theme.S(28);
+			bool matchesStackHost = StackHost || (base.Hosted != null && !(base.Hosted is Toggle) && (width < Theme.S(500) || width - scaledDimensionOffset - scaledDimension - scaledDimension2 - Theme.S(28) - hostWidthResult < Theme.S(96)));
+			int sLimit = Math.Max(Theme.S(60), width - scaledDimensionOffset - scaledDimension - scaledDimension2 - Theme.S(8) - ((!matchesStackHost && base.Hosted != null) ? (hostWidthResult + Theme.S(20)) : 0));
+			int height = TextRenderer.MeasureText(base.Title, Theme.UI(12f, true), new Size(sLimit, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
+			int sLimit2 = Math.Max(Theme.S(64), height + ((Summary.Length > 0) ? Theme.S(27) : 0) + ((matchesStackHost && base.Hosted != null) ? Theme.S(58) : 0));
+			return Math.Max(Theme.S(112), sLimit2 + Theme.S(36));
 		}
 
 		private int HostWidth(int width)
@@ -171,7 +171,7 @@ namespace PaviseApp
 
 		private bool CompactMetrics(int width, out int titleWidth, out int hostWidth, out int titleHeight)
 		{
-			int num = Math.Max(1, width - Theme.S(66));
+			int lowerBound = Math.Max(1, width - Theme.S(66));
 			hostWidth = 0;
 			if (base.Hosted is Toggle)
 			{
@@ -180,13 +180,13 @@ namespace PaviseApp
 			else if (base.Hosted is TierPicker)
 			{
 				TierPicker tierPicker = (TierPicker)base.Hosted;
-				int num2 = Theme.S((tierPicker.Labels.Length > 3) ? 46 : 78);
+				int scaledDimension = Theme.S((tierPicker.Labels.Length > 3) ? 46 : 78);
 				string[] labels = tierPicker.Labels;
-				foreach (string text in labels)
+				foreach (string entryText in labels)
 				{
-					num2 = Math.Max(num2, TextRenderer.MeasureText(text, DsType.Font(DsText.Label, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(20));
+					scaledDimension = Math.Max(scaledDimension, TextRenderer.MeasureText(entryText, DsType.Font(DsText.Label, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(20));
 				}
-				hostWidth = num2 * tierPicker.Labels.Length + Theme.S(4) * (tierPicker.Labels.Length - 1);
+				hostWidth = scaledDimension * tierPicker.Labels.Length + Theme.S(4) * (tierPicker.Labels.Length - 1);
 			}
 			else if (base.Hosted is StandbyCleanerActionHost)
 			{
@@ -196,13 +196,13 @@ namespace PaviseApp
 			{
 				hostWidth = Math.Max(Theme.S(112), base.Hosted.Width);
 			}
-			hostWidth = Math.Min(num, hostWidth);
-			int num3 = TextRenderer.MeasureText(base.Title, TitleFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-			int num4 = num - Theme.S(28) - ((base.Hosted != null) ? (hostWidth + Theme.S(14)) : 0);
-			bool flag = base.Hosted != null && !(base.Hosted is Toggle) && num3 > num4;
-			titleWidth = Math.Max(Theme.S(48), flag ? (num - Theme.S(28)) : num4);
+			hostWidth = Math.Min(lowerBound, hostWidth);
+			int width2 = TextRenderer.MeasureText(base.Title, TitleFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+			int compactMetricsValue = lowerBound - Theme.S(28) - ((base.Hosted != null) ? (hostWidth + Theme.S(14)) : 0);
+			bool allConditionsMet = base.Hosted != null && !(base.Hosted is Toggle) && width2 > compactMetricsValue;
+			titleWidth = Math.Max(Theme.S(48), allConditionsMet ? (lowerBound - Theme.S(28)) : compactMetricsValue);
 			titleHeight = TextRenderer.MeasureText(base.Title, TitleFont, new Size(titleWidth, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
-			return flag;
+			return allConditionsMet;
 		}
 
 		private void ArrangeCompactContent()
@@ -210,20 +210,20 @@ namespace PaviseApp
 			int titleWidth;
 			int hostWidth;
 			int titleHeight;
-			bool flag = CompactMetrics(base.Width, out titleWidth, out hostWidth, out titleHeight);
-			int num = titleHeight + ((SecondaryText.Length > 0) ? (SecondaryHeight + Theme.S(4)) : 0);
-			int num2 = (flag ? (num + Theme.S(44)) : Math.Max(num, Theme.S(34)));
-			int num3 = Math.Max(Theme.S(12), (base.Height - num2) / 2);
-			int num4 = (flag ? num3 : ((base.Height - num) / 2));
+			bool compactMetricsSucceeded = CompactMetrics(base.Width, out titleWidth, out hostWidth, out titleHeight);
+			int titleHeightOffset = titleHeight + ((SecondaryText.Length > 0) ? (SecondaryHeight + Theme.S(4)) : 0);
+			int titleHeightOffsetOffset = (compactMetricsSucceeded ? (titleHeightOffset + Theme.S(44)) : Math.Max(titleHeightOffset, Theme.S(34)));
+			int sLimit = Math.Max(Theme.S(12), (base.Height - titleHeightOffsetOffset) / 2);
+			int ratio = (compactMetricsSucceeded ? sLimit : ((base.Height - titleHeightOffset) / 2));
 			int val = TextRenderer.MeasureText(base.Title, TitleFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-			TitleBounds = new Rectangle(Theme.S(50), num4, Math.Min(val, titleWidth), titleHeight);
-			IconBounds = new Rectangle(Theme.S(16), flag ? (num4 - Theme.S(3)) : ((base.Height - Theme.S(22)) / 2), Theme.S(22), Theme.S(22));
-			InfoBounds = new Rectangle(TitleBounds.Right + Theme.S(6), num4 + (titleHeight - Theme.S(22)) / 2, Theme.S(22), Theme.S(22));
+			TitleBounds = new Rectangle(Theme.S(50), ratio, Math.Min(val, titleWidth), titleHeight);
+			IconBounds = new Rectangle(Theme.S(16), compactMetricsSucceeded ? (ratio - Theme.S(3)) : ((base.Height - Theme.S(22)) / 2), Theme.S(22), Theme.S(22));
+			InfoBounds = new Rectangle(TitleBounds.Right + Theme.S(6), ratio + (titleHeight - Theme.S(22)) / 2, Theme.S(22), Theme.S(22));
 			SummaryBounds = new Rectangle(TitleBounds.Left, TitleBounds.Bottom + Theme.S(4), titleWidth, Math.Max(Theme.S(18), SecondaryHeight));
 			information.Bounds = InfoBounds;
 			if (base.Hosted != null)
 			{
-				HostBounds = new Rectangle(flag ? TitleBounds.Left : (base.Width - Theme.S(16) - hostWidth), flag ? (num3 + num + Theme.S(10)) : ((base.Height - Theme.S(34)) / 2), hostWidth, Theme.S(34));
+				HostBounds = new Rectangle(compactMetricsSucceeded ? TitleBounds.Left : (base.Width - Theme.S(16) - hostWidth), compactMetricsSucceeded ? (sLimit + titleHeightOffset + Theme.S(10)) : ((base.Height - Theme.S(34)) / 2), hostWidth, Theme.S(34));
 				base.Hosted.Bounds = HostBounds;
 				Toggle toggle = base.Hosted as Toggle;
 				if (toggle != null)
@@ -265,26 +265,26 @@ namespace PaviseApp
 					ArrangeCompactContent();
 					return;
 				}
-				int num = Theme.S(22);
-				int num2 = num + Theme.S(86);
-				int num3 = Theme.S(28);
-				int num4 = HostWidth(base.Width);
-				bool flag = StackHost || (base.Hosted != null && !(base.Hosted is Toggle) && (base.Width < Theme.S(500) || base.Width - num2 - num - num3 - Theme.S(28) - num4 < Theme.S(96)));
-				int val = Math.Max(Theme.S(60), base.Width - num2 - num - num3 - Theme.S(8) - ((!flag && base.Hosted != null) ? (num4 + Theme.S(20)) : 0));
-				int num5 = TextRenderer.MeasureText(base.Title, Theme.UI(12f, true), new Size(val, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
-				int num6 = num5 + ((Summary.Length > 0) ? Theme.S(27) : 0);
-				int num7 = Math.Max(Theme.S(64), num6 + ((flag && base.Hosted != null) ? Theme.S(58) : 0));
-				int num8 = Math.Max(Theme.S(16), (base.Height - num7) / 2);
-				IconBounds = new Rectangle(num, num8 + Math.Max(0, (Math.Min(num7, Theme.S(80)) - Theme.S(64)) / 2), Theme.S(64), Theme.S(64));
-				int num9 = (flag ? num8 : (num8 + Math.Max(0, (num7 - num6) / 2)));
+				int scaledDimension = Theme.S(22);
+				int scaledDimensionOffset = scaledDimension + Theme.S(86);
+				int scaledDimension2 = Theme.S(28);
+				int hostWidthResult = HostWidth(base.Width);
+				bool matchesStackHost = StackHost || (base.Hosted != null && !(base.Hosted is Toggle) && (base.Width < Theme.S(500) || base.Width - scaledDimensionOffset - scaledDimension - scaledDimension2 - Theme.S(28) - hostWidthResult < Theme.S(96)));
+				int val = Math.Max(Theme.S(60), base.Width - scaledDimensionOffset - scaledDimension - scaledDimension2 - Theme.S(8) - ((!matchesStackHost && base.Hosted != null) ? (hostWidthResult + Theme.S(20)) : 0));
+				int height = TextRenderer.MeasureText(base.Title, Theme.UI(12f, true), new Size(val, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
+				int heightOffset = height + ((Summary.Length > 0) ? Theme.S(27) : 0);
+				int sLimit = Math.Max(Theme.S(64), heightOffset + ((matchesStackHost && base.Hosted != null) ? Theme.S(58) : 0));
+				int sLimit2 = Math.Max(Theme.S(16), (base.Height - sLimit) / 2);
+				IconBounds = new Rectangle(scaledDimension, sLimit2 + Math.Max(0, (Math.Min(sLimit, Theme.S(80)) - Theme.S(64)) / 2), Theme.S(64), Theme.S(64));
+				int sLimit2Offset = (matchesStackHost ? sLimit2 : (sLimit2 + Math.Max(0, (sLimit - heightOffset) / 2)));
 				int val2 = TextRenderer.MeasureText(base.Title, Theme.UI(12f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-				TitleBounds = new Rectangle(num2, num9, Math.Min(val, val2), num5);
-				InfoBounds = new Rectangle(TitleBounds.Right + Theme.S(6), num9 - Theme.S(2), num3, num3);
-				SummaryBounds = new Rectangle(num2, num9 + num5 + Theme.S(6), Math.Max(1, base.Width - num2 - num), Theme.S(22));
+				TitleBounds = new Rectangle(scaledDimensionOffset, sLimit2Offset, Math.Min(val, val2), height);
+				InfoBounds = new Rectangle(TitleBounds.Right + Theme.S(6), sLimit2Offset - Theme.S(2), scaledDimension2, scaledDimension2);
+				SummaryBounds = new Rectangle(scaledDimensionOffset, sLimit2Offset + height + Theme.S(6), Math.Max(1, base.Width - scaledDimensionOffset - scaledDimension), Theme.S(22));
 				information.Bounds = InfoBounds;
 				if (base.Hosted != null)
 				{
-					HostBounds = new Rectangle(flag ? num2 : (base.Width - num - num4), flag ? (num9 + num6 + Theme.S(18)) : ((base.Height - Theme.S(40)) / 2), num4, Theme.S(40));
+					HostBounds = new Rectangle(matchesStackHost ? scaledDimensionOffset : (base.Width - scaledDimension - hostWidthResult), matchesStackHost ? (sLimit2Offset + heightOffset + Theme.S(18)) : ((base.Height - Theme.S(40)) / 2), hostWidthResult, Theme.S(40));
 					base.Hosted.Bounds = HostBounds;
 					Toggle toggle = base.Hosted as Toggle;
 					if (toggle != null)

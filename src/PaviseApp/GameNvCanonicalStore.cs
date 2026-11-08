@@ -24,13 +24,13 @@ namespace PaviseApp
 
 		private GameNvCanonicalStore(string data, string actor, string machineToken, bool native)
 		{
-			string text = Path.GetFullPath(data).TrimEnd(Path.DirectorySeparatorChar);
-			NoReparse.CheckPath(text);
-			if (text.StartsWith("\\\\", StringComparison.Ordinal))
+			string getFullPathTrimmed = Path.GetFullPath(data).TrimEnd(Path.DirectorySeparatorChar);
+			NoReparse.CheckPath(getFullPathTrimmed);
+			if (getFullPathTrimmed.StartsWith("\\\\", StringComparison.Ordinal))
 			{
 				throw new InvalidDataException("Network-root NVIDIA ownership is unsupported");
 			}
-			Root = Path.Combine(text, "GameNvProfilesV2");
+			Root = Path.Combine(getFullPathTrimmed, "GameNvProfilesV2");
 			user = actor;
 			machine = machineToken;
 			nativeActor = native;
@@ -103,23 +103,23 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("Original recovery target is not an exact absolute path");
 			}
-			int num = 0;
-			uint[] array = new uint[2] { 274197361u, 549528094u };
-			foreach (uint num2 in array)
+			int processedCount = 0;
+			uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
+			foreach (uint numericValueEntry in numericValueItems)
 			{
-				string text = num2.ToString("X8");
-				GameNvSetting.Parse(dictionary["original." + text]);
-				string text2 = dictionary["target." + text];
-				if (text2 == "1")
+				string numericValueEntryText = numericValueEntry.ToString("X8");
+				GameNvSetting.Parse(dictionary["original." + numericValueEntryText]);
+				string message = dictionary["target." + numericValueEntryText];
+				if (message == "1")
 				{
-					num++;
+					processedCount++;
 				}
-				else if (text2 != "leave")
+				else if (message != "leave")
 				{
 					throw new InvalidDataException("Unknown original NVIDIA target value");
 				}
 			}
-			if (num == 0)
+			if (processedCount == 0)
 			{
 				throw new InvalidDataException("Original recovery has no issued key vector");
 			}
@@ -157,8 +157,8 @@ namespace PaviseApp
 				{
 					throw new UnauthorizedAccessException("NVIDIA recovery directory ownership changed");
 				}
-				FileSystemAccessRule[] array = accessControl.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
-				if (array.Length == 0 || array.Any((FileSystemAccessRule x) => x.IdentityReference.Value != user || x.AccessControlType != 0 || (x.FileSystemRights & FileSystemRights.FullControl) != FileSystemRights.FullControl))
+				FileSystemAccessRule[] castItems = accessControl.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+				if (castItems.Length == 0 || castItems.Any((FileSystemAccessRule x) => x.IdentityReference.Value != user || x.AccessControlType != 0 || (x.FileSystemRights & FileSystemRights.FullControl) != FileSystemRights.FullControl))
 				{
 					throw new UnauthorizedAccessException("NVIDIA recovery directory has an external writer");
 				}
@@ -188,17 +188,17 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("NVIDIA ledger record exceeds bound");
 				}
-				byte[] array = new byte[(int)fileStream.Length];
-				int num;
-				for (int i = 0; i < array.Length; i += num)
+				byte[] rawBytes = new byte[(int)fileStream.Length];
+				int value;
+				for (int i = 0; i < rawBytes.Length; i += value)
 				{
-					num = fileStream.Read(array, i, array.Length - i);
-					if (num <= 0)
+					value = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+					if (value <= 0)
 					{
 						throw new EndOfStreamException();
 					}
 				}
-				return array;
+				return rawBytes;
 			}
 		}
 
@@ -228,8 +228,8 @@ namespace PaviseApp
 				throw new InvalidDataException("Recovery no longer owns its exact original resource");
 			}
 			new GameNvRecoveryIdentity(dictionary["plan_text"], original.PlanHash, original.Executable, original.ImageHash);
-			string text = GameNvText.Hash(Encoding.UTF8.GetBytes(original.ProfileName.ToUpperInvariant() + "\n" + original.ProfilePredefined.ToString(CultureInfo.InvariantCulture)));
-			if (Path.GetFileName(Path.GetDirectoryName(original.JournalDirectory)) != text)
+			string hashResult = GameNvText.Hash(Encoding.UTF8.GetBytes(original.ProfileName.ToUpperInvariant() + "\n" + original.ProfilePredefined.ToString(CultureInfo.InvariantCulture)));
+			if (Path.GetFileName(Path.GetDirectoryName(original.JournalDirectory)) != hashResult)
 			{
 				throw new InvalidDataException("Canonical profile identity changed");
 			}
@@ -256,8 +256,8 @@ namespace PaviseApp
 			{
 				throw new InvalidDataException("NVIDIA history exceeds bound");
 			}
-			string[] array = directories;
-			foreach (string path2 in array)
+			string[] directoriesSnapshot = directories;
+			foreach (string path2 in directoriesSnapshot)
 			{
 				NoReparse.CheckPath(path2);
 				if (!GameNvText.IsHash(Path.GetFileName(path2)))
@@ -277,23 +277,23 @@ namespace PaviseApp
 				{
 					throw new InvalidDataException("NVIDIA lease history exceeds bound");
 				}
-				string[] array2 = directories2;
-				foreach (string text in array2)
+				string[] directories2Snapshot = directories2;
+				foreach (string entryText in directories2Snapshot)
 				{
-					if (!IsJournal(text))
+					if (!IsJournal(entryText))
 					{
 						throw new InvalidDataException("Unknown NVIDIA lease directory");
 					}
-					if (!File.Exists(Path.Combine(text, "original.tsv")))
+					if (!File.Exists(Path.Combine(entryText, "original.tsv")))
 					{
-						if (Directory.GetFileSystemEntries(text).Length != 0)
+						if (Directory.GetFileSystemEntries(entryText).Length != 0)
 						{
 							throw new InvalidDataException("Partial NVIDIA original record");
 						}
 					}
-					else if (!Terminal(text))
+					else if (!Terminal(entryText))
 					{
-						list.Add(text);
+						list.Add(entryText);
 					}
 				}
 			}
@@ -391,15 +391,15 @@ namespace PaviseApp
 				foreach (string path2 in directories)
 				{
 					string[] directories2 = Directory.GetDirectories(path2);
-					foreach (string text in directories2)
+					foreach (string entryText in directories2)
 					{
-						if (!IsJournal(text))
+						if (!IsJournal(entryText))
 						{
 							throw new InvalidDataException("Unknown empty history directory");
 						}
-						if (Directory.GetFileSystemEntries(text).Length == 0)
+						if (Directory.GetFileSystemEntries(entryText).Length == 0)
 						{
-							Directory.Delete(text, false);
+							Directory.Delete(entryText, false);
 						}
 					}
 				}
@@ -414,8 +414,8 @@ namespace PaviseApp
 					string[] files2 = Directory.GetFiles(path3);
 					if (!files2.Any((string x) => Path.GetFileName(x) != "profile.lock"))
 					{
-						string[] array = files2;
-						foreach (string path4 in array)
+						string[] files2Snapshot = files2;
+						foreach (string path4 in files2Snapshot)
 						{
 							NoReparse.CheckPath(path4);
 							File.Delete(path4);
@@ -428,18 +428,18 @@ namespace PaviseApp
 
 		private static bool DirectoryPresent(string path, Func<string, FileAttributes> attributes)
 		{
-			string text = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+			string getFullPathTrimmed = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
 			bool result = false;
-			if (text.StartsWith("\\\\", StringComparison.Ordinal))
+			if (getFullPathTrimmed.StartsWith("\\\\", StringComparison.Ordinal))
 			{
 				throw new IOException("Network recovery root is unsupported");
 			}
-			for (string text2 = text; !string.IsNullOrEmpty(text2); text2 = Path.GetDirectoryName(text2))
+			for (string iterationIndex = getFullPathTrimmed; !string.IsNullOrEmpty(iterationIndex); iterationIndex = Path.GetDirectoryName(iterationIndex))
 			{
 				FileAttributes fileAttributes;
 				try
 				{
-					fileAttributes = attributes(text2);
+					fileAttributes = attributes(iterationIndex);
 				}
 				catch (FileNotFoundException)
 				{
@@ -453,7 +453,7 @@ namespace PaviseApp
 				{
 					throw new IOException("Recovery root or ancestor is redirected or not a directory");
 				}
-				if (text2 == text)
+				if (iterationIndex == getFullPathTrimmed)
 				{
 					result = true;
 				}
@@ -477,14 +477,14 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Path.Combine(Path.GetFullPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar), "GameNvProfilesV2");
-				if (!DirectoryPresent(text, File.GetAttributes))
+				string gameNvProfilesV2Path = Path.Combine(Path.GetFullPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar), "GameNvProfilesV2");
+				if (!DirectoryPresent(gameNvProfilesV2Path, File.GetAttributes))
 				{
 					return true;
 				}
 				GameNvCanonicalStore gameNvCanonicalStore = Open(dataRoot);
 				gameNvCanonicalStore.RequireOwner(false);
-				using (new FileStream(Path.Combine(text, "store.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+				using (new FileStream(Path.Combine(gameNvProfilesV2Path, "store.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
 				{
 					return gameNvCanonicalStore.PendingJournals().Length == 0;
 				}

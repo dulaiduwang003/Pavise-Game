@@ -48,9 +48,9 @@ namespace PaviseApp
 			{
 				using (Pen pen2 = new Pen(Theme.Accent))
 				{
-					int num = Theme.S(12);
-					graphics.DrawLine(pen2, r.Left, r.Top + num, r.Left + num, r.Top);
-					graphics.DrawLine(pen2, r.Right - num, r.Bottom, r.Right, r.Bottom - num);
+					int scaledDimension = Theme.S(12);
+					graphics.DrawLine(pen2, r.Left, r.Top + scaledDimension, r.Left + scaledDimension, r.Top);
+					graphics.DrawLine(pen2, r.Right - scaledDimension, r.Bottom, r.Right, r.Bottom - scaledDimension);
 				}
 			}
 			using (Pen pen3 = new Pen(Theme.Stroke))

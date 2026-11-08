@@ -152,10 +152,10 @@ namespace PaviseApp
 								using (managementObject)
 								{
 									result.WmiOk = true;
-									object obj = managementObject["VirtualizationBasedSecurityStatus"];
-									if (obj != null)
+									object instance = managementObject["VirtualizationBasedSecurityStatus"];
+									if (instance != null)
 									{
-										result.VbsRunning = Convert.ToInt32(obj) == 2;
+										result.VbsRunning = Convert.ToInt32(instance) == 2;
 									}
 								}
 							}
@@ -203,17 +203,17 @@ namespace PaviseApp
 					if (Settings.LoadStr("PrevHvLaunch", "").Length == 0)
 					{
 						bool ok;
-						string text = ReadHvLaunch(out ok);
+						string hvLaunch = ReadHvLaunch(out ok);
 						if (!ok)
 						{
 							Logger.Warn(Lang.T("log.vbstweak.1"));
 							return false;
 						}
-						if (!Settings.SaveStrDurable("PrevHvLaunch", text))
+						if (!Settings.SaveStrDurable("PrevHvLaunch", hvLaunch))
 						{
 							return false;
 						}
-						if (Settings.LoadStr("PrevHvLaunch", "") != text)
+						if (Settings.LoadStr("PrevHvLaunch", "") != hvLaunch)
 						{
 							return false;
 						}
@@ -241,9 +241,9 @@ namespace PaviseApp
 					Settings.Save("VbsDisabledByPavise", true);
 					if (!Settings.Load("VbsDisabledByPavise", false))
 					{
-						string text2 = NormHvLaunch(Settings.LoadStr("PrevHvLaunch", "auto"));
+						string normHvLaunchResult = NormHvLaunch(Settings.LoadStr("PrevHvLaunch", "auto"));
 						int code2;
-						RunBcd((text2 == "__pavise_absent__") ? "/deletevalue hypervisorlaunchtype" : ("/set hypervisorlaunchtype " + text2), out code2);
+						RunBcd((normHvLaunchResult == "__pavise_absent__") ? "/deletevalue hypervisorlaunchtype" : ("/set hypervisorlaunchtype " + normHvLaunchResult), out code2);
 						Vbs.Restore();
 						Hvci.Restore();
 						if (code2 == 0)
@@ -270,33 +270,33 @@ namespace PaviseApp
 			{
 				try
 				{
-					string text = Settings.LoadStr("PrevHvLaunch", "");
-					if (!Vbs.HasBackup && !Hvci.HasBackup && text.Length == 0 && !DisabledByPavise)
+					string prevHvLaunchValue = Settings.LoadStr("PrevHvLaunch", "");
+					if (!Vbs.HasBackup && !Hvci.HasBackup && prevHvLaunchValue.Length == 0 && !DisabledByPavise)
 					{
 						return true;
 					}
-					bool flag = Vbs.Restore() & Hvci.Restore();
-					bool flag2 = DisabledByPavise || text.Length > 0;
-					string text2 = NormHvLaunch((text.Length == 0) ? "auto" : text);
+					bool matchesRestore = Vbs.Restore() & Hvci.Restore();
+					bool matchesDisabledByPavise = DisabledByPavise || prevHvLaunchValue.Length > 0;
+					string normHvLaunchResult = NormHvLaunch((prevHvLaunchValue.Length == 0) ? "auto" : prevHvLaunchValue);
 					int code = 0;
-					if (flag2)
+					if (matchesDisabledByPavise)
 					{
 						bool ok;
 						string current = ReadHvLaunch(out ok);
 						if (!ok)
 						{
-							flag = false;
+							matchesRestore = false;
 						}
-						else if (ShouldRestoreHvLaunch(current, text2))
+						else if (ShouldRestoreHvLaunch(current, normHvLaunchResult))
 						{
-							RunBcd((text2 == "__pavise_absent__") ? "/deletevalue hypervisorlaunchtype" : ("/set hypervisorlaunchtype " + text2), out code);
+							RunBcd((normHvLaunchResult == "__pavise_absent__") ? "/deletevalue hypervisorlaunchtype" : ("/set hypervisorlaunchtype " + normHvLaunchResult), out code);
 							if (code != 0)
 							{
-								flag = false;
+								matchesRestore = false;
 							}
 						}
 					}
-					if (flag)
+					if (matchesRestore)
 					{
 						Settings.Save("VbsDisabledByPavise", false);
 						if (Settings.Load("VbsDisabledByPavise", true))
@@ -305,13 +305,13 @@ namespace PaviseApp
 							return false;
 						}
 						Settings.SaveStr("PrevHvLaunch", "");
-						Logger.Log(flag2 ? (Lang.T("log.vbstweak.9") + text2 + Lang.T("log.nettweak.4")) : Lang.T("log.vbstweak.10"));
+						Logger.Log(matchesDisabledByPavise ? (Lang.T("log.vbstweak.9") + normHvLaunchResult + Lang.T("log.nettweak.4")) : Lang.T("log.vbstweak.10"));
 					}
 					else
 					{
 						Logger.Log(Lang.T("log.vbstweak.11") + code + Lang.T("log.vbstweak.12"));
 					}
-					return flag;
+					return matchesRestore;
 				}
 				catch (Exception ex)
 				{
@@ -333,22 +333,22 @@ namespace PaviseApp
 		private static string ReadHvLaunch(out bool ok)
 		{
 			int code;
-			string text = RunBcd("/enum {current}", out code);
-			ok = code == 0 && !string.IsNullOrEmpty(text);
+			string runBcdResult = RunBcd("/enum {current}", out code);
+			ok = code == 0 && !string.IsNullOrEmpty(runBcdResult);
 			if (!ok)
 			{
 				return null;
 			}
-			string[] array = text.Split('\n');
-			foreach (string text2 in array)
+			string[] runBcdResultParts = runBcdResult.Split('\n');
+			foreach (string entryText in runBcdResultParts)
 			{
-				string text3 = text2.Trim();
-				if (text3.StartsWith("hypervisorlaunchtype", StringComparison.OrdinalIgnoreCase))
+				string entryTextTrimmed = entryText.Trim();
+				if (entryTextTrimmed.StartsWith("hypervisorlaunchtype", StringComparison.OrdinalIgnoreCase))
 				{
-					string[] array2 = text3.Split(new char[2] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-					if (array2.Length >= 2)
+					string[] entryTextTrimmedParts = entryTextTrimmed.Split(new char[2] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+					if (entryTextTrimmedParts.Length >= 2)
 					{
-						return NormHvLaunch(array2[array2.Length - 1]);
+						return NormHvLaunch(entryTextTrimmedParts[entryTextTrimmedParts.Length - 1]);
 					}
 				}
 			}

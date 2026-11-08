@@ -45,21 +45,21 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				int num = Marshal.ReadInt32(intPtr);
-				int num2 = Marshal.SizeOf(typeof(TcpRowOwnerPid));
-				long num3 = intPtr.ToInt64() + 4;
-				int num4 = 0;
-				while (num4 < num)
+				int int32 = Marshal.ReadInt32(intPtr);
+				int sizeOfResult = Marshal.SizeOf(typeof(TcpRowOwnerPid));
+				long toInt64Offset = intPtr.ToInt64() + 4;
+				int processedCount = 0;
+				while (processedCount < int32)
 				{
-					TcpRowOwnerPid tcpRowOwnerPid = (TcpRowOwnerPid)Marshal.PtrToStructure(new IntPtr(num3), typeof(TcpRowOwnerPid));
-					int num5 = (int)(((tcpRowOwnerPid.LocalPort & 0xFF) << 8) | ((tcpRowOwnerPid.LocalPort >> 8) & 0xFF));
-					if (num5 == port)
+					TcpRowOwnerPid tcpRowOwnerPid = (TcpRowOwnerPid)Marshal.PtrToStructure(new IntPtr(toInt64Offset), typeof(TcpRowOwnerPid));
+					int combinedMask = (int)(((tcpRowOwnerPid.LocalPort & 0xFF) << 8) | ((tcpRowOwnerPid.LocalPort >> 8) & 0xFF));
+					if (combinedMask == port)
 					{
 						pid = (int)tcpRowOwnerPid.OwningPid;
 						return pid > 0;
 					}
-					num4++;
-					num3 += num2;
+					processedCount++;
+					toInt64Offset += sizeOfResult;
 				}
 			}
 			catch

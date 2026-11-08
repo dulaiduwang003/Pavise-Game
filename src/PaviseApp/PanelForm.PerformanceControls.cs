@@ -344,17 +344,17 @@ namespace PaviseApp
 				PerformanceFeatureCard performanceFeatureCard = control as PerformanceFeatureCard;
 				if (performanceFeatureCard != null && performanceFeatureCard.Hosted != null)
 				{
-					string text = PerformanceFeatureKey(performanceFeatureCard.Hosted.Name);
-					performanceFeatureCard.RestartScope = ((text == "EnvPerformanceBundleV1" || text == "EnvStoragePowerGroupV1") ? PerformanceRestartScope.SystemRestart : PerformanceRestartFor(text));
-					performanceFeatureCard.Lifetime = PerformanceLifetimeFor(text);
-					performanceFeatureCard.RestartText = ((text == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((text == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : ""));
+					string performanceFeatureKeyResult = PerformanceFeatureKey(performanceFeatureCard.Hosted.Name);
+					performanceFeatureCard.RestartScope = ((performanceFeatureKeyResult == "EnvPerformanceBundleV1" || performanceFeatureKeyResult == "EnvStoragePowerGroupV1") ? PerformanceRestartScope.SystemRestart : PerformanceRestartFor(performanceFeatureKeyResult));
+					performanceFeatureCard.Lifetime = PerformanceLifetimeFor(performanceFeatureKeyResult);
+					performanceFeatureCard.RestartText = ((performanceFeatureKeyResult == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((performanceFeatureKeyResult == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : ""));
 					performanceFeatureCard.Title = performanceFeatureCard.Title.Replace(" · 需重启", "").Replace(" · restart required", "");
-					if (text == "EnvQuantumProfileV1")
+					if (performanceFeatureKeyResult == "EnvQuantumProfileV1")
 					{
 						performanceFeatureCard.Title = PerformanceActionCatalog.Find("EnvQuantumProfileV1").Title;
 						performanceFeatureCard.RestartText = AutoText("优先在线应用", "Online update preferred");
 					}
-					ConfigurePerformanceConsole(performanceFeatureCard, text);
+					ConfigurePerformanceConsole(performanceFeatureCard, performanceFeatureKeyResult);
 					performanceFeatureCard.ArrangePresentation();
 				}
 				ConfigurePerformanceCards(control);
@@ -367,44 +367,44 @@ namespace PaviseApp
 		{
 			string key = item.Key;
 			if (key == BackgroundGovernancePolicy.SettingKey || key == "GmSuppress") return;
-			string text = ((key == "GmSuppress") ? AutoText("后台治理", "Background protection") : ((key == "GmDwmBoost") ? AutoText("桌面合成调度", "Desktop compositor scheduling") : ((key == "GmThreadBoostStrategyV1") ? AutoText("游戏线程提优", "Game thread boost") : Lang.T(item.LangKey))));
-			string text2 = ManualPolicyDescription(key);
+			string autoTextResult = ((key == "GmSuppress") ? AutoText("后台治理", "Background protection") : ((key == "GmDwmBoost") ? AutoText("桌面合成调度", "Desktop compositor scheduling") : ((key == "GmThreadBoostStrategyV1") ? AutoText("游戏线程提优", "Game thread boost") : Lang.T(item.LangKey))));
+			string manualPolicyDescriptionResult = ManualPolicyDescription(key);
 			if (item.Kind == PolicyValueKind.Bool)
 			{
-				AddManualPerformanceToggle(parent, ref y, key, text, text2, () => PolicyResolver.RawGlobalValue(key) == "1", (bool value) => SaveManualPolicy(item, value ? "1" : "0"), () => ManualPolicySupported(key), () => gameMode.AutomationPolicySnapshot.ValueOf(key) == "1");
+				AddManualPerformanceToggle(parent, ref y, key, autoTextResult, manualPolicyDescriptionResult, () => PolicyResolver.RawGlobalValue(key) == "1", (bool value) => SaveManualPolicy(item, value ? "1" : "0"), () => ManualPolicySupported(key), () => gameMode.AutomationPolicySnapshot.ValueOf(key) == "1");
 				return;
 			}
 			if (key == "GmThreadBoostStrategyV1")
 			{
-				AddManualPerformanceToggle(parent, ref y, key, text, text2, () => ThreadBoostSelection.IsOn(PolicyResolver.RawGlobalValue(key)), (bool value) => SaveManualPolicy(item, value ? "on" : "off"), null, null, gameMode.ThreadBoostExecutionState);
+				AddManualPerformanceToggle(parent, ref y, key, autoTextResult, manualPolicyDescriptionResult, () => ThreadBoostSelection.IsOn(PolicyResolver.RawGlobalValue(key)), (bool value) => SaveManualPolicy(item, value ? "on" : "off"), null, null, gameMode.ThreadBoostExecutionState);
 				return;
 			}
 			string[] choices = (string[])item.Choices.Clone();
-			string[] array = new string[choices.Length];
+			string[] textEntries = new string[choices.Length];
 			for (int i = 0; i < choices.Length; i++)
 			{
-				array[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
+				textEntries[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
 			}
 			TierPicker picker = new TierPicker
 			{
 				Name = "manualPerformance_" + key,
-				Labels = array,
-				AccessibleName = text,
-				AccessibleDescription = text2,
+				Labels = textEntries,
+				AccessibleName = autoTextResult,
+				AccessibleDescription = manualPolicyDescriptionResult,
 				Size = new Size(Theme.S(180), Theme.S(30))
 			};
 			int used;
-			SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(text2, ScrollContentW, picker, 82), text, text2, picker, out used);
+			SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(manualPolicyDescriptionResult, ScrollContentW, picker, 82), autoTextResult, manualPolicyDescriptionResult, picker, out used);
 			y += used + 8;
 			Action sync = delegate
 			{
-				string text3 = PolicyResolver.RawGlobalValue(key);
-				int num = Array.IndexOf(choices, text3);
-				picker.Index = ((num >= 0) ? num : 0);
-				bool flag2 = text3 != "0" && text3 != "off";
-				bool flag3 = ManualPolicySupported(key);
-				picker.Enabled = flag3 || flag2;
-				SyncManualPerformanceStatus(card, key, flag2, flag3, null);
+				string rawGlobalValueResult = PolicyResolver.RawGlobalValue(key);
+				int matchIndex = Array.IndexOf(choices, rawGlobalValueResult);
+				picker.Index = ((matchIndex >= 0) ? matchIndex : 0);
+				bool allConditionsMet = rawGlobalValueResult != "0" && rawGlobalValueResult != "off";
+				bool manualPolicySupportedSucceeded = ManualPolicySupported(key);
+				picker.Enabled = manualPolicySupportedSucceeded || allConditionsMet;
+				SyncManualPerformanceStatus(card, key, allConditionsMet, manualPolicySupportedSucceeded, null);
 			};
 			picker.IndexChanged = delegate(int index)
 			{
@@ -416,9 +416,9 @@ namespace PaviseApp
 					}
 					else
 					{
-						bool flag = SaveManualPolicy(item, choices[index]);
+						bool saveManualPolicySucceeded = SaveManualPolicy(item, choices[index]);
 						sync();
-						if (!flag)
+						if (!saveManualPolicySucceeded)
 						{
 							ShowManualPerformanceSaveFailure();
 						}
@@ -429,18 +429,18 @@ namespace PaviseApp
 		}
 		private bool SaveManualPolicy(PolicyItem item, string value)
 		{
-			string text = PolicyCatalog.Canonical(item.Key, value);
-			if (text == null)
+			string canonicalResult = PolicyCatalog.Canonical(item.Key, value);
+			if (canonicalResult == null)
 			{
 				return false;
 			}
-			bool flag = ((item.Key == "GmThreadBoostStrategyV1") ? ThreadBoostSelection.Save(text) : ((item.Kind == PolicyValueKind.Bool) ? Settings.Save(item.Key, text == "1") : Settings.SaveStr(item.Key, text)));
-			if (flag)
+			bool saveSucceeded = ((item.Key == "GmThreadBoostStrategyV1") ? ThreadBoostSelection.Save(canonicalResult) : ((item.Kind == PolicyValueKind.Bool) ? Settings.Save(item.Key, canonicalResult == "1") : Settings.SaveStr(item.Key, canonicalResult)));
+			if (saveSucceeded)
 			{
 				gameMode.RefreshAutomaticPreferences();
 				RefreshAutomationPage();
 			}
-			return flag;
+			return saveSucceeded;
 		}
 		private bool SaveManualPerformancePreference(string key, bool value)
 		{
@@ -462,11 +462,11 @@ namespace PaviseApp
 			y += used + 8;
 			Action sync = delegate
 			{
-				bool flag2 = read();
-				bool flag3 = supported == null || supported();
-				toggle.SetSilently(flag2);
-				toggle.Enabled = flag3 || flag2;
-				SyncManualPerformanceStatus(card, key, flag2, flag3, execution);
+				bool readSucceeded = read();
+				bool matchesSupported = supported == null || supported();
+				toggle.SetSilently(readSucceeded);
+				toggle.Enabled = matchesSupported || readSucceeded;
+				SyncManualPerformanceStatus(card, key, readSucceeded, matchesSupported, execution);
 			};
 			toggle.CheckedChanged += delegate
 			{
@@ -478,9 +478,9 @@ namespace PaviseApp
 					}
 					else
 					{
-						bool flag = write(toggle.Checked);
+						bool writeSucceeded = write(toggle.Checked);
 						sync();
-						if (!flag)
+						if (!writeSucceeded)
 						{
 							ShowManualPerformanceSaveFailure();
 						}
@@ -575,12 +575,12 @@ namespace PaviseApp
 		}
 		internal static string ConcisePerformanceDetail(string original, string explanation, bool keepStates = true)
 		{
-			int num = ((original == null) ? (-1) : original.IndexOf('\n'));
-			if (num > 0 && original[num - 1] == '\r')
+			int matchIndex = ((original == null) ? (-1) : original.IndexOf('\n'));
+			if (matchIndex > 0 && original[matchIndex - 1] == '\r')
 			{
-				num--;
+				matchIndex--;
 			}
-			return explanation + ((keepStates && num >= 0) ? original.Substring(num) : "");
+			return explanation + ((keepStates && matchIndex >= 0) ? original.Substring(matchIndex) : "");
 		}
 		private void ChangePerformanceTuningBundle(object sender, EventArgs args)
 		{
@@ -589,7 +589,7 @@ namespace PaviseApp
 				return;
 			}
 			bool @checked = swPerformanceEnvironmentBundle.Checked;
-			bool flag = PerformanceTuning.SetEnvironmentBundle(@checked, delegate
+			bool setEnvironmentBundleSucceeded = PerformanceTuning.SetEnvironmentBundle(@checked, delegate
 			{
 				try
 				{
@@ -605,13 +605,13 @@ namespace PaviseApp
 				{
 				}
 			});
-			if (flag)
+			if (setEnvironmentBundleSucceeded)
 			{
 				environmentBundleOverride = @checked;
 				gameMode.Poke();
 			}
 			RefreshPerformanceEnvironmentObservation();
-			if (!flag)
+			if (!setEnvironmentBundleSucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.savefail"));
 			}
@@ -625,7 +625,7 @@ namespace PaviseApp
 				SyncPerformanceTuningEnvironment();
 				return;
 			}
-			bool flag = PerformanceTuning.SetQuantumProfile(selectedIndex, delegate
+			bool setQuantumProfileSucceeded = PerformanceTuning.SetQuantumProfile(selectedIndex, delegate
 			{
 				try
 				{
@@ -641,30 +641,30 @@ namespace PaviseApp
 				{
 				}
 			});
-			if (flag)
+			if (setQuantumProfileSucceeded)
 			{
 				environmentQuantumOverride = selectedIndex;
 				gameMode.Poke();
 			}
 			RefreshPerformanceEnvironmentObservation();
-			if (!flag)
+			if (!setQuantumProfileSucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.savefail"));
 			}
 		}
 		private static string PerformanceFeatureKey(string name)
 		{
-			string text = name ?? "";
-			string[] array = new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" };
-			foreach (string text2 in array)
+			string nameOffset = name ?? "";
+			string[] textEntries = new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" };
+			foreach (string entryText in textEntries)
 			{
-				if (text.StartsWith(text2, StringComparison.Ordinal))
+				if (nameOffset.StartsWith(entryText, StringComparison.Ordinal))
 				{
-					text = text.Substring(text2.Length);
+					nameOffset = nameOffset.Substring(entryText.Length);
 					break;
 				}
 			}
-			switch (text)
+			switch (nameOffset)
 			{
 			case "laboratoryCpuIdle":
 				return "LabCpuIdleStrategyV1";
@@ -679,7 +679,7 @@ namespace PaviseApp
 			case "GameLowLatency":
 				return "NvLowLat";
 			default:
-				return text;
+				return nameOffset;
 			}
 		}
 		private static void ConfigurePerformanceConsole(PerformanceFeatureCard card, string key)
@@ -812,7 +812,7 @@ namespace PaviseApp
 		}
 		private void OrderPerformanceConsole()
 		{
-            string[] array = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
+            string[] textEntries = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
 			Control control = performanceTabPanels[0];
 			List<PerformanceFeatureCard> list = new List<PerformanceFeatureCard>();
 			foreach (Control control2 in control.Controls)
@@ -825,11 +825,11 @@ namespace PaviseApp
 			control.SuspendLayout();
 			try
 			{
-				for (int num = array.Length - 1; num >= 0; num--)
+				for (int textEntriesIndex = textEntries.Length - 1; textEntriesIndex >= 0; textEntriesIndex--)
 				{
 					foreach (PerformanceFeatureCard item in list)
 					{
-						if (item.IconKey == array[num])
+						if (item.IconKey == textEntries[textEntriesIndex])
 						{
 							control.Controls.SetChildIndex(item, 0);
 						}

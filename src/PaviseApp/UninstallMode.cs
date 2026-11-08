@@ -191,17 +191,17 @@ namespace PaviseApp
 		internal static List<string> LegacyDataDirs(string roaming, string local, string common, string exeDir)
 		{
 			List<string> list = new List<string>();
-			string[] array = new string[3]
+			string[] textEntries = new string[3]
 			{
 				Join(roaming, "Aegis"),
 				Join(local, "Pavise"),
 				Join(common, "Pavise")
 			};
-			foreach (string text in array)
+			foreach (string entryText in textEntries)
 			{
-				if (text != null && (string.IsNullOrEmpty(exeDir) || !IsSameOrParent(text, exeDir)))
+				if (entryText != null && (string.IsNullOrEmpty(exeDir) || !IsSameOrParent(entryText, exeDir)))
 				{
-					list.Add(text);
+					list.Add(entryText);
 				}
 			}
 			return list;
@@ -227,13 +227,13 @@ namespace PaviseApp
 		{
 			try
 			{
-				string text = Path.GetFullPath(parent).TrimEnd('\\', '/');
-				string text2 = Path.GetFullPath(child).TrimEnd('\\', '/');
-				if (string.Equals(text, text2, StringComparison.OrdinalIgnoreCase))
+				string getFullPathTrimmed = Path.GetFullPath(parent).TrimEnd('\\', '/');
+				string getFullPathTrimmed2 = Path.GetFullPath(child).TrimEnd('\\', '/');
+				if (string.Equals(getFullPathTrimmed, getFullPathTrimmed2, StringComparison.OrdinalIgnoreCase))
 				{
 					return true;
 				}
-				return text2.StartsWith(text + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || text2.StartsWith(text + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+				return getFullPathTrimmed2.StartsWith(getFullPathTrimmed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || getFullPathTrimmed2.StartsWith(getFullPathTrimmed + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 			}
 			catch
 			{
@@ -244,7 +244,7 @@ namespace PaviseApp
 		public static bool Run(string resultPath)
 		{
 			StringBuilder stringBuilder = new StringBuilder();
-			bool flag = false;
+			bool runSucceeded = false;
 			Mutex shutdownGate = null;
 			try
 			{
@@ -256,8 +256,8 @@ namespace PaviseApp
 					shutdownGate = StopOtherInstances();
 					return shutdownGate != null;
 				});
-				flag = uninstallReport.Cleared;
-				stringBuilder.Append("cleared=").Append(flag ? "1" : "0").Append("\r\n");
+				runSucceeded = uninstallReport.Cleared;
+				stringBuilder.Append("cleared=").Append(runSucceeded ? "1" : "0").Append("\r\n");
 				stringBuilder.Append("files=").Append(uninstallReport.Files).Append("\r\n");
 				stringBuilder.Append("leftovers=").Append(uninstallReport.Leftovers).Append("\r\n");
 				if (!string.IsNullOrEmpty(uninstallReport.Failure))
@@ -270,7 +270,7 @@ namespace PaviseApp
 				stringBuilder.Append("cleared=0\r\nerror=").Append(ex.GetType().Name).Append(' ')
 					.Append(ex.Message)
 					.Append("\r\n");
-				flag = false;
+				runSucceeded = false;
 			}
 			finally
 			{
@@ -296,7 +296,7 @@ namespace PaviseApp
 			catch
 			{
 			}
-			return flag;
+			return runSucceeded;
 		}
 
 		private static Mutex StopOtherInstances()

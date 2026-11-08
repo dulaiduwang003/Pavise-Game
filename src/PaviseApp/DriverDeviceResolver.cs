@@ -29,15 +29,15 @@ namespace PaviseApp
 			{
 				return "";
 			}
-			int num = deviceId.IndexOf('\\');
-			if (num < 0)
+			int matchIndex = deviceId.IndexOf('\\');
+			if (matchIndex < 0)
 			{
 				return deviceId;
 			}
-			string text = deviceId.Substring(num + 1);
-			int num2 = text.IndexOf('&');
-			string text2 = ((num2 > 0) ? text.Substring(0, num2) : text);
-			return deviceId.Substring(0, num) + "\\" + text2;
+			string substringResult = deviceId.Substring(matchIndex + 1);
+			int matchIndex2 = substringResult.IndexOf('&');
+			string substringResult2 = ((matchIndex2 > 0) ? substringResult.Substring(0, matchIndex2) : substringResult);
+			return deviceId.Substring(0, matchIndex) + "\\" + substringResult2;
 		}
 	}
 }

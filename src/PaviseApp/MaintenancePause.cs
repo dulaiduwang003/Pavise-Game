@@ -56,9 +56,9 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				bool flag = engine.Activate();
-				Logger.Log(Lang.T(flag ? "log.maint.2" : "log.maint.1"));
-				return flag;
+				bool activateSucceeded = engine.Activate();
+				Logger.Log(Lang.T(activateSucceeded ? "log.maint.2" : "log.maint.1"));
+				return activateSucceeded;
 			}
 		}
 
@@ -67,12 +67,12 @@ namespace PaviseApp
 			lock (SystemConfigurationGate.Sync)
 			{
 				bool hasResidue = engine.HasResidue;
-				bool flag = engine.Restore();
+				bool restoreSucceeded = engine.Restore();
 				if (hasResidue)
 				{
-					Logger.Log(Lang.T(flag ? "log.maint.3" : "log.maint.4"));
+					Logger.Log(Lang.T(restoreSucceeded ? "log.maint.3" : "log.maint.4"));
 				}
-				return flag;
+				return restoreSucceeded;
 			}
 		}
 

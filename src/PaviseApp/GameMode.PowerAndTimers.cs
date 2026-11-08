@@ -29,19 +29,19 @@ namespace PaviseApp
 			{
 				return true;
 			}
-			bool flag = state == "restored" && automationSessionEnding;
-			bool flag2 = awakeRecoveryState == state;
-			if (flag2)
+			bool matchesAutomationSessionEnding = state == "restored" && automationSessionEnding;
+			bool matchesAwakeRecoveryState = awakeRecoveryState == state;
+			if (matchesAwakeRecoveryState)
 			{
 				awakeRecoveryState = null;
 			}
-			if (flag && awakeFinalRestoreLogged && !flag2)
+			if (matchesAutomationSessionEnding && awakeFinalRestoreLogged && !matchesAwakeRecoveryState)
 			{
 				return false;
 			}
 			long ticks = DateTime.UtcNow.Ticks;
-			long num = ((state == "applied") ? awakeAppliedLogTicks : awakeRestoredLogTicks);
-			if (!flag && !flag2 && num != 0 && ticks >= num && ticks - num < 600000000)
+			long awakeAppliedLogTicksSnapshot = ((state == "applied") ? awakeAppliedLogTicks : awakeRestoredLogTicks);
+			if (!matchesAutomationSessionEnding && !matchesAwakeRecoveryState && awakeAppliedLogTicksSnapshot != 0 && ticks >= awakeAppliedLogTicksSnapshot && ticks - awakeAppliedLogTicksSnapshot < 600000000)
 			{
 				return false;
 			}
@@ -53,7 +53,7 @@ namespace PaviseApp
 			{
 				awakeRestoredLogTicks = ticks;
 			}
-			if (flag)
+			if (matchesAutomationSessionEnding)
 			{
 				awakeFinalRestoreLogged = true;
 			}
@@ -66,10 +66,10 @@ namespace PaviseApp
 		private void RollbackPowerPlan(string reason)
 		{
 			Interlocked.Exchange(ref laptopPerfPowerGeneration, -1);
-			bool flag = RunAutomaticRestore("powerplan", () => RestoreLaptopPerformanceForPowerPlan() && RestorePowerPlan());
+			bool runAutomaticRestoreSucceeded = RunAutomaticRestore("powerplan", () => RestoreLaptopPerformanceForPowerPlan() && RestorePowerPlan());
 			lock (sync)
 			{
-				if (flag)
+				if (runAutomaticRestoreSucceeded)
 				{
 					envRestorePending.Remove("powerplan");
 					envNextAttempt.Remove("powerplan");
@@ -80,7 +80,7 @@ namespace PaviseApp
 					envRestorePending.Add("powerplan");
 				}
 			}
-			if (flag)
+			if (runAutomaticRestoreSucceeded)
 			{
 				ActionFailureStore.CancelApply("PowerPlanOn", "system");
 			}
@@ -88,8 +88,8 @@ namespace PaviseApp
 			{
 				ActionFailureStore.Trip("PowerPlanOn", "system", reason + PerformancePolicy.Text("；电源计划回退失败", "; power-plan rollback failed"));
 			}
-			planActive = !flag;
-			if (flag)
+			planActive = !runAutomaticRestoreSucceeded;
+			if (runAutomaticRestoreSucceeded)
 			{
 				lastPowerPolicyKey = -1;
 			}
@@ -98,11 +98,11 @@ namespace PaviseApp
 		private bool PowerPlanStopped(int key)
 		{
 			AutomaticFailurePhase phase = PowerAttemptPhase(key);
-			bool flag = ActionFailureStore.IsBlocked("PowerPlanOn", "system");
+			bool isBlocked = ActionFailureStore.IsBlocked("PowerPlanOn", "system");
 			lock (sync)
 			{
-				flag |= phase.Stopped || phase.Attempts >= 3 || DateTime.UtcNow.Ticks < phase.Next;
-				if (flag)
+				isBlocked |= phase.Stopped || phase.Attempts >= 3 || DateTime.UtcNow.Ticks < phase.Next;
+				if (isBlocked)
 				{
 					powerStoppedKeys.Add(key);
 				}
@@ -111,17 +111,17 @@ namespace PaviseApp
 					powerStoppedKeys.Remove(key);
 				}
 			}
-			if (flag) RecordAutomation("PowerPlanOn", PowerPlanExecutionState);
-			return flag;
+			if (isBlocked) RecordAutomation("PowerPlanOn", PowerPlanExecutionState);
+			return isBlocked;
 		}
 		internal void NotifyPowerSchemeChanged()
 		{
-			bool flag;
+			bool powerPlanApplySessionCurrentSucceeded;
 			lock (sync)
 			{
-				flag = PowerPlanApplySessionCurrent(Volatile.Read(ref powerSessionGen));
+				powerPlanApplySessionCurrentSucceeded = PowerPlanApplySessionCurrent(Volatile.Read(ref powerSessionGen));
 			}
-			if (flag)
+			if (powerPlanApplySessionCurrentSucceeded)
 			{
 				Interlocked.Exchange(ref powerPlanNotificationPending, 1);
 				QueuePowerPlanNotificationAudit();
@@ -148,10 +148,10 @@ namespace PaviseApp
 				}
 			}
 			Interlocked.Exchange(ref powerPlanNotificationPending, 0);
-			bool flag = false;
+			bool queuePowerPlanNotificationAuditReady = false;
 			try
 			{
-				flag = ThreadPool.QueueUserWorkItem(delegate
+				queuePowerPlanNotificationAuditReady = ThreadPool.QueueUserWorkItem(delegate
 				{
 					RunPowerPlanNotificationAudit(genShot, keyShot);
 				});
@@ -159,7 +159,7 @@ namespace PaviseApp
 			catch
 			{
 			}
-			if (!flag)
+			if (!queuePowerPlanNotificationAuditReady)
 			{
 				RecordAutomaticWorkFailure("power-queue", "notification-queue-rejected");
 				Interlocked.Exchange(ref powerPlanNotificationPending, 1);
@@ -208,7 +208,7 @@ namespace PaviseApp
 						return;
 					}
 					bool skipped;
-					bool flag = RunPowerPlanAction(delegate
+					bool runPowerPlanActionSucceeded = RunPowerPlanAction(delegate
 					{
 						if (!PowerPlanNotificationSessionCurrent(genShot, keyShot))
 						{
@@ -223,16 +223,16 @@ namespace PaviseApp
 					}
 					else if (!PowerPlanNotificationSessionCurrent(genShot, keyShot))
 					{
-						if (!flag)
+						if (!runPowerPlanActionSucceeded)
 						{
 							ActionFailureStore.Trip("PowerPlanOn", "system", reason);
 						}
-							RollbackPowerPlan(flag ? "stage=session-cancelled" : reason + " phase=session-cancelled");
+							RollbackPowerPlan(runPowerPlanActionSucceeded ? "stage=session-cancelled" : reason + " phase=session-cancelled");
 						CompletePowerAttempt(false, "stage=session-cancelled");
 					}
 					else
 					{
-						OnPowerPlanAppliedWithReason(flag, reason, genShot);
+						OnPowerPlanAppliedWithReason(runPowerPlanActionSucceeded, reason, genShot);
 					}
 				}
 			}
@@ -283,7 +283,7 @@ namespace PaviseApp
 						return false;
 					}
 					bool skipped;
-					bool flag = RunPowerPlanAction(delegate
+					bool runPowerPlanActionSucceeded = RunPowerPlanAction(delegate
 					{
 						if (!PowerPlanApplySessionCurrent(genShot))
 						{
@@ -299,16 +299,16 @@ namespace PaviseApp
 					}
 					if (!PowerPlanApplySessionCurrent(genShot))
 					{
-						if (!flag)
+						if (!runPowerPlanActionSucceeded)
 						{
 							ActionFailureStore.Trip("PowerPlanOn", "system", reason);
 						}
-						RollbackPowerPlan(flag ? "stage=session-cancelled" : reason + " phase=session-cancelled");
+						RollbackPowerPlan(runPowerPlanActionSucceeded ? "stage=session-cancelled" : reason + " phase=session-cancelled");
 						CompletePowerAttempt(false, "stage=session-cancelled");
 						return false;
 					}
-					OnPowerPlanAppliedWithReason(flag, reason, genShot);
-					return flag && !ActionFailureStore.IsBlocked("PowerPlanOn", "system");
+					OnPowerPlanAppliedWithReason(runPowerPlanActionSucceeded, reason, genShot);
+					return runPowerPlanActionSucceeded && !ActionFailureStore.IsBlocked("PowerPlanOn", "system");
 				}
 			}
 			catch

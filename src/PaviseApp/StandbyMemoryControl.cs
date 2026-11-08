@@ -131,33 +131,33 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				ulong num = information.PageSize.ToUInt64();
-				if (num == 0 || (num & (num - 1)) != 0)
+				ulong toUInt64Result = information.PageSize.ToUInt64();
+				if (toUInt64Result == 0 || (toUInt64Result & (toUInt64Result - 1)) != 0)
 				{
 					return false;
 				}
 				StandbyMemoryListInformation information2;
 				int returnedBytes;
-				int num2 = native.QueryMemoryList(out information2, out returnedBytes);
-				if (num2 < 0 || returnedBytes < 13 * IntPtr.Size || returnedBytes > Marshal.SizeOf(typeof(StandbyMemoryListInformation)) || information2.PageCountByPriority == null || information2.PageCountByPriority.Length != 8)
+				int memoryList = native.QueryMemoryList(out information2, out returnedBytes);
+				if (memoryList < 0 || returnedBytes < 13 * IntPtr.Size || returnedBytes > Marshal.SizeOf(typeof(StandbyMemoryListInformation)) || information2.PageCountByPriority == null || information2.PageCountByPriority.Length != 8)
 				{
 					return false;
 				}
-				ulong num3 = 0uL;
+				ulong numericValue = 0uL;
 				UIntPtr[] pageCountByPriority = information2.PageCountByPriority;
 				checked
 				{
 					foreach (UIntPtr uIntPtr in pageCountByPriority)
 					{
-						num3 += uIntPtr.ToUInt64();
+						numericValue += uIntPtr.ToUInt64();
 					}
 					snapshot = new StandbyMemorySnapshot
 					{
-						TotalBytes = information.PhysicalTotal.ToUInt64() * num,
-						AvailableBytes = information.PhysicalAvailable.ToUInt64() * num,
-						FreeBytes = (information2.ZeroPageCount.ToUInt64() + information2.FreePageCount.ToUInt64()) * num,
-						StandbyBytes = num3 * num,
-						ListBytes = information.SystemCache.ToUInt64() * num
+						TotalBytes = information.PhysicalTotal.ToUInt64() * toUInt64Result,
+						AvailableBytes = information.PhysicalAvailable.ToUInt64() * toUInt64Result,
+						FreeBytes = (information2.ZeroPageCount.ToUInt64() + information2.FreePageCount.ToUInt64()) * toUInt64Result,
+						StandbyBytes = numericValue * toUInt64Result,
+						ListBytes = information.SystemCache.ToUInt64() * toUInt64Result
 					};
 					if (StandbyCleanerEngine.ValidSnapshot(snapshot))
 					{

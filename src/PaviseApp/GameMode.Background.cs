@@ -17,22 +17,22 @@ namespace PaviseApp
 		{
 			if (!AdaptiveEscalationWanted)
 			{
-				bool flag = adaptiveEscalated;
+				bool adaptiveEscalatedSnapshot = adaptiveEscalated;
 				ResetAdaptiveGuard();
-				if (flag)
+				if (adaptiveEscalatedSnapshot)
 				{
 					Logger.Log(Lang.T("log.adaptive.3"));
 				}
 				return;
 			}
 			long now = AdaptiveNow();
-			int num = adaptiveGuard.Step(adaptivePressure.Update(AdaptiveSample(), now), now);
-			if (num > 0)
+			int stepResult = adaptiveGuard.Step(adaptivePressure.Update(AdaptiveSample(), now), now);
+			if (stepResult > 0)
 			{
 				adaptiveEscalated = true;
 				Logger.Log(Lang.T("log.adaptive.1") + adaptiveGuard.Episodes + "/" + 3);
 			}
-			else if (num < 0)
+			else if (stepResult < 0)
 			{
 				adaptiveEscalated = false;
 				Logger.Log(Lang.T("log.adaptive.2"));
@@ -141,7 +141,7 @@ namespace PaviseApp
 			if (!object.ReferenceEquals(servicePolicySnapshot, all))
 			{
 				servicePolicyHosts = null;
-				bool flag = false;
+				bool backgroundServiceHostsReady = false;
 				if (all != null)
 				{
 					ProcEntry[] entries = all.Entries;
@@ -149,12 +149,12 @@ namespace PaviseApp
 					{
 						if (procEntry.Pid > 4 && procEntry.Session == 0 && procEntry.Creation > 0 && BackgroundServicePolicy.CandidateName(procEntry.Name))
 						{
-							flag = true;
+							backgroundServiceHostsReady = true;
 							break;
 						}
 					}
 				}
-				if (flag)
+				if (backgroundServiceHostsReady)
 				{
 					servicePolicyHosts = SvcQuery.RunningServices();
 				}

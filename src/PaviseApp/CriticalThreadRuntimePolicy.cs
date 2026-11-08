@@ -30,28 +30,28 @@ namespace PaviseApp
 				return new HardThreadChoice[0];
 			}
 			roles = roles ?? new CriticalThreadRoleFact[0];
-			CriticalThreadHotspot[] array = (from x in hotspots
+			CriticalThreadHotspot[] items = (from x in hotspots
 				where x != null && x.Tid > 0 && x.Creation > 0 && x.Windows >= 3 && x.CpuShare >= 0.35
 				orderby roles.Any((CriticalThreadRoleFact y) => y.Tid == x.Tid && y.Creation == x.Creation && y.Role == "presentation-associated") descending, roles.Any((CriticalThreadRoleFact y) => y.Tid == x.Tid && y.Creation == x.Creation) descending, x.CpuShare descending, x.Tid
 				select x).ToArray();
-			if (array.Length < rule.CandidateCount || array.Select((CriticalThreadHotspot x) => x.Tid).Distinct().Count() != array.Length)
+			if (items.Length < rule.CandidateCount || items.Select((CriticalThreadHotspot x) => x.Tid).Distinct().Count() != items.Length)
 			{
 				return new HardThreadChoice[0];
 			}
 			ulong[] masks = rule.Targets;
-			return array.Take(masks.Length).Select((CriticalThreadHotspot x, int index) => new HardThreadChoice(new HardThreadIdentity(x.Tid, x.Creation), masks[index])).ToArray();
+			return items.Take(masks.Length).Select((CriticalThreadHotspot x, int index) => new HardThreadChoice(new HardThreadIdentity(x.Tid, x.Creation), masks[index])).ToArray();
 		}
 
 		internal static bool Contains(ThreadTimes sample, HardThreadIdentity thread)
 		{
-			int num = 0;
-			while (sample != null && num < sample.Ids.Length)
+			int processedCount = 0;
+			while (sample != null && processedCount < sample.Ids.Length)
 			{
-				if (sample.Ids[num] == thread.Tid && sample.Created[num] == thread.Creation)
+				if (sample.Ids[processedCount] == thread.Tid && sample.Created[processedCount] == thread.Creation)
 				{
 					return true;
 				}
-				num++;
+				processedCount++;
 			}
 			return false;
 		}
@@ -91,7 +91,7 @@ namespace PaviseApp
 			}
 			HashSet<string> hashSet = new HashSet<string>((receipts ?? new HardThreadOwnership[0]).Select((HardThreadOwnership x) => x.Thread.Key), StringComparer.Ordinal);
 			List<HardThreadIdentity> list = new List<HardThreadIdentity>();
-			int num = 0;
+			int processedCount = 0;
 			HardThreadChoice[] choices = plan.Choices;
 			foreach (HardThreadChoice hardThreadChoice in choices)
 			{
@@ -104,13 +104,13 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				bool flag = hashSet.Contains(hardThreadIdentity.Key);
-				if ((flag || num < 8) && list.Count < 512)
+				bool isInHashSet = hashSet.Contains(hardThreadIdentity.Key);
+				if ((isInHashSet || processedCount < 8) && list.Count < 512)
 				{
 					list.Add(hardThreadIdentity);
-					if (!flag)
+					if (!isInHashSet)
 					{
-						num++;
+						processedCount++;
 					}
 				}
 			}
@@ -145,11 +145,11 @@ namespace PaviseApp
 				for (int index = 0; index < sample.Ids.Length; index++)
 					sampleIdentities.Add(new SampleThreadIdentity(sample.Ids[index], sample.Created[index]));
 			}
-			HardThreadOwnership[] array = receipts.Where((HardThreadOwnership x) => x != null && x.Group == plan.Group
+			HardThreadOwnership[] whereItems = receipts.Where((HardThreadOwnership x) => x != null && x.Group == plan.Group
 				&& x.VerifiedUtcTicks >= auditStartedUtc && (sampleIdentities == null ? Contains(sample, x.Thread)
 					: sampleIdentities.Contains(new SampleThreadIdentity(x.Thread.Tid, x.Thread.Creation)))).ToArray();
-			HardThreadOwnership[] array2 = array;
-			foreach (HardThreadOwnership hardThreadOwnership2 in array2)
+			HardThreadOwnership[] hardThreadOwnershipItems = whereItems;
+			foreach (HardThreadOwnership hardThreadOwnership2 in hardThreadOwnershipItems)
 			{
 				if (plan.IsCandidate(hardThreadOwnership2.Thread))
 				{

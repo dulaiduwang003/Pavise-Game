@@ -21,10 +21,10 @@ namespace PaviseApp
 			{
 				return GameNvTargetPhase.Unknown;
 			}
-			bool flag = false;
-			bool flag2 = false;
-			Process[] array = processesByName;
-			foreach (Process process in array)
+			bool phaseReady = false;
+			bool phaseReady2 = false;
+			Process[] processesByNameSnapshot = processesByName;
+			foreach (Process process in processesByNameSnapshot)
 			{
 				using (process)
 				{
@@ -33,22 +33,22 @@ namespace PaviseApp
 						GameProcessSnapshot identity;
 						if (!GameSessionDetector.TryCaptureProcessIdentity(process.Id, session, out identity))
 						{
-							flag = true;
+							phaseReady = true;
 						}
 						else if (string.Equals(Path.GetFullPath(identity.Path), path, StringComparison.OrdinalIgnoreCase))
 						{
-							flag2 = true;
+							phaseReady2 = true;
 						}
 					}
 					catch
 					{
-						flag = true;
+						phaseReady = true;
 					}
 				}
 			}
-			if (!flag2)
+			if (!phaseReady2)
 			{
-				if (!flag)
+				if (!phaseReady)
 				{
 					return GameNvTargetPhase.Closed;
 				}

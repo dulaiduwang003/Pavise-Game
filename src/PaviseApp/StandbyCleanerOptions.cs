@@ -106,11 +106,11 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			string[] array = value.Split('|');
+			string[] valueParts = value.Split('|');
 			int result;
 			int result2;
 			int result3;
-			if (array.Length != 4 || array[0] != "1" || !int.TryParse(array[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || !int.TryParse(array[2], NumberStyles.None, CultureInfo.InvariantCulture, out result2) || !int.TryParse(array[3], NumberStyles.None, CultureInfo.InvariantCulture, out result3))
+			if (valueParts.Length != 4 || valueParts[0] != "1" || !int.TryParse(valueParts[1], NumberStyles.None, CultureInfo.InvariantCulture, out result) || !int.TryParse(valueParts[2], NumberStyles.None, CultureInfo.InvariantCulture, out result2) || !int.TryParse(valueParts[3], NumberStyles.None, CultureInfo.InvariantCulture, out result3))
 			{
 				return false;
 			}

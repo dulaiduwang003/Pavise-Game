@@ -131,7 +131,7 @@ namespace PaviseApp
 				}
 				SpDevinfoData data = default(SpDevinfoData);
 				data.Size = (uint)Marshal.SizeOf(typeof(SpDevinfoData));
-				for (uint num = 0u; SetupDiEnumDeviceInfo(intPtr, num, ref data); num++)
+				for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data); iterationIndex++)
 				{
 					StringBuilder stringBuilder = new StringBuilder(512);
 					uint required;
@@ -139,14 +139,14 @@ namespace PaviseApp
 					{
 						continue;
 					}
-					string text = stringBuilder.ToString();
-					if (IsDiscretePciGpu(text) && (!nvidiaOnly || text.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0) && !GpuInventory.IsIntegratedDevice(text))
+					string stringBuilderText = stringBuilder.ToString();
+					if (IsDiscretePciGpu(stringBuilderText) && (!nvidiaOnly || stringBuilderText.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0) && !GpuInventory.IsIntegratedDevice(stringBuilderText))
 					{
-						ulong num2 = LargestMemoryWindow(data.DevInst);
-						if (num2 > windowBytes)
+						ulong largestMemoryWindowResult = LargestMemoryWindow(data.DevInst);
+						if (largestMemoryWindowResult > windowBytes)
 						{
-							windowBytes = num2;
-							nvidia = text.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0;
+							windowBytes = largestMemoryWindowResult;
+							nvidia = stringBuilderText.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0;
 							StringBuilder stringBuilder2 = new StringBuilder(256);
 							uint dataType;
 							gpuName = (SetupDiGetDeviceRegistryPropertyW(intPtr, ref data, 0u, out dataType, stringBuilder2, 256u, out required) ? stringBuilder2.ToString() : null);
@@ -219,17 +219,17 @@ namespace PaviseApp
 			}
 			try
 			{
-				ulong num = 0uL;
-				uint[] array = new uint[2] { 1u, 7u };
-				foreach (uint forResource in array)
+				ulong largestMemoryWindowResult = 0uL;
+				uint[] numericValueItems = new uint[2] { 1u, 7u };
+				foreach (uint forResource in numericValueItems)
 				{
 					IntPtr intPtr = logConf;
-					bool flag = true;
+					bool largestMemoryWindowReady = true;
 					while (true)
 					{
 						IntPtr next;
-						int num2 = CM_Get_Next_Res_Des(out next, intPtr, forResource, IntPtr.Zero, 0u);
-						if (!flag)
+						int cMGetNextResDesResult = CM_Get_Next_Res_Des(out next, intPtr, forResource, IntPtr.Zero, 0u);
+						if (!largestMemoryWindowReady)
 						{
 							try
 							{
@@ -239,20 +239,20 @@ namespace PaviseApp
 							{
 							}
 						}
-						if (num2 != 0 || next == IntPtr.Zero)
+						if (cMGetNextResDesResult != 0 || next == IntPtr.Zero)
 						{
 							break;
 						}
 						intPtr = next;
-						flag = false;
-						ulong num3 = ReadRangeSize(next);
-						if (num3 > num)
+						largestMemoryWindowReady = false;
+						ulong rangeSize = ReadRangeSize(next);
+						if (rangeSize > largestMemoryWindowResult)
 						{
-							num = num3;
+							largestMemoryWindowResult = rangeSize;
 						}
 					}
 				}
-				return num;
+				return largestMemoryWindowResult;
 			}
 			finally
 			{
@@ -275,18 +275,18 @@ namespace PaviseApp
 				{
 					return 0uL;
 				}
-				byte[] array = new byte[size];
-				if (CM_Get_Res_Des_Data(resDes, array, size, 0u) != 0)
+				byte[] rawBytes = new byte[size];
+				if (CM_Get_Res_Des_Data(resDes, rawBytes, size, 0u) != 0)
 				{
 					return 0uL;
 				}
-				ulong num = BitConverter.ToUInt64(array, 8);
-				ulong num2 = BitConverter.ToUInt64(array, 16);
-				if (num2 <= num)
+				ulong toUInt64Result = BitConverter.ToUInt64(rawBytes, 8);
+				ulong toUInt64Result2 = BitConverter.ToUInt64(rawBytes, 16);
+				if (toUInt64Result2 <= toUInt64Result)
 				{
 					return 0uL;
 				}
-				return num2 - num + 1;
+				return toUInt64Result2 - toUInt64Result + 1;
 			}
 			catch
 			{

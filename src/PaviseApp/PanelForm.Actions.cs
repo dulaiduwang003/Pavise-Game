@@ -101,9 +101,9 @@ namespace PaviseApp
 			auditScan.Visible = true;
 			auditScroll.Visible = false;
 			SetToolbarVisible(false);
-			int num = Theme.S(184);
-			int num2 = Theme.S(38);
-			btnAuditStart.SetBounds((auditScan.Width - num) / 2, auditScan.ContentBottom + Theme.S(20), num, num2);
+			int width = Theme.S(184);
+			int height = Theme.S(38);
+			btnAuditStart.SetBounds((auditScan.Width - width) / 2, auditScan.ContentBottom + Theme.S(20), width, height);
 			btnAuditStart.Visible = true;
 			btnAuditStart.BringToFront();
 			LayoutAuditViewport();
@@ -185,21 +185,21 @@ namespace PaviseApp
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.needadmin"));
 				return;
 			}
-			bool flag = fix.CanFix();
-			bool flag2 = !flag && fix.CanRevert();
-			if (!flag && !flag2)
+			bool canFix = fix.CanFix();
+			bool matchesCanRevert = !canFix && fix.CanRevert();
+			if (!canFix && !matchesCanRevert)
 			{
 				RefreshAuditAfterFix();
 			}
 			else
 			{
-				if (!flag2 && fix.ConfirmKey != null && !PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(fix.ConfirmKey), DlgKind.Warn))
+				if (!matchesCanRevert && fix.ConfirmKey != null && !PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(fix.ConfirmKey), DlgKind.Warn))
 				{
 					return;
 				}
 				try
 				{
-					if (flag2)
+					if (matchesCanRevert)
 					{
 						fix.Revert();
 					}
@@ -211,7 +211,7 @@ namespace PaviseApp
 				catch
 				{
 				}
-				Logger.Log(flag2 ? Lang.T("log.panelformauditpage.1") : Lang.T("log.panelformauditpage.2"));
+				Logger.Log(matchesCanRevert ? Lang.T("log.panelformauditpage.1") : Lang.T("log.panelformauditpage.2"));
 				RefreshAuditAfterFix();
 			}
 		}
@@ -226,7 +226,7 @@ namespace PaviseApp
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.needadmin"));
 				return;
 			}
-			int num = 0;
+			int processedCount = 0;
 			foreach (AuditFix value in BuildAuditFixes().Values)
 			{
 				try
@@ -234,14 +234,14 @@ namespace PaviseApp
 					if (value.CanFix() && (value.ConfirmKey == null || PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(value.ConfirmKey), DlgKind.Warn)))
 					{
 						value.Fix();
-						num++;
+						processedCount++;
 					}
 				}
 				catch
 				{
 				}
 			}
-			Logger.Log((num > 0) ? (Lang.T("log.panelformauditpage.3") + num + Lang.T("log.panelformauditpage.4")) : Lang.T("log.panelformauditpage.5"));
+			Logger.Log((processedCount > 0) ? (Lang.T("log.panelformauditpage.3") + processedCount + Lang.T("log.panelformauditpage.4")) : Lang.T("log.panelformauditpage.5"));
 			RefreshAuditAfterFix();
 		}
 		private void ShowAutoIgnoreDialog()
@@ -312,9 +312,9 @@ namespace PaviseApp
 		}
 		private void OnGameLowLatencyToggle(object sender, EventArgs e)
 		{
-			bool flag = gameMode.SetGameLowLatency(swGameLowLatency.Checked);
+			bool setGameLowLatencySucceeded = gameMode.SetGameLowLatency(swGameLowLatency.Checked);
 			SyncGameLowLatencyControl();
-			if (!flag)
+			if (!setGameLowLatencySucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("set.lowlatency.savefail"));
 			}
@@ -345,9 +345,9 @@ namespace PaviseApp
 		}
 		private void OnEnvironmentGameDvrToggle(object sender, EventArgs e)
 		{
-			bool flag = gameMode.SetGameDvrSuppression(swEnvironmentGameDvr.Checked);
+			bool setGameDvrSuppressionSucceeded = gameMode.SetGameDvrSuppression(swEnvironmentGameDvr.Checked);
 			SyncEnvironmentGameDvr();
-			if (!flag)
+			if (!setGameDvrSuppressionSucceeded)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("env.performance.savefail"));
 			}
@@ -394,31 +394,31 @@ namespace PaviseApp
 				{
 					return;
 				}
-				bool flag = true;
+				bool onIrqRestoreReady = true;
 				try
 				{
 					if (GpuIrqCheck.HasResidue)
 					{
-						flag &= GpuIrqCheck.RestoreAll();
+						onIrqRestoreReady &= GpuIrqCheck.RestoreAll();
 					}
 				}
 				catch
 				{
-					flag = false;
+					onIrqRestoreReady = false;
 				}
 				try
 				{
 					if (IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue)
 					{
 						IrqRestoreResult irqRestoreResult = IrqRelocate.RestoreDevices(null);
-						flag &= irqRestoreResult != null && irqRestoreResult.Success;
+						onIrqRestoreReady &= irqRestoreResult != null && irqRestoreResult.Success;
 					}
 				}
 				catch
 				{
-					flag = false;
+					onIrqRestoreReady = false;
 				}
-				if (flag)
+				if (onIrqRestoreReady)
 				{
 					PaviseDialog.Success(this, Lang.T("irqcheck.restore.btn"), Lang.T("irqcheck.restore.done"));
 				}
@@ -461,13 +461,13 @@ namespace PaviseApp
 					return;
 				}
 				string lastError;
-				int num = gameMode.AddScannedGames(addGameDialog.Selected, out lastError);
+				int addScannedGamesResult = gameMode.AddScannedGames(addGameDialog.Selected, out lastError);
 				if (!gameMode.ProfileStoreSaveFailed)
 				{
 					RefreshGames();
-					if (num > 0)
+					if (addScannedGamesResult > 0)
 					{
-						Logger.Log(Lang.F("scan.added", num));
+						Logger.Log(Lang.F("scan.added", addScannedGamesResult));
 					}
 					else if (lastError != null)
 					{
@@ -507,15 +507,15 @@ namespace PaviseApp
 					libraryConfigurationDialog = null;
 				}
 			}
-			string text = libraryConfigurationCoreTarget;
+			string libraryConfigurationCoreTargetSnapshot = libraryConfigurationCoreTarget;
 			libraryConfigurationCoreTarget = null;
 			if (base.IsDisposed || base.Disposing)
 			{
 				return;
 			}
-			if (!string.IsNullOrEmpty(text))
+			if (!string.IsNullOrEmpty(libraryConfigurationCoreTargetSnapshot))
 			{
-				OpenGameCoreScheduling(text);
+				OpenGameCoreScheduling(libraryConfigurationCoreTargetSnapshot);
 			}
 			else if (curPage == pageLibrary)
 			{
@@ -754,11 +754,11 @@ namespace PaviseApp
 				Theme.SetModeColorOverride(mode, color);
 				Settings.SaveStr("ModeAccent" + (int)mode, Col.ToHex(color));
 			}
-			bool flag = Theme.HasModeColorOverride(mode);
+			bool hasModeColorOverride = Theme.HasModeColorOverride(mode);
 			Color b = Theme.ModeColor(mode);
 			foreach (ColorSwatch item in modeSwatches[(int)mode])
 			{
-				item.Selected = (item.IsDefault ? (!flag) : (flag && SameRgb(item.Swatch, b)));
+				item.Selected = (item.IsDefault ? (!hasModeColorOverride) : (hasModeColorOverride && SameRgb(item.Swatch, b)));
 				item.Invalidate();
 			}
 			RefreshModeAccentLabels();
@@ -934,9 +934,9 @@ namespace PaviseApp
 				}
 				return;
 			}
-			bool flag = gameMode.TrySetStandbyCleanerEnabled(on);
+			bool trySetStandbyCleanerEnabled = gameMode.TrySetStandbyCleanerEnabled(on);
 			RefreshStandbyCleanerPresentation();
-			if (!flag)
+			if (!trySetStandbyCleanerEnabled)
 			{
 				PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("standbycleaner.switch.savefailed"));
 			}
@@ -947,10 +947,10 @@ namespace PaviseApp
 		}
 		private void OnWhiteDragDrop(object sender, DragEventArgs e)
 		{
-			string[] array = e.Data.GetData(DataFormats.FileDrop) as string[];
-			if (array != null && array.Length != 0)
+			string[] getDataOffset = e.Data.GetData(DataFormats.FileDrop) as string[];
+			if (getDataOffset != null && getDataOffset.Length != 0)
 			{
-				AddWhitelistFiles(array);
+				AddWhitelistFiles(getDataOffset);
 			}
 		}
 		private bool ShowSelectedAutomaticExemption()
@@ -1023,8 +1023,8 @@ namespace PaviseApp
 		}
 		private void ShowPage(int index)
 		{
-			bool flag = index == 5;
-			if (flag)
+			bool matchesIndex = index == 5;
+			if (matchesIndex)
 			{
 				index = 2;
 				nav.SelectSilently(index);
@@ -1046,45 +1046,45 @@ namespace PaviseApp
 			DBPanel dBPanel = pages[index];
 			if (curPage == dBPanel && dBPanel.Visible)
 			{
-				if (flag)
+				if (matchesIndex)
 				{
 					ShowPerformanceSystemTab();
 				}
 				return;
 			}
 			SavePagePosition(curPage);
-			bool flag2 = index == 12;
-			bool flag3 = index == 7;
-			pageBaseLeft = ((!flag2 && !flag3) ? Theme.S(RailW) : 0);
+			bool visibleValue = index == 12;
+			bool visibleValue2 = index == 7;
+			pageBaseLeft = ((!visibleValue && !visibleValue2) ? Theme.S(RailW) : 0);
 			dBPanel.Left = pageBaseLeft;
-			bool flag4 = curPage != null && !curPage.IsDisposed && PreparePageReveal(dBPanel);
-			bool flag5 = false;
+			bool matchesPreparePageReveal = curPage != null && !curPage.IsDisposed && PreparePageReveal(dBPanel);
+			bool showPageReady = false;
 			root.SuspendLayout();
 			dBPanel.SuspendLayout();
 			try
 			{
-				DBPanel[] array = pages;
-				foreach (DBPanel dBPanel2 in array)
+				DBPanel[] pagesSnapshot = pages;
+				foreach (DBPanel dBPanel2 in pagesSnapshot)
 				{
 					dBPanel2.Visible = dBPanel2 == dBPanel;
 				}
 				curPage = dBPanel;
 				LayoutWorkspaceViewport();
-				bool flag6 = IsAdvancedPage(index);
+				bool isAdvancedPage = IsAdvancedPage(index);
 				nav.Visible = true;
 				nav.BringToFront();
 				tuningNav.Visible = false;
-				coreBackBar.Visible = flag2;
-				if (flag2)
+				coreBackBar.Visible = visibleValue;
+				if (visibleValue)
 				{
 					coreBackBar.BringToFront();
 				}
-				overviewBackBar.Visible = flag3;
-				if (flag3)
+				overviewBackBar.Visible = visibleValue2;
+				if (visibleValue2)
 				{
 					overviewBackBar.BringToFront();
 				}
-				if (flag6)
+				if (isAdvancedPage)
 				{
 					tuningNav.SelectSilently(index);
 					nav.SelectSilently(2);
@@ -1096,18 +1096,18 @@ namespace PaviseApp
 				}
 				else
 				{
-					mainReturnPage = (flag2 ? 1 : (flag3 ? 8 : index));
-					if (flag2)
+					mainReturnPage = (visibleValue ? 1 : (visibleValue2 ? 8 : index));
+					if (visibleValue)
 					{
 						nav.SelectSilently(1);
 					}
-					else if (flag3)
+					else if (visibleValue2)
 					{
 						nav.SelectSilently(8);
 					}
 				}
 				LayoutWorkspaceViewport();
-				if (flag)
+				if (matchesIndex)
 				{
 					ShowPerformanceSystemTab();
 				}
@@ -1116,7 +1116,7 @@ namespace PaviseApp
 					UiClock.Wake();
 				}
 				NotifyPageActivation();
-				flag5 = true;
+				showPageReady = true;
 			}
 			finally
 			{
@@ -1130,14 +1130,14 @@ namespace PaviseApp
 					{
 						root.ResumeLayout(true);
 					}
-					if (flag5)
+					if (showPageReady)
 					{
 						LayoutPerformanceViewport();
 						RestorePagePosition(index);
 					}
-					if (flag4)
+					if (matchesPreparePageReveal)
 					{
-						if (flag5)
+						if (showPageReady)
 						{
 							if (nav.Visible)
 							{
@@ -1238,8 +1238,8 @@ namespace PaviseApp
 			{
 				CancelOutro();
 				ApplyPendingDpiRebuild();
-				bool flag = base.Visible && base.WindowState != FormWindowState.Minimized;
-				if (!flag)
+				bool matchesVisible = base.Visible && base.WindowState != FormWindowState.Minimized;
+				if (!matchesVisible)
 				{
 					BeginIntro();
 				}
@@ -1248,7 +1248,7 @@ namespace PaviseApp
 				Activate();
 				StartIntro();
 				SyncUiActivity();
-				if (flag)
+				if (matchesVisible)
 				{
 					SyncAllToggles();
 				}
@@ -1441,14 +1441,14 @@ namespace PaviseApp
 				FinishOutro(false);
 				return;
 			}
-			double num = outroWatch.Elapsed.TotalMilliseconds / 220.0;
-			if (num >= 1.0)
+			double totalMillisecondsRatio = outroWatch.Elapsed.TotalMilliseconds / 220.0;
+			if (totalMillisecondsRatio >= 1.0)
 			{
 				FinishOutro(true);
 				return;
 			}
-			double num2 = num * num;
-			base.Opacity = 1.0 - num2;
+			double scaledTotalMillisecondsRatio = totalMillisecondsRatio * totalMillisecondsRatio;
+			base.Opacity = 1.0 - scaledTotalMillisecondsRatio;
 		}
 		private void OnAutoHideToggle(object s, EventArgs e)
 		{

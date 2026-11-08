@@ -13,10 +13,10 @@ namespace PaviseApp
 		{
 			get
 			{
-				bool[] array = closed;
-				for (int i = 0; i < array.Length; i++)
+				bool[] closedSnapshot = closed;
+				for (int i = 0; i < closedSnapshot.Length; i++)
 				{
-					if (!array[i])
+					if (!closedSnapshot[i])
 					{
 						return false;
 					}

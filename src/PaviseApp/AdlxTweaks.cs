@@ -44,37 +44,37 @@ namespace PaviseApp
 
 		private static bool AmdRenderGateOpen()
 		{
-			GpuAdapter[] array = GpuInventory.Adapters();
-			if (array == null || array.Length == 0)
+			GpuAdapter[] adaptersResult = GpuInventory.Adapters();
+			if (adaptersResult == null || adaptersResult.Length == 0)
 			{
 				return true;
 			}
-			bool flag = false;
-			bool flag2 = false;
-			bool flag3 = false;
-			GpuAdapter[] array2 = array;
-			foreach (GpuAdapter gpuAdapter in array2)
+			bool amdRenderGateOpenReady = false;
+			bool amdRenderGateOpenReady2 = false;
+			bool amdRenderGateOpenReady3 = false;
+			GpuAdapter[] gpuAdapterItems = adaptersResult;
+			foreach (GpuAdapter gpuAdapter in gpuAdapterItems)
 			{
 				if (gpuAdapter.Vendor == GpuVendor.Amd)
 				{
-					flag = true;
+					amdRenderGateOpenReady = true;
 					if (!gpuAdapter.Integrated)
 					{
-						flag2 = true;
+						amdRenderGateOpenReady2 = true;
 					}
 				}
 				else if (!gpuAdapter.Integrated)
 				{
-					flag3 = true;
+					amdRenderGateOpenReady3 = true;
 				}
 			}
-			bool flag4 = flag2 || (flag && !flag3);
-			if (!flag4 && !renderSkipLogged)
+			bool matchesAmdRenderGateOpenReady2 = amdRenderGateOpenReady2 || (amdRenderGateOpenReady && !amdRenderGateOpenReady3);
+			if (!matchesAmdRenderGateOpenReady2 && !renderSkipLogged)
 			{
 				renderSkipLogged = true;
 				Logger.Log(Lang.T("log.adlxtweaks.36"));
 			}
-			return flag4;
+			return matchesAmdRenderGateOpenReady2;
 		}
 
 		private static Dictionary<string, string> LoadSnap()
@@ -89,13 +89,13 @@ namespace PaviseApp
 
 		private static string GpuKey(IntPtr gpu, int index, ref bool identityMissing)
 		{
-			string text = AdlxApi.GpuPnpString(gpu);
-			if (string.IsNullOrEmpty(text))
+			string gpuPnpStringResult = AdlxApi.GpuPnpString(gpu);
+			if (string.IsNullOrEmpty(gpuPnpStringResult))
 			{
 				identityMissing = true;
 				return "g" + index;
 			}
-			return "id" + text.Replace('=', '_').Replace(';', '_');
+			return "id" + gpuPnpStringResult.Replace('=', '_').Replace(';', '_');
 		}
 
 		private static bool EnsureSnapshot(Dictionary<string, string> snapshot, string key, string legacyKey, string value, string label)
@@ -158,14 +158,14 @@ namespace PaviseApp
 		{
 			return RestoreFeature("chill", "Chill", delegate(IntPtr gpu, string orig)
 			{
-				string[] array = orig.Split('|');
+				string[] origParts = orig.Split('|');
 				int result;
 				int result2;
-				if (array.Length != 3 || !int.TryParse(array[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !int.TryParse(array[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2))
+				if (origParts.Length != 3 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !int.TryParse(origParts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2))
 				{
 					return true;
 				}
-				return (!(array[0] == "1")) ? AdlxApi.ChillSet(gpu, false, 0, 0) : AdlxApi.ChillSet(gpu, true, result, result2);
+				return (!(origParts[0] == "1")) ? AdlxApi.ChillSet(gpu, false, 0, 0) : AdlxApi.ChillSet(gpu, true, result, result2);
 			});
 		}
 
@@ -189,9 +189,9 @@ namespace PaviseApp
 		{
 			return RestoreFeature("ris", Lang.T("t.adlxtweaks.4"), delegate(IntPtr gpu, string orig)
 			{
-				string[] array = orig.Split('|');
+				string[] origParts = orig.Split('|');
 				int result;
-				return array.Length != 2 || !int.TryParse(array[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || AdlxApi.RisSet(gpu, array[0] == "1", result);
+				return origParts.Length != 2 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || AdlxApi.RisSet(gpu, origParts[0] == "1", result);
 			});
 		}
 
@@ -224,13 +224,13 @@ namespace PaviseApp
 		{
 			return RestoreFeature("frtc", Lang.T("t.adlxtweaks.8"), delegate(IntPtr gpu, string orig)
 			{
-				string[] array = orig.Split('|');
+				string[] origParts = orig.Split('|');
 				int result;
-				if (array.Length != 2 || !int.TryParse(array[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
+				if (origParts.Length != 2 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
 				{
 					return true;
 				}
-				return (!(array[0] == "1")) ? AdlxApi.FrtcSet(gpu, false, 0) : AdlxApi.FrtcSet(gpu, true, result);
+				return (!(origParts[0] == "1")) ? AdlxApi.FrtcSet(gpu, false, 0) : AdlxApi.FrtcSet(gpu, true, result);
 			});
 		}
 
@@ -405,8 +405,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported;
 					int current2;
@@ -439,8 +439,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported;
 					int current;
@@ -518,8 +518,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported;
 					bool enabled;
@@ -553,8 +553,8 @@ namespace PaviseApp
 				{
 					Dictionary<string, string> snapshot = LoadSnap();
 					bool identityMissing = false;
-					int num = 0;
-					int num2 = 0;
+					int processedCount = 0;
+					int processedCount2 = 0;
 					for (int i = 0; i < gpus.Length; i++)
 					{
 						bool supported;
@@ -570,28 +570,28 @@ namespace PaviseApp
 							int value = Clamp(desired, range.Min, range.Max);
 							if (!set(gpus[i], value))
 							{
-								num2++;
+								processedCount2++;
 							}
 							else if (verify(gpus[i], value))
 							{
-								num++;
+								processedCount++;
 							}
 							else
 							{
-								num2++;
+								processedCount2++;
 							}
 						}
 					}
-					if (num > 0 && num2 == 0)
+					if (processedCount > 0 && processedCount2 == 0)
 					{
 						Logger.Log(successLog);
 						return true;
 					}
-					if (num2 > 0)
+					if (processedCount2 > 0)
 					{
-						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + num2 + Lang.T("log.adlxtweaks.25"));
+						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + processedCount2 + Lang.T("log.adlxtweaks.25"));
 					}
-					else if (num == 0)
+					else if (processedCount == 0)
 					{
 						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26"));
 					}
@@ -621,8 +621,8 @@ namespace PaviseApp
 				{
 					Dictionary<string, string> snapshot = LoadSnap();
 					bool identityMissing = false;
-					int num = 0;
-					int num2 = 0;
+					int processedCount = 0;
+					int processedCount2 = 0;
 					for (int i = 0; i < gpus.Length; i++)
 					{
 						bool supported;
@@ -633,7 +633,7 @@ namespace PaviseApp
 						}
 						if (enabled == wantEnabled)
 						{
-							num++;
+							processedCount++;
 							continue;
 						}
 						string key = GpuKey(gpus[i], i, ref identityMissing) + "." + keySuffix;
@@ -645,27 +645,27 @@ namespace PaviseApp
 						bool enabled2;
 						if (!apply(gpus[i]))
 						{
-							num2++;
+							processedCount2++;
 						}
 						else if (get(gpus[i], out supported2, out enabled2) && enabled2 == wantEnabled)
 						{
-							num++;
+							processedCount++;
 						}
 						else
 						{
-							num2++;
+							processedCount2++;
 						}
 					}
-					if (num > 0 && num2 == 0)
+					if (processedCount > 0 && processedCount2 == 0)
 					{
 						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.27"));
 						return true;
 					}
-					if (num2 > 0)
+					if (processedCount2 > 0)
 					{
-						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + num2 + Lang.T("log.adlxtweaks.25"));
+						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + processedCount2 + Lang.T("log.adlxtweaks.25"));
 					}
-					else if (num == 0)
+					else if (processedCount == 0)
 					{
 						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26"));
 					}
@@ -698,30 +698,30 @@ namespace PaviseApp
 				}
 				try
 				{
-					bool flag = true;
+					bool restoreFeatureSucceeded = true;
 					bool identityMissing = false;
 					HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 					for (int i = 0; i < gpus.Length; i++)
 					{
-						string[] array = new string[2]
+						string[] textEntries = new string[2]
 						{
 							GpuKey(gpus[i], i, ref identityMissing) + "." + suffix,
 							"g" + i + "." + suffix
 						};
-						string[] array2 = array;
-						foreach (string text in array2)
+						string[] textEntries2 = textEntries;
+						foreach (string entryText in textEntries2)
 						{
-							hashSet.Add(text);
+							hashSet.Add(entryText);
 							string value;
-							if (dictionary.TryGetValue(text, out value))
+							if (dictionary.TryGetValue(entryText, out value))
 							{
 								if (apply(gpus[i], value))
 								{
-									dictionary.Remove(text);
+									dictionary.Remove(entryText);
 								}
 								else
 								{
-									flag = false;
+									restoreFeatureSucceeded = false;
 								}
 							}
 						}
@@ -747,9 +747,9 @@ namespace PaviseApp
 					}
 					if (!SaveSnap(dictionary))
 					{
-						flag = false;
+						restoreFeatureSucceeded = false;
 					}
-					if (flag)
+					if (restoreFeatureSucceeded)
 					{
 						Logger.Log("AMD " + label + Lang.T("log.renderlane.13"));
 					}
@@ -757,7 +757,7 @@ namespace PaviseApp
 					{
 						Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.30"));
 					}
-					return flag;
+					return restoreFeatureSucceeded;
 				}
 				finally
 				{
@@ -805,8 +805,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					if (AdlxApi.ResetShaderCache(gpu))
 					{
@@ -840,8 +840,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported;
 					int min;
@@ -862,16 +862,16 @@ namespace PaviseApp
 
 		internal static int GfxMinTarget(int currentMax, AdlxIntRange minRange)
 		{
-			int num = currentMax;
-			if (minRange.Max > 0 && num > minRange.Max)
+			int currentMaxSnapshot = currentMax;
+			if (minRange.Max > 0 && currentMaxSnapshot > minRange.Max)
 			{
-				num = minRange.Max;
+				currentMaxSnapshot = minRange.Max;
 			}
-			if (minRange.Min > 0 && num < minRange.Min)
+			if (minRange.Min > 0 && currentMaxSnapshot < minRange.Min)
 			{
-				num = minRange.Min;
+				currentMaxSnapshot = minRange.Min;
 			}
-			return num;
+			return currentMaxSnapshot;
 		}
 
 		public static bool ActivateGfxMin()
@@ -895,8 +895,8 @@ namespace PaviseApp
 				{
 					Dictionary<string, string> snapshot = LoadSnap();
 					bool identityMissing = false;
-					int num = 0;
-					int num2 = 0;
+					int processedCount = 0;
+					int processedCount2 = 0;
 					for (int i = 0; i < gpus.Length; i++)
 					{
 						bool supported;
@@ -907,10 +907,10 @@ namespace PaviseApp
 						{
 							continue;
 						}
-						int num3 = GfxMinTarget(max, minRange);
-						if (num3 <= 0 || min >= num3)
+						int gfxMinTargetResult = GfxMinTarget(max, minRange);
+						if (gfxMinTargetResult <= 0 || min >= gfxMinTargetResult)
 						{
-							num++;
+							processedCount++;
 							continue;
 						}
 						string key = GpuKey(gpus[i], i, ref identityMissing) + ".gfxmin";
@@ -922,27 +922,27 @@ namespace PaviseApp
 						int min2;
 						int max2;
 						AdlxIntRange minRange2;
-						if (!AdlxApi.GfxMinSet(gpus[i], num3))
+						if (!AdlxApi.GfxMinSet(gpus[i], gfxMinTargetResult))
 						{
-							num2++;
+							processedCount2++;
 						}
-						else if (AdlxApi.GfxMinGet(gpus[i], out supported2, out min2, out max2, out minRange2) && min2 >= num3)
+						else if (AdlxApi.GfxMinGet(gpus[i], out supported2, out min2, out max2, out minRange2) && min2 >= gfxMinTargetResult)
 						{
-							num++;
+							processedCount++;
 						}
 						else
 						{
-							num2++;
+							processedCount2++;
 						}
 					}
-					if (num > 0 && num2 == 0)
+					if (processedCount > 0 && processedCount2 == 0)
 					{
 						Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.27"));
 						return true;
 					}
-					if (num2 > 0)
+					if (processedCount2 > 0)
 					{
-						Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.24") + num2 + Lang.T("log.adlxtweaks.25"));
+						Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.24") + processedCount2 + Lang.T("log.adlxtweaks.25"));
 					}
 					else
 					{
@@ -983,8 +983,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported2;
 					bool enabled2;
@@ -1016,8 +1016,8 @@ namespace PaviseApp
 			}
 			try
 			{
-				IntPtr[] array = gpus;
-				foreach (IntPtr gpu in array)
+				IntPtr[] gpusSnapshot = gpus;
+				foreach (IntPtr gpu in gpusSnapshot)
 				{
 					bool supported;
 					bool enabled;

@@ -178,8 +178,8 @@ namespace PaviseApp
 				GameDetection gameDetection = activeDetection;
 				profileId = (id = ((gameDetection != null && gameDetection.Profile != null) ? gameDetection.Profile.Id : null));
 				profileName = ((gameDetection != null && gameDetection.Profile != null) ? gameDetection.Profile.Name : "");
-				bool flag = gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm;
-				process = (renderer = (flag ? new GameInputProcess(gameDetection.RendererPid, gameDetection.RendererCreation) : default(GameInputProcess)));
+				bool allConditionsMet = gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm;
+				process = (renderer = (allConditionsMet ? new GameInputProcess(gameDetection.RendererPid, gameDetection.RendererCreation) : default(GameInputProcess)));
 				PolicySnapshot policySnapshot = sessionPolicy;
 				wanted = (preference = LiveEnglishInputPreference() && !string.IsNullOrEmpty(id) && creationFloor > 0 && (!renderer.IsValid || renderer.Creation >= creationFloor) && (policySnapshot == null || string.IsNullOrEmpty(policySnapshot.ProfileId) || string.Equals(policySnapshot.ProfileId, id, StringComparison.OrdinalIgnoreCase)));
 			}
@@ -194,12 +194,12 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				bool flag2 = gameDetection2.RendererCandidateSelected && !gameDetection2.RendererSafetyOnly && !gameDetection2.RequiresGpuConfirm;
-				if (flag2 && gameDetection2.RendererCreation > 0 && gameDetection2.RendererCreation < creationFloor)
+				bool allConditionsMet = gameDetection2.RendererCandidateSelected && !gameDetection2.RendererSafetyOnly && !gameDetection2.RequiresGpuConfirm;
+				if (allConditionsMet && gameDetection2.RendererCreation > 0 && gameDetection2.RendererCreation < creationFloor)
 				{
 					return false;
 				}
-				return entry || (flag2 && renderer.IsValid && renderer.Creation >= creationFloor && gameDetection2.RendererPid == renderer.Pid && gameDetection2.RendererCreation == renderer.Creation);
+				return entry || (allConditionsMet && renderer.IsValid && renderer.Creation >= creationFloor && gameDetection2.RendererPid == renderer.Pid && gameDetection2.RendererCreation == renderer.Creation);
 			};
 		}
 		private void BeginEnglishInputSession()
@@ -345,18 +345,18 @@ namespace PaviseApp
 			long session = Interlocked.Read(ref gameSessionStarts);
 			bool originalActive = active;
 			string action = EnvFailureAction(key);
-			bool flag;
+			bool syncEnvFailureIsolationSucceeded;
 			lock (sync)
 			{
 				if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-				flag = SyncEnvFailureIsolation(key);
+				syncEnvFailureIsolationSucceeded = SyncEnvFailureIsolation(key);
 				if (envRestorePending.Contains(key))
 				{
 					want = false;
 					active = true;
 				}
 			}
-			if (want && flag)
+			if (want && syncEnvFailureIsolationSucceeded)
 			{
 				want = false;
 			}
@@ -382,17 +382,17 @@ namespace PaviseApp
 				if (want && !ActionFailureStore.TryBeginApply(action, "system", out reason)) return active;
 			}
 			bool skipped;
-			bool flag2 = want ? RunEnvironmentAction(activate, out skipped, out reason) : RunEnvStepRestore(session, key, restore, out skipped, out reason);
+			bool runEnvironmentActionSucceeded = want ? RunEnvironmentAction(activate, out skipped, out reason) : RunEnvStepRestore(session, key, restore, out skipped, out reason);
 			if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
 			if (want && skipped)
 			{
 				bool skipped2;
 				string reason2;
-				bool flag3 = RunEnvStepRestore(session, key, restore, out skipped2, out reason2);
+				bool runEnvStepRestoreSucceeded = RunEnvStepRestore(session, key, restore, out skipped2, out reason2);
 				lock (sync)
 				{
 					if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-					if (flag3)
+					if (runEnvStepRestoreSucceeded)
 					{
 						envRestorePending.Remove(key);
 					}
@@ -400,7 +400,7 @@ namespace PaviseApp
 					{
 						envRestorePending.Add(key);
 					}
-					if (flag3)
+					if (runEnvStepRestoreSucceeded)
 					{
 						ActionFailureStore.CancelApply(action, "system");
 					}
@@ -409,33 +409,33 @@ namespace PaviseApp
 						ActionFailureStore.Trip(action, "system", PerformancePolicy.Text("取消或跳过后的恢复失败：", "Recovery after cancellation or skip failed: ") + reason2);
 					}
 				}
-				return !flag3;
+				return !runEnvStepRestoreSucceeded;
 			}
 			lock (sync)
 			{
 				if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-				RecordAutomation(key, (!flag2) ? (want ? "failed" : "restore-failed") : ((!want) ? "restored" : ((key == "services" && OptionalServicePause.PendingStopCount > 0) ? "unverified" : "applied")));
+				RecordAutomation(key, (!runEnvironmentActionSucceeded) ? (want ? "failed" : "restore-failed") : ((!want) ? "restored" : ((key == "services" && OptionalServicePause.PendingStopCount > 0) ? "unverified" : "applied")));
 			}
 			if (want)
 			{
-				if (flag2)
+				if (runEnvironmentActionSucceeded)
 				{
-					bool flag4;
+					bool completeApplySucceeded;
 					lock (sync)
 					{
 						if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-						flag4 = ActionFailureStore.CompleteApply(action, "system");
+						completeApplySucceeded = ActionFailureStore.CompleteApply(action, "system");
 					}
-					if (!flag4)
+					if (!completeApplySucceeded)
 					{
 						bool skipped3;
 						string reason3;
-						bool flag5 = RunEnvStepRestore(session, key, restore, out skipped3, out reason3);
+						bool runEnvStepRestoreSucceeded2 = RunEnvStepRestore(session, key, restore, out skipped3, out reason3);
 						lock (sync)
 						{
 							if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-							RecordAutomation(key, flag5 ? "restored" : "restore-failed");
-							if (flag5)
+							RecordAutomation(key, runEnvStepRestoreSucceeded2 ? "restored" : "restore-failed");
+							if (runEnvStepRestoreSucceeded2)
 							{
 								envRestorePending.Remove(key);
 							}
@@ -443,7 +443,7 @@ namespace PaviseApp
 							{
 								envRestorePending.Add(key);
 							}
-							if (flag5)
+							if (runEnvStepRestoreSucceeded2)
 							{
 								ActionFailureStore.CancelApply(action, "system");
 							}
@@ -453,7 +453,7 @@ namespace PaviseApp
 							}
 							SyncEnvFailureIsolation(key);
 						}
-						return !flag5;
+						return !runEnvStepRestoreSucceeded2;
 					}
 					lock (sync)
 					{
@@ -461,7 +461,7 @@ namespace PaviseApp
 						envNextAttempt.Remove(key);
 						envFailures.Remove(key);
 						SyncEnvFailureIsolation(key);
-						if (flag4 && Settings.Load("EnvFuse_" + key, false))
+						if (completeApplySucceeded && Settings.Load("EnvFuse_" + key, false))
 						{
 							Settings.Save("EnvFuse_" + key, false);
 						}
@@ -477,12 +477,12 @@ namespace PaviseApp
 				Logger.Warn(EnvLabel(key) + PerformancePolicy.Text("：执行失败，本阶段停止应用并核验恢复。", ": apply failed; this phase is stopped and restoration is being verified."));
 				bool skipped4;
 				string reason4;
-				bool flag6 = RunEnvStepRestore(session, key, restore, out skipped4, out reason4);
+				bool runEnvStepRestoreSucceeded3 = RunEnvStepRestore(session, key, restore, out skipped4, out reason4);
 				lock (sync)
 				{
 					if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-					RecordAutomation(key, flag6 ? "restored" : "restore-failed");
-					if (flag6)
+					RecordAutomation(key, runEnvStepRestoreSucceeded3 ? "restored" : "restore-failed");
+					if (runEnvStepRestoreSucceeded3)
 					{
 						envRestorePending.Remove(key);
 						envNextAttempt.Remove(key);
@@ -492,7 +492,7 @@ namespace PaviseApp
 					{
 						envRestorePending.Add(key);
 					}
-					if (flag6)
+					if (runEnvStepRestoreSucceeded3)
 					{
 						ActionFailureStore.CancelApply(action, "system");
 					}
@@ -501,12 +501,12 @@ namespace PaviseApp
 						ActionFailureStore.Trip(action, "system", reason + PerformancePolicy.Text("；回退失败：", "; rollback failed: ") + reason4);
 					}
 				}
-				return !flag6;
+				return !runEnvStepRestoreSucceeded3;
 			}
 			lock (sync)
 			{
 				if (session != Interlocked.Read(ref gameSessionStarts)) return originalActive;
-				if (flag2)
+				if (runEnvironmentActionSucceeded)
 				{
 					ActionFailureStore.CancelApply(action, "system");
 					envRestorePending.Remove(key);
@@ -522,7 +522,7 @@ namespace PaviseApp
 					}
 				}
 			}
-			if (!flag2)
+			if (!runEnvironmentActionSucceeded)
 			{
 				return active;
 			}
@@ -530,10 +530,10 @@ namespace PaviseApp
 		}
 		private static string EnvFailureAction(string key)
 		{
-			string text = EnvPolicyKey(key);
-			if (text != null)
+			string envPolicyKeyResult = EnvPolicyKey(key);
+			if (envPolicyKeyResult != null)
 			{
-				return text;
+				return envPolicyKeyResult;
 			}
 			switch (key)
 			{
@@ -549,10 +549,10 @@ namespace PaviseApp
 		}
 		private bool SyncEnvFailureIsolation(string key)
 		{
-			bool flag = ActionFailureStore.IsBlocked(EnvFailureAction(key), "system");
+			bool isBlocked = ActionFailureStore.IsBlocked(EnvFailureAction(key), "system");
 			lock (sync)
 			{
-				if (flag)
+				if (isBlocked)
 				{
 					envFused.Add(key);
 				}
@@ -561,7 +561,7 @@ namespace PaviseApp
 					envFused.Remove(key);
 				}
 			}
-			return flag;
+			return isBlocked;
 		}
 		private bool EnvironmentApplyReady(string key)
 		{
@@ -695,15 +695,15 @@ namespace PaviseApp
 			bool pauseMaintenance = policySnapshot2.PauseMaintenance;
 			bool awake = BackgroundSessionPolicy.KeepAwake(enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed, activeDetection);
 			bool powerPlanOn = policySnapshot2.PowerPlanOn;
-			bool flag = false;
+			bool applyEnvReady = false;
 			bool dwmBoost = policySnapshot2.DwmBoost;
-			bool flag3 = slowEnvAtTicks == 0 || ticks >= slowEnvAtTicks;
-			bool want = pauseDownloads && flag3 && Native.IsElevated() && !SessionServiceSuspended("do", ticks)
+			bool anyConditionMet = slowEnvAtTicks == 0 || ticks >= slowEnvAtTicks;
+			bool want = pauseDownloads && anyConditionMet && Native.IsElevated() && !SessionServiceSuspended("do", ticks)
 				&& (doActive || DoTweak.HasResidue || DeliveryOptimizationActivity.IsDownloading());
-			bool want2 = pauseUpdate && flag3 && !SessionServiceSuspended("wu", ticks);
-			bool want3 = pauseMaintenance && flag3 && !SessionServiceSuspended("maint", ticks);
-			bool flag4 = ResolvePowerPlanEnabled(mode, powerPlanOn);
-			bool flag6 = flag4;
+			bool want2 = pauseUpdate && anyConditionMet && !SessionServiceSuspended("wu", ticks);
+			bool want3 = pauseMaintenance && anyConditionMet && !SessionServiceSuspended("maint", ticks);
+			bool powerPlanEnabled = ResolvePowerPlanEnabled(mode, powerPlanOn);
+			bool applyEnvReady2 = powerPlanEnabled;
 			SuppressionCore.GpuDemoteEnabled = policySnapshot2.GpuDemote;
 			doActive = EnvStep("do", want, doActive, DoTweak.Activate, DoTweak.Restore);
 			wuActive = EnvStep("wu", want2, wuActive, UpdatePause.Activate, UpdatePause.Restore);
@@ -717,29 +717,29 @@ namespace PaviseApp
 			nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available, nvVrrActive || (!nvVrrWindowedOn && NvVrrWindowed.HasResidue), NvVrrWindowed.Activate, NvVrrWindowed.Restore);
 			intelEndActive = EnvStep("intelend", EffIntelEnduranceOff && IntelGraphicsApi.HasAvailable && IntelEndurance.Supported(), intelEndActive, IntelEndurance.Activate, IntelEndurance.Restore);
 			amdAlagActive = EnvStep("amdalag", false, amdAlagActive || AdlxTweaks.HasAntiLagResidue(), null, RestoreAmdAntiLagEnv);
-			amdAfmfActive = EnvStep("amdafmf", flag && AdlxTweaks.AfmfSupported(), amdAfmfActive, AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
+			amdAfmfActive = EnvStep("amdafmf", applyEnvReady && AdlxTweaks.AfmfSupported(), amdAfmfActive, AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
 			StepLaptopPerformancePolicy();
 			StepPowerPlanMaintenance();
-			bool flag7 = ProcessorTuningRequested(policySnapshot2);
-			int num = PowerPolicyKey(flag7, flag6);
+			bool processorTuningRequestedSucceeded = ProcessorTuningRequested(policySnapshot2);
+			int powerPolicyKeyResult = PowerPolicyKey(processorTuningRequestedSucceeded, applyEnvReady2);
 			long ticks2 = DateTime.UtcNow.Ticks;
-			bool flag8 = RestoreFailedPowerPlan(ticks2);
-			if (flag6 && !stopping && flag8)
+			bool restoreFailedPowerPlanSucceeded = RestoreFailedPowerPlan(ticks2);
+			if (applyEnvReady2 && !stopping && restoreFailedPowerPlanSucceeded)
 			{
-				if (PowerPlanStopped(num) || !AutomaticWorkAllowed("power-queue") || (planActive && num == lastPowerPolicyKey && ticks2 < Interlocked.Read(ref nextPowerAuditTicks)) || Interlocked.CompareExchange(ref powerApplyInFlight, 1, 0) != 0)
+				if (PowerPlanStopped(powerPolicyKeyResult) || !AutomaticWorkAllowed("power-queue") || (planActive && powerPolicyKeyResult == lastPowerPolicyKey && ticks2 < Interlocked.Read(ref nextPowerAuditTicks)) || Interlocked.CompareExchange(ref powerApplyInFlight, 1, 0) != 0)
 				{
 					return;
 				}
-				int num2 = num;
-				bool aggrShot = flag7;
+				int applyEnvValue = powerPolicyKeyResult;
+				bool aggrShot = processorTuningRequestedSucceeded;
 				int genShot = Volatile.Read(ref powerSessionGen);
 				planActive = true;
-				lastPowerPolicyKey = num2;
+				lastPowerPolicyKey = applyEnvValue;
 				Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
-				bool flag9 = false;
+				bool applyEnvReady3 = false;
 				try
 				{
-					flag9 = ThreadPool.QueueUserWorkItem(delegate
+					applyEnvReady3 = ThreadPool.QueueUserWorkItem(delegate
 					{
 						RunPowerPlanApply(genShot, () => PowerPlan.Enforce(aggrShot));
 					});
@@ -747,7 +747,7 @@ namespace PaviseApp
 				catch
 				{
 				}
-				if (!flag9)
+				if (!applyEnvReady3)
 				{
 					RecordAutomaticWorkFailure("power-queue", "queue-rejected");
 					planActive = false;
@@ -758,7 +758,7 @@ namespace PaviseApp
 			}
 			else
 			{
-				if (!planActive || !flag8)
+				if (!planActive || !restoreFailedPowerPlanSucceeded)
 				{
 					return;
 				}
@@ -960,10 +960,10 @@ namespace PaviseApp
 		{
 			standbyCleanerOn = Settings.Load("GmStandbyCleanerV2", false);
 			string value;
-			bool flag = Settings.TryLoadStr("GmStandbyCleanerOptionsV1", out value);
+			bool gmStandbyCleanerOptionsV1Enabled = Settings.TryLoadStr("GmStandbyCleanerOptionsV1", out value);
 			StandbyCleanerOptions options;
-			standbyCleanerOptionsValid = flag && (value.Length == 0 || StandbyCleanerOptions.TryParse(value, out options));
-			if (flag && value.Length != 0 && StandbyCleanerOptions.TryParse(value, out options))
+			standbyCleanerOptionsValid = gmStandbyCleanerOptionsV1Enabled && (value.Length == 0 || StandbyCleanerOptions.TryParse(value, out options));
+			if (gmStandbyCleanerOptionsV1Enabled && value.Length != 0 && StandbyCleanerOptions.TryParse(value, out options))
 			{
 				standbyCleanerOptions = options;
 			}
@@ -976,7 +976,7 @@ namespace PaviseApp
 		}
 		internal bool TrySetStandbyCleanerEnabled(bool value)
 		{
-			bool flag;
+			bool gmStandbyCleanerV2Enabled;
 			lock (sync)
 			{
 				if (stopping)
@@ -989,15 +989,15 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				flag = Settings.Save("GmStandbyCleanerV2", value);
-				standbyCleanerOn = value && flag;
+				gmStandbyCleanerV2Enabled = Settings.Save("GmStandbyCleanerV2", value);
+				standbyCleanerOn = value && gmStandbyCleanerV2Enabled;
 				if (standbyCleanerOn)
 				{
 					ClearEnvFuse("standby");
 				}
 			}
 			RequestPolicyApply("TrySetStandbyCleanerEnabled");
-			return flag;
+			return gmStandbyCleanerV2Enabled;
 		}
 		public bool TrySetStandbyCleanerOptions(StandbyCleanerOptions value)
 		{
@@ -1005,7 +1005,7 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			bool flag;
+			bool gmStandbyCleanerOptionsV1Enabled;
 			lock (sync)
 			{
 				if (stopping)
@@ -1017,15 +1017,15 @@ namespace PaviseApp
 				{
 					standbyCleanerOn = false;
 				}
-				flag = Settings.SaveStr("GmStandbyCleanerOptionsV1", value.Serialize());
-				if (flag)
+				gmStandbyCleanerOptionsV1Enabled = Settings.SaveStr("GmStandbyCleanerOptionsV1", value.Serialize());
+				if (gmStandbyCleanerOptionsV1Enabled)
 				{
 					standbyCleanerOptions = value;
 					standbyCleanerOptionsValid = true;
 				}
 			}
 			RequestPolicyApply("TrySetStandbyCleanerOptions");
-			return flag;
+			return gmStandbyCleanerOptionsV1Enabled;
 		}
 		private void InvalidateStandbyCleanerWork()
 		{

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -136,10 +136,10 @@ namespace PaviseApp
 			}
 			set
 			{
-				ulong num = value & allMask;
-				if (num != selected)
+				ulong valueMask = value & allMask;
+				if (valueMask != selected)
 				{
-					selected = num;
+					selected = valueMask;
 					SyncCells();
 					Invalidate();
 				}
@@ -212,15 +212,15 @@ namespace PaviseApp
 
 		private void OnFrame(object s, EventArgs e)
 		{
-			bool flag = false;
+			bool onFrameReady = false;
 			for (int i = 0; i < 64; i++)
 			{
 				if (cellOn[i].Step())
 				{
-					flag = true;
+					onFrameReady = true;
 				}
 			}
-			if (flag)
+			if (onFrameReady)
 			{
 				Invalidate();
 			}
@@ -325,7 +325,7 @@ namespace PaviseApp
 			{
 				return;
 			}
-			int num = focusCpu;
+			int focusCpuSnapshot = focusCpu;
 			if (e.KeyCode == Keys.Space)
 			{
 				ToggleSelection((ulong)(1L << focusCpu));
@@ -336,10 +336,10 @@ namespace PaviseApp
 				{
 					return;
 				}
-				int num2 = ((e.KeyCode != Keys.Left && e.KeyCode != Keys.Up) ? 1 : (-1));
+				int onKeyDownValue = ((e.KeyCode != Keys.Left && e.KeyCode != Keys.Up) ? 1 : (-1));
 				for (int i = 0; i < 64; i++)
 				{
-					focusCpu = (focusCpu + num2 + 64) % 64;
+					focusCpu = (focusCpu + onKeyDownValue + 64) % 64;
 					if ((allMask & ~DisabledMask & (ulong)(1L << focusCpu)) != 0)
 					{
 						break;
@@ -348,7 +348,7 @@ namespace PaviseApp
 			}
 			bool handled = (e.SuppressKeyPress = true);
 			e.Handled = handled;
-			if (focusCpu != num && this.FocusedCellChanged != null)
+			if (focusCpu != focusCpuSnapshot && this.FocusedCellChanged != null)
 			{
 				this.FocusedCellChanged(FocusedCellBounds);
 			}
@@ -483,38 +483,38 @@ namespace PaviseApp
 
 		private int AddBand(List<ulong> groups, string title, int width, int y, bool smt)
 		{
-			int num = 0;
+			int addBandValue = 0;
 			foreach (ulong group3 in groups)
 			{
-				num += CpuTopology.CountSetBits(group3);
+				addBandValue += CpuTopology.CountSetBits(group3);
 			}
 			Band band = new Band();
 			band.Title = title;
-			band.Meta = TopologyCountsConfirmed ? Lang.F(smt ? "core.band.meta.smt" : "core.band.meta.solo", groups.Count, num)
+			band.Meta = TopologyCountsConfirmed ? Lang.F(smt ? "core.band.meta.smt" : "core.band.meta.solo", groups.Count, addBandValue)
                 : CpuTopology.MultiGroup ? PerformancePolicy.Text("多处理器组 · 核心范围与物理核数未确认", "Multiple processor groups · CPU range and physical core count unconfirmed")
-                : num + PerformancePolicy.Text(" 逻辑核 · 物理核数未确认", " logical CPUs · physical core count unconfirmed");
+                : addBandValue + PerformancePolicy.Text(" 逻辑核 · 物理核数未确认", " logical CPUs · physical core count unconfirmed");
 			band.TitleY = y;
 			Band band2 = band;
 			y += Theme.S(26);
-			int num2 = 0;
-			int num3 = Theme.S(15) + CellHpx + Theme.S(3) * 2;
-			int num4 = num3;
+			int addBandValue2 = 0;
+			int addBandValue3 = Theme.S(15) + CellHpx + Theme.S(3) * 2;
+			int addBandValue4 = addBandValue3;
 			foreach (ulong group4 in groups)
 			{
-				int num5 = CpuTopology.CountSetBits(group4);
-				int num6 = num5 * CellWpx + Theme.S(3) * 2;
-				if (num2 > 0 && num2 + num6 > width)
+				int countSetBitsResult = CpuTopology.CountSetBits(group4);
+				int addBandValue5 = countSetBitsResult * CellWpx + Theme.S(3) * 2;
+				if (addBandValue2 > 0 && addBandValue2 + addBandValue5 > width)
 				{
-					num2 = 0;
-					y += num4 + Theme.S(7);
+					addBandValue2 = 0;
+					y += addBandValue4 + Theme.S(7);
 				}
 				Group group = new Group();
 				group.Index = LowestIndex(group4);
 				group.Mask = group4;
-				group.Rect = new Rectangle(num2, y, num6, num3);
+				group.Rect = new Rectangle(addBandValue2, y, addBandValue5, addBandValue3);
 				Group group2 = group;
-				int num7 = num2 + Theme.S(3);
-				bool flag = true;
+				int addBandValue2Offset = addBandValue2 + Theme.S(3);
+				bool addBandReady = true;
 				for (int i = 0; i < 64; i++)
 				{
 					if ((group4 & (ulong)(1L << i)) != 0)
@@ -522,18 +522,18 @@ namespace PaviseApp
 						group2.Cells.Add(new Cell
 						{
 							Cpu = i,
-							Rect = new Rectangle(num7, y + Theme.S(15) + Theme.S(3), CellWpx, CellHpx),
-							Sibling = !flag
+							Rect = new Rectangle(addBandValue2Offset, y + Theme.S(15) + Theme.S(3), CellWpx, CellHpx),
+							Sibling = !addBandReady
 						});
-						num7 += CellWpx;
-						flag = false;
+						addBandValue2Offset += CellWpx;
+						addBandReady = false;
 					}
 				}
 				band2.Groups.Add(group2);
-				num2 += num6 + Theme.S(7);
+				addBandValue2 += addBandValue5 + Theme.S(7);
 			}
 			bands.Add(band2);
-			return y + num4;
+			return y + addBandValue4;
 		}
 
 		private static int LowestIndex(ulong mask)
@@ -608,10 +608,10 @@ namespace PaviseApp
 				Rectangle bounds = new Rectangle(0, band.TitleY, base.Width, Theme.S(26));
 				TextRenderer.DrawText(graphics, band.Title, Theme.UI(8.4f, true), bounds, Theme.Fg, TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 				TextRenderer.DrawText(graphics, band.Meta, Theme.MonoFor(band.Meta, 7.4f), bounds, Theme.Faint, TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-				int num = band.TitleY + Theme.S(26) - Theme.S(4);
+				int top = band.TitleY + Theme.S(26) - Theme.S(4);
 				using (Pen pen = new Pen(Theme.Stroke))
 				{
-					graphics.DrawLine(pen, 0, num, base.Width - 1, num);
+					graphics.DrawLine(pen, 0, top, base.Width - 1, top);
 				}
 				foreach (Group group in band.Groups)
 				{
@@ -623,22 +623,22 @@ namespace PaviseApp
 
 		private void DrawGroup(Graphics g, Group grp)
 		{
-			int num = 0;
+			int processedCount = 0;
 			foreach (Cell cell in grp.Cells)
 			{
 				if ((selected & (ulong)(1L << cell.Cpu)) != 0)
 				{
-					num++;
+					processedCount++;
 				}
 			}
-			bool flag = num > 0;
-			bool flag2 = MarkExclusive && grp.Cells.Count > 1 && num == 1;
-			float num2 = 0f;
+			bool matchesProcessedCount = processedCount > 0;
+			bool allConditionsMet = MarkExclusive && grp.Cells.Count > 1 && processedCount == 1;
+			float measuredValue = 0f;
 			foreach (Cell cell2 in grp.Cells)
 			{
-				if (cellOn[cell2.Cpu].Value > num2)
+				if (cellOn[cell2.Cpu].Value > measuredValue)
 				{
-					num2 = cellOn[cell2.Cpu].Value;
+					measuredValue = cellOn[cell2.Cpu].Value;
 				}
 			}
 			Rectangle rect = grp.Rect;
@@ -646,53 +646,53 @@ namespace PaviseApp
 			rect.Height--;
 			using (GraphicsPath path = Theme.TechPath(rect, Theme.S(5)))
 			{
-				using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Bg, Theme.Card, num2)))
+				using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Bg, Theme.Card, measuredValue)))
 				{
 					g.FillPath(brush, path);
 				}
-				Color color = (flag2 ? Col.Alpha(Theme.Accent, 200) : (flag ? Theme.StrokeHi : Theme.Stroke));
-				float num3 = (flag2 ? Math.Max(1f, (float)Theme.S(2) * 0.75f) : 1f);
-				using (Pen pen = new Pen(color, num3))
+				Color color = (allConditionsMet ? Col.Alpha(Theme.Accent, 200) : (matchesProcessedCount ? Theme.StrokeHi : Theme.Stroke));
+				float lowerBound = (allConditionsMet ? Math.Max(1f, (float)Theme.S(2) * 0.75f) : 1f);
+				using (Pen pen = new Pen(color, lowerBound))
 				{
 					g.DrawPath(pen, path);
 				}
 			}
 			Rectangle bounds = new Rectangle(rect.Left + Theme.S(3), rect.Top + Theme.S(1), rect.Width - Theme.S(3) * 2, Theme.S(15));
-			bool flag3 = cacheHeavy != 0 && (grp.Mask & cacheHeavy) != 0;
-			TextRenderer.DrawText(g, (TopologyCountsConfirmed ? "C" : "L") + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds, (!flag3) ? (flag ? Theme.Dim : Theme.Faint) : (flag ? Theme.Accent2 : Col.Alpha(Theme.Accent2, 170)), TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			bool allConditionsMet2 = cacheHeavy != 0 && (grp.Mask & cacheHeavy) != 0;
+			TextRenderer.DrawText(g, (TopologyCountsConfirmed ? "C" : "L") + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds, (!allConditionsMet2) ? (matchesProcessedCount ? Theme.Dim : Theme.Faint) : (matchesProcessedCount ? Theme.Accent2 : Col.Alpha(Theme.Accent2, 170)), TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			bool multiThread = grp.Cells.Count > 1;
-			string text;
-			switch (HeadTagFor(flag2, flag, flag3, multiThread))
+			string coreTagExclusiveText;
+			switch (HeadTagFor(allConditionsMet, matchesProcessedCount, allConditionsMet2, multiThread))
 			{
 			case HeadTag.Exclusive:
-				text = Lang.T("core.tag.exclusive");
+				coreTagExclusiveText = Lang.T("core.tag.exclusive");
 				break;
 			case HeadTag.Primary:
-				text = PrimaryTag;
+				coreTagExclusiveText = PrimaryTag;
 				break;
 			case HeadTag.Cache:
-				text = Lang.T("core.tag.cache");
+				coreTagExclusiveText = Lang.T("core.tag.cache");
 				break;
 			case HeadTag.Smt:
-				text = "SMT";
+				coreTagExclusiveText = "SMT";
 				break;
 			default:
-				text = null;
+				coreTagExclusiveText = null;
 				break;
 			}
-			if (text != null)
+			if (coreTagExclusiveText != null)
 			{
-				Font font = Theme.MonoFor(text, 6.4f);
+				Font font = Theme.MonoFor(coreTagExclusiveText, 6.4f);
 				int indexWidth = TextRenderer.MeasureText(g, (TopologyCountsConfirmed ? "C" : "L") + grp.Index.ToString("00"), Theme.Mono(6.9f), bounds.Size, TextFormatFlags.NoPadding).Width;
-				int tagWidth = TextRenderer.MeasureText(g, text, font, bounds.Size, TextFormatFlags.NoPadding).Width;
+				int tagWidth = TextRenderer.MeasureText(g, coreTagExclusiveText, font, bounds.Size, TextFormatFlags.NoPadding).Width;
 				if (!HeadTagFits(bounds.Width, indexWidth, tagWidth, Theme.S(3)))
 				{
-					text = null;
+					coreTagExclusiveText = null;
 				}
 			}
-			if (text != null)
+			if (coreTagExclusiveText != null)
 			{
-				TextRenderer.DrawText(g, text, Theme.MonoFor(text, 6.4f), bounds, flag2 ? Theme.Accent : (flag ? Col.Alpha(Theme.Accent, 220) : (flag3 ? Col.Alpha(Theme.Accent2, 170) : Col.Alpha(Theme.Faint, 150))), TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				TextRenderer.DrawText(g, coreTagExclusiveText, Theme.MonoFor(coreTagExclusiveText, 6.4f), bounds, allConditionsMet ? Theme.Accent : (matchesProcessedCount ? Col.Alpha(Theme.Accent, 220) : (allConditionsMet2 ? Col.Alpha(Theme.Accent2, 170) : Col.Alpha(Theme.Faint, 150))), TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			}
 			foreach (Cell cell3 in grp.Cells)
 			{
@@ -707,8 +707,8 @@ namespace PaviseApp
 			rect.Inflate(-Theme.S(2), -Theme.S(2));
 			Color color = ((SchedulingOverlay && !SelectionColor.IsEmpty) ? SelectionColor : Theme.Accent);
 			Color color2 = Col.Lerp(Theme.Bg, color, value);
-			bool flag = (DisabledMask & (ulong)(1L << c.Cpu)) != 0 || !base.Enabled;
-			if (flag)
+			bool anyConditionMet = (DisabledMask & (ulong)(1L << c.Cpu)) != 0 || !base.Enabled;
+			if (anyConditionMet)
 			{
 				color2 = Theme.Card;
 			}
@@ -724,26 +724,26 @@ namespace PaviseApp
 					g.DrawPath(pen, path);
 				}
 			}
-			TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(7.6f), rect, flag ? Theme.Faint : Col.Lerp(Theme.Dim, Theme.OnAccent, value), TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+			TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(7.6f), rect, anyConditionMet ? Theme.Faint : Col.Lerp(Theme.Dim, Theme.OnAccent, value), TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 			if (!SchedulingOverlay)
 			{
 				return;
 			}
-			ulong num = (ulong)(1L << c.Cpu);
-			int num2 = rect.Left + Theme.S(3);
-			int num3 = rect.Bottom - Theme.S(4);
-			ulong[] array = new ulong[2] { SchedulingGameMask, SchedulingIsolationMask };
-			Color[] array2 = new Color[2] { GameColor, IsolationColor };
-			for (int i = 0; i < array.Length; i++)
+			ulong cpuOffset = (ulong)(1L << c.Cpu);
+			int left = rect.Left + Theme.S(3);
+			int top = rect.Bottom - Theme.S(4);
+			ulong[] numericValueItems = new ulong[2] { SchedulingGameMask, SchedulingIsolationMask };
+			Color[] colorItems = new Color[2] { GameColor, IsolationColor };
+			for (int i = 0; i < numericValueItems.Length; i++)
 			{
-				if ((array[i] & num) != 0)
+				if ((numericValueItems[i] & cpuOffset) != 0)
 				{
-					using (SolidBrush brush2 = new SolidBrush(array2[i]))
+					using (SolidBrush brush2 = new SolidBrush(colorItems[i]))
 					{
-						g.FillRectangle(brush2, num2, num3, Theme.S(5), Theme.S(2));
+						g.FillRectangle(brush2, left, top, Theme.S(5), Theme.S(2));
 					}
 				}
-				num2 += Theme.S(7);
+				left += Theme.S(7);
 			}
 		}
 	}

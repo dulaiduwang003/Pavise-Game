@@ -17,14 +17,14 @@ namespace PaviseApp
 
 			internal Snapshot(IList<GameInstallRecord> records, IList<string> platformRoots, bool complete = true)
 			{
-				int num = ((records != null) ? records.Count : 0);
-				Complete = complete && num <= 8192;
-				for (int i = 0; i < Math.Min(num, 8192); i++)
+				int recordsCount = ((records != null) ? records.Count : 0);
+				Complete = complete && recordsCount <= 8192;
+				for (int i = 0; i < Math.Min(recordsCount, 8192); i++)
 				{
-					string text = RootFromRecord(records[i]);
-					if (text != null && !UnsafeRoot(text))
+					string rootFromRecordResult = RootFromRecord(records[i]);
+					if (rootFromRecordResult != null && !UnsafeRoot(rootFromRecordResult))
 					{
-						Roots.Add(text);
+						Roots.Add(rootFromRecordResult);
 					}
 				}
 				if (platformRoots == null)
@@ -33,10 +33,10 @@ namespace PaviseApp
 				}
 				foreach (string platformRoot in platformRoots)
 				{
-					string text2 = Normalize(platformRoot);
-					if (text2 != null)
+					string normalizeResult = Normalize(platformRoot);
+					if (normalizeResult != null)
 					{
-						Platforms.Add(text2);
+						Platforms.Add(normalizeResult);
 					}
 				}
 			}
@@ -82,15 +82,15 @@ namespace PaviseApp
 
 		internal static string Resolve(string executablePath, string fallbackRoot)
 		{
-			string text = Normalize(executablePath);
-			if (text == null || !text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			string normalizeResult = Normalize(executablePath);
+			if (normalizeResult == null || !normalizeResult.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
 			{
 				return fallbackRoot;
 			}
 			try
 			{
 				Snapshot snapshot = CurrentSnapshot();
-				return SelectSnapshotRoot(text, fallbackRoot, snapshot, Directory.Exists, IsSafeExistingPath);
+				return SelectSnapshotRoot(normalizeResult, fallbackRoot, snapshot, Directory.Exists, IsSafeExistingPath);
 			}
 			catch
 			{
@@ -100,16 +100,16 @@ namespace PaviseApp
 
 		internal static string RestrictFallback(string executablePath, string fallbackRoot)
 		{
-			string text = Normalize(executablePath);
-			string text2 = Normalize(fallbackRoot);
-			if (text == null || !text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || text2 == null || !Under(text, text2) || UnsafeRoot(text2))
+			string normalizeResult = Normalize(executablePath);
+			string normalizeResult2 = Normalize(fallbackRoot);
+			if (normalizeResult == null || !normalizeResult.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || normalizeResult2 == null || !Under(normalizeResult, normalizeResult2) || UnsafeRoot(normalizeResult2))
 			{
 				return null;
 			}
 			try
 			{
 				Snapshot snapshot = CurrentSnapshot();
-				if (ContainsPlatform(text2, snapshot.Platforms) || ContainsOtherInstall(text2, text, snapshot.Roots))
+				if (ContainsPlatform(normalizeResult2, snapshot.Platforms) || ContainsOtherInstall(normalizeResult2, normalizeResult, snapshot.Roots))
 				{
 					return null;
 				}
@@ -117,19 +117,19 @@ namespace PaviseApp
 			catch
 			{
 			}
-			return text2;
+			return normalizeResult2;
 		}
 
 		internal static string SelectRoot(string executablePath, string fallbackRoot, IList<GameInstallRecord> records, IList<string> platformRoots, Func<string, bool> directoryExists, Func<string, bool> safePath)
 		{
-			string text = Normalize(executablePath);
-			if (text == null || !text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || records == null || records.Count > 8192 || directoryExists == null || safePath == null)
+			string normalizeResult = Normalize(executablePath);
+			if (normalizeResult == null || !normalizeResult.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || records == null || records.Count > 8192 || directoryExists == null || safePath == null)
 			{
 				return fallbackRoot;
 			}
 			try
 			{
-				return SelectSnapshotRoot(text, fallbackRoot, new Snapshot(records, platformRoots), directoryExists, safePath);
+				return SelectSnapshotRoot(normalizeResult, fallbackRoot, new Snapshot(records, platformRoots), directoryExists, safePath);
 			}
 			catch
 			{
@@ -145,15 +145,15 @@ namespace PaviseApp
 				{
 					return fallbackRoot;
 				}
-				string text = null;
+				string rootSnapshot = null;
 				foreach (string root in snapshot.Roots)
 				{
-					if (Under(executable, root) && (text == null || root.Length > text.Length) && !ContainsPlatform(root, snapshot.Platforms) && !ContainsOtherInstall(root, executable, snapshot.Roots) && directoryExists(root) && safePath(root))
+					if (Under(executable, root) && (rootSnapshot == null || root.Length > rootSnapshot.Length) && !ContainsPlatform(root, snapshot.Platforms) && !ContainsOtherInstall(root, executable, snapshot.Roots) && directoryExists(root) && safePath(root))
 					{
-						text = root;
+						rootSnapshot = root;
 					}
 				}
-				return text ?? fallbackRoot;
+				return rootSnapshot ?? fallbackRoot;
 			}
 			catch
 			{
@@ -171,17 +171,17 @@ namespace PaviseApp
 			{
 				return Normalize(record.InstallLocation);
 			}
-			string text = Normalize(record.InstallSource);
-			if (text == null)
+			string normalizeResult = Normalize(record.InstallSource);
+			if (normalizeResult == null)
 			{
 				return null;
 			}
 			string b = UninstallDirectory(record.UninstallString);
-			if (!string.Equals(text, b, StringComparison.OrdinalIgnoreCase))
+			if (!string.Equals(normalizeResult, b, StringComparison.OrdinalIgnoreCase))
 			{
 				return null;
 			}
-			return text;
+			return normalizeResult;
 		}
 
 		private static string UninstallDirectory(string command)
@@ -190,33 +190,33 @@ namespace PaviseApp
 			{
 				return null;
 			}
-			string text = command.Trim();
+			string commandTrimmed = command.Trim();
 			string raw = null;
-			if (text[0] == '"')
+			if (commandTrimmed[0] == '"')
 			{
-				int num = text.IndexOf('"', 1);
-				if (num > 1)
+				int matchIndex = commandTrimmed.IndexOf('"', 1);
+				if (matchIndex > 1)
 				{
-					raw = text.Substring(1, num - 1);
+					raw = commandTrimmed.Substring(1, matchIndex - 1);
 				}
 			}
 			else
 			{
-				int num2 = 0;
-				while (num2 < text.Length)
+				int uninstallDirectoryValue = 0;
+				while (uninstallDirectoryValue < commandTrimmed.Length)
 				{
-					int num3 = text.IndexOf(".exe", num2, StringComparison.OrdinalIgnoreCase);
-					if (num3 < 0)
+					int matchIndex2 = commandTrimmed.IndexOf(".exe", uninstallDirectoryValue, StringComparison.OrdinalIgnoreCase);
+					if (matchIndex2 < 0)
 					{
 						break;
 					}
-					num3 += 4;
-					if (num3 == text.Length || char.IsWhiteSpace(text[num3]))
+					matchIndex2 += 4;
+					if (matchIndex2 == commandTrimmed.Length || char.IsWhiteSpace(commandTrimmed[matchIndex2]))
 					{
-						raw = text.Substring(0, num3);
+						raw = commandTrimmed.Substring(0, matchIndex2);
 						break;
 					}
-					num2 = num3;
+					uninstallDirectoryValue = matchIndex2;
 				}
 			}
 			raw = Normalize(raw);
@@ -242,19 +242,19 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = Environment.ExpandEnvironmentVariables(raw.Trim().Trim('"')).Replace('/', '\\');
-				if (text.Length < 3 || !char.IsLetter(text[0]) || text[1] != ':' || text[2] != '\\')
+				string replaceResult = Environment.ExpandEnvironmentVariables(raw.Trim().Trim('"')).Replace('/', '\\');
+				if (replaceResult.Length < 3 || !char.IsLetter(replaceResult[0]) || replaceResult[1] != ':' || replaceResult[2] != '\\')
 				{
 					return null;
 				}
-				for (int i = 0; i < text.Length; i++)
+				for (int i = 0; i < replaceResult.Length; i++)
 				{
-					if (char.IsControl(text[i]) || text[i] == '"' || text[i] == '*' || text[i] == '?' || text[i] == '|' || text[i] == '<' || text[i] == '>' || (text[i] == ':' && i != 1))
+					if (char.IsControl(replaceResult[i]) || replaceResult[i] == '"' || replaceResult[i] == '*' || replaceResult[i] == '?' || replaceResult[i] == '|' || replaceResult[i] == '<' || replaceResult[i] == '>' || (replaceResult[i] == ':' && i != 1))
 					{
 						return null;
 					}
 				}
-				return Path.GetFullPath(text).TrimEnd('\\');
+				return Path.GetFullPath(replaceResult).TrimEnd('\\');
 			}
 			catch
 			{
@@ -289,18 +289,18 @@ namespace PaviseApp
 			Environment.SpecialFolder[] broadFolders = BroadFolders;
 			foreach (Environment.SpecialFolder folder in broadFolders)
 			{
-				string text = KnownFolder(folder);
-				if (text != null)
+				string knownFolderResult = KnownFolder(folder);
+				if (knownFolderResult != null)
 				{
-					hashSet.Add(text);
+					hashSet.Add(knownFolderResult);
 				}
 			}
 			try
 			{
-				string text2 = Normalize(Environment.GetEnvironmentVariable("PUBLIC"));
-				if (text2 != null)
+				string normalizeResult = Normalize(Environment.GetEnvironmentVariable("PUBLIC"));
+				if (normalizeResult != null)
 				{
-					hashSet.Add(text2);
+					hashSet.Add(normalizeResult);
 				}
 			}
 			catch
@@ -308,10 +308,10 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text3 = Normalize(Path.GetTempPath());
-				if (text3 != null)
+				string normalizeResult2 = Normalize(Path.GetTempPath());
+				if (normalizeResult2 != null)
 				{
-					hashSet.Add(text3);
+					hashSet.Add(normalizeResult2);
 				}
 			}
 			catch
@@ -375,23 +375,23 @@ namespace PaviseApp
 			}
 			try
 			{
-				string text = path;
+				string pathSnapshot = path;
 				for (int i = 0; i < 128; i++)
 				{
-					if (string.IsNullOrEmpty(text))
+					if (string.IsNullOrEmpty(pathSnapshot))
 					{
 						break;
 					}
-					if ((attributes(text) & FileAttributes.ReparsePoint) != 0)
+					if ((attributes(pathSnapshot) & FileAttributes.ReparsePoint) != 0)
 					{
 						return false;
 					}
-					string directoryName = Path.GetDirectoryName(text);
+					string directoryName = Path.GetDirectoryName(pathSnapshot);
 					if (string.IsNullOrEmpty(directoryName))
 					{
 						return true;
 					}
-					text = directoryName;
+					pathSnapshot = directoryName;
 				}
 			}
 			catch
@@ -410,13 +410,13 @@ namespace PaviseApp
 					return cached;
 				}
 				List<GameInstallRecord> list = new List<GameInstallRecord>();
-				RegistryView[] array = (Environment.Is64BitOperatingSystem ? new RegistryView[2]
+				RegistryView[] registryViewItems = (Environment.Is64BitOperatingSystem ? new RegistryView[2]
 				{
 					RegistryView.Registry64,
 					RegistryView.Registry32
 				} : new RegistryView[1] { RegistryView.Registry32 });
-				RegistryView[] array2 = array;
-				foreach (RegistryView view in array2)
+				RegistryView[] registryViewItems2 = registryViewItems;
+				foreach (RegistryView view in registryViewItems2)
 				{
 					ReadUninstallHive(RegistryHive.LocalMachine, view, list);
 					ReadUninstallHive(RegistryHive.CurrentUser, view, list);

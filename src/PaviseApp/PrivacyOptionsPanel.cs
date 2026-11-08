@@ -167,24 +167,24 @@ namespace PaviseApp
 			foreach (Row row in rows)
 			{
 				PrivacyResult privacyResult = State(row);
-				bool flag = privacyResult.Configured || privacyResult.HasRecovery;
-				row.Toggle.SetSilently((row == pendingRow) ? pendingDesired : flag);
+				bool matchesConfigured = privacyResult.Configured || privacyResult.HasRecovery;
+				row.Toggle.SetSilently((row == pendingRow) ? pendingDesired : matchesConfigured);
 				row.Toggle.Busy = busy || privacyResult.Busy;
 				row.Toggle.Enabled = !busy && !privacyResult.Busy && CanModify() && (privacyResult.Configured || privacyResult.HasRecovery || (privacyResult.State == "restored" && !privacyResult.Managed) || (privacyResult.Supported && !privacyResult.Managed && privacyResult.State != "stopped" && privacyResult.State != "unverified"));
-				string text = row.Action.Detail;
-				if (!string.IsNullOrEmpty(privacyResult.Detail) && !string.Equals(text, privacyResult.Detail, StringComparison.Ordinal))
+				string descValue = row.Action.Detail;
+				if (!string.IsNullOrEmpty(privacyResult.Detail) && !string.Equals(descValue, privacyResult.Detail, StringComparison.Ordinal))
 				{
-					text = text + "\n" + privacyResult.Detail;
+					descValue = descValue + "\n" + privacyResult.Detail;
 				}
-				row.Card.Desc = text;
-				row.Card.AccessibleDescription = text;
-				bool flag2 = privacyResult.State == "failed" || privacyResult.State == "stopped" || privacyResult.State == "restore-failed" || privacyResult.State == "unverified" || (privacyResult.State == "partial" && flag && !privacyResult.Limited) || (privacyResult.State == "ready" && privacyResult.Configured);
+				row.Card.Desc = descValue;
+				row.Card.AccessibleDescription = descValue;
+				bool anyConditionMet = privacyResult.State == "failed" || privacyResult.State == "stopped" || privacyResult.State == "restore-failed" || privacyResult.State == "unverified" || (privacyResult.State == "partial" && matchesConfigured && !privacyResult.Limited) || (privacyResult.State == "ready" && privacyResult.Configured);
 				string status = Status(privacyResult);
-				row.Card.SetStatus(status, flag2 ? Theme.Warning : (flag ? Theme.Accent : Theme.Dim));
+				row.Card.SetStatus(status, anyConditionMet ? Theme.Warning : (matchesConfigured ? Theme.Accent : Theme.Dim));
 				PerformanceFeatureCard performanceFeatureCard = row.Card as PerformanceFeatureCard;
 				if (performanceFeatureCard != null)
 				{
-					performanceFeatureCard.StatusRequiresAttention = flag2 || privacyResult.Managed || privacyResult.Limited || !privacyResult.Supported;
+					performanceFeatureCard.StatusRequiresAttention = anyConditionMet || privacyResult.Managed || privacyResult.Limited || !privacyResult.Supported;
 				}
 			}
 			Relayout();
@@ -311,16 +311,16 @@ namespace PaviseApp
 					SyncCached();
 				});
 			};
-			bool flag;
+			bool setSucceeded;
 			try
 			{
-				flag = PrivacyControl.Set(row.Action.Key, @checked, selectedTarget, completed);
+				setSucceeded = PrivacyControl.Set(row.Action.Key, @checked, selectedTarget, completed);
 			}
 			catch
 			{
-				flag = false;
+				setSucceeded = false;
 			}
-			if (!flag)
+			if (!setSucceeded)
 			{
 				busy = false;
 				pendingRow = null;
@@ -360,13 +360,13 @@ namespace PaviseApp
 
 		private void FinishRefresh(bool completed)
 		{
-			bool flag = refreshCancelled && InspectionVisible && CanModify();
+			bool matchesCanModify = refreshCancelled && InspectionVisible && CanModify();
 			busy = false;
 			refreshing = false;
 			refreshCancelled = false;
 			loaded = completed;
 			SyncCached();
-			if (flag)
+			if (matchesCanModify)
 			{
 				RefreshAll();
 			}
@@ -516,29 +516,29 @@ namespace PaviseApp
 					base.Height = Math.Max(Theme.S(4), performanceGrid.ContentHeight);
 					return;
 				}
-				int num = Math.Max(Theme.S(250), base.Width);
-				int num2 = Theme.S(14);
-				int num3 = PerformanceFeatureGrid.ColumnCount(num);
-				int num4 = (num - (num3 - 1) * num2) / num3;
-				int num5 = 0;
-				int num6 = 0;
-				int num7 = 0;
+				int widthLimit = Math.Max(Theme.S(250), base.Width);
+				int scaledDimension = Theme.S(14);
+				int columnCountResult = PerformanceFeatureGrid.ColumnCount(widthLimit);
+				int width = (widthLimit - (columnCountResult - 1) * scaledDimension) / columnCountResult;
+				int top = 0;
+				int processedCount = 0;
+				int relayoutValue = 0;
 				foreach (Row row in rows)
 				{
-					if (num6 == num3)
+					if (processedCount == columnCountResult)
 					{
-						num5 += num7 + num2;
-						num6 = 0;
-						num7 = 0;
+						top += relayoutValue + scaledDimension;
+						processedCount = 0;
+						relayoutValue = 0;
 					}
 					PerformanceFeatureCard performanceFeatureCard = (PerformanceFeatureCard)row.Card;
-					int val = performanceFeatureCard.PresentationHeight(num4);
-					performanceFeatureCard.SetBounds(num6 * (num4 + num2), num5, num4, val);
+					int val = performanceFeatureCard.PresentationHeight(width);
+					performanceFeatureCard.SetBounds(processedCount * (width + scaledDimension), top, width, val);
 					performanceFeatureCard.ArrangePresentation();
-					num7 = Math.Max(num7, val);
-					num6++;
+					relayoutValue = Math.Max(relayoutValue, val);
+					processedCount++;
 				}
-				base.Height = Math.Max(Theme.S(4), num5 + num7 + Theme.S(4));
+				base.Height = Math.Max(Theme.S(4), top + relayoutValue + Theme.S(4));
 			}
 			finally
 			{
