@@ -6,9 +6,12 @@ namespace PaviseApp
     {
         private string FrameAutomaticConfiguration()
         {
-            GameDetection detection = Volatile.Read(ref activeDetection);
-            return "thread-boost:" + FrameCoordinationEnabled + "|roles:"
-                + (detection == null || detection.Profile == null ? "" : CriticalThreadRule.Raw(detection.Profile));
+            lock (sync)
+            {
+                GameDetection detection = activeDetection;
+                return "thread-boost:" + FrameCoordinationEnabled + "|roles:"
+                    + (detection == null || detection.Profile == null ? "" : CriticalThreadRule.Raw(CriticalPreferenceProfileLocked(detection.Profile.Id)));
+            }
         }
     }
 }

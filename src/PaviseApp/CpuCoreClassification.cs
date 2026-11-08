@@ -12,9 +12,8 @@ namespace PaviseApp
         internal string Source, Reason;
     }
 
-    // Input maps are group-relative LP indexes, length 64; -1 means unavailable.
-    // The CPUID caller must validate vendor/leaf support and sample the intended LP.
-    // Windows class 0 is valid. SMT count and model names are deliberately not inputs.
+    // Maps use group-relative logical CPU indexes (64 entries); -1 is unavailable and 0 is a valid class.
+    // Validate vendor/leaf support and sample CPUID on the intended processor.
     internal static class CpuCoreClassification
     {
         private sealed class Evidence

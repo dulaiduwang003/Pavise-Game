@@ -119,8 +119,7 @@ namespace PaviseApp
 			string[] shortLabels = Lang.Cur == 0 ? new[] { "游戏", "后台", "图形", "系统", "实验" } : new[] { "Play", "BG", "GPU", "Sys", "Lab" };
 			if (compact)
 			{
-				// Allocate the measured width of each short label rather than equal
-				// columns: "Play" needs more room than "BG", especially at high DPI.
+				// Measure each label independently to avoid clipping at high DPI.
 				while (true)
 				{
 					total = gap * Math.Max(0, buttons.Count - 1);

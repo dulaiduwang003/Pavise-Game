@@ -441,8 +441,7 @@ namespace PaviseApp
 					Active = true;
 					Actual = actual;
 					Failed = false;
-					// Observe the same successful request at most three times. This
-					// does not acquire again or replenish the action failure budget.
+					// Recheck the same request at most three times without reacquiring or refunding its failure budget.
 					for (int sample = 1; sample <= AcquireReadbackSamples; sample++)
 					{
 						if (sample > 1)
@@ -487,8 +486,7 @@ namespace PaviseApp
 
 		private bool ConfirmAcquisitionExemption(int sample)
 		{
-			// The native path always refers to this process; it cannot be reused
-			// as another process identity during a synchronous acquisition.
+			// The synchronous native path targets this process, so PID reuse cannot redirect acquisition.
 			if (!nativeAcquisition || Native.OsBuild() < 22000) return true;
 			int control, state, win32, status;
 			if (!Native.TryQueryPowerThrottling(new IntPtr(-1), out control, out state, out win32, out status))

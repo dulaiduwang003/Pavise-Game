@@ -4,9 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // A process-wide affinity write also changes existing thread masks. Refuse
-    // it when a game owns custom thread masks or explicit thread CPU Set IDs.
-    // This bounded observation does not promise lifetime state restoration.
+    // Process affinity changes existing thread masks; reject game-owned thread masks or CPU Sets.
+    // This bounded admission check does not provide lifetime thread-state restoration.
     internal static class GameThreadAffinityAdmission
     {
         internal const string RefusalPrefix = "game-thread-affinity-";

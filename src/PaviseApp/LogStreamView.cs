@@ -52,6 +52,20 @@ namespace PaviseApp
 
 		private bool technicalEvents;
 
+		private bool actionEvents;
+
+		internal bool ActionEvents
+		{
+			get { return actionEvents; }
+			set
+			{
+				if (actionEvents == value) return;
+				actionEvents = value;
+				expanded.Clear();
+				RebuildShown(false);
+			}
+		}
+
 		internal bool TechnicalEvents
 		{
 			get { return technicalEvents; }
@@ -342,7 +356,8 @@ namespace PaviseApp
 			List<LogEventEntry> list2 = new List<LogEventEntry>(all);
 			list2.Reverse();
 			groups.Clear();
-			groups.AddRange(technicalEvents ? ProjectTechnical(list2, filter, SessionToken)
+			groups.AddRange(actionEvents ? ActionLogProjection.Project(list2, filter, SessionToken)
+				: technicalEvents ? ProjectTechnical(list2, filter, SessionToken)
 				: LogEventProjection.Project(list2, filter, SessionToken));
 			foreach (LogEventEntry item in list)
 			{
@@ -729,7 +744,7 @@ namespace PaviseApp
 
 		internal LogEventSeverity VisibleSeverity(LogEventSeverity value)
 		{
-			return technicalEvents ? value : DisplaySeverity(value);
+			return (technicalEvents || actionEvents) ? value : DisplaySeverity(value);
 		}
 
 		private void DrawEntry(Graphics g, LogEventEntry entry, int index, int y)

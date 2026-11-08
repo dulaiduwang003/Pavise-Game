@@ -72,6 +72,15 @@ namespace PaviseApp
                 RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false;
             });
         }
+        // Wake for scheduled recovery; exhausted routes provide no deadline and remain idle.
+        private int LoopWaitMs(int scanWaitMs)
+        {
+            if (!SessionRecoveryPending) return scanWaitMs;
+            long due = Interlocked.Read(ref residueNextTryTicks);
+            if (due == long.MaxValue) return scanWaitMs;
+            long remaining = (due - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond;
+            return (int)Math.Min(scanWaitMs, Math.Max(250L, remaining));
+        }
         private bool RetrySessionRecoveryRoutes(string reason)
         {
             RecoveryRouteSet routes = sessionRecoveryRoutes;
@@ -83,6 +92,11 @@ namespace PaviseApp
             if (restored)
             {
                 RecordAutomation("session", "restored");
+            }
+            else if (!routes.RetryScheduled)
+            {
+                // Every bounded retry is spent; ownership and journals stay retained.
+                RecordAutomation("session", "restore-failed");
             }
             return restored;
         }

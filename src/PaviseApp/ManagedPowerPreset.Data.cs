@@ -1,6 +1,4 @@
-﻿// 保留电源配置中的 AC/DC 缺省状态及注册表类型。
-// 复制系统计划后按本表逐项写入，并用于参数核对。
-using System;
+﻿using System;
 
 namespace PaviseApp
 {

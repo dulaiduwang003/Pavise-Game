@@ -47,8 +47,7 @@ namespace PaviseApp
                 case "bindflt": case "wcifs": case "luafv": case "npsvctrig": case "wof": case "fileinfo": case "storqosflt": case "ucpd": return "Windows system filter";
                 case "cldflt": case "filecrypt": return "Encryption or cloud-file filter";
                 case "messagetransfer": case "bedaisy": case "easyanticheat": case "easyanticheat_eos": case "vgk": case "faceit": case "ace_base": case "ace-base": return "Protected game or anti-cheat driver";
-                // These names alone do not establish a vendor or an anti-cheat identity.
-                // Keep the existing exclusion until ownership and restoration can be verified.
+                // Keep names excluded until vendor identity, ownership and restoration can be verified.
                 case "clawflt": case "ahflt": return "Protected filter with unverified ownership";
                 default: return "";
             }

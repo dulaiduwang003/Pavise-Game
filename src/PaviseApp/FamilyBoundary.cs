@@ -292,7 +292,7 @@ namespace PaviseApp
 			{
 				return hashSet;
 			}
-			Dictionary<int, int> dictionary = new Dictionary<int, int>();
+			Dictionary<int, int> dictionary = exactExecutablesOnly ? null : new Dictionary<int, int>();
 			HashSet<int> hashSet3 = new HashSet<int>();
 			ProcEntry[] entries = snapshot.Entries;
 			foreach (ProcEntry procEntry in entries)
@@ -317,10 +317,13 @@ namespace PaviseApp
 						}
 					}
 				}
-				ProcEntry procEntry2 = snapshot.Find(procEntry.ParentPid);
-				if (procEntry2 != null && procEntry2.Pid > 4 && procEntry2.Pid != selfPid && procEntry2.Pid != procEntry.Pid && procEntry2.Session == ownerSession && procEntry2.Creation > 0 && procEntry2.Creation <= procEntry.Creation)
+				if (!exactExecutablesOnly)
 				{
-					dictionary[procEntry.Pid] = procEntry2.Pid;
+					ProcEntry procEntry2 = snapshot.Find(procEntry.ParentPid);
+					if (procEntry2 != null && procEntry2.Pid > 4 && procEntry2.Pid != selfPid && procEntry2.Pid != procEntry.Pid && procEntry2.Session == ownerSession && procEntry2.Creation > 0 && procEntry2.Creation <= procEntry.Creation)
+					{
+						dictionary[procEntry.Pid] = procEntry2.Pid;
+					}
 				}
 			}
 			hashSet.UnionWith(hashSet3);

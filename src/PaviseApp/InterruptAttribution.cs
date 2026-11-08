@@ -34,7 +34,7 @@ namespace PaviseApp
 			public string Name;
 		}
 
-#pragma warning disable 0649 // written by native marshaling, never by managed code
+#pragma warning disable 0649
 		private struct WnodeHeader
 		{
 			public uint BufferSize;
@@ -117,7 +117,7 @@ namespace PaviseApp
 			public uint UserTime;
 		}
 
-#pragma warning disable 0649 // written by native marshaling, never by managed code
+#pragma warning disable 0649
 		private struct EventDescriptor
 		{
 			public ushort Id;

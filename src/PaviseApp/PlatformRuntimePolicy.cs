@@ -76,8 +76,7 @@ namespace PaviseApp
 
 		internal static string RuntimePlatform(string name)
 		{
-			// Classification also prevents game-family inheritance and renderer selection.
-			// WeGame remains a platform process without receiving built-in protection.
+			// Platform classification prevents family inheritance and renderer selection; WeGame has no built-in protection.
 			if (WeGameRuntimeProtection.IsRuntimeName(name))
 			{
 				return "wegame";

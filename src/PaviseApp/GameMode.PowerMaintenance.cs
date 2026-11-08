@@ -20,8 +20,7 @@ namespace PaviseApp
             long now = DateTime.UtcNow.Ticks;
             if (now < Interlocked.Read(ref nextPowerMaintenanceTicks)) return;
             Interlocked.Exchange(ref nextPowerMaintenanceTicks, now + 15 * TimeSpan.TicksPerSecond);
-            // 指定计划只核对活动 GUID；托管计划另核对自有参数。
-            // 两者复用通知任务的会话核验、合并和故障隔离。
+            // 指定计划核对活动 GUID；托管计划还核对自有参数。
             Interlocked.Exchange(ref powerPlanNotificationPending, 1);
             QueuePowerPlanNotificationAudit();
         }

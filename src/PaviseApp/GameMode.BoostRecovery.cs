@@ -34,8 +34,7 @@ namespace PaviseApp
             finally { Native.CloseHandle(handle); }
         }
 
-        // Passive owner-exit observation is separate from failed mutation/read attempts.
-        // Both direct calls and the aggregate route use this one throttled observer.
+        // Share one throttled owner-exit observer; observations do not consume mutation/read failure attempts.
         private bool ObserveBoostRecoveryPhase(BoostRecoveryAttempt attempt, int pid, long birth)
         {
             List<Func<bool>> children;
@@ -117,8 +116,7 @@ namespace PaviseApp
                     if (restored) boostRecoveries.Remove(key);
                     else if (childTrace.Reported)
                     {
-                        // A concrete child already owns its failure budget. Cache its
-                        // schedule before the next raw OpenProcess/identity observation.
+                        // Reuse a child owner's finite schedule before another raw process/identity query.
                         attempt.Due = childTrace.Next;
                         attempt.ChildObservers = childTrace.PhaseObservers;
                         attempt.ExitProbeDue = DateTime.UtcNow.AddSeconds(30).Ticks;

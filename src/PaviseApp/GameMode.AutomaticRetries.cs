@@ -36,8 +36,7 @@ namespace PaviseApp
             }
         }
 
-        // The game serial survives renderer handoffs. Keep all signatures used in
-        // a game: switching A -> B -> A must reuse A's remaining budget.
+        // Renderer handoffs retain the game serial; revisiting a configuration reuses its remaining budget.
         private string AutomaticPhaseKey(string signature)
         {
             return Interlocked.Read(ref gameSessionStarts).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\n" + signature;
@@ -70,6 +69,7 @@ namespace PaviseApp
 
         private AutomaticFailurePhase PowerAttemptPhase(int policyKey)
         {
+            PowerPlan.BeginAutomaticSession(Interlocked.Read(ref gameSessionStarts));
             string signature = AutomaticPhaseKey(PowerPlan.AutomaticPolicySignature((policyKey & 1) != 0));
             ActionFailureStore.BeginAutomaticCycle("PowerPlanOn", "system", signature, 3);
             lock (sync)

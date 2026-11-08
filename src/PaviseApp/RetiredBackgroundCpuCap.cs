@@ -1,10 +1,7 @@
 namespace PaviseApp
 {
-    // Shared CPU-cap Jobs (Aggressive background governance) and background freezing
-    // were removed in 3.3.0.7. A process can never leave a Job, and once the owning
-    // Pavise and its guardian exit, the Job's name disappears with its last handle and
-    // it cannot be reopened, so the stored receipts carry no recovery value. They are
-    // dropped at startup.
+    // Retired CPU-cap/freeze receipts are dropped at startup.
+    // Their named Jobs cannot be reopened after the last owner handle closes.
     internal static class RetiredBackgroundCpuCap
     {
         internal const string ReceiptKey = "BackgroundCpuCapGroupsV2";

@@ -51,9 +51,7 @@ namespace PaviseApp
                         Version remoteVersion = new Version(package.Version);
                         if (remoteVersion.CompareTo(currentVersion) < 0)
                         {
-                            // A valid older release means this build is ahead, not
-                            // that the feed failed. Still probe the remaining source
-                            // in case it already offers the current or a newer build.
+                            // An older valid feed is healthy; continue probing for a newer/current version.
                             if (older == null || remoteVersion.CompareTo(new Version(older.Version)) > 0)
                                 older = package;
                             continue;

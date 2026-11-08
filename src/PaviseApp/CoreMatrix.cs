@@ -102,6 +102,8 @@ namespace PaviseApp
 
 		public ulong DisabledMask { get; set; }
 
+		public bool SingleSelection { get; set; }
+
 		public ulong SchedulingGameMask { get; set; }
 
 		public ulong SchedulingIsolationMask { get; set; }
@@ -262,7 +264,13 @@ namespace PaviseApp
 			mask &= allMask & (~DisabledMask | Selected);
 			if (mask != 0)
 			{
-				Selected = (((Selected & mask) == mask) ? (Selected & ~mask) : (Selected | (mask & ~DisabledMask)));
+				if (SingleSelection)
+				{
+					mask &= ~DisabledMask;
+					if (mask == 0) return;
+					Selected = mask & (~mask + 1);
+				}
+				else Selected = (((Selected & mask) == mask) ? (Selected & ~mask) : (Selected | (mask & ~DisabledMask)));
 				if (this.SelectionChanged != null)
 				{
 					this.SelectionChanged(Selected);

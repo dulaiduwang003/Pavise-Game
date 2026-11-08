@@ -30,8 +30,7 @@ namespace PaviseApp
         internal Process Helper;
     }
 
-    // The running EXE is never overwritten until its safe-exit receipt and process
-    // identity have both been checked. The signed EXE is the only downloaded code.
+    // Require a safe-exit receipt and process identity before replacing the running EXE.
     internal static class SelfUpdateInstaller
     {
         internal const string PendingKey = "SelfUpdatePendingV1";
@@ -331,10 +330,8 @@ namespace PaviseApp
             if (rollback) args += " --update-rollback";
             ProcessStartInfo start = new ProcessStartInfo(executable, args);
             start.UseShellExecute = false; start.CreateNoWindow = true; start.WorkingDirectory = Path.GetDirectoryName(executable);
-            // Reopen the actual launch target, rather than relying on the
-            // earlier download/copy verification. Keep the read-only lease
-            // through Process.Start so another writer cannot swap or modify
-            // the file between this check and Windows opening the image.
+            // Reverify the actual launch target, retaining a read-only lease through Process.Start.
+            // This prevents replacement between verification and Windows opening the image.
             using (FileStream target = new FileStream(executable, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (SHA256 hash = SHA256.Create())
             {
@@ -431,8 +428,7 @@ namespace PaviseApp
             catch { }
         }
 
-        // This is intentionally read-only. An abandoned replacement is not
-        // guessed or rolled back while an ordinary application instance starts.
+        // Startup only inspects abandoned replacements; transaction recovery remains explicit.
         internal static string GetStartupManualFailure()
         {
             try
@@ -457,8 +453,7 @@ namespace PaviseApp
             bool finalized = ReadMarker(previous, "complete") == previous.Nonce || ReadMarker(previous, "restored") == previous.Nonce;
             if (!finalized && ReadMarker(previous, "applied") != null)
                 throw new IOException("A previous replacement has unresolved recovery records. Use the manual update entry before starting another automatic update.");
-            // No replacement was attempted, or a verified completion/recovery
-            // receipt exists. Remove only this transaction's private assets.
+            // Delete only this transaction's assets after verified completion or no attempted replacement.
             if (!finalized) WriteMarker(previous, "restored", previous.Nonce);
             CleanupTransaction(previous, false);
             if (!string.IsNullOrEmpty(Settings.LoadStr(PendingKey, "")))
@@ -597,9 +592,7 @@ namespace PaviseApp
 
         private static void CleanupPrevious(SelfUpdateTransaction tx)
         {
-            // Never scan the autostart cache here. A later manual update or an
-            // external task edit can legitimately own another hash directory.
-            // This transaction owns only its explicitly recorded previous EXE.
+            // Own only the recorded previous EXE; another update/task may own other autostart hash directories.
             string previousTask = tx.TaskXml == null ? null : TaskHelper.ParseTaskCommandXml(tx.TaskXml);
             bool parentNeedsCleanup = StartupPayload.IsManagedExecutable(tx.ParentExecutable) && !SameExecutablePath(tx.ParentExecutable, tx.NewManagedExecutable) && File.Exists(tx.ParentExecutable);
             bool taskNeedsCleanup = StartupPayload.IsManagedExecutable(previousTask) && !SameExecutablePath(previousTask, tx.NewManagedExecutable) && File.Exists(previousTask);
@@ -623,9 +616,7 @@ namespace PaviseApp
             if (!DeletePreviousManagedPayload(tx.ParentExecutable, tx.ParentHash, tx.NewManagedExecutable, currentTaskTarget, managedRoot)) return false;
             string previousTask = tx.TaskXml == null ? null : TaskHelper.ParseTaskCommandXml(tx.TaskXml);
             if (!StartupPayload.IsManagedExecutable(previousTask, managedRoot) || SameExecutablePath(previousTask, tx.ParentExecutable) || SameExecutablePath(previousTask, tx.NewManagedExecutable) || !File.Exists(previousTask)) return true;
-            // The original task XML records this exact content-addressed path.
-            // Its directory name supplies the expected hash; it is verified
-            // again rather than inferred from any cache-wide enumeration.
+            // Verify the exact previous content-addressed EXE named in the original task XML.
             if (!StartupPayload.IsVerifiedExecutable(previousTask, managedRoot)) return false;
             string expectedHash = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(previousTask)));
             return DeletePreviousManagedPayload(previousTask, expectedHash, tx.NewManagedExecutable, currentTaskTarget, managedRoot);
@@ -794,9 +785,7 @@ namespace PaviseApp
             if (!File.Exists(path)) return null;
             try
             {
-                // A receipt writer may still be flushing when the other process
-                // polls it. Allow that writer to remain open; only a complete,
-                // exact nonce/identity receipt is accepted by the caller.
+                // Accept only a complete nonce/identity receipt while allowing its original writer to finish.
                 using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
                     byte[] bytes = new byte[4097]; int length = 0, read;

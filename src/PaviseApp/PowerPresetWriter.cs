@@ -116,10 +116,8 @@ namespace PaviseApp
             return true;
         }
 
-        // Both device routes use this exact bounded source-admission algorithm.
-        // A template hidden by Control Panel is still attempted by GUID. Only
-        // native missing-source codes permit moving to the next source; permission,
-        // unsupported-operation and other failures must not be disguised as absence.
+        // Try hidden templates by GUID. Only native missing-source errors permit the next fallback.
+        // Access denial and unsupported operations are failures, not evidence of absence.
         internal static bool TryCopyTemplate(Guid destination, Guid ultimate, Guid highPerformance,
             Guid verifiedBaseline, IPowerPresetWriterPlatform platform, out Guid copySource, out string failure)
         {
@@ -249,8 +247,7 @@ namespace PaviseApp
                     string field = (ac ? "AC " : "DC ") + SettingPath(value);
                     if (code != 0)
                     {
-                        // OEM-only values may have no default for the template's personality.
-                        // Retain them only after verifying the exact value copied from the admitted local baseline.
+                        // Copy OEM-only values only after verifying the exact admitted local baseline.
                         string retainedFailure;
                         if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(value)))
                         {

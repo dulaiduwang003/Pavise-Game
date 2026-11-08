@@ -39,6 +39,8 @@ namespace PaviseApp
 
 		private bool requiredActionCompleted;
 
+		private PillButton secondaryActionButton;
+
 		private float sweep;
 
 		private Rectangle titleRect;
@@ -378,6 +380,11 @@ namespace PaviseApp
 						e.Handled = handled2;
 						ok.PerformClick();
 					}
+					else if (paviseDialog.secondaryActionButton != null && paviseDialog.secondaryActionButton.ContainsFocus)
+					{
+						e.SuppressKeyPress = e.Handled = true;
+						paviseDialog.secondaryActionButton.PerformClick();
+					}
 					else
 					{
 						paviseDialog.DialogResult = DialogResult.OK;
@@ -571,6 +578,41 @@ namespace PaviseApp
 				{
 					paviseDialog.ShowDialog();
 				}
+			}
+		}
+
+		internal static PaviseDialog CreateNoticeWithSecondaryAction(IWin32Window owner, string title, string body,
+			string secondaryText, string secondaryFailureText, Func<bool> secondaryAction, int width)
+		{
+			if (secondaryAction == null) throw new ArgumentNullException("secondaryAction");
+			var dialog = new PaviseDialog(title, body, DlgKind.Info, null, null, null, width, null, null, owner);
+			var ok = (PillButton)dialog.Controls["dialogAccept"];
+			var secondary = new PillButton(secondaryText, BtnKind.Normal) { Name = "dialogSecondary", Bg = Theme.Card, TabIndex = 0 };
+			int textWidth = Math.Max(TextRenderer.MeasureText(secondaryText, secondary.Font).Width,
+				TextRenderer.MeasureText(secondaryFailureText, secondary.Font).Width);
+			int buttonWidth = Math.Max(Theme.S(108), textWidth + Theme.S(32));
+			secondary.SetBounds(ok.Left - Theme.S(BtnGap) - buttonWidth, ok.Top, buttonWidth, ok.Height);
+			ok.TabIndex = 1;
+			secondary.Click += delegate
+			{
+				if (!secondaryAction()) { secondary.Text = secondaryFailureText; return; }
+				dialog.DialogResult = DialogResult.OK;
+				dialog.Close();
+			};
+			dialog.Controls.Add(secondary);
+			dialog.secondaryActionButton = secondary;
+			return dialog;
+		}
+
+		public static void ShowWithSecondaryAction(IWin32Window owner, string title, string body,
+			string secondaryText, string secondaryFailureText, Func<bool> secondaryAction, int width)
+		{
+			using (var dialog = CreateNoticeWithSecondaryAction(owner, title, body, secondaryText, secondaryFailureText, secondaryAction, width))
+			{
+				Form form = owner as Form;
+				if (form == null || !form.Visible) dialog.StartPosition = FormStartPosition.CenterScreen;
+				if (owner != null) dialog.ShowDialog(owner);
+				else dialog.ShowDialog();
 			}
 		}
 

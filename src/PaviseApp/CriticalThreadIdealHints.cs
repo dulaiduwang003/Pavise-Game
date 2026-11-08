@@ -4,14 +4,9 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-	// Soft placement for secondary busy game threads: an ideal-processor hint instead of
-	// hard affinity. The scheduler prefers the hinted core but still runs the thread on any
-	// allowed core while that one is busy, so a hint can never strand a thread behind
-	// interrupts or other work. Writes compare against the value Pavise read first: a hint
-	// the game replaces is left to the game, and restoration only undoes Pavise's own value.
-	// A hint is per-thread state that ends with the thread; an unexpected Pavise exit leaves
-	// nothing beyond the running game session, so no recovery journal is kept.
-	// Callers serialize access (GameMode holds criticalProcessGate).
+	// Secondary threads use ideal-processor hints so the scheduler can migrate them when needed.
+	// Restore only while the current value still matches the lease.
+	// Callers hold criticalProcessGate; soft hints expire with the thread and need no persistent journal.
 	internal sealed class CriticalThreadIdealHints
 	{
 		private const int QueryAccess = 0x0800;          // THREAD_QUERY_LIMITED_INFORMATION
@@ -50,7 +45,6 @@ namespace PaviseApp
 			get { return held.Count; }
 		}
 
-		// Returns one log fragment per requested thread.
 		internal string Apply(int processId, long processBirth, HardThreadChoice[] choices)
 		{
 			string released = Release();
@@ -92,8 +86,7 @@ namespace PaviseApp
 			return string.Join("; ", parts.ToArray());
 		}
 
-		// Drops hints whose thread exited or whose value the game replaced. Returns ""
-		// when nothing changed. An unreadable thread is kept and checked again later.
+		// Release exited or externally changed hints; retain unreadable threads for later observation.
 		internal string Audit()
 		{
 			List<string> parts = new List<string>();
@@ -116,9 +109,8 @@ namespace PaviseApp
 			return string.Join("; ", parts.ToArray());
 		}
 
-		// Puts back the original ideal processor where Pavise's value is still in place.
-		// Always forgets every hint: a hint that cannot be undone is harmless and ends with
-		// its thread, so it is never retried.
+		// Restore hints still matching Pavise's value, then release their records.
+		// Unrestored soft hints expire with the thread and are not retried.
 		internal string Release()
 		{
 			if (held.Count == 0)

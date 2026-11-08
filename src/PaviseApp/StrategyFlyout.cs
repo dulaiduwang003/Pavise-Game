@@ -114,9 +114,7 @@ namespace PaviseApp
 			int width = Math.Max(1, Math.Min(Theme.S(452), available.Width));
 			bool compact = width < Theme.S(420);
 			int rows = laptopPerformanceAvailable ? 4 : 3;
-			// Start from the full viewport, so an old scrollbar cannot keep a
-			// wider viewport stuck in the stacked layout. Account for its width
-			// only when the new content actually needs vertical scrolling.
+			// Calculate layout without a stale scrollbar; reserve its width only when scrolling is required.
 			for (int pass = 0; pass < 3; pass++)
 			{
 				int measuredHeight = Theme.S(64 + rows * (compact ? 80 : 56) + 16);

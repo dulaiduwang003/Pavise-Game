@@ -1,194 +1,64 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Management;
 using System.Threading;
 
 namespace PaviseApp
 {
-	internal static class SecurityProductCatalog
-	{
-		private const int RefreshMs = 600000;
+    // Seal the security inventory once at startup; sessions and settings must not reopen it.
+    internal static class SecurityProductCatalog
+    {
+        private static readonly object sync = new object();
+        private static SecurityProductSnapshot snapshot = SecurityProductSnapshot.Unknown(false, "");
+        private static string[] roots = new string[0];
+        private static int startupClaimed;
+        private static int generation;
+        private static SecurityProbeTerminationException startupBlocked;
 
-		private const int MaxRoots = 16;
+        internal static SecurityProductSnapshot StartupSnapshot { get { lock (sync) return snapshot; } }
 
-		private static readonly string[] Classes = new string[3] { "AntiVirusProduct", "FirewallProduct", "AntiSpywareProduct" };
-
-		private static readonly object sync = new object();
-
-		private static string[] roots = new string[0];
-
-		private static int stamp;
-
-		private static bool scanned;
-
-		private static bool refreshing;
-
-		private static volatile int generation;
-        private sealed class ProviderState { internal string[] Roots = new string[0]; internal int Failures; }
-        private static readonly Dictionary<string, ProviderState> providers = new Dictionary<string, ProviderState>(StringComparer.Ordinal);
-        private static long failureCycle = -1;
-        private static int queueFailures;
-        private static void SyncCycleLocked()
+        internal static void StartupScanOnce()
         {
-            long cycle = PerformanceTuning.RecoveryCycleSerial;
-            if (cycle <= failureCycle) return;
-            failureCycle = cycle; queueFailures = 0; scanned = false;
-            foreach (ProviderState provider in providers.Values) provider.Failures = 0;
+            if (Interlocked.CompareExchange(ref startupClaimed, 1, 0) != 0)
+            { if (startupBlocked != null) throw startupBlocked; return; }
+            SecurityProductSnapshot fresh;
+            try { fresh = RunStartupProbe(); }
+            catch (SecurityProbeTerminationException error)
+            {
+                lock (sync) { startupBlocked = error; snapshot = SecurityProductSnapshot.Unknown(true, "Helper termination unconfirmed; startup stopped"); }
+                throw;
+            }
+            catch (Exception error) { fresh = SecurityProductSnapshot.Unknown(true, error.GetType().Name); }
+            if (fresh == null) fresh = SecurityProductSnapshot.Unknown(true, "Empty startup result");
+            lock (sync) { snapshot = fresh; roots = fresh.ProtectedRoots; generation = 1; }
+            if (fresh.FailureSummary.Length != 0)
+                Logger.Warn("Security startup inspection exhausted attempt=1/1; no runtime retry: " + fresh.FailureSummary);
+            int active = 0, inactive = 0, uncertain = 0;
+            foreach (SecurityProductInfo product in fresh.Products)
+            {
+                if (product.State == SecurityProductState.Active) active++;
+                else if (product.State == SecurityProductState.Inactive) inactive++;
+                else uncertain++;
+            }
+            Logger.Log("Security startup inspection sealed products=" + fresh.Products.Length + " protectedRoots=" + roots.Length
+                + " active=" + active + " inactive=" + inactive + " uncertain=" + uncertain + " unknown=" + fresh.HasUnknownState);
         }
-        private static bool ProviderWorkLocked()
+
+        private static SecurityProductSnapshot RunStartupProbe() { return SecurityStartupProbe.ReadOnce(); }
+        internal static int CurrentGeneration() { lock (sync) return generation; }
+        internal static string[] Roots() { lock (sync) return (string[])roots.Clone(); }
+        internal static bool IsSecurityProduct(string path)
         {
-            foreach (string name in Classes)
-            { ProviderState state; if (!providers.TryGetValue(name, out state) || state.Failures < 3) return true; }
-            return false;
+            if (string.IsNullOrEmpty(path)) return false;
+            lock (sync)
+            {
+                foreach (string root in roots) if (FamilyBoundary.UnderRoot(path, root)) return true;
+                return false;
+            }
         }
 
-		internal static int CurrentGeneration()
-		{
-			Roots();
-			return generation;
-		}
-
-		internal static bool IsSecurityProduct(string path)
-		{
-			if (string.IsNullOrEmpty(path))
-			{
-				return false;
-			}
-			string[] array = Roots();
-			foreach (string root in array)
-			{
-				if (FamilyBoundary.UnderRoot(path, root))
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-
-		internal static string[] Roots()
-		{
-			bool flag;
-			lock (sync)
-			{
-                SyncCycleLocked();
-				int tickCount = Environment.TickCount;
-				if (refreshing || queueFailures >= 3 || (scanned && tickCount - stamp < 600000) || !ProviderWorkLocked())
-				{
-					return roots;
-				}
-				flag = !scanned;
-				stamp = tickCount;
-				scanned = true;
-				refreshing = true;
-			}
-            long cycle;
-            lock (sync) cycle = failureCycle;
-            if (flag)
-            {
-                try { return Publish(Scan()); }
-                finally { lock (sync) { refreshing = false; stamp = Environment.TickCount; } }
-            }
-            try
-            {
-                if (!ThreadPool.QueueUserWorkItem(delegate
-                {
-                    try { Publish(Scan()); }
-                    finally { lock (sync) { refreshing = false; stamp = Environment.TickCount; } }
-                })) throw new InvalidOperationException("Security product scan could not be queued");
-            }
-            catch (Exception error)
-            {
-                lock (sync)
-                {
-                    refreshing = false; stamp = Environment.TickCount;
-                    if (cycle == failureCycle)
-                    {
-                        queueFailures++;
-                        Logger.Warn("Security product queue failed phase=" + cycle + " attempt=" + queueFailures + "/3: " + error.GetType().Name);
-                    }
-                }
-            }
-            lock (sync) return roots;
-        }
-
-		private static string[] Publish(string[] fresh)
-		{
-			lock (sync)
-			{
-				if (!SameSet(roots, fresh))
-				{
-					roots = fresh;
-					generation++;
-					Logger.Log("安全软件目录 " + fresh.Length + " 处不压制：" + string.Join(" | ", fresh));
-				}
-				return roots;
-			}
-		}
-
-        private static string[] Scan()
-        {
-            var merged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string name in Classes)
-            {
-                ProviderState provider; long cycle; bool allowed;
-                lock (sync)
-                {
-                    if (!providers.TryGetValue(name, out provider)) providers[name] = provider = new ProviderState();
-                    cycle = failureCycle; allowed = provider.Failures < 3;
-                }
-                if (allowed)
-                {
-                    try
-                    {
-                        string[] fresh = ReadProvider(name);
-                        lock (sync) provider.Roots = fresh;
-                    }
-                    catch (Exception error)
-                    {
-                        lock (sync)
-                        {
-                            if (cycle == failureCycle)
-                            {
-                                provider.Failures++;
-                                Logger.Warn("Security product read failed provider=" + name + " phase=" + cycle + " attempt=" + provider.Failures + "/3: " + error.GetType().Name);
-                            }
-                        }
-                    }
-                }
-                lock (sync) foreach (string root in provider.Roots) merged.Add(root);
-            }
-            var list = new List<string>(merged); list.Sort(StringComparer.OrdinalIgnoreCase);
-            if (list.Count > MaxRoots) list.RemoveRange(MaxRoots, list.Count - MaxRoots);
-            return list.ToArray();
-        }
-        private static string[] ReadProvider(string provider)
-        {
-            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            string[] bases = StandardBases();
-            using (var searcher = new ManagementObjectSearcher("root\\SecurityCenter2", "SELECT pathToSignedProductExe, pathToSignedReportingExe FROM " + provider))
-            {
-                searcher.Options.Timeout = TimeSpan.FromSeconds(3);
-                using (ManagementObjectCollection rows = searcher.Get())
-                    foreach (ManagementObject row in rows)
-                        using (row)
-                        {
-                            Add(found, ProductRoot(row["pathToSignedProductExe"] as string, bases, windows));
-                            Add(found, ProductRoot(row["pathToSignedReportingExe"] as string, bases, windows));
-                        }
-            }
-            return new List<string>(found).ToArray();
-        }
-
-		private static void Add(HashSet<string> set, string root)
-		{
-			if (root != null)
-			{
-				set.Add(root);
-			}
-		}
-
+        internal static string ProtectedRoot(string path)
+        { return ProductRoot(path, StandardBases(), Environment.GetFolderPath(Environment.SpecialFolder.Windows)); }
 		private static string[] StandardBases()
 		{
 			List<string> list = new List<string>();
@@ -266,20 +136,6 @@ namespace PaviseApp
 			return directoryName;
 		}
 
-		private static bool SameSet(string[] a, string[] b)
-		{
-			if (a.Length != b.Length)
-			{
-				return false;
-			}
-			for (int i = 0; i < a.Length; i++)
-			{
-				if (!string.Equals(a[i], b[i], StringComparison.OrdinalIgnoreCase))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
+
 	}
 }

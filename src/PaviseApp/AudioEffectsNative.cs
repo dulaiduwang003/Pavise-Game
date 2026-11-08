@@ -61,9 +61,7 @@ namespace PaviseApp
                     { error = T("系统效果属性类型或值不受支持", "System-effects property type or value is unsupported", "システム効果のプロパティ型または値に対応していません"); return false; }
                 }
                 finally { PropVariantClear(ref value); }
-                // VT_EMPTY is a real original state, not an unsupported endpoint
-                // and not an explicit enabled DWORD. Verify the actual FX store
-                // on every read, including both application and restore readback.
+                // VT_EMPTY is a valid original state; read the FX store for both apply and restore.
                 if (!VerifyFxProperty(endpointId, property, out error)) return false;
                 bool legacy, modern; string identity;
                 if (!EffectsIdentity(endpointId, out legacy, out modern, out identity, out error)) return false;
@@ -130,17 +128,14 @@ namespace PaviseApp
                 owner = Activator.CreateInstance(Type.GetTypeFromCLSID(PolicyClass));
                 var policy = owner as IAudioEffectsPolicyConfig;
                 if (policy == null) { error = UnsupportedPolicy(); return false; }
-                // Always set vt explicitly. Editing the scalar returned by a
-                // missing-property read would otherwise keep VT_EMPTY and fail
-                // to create the intended DWORD. Empty restore deliberately uses
-                // VT_EMPTY to delete our value; explicit Enabled keeps DWORD 0.
+                // Set vt explicitly: an absent property remains VT_EMPTY until typed.
+                // Restore absence with VT_EMPTY; restore explicit Enabled with DWORD 0.
                 ushort variantType; uint variantNumber;
                 EncodeProperty(property, out variantType, out variantNumber);
                 var value = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
                 int hr = policy.SetPropertyValue(id, true, ref SysFx, ref value);
                 if (hr < 0) { error = HResult("FX policy write", hr); return false; }
-                // The controller rereads this same FX route and confirms its exact
-                // scalar/chain before accepting either application or restoration.
+                // Verify both scalar and APO-chain identity through the same FX route.
                 return true;
             }
             catch (Exception ex) { error = UnsupportedPolicy() + " (" + ex.GetType().Name + ")"; return false; }
@@ -201,16 +196,14 @@ namespace PaviseApp
                 var stable = new StringBuilder();
                 foreach (string name in names)
                 {
-                    // This property can be stored in FxProperties by the endpoint.
-                    // It is our leased scalar, not part of the APO-chain identity.
+                    // The leased scalar can live in FxProperties; it is separate from APO-chain identity.
                     if (name.Equals("{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5", StringComparison.OrdinalIgnoreCase)) continue;
                     bool effectRegistration = false, processingModes = false;
                     foreach (int propertyId in new[] { 1, 2, 5, 6, 7 })
                         effectRegistration |= name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d}," + propertyId.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
                     foreach (int propertyId in new[] { 5, 6, 7 })
                         processingModes |= name.Equals("{d3993a3f-99c2-4402-b5ec-a92a0367664b}," + propertyId.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
-                    // Bind recovery to the registered APO chain/modes. Per-effect EQ
-                    // and UI settings remain owned by the user and are never restored.
+                    // Bind recovery to the registered APO chain/modes; per-effect and UI values remain user-owned.
                     if (!effectRegistration && !processingModes) continue;
                     object value = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
                     if (value == null) continue;

@@ -256,6 +256,9 @@ namespace PaviseApp
 		[STAThread]
 		private static void Main(string[] args)
 		{
+            int securityProbeExit;
+            if (SecurityStartupProbe.TryRunHelper(args, out securityProbeExit))
+            { Environment.ExitCode = securityProbeExit; return; }
 			AutostartJobHandoff.Incoming jobHandoff;
 			args = AutostartJobHandoff.Strip(args, out jobHandoff);
 			if (SelfUpdateInstaller.TryRun(args)) return;
@@ -569,6 +572,9 @@ namespace PaviseApp
 						Logger.WritesEnabled = Settings.Load("LogWritesEnabled", true);
 						Logger.RuntimeIdentity();
 						AutostartJobHandoff.LogOutcome();
+                        try { SecurityProductCatalog.StartupScanOnce(); }
+                        catch (SecurityProbeTerminationException error)
+                        { Logger.Warn(error.Message); Environment.ExitCode = 15; return; }
 						if (flag4)
 						{
 							Logger.Log(Lang.T("log.program.1"));

@@ -13,6 +13,8 @@ namespace PaviseApp
 
 		public string IconKey;
 
+		public int DetailsWidth = 26;
+
 		private readonly bool corePolicy;
 
 		private Motion switchMotion;
@@ -99,7 +101,7 @@ namespace PaviseApp
 
 		public override Size GetPreferredSize(Size proposedSize)
 		{
-			return new Size(PreferredWidth(Text, corePolicy), Theme.S(32));
+			return new Size(PreferredWidth(Text, corePolicy) + (corePolicy ? Theme.S(DetailsWidth - 26) : 0), Theme.S(32));
 		}
 
 		protected override bool IsInputKey(Keys keyData)
@@ -181,7 +183,7 @@ namespace PaviseApp
 					graphics.DrawPath(pen, path);
 				}
 			}
-			int num = (corePolicy ? Theme.S(26) : 0);
+			int num = (corePolicy ? Theme.S(DetailsWidth) : 0);
 			Rectangle r = new Rectangle(base.Width - num - Theme.S(44), (base.Height - Theme.S(16)) / 2, Theme.S(32), Theme.S(16));
 			Rectangle rectangle2 = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
 			if (!string.IsNullOrEmpty(IconKey))

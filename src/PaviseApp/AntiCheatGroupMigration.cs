@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Retiring the old master switch must preserve an explicitly disabled setup.
-    // The completion marker follows every group write, so a crash only retries
-    // the same disabled migration and never admits a partially migrated setup.
+    // Commit migration only after all disabled groups are saved, preserving explicitly disabled setups.
     internal static class AntiCheatGroupMigration
     {
         internal const string Marker = "TameGroupControlMigratedV1";

@@ -6,8 +6,6 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // Native, time-based artwork shared by the overview, live editor and cached thumbnails.
-    // No worker, timer, file/network access or persistent settings are owned by a scene.
     internal sealed partial class CoreMotionScene : IDisposable
     {
         private const double Tau = Math.PI * 2;
@@ -113,7 +111,6 @@ private static PointF DiskPoint(double a,double r,double tilt,double turn)
         {
             double turn=-.24+Math.Sin(t*.14)*.12,core=flagship?49:43;
             Halo(0,0,205,accent,flagship?.65:.35);
-            // Three star-depth bands; near-field stars are continuously bent around the horizon.
             int stars=flagship?230:95;
             for(int i=0;i<stars;i++)
             {
@@ -131,7 +128,6 @@ private static PointF DiskPoint(double a,double r,double tilt,double turn)
             GraphicsState subject = g.Save(); g.ScaleTransform(subjectScale, subjectScale);
             if(flagship)
             {
-                // 球面背后的透镜像随流线动画更新。
                 for(int band=0;band<10;band++)
                 {PointF[] arc=new PointF[60];for(int j=0;j<arc.Length;j++){double a=Math.PI+j*Math.PI/(arc.Length-1);arc[j]=P(Math.Cos(a)*(core+7+band*1.7),Math.Sin(a)*(core+15+band*2.5)-5);}Line(A(band%3==0?high:accent,65+band*6),band%3==0?1.4f:.7f,arc);}
             }
@@ -140,7 +136,6 @@ private static PointF DiskPoint(double a,double r,double tilt,double turn)
             Arc(core+1,0,Tau,A(accent,45),10);Arc(core,0,Tau,A(accent,135),3.5f);Arc(core,0,Tau,A(high,245),1.2f);
             DrawAccretion(t,turn,flagship,true);
             g.Restore(subject);
-            // 喷流起点跟随视界尺寸，终点固定在场景边缘。
             for(int k=0;k<(flagship?8:4);k++)
             {
                 PointF[] p=new PointF[35];double side=k%2==0?1:-1,lane=k/2-1.5;

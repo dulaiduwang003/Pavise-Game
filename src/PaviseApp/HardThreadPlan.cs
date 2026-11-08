@@ -17,6 +17,8 @@ namespace PaviseApp
 
 		internal readonly HardThreadWorkerMode WorkerMode;
 
+		internal readonly bool RequireWorkerCoverage;
+
 		internal HardThreadChoice[] Choices
 		{
 			get
@@ -25,7 +27,7 @@ namespace PaviseApp
 			}
 		}
 
-		private HardThreadPlan(HardThreadTarget target, HardThreadChoice[] choices, ulong workers, ulong processMask, ushort group, HardThreadWorkerMode workerMode)
+		private HardThreadPlan(HardThreadTarget target, HardThreadChoice[] choices, ulong workers, ulong processMask, ushort group, HardThreadWorkerMode workerMode, bool requireWorkerCoverage)
 		{
 			Target = target;
 			this.choices = (HardThreadChoice[])choices.Clone();
@@ -33,9 +35,10 @@ namespace PaviseApp
 			ProcessMask = processMask;
 			Group = group;
 			WorkerMode = workerMode;
+			RequireWorkerCoverage = requireWorkerCoverage;
 		}
 
-		internal static HardThreadPlan Create(HardThreadTarget target, HardThreadMachine machine, HardThreadChoice[] selected, HardThreadWorkerMode workerMode = HardThreadWorkerMode.CandidatesOnly)
+		internal static HardThreadPlan Create(HardThreadTarget target, HardThreadMachine machine, HardThreadChoice[] selected, HardThreadWorkerMode workerMode = HardThreadWorkerMode.CandidatesOnly, bool requireWorkerCoverage = false)
 		{
 			if (target == null || machine == null || machine.Read != 0 || !machine.CpuSetsEmpty)
 			{
@@ -108,7 +111,11 @@ namespace PaviseApp
 			{
 				throw new ArgumentException("worker mode");
 			}
-			return new HardThreadPlan(target, selected, num6, machine.ProcessMask, machine.Group, workerMode);
+			if (requireWorkerCoverage && workerMode != HardThreadWorkerMode.AvoidWorkers)
+			{
+				throw new ArgumentException("complete worker coverage requires worker avoidance");
+			}
+			return new HardThreadPlan(target, selected, num6, machine.ProcessMask, machine.Group, workerMode, requireWorkerCoverage);
 		}
 
 		internal bool IsCandidate(HardThreadIdentity thread)
@@ -116,7 +123,7 @@ namespace PaviseApp
 			HardThreadChoice[] array = choices;
 			foreach (HardThreadChoice hardThreadChoice in array)
 			{
-				if (hardThreadChoice.Thread.Key == thread.Key)
+				if (hardThreadChoice.Thread.Tid == thread.Tid && hardThreadChoice.Thread.Creation == thread.Creation)
 				{
 					return true;
 				}
@@ -129,7 +136,7 @@ namespace PaviseApp
 			HardThreadChoice[] array = choices;
 			foreach (HardThreadChoice hardThreadChoice in array)
 			{
-				if (hardThreadChoice.Thread.Key == thread.Key)
+				if (hardThreadChoice.Thread.Tid == thread.Tid && hardThreadChoice.Thread.Creation == thread.Creation)
 				{
 					return hardThreadChoice.Mask;
 				}

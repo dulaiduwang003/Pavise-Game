@@ -15,6 +15,10 @@ namespace PaviseApp
 		internal const string EnvironmentVbsKey = "EnvVbsDisabledV1";
 
 		private static readonly object gate = new object();
+		private static readonly object selectionSignatureGate = new object();
+		private static int selectionSignatureGeneration = -1;
+		private static bool selectionSignatureVisuals;
+		private static string selectionSignature;
 
 		private static readonly Dictionary<string, int> recoveryFailures = new Dictionary<string, int>(StringComparer.Ordinal);
 		private static long recoverySessionSerial;
@@ -214,6 +218,26 @@ namespace PaviseApp
 
 		internal static string ActionSelectionSignature()
 		{
+			lock (selectionSignatureGate)
+			{
+				int generation = Settings.MutationGeneration;
+				bool visuals = MatchVisualEffects.Enabled;
+				if (selectionSignature != null && selectionSignatureGeneration == generation
+					&& selectionSignatureVisuals == visuals)
+					return selectionSignature;
+				string signature = BuildActionSelectionSignature();
+				if (generation == Settings.MutationGeneration && visuals == MatchVisualEffects.Enabled)
+				{
+					selectionSignature = signature;
+					selectionSignatureGeneration = generation;
+					selectionSignatureVisuals = visuals;
+				}
+				return signature;
+			}
+		}
+
+		private static string BuildActionSelectionSignature()
+		{
 			List<string> list = new List<string>();
 			PerformanceAction[] all = PerformanceActionCatalog.All;
 			foreach (PerformanceAction performanceAction in all)
@@ -387,9 +411,7 @@ namespace PaviseApp
 				}
 				bool previous = CpuMitigationsExpanded;
 				bool previousOn = Settings.LoadCached(PerformanceActionCatalog.CpuMitigations, false);
-				// Retain the explicitly chosen scope when switching off, including if
-				// restoration fails. A later bundle operation must not silently treat
-				// still-owned expanded values as a legacy/basic configuration.
+				// Retain expanded-scope intent until its owned values restore, even after an OFF request.
 				if (on && !Settings.SaveDurable(CpuMitigationPolicy.ExpandedPreferenceKey, expanded)) return false;
 				if (SetEnvironment(PerformanceActionCatalog.CpuMitigations, on, completed)) return true;
 				if (on) Settings.SaveDurable(CpuMitigationPolicy.ExpandedPreferenceKey, previous);

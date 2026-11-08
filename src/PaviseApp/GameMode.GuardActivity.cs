@@ -7,8 +7,7 @@ namespace PaviseApp
     {
         internal long GuardActivitySession { get { return Interlocked.Read(ref gameSessionStarts); } }
 
-        // SwitchOuts distinguishes out/back/out cycles even if the UI did not
-        // observe the intermediate state. Competitive switch-out keeps its policy.
+        // SwitchOuts preserves out/back/out transitions between UI observations; Competitive retains its policy.
         internal long GuardActivityForegroundVersion
         { get { return ((long)sessionForeground.SwitchOuts << 1) | (SmartSceneSwitchedOut ? 1L : 0L); } }
 

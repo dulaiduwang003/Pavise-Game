@@ -185,8 +185,7 @@ namespace PaviseApp
 			}
 			finally
 			{
-				// A ready timeout does not terminate the original helper. Retain its
-				// process and readiness event so later calls observe that same owner.
+				// A ready timeout retains the original helper and event so later calls observe the same owner.
 				bool exited = process == null;
 				try { if (process != null) exited = process.HasExited; } catch { }
 				if (exited && process != null)

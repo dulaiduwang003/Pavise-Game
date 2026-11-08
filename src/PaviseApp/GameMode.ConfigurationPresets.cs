@@ -75,13 +75,6 @@ namespace PaviseApp
                 if (!on && !GpuPrefStage.Restore()) return false;
                 RefreshAutomaticPreferences(); return true;
             }
-            if (key == "AppGpuAutoV1")
-            {
-                if (!Settings.SaveDurable(key, on)) return false;
-                autoGpuOn = on;
-                if (!on && !AppGpuPreferences.RestoreAll()) return false;
-                RefreshAutomaticPreferences(); return true;
-            }
             if (key == LaboratoryPower.IdleKey || key == LaboratoryPower.EppKey || key == LaboratoryGpu.ClockKey || key == LaboratoryGpu.PowerKey || key == LaboratoryAudio.Key)
             {
                 if (!Settings.SaveStrDurable(key, value)) return false;

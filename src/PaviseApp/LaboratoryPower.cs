@@ -364,8 +364,7 @@ namespace PaviseApp
         { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0 && value <= max; }
         private bool RestoreBeforeIdleChange()
         {
-            // EPP observations and verification belong to one fixed idle configuration.
-            // Drain EPP first, then idle; never begin the next configuration with recovery debt.
+            // Drain EPP before idle; both observations belong to the same fixed idle configuration.
             if (!RestoreCore(true) || !RestoreCore(false))
             { idleState = eppState = "恢复未完成"; return false; }
             ResetEpp(); eppBlocked = false;
@@ -455,7 +454,7 @@ namespace PaviseApp
         {
             var current = platform as ILaboratoryCurrentPowerPlatform;
             string device = null;
-            // New arbitrary-plan receipts never fall back to a weak machine name or legacy authority.
+            // Arbitrary-plan receipts require exact ownership, not a machine display name.
             if (!journal.Legacy && values.Count > 0 && (current == null || !NormalizeDevice(current.DeviceIdentity, out device)
                 || journal.Device != null && journal.Device != device)) return false;
             if (!journal.Legacy && device != null) journal.Device = device;
@@ -524,8 +523,7 @@ namespace PaviseApp
                 uint? original = platform.Read(plan, request.Key);
                 if (!original.HasValue || original.Value > Limit(request.Key) || request.Value > Limit(request.Key)) return false;
                 if (original.Value != request.Value) included = false;
-                // Keep idle no-op values in the journal too: otherwise a later external edit of
-                // an already-correct knob would be silently reclaimed or missed on the next tick.
+                // Journal idle no-ops too, so a later external edit cannot be silently reclaimed.
                 if (original.Value == request.Value && IsEpp(request.Key)) continue;
                 foreach (Value saved in values) if (saved.Setting == request.Key) return false;
                 var value = new Value { Setting = request.Key, Original = original.Value, Wanted = request.Value,
@@ -590,7 +588,6 @@ namespace PaviseApp
                 uint? current = platform.Read(owner, value.Setting);
                 if (!current.HasValue) { pending.Add(value); ok = false; continue; }
                 if (current.Value == value.Original) continue;
-                // An external edit takes priority over Pavise's old snapshot.
                 if (current.Value != value.Wanted) continue;
                 changed = true;
                 if (!platform.Write(owner, value.Setting, value.Original)

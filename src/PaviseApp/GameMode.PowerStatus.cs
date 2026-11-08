@@ -14,10 +14,10 @@ namespace PaviseApp
                 lock (sync)
                 {
                     if (envRestorePending.Contains("powerplan")) return "restore-failed";
-                    // A retained failure from an older build is history once this
-                    // device explicitly bypasses switching. Recovery debt still wins.
+                    // Handheld bypass clears historical apply failures, but never unresolved recovery debt.
                     if (PowerPlan.HandheldBypass) return "unchanged";
-                    if (ActionFailureStore.IsBlocked("PowerPlanOn", "system")) return "stopped";
+                    // An in-flight apply is pending, not stopped.
+                    if (ActionFailureStore.IsBlocked("PowerPlanOn", "system") && !ActionFailureStore.IsRunning("PowerPlanOn", "system")) return "stopped";
                     if (!planSwitch || PowerPlan.NoSwitchSelected) return "unchanged";
                     if (!enabled || !active || stopping || panicReq || powerSessionEnding || gameGoneSinceTicks != 0) return "";
                     return planActive && Volatile.Read(ref powerApplyInFlight) == 0

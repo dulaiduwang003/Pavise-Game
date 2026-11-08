@@ -604,8 +604,7 @@ namespace PaviseApp
 			guardWasOn = request.Guard;
             bool flag2 = visualWasOn;
             visualWasOn = false;
-            // Retired desktop-effect feature: ignore old callers' ON requests and
-            // preserve the ownership-aware restoration path for existing receipts.
+            // Reject ON for retired desktop effects while retaining receipt-backed restoration.
             bool flag3 = RestoreSelected("MatchVisualEffectsV1", null, flag2);
             if (!flag3 || flag2 || State("MatchVisualEffectsV1").Length > 0)
 			{

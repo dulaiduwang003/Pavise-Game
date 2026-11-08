@@ -16,9 +16,8 @@ namespace PaviseApp
             if (wake && firstRequest && kick != null) kick.Set();
         }
 
-        // Requests made by cleanup while holding sync are serviced by the same
-        // existing worker. No detached restore task can outlive shutdown or race
-        // a replacement writer; criticalProcessGate remains the sole owner gate.
+        // Reuse the existing worker; criticalProcessGate remains the single recovery gate.
+        // A restore task must not outlive shutdown or race a replacement writer.
         private void RetryPendingHardPinRestores()
         {
             if (Monitor.IsEntered(sync) || Interlocked.Exchange(ref hardPinRestoreRequested, 0) == 0) return;

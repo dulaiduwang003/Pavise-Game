@@ -6,8 +6,7 @@ namespace PaviseApp
 {
     internal sealed partial class CoreMotionScene
     {
-        // The native artwork's vocabulary: graphite plates, cut faces and localized light.
-        // Materials are rebuilt only on palette changes, not once per plate or frame.
+        // Rebuild materials only when the palette changes.
         private readonly LinearGradientBrush[] armorMaterials = new LinearGradientBrush[8];
         private Color armorAccent, armorCard, armorInset;
         private bool armorLight;
@@ -52,7 +51,6 @@ namespace PaviseApp
         {
             Line(A(accent, 20 * strength), 5, points);
             Line(A(accent, 185 * strength), 1.4f, points);
-            // A short traveling highlight follows the plate edge, without a continuous bright outline.
             double total = 0;
             for (int i = 1; i < points.Length; i++)
             { double dx = points[i].X - points[i - 1].X, dy = points[i].Y - points[i - 1].Y; total += Math.Sqrt(dx * dx + dy * dy); }
@@ -81,7 +79,6 @@ namespace PaviseApp
             if (armorInverseBasis != null) armorInverseBasis.Dispose();
             armorInverseBasis = g.Transform; armorInverseBasis.Invert(); pen.LineJoin = LineJoin.Miter;
             Halo(0, 0, 195, accent, light ? .17 : .27);
-            // Broken polygonal rails, with generous space between the subject and the frame.
             for (int side = -1; side <= 1; side += 2)
             {
                 GraphicsState s = g.Save(); g.ScaleTransform(side, 1);
@@ -160,7 +157,6 @@ namespace PaviseApp
             {
                 GraphicsState wing = g.Save(); g.ScaleTransform(side, 1);
                 g.TranslateTransform((float)(deploy * 5), (float)(-deploy * 4)); g.RotateTransform((float)-spread);
-                // Long, separate feathers are structural plates, rather than drawn filaments.
                 GraphicsState feather = g.Save(); g.TranslateTransform(27, 0); g.RotateTransform((float)(-deploy * 7)); g.TranslateTransform(-27, 0);
                 ArmorPanel(2, P(20, -25), P(80, -91), P(150, -117), P(125, -65), P(69, -25), P(38, -5));
                 ArmorPanel(6, P(37, -25), P(93, -75), P(143, -105), P(116, -64), P(64, -28));
@@ -237,7 +233,6 @@ namespace PaviseApp
             GraphicsState flight = g.Save(); g.TranslateTransform(0, (float)(Math.Sin(t * 1.12) * 7));
             g.RotateTransform((float)(Math.Sin(t * .8) * 4));
             Halo(0, 0, 54, accent, .25);
-            // A swept, asymmetric flight crest distinguishes it from the upright Seraph wings.
             GraphicsState sweep = g.Save(); g.RotateTransform((float)(-10 + Math.Sin(t * 1.12) * 13));
             ArmorPanel(1, P(-20, 17), P(-66, -50), P(-146, -92), P(-116, -26), P(-62, 14), P(-3, 43));
             ArmorPanel(6, P(-41, -1), P(-81, -45), P(-133, -80), P(-100, -37), P(-63, -8));
@@ -270,7 +265,6 @@ namespace PaviseApp
             GraphicsState crest = g.Save(); g.TranslateTransform(0, (float)(Math.Sin(t * .9) * 6));
             GraphicsState coil = g.Save(); g.RotateTransform((float)(Math.Sin(t * .83) * 9));
             double expand = 1 + ArmorDrive(t, 6.1, .1) * .045; g.ScaleTransform((float)expand, (float)expand);
-            // An angular coiled relief: a single deliberate silhouette with a broad jaw and swept horns.
             ArmorPanel(1, P(-32, -123), P(-98, -93), P(-130, -26), P(-112, 55), P(-52, 108), P(44, 119), P(97, 77), P(61, 88), P(-28, 74), P(-78, 36), P(-87, -22), P(-64, -64));
             ArmorPanel(4, P(-107, -49), P(-86, -86), P(-40, -112), P(-67, -67), P(-88, -19));
             ArmorPanel(3, P(-101, 34), P(-74, 53), P(-26, 86), P(49, 102), P(82, 88), P(43, 118), P(-48, 104));
@@ -315,7 +309,6 @@ namespace PaviseApp
                 GraphicsState jaw = g.Save(); g.TranslateTransform(0, (float)(power * 14));
                 ArmorPanel(3, P(37, 39), P(65, 21), P(38, 79), P(0, 118), P(14, 77));
                 ArmorTrace(t * .28, .5, P(58, 31), P(32, 80), P(4, 110)); g.Restore(jaw);
-                // Recessed eye slits, with a slow pulse rather than an illustrated face.
                 Fill(A(accent, 115 + power * 135), P(24, -16), P(67, -11), P(50, 3), P(31, -3));
                 ArmorTrace(t * .15 + side * .3, .65, P(13, -55), P(49, -64), P(80, -34));
                 g.Restore(half);
@@ -378,7 +371,6 @@ namespace PaviseApp
         private void PhotonWeave(double t)
         {
             ArmorFrame(t, 10); g.ScaleTransform(.9f, .9f); Halo(0, 0, 39, accent, .22);
-            // Three faceted optical couplers weave through a deliberately open triangular center.
             for (int arm = 0; arm < 3; arm++)
             {
                 double phase = t * .95 + arm * Tau / 3;

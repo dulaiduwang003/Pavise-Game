@@ -11,8 +11,7 @@ namespace PaviseApp
         bool SaveReceipt(string value);
     }
 
-    // A persisted original/target pair owns only the value that was actually written.
-    // Null represents an absent value, not a guessed OS default.
+    // The persisted original/target pair owns only the written value; null means absence, not an OS default.
     internal sealed class GraphicsPreferenceTransaction
     {
         private readonly IGraphicsPreferenceStore store;
@@ -56,8 +55,7 @@ namespace PaviseApp
 
         private bool Finish(string original, string applied)
         {
-            // Once a value was restored or ownership released, cleanup retries must
-            // never write again, even if a later external value equals the old target.
+            // Once restored or released, never write again merely because a later value matches the old target.
             return Save(Receipt(original, applied, 'F')) && Save("");
         }
 
@@ -78,8 +76,7 @@ namespace PaviseApp
                     string current = store.ReadValue();
                     if (owned && current != applied && current != previous && current != original)
                     {
-                        // A later writer took over. A new explicit request may start a new lease,
-                        // but can never restore the now obsolete original over that writer.
+                        // A new explicit request may follow an external change, but cannot restore the obsolete baseline over it.
                         if (!Finish(original, applied)) return false;
                         owned = false;
                     }

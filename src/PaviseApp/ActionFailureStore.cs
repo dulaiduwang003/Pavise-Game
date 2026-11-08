@@ -298,6 +298,16 @@ namespace PaviseApp
 			}
 		}
 
+		// An admitted apply that has not completed yet. Blocked() also covers it, but it is work in
+		// progress, not a stopped action.
+		internal static bool IsRunning(string action, string target)
+		{
+			lock (gate)
+			{
+				return admissions.ContainsKey(RecordKey(action, target));
+			}
+		}
+
 		internal static bool IsIsolated(string action, string target)
 		{
 			lock (gate)

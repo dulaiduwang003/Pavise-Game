@@ -80,8 +80,7 @@ namespace PaviseApp
 
 			internal string Encode()
 			{
-				// The comparison build uses the existing 3.1.1.0 record envelope so
-				// switching back to the previous executable can still restore it.
+				// Keep the 3.1.1.0 receipt envelope readable when switching between builds.
 				if (Source == Legacy3110Source)
 					return "2223|" + Plan.ToString("D") + "|" + Base.ToString("D") + "|" + Previous.ToString("D");
 				return "presets2|" + Plan.ToString("D") + "|" + Base.ToString("D") + "|" + Previous.ToString("D") + "|" + Source + "|" + Fingerprint;
@@ -301,6 +300,15 @@ namespace PaviseApp
 
 
 		private static int tuneState = -1;
+
+        // Bound managed-plan rebuilds per game session to avoid competing with OEM controllers.
+        // On exhaustion, disable switching and restore the original plan through normal recovery.
+        private const int ExternalDriftRebuildLimit = 3;
+        private static int externalDriftRebuilds;
+        private static long externalDriftSession = -1;
+        private static bool externalDriftStopped;
+        private static Guid externalDriftAccepted;
+        private static string intactMismatch = "";
 
         // Recovery state for receipts written by retired releases; never enables the old tuning policy.
         private static bool extremeTunePending;
@@ -1265,24 +1273,52 @@ namespace PaviseApp
 			ClearApplyFailureReason();
 			lock (lk)
 			{
-				// A queued apply can outlive the device-policy decision. Settle only
-				// existing recovery receipts; skipping a handheld is not an apply failure.
+				// Device policy may change while apply is queued; handheld bypass settles existing receipts without a new apply failure.
 				if (HandheldBypass) return RestoreHandheldApply();
 				if (NoSwitchSelected)
 				{
 					return false;
 				}
+				if (AutomaticSelection && externalDriftStopped
+					&& !(active && targetOwned && target == externalDriftAccepted && tuneState == TuneCode(aggressive)))
+				{
+					return PowerApplyFailed("external-drift-exhausted", "Managed power rebuilding remains stopped until the next game session");
+				}
 				if (!active)
 				{
 					return ActivateInner(aggressive);
 				}
-				if (targetOwned && tuneState == TuneCode(aggressive) && !ManagedPresetIntact(target, aggressive))
+				if (targetOwned && tuneState == TuneCode(aggressive) && target != externalDriftAccepted && !ManagedPresetIntact(target, aggressive))
 				{
-					// Replace drifted parameters or a plan from the other device-policy route.
-					// Keep the original return-plan receipt across the replacement.
-					resolved = false;
-					tuneState = -1;
-					Logger.Warn(PerformancePolicy.Text("托管电源性能参数发生变化，正在重建并核验", "Managed power performance settings changed; rebuilding and verifying"));
+					string detail = intactMismatch.Length == 0 ? "unknown" : intactMismatch;
+					if (externalDriftRebuilds >= ExternalDriftRebuildLimit)
+					{
+						// Repeated drift exhausts rebuilding for the session, even if persisting the fallback selection fails.
+						externalDriftAccepted = target;
+						externalDriftStopped = true;
+						if (SelectNoSwitchAfterExternalDrift())
+						{
+							Logger.Warn(PerformancePolicy.Text("托管电源参数反复被其他程序修改（常见于笔记本厂商控制中心），已超过 "
+								+ ExternalDriftRebuildLimit + " 次，电源计划已自动改为「不切换」，本局退回原计划；需要时可在电源计划选项中重新开启",
+								"Managed power settings were repeatedly changed by another program (often an OEM control center) more than "
+								+ ExternalDriftRebuildLimit + " times; power-plan switching was set to \"Don't switch\" and the original plan will be restored. It can be re-enabled in the power-plan options")
+								+ " detail=" + detail);
+							return true;
+						}
+						// If OFF cannot be saved, retain the managed plan and return receipt without further session rebuilds.
+						Logger.Warn(PerformancePolicy.Text("托管电源参数反复被其他程序修改，但「不切换」设置保存失败；本局保留当前计划，不再重建",
+							"Managed power settings were repeatedly changed by another program, but saving \"Don't switch\" failed; keeping the current plan without further rebuilds this session")
+							+ " detail=" + detail + " rebuilds=" + externalDriftRebuilds + "/" + ExternalDriftRebuildLimit);
+					}
+					else
+					{
+						// Preserve the original return-plan receipt when replacing a drifted or differently routed plan.
+						externalDriftRebuilds++;
+						resolved = false;
+						tuneState = -1;
+						Logger.Warn(PerformancePolicy.Text("托管电源性能参数发生变化，正在重建并核验", "Managed power performance settings changed; rebuilding and verifying")
+							+ " detail=" + detail + " rebuild=" + externalDriftRebuilds + "/" + ExternalDriftRebuildLimit);
+					}
 				}
 				Guid guid = ResolveTarget(aggressive);
 				if (HandheldBypass) return RestoreHandheldApply();
@@ -1354,7 +1390,8 @@ namespace PaviseApp
 				if (!num)
 				{
 					Guid? guid2 = RestoreCurrentPlan();
-						return guid2.HasValue && guid2.Value == guid && (!targetOwned || ManagedPresetIntact(guid, aggressive));
+						return guid2.HasValue && guid2.Value == guid
+							&& (!targetOwned || guid == externalDriftAccepted || ManagedPresetIntact(guid, aggressive));
 				}
 				goto IL_0080;
 				IL_0080:
@@ -1537,6 +1574,38 @@ namespace PaviseApp
 				Logger.Log(Lang.T("log.powerplan.29"));
 				return ClearRestoredPlan(g);
 			}
+		}
+
+		// Persist and read back automatic OFF so a restart cannot resume the same power-plan conflict.
+		private static bool SelectNoSwitchAfterExternalDrift()
+		{
+			const string choice = "v2:off";
+			if (!Settings.SaveStrDurable("PowerPlanChoice", choice) || Settings.LoadStr("PowerPlanChoice", "") != choice) return false;
+			managedCreationBlocked = false;
+			resolved = false;
+			target = Guid.Empty;
+			targetOwned = false;
+			tuneState = -1;
+			Logger.Log(Lang.T("log.powerplan.off"));
+			return true;
+		}
+
+		internal static void BeginAutomaticSession(long session)
+		{
+			lock (lk)
+			{
+				if (session <= externalDriftSession) return;
+				externalDriftSession = session;
+				externalDriftRebuilds = 0;
+				externalDriftAccepted = Guid.Empty;
+				externalDriftStopped = false;
+			}
+		}
+
+		private static bool NoteIntactMismatch(string detail)
+		{
+			if (intactMismatch.Length == 0) intactMismatch = detail;
+			return false;
 		}
 
 		private static bool ClearRestoredPlan(Guid restoreTarget)
@@ -2341,17 +2410,14 @@ namespace PaviseApp
 			{
 				return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
 			}
-            // Apply the selected device route only to an owned inactive candidate.
-            // Current ownership, rollback, and bounded-attempt protections remain in force.
+            // Tune only an owned inactive candidate through the selected device route.
             if (HandheldBypass) return false;
             bool legacy = UsesLegacyManagedPolicy();
             if (!record.CurrentTemplate || (record.Source == Legacy3110Source) != legacy || !TuneTarget(scheme, aggressive, legacy))
                 return PowerApplyFailed("managed-parameters", "Managed source or local adaptation verification failed");
             if (legacy && !SyncLegacy3110DisplayFeel(record.Base, scheme))
                 return PowerApplyFailed("managed-display-preferences", "3.1.1.0 display preference copy or verification failed");
-            // One-time chassis discovery may finish while an inactive candidate is
-            // being prepared. Keep its durable ownership receipt, but do not activate
-            // a candidate that no longer belongs to the selected device policy.
+            // Recheck chassis policy before activation; retain ownership of a candidate prepared under an older route.
             if (UsesLegacyManagedPolicy() != legacy)
                 return PowerApplyFailed("device-policy-changed", "Device policy changed while preparing the inactive candidate");
             tuneState = TuneCode(aggressive);
@@ -2460,8 +2526,7 @@ namespace PaviseApp
 
 		private static bool ClearLegacyIdleDisableOnceCore()
 		{
-            // Receipt-backed restoration runs before this method. Do not infer
-            // a new repair from an old managed-plan name on a gaming handheld.
+            // Restore existing receipts first; an old managed-plan name cannot authorize a new handheld repair.
             if (HandheldBypass) return true;
             ManagedPolicyRecord currentRecord;
             if (ReadManagedPolicy(out currentRecord) && currentRecord != null && currentRecord.CurrentTemplate) return true;
@@ -2632,11 +2697,8 @@ namespace PaviseApp
 			return false;
 		}
 
-		// Plans that fell out of the ownership record (a crash between creation and
-		// record save, an older build's failed restore) are never deleted by the
-		// session path, which only ever touches Plan and Previous. Once per process,
-		// after crash healing and outside any session, delete every inactive plan that
-		// carries this machine's managed name but is referenced by no ownership key.
+		// Outside sessions and after crash recovery, remove inactive managed plans absent from all ownership keys.
+		// Session cleanup touches only the currently recorded plan and its predecessor.
 		private static int orphanSweepDone;
 
 		internal static void SweepUntrackedManagedPlansOnce()
@@ -2748,8 +2810,7 @@ namespace PaviseApp
             string failure = "stage=activation target=" + targetPlan.ToString("D") + " " + detail;
             if (string.IsNullOrEmpty(applyFailureReason))
                 applyFailureReason = failure;
-            // Set also runs during independent recovery; report this operation's
-            // native failure without replacing the apply's original failure.
+            // Recovery errors report their own native failure without replacing the original apply failure.
             Logger.Warn("POWER phase=native " + failure);
             return false;
         }

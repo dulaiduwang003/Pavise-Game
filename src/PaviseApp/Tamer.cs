@@ -483,8 +483,7 @@ namespace PaviseApp
 						{
 							ReleaseAll(Paused ? Lang.T("gs.noff") : Lang.T("t.tamer.6"));
 						}
-						// Healthy scans remain periodic. Only failed execution consumes a phase's
-						// budget; a generic Poke cannot refill it or bypass its failure deadline.
+						// Only failed execution spends a phase budget; Poke cannot reset its budget or deadline.
 						else if (retryPhase.Failures < 3 && ticks >= failedSweepRetryNotBefore
 							&& (phaseChanged || (flag2 && retryPhase.Failures == 0) || ticks >= num || (flag3 && ticks >= num2)))
 						{
@@ -518,8 +517,7 @@ namespace PaviseApp
 									Logger.Log("Tamer sweep recovery: phase=" + sweepPhaseKey + " attempt=" + retryPhase.Failures + "/3; "
 										+ (retryPhase.Failures >= 3 ? "active retries stopped; process events remain active" : "backoff"));
 									num = failedSweepRetryNotBefore;
-									// A failed snapshot did not cover the drained events. Put them back
-									// through the bounded queue so the next wake can handle them incrementally.
+									// Requeue drained events after snapshot failure so the bounded queue can retry them.
 									if (changes != null && changes.Count > 0)
 										NotifyProcessChanges(new ProcessChangeBatch(changes.ToArray(), false));
 								}
@@ -537,8 +535,7 @@ namespace PaviseApp
 							}
 							catch
 							{
-								// A partial incremental batch needs a full snapshot to reconcile it.
-								// Do not replay a failing batch on an immediate self-generated wake.
+								// Reconcile partial batches from a full snapshot without immediate self-wake replay.
 								Interlocked.Exchange(ref overflowSweepRequested, 1);
 								if (ticks >= failedSweepRetryNotBefore)
 									failedSweepRetryNotBefore = DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;

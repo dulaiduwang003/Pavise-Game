@@ -21,8 +21,7 @@ namespace PaviseApp
 			last = null; lastValue = null;
 			try
 			{
-				// Missing original values have no reliable runtime baseline. Never guess
-				// a client/server default that could not be restored without a reboot.
+				// Missing originals provide no restorable runtime baseline; never guess client/server defaults.
 				bool knownBaseline = false;
 				foreach (PerformanceActionStore.Receipt receipt in PerformanceActionStore.All())
 					if (receipt.Id == PerformanceActionCatalog.Quantum

@@ -113,6 +113,7 @@ namespace PaviseApp
 			budget.Failures = Math.Min(8, budget.Failures + 1);
 			budget.NotBefore = budget.Failures >= 8 ? DateTime.MaxValue.Ticks : notBefore;
 			ReportFailureBudget(entry, action, budget);
+			SuccessLogBatch.FlushPending();
 			Logger.Log("Suppression " + action + ": target=" + entry.Name + "/" + entry.Creation
 				+ " phase=" + PerformanceTuning.RecoveryCycleSerial + " attempt=" + budget.Failures + "/8; ownership retained");
 		}
@@ -141,6 +142,36 @@ namespace PaviseApp
 
 			public string Group;
 
+			internal SuppressionCore CountOwner;
+
+			internal void SetGroup(string value)
+			{
+				bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && !SameName(Group ?? "", value ?? "");
+				Group = value;
+				if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
+			}
+
+			internal void SetOriginalPriority(uint value)
+			{
+				bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && Applied && (OrigPri == uint.MaxValue) != (value == uint.MaxValue);
+				OrigPri = value;
+				if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
+			}
+
+			internal void SetApplied(bool value)
+			{
+				bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && OrigPri != uint.MaxValue && Applied != value;
+				Applied = value;
+				if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
+			}
+
+			internal void SetReasons(SuppressReason value)
+			{
+				bool changed = (Reasons & SuppressReason.AntiCheat) != (value & SuppressReason.AntiCheat);
+				Reasons = value;
+				if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
+			}
+
 			public uint OrigPri;
 
 			public ulong OrigAff;
@@ -165,15 +196,13 @@ namespace PaviseApp
 
 			public bool BackgroundPlacementOwned;
 
-			// Persisted bg-job rows delegate affinity restoration exclusively to the
-			// separately journaled Job owner, including after it becomes neutral.
+			// Background Job receipts retain exclusive affinity recovery ownership, including after neutralization.
 			public bool BackgroundJobPlacement, BackgroundJobActive;
 			public int BackgroundPid;
 			public GameAffinityJobLease BackgroundJobs;
 			public string BackgroundAffinityDetail;
 
-			// Once transferred, placement belongs solely to the anti-cheat hard-affinity lease.
-			// Keep this after Reasons is cleared, and in the recovery journal.
+			// Retain anti-cheat placement ownership after Reasons clears and in the journal.
 			public bool AntiCheatPlacementExternal;
 
 			public bool LegacyPlacementDebt;
@@ -353,6 +382,41 @@ namespace PaviseApp
 		private int lastThrottledCount;
 
 		private readonly Dictionary<string, int[]> lastGroupCounts = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+		private long groupCountsVersion;
+		private long publishedGroupCountsVersion = -1;
+
+		private void InvalidateGroupCounts()
+		{
+			Interlocked.Increment(ref groupCountsVersion);
+		}
+
+		private static bool SameCountContribution(Entry first, Entry second)
+		{
+			bool a = first != null && (first.Reasons & SuppressReason.AntiCheat) != 0;
+			bool b = second != null && (second.Reasons & SuppressReason.AntiCheat) != 0;
+			return a == b && (!a || (SameName(first.Group ?? "", second.Group ?? "")
+				&& (first.OrigPri != uint.MaxValue && first.Applied) == (second.OrigPri != uint.MaxValue && second.Applied)));
+		}
+
+		private void SetEntryLocked(int pid, Entry entry)
+		{
+			Entry previous;
+			map.TryGetValue(pid, out previous);
+			bool changed = !SameCountContribution(previous, entry);
+			if (previous != null) previous.CountOwner = null;
+			map[pid] = entry;
+			entry.CountOwner = this;
+			if (changed) InvalidateGroupCounts();
+		}
+
+		private void RemoveEntryLocked(int pid)
+		{
+			Entry previous;
+			if (!map.TryGetValue(pid, out previous)) return;
+			map.Remove(pid);
+			previous.CountOwner = null;
+			if (!SameCountContribution(previous, null)) InvalidateGroupCounts();
+		}
 
 		private static readonly Dictionary<string, long> protectedLogTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
@@ -526,22 +590,22 @@ namespace PaviseApp
 					Entry value;
 					if (map.TryGetValue(pid, out value) && SameName(value.Name, name))
 					{
-						value.Reasons |= reason;
+						value.SetReasons(value.Reasons | reason);
 						SetReasonLevel(value, reason, level);
 						if (group != null && value.Group == null)
 						{
-							value.Group = group;
+							value.SetGroup(group);
 						}
 						return AcquireResult.AlreadyProtected;
 					}
 					Entry entry = new Entry();
 					entry.Name = name;
-					entry.Group = group;
-					entry.OrigPri = uint.MaxValue;
-					entry.Reasons = reason;
+					entry.SetGroup(group);
+					entry.SetOriginalPriority(uint.MaxValue);
+					entry.SetReasons(reason);
 					Entry entry2 = entry;
 					SetReasonLevel(entry2, reason, level);
-					map[pid] = entry2;
+					SetEntryLocked(pid, entry2);
 					return AcquireResult.NewlyProtected;
 				}
 			}
@@ -568,13 +632,13 @@ namespace PaviseApp
 						bool flag2 = map.TryGetValue(pid, out value2);
 						if (flag2 && !SameName(value2.Name, name))
 						{
-							map.Remove(pid);
+							RemoveEntryLocked(pid);
 							flag2 = false;
 							value2 = null;
 						}
 						if (flag2 && value2.OrigPri != uint.MaxValue && value2.Creation <= 0)
 						{
-							map.Remove(pid);
+							RemoveEntryLocked(pid);
 							batchApply.Remove(pid);
 							flag2 = false;
 							value2 = null;
@@ -587,18 +651,18 @@ namespace PaviseApp
 							}
 							if (value2.Creation != creation)
 							{
-								map.Remove(pid);
+								RemoveEntryLocked(pid);
 								flag2 = false;
 								value2 = null;
 							}
 						}
 						if (flag2 && value2.OrigPri != uint.MaxValue && value2.GaveUp)
 						{
-							value2.Reasons |= reason;
+							value2.SetReasons(value2.Reasons | reason);
 							SetReasonLevel(value2, reason, level);
 							if (group != null && value2.Group == null)
 							{
-								value2.Group = group;
+								value2.SetGroup(group);
 							}
 							if (!value2.GaveUpRestored)
 								value2.GaveUpRestored = RestoreEntryValues(intPtr, value2);
@@ -613,10 +677,10 @@ namespace PaviseApp
 							SuppressionLevel level2 = value2.Level;
 							SuppressReason reasons = value2.Reasons;
 							string group2 = value2.Group;
-							value2.Reasons |= reason;
+							value2.SetReasons(value2.Reasons | reason);
 							if (group != null && value2.Group == null)
 							{
-								value2.Group = group;
+								value2.SetGroup(group);
 							}
 							SetReasonLevel(value2, reason, level);
 							bool flag3 = reasons != value2.Reasons || level2 != value2.Level || !SameName(group2, value2.Group);
@@ -633,7 +697,7 @@ namespace PaviseApp
 								{
 									return AcquireResult.AlreadyThrottled;
 								}
-								value2.Applied = ApplyEntryLocked(intPtr, value2, pid);
+								value2.SetApplied(ApplyEntryLocked(intPtr, value2, pid));
 								ScheduleAfterApply(value2, value2.Applied, pid);
 								if (!value2.Applied && TryNeutralizeUnwritableLocked(intPtr, pid, value2))
 								{
@@ -670,7 +734,7 @@ namespace PaviseApp
 							{
 								return AcquireResult.AlreadyThrottled;
 							}
-							value2.Applied = ApplyEntryLocked(intPtr, value2, pid);
+							value2.SetApplied(ApplyEntryLocked(intPtr, value2, pid));
 							ScheduleAfterApply(value2, value2.Applied, pid);
 							if (!value2.Applied && TryNeutralizeUnwritableLocked(intPtr, pid, value2))
 							{
@@ -751,7 +815,7 @@ namespace PaviseApp
 						Entry e;
 						if (flag2)
 						{
-							value2.OrigPri = num5;
+							value2.SetOriginalPriority(num5);
 							value2.OrigAff = num;
 							value2.OrigIo = num2;
 							value2.OrigPg = num3;
@@ -760,14 +824,14 @@ namespace PaviseApp
 							value2.OrigQoSControl = controlMask;
 							value2.OrigQoSState = stateMask;
 							value2.OrigBoost = num6;
-							value2.Reasons |= reason;
+							value2.SetReasons(value2.Reasons | reason);
 							SetReasonLevel(value2, reason, level);
 							value2.Creation = creation2;
-							value2.Applied = false;
+							value2.SetApplied(false);
 							value2.Journaled = false;
 							if (group != null && value2.Group == null)
 							{
-								value2.Group = group;
+								value2.SetGroup(group);
 							}
 							e = value2;
 						}
@@ -775,8 +839,8 @@ namespace PaviseApp
 						{
 							Entry entry3 = new Entry();
 							entry3.Name = name;
-							entry3.Group = group;
-							entry3.OrigPri = num5;
+							entry3.SetGroup(group);
+							entry3.SetOriginalPriority(num5);
 							entry3.OrigAff = num;
 							entry3.OrigIo = num2;
 							entry3.OrigPg = num3;
@@ -785,11 +849,11 @@ namespace PaviseApp
 							entry3.OrigQoSControl = controlMask;
 							entry3.OrigQoSState = stateMask;
 							entry3.OrigBoost = num6;
-							entry3.Reasons = reason;
+							entry3.SetReasons(reason);
 							entry3.Creation = creation2;
 							Entry entry4 = entry3;
 							SetReasonLevel(entry4, reason, level);
-							map[pid] = entry4;
+							SetEntryLocked(pid, entry4);
 							e = entry4;
 						}
 						if (!PersistJournalLocked())
@@ -801,7 +865,7 @@ namespace PaviseApp
 						Entry value3;
 						if (map.TryGetValue(pid, out value3) && !flag9)
 						{
-							value3.Applied = flag10;
+							value3.SetApplied(flag10);
 							ScheduleAfterApply(value3, flag10, pid);
 							if (!flag10 && TryNeutralizeUnwritableLocked(intPtr, pid, value3))
 							{
@@ -880,7 +944,7 @@ namespace PaviseApp
 		{
 			entry.GaveUp = true;
 			entry.GaveUpRestored = restored;
-			entry.Applied = false;
+			entry.SetApplied(false);
 			entry.NextReconcileTicks = long.MaxValue;
 		}
 
@@ -932,14 +996,11 @@ namespace PaviseApp
 			return antiCheat && level >= SuppressionLevel.Isolated;
 		}
 
-		// Set from the session policy before each background sweep: true only for
-		// Aggressive background governance. Anti-cheat taming does not depend on it.
+		// Use the session's Aggressive flag for background boost limits; anti-cheat policy is independent.
 		internal static volatile bool BackgroundBoostLimit;
 
 		internal static bool DisableDynamicBoost(SuppressionLevel level, bool antiCheat)
 		{
-			// The original boost state is journaled and restored by the ordinary lease
-			// path, and the drift check re-applies when the governance level changes.
 			if (antiCheat) return level >= SuppressionLevel.Restrained;
 			return BackgroundBoostLimit && level >= SuppressionLevel.Isolated;
 		}
@@ -1190,7 +1251,7 @@ namespace PaviseApp
 			bool flag = RestoreBackgroundPlacement(h, e) && RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost, RestorePlacement(e));
 			e.GaveUp = true;
 			e.GaveUpRestored = flag;
-			e.Applied = false;
+			e.SetApplied(false);
 			e.SqueezeAff = 0uL;
 			e.NextReconcileTicks = long.MaxValue;
 			Logger.Log(Lang.T("log.suppressioncore.giveup.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.giveup.2") + (string.IsNullOrEmpty(text) ? "" : text) + Lang.T(flag ? "log.suppressioncore.giveup.3" : "log.suppressioncore.giveup.4"));
@@ -1259,7 +1320,7 @@ namespace PaviseApp
 		private static void ScheduleAfterApply(Entry e, bool applied, int pid)
 		{
 			FailureBudgetFor(e, "reconcile");
-			if (!applied) e.Applied = false;
+			if (!applied) e.SetApplied(false);
 			if (applied)
 			{
 				RecordFailureBudget(e, "reconcile", true, 0);
@@ -1768,8 +1829,8 @@ namespace PaviseApp
 			{
 				return false;
 			}
-			e.OrigPri = uint.MaxValue;
-			e.Applied = false;
+			e.SetOriginalPriority(uint.MaxValue);
+			e.SetApplied(false);
 			e.NextRetryTicks = 0L;
 			PersistJournalLocked();
 			bool flag = SelfProtectedRoster.Mark(e.Name);
@@ -1929,8 +1990,7 @@ namespace PaviseApp
 			return !e.BackgroundJobPlacement && !e.AntiCheatPlacementExternal && !e.BackgroundPlacementOwned && !e.AutomaticLayoutYielded;
 		}
 
-		// Must succeed before the independent hard-affinity lease writes anything.
-		// Legacy recovery debt is never discarded just because a process is now recognized as AC.
+		// Settle legacy affinity debt before admitting an independent anti-cheat affinity lease.
 		internal bool PrepareAntiCheatAffinity(int pid, long creation, string name)
 		{
 			Entry entry;
@@ -2298,22 +2358,24 @@ namespace PaviseApp
 					{
 						if (!value3.Applied && value3.ReconcileFailures > 0)
 						{
-							Logger.Log(Lang.T("log.suppressioncore.8") + expectedName + " pid " + pid + Lang.T("log.suppressioncore.9") + value3.ReconcileFailures + Lang.T("t.gputhrottleprobe.5"));
+							SuccessLogBatch.Record("reconcile-verified", expectedName, pid, value3.Creation,
+								"reason=" + reason + " previousFailures=" + value3.ReconcileFailures);
 						}
-						value3.Applied = true;
+						value3.SetApplied(true);
 						ScheduleAfterMatch(value3, pid);
 						return true;
 					}
 					bool applied = value3.Applied;
 					if (!AllowAntiCheatCorrection(intPtr, pid, value3)) return true;
 					int reconcileFailures = value3.ReconcileFailures;
-					value3.Applied = ApplyEntryLocked(intPtr, value3, pid);
+					value3.SetApplied(ApplyEntryLocked(intPtr, value3, pid));
 					ScheduleAfterApply(value3, value3.Applied, pid);
 					if (value3.Applied)
 					{
 						if (!applied && reconcileFailures > 0)
 						{
-							Logger.Log(Lang.T("log.suppressioncore.10") + expectedName + " pid " + pid + Lang.T("log.suppressioncore.9") + reconcileFailures + Lang.T("t.gputhrottleprobe.5"));
+							SuccessLogBatch.Record("reconcile-recovered", expectedName, pid, value3.Creation,
+								"reason=" + reason + " previousFailures=" + reconcileFailures);
 						}
 					}
 					else
@@ -2324,6 +2386,7 @@ namespace PaviseApp
 						}
 						if (reconcileFailures < 3)
 						{
+							SuccessLogBatch.FlushPending();
 							Logger.Log(Lang.T("log.gamemodesweep.1") + expectedName + "(pid " + pid + ") " + ApplyFailureText.Of(LastApplyError) + Lang.T("log.suppressioncore.11"));
 						}
 					}
@@ -2445,6 +2508,8 @@ namespace PaviseApp
 
 		private void RefreshGroupCountsLocked()
 		{
+			long version = Interlocked.Read(ref groupCountsVersion);
+			if (version == publishedGroupCountsVersion) return;
 			Dictionary<string, int[]> dictionary = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
 			foreach (KeyValuePair<int, Entry> item in map)
 			{
@@ -2480,10 +2545,16 @@ namespace PaviseApp
 					}
 				}
 			}
+			publishedGroupCountsVersion = version;
 		}
 
 		public void AntiCheatGroupCountsCached(string groupKey, out int throttled, out int protectedCnt)
 		{
+			if (Monitor.TryEnter(sync))
+			{
+				try { RefreshGroupCountsLocked(); }
+				finally { Monitor.Exit(sync); }
+			}
 			int num = 0;
 			int num2 = 0;
 			lock (lastGroupCounts)
@@ -2535,14 +2606,16 @@ namespace PaviseApp
 						}
 					}
 				}
+				lock (lastGroupCounts)
+				{
+					lastGroupCounts[key] = new int[2] { num, num2 };
+				}
+				// The direct query distinguishes null from empty; the full cache combines them.
+				if (string.IsNullOrEmpty(groupKey)) publishedGroupCountsVersion = -1;
 			}
 			finally
 			{
 				Monitor.Exit(sync);
-			}
-			lock (lastGroupCounts)
-			{
-				lastGroupCounts[key] = new int[2] { num, num2 };
 			}
 			throttled = num;
 			protectedCnt = num2;
@@ -2742,7 +2815,7 @@ namespace PaviseApp
 					{
 						error = (string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError);
 					}
-					value2.Applied = flag;
+					value2.SetApplied(flag);
 					ScheduleAfterApply(value2, flag, pid);
 				}
 				return flag;
@@ -2868,7 +2941,7 @@ namespace PaviseApp
 					if (entry != null && pid > 0 && entry.OrigPri != uint.MaxValue)
 					{
 						entry.Journaled = true;
-						map[pid] = entry;
+						SetEntryLocked(pid, entry);
 					}
 				}
 			}
@@ -2962,7 +3035,7 @@ namespace PaviseApp
 			Entry entry = new Entry();
 			entry.Name = text;
 			entry.Creation = result;
-			entry.OrigPri = result2;
+			entry.SetOriginalPriority(result2);
 			entry.OrigAff = result3;
 			entry.OrigIo = result4;
 			entry.OrigPg = result5;
@@ -3275,7 +3348,7 @@ namespace PaviseApp
 				{
 					return false;
 				}
-				map.Remove(pid);
+				RemoveEntryLocked(pid);
 				batchApply.Remove(pid);
 				batchApplyResults.Remove(pid);
 				batchApplyErrors.Remove(pid);
@@ -3365,7 +3438,7 @@ namespace PaviseApp
 				}
 				SuppressionLevel level = value.Level;
 				bool flag3 = value.SqueezeAff != 0;
-				value.Reasons &= ~reason;
+				value.SetReasons(value.Reasons & ~reason);
 				if ((reason & SuppressReason.AntiCheat) != 0)
 				{
 					value.AntiCheatLevel = SuppressionLevel.None;
@@ -3392,13 +3465,13 @@ namespace PaviseApp
 				{
 					if (value.OrigPri == uint.MaxValue)
 					{
-						map.Remove(pid);
+						RemoveEntryLocked(pid);
 						PersistJournalLocked();
 						return 0;
 					}
 					if (!value.Journaled && !value.Applied)
 					{
-						map.Remove(pid);
+						RemoveEntryLocked(pid);
 						batchApply.Remove(pid);
 						PersistJournalLocked();
 						return 0;
@@ -3425,7 +3498,7 @@ namespace PaviseApp
 					Entry value2;
 					if (map.TryGetValue(pid, out value2) && value2 == value)
 					{
-						value2.Applied = applied;
+						value2.SetApplied(applied);
 						ScheduleAfterApply(value2, applied, pid);
 						RefreshThrottledCacheLocked();
 					}
@@ -3503,7 +3576,7 @@ namespace PaviseApp
 					{
 						if (restoreResult != RestoreResult.Protected)
 						{
-							map.Remove(pid);
+							RemoveEntryLocked(pid);
 						}
 					}
 					else if (restoreResult == RestoreResult.Restored)
@@ -3534,7 +3607,7 @@ namespace PaviseApp
 					Entry value2;
 					if (map.TryGetValue(pid, out value2) && value2 == e)
 					{
-						value2.Applied = applied;
+						value2.SetApplied(applied);
 						ScheduleAfterApply(value2, applied, pid);
 						RefreshThrottledCacheLocked();
 					}
@@ -3587,7 +3660,8 @@ namespace PaviseApp
 			case RestoreResult.Restored:
 				if (e.ProtectedRetries > 0)
 				{
-					Logger.Log(Lang.T("log.suppressioncore.4") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.5") + e.ProtectedRetries + Lang.T("t.gputhrottleprobe.5"));
+					SuccessLogBatch.Record("restored", e.Name, pid, e.Creation,
+						"previousFailures=" + e.ProtectedRetries + " group=" + e.Group);
 				}
 				break;
 			}
@@ -3596,6 +3670,12 @@ namespace PaviseApp
 		}
 
 		public void RetryPending()
+		{
+			using (SuccessLogBatch.Begin("suppression-recovery cycle=" + PerformanceTuning.RecoveryCycleSerial))
+				RetryPendingCore();
+		}
+
+		private void RetryPendingCore()
 		{
 			List<KeyValuePair<int, Entry>> list = null;
 			long ticks = DateTime.UtcNow.Ticks;
@@ -3621,7 +3701,8 @@ namespace PaviseApp
 			{
 				if (TryRestore(item2.Key, item2.Value, true) && item2.Value.ProtectedRetries == 0)
 				{
-					Logger.Log(Lang.T("log.suppressioncore.4") + item2.Value.Name + " pid " + item2.Key);
+					SuccessLogBatch.Record("restored", item2.Value.Name, item2.Key, item2.Value.Creation,
+						"previousFailures=0 group=" + item2.Value.Group);
 				}
 			}
 		}
@@ -3758,8 +3839,7 @@ namespace PaviseApp
 						}
 						bool backgroundPlacementOwned = value2.BackgroundPlacementOwned;
 						bool priorJobPlacement = value2.BackgroundJobPlacement;
-						// A legacy-owned applied mask must not be relabeled bg-job before
-						// restoration. Keep this backend until the active squeeze is released.
+						// Restore legacy affinity ownership before transferring the recovery receipt to a Job.
 						bool keepProcessBackend = !priorJobPlacement && squeezeAff != 0;
 						if (num != 0 && (!keepProcessBackend || mask != num3))
 						{
@@ -3798,12 +3878,11 @@ namespace PaviseApp
 							if (flag)
 							{
 								value2.BackgroundJobActive = true;
-								SetBackgroundBackend(value2, "Job affinity verified");
+								SetBackgroundBackend(value2, "Job affinity verified", true);
 							}
 							else if (GameThreadAffinityAdmission.IsRefusal(jobReason))
 							{
-								// This refusal applies to every forward affinity backend.
-								// Keep the Job ownership tag, including an older active range.
+								// A game-owned placement refusal blocks all affinity backends; retain the existing Job ownership.
 								value2.BackgroundJobActive = backgroundAffinityJobs.IsActive(pid, creation);
 								value2.BackgroundRestorePending = backgroundAffinityJobs.HasPending;
 								value2.BackgroundPlacementVerified = false;
@@ -3818,8 +3897,7 @@ namespace PaviseApp
 							}
 							else
 							{
-								// A cleanly rejected/settled Job may use the single process-affinity
-								// fallback. Persist that ownership change before its first write.
+								// Persist ownership transfer before the single process-affinity fallback writes.
 								ulong currentMask;
 								if (!SameProcess(intPtr, value2) || !Native.TryQueryAffinity(intPtr, out currentMask) || currentMask != mask)
 								{ value2.BackgroundRestorePending = true; value2.BackgroundPlacementVerified = false; return false; }
@@ -3894,7 +3972,7 @@ namespace PaviseApp
 						}
 						return false;
 					}
-					value2.Applied = flag3;
+					value2.SetApplied(flag3);
 					ScheduleAfterApply(value2, flag3, pid);
 					changed = squeezeAff != value2.SqueezeAff;
 					ok = flag3;
@@ -3995,10 +4073,16 @@ namespace PaviseApp
 			return current == target || GameThreadAffinityAdmission.Check(process, pid, entry.Creation, current, out reason);
 		}
 
-		private static void SetBackgroundBackend(Entry entry, string detail)
+		private static void SetBackgroundBackend(Entry entry, string detail, bool verifiedSuccess = false)
 		{
 			if (entry.BackgroundAffinityDetail == detail) return;
 			entry.BackgroundAffinityDetail = detail;
+			if (verifiedSuccess)
+			{
+				SuccessLogBatch.Record("background-affinity-verified", entry.Name, entry.BackgroundPid, entry.Creation, detail);
+				return;
+			}
+			SuccessLogBatch.FlushPending();
 			Logger.Info("BACKGROUND AFFINITY " + entry.Name + " pid=" + entry.BackgroundPid + " " + detail);
 		}
 

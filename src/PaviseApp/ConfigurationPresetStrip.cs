@@ -4,7 +4,6 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // One entry point in the category row; the guide owns the preset choices.
     internal sealed class ConfigurationPresetStrip : Control
     {
         internal readonly PerformanceActionButton GuideButton;

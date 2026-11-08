@@ -6,9 +6,8 @@ namespace PaviseApp
 {
 	internal static class StreamingToolCatalog
 	{
-		// Exact Windows image names verified in publisher documentation, source or
-		// package metadata. Evidence and intentionally unsupported names are kept in
-		// docs/Streaming-Whitelist.md. Generic encoders and browser hosts are not roots.
+		// Streaming roots use publisher-verified executable names.
+		// Generic encoders and browser hosts do not establish stream ownership.
 		private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 		{
 			"obs32", "obs64", "obs-browser-page", "obs-ffmpeg-mux",
@@ -28,8 +27,7 @@ namespace PaviseApp
 			string normalizedName = WhitelistRule.NormalizeName(name);
 			if (!ProcessNames.Contains(normalizedName)) return false;
 			string path = WhitelistRule.NormalizeImagePath(imagePath);
-			// A local, absolute executable image is required. Name-only observations,
-			// relative paths, device paths and UNC images cannot establish a new family.
+			// Require a verified local absolute executable to establish a new streaming family.
 			if (path.Length < 4 || !char.IsLetter(path[0]) || path[1] != ':' || path[2] != '\\') return false;
 			try
 			{

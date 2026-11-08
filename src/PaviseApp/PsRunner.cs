@@ -52,8 +52,7 @@ namespace PaviseApp
 		{
 			Task.Factory.StartNew(delegate
 			{
-				// Fixed chunks also bound a single line without a newline. These two
-				// lifetime readers keep draining after timeout without keeping output.
+				// Drain inherited pipes through EOF with bounded buffers, including after timeout.
 				char[] chunk = new char[4096];
 				try
 				{
@@ -81,8 +80,7 @@ namespace PaviseApp
 			if (ownedProcess == null) return true;
 			try { if (!ownedProcess.Process.HasExited) return false; }
 			catch { return false; }
-			// Descendants can inherit either pipe after their original parent exits.
-			// Their operation still owns this runner until both readers observe EOF.
+			// Inherited pipes can outlive the parent process; retain the runner until both readers reach EOF.
 			if (Volatile.Read(ref ownedProcess.Output.Ended) == 0 || Volatile.Read(ref ownedProcess.Error.Ended) == 0) return false;
 			Process exited = ownedProcess.Process;
 			ownedProcess = null;
@@ -108,8 +106,7 @@ namespace PaviseApp
 			{
 				lock (ownerGate)
 				{
-					// A timeout or a failed observation cannot establish that the script
-					// has finished restoring its state. Retain its owner until exit.
+					// Timeouts do not prove recovery completion; retain ownership until process exit.
 					ReleaseExitedOwnerLocked();
 					runnerBusy = false;
 				}
@@ -149,8 +146,7 @@ namespace PaviseApp
 					failure = label + Lang.T("log.psrunner.1") + timeoutMs + "ms; process owner retained until exit";
 					return false;
 				}
-				// Do not use the unbounded WaitForExit() pipe-drain overload: an
-				// inherited output handle can outlive the original PowerShell process.
+				// WaitForExit() can block on inherited pipes after parent exit; avoid its pipe-drain overload.
 				if (!SpinWait.SpinUntil(() => (Volatile.Read(ref owner.Output.Ended) != 0 && Volatile.Read(ref owner.Error.Ended) != 0) || Volatile.Read(ref owner.Output.Failed) != 0 || Volatile.Read(ref owner.Error.Failed) != 0, 3000))
 				{
 					failure = label + ": PowerShell output did not complete after exit";

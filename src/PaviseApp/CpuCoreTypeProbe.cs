@@ -5,8 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Windows topology remains authoritative for physical/sibling relationships.
-    // This only supplies a core type for the exact logical processor sampled.
+    // Physical/sibling topology comes from Windows; probes report only the sampled logical CPU's type.
     internal static class CpuCoreTypeProbe
     {
         internal static int[] Read(ulong allMask)
@@ -60,8 +59,7 @@ namespace PaviseApp
                 worker.IsBackground = true;
                 worker.Name = "Pavise CPU type inspection";
                 worker.Start();
-                // The finite scan checks its time budget between logical CPUs. Join before
-                // returning: neither executable memory nor affinity restoration can outlive it.
+                // Join the bounded worker before returning so executable memory and affinity restoration cannot outlive it.
                 while (true)
                 {
                     try { worker.Join(); break; }
@@ -77,7 +75,7 @@ namespace PaviseApp
         {
             reason = "cpuid-unavailable";
             int[] result = Unknown();
-            IntPtr thread = new IntPtr(-2); // Current worker only; never another application.
+            IntPtr thread = new IntPtr(-2);
             GroupAffinity original;
             if (!GetThreadGroupAffinity(thread, out original) || original.Group != 0
                 || (allMask & ~original.Mask.ToUInt64()) != 0)

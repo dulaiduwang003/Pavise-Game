@@ -4,8 +4,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // All COM objects are created, used and released by the single MTA audio worker.
-    // No registry settings, device defaults, per-app volume or exclusive-mode settings are changed.
+    // Create, use and release all COM objects on the single MTA audio worker.
     internal sealed class LowLatencyAudioNative : ILaboratoryAudioDriver
     {
         private readonly AutoResetEvent render = new AutoResetEvent(false);
@@ -158,8 +157,7 @@ namespace PaviseApp
         {
             string direct = StringProperty(endpoint, new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 24);
             if (LaboratoryAudioSession.IsBluetooth(direct)) return direct;
-            // MMDEVAPI endpoints commonly report SWD. Follow the endpoint connector to the
-            // hardware adapter and read its bus enumerator instead of guessing from its name.
+            // Follow the MMDEVAPI endpoint connector to its hardware adapter; SWD enumeration alone does not identify the bus.
             object raw = null;
             IDeviceTopology topology = null;
             IConnector connector = null;

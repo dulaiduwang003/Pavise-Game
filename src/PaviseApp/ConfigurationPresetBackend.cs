@@ -81,8 +81,7 @@ namespace PaviseApp
             foreach (string key in PerformanceTuning.StorageMembers()) { string value = Boolean(key, false); if (value == null) return null; text.Append(key).Append('=').Append(value).Append('\n'); }
             return text.ToString();
         }
-        // Saved preferences only: no capability inspection, identity receipt, native read,
-        // or last-applied metadata. Values use the same defaults as preset matching.
+        // Read durable preferences only; exclude capability probes, receipts and last-applied metadata.
         internal static string SavedIdentityPhase()
         {
             StringBuilder text = new StringBuilder();
@@ -117,7 +116,6 @@ namespace PaviseApp
                     case "NvShaderCache": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("shadercache")), "NVIDIA 缓存接口不支持或无法读取", "NVIDIA shader-cache setting unsupported or unreadable");
                     case "NvLowLat": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("prerender")), "NVIDIA 低延迟接口不支持或无法读取", "NVIDIA low-latency setting unsupported or unreadable");
                     case "GpuPrefStageOn": return Available(GpuPrefStage.Supported, "系统不支持游戏显卡偏好登记", "Game GPU preferences are unsupported");
-                    case "AppGpuAutoV1": return Available(AppGpuPreferences.Shared.Supported, "未核验到支持的混合显卡设备", "A supported hybrid-GPU system was not verified");
                     case "AutoGlobalTimer": return Available(build < 19041 || build >= 20348, "系统不支持全局计时器配置", "Global timer configuration is unsupported on this OS");
                     case "AutoTimerTick": return Available(!LaboratoryClockRepair.HasReceipt && TimerTickTweak.CanReadForPreset(), "计时配置不可读取或有待恢复的修复记录", "Timer settings unreadable or timer repair recovery pending");
                     case "GmMmcss": return Available(ServiceExists("MMCSS") && RegistryAvailable("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"), "游戏多媒体调度配置不可用", "Game multimedia scheduling configuration unavailable");
@@ -137,9 +135,7 @@ namespace PaviseApp
                         bool vbsAvailable = VbsTweak.CanConfigureForPreset(out vbsReason);
                         return vbsAvailable ? ConfigurationPresetAvailability.Yes() : ConfigurationPresetAvailability.No(vbsReason);
                     case "LabGpuClockMaxV1": case "LabGpuPowerMaxV1":
-                        // Match the manual laboratory switches: save the session request.
-                        // The game-session controller still verifies the device, applies only
-                        // supported settings, and owns restoration; preset selection never locks hardware.
+                        // Presets save intent; the session controller owns capability checks, application and restoration.
                         return ConfigurationPresetAvailability.Yes();
                     case "LabCpuIdleStrategyV1":
                         PowerPlan.NativeLaboratoryPower power = new PowerPlan.NativeLaboratoryPower(); Guid plan = power.ActivePlan();
@@ -150,7 +146,7 @@ namespace PaviseApp
                         PrivacyPlan privacy = new PrivacyNativeBackend().Inspect(entry.Key, "");
                         return Available(privacy != null && privacy.Supported && !privacy.Managed && privacy.Targets != null && privacy.Targets.Length > 0,
                             privacy == null ? "适用性无法核验" : privacy.Note ?? privacy.UnavailableReason ?? "本机不适用", privacy == null ? "Eligibility unavailable" : privacy.Note ?? privacy.UnavailableReason ?? "Not applicable");
-                    case "EnvPerformanceBundleV1": return ConfigurationPresetAvailability.Yes(); // Members are admitted separately, before saving intent.
+                    case "EnvPerformanceBundleV1": return ConfigurationPresetAvailability.Yes();
                     case "EnvStoragePowerGroupV1":
                         foreach (string member in PerformanceTuning.StorageMembers()) if (PerformanceActionBackend.EnvironmentTargets(member).Length > 0) return ConfigurationPresetAvailability.Yes();
                         return ConfigurationPresetAvailability.No(PerformancePolicy.Text("未找到已登记 StorPort 的设备", "No registered StorPort devices found"));

@@ -1244,6 +1244,20 @@ namespace PaviseApp
 			return num;
 		}
 
+		internal static bool HasCriticalPresenterCandidate(int target, long processBirth, long now)
+		{
+			lock (sync)
+			{
+				OriginalCriticalRoles roles = criticalRoles;
+				if (closed || roles == null || roles.Epoch != generation || roles.Pid != target || roles.Birth != processBirth
+					|| pid != target || birth != processBirth || now < roles.Observed || now - roles.Observed > 650000000)
+					return false;
+				foreach (CriticalThreadRoleFact fact in roles.Facts)
+					if (fact.Tid > 0 && fact.Creation > 0 && fact.Role == "presentation-associated") return true;
+				return false;
+			}
+		}
+
 		internal static CriticalThreadRoleFact[] ReadCriticalRoles(int target, long processBirth, ThreadTimes latest, long now)
 		{
 			if (!CriticalThreadObservation.Valid(latest, processBirth, now))

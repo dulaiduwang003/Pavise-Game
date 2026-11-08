@@ -33,7 +33,6 @@ namespace PaviseApp
             E("BackgroundGovernanceMode", "后台治理强度", "Background governance strength", "0", "1"),
             E("GmPauseUpdate", "对局期间暂停 Windows 更新", "Pause Windows Update during matches", "1", "1"),
             E("GmPauseMaintenanceV1", "对局期间限制自动维护触发", "Limit maintenance triggers", "0", "1"),
-            E("AppGpuAutoV1", "后台节能显卡登记", "Background power-saving GPU preference", "1", "1", true),
             E("EnvPrivacyBackgroundGlobalV1", "限制 Windows 应用后台任务", "Restrict Windows app background tasks", "0", "1", true),
             E("GmDwmBoost", "桌面合成调度", "Desktop compositor scheduling", "0", "1"),
             E("GmIntelEnduranceV1", "对局关闭 Endurance Gaming", "Disable Endurance Gaming during matches", "0", "0"),

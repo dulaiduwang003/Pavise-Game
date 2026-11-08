@@ -48,8 +48,7 @@ namespace PaviseApp
                         Birth = created > 0 ? created : birth, Configuration = configuration, Receipt = receipt };
             }
         }
-        // A late trace pump may verify neutral outside Run. Only that exact receipt
-        // may end its episode; partial receipt edits and a late previous owner cannot.
+        // Only the exact verified-neutral receipt may end its recovery episode.
         internal static void Settled(string scope, string receipt)
         {
             lock (gate)

@@ -91,8 +91,7 @@ namespace PaviseApp
         internal static OverviewGpuInfo SelectDxgi(OverviewGpuInfo selected, string name, ulong memoryBytes, uint flags)
         {
             if ((flags & DxgiRemoteOrSoftware) != 0 || string.IsNullOrWhiteSpace(name)) return selected;
-            // Ties retain DXGI's order (desktop primary, other outputs, then
-            // render-only adapters). Memory ranks candidates, not GPU kind.
+            // Break memory ties in DXGI order; memory ranks candidates but does not identify GPU kind.
             if (selected != null && selected.MemoryBytes >= memoryBytes) return selected;
             return new OverviewGpuInfo(name.Trim(), memoryBytes);
         }

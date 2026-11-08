@@ -17,7 +17,6 @@ namespace PaviseApp
 
 		internal static bool SupportedMode(PerformancePreset mode)
 		{
-			// Cross-session service governance is restricted to Extreme.
 			return mode == PerformancePreset.Extreme;
 		}
 

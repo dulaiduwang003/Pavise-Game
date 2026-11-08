@@ -3,8 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Separate successful negative observations from failures of the sampler or
-    // durable library write. Cache eviction and GPU evidence cannot refund writes.
+    // Budget sampler/write failures separately from successful misses; cache eviction cannot refund writes.
     internal sealed class ProcessActionFailureBudget
     {
         private readonly object gate = new object();

@@ -32,17 +32,15 @@ namespace PaviseApp
         internal static bool LastApplyFailureIsPermanent { get { return applyFailurePermanent; } }
         internal static void ClearApplyFailureReason() { applyFailureReason = null; applyFailurePermanent = false; }
 
-        // Battery presence alone cannot distinguish a notebook from a desktop UPS.
-        // Only a verified desktop enters the preset route. Missing/unfinished
-        // chassis evidence retains the conservative 3.1.1.0 dynamic policy.
+        // Only verified desktops use architecture presets; uncertain chassis data retains the legacy policy.
+        // A battery may belong to a desktop UPS.
         internal static bool UsesLegacyManagedPolicy()
         {
             var device = ManagedPlans as IManagedPowerDeviceKind;
             return device == null || device.DeviceKind != LaboratoryEppDeviceKind.Desktop;
         }
 
-        // Carry the first failing stage back to the session owner. Cleanup can fail
-        // afterwards, but must not replace the reason that stopped the apply.
+        // Keep the first apply failure; cleanup errors must not replace its diagnostic.
         private static bool PowerApplyFailed(string stage, string detail)
         {
             if (string.IsNullOrEmpty(applyFailureReason))
@@ -66,8 +64,7 @@ namespace PaviseApp
         private static ManagedPowerPresetSelection SelectManagedPreset(bool aggressive)
         {
             ManagedPowerHardwareFacts facts = ReadManagedHardwareFacts();
-            // Source selection is internal. Retired PowerPlanSourceV1 values
-            // cannot override architecture or session routing, even if cleanup fails.
+            // Retired source preferences cannot override device-policy routing.
             return ManagedPowerPreset.Resolve(facts, aggressive, "auto");
         }
 
@@ -361,8 +358,7 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // Entire non-performance AC subgroups retain the user's daily preferences.
-        // DC retains every readable base setting, including OEM settings absent from the source file.
+        // Preserve non-performance AC preferences and all readable DC values, including OEM settings absent from the source.
         private static bool PreserveBaseAc(Guid sub, Guid setting, bool preserveParking)
         {
             if (sub == SubProcessor) return preserveParking && IsPresetParkingOrScheduling(setting);
@@ -374,7 +370,6 @@ namespace PaviseApp
 
         private static bool IsPresetParkingOrScheduling(Guid setting)
         {
-            // Includes all parking gates/times, latency-unpark, class transitions and heterogeneous scheduling.
             string id = setting.ToString("D");
             return Array.IndexOf(PresetParkingSettings, id) >= 0;
         }
@@ -455,19 +450,24 @@ namespace PaviseApp
 
         private static bool ManagedPresetIntact(Guid scheme, bool aggressive)
         {
+            intactMismatch = "";
             ManagedPolicyRecord record;
             IManagedPowerPlans plans = ManagedPlans;
             if (!ReadManagedPolicy(out record) || record == null || !record.CurrentTemplate || record.Plan != scheme
-                || !plans.Exists(scheme) || !plans.IsOwned(scheme)) return false;
+                || !plans.Exists(scheme) || !plans.IsOwned(scheme)) return NoteIntactMismatch("policy-record-or-plan-ownership");
             bool legacy = UsesLegacyManagedPolicy();
-            if ((record.Source == Legacy3110Source) != legacy) return false;
+            if ((record.Source == Legacy3110Source) != legacy) return NoteIntactMismatch("device-policy-route");
             if (legacy)
-                return (record.Fingerprint.Length == 0 || record.Fingerprint == Legacy3110Fingerprint(aggressive))
-                    && Legacy3110ManagedIntact(scheme, aggressive);
+            {
+                if (record.Fingerprint.Length != 0 && record.Fingerprint != Legacy3110Fingerprint(aggressive))
+                    return NoteIntactMismatch("legacy-fingerprint");
+                return Legacy3110ManagedIntact(scheme, aggressive);
+            }
             ManagedPowerPresetSelection selection = SelectManagedPreset(aggressive);
-            if (selection.Preset == null || record.Source != selection.Preset.Id || record.Fingerprint != PresetFingerprint(selection)) return false;
+            if (selection.Preset == null || record.Source != selection.Preset.Id || record.Fingerprint != PresetFingerprint(selection))
+                return NoteIntactMismatch("preset-fingerprint");
             HashSet<Guid> laboratory = LaboratoryPower.OwnedSettings(scheme);
-            if (laboratory == null) return false;
+            if (laboratory == null) return NoteIntactMismatch("laboratory-ownership-unreadable");
             foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
             {
                 // Daily-use AC and all battery settings remain local preferences.
@@ -478,15 +478,20 @@ namespace PaviseApp
                 if (evidence != null)
                 {
                     ManagedPowerReadEvidence actualRead = evidence.ReadEvidence(scheme, value.Sub, value.Setting, true);
-                    if (actualRead.State == ManagedPowerReadState.Unavailable) return false;
-                    if (actualRead.State == ManagedPowerReadState.Value && actualRead.Value != value.Ac.Value) return false;
+                    if (actualRead.State == ManagedPowerReadState.Unavailable)
+                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unreadable code=" + actualRead.NativeCode);
+                    if (actualRead.State == ManagedPowerReadState.Value && actualRead.Value != value.Ac.Value)
+                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac expected=" + value.Ac.Value + " actual=" + actualRead.Value);
                     if (actualRead.State == ManagedPowerReadState.ConfirmedUnregistered
-                        && evidence.ReadEvidence(record.Base, value.Sub, value.Setting, true).State != ManagedPowerReadState.ConfirmedUnregistered) return false;
+                        && evidence.ReadEvidence(record.Base, value.Sub, value.Setting, true).State != ManagedPowerReadState.ConfirmedUnregistered)
+                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unregistered-in-plan-only");
                     continue;
                 }
                 uint? actual = plans.Read(scheme, value.Sub, value.Setting, true);
-                if (!actual.HasValue && plans.Read(record.Base, value.Sub, value.Setting, true).HasValue) return false;
-                if (actual.HasValue && actual.Value != value.Ac.Value) return false;
+                if (!actual.HasValue && plans.Read(record.Base, value.Sub, value.Setting, true).HasValue)
+                    return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unreadable");
+                if (actual.HasValue && actual.Value != value.Ac.Value)
+                    return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac expected=" + value.Ac.Value + " actual=" + actual.Value);
             }
             return true;
         }
@@ -544,8 +549,7 @@ namespace PaviseApp
                 uint storedCode = ReadPresetStoredIndex(source, sub, setting, ac, out stored);
                 if (storedCode != 2 && (storedCode != 0 || stored != baseline.Value))
                     return PresetPreparationFailed("Local stored index could not be verified: " + name + " " + sub + "/" + setting + " code=" + storedCode, storedCode);
-                // A missing override can have different effective values under the two
-                // personalities. Copy a verified baseline value, never equal error codes.
+                // Missing overrides may resolve differently by personality; copy a verified baseline value, not equal error codes.
                 ManagedPowerReadEvidence verifyBase = ReadPresetPowerEvidence(source, sub, setting, ac);
                 if (!CanCopyPresetBase(source, destination, activeBefore) || verifyBase.State != ManagedPowerReadState.Value
                     || verifyBase.Value != baseline.Value)
@@ -608,15 +612,13 @@ namespace PaviseApp
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, code, false);
             if (!SchemeUsable(scheme)) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, 2, false);
             uint definition = ReadPresetDefinitionStatus(sub, setting);
-            // Creation skips definitions confirmed absent. A historical per-plan
-            // index must not make maintenance reintroduce that unsupported setting.
+            // Do not reintroduce unsupported settings from a historical per-plan index.
             if ((code == 0 || code == 2 || code == 3) && (definition == 2 || definition == 3))
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.ConfirmedUnregistered, 0, code, definition, false);
             if (definition != 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, definition, false);
             if (code == 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Value, value, 0, 0, false);
             uint storedCode = ReadPresetStoredIndex(scheme, sub, setting, ac, out value);
-            // Default resolution needs independent proof that no override exists.
-            // In particular ERROR_INVALID_PARAMETER is never itself an absence proof.
+            // Resolve defaults only after proving an override absent; ERROR_INVALID_PARAMETER is not absence evidence.
             if (storedCode != 2) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, storedCode == 0 ? code : storedCode, false);
             uint resolution = ReadPresetEffectiveDefault(scheme, sub, setting, ac, out value);
             return new ManagedPowerReadEvidence(resolution == 0 ? ManagedPowerReadState.Value : ManagedPowerReadState.Unavailable,

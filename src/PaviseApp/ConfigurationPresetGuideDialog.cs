@@ -5,7 +5,6 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 选择卡片后通知宿主；宿主负责应用预设、关闭窗口或显示失败原因。
     internal sealed class ConfigurationPresetGuideDialog : Form
     {
         internal readonly Button AuthorButton, ExtremeButton;
@@ -97,7 +96,6 @@ namespace PaviseApp
             issue = (detail.Length == 0 ? Lang.T("configpreset.result") : detail).Replace("\n", "\r\n");
             UpdateStatus();
             Refit(Screen.FromControl(this).WorkingArea, Visible);
-            // 忙碌状态解除后，仅在焦点丢失时返回原卡片。
             GuideCard retry = pending == ConfigurationPresetKind.Extreme ? extreme : author;
             Control active = ActiveControl;
             if (Form.ActiveForm == this && (active == null || active == body || !active.CanFocus)) retry.Focus();
@@ -194,7 +192,6 @@ namespace PaviseApp
                 }
                 else
                 {
-                    // Failure details stay readable in place: wrapped, read-only and internally scrollable.
                     int natural = StatusHeight(status.Text, inner, false);
                     int cap = Math.Max(oneLine, Math.Min(Theme.S(120), (closeTop - headerBottom) / 3));
                     bool scroll = natural > cap;
@@ -301,7 +298,6 @@ namespace PaviseApp
             }
         }
 
-        // Whole-card button: badges, heading, short body and an action row; every pixel clicks.
         private sealed class GuideCard : Button
         {
             private readonly ConfigurationPresetKind kind;

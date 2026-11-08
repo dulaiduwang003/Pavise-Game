@@ -380,7 +380,7 @@ namespace PaviseApp
 				for (uint num = 0u; ; num++)
 				{
 					if (!SetupDiEnumDeviceInfo(intPtr, num, ref data))
-						return Marshal.GetLastWin32Error() == 259; // ERROR_NO_MORE_ITEMS
+						return Marshal.GetLastWin32Error() == 259;
 					StringBuilder stringBuilder = new StringBuilder(512);
 					uint required;
 					if (!SetupDiGetDeviceInstanceIdW(intPtr, ref data, stringBuilder, 512u, out required))

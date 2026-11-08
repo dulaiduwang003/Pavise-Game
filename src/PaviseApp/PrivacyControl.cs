@@ -233,8 +233,7 @@ namespace PaviseApp
 		{
 			if (action == PrivacyActionCatalog.BackgroundGlobal)
 			{
-				// This is a reminder to reopen affected apps, not an observation that
-				// their processes have restarted. Legacy Boot receipts no longer gate it.
+				// This state requests application restart; it does not prove that affected processes restarted.
 				string phase;
 				Settings.TryLoadStr(PreferencePrefix + action + "Phase", out phase);
 				return BackgroundAppRestartState(state, phase);

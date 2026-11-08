@@ -31,8 +31,7 @@ namespace PaviseApp
         }
     }
 
-    // A single session worker owns all lab actions. UI and game scanning only publish intent.
-    // Restore is drained before the ordinary power plan is released or user data is reset.
+    // The session worker serializes lab actions and drains restoration before plan release or reset.
     internal sealed class LaboratorySession
     {
         private readonly object gate = new object(), powerGate;
@@ -203,8 +202,7 @@ namespace PaviseApp
             if (!ok) ReportRecoveryWait();
             return ok;
         }
-        // Called under gate or by the worker after publishing its last result.
-        // The synchronous waiter reports cached scheduling; it never takes a native-controller lock.
+        // Publish cached scheduling under gate; synchronous waiters must not acquire native controller locks.
         private void ReportRecoveryWait()
         {
             lock (gate)

@@ -6,8 +6,31 @@ namespace PaviseApp
 	{
 		private const string SeenKey = "LastSeenNotesVersion";
 
-		public static readonly ReleaseNote[] All = new ReleaseNote[40]
+		public static readonly ReleaseNote[] All = new ReleaseNote[41]
 		{
+            new ReleaseNote("3.3.0.8", "2026-11-08", new string[][] {
+                new[] { "渲染亲和性支持自动/手动选核与整核隔离，联动游戏核心范围；调整下局生效，关闭立即撤回。",
+                    "Added automatic/manual render CPU selection with whole-core isolation. Choices follow the game CPU range; edits apply next session and disabling withdraws the binding immediately.",
+                    "描画スレッドの自動・手動コア選択と物理コア単位の分離に対応。候補はゲームのCPU範囲に従い、変更は次のセッションから適用、無効化時は直ちに固定を撤回します。" },
+                new[] { "减少线程采样、核心隔离和后台治理开销，移除自动后台节能显卡登记。",
+                    "Reduced thread-sampling, core-isolation and background-governance overhead; removed automatic background power-saving GPU enrollment.",
+                    "スレッド採取、コア分離、バックグラウンド制御の負荷を軽減。バックグラウンド向け省電力GPUの自動登録を削除しました。" },
+                new[] { "新增动作/诊断日志，直观查看压制、落核、清核及恢复结果，支持分别导出。",
+                    "Added Action/Diagnostic logs for suppression, CPU placement, core isolation and restoration, with separate exports.",
+                    "動作・診断ログを追加。抑制、CPU配置、コア分離、復元の結果を確認でき、個別に出力できます。" },
+                new[] { "优化鸣潮等游戏识别，减少内置网页被误认作游戏本体。",
+                    "Improved game detection for Wuthering Waves and others to reduce embedded web views being mistaken for the game.",
+                    "鳴潮などのゲーム検出を改善し、内蔵Web画面をゲーム本体と誤認するケースを減らしました。" },
+                new[] { "改善笔记本厂商电源兼容，连续冲突时停止切换并恢复原计划。",
+                    "Improved compatibility with laptop vendor power controls; repeated conflicts stop plan switching and restore the original plan.",
+                    "ノートPCメーカーの電源制御との互換性を改善。競合が続く場合は電源プランの切り替えを停止し、元のプランに復元します。" },
+                new[] { "新增安全软件兼容提示，启动时检查一次，支持“不再显示”。",
+                    "Added a security-software compatibility notice checked once at startup, with a Don't show again option.",
+                    "起動時に1回だけ確認するセキュリティソフト互換性通知を追加。「今後表示しない」に対応しました。" },
+                new[] { "修复退局恢复、电源状态误报，减少重复日志和无效警告。",
+                    "Fixed false restoration and power-state reports, and reduced repetitive logs and unnecessary warnings.",
+                    "ゲーム終了後の復元と電源状態の誤報を修正。重複ログと不要な警告を削減しました。" },
+            }),
             new ReleaseNote("3.3.0.7", "2026-11-05", new string[][] {
                 new[] { "软件绝大部分功能仅在对局中生效，退局后自动恢复；不支持退局恢复的功能均已单独标注。遇到问题时，建议先排查：系统最近是否更新过 Windows 或显卡等驱动；关闭 Pavise 后问题是否依旧，可能是游戏本身的问题。禁止与其他会修改进程优先级或 CPU 绑核的调度软件同时使用，两边会互相覆盖设置。Pavise 是免费开源软件，欢迎任何人友好交流；对恶意攻击和辱骂，不会惯着。", "Most Pavise features take effect only during a game session and restore automatically when it ends; features that do not support restoration at session end are explicitly marked. If you run into problems, first check whether Windows or drivers such as the graphics driver were updated recently, and whether the problem persists with Pavise closed; it may come from the game itself. Do not use Pavise together with other scheduling tools that change process priority or CPU affinity, as they overwrite each other. Pavise is free, open-source software and friendly discussion is welcome from anyone; malicious attacks and abuse will not be tolerated.", "Paviseのほとんどの機能はゲーム中のみ有効になり、ゲーム終了後に自動で元に戻ります。ゲーム終了時の復元に対応しない機能は個別に明記しています。問題が起きたら、まずWindowsやグラフィックドライバーなどが最近更新されていないか、Paviseを終了しても問題が続くか（ゲーム自体の問題の可能性）を確認してください。プロセス優先度やCPUアフィニティを変更する他のスケジューリングソフトとの併用は禁止です（互いの設定を上書きします）。Paviseは無料のオープンソースソフトウェアです。どなたとの友好的な交流も歓迎しますが、悪意ある攻撃や誹謗中傷には容赦しません。" },
                 new[] { "后台治理改为关闭、正常、激进三档，入口在顶部策略设置的游戏场景下方：正常降低普通后台的 CPU、I/O、内存与 GPU 优先级并启用效率模式；激进另外禁止 Windows 临时提升后台线程优先级。后台 GPU 优先级和传递优化下载让路并入后台治理，减少独立开关。", "Background governance now has Off, Normal and Aggressive levels below Game scenario in the top strategy settings. Normal lowers CPU, I/O, memory and GPU priority for ordinary background processes and enables efficiency mode; Aggressive also stops Windows from temporarily boosting background thread priority. Background GPU priority and Delivery Optimization yielding are now part of background governance, reducing separate switches.", "バックグラウンド制御を上部の方針設定（ゲームシナリオの下）でオフ・通常・積極の3段階に。通常は一般的なバックグラウンドのCPU・I/O・メモリ・GPU優先度を下げて効率モードを有効にし、積極ではWindowsによるバックグラウンドスレッドの一時的な優先度上昇も止めます。バックグラウンドGPU優先度と配信の最適化のダウンロード譲渡もバックグラウンド制御に統合し、個別スイッチを減らしました。" },

@@ -24,8 +24,7 @@ namespace PaviseApp
 					result.Add(child.Pid);
 					if (child.ParentPid <= 4) break;
 					ProcEntry parent = snapshot.Find(child.ParentPid);
-					// Capture enumerates the whole process table. An absent parent has
-					// exited; a newer birth proves PID reuse, not a live game ancestor.
+					// A missing parent in the complete snapshot has exited; a newer birth proves PID reuse.
 					if (parent == null || parent.Creation > child.Creation) break;
 					child = parent;
 				}
@@ -33,8 +32,7 @@ namespace PaviseApp
 			return result;
 		}
 
-		// This is a session clock, independent of the first-boost timing log and
-		// optional GPU automation. Callers hold sync; foreground changes retain it.
+		// The session clock is independent of first-boost timing and GPU automation; callers hold sync across focus changes.
 		private bool AntiCheatContextStable(GameDetection detection, long now)
 		{
 			if (detection == null || now <= 0)

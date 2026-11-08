@@ -7,7 +7,6 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Uninstall-only migration. No detector, installer, capture, report or overlay remains.
     internal static class LegacyMonitoringCleanup
     {
         internal const string OwnershipKey = "RtssInstallationOwnerV1";

@@ -8,10 +8,13 @@ namespace PaviseApp
     {
         private sealed class CriticalRecoveryPhase
         {
-            internal int Failures;
+            internal int Failures, ClosureWaits;
             internal long Next, ExitProbe;
             internal bool Exited;
         }
+        // Cleanup waits observe helper exit before consuming the failure budget.
+        // The failure phase permits three attempts spaced 30 seconds apart.
+        private const int CriticalClosureWaitPolls = 15;
         private readonly Dictionary<object, CriticalRecoveryPhase> criticalRecoveryPhases = new Dictionary<object, CriticalRecoveryPhase>();
 
         private bool RestoreCriticalThreadsLocked()
@@ -20,7 +23,7 @@ namespace PaviseApp
             // Soft hints have no recovery debt and go first, whatever the hard binding does.
             string hints = criticalIdealHints.Release();
             if (hints.Length != 0) Logger.Info("THREAD soft placement released: " + hints);
-            object owner = (object)criticalSession ?? criticalPriorityReservation;
+            object owner = (object)criticalSession ?? criticalPriorityReservation ?? CriticalCoreIsolationRecoveryOwner;
             if (owner == null)
             {
                 bool neutral = RestoreCriticalThreadsCore();
@@ -42,15 +45,24 @@ namespace PaviseApp
             bool restored = false;
             using (var child = new RecoveryAttemptTrace())
             {
+            criticalClosureObserveOnly = criticalHelperClosureWaiting && phase.ClosureWaits < CriticalClosureWaitPolls;
             try { restored = RestoreCriticalThreadsCore(); return restored; }
             finally
             {
-                if (restored || (criticalSession == null && criticalPriorityReservation == null && !criticalThreadResidue))
+                criticalClosureObserveOnly = false;
+                if (restored || (criticalSession == null && criticalPriorityReservation == null && CriticalCoreIsolationRecoveryOwner == null && !criticalThreadResidue))
                 {
                     criticalRecoveryPhases.Remove(owner);
                     if (!restored && criticalHistoricalDebt) RecoveryAttemptTrace.Exhausted(() => !criticalHistoricalDebt);
                 }
                 else if (child.Reported) criticalThreadResidue = true;
+                else if (criticalHelperClosureWaiting && phase.ClosureWaits < CriticalClosureWaitPolls)
+                {
+                    phase.ClosureWaits++;
+                    phase.Next = AutoCores.NowTicks + TimeSpan.FromSeconds(1).Ticks;
+                    criticalThreadResidue = true;
+                    RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
+                }
                 else
                 {
                     phase.Failures++;

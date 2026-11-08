@@ -533,8 +533,6 @@ namespace PaviseApp
             base.Dispose(disposing);
         }
 
-        // Draw deterministically in the product palette, including offscreen render checks.
-        // Continuous mode always reflects received bytes; marquee indicates work with no measurable total.
         private sealed class UpdateMeter : Control
         {
             private readonly System.Windows.Forms.Timer activity;

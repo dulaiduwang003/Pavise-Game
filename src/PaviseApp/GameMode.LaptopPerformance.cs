@@ -98,8 +98,7 @@ namespace PaviseApp
 
         private void BeginLaptopPerformanceSession()
         {
-            // Only the background worker touches WMI/backend state. A new game marks
-            // a reset; AC loss, policy toggles and power audits do not clear a yield.
+            // Only the worker accesses WMI/backend state; focus, power and policy changes do not reset a yield.
             Interlocked.Increment(ref laptopPerfSessionGeneration);
             Interlocked.Exchange(ref laptopPerfNextWork, 0L);
             if (LaptopPerformanceEnabled)

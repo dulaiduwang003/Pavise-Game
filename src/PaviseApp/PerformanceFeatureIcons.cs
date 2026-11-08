@@ -212,7 +212,6 @@ namespace PaviseApp
 			Add(dictionary, Kind.Visual, "MatchVisualEffectsV1");
 			Add(dictionary, Kind.Multimedia, "GmMmcss");
 			Add(dictionary, Kind.GpuPreference, "GpuPrefStageOn");
-			Add(dictionary, Kind.GpuEconomy, "AppGpuAutoV1");
 			Add(dictionary, Kind.Hags, "Hags");
 			Add(dictionary, Kind.Windowed, "WindowedOptimizations");
 			Add(dictionary, Kind.Vrr, "VariableRefreshRate");
@@ -751,7 +750,6 @@ namespace PaviseApp
 				Line(g, p, 18f, 9f, 22f, 13f);
 				break;
 			case Kind.EppYield:
-				// Processor power takes the lower lane, leaving the upper lane clear.
 				Chip(g, p, 4f, 5f, 12f, 12f);
 				Bolt(g, d, 8f, 8f, 4f, 6f);
 				Poly(g, p, 5f, 26f, 13f, 26f, 20f, 19f, 28f, 19f);
@@ -759,7 +757,6 @@ namespace PaviseApp
 				Arrow(g, d, 20f, 8f, 28f, 8f);
 				break;
 			case Kind.GpuClockLock:
-				// A high, flat clock trace and a closed padlock identify a fixed clock.
 				Gpu(g, p, 3f, 14f, 24f, 13f);
 				Poly(g, d, 4f, 10f, 7f, 10f, 10f, 5f, 16f, 5f);
 				Cut(g, p, 19f, 6f, 10f, 9f, 1.5f);
@@ -767,19 +764,16 @@ namespace PaviseApp
 				Line(g, p, 24f, 9f, 24f, 12f);
 				break;
 			case Kind.GpuPowerCeiling:
-				// The lightning bolt meets an explicit maximum-limit bar.
 				Gpu(g, p, 3f, 14f, 24f, 13f);
 				Poly(g, p, 5f, 8f, 5f, 4f, 27f, 4f, 27f, 8f);
 				Bolt(g, p, 12f, 8f, 10f, 17f);
 				break;
 			case Kind.AudioBuffer:
-				// Waveform above a narrow buffer span, rather than a generic speaker.
 				Poly(g, p, 3f, 13f, 7f, 13f, 10f, 5f, 14f, 21f, 18f, 7f, 22f, 17f, 25f, 13f, 29f, 13f);
 				Poly(g, d, 11f, 24f, 11f, 28f, 21f, 28f, 21f, 24f);
 				Line(g, p, 14f, 25f, 18f, 25f);
 				break;
             case Kind.FileFilterReduction:
-                // A document passes through a filter, with a separate bypass lane.
                 Poly(g, p, 4f, 3f, 14f, 3f, 19f, 8f, 19f, 16f);
                 Poly(g, p, 4f, 3f, 4f, 20f, 11f, 20f);
                 Poly(g, d, 14f, 3f, 14f, 8f, 19f, 8f);
@@ -801,7 +795,6 @@ namespace PaviseApp
                 Line(g, p, 15f, 29f, 29f, 3f);
                 break;
 			case Kind.CpuIdlePolicy:
-				// A sleeping processor and three selector positions represent idle policy.
 				Chip(g, p, 5f, 6f, 17f, 20f);
 				Crescent(g, p, 13f, 15f, 5f);
 				Line(g, d, 28f, 7f, 28f, 25f);

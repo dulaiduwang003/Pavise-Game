@@ -36,6 +36,8 @@ namespace PaviseApp
 
 			internal bool PresenterOnly;
 
+			internal bool FixedThreadSet;
+
 			internal volatile bool Invalid;
 
 			internal FrameCaptureIssue Fault;
@@ -157,21 +159,24 @@ namespace PaviseApp
 								{
 									break;
 								}
-								int num3 = Marshal.ReadInt32(r.UserData);
 								int num4 = running[num2];
-								if (num4 != num3 && Sample.Threads.ContainsKey(num3) && Sample.Threads.ContainsKey(num4) && AdmitRelevantEvent())
+								// Nonzero entries were admitted by CSwitch from this capture's fixed thread set.
+								if (FixedThreadSet && num4 == 0) break;
+								int num3 = Marshal.ReadInt32(r.UserData);
+								if (num4 != num3 && Sample.Threads.ContainsKey(num3) && (FixedThreadSet || Sample.Threads.ContainsKey(num4)) && AdmitRelevantEvent())
 								{
 									long key = ((long)num3 << 32) | (uint)num4;
-									if (Edges[num].Count >= 2048 && !Edges[num].ContainsKey(key))
+									Dictionary<long, int> edges = Edges[num];
+									int value;
+									bool known = edges.TryGetValue(key, out value);
+									if (edges.Count >= 2048 && !known)
 									{
 										Fault = FrameCaptureIssue.EdgeBudget;
 										Invalid = true;
 									}
 									else
 									{
-										int value;
-										Edges[num].TryGetValue(key, out value);
-										Edges[num][key] = value + 1;
+										edges[key] = value + 1;
 									}
 								}
 								break;
@@ -271,17 +276,22 @@ namespace PaviseApp
 			return result;
 		}
 
-		private static Dictionary<int, int> ForPresenter(Dictionary<long, int> edges, int presenter)
+		private static int DominantWorker(Dictionary<long, int> edges, int presenter)
 		{
-			Dictionary<int, int> dictionary = new Dictionary<int, int>();
+			int total = 0, best = 0, maximum = 0;
 			foreach (KeyValuePair<long, int> edge in edges)
 			{
 				if ((int)(edge.Key >> 32) == presenter)
 				{
-					dictionary[(int)edge.Key] = edge.Value;
+					total += edge.Value;
+					if (edge.Value > maximum)
+					{
+						maximum = edge.Value;
+						best = (int)edge.Key;
+					}
 				}
 			}
-			return dictionary;
+			return maximum >= 12 && (double)maximum >= (double)total * 0.75 ? best : 0;
 		}
 
 		internal static int SelectWorker(Evidence evidence, int presenter)
@@ -290,8 +300,8 @@ namespace PaviseApp
 			{
 				return 0;
 			}
-			int num = Dominant(ForPresenter(evidence.Edges[0], presenter), 12, 0.75);
-			int num2 = Dominant(ForPresenter(evidence.Edges[1], presenter), 12, 0.75);
+			int num = DominantWorker(evidence.Edges[0], presenter);
+			int num2 = DominantWorker(evidence.Edges[1], presenter);
 			if (num == 0 || num != num2)
 			{
 				return 0;
@@ -428,6 +438,7 @@ namespace PaviseApp
 						}
 					}
 				}
+				evidence2.FixedThreadSet = !presenterOnly;
 				evidence2.FlagsName = Marshal.StringToHGlobalUni("Flags");
 				evidence2.Begin = Stopwatch.GetTimestamp();
 				evidence2.Half = evidence2.Begin + Stopwatch.Frequency * 8 / 5;

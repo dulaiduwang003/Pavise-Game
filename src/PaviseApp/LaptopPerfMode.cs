@@ -316,8 +316,7 @@ namespace PaviseApp
 		private static bool ReadMode(Vendor vendor, out int mode)
 		{
 			mode = -1;
-			// ASUS DSTS is a capability response on models such as GX531, not a
-			// current profile. Never use it to own a mode or settle a legacy receipt.
+			// ASUS DSTS reports capabilities, not the current profile or legacy restore state.
 			if (vendor == Vendor.Asus) return false;
 			try
 			{
@@ -394,8 +393,7 @@ namespace PaviseApp
 
 		internal static bool VerifyReadback(Func<int> read, int expected, Action pause)
 		{
-			// Some Lenovo firmware acknowledges before SmartFan reports the new
-			// state. Poll briefly without issuing a second firmware write.
+			// Lenovo firmware can acknowledge before SmartFan updates; poll without a second firmware write.
 			Stopwatch watch = Stopwatch.StartNew();
 			for (int attempt = 0; attempt < 8; attempt++)
 			{
