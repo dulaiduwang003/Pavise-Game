@@ -12,11 +12,11 @@ namespace PaviseApp
 	{
 		private sealed class CoreLayers : IDisposable
 		{
-			internal Bitmap Static;
+			internal Bitmap StaticLayer;
 
-			internal Bitmap Foreground;
+			internal Bitmap ForegroundLayer;
 
-			internal Bitmap Hub;
+			internal Bitmap HubLayer;
 
 			internal Color Accent;
 
@@ -37,7 +37,7 @@ namespace PaviseApp
 
 			internal bool Matches(int width, int height, Color accent, Color accent2, Color canvasAccent, bool backdrop, Size sceneSize, Point sceneOffset, PerformancePreset artwork)
 			{
-				if (Static != null && Static.Width == width && Static.Height == height && Accent == accent && Accent2 == accent2 && Backdrop == backdrop && Light == Theme.LightMode && CanvasAccent == canvasAccent && SceneSize == sceneSize)
+				if (StaticLayer != null && StaticLayer.Width == width && StaticLayer.Height == height && Accent == accent && Accent2 == accent2 && Backdrop == backdrop && Light == Theme.LightMode && CanvasAccent == canvasAccent && SceneSize == sceneSize)
 				{
 					return SceneOffset == sceneOffset && Artwork == artwork;
 				}
@@ -46,20 +46,20 @@ namespace PaviseApp
 
 			public void Dispose()
 			{
-				if (Static != null)
+				if (StaticLayer != null)
 				{
-					Static.Dispose();
-					Static = null;
+					StaticLayer.Dispose();
+					StaticLayer = null;
 				}
-				if (Foreground != null)
+				if (ForegroundLayer != null)
 				{
-					Foreground.Dispose();
-					Foreground = null;
+					ForegroundLayer.Dispose();
+					ForegroundLayer = null;
 				}
-				if (Hub != null)
+				if (HubLayer != null)
 				{
-					Hub.Dispose();
-					Hub = null;
+					HubLayer.Dispose();
+					HubLayer = null;
 				}
 			}
 		}
@@ -76,8 +76,8 @@ namespace PaviseApp
 			{
 				get
 				{
-					float num = 340f / (340f - Z);
-					return new PointF(X * num, Y * num);
+					float perspectiveScale = 340f / (340f - Z);
+					return new PointF(X * perspectiveScale, Y * perspectiveScale);
 				}
 			}
 		}
@@ -176,8 +176,8 @@ namespace PaviseApp
 		{
 			get
 			{
-				float num = ((!immersive) ? 0.00312f : ((artworkMode == PerformancePreset.Competitive) ? 0.004f : ((artworkMode == PerformancePreset.Handheld) ? 0.0037f : ((artworkMode == PerformancePreset.Extreme) ? 0.00365f : 0.0035f))));
-				return (float)Math.Min(base.Width, base.Height) * num;
+				float scaleRatio = ((!immersive) ? 0.00312f : ((artworkMode == PerformancePreset.Competitive) ? 0.004f : ((artworkMode == PerformancePreset.Handheld) ? 0.0037f : ((artworkMode == PerformancePreset.Extreme) ? 0.00365f : 0.0035f))));
+				return (float)Math.Min(base.Width, base.Height) * scaleRatio;
 			}
 		}
 
@@ -191,8 +191,8 @@ namespace PaviseApp
 
 		private static PointF OrbitPoint(float rx, float ry, double degrees)
 		{
-			double num = degrees * Math.PI / 180.0;
-			return new PointF(rx * (float)Math.Cos(num), ry * (float)Math.Sin(num));
+			double radians = degrees * Math.PI / 180.0;
+			return new PointF(rx * (float)Math.Cos(radians), ry * (float)Math.Sin(radians));
 		}
 
 		private static void DrawOrbitFlow(Graphics g, float rx, float ry, double angle, Color c, float power, bool front)
@@ -201,14 +201,14 @@ namespace PaviseApp
 			{
 				LineCap startCap = (pen.EndCap = LineCap.Round);
 				pen.StartCap = startCap;
-				for (int num = 23; num >= 0; num--)
+				for (int trailIndex = 23; trailIndex >= 0; trailIndex--)
 				{
-					double num2 = angle - (double)(num * 2);
-					if (Math.Sin((num2 - 1.0) * Math.PI / 180.0) >= 0.0 == front)
+					double trailAngle = angle - (double)(trailIndex * 2);
+					if (Math.Sin((trailAngle - 1.0) * Math.PI / 180.0) >= 0.0 == front)
 					{
-						float num3 = 1f - (float)num / 24f;
-						pen.Color = Col.Alpha(c, (int)(185f * num3 * num3 * power));
-						g.DrawLine(pen, OrbitPoint(rx, ry, num2 - 2.0), OrbitPoint(rx, ry, num2));
+						float trailStrength = 1f - (float)trailIndex / 24f;
+						pen.Color = Col.Alpha(c, (int)(185f * trailStrength * trailStrength * power));
+						g.DrawLine(pen, OrbitPoint(rx, ry, trailAngle - 2.0), OrbitPoint(rx, ry, trailAngle));
 					}
 				}
 			}
@@ -229,21 +229,21 @@ namespace PaviseApp
 
 		private static float CompetitiveEase(double value)
 		{
-			double num = Math.Max(0.0, Math.Min(1.0, value));
-			return (float)(num * num * num * (num * (num * 6.0 - 15.0) + 10.0));
+			double progress = Math.Max(0.0, Math.Min(1.0, value));
+			return (float)(progress * progress * progress * (progress * (progress * 6.0 - 15.0) + 10.0));
 		}
 
 		private static PointF CompetitiveGaze(double seconds)
 		{
-			double num = seconds % 9.8;
+			double cycleTime = seconds % 9.8;
 			for (int i = 1; i < CompetitiveGazeTimes.Length; i++)
 			{
-				if (!(num > CompetitiveGazeTimes[i]))
+				if (!(cycleTime > CompetitiveGazeTimes[i]))
 				{
-					float num2 = CompetitiveEase((num - CompetitiveGazeTimes[i - 1]) / (CompetitiveGazeTimes[i] - CompetitiveGazeTimes[i - 1]));
+					float gazeProgress = CompetitiveEase((cycleTime - CompetitiveGazeTimes[i - 1]) / (CompetitiveGazeTimes[i] - CompetitiveGazeTimes[i - 1]));
 					PointF pointF = CompetitiveGazeTargets[i - 1];
 					PointF pointF2 = CompetitiveGazeTargets[i];
-					return new PointF(pointF.X + (pointF2.X - pointF.X) * num2, pointF.Y + (pointF2.Y - pointF.Y) * num2);
+					return new PointF(pointF.X + (pointF2.X - pointF.X) * gazeProgress, pointF.Y + (pointF2.Y - pointF.Y) * gazeProgress);
 				}
 			}
 			return PointF.Empty;
@@ -251,10 +251,10 @@ namespace PaviseApp
 
 		private static float CompetitiveEyeOpen(double seconds)
 		{
-			double num = seconds % 9.8;
-			double num2 = ((num >= 8.3) ? (num - 8.3) : (num - 3.0));
-			float num3 = ((num2 < 0.0 || num2 >= 0.38) ? 0f : ((num2 < 0.12) ? CompetitiveEase(num2 / 0.12) : ((num2 < 0.17) ? 1f : (1f - CompetitiveEase((num2 - 0.17) / 0.21)))));
-			return (1f - 0.94f * num3) * (1f - 0.035f * (float)Math.Pow(Math.Sin(seconds * Math.PI / 9.8), 2.0));
+			double cycleTime = seconds % 9.8;
+			double blinkElapsed = ((cycleTime >= 8.3) ? (cycleTime - 8.3) : (cycleTime - 3.0));
+			float blinkClosure = ((blinkElapsed < 0.0 || blinkElapsed >= 0.38) ? 0f : ((blinkElapsed < 0.12) ? CompetitiveEase(blinkElapsed / 0.12) : ((blinkElapsed < 0.17) ? 1f : (1f - CompetitiveEase((blinkElapsed - 0.17) / 0.21)))));
+			return (1f - 0.94f * blinkClosure) * (1f - 0.035f * (float)Math.Pow(Math.Sin(seconds * Math.PI / 9.8), 2.0));
 		}
 
 		private static void CompetitiveFacet(Graphics g, PointF[] points, Color bright, Color dark)
@@ -333,8 +333,8 @@ namespace PaviseApp
 		{
 			GraphicsState gstate = g.Save();
 			double seconds2 = (gameActive ? 0.0 : seconds);
-			float num = CompetitiveEyeOpen(seconds2);
-			using (Matrix matrix = new Matrix(1f, -0.24f * (1f - num), 0f, num, 0f, 0f))
+			float eyeOpenness = CompetitiveEyeOpen(seconds2);
+			using (Matrix matrix = new Matrix(1f, -0.24f * (1f - eyeOpenness), 0f, eyeOpenness, 0f, 0f))
 			{
 				g.MultiplyTransform(matrix);
 			}
@@ -378,8 +378,8 @@ namespace PaviseApp
 				PointF pointF = CompetitiveGaze(seconds2);
 				g.TranslateTransform(pointF.X, pointF.Y - pointF.X * 0.24f);
 				CompetitiveFacet(g, CompetitiveIris, Col.Lerp(c, Theme.Fg, 0.8f), c);
-				float num2 = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 2.5);
-				Plate(g, CompetitiveIris, Col.Lerp(c, Theme.Fg, 0.75f), (int)((30f + num2 * 90f) * power));
+				float eyePulse = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 2.5);
+				Plate(g, CompetitiveIris, Col.Lerp(c, Theme.Fg, 0.75f), (int)((30f + eyePulse * 90f) * power));
 			}
 			g.Restore(gstate2);
 			GlowLine(g, new PointF(-68f, 0f), new PointF(-26f, -32f), c, 0.6f);
@@ -390,8 +390,8 @@ namespace PaviseApp
 				g.DrawLine(pen, -46, -37, -32, -49);
 				g.DrawLine(pen, -32, -49, 18, -54);
 			}
-			float num3 = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 2.5);
-			using (Pen pen2 = new Pen(Col.Alpha(c, (int)((70f + 90f * num3) * power)), 0.85f))
+			float haloPulse = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 2.5);
+			using (Pen pen2 = new Pen(Col.Alpha(c, (int)((70f + 90f * haloPulse) * power)), 0.85f))
 			{
 				g.DrawLines(pen2, new PointF[3]
 				{
@@ -406,9 +406,9 @@ namespace PaviseApp
 				graphicsPath2.AddPolygon(CompetitiveCrown);
 				graphicsPath2.AddPolygon(CompetitiveBlade);
 				g.SetClip(graphicsPath2, CombineMode.Intersect);
-				double num4 = seconds / 3.6 % 1.0;
-				float num5 = -105f + (float)num4 * 210f;
-				RectangleF rect = new RectangleF(num5 - 20f, -65f, 40f, 130f);
+				double scanProgress = seconds / 3.6 % 1.0;
+				float scanPosition = -105f + (float)scanProgress * 210f;
+				RectangleF rect = new RectangleF(scanPosition - 20f, -65f, 40f, 130f);
 				Color c2 = Col.Lerp(c, Theme.Fg, 0.8f);
 				using (LinearGradientBrush linearGradientBrush = new LinearGradientBrush(rect, Color.Transparent, Color.Transparent, 0f))
 				{
@@ -417,7 +417,7 @@ namespace PaviseApp
 						Colors = new Color[3]
 						{
 							Col.Alpha(c2, 0),
-							Col.Alpha(c2, (int)(100.0 * Math.Sin(num4 * Math.PI) * (double)power)),
+							Col.Alpha(c2, (int)(100.0 * Math.Sin(scanProgress * Math.PI) * (double)power)),
 							Col.Alpha(c2, 0)
 						},
 						Positions = new float[3] { 0f, 0.5f, 1f }
@@ -431,12 +431,12 @@ namespace PaviseApp
 
 		private static PointF CompetitiveTrack(double phase)
 		{
-			double num = (phase % 1.0 + 1.0) % 1.0 * 6.0;
-			int num2 = (int)num;
-			float num3 = (float)(num - (double)num2);
-			PointF pointF = Polar(92f, -90 + num2 * 60);
-			PointF pointF2 = Polar(92f, -90 + (num2 + 1) * 60);
-			return new PointF(pointF.X + (pointF2.X - pointF.X) * num3, pointF.Y + (pointF2.Y - pointF.Y) * num3);
+			double trackPosition = (phase % 1.0 + 1.0) % 1.0 * 6.0;
+			int segmentIndex = (int)trackPosition;
+			float segmentProgress = (float)(trackPosition - (double)segmentIndex);
+			PointF pointF = Polar(92f, -90 + segmentIndex * 60);
+			PointF pointF2 = Polar(92f, -90 + (segmentIndex + 1) * 60);
+			return new PointF(pointF.X + (pointF2.X - pointF.X) * segmentProgress, pointF.Y + (pointF2.Y - pointF.Y) * segmentProgress);
 		}
 
 		private void DrawCompetitiveMotion(Graphics g, double seconds, Color c, float power, bool front)
@@ -447,13 +447,13 @@ namespace PaviseApp
 				g.RotateTransform((float)(seconds * 7.0));
 				for (int i = 0; i < 6; i++)
 				{
-					float num = -90 + i * 60;
+					float spokeAngle = -90 + i * 60;
 					PointF[] array = new PointF[4]
 					{
-						Polar(91f, num + 5f),
-						Polar(91f, num + 45f),
-						Polar(96f, num + 42f),
-						Polar(96f, num + 10f)
+						Polar(91f, spokeAngle + 5f),
+						Polar(91f, spokeAngle + 45f),
+						Polar(96f, spokeAngle + 42f),
+						Polar(96f, spokeAngle + 10f)
 					};
 					Plate(g, array, c, (int)(16f * power));
 					using (Pen pen = new Pen(Col.Alpha(c, (int)(75f * power)), 0.75f))
@@ -469,9 +469,9 @@ namespace PaviseApp
 					{
 						for (int k = 0; k < 28; k++)
 						{
-							double num2 = seconds / 10.0 + (double)j * 0.5 - (double)k * 0.003;
+							double trailPhase = seconds / 10.0 + (double)j * 0.5 - (double)k * 0.003;
 							pen2.Color = Col.Alpha(c, (int)(210.0 * Math.Pow(1f - (float)k / 28f, 2.0) * (double)power));
-							g.DrawLine(pen2, CompetitiveTrack(num2), CompetitiveTrack(num2 - 0.003));
+							g.DrawLine(pen2, CompetitiveTrack(trailPhase), CompetitiveTrack(trailPhase - 0.003));
 						}
 					}
 				}
@@ -635,9 +635,9 @@ namespace PaviseApp
 			if (!CoreMotionCatalog.IsNative(motion)) { RenderCustomMotion(g, seconds, motion); return; }
             artworkMode = motion == CoreMotionCatalog.CompetitiveNative ? PerformancePreset.Competitive : PerformancePreset.Standard;
 			Color baseAccent = previewAppearance ? Theme.ModeColor(mode) : Theme.Accent;
-			Color color = (guardEnabled ? baseAccent : Col.Lerp(Theme.Faint, baseAccent, 0.55f));
+			Color primaryAccent = (guardEnabled ? baseAccent : Col.Lerp(Theme.Faint, baseAccent, 0.55f));
 			Color accent = (guardEnabled ? (previewAppearance ? Theme.ModeColor2(mode) : Theme.Accent2) : Theme.Faint);
-			EnsureStaticLayer(color, accent);
+			EnsureStaticLayer(primaryAccent, accent);
 			if (Backdrop.AppliesTo(this))
 			{
 				Backdrop.Paint(g, this, base.ClientRectangle);
@@ -647,82 +647,82 @@ namespace PaviseApp
 			g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 			if (artworkMode == PerformancePreset.Standard)
 			{
-				GraphicsState gstate = BeginDesign(g);
-				DrawSmartMotion(g, seconds * (guardEnabled ? 1.0 : 0.35), color);
-				g.Restore(gstate);
+				GraphicsState smartState = BeginDesign(g);
+				DrawSmartMotion(g, seconds * (guardEnabled ? 1.0 : 0.35), primaryAccent);
+				g.Restore(smartState);
 				return;
 			}
-			GraphicsState gstate2 = BeginDesign(g);
-			double num = seconds * (guardEnabled ? 1.0 : 0.35);
-			DrawModeMotion(g, num, color);
-			g.Restore(gstate2);
-			float num2 = ((artworkMode == PerformancePreset.Handheld) ? ((float)Math.Sin(num * Math.PI / 3.0) * 2.2f * DesignScale) : 0f);
+			GraphicsState motionState = BeginDesign(g);
+			double animationTime = seconds * (guardEnabled ? 1.0 : 0.35);
+			DrawModeMotion(g, animationTime, primaryAccent);
+			g.Restore(motionState);
+			float hubBobOffset = ((artworkMode == PerformancePreset.Handheld) ? ((float)Math.Sin(animationTime * Math.PI / 3.0) * 2.2f * DesignScale) : 0f);
 			if (artworkMode == PerformancePreset.Handheld)
 			{
 				Rectangle rectangle = Rectangle.Ceiling(new RectangleF((float)base.Width * 0.5f - 83f * DesignScale, DesignCenterY - 42f * DesignScale, 166f * DesignScale, 87f * DesignScale));
 				g.InterpolationMode = InterpolationMode.Bilinear;
 				Rectangle source = rectangle;
 				source.Offset(-staticLayers.HubBounds.X, -staticLayers.HubBounds.Y);
-				DrawLayer(g, staticLayers.Hub, (transitionLayers == null) ? null : transitionLayers.Hub, new RectangleF(rectangle.X, (float)rectangle.Y + num2, rectangle.Width, rectangle.Height), source);
+				DrawLayer(g, staticLayers.HubLayer, (transitionLayers == null) ? null : transitionLayers.HubLayer, new RectangleF(rectangle.X, (float)rectangle.Y + hubBobOffset, rectangle.Width, rectangle.Height), source);
 			}
 			else
 			{
-				DrawLayerAt(g, staticLayers.Hub, (transitionLayers == null) ? null : transitionLayers.Hub, staticLayers.HubBounds.Location);
+				DrawLayerAt(g, staticLayers.HubLayer, (transitionLayers == null) ? null : transitionLayers.HubLayer, staticLayers.HubBounds.Location);
 			}
-			gstate2 = BeginDesign(g);
-			DrawFrontLight(g, num, color);
-			g.Restore(gstate2);
-			DrawLayer(g, staticLayers.Foreground, (transitionLayers == null) ? null : transitionLayers.Foreground);
+			motionState = BeginDesign(g);
+			DrawFrontLight(g, animationTime, primaryAccent);
+			g.Restore(motionState);
+			DrawLayer(g, staticLayers.ForegroundLayer, (transitionLayers == null) ? null : transitionLayers.ForegroundLayer);
 		}
 
 		private void EnsureStaticLayer(Color accent, Color accent2)
 		{
-			bool flag = Backdrop.AppliesTo(this);
+			bool usesBackdrop = Backdrop.AppliesTo(this);
 			if (base.Width <= 0 || base.Height <= 0)
 			{
 				return;
 			}
 			Size sceneSize = Size.Empty;
-			Point empty = Point.Empty;
-			if (immersive && !flag)
+			Point sceneOffset = Point.Empty;
+			if (immersive && !usesBackdrop)
 			{
 				Form form = FindForm();
 				sceneSize = ((form == null) ? base.ClientSize : form.ClientSize);
 				Control control = this;
 				while (control != null && !(control is Form))
 				{
-					empty.Offset(control.Left, control.Top);
+					sceneOffset.Offset(control.Left, control.Top);
 					control = control.Parent;
 				}
 			}
 			if (Theme.ThemeAnimating && !previewAppearance)
 			{
-				Color accent3 = (guardEnabled ? Theme.TransitionFromAccent : Col.Lerp(Theme.Faint, Theme.TransitionFromAccent, 0.55f));
-				Color accent4 = (guardEnabled ? Theme.TransitionFromAccent2 : Theme.Faint);
-				Color accent5 = (guardEnabled ? Theme.TransitionTargetAccent : Col.Lerp(Theme.Faint, Theme.TransitionTargetAccent, 0.55f));
-				Color accent6 = (guardEnabled ? Theme.TransitionTargetAccent2 : Theme.Faint);
-				if (staticLayers == null || !staticLayers.Matches(base.Width, base.Height, accent3, accent4, Theme.TransitionFromAccent, flag, sceneSize, empty, artworkMode))
+				Color fromAccent = (guardEnabled ? Theme.TransitionFromAccent : Col.Lerp(Theme.Faint, Theme.TransitionFromAccent, 0.55f));
+				Color fromSecondaryAccent = (guardEnabled ? Theme.TransitionFromAccent2 : Theme.Faint);
+				Color targetAccent = (guardEnabled ? Theme.TransitionTargetAccent : Col.Lerp(Theme.Faint, Theme.TransitionTargetAccent, 0.55f));
+				Color targetSecondaryAccent = (guardEnabled ? Theme.TransitionTargetAccent2 : Theme.Faint);
+				if (staticLayers == null || !staticLayers.Matches(base.Width, base.Height, fromAccent, fromSecondaryAccent, Theme.TransitionFromAccent, usesBackdrop, sceneSize, sceneOffset, artworkMode))
 				{
 					if (staticLayers != null)
 					{
 						staticLayers.Dispose();
 					}
-					staticLayers = BuildLayers(accent3, accent4, Theme.TransitionFromAccent, flag, sceneSize, empty);
+					staticLayers = BuildLayers(fromAccent, fromSecondaryAccent, Theme.TransitionFromAccent, usesBackdrop, sceneSize, sceneOffset);
 				}
-				if (transitionLayers == null || !transitionLayers.Matches(base.Width, base.Height, accent5, accent6, Theme.TransitionTargetAccent, flag, sceneSize, empty, artworkMode))
+				if (transitionLayers == null || !transitionLayers.Matches(base.Width, base.Height, targetAccent, targetSecondaryAccent, Theme.TransitionTargetAccent, usesBackdrop, sceneSize, sceneOffset, artworkMode))
 				{
 					if (transitionLayers != null)
 					{
 						transitionLayers.Dispose();
 					}
-					transitionLayers = BuildLayers(accent5, accent6, Theme.TransitionTargetAccent, flag, sceneSize, empty);
+					transitionLayers = BuildLayers(targetAccent, targetSecondaryAccent, Theme.TransitionTargetAccent, usesBackdrop, sceneSize, sceneOffset);
 				}
 				layerBlend = Theme.ThemeTransitionProgress;
 				layerBlendMatrix.Matrix33 = layerBlend;
 				layerBlendAttributes.SetColorMatrix(layerBlendMatrix);
 				return;
 			}
-			if (transitionLayers != null && transitionLayers.Matches(base.Width, base.Height, accent, accent2, Theme.Accent, flag, sceneSize, empty, artworkMode))
+			if (transitionLayers != null && transitionLayers.Matches(base.Width, base.Height, accent, accent2, Theme.Accent, usesBackdrop, sceneSize, sceneOffset, artworkMode))
 			{
 				if (staticLayers != null)
 				{
@@ -738,13 +738,13 @@ namespace PaviseApp
 					transitionLayers.Dispose();
 					transitionLayers = null;
 				}
-				if (staticLayers == null || !staticLayers.Matches(base.Width, base.Height, accent, accent2, Theme.Accent, flag, sceneSize, empty, artworkMode))
+				if (staticLayers == null || !staticLayers.Matches(base.Width, base.Height, accent, accent2, Theme.Accent, usesBackdrop, sceneSize, sceneOffset, artworkMode))
 				{
 					if (staticLayers != null)
 					{
 						staticLayers.Dispose();
 					}
-					staticLayers = BuildLayers(accent, accent2, Theme.Accent, flag, sceneSize, empty);
+					staticLayers = BuildLayers(accent, accent2, Theme.Accent, usesBackdrop, sceneSize, sceneOffset);
 				}
 			}
 			layerBlend = 0f;
@@ -752,112 +752,112 @@ namespace PaviseApp
 
 		private CoreLayers BuildLayers(Color accent, Color accent2, Color canvasAccent, bool backdrop, Size sceneSize, Point sceneOffset)
 		{
-			CoreLayers coreLayers = new CoreLayers();
-			coreLayers.Accent = accent;
-			coreLayers.Accent2 = accent2;
-			coreLayers.CanvasAccent = canvasAccent;
-			coreLayers.Backdrop = backdrop;
-			coreLayers.Light = Theme.LightMode;
-			coreLayers.SceneSize = sceneSize;
-			coreLayers.SceneOffset = sceneOffset;
-			coreLayers.Artwork = artworkMode;
-			CoreLayers coreLayers2 = coreLayers;
+			CoreLayers layerConfiguration = new CoreLayers();
+			layerConfiguration.Accent = accent;
+			layerConfiguration.Accent2 = accent2;
+			layerConfiguration.CanvasAccent = canvasAccent;
+			layerConfiguration.Backdrop = backdrop;
+			layerConfiguration.Light = Theme.LightMode;
+			layerConfiguration.SceneSize = sceneSize;
+			layerConfiguration.SceneOffset = sceneOffset;
+			layerConfiguration.Artwork = artworkMode;
+			CoreLayers layers = layerConfiguration;
 			try
 			{
-				coreLayers2.Static = new Bitmap(base.Width, base.Height, PixelFormat.Format32bppPArgb);
+				layers.StaticLayer = new Bitmap(base.Width, base.Height, PixelFormat.Format32bppPArgb);
 				if (artworkMode != PerformancePreset.Standard)
 				{
 					if (!immersive)
 					{
-						coreLayers2.Foreground = new Bitmap(base.Width, base.Height, PixelFormat.Format32bppPArgb);
+						layers.ForegroundLayer = new Bitmap(base.Width, base.Height, PixelFormat.Format32bppPArgb);
 					}
-					coreLayers2.HubBounds = HubCacheBounds();
-					coreLayers2.Hub = new Bitmap(coreLayers2.HubBounds.Width, coreLayers2.HubBounds.Height, PixelFormat.Format32bppPArgb);
+					layers.HubBounds = HubCacheBounds();
+					layers.HubLayer = new Bitmap(layers.HubBounds.Width, layers.HubBounds.Height, PixelFormat.Format32bppPArgb);
 				}
-				using (Graphics graphics = Graphics.FromImage(coreLayers2.Static))
+				using (Graphics surfaceGraphics = Graphics.FromImage(layers.StaticLayer))
 				{
-					graphics.Clear((immersive || backdrop) ? Color.Transparent : Theme.Bg);
-					graphics.SmoothingMode = SmoothingMode.AntiAlias;
-					graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+					surfaceGraphics.Clear((immersive || backdrop) ? Color.Transparent : Theme.Bg);
+					surfaceGraphics.SmoothingMode = SmoothingMode.AntiAlias;
+					surfaceGraphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 					Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
 					if (immersive)
 					{
 						if (!backdrop)
 						{
-							WorkspaceCanvasSurface.Paint(graphics, this, base.ClientRectangle, canvasAccent);
+							WorkspaceCanvasSurface.Paint(surfaceGraphics, this, base.ClientRectangle, canvasAccent);
 						}
-						DrawGrid(graphics);
+						DrawGrid(surfaceGraphics);
 					}
 					else
 					{
 						using (GraphicsPath graphicsPath = Theme.TechPath(rectangle, Theme.S(15)))
 						{
-							Color color = Backdrop.CardFill(this, Theme.LightMode ? Col.Lerp(Theme.Inset, accent, 0.055f) : Theme.Inset);
-							Color color2 = Backdrop.CardFill(this, Theme.LightMode ? Col.Lerp(Theme.Card, accent, 0.018f) : Theme.Card);
-							using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, color, color2, LinearGradientMode.ForwardDiagonal))
+							Color gradientStart = Backdrop.CardFill(this, Theme.LightMode ? Col.Lerp(Theme.Inset, accent, 0.055f) : Theme.Inset);
+							Color gradientEnd = Backdrop.CardFill(this, Theme.LightMode ? Col.Lerp(Theme.Card, accent, 0.018f) : Theme.Card);
+							using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, gradientStart, gradientEnd, LinearGradientMode.ForwardDiagonal))
 							{
-								graphics.FillPath(brush, graphicsPath);
+								surfaceGraphics.FillPath(brush, graphicsPath);
 							}
 							using (Pen pen = new Pen(Theme.Stroke))
 							{
-								graphics.DrawPath(pen, graphicsPath);
+								surfaceGraphics.DrawPath(pen, graphicsPath);
 							}
-							graphics.SetClip(graphicsPath);
-							DrawGrid(graphics);
-							graphics.ResetClip();
+							surfaceGraphics.SetClip(graphicsPath);
+							DrawGrid(surfaceGraphics);
+							surfaceGraphics.ResetClip();
 						}
 					}
 					if (artworkMode == PerformancePreset.Standard)
 					{
-						GraphicsState gstate = BeginDesign(graphics);
-						DrawSmartStructure(graphics, accent);
-						graphics.Restore(gstate);
+						GraphicsState gstate = BeginDesign(surfaceGraphics);
+						DrawSmartStructure(surfaceGraphics, accent);
+						surfaceGraphics.Restore(gstate);
 						if (!immersive)
 						{
-							DrawCoreLabels(graphics, (float)base.Width * 0.5f, DesignCenterY, accent);
-							DrawFrameDetails(graphics, accent);
+							DrawCoreLabels(surfaceGraphics, (float)base.Width * 0.5f, DesignCenterY, accent);
+							DrawFrameDetails(surfaceGraphics, accent);
 						}
 					}
 					else
 					{
-						GraphicsState gstate2 = BeginDesign(graphics);
-						DrawModeStructure(graphics, accent);
-						graphics.Restore(gstate2);
+						GraphicsState gstate2 = BeginDesign(surfaceGraphics);
+						DrawModeStructure(surfaceGraphics, accent);
+						surfaceGraphics.Restore(gstate2);
 					}
 				}
 				if (artworkMode == PerformancePreset.Standard)
 				{
-					return coreLayers2;
+					return layers;
 				}
-				using (Graphics graphics2 = Graphics.FromImage(coreLayers2.Hub))
+				using (Graphics hubGraphics = Graphics.FromImage(layers.HubLayer))
 				{
-					graphics2.Clear(Color.Transparent);
-					graphics2.SmoothingMode = SmoothingMode.AntiAlias;
-					graphics2.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-					graphics2.TranslateTransform(-coreLayers2.HubBounds.X, -coreLayers2.HubBounds.Y);
-					GraphicsState gstate3 = BeginDesign(graphics2);
-					DrawModeHub(graphics2, accent, accent2);
-					graphics2.Restore(gstate3);
+					hubGraphics.Clear(Color.Transparent);
+					hubGraphics.SmoothingMode = SmoothingMode.AntiAlias;
+					hubGraphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+					hubGraphics.TranslateTransform(-layers.HubBounds.X, -layers.HubBounds.Y);
+					GraphicsState gstate3 = BeginDesign(hubGraphics);
+					DrawModeHub(hubGraphics, accent, accent2);
+					hubGraphics.Restore(gstate3);
 				}
-				if (coreLayers2.Foreground != null)
+				if (layers.ForegroundLayer != null)
 				{
-					using (Graphics graphics3 = Graphics.FromImage(coreLayers2.Foreground))
+					using (Graphics foregroundGraphics = Graphics.FromImage(layers.ForegroundLayer))
 					{
-						graphics3.Clear(Color.Transparent);
-						graphics3.SmoothingMode = SmoothingMode.AntiAlias;
-						graphics3.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+						foregroundGraphics.Clear(Color.Transparent);
+						foregroundGraphics.SmoothingMode = SmoothingMode.AntiAlias;
+						foregroundGraphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 						if (!immersive)
 						{
-							DrawCoreLabels(graphics3, (float)base.Width * 0.5f, DesignCenterY, accent);
-							DrawFrameDetails(graphics3, accent);
+							DrawCoreLabels(foregroundGraphics, (float)base.Width * 0.5f, DesignCenterY, accent);
+							DrawFrameDetails(foregroundGraphics, accent);
 						}
 					}
 				}
-				return coreLayers2;
+				return layers;
 			}
 			catch
 			{
-				coreLayers2.Dispose();
+				layers.Dispose();
 				throw;
 			}
 		}
@@ -869,17 +869,17 @@ namespace PaviseApp
 
 		private void DrawStaticLayer(Graphics graphics)
 		{
-			Bitmap bitmap = ((transitionLayers == null) ? null : transitionLayers.Static);
+			Bitmap bitmap = ((transitionLayers == null) ? null : transitionLayers.StaticLayer);
 			if (staticLayers.Backdrop)
 			{
-				DrawLayer(graphics, staticLayers.Static, bitmap);
+				DrawLayer(graphics, staticLayers.StaticLayer, bitmap);
 				return;
 			}
 			CompositingMode compositingMode = graphics.CompositingMode;
 			try
 			{
 				graphics.CompositingMode = CompositingMode.SourceCopy;
-				graphics.DrawImageUnscaled((bitmap != null && layerBlend >= 1f) ? bitmap : staticLayers.Static, 0, 0);
+				graphics.DrawImageUnscaled((bitmap != null && layerBlend >= 1f) ? bitmap : staticLayers.StaticLayer, 0, 0);
 				if (bitmap != null && layerBlend > 0f && layerBlend < 1f)
 				{
 					graphics.CompositingMode = CompositingMode.SourceOver;
@@ -957,12 +957,12 @@ namespace PaviseApp
 		{
 			using (Pen pen = new Pen(Color.FromArgb(5, 170, 185, 205)))
 			{
-				int num = Math.Max(Theme.S(18), 18);
-				for (int i = num; i < base.Width; i += num)
+				int gridSpacing = Math.Max(Theme.S(18), 18);
+				for (int i = gridSpacing; i < base.Width; i += gridSpacing)
 				{
 					g.DrawLine(pen, i, 0, i, base.Height);
 				}
-				for (int j = num; j < base.Height; j += num)
+				for (int j = gridSpacing; j < base.Height; j += gridSpacing)
 				{
 					g.DrawLine(pen, 0, j, base.Width, j);
 				}
@@ -978,9 +978,9 @@ namespace PaviseApp
 		{
 			float designScale = DesignScale;
 			string text = (gameActive ? "ACTIVE" : (guardEnabled ? "STANDBY" : "OFFLINE"));
-			float num = ((artworkMode == PerformancePreset.Competitive || artworkMode == PerformancePreset.Standard) ? 106 : 50);
+			float labelOffset = ((artworkMode == PerformancePreset.Competitive || artworkMode == PerformancePreset.Standard) ? 106 : 50);
 			LabelText(g, ModeButton.ModeName(mode), Theme.UI(13f, true), Theme.Fg, new RectangleF(0f, base.Height - Theme.S(65), base.Width, Theme.S(25)));
-			LabelText(g, text, Theme.Mono(6f), gameActive ? Theme.Green : (guardEnabled ? accent : Theme.Faint), new RectangleF(cx - 42f * designScale, cy + num * designScale, 84f * designScale, 10f * designScale));
+			LabelText(g, text, Theme.Mono(6f), gameActive ? Theme.Green : (guardEnabled ? accent : Theme.Faint), new RectangleF(cx - 42f * designScale, cy + labelOffset * designScale, 84f * designScale, 10f * designScale));
 		}
 
 		private static void LabelText(Graphics g, string text, Font font, Color color, RectangleF box)
@@ -1027,8 +1027,8 @@ namespace PaviseApp
 
 		private static PointF Polar(float radius, double degrees)
 		{
-			double num = degrees * Math.PI / 180.0;
-			return new PointF(radius * (float)Math.Cos(num), radius * (float)Math.Sin(num));
+			double radians = degrees * Math.PI / 180.0;
+			return new PointF(radius * (float)Math.Cos(radians), radius * (float)Math.Sin(radians));
 		}
 
 		private static PointF[] Capsule(float x, float y, float w, float h, float cut)
@@ -1177,58 +1177,58 @@ namespace PaviseApp
 
 		private void DrawModeMotion(Graphics g, double seconds, Color c)
 		{
-			float num = (guardEnabled ? 1f : 0.38f);
+			float motionStrength = (guardEnabled ? 1f : 0.38f);
 			if (artworkMode == PerformancePreset.Extreme)
 			{
-				DrawExtremeMotion(g, seconds, c, num, false);
+				DrawExtremeMotion(g, seconds, c, motionStrength, false);
 				return;
 			}
 			if (artworkMode == PerformancePreset.Handheld)
 			{
 				GraphicsState gstate = g.Save();
 				g.RotateTransform(-22f);
-				DrawOrbitFlow(g, 117f, 70f, seconds * 45.0, c, num, false);
+				DrawOrbitFlow(g, 117f, 70f, seconds * 45.0, c, motionStrength, false);
 				g.Restore(gstate);
 				for (int i = 0; i < 12; i++)
 				{
-					float num2 = (float)((seconds / 3.0 + (double)i / 12.0) % 1.0);
-					float num3 = -60 + i * 11;
-					using (Pen pen = new Pen(Col.Alpha(c, (int)(65.0 * Math.Sin((double)num2 * Math.PI) * (double)num)), 0.8f))
+					float particleProgress = (float)((seconds / 3.0 + (double)i / 12.0) % 1.0);
+					float particleAngle = -60 + i * 11;
+					using (Pen pen = new Pen(Col.Alpha(c, (int)(65.0 * Math.Sin((double)particleProgress * Math.PI) * (double)motionStrength)), 0.8f))
 					{
-						g.DrawLine(pen, num3, 72f - num2 * 80f, num3, 65f - num2 * 80f);
+						g.DrawLine(pen, particleAngle, 72f - particleProgress * 80f, particleAngle, 65f - particleProgress * 80f);
 					}
 				}
-				float num4 = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 3.0);
-				using (Pen pen2 = new Pen(Col.Alpha(c, (int)((80f + 90f * num4) * num)), 1.6f))
+				float pulseStrength = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 3.0);
+				using (Pen pen2 = new Pen(Col.Alpha(c, (int)((80f + 90f * pulseStrength) * motionStrength)), 1.6f))
 				{
 					g.DrawArc(pen2, -79, 64, 158, 25, 15, 145);
 					return;
 				}
 			}
-			DrawCompetitiveMotion(g, seconds, c, num, false);
+			DrawCompetitiveMotion(g, seconds, c, motionStrength, false);
 		}
 
 		private void DrawFrontLight(Graphics g, double seconds, Color c)
 		{
-			float num = (guardEnabled ? 1f : 0.38f);
+			float lightStrength = (guardEnabled ? 1f : 0.38f);
 			if (artworkMode == PerformancePreset.Extreme)
 			{
-				DrawExtremeMotion(g, seconds, c, num, true);
+				DrawExtremeMotion(g, seconds, c, lightStrength, true);
 			}
 			else if (artworkMode == PerformancePreset.Handheld)
 			{
 				GraphicsState gstate = g.Save();
 				g.RotateTransform(-22f);
-				using (Pen pen = new Pen(Col.Alpha(c, (int)(80f * num)), 0.8f))
+				using (Pen pen = new Pen(Col.Alpha(c, (int)(80f * lightStrength)), 0.8f))
 				{
 					g.DrawArc(pen, -117, -70, 234, 140, 0, 180);
 				}
-				DrawOrbitFlow(g, 117f, 70f, seconds * 45.0, c, num, true);
+				DrawOrbitFlow(g, 117f, 70f, seconds * 45.0, c, lightStrength, true);
 				g.Restore(gstate);
 			}
 			else
 			{
-				DrawCompetitiveMotion(g, seconds, c, num, true);
+				DrawCompetitiveMotion(g, seconds, c, lightStrength, true);
 			}
 		}
 
@@ -1324,7 +1324,7 @@ namespace PaviseApp
 
 		private void DrawExtremeMotion(Graphics g, double seconds, Color c, float power, bool front)
 		{
-			Color color = Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.8f);
+			Color highlight = Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.8f);
 			for (int i = 0; i < 3; i++)
 			{
 				GraphicsState gstate = g.Save();
@@ -1334,17 +1334,17 @@ namespace PaviseApp
 			}
 			if (front)
 			{
-				float num = 0.55f + 0.45f * (float)Math.Sin(seconds * Math.PI);
-				GlowLine(g, new PointF(0f, -34f), new PointF(0f, 29f), color, (0.45f + num * 0.45f) * power);
+				float pulseStrength = 0.55f + 0.45f * (float)Math.Sin(seconds * Math.PI);
+				GlowLine(g, new PointF(0f, -34f), new PointF(0f, 29f), highlight, (0.45f + pulseStrength * 0.45f) * power);
 				for (int j = 0; j < 3; j++)
 				{
-					double num2 = (seconds / 2.4 + (double)j / 3.0) % 1.0;
-					float num3 = (float)Math.Pow(Math.Sin(num2 * Math.PI), 6.0) * power;
+					double waveProgress = (seconds / 2.4 + (double)j / 3.0) % 1.0;
+					float waveStrength = (float)Math.Pow(Math.Sin(waveProgress * Math.PI), 6.0) * power;
 					PointF a = Polar(42f, j * 120 - 90);
 					PointF pointF = Polar(56f, j * 120 - 79);
 					PointF b = Polar(70f, j * 120 - 90);
-					GlowLine(g, a, pointF, c, num3 * 0.65f);
-					GlowLine(g, pointF, b, color, num3 * 0.55f);
+					GlowLine(g, a, pointF, c, waveStrength * 0.65f);
+					GlowLine(g, pointF, b, highlight, waveStrength * 0.55f);
 				}
 			}
 		}
@@ -1357,13 +1357,13 @@ namespace PaviseApp
 			PointF pointF3 = new PointF(25f, -7f);
 			PointF pointF4 = new PointF(0f, 34f);
 			PointF pointF5 = new PointF(0f, 3f);
-			Color color = Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.68f);
+			Color highlight = Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.68f);
 			Plate(g, new PointF[3] { pointF, pointF2, pointF5 }, c, 95);
-			Plate(g, new PointF[3] { pointF, pointF3, pointF5 }, color, 65);
+			Plate(g, new PointF[3] { pointF, pointF3, pointF5 }, highlight, 65);
 			Plate(g, new PointF[3] { pointF2, pointF4, pointF5 }, c, 45);
 			Plate(g, new PointF[3] { pointF3, pointF4, pointF5 }, c, 110);
-			Edge(g, new PointF[4] { pointF, pointF3, pointF4, pointF2 }, color, 225, 1f);
-			GlowLine(g, pointF, pointF5, color, 0.9f);
+			Edge(g, new PointF[4] { pointF, pointF3, pointF4, pointF2 }, highlight, 225, 1f);
+			GlowLine(g, pointF, pointF5, highlight, 0.9f);
 			using (Pen pen = new Pen(Col.Alpha(c, 190), 0.8f))
 			{
 				g.DrawLine(pen, pointF2, pointF5);
@@ -1388,14 +1388,14 @@ namespace PaviseApp
 
 		private static SmartPoint SmartTransform(float x, float y, float z, double turn, double tilt, double roll)
 		{
-			double num = (double)x * Math.Cos(turn) + (double)z * Math.Sin(turn);
-			double num2 = (double)(0f - x) * Math.Sin(turn) + (double)z * Math.Cos(turn);
-			double num3 = (double)y * Math.Cos(tilt) - num2 * Math.Sin(tilt);
-			double num4 = (double)y * Math.Sin(tilt) + num2 * Math.Cos(tilt);
+			double turnedX = (double)x * Math.Cos(turn) + (double)z * Math.Sin(turn);
+			double turnedZ = (double)(0f - x) * Math.Sin(turn) + (double)z * Math.Cos(turn);
+			double tiltedY = (double)y * Math.Cos(tilt) - turnedZ * Math.Sin(tilt);
+			double tiltedZ = (double)y * Math.Sin(tilt) + turnedZ * Math.Cos(tilt);
 			SmartPoint result = default(SmartPoint);
-			result.X = (float)(num * Math.Cos(roll) - num3 * Math.Sin(roll));
-			result.Y = (float)(num * Math.Sin(roll) + num3 * Math.Cos(roll));
-			result.Z = (float)num4;
+			result.X = (float)(turnedX * Math.Cos(roll) - tiltedY * Math.Sin(roll));
+			result.Y = (float)(turnedX * Math.Sin(roll) + tiltedY * Math.Cos(roll));
+			result.Z = (float)tiltedZ;
 			return result;
 		}
 
@@ -1452,52 +1452,52 @@ namespace PaviseApp
 
 		private void DrawSmartMotion(Graphics g, double time, Color c)
 		{
-			float num = (guardEnabled ? 1f : 0.4f);
-			double num2 = 0.5 + 0.5 * Math.Sin(time * 1.6);
-			float num3 = (float)Math.Sin(time * 1.05) * 3f;
+			float motionStrength = (guardEnabled ? 1f : 0.4f);
+			double pulsePhase = 0.5 + 0.5 * Math.Sin(time * 1.6);
+			float verticalDrift = (float)Math.Sin(time * 1.05) * 3f;
 			for (int i = 0; i < 3; i++)
 			{
-				double num4 = time * 0.22 + (double)i / 3.0;
-				num4 -= Math.Floor(num4);
-				float num5 = 26f + (float)num4 * 60f;
-				using (Pen pen = new Pen(Col.Alpha(c, (int)(Math.Sin(num4 * Math.PI) * 60.0 * (double)num)), 0.8f))
+				double ringPhase = time * 0.22 + (double)i / 3.0;
+				ringPhase -= Math.Floor(ringPhase);
+				float ringRadius = 26f + (float)ringPhase * 60f;
+				using (Pen pen = new Pen(Col.Alpha(c, (int)(Math.Sin(ringPhase * Math.PI) * 60.0 * (double)motionStrength)), 0.8f))
 				{
-					g.DrawEllipse(pen, 0f - num5, 86f - num5 * 0.12f, num5 * 2f, num5 * 0.24f);
+					g.DrawEllipse(pen, 0f - ringRadius, 86f - ringRadius * 0.12f, ringRadius * 2f, ringRadius * 0.24f);
 				}
 			}
 			GraphicsState gstate = g.Save();
-			g.TranslateTransform(0f, num3 - 6f);
-			SmartOrbit(g, time, c, num, false, 0);
-			SmartOrbit(g, time, c, num, false, 1);
-			Halo(g, new RectangleF(-60f, -68f, 120f, 136f), c, (int)((42.0 + num2 * 17.0) * (double)num));
-			DrawSmartCrystal(g, time, c, num);
-			SmartOrbit(g, time, c, num, true, 0);
-			SmartOrbit(g, time, c, num, true, 1);
+			g.TranslateTransform(0f, verticalDrift - 6f);
+			SmartOrbit(g, time, c, motionStrength, false, 0);
+			SmartOrbit(g, time, c, motionStrength, false, 1);
+			Halo(g, new RectangleF(-60f, -68f, 120f, 136f), c, (int)((42.0 + pulsePhase * 17.0) * (double)motionStrength));
+			DrawSmartCrystal(g, time, c, motionStrength);
+			SmartOrbit(g, time, c, motionStrength, true, 0);
+			SmartOrbit(g, time, c, motionStrength, true, 1);
 			g.Restore(gstate);
 		}
 
 		private static SmartPoint SmartOrbitPoint(double angle, double time, int orbit)
 		{
-			float num = ((orbit == 0) ? 101 : 115);
-			return SmartTransform(num * (float)Math.Cos(angle), num * (float)Math.Sin(angle), 0f, 0.0, (orbit == 0) ? 0.91 : 1.13, ((orbit == 0) ? (-0.48) : 0.69) + Math.Sin(time * 0.19 + (double)orbit) * 0.09);
+			float orbitRadius = ((orbit == 0) ? 101 : 115);
+			return SmartTransform(orbitRadius * (float)Math.Cos(angle), orbitRadius * (float)Math.Sin(angle), 0f, 0.0, (orbit == 0) ? 0.91 : 1.13, ((orbit == 0) ? (-0.48) : 0.69) + Math.Sin(time * 0.19 + (double)orbit) * 0.09);
 		}
 
 		private static void SmartOrbit(Graphics g, double time, Color c, float power, bool front, int orbit)
 		{
-			Color color = ((orbit == 0) ? c : Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.28f));
-			double num = time * ((orbit == 0) ? 0.52 : (-0.38)) + (double)(orbit * 2);
+			Color orbitColor = ((orbit == 0) ? c : Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.28f));
+			double rotationPhase = time * ((orbit == 0) ? 0.52 : (-0.38)) + (double)(orbit * 2);
 			using (Pen pen = new Pen(c, 0.85f))
 			{
 				SmartPoint smartPoint = SmartOrbitPoint(0.0, time, orbit);
 				for (int i = 1; i <= 96; i++)
 				{
-					double num2 = (double)i * Math.PI * 2.0 / 96.0;
-					SmartPoint smartPoint2 = SmartOrbitPoint(num2, time, orbit);
+					double segmentAngle = (double)i * Math.PI * 2.0 / 96.0;
+					SmartPoint smartPoint2 = SmartOrbitPoint(segmentAngle, time, orbit);
 					if (smartPoint2.Z + smartPoint.Z >= 0f == front)
 					{
-						double num3 = 0.5 + 0.5 * Math.Cos(num2 - num);
-						int a = (int)((double)((float)(front ? 65 : 24) * power) + Math.Pow(num3, 18.0) * (double)(front ? 145 : 60) * (double)power);
-						pen.Color = Col.Alpha(color, a);
+						double segmentBrightness = 0.5 + 0.5 * Math.Cos(segmentAngle - rotationPhase);
+						int a = (int)((double)((float)(front ? 65 : 24) * power) + Math.Pow(segmentBrightness, 18.0) * (double)(front ? 145 : 60) * (double)power);
+						pen.Color = Col.Alpha(orbitColor, a);
 						g.DrawLine(pen, smartPoint.Screen, smartPoint2.Screen);
 					}
 					smartPoint = smartPoint2;
@@ -1505,12 +1505,12 @@ namespace PaviseApp
 			}
 			for (int j = 0; j < 3; j++)
 			{
-				SmartPoint smartPoint3 = SmartOrbitPoint(num + (double)j * Math.PI * 2.0 / 3.0, time, orbit);
-				float num4 = Math.Max(0f, Math.Min(1f, (smartPoint3.Z + 9f) / 18f));
-				float num5 = power * (front ? num4 : (1f - num4));
+				SmartPoint smartPoint3 = SmartOrbitPoint(rotationPhase + (double)j * Math.PI * 2.0 / 3.0, time, orbit);
+				float depthBlend = Math.Max(0f, Math.Min(1f, (smartPoint3.Z + 9f) / 18f));
+				float segmentStrength = power * (front ? depthBlend : (1f - depthBlend));
 				PointF screen = smartPoint3.Screen;
-				Halo(g, new RectangleF(screen.X - 7f, screen.Y - 7f, 14f, 14f), color, (int)(90f * num5));
-				using (Pen pen2 = new Pen(Col.Alpha(color, (int)(210f * num5)), 0.8f))
+				Halo(g, new RectangleF(screen.X - 7f, screen.Y - 7f, 14f, 14f), orbitColor, (int)(90f * segmentStrength));
+				using (Pen pen2 = new Pen(Col.Alpha(orbitColor, (int)(210f * segmentStrength)), 0.8f))
 				{
 					g.DrawPolygon(pen2, new PointF[4]
 					{
@@ -1520,7 +1520,7 @@ namespace PaviseApp
 						new PointF(screen.X - 3f, screen.Y)
 					});
 				}
-				using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.LightMode ? c : Color.White, (int)(235f * num5))))
+				using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.LightMode ? c : Color.White, (int)(235f * segmentStrength))))
 				{
 					g.FillEllipse(brush, screen.X - 1f, screen.Y - 1f, 2f, 2f);
 				}
@@ -1549,27 +1549,27 @@ namespace PaviseApp
 			}
 			Array.Sort(array2, (int a, int b) => depth[a].CompareTo(depth[b]));
 			int[] array3 = array2;
-			foreach (int num in array3)
+			foreach (int faceIndex in array3)
 			{
 				PointF[] points = new PointF[3]
 				{
-					array[num / 4].Screen,
-					array[2 + num % 4].Screen,
-					array[2 + (num + 1) % 4].Screen
+					array[faceIndex / 4].Screen,
+					array[2 + faceIndex % 4].Screen,
+					array[2 + (faceIndex + 1) % 4].Screen
 				};
-				float num2 = Math.Max(0.08f, Math.Min(0.88f, 0.25f + depth[num] / 100f + ((num % 4 == 1) ? 0.17f : 0f)));
-				Color color = Col.Lerp(Theme.Inset, c, num2 * power);
-				Color color2 = Col.Lerp(Theme.Card, c, (num2 + 0.17f) * power);
+				float faceBlend = Math.Max(0.08f, Math.Min(0.88f, 0.25f + depth[faceIndex] / 100f + ((faceIndex % 4 == 1) ? 0.17f : 0f)));
+				Color faceStart = Col.Lerp(Theme.Inset, c, faceBlend * power);
+				Color faceEnd = Col.Lerp(Theme.Card, c, (faceBlend + 0.17f) * power);
 				using (GraphicsPath graphicsPath = new GraphicsPath())
 				{
 					graphicsPath.AddPolygon(points);
-					using (LinearGradientBrush brush = new LinearGradientBrush(new RectangleF(-66f, -78f, 132f, 156f), color2, color, 62f))
+					using (LinearGradientBrush brush = new LinearGradientBrush(new RectangleF(-66f, -78f, 132f, 156f), faceEnd, faceStart, 62f))
 					{
 						g.FillPath(brush, graphicsPath);
 					}
 				}
-				float num3 = Math.Max(0f, Math.Min(1f, (depth[num] + 8f) / 16f));
-				using (Pen pen = new Pen(Col.Alpha(c, (int)((65f + num3 * 135f) * power)), 0.85f))
+				float frontBlend = Math.Max(0f, Math.Min(1f, (depth[faceIndex] + 8f) / 16f));
+				using (Pen pen = new Pen(Col.Alpha(c, (int)((65f + frontBlend * 135f) * power)), 0.85f))
 				{
 					g.DrawPolygon(pen, points);
 				}
@@ -1581,29 +1581,29 @@ namespace PaviseApp
 				{
 					continue;
 				}
-				float num4 = Math.Min(1f, smartPoint.Z / 8f);
+				float highlightDepth = Math.Min(1f, smartPoint.Z / 8f);
 				for (int l = 0; l < 2; l++)
 				{
 					PointF screen = array[l].Screen;
 					PointF screen2 = smartPoint.Screen;
-					using (Pen pen2 = new Pen(Col.Alpha(c, (int)(65f * power * num4)), 0.55f))
+					using (Pen pen2 = new Pen(Col.Alpha(c, (int)(65f * power * highlightDepth)), 0.55f))
 					{
 						g.DrawLine(pen2, screen.X * 0.76f, screen.Y * 0.76f, screen2.X * 0.76f, screen2.Y * 0.76f);
 					}
-					double num5 = time * 0.25 + (double)k * 0.25 + (double)l * 0.5;
-					num5 -= Math.Floor(num5);
-					float num6 = (float)num5;
-					PointF pointF = new PointF(screen.X + (screen2.X - screen.X) * num6, screen.Y + (screen2.Y - screen.Y) * num6);
-					float num7 = (float)Math.Sin(num5 * Math.PI) * power * num4;
-					Halo(g, new RectangleF(pointF.X - 5f, pointF.Y - 5f, 10f, 10f), c, (int)(130f * num7));
-					using (SolidBrush brush2 = new SolidBrush(Col.Alpha(Theme.LightMode ? c : Color.White, (int)(230f * num7))))
+					double sparkPhase = time * 0.25 + (double)k * 0.25 + (double)l * 0.5;
+					sparkPhase -= Math.Floor(sparkPhase);
+					float sparkProgress = (float)sparkPhase;
+					PointF pointF = new PointF(screen.X + (screen2.X - screen.X) * sparkProgress, screen.Y + (screen2.Y - screen.Y) * sparkProgress);
+					float sparkStrength = (float)Math.Sin(sparkPhase * Math.PI) * power * highlightDepth;
+					Halo(g, new RectangleF(pointF.X - 5f, pointF.Y - 5f, 10f, 10f), c, (int)(130f * sparkStrength));
+					using (SolidBrush brush2 = new SolidBrush(Col.Alpha(Theme.LightMode ? c : Color.White, (int)(230f * sparkStrength))))
 					{
 						g.FillEllipse(brush2, pointF.X - 1f, pointF.Y - 1f, 2f, 2f);
 					}
 				}
 			}
-			float num8 = 0.5f + 0.5f * (float)Math.Sin(time * 1.6);
-			Halo(g, new RectangleF(-25f, -30f, 50f, 60f), c, (int)((95f + 25f * num8) * power));
+			float pulseStrength = 0.5f + 0.5f * (float)Math.Sin(time * 1.6);
+			Halo(g, new RectangleF(-25f, -30f, 50f, 60f), c, (int)((95f + 25f * pulseStrength) * power));
 			PointF[] points2 = new PointF[4]
 			{
 				new PointF(0f, -16f),

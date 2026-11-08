@@ -186,7 +186,7 @@ namespace PaviseApp
 						if (receipt2.Tid == 0)
 						{
 							receipt2.Handle = intPtr;
-							goto IL_025a;
+							goto RestoreOwnedPlacement;
 						}
 						intPtr2 = Native.OpenThread(1051648, false, receipt2.Tid);
 						long exit;
@@ -206,17 +206,17 @@ namespace PaviseApp
 						else if (exit == 0 && creation == receipt2.ThreadCreation && Native.QueryThreadOwnerPid(intPtr2) == receipt2.Pid)
 						{
 							receipt2.Handle = intPtr2;
-							goto IL_025a;
+							goto RestoreOwnedPlacement;
 						}
 						continue;
 					}
-					goto end_IL_006b;
-					IL_025a:
+					goto FinishReceiptInspection;
+					RestoreOwnedPlacement:
 					if (!RestoreReceipt(receipt2))
 					{
 						list.Add(text);
 					}
-					end_IL_006b:;
+					FinishReceiptInspection:;
 				}
 				catch
 				{

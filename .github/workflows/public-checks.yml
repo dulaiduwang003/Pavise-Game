@@ -1,0 +1,25 @@
+name: Build and public regression checks
+
+on:
+  push:
+    branches: [pavise3x]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build without starting Pavise
+        shell: cmd
+        run: build.cmd -b prod
+      - name: Run isolated regression checks
+        shell: powershell
+        run: ./tools/Run-PublicTests.ps1

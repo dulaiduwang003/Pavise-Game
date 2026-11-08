@@ -587,7 +587,7 @@ namespace PaviseApp
 			string text = (string.IsNullOrEmpty(name) ? "" : name.Trim().ToLowerInvariant());
 			if (text.StartsWith("wegame", StringComparison.Ordinal))
 			{
-				goto IL_00fe;
+				goto MarkProcessAlive;
 			}
 			switch (text)
 			{
@@ -605,11 +605,11 @@ namespace PaviseApp
 			case "icreatelol":
 			case "tqmcenter":
 			case "yxqxunyou":
-				goto IL_00fe;
+				goto MarkProcessAlive;
 			}
 			int num = ((text == "sguard64") ? 1 : 0);
-			goto IL_00ff;
-			IL_00ff:
+			goto InspectProcessPath;
+			InspectProcessPath:
 			bool flag = (byte)num != 0;
 			string text2 = null;
 			if (!string.IsNullOrEmpty(path))
@@ -649,9 +649,9 @@ namespace PaviseApp
 				}
 			}
 			return false;
-			IL_00fe:
+			MarkProcessAlive:
 			num = 1;
-			goto IL_00ff;
+			goto InspectProcessPath;
 		}
 
 		private static string ProcessPath(Process process)

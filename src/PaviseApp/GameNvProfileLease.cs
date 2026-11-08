@@ -236,7 +236,7 @@ namespace PaviseApp
 				{
 					if (gameNvProfile2 == null)
 					{
-						goto IL_0271;
+						goto RejectChangedProfileScope;
 					}
 					num2 = gameNvProfile2.ScopeHash != gameNvProfile.ScopeHash;
 				}
@@ -257,8 +257,8 @@ namespace PaviseApp
 					GameNvPending state = ((dictionary2.Count > 0) ? GameNvPending.Integration : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.ProfileRule) ? GameNvPending.ProfileRule : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.UserPreference) ? GameNvPending.UserPreference : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.Observation) ? GameNvPending.Observation : (dictionary3.Values.Any((GameNvProfileDecision x) => x.State == GameNvPending.ApiEvidence) ? GameNvPending.ApiEvidence : GameNvPending.AlreadyMatches)))));
 					return Result(state, gameNvProfile, profileName, flag, dictionary2, dictionary, dictionary3, !mechanismOnly, plan.Hash);
 				}
-				goto IL_0271;
-				IL_0271:
+				goto RejectChangedProfileScope;
+				RejectChangedProfileScope:
 				throw new IOException("Game NVIDIA profile scope changed during inspection");
 			}
 			finally
@@ -728,7 +728,7 @@ namespace PaviseApp
 				{
 					throw new IOException("Borrowed game NVIDIA application scope changed");
 				}
-				goto IL_00ca;
+				goto ReturnOwnedProfile;
 			}
 			bool num;
 			if (gameNvProfile.Applications.Count != 0)
@@ -736,24 +736,24 @@ namespace PaviseApp
 				if (gameNvProfile.Applications.Count == 1)
 				{
 					num = !gameNvProfile.Applications[0].IsPlainExactPath(path);
-					goto IL_00bd;
+					goto CheckUnexpectedApplications;
 				}
 			}
 			else if (allowEmpty)
 			{
 				num = gameNvProfile.LocalSettingCount != 0;
-				goto IL_00bd;
+				goto CheckUnexpectedApplications;
 			}
-			goto IL_00bf;
-			IL_00bf:
+			goto RejectForeignProfileContents;
+			RejectForeignProfileContents:
 			throw new IOException("Owned game NVIDIA profile gained another application or unbound settings");
-			IL_00bd:
+			CheckUnexpectedApplications:
 			if (num)
 			{
-				goto IL_00bf;
+				goto RejectForeignProfileContents;
 			}
-			goto IL_00ca;
-			IL_00ca:
+			goto ReturnOwnedProfile;
+			ReturnOwnedProfile:
 			return gameNvProfile;
 		}
 

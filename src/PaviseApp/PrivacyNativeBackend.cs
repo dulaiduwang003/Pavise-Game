@@ -243,11 +243,11 @@ namespace PaviseApp
 						return true;
 					case 1:
 					case 2:
-						goto end_IL_0006;
+						goto FinishPrivacyWrite;
 					}
 				}
 				throw new InvalidOperationException("Organization membership could not be verified");
-				end_IL_0006:;
+				FinishPrivacyWrite:;
 			}
 			finally
 			{

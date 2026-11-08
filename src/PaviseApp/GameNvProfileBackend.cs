@@ -634,11 +634,11 @@ namespace PaviseApp
 						{
 							if (gameNvSetting2.UserOverride || gameNvSetting2.Resolved != baseline.Resolved)
 							{
-								goto IL_00ee;
+								goto RejectOverrideOwnershipChange;
 							}
 							if (!gameNvSetting2.Resolved)
 							{
-								goto IL_00f9;
+								goto ApplyOwnedOverride;
 							}
 							num = gameNvSetting2.Value != baseline.Value;
 						}
@@ -647,19 +647,19 @@ namespace PaviseApp
 					{
 						if (!gameNvSetting2.UserOverride)
 						{
-							goto IL_00ee;
+							goto RejectOverrideOwnershipChange;
 						}
 						num = gameNvSetting2.Value != expected;
 					}
 					if (num)
 					{
-						goto IL_00ee;
+						goto RejectOverrideOwnershipChange;
 					}
-					goto IL_00f9;
-					IL_00f9:
+					goto ApplyOwnedOverride;
+					ApplyOwnedOverride:
 					api.SetUserOverride(name, id, value);
 					return;
-					IL_00ee:
+					RejectOverrideOwnershipChange:
 					throw new IOException("Current native override is not the owned expected value");
 				}, delegate(IGameNvProfileWriter api)
 				{

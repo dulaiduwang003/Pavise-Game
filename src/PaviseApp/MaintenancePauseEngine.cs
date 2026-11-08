@@ -146,7 +146,7 @@ namespace PaviseApp
 					{
 						if (!value.Exists || value.Kind != RegistryValueKind.DWord || !(value.Value is int))
 						{
-							goto IL_0102;
+							goto RejectUnconfirmedService;
 						}
 						num = (int)value.Value == original;
 					}
@@ -158,8 +158,8 @@ namespace PaviseApp
 					{
 						return SaveLedger("");
 					}
-					goto IL_0102;
-					IL_0102:
+					goto RejectUnconfirmedService;
+					RejectUnconfirmedService:
 					return false;
 				}
 				catch

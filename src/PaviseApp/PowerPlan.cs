@@ -1383,7 +1383,7 @@ namespace PaviseApp
 				{
 					if (saved == Guid.Empty)
 					{
-						goto IL_0080;
+						goto RejectUnrecognizedPlan;
 					}
 					num = tuneState != TuneCode(aggressive);
 				}
@@ -1393,8 +1393,8 @@ namespace PaviseApp
 						return guid2.HasValue && guid2.Value == guid
 							&& (!targetOwned || guid == externalDriftAccepted || ManagedPresetIntact(guid, aggressive));
 				}
-				goto IL_0080;
-				IL_0080:
+				goto RejectUnrecognizedPlan;
+				RejectUnrecognizedPlan:
 				return false;
 			}
 		}

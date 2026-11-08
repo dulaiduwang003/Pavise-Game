@@ -208,13 +208,13 @@ namespace PaviseApp
 				{
 				case ManualMemoryStep.StandbyLists:
 					num2 = 4;
-					goto IL_00a9;
+					goto ApplyMemoryCommand;
 				case ManualMemoryStep.ModifiedPages:
 					num2 = 3;
-					goto IL_00a9;
+					goto ApplyMemoryCommand;
 				case ManualMemoryStep.WorkingSets:
 					num2 = 2;
-					goto IL_00a9;
+					goto ApplyMemoryCommand;
 				case ManualMemoryStep.FileCache:
 				{
 					UIntPtr uIntPtr = ((UIntPtr.Size == 8) ? new UIntPtr(ulong.MaxValue) : new UIntPtr(uint.MaxValue));
@@ -236,7 +236,7 @@ namespace PaviseApp
 					{
 						return -1073741811;
 					}
-					IL_00a9:
+					ApplyMemoryCommand:
 					command = num2;
 					return api.MemoryCommand(80, ref command, 4);
 				}

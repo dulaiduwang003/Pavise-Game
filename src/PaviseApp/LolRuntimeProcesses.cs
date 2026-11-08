@@ -556,7 +556,7 @@ namespace PaviseApp
 					}
 					catch
 					{
-						goto end_IL_0090;
+						goto FinishRuntimeCandidate;
 					}
 					intPtr = Native.OpenProcess(1052672, false, process2.Id);
 					int sessionId2;
@@ -583,7 +583,7 @@ namespace PaviseApp
 						list3.Add(creation);
 						list4.Add(text);
 					}
-					end_IL_0090:;
+					FinishRuntimeCandidate:;
 				}
 				catch
 				{

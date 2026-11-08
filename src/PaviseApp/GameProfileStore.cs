@@ -256,10 +256,10 @@ namespace PaviseApp
 								throw new ProfileCommitBusyException(ex);
 							}
 							Thread.Sleep(array[num]);
-							goto IL_00f6;
+							goto CountMatchingEntry;
 						}
 						break;
-						IL_00f6:
+						CountMatchingEntry:
 						num++;
 					}
 				}

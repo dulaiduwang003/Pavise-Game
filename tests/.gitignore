@@ -1,0 +1,5 @@
+artifacts/
+results/
+*.exe
+*.pdb
+__pycache__/

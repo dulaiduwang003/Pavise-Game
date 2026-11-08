@@ -286,12 +286,12 @@ namespace PaviseApp
 							{
 								current = null;
 							}
-							goto IL_02f4;
+							goto ReportCleanerFault;
 						}
 					}
 				}
 				continue;
-				IL_02f4:
+				ReportCleanerFault:
 				if (flag && onFault != null)
 				{
 					try

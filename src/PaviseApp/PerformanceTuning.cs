@@ -488,7 +488,7 @@ namespace PaviseApp
 					{
 						if (!(id == "EnvQuantumProfileV1") || !QuantumRecovery.HasLegacyRecords)
 						{
-							goto IL_01e0;
+							goto ReadRegistryTarget;
 						}
 						string text = Boot();
 						if (!BootSessionIdentity.Valid(text))
@@ -505,14 +505,14 @@ namespace PaviseApp
 						flag2 |= QuantumRecovery.LastWrote;
 						if (flag5)
 						{
-							goto IL_01e0;
+							goto ReadRegistryTarget;
 						}
 						ActionFailureStore.CancelApply(id, target);
 						Logger.Warn(id + " | " + QuantumRecovery.LastFailure);
 						flag = false;
 						flag4 = true;
-						goto end_IL_0127;
-						IL_0261:
+						goto FinishRegistryAction;
+						ApplyRegistryAction:
 						string text2;
 						if (!PerformanceActionBackend.Apply(id, target, text2))
 						{
@@ -524,13 +524,13 @@ namespace PaviseApp
 							flag = false;
 							flag3 = true;
 						}
-						goto end_IL_0127;
-						IL_01e0:
+						goto FinishRegistryAction;
+						ReadRegistryTarget:
 						string text3 = PerformanceActionBackend.Read(id, target);
 						text2 = PerformanceActionBackend.WantedRegistry(id, text3);
 						if (!(text2 != text3))
 						{
-							goto IL_0261;
+							goto ApplyRegistryAction;
 						}
 						string text4 = Boot();
 						if (!BootSessionIdentity.Valid(text4))
@@ -544,8 +544,8 @@ namespace PaviseApp
 							throw new InvalidOperationException("Boot journal persistence failed");
 						}
 						flag2 = true;
-						goto IL_0261;
-						end_IL_0127:;
+						goto ApplyRegistryAction;
+						FinishRegistryAction:;
 					}
 					catch (NotSupportedException)
 					{
@@ -1572,13 +1572,13 @@ namespace PaviseApp
 						{
 							if (text == "configured")
 							{
-								goto IL_0117;
+								goto SelectCompletedVbsState;
 							}
 							num = VbsTweak.OwnsState;
 						}
 						if (num)
 						{
-							goto IL_0117;
+							goto SelectCompletedVbsState;
 						}
 						state = (on ? "external" : "off");
 					}
@@ -1586,7 +1586,7 @@ namespace PaviseApp
 					{
 						state = "stopped";
 					}
-					goto IL_012d;
+					goto PublishVbsState;
 				}
 				string text2 = Boot();
 				if (!BootSessionIdentity.Valid(text2) || EnvironmentWorkClosing)
@@ -1619,10 +1619,10 @@ namespace PaviseApp
 				}
 				SetState("EnvVbsDisabledV1", (!flag2) ? "stopped" : (on ? "configured" : "restored"));
 				return flag2;
-				IL_0117:
+				SelectCompletedVbsState:
 				state = (on ? "configured" : "restored");
-				goto IL_012d;
-				IL_012d:
+				goto PublishVbsState;
+				PublishVbsState:
 				SetState("EnvVbsDisabledV1", (string)state);
 				return flag;
 			}

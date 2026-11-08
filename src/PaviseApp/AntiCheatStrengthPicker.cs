@@ -518,29 +518,11 @@ namespace PaviseApp
 		protected override bool IsInputKey(Keys keyData)
 		{
 			Keys keys = keyData & Keys.KeyCode;
-			bool num;
-			if (!Horizontal)
-			{
-				if (keys != Keys.Up)
-				{
-					num = keys == Keys.Down;
-					goto IL_002c;
-				}
-			}
-			else if (keys != Keys.Left)
-			{
-				num = keys == Keys.Right;
-				goto IL_002c;
-			}
-			goto IL_0048;
-			IL_002c:
-			if (!num && keys != Keys.Home && keys != Keys.End && !DsKeys.IsActivation(keys))
-			{
-				return base.IsInputKey(keyData);
-			}
-			goto IL_0048;
-			IL_0048:
-			return true;
+			bool arrowKey = Horizontal
+				? keys == Keys.Left || keys == Keys.Right
+				: keys == Keys.Up || keys == Keys.Down;
+			return arrowKey || keys == Keys.Home || keys == Keys.End
+				|| DsKeys.IsActivation(keys) || base.IsInputKey(keyData);
 		}
 
 		protected override void OnKeyDown(KeyEventArgs e)

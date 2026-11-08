@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -658,7 +658,7 @@ namespace PaviseApp
 					{
 						if (num != 1)
 						{
-							goto IL_00e5;
+							goto VerifyAppliedSnapshot;
 						}
 						num2 = value2 == ParseUInt(text);
 					}
@@ -671,8 +671,8 @@ namespace PaviseApp
 						list.Add(key);
 						continue;
 					}
-					goto IL_00e5;
-					IL_00e5:
+					goto VerifyAppliedSnapshot;
+					VerifyAppliedSnapshot:
 					if (!force && (key == "pstate" || key == "forcep2") && !TrySnapApplied(value, out applied))
 					{
 						flag2 = false;
@@ -687,7 +687,7 @@ namespace PaviseApp
 					{
 						if (num == 0)
 						{
-							goto IL_0145;
+							goto RecordRestoredSetting;
 						}
 						num3 = DeleteSettingOf(session, profile, key);
 					}
@@ -696,8 +696,8 @@ namespace PaviseApp
 						flag2 = false;
 						continue;
 					}
-					goto IL_0145;
-					IL_0145:
+					goto RecordRestoredSetting;
+					RecordRestoredSetting:
 					list.Add(key);
 					flag = true;
 				}
@@ -720,7 +720,7 @@ namespace PaviseApp
 						{
 							if (num4 != 1)
 							{
-								goto IL_0208;
+								goto RecordRestoreFailure;
 							}
 							num5 = value3 == ParseUInt(text2);
 						}
@@ -730,12 +730,12 @@ namespace PaviseApp
 						}
 						if (!num5)
 						{
-							goto IL_0208;
+							goto RecordRestoreFailure;
 						}
 					}
 					list2.Add(item);
 					continue;
-					IL_0208:
+					RecordRestoreFailure:
 					flag2 = false;
 				}
 				Dictionary<string, string> dictionary = new Dictionary<string, string>(snapshot, StringComparer.OrdinalIgnoreCase);
