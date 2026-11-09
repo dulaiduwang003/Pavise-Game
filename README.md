@@ -1,215 +1,217 @@
 <div align="center">
 
-<a href="https://pavise.club/">
-  <img src="docs/icon.png" width="88" height="88" alt="Pavise 标志">
+<a href="https://pavise.club/en/">
+  <img src="docs/icon.png" width="88" height="88" alt="Pavise logo">
 </a>
 
 # PAVISE
 
-### 把资源留给游戏。
+**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-**开源、免费的 Windows 游戏运行时资源编排器。**<br>
-以游戏时智能压制后台为核心，让现有硬件的性能更充分地用于当前对局。
+### Leave the resources to your game.
 
-**3.3.0.8 · 智能后台压制 · 逐游戏配置 · 动作与诊断日志**
+**A free, open-source runtime resource manager for Windows games.**<br>
+Intelligent background suppression during play helps your existing hardware devote more of its performance to the current game.
+
+**3.3.0.8 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/dulaiduwang003/Pavise-Game/total?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases)
 [![GitHub stars](https://img.shields.io/github/stars/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/stargazers)
 
-**[官网](https://pavise.club/) · [下载与更新](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) · [使用教程](https://pavise.club/docs/) · [问题反馈](https://github.com/dulaiduwang003/Pavise-Game/issues)**
+**[Website](https://pavise.club/en/) · [Download and updates](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) · [User guide](https://pavise.club/en/docs/v3/) · [Report an issue](https://github.com/dulaiduwang003/Pavise-Game/issues)**
 
 </div>
 
-> 本仓库提供 **Pavise 源码、构建方法与可运行的回归测试**。正式版下载和更新记录见[发布页](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)。
+> This repository provides **Pavise source code, build instructions, and runnable regression tests**. Official downloads and release notes are on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
 
-## 为什么是运行时资源编排器
+## Why runtime resource management?
 
-Pavise 是一款开源、免费的 **Windows 游戏运行时资源编排器**。它以对局期间的智能后台压制为核心，协同游戏核心调度、关键线程、性能优先级与对局电源，为当前游戏编排资源。它的定位是运行时资源编排，而非传统的“一键优化”。
+Pavise is a free, open-source **runtime resource manager for Windows games**. Built around intelligent background suppression during play, it coordinates CPU placement, critical threads, performance priorities, and power policies for the current game.
 
-**Pavise 关注游戏运行时，资源如何被分配和使用。** 系统整洁程度只是运行环境的一部分，游戏自身的线程分布、核心选择、电源状态与资源竞争同样值得管理。通过逐游戏配置、执行核验与退局恢复，Pavise 让玩家掌握专业的运行时调度能力，充分发挥现有硬件的游戏性能。
+**Pavise focuses on how resources are allocated and used while a game is running.** A clean Windows installation is only part of the picture: the game's thread placement, CPU selection, power state, and competition for resources also matter. Per-game configuration, execution checks, and restoration after play give players control over runtime scheduling and help them get more from the hardware they already own.
 
-我们希望，**让每一位玩家都能免费获得专业的 Windows 游戏运行时资源管理，享受更流畅、稳定的游戏体验。** 玩家不应为了用好自己已有的硬件，而不得不购买昂贵的优化软件。这也是 Pavise 坚持开源与免费的初衷：让实现可以被查阅，让技术能够被验证，让更好的游戏体验触手可及。
+Our goal is to make **professional Windows gaming resource management freely available to every player, for a smoother and more consistent gaming experience.** Players should not need expensive optimization software to make good use of their own hardware. That is why Pavise remains free and open source: its implementation can be read, its behavior can be checked, and its tools are available to everyone.
 
-## 核心：对局时智能压制后台
+## At its core: intelligent background suppression
 
-**Pavise 的核心，是在对局时智能压制后台、减少资源争抢，让硬件原有的性能更充分地释放到游戏中。** 浏览器、启动器、更新任务与其他后台活动会与游戏共享 CPU、磁盘和 GPU 等资源。Pavise 根据使用场景与负载管理符合条件的后台，为游戏争取更充裕、稳定的运行空间。
+**Pavise reduces competition from background activity during play, leaving more of your hardware's existing performance available to the game.** Browsers, launchers, updaters, and other background applications share CPU, disk, and GPU resources with your game. Pavise manages eligible background workloads according to the selected mode and current load.
 
-开启守护并识别到游戏后，Pavise 会按你的设置：
+Once the guard is enabled and a game is detected, Pavise can, according to your settings:
 
-- **让后台为游戏让路**：降低符合条件的后台 CPU、磁盘 I/O、内存与 GPU 调度优先级，并启用效率模式；配合核心调度，可将可管理的后台挪离游戏核心，减少干扰。
-- **随场景调整压制范围**：智能场景结合前台状态与持续负载动态调整；竞技场景在对局期间持续压制，切出游戏后仍保留治理。
-- **保护需要的程序**：游戏本体、必要依赖与白名单持续受保护；语音、直播等需要保留资源的软件可加入白名单。
-- **退局恢复、执行可查**：按已记录的原值恢复本局临时改动，通过概览统计、动作日志与诊断日志查看实际压制和恢复情况。
+- **Make background work yield:** lower eligible background CPU, disk I/O, memory-page, and GPU scheduling priorities and request efficiency mode. CPU placement can also move manageable background work away from game cores.
+- **Adjust to the situation:** Smart mode adapts to foreground status and sustained load; Competitive mode keeps background governance active throughout the game session, including when you switch away.
+- **Protect applications you need:** the game, essential dependencies, and allowlisted applications remain protected. Add voice chat, streaming tools, and other applications that need their resources to the whitelist.
+- **Restore changes and show what happened:** recorded temporary session changes are restored after play. Overview counters, action logs, and diagnostic logs show suppression and restoration results.
 
-CPU 调度、线程协同、电源与图形设置可与后台压制配合，把更多资源留给当前游戏；各模块均可按本机情况和逐游戏需求选择。
+CPU scheduling, thread coordination, power, and graphics settings can work alongside background suppression. Choose each module according to your PC and the needs of each game.
 
-## 使用前请了解
+## Before you start
 
-**软件绝大部分功能仅在对局中生效，退局后自动恢复；不支持退局恢复的功能均已单独标注。** 长期项目按各自说明关闭或恢复，部分操作需要重启。文件删除和缓存清理不属于可恢复的设置改动。
+**Most features apply only during a game session and restore their changes afterward. Features that do not restore on game exit are marked separately.** Persistent settings have their own disable or restore actions, and some require a restart. Deleted files and cleared caches are not reversible setting changes.
 
-**请勿与其他修改进程优先级或 CPU 亲和性的调度软件同时使用**，避免双方反复覆盖设置。
+**Avoid running Pavise alongside other tools that manage process priorities or CPU affinity**, as they may repeatedly overwrite each other's settings.
 
-**安全软件提示与白名单：** Pavise 按所选功能执行进程调度、服务管理、电源与注册表设置等敏感操作，部分功能会调用 PowerShell，可能触发杀毒或安全软件的检测、拦截或报毒。请从官方渠道获取程序，核验来源后将 Pavise 程序加入所用安全软件的白名单，避免相关操作被拦截。**如对这些操作有安全顾虑，请先查阅本仓库公开源码，也可自行构建，再决定是否运行和授予管理员权限。**
+**Security software and allowlisting:** depending on the features you select, Pavise changes process scheduling, services, power settings, and registry values; some actions use PowerShell. Security software may detect, block, or flag these operations. Download from an official source and verify its origin before adding Pavise to your security software's allowlist. **If you have concerns about these operations, review the public source code or build it yourself before deciding whether to run it with administrator privileges.**
 
-优化收益取决于游戏、硬件、驱动与后台负载，可在固定场景中对照观察流畅度、卡顿与操作响应。
+Results depend on the game, hardware, drivers, and background load. Compare smoothness, stutter, and responsiveness in a repeatable scene.
 
-## 下载与开始使用
+## Download and get started
 
-运行环境：**Windows 10 2004（19041）及以上、.NET Framework 4.7.2 或更高版本、管理员权限。** 各功能按本机能力提供。
+Requirements: **Windows 10 version 2004 (build 19041) or later, .NET Framework 4.7.2 or later, and administrator privileges.** Features are available according to the capabilities of your PC.
 
-| 下载方式 | 入口 |
+| Download option | Link |
 | --- | --- |
-| 官网完整 ZIP | [下载 3.3.0.8](https://pavise.club/downloads/Pavise-3.3.0.8.zip) |
-| GitHub | [发布与下载](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) |
-| 夸克网盘 | [备用下载，请核对版本](https://pan.quark.cn/s/3c8c986b3ea4) |
+| Complete ZIP from the website | [Download 3.3.0.8](https://pavise.club/downloads/Pavise-3.3.0.8.zip) |
+| GitHub | [Releases and downloads](https://github.com/dulaiduwang003/Pavise-Game/releases/latest) |
+| Quark cloud drive | [Alternative download; check the version](https://pan.quark.cn/s/3c8c986b3ea4) |
 
-1. 下载后放到固定目录；使用完整 ZIP 时，将随包文件一起解压。
-2. 以管理员权限启动，添加实际游戏 EXE，检查白名单及逐游戏设置。
-3. 选择所需功能或一键配置，确认智能／竞技场景与后台治理档位，开启守护后进入游戏。
-4. 退局后查看恢复状态；需要排查时，导出该会话的日志。
+1. Download to a permanent folder. If using the complete ZIP, extract all accompanying files together.
+2. Run as administrator, add the actual game EXE, and review the whitelist and per-game settings.
+3. Select the features or configuration preset you want, choose Smart or Competitive mode and the background governance level, then enable the guard and start your game.
+4. After leaving the game, check the restoration status. Export the session logs if troubleshooting is needed.
 
-升级前先退出游戏并正常退出旧版。软件内更新入口为 **关于 → 检查与更新**，更新保留个人数据。
+Before upgrading, exit the game and close the old version normally. In-app updates are under **About → Check for updates** and preserve your personal data.
 
-## 从源码构建
+## Build from source
 
-在 Windows 上使用系统自带的 .NET Framework C# 编译器和 Windows PowerShell，无需安装 Visual Studio。
+Use the .NET Framework C# compiler and Windows PowerShell included with Windows. Visual Studio is not required.
 
 ```bat
 build.cmd -b prod
 ```
 
-生成文件为 `build\Pavise.exe`，构建过程会核验实现和版本标识。
+The output is `build\Pavise.exe`. The build checks the implementation and version identity.
 
-## 测试与台架
+## Tests and benchmarks
 
-仓库提供当前源码上可运行的回归测试，覆盖智能后台治理、配置读取、会话与配置身份、有限重试、恢复所有权、计时器和安全软件检测等行为。统一运行入口：
+This repository includes runnable regression tests for the current source, covering intelligent background governance, configuration reads, session and configuration identity, bounded retries, restoration ownership, timers, and security software detection. Run the published suites with:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps1
 ```
 
-测试使用内存设置、受控接口或自有进程，窗口保持隐藏，不启动 Pavise 应用入口。独立 CPU／内存台架还提供能力探测、计量验证及受控的后台落核实验。运行环境、各套检查的隔离范围和测量边界见[测试说明](tests/README.md)，代码入口见[源码导读](docs/SOURCE-GUIDE.md)。
+Tests use in-memory settings, controlled interfaces, or their own processes. Test windows stay hidden, and the Pavise application entry point is not started. The independent CPU and memory benchmark also provides capability probes, measurement checks, and controlled background CPU-placement experiments. See the [test documentation](tests/README.md) for requirements, isolation boundaries, and measurement limits, and the [source guide](docs/SOURCE-GUIDE.md) for code entry points.
 
-## 全部功能清单
+## Complete feature list
 
-以下按当前 3.3.0.8 工作区列出功能名称及子项。各项按系统、硬件、驱动与游戏支持情况提供，操作说明见[使用教程](https://pavise.club/docs/v3/)。
+The following lists the features and sub-capabilities in the current 3.3.0.8 workspace. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
-| 分组 | 功能名称 |
+| Group | Features |
 | --- | --- |
-| **守护与概览** | 守护总开关、运行模式（智能模式／竞技模式）、一键配置（作者同款／极限配置／自定义）、游戏与守护状态、概览硬件／占用监控、CPU／GPU／内存实时读数、本局已压制进程统计、本局已暂停服务统计、杀毒兼容提示、兼容提示详情／不再显示。 |
-| **智能后台压制（核心）** | 后台治理、后台治理档位（关闭／正常／激进）、动态负载扩围、后台 CPU 优先级让路、后台磁盘 I/O 优先级让路、后台内存页面优先级让路、后台 GPU 让位、后台效率模式（EcoQoS）、后台动态提优限制、传递优化下载让路、游戏本体与必要依赖保护、切屏释放／保留治理、退局恢复。 |
-| **游戏库与识别** | 游戏本体识别、EXE 添加、运行中游戏添加、最小化／托盘游戏选择、Steam／WeGame 平台扫描、自动入库、忽略名单、撤销忽略、游戏搜索／平台筛选、游戏重命名、封面更换／还原、移除游戏。 |
-| **逐游戏调优** | 逐游戏配置、逐游戏强制触发优化、逐游戏家族后台治理、逐游戏禁用全屏优化、逐游戏 NVIDIA ReBAR、逐游戏核心范围调度、逐游戏核心隔离／核心选择、逐游戏渲染线程亲和性。 |
-| **核心调度与隔离** | 全部核心选择、P 核／E 核选择、CCD／缓存域选择、逻辑处理器手动选择、保留单线程／补全 SMT、后台整核避让、核心绑定证据查看、核心范围恢复。 |
-| **渲染线程与性能优先级** | 游戏线程提优、DirectX 画面提交线程识别、负载候选备用提优、渲染线程自动／手动选核、物理核避让、其他高负载线程理想处理器提示、性能优先级、游戏 CPU／磁盘 I/O／内存页面／GPU 优先级、线程分配恢复。 |
-| **对局电源** | 对局电源计划（不切换／由软件调度／指定已有计划）、托管电源、托管电源动态参数、AC／DC 参数分流、CPU 拓扑匹配、核心停泊／EPP／睿频协同、计划与参数核验、厂商冲突退让、原电源计划恢复、笔记本厂商性能模式、联想 SmartFan／ASUS G-Helper 联动、厂商原档恢复、掌机电源兼容、对局保持唤醒。 |
-| **计时器与多媒体** | 计时器节拍、全局计时器分辨率、对局高精度计时器请求、计时器读回／重启核验、计时器状态恢复、多媒体调度、桌面合成调度。 |
-| **内存与缓存** | 缓存预热、待机列表清理、默认／保守／激进／自定义清理策略、待机列表大小阈值、可用内存阈值、轮询间隔设置、手动极限清理、局内自身内存回收、可用物理内存变化显示、增加 NTFS 缓存池。 |
-| **图形与呈现** | 游戏高性能显卡预选、硬件加速 GPU 调度（HAGS）、窗口化游戏优化、Windows 可变刷新率补充、NVIDIA 窗口 VRR 补充、AMD Smart Access Memory、NVIDIA 驱动低延迟、NVIDIA 最高性能偏好、NVIDIA 着色器缓存容量、游戏 OpenGL 驱动多线程、关闭 Intel 图形续航限制、关闭后台游戏录制。 |
-| **系统性能** | 系统性能增强组合、VBS／Hypervisor 与内存完整性管理、关闭可配置 CPU 软件缓解、基础／扩展缓解范围、关闭 NTFS 最后访问时间更新、游戏保护开销减负（CFG／EAF／EAF+／IAF／CallerCheck／32 位 SimExec）、游戏盘短文件名减负、限制 Windows 应用后台任务、暂停 Windows 更新、暂停自动维护、游戏窗口切换英文输入／退局还原。 |
-| **前台时间片** | 前台时间片、恢复原配置、短可变 3:1／2:1／1:1、短固定 1:1、长可变 3:1／2:1／1:1、长固定 1:1、在线应用／恢复、重启状态提示。 |
-| **存储与音频** | 存储设备电源管理组合、存储设备保持唤醒、关闭存储控制器运行时电源管理、存储控制器禁用 D3Cold、交流供电下音频保持唤醒、存储／音频原值恢复。 |
-| **性能实验室** | EPP 功耗让路、GPU 频率锁最大值、GPU 功耗墙拉满、音频低缓冲流、CPU 空闲策略（跟随原策略／提高空闲门槛／禁止 CPU 空闲）、实验室状态核验与恢复。 |
-| **反作弊专项** | 反作弊专项压制、ACE／EasyAntiCheat／BattlEye 独立分组、反作弊强度（温和／均衡／强力）、反作弊弱核硬绑定、反作弊兼容名单／范围说明、兼容名单查看／清空、反作弊原值恢复、游戏与启动链依赖保护。 |
-| **白名单与依赖保护** | 运行进程／EXE／拖放添加、路径／家族保护、名称搜索、保护范围查看、白名单移除、平台／预设名单恢复、Windows 系统进程保护、网游加速器保护、显卡驱动与硬件功耗散热控制保护、反作弊与游戏保护组件保护、输入音频与外设驱动链保护、直播与推流工具保护。 |
-| **英雄联盟与 WeGame** | 英雄联盟独立增强、LOL 附属进程清理／恢复、立即清理／恢复、WeGame 界面组件处理、LOL 无头客户端、大厅界面恢复、LOL 插件检查／删除、附加层清理提示、登录链与更新依赖保护。 |
-| **系统体检** | 体检采样、取消体检、重新体检、问题结论、证据等级、操作入口、恢复记录、一键修复。 |
-| **体检·平台与 CPU** | 平台能力检测、显卡清单、NVIDIA 接口检测、CPU Sets 分区检测、EcoQoS 能力检测、Windows 版本检测、3D V-Cache 驱动检测、Windows 游戏模式检测、CPU／后台负载检测、CPU 拓扑检测、近七天降频事件、后台占用前三、灯效常驻软件检测。 |
-| **体检·内存** | 内存检测、内存容量／使用率／余量、页面文件检测、内存频率、条数／通道布局、内存压缩检测、页面合并检测。 |
-| **体检·显示与图形** | 显示／图形检测、主屏／多屏刷新率检测、NVIDIA 降频标记、ReBAR 检测、HAGS 检测、MPO 检测、Game DVR 检测。 |
-| **体检·电源与系统** | 电源／系统检测、当前电源计划检测、节能模式检测、供电状态检测、核心停泊检测、无输入降级检测、Ryzen 分支预测优化系统版本提示、前台时间片检查／入口。 |
-| **体检·输入链** | 输入链检测、键鼠连接类型／蓝牙检测、筛选键检测、辅助功能热键拦截检测、第三方 ThreadDpcEnable 改动检测。 |
-| **体检·存储与网络** | 存储／网络检测、DirectStorage／BypassIO 检测、直通阻塞原因、网络链路检测、默认路由检测、网络限流值检测。 |
-| **体检·显卡中断与驱动** | 显卡中断检查、ISR／DPC 落点与 P99 采样、显卡中断放置、重启后验证、退化回滚、恢复显卡中断配置、显卡 MSI 中断修复、恢复显卡 MSI 配置、驱动延迟诊断、驱动最大耗时／P99 与设备线索。 |
-| **体检·修复与恢复** | 内存压缩修复／恢复、网络限流值修复／恢复、有线优先修复／恢复、容错堆 FTH 修复／恢复。 |
-| **常规与维护** | 开机启动、入局自动隐藏、退出宽限（0／2／5／8／15／30 秒）、着色器缓存清理、重置设置、恢复记录保护、异常退出独立守护恢复。 |
-| **窗口与外观** | 语言切换、明暗主题、智能／竞技独立配色、背景浓度、视觉定制、模式动效独立选择、动效即时应用／恢复默认、窗口拖动／最小化、托盘打开／隐藏／退出。 |
-| **16 款界面动效** | 原生智能、天使圣翼、等离子风暴、时空震荡、星火凤凰、虚空巨龙、引力引擎、恶魔降临、反应堆阵列、虚空脉冲、光子织域、黑洞星空、超新星爆发、星环巨构、引力潮汐、原生竞技。 |
-| **日志与 AI 调优** | 写入日志开关、运行日志、动作／诊断日志切换、日志刷新／清空、选中复制、动作日志导出、诊断日志导出、导出位置／文件名选择、AI 调优提示词、本机硬件／全部功能／当前设置汇总、调优目标填写、提示词预览／复制。 |
-| **更新、关于与支持** | 版本信息、版本说明、官网／源码入口、捐赠支持、软件内更新、检查更新、签名校验、下载／校验／安装进度、取消检查／下载、失败回滚、手动更新、GitHub／夸克备用下载、更新保留个人数据、恢复并卸载。 |
+| **Guard and overview** | Guard switch; Smart and Competitive modes; configuration presets (Author's setup, Extreme, Custom); game and guard status; hardware and utilization monitoring; live CPU, GPU, and memory readings; session counters for suppressed processes and paused services; security software compatibility notice, details, and dismissal. |
+| **Intelligent background suppression (core)** | Background governance; Off, Normal, and Aggressive levels; dynamic scope expansion under load; background CPU, disk I/O, memory-page, and GPU priority reduction; efficiency mode (EcoQoS); limits on dynamic background thread boosts; Delivery Optimization download yielding; game and essential dependency protection; releasing or retaining governance when switching away; restoration after play. |
+| **Game library and detection** | Game executable detection; adding an EXE or a running game; selecting minimized or tray games; Steam and WeGame scanning; automatic library additions; ignore list and undo; search and platform filters; renaming games; replacing or restoring covers; removing games. |
+| **Per-game tuning** | Per-game configuration; forced optimization trigger; game-family background governance; disabling fullscreen optimizations; NVIDIA ReBAR; CPU-range scheduling; core selection and isolation; render-thread affinity. |
+| **CPU placement and isolation** | All-core, P-core, E-core, CCD, and cache-domain selection; manual logical processor selection; keeping one thread per core or including SMT siblings; whole-core background avoidance; CPU-binding evidence; CPU-range restoration. |
+| **Render threads and performance priorities** | Game-thread priority boosts; DirectX presentation-thread detection; load-based fallback candidate; automatic or manual render CPU selection; physical-core avoidance; ideal-processor hints for other busy threads; game CPU, disk I/O, memory-page, and GPU priorities; thread-placement restoration. |
+| **In-game power** | No-switch, managed, or existing power plans; managed power and dynamic parameters; separate AC and DC settings; CPU-topology matching; core parking, EPP, and boost coordination; plan and parameter verification; yielding to conflicting vendor controls; original-plan restoration; laptop vendor performance modes; Lenovo SmartFan and ASUS G-Helper integration; original vendor-mode restoration; handheld compatibility; keeping the system awake during play. |
+| **Timers and multimedia** | Timer tick configuration; global timer resolution; high-resolution timer requests during play; timer readback and post-restart verification; timer-state restoration; multimedia scheduling; desktop compositor scheduling. |
+| **Memory and caches** | Game-cache prewarming; standby-list cleanup; Default, Conservative, Aggressive, and Custom cleanup policies; list-size and available-memory thresholds; polling interval; manual deep cleanup; reclaiming Pavise's own memory during play; available physical-memory change display; larger NTFS cache pool. |
+| **Graphics and presentation** | High-performance GPU preference for games; hardware-accelerated GPU scheduling (HAGS); optimizations for windowed games; Windows and NVIDIA windowed VRR options; AMD Smart Access Memory; NVIDIA low-latency mode, maximum-performance preference, and shader-cache size; OpenGL driver threading; disabling Intel Endurance Gaming limits; disabling background game recording. |
+| **System performance** | System performance bundle; VBS, Hypervisor, and memory integrity management; disabling configurable CPU software mitigations with basic or extended scope; disabling NTFS last-access updates; game protection-overhead settings (CFG, EAF, EAF+, IAF, CallerCheck, and 32-bit SimExec); game-volume short-name settings; Windows app background limits; pausing Windows Update and automatic maintenance; English input-layout switching for games and restoration afterward. |
+| **Foreground time slices** | Original-setting restoration; short variable 3:1, 2:1, or 1:1; short fixed 1:1; long variable 3:1, 2:1, or 1:1; long fixed 1:1; applying or restoring without restarting; restart-status notice. |
+| **Storage and audio** | Storage power-management bundle; keeping storage awake; disabling storage-controller runtime power management and D3Cold; keeping audio awake on AC power; original storage and audio setting restoration. |
+| **Performance laboratory** | EPP power yielding; locking GPU clocks to the maximum; maximum GPU power limit; low-buffer audio stream; CPU idle policy (original policy, higher idle threshold, or idle disabled); laboratory-state checks and restoration. |
+| **Anti-cheat controls** | Dedicated ACE, EasyAntiCheat, and BattlEye groups; Gentle, Balanced, and Strong levels; hard affinity to auxiliary cores; compatibility list and scope explanation; viewing or clearing the list; original-setting restoration; game and launch-chain dependency protection. |
+| **Whitelist and dependency protection** | Adding running processes, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components, input/audio/peripheral driver chains, and streaming tools. |
+| **League of Legends and WeGame** | Dedicated LoL enhancements; auxiliary-process cleanup and restoration; immediate cleanup or restore; WeGame UI-component handling; headless LoL client; lobby restoration; LoL add-on inspection and removal; overlay-cleanup notices; login and update dependency protection. |
+| **System checkup** | Sampling; cancellation and rerun; findings, evidence levels, and action links; restoration records; one-click repair. |
+| **Checkup: platform and CPU** | Platform capabilities; GPU inventory; NVIDIA interfaces; CPU Sets partitioning; EcoQoS; Windows version; 3D V-Cache driver; Windows Game Mode; CPU and background load; CPU topology; throttling events from the last seven days; top three background consumers; resident RGB software detection. |
+| **Checkup: memory** | Capacity, usage, and remaining memory; page file; memory speed; module count and channel layout; memory compression; page combining. |
+| **Checkup: display and graphics** | Primary and multiple-display refresh rates; NVIDIA throttle flags; ReBAR; HAGS; MPO; Game DVR. |
+| **Checkup: power and system** | Current power plan; energy-saving mode; AC or battery status; core parking; input-idle demotion; Windows-version guidance for Ryzen branch-prediction improvements; foreground time-slice inspection and settings link. |
+| **Checkup: input chain** | Keyboard and mouse connection types, including Bluetooth; Filter Keys; accessibility hotkey interception; third-party ThreadDpcEnable changes. |
+| **Checkup: storage and network** | DirectStorage and BypassIO; reasons passthrough is blocked; network links; default route; network throttling settings. |
+| **Checkup: GPU interrupts and drivers** | GPU interrupt inspection; ISR/DPC placement and P99 sampling; interrupt placement; post-restart verification; rollback on regression; original GPU interrupt configuration restoration; separate GPU MSI repair and restoration; driver latency diagnosis; maximum duration, P99, and device clues. |
+| **Checkup: repair and restoration** | Memory compression; network throttling; wired-network preference; Fault Tolerant Heap (FTH); separate repair and restore actions. |
+| **General and maintenance** | Startup at sign-in; automatic hiding when a game begins; exit grace period (0, 2, 5, 8, 15, or 30 seconds); shader-cache cleanup; settings reset; restoration-record protection; independent recovery guard after an abnormal exit. |
+| **Window and appearance** | Language selection; light and dark themes; separate Smart and Competitive colors; background intensity; visual customization; separate mode effects; immediate effect application or defaults; window dragging and minimizing; tray open, hide, and exit. |
+| **16 interface effects** | Native Smart; Angel Wings; Plasma Storm; Spacetime Tremor; Spark Phoenix; Void Dragon; Gravity Engine; Demon Arrival; Reactor Array; Void Pulse; Photon Weave; Black Hole Starfield; Supernova Burst; Star Ring Megastructure; Gravitational Tide; Native Competitive. |
+| **Logs and AI tuning** | Log-writing switch; runtime logs; action and diagnostic views; refresh and clear; copying selections; separate action and diagnostic exports; output folder and filename selection; AI tuning prompt; hardware, full feature, and current-setting summary; tuning goals; prompt preview and copy. |
+| **Updates, about, and support** | Version information and release notes; website and source links; voluntary donations; in-app update checks; signature verification; download, verification, and installation progress; cancelling checks or downloads; rollback on failure; manual updates; GitHub and Quark alternatives; preserving personal data during upgrades; restore and uninstall. |
 
-## 后台压制：场景与强度
+## Background suppression: mode and intensity
 
-**使用场景与压制强度分开设置。** 智能／竞技决定何时、以什么范围管理后台；界面中的“后台治理”决定压制强度。游戏、白名单和必要依赖持续受保护。
+**Usage mode and suppression intensity are separate settings.** Smart and Competitive determine when and how broadly background work is managed. The Background governance setting controls suppression intensity. Games, allowlisted applications, and essential dependencies stay protected.
 
-| 场景 | 行为 |
+| Mode | Behavior |
 | --- | --- |
-| **智能** | 游戏在前台时按负载调整治理范围，持续高负载时扩大范围，负载回落后收回；切出游戏释放后台治理，对局电源与亲和性继续保留。 |
-| **竞技** | 对局期间持续治理，切出游戏保留治理与亲和性；普通软件切到前台不会因此自动豁免。 |
+| **Smart** | Adjusts governance scope according to load while the game is in the foreground, expands it under sustained high load, and contracts it as load falls. Switching away releases background governance while retaining the session's power plan and affinity. |
+| **Competitive** | Keeps governance and affinity active throughout the game session, including when you switch away. Bringing an ordinary application to the foreground does not automatically exempt it. |
 
-| 后台治理档位 | 行为 |
+| Background governance level | Behavior |
 | --- | --- |
-| **关闭** | 关闭普通后台压制。 |
-| **正常** | 降低符合条件的后台资源优先级并启用效率模式，让后台为游戏让路。 |
-| **激进** | 在正常档基础上，额外限制 Windows 对这些后台线程的临时提优。 |
+| **Off** | Disables ordinary background suppression. |
+| **Normal** | Lowers eligible background resource priorities and enables efficiency mode so background work yields to the game. |
+| **Aggressive** | Adds limits on temporary Windows priority boosts for those background threads. |
 
-**渲染选核联动核心调度范围。** 未开启核心调度时，手动选核显示全核心；选核与核心范围调整下局生效，关闭渲染亲和性立即撤回。核心避让针对可管理的线程与进程，系统中断和受保护进程仍受 Windows 管理。
+**Render CPU selection follows the game's scheduling range.** With CPU-range scheduling disabled, manual selection shows all cores. CPU selections and range changes apply in the next session; disabling render affinity withdraws it immediately. CPU avoidance applies to manageable threads and processes; system interrupts and protected processes remain under Windows control.
 
-## 配置预设与电源
+## Configuration presets and power
 
-作者同款／极限配置用于批量设置功能，与智能／竞技场景分别选择。两套预设的 **CPU 空闲策略均为“跟随原策略”，前台时间片均为“恢复原配置”**；更新软件保留已有选择，重新应用预设时才按新定义设置。
+Author's setup and Extreme are batches of feature settings, selected separately from Smart or Competitive mode. Both presets set **CPU idle policy to the original policy and foreground time slices to restore the original configuration**. Upgrading preserves existing choices; the new preset definitions apply when you reapply a preset.
 
-预设中的 VBS、CPU 软件缓解等长期项目会改变相应系统防护，请按功能说明和重启提示处理。
+Persistent preset settings such as VBS and CPU software mitigations change the corresponding system protections. Follow each feature's instructions and restart notices.
 
-智能与竞技共用电源参数。软件托管时，笔记本沿用旧策略，台式机按 CPU 匹配预置；高性能模板缺失时，可核验后复制原计划作为候选。识别到支持名单中的掌机时，由系统和厂商软件管理电源。3.3.0.8 改善厂商电源兼容，连续冲突时停止切换并恢复原计划。
+Smart and Competitive share power parameters. With managed power, laptops retain the previous policy and desktops use CPU-matched presets. If a high-performance template is missing, the original plan can be checked and copied as a candidate. Supported handhelds leave power management to Windows and vendor software. Version 3.3.0.8 improves vendor-power compatibility and stops switching, restoring the original plan, after repeated conflicts.
 
-## 3.3.0.8 更新重点
+## Highlights in 3.3.0.8
 
-- 渲染亲和性支持自动／手动选核与整核隔离，联动游戏核心范围。
-- 减少线程采样、核心隔离和后台治理开销，移除自动后台节能显卡登记。
-- 新增动作／诊断日志，查看压制、落核、清核及恢复结果，支持分别导出。
-- 优化鸣潮等游戏识别，减少内置网页被误认作游戏本体。
-- 改善笔记本厂商电源兼容，连续冲突时停止切换并恢复原计划。
-- 新增安全软件兼容提示，启动时检查一次，支持“不再显示”。
-- 修复退局恢复与电源状态误报，减少重复日志和无效警告。
+- Automatic or manual render-thread CPU selection and whole-core isolation, coordinated with the game's CPU range.
+- Reduced thread-sampling, core-isolation, and background-governance overhead; automatic background power-saving GPU registration removed.
+- Action and diagnostic logs for suppression, CPU placement, affinity removal, and restoration, with separate exports.
+- Improved detection for games such as Wuthering Waves, reducing false detection of embedded web content as the game executable.
+- Improved laptop vendor-power compatibility, restoring the original plan after repeated conflicts.
+- A security software compatibility notice, checked once at startup, with a dismissal option.
+- Fixes for session-exit restoration and misleading power status, with fewer duplicate logs and unnecessary warnings.
 
-完整变更见 [3.3.0.8 发布说明](https://github.com/dulaiduwang003/Pavise-Game/releases/tag/v3.3.0.8)，历史版本见[发布记录](https://github.com/dulaiduwang003/Pavise-Game/releases)。
+See the [3.3.0.8 release notes](https://github.com/dulaiduwang003/Pavise-Game/releases/tag/v3.3.0.8) for the complete changes, or browse [earlier releases](https://github.com/dulaiduwang003/Pavise-Game/releases).
 
-## 软件架构
+## Software architecture
 
-主程序负责配置、游戏识别与会话编排；CPU、后台、电源及系统模块按条件执行。独立守护承担必要的异常退出恢复，本地配置、恢复记录与日志分别保存。
-
-![Pavise 3.3.0.8 软件架构设计图（中文）](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Architecture-ZH.png)
-
-<details>
-<summary>English · Software Architecture Design</summary>
+The main application handles configuration, game detection, and session coordination. CPU, background, power, and system modules act when their conditions are met. An independent recovery guard handles required restoration after abnormal exits. Configuration, restoration records, and logs are stored locally and separately.
 
 ![Pavise 3.3.0.8 Software Architecture Design](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Architecture-EN.png)
 
+<details>
+<summary>简体中文 · 软件架构设计</summary>
+
+![Pavise 3.3.0.8 software architecture in Chinese](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Architecture-ZH.png)
+
 </details>
 
-## 游戏优化执行流程
+## Game optimization execution flow
 
-识别游戏 → 建立会话与配置快照 → 按条件执行 → 核验并记录 → 退局恢复。每项功能按自身开关与能力条件运行。
-
-![Pavise 3.3.0.8 游戏优化执行流程图（中文）](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Execution-ZH.png)
-
-<details>
-<summary>English · Game Optimization Execution Flow</summary>
+Detect the game → establish a session and configuration snapshot → apply eligible actions → verify and log → restore after play. Each feature follows its own switch and capability requirements.
 
 ![Pavise 3.3.0.8 Game Optimization Execution Flow](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Execution-EN.png)
 
+<details>
+<summary>简体中文 · 游戏优化执行流程</summary>
+
+![Pavise 3.3.0.8 game optimization flow in Chinese](docs/diagrams/3.3.0.8/Pavise-3.3.0.8-Execution-ZH.png)
+
 </details>
 
-采样、应用与恢复失败均有执行上限。恢复预算耗尽后停止主动尝试，保留恢复记录与持有资源，日志显示实际恢复状态。
+Sampling, application, and recovery failures all have execution limits. Once a recovery budget is exhausted, active attempts stop while restoration records and held resources are retained. Logs report the actual restoration state.
 
-## 反馈与支持
+## Feedback and support
 
-反馈请附上 **软件版本、Windows 版本、CPU／显卡、游戏名称、相关设置与复现步骤**。动作日志用于查看本局执行了什么，诊断日志用于提供技术细节。
+Include **the Pavise version, Windows version, CPU and GPU, game name, relevant settings, and reproduction steps** in a report. Action logs show what the session did; diagnostic logs provide technical details.
 
-若出现掉帧、卡顿或延迟，可先在相同场景中对照关闭 Pavise 前后的表现，并说明近期是否更新过系统、游戏或驱动。
+For frame drops, stutter, or latency, compare the same scene with and without Pavise, and mention recent Windows, game, or driver updates.
 
-[提交问题](https://github.com/dulaiduwang003/Pavise-Game/issues) · [使用教程](https://pavise.club/docs/) · [更新记录](https://pavise.club/changelog/)
+[Report an issue](https://github.com/dulaiduwang003/Pavise-Game/issues) · [User guide](https://pavise.club/en/docs/v3/) · [Changelog](https://pavise.club/en/changelog/)
 
-由 **[bdth](https://github.com/dulaiduwang003)** 创建并维护。Pavise 永久免费，打赏完全自愿。欢迎反馈问题和友好交流。
+Created and maintained by **[bdth](https://github.com/dulaiduwang003)**. Pavise remains free, and donations are entirely voluntary. Bug reports and constructive discussion are welcome.
 
-[自愿打赏](https://pavise.club/support/) · [作者主页](https://github.com/dulaiduwang003)
+[Support development](https://pavise.club/en/support/) · [Author's profile](https://github.com/dulaiduwang003)
 
 <p align="center">
-  <img src="docs/wechat.png" width="220" alt="作者微信打赏二维码">
-  <img src="docs/alipay.png" width="220" alt="作者支付宝打赏二维码">
+  <img src="docs/wechat.png" width="220" alt="Optional WeChat donation QR code">
+  <img src="docs/alipay.png" width="220" alt="Optional Alipay donation QR code">
 </p>
 
-项目使用 [GNU GPL v3](LICENSE)，分发与版权说明见 [NOTICE](NOTICE)。
+Licensed under [GNU GPL v3](LICENSE). See [NOTICE](NOTICE) for distribution and copyright information.

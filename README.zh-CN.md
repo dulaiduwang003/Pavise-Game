@@ -6,6 +6,8 @@
 
 # PAVISE
 
+[English](README.md) · **简体中文** · [日本語](README.ja.md)
+
 ### 把资源留给游戏。
 
 **开源、免费的 Windows 游戏运行时资源编排器。**<br>

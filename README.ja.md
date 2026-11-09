@@ -6,12 +6,12 @@
 
 # PAVISE
 
+[English](README.md) · [简体中文](README.zh-CN.md) · **日本語**
+
 ### リソースを、ゲームへ。
 
 **無料・オープンソースの Windows ゲーム実行時リソース管理ツール。**<br>
 ゲーム中のインテリジェントなバックグラウンド抑制を中心に、既存のハードウェアの性能をゲームに活かします。
-
-[简体中文](README.md) · **日本語**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -30,7 +30,7 @@ Pavise はゲーム実行時のリソース配分を管理します。バック�
 
 ## 現行版の機能
 
-3.3.0.8 の全機能名と子機能は[完全な機能一覧](README.md#全部功能清单)をご覧ください。各機能は OS、ハードウェア、ドライバー、ゲームの対応状況に応じて提供されます。
+3.3.0.8 の全機能名と子機能は[完全な機能一覧](README.md#complete-feature-list)をご覧ください。各機能は OS、ハードウェア、ドライバー、ゲームの対応状況に応じて提供されます。
 
 | 領域 | 主な機能名 |
 | --- | --- |
