@@ -98,6 +98,9 @@ Tests use in-memory settings, controlled interfaces, or their own processes. Tes
 
 The following lists the features and sub-capabilities in the current 3.3.0.8 workspace. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
+<details>
+<summary>View the complete feature list</summary>
+
 | Group | Features |
 | --- | --- |
 | **Guard and overview** | Guard switch; Smart and Competitive modes; configuration presets (Author's setup, Extreme, Custom); game and guard status; hardware and utilization monitoring; live CPU, GPU, and memory readings; session counters for suppressed processes and paused services; security software compatibility notice, details, and dismissal. |
@@ -131,6 +134,8 @@ The following lists the features and sub-capabilities in the current 3.3.0.8 wor
 | **16 interface effects** | Native Smart; Angel Wings; Plasma Storm; Spacetime Tremor; Spark Phoenix; Void Dragon; Gravity Engine; Demon Arrival; Reactor Array; Void Pulse; Photon Weave; Black Hole Starfield; Supernova Burst; Star Ring Megastructure; Gravitational Tide; Native Competitive. |
 | **Logs and AI tuning** | Log-writing switch; runtime logs; action and diagnostic views; refresh and clear; copying selections; separate action and diagnostic exports; output folder and filename selection; AI tuning prompt; hardware, full feature, and current-setting summary; tuning goals; prompt preview and copy. |
 | **Updates, about, and support** | Version information and release notes; website and source links; voluntary donations; in-app update checks; signature verification; download, verification, and installation progress; cancelling checks or downloads; rollback on failure; manual updates; GitHub and Quark alternatives; preserving personal data during upgrades; restore and uninstall. |
+
+</details>
 
 ## Background suppression: mode and intensity
 
