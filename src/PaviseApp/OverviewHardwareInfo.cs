@@ -1,27 +1,27 @@
 namespace PaviseApp
 {
-	internal sealed class OverviewHardwareInfo
-	{
-		internal string CpuName;
+    internal sealed class OverviewHardwareInfo
+    {
+        internal string CpuName;
 
-		internal string GpuName;
+        internal string GpuName;
 
-		internal string MemoryType;
+        internal string MemoryType;
 
-		internal int PhysicalCores;
+        internal int PhysicalCores;
 
-		internal int LogicalProcessors;
+        internal int LogicalProcessors;
 
-		internal int MemorySpeedMts;
+        internal int MemorySpeedMts;
 
-		internal int DisplayWidth;
+        internal int DisplayWidth;
 
-		internal int DisplayHeight;
+        internal int DisplayHeight;
 
-		internal int DisplayRefreshRate;
+        internal int DisplayRefreshRate;
 
-		internal ulong InstalledMemoryBytes;
+        internal ulong InstalledMemoryBytes;
 
-		internal ulong GpuMemoryBytes;
-	}
+        internal ulong GpuMemoryBytes;
+    }
 }

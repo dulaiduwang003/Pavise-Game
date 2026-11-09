@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+// 作者：bdth，2074055628@qq.com。
 using System;
 
 namespace PaviseApp
@@ -24,7 +24,7 @@ namespace PaviseApp
         public static PowerPlanProfile Resolve(bool amdCpu, bool hybrid, bool asymCache,
             string partitionTag)
         {
-            // Use automatic Thread Director scheduling to avoid forcing helper threads onto P-cores.
+            // 使用 Thread Director 自动调度，避免强制把辅助线程放到 P 核。
             if (hybrid && !amdCpu) return new PowerPlanProfile(Lang.T("t.powerplanprofile.1"), true, 5, false);
             if (hybrid) return new PowerPlanProfile(Lang.T("t.powerplanprofile.2"), true, 0, false);
             if (asymCache) return new PowerPlanProfile(Lang.T("t.powerplanprofile.3"), false, 0, true);

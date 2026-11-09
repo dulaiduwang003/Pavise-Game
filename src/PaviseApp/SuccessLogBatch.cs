@@ -96,7 +96,7 @@ namespace PaviseApp
 
         private static void Write(string message)
         {
-            // Bound log records without dropping target details or splitting UTF-16 surrogate pairs.
+            // 限制日志长度时，不能丢弃目标细节或拆开 UTF-16 代理项对。
             if (Encoding.UTF8.GetByteCount(message) <= MaximumMessageBytes) { Logger.Info(message); return; }
             for (int offset = 0, part = 1; offset < message.Length; part++)
             {
@@ -109,8 +109,8 @@ namespace PaviseApp
                     if (bytes + size > MaximumMessageBytes - 80) break;
                     bytes += size; end += pair ? 2 : 1;
                 }
-                Logger.Info("SUPPRESSION success continuation part=" + part.ToString(CultureInfo.InvariantCulture)
-                    + " data=" + message.Substring(offset, end - offset));
+                Logger.Info("后台压制成功，续批编号=" + part.ToString(CultureInfo.InvariantCulture)
+                    + " 数据=" + message.Substring(offset, end - offset));
                 offset = end;
             }
         }

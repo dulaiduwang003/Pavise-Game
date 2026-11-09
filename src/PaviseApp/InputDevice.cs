@@ -1,15 +1,15 @@
 namespace PaviseApp
 {
-	internal sealed class InputDevice
-	{
-		public string InstanceId;
+    internal sealed class InputDevice
+    {
+        public string InstanceId;
 
-		public string Name;
+        public string Name;
 
-		public bool IsMouse;
+        public bool IsMouse;
 
-		public InputTransport Transport;
+        public InputTransport Transport;
 
-		public string UsbHardwareKey;
-	}
+        public string UsbHardwareKey;
+    }
 }

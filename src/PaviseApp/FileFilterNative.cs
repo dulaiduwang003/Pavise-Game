@@ -10,8 +10,8 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Queries use fltlib's full-information layouts from fltUserStructures.h.
-    // Mutations deliberately use FilterAttach, not the debug-only FilterAttachAtAltitude.
+    // 查询使用 fltUserStructures.h 定义的 fltlib 完整信息布局；修改使用 FilterAttach，不使用仅用于调试的 FilterAttachAtAltitude。
+
     internal sealed class FileFilterNative : IFileFilterNative
     {
         private const int NoMoreItems = unchecked((int)0x80070103);
@@ -149,11 +149,11 @@ namespace PaviseApp
                             }
                         }
                         if(!matched)continue;
-                        // The exact registered name/altitude is required to restore using FilterAttach.
-                        // Looking at both registry layouts must not count one service twice.
+                        // 恢复时需向 FilterAttach 提供准确的注册名和高度；同时检查两种注册表布局时，同一服务只计一次。
+
                         string image=ResolveImage(Convert.ToString(service.GetValue("ImagePath")));
-                        // Wof commonly omits ImagePath. This fallback is diagnostic only:
-                        // Wof is always a protected system target and can never be detached here.
+                        // Wof 通常没有 ImagePath，此备用路径仅供诊断；Wof 始终是受保护系统目标，不能在此分离。
+
                         if(image.Length==0&&FileFilterCandidate.Eq(filter,"Wof")&&FileFilterCandidate.Eq(name,"Wof"))
                             image=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),@"System32\drivers\Wof.sys");
                         var info=new DriverInfo {Path=image};
@@ -164,16 +164,16 @@ namespace PaviseApp
             if(found.Count!=1)return new DriverInfo {Error="No unique registered driver instance owner"};
             DriverInfo value=found[0];
             if(value.Path.Length==0||!File.Exists(value.Path)) {value.Error="Driver image unavailable";return value;}
-            // File metadata is useful for read-only diagnostics even when trust verification
-            // fails. It never grants eligibility without the signed-image identity below.
+            // 信任验证失败时，文件元数据仍可供只读诊断；没有下方签名映像身份，不授予操作资格。
+
             var version=FileVersionInfo.GetVersionInfo(value.Path);
             value.Publisher=version.CompanyName??"";
             value.Description=version.FileDescription??"";
             string publisher,thumb;
             if(!Signature(value.Path,out publisher,out thumb)){value.Error="Driver signature or owner could not be verified";return value;}
-            // Modern third-party kernel images can carry Microsoft's hardware
-            // publisher signature. The signed image's vendor metadata identifies
-            // the component owner; the signing certificate stays in Identity.
+            // 现代第三方内核映像可能使用微软硬件发布者签名。组件归属由签名映像的厂商元数据确认，签名证书仍保存在 Identity 中。
+
+
             value.Publisher=string.IsNullOrWhiteSpace(version.CompanyName)?publisher:version.CompanyName;
             value.Description=version.FileDescription??"";
             using(var stream=new FileStream(value.Path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))

@@ -5,7 +5,7 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Identify handhelds from verified platform identity, not battery, standby or CPU branding.
+    // 根据已核验的平台身份识别掌机，不根据电池、待机能力或 CPU 品牌猜测。
     internal static class GamingHandheldDetection
     {
         internal sealed class HardwareIdentity
@@ -73,7 +73,7 @@ namespace PaviseApp
 
         internal static bool IsHandheld(string manufacturer, string model, string cpuName)
         {
-            // CPU branding requires a verified device family; generic laptops and mini PCs retain normal routing.
+            // 使用 CPU 品牌匹配前，必须确认设备系列；普通笔记本和迷你电脑保持正常路由。
             return MatchSystem(manufacturer, model).Length > 0;
         }
 
@@ -111,7 +111,7 @@ namespace PaviseApp
 
         private static string MatchBoard(string manufacturer, string productName)
         {
-            // Use documented matching DMI pairs; never combine system and board identities.
+            // 使用文档规定的同组 DMI 信息配对，不混用整机与主板身份。
             string maker = Normalize(manufacturer), product = Normalize(productName);
             if (maker == "AYANEO" && Has(product, @"^(?:AYANEO 2|AIR|AIR 1S|AIR PRO|AB05 MENDOCINO|FLIP|GEEK|KUN)$"))
                 return "ayaneo-handheld; board-identity";

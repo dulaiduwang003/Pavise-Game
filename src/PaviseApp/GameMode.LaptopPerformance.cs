@@ -35,7 +35,7 @@ namespace PaviseApp
             }
         }
 
-        // Called by the UI's background probe, never by a paint/sync getter.
+        // 仅由界面后台探测调用，不能从绘制或同步属性读取中调用。
         internal void RefreshLaptopPerformanceSupport()
         {
             if (stopping) return;
@@ -98,7 +98,7 @@ namespace PaviseApp
 
         private void BeginLaptopPerformanceSession()
         {
-            // Only the worker accesses WMI/backend state; focus, power and policy changes do not reset a yield.
+            // 仅工作线程访问 WMI 和后端状态；前台、电源和策略变化不能重置退让状态。
             Interlocked.Increment(ref laptopPerfSessionGeneration);
             Interlocked.Exchange(ref laptopPerfNextWork, 0L);
             if (LaptopPerformanceEnabled)
@@ -122,7 +122,7 @@ namespace PaviseApp
             if (stopping || Interlocked.CompareExchange(ref laptopPerfWorker, 1, 0) != 0) return;
             laptopPerfIdle.Reset();
             int generation = Volatile.Read(ref powerSessionGen);
-            // Bound pending checks as well as firmware audits; no every-loop WMI work.
+            // 待完成检查与固件核验均需有限执行，不能每轮循环都查询 WMI。
             Interlocked.Exchange(ref laptopPerfNextWork, now + TimeSpan.TicksPerSecond);
             bool queued = false;
             try

@@ -1,15 +1,15 @@
 namespace PaviseApp
 {
-	internal sealed class RenderAdapter
-	{
-		public int LuidHigh;
+    internal sealed class RenderAdapter
+    {
+        public int LuidHigh;
 
-		public uint LuidLow;
+        public uint LuidLow;
 
-		public uint PhysIndex;
+        public uint PhysIndex;
 
-		public double Util;
+        public double Util;
 
-		public bool Ambiguous;
-	}
+        public bool Ambiguous;
+    }
 }

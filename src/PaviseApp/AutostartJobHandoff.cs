@@ -9,8 +9,8 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // Task Scheduler jobs can prevent independent guardians from surviving the main process.
-    // A single WMI handoff verifies an elevated successor outside the job; failures retain this instance.
+    // 计划任务的 Job 可能让独立守护随主进程退出。通过一次 WMI 交接确认已提权的后继进程脱离 Job，失败时保留当前实例。
+
     internal static class AutostartJobHandoff
     {
         internal const string Argument = "--job-handoff";
@@ -50,7 +50,7 @@ namespace PaviseApp
             return rest;
         }
 
-        // Predecessor side. True means the successor took over and this process must exit.
+        // 前任进程一侧：返回 true 表示后继已接管，当前进程应退出。
         internal static bool TryHandOff(string[] args)
         {
             if (!Program.IsAutostart(args)) return false;
@@ -81,7 +81,7 @@ namespace PaviseApp
             }
         }
 
-        // Successor side. False means the predecessor kept running and this process must exit quietly.
+        // 后继进程一侧：返回 false 表示前任仍在运行，当前进程应静默退出。
         internal static bool Adopt(Incoming incoming)
         {
             Process predecessor = OpenPredecessor(incoming.PredecessorPid);
@@ -97,7 +97,7 @@ namespace PaviseApp
                 catch
                 {
                 }
-                // A live predecessor retains the session; proceed only after it has exited.
+                // 前任尚存活时仍持有会话，只在确认其退出后继续。
                 if (predecessor != null && !predecessor.WaitForExit(PredecessorExitWaitMs)) return false;
                 bool inJob;
                 bool known = IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out inJob);
@@ -115,8 +115,8 @@ namespace PaviseApp
         {
             string exchangeResult = Interlocked.Exchange(ref outcome, null);
             if (exchangeResult == null) return;
-            if (outcomeIsWarning) Logger.Warn("STARTUP event=job-handoff " + exchangeResult);
-            else Logger.Info("STARTUP event=job-handoff " + exchangeResult);
+            if (outcomeIsWarning) Logger.Warn("启动 事件=任务交接 " + exchangeResult);
+            else Logger.Info("启动 事件=任务交接 " + exchangeResult);
         }
 
         private static void Record(bool warning, string text)

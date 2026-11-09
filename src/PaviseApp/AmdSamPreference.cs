@@ -26,7 +26,7 @@ namespace PaviseApp
         private static bool MigrateLegacy()
         {
             if (!AmdSamTweak.EnabledByPavise || Settings.LoadStr(ReceiptKey, "").Length != 0) return true;
-            // The legacy marker was saved only after enabling from an observed Off state.
+            // 旧标记仅在确认原状态为关闭后再开启时保存。
             string receipt = GraphicsPreferenceTransaction.Receipt("0", "1", 'A');
             return Settings.SaveStrDurable(ReceiptKey, receipt) && Settings.LoadStr(ReceiptKey, "") == receipt;
         }

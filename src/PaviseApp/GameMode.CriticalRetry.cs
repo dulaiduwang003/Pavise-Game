@@ -12,17 +12,17 @@ namespace PaviseApp
             internal long Next, ExitProbe;
             internal bool Exited;
         }
-        // Cleanup waits observe helper exit before consuming the failure budget.
-        // The failure phase permits three attempts spaced 30 seconds apart.
+        // 清理等待先观察辅助进程退出，不消耗失败预算；失败阶段最多尝试三次，间隔 30 秒。
+
         private const int CriticalClosureWaitPolls = 15;
         private readonly Dictionary<object, CriticalRecoveryPhase> criticalRecoveryPhases = new Dictionary<object, CriticalRecoveryPhase>();
 
         private bool RestoreCriticalThreadsLocked()
         {
             if (!Monitor.IsEntered(criticalProcessGate)) throw new InvalidOperationException("Original placement gate required");
-            // Soft hints have no recovery debt and go first, whatever the hard binding does.
+            // 软提示没有恢复债务，无论硬绑定状态如何，都先处理软提示。
             string hints = criticalIdealHints.Release();
-            if (hints.Length != 0) Logger.Info("THREAD soft placement released: " + hints);
+            if (hints.Length != 0) Logger.Info("线程软放置已释放： " + hints);
             object owner = (object)criticalSession ?? criticalPriorityReservation ?? CriticalCoreIsolationRecoveryOwner;
             if (owner == null)
             {
@@ -69,8 +69,8 @@ namespace PaviseApp
                     phase.Next = AutoCores.NowTicks + TimeSpan.FromSeconds(30).Ticks;
                     criticalThreadResidue = true;
                     ReportCriticalRecovery(owner, phase);
-                    Logger.Warn("Critical thread recovery failure=" + phase.Failures + "/3"
-                        + (phase.Failures >= 3 ? "; active attempts stopped; original session/handles/journal retained" : "; recovery pending"));
+                    Logger.Warn("关键线程恢复失败=" + phase.Failures + "/3"
+                        + (phase.Failures >= 3 ? "；已停止主动尝试，保留原会话、句柄和日志" : "；等待恢复"));
                 }
                 if (!restored) child.Propagate();
             }

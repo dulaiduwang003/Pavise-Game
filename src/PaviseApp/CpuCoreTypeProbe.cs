@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Physical/sibling topology comes from Windows; probes report only the sampled logical CPU's type.
+    // 物理核及同核线程关系来自 Windows；探测只报告实际采样逻辑处理器的类型。
     internal static class CpuCoreTypeProbe
     {
         internal static int[] Read(ulong allMask)
@@ -38,7 +38,7 @@ namespace PaviseApp
             }
             try
             {
-                // The existing scheduling model only addresses group 0.
+                // 现有调度模型只管理处理器组 0。
                 SystemInfo system;
                 GetNativeSystemInfo(out system);
                 if (system.Architecture != 9)
@@ -59,11 +59,11 @@ namespace PaviseApp
                 worker.IsBackground = true;
                 worker.Name = "Pavise CPU type inspection";
                 worker.Start();
-                // Join the bounded worker before returning so executable memory and affinity restoration cannot outlive it.
+                // 返回前等待有界工作线程结束，确保可执行内存和亲和性恢复不会超出其生命周期。
                 while (true)
                 {
                     try { worker.Join(); break; }
-                    catch (ThreadInterruptedException) { /* Finish owned worker cleanup before returning. */ }
+                    catch (ThreadInterruptedException) { /* 返回前完成本方工作线程的清理。 */ }
                 }
             }
             catch (Exception) { result = Unknown(); outcome = "cpuid-worker-failed"; }
@@ -105,14 +105,14 @@ namespace PaviseApp
                         changed = true;
                         ProcessorNumber before, after;
                         GetCurrentProcessorNumberEx(out before);
-                        // Query leaf availability on the pinned processor as well.
+                        // 在已绑定的处理器上也核对 CPUID 叶是否可用。
                         identity = query(0, 0);
                         uint[] type = identity[0] >= 0x1a && IntelVendor(identity) ? query(0x1a, 0) : null;
                         GetCurrentProcessorNumberEx(out after);
                         if (before.Group != 0 || after.Group != 0 || before.Number != logical || after.Number != logical)
                         { reason = "cpuid-processor-mismatch"; return Unknown(); }
                         int value = type == null ? -1 : (int)(type[0] >> 24);
-                        // These are identifiers, not a numeric performance ranking.
+                        // 这些值是标识，不是性能高低的数值排名。
                         if (value != 0x20 && value != 0x40)
                         { reason = "cpuid-core-type-unavailable"; return Unknown(); }
                         result[logical] = value;
@@ -183,8 +183,8 @@ namespace PaviseApp
 
             internal CpuIdReader()
             {
-                // Windows x64 ABI: RCX=leaf, RDX=subleaf, R8=output; CPUID clobbers
-                // EAX/EBX/ECX/EDX. Preserve nonvolatile RBX; R8 keeps the output pointer.
+                // Windows x64 调用约定：RCX 为叶，RDX 为子叶，R8 为输出指针。CPUID 会覆盖 EAX、EBX、ECX、EDX，需保留非易失的 RBX，并用 R8 保存输出地址。
+
                 byte[] bytes = { 0x53, 0x8b, 0xc1, 0x8b, 0xca, 0x0f, 0xa2,
                     0x41, 0x89, 0x00, 0x41, 0x89, 0x58, 0x04,
                     0x41, 0x89, 0x48, 0x08, 0x41, 0x89, 0x50, 0x0c, 0x5b, 0xc3 };

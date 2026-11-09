@@ -1,11 +1,11 @@
 namespace PaviseApp
 {
-	internal enum RendererObservationWriteResult
-	{
-		Recorded,
-		InvalidEvidence,
-		FileChanged,
-		Closed,
-		SaveFailed
-	}
+    internal enum RendererObservationWriteResult
+    {
+        Recorded,
+        InvalidEvidence,
+        FileChanged,
+        Closed,
+        SaveFailed
+    }
 }

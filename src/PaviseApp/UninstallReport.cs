@@ -1,19 +1,19 @@
 namespace PaviseApp
 {
-	internal sealed class UninstallReport
-	{
-		public bool Cleared;
+    internal sealed class UninstallReport
+    {
+        public bool Cleared;
 
-		public int Files;
+        public int Files;
 
-		public string Failure;
+        public string Failure;
 
-		public int Leftovers;
+        public int Leftovers;
 
-		public bool RuntimeStopped;
+        public bool RuntimeStopped;
 
-		public int Warnings;
+        public int Warnings;
 
-		public bool StartupRemoved;
-	}
+        public bool StartupRemoved;
+    }
 }

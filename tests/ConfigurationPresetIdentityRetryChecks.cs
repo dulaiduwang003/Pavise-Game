@@ -40,7 +40,10 @@ namespace PaviseApp
         {
             long session = 1; int generation = 0; var backend = new IdentityBackend { Fail = true };
             var runtime = new ConfigurationPresetRuntime(backend, () => generation, null, () => session);
-            for (int i = 0; i < 1003; i++) { generation++; Poll(runtime); }
+            for (int i = 0; i < 1003; i++) {
+                generation++; Poll(runtime);
+                Check(backend.Loads <= 3, "Failed identity reads exceeded their cap");
+            }
             Check(backend.Loads == 3, "Unrelated setting mutations reopened failed identity reads");
             session = 2; Poll(runtime); Check(backend.Loads == 4, "True new session did not resume a bounded identity read");
             session = 1; for (int i = 0; i < 10; i++) Poll(runtime);
@@ -116,8 +119,8 @@ namespace PaviseApp
         private static void SameValueApplySurvivesOldFailure()
         {
             var backend = new SameValueApplyBackend(); var done = new ManualResetEvent(false);
-            // This isolated backend deliberately keeps generation fixed. The separate
-            // full-source consumer test uses real Settings, whose identity saves bump it.
+            // 该隔离后端有意固定代次；另一项全源码消费者测试使用真实 Settings，其身份保存会推进代次。
+
             var runtime = new ConfigurationPresetRuntime(backend, () => 0, null, () => 1, null, () => "same-material-Extreme");
             try
             {
@@ -207,7 +210,7 @@ namespace PaviseApp
                 for (int i = 0; i < 1000; i++) ignored = runtime.CurrentPreset;
                 Check(backend.Loads == 1 && timer.ElapsedMilliseconds < 500, "UI polling blocked or queued concurrent identity reads");
                 Interlocked.Exchange(ref session, 2); release.Set(); Await(runtime);
-                // Inspect the stored result without starting the next read.
+                // 只检查已存结果，不启动下一次读取。
                 var current = typeof(ConfigurationPresetRuntime).GetField("current", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
                 Check(current == null, "Old-session completion published a stale identity");
                 backend.OnLoad = null; Poll(runtime); Check(runtime.CurrentPreset == ConfigurationPresetKind.Default, "New session did not publish its own identity");

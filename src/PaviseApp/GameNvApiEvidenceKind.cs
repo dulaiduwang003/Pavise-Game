@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum GameNvApiEvidenceKind
-	{
-		None,
-		ObservedContext,
-		ValidatedLaunchMode
-	}
+    internal enum GameNvApiEvidenceKind
+    {
+        None,
+        ObservedContext,
+        ValidatedLaunchMode
+    }
 }

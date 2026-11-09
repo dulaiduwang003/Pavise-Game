@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum AutoCoreStep
-	{
-		None,
-		Release
-	}
+    internal enum AutoCoreStep
+    {
+        None,
+        Release
+    }
 }

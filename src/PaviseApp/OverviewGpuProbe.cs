@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // Display facts deliberately carry no driver key or control-target identity.
+    // 显示信息有意不携带驱动键或控制目标身份。
     internal sealed class OverviewGpuInfo
     {
         internal readonly string Name;
@@ -25,7 +25,7 @@ namespace PaviseApp
         private const uint DisplayMirroring = 8;
         private const uint DisplayRemote = 0x04000000;
 
-        // Keep the inherited IDXGIObject / IDXGIFactory slots in native order.
+        // 继承的 IDXGIObject、IDXGIFactory 槽位保持原生顺序。
         [ComImport, Guid("770aae78-f26f-4dba-a829-253c83d1b387")]
         [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IDXGIFactory1
@@ -91,7 +91,7 @@ namespace PaviseApp
         internal static OverviewGpuInfo SelectDxgi(OverviewGpuInfo selected, string name, ulong memoryBytes, uint flags)
         {
             if ((flags & DxgiRemoteOrSoftware) != 0 || string.IsNullOrWhiteSpace(name)) return selected;
-            // Break memory ties in DXGI order; memory ranks candidates but does not identify GPU kind.
+            // 显存相同时按 DXGI 枚举顺序取舍；显存用于候选排序，不能确定 GPU 类型。
             if (selected != null && selected.MemoryBytes >= memoryBytes) return selected;
             return new OverviewGpuInfo(name.Trim(), memoryBytes);
         }
@@ -112,7 +112,7 @@ namespace PaviseApp
             {
                 Guid iid = typeof(IDXGIFactory1).GUID;
                 if (CreateDXGIFactory1(ref iid, out factory) < 0 || factory == null) return null;
-                // The bound also prevents a defective driver from looping forever.
+                // 执行上限也用于防止异常驱动陷入无限循环。
                 for (uint index = 0; index < 256; index++)
                 {
                     IDXGIAdapter1 adapter = null;

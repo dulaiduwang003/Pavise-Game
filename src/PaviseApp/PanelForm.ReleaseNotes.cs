@@ -5,7 +5,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        // ShowPanel arms this; creating the hidden startup window must not show notes.
+        // 由 ShowPanel 开启此标记，创建隐藏启动窗口时不能展示更新说明。
         private bool releaseNotesAutoRequested;
         private bool releaseNotesAutoHandled;
         private bool releaseNotesQueued;
@@ -36,7 +36,7 @@ namespace PaviseApp
                         return;
                     }
                     try { ShowReleaseNotes(); }
-                    catch (Exception error) { Logger.Warn("Release notes presentation failed: " + error.GetType().Name); }
+                    catch (Exception error) { Logger.Warn("更新说明展示失败： " + error.GetType().Name); }
                 }));
             }
             catch (InvalidOperationException) { releaseNotesQueued = false; }

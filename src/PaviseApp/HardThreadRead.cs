@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum HardThreadRead
-	{
-		Known,
-		Gone,
-		Unknown
-	}
+    internal enum HardThreadRead
+    {
+        Known,
+        Gone,
+        Unknown
+    }
 }

@@ -261,7 +261,7 @@ namespace PaviseApp
 
         private Operation BeginOperation(bool wait = true)
         {
-            // Allocate the view before admission so allocation failure cannot leave unreported ownership.
+            // 准入前先分配视图，避免分配失败后留下未上报的所有权。
             var operation = new Operation(this);
             if (wait) Monitor.Enter(gate);
             else if (!Monitor.TryEnter(gate)) return null;
@@ -270,7 +270,7 @@ namespace PaviseApp
             catch
             {
                 operationDepth--;
-                view = UnknownView; // Retain ownership until a later successful publication.
+                view = UnknownView; // 保留所有权，直到后续成功发布。
                 Monitor.Exit(gate);
                 throw;
             }
@@ -300,7 +300,7 @@ namespace PaviseApp
         internal bool HasLease(int pid, long birth)
         {
             LeaseView snapshot = view;
-            // Uncertain ownership must retain the caller's recovery handle.
+            // 所有权不确定时，必须保留调用方的恢复句柄。
             if (snapshot.Busy) return true;
             foreach (EntryView entry in snapshot.Entries) if (entry.Pid == pid && entry.Birth == birth) return true;
             return false;
@@ -351,7 +351,7 @@ namespace PaviseApp
                 entry.GuardPid = 0; entry.GuardBirth = 0;
                 return false;
             }
-            catch { return true; } // Unknown exit state must retain recovery authority.
+            catch { return true; } // 退出状态不确定时，保留恢复权限。
         }
 
         private static string ReadReply(Entry entry)
@@ -463,8 +463,8 @@ namespace PaviseApp
                     recoveryPending = false;
                     IntPtr process = GameAffinityJobNative.OpenTarget(pid, birth);
                     if (process == IntPtr.Zero) { reason = "process-access"; return false; }
-                    // Windows validates nesting against an existing job hierarchy
-                    // during assignment. Do not reject launcher-owned jobs outright.
+                    // Windows 在分配时核验已有 Job 层级的嵌套关系，不能直接拒绝启动器持有的 Job。
+
                     if (!string.IsNullOrEmpty(name) && !string.Equals(Native.ImageName(process), name, StringComparison.OrdinalIgnoreCase))
                     { Native.CloseHandle(process); reason = "target-name"; return false; }
                     ulong current;
@@ -494,7 +494,7 @@ namespace PaviseApp
                 }
                 if (entry.Pending) { reason = "recovery-pending"; return false; }
                 if (entry.Active && entry.Desired == desiredMask) return VerifyLocked(entry, desiredMask, out reason);
-                // Reject game-owned thread placement before changing the active range or receipt; recheck before the native write.
+                // 改变活动范围或记录前，先拒绝游戏自行设置的线程放置；原生写入前再次核对。
                 ulong currentRange;
                 if (!Native.TryQueryAffinity(entry.Process, out currentRange)
                     || !GameThreadAffinityAdmission.Check(entry.Process, pid, birth, currentRange, out reason))
@@ -504,8 +504,8 @@ namespace PaviseApp
                 }
                 if (entry.Active)
                 {
-                    // Desired records the applied range, not the next request.
-                    // Persist neutral before changing range so a crash cannot orphan the previous limit.
+                    // Desired 记录已应用范围，不是下一个请求。改变范围前先持久保存中性状态，避免崩溃后遗留旧限制。
+
                     if (!ReleaseLocked(entry, out reason)) return false;
                 }
                 if (!GuardAlive(entry))
@@ -520,8 +520,8 @@ namespace PaviseApp
                 entry.Record.Original = entry.Original; entry.Record.Desired = desiredMask; entry.Record.Phase = "armed";
                 entry.Record.ThreadRecoveryRoot = threadRoot;
                 if (!GameAffinityJobReceiptStore.Save(entry.Record)) { entry.Pending = true; reason = "receipt-arm"; return false; }
-                // The guardian already holds the job and target handles. It is the
-                // sole forward writer, so parent death cannot orphan a late apply.
+                // 守护已持有 Job 和目标句柄，且是唯一写入方；父进程退出不会使迟到的应用失去恢复所有者。
+
                 if (!Command(entry, "APPLY " + desiredMask + " " + entry.Original, out reason)
                     || !GameAffinityJobNative.Verify(entry.Job, entry.Process, birth, desiredMask, out reason))
                 {
@@ -583,18 +583,18 @@ namespace PaviseApp
             else if (reason == "thread-recovery-pending" || reason == "recovery-operation-pending"
                 || reason == "guardian-forward-revocation-pending")
             {
-                // Wait for the thread journal before process recovery; no native restore is attempted here.
-                // Use a separate finite observation budget without refunding failures.
+                // 进程恢复前先等待线程日志，此处不尝试原生恢复；使用独立且有限的观测预算，不退还失败次数。
+
                 entry.Pending = true;
                 entry.RecoveryOrderingObservations++;
                 if (entry.RecoveryOrderingObservations >= GameAffinityJobRecord.RecoveryOrderingObservationLimit)
                     RecoveryAttemptTrace.Exhausted(entry.RecoveryExitPhase ? (Func<bool>)null : () => Native.WaitForSingleObject(entry.Process, 0) == 0);
                 else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
                 if (entry.RecoveryOrderingObservations == 1 || entry.RecoveryOrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit)
-                    Logger.Warn("Game affinity recovery ordering: target=" + entry.Pid + "/" + entry.Birth
-                        + " observation=" + entry.RecoveryOrderingObservations + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit
-                        + " reason=" + reason + (entry.RecoveryOrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit
-                            ? "; active attempts stopped; receipt and handles retained" : ""));
+                    Logger.Warn("游戏亲和性恢复顺序：目标=" + entry.Pid + "/" + entry.Birth
+                        + " 观测=" + entry.RecoveryOrderingObservations + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit
+                        + " 原因=" + reason + (entry.RecoveryOrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit
+                            ? "；已停止主动尝试，保留回执和句柄" : ""));
             }
             else
             {
@@ -607,9 +607,9 @@ namespace PaviseApp
                 if (entry.RecoveryAttempts >= 3)
                     RecoveryAttemptTrace.Exhausted(entry.RecoveryExitPhase ? (Func<bool>)null : () => Native.WaitForSingleObject(entry.Process, 0) == 0);
                 else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(entry.NextRecovery - AutoCores.NowTicks));
-                Logger.Warn("Game affinity recovery: target=" + entry.Pid + "/" + entry.Birth
-                    + " attempt=" + entry.RecoveryAttempts + "/3 reason=" + reason
-                    + (entry.RecoveryAttempts == 3 ? "; active retries stopped; receipt and handles retained" : "; restoration pending"));
+                Logger.Warn("游戏亲和性恢复：目标=" + entry.Pid + "/" + entry.Birth
+                    + " 尝试=" + entry.RecoveryAttempts + "/3 原因=" + reason
+                    + (entry.RecoveryAttempts == 3 ? "；已停止主动重试，保留回执和句柄" : "；恢复尚未完成"));
             }
             return restored;
         }
@@ -627,8 +627,8 @@ namespace PaviseApp
             }
             if (GuardAlive(entry) && Command(entry, "CLEAR", out reason))
             { entry.Active = false; entry.Pending = false; entry.Record.Phase = "neutral"; return true; }
-            // EOF revokes forward authority. Subsequent recovery polls observe
-            // exit without spending another three seconds waiting on this child.
+            // EOF 撤销写入权限；后续恢复轮询只观察退出，不再额外花三秒等待子进程。
+
             RequestGuardExit(entry, false);
             if (GuardAlive(entry))
             { entry.Pending = true; reason = "guardian-forward-revocation-pending"; return false; }
@@ -714,8 +714,8 @@ namespace PaviseApp
                     CloseSettled(entry);
                     leases.Remove(entry.Pid);
                 }
-                // Neutral receipts are safe even after the last job handle closes;
-                // keep them until Recover distinguishes this from an orphaned limit.
+                // 最后一个 Job 句柄关闭后，中性记录仍然安全；保留到 Recover 确认它并非遗留限制。
+
                 return true;
             }
         }
@@ -738,7 +738,7 @@ namespace PaviseApp
                     orphanReadFailures++;
                     orphanReadNext = now + TimeSpan.FromSeconds(4 * orphanReadFailures).Ticks;
                     RecoveryAttemptTrace.FailureSchedule(orphanReadFailures, 3, DateTime.UtcNow.Ticks + orphanReadNext - now);
-                    Logger.Warn("Game affinity orphan receipt read failure=" + orphanReadFailures + "/3; recovery retained");
+                    Logger.Warn("游戏亲和性遗留回执读取失败=" + orphanReadFailures + "/3；保留恢复状态");
                     reason = "receipt-unreadable"; return false;
                 }
                 int self;
@@ -746,7 +746,7 @@ namespace PaviseApp
                 bool all = true;
                 foreach (GameAffinityJobRecord record in records)
                 {
-                    // Observing identity/exit is not another restoration attempt.
+                    // 观测身份或退出不算另一次恢复尝试。
                     int target = GameAffinityJobNative.Probe(record.Pid, record.Birth);
                     int owner = GameAffinityJobNative.Probe(record.OwnerPid, record.OwnerBirth);
                     bool foreignOwnerPending = !(record.Phase == "neutral" && target == 1) && owner != 1;
@@ -786,10 +786,10 @@ namespace PaviseApp
                             if (budget.OrderingObservations >= GameAffinityJobRecord.RecoveryOrderingObservationLimit) ReportOrphanExhausted(record, budget);
                             else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(budget.Next - AutoCores.NowTicks));
                             if (budget.OrderingObservations == 1 || budget.OrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit)
-                                Logger.Warn("Game affinity orphan owner ordering: receipt=" + record.Name + " observation=" + budget.OrderingObservations
-                                    + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit + " reason=" + reason
+                                Logger.Warn("游戏亲和性遗留所有者顺序：回执=" + record.Name + " 观测=" + budget.OrderingObservations
+                                    + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit + " 原因=" + reason
                                     + (budget.OrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit
-                                        ? "; active attempts stopped; receipt and handles retained" : ""));
+                                        ? "；已停止主动尝试，保留回执和句柄" : ""));
                         }
                         else
                         {
@@ -797,8 +797,8 @@ namespace PaviseApp
                             budget.Next = AutoCores.NowTicks + TimeSpan.FromSeconds(4 * budget.Failures).Ticks;
                             if (budget.Failures >= 3) ReportOrphanExhausted(record, budget);
                             else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(budget.Next - AutoCores.NowTicks));
-                            Logger.Warn("Game affinity orphan owner identity: receipt=" + record.Name + " failure=" + budget.Failures + "/3 reason=" + reason
-                                + (budget.Failures >= 3 ? "; active attempts stopped; receipt and handles retained" : ""));
+                            Logger.Warn("游戏亲和性遗留所有者身份：回执=" + record.Name + " 失败详情=" + budget.Failures + "/3 原因=" + reason
+                                + (budget.Failures >= 3 ? "；已停止主动尝试，保留回执和句柄" : ""));
                         }
                         continue;
                     }
@@ -808,18 +808,18 @@ namespace PaviseApp
                     catch (Exception ex) { restored = false; failure = "recovery-exception:" + ex.GetType().Name; }
                     if (!restored && (failure == "thread-recovery-pending" || failure == "recovery-operation-pending"))
                     {
-                        // No native restoration was attempted. Preserve failures,
-                        // but also cap observations if the upstream debt never settles.
+                        // 此处未执行原生恢复，保留已有失败次数；上游债务始终未结清时，也需限制观测次数。
+
                         all = false; reason = failure;
                         budget.OrderingObservations++;
                         if (budget.OrderingObservations >= GameAffinityJobRecord.RecoveryOrderingObservationLimit)
                             ReportOrphanExhausted(record, budget);
                         else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1));
                         if (budget.OrderingObservations == 1 || budget.OrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit)
-                            Logger.Warn("Game affinity orphan ordering: receipt=" + record.Name + " observation=" + budget.OrderingObservations
-                                + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit + " reason=" + reason
+                            Logger.Warn("游戏亲和性遗留顺序检查：回执=" + record.Name + " 观测=" + budget.OrderingObservations
+                                + "/" + GameAffinityJobRecord.RecoveryOrderingObservationLimit + " 原因=" + reason
                                 + (budget.OrderingObservations == GameAffinityJobRecord.RecoveryOrderingObservationLimit
-                                    ? "; active attempts stopped; receipt and handles retained" : ""));
+                                    ? "；已停止主动尝试，保留回执和句柄" : ""));
                     }
                     else if (!restored)
                     {
@@ -828,8 +828,8 @@ namespace PaviseApp
                         budget.Next = AutoCores.NowTicks + TimeSpan.FromSeconds(4 * budget.Failures).Ticks;
                         if (budget.Failures >= 3) ReportOrphanExhausted(record, budget);
                         else RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(budget.Next - AutoCores.NowTicks));
-                        Logger.Warn("Game affinity orphan recovery: receipt=" + record.Name + " failure=" + budget.Failures + "/3 reason=" + reason
-                            + (budget.Failures >= 3 ? "; active attempts stopped; receipt retained" : ""));
+                        Logger.Warn("游戏亲和性遗留恢复：回执=" + record.Name + " 失败详情=" + budget.Failures + "/3 原因=" + reason
+                            + (budget.Failures >= 3 ? "；已停止主动尝试，保留回执" : ""));
                     }
                 }
                 return all;
@@ -909,8 +909,8 @@ namespace PaviseApp
             }
             finally
             {
-                // Keep the last accessible handles while the original receipt
-                // is unresolved, including after this phase spends its budget.
+                // 原始记录尚未结清时，保留最后可访问的句柄，预算耗尽后也不释放。
+
                 if (settled) CloseRecoveredOrphan(budget);
             }
         }

@@ -1,11 +1,11 @@
 namespace PaviseApp
 {
-	internal enum ManualMemoryStepState
-	{
-		Succeeded,
-		Unsupported,
-		PermissionDenied,
-		Failed,
-		Cancelled
-	}
+    internal enum ManualMemoryStepState
+    {
+        Succeeded,
+        Unsupported,
+        PermissionDenied,
+        Failed,
+        Cancelled
+    }
 }

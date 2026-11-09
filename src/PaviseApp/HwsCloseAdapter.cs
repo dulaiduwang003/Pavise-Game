@@ -1,7 +1,7 @@
 namespace PaviseApp
 {
-	internal struct HwsCloseAdapter
-	{
-		internal uint Adapter;
-	}
+    internal struct HwsCloseAdapter
+    {
+        internal uint Adapter;
+    }
 }

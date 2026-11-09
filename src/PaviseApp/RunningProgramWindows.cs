@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // On-demand picker discovery, independent of game-renderer window eligibility.
+    // 选择器按需发现进程，不依赖游戏渲染窗口的准入条件。
     internal static class RunningProgramWindows
     {
         private delegate bool WindowCallback(IntPtr window, IntPtr state);
@@ -46,7 +46,7 @@ namespace PaviseApp
         {
             const uint child = 0x40000000, caption = 0x00c00000, appWindow = 0x00040000, toolWindow = 0x00000080;
             if (!hasBounds || (style & child) != 0) return false;
-            // Hidden/minimized main windows remain valid for tray and virtual-desktop apps.
+            // 托盘及虚拟桌面应用的隐藏或最小化主窗口仍然有效。
             if ((extendedStyle & appWindow) != 0) return true;
             return !owned && (extendedStyle & toolWindow) == 0
                 && (visible || (style & caption) == caption);

@@ -22,7 +22,7 @@ namespace PaviseApp
             ForegroundVersion = foregroundVersion; SmartSwitchedOut = smartSwitchedOut; BackgroundReleasePending = backgroundReleasePending;
         }
 
-        // Success comes from executor receipts; identity/liveness use the existing scan, never a new UI scan.
+        // 成功状态来自执行器回执；身份与存活检查复用已有扫描，界面不另行扫描。
         internal static GuardActivitySnapshot Create(long session, ProcessSnapshot scan,
             IEnumerable<KeyValuePair<int, long>> receipts, IEnumerable<string> stoppedServices,
             long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false)

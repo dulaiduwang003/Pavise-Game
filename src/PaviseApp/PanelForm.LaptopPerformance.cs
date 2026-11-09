@@ -30,7 +30,7 @@ namespace PaviseApp
                 QueueUiStateWork(delegate
                 {
                     try { gameMode.RefreshLaptopPerformanceSupport(); }
-                    catch (Exception error) { Logger.Warn("Laptop profile availability: " + error.GetType().Name); }
+                    catch (Exception error) { Logger.Warn("笔记本性能档可用性： " + error.GetType().Name); }
                     finally { Interlocked.Exchange(ref laptopPerformanceProbeBusy, 0); }
                     if (IsDisposed || Disposing || runtimeShutdownBusy || !IsHandleCreated) return;
                     try { PostUiStateResult(delegate { if (!IsDisposed && !Disposing && !runtimeShutdownBusy) RefreshStrategyControls(); }); }

@@ -1,51 +1,51 @@
 namespace PaviseApp
 {
-	internal sealed class AutoCoreStatus
-	{
-		public AutoCorePlan Plan;
+    internal sealed class AutoCoreStatus
+    {
+        public AutoCorePlan Plan;
 
-		public string Game;
+        public string Game;
 
-		public string ProfileId;
+        public string ProfileId;
 
-		public bool Watching;
+        public bool Watching;
 
-		public bool Exclusive;
+        public bool Exclusive;
 
-		public bool Engaged;
+        public bool Engaged;
 
-		public bool Pending;
+        public bool Pending;
 
-		public string Blocked;
+        public string Blocked;
 
-		public bool ObservationOnly;
+        public bool ObservationOnly;
 
-		public bool Manual;
+        public bool Manual;
 
-		public bool ManualIsolation;
+        public bool ManualIsolation;
 
-		public int BackgroundMoved;
+        public int BackgroundMoved;
 
-		public string BackgroundAffinityDetail;
+        public string BackgroundAffinityDetail;
 
-		public string PlacementEvidence;
+        public string PlacementEvidence;
 
-		public double WorkMs;
+        public double WorkMs;
 
-		public double WorkMaxMs;
+        public double WorkMaxMs;
 
-		public ulong GameMask;
+        public ulong GameMask;
 
-		public ulong ExpectedMask;
+        public ulong ExpectedMask;
 
-		public ulong ObservedMask;
+        public ulong ObservedMask;
 
-		public bool AffinityRead;
+        public bool AffinityRead;
 
-		public bool AffinityVerified;
+        public bool AffinityVerified;
 
-		public bool JobAffinity;
+        public bool JobAffinity;
 
-		public string JobFallbackReason;
-	}
+        public string JobFallbackReason;
+    }
 }

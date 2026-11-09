@@ -9,7 +9,7 @@ using System.Threading;
 namespace PaviseApp
 {
     internal static class SelfTests { internal static bool TryHandleRuntimeMode(string[] args) { throw new InvalidOperationException("Product startup forbidden in isolated recovery checks"); } }
-    // Runs production methods against memory delegates and transient Settings only.
+    // 生产方法仅使用内存委托及临时 Settings 执行。
     internal static class ConsumerRecoveryChecks
     {
         private static int checks;

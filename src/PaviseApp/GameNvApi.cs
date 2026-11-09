@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum GameNvApi
-	{
-		Unknown,
-		OpenGl,
-		DirectX,
-		Vulkan
-	}
+    internal enum GameNvApi
+    {
+        Unknown,
+        OpenGl,
+        DirectX,
+        Vulkan
+    }
 }

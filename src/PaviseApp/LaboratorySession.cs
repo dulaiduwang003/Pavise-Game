@@ -31,7 +31,7 @@ namespace PaviseApp
         }
     }
 
-    // The session worker serializes lab actions and drains restoration before plan release or reset.
+    // 会话工作线程串行执行实验室动作，在释放计划或重置前先完成恢复。
     internal sealed class LaboratorySession
     {
         private readonly object gate = new object(), powerGate;
@@ -202,7 +202,7 @@ namespace PaviseApp
             if (!ok) ReportRecoveryWait();
             return ok;
         }
-        // Publish cached scheduling under gate; synchronous waiters must not acquire native controller locks.
+        // 在 gate 内发布调度缓存；同步等待方不能取得原生控制器锁。
         private void ReportRecoveryWait()
         {
             lock (gate)
@@ -274,9 +274,9 @@ namespace PaviseApp
                 catch (Exception error)
                 {
                     lock (gate) failure = PerformancePolicy.Text("实验执行异常：", "Lab execution failed: ") + error.GetType().Name;
-                    // Off/on and A-B-A publication do not renew the failed selection in this session.
+                    // 同一会话中关闭再开启或 A-B-A 的发布过程，不能为失败配置刷新预算。
                     lock (gate) if (ReferenceEquals(desired, value) && session == capturedSession)
-                    { if (failedIntents.Add(value.Identity)) Logger.Warn("Laboratory selection failed; session=" + capturedSession + " selection=" + value.Identity + " reason=" + error.GetType().Name + "; apply exhausted"); desired = new LaboratorySelection(); }
+                    { if (failedIntents.Add(value.Identity)) Logger.Warn("实验室选择失败，会话=" + capturedSession + " 选择=" + value.Identity + " 原因=" + error.GetType().Name + "；应用预算已耗尽"); desired = new LaboratorySelection(); }
                     try { bool ok = RestoreBounded(); lock (gate) { restored = ok; Monitor.PulseAll(gate); } } catch { }
                 }
                 if (end) break;

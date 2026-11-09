@@ -11,7 +11,7 @@ namespace PaviseApp
     {
         private const string Legacy3110Source = "legacy-3.1.1.0";
 
-        // Create from a standard template; tune with the legacy parameter table.
+        // 从标准模板创建，使用旧参数表调节。
         private static bool CreateLegacy3110Native(Guid destination)
         {
             if (HandheldBypass) return false;
@@ -28,7 +28,7 @@ namespace PaviseApp
                     applyFailurePermanent |= PowerPresetWriter.PermanentNativeFailure(PowerPresetWriter.LastFailureNativeCode);
                     return PowerApplyFailed("legacy3110-creation", failure);
                 }
-                Logger.Info("POWER source=" + Legacy3110Source + " method=duplicate-template copySource=" + source.ToString("D"));
+                Logger.Info("电源 来源=" + Legacy3110Source + " 方法=复制模板；复制来源=" + source.ToString("D"));
                 return true;
             }
             catch (Exception error)

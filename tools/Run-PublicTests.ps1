@@ -16,7 +16,8 @@ $suites = @(
     @{Name='TimerRetryBoundary'; Arguments=''},
     @{Name='TamerRetry'; Arguments=''},
     @{Name='SecurityStartup'; Arguments=''},
-    @{Name='SourceCleanup'; Arguments=''}
+    @{Name='SourceCleanup'; Arguments=''},
+    @{Name='ChineseLogs'; Arguments=''}
 )
 $results = New-Object 'Collections.Generic.List[object]'
 foreach ($suite in $suites) {

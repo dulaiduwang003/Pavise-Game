@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum SpiOwnerPhase
-	{
-		Held,
-		RestoreOnly,
-		Closed
-	}
+    internal enum SpiOwnerPhase
+    {
+        Held,
+        RestoreOnly,
+        Closed
+    }
 }

@@ -10,7 +10,7 @@ namespace PaviseApp
         { InstanceId = instanceId; SoftwareKey = softwareKey; }
     }
 
-    // Map current display instances to their device-specific driver keys; model IDs are not device identities.
+    // 将当前显示实例映射到各自设备的驱动键；型号编号不能充当设备身份。
     internal static class GpuInventoryDiscovery
     {
         internal const string DisplayClass = "{4d36e968-e325-11ce-bfc1-08002be10318}";
@@ -39,8 +39,8 @@ namespace PaviseApp
                 foreach (string instance in instances)
                 {
                     if (string.IsNullOrEmpty(instance) || instance.Length > 4096) return false;
-                    // Software, remote and root-enumerated display devices are not
-                    // physical PCI targets for the power/clock controls.
+                    // 软件、远程及根枚举显示设备不是功耗与频率控制所需的物理 PCI 目标。
+
                     if (!instance.StartsWith("PCI\\", StringComparison.OrdinalIgnoreCase)) continue;
                     int separator = instance.IndexOf('\\', 4);
                     if (separator <= 4 || separator == instance.Length - 1 || PciModelKey(instance) == null) return false;

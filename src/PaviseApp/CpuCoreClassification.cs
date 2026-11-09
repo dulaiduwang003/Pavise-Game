@@ -12,8 +12,8 @@ namespace PaviseApp
         internal string Source, Reason;
     }
 
-    // Maps use group-relative logical CPU indexes (64 entries); -1 is unavailable and 0 is a valid class.
-    // Validate vendor/leaf support and sample CPUID on the intended processor.
+    // 映射使用组内逻辑处理器编号，共 64 项；-1 表示不可用，0 是有效类别。核对厂商及 CPUID 叶支持后，在指定处理器上采样。
+
     internal static class CpuCoreClassification
     {
         private sealed class Evidence
@@ -38,7 +38,7 @@ namespace PaviseApp
                 if (item.SiblingConflict) return Unknown(allMask, "sibling-core-class-conflict", true);
                 if (item.Invalid) return Unknown(allMask, "core-class-data-invalid", false);
             }
-            // Partial Windows mappings cannot certify the complete physical partition.
+            // Windows 映射不完整时，不能据此确认整个物理分区。
             if ((topology.Present && !topology.Complete) || (sets.Present && !sets.Complete))
                 return Unknown(allMask, "windows-core-class-incomplete", false);
 
@@ -47,7 +47,7 @@ namespace PaviseApp
                 return Unknown(allMask, "windows-core-class-conflict", true);
             if (selected != null)
             {
-                // Partial CPUID is not authoritative, but a sampled opposite type is a conflict.
+                // 不完整的 CPUID 采样不能定论，但采到相反类型仍属于冲突证据。
                 if (!CpuidAgrees(allMask, selected, cpuid))
                     return Unknown(allMask, "cpuid-core-type-conflict", true);
                 List<string> sources = new List<string>();
@@ -59,8 +59,8 @@ namespace PaviseApp
                     Source = string.Join("+", sources.ToArray()), Reason = "confirmed"
                 };
             }
-            // A flat Windows efficiency class is not evidence that hardware has no E-cores.
-            // A complete supported CPUID map can identify a single reported microarchitecture type.
+            // Windows 报告单一能效类别，不能证明硬件没有 E 核。完整且受支持的 CPUID 映射可确认已报告的微架构类型。
+
             if (cpuid.Complete)
                 return new CpuCoreClassificationResult { State = CpuCoreClassificationState.Uniform,
                     Source = "cpuid", Reason = "single-cpuid-core-type" };

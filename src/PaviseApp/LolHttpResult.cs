@@ -1,23 +1,23 @@
 namespace PaviseApp
 {
-	internal sealed class LolHttpResult
-	{
-		public bool Reached;
+    internal sealed class LolHttpResult
+    {
+        public bool Reached;
 
-		public int Status;
+        public int Status;
 
-		public string Body;
+        public string Body;
 
-		public bool Success
-		{
-			get
-			{
-				if (Reached && Status >= 200)
-				{
-					return Status < 300;
-				}
-				return false;
-			}
-		}
-	}
+        public bool Success
+        {
+            get
+            {
+                if (Reached && Status >= 200)
+                {
+                    return Status < 300;
+                }
+                return false;
+            }
+        }
+    }
 }

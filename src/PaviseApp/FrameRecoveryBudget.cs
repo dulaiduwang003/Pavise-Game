@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // All callers of a recovery operation share this phase; polling never creates a phase.
+    // 同一恢复操作的所有调用方共用该阶段；轮询不能创建新阶段。
     internal static class FrameRecoveryBudget
     {
         private sealed class Budget { internal int Failures; internal long Due; internal bool Running; }
@@ -48,7 +48,7 @@ namespace PaviseApp
                         Birth = created > 0 ? created : birth, Configuration = configuration, Receipt = receipt };
             }
         }
-        // Only the exact verified-neutral receipt may end its recovery episode.
+        // 只有完全匹配且已核验中性的记录，才能结束该次恢复。
         internal static void Settled(string scope, string receipt)
         {
             lock (gate)
@@ -129,7 +129,7 @@ namespace PaviseApp
                         budget.Failures++;
                         budget.Due = Clock() + TimeSpan.FromSeconds(30).Ticks;
                         ReportSchedule(scope, admittedOwner, budget);
-                        if (budget.Failures == 3) Logger.Log("FRAME recovery paused after 3 failures: " + scope + "; recovery ownership retained");
+                        if (budget.Failures == 3) Logger.Log("线程协同恢复连续失败三次后暂停： " + scope + "；保留恢复所有权");
                     }
                 }
             }

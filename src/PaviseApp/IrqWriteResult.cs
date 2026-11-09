@@ -1,24 +1,24 @@
 namespace PaviseApp
 {
-	internal sealed class IrqWriteResult
-	{
-		internal int Succeeded;
+    internal sealed class IrqWriteResult
+    {
+        internal int Succeeded;
 
-		internal int Failed;
+        internal int Failed;
 
-		internal int RolledBack;
+        internal int RolledBack;
 
-		internal int RollbackFailed;
+        internal int RollbackFailed;
 
-		internal int Unchanged;
+        internal int Unchanged;
 
-		internal int Attempted;
+        internal int Attempted;
 
-		internal string Failure = "";
+        internal string Failure = "";
 
-		internal string Describe()
-		{
-			return Lang.F("irq.write.detail", Succeeded, Failed, RolledBack, RollbackFailed) + ((Failure.Length == 0) ? "" : (" · " + Failure));
-		}
-	}
+        internal string Describe()
+        {
+            return Lang.F("irq.write.detail", Succeeded, Failed, RolledBack, RollbackFailed) + ((Failure.Length == 0) ? "" : (" · " + Failure));
+        }
+    }
 }

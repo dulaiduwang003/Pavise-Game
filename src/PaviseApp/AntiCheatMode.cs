@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum AntiCheatMode
-	{
-		Gentle,
-		Balanced,
-		Isolated
-	}
+    internal enum AntiCheatMode
+    {
+        Gentle,
+        Balanced,
+        Isolated
+    }
 }

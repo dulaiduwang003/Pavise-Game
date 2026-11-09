@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+
 namespace PaviseApp
 {
     internal partial class GameMode
@@ -68,11 +69,11 @@ namespace PaviseApp
             return RunSessionRecoveryRoute(key, delegate
             {
                 if (complete()) return true;
-                // Waiting on an existing worker is observation, not a restore attempt.
+                // 等待现有工作线程属于观测，不是恢复尝试。
                 RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false;
             });
         }
-        // Wake for scheduled recovery; exhausted routes provide no deadline and remain idle.
+        // 为已排期的恢复唤醒；预算耗尽的路径不再提供截止时间，保持空闲。
         private int LoopWaitMs(int scanWaitMs)
         {
             if (!SessionRecoveryPending) return scanWaitMs;
@@ -95,7 +96,7 @@ namespace PaviseApp
             }
             else if (!routes.RetryScheduled)
             {
-                // Every bounded retry is spent; ownership and journals stay retained.
+                // 所有有限重试均已用尽，继续保留所有权和日志。
                 RecordAutomation("session", "restore-failed");
             }
             return restored;

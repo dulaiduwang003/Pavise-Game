@@ -3,99 +3,99 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-	internal static class SelfProtectedRoster
-	{
-		private const string Key = "SelfProtectedProcs";
+    internal static class SelfProtectedRoster
+    {
+        private const string Key = "SelfProtectedProcs";
 
-		private const int MaxNames = 64;
+        private const int MaxNames = 64;
 
-		private static readonly object sync = new object();
+        private static readonly object sync = new object();
 
-		private static HashSet<string> names;
+        private static HashSet<string> names;
 
-		private static List<string> order;
+        private static List<string> order;
 
-		private static void EnsureLoadedLocked()
-		{
-			if (names != null)
-			{
-				return;
-			}
-			names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			order = new List<string>();
-			string[] loadStrParts = Settings.LoadStr("SelfProtectedProcs", "").Split(';');
-			foreach (string entryText in loadStrParts)
-			{
-				string entryTextTrimmed = entryText.Trim();
-				if (entryTextTrimmed.Length > 0 && names.Add(entryTextTrimmed))
-				{
-					order.Add(entryTextTrimmed);
-				}
-			}
-		}
+        private static void EnsureLoadedLocked()
+        {
+            if (names != null)
+            {
+                return;
+            }
+            names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            order = new List<string>();
+            string[] loadStrParts = Settings.LoadStr("SelfProtectedProcs", "").Split(';');
+            foreach (string entryText in loadStrParts)
+            {
+                string entryTextTrimmed = entryText.Trim();
+                if (entryTextTrimmed.Length > 0 && names.Add(entryTextTrimmed))
+                {
+                    order.Add(entryTextTrimmed);
+                }
+            }
+        }
 
-		public static bool Contains(string name)
-		{
-			if (string.IsNullOrEmpty(name))
-			{
-				return false;
-			}
-			lock (sync)
-			{
-				EnsureLoadedLocked();
-				return names.Contains(name);
-			}
-		}
+        public static bool Contains(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+            lock (sync)
+            {
+                EnsureLoadedLocked();
+                return names.Contains(name);
+            }
+        }
 
-		public static bool Mark(string name)
-		{
-			if (string.IsNullOrEmpty(name) || name.IndexOf(';') >= 0)
-			{
-				return false;
-			}
-			lock (sync)
-			{
-				EnsureLoadedLocked();
-				if (!names.Add(name))
-				{
-					return false;
-				}
-				order.Add(name);
-				while (order.Count > 64)
-				{
-					names.Remove(order[0]);
-					order.RemoveAt(0);
-				}
-				SaveLocked();
-				return true;
-			}
-		}
+        public static bool Mark(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name.IndexOf(';') >= 0)
+            {
+                return false;
+            }
+            lock (sync)
+            {
+                EnsureLoadedLocked();
+                if (!names.Add(name))
+                {
+                    return false;
+                }
+                order.Add(name);
+                while (order.Count > 64)
+                {
+                    names.Remove(order[0]);
+                    order.RemoveAt(0);
+                }
+                SaveLocked();
+                return true;
+            }
+        }
 
-		public static int Clear()
-		{
-			lock (sync)
-			{
-				EnsureLoadedLocked();
-				int count = names.Count;
-				names.Clear();
-				order.Clear();
-				SaveLocked();
-				return count;
-			}
-		}
+        public static int Clear()
+        {
+            lock (sync)
+            {
+                EnsureLoadedLocked();
+                int count = names.Count;
+                names.Clear();
+                order.Clear();
+                SaveLocked();
+                return count;
+            }
+        }
 
-		public static string Describe()
-		{
-			lock (sync)
-			{
-				EnsureLoadedLocked();
-				return string.Join(", ", order.ToArray());
-			}
-		}
+        public static string Describe()
+        {
+            lock (sync)
+            {
+                EnsureLoadedLocked();
+                return string.Join(", ", order.ToArray());
+            }
+        }
 
-		private static void SaveLocked()
-		{
-			Settings.SaveStr("SelfProtectedProcs", string.Join(";", order.ToArray()));
-		}
-	}
+        private static void SaveLocked()
+        {
+            Settings.SaveStr("SelfProtectedProcs", string.Join(";", order.ToArray()));
+        }
+    }
 }

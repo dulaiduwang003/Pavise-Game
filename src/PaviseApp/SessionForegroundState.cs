@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum SessionForegroundState
-	{
-		Unknown,
-		Game,
-		SwitchedOut
-	}
+    internal enum SessionForegroundState
+    {
+        Unknown,
+        Game,
+        SwitchedOut
+    }
 }

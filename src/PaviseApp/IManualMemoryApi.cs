@@ -2,22 +2,22 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface IManualMemoryApi
-	{
-		bool QueryPerformance(ref StandbyPerformanceInformation information, uint size);
+    internal interface IManualMemoryApi
+    {
+        bool QueryPerformance(ref StandbyPerformanceInformation information, uint size);
 
-		int QueryLists(out StandbyMemoryListInformation information, out int returnedBytes);
+        int QueryLists(out StandbyMemoryListInformation information, out int returnedBytes);
 
-		int AcquirePrivilege(ref uint privilege, out IntPtr state);
+        int AcquirePrivilege(ref uint privilege, out IntPtr state);
 
-		void ReleasePrivilege(IntPtr state);
+        void ReleasePrivilege(IntPtr state);
 
-		int MemoryCommand(int informationClass, ref int command, int size);
+        int MemoryCommand(int informationClass, ref int command, int size);
 
-		bool FileCache(UIntPtr minimum, UIntPtr maximum, uint flags, out int error);
+        bool FileCache(UIntPtr minimum, UIntPtr maximum, uint flags, out int error);
 
-		int EmptyInformation(int informationClass);
+        int EmptyInformation(int informationClass);
 
-		int Combine(int informationClass, ref ManualMemoryCombineInformation information, int size);
-	}
+        int Combine(int informationClass, ref ManualMemoryCombineInformation information, int size);
+    }
 }

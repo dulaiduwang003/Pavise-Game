@@ -20,7 +20,7 @@ namespace PaviseApp
             stringBuilder.AppendLine();
             stringBuilder.AppendLine("【全部功能：用途与使用场景】");
             stringBuilder.AppendLine(features.Trim());
-            // CF_UNICODETEXT and native EDIT controls terminate at an embedded NUL.
+            // CF_UNICODETEXT 和原生 EDIT 控件都会在内嵌的 NUL 处截断。
             return stringBuilder.ToString().Replace('\0', ' ');
         }
     }

@@ -16,8 +16,8 @@ namespace PaviseApp
             if (wake && firstRequest && kick != null) kick.Set();
         }
 
-        // Reuse the existing worker; criticalProcessGate remains the single recovery gate.
-        // A restore task must not outlive shutdown or race a replacement writer.
+        // 复用现有工作线程，criticalProcessGate 仍是唯一恢复锁；恢复任务不能超出退出流程，也不能与替代写入方并发。
+
         private void RetryPendingHardPinRestores()
         {
             if (Monitor.IsEntered(sync) || Interlocked.Exchange(ref hardPinRestoreRequested, 0) == 0) return;

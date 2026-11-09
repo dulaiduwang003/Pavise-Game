@@ -18,8 +18,8 @@ namespace PaviseApp
         private const int MaxRedirects = 5;
 
 #if PAVISE_SELFTEST
-        // The logical URL still passes the production HTTPS/host/redirect rules. Only
-        // its socket endpoint can be mapped to a loopback HTTP fixture in self-tests.
+        // 逻辑地址仍通过生产版 HTTPS、主机及重定向规则；仅自测试中的连接端点可以映射到本机回环 HTTP 服务。
+
         internal static Func<Uri, Uri> FixtureTransportEndpoint;
         internal static int FixtureFeedTimeoutMilliseconds, FixtureMirrorTimeoutMilliseconds;
         internal static int FixtureDownloadTimeoutMilliseconds, FixtureReadTimeoutMilliseconds;
@@ -51,7 +51,7 @@ namespace PaviseApp
                         Version remoteVersion = new Version(package.Version);
                         if (remoteVersion.CompareTo(currentVersion) < 0)
                         {
-                            // An older valid feed is healthy; continue probing for a newer/current version.
+                            // 有效但较旧的更新源属于健康响应，继续查找当前或更新版本。
                             if (older == null || remoteVersion.CompareTo(new Version(older.Version)) > 0)
                                 older = package;
                             continue;
@@ -126,7 +126,7 @@ namespace PaviseApp
             throw new InvalidOperationException("更新包下载或校验失败，请重试，或通过夸克网盘、GitHub 下载最新版。", last);
         }
 
-        // The independent updater must verify again immediately before replacing the installed EXE.
+        // 独立更新器在替换已安装 EXE 前，必须立即重新核验。
         internal static void VerifyExecutable(SelfUpdatePackage package, string path, CancellationToken cancel)
         {
             VerifyDownloadedFile(Revalidate(package), path, cancel);
@@ -167,7 +167,7 @@ namespace PaviseApp
                 }
                 if (!string.Equals(hash, package.Sha256, StringComparison.Ordinal)) throw new InvalidDataException("更新程序 SHA-256 校验失败。");
                 cancel.ThrowIfCancellationRequested();
-                // GetAssemblyName reads metadata; it does not load or execute the downloaded assembly.
+                // GetAssemblyName 只读取元数据，不加载或执行下载的程序集。
                 AssemblyName identity = AssemblyName.GetAssemblyName(path);
                 if (identity.Version == null || identity.Version.ToString(4) != package.Version)
                     throw new InvalidDataException("更新程序版本与签名清单不匹配。");
@@ -217,7 +217,7 @@ namespace PaviseApp
         private static void Fetch(string url, Stream output, long limit, long expectedSize, Action<long> received,
             CancellationToken cancel, int timeoutMilliseconds)
         {
-            // Preserve OS-default TLS selection; older explicit process settings must also admit TLS 1.2.
+            // 保留系统默认 TLS 选择；进程若已有旧显式设置，也必须允许 TLS 1.2。
             SecurityProtocolType protocols = ServicePointManager.SecurityProtocol;
             if (protocols != 0 && (protocols & SecurityProtocolType.Tls12) == 0)
                 ServicePointManager.SecurityProtocol = protocols | SecurityProtocolType.Tls12;

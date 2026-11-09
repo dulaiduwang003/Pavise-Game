@@ -1,4 +1,5 @@
 using System;
+
 namespace PaviseApp
 {
     internal static class PrivacyActionCatalog

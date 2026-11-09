@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum HardThreadGoneReason
-	{
-		None,
-		OriginalExited,
-		ProcessIdReused,
-		RepeatedMissingProcess
-	}
+    internal enum HardThreadGoneReason
+    {
+        None,
+        OriginalExited,
+        ProcessIdReused,
+        RepeatedMissingProcess
+    }
 }

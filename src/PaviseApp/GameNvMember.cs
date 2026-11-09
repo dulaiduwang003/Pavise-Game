@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum GameNvMember
-	{
-		PState,
-		OpenGl
-	}
+    internal enum GameNvMember
+    {
+        PState,
+        OpenGl
+    }
 }

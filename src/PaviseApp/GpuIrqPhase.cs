@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal enum GpuIrqPhase
-	{
-		None,
-		Pending,
-		Applied,
-		Clear,
-		NoRegion,
-		RolledBack,
-		Skipped
-	}
+    internal enum GpuIrqPhase
+    {
+        None,
+        Pending,
+        Applied,
+        Clear,
+        NoRegion,
+        RolledBack,
+        Skipped
+    }
 }

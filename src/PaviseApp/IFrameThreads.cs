@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal interface IFrameThreads
-	{
-		int Read(FrameThreadReceipt identity, out int priority);
+    internal interface IFrameThreads
+    {
+        int Read(FrameThreadReceipt identity, out int priority);
 
-		bool Set(FrameThreadReceipt identity, int expected, int desired);
-	}
+        bool Set(FrameThreadReceipt identity, int expected, int desired);
+    }
 }

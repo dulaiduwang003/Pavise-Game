@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal interface IHardThreadCleanupFiles
-	{
-		bool OriginalSourceReady { get; }
+    internal interface IHardThreadCleanupFiles
+    {
+        bool OriginalSourceReady { get; }
 
-		bool ClosureCertain { get; }
+        bool ClosureCertain { get; }
 
-		bool DeleteExact(HardThreadCleanupPart part);
+        bool DeleteExact(HardThreadCleanupPart part);
 
-		bool HeldElsewhere(HardThreadCleanupPart part);
-	}
+        bool HeldElsewhere(HardThreadCleanupPart part);
+    }
 }

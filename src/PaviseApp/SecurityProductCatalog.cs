@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Seal the security inventory once at startup; sessions and settings must not reopen it.
+    // 安全软件清单在启动时一次封存，会话和设置变化均不能重新打开探测。
     internal static class SecurityProductCatalog
     {
         private static readonly object sync = new object();
@@ -32,7 +32,7 @@ namespace PaviseApp
             if (fresh == null) fresh = SecurityProductSnapshot.Unknown(true, "Empty startup result");
             lock (sync) { snapshot = fresh; roots = fresh.ProtectedRoots; generation = 1; }
             if (fresh.FailureSummary.Length != 0)
-                Logger.Warn("Security startup inspection exhausted attempt=1/1; no runtime retry: " + fresh.FailureSummary);
+                Logger.Warn("启动安全检查次数已耗尽，尝试=1/1；运行期间不重试： " + fresh.FailureSummary);
             int active = 0, inactive = 0, uncertain = 0;
             foreach (SecurityProductInfo product in fresh.Products)
             {
@@ -40,8 +40,8 @@ namespace PaviseApp
                 else if (product.State == SecurityProductState.Inactive) inactive++;
                 else uncertain++;
             }
-            Logger.Log("Security startup inspection sealed products=" + fresh.Products.Length + " protectedRoots=" + roots.Length
-                + " active=" + active + " inactive=" + inactive + " uncertain=" + uncertain + " unknown=" + fresh.HasUnknownState);
+            Logger.Log("启动安全清单已封存，产品数=" + fresh.Products.Length + " 受保护根进程=" + roots.Length
+                + " 活动=" + active + " 非活动=" + inactive + " 待确认=" + uncertain + " 未知=" + fresh.HasUnknownState);
         }
 
         private static SecurityProductSnapshot RunStartupProbe() { return SecurityStartupProbe.ReadOnce(); }
@@ -59,83 +59,83 @@ namespace PaviseApp
 
         internal static string ProtectedRoot(string path)
         { return ProductRoot(path, StandardBases(), Environment.GetFolderPath(Environment.SpecialFolder.Windows)); }
-		private static string[] StandardBases()
-		{
-			List<string> list = new List<string>();
-			Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[3]
-			{
-				Environment.SpecialFolder.ProgramFiles,
-				Environment.SpecialFolder.ProgramFilesX86,
-				Environment.SpecialFolder.CommonApplicationData
-			};
-			foreach (Environment.SpecialFolder folder in specialFolderItems)
-			{
-				string folderPath;
-				try
-				{
-					folderPath = Environment.GetFolderPath(folder);
-				}
-				catch
-				{
-					continue;
-				}
-				if (!string.IsNullOrEmpty(folderPath))
-				{
-					list.Add(folderPath.TrimEnd('\\'));
-				}
-			}
-			return list.ToArray();
-		}
+        private static string[] StandardBases()
+        {
+            List<string> list = new List<string>();
+            Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[3]
+            {
+                Environment.SpecialFolder.ProgramFiles,
+                Environment.SpecialFolder.ProgramFilesX86,
+                Environment.SpecialFolder.CommonApplicationData
+            };
+            foreach (Environment.SpecialFolder folder in specialFolderItems)
+            {
+                string folderPath;
+                try
+                {
+                    folderPath = Environment.GetFolderPath(folder);
+                }
+                catch
+                {
+                    continue;
+                }
+                if (!string.IsNullOrEmpty(folderPath))
+                {
+                    list.Add(folderPath.TrimEnd('\\'));
+                }
+            }
+            return list.ToArray();
+        }
 
-		internal static string ProductRoot(string registered, string[] bases, string windowsRoot)
-		{
-			if (string.IsNullOrEmpty(registered))
-			{
-				return null;
-			}
-			string expandEnvironmentVariablesResult = Environment.ExpandEnvironmentVariables(registered.Trim().Trim('"'));
-			if (expandEnvironmentVariablesResult.Length < 4 || expandEnvironmentVariablesResult[1] != ':' || expandEnvironmentVariablesResult[2] != '\\')
-			{
-				return null;
-			}
-			string directoryName;
-			try
-			{
-				directoryName = Path.GetDirectoryName(expandEnvironmentVariablesResult);
-			}
-			catch
-			{
-				return null;
-			}
-			if (string.IsNullOrEmpty(directoryName) || directoryName.TrimEnd('\\').Length <= 2)
-			{
-				return null;
-			}
-			directoryName = directoryName.TrimEnd('\\');
-			if (!string.IsNullOrEmpty(windowsRoot) && (WhitelistRule.PathEquals(directoryName, windowsRoot.TrimEnd('\\')) || FamilyBoundary.UnderRoot(directoryName, windowsRoot)))
-			{
-				return null;
-			}
-			string[] basesOffset = bases ?? new string[0];
-			foreach (string entryText in basesOffset)
-			{
-				if (!string.IsNullOrEmpty(entryText))
-				{
-					if (WhitelistRule.PathEquals(directoryName, entryText))
-					{
-						return null;
-					}
-					if (FamilyBoundary.UnderRoot(directoryName, entryText))
-					{
-						int splitCount = directoryName.Substring(entryText.Length).Trim('\\').Split('\\')
-							.Length;
-						return (splitCount >= 3) ? Path.GetDirectoryName(directoryName) : directoryName;
-					}
-				}
-			}
-			return directoryName;
-		}
+        internal static string ProductRoot(string registered, string[] bases, string windowsRoot)
+        {
+            if (string.IsNullOrEmpty(registered))
+            {
+                return null;
+            }
+            string expandEnvironmentVariablesResult = Environment.ExpandEnvironmentVariables(registered.Trim().Trim('"'));
+            if (expandEnvironmentVariablesResult.Length < 4 || expandEnvironmentVariablesResult[1] != ':' || expandEnvironmentVariablesResult[2] != '\\')
+            {
+                return null;
+            }
+            string directoryName;
+            try
+            {
+                directoryName = Path.GetDirectoryName(expandEnvironmentVariablesResult);
+            }
+            catch
+            {
+                return null;
+            }
+            if (string.IsNullOrEmpty(directoryName) || directoryName.TrimEnd('\\').Length <= 2)
+            {
+                return null;
+            }
+            directoryName = directoryName.TrimEnd('\\');
+            if (!string.IsNullOrEmpty(windowsRoot) && (WhitelistRule.PathEquals(directoryName, windowsRoot.TrimEnd('\\')) || FamilyBoundary.UnderRoot(directoryName, windowsRoot)))
+            {
+                return null;
+            }
+            string[] basesOffset = bases ?? new string[0];
+            foreach (string entryText in basesOffset)
+            {
+                if (!string.IsNullOrEmpty(entryText))
+                {
+                    if (WhitelistRule.PathEquals(directoryName, entryText))
+                    {
+                        return null;
+                    }
+                    if (FamilyBoundary.UnderRoot(directoryName, entryText))
+                    {
+                        int splitCount = directoryName.Substring(entryText.Length).Trim('\\').Split('\\')
+                            .Length;
+                        return (splitCount >= 3) ? Path.GetDirectoryName(directoryName) : directoryName;
+                    }
+                }
+            }
+            return directoryName;
+        }
 
 
-	}
+    }
 }

@@ -1,11 +1,11 @@
 namespace PaviseApp
 {
-	internal sealed class MaintenanceRuntimeSnapshot
-	{
-		internal MaintenanceRuntimeState State;
+    internal sealed class MaintenanceRuntimeSnapshot
+    {
+        internal MaintenanceRuntimeState State;
 
-		internal int RunningTaskCount;
+        internal int RunningTaskCount;
 
-		internal string Detail;
-	}
+        internal string Detail;
+    }
 }

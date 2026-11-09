@@ -11,8 +11,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PaviseApp
 {
-    // DSTS reports capabilities, not the active mode. Verify G-Helper's selection and a fresh driver acknowledgement.
-    // Send only to its dedicated receiver; do not edit its files or inject global input.
+    // DSTS 只报告能力，不表示当前模式。核对 G-Helper 的选择及最新驱动回执，只向其专用接收窗口发送，不改文件、不注入全局输入。
+
     internal static class AsusPerformanceController
     {
         internal interface IRuntime
@@ -52,7 +52,7 @@ namespace PaviseApp
 
         private static string Text(string zh, string en) { return Lang.Cur == 1 ? en : zh; }
 
-        // Custom profile IDs are independent of firmware mode; parse by JSON keys.
+        // 自定义配置编号独立于固件模式，按 JSON 字段解析。
         private static bool Parse(string json, out Selection value)
         {
             value = null;
@@ -77,7 +77,7 @@ namespace PaviseApp
             if (mode <= 2) baseMode = mode;
             else if (!Number(entries, "mode_base_" + mode, -1, out baseMode) || baseMode < 0 || baseMode > 3) return false;
             int[] keys = new int[5];
-            int[] defaults = { 0x80, 0x81, 0x7F, 0x82, 0x83 }; // F17, F18, F16, F19, F20
+            int[] defaults = { 0x80, 0x81, 0x7F, 0x82, 0x83 }; // 按键顺序：F17、F18、F16、F19、F20。
             var distinct = new HashSet<int>();
             int cycle, overlay, xgm;
             if (!Number(entries, "keybind_profile", 0x74, out cycle)
@@ -89,7 +89,7 @@ namespace PaviseApp
                     || keys[i] < 0x7F || keys[i] > 0x87 || !distinct.Add(keys[i]) || keys[i] == cycle
                     || keys[i] == xgm || keys[i] == overlay) return false;
             }
-            int modifiers = 7; // G-Helper's default Alt+Control+Shift profile modifier
+            int modifiers = 7; // G-Helper 默认使用 Alt+Control+Shift 作为配置切换修饰键。
             string modifier;
             if (entries.TryGetValue("modifier_keybind_alt", out modifier))
             {
@@ -144,7 +144,7 @@ namespace PaviseApp
         internal static bool IsPerformance(int mode)
         {
             Selection current = observed;
-            // Preserve custom Turbo / Full Speed instead of replacing its fan curve.
+            // 保留用户自定义的 Turbo 和 Full Speed，不覆盖原风扇曲线。
             return current != null && current.Mode == mode && (current.Base == 1 || current.Base == 3);
         }
 
@@ -175,7 +175,7 @@ namespace PaviseApp
                     bool acknowledged = delta.Contains(": Mode = " + destination.Base + " : OK");
                     if (acknowledged && acknowledgedAt < 0) acknowledgedAt = attempt;
                     if (check.Mode != mode && check.Mode != current.Mode) return false;
-                    // G-Helper applies fans and power after the base mode; wait for settlement while checking cancellation and user changes.
+                    // G-Helper 先切基本模式，再应用风扇和功耗；等待稳定期间持续检查取消和用户改动。
                     if (check.Mode == mode && acknowledged && attempt - acknowledgedAt >= 13)
                     {
                         observed = check;
@@ -256,7 +256,7 @@ namespace PaviseApp
                     if (owner != pid || IsWindowVisible(window) || GetWindowTextLength(window) != 0) return true;
                     var name = new StringBuilder(256);
                     GetClassName(window, name, name.Capacity);
-                    // NativeWindow minimum-frame sizing can make the receiver nonzero-sized; only KeyboardHook.Window handles WM_HOTKEY.
+                    // NativeWindow 的最小框架尺寸可能让接收窗口具有非零大小；只有 KeyboardHook.Window 处理 WM_HOTKEY。
                     if (name.ToString().StartsWith("WindowsForms10.Window.0.app.", StringComparison.Ordinal)) found.Add(window);
                     return true;
                 }, IntPtr.Zero);
@@ -266,7 +266,7 @@ namespace PaviseApp
 
             public bool Send(int processId, long creation, int key, int modifiers)
             {
-                // Send WM_HOTKEY only to G-Helper's dedicated hidden receiver.
+                // 仅向 G-Helper 专用的隐藏接收窗口发送 WM_HOTKEY。
                 using (Process process = Process.GetProcessById(processId))
                 {
                     if (process.StartTime.ToUniversalTime().Ticks != creation || process.SessionId != Process.GetCurrentProcess().SessionId) return false;

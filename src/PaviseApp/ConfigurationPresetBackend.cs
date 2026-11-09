@@ -81,7 +81,7 @@ namespace PaviseApp
             foreach (string key in PerformanceTuning.StorageMembers()) { string value = Boolean(key, false); if (value == null) return null; stringBuilder.Append(key).Append('=').Append(value).Append('\n'); }
             return stringBuilder.ToString();
         }
-        // Read durable preferences only; exclude capability probes, receipts and last-applied metadata.
+        // 仅读取持久偏好，不包含能力探测、回执和最近应用元数据。
         internal static string SavedIdentityPhase()
         {
             StringBuilder stringBuilder = new StringBuilder();
@@ -135,7 +135,7 @@ namespace PaviseApp
                         bool vbsAvailable = VbsTweak.CanConfigureForPreset(out vbsReason);
                         return vbsAvailable ? ConfigurationPresetAvailability.Yes() : ConfigurationPresetAvailability.No(vbsReason);
                     case "LabGpuClockMaxV1": case "LabGpuPowerMaxV1":
-                        // Presets save intent; the session controller owns capability checks, application and restoration.
+                        // 预设保存使用意图；能力检查、实际应用及恢复由会话控制器负责。
                         return ConfigurationPresetAvailability.Yes();
                     case "LabCpuIdleStrategyV1":
                         PowerPlan.NativeLaboratoryPower power = new PowerPlan.NativeLaboratoryPower(); Guid plan = power.ActivePlan();
@@ -163,7 +163,7 @@ namespace PaviseApp
             {
                 if (cancelled != null && cancelled()) return false;
                 if (!begin(delegate { done.Set(); })) return false;
-                // Do not abandon the callback: exit/reset must never race a still-running system transaction.
+                // 不能丢弃仍在运行的回调，退出或重置不得与系统事务并发。
                 done.WaitOne();
                 return true;
             }
@@ -175,7 +175,7 @@ namespace PaviseApp
             bool ok = accepted && !BadState(state) && Settings.LoadCached(key, false) == on;
             if (!ok && on && state != "working")
             {
-                // A target can disappear after preflight. Do not leave a failed/unsupported ON intent behind.
+                // 目标可能在预检后消失，失败或不受支持时不能遗留开启意图。
                 bool restored = Wait(done => PerformanceTuning.SetEnvironment(key, false, done), null);
                 detail += Settings.LoadCached(key, false) ? PerformancePolicy.Text("；启用请求撤回未完成", "; enable request withdrawal incomplete")
                     : PerformancePolicy.Text("；已撤回启用请求", "; enable request withdrawn");

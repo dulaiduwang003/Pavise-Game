@@ -2,7 +2,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // One in-process owner prevents exits, resets and overlapping update attempts while files are staged.
+    // 文件暂存期间，由唯一进程内所有者阻止退出、重置和重叠更新。
     internal static class SelfUpdateGate
     {
         private static int busy;

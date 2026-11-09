@@ -5,7 +5,7 @@ using System.Text;
 
 namespace PaviseApp
 {
-    // Session-only requests. Preferences and game qualification belong to the caller.
+    // 只接收会话请求；偏好及游戏适用条件由调用方负责。
     internal static class LaboratoryGpu
     {
         internal const string PowerKey = "LabGpuPowerMaxV1";
@@ -185,8 +185,8 @@ namespace PaviseApp
                 Receipt existing;
                 if (raw.Length == 0 || !Decode(raw, out existing))
                 { c.Active = false; c.Yielded = true; Status(c, "恢复记录异常，停止干预", "Recovery record changed; intervention stopped"); return; }
-                // NVML exposes no getter for the requested locked range. Do not mistake
-                // instantaneous MHz for ownership or rewrite a request every sampling tick.
+                // NVML 无法读取请求中的锁频范围，不能把瞬时 MHz 当作所有权证据，也不能每次采样都重写请求。
+
                 if (c.Key == ClockKey && existing.Device.Vendor == "nv") return;
                 Sample current; string reason;
                 if (!Probe(c.Key, existing.Device, out current, out reason))
@@ -199,7 +199,7 @@ namespace PaviseApp
                 }
                 return;
             }
-            // Settle previous-process recovery before acquiring a new session lease.
+            // 申请新会话租约前，先完成前一进程的恢复。
             if (raw.Length > 0 && !RestoreOne(c)) return;
             if (!c.Failures.CanAttempt("apply", Now.Ticks, 1)) return;
             Sample sample; string why;
@@ -267,8 +267,8 @@ namespace PaviseApp
             if (!valid) { Status(c, "恢复记录与功能不匹配，保留待处理", "Recovery record does not match feature; retained"); return false; }
             if (c.Key == ClockKey && r.Device.Vendor == "nv")
             {
-                // Explicit takeover contract: NVML cannot read the previous locked range.
-                // Reset returns to driver automatic clocks, never an invented old value.
+                // 显式接管约定：NVML 不能读取原先锁频范围；重置只能回到驱动自动频率，不能编造原值。
+
                 if (!ResetNvClock(r.Device)) { Status(c, "恢复自动调频失败，保留恢复记录", "Automatic-clock reset failed; record retained"); return false; }
             }
             else
@@ -283,7 +283,7 @@ namespace PaviseApp
                     if (!Probe(c.Key, r.Device, out check, out reason) || check.Current != r.Original || check.Context != r.Device.Context)
                     { Status(c, "恢复尚未核验，保留恢复记录", "Restore not verified; record retained"); return false; }
                 }
-                // Another writer changed the setting: relinquish ownership without writes.
+                // 其他写入方已改设置时，直接让出所有权，不再写入。
             }
             if (!Save(c.Receipt, "")) { Status(c, "设置已恢复，记录清理待重试", "Setting restored; record cleanup pending"); return false; }
             c.Active = false; Status(c, "关闭", "Off"); return true;
@@ -367,7 +367,7 @@ namespace PaviseApp
                 {
                     AdlxIntRange range;
                     if (!AdlxApi.GfxMinGet(found, out supported, out current, out maximum, out range) || !supported) return false;
-                    // Do not silently substitute "almost maximum" or modify the max/voltage.
+                    // 不能静默使用接近最大值的替代值，也不能修改频率上限或电压。
                     if (maximum <= 0 || maximum > range.Max || maximum < range.Min
                         || range.Step > 0 && (maximum - range.Min) % range.Step != 0)
                     { reason = PerformancePolicy.Text("驱动不支持将最低频率设为当前最高频率", "Driver cannot set the floor to the current maximum clock"); return false; }
@@ -507,7 +507,7 @@ namespace PaviseApp
                     if (!Handle(wanted, out gpu, out id)) return false;
                     uint value;
                     if (key == PowerKey) return PowerMode(gpu, out value) == 0 && value == 1;
-                    // Read-only support evidence; never test support by temporarily writing clocks.
+                    // 仅通过只读证据确认支持情况，不能临时写频率试探能力。
                     if (Architecture(gpu, out value) != 0 || value < 5 || value == uint.MaxValue) return false;
                     uint memory;
                     if (Clock(gpu, 2, out memory) != 0) return false;

@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal sealed class PolicyDiff
-	{
-		public string Key;
+    internal sealed class PolicyDiff
+    {
+        public string Key;
 
-		public string Value;
+        public string Value;
 
-		public string GlobalValue;
+        public string GlobalValue;
 
-		public bool SameAsGlobal;
-	}
+        public bool SameAsGlobal;
+    }
 }

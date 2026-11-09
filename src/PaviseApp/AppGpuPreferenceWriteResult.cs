@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum AppGpuPreferenceWriteResult
-	{
-		Written,
-		NotIssued,
-		Changed,
-		Unknown
-	}
+    internal enum AppGpuPreferenceWriteResult
+    {
+        Written,
+        NotIssued,
+        Changed,
+        Unknown
+    }
 }

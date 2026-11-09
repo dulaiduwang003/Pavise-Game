@@ -223,8 +223,8 @@ def main():
             "reason": "No verified model-aware privileged MSR backend is available to this bench. No elevation or driver installation attempted.",
             "memoryFixturesArePrefetchAB": False})
         if args.mode == "probe":
-            # Capability discovery remains useful on homogeneous CPUs too.
-            # The controlled P/E experiment keeps its original admission rules.
+            # 同构 CPU 也需要保留能力发现。
+            # 受控的 P、E 核实验继续使用原准入规则。
             try:
                 plan = topology_plan(top)
                 save(root / "placement-plan.json", plan)
@@ -232,8 +232,8 @@ def main():
                 save(root / "placement-plan.json", {"supported": False, "reason": str(exc)})
             configs = []
         elif args.mode == "smoke":
-            # One bounded, owned workload validates measurement and restoration;
-            # it does not claim an A/B speedup or require a P/E architecture.
+            # 使用一个有界的自有负载核验计量与恢复；
+            # 不宣称 A/B 提速，也不要求 P、E 混合架构。
             allowed = int(top["allowedMask"])
             if not allowed or any(c["group"] != 0 for c in top["cores"]):
                 raise RuntimeError("Smoke mode requires an available CPU in one processor group")

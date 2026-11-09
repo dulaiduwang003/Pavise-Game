@@ -6,7 +6,7 @@ namespace PaviseApp
 {
     internal sealed partial class CoreMotionScene
     {
-        // Rebuild materials only when the palette changes.
+        // 仅在配色变化后重建绘图资源。
         private readonly LinearGradientBrush[] armorMaterials = new LinearGradientBrush[8];
         private Color armorAccent, armorCard, armorInset;
         private bool armorLight;
@@ -37,7 +37,7 @@ namespace PaviseApp
             if (PanelGeometryForTest) { brush.Color = Color.White; g.FillPolygon(brush, points); return; }
 #endif
             Polygon(A(Color.Black, light ? 24 : 150), 4.2f, points);
-            // Cancel only the local plate rotation/mirror, preserving the viewport's DPI transform.
+            // 只抵消局部面板的旋转和镜像，保留视口的 DPI 变换。
             using (Matrix lighting = g.Transform)
             {
                 lighting.Multiply(armorInverseBasis, MatrixOrder.Append); lighting.Invert();

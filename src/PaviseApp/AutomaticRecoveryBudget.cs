@@ -4,8 +4,8 @@ using System.Globalization;
 
 namespace PaviseApp
 {
-    // A failed restoration keeps its owner after the active work budget is spent.
-    // Only a genuine session/configuration phase can select another budget.
+    // 主动恢复预算用尽后仍保留所有权；只有真实的新会话或配置阶段才可选择另一份预算。
+
     internal sealed class AutomaticRecoveryBudget
     {
         internal const int MaximumFailures = 3;
@@ -39,7 +39,7 @@ namespace PaviseApp
             int count; failures.TryGetValue(cycle, out count);
             failures[cycle] = Math.Min(maximumFailures, count + 1);
         }
-        // Called only after an existing owned receipt has been verified neutral.
+        // 仅在确认已有持有记录已经恢复中性后调用。
         internal void CompleteRecovery() { failures.Remove(cycle); }
         private static string SessionPart(string identity)
         { int split = identity.IndexOf('\n'); return split < 0 ? "" : identity.Substring(0, split); }

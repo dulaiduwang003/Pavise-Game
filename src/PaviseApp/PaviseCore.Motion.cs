@@ -86,7 +86,7 @@ namespace PaviseApp
         private void FailMotion(Exception error)
         {
             motionPaintFailed=true;timer.Stop();clock.Stop();
-            Logger.RepeatedError("core-motion-paint","Animation="+CoreMotionCatalog.Key(SelectedMotion)+"; size="+Width+"x"+Height+"; "+error);
+            Logger.RepeatedError("core-motion-paint","动效="+CoreMotionCatalog.Key(SelectedMotion)+"；尺寸="+Width+"x"+Height+"; "+error);
         }
         private void DrawMotionFallback(Graphics g,Color color)
         {

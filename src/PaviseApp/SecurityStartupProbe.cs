@@ -15,7 +15,7 @@ namespace PaviseApp
     {
         internal SecurityProbeTerminationException(string message, Exception cause) : base(message, cause) { }
     }
-    // Run inspection in an owned startup helper so hung providers cannot outlive startup.
+    // 由本方持有的启动辅助进程执行检查，避免卡住的提供程序超出启动阶段存活。
     internal static class SecurityStartupProbe
     {
         internal const string HelperArgument = "--security-startup-snapshot";
@@ -43,7 +43,7 @@ namespace PaviseApp
                 Task<string> error = child.StandardError.ReadToEndAsync();
                 if (!child.WaitForExit(TimeoutMs))
                 {
-                    // This is our own inspection-only child, never a security product.
+                    // 这是本方只读检查子进程，绝不是安全软件进程。
                     StopHelper(child);
                     confirmedExit = true;
                     return SecurityProductSnapshot.Unknown(true, "Helper deadline exhausted");
@@ -118,8 +118,8 @@ namespace PaviseApp
                 SecurityProductInfo previous;
                 if (Products.TryGetValue(key, out previous))
                 {
-                    // WSC is authoritative for protection. A running service only
-                    // corroborates installation; it must never turn WSC Off into On.
+                    // 防护状态以 WSC 为准，运行中的服务只能佐证已安装；不能把 WSC 报告的关闭改判为开启。
+
                     if (!authoritative && previous.State != SecurityProductState.Unknown) return;
                     if (authoritative && previous.State == SecurityProductState.Active) return;
                     if (!authoritative && previous.IsRunning && !product.IsRunning) return;
@@ -133,8 +133,8 @@ namespace PaviseApp
         {
             if (product.VendorKey != "360") return product.VendorKey.Length == 0 ? product.Name : product.VendorKey;
             string name = product.Name.ToLowerInvariant();
-            // These can be installed independently. An inactive antivirus must
-            // not suppress the separate Safe Guard service's unknown status.
+            // 这些组件可独立安装；杀毒软件未运行不能掩盖单独 Safe Guard 服务的未知状态。
+
             if (Has(name, "total security")) return "360:total";
             if (Has(name, "杀毒", "antivirus", "internet security")) return "360:antivirus";
             if (Has(name, "卫士", "360safe")) return "360:guard";
@@ -156,7 +156,7 @@ namespace PaviseApp
             return CompleteSnapshot(facts);
         }
 
-        // A complete inventory plus resolved per-product status can replace a failed WSC status query.
+        // 完整清单及逐产品明确状态，可以补充失败的 WSC 状态查询。
         private static SecurityProductSnapshot CompleteSnapshot(Facts facts)
         {
             var products = new List<SecurityProductInfo>(facts.Products.Values);
@@ -213,8 +213,8 @@ namespace PaviseApp
                 resolved == SecurityProductState.Active);
         }
 
-        // The Windows SDK declares both interfaces as IDispatch/dual. Their
-        // method order below follows iwscapi.h, including inherited dispatch slots.
+        // Windows SDK 将两个接口均定义为 IDispatch 双接口，以下方法顺序遵循 iwscapi.h，包含继承的分发槽位。
+
         [ComImport, Guid("722A338C-6E8E-4E72-AC27-1417FB0C81C2"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
         private interface IWscProductList
         {
@@ -358,7 +358,7 @@ namespace PaviseApp
             if (vendor.Length == 0) vendor = VendorForName(description);
             if (vendor.Length == 0 || vendor == "defender" || (expected.Length != 0 && vendor != expected) || !PublisherMatches(vendor, company)) return "";
             string file = Path.GetFileName(path).ToLowerInvariant();
-            // Reject browser, storefront and updater-only products from the same publisher.
+            // 排除同一发布者的浏览器、应用商店及仅更新程序。
             if (file.IndexOf("browser", StringComparison.Ordinal) >= 0 || file == "360se.exe" || file == "360chrome.exe" || file == "qq.exe") return "";
             return vendor;
         }
@@ -419,7 +419,7 @@ namespace PaviseApp
             { int end = value.IndexOf('"', 1); if (end < 0) return ""; value = value.Substring(1, end - 1); }
             else
             { int end = value.IndexOf(".exe", StringComparison.OrdinalIgnoreCase); if (end < 0) return ""; value = value.Substring(0, end + 4); }
-            // Only local absolute executables; do not touch UNC shares or device paths.
+            // 只允许本机绝对可执行路径，不访问 UNC 共享或设备路径。
             if (value.Length < 4 || !char.IsLetter(value[0]) || value[1] != ':' || value[2] != '\\' || !value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return "";
             try { return Path.GetFullPath(value); } catch (Exception) { return ""; }
         }

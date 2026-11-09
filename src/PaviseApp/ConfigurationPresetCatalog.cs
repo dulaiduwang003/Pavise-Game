@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Feature combinations are independent from the Smart / Competitive runtime policy.
+    // 功能组合与智能、竞技两种运行策略分别设置。
     internal enum ConfigurationPresetKind { Default, Extreme }
 
     internal sealed class ConfigurationPresetEntry
@@ -14,7 +14,7 @@ namespace PaviseApp
         { Key = key; Zh = zh; En = en; DefaultValue = normal; ExtremeValue = extreme; RestartRequired = restart; }
         internal string Title { get { return PerformancePolicy.Text(Zh, En); } }
         internal string Value(ConfigurationPresetKind preset) { return preset == ConfigurationPresetKind.Extreme ? ExtremeValue : DefaultValue; }
-        // A null preset value preserves the current selection.
+        // 预设值为空时保留当前选择。
         internal static bool IsEnabled(string value) { return value != null && value != "0" && value != "off" && value != "default"; }
     }
 

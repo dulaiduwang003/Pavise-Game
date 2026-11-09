@@ -1,17 +1,17 @@
 namespace PaviseApp
 {
-	internal sealed class AuditRow
-	{
-		public string Name;
+    internal sealed class AuditRow
+    {
+        public string Name;
 
-		public string Value;
+        public string Value;
 
-		public string Note;
+        public string Note;
 
-		public string Evidence;
+        public string Evidence;
 
-		public bool Warn;
+        public bool Warn;
 
-		public string FixKey;
-	}
+        public string FixKey;
+    }
 }

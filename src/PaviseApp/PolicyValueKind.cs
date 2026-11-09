@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum PolicyValueKind
-	{
-		Bool,
-		Enum,
-		Choice
-	}
+    internal enum PolicyValueKind
+    {
+        Bool,
+        Enum,
+        Choice
+    }
 }

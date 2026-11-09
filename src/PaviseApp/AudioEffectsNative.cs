@@ -61,7 +61,7 @@ namespace PaviseApp
                     { error = T("系统效果属性类型或值不受支持", "System-effects property type or value is unsupported", "システム効果のプロパティ型または値に対応していません"); return false; }
                 }
                 finally { PropVariantClear(ref value); }
-                // VT_EMPTY is a valid original state; read the FX store for both apply and restore.
+                // VT_EMPTY 是有效原值；应用和恢复均从 FX 属性存储读取。
                 if (!VerifyFxProperty(endpointId, property, out error)) return false;
                 bool legacy, modern; string identity;
                 if (!EffectsIdentity(endpointId, out legacy, out modern, out identity, out error)) return false;
@@ -128,14 +128,14 @@ namespace PaviseApp
                 owner = Activator.CreateInstance(Type.GetTypeFromCLSID(PolicyClass));
                 var policy = owner as IAudioEffectsPolicyConfig;
                 if (policy == null) { error = UnsupportedPolicy(); return false; }
-                // Set vt explicitly: an absent property remains VT_EMPTY until typed.
-                // Restore absence with VT_EMPTY; restore explicit Enabled with DWORD 0.
+                // 显式设置 vt：未定义的属性在指定类型前仍为 VT_EMPTY。原先不存在时恢复为 VT_EMPTY，原先明确启用时恢复 DWORD 0。
+
                 ushort variantType; uint variantNumber;
                 EncodeProperty(property, out variantType, out variantNumber);
                 var value = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
                 int hr = policy.SetPropertyValue(id, true, ref SysFx, ref value);
                 if (hr < 0) { error = HResult("FX policy write", hr); return false; }
-                // Verify both scalar and APO-chain identity through the same FX route.
+                // 通过同一 FX 路径核验标量值和 APO 链身份。
                 return true;
             }
             catch (Exception ex) { error = UnsupportedPolicy() + " (" + ex.GetType().Name + ")"; return false; }
@@ -196,14 +196,14 @@ namespace PaviseApp
                 var stable = new StringBuilder();
                 foreach (string name in names)
                 {
-                    // The leased scalar can live in FxProperties; it is separate from APO-chain identity.
+                    // 租约标量可能存放在 FxProperties 中，它与 APO 链身份分别管理。
                     if (name.Equals("{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5", StringComparison.OrdinalIgnoreCase)) continue;
                     bool effectRegistration = false, processingModes = false;
                     foreach (int propertyId in new[] { 1, 2, 5, 6, 7 })
                         effectRegistration |= name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d}," + propertyId.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
                     foreach (int propertyId in new[] { 5, 6, 7 })
                         processingModes |= name.Equals("{d3993a3f-99c2-4402-b5ec-a92a0367664b}," + propertyId.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
-                    // Bind recovery to the registered APO chain/modes; per-effect and UI values remain user-owned.
+                    // 恢复绑定到已注册的 APO 链和模式；单个效果及界面设置仍归用户管理。
                     if (!effectRegistration && !processingModes) continue;
                     object value = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
                     if (value == null) continue;
@@ -216,10 +216,11 @@ namespace PaviseApp
                     if (name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},1", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},2", StringComparison.OrdinalIgnoreCase))
                     { Guid effect; if (value is string && Guid.TryParse((string)value, out effect) && effect != Guid.Empty) legacy = true; }
-                    // Modern SFX/MFX use this same master flag in Microsoft's SysVAD
-                    // GetCurrentEffectsSetting/notification sample. Registration is
-                    // admission for a bypass *request*, not proof of a changed graph.
-                    // https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/APO/SwapAPO/swapapomfx.cpp
+                    // 现代 SFX/MFX 在微软 SysVAD 的 GetCurrentEffectsSetting 与通知示例中共用该总开关。注册信息只允许发起旁路请求，不能证明音频图已经改变。
+                    // 参考：https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/APO/SwapAPO/swapapomfx.cpp
+
+
+
                     if (name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},5", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},6", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},7", StringComparison.OrdinalIgnoreCase))
@@ -262,22 +263,25 @@ namespace PaviseApp
             [PreserveSig] int SetValue(ref AudioEffectsPropertyKey key, ref AudioEffectsVariant value);
             [PreserveSig] int Commit();
         }
-        // ABI observed in the maintained ToggleSysFx implementation. QueryInterface
-        // is mandatory; unsupported Windows/endpoints fail closed. No fallback writes
-        // to ordinary properties or directly to MMDevices registry keys are allowed.
-        // https://github.com/thebookisclosed/ToggleSysFx/blob/main/MMDeviceApi.cs
+        // 该 ABI 参考持续维护的 ToggleSysFx 实现。必须通过 QueryInterface 核验；不支持的 Windows 或端点直接停止，不回退写入普通属性或 MMDevices 注册表。
+        // 参考：https://github.com/thebookisclosed/ToggleSysFx/blob/main/MMDeviceApi.cs
+
+
+
         [ComImport, Guid("67C5FC9C-29E1-4154-8307-84ED8EDB5A21"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] private interface IAudioEffectsLocalEndpoint
         {
             [PreserveSig] int IsEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
             [PreserveSig] int GetInternalState(out uint state);
             [PreserveSig] int OpenFXPropertyStore(uint access, out IAudioEffectsPropertyStore effects);
         }
-        // Private Windows 10 ABI with an explicit FX-store selector. It is never
-        // substituted with IMMDevice's ordinary property bag. Exact vtable is
-        // independently documented by the Win10 21H1 reproducer and maintained
-        // AudioDeviceCmdlets source; capability/readback gates still apply.
-        // https://learn.microsoft.com/en-us/answers/questions/669471/how-to-control-enable-audio-enhancements-with-code
-        // https://github.com/frgnca/AudioDeviceCmdlets/blob/master/SOURCE/IPolicyConfig.cs
+        // Windows 10 私有 ABI 带有明确的 FX 存储选择参数，不能用 IMMDevice 的普通属性表替代。Win10 21H1 复现及 AudioDeviceCmdlets 均记录了该虚表，实际操作仍需通过能力与读回检查。
+        // 参考：https://learn.microsoft.com/en-us/answers/questions/669471/how-to-control-enable-audio-enhancements-with-code
+        // 参考：https://github.com/frgnca/AudioDeviceCmdlets/blob/master/SOURCE/IPolicyConfig.cs
+
+
+
+
+
         [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] private interface IAudioEffectsPolicyConfig
         {
             [PreserveSig] int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string id, out IntPtr format);

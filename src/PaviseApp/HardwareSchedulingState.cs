@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum HardwareSchedulingState
-	{
-		ProbeUnavailable,
-		Enabled,
-		Disabled
-	}
+    internal enum HardwareSchedulingState
+    {
+        ProbeUnavailable,
+        Enabled,
+        Disabled
+    }
 }

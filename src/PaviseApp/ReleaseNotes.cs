@@ -2,12 +2,12 @@ using System;
 
 namespace PaviseApp
 {
-	internal static class ReleaseNotes
-	{
-		private const string SeenKey = "LastSeenNotesVersion";
+    internal static class ReleaseNotes
+    {
+        private const string SeenKey = "LastSeenNotesVersion";
 
-		public static readonly ReleaseNote[] All = new ReleaseNote[1]
-		{
+        public static readonly ReleaseNote[] All = new ReleaseNote[1]
+        {
             new ReleaseNote("3.3.0.8", "2026-11-08", new string[][] {
                 new[] { "渲染亲和性支持自动/手动选核与整核隔离，联动游戏核心范围；调整下局生效，关闭立即撤回。",
                     "Added automatic/manual render CPU selection with whole-core isolation. Choices follow the game CPU range; edits apply next session and disabling withdraws the binding immediately.",
@@ -32,38 +32,38 @@ namespace PaviseApp
                     "ゲーム終了後の復元と電源状態の誤報を修正。重複ログと不要な警告を削減しました。" },
             }),
 
-		};
+        };
 
-		public static ReleaseNote Current
-		{
-			get
-			{
-				ReleaseNote[] all = All;
-				foreach (ReleaseNote releaseNote in all)
-				{
-					if (string.Equals(releaseNote.Version, App.Version, StringComparison.OrdinalIgnoreCase))
-					{
-						return releaseNote;
-					}
-				}
-				return null;
-			}
-		}
+        public static ReleaseNote Current
+        {
+            get
+            {
+                ReleaseNote[] all = All;
+                foreach (ReleaseNote releaseNote in all)
+                {
+                    if (string.Equals(releaseNote.Version, App.Version, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return releaseNote;
+                    }
+                }
+                return null;
+            }
+        }
 
-		public static bool HasUnseen
-		{
-			get
-			{
-				return !string.Equals(Settings.LoadStr(SeenKey, ""), App.Version, StringComparison.OrdinalIgnoreCase);
-			}
-		}
+        public static bool HasUnseen
+        {
+            get
+            {
+                return !string.Equals(Settings.LoadStr(SeenKey, ""), App.Version, StringComparison.OrdinalIgnoreCase);
+            }
+        }
 
-		public static bool MarkSeen()
-		{
-			string saved;
-			return Settings.SaveStrDurable(SeenKey, App.Version)
-				&& Settings.TryLoadStr(SeenKey, out saved)
-				&& string.Equals(saved, App.Version, StringComparison.OrdinalIgnoreCase);
-		}
-	}
+        public static bool MarkSeen()
+        {
+            string saved;
+            return Settings.SaveStrDurable(SeenKey, App.Version)
+                && Settings.TryLoadStr(SeenKey, out saved)
+                && string.Equals(saved, App.Version, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Commit migration only after all disabled groups are saved, preserving explicitly disabled setups.
+    // 所有关闭分组均保存成功后才提交迁移，保留用户明确关闭的配置。
     internal static class AntiCheatGroupMigration
     {
         internal const string Marker = "TameGroupControlMigratedV1";

@@ -125,7 +125,7 @@ namespace PaviseApp
             lock (gate) { if (disposed) return; disposed = true; }
             Stop();
             lock (gate) { attemptReceipts.Clear(); }
-            // A slow read-only query may outlive Stop; its event carries no cleanup authority.
+            // 较慢的只读查询可能在 Stop 后仍未结束，其事件不持有清理权限。
         }
 
         internal void NotifySession(GameProfile value, int pid, long creation, bool active)
@@ -259,11 +259,11 @@ namespace PaviseApp
             {
                 lock (gate)
                 {
-                    // Serialize invalidation with native mutation to cancel queued termination after Stop/renderer changes.
+                    // 失效处理与原生修改串行执行，在停止或渲染进程变化后撤销排队的终止操作。
                     GameProcessSnapshot game;
                     if (!CurrentLocked(epoch, currentProfile, pid, creation) || !cleaning || !TryRendererIdentity(currentProfile, pid, creation, rendererPath, out game))
                     { cancelled = true; break; }
-                    // Refresh ancestry immediately before every termination.
+                    // 每次终止前立即刷新祖先关系。
                     bool freshComplete;
                     List<GameProcessSnapshot> fresh = CaptureCandidates(root, out freshComplete);
                     if (!freshComplete || !ContainsIdentity(fresh, candidate)) { failed++; break; }
@@ -332,7 +332,7 @@ namespace PaviseApp
             discoveryAttempted = false; nextDiscoveryAt = 0; attempted = false; cleaning = false; detached = false; activeReceipt = null; status = ""; error = "";
         }
 
-        // Retain live cleanup receipts across detector gaps and Stop/Start; never evict them for capacity.
+        // 探测间隙及停止、重启期间均保留存活清理回执，不能因容量限制淘汰。
         private bool ClaimAttemptLocked(GameProfile value, int pid, long creation)
         {
             string key = AttemptKey(value, pid, creation);
@@ -352,7 +352,7 @@ namespace PaviseApp
 
         private static string AttemptKey(GameProfile value, int pid, long creation)
         {
-            // Bind cleanup to the executable path so renderer learning cannot re-admit the same live process.
+            // 清理绑定到可执行路径，防止渲染进程学习把同一存活进程重新准入。
             string binding = string.IsNullOrEmpty(value.ExecutablePath) ? value.Root : value.ExecutablePath;
             try { binding = Path.GetFullPath(binding ?? "").TrimEnd('\\', '/').ToUpperInvariant(); }
             catch { binding = "<invalid>"; }
@@ -443,7 +443,7 @@ namespace PaviseApp
             return string.Equals(file, "wegame.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "wegameclient.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "browser.exe", StringComparison.OrdinalIgnoreCase) || string.Equals(file, "crashpad_handler.exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Require verified UI-shell ancestry; exclude runtime and anti-cheat families.
+        // 必须核验界面壳祖先关系，排除运行时及反作弊家族。
         internal static List<GameProcessSnapshot> SelectShellCandidates(IList<GameProcessSnapshot> entries, string root)
         {
             List<GameProcessSnapshot> result = new List<GameProcessSnapshot>();
@@ -472,7 +472,7 @@ namespace PaviseApp
                 }
                 if (!protectedAncestor && (!helper || shellAncestor)) result.Add(item);
             }
-            // Close UI children before roots so subsequent ancestry checks retain evidence.
+            // 先关闭界面子进程，再关闭根进程，便于后续祖先核对保留证据。
             result.Sort(delegate(GameProcessSnapshot a, GameProcessSnapshot b) { return b.Creation.CompareTo(a.Creation); });
             return result;
         }

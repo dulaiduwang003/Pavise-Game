@@ -1,11 +1,11 @@
 namespace PaviseApp
 {
-	internal sealed class LolHeadlessLeaseInfo
-	{
-		public string Root;
+    internal sealed class LolHeadlessLeaseInfo
+    {
+        public string Root;
 
-		public int GamePid;
+        public int GamePid;
 
-		public long GameCreation;
-	}
+        public long GameCreation;
+    }
 }

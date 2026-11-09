@@ -38,7 +38,7 @@ namespace PaviseApp
                 string receipt = Settings.LoadStr(Slot, "");
                 if (receipt.Length == 0 || receipt.StartsWith("G2|", StringComparison.Ordinal) || receipt.StartsWith("G3|", StringComparison.Ordinal)) return receipt;
                 string[] parts = receipt.Split('\u001f');
-                if (parts.Length != 2) return receipt; // Unverified legacy records stay recoverable by the legacy restorer.
+                if (parts.Length != 2) return receipt; // 未经核验的旧记录继续交给旧版恢复器处理。
                 string original, applied;
                 if (!DecodeLegacy(parts[0], out original) || !DecodeLegacy(parts[1], out applied)) return receipt;
                 return GraphicsPreferenceTransaction.Receipt(original, applied, 'A');

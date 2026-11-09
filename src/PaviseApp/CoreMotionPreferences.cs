@@ -40,7 +40,7 @@ namespace PaviseApp
                 int current = Settings.MutationGeneration;
                 if (generation != current)
                 {
-                    // Legacy "default" follows its former mode; explicit native tokens are freely shared.
+                    // 旧版 default 沿用原模式；显式原生标识可在模式间共用。
                     for (int i = 0; i < selected.Length; i++) selected[i] = CoreMotionCatalog.Resolve(Settings.LoadStr(PreferenceKey((PerformancePreset)i), "default"), (PerformancePreset)i);
                     generation = current;
                 }

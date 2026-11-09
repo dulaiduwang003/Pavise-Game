@@ -1,17 +1,17 @@
 namespace PaviseApp
 {
-	internal sealed class PrivacyPlan
-	{
-		internal bool Supported;
+    internal sealed class PrivacyPlan
+    {
+        internal bool Supported;
 
-		internal bool Limited;
+        internal bool Limited;
 
-		internal bool Managed;
+        internal bool Managed;
 
-		internal string Note;
+        internal string Note;
 
-		internal string UnavailableReason;
+        internal string UnavailableReason;
 
-		internal PrivacyTarget[] Targets;
-	}
+        internal PrivacyTarget[] Targets;
+    }
 }

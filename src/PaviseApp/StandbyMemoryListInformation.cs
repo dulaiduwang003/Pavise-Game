@@ -3,24 +3,24 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-	internal struct StandbyMemoryListInformation
-	{
-		public UIntPtr ZeroPageCount;
+    internal struct StandbyMemoryListInformation
+    {
+        public UIntPtr ZeroPageCount;
 
-		public UIntPtr FreePageCount;
+        public UIntPtr FreePageCount;
 
-		public UIntPtr ModifiedPageCount;
+        public UIntPtr ModifiedPageCount;
 
-		public UIntPtr ModifiedNoWritePageCount;
+        public UIntPtr ModifiedNoWritePageCount;
 
-		public UIntPtr BadPageCount;
+        public UIntPtr BadPageCount;
 
-		[MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-		public UIntPtr[] PageCountByPriority;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+        public UIntPtr[] PageCountByPriority;
 
-		[MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-		public UIntPtr[] RepurposedPagesByPriority;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+        public UIntPtr[] RepurposedPagesByPriority;
 
-		public UIntPtr ModifiedPageCountPageFile;
-	}
+        public UIntPtr ModifiedPageCountPageFile;
+    }
 }

@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Create, use and release all COM objects on the single MTA audio worker.
+    // 全部 COM 对象在同一个 MTA 音频工作线程中创建、使用和释放。
     internal sealed class LowLatencyAudioNative : ILaboratoryAudioDriver
     {
         private readonly AutoResetEvent render = new AutoResetEvent(false);
@@ -70,7 +70,7 @@ namespace PaviseApp
                 object activated; Check(endpoint.Activate(ref iid, 0x17, IntPtr.Zero, out activated));
                 client = activated as IAudioClient3;
                 if (client == null) { Release(activated); throw new NotSupportedException("IAudioClient3"); }
-                // Other/default processing mode; no RAW, offload or format/period locking flags.
+                // 使用普通或默认处理模式，不启用 RAW、卸载或格式与周期锁定标志。
                 var properties = new AudioClientProperties { Size = (uint)Marshal.SizeOf(typeof(AudioClientProperties)) };
                 Check(client.SetClientProperties(ref properties));
                 Check(client.GetMixFormat(out format));
@@ -86,7 +86,7 @@ namespace PaviseApp
 
         public LaboratoryAudioPeriod Start(uint frames)
         {
-            // InitializeSharedAudioStream supports EVENTCALLBACK, not the legacy NOPERSIST stream flag.
+            // InitializeSharedAudioStream 支持 EVENTCALLBACK，不支持旧的 NOPERSIST 流标志。
             Check(client.InitializeSharedAudioStream(0x40000, frames, format, IntPtr.Zero)); initialized = true;
             Check(client.SetEventHandle(render.SafeWaitHandle.DangerousGetHandle()));
             Check(client.GetBufferSize(out bufferFrames));
@@ -97,7 +97,7 @@ namespace PaviseApp
             if (renderer == null) { Release(service); throw new NotSupportedException("IAudioRenderClient"); }
             RenderSilence();
             Check(client.Start()); started = true;
-            // Give the newly started engine one render event before evaluating its instantaneous readback.
+            // 新引擎启动后，先等待一次渲染事件，再评估瞬时读回结果。
             if (render.WaitOne(250)) RenderSilence();
             return ReadPeriod();
         }
@@ -125,7 +125,7 @@ namespace PaviseApp
             uint frames = bufferFrames - padding;
             if (frames == 0) return;
             IntPtr data; Check(renderer.GetBuffer(frames, out data));
-            // AUDCLNT_BUFFERFLAGS_SILENT: contents of the returned buffer need not be touched.
+            // AUDCLNT_BUFFERFLAGS_SILENT 表示无需改写返回缓冲区的内容。
             Check(renderer.ReleaseBuffer(frames, 2));
         }
 
@@ -157,7 +157,7 @@ namespace PaviseApp
         {
             string direct = StringProperty(endpoint, new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), 24);
             if (LaboratoryAudioSession.IsBluetooth(direct)) return direct;
-            // Follow the MMDEVAPI endpoint connector to its hardware adapter; SWD enumeration alone does not identify the bus.
+            // 沿 MMDEVAPI 端点连接器定位硬件适配器，不能仅凭 SWD 枚举确认总线。
             object raw = null;
             IDeviceTopology topology = null;
             IConnector connector = null;

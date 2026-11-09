@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace PaviseApp
 {
-    // Separate display facts from control identity; missing driver bindings do not hide or authorize a GPU.
+    // 显示信息与控制身份分开；缺少驱动绑定既不能隐藏 GPU，也不能授予控制权限。
     internal sealed class OverviewGpuReader
     {
         private static readonly OverviewGpuReader shared = new OverviewGpuReader(
@@ -50,7 +50,7 @@ namespace PaviseApp
                 catch (Exception error)
                 {
                     inventoryFailures++;
-                    Logger.Warn("Overview GPU inventory read failed phase=" + cycle + " attempt=" + inventoryFailures + "/3: " + error.GetType().Name);
+                    Logger.Warn("概览 GPU 清单读取失败，阶段=" + cycle + " 尝试=" + inventoryFailures + "/3: " + error.GetType().Name);
                 }
                 if (cached == null && fallbackFailures < 3)
                 {
@@ -63,11 +63,11 @@ namespace PaviseApp
                     catch (Exception error)
                     {
                         fallbackFailures++;
-                        Logger.Warn("Overview GPU fallback read failed phase=" + cycle + " attempt=" + fallbackFailures + "/3: " + error.GetType().Name);
+                        Logger.Warn("概览 GPU 备用读取失败，阶段=" + cycle + " 尝试=" + fallbackFailures + "/3: " + error.GetType().Name);
                     }
                 }
                 attempted = true;
-                // Retry only the GPU read after a failure, not CPU topology or memory WMI.
+                // 失败后仅重试 GPU 读取，不重复探测 CPU 拓扑或内存 WMI。
                 nextAttempt = clock() + retryTicks;
                 return cached;
             }

@@ -2,18 +2,18 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-	internal sealed class GpuIrqResult
-	{
-		public GpuIrqOutcome Outcome;
+    internal sealed class GpuIrqResult
+    {
+        public GpuIrqOutcome Outcome;
 
-		public string Detail = "";
+        public string Detail = "";
 
-		public GpuIrqSample Gpu;
+        public GpuIrqSample Gpu;
 
-		public ulong Region;
+        public ulong Region;
 
-		public ulong Target;
+        public ulong Target;
 
-		public List<SlowDriver> Slow = new List<SlowDriver>();
-	}
+        public List<SlowDriver> Slow = new List<SlowDriver>();
+    }
 }

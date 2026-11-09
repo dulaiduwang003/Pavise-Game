@@ -6,7 +6,7 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // Read-only and independent of foreground focus or the guard enable switch.
+        // 只读查询独立于前台焦点和守护开关。
         internal bool MemoryCleanupGamePresent()
         {
             try

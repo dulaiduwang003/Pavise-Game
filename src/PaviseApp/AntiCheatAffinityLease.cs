@@ -31,8 +31,8 @@ namespace PaviseApp
         { Read = read; Group = group; Mask = mask; AllowedMask = allowed; Detail = detail ?? ""; }
     }
 
-    // A setter must revalidate identity, group and expected affinity immediately before writing.
-    // Windows has no compare-and-set process affinity API; a foreign writer can still race that check.
+    // 写入前再次核对身份、处理器组及预期亲和性。Windows 没有进程亲和性的原子比较交换接口，外部程序仍可能在核对后抢先写入。
+
     internal interface IAntiCheatAffinityPlatform
     {
         string DeviceIdentity { get; }
@@ -46,13 +46,13 @@ namespace PaviseApp
         bool Load(out string receipt);
         bool Save(string receipt);
     }
-    // Restoration only changes the owned hard mask. A newly added CPU Sets policy is foreign
-    // state and must neither prevent that restoration nor be removed by this owner.
+    // 恢复只处理本方持有的硬掩码。新出现的 CPU Sets 策略属于外部状态，不能阻止本方恢复，也不能由本方删除。
+
     internal interface IAntiCheatAffinityRestorePlatform
     {
         bool Restore(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong original, out AntiCheatAffinityObservation observed);
     }
-    // Keep constraint lifetime independent of process-mask recovery.
+    // 约束的存续周期与进程掩码恢复分别管理。
     internal interface IAntiCheatAffinityConstraintPlatform
     {
         bool ConstraintPending { get; }
@@ -69,7 +69,7 @@ namespace PaviseApp
         { Code = code; Detail = detail; Bound = bound; PendingRecovery = pending; }
     }
 
-    // The caller supplies a verified group-local mask; this lease owns only process hard affinity.
+    // 调用方提供已核验的组内掩码；该租约只持有进程硬亲和性。
     internal sealed class AntiCheatAffinityLease
     {
         internal const string ReceiptKey = "AntiCheatHardAffinityV1";
@@ -252,20 +252,20 @@ namespace PaviseApp
                 {
                     attempt.Failures++;
                     attempt.Next = platform.NowMilliseconds + 30000;
-                    Logger.Warn("Anti-cheat affinity recovery: target=" + row.Identity.Key + " failure=" + attempt.Failures + "/3; owned receipt and handles retained");
+                    Logger.Warn("反作弊亲和性恢复：目标=" + row.Identity.Key + " 失败详情=" + attempt.Failures + "/3；保留回执和句柄");
                 }
             }
         }
         private bool RestoreCore(Receipt row)
         {
-            // A lost guardian makes the ordinary Read fail closed. Revoke the Job first;
-            // its independent durable receipt also restores the original process mask.
+            // 守护丢失时，普通读取按失败处理。先撤销 Job，其独立持久记录也负责恢复原进程掩码。
+
             string reason;
             if (Constraints != null && !Constraints.ReleaseConstraint(row.Identity, out reason)) return Debt(row);
             AntiCheatAffinityObservation read = platform.Read(row.Identity);
             if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess) return Remove(row);
             if (read.Read != AntiCheatAffinityRead.Known || read.Group != row.Group) return Debt(row);
-            // A prepared target change can still be at our previous mask if the process crashed before Set.
+            // 若进程在 Set 前崩溃，准备中的目标变更可能仍停留在上一次掩码。
             bool owned = read.Mask == row.Applied || ((row.Phase == 'P' || row.Phase == 'R') && row.Previous != 0 && read.Mask == row.Previous);
             if (!owned || read.Mask == row.Original) return Remove(row);
             if ((row.Original & ~read.AllowedMask) != 0) return Debt(row);
@@ -280,7 +280,7 @@ namespace PaviseApp
             {
                 if (after.Mask == row.Original || (after.Mask != row.Applied && after.Mask != row.Previous)) return Remove(row);
             }
-            // Permission failures and unverified writes retain the durable restore intent.
+            // 权限失败或写入未经核验时，保留持久恢复意图。
             return Debt(row);
         }
         internal AntiCheatAffinityResult Ensure(AntiCheatAffinityIdentity identity, ushort group, ulong targetMask, bool allowCpuSets = false)
@@ -355,7 +355,7 @@ namespace PaviseApp
                     row = new Receipt(); row.Identity = identity; row.Group = group; row.Original = read.Mask;
                     rows.Add(identity.Key, row);
                 }
-                if (drift) row.Original = read.Mask; // Latest foreign setting is the restore baseline.
+                if (drift) row.Original = read.Mask; // 以最新观测到的外部设置作为恢复基准。
                 row.Previous = acquired && !drift ? row.Applied : 0;
                 row.Applied = targetMask; row.Phase = 'P';
                 if (!Save())
@@ -372,7 +372,7 @@ namespace PaviseApp
                     if (Save()) return guard.Last = Result(drift ? "reasserted" : "bound", Constraints != null && after.Detail.Length != 0 ? after.Detail : drift ? "检测到亲和性被修改，已重新硬绑定" : "已硬绑定辅助核", true, false);
                 }
                 guard.Stopped = true; Debt(row);
-                // Keep the prepared intent even when Set reports failure: the write may have occurred.
+                // 即使 Set 报错，也保留准备记录，因为写入可能已经发生。
                 return guard.Last = Result("write-unverified", after == null || after.Detail.Length == 0 ? "硬绑定未核验，等待恢复" : after.Detail, false, true);
             }
         }
@@ -420,7 +420,7 @@ namespace PaviseApp
             }
         }
 
-        // Session changes retain neutral Jobs for reuse. Only real shutdown closes them.
+        // 会话切换时保留中性的 Job 供复用，只在真正关闭程序时释放。
         internal bool Stop()
         {
             lock (sync)
@@ -520,7 +520,7 @@ namespace PaviseApp
                     if (!GetProcessAffinityMask(handle, out affinity, out system) || affinity == UIntPtr.Zero || system == UIntPtr.Zero)
                         return Failure(AntiCheatAffinityRead.Unavailable, "无法读取单组硬亲和性");
                     AntiCheatAffinityObservation result = new AntiCheatAffinityObservation(AntiCheatAffinityRead.Known, groups[0], affinity.ToUInt64(), system.ToUInt64(), "");
-                    // A failure here blocks admission but not restoration of our separately owned hard mask.
+                    // 这里失败只阻止新准入，不影响恢复本方单独持有的硬掩码。
                     try
                     {
                         uint required;
@@ -589,8 +589,8 @@ namespace PaviseApp
                         bool supported = false;
                         try { supported = group == 0 && GetActiveProcessorGroupCount() == 1; }
                         catch (EntryPointNotFoundException) { }
-                        // An established process-only lease keeps its backend through target
-                        // changes. Taking a Job here would capture our applied mask as original.
+                        // 已建立的进程级租约在切换目标时沿用原后端；此时改用 Job 会把本方已写入的掩码误当成原值。
+
                         if (supported && (!existingBackend || prior.Job) && jobs.Ensure(identity.ProcessId, identity.CreationTime, Path.GetFileNameWithoutExtension(identity.ImagePath), original, target, out reason))
                         {
                             backends[identity.Key] = new Backend { Original = original, Desired = target, Job = true, Detail = "Job 硬亲和性已核验" };
@@ -601,8 +601,8 @@ namespace PaviseApp
                         { observed = Failure(AntiCheatAffinityRead.Unavailable, "线程分配保护拒绝：" + reason); return false; }
                         if (jobs.HasPending || jobs.IsActive(identity.ProcessId, identity.CreationTime))
                         { observed = Failure(AntiCheatAffinityRead.Unavailable, "Job 硬绑定待恢复：" + reason); return false; }
-                        // Admission/cleanup can take time. Recheck the same handle and foreign CPU
-                        // Sets before a process-only fallback; never write across a changed baseline.
+                        // 准入和清理可能耗时。退回进程级方案前，重新核对同一句柄及外部 CPU Sets，避免跨越已变化的基准写入。
+
                         observed = ReadHandle(handle, identity);
                         if (observed.Read != AntiCheatAffinityRead.Known || observed.Group != group || observed.Mask != expected
                             || (target & ~observed.AllowedMask) != 0 || !observed.CpuSetsKnown || (!allowCpuSets && !observed.CpuSetsEmpty)) return false;

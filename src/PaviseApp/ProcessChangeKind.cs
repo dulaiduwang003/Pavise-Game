@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum ProcessChangeKind
-	{
-		Started,
-		Stopped
-	}
+    internal enum ProcessChangeKind
+    {
+        Started,
+        Stopped
+    }
 }

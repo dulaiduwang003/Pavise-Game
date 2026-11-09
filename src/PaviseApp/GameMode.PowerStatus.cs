@@ -14,9 +14,9 @@ namespace PaviseApp
                 lock (sync)
                 {
                     if (envRestorePending.Contains("powerplan")) return "restore-failed";
-                    // Handheld bypass clears historical apply failures, but never unresolved recovery debt.
+                    // 掌机跳过策略可清除历史应用失败，但不能清除未完成的恢复债务。
                     if (PowerPlan.HandheldBypass) return "unchanged";
-                    // An in-flight apply is pending, not stopped.
+                    // 正在执行的应用属于待完成，不属于已停用。
                     if (ActionFailureStore.IsBlocked("PowerPlanOn", "system") && !ActionFailureStore.IsRunning("PowerPlanOn", "system")) return "stopped";
                     if (!planSwitch || PowerPlan.NoSwitchSelected) return "unchanged";
                     if (!enabled || !active || stopping || panicReq || powerSessionEnding || gameGoneSinceTicks != 0) return "";

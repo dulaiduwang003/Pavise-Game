@@ -21,7 +21,7 @@ namespace PaviseApp
         bool Write(string id, AudioEffectsProperty property, out string error);
     }
 
-    // Manual endpoint transactions restore on exit/startup under the caller's serialization gate.
+    // 手动端点事务在退出及启动时恢复，由调用方的串行锁保护。
     internal sealed class LaboratoryAudioEffectsController
     {
         private readonly object sync = new object();
@@ -146,10 +146,10 @@ namespace PaviseApp
                 bool confirmed = native.Read(receipt.Endpoint, out after, out readError) && after.EffectIdentity == receipt.Effects && after.Property == receipt.Original;
                 if (!confirmed)
                 { error = !string.IsNullOrEmpty(writeError) ? writeError : !string.IsNullOrEmpty(readError) ? readError : T("原值尚未确认，保留恢复记录", "Original value is not confirmed; record retained", "元の値を確認できないため、復元記録を保持します"); return false; }
-                // A backend may report an error after the value was committed. Confirmed
-                // original readback, rather than the HRESULT alone, settles the debt.
+                // 后端可能在提交数值后才返回错误；以确认读回原值为结清依据，不能只看 HRESULT。
+
             }
-            // A different current value belongs to another writer; leave it unchanged.
+            // 当前值不同表明另一写入方已经接管，保持不变。
             if (!store.Write("")) { error = T("原值已保留，恢复记录清理失败", "Original/external value retained; record cleanup failed", "元の値または外部設定を保持しましたが、記録を整理できません"); return false; }
             return true;
         }

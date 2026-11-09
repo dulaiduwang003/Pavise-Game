@@ -13,7 +13,7 @@ namespace PaviseApp
         { State = state; Value = value; NativeCode = nativeCode; ResolutionCode = resolutionCode; UsedDefault = usedDefault; }
     }
 
-    // Read evidence distinguishes unsupported settings from failed reads without changing legacy backends.
+    // 通过读取证据区分设置不受支持与读取失败，不改变旧后端。
     internal interface IManagedPowerReadEvidence
     {
         ManagedPowerReadEvidence ReadEvidence(Guid scheme, Guid sub, Guid setting, bool ac);

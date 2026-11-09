@@ -14,7 +14,7 @@ namespace PaviseApp
         internal string Detail { get { return PerformancePolicy.Text(Chinese, English); } }
     }
 
-    // Discover chassis once off the UI thread; a battery/UPS or EPP support does not prove a laptop.
+    // 在界面线程之外读取一次机箱类型；电池、UPS 或 EPP 支持不能证明它是笔记本。
     internal static class LaboratoryEppEligibility
     {
         private static int started;
@@ -70,7 +70,7 @@ namespace PaviseApp
             {
                 if (type == 8 || type == 9 || type == 10 || type == 11 || type == 14 || type == 30 || type == 31 || type == 32) portable = true;
                 else if ((type >= 3 && type <= 7) || type == 13 || (type >= 15 && type <= 29) || type == 33 || type == 34 || type == 35 || type == 36) desktop = true;
-                // Other, Unknown and Docking Station do not establish a device type.
+                // Other、Unknown 和 Docking Station 不能确定设备类型。
             }
             if (portable && !desktop) return LaboratoryEppDeviceKind.Laptop;
             if (desktop && !portable) return LaboratoryEppDeviceKind.Desktop;

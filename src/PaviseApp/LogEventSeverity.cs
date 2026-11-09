@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum LogEventSeverity
-	{
-		Info,
-		Success,
-		Warning,
-		Error
-	}
+    internal enum LogEventSeverity
+    {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
 }

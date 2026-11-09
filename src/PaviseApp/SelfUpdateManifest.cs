@@ -20,7 +20,7 @@ namespace PaviseApp
         internal long Received, Total;
     }
 
-    // The signature covers the decoded payload bytes exactly. JSON formatting is not normalized.
+    // 签名精确覆盖解码后的原始内容字节，不能规范化 JSON 格式。
     internal static class SelfUpdateManifest
     {
         internal const int UpdaterProtocol = 1;
@@ -32,7 +32,7 @@ namespace PaviseApp
         internal const string TrustedPublicKeyXml = "<RSAKeyValue><Modulus>2eecXkt7H/peJYi+xVPhb/RO0zTRL//AADq2621Xhx6+I5Ydna2gz4djuNUbPaXjqMvuQwQoRBgRlSfqhwGE0AdajQsSDx+dUxG/qsQ2QLYK3s8O+aoAJwuEeH9ecaDfmiqmtNt6iKmgwe76NAQxkd5E2KQUZopqgc/wcbx73Rc8HVUb1CoDPWjBJla4DS0zflvOSiR+TOmwH8/QByHsFq3yGHg1htleYVnm3DGEcS89k7RBIVm/p5v7Ep6EwUtdvjfAjWvGRPEMcYxCvcs9+jtMoUaGIgx2v1twVBbq/AArvlJuIW6Tik8LPllmobjufBO13DUTooxz6PJuiBG0fvkUfj3E6WE+SD2J6C4hEWa/puZaLt5Hrq7CmNQL/a+/qiBfc7nLfnJo4XI4XW5e80rAQ01DX4bUB9WYjko1Q+iOI7k2kLwaCg2L88A7miCdOxx4cuaVap/lBhwzeFqs4LGIMPGNqHeoCWGbXnL48J3K+s+HFIqzDz3AYdqUG1R1</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>";
 
 #if PAVISE_SELFTEST
-        // Isolated fixtures use an ephemeral signing key. This hook is absent from release builds.
+        // 隔离测试使用临时签名密钥，发布构建不包含此钩子。
         internal static string FixturePublicKeyXml;
 #endif
 
@@ -140,8 +140,9 @@ namespace PaviseApp
                 return (next.Host == OfficialHost || next.Host == FallbackHost) && next.AbsolutePath == initial.AbsolutePath && string.IsNullOrEmpty(next.Query);
             if (initial.Host != "github.com") return false;
             if (next.Host == "github.com") return next.AbsolutePath == initial.AbsolutePath && string.IsNullOrEmpty(next.Query);
-            // GitHub documents these exact release asset domains; never admit *.githubusercontent.com.
-            // https://docs.github.com/en/actions/reference/runners/github-hosted-runners#communication-requirements-for-github-hosted-runners
+            // 仅允许 GitHub 文档列明的发布资产域名，不放宽到整个 githubusercontent.com 通配域。
+            // 参考：https://docs.github.com/en/actions/reference/runners/github-hosted-runners#communication-requirements-for-github-hosted-runners
+
             return next.Host == "release-assets.githubusercontent.com" || next.Host == "objects.githubusercontent.com"
                 || next.Host == "github-releases.githubusercontent.com";
         }
@@ -181,7 +182,7 @@ namespace PaviseApp
             return (long)value;
         }
 
-        // Small strict JSON reader: no external serializer dependency, duplicate keys and trailing data are rejected.
+        // 使用小型严格 JSON 读取器，不依赖外部序列化库；拒绝重复键和尾随数据。
         private sealed class JsonReader
         {
             private readonly string text;

@@ -42,8 +42,8 @@ namespace PaviseApp
         }
         private static void NativeBoostRoundTrip()
         {
-            // The fixture itself is the only native target; no Pavise/game handle
-            // is opened. Even a failed restore cannot outlive this test process.
+            // 原生目标仅为测试进程自身，不打开 Pavise 或游戏句柄；即使恢复失败，也不会超出测试进程生命周期。
+
             IntPtr self = new IntPtr(-1);
             int original = Native.QueryBoostDisabled(self);
             Check(original == 0 || original == 1, "Own process boost baseline must be readable");

@@ -5,8 +5,8 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // Thread placement may take this gate; isolation code must not take the
-        // thread-placement gate while holding it.
+        // 线程放置可能获取此锁；隔离代码持有此锁时，不能反向取得线程放置锁。
+
         private readonly object coreIsolationGate = new object();
         private bool criticalOwnsCoreIsolation;
         private bool criticalBorrowsCoreIsolation;
@@ -67,8 +67,8 @@ namespace PaviseApp
 
                 if (coreIsolation != null)
                 {
-                    // The whole-game feature keeps ownership of its existing lease.
-                    // Ensure only admits the game; it cannot resize an active lease.
+                    // 整游戏功能继续持有现有租约；Ensure 仅允许游戏进入，不能调整活动租约大小。
+
                     ulong activeMask = CoreIsolationClient.ActiveMask;
                     if (coreManual == null || !coreManual.Isolation || !coreEngaged
                         || CoreIsolationClient.State != "schedule.isolation.active"
@@ -93,8 +93,8 @@ namespace PaviseApp
                     || (coreManual != null && coreManual.Isolation))
                     return CriticalCoreIsolationRefused("critical-isolation-regular-owner-pending");
 
-                // Publish ownership before starting the helper: even a failed
-                // admission can have a live helper or a durable recovery receipt.
+                // 启动辅助进程前先发布所有权；即使准入失败，也可能已有存活辅助进程或持久恢复回执。
+
                 coreIsolation = new CoreIsolationClient();
                 criticalOwnsCoreIsolation = true;
                 criticalCoreIsolationOwner = new object();
@@ -131,7 +131,7 @@ namespace PaviseApp
                     criticalOwnsCoreIsolation = false;
                     criticalCoreIsolationOwner = null;
                 }
-                // A borrowed whole-game lease belongs to the regular feature.
+                // 借用的整游戏租约归普通功能所有。
                 criticalBorrowsCoreIsolation = false;
                 criticalCoreIsolationPid = 0;
                 criticalCoreIsolationBirth = 0;

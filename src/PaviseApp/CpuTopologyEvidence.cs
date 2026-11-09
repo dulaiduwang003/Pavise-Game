@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Publish topology only from complete Windows snapshots; do not infer core type from model/SMT.
+    // 只从完整 Windows 快照发布拓扑，不根据型号或 SMT 猜测核心类型。
     internal sealed class CpuTopologyEvidence
     {
         internal bool Valid, MultiGroup;

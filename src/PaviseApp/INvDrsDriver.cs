@@ -2,22 +2,22 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface INvDrsDriver
-	{
-		bool Available { get; }
+    internal interface INvDrsDriver
+    {
+        bool Available { get; }
 
-		bool TryOpenSession(out IntPtr session);
+        bool TryOpenSession(out IntPtr session);
 
-		void CloseSession(IntPtr session);
+        void CloseSession(IntPtr session);
 
-		bool SaveSession(IntPtr session);
+        bool SaveSession(IntPtr session);
 
-		bool FindOrCreateAppProfile(IntPtr session, string exe, out IntPtr profile);
+        bool FindOrCreateAppProfile(IntPtr session, string exe, out IntPtr profile);
 
-		int TryGetDword(IntPtr session, IntPtr profile, uint id, out uint value);
+        int TryGetDword(IntPtr session, IntPtr profile, uint id, out uint value);
 
-		bool SetDword(IntPtr session, IntPtr profile, uint id, uint value, out int status);
+        bool SetDword(IntPtr session, IntPtr profile, uint id, uint value, out int status);
 
-		bool DeleteSetting(IntPtr session, IntPtr profile, uint id);
-	}
+        bool DeleteSetting(IntPtr session, IntPtr profile, uint id);
+    }
 }

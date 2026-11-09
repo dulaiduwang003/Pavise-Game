@@ -272,7 +272,7 @@ namespace PaviseApp
             status.Refresh();
             try
             {
-                // The preview is a view, never the authoritative copy source.
+                // 预览只负责显示，复制时仍以原始内容为准。
                 copyText(original);
                 string actual = readCopiedText();
                 if (!string.Equals(original, actual, StringComparison.Ordinal))

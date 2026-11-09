@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // Process affinity changes existing thread masks; reject game-owned thread masks or CPU Sets.
-    // This bounded admission check does not provide lifetime thread-state restoration.
+    // 进程亲和性会改变已有线程掩码，因此拒绝游戏自行设置的线程掩码或 CPU Sets；这项有界准入检查不承诺全生命周期的线程状态恢复。
+
     internal static class GameThreadAffinityAdmission
     {
         internal const string RefusalPrefix = "game-thread-affinity-";
@@ -154,14 +154,14 @@ namespace PaviseApp
                     bool unstable = false;
                     foreach (uint tid in before)
                     {
-                        // Read-only query plus wait rights; no thread write access.
+                        // 只申请查询和等待权限，不申请线程写入权限。
                         IntPtr handle = OpenThread(0x100040, false, tid);
                         if (handle == IntPtr.Zero)
                         {
                             int error = Marshal.GetLastWin32Error();
                             HashSet<uint> latest;
-                            // Only a definite vanished snapshot member can be
-                            // retried; access denial or unknown identity cannot.
+                            // 只有明确已消失的快照成员可以再次尝试；访问拒绝或身份未知不能重试。
+
                             if (error == 87 && ThreadIds(pid, out latest, out reason) && !latest.Contains(tid))
                             { unstable = true; break; }
                             reason = RefusalPrefix + "thread-access:" + tid; return false;

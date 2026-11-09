@@ -1,7 +1,7 @@
 namespace PaviseApp
 {
-    // Retired CPU-cap/freeze receipts are dropped at startup.
-    // Their named Jobs cannot be reopened after the last owner handle closes.
+    // 启动时清理已退役的 CPU 上限和冻结记录，最后一个所有者句柄关闭后，其命名 Job 无法再次打开。
+
     internal static class RetiredBackgroundCpuCap
     {
         internal const string ReceiptKey = "BackgroundCpuCapGroupsV2";
@@ -20,8 +20,8 @@ namespace PaviseApp
             Settings.Remove(ReceiptKey);
             Settings.Remove(LegacyReceiptKey);
             bool clean = !HasReceipts();
-            if (clean) Logger.Info("STARTUP event=retired-cpu-cap-receipts result=removed");
-            else Logger.Warn("STARTUP event=retired-cpu-cap-receipts result=retained");
+            if (clean) Logger.Info("启动 事件=旧CPU限制回执 结果=已移除");
+            else Logger.Warn("启动 事件=旧CPU限制回执 结果=已保留");
             return clean;
         }
     }

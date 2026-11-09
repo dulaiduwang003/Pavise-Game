@@ -34,7 +34,7 @@ namespace PaviseApp
             finally { Native.CloseHandle(handle); }
         }
 
-        // Share one throttled owner-exit observer; observations do not consume mutation/read failure attempts.
+        // 所有者退出共用一个节流观察器；观测不消耗修改或读取失败预算。
         private bool ObserveBoostRecoveryPhase(BoostRecoveryAttempt attempt, int pid, long birth)
         {
             List<Func<bool>> children;
@@ -116,7 +116,7 @@ namespace PaviseApp
                     if (restored) boostRecoveries.Remove(key);
                     else if (childTrace.Reported)
                     {
-                        // Reuse a child owner's finite schedule before another raw process/identity query.
+                        // 再次直接查询进程或身份前，先复用子所有者已有的有限调度。
                         attempt.Due = childTrace.Next;
                         attempt.ChildObservers = childTrace.PhaseObservers;
                         attempt.ExitProbeDue = DateTime.UtcNow.AddSeconds(30).Ticks;
@@ -128,8 +128,8 @@ namespace PaviseApp
                         attempt.Due = attempt.Failures >= 3 ? long.MaxValue : DateTime.UtcNow.AddSeconds(30).Ticks;
                         attempt.ExitProbeDue = DateTime.UtcNow.AddSeconds(30).Ticks;
                         ReportBoostRecoveryWait(attempt, pid, birth);
-                        Logger.Warn("Game recovery: target=" + pid + "/" + birth + " stage=" + stage
-                            + " failure=" + attempt.Failures + "/3; originals and ownership retained");
+                        Logger.Warn("游戏恢复：目标=" + pid + "/" + birth + " 步骤=" + stage
+                            + " 失败详情=" + attempt.Failures + "/3；保留原值和所有权");
                     }
                 }
             }

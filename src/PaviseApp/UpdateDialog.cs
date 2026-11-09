@@ -154,7 +154,7 @@ namespace PaviseApp
             base.OnShown(e);
             if (state == "initial") BeginOperation(false);
             else cancel.Focus();
-            // CenterParent is not applied by WinForms to a modeless Show(owner).
+            // WinForms 对非模态 Show(owner) 不会自动应用 CenterParent。
             PositionOnOwner();
         }
 

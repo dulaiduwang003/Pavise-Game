@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum AuditScanState
-	{
-		Idle,
-		Scanning
-	}
+    internal enum AuditScanState
+    {
+        Idle,
+        Scanning
+    }
 }

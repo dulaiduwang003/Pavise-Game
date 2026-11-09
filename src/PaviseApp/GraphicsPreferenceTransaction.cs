@@ -11,7 +11,7 @@ namespace PaviseApp
         bool SaveReceipt(string value);
     }
 
-    // The persisted original/target pair owns only the written value; null means absence, not an OS default.
+    // 持久化的原值与目标值只持有本次写入；null 表示不存在，不表示系统默认值。
     internal sealed class GraphicsPreferenceTransaction
     {
         private readonly IGraphicsPreferenceStore store;
@@ -55,7 +55,7 @@ namespace PaviseApp
 
         private bool Finish(string original, string applied)
         {
-            // Once restored or released, never write again merely because a later value matches the old target.
+            // 已经恢复或释放后，不能仅因后续值再次匹配旧目标而重新写入。
             return Save(Receipt(original, applied, 'F')) && Save("");
         }
 
@@ -76,7 +76,7 @@ namespace PaviseApp
                     string current = store.ReadValue();
                     if (owned && current != applied && current != previous && current != original)
                     {
-                        // A new explicit request may follow an external change, but cannot restore the obsolete baseline over it.
+                        // 外部改动后可以接受新的显式请求，但不能用过时基准覆盖外部值。
                         if (!Finish(original, applied)) return false;
                         owned = false;
                     }
@@ -91,7 +91,7 @@ namespace PaviseApp
                     if (!Save(prepared)) return false;
                     if (store.ReadValue() != current)
                     {
-                        // No write was attempted by this operation; preserve the concurrent value.
+                        // 本次操作尚未尝试写入，保留并发写入方的值。
                         Finish(original, target); return false;
                     }
                     if (!store.WriteValue(target) || store.ReadValue() != target) return false;

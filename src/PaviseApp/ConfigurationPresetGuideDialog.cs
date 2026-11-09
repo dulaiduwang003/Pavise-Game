@@ -152,7 +152,7 @@ namespace PaviseApp
         {
             Refit(Owner == null ? Screen.FromPoint(Cursor.Position).WorkingArea : Screen.FromControl(Owner).WorkingArea, false);
             base.OnLoad(e);
-            // Start on Close so a held Enter from the entry button cannot apply a preset.
+            // 关闭入口窗口后再开始，避免用户按住回车时误应用预设。
             ActiveControl = close;
         }
 

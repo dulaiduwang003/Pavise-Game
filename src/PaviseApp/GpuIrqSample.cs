@@ -1,27 +1,27 @@
 namespace PaviseApp
 {
-	internal sealed class GpuIrqSample
-	{
-		public string DeviceId = "";
+    internal sealed class GpuIrqSample
+    {
+        public string DeviceId = "";
 
-		public string Name = "";
+        public string Name = "";
 
-		public string Driver = "";
+        public string Driver = "";
 
-		public string DriverVersion = "";
+        public string DriverVersion = "";
 
-		public ulong Seen;
+        public ulong Seen;
 
-		public long Events;
+        public long Events;
 
-		public double P99Us;
+        public double P99Us;
 
-		public double MaxUs;
+        public double MaxUs;
 
-		public bool MultiMessage;
+        public bool MultiMessage;
 
-		public bool ExternalPin;
+        public bool ExternalPin;
 
-		public bool ConfigurationKnown = true;
-	}
+        public bool ConfigurationKnown = true;
+    }
 }

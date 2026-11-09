@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum SpiOwnerKind
-	{
-		Manual,
-		LegacyManual
-	}
+    internal enum SpiOwnerKind
+    {
+        Manual,
+        LegacyManual
+    }
 }

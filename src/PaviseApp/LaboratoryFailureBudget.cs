@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Caller holds the owning controller lock. Only failed operations consume a budget.
+    // 调用方需持有所属控制器的锁；只有执行失败才消耗预算。
     internal sealed class LaboratoryFailureBudget
     {
         private sealed class Entry { internal int Failures; internal long Due; }
@@ -35,9 +35,9 @@ namespace PaviseApp
             entry.Failures = Math.Min(maximum, entry.Failures + 1);
             entry.Due = completedAt + TimeSpan.FromSeconds(entry.Failures == 1 ? 30 : 60).Ticks;
             if (entry.Failures != previous && (entry.Failures == 1 || entry.Failures == maximum))
-                Logger.Warn("Laboratory " + owner + " action=" + identity + " session=" + session
-                    + " failure=" + entry.Failures + "/" + maximum
-                    + (entry.Failures == maximum ? "; exhausted; recovery ownership retained" : "; backing off"));
+                Logger.Warn("实验室 " + owner + " 动作=" + identity + " 会话=" + session
+                    + " 失败详情=" + entry.Failures + "/" + maximum
+                    + (entry.Failures == maximum ? "；预算已耗尽，保留恢复所有权" : "；等待退避"));
         }
         internal void Neutral(string identity) { entries.Remove(identity); }
     }

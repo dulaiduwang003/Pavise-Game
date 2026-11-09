@@ -87,7 +87,7 @@ namespace PaviseApp
                 if (!platform.IsRegistered(value))
                 {
                     skipped++;
-                    Logger.Info("POWER source=" + preset.Id + " unregistered setting skipped: " + SettingPath(value));
+                    Logger.Info("电源 来源=" + preset.Id + " 已跳过未注册设置： " + SettingPath(value));
                     continue;
                 }
                 foreach (bool ac in new[] { true, false })
@@ -97,7 +97,7 @@ namespace PaviseApp
                     int type = ac ? value.AcRegistryType : value.DcRegistryType;
                     string field = (ac ? "AC " : "DC ") + SettingPath(value);
                     if (raw != null || (requested.HasValue && type != (int)RegistryValueKind.DWord))
-                        return Fail(out failure, "Unsupported preset value type: " + field + " type=" + type);
+                        return Fail(out failure, "Unsupported preset value type: " + field + " 类型=" + type);
                     if (!requested.HasValue) continue;
                     if (!Inactive(platform, destination)) return Fail(out failure, "Write: candidate became active or active plan is unreadable; " + field);
                     uint code = platform.Write(destination, value, ac, requested.Value);
@@ -111,13 +111,13 @@ namespace PaviseApp
                 }
             }
             if (!Inactive(platform, destination)) return Fail(out failure, "Verify: candidate became active or active plan is unreadable");
-            Logger.Info("POWER source=" + preset.Id + " method=duplicate/native-write copySource=" + copySource.ToString("D")
-                + " verified=" + written + " unregistered=" + skipped);
+            Logger.Info("电源 来源=" + preset.Id + " 方法=复制后原生写入；复制来源=" + copySource.ToString("D")
+                + " 已核验=" + written + " 未注册=" + skipped);
             return true;
         }
 
-        // Try hidden templates by GUID. Only native missing-source errors permit the next fallback.
-        // Access denial and unsupported operations are failures, not evidence of absence.
+        // 按 GUID 尝试隐藏模板；只有原生明确报告来源不存在，才继续下一备用来源。访问拒绝和操作不受支持均算失败。
+
         internal static bool TryCopyTemplate(Guid destination, Guid ultimate, Guid highPerformance,
             Guid verifiedBaseline, IPowerPresetWriterPlatform platform, out Guid copySource, out string failure)
         {
@@ -247,7 +247,7 @@ namespace PaviseApp
                     string field = (ac ? "AC " : "DC ") + SettingPath(value);
                     if (code != 0)
                     {
-                        // Copy OEM-only values only after verifying the exact admitted local baseline.
+                        // 确认确切获准的本机基准后，才复制 OEM 专用值。
                         string retainedFailure;
                         if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(value)))
                         {

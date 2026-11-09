@@ -30,8 +30,8 @@ namespace PaviseApp
             return Settings.SaveStrDurable(SettingKey, value) && Settings.LoadStr(SettingKey, "") == value;
         }
 
-        // Aggressive disables temporary boosts for ordinary background threads;
-        // anti-cheat boost policy is independent.
+        // 激进档禁止普通后台线程临时提优；反作弊的提优策略单独管理。
+
         internal static bool WantsBackgroundBoostLimit(bool masterEnabled, int mode)
         { return masterEnabled && mode == Aggressive; }
     }

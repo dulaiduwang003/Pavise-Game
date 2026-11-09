@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum BtnKind
-	{
-		Normal,
-		Primary,
-		Danger
-	}
+    internal enum BtnKind
+    {
+        Normal,
+        Primary,
+        Danger
+    }
 }

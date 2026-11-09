@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum SpiOwnerOperation
-	{
-		Apply,
-		Restore,
-		Metadata
-	}
+    internal enum SpiOwnerOperation
+    {
+        Apply,
+        Restore,
+        Metadata
+    }
 }

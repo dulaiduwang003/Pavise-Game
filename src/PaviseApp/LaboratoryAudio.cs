@@ -71,7 +71,7 @@ namespace PaviseApp
                 { report(Text("不适用：蓝牙输出", "Not applicable: Bluetooth output")); return; }
                 if (!endpoint.ConnectionKnown)
                 { report(Text("未生效：无法确认输出连接类型", "Inactive: output connection could not be identified")); return; }
-                // Open can partially acquire native resources; Close is mandatory even when it throws.
+                // Open 可能只取得部分原生资源，即使抛异常也必须执行 Close。
                 open = true;
                 requested = driver.Open(endpoint.Id);
                 if (!WorthApplying(requested))
@@ -116,7 +116,7 @@ namespace PaviseApp
                 Close();
                 report(Text("已释放失效音频流：", "Invalid audio stream released: ") + Failure(error));
                 ScheduleTransientRetry(error, lastNow);
-                // Other errors latch this endpoint/revision until a device change or explicit re-enable.
+                // 其他错误会停用当前端点及修订，直到设备变化或用户明确重新开启。
             }
         }
 
@@ -219,7 +219,7 @@ namespace PaviseApp
         {
             bool changed;
             lock (gate) { changed = state != value; state = value; }
-            if (changed) Logger.Info("LaboratoryAudio | " + value);
+            if (changed) Logger.Info("低缓冲音频 | " + value);
         }
         private static void Run()
         {
@@ -251,7 +251,7 @@ namespace PaviseApp
             catch (Exception error)
             {
                 Report(PerformancePolicy.Text("音频实验不可用：", "Audio experiment unavailable: ") + error.GetType().Name);
-                // Do not restart the worker on every game scan after a COM/bootstrap failure.
+                // COM 或初始化失败后，不能每次游戏扫描都重建工作线程。
                 while (true)
                 {
                     lock (gate) if (!enabled || generation != workerGeneration) break;
@@ -261,7 +261,7 @@ namespace PaviseApp
             finally
             {
                 if (session != null) try { session.Dispose(); } catch (Exception error)
-                { Logger.Warn("LaboratoryAudio release | " + error.GetType().Name); }
+                { Logger.Warn("低缓冲音频释放 | " + error.GetType().Name); }
                 lock (gate)
                 {
                     worker = null;

@@ -26,11 +26,11 @@ namespace PaviseApp
                 try
                 {
                     foreach (string key in RetiredPreferences) Settings.TryRemove(key, false);
-                    // Absence of ownership means zero process inspection and zero changes to RTSS.
+                    // 未持有所有权时，不检查进程，也不改动 RTSS。
                     if (String.IsNullOrEmpty(Settings.LoadStr(OwnershipKey, ""))) return;
                     RunOwnedCleanup();
                 }
-                catch (Exception error) { Logger.Warn("Legacy component cleanup retained its receipt: " + error.GetType().Name); }
+                catch (Exception error) { Logger.Warn("旧组件清理保留回执： " + error.GetType().Name); }
             });
         }
 
@@ -43,7 +43,7 @@ namespace PaviseApp
                 if (resource == null) throw new InvalidOperationException("Missing legacy cleanup resource");
                 resource.CopyTo(output); script = output.ToArray();
             }
-            // The hash names an immutable copy and is rechecked before launching it.
+            // 哈希对应不可变副本，启动前再次核验。
             string digest;
             using (var hash = SHA256.Create()) digest = BitConverter.ToString(hash.ComputeHash(script)).Replace("-", "");
             string directory = Path.Combine(Paths.Data, "Maintenance");
@@ -73,12 +73,12 @@ namespace PaviseApp
                     var output = process.StandardOutput.ReadToEndAsync();
                     var error = process.StandardError.ReadToEndAsync();
                     process.WaitForExit();
-                    if (process.ExitCode != 0) Logger.Warn("Legacy RTSS cleanup did not complete; ownership was retained for retry.");
-                    else Logger.Log("Legacy component cleanup: " + output.Result.Trim());
+                    if (process.ExitCode != 0) Logger.Warn("旧 RTSS 清理未完成，保留所有权供有限恢复使用。");
+                    else Logger.Log("旧组件清理： " + output.Result.Trim());
                     GC.KeepAlive(error);
                 }
             }
-            // User data and installation directories are never deleted by this migration.
+            // 本次迁移不删除用户数据或安装目录。
             try { File.Delete(path); } catch (IOException) { }
         }
     }

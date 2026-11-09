@@ -2,16 +2,16 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface IHardThreadGate
-	{
-		HardThreadTarget Target { get; }
+    internal interface IHardThreadGate
+    {
+        HardThreadTarget Target { get; }
 
-		bool AllowWorkers { get; }
+        bool AllowWorkers { get; }
 
-		IDisposable EnterUse();
+        IDisposable EnterUse();
 
-		void RequireActive();
+        void RequireActive();
 
-		void RequireRecovery();
-	}
+        void RequireRecovery();
+    }
 }

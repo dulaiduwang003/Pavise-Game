@@ -14,7 +14,7 @@ Copy-Item -LiteralPath (Join-Path $workspace 'tests/SecurityStartupChecks.cs') -
 $probe = Join-Path $frozen 'SecurityStartupProbe.cs'
 $source = [IO.File]::ReadAllText($probe)
 $start = $source.IndexOf('        private static SecurityProductSnapshot Collect()', [StringComparison]::Ordinal)
-$end = $source.IndexOf('        // A complete inventory', $start, [StringComparison]::Ordinal)
+$end = $source.IndexOf('        private static SecurityProductSnapshot CompleteSnapshot(Facts facts)', $start, [StringComparison]::Ordinal)
 if ($start -lt 0 -or $end -le $start) { throw 'Frozen provider replacement boundary missing.' }
 $source = $source.Substring(0, $start) + "        private static SecurityProductSnapshot Collect() { return SecurityStartupChecks.CollectFixture(); }`r`n`r`n" + $source.Substring($end)
 $stopAnchor = 'private static void StopHelper(Process child)'

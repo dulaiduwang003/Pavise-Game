@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum GameInputSendResult
-	{
-		NotIssued,
-		Processed,
-		Failed
-	}
+    internal enum GameInputSendResult
+    {
+        NotIssued,
+        Processed,
+        Failed
+    }
 }

@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // These records describe Windows topology, not model-name guesses. L3 domains
-    // are deliberately not called CCDs: a shared cache is not a die identifier.
+    // 这些记录来自 Windows 拓扑，不根据型号猜测。L3 域不直接称作 CCD，因为共享缓存不能证明芯片边界。
+
     internal sealed class AntiCheatAffinityCore
     {
         internal ushort Group;
@@ -157,8 +157,8 @@ namespace PaviseApp
                     if (topology[at + 8] == 3 && BitConverter.ToInt32(topology, at + 16) == 0)
                     {
                         int count = BitConverter.ToUInt16(topology, at + 38);
-                        // On Windows versions before multi-group cache records this
-                        // WORD was reserved and zero; the single GroupMask remains.
+                        // 旧版 Windows 的多组缓存记录尚未定义此 WORD，当时它保留为零，只有一个 GroupMask。
+
                         if (count == 0) count = 1;
                         if (count > (size - 40) / 16) return Invalid("invalid-cache-groups");
                         CacheDomain cache = new CacheDomain { Bytes = BitConverter.ToUInt32(topology, at + 12) };
@@ -270,8 +270,8 @@ namespace PaviseApp
                     coreId = state.Core;
                     core.Parked |= state.Parked;
                     core.Allocated |= state.Allocated;
-                    // Some systems rank only the primary SMT sibling. Never call
-                    // that a second performance tier within the physical core.
+                    // 部分系统只给主要 SMT 线程提供等级，不能据此把同一物理核拆成两个性能层级。
+
                     core.Scheduling = Math.Max(core.Scheduling, state.Scheduling);
                 }
                 string identity = CpuKey(core.Group, coreId);
@@ -289,8 +289,8 @@ namespace PaviseApp
 
         private static int CompareCaches(CacheDomain a, CacheDomain b)
         {
-            // The API does not assign durable cache IDs. Canonical ordering makes
-            // the snapshot stable if Windows changes record enumeration order.
+            // 接口不提供持久缓存编号；按固定顺序排列，使 Windows 改变枚举顺序时快照仍保持稳定。
+
             IEnumerator<KeyValuePair<ushort, ulong>> x = a.Masks.GetEnumerator();
             IEnumerator<KeyValuePair<ushort, ulong>> y = b.Masks.GetEnumerator();
             while (true)
@@ -340,8 +340,8 @@ namespace PaviseApp
             List<AntiCheatAffinityCore> candidates = new List<AntiCheatAffinityCore>();
             foreach (AntiCheatAffinityCore core in local)
             {
-                // Partial allowed/protected SMT masks never authorize using the
-                // other sibling: only complete, unprotected physical cores enter.
+                // 允许或受保护掩码只覆盖部分 SMT 线程时，不代表可以使用其同核线程；仅接纳完整且未受保护的物理核。
+
                 if ((core.Mask & originalAllowedMask) != core.Mask || (core.Mask & protectedMask) != 0
                     || core.Parked || core.Allocated || core.Favored) continue;
                 candidates.Add(core);
@@ -356,14 +356,14 @@ namespace PaviseApp
                     if (core.Efficiency == orderedTiers[orderedTiers.Count - 1])
                         performanceCores++;
                 if (performanceCores < 2) return Skip("insufficient-game-core-capacity");
-                // Highest secondary class first, keeping a distinct lowest LP
-                // class as a fallback only when it can supply two whole cores.
+                // 优先选择较高的次级类别；最低逻辑处理器类别只有能提供两个完整物理核时才作为备用。
+
                 for (int tier = orderedTiers.Count - 2; tier >= 0; tier--)
                 {
                     List<AntiCheatAffinityCore> pool = new List<AntiCheatAffinityCore>();
                     foreach (AntiCheatAffinityCore core in candidates)
                         if (core.Efficiency == orderedTiers[tier]) pool.Add(core);
-                    // Use SchedulingClass to distinguish E/LP-E cores with the same EfficiencyClass.
+                    // EfficiencyClass 相同时，使用 SchedulingClass 区分 E 核与低功耗 E 核。
                     SortedSet<byte> secondaryClasses = new SortedSet<byte>();
                     foreach (AntiCheatAffinityCore core in pool) secondaryClasses.Add(core.Scheduling);
                     List<byte> schedulingClasses = new List<byte>(secondaryClasses);
@@ -378,7 +378,7 @@ namespace PaviseApp
                 }
                 return Skip("insufficient-efficiency-core-capacity");
             }
-            // Require unparked candidate cores; parked game cores still count toward game capacity.
+            // 候选核心必须未停泊；已停泊的游戏核心仍计入游戏容量。
             if (local.Count < 4 + minimumCores) return Skip("insufficient-game-core-capacity");
             int domain = -1;
             bool validDomain = gameDomainMask != 0;
@@ -409,7 +409,7 @@ namespace PaviseApp
                 if (best != null) return Pick(best, "alternate-cache-domain", "explicit-game-cache-domain-preserved", maximumPhysicalCores);
                 if (alternateExists) return Skip("alternate-cache-domain-unavailable");
             }
-            // Use cache-domain evidence and retain four physical game/system cores.
+            // 依据缓存域证据选择，并为游戏和系统保留四个物理核。
             candidates.Sort(delegate(AntiCheatAffinityCore a, AntiCheatAffinityCore b) {
                 int order = a.Scheduling.CompareTo(b.Scheduling);
                 return order != 0 ? order : b.Mask.CompareTo(a.Mask);

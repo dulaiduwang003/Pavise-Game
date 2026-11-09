@@ -13,7 +13,7 @@ namespace PaviseApp
         private static readonly Regex ExplicitToken = new Regex(@"^(?:THREAD|FOCUS) \[(?<token>[^\]]+)\]", RegexOptions.CultureInvariant);
         private static readonly Regex Target = new Regex(@"(?:^|;)(?<name>.*?)\(pid=(?<pid>\d+),birth=\d+\)(?=;|$)", RegexOptions.CultureInvariant);
         private static readonly Regex Technical = new Regex(@"(?<!\S)(?:birth|creation|epoch|generation|win32|code|traceCode|lostEvents|sampleCpuMs|eventCount|systemEvents|activationMs|workerMask|granted|countScope|includes)=[^\s;]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        private static string Text(string zh, string en, string ja) { return Lang.Cur == 1 ? en : Lang.Cur == 2 ? ja : zh; }
+        private static string Text(string zh, string en, string ja) { return zh; }
 
         internal static List<LogEventEntry> Project(IList<LogEventEntry> chronological, int filter, string activeSession)
         {
@@ -336,6 +336,7 @@ namespace PaviseApp
         {
             string value = (raw ?? "").Trim(); DateTime timestamp;
             if (value.Length >= 19 && DateTime.TryParseExact(value.Substring(0, 19), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out timestamp)) value = value.Substring(19).Trim();
+            value = LogText.Canonical(value);
             foreach (string prefix in new[] { "INFO ", "PASS ", "WARN ", "FAIL " }) if (value.StartsWith(prefix, StringComparison.Ordinal)) return value.Substring(prefix.Length).Trim();
             return value;
         }

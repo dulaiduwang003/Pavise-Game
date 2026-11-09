@@ -3,21 +3,22 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+
 namespace PaviseApp
 {
     internal sealed class FrameCoordinationTrace
     {
         internal const string TraceKey = "FrameCoordinationTraceV1";
         internal const string IdentityTraceKey = Settings.GpuIdentityReceiptKey;
-        // Recover only receipts matching each owned channel prefix, including retired telemetry.
+        // 只恢复与本方各通道前缀匹配的记录，包括已退役的遥测通道。
         internal const string FrameSessionPrefix = "Pavise.FrameCoordination.", IdentitySessionPrefix = "Pavise.GpuIdentity.";
         internal const string PresentSessionPrefix = "Pavise.PresentProbe.";
         internal const string PresentProbeReceiptKey = "PresentProbeTraceV1";
         internal const string PresentProbeSessionPattern = @"\APavise\.PresentProbe\.[0-9]+\.[0-9a-f]{32}\z";
         internal static readonly Guid DxgKrnl = new Guid("802ec45a-1e99-4b83-9920-87c98277ba9d");
-        // Microsoft-Windows-DxgKrnl "Present" keyword (local manifest); DXGI/D3D9 use Analytic|Events.
+        // 微软 DxgKrnl 的 Present 关键字以本机清单为准；DXGI、D3D9 使用 Analytic 与 Events。
         internal const ulong DxgKrnlPresentKeyword = 0x8000000UL, RuntimePresentKeyword = 0x8000000000000002UL;
-        // ERROR_SHUTDOWN_IN_PROGRESS: process shutdown closed the GPU identity channel.
+        // ERROR_SHUTDOWN_IN_PROGRESS 表示进程退出时已关闭 GPU 身份通道。
         internal const int IdentityClosedError = 1115;
         private const int IdentityHealWaitMs = 3500;
         private static readonly object ledgerGate = new object();
@@ -26,13 +27,13 @@ namespace PaviseApp
             internal string Key, Pattern;
             internal bool Identity, Present;
             internal FrameCoordinationTrace Active;
-            // Bounded telemetry channels recover their own stale receipt and are not restore debt while healthy.
+            // 有界遥测通道自行处理过期记录，健康运行时不视为待恢复债务。
             internal bool Telemetry { get { return Identity || Present; } }
         }
         private static readonly Channel frameChannel = new Channel { Key = TraceKey, Pattern = @"\APavise\.FrameCoordination\.[0-9]+\.[0-9a-f]{32}\z" },
             identityChannel = new Channel { Key = IdentityTraceKey, Pattern = Settings.GpuIdentitySessionPattern, Identity = true },
             presentChannel = new Channel { Key = PresentProbeReceiptKey, Pattern = PresentProbeSessionPattern, Present = true };
-        // Set only by process shutdown (CloseIdentity); guarded by ledgerGate.
+        // 仅在进程退出的 CloseIdentity 中设置，由 ledgerGate 保护。
         private static bool identitySealed, presentSealed;
         private Channel channel = frameChannel;
         private readonly object memory = new object();
@@ -42,8 +43,8 @@ namespace PaviseApp
         private Native.EventRecordCallback callback;
         private Thread pump;
         private bool started, claimed;
-        // stopRequested marks recovery debt; handlesClosed requires both native handles to close.
-        // The stopper or late pump that finishes last settles the trace.
+        // stopRequested 表示仍有恢复债务；两个原生句柄均关闭后才设置 handlesClosed。停止方与迟到采样线程中最后完成的一方负责结清通道。
+
         private volatile bool stopRequested, handlesClosed;
         private bool receiptSettled;
         private string name = SessionName(FrameSessionPrefix);
@@ -63,12 +64,12 @@ namespace PaviseApp
                 {
                     string receipt;
                     bool frame = frameChannel.Active != null || !Settings.TryLoadStr(TraceKey, out receipt) || receipt.Length > 0;
-                    // Healthy bounded telemetry is not recovery debt; failed/stopping or previous-process receipts are.
+                    // 健康的有界遥测不是恢复债务；失败、正在停止或前一进程遗留的记录才是。
                     return frame || TelemetryResidueLocked(identityChannel) || TelemetryResidueLocked(presentChannel);
                 }
             }
         }
-        // Caller holds ledgerGate.
+        // 调用方需持有 ledgerGate。
         private static bool TelemetryResidueLocked(Channel channel)
         {
             string receipt;
@@ -82,7 +83,7 @@ namespace PaviseApp
         internal delegate int StartTraceHook(string traceName, IntPtr props, out ulong handle);
         internal static Func<ulong, string, IntPtr, uint, int> ControlForTest;
         internal static Func<ulong, int> CloseForTest;
-        // Doubles for the full Start/pump/Stop path: no ETW session, consumer or provider is created.
+        // 完整 Start、采样和 Stop 路径使用替身，不创建 ETW 会话、消费者或提供程序。
         internal static StartTraceHook StartForTest;
         internal static Func<ulong> OpenForTest;
         internal static Func<ulong, Native.EventRecordCallback, int> ProcessForTest;
@@ -135,7 +136,7 @@ namespace PaviseApp
 #endif
             return Native.ProcessTrace(new[] { handle }, 1, IntPtr.Zero, IntPtr.Zero);
         }
-        // The identity receipt has its own strict writer that does not advance the user-setting generation.
+        // 身份记录使用独立的严格写入器，不推进用户设置的变更代次。
         private static bool WriteReceipt(Channel channel, string value)
         {
             if (channel.Identity) return Settings.SaveGpuIdentityReceipt(value);
@@ -163,7 +164,7 @@ namespace PaviseApp
         { return Start(pid, receive, false); }
         internal bool Start(int pid, Native.EventRecordCallback receive, bool presenterOnly)
         { lock (cleanup) return StartLocked(pid, receive, presenterOnly); }
-        // Hold the cleanup lock throughout initialisation so a stop never interleaves with half-opened handles.
+        // 初始化全程持有清理锁，防止停止操作插入到句柄只打开一半的状态。
         private bool StartLocked(int pid, Native.EventRecordCallback receive, bool presenterOnly)
         {
             if (started) { Error = 1247; return false; }
@@ -189,7 +190,7 @@ namespace PaviseApp
             if (Error != 0) { Stop(); return false; }
             return OpenAndPumpLocked(receive);
         }
-        // System-wide present events only: no pid filter, no kernel thread flags, three present providers.
+        // 只采集系统级画面提交事件，不按 PID 过滤，不启用内核线程标志，共使用三个提交提供程序。
         internal bool StartPresentProbe(Native.EventRecordCallback receive)
         {
             lock (cleanup)
@@ -212,7 +213,7 @@ namespace PaviseApp
                 return OpenAndPumpLocked(receive);
             }
         }
-        // Caller holds the cleanup lock; the session is started and its providers are enabled.
+        // 调用方持有清理锁，且会话已启动、提供程序已启用。
         private bool OpenAndPumpLocked(Native.EventRecordCallback receive)
         {
             callback = receive; loggerName = Marshal.StringToHGlobalUni(name);
@@ -228,7 +229,7 @@ namespace PaviseApp
                 finally {
                     IntPtr thread = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, PumpTid);
                     if (thread != IntPtr.Zero) { try { long b,e,k,u; if (Native.GetThreadTimes(thread,out b,out e,out k,out u)) CpuMs=(k+u)/10000.0; } finally { Native.CloseHandle(thread); } }
-                    // ProcessTrace has returned, so no callbacks remain; the late pump settles without taking cleanup or joining itself.
+                    // ProcessTrace 已返回，不再有回调；迟到的采样线程自行结清，不再取得清理锁或等待自身。
                     if (handlesClosed) Settle();
                 }
             });
@@ -236,7 +237,7 @@ namespace PaviseApp
             pump.Name = "Pavise.FrameEvents"; pump.Start();
             return true;
         }
-        // Caller holds ledgerGate. Returns 0 after this trace owns the channel and its receipt.
+        // 调用方需持有 ledgerGate；该跟踪持有通道及其记录后返回 0。
         private int ClaimLocked()
         {
             if (channel.Identity && identitySealed) return IdentityClosedError;
@@ -246,7 +247,7 @@ namespace PaviseApp
             if (!Settings.TryLoadStr(channel.Key, out previous)) return 5;
             if (previous.Length != 0)
             {
-                // Only telemetry channels self-recover, and only their own stale receipt; no live trace owns it.
+                // 只有遥测通道能自行恢复，且仅处理没有存活跟踪持有的自身过期记录。
                 if (!channel.Telemetry) return 5;
                 int recovered = RecoverReceiptLocked(channel, previous);
                 if (recovered != 0) return recovered;
@@ -256,7 +257,7 @@ namespace PaviseApp
             claimed = true; channel.Active = this;
             return 0;
         }
-        // Caller holds ledgerGate and has verified that no live trace of this process owns the channel.
+        // 调用方持有 ledgerGate，并已确认当前进程没有存活跟踪持有该通道。
         private static int RecoverReceiptLocked(Channel channel, string receipt)
         {
             int result = 5;
@@ -276,7 +277,7 @@ namespace PaviseApp
         }
         internal bool Stop()
         { lock (cleanup) return StopLocked(StopWaitMs()); }
-        // If initialization holds the cleanup lock, report recovery debt instead of blocking shutdown.
+        // 若初始化仍持有清理锁，报告恢复债务，避免阻塞退出。
         private bool StopWithin(int timeoutMs)
         {
             var clock = Stopwatch.StartNew();
@@ -329,18 +330,18 @@ namespace PaviseApp
         {
             Thread current = pump;
             if (current == null || !current.IsAlive) return true;
-            // A stop issued from a callback must not join its own pump; that pump settles once it returns.
+            // 回调中发出的停止不能等待自身采样线程；该线程返回后自行结清。
             if (current == Thread.CurrentThread) return false;
             return current.Join(Math.Max(0, waitMs));
         }
-        // Settle after both handles close and ProcessTrace returns; stopper and late pump may race here.
-        // A failed receipt clear retains recovery debt.
+        // 两个句柄均关闭且 ProcessTrace 返回后才结清；停止方与迟到线程可能同时到达此处。清除记录失败时继续保留恢复债务。
+
         private bool Settle()
         {
             bool cleared = true;
             lock (ledgerGate)
             {
-                // A late stopper must not clear the receipt of a newer channel owner.
+                // 迟到的停止操作不能清除新通道所有者的记录。
                 if (!receiptSettled)
                 {
                     if (channel.Active == this) channel.Active = null;
@@ -378,7 +379,7 @@ namespace PaviseApp
             lock (ledgerGate)
             {
                 pending = channel.Active;
-                // Healthy bounded telemetry is not recovery debt: ordinary healing never interrupts it.
+                // 健康的有界遥测不属于恢复债务，普通修复不能中断它。
                 if (channel.Telemetry && pending != null && pending.Error == 0 && !pending.stopRequested) return true;
             }
             if (pending != null)
@@ -386,7 +387,7 @@ namespace PaviseApp
                 // 持有 ledgerGate 时不能获取清理锁。
                 if (channel.Telemetry)
                 {
-                    // A healthy stopping identity trace settles itself; failed traces use the bounded STOP recovery path.
+                    // 健康的停止中身份跟踪自行结清；失败跟踪走有界 STOP 恢复路径。
                     if (pending.Error == 0 && !pending.Drained) return true;
                     pending.StopWithin(IdentityHealWaitMs);
                 }
@@ -403,7 +404,7 @@ namespace PaviseApp
                 return RecoverReceiptLocked(channel, name) == 0;
             }
         }
-        // Process shutdown also retries the retired telemetry receipt. A failed stop/clear leaves recovery debt.
+        // 进程退出时也处理已退役遥测记录；停止或清除失败均保留恢复债务。
         internal static bool CloseIdentity(int timeoutMs)
         {
             var clock = Stopwatch.StartNew();

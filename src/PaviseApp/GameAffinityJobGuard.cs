@@ -88,8 +88,8 @@ namespace PaviseApp
             if (!restored) return false;
             record.Phase = "neutral";
             if (!GameAffinityJobReceiptStore.Save(record)) { reason = "receipt-neutral"; return false; }
-            // Persist neutral before relinquishing the last accessible job name.
-            // A live process cannot detach from its now harmless neutral job.
+            // 放弃最后一个可访问的 Job 名称前，先持久保存中性状态；存活进程无法脱离已不再施加限制的中性 Job。
+
             if (Native.WaitForSingleObject(target, 0) == 0 && !GameAffinityJobReceiptStore.Remove(record.Name))
             { reason = "receipt-remove"; return false; }
             return true;
@@ -116,7 +116,7 @@ namespace PaviseApp
 
         internal static bool RetainRecoveryAcrossTargetExit(Func<bool> settle, Action<int> wait, Func<bool> targetGone, Func<bool> waitForTargetExit, int initialDelay)
         {
-            // An untyped false or exception counts as a failure, not an ordering wait.
+            // 未分类的 false 或异常均计为失败，不能当作顺序等待。
             return RetainRecoveryAcrossTargetExitTyped(
                 () => settle() ? RecoveryOutcome.Settled : RecoveryOutcome.Failed,
                 wait, targetGone, waitForTargetExit, initialDelay);
@@ -140,21 +140,21 @@ namespace PaviseApp
                 if (outcome == RecoveryOutcome.Settled) return true;
                 if (outcome == RecoveryOutcome.OrderingWait)
                 {
-                    // Journal ordering debt and mutex timeouts are observations, not native restores.
-                    // Bound those observations separately without refunding earlier failures.
+                    // 日志顺序等待及互斥超时属于观测，不是原生恢复；单独限制观测次数，不退还此前失败预算。
+
                     orderingObservations++;
                     if (orderingObservations < GameAffinityJobRecord.RecoveryOrderingObservationLimit)
                     {
                         try { wait(initialDelay); } catch { Thread.Sleep(initialDelay); }
                         continue;
                     }
-                    Logger.Warn("Guardian recovery ordering exhausted: observations=" + orderingObservations
-                        + "; original ownership retained; active attempts stopped");
+                    Logger.Warn("守护恢复顺序预算已耗尽，观测次数=" + orderingObservations
+                        + "；保留原所有权，停止主动尝试");
                 }
                 else
                 {
                     attempts++;
-                    Logger.Warn("Guardian recovery: phase=" + (exitPhase ? "target-exit" : "live") + " attempt=" + attempts + "/3; original ownership retained");
+                    Logger.Warn("守护恢复：阶段=" + (exitPhase ? "target-exit" : "live") + " 尝试=" + attempts + "/3；保留原所有权");
                 }
                 if (attempts >= 3 || orderingObservations >= GameAffinityJobRecord.RecoveryOrderingObservationLimit)
                 {
@@ -172,8 +172,8 @@ namespace PaviseApp
 
         private static void WaitForRecovery(IntPtr target, int delay)
         {
-            // A live target exiting can wake one retry early. Once signaled (or
-            // unreadable), use a timed sleep so a bad receipt cannot busy-loop.
+            // 存活目标退出可提前唤醒一次重试。目标已触发退出或不可读后，改用定时等待，避免损坏记录造成忙循环。
+
             if (!GameAffinityJobNative.Alive(target)) { Thread.Sleep(delay); return; }
             uint result = Native.WaitForSingleObject(target, (uint)delay);
             if (result != 0 && result != 258) Thread.Sleep(delay);
@@ -201,7 +201,7 @@ namespace PaviseApp
                 Reply("READY");
                 while (GameAffinityJobNative.Alive(parent) && GameAffinityJobNative.Alive(target))
                 {
-                    // EOF revokes forward authority even when commands were buffered.
+                    // 收到 EOF 即撤销后续写入权限，缓冲区中的命令也不例外。
                     if (commands.IsAddingCompleted) break;
                     string command;
                     if (!commands.TryTake(out command, 250)) continue;
@@ -227,7 +227,7 @@ namespace PaviseApp
                     string applyFailure = null;
                     bool applied = GameAffinityJobOperation.Run(record, delegate
                     {
-                        // Recheck forward authority under the startup-recovery gate to reject buffered APPLY after EOF.
+                        // 在启动恢复锁内再次核对写入权限，拒绝 EOF 后仍滞留缓冲区的 APPLY。
                         if (!GameAffinityJobNative.Alive(parent) || commands.IsAddingCompleted)
                         { applyFailure = "forward-owner-lost"; return false; }
                         return GameAffinityJobNative.Apply(job, target, record.Birth, desired, out applyFailure);
@@ -245,8 +245,8 @@ namespace PaviseApp
             catch { }
             finally
             {
-                // Keep both original handles alive until restoration and its neutral
-                // receipt are confirmed. Closing handles is never a recovery action.
+                // 原始两个句柄一直保留到恢复及中性回执均确认完成；关闭句柄不算恢复操作。
+
                 Func<RecoveryOutcome> settle = delegate
                 {
                     string reason;
@@ -259,7 +259,7 @@ namespace PaviseApp
                     () => Native.WaitForSingleObject(target, 0) == 0,
                     () => Native.WaitForSingleObject(target, uint.MaxValue) == 0, 500))
                 {
-                    Logger.Warn("Game affinity guardian recovery exhausted: ownership retained, no further active attempts");
+                    Logger.Warn("游戏亲和性守护恢复预算已耗尽，保留所有权，不再主动尝试");
                     Thread.Sleep(Timeout.Infinite);
                 }
             }

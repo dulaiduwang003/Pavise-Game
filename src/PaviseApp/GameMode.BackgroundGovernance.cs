@@ -18,8 +18,8 @@ namespace PaviseApp
                 if (selection == 0 && !enabled) return true;
                 if (selection > 0)
                 {
-                    // Persist the requested level while the master is still off;
-                    // the family gate prevents a scan from applying half a change.
+                    // 总开关仍关闭时先保存请求档位；家族锁防止扫描看到只完成一半的修改。
+
                     if (!TrySetBackgroundGovernanceMode(selection - 1)) return false;
                     if (enabled && !backgroundGovernanceSaveUnverified) return true;
                 }
@@ -41,7 +41,7 @@ namespace PaviseApp
             string[] stored;
             if (!Settings.TryLoadStoredNames(PolicyCatalog.KeySuppress, out stored)) return false;
             foreach (string key in stored) if (string.Equals(key, PolicyCatalog.KeySuppress, StringComparison.OrdinalIgnoreCase)) return false;
-            enabled = true; // Existing master default, only after verified absence.
+            enabled = true; // 只有确认旧总开关不存在后，才使用原有默认值。
             return true;
         }
 

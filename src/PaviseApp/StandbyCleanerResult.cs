@@ -1,12 +1,12 @@
 namespace PaviseApp
 {
-	internal enum StandbyCleanerResult
-	{
-		Cancelled,
-		BelowThreshold,
-		Purged,
-		QueryFailed,
-		PurgeFailed,
-		InvalidOptions
-	}
+    internal enum StandbyCleanerResult
+    {
+        Cancelled,
+        BelowThreshold,
+        Purged,
+        QueryFailed,
+        PurgeFailed,
+        InvalidOptions
+    }
 }

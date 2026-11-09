@@ -1,15 +1,15 @@
 namespace PaviseApp
 {
-	internal sealed class LolLcuCredentials
-	{
-		public readonly int Port;
+    internal sealed class LolLcuCredentials
+    {
+        public readonly int Port;
 
-		public readonly string Token;
+        public readonly string Token;
 
-		public LolLcuCredentials(int port, string token)
-		{
-			Port = port;
-			Token = token;
-		}
-	}
+        public LolLcuCredentials(int port, string token)
+        {
+            Port = port;
+            Token = token;
+        }
+    }
 }

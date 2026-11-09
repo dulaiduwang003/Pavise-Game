@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum PerformanceLifetime
-	{
-		Session,
-		Persistent
-	}
+    internal enum PerformanceLifetime
+    {
+        Session,
+        Persistent
+    }
 }

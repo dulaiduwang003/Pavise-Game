@@ -32,15 +32,15 @@ namespace PaviseApp
         internal static bool LastApplyFailureIsPermanent { get { return applyFailurePermanent; } }
         internal static void ClearApplyFailureReason() { applyFailureReason = null; applyFailurePermanent = false; }
 
-        // Only verified desktops use architecture presets; uncertain chassis data retains the legacy policy.
-        // A battery may belong to a desktop UPS.
+        // 只有确认是台式机才使用架构预设；机箱信息不确定时沿用旧策略，电池也可能来自台式机 UPS。
+
         internal static bool UsesLegacyManagedPolicy()
         {
             var device = ManagedPlans as IManagedPowerDeviceKind;
             return device == null || device.DeviceKind != LaboratoryEppDeviceKind.Desktop;
         }
 
-        // Keep the first apply failure; cleanup errors must not replace its diagnostic.
+        // 保留第一次应用失败，清理错误不能替换其诊断。
         private static bool PowerApplyFailed(string stage, string detail)
         {
             if (string.IsNullOrEmpty(applyFailureReason))
@@ -64,7 +64,7 @@ namespace PaviseApp
         private static ManagedPowerPresetSelection SelectManagedPreset(bool aggressive)
         {
             ManagedPowerHardwareFacts facts = ReadManagedHardwareFacts();
-            // Retired source preferences cannot override device-policy routing.
+            // 已退役的来源偏好不能覆盖设备策略路由。
             return ManagedPowerPreset.Resolve(facts, aggressive, "auto");
         }
 
@@ -108,7 +108,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch { /* Incomplete facts must not be replaced with a guessed model. */ }
+            catch { /* 信息不完整时不能用猜测的型号替代。 */ }
             facts.Workstation = Regex.IsMatch(facts.CpuName ?? "", @"\b(Xeon|EPYC|Threadripper|Opteron)\b", RegexOptions.IgnoreCase);
             cachedManagedHardware = facts;
             return facts;
@@ -358,7 +358,7 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // Preserve non-performance AC preferences and all readable DC values, including OEM settings absent from the source.
+        // 保留非性能类 AC 偏好及全部可读 DC 值，包括来源中没有的 OEM 设置。
         private static bool PreserveBaseAc(Guid sub, Guid setting, bool preserveParking)
         {
             if (sub == SubProcessor) return preserveParking && IsPresetParkingOrScheduling(setting);
@@ -439,10 +439,10 @@ namespace PaviseApp
                         if (ac) copied++;
                     }
                 }
-                // Retired idle receipts are recovered before this point. The source's idle policy stays intact.
-                Logger.Info("POWER source=" + selection.Preset.Id + " sha256=" + selection.Preset.Hash
-                    + " adaptation=" + (selection.PreserveParking ? "local-DC/daily/cache-topology" : "local-DC/daily")
-                    + " preservedAC=" + copied + " reason=" + selection.Reason);
+                // 此处之前已恢复旧空闲记录，来源计划本身的空闲策略保持不变。
+                Logger.Info("电源 来源=" + selection.Preset.Id + " SHA256=" + selection.Preset.Hash
+                    + " 适配=" + (selection.PreserveParking ? "本机电池、日常设置与缓存拓扑" : "本机电池与日常设置")
+                    + " 保留交流设置数=" + copied + " 原因=" + selection.Reason);
                 return true;
             }
             catch (Exception error) { return PresetPreparationFailed(error.GetType().Name + ": " + error.Message); }
@@ -470,8 +470,8 @@ namespace PaviseApp
             if (laboratory == null) return NoteIntactMismatch("laboratory-ownership-unreadable");
             foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
             {
-                // Daily-use AC and all battery settings remain local preferences.
-                // Laboratory mutations have their own audit / recovery owner.
+                // 日常 AC 设置和全部电池设置仍是本机偏好；实验室修改有独立的核验与恢复所有者。
+
                 if (!value.Ac.HasValue || PreserveBaseAc(value.Sub, value.Setting, selection.PreserveParking)
                     || value.Sub == SubProcessor && laboratory.Contains(value.Setting)) continue;
                 var evidence = plans as IManagedPowerReadEvidence;
@@ -549,7 +549,7 @@ namespace PaviseApp
                 uint storedCode = ReadPresetStoredIndex(source, sub, setting, ac, out stored);
                 if (storedCode != 2 && (storedCode != 0 || stored != baseline.Value))
                     return PresetPreparationFailed("Local stored index could not be verified: " + name + " " + sub + "/" + setting + " code=" + storedCode, storedCode);
-                // Missing overrides may resolve differently by personality; copy a verified baseline value, not equal error codes.
+                // 缺失覆盖值可能因计划类型而得到不同结果，应复制已核验的基准值，不能仅比较错误码相同。
                 ManagedPowerReadEvidence verifyBase = ReadPresetPowerEvidence(source, sub, setting, ac);
                 if (!CanCopyPresetBase(source, destination, activeBefore) || verifyBase.State != ManagedPowerReadState.Value
                     || verifyBase.Value != baseline.Value)
@@ -581,7 +581,7 @@ namespace PaviseApp
 
         private static uint ReadPresetIndex(Guid scheme, Guid sub, Guid setting, bool ac, out uint value)
         {
-            // *Value returns a payload; only *ValueIndex is an AC/DCSettingIndex.
+            // 以 Value 结尾的接口返回实际内容，只有 ValueIndex 才是 AC/DCSettingIndex。
             return ac ? PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value)
                 : PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value);
         }
@@ -607,18 +607,18 @@ namespace PaviseApp
         private static ManagedPowerReadEvidence ReadPresetPowerEvidence(Guid scheme, Guid sub, Guid setting, bool ac)
         {
             uint value, code = ReadPresetIndex(scheme, sub, setting, ac, out value);
-            // Access denial, invalid handles and unknown errors never establish absence.
+            // 访问拒绝、无效句柄及未知错误都不能证明配置不存在。
             if (code != 0 && code != 2 && code != 3 && code != 87)
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, code, false);
             if (!SchemeUsable(scheme)) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, 2, false);
             uint definition = ReadPresetDefinitionStatus(sub, setting);
-            // Do not reintroduce unsupported settings from a historical per-plan index.
+            // 不能从历史逐计划索引重新引入当前不支持的设置。
             if ((code == 0 || code == 2 || code == 3) && (definition == 2 || definition == 3))
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.ConfirmedUnregistered, 0, code, definition, false);
             if (definition != 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, definition, false);
             if (code == 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Value, value, 0, 0, false);
             uint storedCode = ReadPresetStoredIndex(scheme, sub, setting, ac, out value);
-            // Resolve defaults only after proving an override absent; ERROR_INVALID_PARAMETER is not absence evidence.
+            // 只有确认覆盖值不存在后才解析默认值；ERROR_INVALID_PARAMETER 不能证明不存在。
             if (storedCode != 2) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, storedCode == 0 ? code : storedCode, false);
             uint resolution = ReadPresetEffectiveDefault(scheme, sub, setting, ac, out value);
             return new ManagedPowerReadEvidence(resolution == 0 ? ManagedPowerReadState.Value : ManagedPowerReadState.Unavailable,
@@ -702,7 +702,7 @@ namespace PaviseApp
             if (!DeleteInactiveManaged(plans, record.Previous)) return;
             record.Previous = Guid.Empty;
             string encoded = record.Encode();
-            // A failed cleanup save retains a harmless reference to an absent plan for the next retry.
+            // 清理记录保存失败时，保留指向已不存在计划的无害引用，供下次有限重试处理。
             Settings.SaveStrDurable(ManagedPolicyKey, encoded);
         }
     }

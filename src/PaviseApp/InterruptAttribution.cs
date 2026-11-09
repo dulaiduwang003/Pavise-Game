@@ -6,1092 +6,1092 @@ using System.Threading;
 
 namespace PaviseApp
 {
-	internal sealed class InterruptAttribution
-	{
-		private sealed class RoutineStat
-		{
-			public long Count;
+    internal sealed class InterruptAttribution
+    {
+        private sealed class RoutineStat
+        {
+            public long Count;
 
-			public long TotalTicks;
+            public long TotalTicks;
 
-			public long MaxTicks;
+            public long MaxTicks;
 
-			public long BadDuration;
+            public long BadDuration;
 
-			public ulong CpuMask;
+            public ulong CpuMask;
 
-			public bool CpuMaskTruncated;
+            public bool CpuMaskTruncated;
 
-			public readonly long[] Buckets = new long[13];
-		}
+            public readonly long[] Buckets = new long[13];
+        }
 
-		private sealed class Module
-		{
-			public ulong Base;
+        private sealed class Module
+        {
+            public ulong Base;
 
-			public ulong End;
+            public ulong End;
 
-			public string Name;
-		}
-
-#pragma warning disable 0649
-		private struct WnodeHeader
-		{
-			public uint BufferSize;
-
-			public uint ProviderId;
-
-			public ulong HistoricalContext;
-
-			public long TimeStamp;
-
-			public Guid Guid;
-
-			public uint ClientContext;
-
-			public uint Flags;
-		}
-
-		private struct EventTraceProperties
-		{
-			public WnodeHeader Wnode;
-
-			public uint BufferSize;
-
-			public uint MinimumBuffers;
-
-			public uint MaximumBuffers;
-
-			public uint MaximumFileSize;
-
-			public uint LogFileMode;
-
-			public uint FlushTimer;
-
-			public uint EnableFlags;
-
-			public int AgeLimit;
-
-			public uint NumberOfBuffers;
-
-			public uint FreeBuffers;
-
-			public uint EventsLost;
-
-			public uint BuffersWritten;
-
-			public uint LogBuffersLost;
-
-			public uint RealTimeBuffersLost;
-
-			public IntPtr LoggerThreadId;
-
-			public uint LogFileNameOffset;
-
-			public uint LoggerNameOffset;
-		}
-#pragma warning restore 0649
-
-		private struct EventTraceHeader
-		{
-			public ushort Size;
-
-			public ushort FieldTypeFlags;
-
-			public byte Type;
-
-			public byte Level;
-
-			public ushort Version;
-
-			public uint ThreadId;
-
-			public uint ProcessId;
-
-			public long TimeStamp;
-
-			public Guid Guid;
-
-			public uint KernelTime;
-
-			public uint UserTime;
-		}
+            public string Name;
+        }
 
 #pragma warning disable 0649
-		private struct EventDescriptor
-		{
-			public ushort Id;
+        private struct WnodeHeader
+        {
+            public uint BufferSize;
 
-			public byte Version;
+            public uint ProviderId;
 
-			public byte Channel;
+            public ulong HistoricalContext;
 
-			public byte Level;
+            public long TimeStamp;
 
-			public byte Opcode;
+            public Guid Guid;
 
-			public ushort Task;
+            public uint ClientContext;
 
-			public ulong Keyword;
-		}
+            public uint Flags;
+        }
 
-		private struct EventHeader
-		{
-			public ushort Size;
+        private struct EventTraceProperties
+        {
+            public WnodeHeader Wnode;
 
-			public ushort HeaderType;
+            public uint BufferSize;
 
-			public ushort Flags;
+            public uint MinimumBuffers;
 
-			public ushort EventProperty;
+            public uint MaximumBuffers;
 
-			public uint ThreadId;
+            public uint MaximumFileSize;
 
-			public uint ProcessId;
+            public uint LogFileMode;
 
-			public long TimeStamp;
+            public uint FlushTimer;
 
-			public Guid ProviderId;
+            public uint EnableFlags;
 
-			public EventDescriptor EventDescriptor;
+            public int AgeLimit;
 
-			public ulong ProcessorTime;
+            public uint NumberOfBuffers;
 
-			public Guid ActivityId;
-		}
+            public uint FreeBuffers;
 
-		private struct EtwBufferContext
-		{
-			public ushort ProcessorIndex;
+            public uint EventsLost;
 
-			public ushort LoggerId;
-		}
+            public uint BuffersWritten;
 
-		private struct EventRecord
-		{
-			public EventHeader EventHeader;
+            public uint LogBuffersLost;
 
-			public EtwBufferContext BufferContext;
+            public uint RealTimeBuffersLost;
 
-			public ushort ExtendedDataCount;
+            public IntPtr LoggerThreadId;
 
-			public ushort UserDataLength;
+            public uint LogFileNameOffset;
 
-			public IntPtr ExtendedData;
-
-			public IntPtr UserData;
-
-			public IntPtr UserContext;
-		}
+            public uint LoggerNameOffset;
+        }
 #pragma warning restore 0649
 
-		private delegate void EventRecordCallback(ref EventRecord record);
+        private struct EventTraceHeader
+        {
+            public ushort Size;
 
-		private struct EventTrace
-		{
-			public EventTraceHeader Header;
+            public ushort FieldTypeFlags;
 
-			public uint InstanceId;
+            public byte Type;
 
-			public uint ParentInstanceId;
+            public byte Level;
 
-			public Guid ParentGuid;
+            public ushort Version;
 
-			public IntPtr MofData;
+            public uint ThreadId;
 
-			public uint MofLength;
+            public uint ProcessId;
 
-			public uint ClientContext;
-		}
+            public long TimeStamp;
 
-		private struct SystemTime
-		{
-			public ushort Year;
+            public Guid Guid;
 
-			public ushort Month;
+            public uint KernelTime;
 
-			public ushort DayOfWeek;
+            public uint UserTime;
+        }
 
-			public ushort Day;
+#pragma warning disable 0649
+        private struct EventDescriptor
+        {
+            public ushort Id;
 
-			public ushort Hour;
+            public byte Version;
 
-			public ushort Minute;
+            public byte Channel;
 
-			public ushort Second;
+            public byte Level;
 
-			public ushort Milliseconds;
-		}
+            public byte Opcode;
 
-		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-		private struct TimeZoneInformation
-		{
-			public int Bias;
+            public ushort Task;
 
-			[MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-			public string StandardName;
+            public ulong Keyword;
+        }
 
-			public SystemTime StandardDate;
+        private struct EventHeader
+        {
+            public ushort Size;
 
-			public int StandardBias;
+            public ushort HeaderType;
 
-			[MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-			public string DaylightName;
+            public ushort Flags;
 
-			public SystemTime DaylightDate;
+            public ushort EventProperty;
 
-			public int DaylightBias;
-		}
+            public uint ThreadId;
 
-		private struct TraceLogfileHeader
-		{
-			public uint BufferSize;
+            public uint ProcessId;
 
-			public uint Version;
+            public long TimeStamp;
 
-			public uint ProviderVersion;
+            public Guid ProviderId;
 
-			public uint NumberOfProcessors;
+            public EventDescriptor EventDescriptor;
 
-			public long EndTime;
+            public ulong ProcessorTime;
 
-			public uint TimerResolution;
+            public Guid ActivityId;
+        }
 
-			public uint MaximumFileSize;
+        private struct EtwBufferContext
+        {
+            public ushort ProcessorIndex;
 
-			public uint LogFileMode;
+            public ushort LoggerId;
+        }
 
-			public uint BuffersWritten;
+        private struct EventRecord
+        {
+            public EventHeader EventHeader;
 
-			public Guid LogInstanceGuid;
+            public EtwBufferContext BufferContext;
 
-			public IntPtr LoggerName;
+            public ushort ExtendedDataCount;
 
-			public IntPtr LogFileName;
+            public ushort UserDataLength;
 
-			public TimeZoneInformation TimeZone;
+            public IntPtr ExtendedData;
 
-			public long BootTime;
+            public IntPtr UserData;
 
-			public long PerfFreq;
+            public IntPtr UserContext;
+        }
+#pragma warning restore 0649
 
-			public long StartTime;
+        private delegate void EventRecordCallback(ref EventRecord record);
 
-			public uint ReservedFlags;
+        private struct EventTrace
+        {
+            public EventTraceHeader Header;
 
-			public uint BuffersLost;
-		}
+            public uint InstanceId;
 
-		[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-		private struct EventTraceLogfile
-		{
-			public IntPtr LogFileName;
+            public uint ParentInstanceId;
 
-			public IntPtr LoggerName;
+            public Guid ParentGuid;
 
-			public long CurrentTime;
+            public IntPtr MofData;
 
-			public uint BuffersRead;
+            public uint MofLength;
 
-			public uint ProcessTraceMode;
+            public uint ClientContext;
+        }
 
-			public EventTrace CurrentEvent;
+        private struct SystemTime
+        {
+            public ushort Year;
 
-			public TraceLogfileHeader LogfileHeader;
+            public ushort Month;
 
-			public IntPtr BufferCallback;
+            public ushort DayOfWeek;
 
-			public uint BufferSize;
+            public ushort Day;
 
-			public uint Filled;
+            public ushort Hour;
 
-			public uint EventsLost;
+            public ushort Minute;
 
-			public IntPtr EventRecordCallbackPtr;
+            public ushort Second;
 
-			public uint IsKernelTrace;
+            public ushort Milliseconds;
+        }
 
-			public IntPtr Context;
-		}
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct TimeZoneInformation
+        {
+            public int Bias;
 
-		private const int WnodeFlagTracedGuid = 131072;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string StandardName;
 
-		private const uint RealTimeMode = 256u;
+            public SystemTime StandardDate;
 
-		private const uint SystemLoggerMode = 33554432u;
+            public int StandardBias;
 
-		private const uint IndependentSessionMode = 134217728u;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string DaylightName;
 
-		private const uint ProcessModeRealTime = 256u;
+            public SystemTime DaylightDate;
 
-		private const uint ProcessModeRawTimestamp = 4096u;
+            public int DaylightBias;
+        }
 
-		private const uint ProcessModeEventRecord = 268435456u;
+        private struct TraceLogfileHeader
+        {
+            public uint BufferSize;
 
-		private const uint ControlStop = 1u;
+            public uint Version;
 
-		private const uint FlagDpc = 32u;
+            public uint ProviderVersion;
 
-		private const uint FlagInterrupt = 64u;
+            public uint NumberOfProcessors;
 
-		private const int ErrorAccessDenied = 5;
+            public long EndTime;
 
-		private const int ErrorAlreadyExists = 183;
+            public uint TimerResolution;
 
-		private const int ErrorInvalidParameter = 87;
+            public uint MaximumFileSize;
 
-		private const string SessionName = "PaviseInterruptProbe";
+            public uint LogFileMode;
 
-		private const string AliveEventName = "Global\\Pavise_InterruptProbeAlive";
+            public uint BuffersWritten;
 
-		internal const int BucketCount = 13;
+            public Guid LogInstanceGuid;
 
-		private const int BucketOver500 = 9;
+            public IntPtr LoggerName;
 
-		private const int BucketOver1Ms = 10;
+            public IntPtr LogFileName;
 
-		private const ushort HeaderFlag32Bit = 32;
+            public TimeZoneInformation TimeZone;
 
-		private const ushort HeaderFlag64Bit = 64;
+            public long BootTime;
 
-		private static readonly Guid SessionGuid = new Guid("7d1f8c2a-64b3-4c5e-9a1d-2e8f0b6c4d3a");
+            public long PerfFreq;
 
-		private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
+            public long StartTime;
 
-		private EventWaitHandle aliveOwned;
+            public uint ReservedFlags;
 
-		internal static readonly double[] BucketUpperUs = new double[13]
-		{
-			1.0,
-			2.0,
-			5.0,
-			10.0,
-			25.0,
-			50.0,
-			100.0,
-			250.0,
-			500.0,
-			1000.0,
-			2000.0,
-			5000.0,
-			double.MaxValue
-		};
+            public uint BuffersLost;
+        }
 
-		private readonly object gate = new object();
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct EventTraceLogfile
+        {
+            public IntPtr LogFileName;
 
-		private readonly Dictionary<ulong, RoutineStat> dpcHits = new Dictionary<ulong, RoutineStat>();
+            public IntPtr LoggerName;
 
-		private readonly Dictionary<ulong, RoutineStat> isrHits = new Dictionary<ulong, RoutineStat>();
+            public long CurrentTime;
 
-		private readonly List<Module> modules = new List<Module>();
+            public uint BuffersRead;
 
-		private double usPerTick;
+            public uint ProcessTraceMode;
 
-		private long sanityMaxTicks;
+            public EventTrace CurrentEvent;
 
-		private long dpcTotal;
+            public TraceLogfileHeader LogfileHeader;
 
-		private long isrTotal;
+            public IntPtr BufferCallback;
 
-		private ulong traceHandle;
+            public uint BufferSize;
 
-		private Thread worker;
+            public uint Filled;
 
-		private EventRecordCallback keepAlive;
+            public uint EventsLost;
 
-		private volatile bool started;
+            public IntPtr EventRecordCallbackPtr;
 
-		private volatile bool stopRequested;
+            public uint IsKernelTrace;
 
-		private volatile bool consumerExitedEarly;
+            public IntPtr Context;
+        }
 
-		private volatile bool processTraceSucceeded;
+        private const int WnodeFlagTracedGuid = 131072;
 
-		public bool Busy { get; private set; }
+        private const uint RealTimeMode = 256u;
 
-		public string FailDetail { get; private set; }
+        private const uint SystemLoggerMode = 33554432u;
 
-		public static string StartFailureText(InterruptAttribution ia)
-		{
-			if (ia == null)
-			{
-				return Lang.T("irqmove.nosession");
-			}
-			if (ia.Busy)
-			{
-				return Lang.T("irq.probe.busy");
-			}
-			if (!string.IsNullOrEmpty(ia.FailDetail))
-			{
-				return ia.FailDetail;
-			}
-			return Lang.T("irqmove.nosession");
-		}
-
-		private bool TakeOwnership()
-		{
-			try
-			{
-				EventWaitHandle result;
-				if (EventWaitHandle.TryOpenExisting("Global\\Pavise_InterruptProbeAlive", out result))
-				{
-					using (result)
-					{
-					}
-					return false;
-				}
-			}
-			catch
-			{
-			}
-			try
-			{
-				bool createdNew;
-				EventWaitHandle eventWaitHandle2 = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\Pavise_InterruptProbeAlive", out createdNew);
-				if (!createdNew)
-				{
-					eventWaitHandle2.Close();
-					return false;
-				}
-				aliveOwned = eventWaitHandle2;
-				return true;
-			}
-			catch
-			{
-				return true;
-			}
-		}
-
-		private void ReleaseOwnership()
-		{
-			EventWaitHandle eventWaitHandle = aliveOwned;
-			aliveOwned = null;
-			if (eventWaitHandle != null)
-			{
-				try
-				{
-					eventWaitHandle.Close();
-				}
-				catch
-				{
-				}
-			}
-		}
-
-		public bool Start()
-		{
-			lock (gate)
-			{
-				if (started)
-				{
-					return true;
-				}
-				Busy = false;
-				FailDetail = null;
-				if (!TakeOwnership())
-				{
-					Busy = true;
-					Logger.Log(Lang.T("log.interruptattribution.9"));
-					return false;
-				}
-				Native.TryEnableDebugPrivilege();
-				string error;
-				if (!LoadModules(out error))
-				{
-					FailDetail = error;
-					Logger.Warn("IRQ " + error);
-					ReleaseOwnership();
-					return false;
-				}
-				uint enableFlags = 96u;
-				IntPtr intPtr = AllocProps(enableFlags);
-				try
-				{
-					ulong handle;
-					uint startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
-					if (startTraceResult == 183)
-					{
-						StopStale();
-						Marshal.FreeHGlobal(intPtr);
-						intPtr = AllocProps(enableFlags);
-						startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
-					}
-					switch (startTraceResult)
-					{
-					case 87u:
-						Logger.Log(Lang.T("log.interruptattribution.1"));
-						FailDetail = Lang.T("irq.fail.nokernel");
-						ReleaseOwnership();
-						return false;
-					default:
-					{
-						Logger.Warn(Lang.T("log.interruptattribution.2") + startTraceResult);
-						bool startReady = false;
-						try
-						{
-							startReady = Native.IsElevated();
-						}
-						catch
-						{
-						}
-						FailDetail = ((startTraceResult != 5) ? (Lang.T("irq.fail.start") + startTraceResult) : (startReady ? Lang.T("irq.fail.denied") : Lang.T("irq.state.needadmin")));
-						ReleaseOwnership();
-						return false;
-					}
-					case 0u:
-						break;
-					}
-				}
-				finally
-				{
-					Marshal.FreeHGlobal(intPtr);
-				}
-				keepAlive = OnEvent;
-				EventTraceLogfile logfile = default(EventTraceLogfile);
-				logfile.LoggerName = Marshal.StringToHGlobalUni("PaviseInterruptProbe");
-				logfile.ProcessTraceMode = 268439808u;
-				logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
-				traceHandle = OpenTrace(ref logfile);
-				if (traceHandle == ulong.MaxValue || traceHandle == 0)
-				{
-					int lastWin32Error = Marshal.GetLastWin32Error();
-					Logger.Warn(Lang.T("log.interruptattribution.3") + lastWin32Error);
-					FailDetail = Lang.T("irq.fail.open") + lastWin32Error;
-					StopStale();
-					ReleaseOwnership();
-					return false;
-				}
-				long perfFreq = logfile.LogfileHeader.PerfFreq;
-				if (perfFreq <= 0)
-				{
-					perfFreq = Stopwatch.Frequency;
-				}
-				usPerTick = 1000000.0 / (double)perfFreq;
-				sanityMaxTicks = perfFreq;
-				worker = new Thread(RunProcessTrace);
-				worker.IsBackground = true;
-				try
-				{
-					worker.Priority = ThreadPriority.Highest;
-				}
-				catch
-				{
-				}
-				stopRequested = false;
-				consumerExitedEarly = false;
-				processTraceSucceeded = false;
-				worker.Start();
-				started = true;
-				return true;
-			}
-		}
-
-		private void RunProcessTrace()
-		{
-			try
-			{
-				ulong[] handles = new ulong[1] { traceHandle };
-				uint processTraceResult = ProcessTrace(handles, 1u, IntPtr.Zero, IntPtr.Zero);
-				processTraceSucceeded = processTraceResult == 0;
-				if (processTraceResult != 0)
-				{
-					consumerExitedEarly = true;
-				}
-			}
-			catch
-			{
-				consumerExitedEarly = true;
-			}
-			finally
-			{
-				if (!stopRequested)
-				{
-					consumerExitedEarly = true;
-				}
-			}
-		}
-
-		internal static bool CaptureComplete(bool stopSucceeded, bool workerDone, bool processSucceeded, bool exitedEarly)
-		{
-			if (stopSucceeded && workerDone && processSucceeded)
-			{
-				return !exitedEarly;
-			}
-			return false;
-		}
-
-		internal static bool HasMappedEvents(long rawDpc, long rawIsr, int mappedDrivers)
-		{
-			if (rawDpc >= 0 && rawIsr >= 0 && (rawDpc > 0 || rawIsr > 0))
-			{
-				return mappedDrivers > 0;
-			}
-			return false;
-		}
-
-		public InterruptAttributionResult Stop()
-		{
-			InterruptAttributionResult interruptAttributionResult = new InterruptAttributionResult();
-			lock (gate)
-			{
-				if (!started)
-				{
-					interruptAttributionResult.Error = Lang.T("t.interruptattribution.4");
-					return interruptAttributionResult;
-				}
-				stopRequested = true;
-				uint eventsLost;
-				uint buffersLost;
-				uint error;
-				bool stopStaleSucceeded = StopStale(out eventsLost, out buffersLost, out error);
-				interruptAttributionResult.EventsLost = eventsLost;
-				interruptAttributionResult.BuffersLost = buffersLost;
-				if (!stopStaleSucceeded)
-				{
-					try
-					{
-						if (traceHandle != 0)
-						{
-							CloseTrace(traceHandle);
-						}
-					}
-					catch
-					{
-					}
-				}
-				bool stopReady = true;
-				if (worker != null)
-				{
-					try
-					{
-						stopReady = worker.Join(10000);
-					}
-					catch
-					{
-						stopReady = false;
-					}
-				}
-				if (stopStaleSucceeded)
-				{
-					try
-					{
-						if (traceHandle != 0)
-						{
-							CloseTrace(traceHandle);
-						}
-					}
-					catch
-					{
-					}
-				}
-				interruptAttributionResult.Incomplete = !CaptureComplete(stopStaleSucceeded, stopReady, processTraceSucceeded, consumerExitedEarly);
-				started = false;
-				ReleaseOwnership();
-				if (!stopReady)
-				{
-					interruptAttributionResult.Error = Lang.T("t.interruptattribution.5");
-					return interruptAttributionResult;
-				}
-				keepAlive = null;
-				Dictionary<string, DriverInterrupt> dictionary = new Dictionary<string, DriverInterrupt>();
-				Dictionary<string, long[]> dictionary2 = new Dictionary<string, long[]>();
-				Fold(dictionary, dictionary2, dpcHits, true);
-				Fold(dictionary, dictionary2, isrHits, false);
-				foreach (KeyValuePair<string, DriverInterrupt> item in dictionary)
-				{
-					DriverInterrupt value = item.Value;
-					long[] value2;
-					if (dictionary2.TryGetValue(item.Key, out value2))
-					{
-						value.DpcOver500Us = SumFrom(value2, 9);
-						value.DpcOver1Ms = SumFrom(value2, 10);
-						value.DpcBuckets = (long[])value2.Clone();
-					}
-					interruptAttributionResult.Drivers.Add(value);
-				}
-				interruptAttributionResult.Drivers.Sort(delegate(DriverInterrupt a, DriverInterrupt b)
-				{
-					long value3 = a.Dpc + a.Isr;
-					return (b.Dpc + b.Isr).CompareTo(value3);
-				});
-				long numericValue = 0L;
-				foreach (DriverInterrupt driver in interruptAttributionResult.Drivers)
-				{
-					numericValue += driver.Dpc;
-				}
-				interruptAttributionResult.Unmapped = Math.Max(0L, dpcTotal - numericValue);
-				bool allConditionsMet = (dpcTotal > 0 || isrTotal > 0) && interruptAttributionResult.Drivers.Count == 0;
-				string errorValue = (allConditionsMet ? ("已采集中断事件，但无法映射到驱动模块，本局中断归因不可用 DPC=" + dpcTotal + " ISR=" + isrTotal + " 模块=" + modules.Count) : null);
-				if (allConditionsMet)
-				{
-					Logger.Warn("IRQ " + errorValue);
-				}
-				interruptAttributionResult.Ok = HasMappedEvents(dpcTotal, isrTotal, interruptAttributionResult.Drivers.Count) && !interruptAttributionResult.Incomplete && !interruptAttributionResult.Lossy;
-				if (interruptAttributionResult.Lossy)
-				{
-					Logger.Log(Lang.F("log.interruptattribution.lossy", interruptAttributionResult.EventsLost, interruptAttributionResult.BuffersLost));
-				}
-				if (interruptAttributionResult.Incomplete)
-				{
-					interruptAttributionResult.Error = "ETW 消费或停止未完整 win32=" + error;
-				}
-				else if (interruptAttributionResult.Lossy)
-				{
-					interruptAttributionResult.Error = Lang.F("t.interruptattribution.7", interruptAttributionResult.EventsLost, interruptAttributionResult.BuffersLost);
-				}
-				else if (allConditionsMet)
-				{
-					interruptAttributionResult.Error = errorValue;
-				}
-				else if (!interruptAttributionResult.Ok)
-				{
-					interruptAttributionResult.Error = Lang.T("t.interruptattribution.6");
-				}
-				return interruptAttributionResult;
-			}
-		}
-
-		private void Fold(Dictionary<string, DriverInterrupt> byMod, Dictionary<string, long[]> dpcBuckets, Dictionary<ulong, RoutineStat> hits, bool dpc)
-		{
-			foreach (KeyValuePair<ulong, RoutineStat> hit in hits)
-			{
-				string driverValue = Resolve(hit.Key);
-				if (driverValue == null)
-				{
-					continue;
-				}
-				DriverInterrupt value;
-				if (!byMod.TryGetValue(driverValue, out value))
-				{
-					DriverInterrupt driverInterrupt = new DriverInterrupt();
-					driverInterrupt.Driver = driverValue;
-					value = (byMod[driverValue] = driverInterrupt);
-				}
-				RoutineStat value2 = hit.Value;
-				if (dpc)
-				{
-					value.CpuMask |= value2.CpuMask;
-					value.CpuMaskTruncated |= value2.CpuMaskTruncated;
-				}
-				value.BadDuration += value2.BadDuration;
-				double dpcTotalUsValue = (double)value2.TotalTicks * usPerTick;
-				double dpcMaxUsValue = (double)value2.MaxTicks * usPerTick;
-				if (dpc)
-				{
-					value.Dpc += value2.Count;
-					value.DpcTotalUs += dpcTotalUsValue;
-					if (dpcMaxUsValue > value.DpcMaxUs)
-					{
-						value.DpcMaxUs = dpcMaxUsValue;
-					}
-					long[] value3;
-					if (!dpcBuckets.TryGetValue(driverValue, out value3))
-					{
-						value3 = (dpcBuckets[driverValue] = new long[13]);
-					}
-					for (int i = 0; i < 13; i++)
-					{
-						value3[i] += value2.Buckets[i];
-					}
-				}
-				else
-				{
-					value.Isr += value2.Count;
-				}
-			}
-		}
-
-		internal static long SumFrom(long[] b, int startIndex)
-		{
-			long sumFromResult = 0L;
-			if (b == null)
-			{
-				return 0L;
-			}
-			for (int i = startIndex; i < 13; i++)
-			{
-				sumFromResult += b[i];
-			}
-			return sumFromResult;
-		}
-
-		private void OnEvent(ref EventRecord record)
-		{
-			if (record.EventHeader.ProviderId != PerfInfoGuid)
-			{
-				return;
-			}
-			byte opcode = record.EventHeader.EventDescriptor.Opcode;
-			bool matchesOpcode = opcode == 67;
-			bool anyConditionMet = opcode == 66 || opcode == 68 || opcode == 69;
-			if ((!matchesOpcode && !anyConditionMet) || record.UserData == IntPtr.Zero)
-			{
-				return;
-			}
-			ushort flags = record.EventHeader.Flags;
-			int size = (((flags & 0x40u) != 0) ? 8 : (((flags & 0x20u) != 0) ? 4 : IntPtr.Size));
-			if (record.UserDataLength < 8 + size)
-			{
-				return;
-			}
-			long toInt64Result = record.UserData.ToInt64();
-			long int64 = Marshal.ReadInt64(new IntPtr(toInt64Result));
-			ulong key = (ulong)((size == 8) ? Marshal.ReadInt64(new IntPtr(toInt64Result + 8)) : ((uint)Marshal.ReadInt32(new IntPtr(toInt64Result + 8))));
-			long timeStamp = record.EventHeader.TimeStamp;
-			long totalTicksValue = timeStamp - int64;
-			bool allConditionsMet = totalTicksValue >= 0 && totalTicksValue <= sanityMaxTicks;
-			Dictionary<ulong, RoutineStat> dictionary = (matchesOpcode ? isrHits : dpcHits);
-			RoutineStat value;
-			if (!dictionary.TryGetValue(key, out value))
-			{
-				value = (dictionary[key] = new RoutineStat());
-			}
-			value.Count++;
-			ushort processorIndex = record.BufferContext.ProcessorIndex;
-			if (processorIndex < 64)
-			{
-				value.CpuMask |= (ulong)(1L << (int)processorIndex);
-			}
-			else
-			{
-				value.CpuMaskTruncated = true;
-			}
-			if (!allConditionsMet)
-			{
-				value.BadDuration++;
-			}
-			else
-			{
-				value.TotalTicks += totalTicksValue;
-				if (totalTicksValue > value.MaxTicks)
-				{
-					value.MaxTicks = totalTicksValue;
-				}
-				value.Buckets[BucketOf(totalTicksValue)]++;
-			}
-			if (matchesOpcode)
-			{
-				isrTotal++;
-			}
-			else
-			{
-				dpcTotal++;
-			}
-		}
-
-		private int BucketOf(long ticks)
-		{
-			double scaledTicks = (double)ticks * usPerTick;
-			for (int i = 0; i < 12; i++)
-			{
-				if (scaledTicks < BucketUpperUs[i])
-				{
-					return i;
-				}
-			}
-			return 12;
-		}
-
-		private string Resolve(ulong addr)
-		{
-			for (int i = 0; i < modules.Count; i++)
-			{
-				if (addr >= modules[i].Base && addr < modules[i].End)
-				{
-					return modules[i].Name;
-				}
-			}
-			return null;
-		}
-
-		private static bool StopStale(out uint eventsLost, out uint buffersLost, out uint error)
-		{
-			eventsLost = 0u;
-			buffersLost = 0u;
-			error = 0u;
-			int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
-			int stopStaleValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
-			IntPtr intPtr = Marshal.AllocHGlobal(stopStaleValue);
-			try
-			{
-				for (int i = 0; i < stopStaleValue; i++)
-				{
-					Marshal.WriteByte(intPtr, i, 0);
-				}
-				EventTraceProperties structure = default(EventTraceProperties);
-				structure.Wnode.BufferSize = (uint)stopStaleValue;
-				structure.Wnode.Guid = SessionGuid;
-				structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
-				Marshal.StructureToPtr(structure, intPtr, false);
-				uint controlTraceResult = ControlTrace(0uL, "PaviseInterruptProbe", intPtr, 1u);
-				if (controlTraceResult != 0)
-				{
-					error = controlTraceResult;
-					return false;
-				}
-				EventTraceProperties eventTraceProperties = (EventTraceProperties)Marshal.PtrToStructure(intPtr, typeof(EventTraceProperties));
-				eventsLost = eventTraceProperties.EventsLost;
-				buffersLost = eventTraceProperties.RealTimeBuffersLost + eventTraceProperties.LogBuffersLost;
-				return true;
-			}
-			catch
-			{
-				error = uint.MaxValue;
-				return false;
-			}
-			finally
-			{
-				Marshal.FreeHGlobal(intPtr);
-			}
-		}
-
-		[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-		private static extern uint StartTrace(out ulong handle, string name, IntPtr props);
-
-		[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-		private static extern uint ControlTrace(ulong handle, string name, IntPtr props, uint code);
-
-		[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-		private static extern ulong OpenTrace(ref EventTraceLogfile logfile);
-
-		[DllImport("advapi32.dll", SetLastError = true)]
-		private static extern uint ProcessTrace(ulong[] handles, uint count, IntPtr start, IntPtr end);
-
-		[DllImport("advapi32.dll", SetLastError = true)]
-		private static extern uint CloseTrace(ulong handle);
-
-		[DllImport("ntdll.dll")]
-		private static extern int NtQuerySystemInformation(int cls, IntPtr buf, int len, out int ret);
-
-		private bool LoadModules(out string error)
-		{
-			modules.Clear();
-			List<Module> loaded;
-			if (!TryReadLoadedModules(out loaded, out error))
-			{
-				return false;
-			}
-			modules.AddRange(loaded);
-			return true;
-		}
-
-		private static bool TryReadLoadedModules(out List<Module> loaded, out string error)
-		{
-			loaded = new List<Module>();
-			error = null;
-			IntPtr intPtr = IntPtr.Zero;
-			try
-			{
-				int ret = 0;
-				NtQuerySystemInformation(11, IntPtr.Zero, 0, out ret);
-				ret = checked(Math.Max(ret, 1048576) + 65536);
-				intPtr = Marshal.AllocHGlobal(ret);
-				int ret2;
-				int ntQuerySystemInformationResult = NtQuerySystemInformation(11, intPtr, ret, out ret2);
-				if (ntQuerySystemInformationResult != 0)
-				{
-					uint numericValue = (uint)ntQuerySystemInformationResult;
-					error = "驱动模块枚举失败，无法启动中断归因 NTSTATUS=0x" + numericValue.ToString("X8");
-					return false;
-				}
-				int int32 = Marshal.ReadInt32(intPtr);
-				long toInt64Offset = intPtr.ToInt64() + IntPtr.Size;
-				int readLoadedModulesValue = 296;
-				if (int32 < 0 || int32 > (ret - IntPtr.Size) / readLoadedModulesValue)
-				{
-					error = "驱动模块枚举返回的长度无效，无法启动中断归因";
-					return false;
-				}
-				for (int i = 0; i < int32; i++)
-				{
-					long toInt64OffsetOffset = toInt64Offset + (long)i * (long)readLoadedModulesValue;
-					ulong int64 = (ulong)Marshal.ReadInt64(new IntPtr(toInt64OffsetOffset + 16));
-					uint int322 = (uint)Marshal.ReadInt32(new IntPtr(toInt64OffsetOffset + 24));
-					if (int64 != 0 && int322 != 0)
-					{
-						string ptrToStringAnsiResult = Marshal.PtrToStringAnsi(new IntPtr(toInt64OffsetOffset + 40));
-						if (!string.IsNullOrEmpty(ptrToStringAnsiResult))
-						{
-							int matchIndex = ptrToStringAnsiResult.LastIndexOf('\\');
-							string name = ((matchIndex >= 0) ? ptrToStringAnsiResult.Substring(matchIndex + 1) : ptrToStringAnsiResult);
-							loaded.Add(new Module
-							{
-								Base = int64,
-								End = int64 + int322,
-								Name = name
-							});
-						}
-					}
-				}
-				if (loaded.Count == 0)
-				{
-					error = "驱动模块枚举未返回可用地址，无法启动中断归因";
-					return false;
-				}
-				return true;
-			}
-			catch (Exception ex)
-			{
-				loaded.Clear();
-				error = "驱动模块枚举异常，无法启动中断归因 " + ex.GetType().Name;
-				return false;
-			}
-			finally
-			{
-				if (intPtr != IntPtr.Zero)
-				{
-					Marshal.FreeHGlobal(intPtr);
-				}
-			}
-		}
-
-		private static IntPtr AllocProps(uint enableFlags)
-		{
-			int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
-			int allocPropsValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
-			IntPtr intPtr = Marshal.AllocHGlobal(allocPropsValue);
-			for (int i = 0; i < allocPropsValue; i++)
-			{
-				Marshal.WriteByte(intPtr, i, 0);
-			}
-			EventTraceProperties structure = default(EventTraceProperties);
-			structure.Wnode.BufferSize = (uint)allocPropsValue;
-			structure.Wnode.Flags = 131072u;
-			structure.Wnode.Guid = SessionGuid;
-			structure.Wnode.ClientContext = 1u;
-			structure.BufferSize = 128u;
-			structure.MinimumBuffers = 64u;
-			structure.MaximumBuffers = 256u;
-			structure.LogFileMode = 167772416u;
-			structure.FlushTimer = 1u;
-			structure.EnableFlags = enableFlags;
-			structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
-			Marshal.StructureToPtr(structure, intPtr, false);
-			return intPtr;
-		}
-
-		public static void CleanupStaleSession()
-		{
-			try
-			{
-				StopStale();
-			}
-			catch
-			{
-			}
-		}
-
-		public static void HealFromCrash()
-		{
-			StopStale();
-		}
-
-		private static void StopStale()
-		{
-			uint eventsLost;
-			uint buffersLost;
-			uint error;
-			StopStale(out eventsLost, out buffersLost, out error);
-		}
-	}
+        private const uint IndependentSessionMode = 134217728u;
+
+        private const uint ProcessModeRealTime = 256u;
+
+        private const uint ProcessModeRawTimestamp = 4096u;
+
+        private const uint ProcessModeEventRecord = 268435456u;
+
+        private const uint ControlStop = 1u;
+
+        private const uint FlagDpc = 32u;
+
+        private const uint FlagInterrupt = 64u;
+
+        private const int ErrorAccessDenied = 5;
+
+        private const int ErrorAlreadyExists = 183;
+
+        private const int ErrorInvalidParameter = 87;
+
+        private const string SessionName = "PaviseInterruptProbe";
+
+        private const string AliveEventName = "Global\\Pavise_InterruptProbeAlive";
+
+        internal const int BucketCount = 13;
+
+        private const int BucketOver500 = 9;
+
+        private const int BucketOver1Ms = 10;
+
+        private const ushort HeaderFlag32Bit = 32;
+
+        private const ushort HeaderFlag64Bit = 64;
+
+        private static readonly Guid SessionGuid = new Guid("7d1f8c2a-64b3-4c5e-9a1d-2e8f0b6c4d3a");
+
+        private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
+
+        private EventWaitHandle aliveOwned;
+
+        internal static readonly double[] BucketUpperUs = new double[13]
+        {
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            25.0,
+            50.0,
+            100.0,
+            250.0,
+            500.0,
+            1000.0,
+            2000.0,
+            5000.0,
+            double.MaxValue
+        };
+
+        private readonly object gate = new object();
+
+        private readonly Dictionary<ulong, RoutineStat> dpcHits = new Dictionary<ulong, RoutineStat>();
+
+        private readonly Dictionary<ulong, RoutineStat> isrHits = new Dictionary<ulong, RoutineStat>();
+
+        private readonly List<Module> modules = new List<Module>();
+
+        private double usPerTick;
+
+        private long sanityMaxTicks;
+
+        private long dpcTotal;
+
+        private long isrTotal;
+
+        private ulong traceHandle;
+
+        private Thread worker;
+
+        private EventRecordCallback keepAlive;
+
+        private volatile bool started;
+
+        private volatile bool stopRequested;
+
+        private volatile bool consumerExitedEarly;
+
+        private volatile bool processTraceSucceeded;
+
+        public bool Busy { get; private set; }
+
+        public string FailDetail { get; private set; }
+
+        public static string StartFailureText(InterruptAttribution ia)
+        {
+            if (ia == null)
+            {
+                return Lang.T("irqmove.nosession");
+            }
+            if (ia.Busy)
+            {
+                return Lang.T("irq.probe.busy");
+            }
+            if (!string.IsNullOrEmpty(ia.FailDetail))
+            {
+                return ia.FailDetail;
+            }
+            return Lang.T("irqmove.nosession");
+        }
+
+        private bool TakeOwnership()
+        {
+            try
+            {
+                EventWaitHandle result;
+                if (EventWaitHandle.TryOpenExisting("Global\\Pavise_InterruptProbeAlive", out result))
+                {
+                    using (result)
+                    {
+                    }
+                    return false;
+                }
+            }
+            catch
+            {
+            }
+            try
+            {
+                bool createdNew;
+                EventWaitHandle eventWaitHandle2 = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\Pavise_InterruptProbeAlive", out createdNew);
+                if (!createdNew)
+                {
+                    eventWaitHandle2.Close();
+                    return false;
+                }
+                aliveOwned = eventWaitHandle2;
+                return true;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private void ReleaseOwnership()
+        {
+            EventWaitHandle eventWaitHandle = aliveOwned;
+            aliveOwned = null;
+            if (eventWaitHandle != null)
+            {
+                try
+                {
+                    eventWaitHandle.Close();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        public bool Start()
+        {
+            lock (gate)
+            {
+                if (started)
+                {
+                    return true;
+                }
+                Busy = false;
+                FailDetail = null;
+                if (!TakeOwnership())
+                {
+                    Busy = true;
+                    Logger.Log(Lang.T("log.interruptattribution.9", 0));
+                    return false;
+                }
+                Native.TryEnableDebugPrivilege();
+                string error;
+                if (!LoadModules(out error))
+                {
+                    FailDetail = error;
+                    Logger.Warn("中断 " + error);
+                    ReleaseOwnership();
+                    return false;
+                }
+                uint enableFlags = 96u;
+                IntPtr intPtr = AllocProps(enableFlags);
+                try
+                {
+                    ulong handle;
+                    uint startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
+                    if (startTraceResult == 183)
+                    {
+                        StopStale();
+                        Marshal.FreeHGlobal(intPtr);
+                        intPtr = AllocProps(enableFlags);
+                        startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
+                    }
+                    switch (startTraceResult)
+                    {
+                    case 87u:
+                        Logger.Log(Lang.T("log.interruptattribution.1", 0));
+                        FailDetail = Lang.T("irq.fail.nokernel");
+                        ReleaseOwnership();
+                        return false;
+                    default:
+                    {
+                        Logger.Warn(Lang.T("log.interruptattribution.2", 0) + startTraceResult);
+                        bool elevated = false;
+                        try
+                        {
+                            elevated = Native.IsElevated();
+                        }
+                        catch
+                        {
+                        }
+                        FailDetail = ((startTraceResult != 5) ? (Lang.T("irq.fail.start") + startTraceResult) : (elevated ? Lang.T("irq.fail.denied") : Lang.T("irq.state.needadmin")));
+                        ReleaseOwnership();
+                        return false;
+                    }
+                    case 0u:
+                        break;
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(intPtr);
+                }
+                keepAlive = OnEvent;
+                EventTraceLogfile logfile = default(EventTraceLogfile);
+                logfile.LoggerName = Marshal.StringToHGlobalUni("PaviseInterruptProbe");
+                logfile.ProcessTraceMode = 268439808u;
+                logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
+                traceHandle = OpenTrace(ref logfile);
+                if (traceHandle == ulong.MaxValue || traceHandle == 0)
+                {
+                    int lastWin32Error = Marshal.GetLastWin32Error();
+                    Logger.Warn(Lang.T("log.interruptattribution.3", 0) + lastWin32Error);
+                    FailDetail = Lang.T("irq.fail.open") + lastWin32Error;
+                    StopStale();
+                    ReleaseOwnership();
+                    return false;
+                }
+                long perfFreq = logfile.LogfileHeader.PerfFreq;
+                if (perfFreq <= 0)
+                {
+                    perfFreq = Stopwatch.Frequency;
+                }
+                usPerTick = 1000000.0 / (double)perfFreq;
+                sanityMaxTicks = perfFreq;
+                worker = new Thread(RunProcessTrace);
+                worker.IsBackground = true;
+                try
+                {
+                    worker.Priority = ThreadPriority.Highest;
+                }
+                catch
+                {
+                }
+                stopRequested = false;
+                consumerExitedEarly = false;
+                processTraceSucceeded = false;
+                worker.Start();
+                started = true;
+                return true;
+            }
+        }
+
+        private void RunProcessTrace()
+        {
+            try
+            {
+                ulong[] handles = new ulong[1] { traceHandle };
+                uint processTraceResult = ProcessTrace(handles, 1u, IntPtr.Zero, IntPtr.Zero);
+                processTraceSucceeded = processTraceResult == 0;
+                if (processTraceResult != 0)
+                {
+                    consumerExitedEarly = true;
+                }
+            }
+            catch
+            {
+                consumerExitedEarly = true;
+            }
+            finally
+            {
+                if (!stopRequested)
+                {
+                    consumerExitedEarly = true;
+                }
+            }
+        }
+
+        internal static bool CaptureComplete(bool stopSucceeded, bool workerDone, bool processSucceeded, bool exitedEarly)
+        {
+            if (stopSucceeded && workerDone && processSucceeded)
+            {
+                return !exitedEarly;
+            }
+            return false;
+        }
+
+        internal static bool HasMappedEvents(long rawDpc, long rawIsr, int mappedDrivers)
+        {
+            if (rawDpc >= 0 && rawIsr >= 0 && (rawDpc > 0 || rawIsr > 0))
+            {
+                return mappedDrivers > 0;
+            }
+            return false;
+        }
+
+        public InterruptAttributionResult Stop()
+        {
+            InterruptAttributionResult interruptAttributionResult = new InterruptAttributionResult();
+            lock (gate)
+            {
+                if (!started)
+                {
+                    interruptAttributionResult.Error = Lang.T("t.interruptattribution.4");
+                    return interruptAttributionResult;
+                }
+                stopRequested = true;
+                uint eventsLost;
+                uint buffersLost;
+                uint error;
+                bool stopStaleSucceeded = StopStale(out eventsLost, out buffersLost, out error);
+                interruptAttributionResult.EventsLost = eventsLost;
+                interruptAttributionResult.BuffersLost = buffersLost;
+                if (!stopStaleSucceeded)
+                {
+                    try
+                    {
+                        if (traceHandle != 0)
+                        {
+                            CloseTrace(traceHandle);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                bool workerStopped = true;
+                if (worker != null)
+                {
+                    try
+                    {
+                        workerStopped = worker.Join(10000);
+                    }
+                    catch
+                    {
+                        workerStopped = false;
+                    }
+                }
+                if (stopStaleSucceeded)
+                {
+                    try
+                    {
+                        if (traceHandle != 0)
+                        {
+                            CloseTrace(traceHandle);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                interruptAttributionResult.Incomplete = !CaptureComplete(stopStaleSucceeded, workerStopped, processTraceSucceeded, consumerExitedEarly);
+                started = false;
+                ReleaseOwnership();
+                if (!workerStopped)
+                {
+                    interruptAttributionResult.Error = Lang.T("t.interruptattribution.5");
+                    return interruptAttributionResult;
+                }
+                keepAlive = null;
+                Dictionary<string, DriverInterrupt> dictionary = new Dictionary<string, DriverInterrupt>();
+                Dictionary<string, long[]> dictionary2 = new Dictionary<string, long[]>();
+                Fold(dictionary, dictionary2, dpcHits, true);
+                Fold(dictionary, dictionary2, isrHits, false);
+                foreach (KeyValuePair<string, DriverInterrupt> item in dictionary)
+                {
+                    DriverInterrupt value = item.Value;
+                    long[] value2;
+                    if (dictionary2.TryGetValue(item.Key, out value2))
+                    {
+                        value.DpcOver500Us = SumFrom(value2, 9);
+                        value.DpcOver1Ms = SumFrom(value2, 10);
+                        value.DpcBuckets = (long[])value2.Clone();
+                    }
+                    interruptAttributionResult.Drivers.Add(value);
+                }
+                interruptAttributionResult.Drivers.Sort(delegate(DriverInterrupt a, DriverInterrupt b)
+                {
+                    long value3 = a.Dpc + a.Isr;
+                    return (b.Dpc + b.Isr).CompareTo(value3);
+                });
+                long numericValue = 0L;
+                foreach (DriverInterrupt driver in interruptAttributionResult.Drivers)
+                {
+                    numericValue += driver.Dpc;
+                }
+                interruptAttributionResult.Unmapped = Math.Max(0L, dpcTotal - numericValue);
+                bool attributionMissing = (dpcTotal > 0 || isrTotal > 0) && interruptAttributionResult.Drivers.Count == 0;
+                string errorValue = (attributionMissing ? ("已采集中断事件，但无法映射到驱动模块，本局中断归因不可用 DPC=" + dpcTotal + " ISR=" + isrTotal + " 模块=" + modules.Count) : null);
+                if (attributionMissing)
+                {
+                    Logger.Warn("中断 " + errorValue);
+                }
+                interruptAttributionResult.Ok = HasMappedEvents(dpcTotal, isrTotal, interruptAttributionResult.Drivers.Count) && !interruptAttributionResult.Incomplete && !interruptAttributionResult.Lossy;
+                if (interruptAttributionResult.Lossy)
+                {
+                    Logger.Log(string.Format(Lang.T("log.interruptattribution.lossy", 0), interruptAttributionResult.EventsLost, interruptAttributionResult.BuffersLost));
+                }
+                if (interruptAttributionResult.Incomplete)
+                {
+                    interruptAttributionResult.Error = "ETW 消费或停止未完整 win32=" + error;
+                }
+                else if (interruptAttributionResult.Lossy)
+                {
+                    interruptAttributionResult.Error = Lang.F("t.interruptattribution.7", interruptAttributionResult.EventsLost, interruptAttributionResult.BuffersLost);
+                }
+                else if (attributionMissing)
+                {
+                    interruptAttributionResult.Error = errorValue;
+                }
+                else if (!interruptAttributionResult.Ok)
+                {
+                    interruptAttributionResult.Error = Lang.T("t.interruptattribution.6");
+                }
+                return interruptAttributionResult;
+            }
+        }
+
+        private void Fold(Dictionary<string, DriverInterrupt> byMod, Dictionary<string, long[]> dpcBuckets, Dictionary<ulong, RoutineStat> hits, bool dpc)
+        {
+            foreach (KeyValuePair<ulong, RoutineStat> hit in hits)
+            {
+                string driverValue = Resolve(hit.Key);
+                if (driverValue == null)
+                {
+                    continue;
+                }
+                DriverInterrupt value;
+                if (!byMod.TryGetValue(driverValue, out value))
+                {
+                    DriverInterrupt driverInterrupt = new DriverInterrupt();
+                    driverInterrupt.Driver = driverValue;
+                    value = (byMod[driverValue] = driverInterrupt);
+                }
+                RoutineStat value2 = hit.Value;
+                if (dpc)
+                {
+                    value.CpuMask |= value2.CpuMask;
+                    value.CpuMaskTruncated |= value2.CpuMaskTruncated;
+                }
+                value.BadDuration += value2.BadDuration;
+                double dpcTotalUsValue = (double)value2.TotalTicks * usPerTick;
+                double dpcMaxUsValue = (double)value2.MaxTicks * usPerTick;
+                if (dpc)
+                {
+                    value.Dpc += value2.Count;
+                    value.DpcTotalUs += dpcTotalUsValue;
+                    if (dpcMaxUsValue > value.DpcMaxUs)
+                    {
+                        value.DpcMaxUs = dpcMaxUsValue;
+                    }
+                    long[] value3;
+                    if (!dpcBuckets.TryGetValue(driverValue, out value3))
+                    {
+                        value3 = (dpcBuckets[driverValue] = new long[13]);
+                    }
+                    for (int i = 0; i < 13; i++)
+                    {
+                        value3[i] += value2.Buckets[i];
+                    }
+                }
+                else
+                {
+                    value.Isr += value2.Count;
+                }
+            }
+        }
+
+        internal static long SumFrom(long[] b, int startIndex)
+        {
+            long sumFromResult = 0L;
+            if (b == null)
+            {
+                return 0L;
+            }
+            for (int i = startIndex; i < 13; i++)
+            {
+                sumFromResult += b[i];
+            }
+            return sumFromResult;
+        }
+
+        private void OnEvent(ref EventRecord record)
+        {
+            if (record.EventHeader.ProviderId != PerfInfoGuid)
+            {
+                return;
+            }
+            byte opcode = record.EventHeader.EventDescriptor.Opcode;
+            bool isIsr = opcode == 67;
+            bool isDpc = opcode == 66 || opcode == 68 || opcode == 69;
+            if ((!isIsr && !isDpc) || record.UserData == IntPtr.Zero)
+            {
+                return;
+            }
+            ushort flags = record.EventHeader.Flags;
+            int size = (((flags & 0x40u) != 0) ? 8 : (((flags & 0x20u) != 0) ? 4 : IntPtr.Size));
+            if (record.UserDataLength < 8 + size)
+            {
+                return;
+            }
+            long toInt64Result = record.UserData.ToInt64();
+            long int64 = Marshal.ReadInt64(new IntPtr(toInt64Result));
+            ulong key = (ulong)((size == 8) ? Marshal.ReadInt64(new IntPtr(toInt64Result + 8)) : ((uint)Marshal.ReadInt32(new IntPtr(toInt64Result + 8))));
+            long timeStamp = record.EventHeader.TimeStamp;
+            long totalTicksValue = timeStamp - int64;
+            bool validDuration = totalTicksValue >= 0 && totalTicksValue <= sanityMaxTicks;
+            Dictionary<ulong, RoutineStat> dictionary = (isIsr ? isrHits : dpcHits);
+            RoutineStat value;
+            if (!dictionary.TryGetValue(key, out value))
+            {
+                value = (dictionary[key] = new RoutineStat());
+            }
+            value.Count++;
+            ushort processorIndex = record.BufferContext.ProcessorIndex;
+            if (processorIndex < 64)
+            {
+                value.CpuMask |= (ulong)(1L << (int)processorIndex);
+            }
+            else
+            {
+                value.CpuMaskTruncated = true;
+            }
+            if (!validDuration)
+            {
+                value.BadDuration++;
+            }
+            else
+            {
+                value.TotalTicks += totalTicksValue;
+                if (totalTicksValue > value.MaxTicks)
+                {
+                    value.MaxTicks = totalTicksValue;
+                }
+                value.Buckets[BucketOf(totalTicksValue)]++;
+            }
+            if (isIsr)
+            {
+                isrTotal++;
+            }
+            else
+            {
+                dpcTotal++;
+            }
+        }
+
+        private int BucketOf(long ticks)
+        {
+            double scaledTicks = (double)ticks * usPerTick;
+            for (int i = 0; i < 12; i++)
+            {
+                if (scaledTicks < BucketUpperUs[i])
+                {
+                    return i;
+                }
+            }
+            return 12;
+        }
+
+        private string Resolve(ulong addr)
+        {
+            for (int i = 0; i < modules.Count; i++)
+            {
+                if (addr >= modules[i].Base && addr < modules[i].End)
+                {
+                    return modules[i].Name;
+                }
+            }
+            return null;
+        }
+
+        private static bool StopStale(out uint eventsLost, out uint buffersLost, out uint error)
+        {
+            eventsLost = 0u;
+            buffersLost = 0u;
+            error = 0u;
+            int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
+            int stopStaleValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
+            IntPtr intPtr = Marshal.AllocHGlobal(stopStaleValue);
+            try
+            {
+                for (int i = 0; i < stopStaleValue; i++)
+                {
+                    Marshal.WriteByte(intPtr, i, 0);
+                }
+                EventTraceProperties structure = default(EventTraceProperties);
+                structure.Wnode.BufferSize = (uint)stopStaleValue;
+                structure.Wnode.Guid = SessionGuid;
+                structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
+                Marshal.StructureToPtr(structure, intPtr, false);
+                uint controlTraceResult = ControlTrace(0uL, "PaviseInterruptProbe", intPtr, 1u);
+                if (controlTraceResult != 0)
+                {
+                    error = controlTraceResult;
+                    return false;
+                }
+                EventTraceProperties eventTraceProperties = (EventTraceProperties)Marshal.PtrToStructure(intPtr, typeof(EventTraceProperties));
+                eventsLost = eventTraceProperties.EventsLost;
+                buffersLost = eventTraceProperties.RealTimeBuffersLost + eventTraceProperties.LogBuffersLost;
+                return true;
+            }
+            catch
+            {
+                error = uint.MaxValue;
+                return false;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(intPtr);
+            }
+        }
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint StartTrace(out ulong handle, string name, IntPtr props);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint ControlTrace(ulong handle, string name, IntPtr props, uint code);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern ulong OpenTrace(ref EventTraceLogfile logfile);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint ProcessTrace(ulong[] handles, uint count, IntPtr start, IntPtr end);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint CloseTrace(ulong handle);
+
+        [DllImport("ntdll.dll")]
+        private static extern int NtQuerySystemInformation(int cls, IntPtr buf, int len, out int ret);
+
+        private bool LoadModules(out string error)
+        {
+            modules.Clear();
+            List<Module> loaded;
+            if (!TryReadLoadedModules(out loaded, out error))
+            {
+                return false;
+            }
+            modules.AddRange(loaded);
+            return true;
+        }
+
+        private static bool TryReadLoadedModules(out List<Module> loaded, out string error)
+        {
+            loaded = new List<Module>();
+            error = null;
+            IntPtr intPtr = IntPtr.Zero;
+            try
+            {
+                int ret = 0;
+                NtQuerySystemInformation(11, IntPtr.Zero, 0, out ret);
+                ret = checked(Math.Max(ret, 1048576) + 65536);
+                intPtr = Marshal.AllocHGlobal(ret);
+                int ret2;
+                int ntQuerySystemInformationResult = NtQuerySystemInformation(11, intPtr, ret, out ret2);
+                if (ntQuerySystemInformationResult != 0)
+                {
+                    uint numericValue = (uint)ntQuerySystemInformationResult;
+                    error = "驱动模块枚举失败，无法启动中断归因 NTSTATUS=0x" + numericValue.ToString("X8");
+                    return false;
+                }
+                int int32 = Marshal.ReadInt32(intPtr);
+                long toInt64Offset = intPtr.ToInt64() + IntPtr.Size;
+                int readLoadedModulesValue = 296;
+                if (int32 < 0 || int32 > (ret - IntPtr.Size) / readLoadedModulesValue)
+                {
+                    error = "驱动模块枚举返回的长度无效，无法启动中断归因";
+                    return false;
+                }
+                for (int i = 0; i < int32; i++)
+                {
+                    long moduleAddress = toInt64Offset + (long)i * (long)readLoadedModulesValue;
+                    ulong int64 = (ulong)Marshal.ReadInt64(new IntPtr(moduleAddress + 16));
+                    uint int322 = (uint)Marshal.ReadInt32(new IntPtr(moduleAddress + 24));
+                    if (int64 != 0 && int322 != 0)
+                    {
+                        string ptrToStringAnsiResult = Marshal.PtrToStringAnsi(new IntPtr(moduleAddress + 40));
+                        if (!string.IsNullOrEmpty(ptrToStringAnsiResult))
+                        {
+                            int matchIndex = ptrToStringAnsiResult.LastIndexOf('\\');
+                            string name = ((matchIndex >= 0) ? ptrToStringAnsiResult.Substring(matchIndex + 1) : ptrToStringAnsiResult);
+                            loaded.Add(new Module
+                            {
+                                Base = int64,
+                                End = int64 + int322,
+                                Name = name
+                            });
+                        }
+                    }
+                }
+                if (loaded.Count == 0)
+                {
+                    error = "驱动模块枚举未返回可用地址，无法启动中断归因";
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                loaded.Clear();
+                error = "驱动模块枚举异常，无法启动中断归因 " + ex.GetType().Name;
+                return false;
+            }
+            finally
+            {
+                if (intPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(intPtr);
+                }
+            }
+        }
+
+        private static IntPtr AllocProps(uint enableFlags)
+        {
+            int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
+            int allocPropsValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
+            IntPtr intPtr = Marshal.AllocHGlobal(allocPropsValue);
+            for (int i = 0; i < allocPropsValue; i++)
+            {
+                Marshal.WriteByte(intPtr, i, 0);
+            }
+            EventTraceProperties structure = default(EventTraceProperties);
+            structure.Wnode.BufferSize = (uint)allocPropsValue;
+            structure.Wnode.Flags = 131072u;
+            structure.Wnode.Guid = SessionGuid;
+            structure.Wnode.ClientContext = 1u;
+            structure.BufferSize = 128u;
+            structure.MinimumBuffers = 64u;
+            structure.MaximumBuffers = 256u;
+            structure.LogFileMode = 167772416u;
+            structure.FlushTimer = 1u;
+            structure.EnableFlags = enableFlags;
+            structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
+            Marshal.StructureToPtr(structure, intPtr, false);
+            return intPtr;
+        }
+
+        public static void CleanupStaleSession()
+        {
+            try
+            {
+                StopStale();
+            }
+            catch
+            {
+            }
+        }
+
+        public static void HealFromCrash()
+        {
+            StopStale();
+        }
+
+        private static void StopStale()
+        {
+            uint eventsLost;
+            uint buffersLost;
+            uint error;
+            StopStale(out eventsLost, out buffersLost, out error);
+        }
+    }
 }

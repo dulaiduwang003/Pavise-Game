@@ -2,10 +2,10 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface IGameInputProcessLease : IDisposable
-	{
-		long Creation { get; }
+    internal interface IGameInputProcessLease : IDisposable
+    {
+        long Creation { get; }
 
-		bool IsAlive { get; }
-	}
+        bool IsAlive { get; }
+    }
 }

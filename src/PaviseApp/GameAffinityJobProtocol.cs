@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // Keep one output reader per guardian until EOF; a reply timeout revokes commands without spawning another reader.
+    // 每个守护在 EOF 前始终只有一个输出读取者；回复超时只撤销命令权限，不另建读取者。
     internal sealed class GameAffinityJobProtocol : IDisposable
     {
         private readonly object gate = new object();
@@ -64,7 +64,7 @@ namespace PaviseApp
             lock (gate) { lost = true; replies.Clear(); Monitor.PulseAll(gate); }
         }
 
-        // Dispose the reader only after guardian exit; command revocation does not release recovery handles.
+        // 守护退出后才释放读取者；撤销命令权限不释放恢复句柄。
         public void Dispose()
         {
             lock (gate)

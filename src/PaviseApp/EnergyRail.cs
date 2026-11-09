@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum EnergyRail
-	{
-		Package,
-		Dram,
-		Cores,
-		Uncore
-	}
+    internal enum EnergyRail
+    {
+        Package,
+        Dram,
+        Cores,
+        Uncore
+    }
 }

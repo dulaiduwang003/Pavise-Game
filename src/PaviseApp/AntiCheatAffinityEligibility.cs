@@ -3,8 +3,8 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Hard affinity is deliberately narrower than the general suppression catalog.
-    // A process name alone does not establish a dedicated service role.
+    // 硬亲和性的适用范围小于普通压制名单；单凭进程名不能确认它是独立服务。
+
     internal static class AntiCheatAffinityEligibility
     {
         internal static bool Eligible(string name, int pid, int session,
@@ -76,8 +76,8 @@ namespace PaviseApp
             return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name.Substring(0, name.Length - 4) : name;
         }
 
-        // Missing/reused parents terminate a chain; parent PID alone is not an identity.
-        // Seed PIDs are retained even if a snapshot no longer contains that game process.
+        // 父进程缺失或 PID 被复用时结束追溯，父 PID 本身不构成身份。即使快照中已无游戏进程，也保留起始 PID。
+
         internal static HashSet<int> GameAncestors(ProcessSnapshot snapshot, IEnumerable<int> gamePids)
         {
             if (snapshot == null || gamePids == null) return null;

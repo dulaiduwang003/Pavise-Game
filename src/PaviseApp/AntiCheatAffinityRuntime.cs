@@ -26,7 +26,7 @@ namespace PaviseApp
         internal string Key { get { return Pid + ":" + Birth; } }
     }
 
-    // The worker owns mutable state. UI readers receive a newly published snapshot.
+    // 可变状态由工作线程持有，界面只读取新发布的快照。
     internal sealed class AntiCheatAffinityView
     {
         internal readonly string Group, Name, Code, Detail, Kind;
@@ -111,8 +111,8 @@ namespace PaviseApp
             if (refreshed)
             {
                 topology = capture(); capturedAt = nowMilliseconds();
-                // Re-evaluate previously unavailable topology after parking or
-                // allocation changes; failed process access stays stopped.
+                // 停泊或分配状态变化后，重新评估此前不可用的拓扑；进程访问失败仍保持停止。
+
                 foreach (TargetState retry in targets.Values)
                     if (retry.Choice != null && !retry.Choice.Applicable && retry.Halted == null)
                     { retry.Choice = null; retry.Failure = null; }
@@ -130,7 +130,7 @@ namespace PaviseApp
             List<AntiCheatAffinityView> next = new List<AntiCheatAffinityView>();
             foreach (AntiCheatAffinityTarget target in current)
             {
-                // A game process must never be admitted through an anti-cheat name collision.
+                // 游戏进程不能因为与反作弊进程同名而获准进入。
                 if (target.Pid == context.Pid) continue;
                 TargetState state;
                 if (!targets.TryGetValue(target.Key, out state))
@@ -182,7 +182,7 @@ namespace PaviseApp
                         if (!prepare(target.Pid, target.Birth, target.Name))
                         {
                             preparation.Failures++; preparation.Next = nowMilliseconds() + 30000;
-                            Logger.Warn("Anti-cheat affinity preparation: target=" + target.Key + " failure=" + preparation.Failures + "/3; recovery retained");
+                            Logger.Warn("反作弊亲和性准备：目标=" + target.Key + " 失败详情=" + preparation.Failures + "/3；保留恢复状态");
                             next.Add(View(state, "handoff-pending", "previous-placement-recovery", false, true)); continue;
                         }
                         preparationAttempts.Remove(preparationKey);
@@ -222,8 +222,8 @@ namespace PaviseApp
             {
                 if (core.Group != group || (core.Mask & mask) == 0) continue;
                 if ((core.Mask & mask) != core.Mask || core.Allocated || core.Favored || (core.Mask & protectedMask) != 0) return false;
-                // Parking an idle, already admitted core does not revoke this
-                // placement. Rebinding on each idle parking transition would churn.
+                // 已准入核心仅因空闲而停泊时，不撤销当前放置，避免每次停泊切换都触发重新绑定。
+
                 covered |= core.Mask;
             }
             return mask != 0 && covered == mask;
@@ -236,8 +236,8 @@ namespace PaviseApp
             views = next;
             if (previous != current)
                 foreach (AntiCheatAffinityView view in next)
-                    Logger.Info("AC AFFINITY " + view.Name + " pid=" + view.Pid + " " + view.Code + " " + view.Detail
-                        + " group=" + view.ProcessorGroup + " mask=0x" + view.Mask.ToString("X", CultureInfo.InvariantCulture));
+                    Logger.Info("反作弊亲和性 " + view.Name + " 进程编号=" + view.Pid + " " + view.Code + " " + view.Detail
+                        + " 处理器组=" + view.ProcessorGroup + " 掩码=0x" + view.Mask.ToString("X", CultureInfo.InvariantCulture));
         }
 
         internal bool Stop()

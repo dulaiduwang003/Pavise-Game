@@ -1,11 +1,11 @@
 namespace PaviseApp
 {
-	internal enum AcquireResult
-	{
-		AlreadyThrottled,
-		NewlyThrottled,
-		NewlyProtected,
-		AlreadyProtected,
-		ApplyFailed
-	}
+    internal enum AcquireResult
+    {
+        AlreadyThrottled,
+        NewlyThrottled,
+        NewlyProtected,
+        AlreadyProtected,
+        ApplyFailed
+    }
 }

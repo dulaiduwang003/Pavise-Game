@@ -2,12 +2,12 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface IYieldChild : IDisposable
-	{
-		bool Owned { get; }
+    internal interface IYieldChild : IDisposable
+    {
+        bool Owned { get; }
 
-		int Read(out uint[] ids);
+        int Read(out uint[] ids);
 
-		bool Write(uint[] expected, uint[] desired);
-	}
+        bool Write(uint[] expected, uint[] desired);
+    }
 }

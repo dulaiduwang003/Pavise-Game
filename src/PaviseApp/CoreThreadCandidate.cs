@@ -1,15 +1,15 @@
 namespace PaviseApp
 {
-	internal sealed class CoreThreadCandidate
-	{
-		internal int Tid;
+    internal sealed class CoreThreadCandidate
+    {
+        internal int Tid;
 
-		internal int Windows;
+        internal int Windows;
 
-		internal long Creation;
+        internal long Creation;
 
-		internal double Mean;
+        internal double Mean;
 
-		internal double Last;
-	}
+        internal double Last;
+    }
 }

@@ -73,7 +73,7 @@ namespace PaviseApp
                             if (cycle == failureCycle)
                             {
                                 readFailures++;
-                                Logger.Warn("Delivery activity read failed phase=" + cycle + " attempt=" + readFailures + "/3: " + failure.GetType().Name);
+                                Logger.Warn("传递优化活动读取失败，阶段=" + cycle + " 尝试=" + readFailures + "/3: " + failure.GetType().Name);
                             }
                         }
                         nextProbe = Now() + interval;
@@ -94,7 +94,7 @@ namespace PaviseApp
                     if (cycle == failureCycle)
                     {
                         queueFailures++;
-                        Logger.Warn("Delivery activity queue failed phase=" + cycle + " attempt=" + queueFailures + "/3: " + error.GetType().Name);
+                        Logger.Warn("传递优化活动入队失败，阶段=" + cycle + " 尝试=" + queueFailures + "/3: " + error.GetType().Name);
                     }
                 }
             }
@@ -115,7 +115,7 @@ namespace PaviseApp
         {
             var options = new EnumerationOptions { ReturnImmediately = false, Timeout = TimeSpan.FromSeconds(1) };
             using (var searcher = new ManagementObjectSearcher(new ManagementScope(@"root\Microsoft\Windows\DeliveryOptimization"),
-                // Priority is synthesized by Get-DeliveryOptimizationStatus; the provider exposes IsBackground.
+                // Priority 由 Get-DeliveryOptimizationStatus 合成，提供程序实际暴露的是 IsBackground。
                 new ObjectQuery("SELECT Status, IsBackground FROM MSFT_DeliveryOptimizationFile WHERE Status = 0 AND IsBackground = TRUE"), options))
             using (var results = searcher.Get())
             {

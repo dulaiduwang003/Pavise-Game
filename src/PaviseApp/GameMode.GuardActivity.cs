@@ -7,7 +7,7 @@ namespace PaviseApp
     {
         internal long GuardActivitySession { get { return Interlocked.Read(ref gameSessionStarts); } }
 
-        // SwitchOuts preserves out/back/out transitions between UI observations; Competitive retains its policy.
+        // SwitchOuts 保留两次界面观测间的切出、切回、再切出过程；竞技策略继续保持。
         internal long GuardActivityForegroundVersion
         { get { return ((long)sessionForeground.SwitchOuts << 1) | (SmartSceneSwitchedOut ? 1L : 0L); } }
 

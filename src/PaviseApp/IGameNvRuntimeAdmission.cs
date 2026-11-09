@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal interface IGameNvRuntimeAdmission
-	{
-		GameNvTargetPhase Recheck(GameNvPrelaunchPlan originalPlan);
+    internal interface IGameNvRuntimeAdmission
+    {
+        GameNvTargetPhase Recheck(GameNvPrelaunchPlan originalPlan);
 
-		void RequireRecovery(GameNvRecoveryIdentity original);
-	}
+        void RequireRecovery(GameNvRecoveryIdentity original);
+    }
 }

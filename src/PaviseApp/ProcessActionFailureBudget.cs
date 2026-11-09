@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // Budget sampler/write failures separately from successful misses; cache eviction cannot refund writes.
+    // 采样或写入失败与正常未命中分别计预算；缓存淘汰不能退还写入次数。
     internal sealed class ProcessActionFailureBudget
     {
         private readonly object gate = new object();

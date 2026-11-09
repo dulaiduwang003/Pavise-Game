@@ -30,7 +30,7 @@ namespace PaviseApp
         internal Process Helper;
     }
 
-    // Require a safe-exit receipt and process identity before replacing the running EXE.
+    // 替换运行中 EXE 前，必须取得安全退出回执并确认进程身份。
     internal static class SelfUpdateInstaller
     {
         internal const string PendingKey = "SelfUpdatePendingV1";
@@ -330,8 +330,8 @@ namespace PaviseApp
             if (rollback) args += " --update-rollback";
             ProcessStartInfo start = new ProcessStartInfo(executable, args);
             start.UseShellExecute = false; start.CreateNoWindow = true; start.WorkingDirectory = Path.GetDirectoryName(executable);
-            // Reverify the actual launch target, retaining a read-only lease through Process.Start.
-            // This prevents replacement between verification and Windows opening the image.
+            // 重新核验实际启动目标，并将只读租约保留到 Process.Start，防止核验后、Windows 打开映像前文件被替换。
+
             using (FileStream target = new FileStream(executable, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (SHA256 hash = SHA256.Create())
             {
@@ -428,7 +428,7 @@ namespace PaviseApp
             catch { }
         }
 
-        // Startup only inspects abandoned replacements; transaction recovery remains explicit.
+        // 启动时只检查被遗弃的替换事务，事务恢复仍需明确执行。
         internal static string GetStartupManualFailure()
         {
             try
@@ -453,7 +453,7 @@ namespace PaviseApp
             bool finalized = ReadMarker(previous, "complete") == previous.Nonce || ReadMarker(previous, "restored") == previous.Nonce;
             if (!finalized && ReadMarker(previous, "applied") != null)
                 throw new IOException("A previous replacement has unresolved recovery records. Use the manual update entry before starting another automatic update.");
-            // Delete only this transaction's assets after verified completion or no attempted replacement.
+            // 仅在确认完成或未尝试替换后，删除本事务自己的资产。
             if (!finalized) WriteMarker(previous, "restored", previous.Nonce);
             CleanupTransaction(previous, false);
             if (!string.IsNullOrEmpty(Settings.LoadStr(PendingKey, "")))
@@ -592,7 +592,7 @@ namespace PaviseApp
 
         private static void CleanupPrevious(SelfUpdateTransaction tx)
         {
-            // Own only the recorded previous EXE; another update/task may own other autostart hash directories.
+            // 只持有记录中的前任 EXE，其他更新或任务可能持有别的自启哈希目录。
             string previousTask = tx.TaskXml == null ? null : TaskHelper.ParseTaskCommandXml(tx.TaskXml);
             bool parentNeedsCleanup = StartupPayload.IsManagedExecutable(tx.ParentExecutable) && !SameExecutablePath(tx.ParentExecutable, tx.NewManagedExecutable) && File.Exists(tx.ParentExecutable);
             bool taskNeedsCleanup = StartupPayload.IsManagedExecutable(previousTask) && !SameExecutablePath(previousTask, tx.NewManagedExecutable) && File.Exists(previousTask);
@@ -616,7 +616,7 @@ namespace PaviseApp
             if (!DeletePreviousManagedPayload(tx.ParentExecutable, tx.ParentHash, tx.NewManagedExecutable, currentTaskTarget, managedRoot)) return false;
             string previousTask = tx.TaskXml == null ? null : TaskHelper.ParseTaskCommandXml(tx.TaskXml);
             if (!StartupPayload.IsManagedExecutable(previousTask, managedRoot) || SameExecutablePath(previousTask, tx.ParentExecutable) || SameExecutablePath(previousTask, tx.NewManagedExecutable) || !File.Exists(previousTask)) return true;
-            // Verify the exact previous content-addressed EXE named in the original task XML.
+            // 核验原任务 XML 中指定的确切前任 EXE 及其内容哈希。
             if (!StartupPayload.IsVerifiedExecutable(previousTask, managedRoot)) return false;
             string expectedHash = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(previousTask)));
             return DeletePreviousManagedPayload(previousTask, expectedHash, tx.NewManagedExecutable, currentTaskTarget, managedRoot);
@@ -785,7 +785,7 @@ namespace PaviseApp
             if (!File.Exists(path)) return null;
             try
             {
-                // Accept only a complete nonce/identity receipt while allowing its original writer to finish.
+                // 仅接受完整且随机标识、身份均匹配的回执，同时允许原写入方完成。
                 using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
                     byte[] bytes = new byte[4097]; int length = 0, read;

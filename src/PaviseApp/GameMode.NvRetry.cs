@@ -70,7 +70,7 @@ namespace PaviseApp
                     row.Failures = Math.Min(3, row.Failures + 1); row.NotBefore = NvPreStageClock() + TimeSpan.FromSeconds(30).Ticks;
                     gameNvRootClear = false;
                     ReportLegacyNvRecovery(row);
-                    if (row.Failures == 3) Logger.Log("Legacy NVIDIA recovery paused after 3 failures; journals and ownership retained");
+                    if (row.Failures == 3) Logger.Log("旧 NVIDIA 配置恢复连续失败三次后暂停，保留日志和所有权");
                 }
                 gameNvWorker = false; PublishLegacyNvPending(); gameNvIdle.Set();
             }
@@ -124,7 +124,7 @@ namespace PaviseApp
                     if (!nvSessionCooldowns.TryGetValue(attempt.Key, out row)) nvSessionCooldowns[attempt.Key] = row = new NvPreStageCooldown();
                     row.Failures = Math.Min(3, row.Failures + 1);
                     row.NotBefore = NvPreStageClock() + TimeSpan.FromSeconds(30).Ticks;
-                    if (row.Failures == 3) Logger.Log("NVIDIA game apply paused after 3 failures: " + attempt.Path + "; recovery receipt retained");
+                    if (row.Failures == 3) Logger.Log("NVIDIA 游戏配置应用连续失败三次后暂停： " + attempt.Path + "；保留恢复回执");
                 }
                 else if (attempt.Satisfied) nvSessionCooldowns.Remove(attempt.Key);
                 if (attempt.Processed && !attempt.Failed && gameSessionStarts == attempt.Session
@@ -143,7 +143,7 @@ namespace PaviseApp
                     delegate { ApplySessionNvPlan(imagePath, plan, attempt); },
                     delegate { CompleteNvSessionAttempt(attempt); });
             }
-            catch (Exception error) { Logger.RepeatedError("nv-session-queue", "NVIDIA game profile queue failed: " + error.Message, -1L); }
+            catch (Exception error) { Logger.RepeatedError("nv-session-queue", "NVIDIA 游戏配置入队失败： " + error.Message, -1L); }
         }
 
         private static long NvPreStageClock() { return AutoCores.NowTicks; }
@@ -192,9 +192,9 @@ namespace PaviseApp
                     if (!nvPreStageCooldowns.TryGetValue(budgetKey, out cooldown))
                         nvPreStageCooldowns[budgetKey] = cooldown = new NvPreStageCooldown { PlanKey = planKey };
                     cooldown.Failures = Math.Min(3, cooldown.Failures + 1);
-                    // Driver work can exceed the retry delay; start it only after work finishes.
+                    // 驱动操作可能超过重试延迟，操作完成后才开始计时。
                     cooldown.NotBefore = NvPreStageClock() + TimeSpan.FromSeconds(30).Ticks;
-                    if (cooldown.Failures == 3) Logger.Log("NVIDIA pre-stage paused after 3 failures: " + path + "; recovery receipt retained");
+                    if (cooldown.Failures == 3) Logger.Log("NVIDIA 预处理连续失败三次后暂停： " + path + "；保留恢复回执");
                 }
                 else if (verified) nvPreStageCooldowns.Remove(budgetKey);
                 if ((!completed || retry) && string.Equals(preStagedNvPath, path, StringComparison.OrdinalIgnoreCase)
@@ -215,7 +215,7 @@ namespace PaviseApp
             if (!TryBeginNvPreStage(path, planKey, out previous)) return;
             bool completed = false;
             bool verified = false;
-            bool retry = true; // Queue rejection/exception must also have a bounded retry deadline.
+            bool retry = true; // 入队被拒绝或抛异常时，也必须设置有限重试的截止时间。
             try
             {
                 GameNvWorkerQueue.TryQueue(callback => ThreadPool.QueueUserWorkItem(callback), delegate
@@ -254,14 +254,14 @@ namespace PaviseApp
                     catch (Exception error)
                     {
                         retry = true;
-                        Logger.RepeatedError("nv-prestage", "NVIDIA pre-stage failed: " + error.Message, -1L);
+                        Logger.RepeatedError("nv-prestage", "NVIDIA 预处理失败： " + error.Message, -1L);
                     }
                 }, delegate { CompleteNvPreStage(path, planKey, budgetKey, completed, retry, verified); });
             }
             catch (Exception error)
             {
-                // GameNvWorkerQueue releases admission and records the cooldown on enqueue failure.
-                Logger.RepeatedError("nv-prestage-queue", "NVIDIA pre-stage queue failed: " + error.Message, -1L);
+                // 入队失败时，由 GameNvWorkerQueue 释放准入并记录冷却。
+                Logger.RepeatedError("nv-prestage-queue", "NVIDIA 预处理入队失败： " + error.Message, -1L);
             }
         }
     }

@@ -1,8 +1,8 @@
 namespace PaviseApp
 {
-	internal enum HardThreadWorkerMode
-	{
-		CandidatesOnly,
-		AvoidWorkers
-	}
+    internal enum HardThreadWorkerMode
+    {
+        CandidatesOnly,
+        AvoidWorkers
+    }
 }

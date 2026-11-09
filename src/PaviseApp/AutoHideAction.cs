@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum AutoHideAction
-	{
-		None,
-		Schedule,
-		Cancel
-	}
+    internal enum AutoHideAction
+    {
+        None,
+        Schedule,
+        Cancel
+    }
 }

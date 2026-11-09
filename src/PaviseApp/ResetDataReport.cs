@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal sealed class ResetDataReport
-	{
-		internal bool Completed;
+    internal sealed class ResetDataReport
+    {
+        internal bool Completed;
 
-		internal int Files;
+        internal int Files;
 
-		internal int Warnings;
+        internal int Warnings;
 
-		internal string Failure;
-	}
+        internal string Failure;
+    }
 }

@@ -1,17 +1,17 @@
 namespace PaviseApp
 {
-	internal sealed class ThreadTimes
-	{
-		public long Ticks;
+    internal sealed class ThreadTimes
+    {
+        public long Ticks;
 
-		public long Creation;
+        public long Creation;
 
-		public long ProcessCpu;
+        public long ProcessCpu;
 
-		public long[] Ids;
+        public long[] Ids;
 
-		public long[] Created;
+        public long[] Created;
 
-		public long[] Cpu;
-	}
+        public long[] Cpu;
+    }
 }

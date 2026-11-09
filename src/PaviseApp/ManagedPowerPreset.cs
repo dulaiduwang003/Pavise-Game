@@ -10,7 +10,7 @@ namespace PaviseApp
     {
         internal readonly Guid Sub, Setting;
         internal readonly uint? Ac, Dc;
-        // Non-DWORD source values remain raw bytes represented as hex; null is absence, never zero.
+        // 非 DWORD 原值以十六进制保存原始字节；null 表示不存在，不是零。
         internal readonly string AcRaw, DcRaw;
         internal readonly int AcRegistryType, DcRegistryType;
 
@@ -51,7 +51,7 @@ namespace PaviseApp
         });
         internal static IEnumerable<ManagedPowerPreset> AllSources { get { return sources; } }
         private static readonly ReadOnlyCollection<ManagedPowerPresetValue> allSettings = UnionSettings();
-        // Key union for inspection/restoration. The representative values must not be applied as a composite plan.
+        // 键集合用于检查和恢复，不能把代表值合并后当作一套电源计划应用。
         internal static IEnumerable<ManagedPowerPresetValue> AllSettings { get { return allSettings; } }
 
         private static ReadOnlyCollection<ManagedPowerPresetValue> UnionSettings()

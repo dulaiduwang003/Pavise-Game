@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
+
 namespace PaviseApp
 {
-    // Async owners report waiting at admission; ThreadStatic recovery state does not flow to workers.
+    // 异步所有者在准入时报告等待，ThreadStatic 恢复状态不会传递到工作线程。
     internal sealed class RecoveryAttemptTrace : IDisposable
     {
         [ThreadStatic] private static RecoveryAttemptTrace current;
@@ -52,7 +53,7 @@ namespace PaviseApp
         internal readonly long Session;
         internal RecoveryRouteSet(long session, Func<long> utcClock) { Session = session; clock = utcClock; }
         internal bool Complete { get { lock (gate) { foreach (Route r in routes.Values) if (!r.Neutral) return false; return true; } } }
-        // Exhausted routes (Due == MaxValue) wake only on a genuine phase change.
+        // Due 为 MaxValue 的耗尽路径，只能由真实阶段变化唤醒。
         internal bool RetryScheduled
         {
             get
@@ -118,8 +119,8 @@ namespace PaviseApp
                 if (!routes.TryGetValue(key, out route) || !route.Intent.HasValue || route.Intent.Value == intent) return false;
                 route.Intent = intent;
                 route.IntentGeneration++;
-                // A policy that previously allowed retained ownership may now
-                // require restoration. Never refill a pending/exhausted owner.
+                // 此前允许保留所有权的策略现在可能要求恢复；不能为待恢复或已耗尽的所有者补充预算。
+
                 InvalidateNeutral(key);
                 return true;
             }
@@ -155,7 +156,7 @@ namespace PaviseApp
             using (var attempt = new RecoveryAttemptTrace())
             {
                 try { neutral = route.Work(); }
-                catch (Exception error) { Logger.Warn("Session recovery route " + key + " failed: " + error.GetType().Name); }
+                catch (Exception error) { Logger.Warn("会话恢复路径 " + key + " 失败： " + error.GetType().Name); }
                 finally
                 {
                     lock (gate)
@@ -166,8 +167,8 @@ namespace PaviseApp
                             accepted = intentGeneration == route.IntentGeneration;
                             route.Neutral = accepted;
                             if (accepted) route.Failures = 0;
-                            // A result obtained for an older intent cannot settle
-                            // the current one. Its real failure history is retained.
+                            // 旧意图取得的结果不能结清当前意图，但其真实失败历史仍需保留。
+
                             route.Due = accepted || route.Failures >= 3 ? long.MaxValue : 0;
                         }
                         else if (attempt.Reported)
@@ -180,7 +181,7 @@ namespace PaviseApp
                         {
                             route.Failures++;
                             route.Due = route.Failures >= 3 ? long.MaxValue : clock() + TimeSpan.FromSeconds(30).Ticks;
-                            Logger.Warn("Session recovery route " + key + " actual failure=" + route.Failures + "/3; ownership retained");
+                            Logger.Warn("会话恢复路径 " + key + " 实际失败=" + route.Failures + "/3；保留所有权");
                         }
                     }
                 }

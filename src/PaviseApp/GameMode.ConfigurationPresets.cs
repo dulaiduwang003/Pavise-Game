@@ -40,7 +40,7 @@ namespace PaviseApp
                 if (!SetPerformanceActionSelected(key, on) || !performanceActions.DrainForNvHandoff(30000)) return false;
                 if (!on)
                 {
-                    // A paused guard does not process persistent game actions. Explicit OFF still repays their receipts.
+                    // 守护暂停时不执行持久游戏动作；显式关闭仍需处理其恢复记录。
                     bool restored;
                     lock (SystemConfigurationGate.Sync) restored = PerformanceTuning.RestoreWhere(receipt => receipt.Id == key);
                     if (!restored) { detail = PerformancePolicy.Text("原配置恢复未完成，已保留恢复记录", "Original configuration not restored; recovery records retained"); return false; }
@@ -80,7 +80,7 @@ namespace PaviseApp
                 if (!Settings.SaveStrDurable(key, value)) return false;
                 if (key == LaboratoryGpu.ClockKey || key == LaboratoryGpu.PowerKey)
                 {
-                    // Outside a match only withdraw disabled requests; enabled requests are session-qualified later.
+                    // 局外只撤回已关闭的请求；开启请求留待会话内核验适用条件。
                     LaboratoryGpu.Update(false, false);
                     if (LaboratoryGpu.HasResidue) { if (on) Settings.SaveStrDurable(key, "0"); return false; }
                 }

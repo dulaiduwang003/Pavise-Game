@@ -2,16 +2,16 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface IHardThreadGuardian : IDisposable
-	{
-		HardThreadGuardianActor Actor { get; }
+    internal interface IHardThreadGuardian : IDisposable
+    {
+        HardThreadGuardianActor Actor { get; }
 
-		bool ResourcesClosed { get; }
+        bool ResourcesClosed { get; }
 
-		void NoteSettled(HardThreadSettledSource original);
+        void NoteSettled(HardThreadSettledSource original);
 
-		void RequireForward();
+        void RequireForward();
 
-		void OnLost(Action callback);
-	}
+        void OnLost(Action callback);
+    }
 }

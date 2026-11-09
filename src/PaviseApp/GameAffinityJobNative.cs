@@ -59,8 +59,8 @@ namespace PaviseApp
 
         internal static IntPtr OpenTarget(int pid, long birth)
         {
-            // AssignProcessToJobObject requires SET_QUOTA and TERMINATE access;
-            // this module never terminates the target. SET_INFORMATION is for restoration.
+            // AssignProcessToJobObject 需要 SET_QUOTA 和 TERMINATE 权限，但本模块不终止目标；SET_INFORMATION 用于恢复。
+
             IntPtr process = Native.OpenProcess(0x101301, false, pid);
             if (process != IntPtr.Zero && Matches(process, birth)) return process;
             if (process != IntPtr.Zero) Native.CloseHandle(process);
@@ -83,7 +83,7 @@ namespace PaviseApp
             return IntPtr.Zero;
         }
 
-        // 0 = original live target, 1 = exited/reused PID, 2 = unreadable.
+        // 返回值：0 为原目标仍存活，1 为已退出或 PID 复用，2 为不可读。
         internal static int Probe(int pid, long birth)
         {
             IntPtr process = Native.OpenProcess(0x101000, false, pid);
@@ -129,8 +129,8 @@ namespace PaviseApp
             if (!QueryInformationJobObject(job, 9, out limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits)), IntPtr.Zero))
             { reason = "read-job:" + Marshal.GetLastWin32Error(); return false; }
             flags = limits.Basic.Flags; mask = limits.Basic.Affinity.ToUInt64();
-            // Never accept a job containing kill-on-close, subset affinity, or any
-            // unrelated resource limit. Only this module's two flags are owned.
+            // 拒绝包含关闭即终止、子集亲和性或其他无关限制的 Job；本模块只持有自己的两个标志。
+
             if ((flags & ~AllowedFlags) != 0 || (flags & SilentBreakaway) == 0)
             { reason = "job-limit-conflict"; return false; }
             return true;
@@ -148,8 +148,8 @@ namespace PaviseApp
             if (!Native.TryQueryAffinity(process, out currentMask)
                 || !GameThreadAffinityAdmission.Check(process, birth, currentMask, out reason))
             { if (reason == null) reason = GameThreadAffinityAdmission.RefusalPrefix + "process-mask-unreadable"; return false; }
-            // Windows validates existing job hierarchies during assignment.
-            // Confirm protection from assignment and effective affinity readback.
+            // Windows 在分配时验证已有 Job 层级；通过实际分配及有效亲和性读回确认保护。
+
             var limits = new ExtendedLimits();
             limits.Basic.Flags = SilentBreakaway | AffinityLimit;
             limits.Basic.Affinity = (UIntPtr)desired;
@@ -196,8 +196,8 @@ namespace PaviseApp
             if (!alive || !member) return true;
             if (!Native.TryQueryAffinity(process, out mask)) { reason = "restore-mask-unreadable"; return false; }
             if (mask == original) return true;
-            // Clearing our limit can expose a changed ancestor-job limit. A distinct
-            // current range is not our desired range and must not be overwritten.
+            // 清除本方限制可能显露已变化的上级 Job 限制；不同于预期的新范围不能被本方覆盖。
+
             if (mask != desired) return true;
             if (original == 0 || !Native.SetProcessAffinityMask(process, (UIntPtr)original)
                 || !Native.TryQueryAffinity(process, out mask) || mask != original)

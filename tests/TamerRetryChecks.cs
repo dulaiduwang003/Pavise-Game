@@ -1,5 +1,5 @@
-// Compiled with verbatim methods extracted from Tamer.cs by Test-TamerRetry.ps1.
-// Collaborators stay in memory; the production clock, event, loop and request methods run unchanged.
+// 与 Test-TamerRetry.ps1 从 Tamer.cs 原样提取的方法一起编译；协作者留在内存中，生产时钟、事件、循环及请求方法不替换。
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,7 +13,7 @@ namespace PaviseApp
         internal static void RepeatedRecovered(string key) { }
         internal static void RepeatedError(string key, string text, long elapsed) { }
     }
-    internal static class Lang { internal static string T(string key) { return key; } }
+    internal static class Lang { internal static string T(string key, int language = 0) { return key; } }
     internal enum ProcessChangeKind { Started, Stopped }
     internal sealed class ProcessChange { internal int Pid; internal long Sequence; internal string Name; internal ProcessChangeKind Kind; }
     internal sealed class ProcessChangeBatch

@@ -19,7 +19,7 @@ namespace PaviseApp
         bool HasBattery { get; }
         Guid ActiveManagedPlan();
         bool EppSupported(Guid plan);
-        int OwnerStatus(Guid plan); // 1 owned, 0 proven absent, -1 unknown / foreign
+        int OwnerStatus(Guid plan); // 返回值：1 为本方持有，0 为确认不存在，-1 为未知或外部持有。
         uint? Read(Guid plan, Guid setting);
         bool Write(Guid plan, Guid setting, uint value);
         bool Flush(Guid plan);
@@ -29,12 +29,12 @@ namespace PaviseApp
         void ResetSampling();
     }
 
-    // Optional capability: legacy platforms and V1 journals remain managed-plan only.
+    // 这是可选能力，旧平台及 V1 日志仍只管理托管计划。
     internal interface ILaboratoryCurrentPowerPlatform
     {
         Guid ActivePlan();
         string DeviceIdentity { get; }
-        int PlanStatus(Guid plan); // 1 confirmed present, 0 proven absent, -1 unknown
+        int PlanStatus(Guid plan); // 返回值：1 为确认存在，0 为确认不存在，-1 为未知。
     }
 
     internal static class LaboratoryPower
@@ -118,7 +118,7 @@ namespace PaviseApp
         private bool adapterKnown;
         private int adapterHigh;
         private uint adapterLow, adapterPhysical;
-        // observe -> verify -> holding; failed verification stops the current session.
+        // 依次观测、核验、持有；核验失败后停止当前会话。
         private int phase;
 
         internal LaboratoryPowerController(ILaboratoryPowerPlatform value, object sync)
@@ -237,7 +237,7 @@ namespace PaviseApp
                 bool already;
                 if (!OwnedValuesMatch(false, out already))
                 {
-                    // An external idle edit changes the conditions of an EPP trial too.
+                    // 外部修改空闲策略，也会改变 EPP 试用的条件。
                     if (!RestoreBeforeIdleChange()) return;
                     idleBlocked = true; idleState = "检测到外部修改，本次会话已让出";
                 }
@@ -364,7 +364,7 @@ namespace PaviseApp
         { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0 && value <= max; }
         private bool RestoreBeforeIdleChange()
         {
-            // Drain EPP before idle; both observations belong to the same fixed idle configuration.
+            // 先处理 EPP，再处理空闲策略；两次观测都属于同一份固定空闲配置。
             if (!RestoreCore(true) || !RestoreCore(false))
             { idleState = eppState = "恢复未完成"; return false; }
             ResetEpp(); eppBlocked = false;
@@ -454,7 +454,7 @@ namespace PaviseApp
         {
             var current = platform as ILaboratoryCurrentPowerPlatform;
             string device = null;
-            // Arbitrary-plan receipts require exact ownership, not a machine display name.
+            // 任意电源计划的记录必须匹配确切所有权，不能只按电脑显示名称判断。
             if (!journal.Legacy && values.Count > 0 && (current == null || !NormalizeDevice(current.DeviceIdentity, out device)
                 || journal.Device != null && journal.Device != device)) return false;
             if (!journal.Legacy && device != null) journal.Device = device;
@@ -523,7 +523,7 @@ namespace PaviseApp
                 uint? original = platform.Read(plan, request.Key);
                 if (!original.HasValue || original.Value > Limit(request.Key) || request.Value > Limit(request.Key)) return false;
                 if (original.Value != request.Value) included = false;
-                // Journal idle no-ops too, so a later external edit cannot be silently reclaimed.
+                // 空闲策略即使无需修改也要记入日志，防止后续外部改动被静默重新接管。
                 if (original.Value == request.Value && IsEpp(request.Key)) continue;
                 foreach (Value saved in values) if (saved.Setting == request.Key) return false;
                 var value = new Value { Setting = request.Key, Original = original.Value, Wanted = request.Value,
@@ -535,7 +535,7 @@ namespace PaviseApp
             bool ok = true;
             foreach (Value value in added)
             {
-                // Do not overwrite a modification made between snapshot and apply.
+                // 不能覆盖快照与应用之间发生的修改。
                 if (ActiveIdlePlan() != plan || !platform.OnAc || !JournalAuthorized(journal)
                     || value.ManagedOnly && (platform.ActiveManagedPlan() != plan || platform.OwnerStatus(plan) != 1)
                     || platform.Read(plan, value.Setting) != value.Original
@@ -545,7 +545,7 @@ namespace PaviseApp
             if (ok && platform.Flush(plan)) return true;
             RestoreCore(IsEpp(added[0].Setting)); return false;
         }
-        // null restores everything; true restores EPP only; false restores idle knobs only.
+        // null 表示全部恢复，true 仅恢复 EPP，false 仅恢复空闲参数。
         private bool RestoreCore(bool? epp)
         {
             const string identity = "restore";
@@ -594,7 +594,7 @@ namespace PaviseApp
                     || platform.Read(owner, value.Setting) != value.Original) { pending.Add(value); ok = false; }
             }
             if (!selected) return true;
-            // Keep the full receipt if activation fails, even when the index is already restored.
+            // 激活失败时保留完整记录，即使参数索引已经恢复。
             if ((changed || selected) && !platform.Flush(owner)) return false;
             return Save(journal, pending) && ok;
         }

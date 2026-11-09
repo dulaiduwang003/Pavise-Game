@@ -12,7 +12,7 @@ namespace PaviseApp
         private bool ThreadBoostRecoveryAllowed(int pid, long birth)
         {
             if (pid <= 0 || birth <= 0 || stopping || criticalRestorationConfirmed) return false;
-            // Live candidate ownership is handled by ThreadPriorityReservation, not historical journal scanning.
+            // 存活候选的所有权由 ThreadPriorityReservation 管理，不由历史日志扫描接管。
             CriticalThreadTargetLease own = Volatile.Read(ref criticalOriginalTarget);
             bool ownTarget = own != null && !own.Revoked && own.ProcessId == pid && own.ProcessCreation == birth;
             ThreadPriorityReservation reservation = Volatile.Read(ref criticalPriorityReservation);

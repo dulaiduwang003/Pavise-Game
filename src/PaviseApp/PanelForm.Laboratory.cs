@@ -76,7 +76,7 @@ namespace PaviseApp
         {
             if (key != LaboratoryPower.EppKey) return true;
             bool available = availability != null && availability.Available;
-            // Existing intent can still be turned off; discovery never erases saved preferences.
+            // 既有开启意图始终可以关闭；能力发现不能删除已保存偏好。
             toggle.Enabled = toggle.Enabled && (available || toggle.Checked);
             card.SetLock(available ? "" : availability == null
                 ? PerformancePolicy.Text("无法核验笔记本设备类型，本策略不可用", "Laptop device type could not be verified; policy unavailable") : availability.Detail, false);

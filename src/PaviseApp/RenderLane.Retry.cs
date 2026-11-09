@@ -83,7 +83,7 @@ namespace PaviseApp
                         attempt.Failures++;
                         attempt.Due = RecoveryClock() + TimeSpan.FromSeconds(30).Ticks;
                         ReportLaneRecovery(owner, attempt);
-                        if (attempt.Failures == 3) Logger.Log("Render lane recovery paused after 3 failures; original thread ownership retained");
+                        if (attempt.Failures == 3) Logger.Log("渲染通道恢复连续失败三次后暂停，保留原线程所有权");
                     }
                 }
             }

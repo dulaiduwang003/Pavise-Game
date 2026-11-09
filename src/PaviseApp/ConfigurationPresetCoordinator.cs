@@ -72,7 +72,7 @@ namespace PaviseApp
             ConfigurationPresetResult result = new ConfigurationPresetResult { Preset = preset };
             if (preset != ConfigurationPresetKind.Default && preset != ConfigurationPresetKind.Extreme) throw new ArgumentOutOfRangeException("preset");
             Dictionary<string, string> expected = new Dictionary<string, string>();
-            // Invalidate identity before the first mutation so partial application cannot impersonate a preset.
+            // 第一次修改前先使预设身份失效，避免部分应用被误认为完整预设。
             if (!backend.SaveIdentity("")) { result.Failed++; return result; }
             foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
             {
@@ -86,7 +86,7 @@ namespace PaviseApp
                     expected[entry.Key] = before;
                     if (target == null)
                     {
-                        // Preserving a choice is not a successful application attempt.
+                        // 保留用户选择不等于一次应用成功。
                         item.Status = ConfigurationPresetItemStatus.Skipped;
                         item.Detail = PerformancePolicy.Text("保留当前选择", "Current selection preserved");
                         continue;
@@ -98,7 +98,7 @@ namespace PaviseApp
                     if (availability == null || !availability.Available)
                     {
                         item.Detail = availability == null ? PerformancePolicy.Text("适用性无法核验", "Eligibility could not be verified") : availability.Detail;
-                        // An unsupported saved ON must be withdrawn, rather than hidden by a skip label.
+                        // 已保存的开启项不受支持时应撤回，不能仅用跳过状态掩盖。
                         string off = target == "on" ? "off" : target == "threshold" ? "default" : "0";
                         if (ConfigurationPresetEntry.IsEnabled(before) && entry.Key != "EnvQuantumProfileV1")
                         {

@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal interface IBusyInteractive
-	{
-		bool Busy { get; set; }
+    internal interface IBusyInteractive
+    {
+        bool Busy { get; set; }
 
-		bool CanInteract { get; }
-	}
+        bool CanInteract { get; }
+    }
 }

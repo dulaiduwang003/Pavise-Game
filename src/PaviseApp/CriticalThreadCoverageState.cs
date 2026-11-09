@@ -1,10 +1,10 @@
 namespace PaviseApp
 {
-	internal enum CriticalThreadCoverageState
-	{
-		None,
-		CandidatesOnly,
-		WorkersPartial,
-		WorkersSnapshotComplete
-	}
+    internal enum CriticalThreadCoverageState
+    {
+        None,
+        CandidatesOnly,
+        WorkersPartial,
+        WorkersSnapshotComplete
+    }
 }

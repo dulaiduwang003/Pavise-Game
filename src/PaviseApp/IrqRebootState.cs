@@ -1,9 +1,9 @@
 namespace PaviseApp
 {
-	internal enum IrqRebootState
-	{
-		Unknown,
-		AwaitingReboot,
-		Rebooted
-	}
+    internal enum IrqRebootState
+    {
+        Unknown,
+        AwaitingReboot,
+        Rebooted
+    }
 }

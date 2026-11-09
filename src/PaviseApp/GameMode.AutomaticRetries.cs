@@ -28,15 +28,15 @@ namespace PaviseApp
                 if (serial <= automaticSessionObserved) return;
                 automaticSessionObserved = serial;
                 sessionRecoveryRoutes = null; sessionRecoveryCaptured = false;
-                // This is only called at a real game-session boundary. Pending
-                // ownership remains; the new session has its own finite budget.
+                // 只在真实游戏会话边界调用。待恢复所有权继续保留，新会话另有自己的有限预算。
+
                 envNextAttempt.Clear();
                 envFailures.Clear();
                 residueNextTryTicks = 0;
             }
         }
 
-        // Renderer handoffs retain the game serial; revisiting a configuration reuses its remaining budget.
+        // 渲染进程交接保留游戏序号，重新访问同一配置时沿用剩余预算。
         private string AutomaticPhaseKey(string signature)
         {
             return Interlocked.Read(ref gameSessionStarts).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\n" + signature;
@@ -62,8 +62,8 @@ namespace PaviseApp
                 if (phase.Failures >= 3) return;
                 phase.Failures++;
                 phase.Next = phase.Failures >= 3 ? long.MaxValue : DateTime.UtcNow.AddSeconds(30).Ticks;
-                Logger.Warn("Automatic work: action=" + key + " failure=" + phase.Failures + "/3 reason=" + reason
-                    + (phase.Failures >= 3 ? "; failed work stopped for this session" : ""));
+                Logger.Warn("自动操作：动作=" + key + " 失败详情=" + phase.Failures + "/3 原因=" + reason
+                    + (phase.Failures >= 3 ? "；本会话已停止失败操作" : ""));
             }
         }
 
@@ -115,16 +115,16 @@ namespace PaviseApp
                 }
                 else
                 {
-                    // A verified transaction ends this failed-apply episode.
-                    // Ordinary healthy audits never enter this method.
+                    // 已核验的事务结束本轮应用失败阶段；普通健康检查不进入此方法。
+
                     phase.Attempts = 0;
                     phase.Failures = 0;
                     phase.Next = 0;
                 }
-                Logger.Log("Power plan: signature=" + powerAttemptSignature + " attempt=" + completedAttempt + "/3"
-                    + " result=" + (success ? "verified" : "failed") + " reason=" + reason
-                    + " recovery=" + (envRestorePending.Contains("powerplan") ? "pending" : "verified-or-not-required")
-                    + (phase.Stopped ? "; automatic apply stopped for this game/signature" : ""));
+                Logger.Log("电源计划：签名=" + powerAttemptSignature + " 尝试=" + completedAttempt + "/3"
+                    + " 结果=" + (success ? "verified" : "failed") + " 原因=" + reason
+                    + " 恢复=" + (envRestorePending.Contains("powerplan") ? "pending" : "verified-or-not-required")
+                    + (phase.Stopped ? "；已停止该游戏及配置签名的自动应用" : ""));
                 powerAttemptInProgress = null;
             }
         }
@@ -185,8 +185,8 @@ namespace PaviseApp
                         && (routeOwner == null || object.ReferenceEquals(routeOwner, sessionRecoveryRoutes));
                     if (!restored && child.Reported)
                     {
-                        // This callback reached a child owner with its own finite
-                        // schedule. A deferred child is not a new outer failure.
+                        // 该回调已经交给拥有独立有限调度的子所有者；子操作延后不算新的外层失败。
+
                         if (current) { envRestorePending.Add(key); envNextAttempt[key] = child.Next; }
                     }
                     else if (!restored)
@@ -195,13 +195,13 @@ namespace PaviseApp
                         phase.Next = phase.Failures >= 3 ? long.MaxValue : DateTime.UtcNow.AddSeconds(phase.Failures == 1 ? 4 : 8).Ticks;
                         if (current) { envFailures[key] = phase.Failures; envRestorePending.Add(key); envNextAttempt[key] = phase.Next; }
                         RecoveryAttemptTrace.FailureSchedule(phase.Failures, 3, phase.Next);
-                        Logger.Warn("Automatic recovery: action=" + key + " failure=" + phase.Failures + "/3 reason=" + reason
-                            + (phase.Failures >= 3 ? "; active attempts stopped; ownership retained" : "; recovery pending"));
+                        Logger.Warn("自动恢复：动作=" + key + " 失败详情=" + phase.Failures + "/3 原因=" + reason
+                            + (phase.Failures >= 3 ? "；已停止主动尝试，保留所有权" : "；等待恢复"));
                     }
                     else
                     {
-                        // This callback must verify that the owned recovery debt
-                        // is neutral; it is not a generic health observation.
+                        // 此回调必须确认本方恢复债务已中性化，不能用普通健康观测替代。
+
                         phase.Failures = 0;
                         phase.Next = 0;
                         if (current) { envRestorePending.Remove(key); envNextAttempt.Remove(key); envFailures.Remove(key); }

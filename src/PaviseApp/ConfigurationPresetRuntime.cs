@@ -76,7 +76,7 @@ namespace PaviseApp
             {
                 try
                 {
-                    // MutationGeneration invalidates this cheap cache, but is never a phase identity.
+                    // MutationGeneration 仅用于使轻量缓存失效，不是阶段身份。
                     string configuration = readPhaseSnapshot() ?? "?";
                     lock (stateGate)
                     {
@@ -89,14 +89,14 @@ namespace PaviseApp
                 {
                     phaseReadFailures++;
                     lock (stateGate) if (IdentityObservationCurrent(session, generation, observationEpoch)) current = null;
-                    Logger.Log("Configuration preset phase snapshot: session=" + session + " attempt=" + phaseReadFailures + "/3; read failed");
+                    Logger.Log("配置预设阶段快照：会话=" + session + " 尝试=" + phaseReadFailures + "/3；读取失败");
                     Volatile.Write(ref refreshing, 0); return;
                 }
             }
             lock (stateGate)
             {
                 if (!IdentityObservationCurrent(session, generation, observationEpoch)) { Volatile.Write(ref refreshing, 0); return; }
-                // Cached identity must name the verified material configuration, including after phase exhaustion.
+                // 缓存身份必须对应已核验的有效配置，预算耗尽后也不例外。
                 if (currentConfiguration != savedConfiguration) { current = null; currentConfiguration = null; }
                 if (!identityPhases.TryGetValue(savedConfiguration, out phase))
                     identityPhases[savedConfiguration] = phase = new IdentityRefreshPhase { Session = session, Configuration = savedConfiguration };
@@ -117,7 +117,7 @@ namespace PaviseApp
                             {
                                 current = value;
                                 currentConfiguration = phase.Configuration;
-                                phase.Failures = 0; // A complete negative observation is healthy too.
+                                phase.Failures = 0; // 完整确认目标不存在，也属于健康观测。
                                 Volatile.Write(ref observedGeneration, generation);
                             }
                         }
@@ -139,7 +139,7 @@ namespace PaviseApp
             {
                 phase.Failures = Math.Min(3, phase.Failures + 1);
                 if (object.ReferenceEquals(phase, identityPhase) && IdentityObservationCurrent(phase.Session, generation, observationEpoch)) current = null;
-                Logger.Log("Configuration preset identity: session=" + phase.Session + " attempt=" + phase.Failures + "/3; refresh failed");
+                Logger.Log("配置预设身份：会话=" + phase.Session + " 尝试=" + phase.Failures + "/3；刷新失败");
             }
         }
         internal void Cancel() { Interlocked.Increment(ref epoch); }
@@ -184,7 +184,7 @@ namespace PaviseApp
                         {
                             current = verified ? (ConfigurationPresetKind?)preset : null;
                             currentConfiguration = configuration;
-                            // Invalidate the cheap snapshot, not any failure budget.
+                            // 只使轻量快照失效，不重置任何失败预算。
                             savedConfiguration = null; phaseGeneration = -1;
                         }
                     }
@@ -197,7 +197,7 @@ namespace PaviseApp
                     finally
                     {
                         Volatile.Write(ref observedGeneration, -1);
-                        // Existing subtransactions finish before busy is released; cancellation never abandons an in-flight system write.
+                        // 现有子事务完成后才释放忙碌状态；取消不能丢弃进行中的系统写入。
                         Volatile.Write(ref busy, 0); Volatile.Write(ref globalBusy, 0);
                     }
                     if (completed != null) try { completed(result); } catch { }
@@ -206,7 +206,7 @@ namespace PaviseApp
             catch { }
             Volatile.Write(ref busy, 0); Volatile.Write(ref globalBusy, 0); return false;
         }
-        // AI export reads saved settings only and never probes GPU / hardware capabilities.
+        // AI 导出只读取已保存设置，不探测 GPU 或其他硬件能力。
         internal static ConfigurationPresetKind? CurrentFromSettings()
         { try { return new ConfigurationPresetCoordinator(new ConfigurationPresetBackend(null)).CurrentPreset(); } catch { return null; } }
     }

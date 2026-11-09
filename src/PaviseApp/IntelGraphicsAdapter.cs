@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal sealed class IntelGraphicsAdapter
-	{
-		public string Id;
+    internal sealed class IntelGraphicsAdapter
+    {
+        public string Id;
 
-		public string Name;
+        public string Name;
 
-		public uint VendorId;
+        public uint VendorId;
 
-		public bool Integrated;
-	}
+        public bool Integrated;
+    }
 }

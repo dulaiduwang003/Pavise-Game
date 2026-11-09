@@ -6,7 +6,7 @@ namespace PaviseApp
 {
     internal static partial class PowerPlan
     {
-        // All laboratory processor mutations share the normal plan owner's lock.
+        // 实验室处理器修改与普通电源计划所有者共用同一把锁。
         internal static object LaboratoryGate { get { return lk; } }
 #if PAVISE_SELFTEST
         internal static Func<bool> LaboratoryRestoreForTest;
@@ -50,7 +50,7 @@ namespace PaviseApp
             {
                 get
                 {
-                    // Standard Windows plan GUIDs repeat on other PCs. Never use the short display signature.
+                    // Windows 标准计划 GUID 会在不同电脑重复，不能使用简短的显示签名判断归属。
                     try
                     {
                         using (RegistryKey machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
@@ -98,7 +98,7 @@ namespace PaviseApp
                 Guid? current = Current();
                 if (!current.HasValue) return false;
                 if (current.Value != scheme) return true;
-                // Never intentionally switch back to a scheme the user has already left.
+                // 用户已主动离开的计划，不能有意再切回。
                 Guid? confirmed = Current();
                 return confirmed.HasValue && (confirmed.Value != scheme || Set(scheme) && Current() == scheme);
             }
@@ -124,7 +124,7 @@ namespace PaviseApp
                 RenderAdapter adapter = gpu.Resolve(rendererPid, true);
                 if (adapter == null)
                 {
-                    // Wildcard tables may miss a renderer's late-created device. Reopen sparingly.
+                    // 通配表可能遗漏渲染进程后创建的设备，谨慎限制重新打开的频率。
                     if (++drySamples >= 6) { drySamples = 0; gpu.Open(rendererPid); }
                 }
                 else drySamples = 0;

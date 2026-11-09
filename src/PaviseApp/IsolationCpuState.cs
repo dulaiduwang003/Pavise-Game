@@ -1,13 +1,13 @@
 namespace PaviseApp
 {
-	internal sealed class IsolationCpuState
-	{
-		public ulong All;
+    internal sealed class IsolationCpuState
+    {
+        public ulong All;
 
-		public ulong Allocated;
+        public ulong Allocated;
 
-		public ulong Admitted;
+        public ulong Admitted;
 
-		public ulong[] Physical;
-	}
+        public ulong[] Physical;
+    }
 }

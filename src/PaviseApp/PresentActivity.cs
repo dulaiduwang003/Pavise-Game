@@ -4,8 +4,8 @@ using System.Diagnostics;
 
 namespace PaviseApp
 {
-    // Identify submitters from runtime/kernel Present events, independent of graphics API.
-    // Executable names, launchers and windows do not establish presentation ownership.
+    // 根据运行时及内核的 Present 事件识别画面提交者，不依赖图形接口类型；文件名、启动器和窗口都不能证明提交归属。
+
     internal sealed class PresentActivitySample
     {
         private readonly Dictionary<int, int> frames;
@@ -44,7 +44,7 @@ namespace PaviseApp
         private sealed class Counts
         {
             internal int Dxgi, D3d9, KernelPresent, KernelHistory, KernelDetailed;
-            // One frame can emit a runtime event plus kernel events; count each source once.
+            // 同一帧可能同时产生运行时和内核事件，每个来源只计一次。
             internal int Frames
             { get { return Math.Max(Math.Max(Dxgi, D3d9), Math.Max(KernelPresent, Math.Max(KernelHistory, KernelDetailed))); } }
         }
@@ -74,7 +74,7 @@ namespace PaviseApp
             return null;
         }
 
-        // Lost events, failed stop or unsettled receipts invalidate the sample and retain its recovery debt.
+        // 事件丢失、停止失败或记录未结清都会使采样无效，并保留其恢复债务。
         internal PresentActivitySample Finish()
         {
             lock (gate)
@@ -103,13 +103,13 @@ namespace PaviseApp
         internal static Kind Classify(Guid provider, ushort id, byte opcode)
         {
             if (provider == FrameCoordinationSampler.Dxgi)
-                return (id == 42 || id == 55) ? Kind.RuntimeDxgi : Kind.None;            // Present_Start, PresentMultiplaneOverlay_Start
+                return (id == 42 || id == 55) ? Kind.RuntimeDxgi : Kind.None;            // 事件名：Present_Start、PresentMultiplaneOverlay_Start。
             if (provider == FrameCoordinationSampler.D3d9)
-                return id == 1 ? Kind.RuntimeD3d9 : Kind.None;                          // Present_Start
+                return id == 1 ? Kind.RuntimeD3d9 : Kind.None;                          // 事件名：Present_Start。
             if (provider == FrameCoordinationTrace.DxgKrnl)
             {
-                if (id == 184) return Kind.KernelPresent;                              // Present (D3DKMTPresent)
-                if ((id == 171 || id == 215) && opcode == 1) return Kind.KernelHistory; // PresentHistory(Detailed)_Start
+                if (id == 184) return Kind.KernelPresent;                              // 事件名：Present（D3DKMTPresent）、PresentHistory(Detailed)_Start。
+                if ((id == 171 || id == 215) && opcode == 1) return Kind.KernelHistory;
             }
             return Kind.None;
         }

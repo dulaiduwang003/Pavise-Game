@@ -21,107 +21,107 @@ namespace PaviseApp
 
     internal static partial class PowerPlan
     {
-        // Legacy parameter tables; creation, failure budgets and restore ownership use the current controllers.
-		private struct Knob
-		{
-			public readonly Guid Sub;
+        // 沿用旧参数表；创建、失败预算和恢复所有权交给当前控制器。
+        private struct Knob
+        {
+            public readonly Guid Sub;
 
-			public readonly Guid Setting;
+            public readonly Guid Setting;
 
-			public readonly uint ArenaAc;
+            public readonly uint ArenaAc;
 
-			public readonly uint ArenaDc;
+            public readonly uint ArenaDc;
 
-			public readonly uint CalmAc;
+            public readonly uint CalmAc;
 
-			public readonly uint CalmDc;
+            public readonly uint CalmDc;
 
-			private readonly string labelKey;
+            private readonly string labelKey;
 
-			public string Label
-			{
-				get
-				{
-					return Lang.T(labelKey);
-				}
-			}
+            public string Label
+            {
+                get
+                {
+                    return Lang.T(labelKey);
+                }
+            }
 
-			public Knob(Guid sub, Guid setting, uint arenaAc, uint arenaDc, uint calmAc, uint calmDc, string label)
-			{
-				Sub = sub;
-				Setting = setting;
-				ArenaAc = arenaAc;
-				ArenaDc = arenaDc;
-				CalmAc = calmAc;
-				CalmDc = calmDc;
-				labelKey = label;
-			}
-		}
-        // Initialize after the enclosing partial type's GUIDs, independent of file order.
+            public Knob(Guid sub, Guid setting, uint arenaAc, uint arenaDc, uint calmAc, uint calmDc, string label)
+            {
+                Sub = sub;
+                Setting = setting;
+                ArenaAc = arenaAc;
+                ArenaDc = arenaDc;
+                CalmAc = calmAc;
+                CalmDc = calmDc;
+                labelKey = label;
+            }
+        }
+        // 在所属分部类型的 GUID 初始化后再初始化，不依赖文件顺序。
         private static class Legacy3110Tables
         {
             static Legacy3110Tables() { }
-		internal static readonly Knob[] CoreKnobs = new Knob[11]
-		{
-			new Knob(SubProcessor, ProcThrottleMin, 100u, 100u, 20u, 10u, "t.powerplanschemes.1"),
-			new Knob(SubProcessor, ProcThrottleMax, 100u, 100u, 100u, 100u, "t.powerplanschemes.2"),
-			new Knob(SubProcessor, CpMinCores, 100u, 100u, 50u, 20u, "t.powerplanschemes.3"),
-			new Knob(SubProcessor, CpMaxCores, 100u, 100u, 100u, 100u, "t.powerplanschemes.4"),
-			new Knob(SubProcessor, PerfBoostMode, 2u, 2u, 2u, 3u, "t.powerplanschemes.5"),
-			new Knob(SubProcessor, Throttling, 0u, 0u, 2u, 2u, "t.powerplanschemes.6"),
-			new Knob(SubProcessor, SysCoolPol, 1u, 1u, 1u, 1u, "t.powerplanschemes.7"),
-			new Knob(SubPcie, PcieAspm, 0u, 0u, 1u, 2u, "t.powerplanschemes.8"),
-			new Knob(SubUsb, UsbSelSuspend, 0u, 0u, 0u, 0u, "t.powerplanschemes.9"),
-			new Knob(SubDisk, DiskIdle, 0u, 0u, 1200u, 600u, "t.powerplanschemes.10"),
-			new Knob(SubNone, Personality, 1u, 1u, 1u, 1u, "t.powerplanschemes.11")
-		};
+        internal static readonly Knob[] CoreKnobs = new Knob[11]
+        {
+            new Knob(SubProcessor, ProcThrottleMin, 100u, 100u, 20u, 10u, "t.powerplanschemes.1"),
+            new Knob(SubProcessor, ProcThrottleMax, 100u, 100u, 100u, 100u, "t.powerplanschemes.2"),
+            new Knob(SubProcessor, CpMinCores, 100u, 100u, 50u, 20u, "t.powerplanschemes.3"),
+            new Knob(SubProcessor, CpMaxCores, 100u, 100u, 100u, 100u, "t.powerplanschemes.4"),
+            new Knob(SubProcessor, PerfBoostMode, 2u, 2u, 2u, 3u, "t.powerplanschemes.5"),
+            new Knob(SubProcessor, Throttling, 0u, 0u, 2u, 2u, "t.powerplanschemes.6"),
+            new Knob(SubProcessor, SysCoolPol, 1u, 1u, 1u, 1u, "t.powerplanschemes.7"),
+            new Knob(SubPcie, PcieAspm, 0u, 0u, 1u, 2u, "t.powerplanschemes.8"),
+            new Knob(SubUsb, UsbSelSuspend, 0u, 0u, 0u, 0u, "t.powerplanschemes.9"),
+            new Knob(SubDisk, DiskIdle, 0u, 0u, 1200u, 600u, "t.powerplanschemes.10"),
+            new Knob(SubNone, Personality, 1u, 1u, 1u, 1u, "t.powerplanschemes.11")
+        };
 
-		internal static readonly Knob[] OptionalKnobs = new Knob[19]
-		{
-			new Knob(SubProcessor, PerfEpp, 0u, 0u, 32u, 70u, "t.powerplanschemes.12"),
-			new Knob(SubProcessor, PerfBoostPol, 100u, 100u, 60u, 40u, "t.powerplanschemes.13"),
-			new Knob(SubProcessor, PerfIncPol, 2u, 2u, 1u, 1u, "t.powerplanschemes.14"),
-			new Knob(SubProcessor, PerfDecPol, 1u, 1u, 2u, 2u, "t.powerplanschemes.15"),
-			new Knob(SubProcessor, PerfIncTime, 1u, 1u, 3u, 3u, "t.powerplanschemes.16"),
-			new Knob(SubProcessor, PerfDecTime, 10u, 10u, 5u, 5u, "t.powerplanschemes.17"),
-			new Knob(SubProcessor, PerfIncThreshold, 10u, 10u, 30u, 40u, "t.powerplanschemes.18"),
-			new Knob(SubProcessor, PerfDecThreshold, 8u, 8u, 20u, 30u, "t.powerplanschemes.19"),
-			new Knob(SubProcessor, LatencyHintPerf, 100u, 100u, 75u, 50u, "t.powerplanschemes.20"),
-			new Knob(SubProcessor, LatencyHintUnpark, 100u, 100u, 50u, 50u, "t.powerplanschemes.21"),
-			new Knob(SubProcessor, PerfDutyCycling, 0u, 0u, 0u, 1u, "t.powerplanschemes.22"),
-			new Knob(SubProcessor, ProcFreqMax, 0u, 0u, 0u, 0u, "t.powerplanschemes.23"),
-			new Knob(SubWireless, WirelessPowerSave, 0u, 0u, 1u, 2u, "t.powerplanschemes.24"),
-			new Knob(SubDisk, NvmeLatTolPrimary, 0u, 0u, 15u, 50u, "t.powerplanschemes.35"),
-			new Knob(SubDisk, NvmeLatTolSecondary, 0u, 0u, 100u, 100u, "t.powerplanschemes.36"),
-			new Knob(SubDisk, AhciLpm, 0u, 0u, 0u, 1u, "t.powerplanschemes.37"),
-			new Knob(SubUsb, Usb3Lpm, 0u, 0u, 2u, 3u, "t.powerplanschemes.43"),
-			new Knob(SubIntelGfx, IntelGfxPlan, 1u, 1u, 1u, 1u, "t.powerplanschemes.44"),
-			new Knob(SubSwitchGfx, SwitchGfxPolicy, 3u, 3u, 1u, 1u, "t.powerplanschemes.54")
-		};
+        internal static readonly Knob[] OptionalKnobs = new Knob[19]
+        {
+            new Knob(SubProcessor, PerfEpp, 0u, 0u, 32u, 70u, "t.powerplanschemes.12"),
+            new Knob(SubProcessor, PerfBoostPol, 100u, 100u, 60u, 40u, "t.powerplanschemes.13"),
+            new Knob(SubProcessor, PerfIncPol, 2u, 2u, 1u, 1u, "t.powerplanschemes.14"),
+            new Knob(SubProcessor, PerfDecPol, 1u, 1u, 2u, 2u, "t.powerplanschemes.15"),
+            new Knob(SubProcessor, PerfIncTime, 1u, 1u, 3u, 3u, "t.powerplanschemes.16"),
+            new Knob(SubProcessor, PerfDecTime, 10u, 10u, 5u, 5u, "t.powerplanschemes.17"),
+            new Knob(SubProcessor, PerfIncThreshold, 10u, 10u, 30u, 40u, "t.powerplanschemes.18"),
+            new Knob(SubProcessor, PerfDecThreshold, 8u, 8u, 20u, 30u, "t.powerplanschemes.19"),
+            new Knob(SubProcessor, LatencyHintPerf, 100u, 100u, 75u, 50u, "t.powerplanschemes.20"),
+            new Knob(SubProcessor, LatencyHintUnpark, 100u, 100u, 50u, 50u, "t.powerplanschemes.21"),
+            new Knob(SubProcessor, PerfDutyCycling, 0u, 0u, 0u, 1u, "t.powerplanschemes.22"),
+            new Knob(SubProcessor, ProcFreqMax, 0u, 0u, 0u, 0u, "t.powerplanschemes.23"),
+            new Knob(SubWireless, WirelessPowerSave, 0u, 0u, 1u, 2u, "t.powerplanschemes.24"),
+            new Knob(SubDisk, NvmeLatTolPrimary, 0u, 0u, 15u, 50u, "t.powerplanschemes.35"),
+            new Knob(SubDisk, NvmeLatTolSecondary, 0u, 0u, 100u, 100u, "t.powerplanschemes.36"),
+            new Knob(SubDisk, AhciLpm, 0u, 0u, 0u, 1u, "t.powerplanschemes.37"),
+            new Knob(SubUsb, Usb3Lpm, 0u, 0u, 2u, 3u, "t.powerplanschemes.43"),
+            new Knob(SubIntelGfx, IntelGfxPlan, 1u, 1u, 1u, 1u, "t.powerplanschemes.44"),
+            new Knob(SubSwitchGfx, SwitchGfxPolicy, 3u, 3u, 1u, 1u, "t.powerplanschemes.54")
+        };
 
-		internal static readonly Knob[] HybridKnobs = new Knob[16]
-		{
-			new Knob(SubProcessor, ProcThrottleMin1, 100u, 100u, 20u, 10u, "t.powerplanschemes.25"),
-			new Knob(SubProcessor, ProcThrottleMax1, 100u, 100u, 100u, 100u, "t.powerplanschemes.26"),
-			new Knob(SubProcessor, CpMinCores1, 100u, 100u, 50u, 20u, "t.powerplanschemes.27"),
-			new Knob(SubProcessor, CpMaxCores1, 100u, 100u, 100u, 100u, "t.powerplanschemes.28"),
-			new Knob(SubProcessor, PerfEpp1, 0u, 0u, 32u, 70u, "t.powerplanschemes.29"),
-			new Knob(SubProcessor, SchedPolicy, 2u, 2u, 5u, 5u, "t.powerplanschemes.30"),
-			new Knob(SubProcessor, ShortSchedPolicy, 2u, 2u, 5u, 5u, "t.powerplanschemes.31"),
-			new Knob(SubProcessor, PerfBoostPol1, 100u, 100u, 60u, 40u, "t.powerplanschemes.45"),
-			new Knob(SubProcessor, PerfIncPol1, 2u, 2u, 1u, 1u, "t.powerplanschemes.46"),
-			new Knob(SubProcessor, PerfDecPol1, 1u, 1u, 2u, 2u, "t.powerplanschemes.47"),
-			new Knob(SubProcessor, PerfIncTime1, 1u, 1u, 3u, 3u, "t.powerplanschemes.48"),
-			new Knob(SubProcessor, PerfDecTime1, 10u, 10u, 5u, 5u, "t.powerplanschemes.49"),
-			new Knob(SubProcessor, PerfIncThreshold1, 10u, 10u, 30u, 40u, "t.powerplanschemes.50"),
-			new Knob(SubProcessor, PerfDecThreshold1, 8u, 8u, 20u, 30u, "t.powerplanschemes.51"),
-			new Knob(SubProcessor, LatencyHintPerf1, 100u, 100u, 75u, 50u, "t.powerplanschemes.52"),
-			new Knob(SubProcessor, LatencyHintUnpark1, 100u, 100u, 50u, 50u, "t.powerplanschemes.53")
-		};
-		internal static readonly Guid[] ArenaDcRelaxOnLaptop = new Guid[9] { ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1, PerfDutyCycling, DiskIdle, WirelessPowerSave, NvmeLatTolPrimary, NvmeLatTolSecondary };
+        internal static readonly Knob[] HybridKnobs = new Knob[16]
+        {
+            new Knob(SubProcessor, ProcThrottleMin1, 100u, 100u, 20u, 10u, "t.powerplanschemes.25"),
+            new Knob(SubProcessor, ProcThrottleMax1, 100u, 100u, 100u, 100u, "t.powerplanschemes.26"),
+            new Knob(SubProcessor, CpMinCores1, 100u, 100u, 50u, 20u, "t.powerplanschemes.27"),
+            new Knob(SubProcessor, CpMaxCores1, 100u, 100u, 100u, 100u, "t.powerplanschemes.28"),
+            new Knob(SubProcessor, PerfEpp1, 0u, 0u, 32u, 70u, "t.powerplanschemes.29"),
+            new Knob(SubProcessor, SchedPolicy, 2u, 2u, 5u, 5u, "t.powerplanschemes.30"),
+            new Knob(SubProcessor, ShortSchedPolicy, 2u, 2u, 5u, 5u, "t.powerplanschemes.31"),
+            new Knob(SubProcessor, PerfBoostPol1, 100u, 100u, 60u, 40u, "t.powerplanschemes.45"),
+            new Knob(SubProcessor, PerfIncPol1, 2u, 2u, 1u, 1u, "t.powerplanschemes.46"),
+            new Knob(SubProcessor, PerfDecPol1, 1u, 1u, 2u, 2u, "t.powerplanschemes.47"),
+            new Knob(SubProcessor, PerfIncTime1, 1u, 1u, 3u, 3u, "t.powerplanschemes.48"),
+            new Knob(SubProcessor, PerfDecTime1, 10u, 10u, 5u, 5u, "t.powerplanschemes.49"),
+            new Knob(SubProcessor, PerfIncThreshold1, 10u, 10u, 30u, 40u, "t.powerplanschemes.50"),
+            new Knob(SubProcessor, PerfDecThreshold1, 8u, 8u, 20u, 30u, "t.powerplanschemes.51"),
+            new Knob(SubProcessor, LatencyHintPerf1, 100u, 100u, 75u, 50u, "t.powerplanschemes.52"),
+            new Knob(SubProcessor, LatencyHintUnpark1, 100u, 100u, 50u, 50u, "t.powerplanschemes.53")
+        };
+        internal static readonly Guid[] ArenaDcRelaxOnLaptop = new Guid[9] { ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1, PerfDutyCycling, DiskIdle, WirelessPowerSave, NvmeLatTolPrimary, NvmeLatTolSecondary };
 
-		internal static readonly Guid[] ArenaAcRelaxOnLaptop = new Guid[2] { CpMinCores, CpMinCores1 };
-		internal static readonly Guid[] CalmArenaAcOnDesktop =
+        internal static readonly Guid[] ArenaAcRelaxOnLaptop = new Guid[2] { CpMinCores, CpMinCores1 };
+        internal static readonly Guid[] CalmArenaAcOnDesktop =
         {
             ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1,
             PerfEpp, PerfEpp1, PerfBoostPol, PerfIncPol, PerfIncTime,
@@ -183,7 +183,7 @@ namespace PaviseApp
         {
             Legacy3110Context context = Legacy3110ContextFor(Guid.Empty, false);
             PowerPlanProfile profile = context.Profile;
-            // Localized profile labels and observation timestamps are not policy identity.
+            // 本地化的配置名称与观测时间不属于策略身份。
             return "legacy3110:1:" + (aggressive ? "arena" : "calm")
                 + ":battery=" + (context.HasBattery ? "1" : "0")
                 + ":hybrid=" + (context.Hybrid ? "1" : "0")
@@ -248,7 +248,7 @@ namespace PaviseApp
         private static bool ResolveLegacy3110Knob(Guid scheme, Knob knob, bool aggressive,
             Legacy3110Context context, out uint ac, out uint dc)
         {
-            // Only primary parking uses UseArenaCoreParking; secondary parking follows the mode.
+            // 只有主要核心停泊使用 UseArenaCoreParking，次要停泊跟随模式。
             bool parking = knob.Setting == CpMinCores || knob.Setting == CpMaxCores;
             bool arena = parking ? context.Profile.UseArenaCoreParking(aggressive) : aggressive;
             ac = arena ? knob.ArenaAc : knob.CalmAc;
@@ -281,7 +281,7 @@ namespace PaviseApp
         private static IEnumerable<Knob> Legacy3110Knobs(Legacy3110Context context)
         {
             foreach (Knob knob in Legacy3110Tables.CoreKnobs) yield return knob;
-            // Handheld bypass leaves the legacy Intel-GPU override inactive.
+            // 掌机跳过策略下，不启用旧版 Intel GPU 覆盖设置。
             foreach (Knob knob in Legacy3110Tables.OptionalKnobs) yield return knob;
             if (context.Hybrid && context.Profile.WriteHetero)
                 foreach (Knob knob in Legacy3110Tables.HybridKnobs)
@@ -334,8 +334,8 @@ namespace PaviseApp
                     applied++;
                 }
             }
-            if (write) Logger.Info("POWER source=" + Legacy3110Source + " mode=" + (aggressive ? "arena" : "calm")
-                + " profile=" + context.Profile.Tag + " settings=" + applied + " skipped=" + skipped);
+            if (write) Logger.Info("电源 来源=" + Legacy3110Source + " 模式=" + (aggressive ? "arena" : "calm")
+                + " 配置=" + context.Profile.Tag + " 设置=" + applied + " 已跳过=" + skipped);
             return true;
         }
 

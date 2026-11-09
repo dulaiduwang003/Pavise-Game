@@ -2,24 +2,24 @@ using System;
 
 namespace PaviseApp
 {
-	internal interface ICoreIsolationPlatform
-	{
-		string BootIdentity();
+    internal interface ICoreIsolationPlatform
+    {
+        string BootIdentity();
 
-		IsolationCpuState ReadSystem(IntPtr process);
+        IsolationCpuState ReadSystem(IntPtr process);
 
-		bool SetSystemAllowed(ulong mask);
+        bool SetSystemAllowed(ulong mask);
 
-		IntPtr Open(int pid, long creation);
+        IntPtr Open(int pid, long creation);
 
-		bool Exited(IntPtr handle);
+        bool Exited(IntPtr handle);
 
-		bool Gone(int pid, long creation);
+        bool Gone(int pid, long creation);
 
-		bool ReadAllowed(IntPtr handle, out ulong mask);
+        bool ReadAllowed(IntPtr handle, out ulong mask);
 
-		bool SetAllowed(IntPtr handle, ulong mask);
+        bool SetAllowed(IntPtr handle, ulong mask);
 
-		void Close(IntPtr handle);
-	}
+        void Close(IntPtr handle);
+    }
 }

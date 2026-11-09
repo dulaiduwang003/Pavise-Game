@@ -40,7 +40,7 @@ namespace PaviseApp
             if (configurationPresetRuntime != null) configurationPresetRuntime.Cancel();
         }
 
-        // Called by the shutdown worker, never by the UI thread.
+        // 仅退出工作线程调用，界面线程不能调用。
         internal bool WaitForConfigurationPresetWork(int timeoutMilliseconds)
         {
             ConfigurationPresetRuntime work = configurationPresetRuntime;
@@ -142,7 +142,7 @@ namespace PaviseApp
 
         private static string ConfigurationPresetReport(ConfigurationPresetResult result)
         {
-            // Keep execution reasons out of the guide, its tooltip and normal UI.
+            // 执行原因只进入诊断，不放进引导、提示气泡或普通界面。
             return result.Summary;
         }
 

@@ -8,7 +8,7 @@ namespace PaviseApp
     internal sealed class ClockRepairSnapshot
     {
         internal string EntryId, BootIdentity;
-        // Only explicit values on the current OS loader are included. Missing is not false.
+        // 只读取当前系统加载项的显式配置；缺失不能当作关闭。
         internal readonly Dictionary<uint, ulong> Values = new Dictionary<uint, ulong>();
     }
 
@@ -21,8 +21,8 @@ namespace PaviseApp
 
     internal sealed class ClockRepairNative : IClockRepairNative
     {
-        // Microsoft BCD element table: A2=useplatformclock, A4=useplatformtick,
-        // A6 (integer)=tscsyncpolicy. A5=disabledynamictick is deliberately excluded.
+        // 微软 BCD 元素表：A2 为 useplatformclock，A4 为 useplatformtick，整数 A6 为 tscsyncpolicy；有意排除 A5 disabledynamictick。
+
         internal const uint UsePlatformClock = 0x260000A2;
         internal const uint UsePlatformTick = 0x260000A4;
         internal const uint TscSyncPolicy = 0x250000A6;
@@ -93,7 +93,7 @@ namespace PaviseApp
             {
                 ManagementScope scope = Scope(); string id;
                 using (ManagementObject current = OpenCurrent(scope, out id))
-                // EnumerateElements has no input parameters. Do not treat provider failure as absence.
+                // EnumerateElements 没有输入参数，提供程序报错不能当作配置不存在。
                 using (ManagementBaseObject output = Call(current, "EnumerateElements", null))
                 {
                     var elements = output["Elements"] as ManagementBaseObject[];
