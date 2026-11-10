@@ -1,0 +1,10 @@
+experiment,phase,metric,unit,before,after,threads,rounds
+stable_audit,steady,native_reads_per_round,count,307,154,154,100
+stable_audit,steady,median_duration,ms,47.1951,9.4322,154,100
+stable_audit,steady,p95_duration,ms,62.9179,11.7397,154,100
+stable_audit,steady,native_writes,count,0,0,154,100
+stable_audit,steady,journal_saves,count,0,0,154,100
+recovery_settlement,initial_apply,journal_saves,count,462,309,154,
+recovery_settlement,initial_apply,duration,ms,2277.4516,1525.4752,154,
+recovery_settlement,exited_target,journal_saves,count,154,1,154,
+recovery_settlement,exited_target,duration,ms,1158.8044,9.1893,154,

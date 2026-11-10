@@ -92,6 +92,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps
 
 测试使用内存设置、受控接口或自有进程，窗口保持隐藏，不启动 Pavise 应用入口。独立 CPU／内存台架还提供能力探测、计量验证及受控的后台落核实验。运行环境、各套检查的隔离范围和测量边界见[测试说明](tests/README.md)，代码入口见[源码导读](docs/SOURCE-GUIDE.md)。
 
+开发期间的后台治理、Job 限额、异常恢复、CPU 拓扑、运行开销对照及独立台架方法，见[实验与验证](docs/experiments/README.md)。各专题附测量条件、数据摘要和验证范围。
+
 ## 全部功能清单
 
 以下按当前 3.3.0.8 工作区列出功能名称及子项。各项按系统、硬件、驱动与游戏支持情况提供，操作说明见[使用教程](https://pavise.club/docs/v3/)。

@@ -1,0 +1,6 @@
+record,category,count,cpu_limit_percent,job_membership_verified,restoration_verified,cpu_before_percent,cpu_limited_percent,cpu_after_percent
+system,diagnostic_hosts,2,5,true,true,,,
+system,search_indexer,1,5,true,true,,,
+system,search_workers,6,5,true,true,,,
+system,widgets_service,1,5,true,true,,,
+owned_worker,cpu_calibration,1,1,true,true,8.3343,1.0001,8.3380
