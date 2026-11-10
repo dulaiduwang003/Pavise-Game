@@ -136,9 +136,9 @@ namespace PaviseApp
                 graphics.SetClip(new Rectangle(0, header, base.Width, ViewHeight));
                 for (int i = 0; i < order.Length; i++)
                 {
-                    int onPaintValue = order[i];
+                    int profileIndex = order[i];
                     int top = header + i * row - offset;
-                    bool isSelected = onPaintValue == selected;
+                    bool isSelected = profileIndex == selected;
                     bool isHighlighted = (keyboard ? (i == active) : (i == hoverRow));
                     Rectangle r = new Rectangle(Theme.S(5), top + Theme.S(2), base.Width - Theme.S(16), row - Theme.S(4));
                     if (isSelected || isHighlighted)
@@ -157,13 +157,13 @@ namespace PaviseApp
                     }
                     if (i == 3)
                     {
-                        using (Pen pen2 = new Pen(Theme.Stroke))
+                        using (Pen strokePen = new Pen(Theme.Stroke))
                         {
-                            graphics.DrawLine(pen2, Theme.S(12), top, base.Width - Theme.S(12), top);
+                            graphics.DrawLine(strokePen, Theme.S(12), top, base.Width - Theme.S(12), top);
                         }
                     }
-                    TextRenderer.DrawText(graphics, QuantumProfiles.Title(onPaintValue), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), isSelected ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-                    TextRenderer.DrawText(graphics, QuantumProfiles.Description(onPaintValue), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(graphics, QuantumProfiles.Title(profileIndex), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), isSelected ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(graphics, QuantumProfiles.Description(profileIndex), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
                     if (isSelected)
                     {
                         TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), top + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent);
@@ -392,7 +392,7 @@ namespace PaviseApp
                 AlignRight = true
             };
             DropdownHost dropdownHost = dropdown;
-            EventHandler value = delegate
+            EventHandler eventHandler = delegate
             {
                 open = false;
                 if (!base.IsDisposed)
@@ -400,7 +400,7 @@ namespace PaviseApp
                     Invalidate();
                 }
             };
-            dropdownHost.Closed += value;
+            dropdownHost.Closed += eventHandler;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -422,15 +422,15 @@ namespace PaviseApp
             TextRenderer.DrawText(e.Graphics, QuantumProfiles.Title(selected), Theme.UI(9.5f, false), new Rectangle(Theme.S(11), 0, base.Width - Theme.S(40), base.Height), base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | ((base.Width < Theme.S(200)) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine));
             int remainingWidth = base.Width - Theme.S(21);
             int heightRatio = base.Height / 2;
-            using (Pen pen2 = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
+            using (Pen currentPen = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
             {
                 int scaledDimension = Theme.S(4);
-                int onPaintValue = ((!open) ? 1 : (-1));
-                e.Graphics.DrawLines(pen2, new Point[3]
+                int arrowDirection = ((!open) ? 1 : (-1));
+                e.Graphics.DrawLines(currentPen, new Point[3]
                 {
-                    new Point(remainingWidth - scaledDimension, heightRatio - onPaintValue * scaledDimension / 2),
-                    new Point(remainingWidth, heightRatio + onPaintValue * scaledDimension / 2),
-                    new Point(remainingWidth + scaledDimension, heightRatio - onPaintValue * scaledDimension / 2)
+                    new Point(remainingWidth - scaledDimension, heightRatio - arrowDirection * scaledDimension / 2),
+                    new Point(remainingWidth, heightRatio + arrowDirection * scaledDimension / 2),
+                    new Point(remainingWidth + scaledDimension, heightRatio - arrowDirection * scaledDimension / 2)
                 });
             }
         }
@@ -525,24 +525,24 @@ namespace PaviseApp
             popup = next;
             ProfileList profileList = new ProfileList(selected);
             profileList.CanInteract = () => base.CanInteract && object.ReferenceEquals(dropdown.Menu, next);
-            ProfileList profileList2 = (list = profileList);
+            ProfileList currentProfileList = (list = profileList);
             Rectangle workingArea = Screen.FromControl(this).WorkingArea;
             Rectangle rectangle = RectangleToScreen(base.ClientRectangle);
             int availableBelow = Math.Max(0, workingArea.Bottom - rectangle.Bottom - Theme.S(6));
             int availableAbove = Math.Max(0, rectangle.Top - workingArea.Top - Theme.S(6));
-            Size size = DsPopup.Fit(new Size(Theme.S(460), profileList2.Height + 2), workingArea, Theme.S(12), 1);
-            int popupHeight = Math.Min(profileList2.Height, Math.Max(availableAbove, availableBelow) - 2);
-            profileList2.Size = new Size(Math.Max(1, size.Width - 2), Math.Max(1, Math.Min(size.Height - 2, Math.Max(Theme.S(80), popupHeight))));
-            profileList2.EnsureActiveVisible();
-            next.Items.Add(new ToolStripControlHost(profileList2)
+            Size size = DsPopup.Fit(new Size(Theme.S(460), currentProfileList.Height + 2), workingArea, Theme.S(12), 1);
+            int popupHeight = Math.Min(currentProfileList.Height, Math.Max(availableAbove, availableBelow) - 2);
+            currentProfileList.Size = new Size(Math.Max(1, size.Width - 2), Math.Max(1, Math.Min(size.Height - 2, Math.Max(Theme.S(80), popupHeight))));
+            currentProfileList.EnsureActiveVisible();
+            next.Items.Add(new ToolStripControlHost(currentProfileList)
             {
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
                 AutoSize = false,
-                Size = profileList2.Size
+                Size = currentProfileList.Size
             });
-            next.Size = new Size(profileList2.Width + 2, profileList2.Height + 2);
-            profileList2.Picked += delegate(int index)
+            next.Size = new Size(currentProfileList.Width + 2, currentProfileList.Height + 2);
+            currentProfileList.Picked += delegate(int index)
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -558,7 +558,7 @@ namespace PaviseApp
                     }
                 }
             };
-            profileList2.Cancelled += delegate
+            currentProfileList.Cancelled += delegate
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -569,7 +569,7 @@ namespace PaviseApp
                     }
                 }
             };
-            profileList2.Tabbed += delegate(bool forward)
+            currentProfileList.Tabbed += delegate(bool forward)
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -588,7 +588,7 @@ namespace PaviseApp
             open = object.ReferenceEquals(dropdown.Menu, next);
             if (open && base.CanInteract)
             {
-                profileList2.Focus();
+                currentProfileList.Focus();
             }
             Invalidate();
         }

@@ -30,18 +30,16 @@ namespace PaviseApp
 
         public string[] PatternsForDisplay()
         {
-            List<string> list = new List<string>(Procs);
-            string[] prefixes = Prefixes;
-            foreach (string entryText in prefixes)
+            List<string> ProcsSnapshot = new List<string>(Procs);
+            foreach (string entryText in Prefixes)
             {
-                list.Add(entryText + "*");
+                ProcsSnapshot.Add(entryText + "*");
             }
-            string[] directories = Directories;
-            foreach (string entryText2 in directories)
+            foreach (string entryText2 in Directories)
             {
-                list.Add("\\" + entryText2 + "\\*");
+                ProcsSnapshot.Add("\\" + entryText2 + "\\*");
             }
-            return list.ToArray();
+            return ProcsSnapshot.ToArray();
         }
     }
 }

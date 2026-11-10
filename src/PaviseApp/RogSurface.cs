@@ -53,11 +53,11 @@ namespace PaviseApp
                 }
             }
             int a = Math.Max(2, p.MeshAlpha / 2);
-            using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, a), DsSpace.Line(1)))
+            using (Pen aPen = new Pen(Col.Alpha(Theme.Accent, a), DsSpace.Line(1)))
             {
                 for (int j = r.Left; j < r.Right + r.Height; j += sLimit * 4)
                 {
-                    g.DrawLine(pen2, j, r.Top, j - r.Height, r.Bottom);
+                    g.DrawLine(aPen, j, r.Top, j - r.Height, r.Bottom);
                 }
             }
         }
@@ -87,17 +87,17 @@ namespace PaviseApp
             }
             using (Pen pen = new Pen(Col.Alpha(Theme.Accent, edgeAlpha), DsSpace.Line(1)))
             {
-                using (Pen pen2 = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(4, edgeAlpha - 10)), DsSpace.Line(1)))
+                using (Pen maxPen = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(4, edgeAlpha - 10)), DsSpace.Line(1)))
                 {
                     g.DrawLine(pen, pointItems[0], pointItems[1]);
-                    g.DrawLine(pen2, pointItems[3], pointItems[2]);
+                    g.DrawLine(maxPen, pointItems[3], pointItems[2]);
                 }
             }
-            using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, Math.Max(4, edgeAlpha / 2)), DsSpace.Line(1)))
+            using (Pen currentMaxPen = new Pen(Col.Alpha(Theme.Accent, Math.Max(4, edgeAlpha / 2)), DsSpace.Line(1)))
             {
                 int roundedValueRatio = roundedValue / 3;
                 int roundedValue2Ratio = roundedValue2 / 3;
-                g.DrawLine(pen3, x1 + roundedValueRatio, y1 + roundedValue2Ratio, x2 + roundedValueRatio, y2 + roundedValue2Ratio);
+                g.DrawLine(currentMaxPen, x1 + roundedValueRatio, y1 + roundedValue2Ratio, x2 + roundedValueRatio, y2 + roundedValue2Ratio);
             }
         }
 
@@ -109,18 +109,18 @@ namespace PaviseApp
             int edgeAlpha = p.EdgeAlpha;
             using (Pen pen = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(8, edgeAlpha - 7)), DsSpace.Line(1)))
             {
-                using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, edgeAlpha), DsSpace.Line(1)))
+                using (Pen edgeAlphaPen = new Pen(Col.Alpha(Theme.Accent, edgeAlpha), DsSpace.Line(1)))
                 {
                     g.DrawLine(pen, left, top, left, height);
-                    g.DrawLine(pen2, left + Theme.S(2), top + Theme.S(18), left + Theme.S(2), height - Theme.S(26));
+                    g.DrawLine(edgeAlphaPen, left + Theme.S(2), top + Theme.S(18), left + Theme.S(2), height - Theme.S(26));
                     for (int i = 0; i < p.BusLevels.Length; i++)
                     {
                         int top2 = r.Top + r.Height * p.BusLevels[i] / 100;
                         int scaledDimension = Theme.S(p.BusReach[i]);
                         int width = left - scaledDimension;
                         g.DrawLine(pen, left, top2, width + Theme.S(18), top2);
-                        g.DrawLine(pen2, width + Theme.S(18), top2, width, top2 - Theme.S(18));
-                        g.DrawLine(pen2, width, top2 - Theme.S(18), width - Theme.S(24), top2 - Theme.S(18));
+                        g.DrawLine(edgeAlphaPen, width + Theme.S(18), top2, width, top2 - Theme.S(18));
+                        g.DrawLine(edgeAlphaPen, width, top2 - Theme.S(18), width - Theme.S(24), top2 - Theme.S(18));
                         using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Accent, edgeAlpha + 28)))
                         {
                             g.FillRectangle(brush, width - Theme.S(2), top2 - Theme.S(20), Theme.S(4), Theme.S(4));
@@ -130,11 +130,11 @@ namespace PaviseApp
                 }
             }
             int sLimit = Math.Max(1, Theme.S(p.TickStep));
-            using (Pen pen3 = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(6, edgeAlpha - 12)), DsSpace.Line(1)))
+            using (Pen maxPen = new Pen(Col.Alpha(Theme.StrokeHi, Math.Max(6, edgeAlpha - 12)), DsSpace.Line(1)))
             {
                 for (int j = top; j < height; j += sLimit)
                 {
-                    g.DrawLine(pen3, left - Theme.S(8), j, left, j);
+                    g.DrawLine(maxPen, left - Theme.S(8), j, left, j);
                 }
             }
         }

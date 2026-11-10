@@ -93,8 +93,8 @@ namespace PaviseApp
                 if (!stopped) return PresentActivitySample.Unavailable("stop-error-" + trace.Error + "-lost-" + trace.Lost);
                 foreach (KeyValuePair<int, Counts> pair in counts)
                 {
-                    int value = pair.Value.Frames;
-                    if (value > 0) frames[pair.Key] = value;
+                    int currentFrames = pair.Value.Frames;
+                    if (currentFrames > 0) frames[pair.Key] = currentFrames;
                 }
             }
             return PresentActivitySample.FromFrames(frames, windowMs);

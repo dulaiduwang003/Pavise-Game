@@ -237,16 +237,16 @@ namespace PaviseApp
             object instance = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("17072F7B-9ABE-4A74-A261-1EB76B55107A"), true));
             try
             {
-                var list = (IWscProductList)instance;
-                list.Initialize(4);
-                int count = list.Count;
+                var currentInstance = (IWscProductList)instance;
+                currentInstance.Initialize(4);
+                int count = currentInstance.Count;
                 if (count < 0 || count > MaxProducts) facts.Unknown = true;
                 for (uint index = 0; index < Math.Min(Math.Max(count, 0), MaxProducts); index++)
                 {
                     IWscProduct product = null;
                     try
                     {
-                        product = list.GetItem(index);
+                        product = currentInstance.GetItem(index);
                         string name = CleanName(product.ProductName);
                         if (name.Length == 0) throw new InvalidDataException("Empty security product name");
                         SecurityProductState state = SecurityProductState.Unknown;

@@ -34,10 +34,6 @@ namespace PaviseApp
             public uint HAdapter;
         }
 
-        private const string GfxKey = "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers";
-
-        private const string Val = "HwSchMode";
-
         private static readonly ReversibleReg Sch = new ReversibleReg(Registry.LocalMachine, "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers", "HwSchMode", RegistryValueKind.DWord, "PrevHwSch");
 
         private static readonly object schedLk = new object();
@@ -93,11 +89,10 @@ namespace PaviseApp
         {
             supported = false;
             enabled = false;
-            EnumAdapters enumAdapters = default(EnumAdapters);
-            enumAdapters.Adapters = new AdapterInfo[16];
-            EnumAdapters args = enumAdapters;
-            List<HardwareSchedulingObservation> list = new List<HardwareSchedulingObservation>();
-            HashSet<uint> hashSet = new HashSet<uint>();
+            EnumAdapters args = default(EnumAdapters);
+            args.Adapters = new AdapterInfo[16];
+            List<HardwareSchedulingObservation> hardwareSchedulingObservations = new List<HardwareSchedulingObservation>();
+            HashSet<uint> hAdapters = new HashSet<uint>();
             bool inventoryComplete = false;
             try
             {
@@ -109,14 +104,14 @@ namespace PaviseApp
                 for (int i = 0; i < args.NumAdapters && i < 16; i++)
                 {
                     AdapterInfo adapterInfo = args.Adapters[i];
-                    if (adapterInfo.HAdapter == 0 || !hashSet.Add(adapterInfo.HAdapter))
+                    if (adapterInfo.HAdapter == 0 || !hAdapters.Add(adapterInfo.HAdapter))
                     {
                         inventoryComplete = false;
                         continue;
                     }
                     uint luidHigh = (uint)adapterInfo.LuidHigh;
                     string verifiedRendererLuid = luidHigh.ToString("x8", CultureInfo.InvariantCulture) + adapterInfo.LuidLow.ToString("x8", CultureInfo.InvariantCulture);
-                    list.Add(HardwareSchedulingProbe.Query(verifiedRendererLuid));
+                    hardwareSchedulingObservations.Add(HardwareSchedulingProbe.Query(verifiedRendererLuid));
                 }
             }
             catch
@@ -125,7 +120,7 @@ namespace PaviseApp
             }
             finally
             {
-                HashSet<uint> hashSet2 = new HashSet<uint>();
+                HashSet<uint> currentHAdapters = new HashSet<uint>();
                 for (int j = 0; j < args.NumAdapters && j < 16; j++)
                 {
                     uint hAdapter = args.Adapters[j].HAdapter;
@@ -134,16 +129,15 @@ namespace PaviseApp
                         inventoryComplete = false;
                         continue;
                     }
-                    if (!hashSet2.Add(hAdapter))
+                    if (!currentHAdapters.Add(hAdapter))
                     {
                         inventoryComplete = false;
                         continue;
                     }
                     try
                     {
-                        CloseAdapter closeAdapter = default(CloseAdapter);
-                        closeAdapter.HAdapter = hAdapter;
-                        CloseAdapter args2 = closeAdapter;
+                        CloseAdapter args2 = default(CloseAdapter);
+                        args2.HAdapter = hAdapter;
                         if (D3DKMTCloseAdapter(ref args2) != 0)
                         {
                             inventoryComplete = false;
@@ -155,7 +149,7 @@ namespace PaviseApp
                     }
                 }
             }
-            return AggregateCurrentState(list, inventoryComplete, out supported, out enabled);
+            return AggregateCurrentState(hardwareSchedulingObservations, inventoryComplete, out supported, out enabled);
         }
 
         internal static bool AggregateCurrentState(IEnumerable<HardwareSchedulingObservation> observations, bool inventoryComplete, out bool supported, out bool enabled)
@@ -196,8 +190,8 @@ namespace PaviseApp
                     {
                         return null;
                     }
-                    object value = registryKey.GetValue("HwSchMode");
-                    return (value is int) ? new int?((int)value) : null;
+                    object instance = registryKey.GetValue("HwSchMode");
+                    return (instance is int) ? new int?((int)instance) : null;
                 }
             }
             catch

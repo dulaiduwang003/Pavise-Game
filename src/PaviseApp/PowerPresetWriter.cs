@@ -82,28 +82,28 @@ namespace PaviseApp
             if (!NormalizeInherited(preset, destination, copySource == verifiedBaseline ? verifiedBaseline : Guid.Empty, platform, out failure)) return false;
 
             int written = 0, skipped = 0;
-            foreach (ManagedPowerPresetValue value in preset.Entries)
+            foreach (ManagedPowerPresetValue entry in preset.Entries)
             {
-                if (!platform.IsRegistered(value))
+                if (!platform.IsRegistered(entry))
                 {
                     skipped++;
-                    Logger.Info("电源 来源=" + preset.Id + " 已跳过未注册设置： " + SettingPath(value));
+                    Logger.Info("电源 来源=" + preset.Id + " 已跳过未注册设置： " + SettingPath(entry));
                     continue;
                 }
                 foreach (bool ac in new[] { true, false })
                 {
-                    string raw = ac ? value.AcRaw : value.DcRaw;
-                    uint? requested = ac ? value.Ac : value.Dc;
-                    int type = ac ? value.AcRegistryType : value.DcRegistryType;
-                    string field = (ac ? "AC " : "DC ") + SettingPath(value);
+                    string raw = ac ? entry.AcRaw : entry.DcRaw;
+                    uint? requested = ac ? entry.Ac : entry.Dc;
+                    int type = ac ? entry.AcRegistryType : entry.DcRegistryType;
+                    string field = (ac ? "AC " : "DC ") + SettingPath(entry);
                     if (raw != null || (requested.HasValue && type != (int)RegistryValueKind.DWord))
                         return Fail(out failure, "Unsupported preset value type: " + field + " 类型=" + type);
                     if (!requested.HasValue) continue;
                     if (!Inactive(platform, destination)) return Fail(out failure, "Write: candidate became active or active plan is unreadable; " + field);
-                    uint code = platform.Write(destination, value, ac, requested.Value);
+                    uint code = platform.Write(destination, entry, ac, requested.Value);
                     if (code != 0) return Fail(out failure, "PowerWrite" + (ac ? "AC" : "DC") + "ValueIndex code=" + code + "; " + field + " requested=" + requested.Value, code);
                     uint actual;
-                    code = platform.Read(destination, value, ac, out actual);
+                    code = platform.Read(destination, entry, ac, out actual);
                     if (code != 0) return Fail(out failure, "PowerRead" + (ac ? "AC" : "DC") + "ValueIndex code=" + code + "; " + field, code);
                     if (actual != requested.Value)
                         return Fail(out failure, "Readback mismatch: " + field + " requested=" + requested.Value + " actual=" + actual);
@@ -221,44 +221,44 @@ namespace PaviseApp
             var explicitValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var templateSettings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Guid acPersonality = Guid.Empty, dcPersonality = Guid.Empty;
-            foreach (ManagedPowerPresetValue value in preset.Entries)
+            foreach (ManagedPowerPresetValue entry in preset.Entries)
             {
-                string path = SettingPath(value);
+                string path = SettingPath(entry);
                 templateSettings.Add(path);
-                if (value.Ac.HasValue) explicitValues.Add(path + "/AC");
-                if (value.Dc.HasValue) explicitValues.Add(path + "/DC");
-                if (value.Sub == ManagedPowerPreset.SubNone && value.Setting == new Guid("245d8541-3943-4422-b025-13a784f679b7"))
-                { acPersonality = Personality(value.Ac); dcPersonality = Personality(value.Dc); }
+                if (entry.Ac.HasValue) explicitValues.Add(path + "/AC");
+                if (entry.Dc.HasValue) explicitValues.Add(path + "/DC");
+                if (entry.Sub == ManagedPowerPreset.SubNone && entry.Setting == new Guid("245d8541-3943-4422-b025-13a784f679b7"))
+                { acPersonality = Personality(entry.Ac); dcPersonality = Personality(entry.Dc); }
             }
             if (acPersonality == Guid.Empty || dcPersonality == Guid.Empty)
                 return Fail(out failure, "Reset: preset personality is missing or unsupported");
             ManagedPowerPresetValue[] inherited = platform.StoredSettings(destination);
             if (inherited == null) return Fail(out failure, "Reset: inherited settings could not be enumerated");
-            foreach (ManagedPowerPresetValue value in inherited)
+            foreach (ManagedPowerPresetValue currentInherited in inherited)
             {
-                if (!platform.IsRegistered(value)) continue;
+                if (!platform.IsRegistered(currentInherited)) continue;
                 foreach (bool ac in new[] { true, false })
                 {
-                    if (!(ac ? value.Ac : value.Dc).HasValue || explicitValues.Contains(SettingPath(value) + (ac ? "/AC" : "/DC"))) continue;
+                    if (!(ac ? currentInherited.Ac : currentInherited.Dc).HasValue || explicitValues.Contains(SettingPath(currentInherited) + (ac ? "/AC" : "/DC"))) continue;
                     if (!Inactive(platform, destination)) return Fail(out failure, "Reset: candidate became active or active plan is unreadable");
                     // 按原配置的 personality 解析缺省值，不继承复制源额外的覆盖，也不改注册表权限。
                     uint expected, actual;
-                    uint code = platform.ReadDefault(value, ac ? acPersonality : dcPersonality, ac, out expected);
-                    string field = (ac ? "AC " : "DC ") + SettingPath(value);
+                    uint code = platform.ReadDefault(currentInherited, ac ? acPersonality : dcPersonality, ac, out expected);
+                    string field = (ac ? "AC " : "DC ") + SettingPath(currentInherited);
                     if (code != 0)
                     {
                         // 确认确切获准的本机基准后，才复制 OEM 专用值。
                         string retainedFailure;
-                        if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(value)))
+                        if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(currentInherited)))
                         {
-                            if (RetainVerifiedLocalValue(platform, copiedBaseline, destination, value, ac, out retainedFailure)) continue;
+                            if (RetainVerifiedLocalValue(platform, copiedBaseline, destination, currentInherited, ac, out retainedFailure)) continue;
                             return Fail(out failure, "Read default: " + field + " code=" + code + "; " + retainedFailure, code);
                         }
                         return Fail(out failure, "Read default: " + field + " code=" + code, code);
                     }
-                    code = platform.Write(destination, value, ac, expected);
+                    code = platform.Write(destination, currentInherited, ac, expected);
                     if (code != 0) return Fail(out failure, "Write default: " + field + " code=" + code, code);
-                    code = platform.Read(destination, value, ac, out actual);
+                    code = platform.Read(destination, currentInherited, ac, out actual);
                     if (code != 0 || actual != expected)
                         return Fail(out failure, "Default readback: " + field + " code=" + code + " expected=" + expected + " actual=" + actual, code);
                 }

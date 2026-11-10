@@ -458,8 +458,8 @@ namespace PaviseApp
                 tamer.ProcessEventsAvailable = procNotify.IsActive;
                 PerformancePreset runtimeIconMode = gameMode.ActivePreset;
                 bool runtimeIconEnabled = gameMode.Enabled;
-                Icon icon3 = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-                PanelForm panel = new PanelForm(tamer, gameMode, icon3, elevated);
+                Icon makeMultiIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
+                PanelForm panel = new PanelForm(tamer, gameMode, makeMultiIcon, elevated);
                 GC.KeepAlive(panel.Handle);
                 if (shouldShowStartupPanel)
                 {
@@ -489,8 +489,8 @@ namespace PaviseApp
                     Native.AllowTaskbarCreatedMessage();
                 }
                 NotifyIcon icon = new NotifyIcon();
-                icon.Icon = (Icon)icon3.Clone();
-                icon3.Dispose();
+                icon.Icon = (Icon)makeMultiIcon.Clone();
+                makeMultiIcon.Dispose();
                 icon.Text = (elevated ? Lang.T("tray.idle") : Lang.T("tray.noelev"));
                 System.Windows.Forms.Timer trayTip = null;
                 System.Windows.Forms.Timer updTimer = null;
@@ -820,12 +820,12 @@ namespace PaviseApp
                             {
                                 panel.BeginRuntimeShutdown(PerformancePolicy.Text("正在停止运行并还原系统改动", "Stopping and restoring system changes"));
                             }
-                            Action action2 = delegate
+                            Action currentAction = delegate
                             {
                                 int files2;
                                 string failure2;
                                 bool cleared = TryResetUserData(dir, stopRuntime, out files2, out failure2, closeApplication ? reportResetProgress : null);
-                                Action action3 = delegate
+                                Action candidateAction = delegate
                                 {
                                     try
                                     {
@@ -853,23 +853,23 @@ namespace PaviseApp
                                 };
                                 if (closeApplication)
                                 {
-                                    if (!uiDispatcher.Post(action3))
+                                    if (!uiDispatcher.Post(candidateAction))
                                     {
                                         throw new InvalidOperationException("UI reset result could not be dispatched");
                                     }
                                 }
                                 else
                                 {
-                                    action3();
+                                    candidateAction();
                                 }
                             };
                             if (closeApplication)
                             {
-                                StartShutdownWorker(action2, shutdownFailed);
+                                StartShutdownWorker(currentAction, shutdownFailed);
                             }
                             else
                             {
-                                action2();
+                                currentAction();
                             }
                         }
                     }
@@ -958,7 +958,7 @@ namespace PaviseApp
                 };
                 if (exitEvt != null)
                 {
-                    Thread thread2 = new Thread((ThreadStart)delegate
+                    Thread currentThread = new Thread((ThreadStart)delegate
                     {
                         exitEvt.WaitOne();
                         try
@@ -969,8 +969,8 @@ namespace PaviseApp
                         {
                         }
                     });
-                    thread2.IsBackground = true;
-                    thread2.Start();
+                    currentThread.IsBackground = true;
+                    currentThread.Start();
                 }
                 icon.ContextMenuStrip = trayMenu.Strip;
                 bool notificationAreaPresentSucceeded;
@@ -1124,35 +1124,35 @@ namespace PaviseApp
                     {
                         runtimeIconMode = activePreset;
                         runtimeIconEnabled = enabled;
-                        using (Icon icon5 = IconArt.MakeMultiIcon(activePreset, enabled))
+                        using (Icon currentMakeMultiIcon = IconArt.MakeMultiIcon(activePreset, enabled))
                         {
-                            Icon icon4 = icon.Icon;
-                            icon.Icon = (Icon)icon5.Clone();
-                            panel.SetRuntimeIcon(icon5);
-                            if (icon4 != null)
+                            Icon currentIcon = icon.Icon;
+                            icon.Icon = (Icon)currentMakeMultiIcon.Clone();
+                            panel.SetRuntimeIcon(currentMakeMultiIcon);
+                            if (currentIcon != null)
                             {
-                                icon4.Dispose();
+                                currentIcon.Dispose();
                             }
                         }
                     }
-                    string textValue;
+                    string text;
                     if (!elevated)
                     {
-                        textValue = Lang.T("tray.noelev");
+                        text = Lang.T("tray.noelev");
                     }
                     else
                     {
                         string activeGame = gameMode.ActiveGame;
                         string armedGame = ((activeGame == null) ? gameMode.ArmedGame : null);
-                        textValue = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((armedGame != null) ? Lang.F("tray.armed", armedGame) : Lang.T("tray.idle")));
+                        text = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((armedGame != null) ? Lang.F("tray.armed", armedGame) : Lang.T("tray.idle")));
                     }
-                    if (textValue.Length > 63)
+                    if (text.Length > 63)
                     {
-                        textValue = textValue.Substring(0, 62) + " ";
+                        text = text.Substring(0, 62) + " ";
                     }
-                    if (icon.Text != textValue)
+                    if (icon.Text != text)
                     {
-                        icon.Text = textValue;
+                        icon.Text = text;
                     }
                 };
                 trayTip.Start();

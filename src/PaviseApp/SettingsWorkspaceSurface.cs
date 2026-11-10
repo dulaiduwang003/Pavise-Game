@@ -46,22 +46,22 @@ namespace PaviseApp
             }
             if (FrameTop > 0)
             {
-                using (Pen pen2 = new Pen(Theme.Accent))
+                using (Pen accentPen = new Pen(Theme.Accent))
                 {
                     int scaledDimension = Theme.S(12);
-                    graphics.DrawLine(pen2, r.Left, r.Top + scaledDimension, r.Left + scaledDimension, r.Top);
-                    graphics.DrawLine(pen2, r.Right - scaledDimension, r.Bottom, r.Right, r.Bottom - scaledDimension);
+                    graphics.DrawLine(accentPen, r.Left, r.Top + scaledDimension, r.Left + scaledDimension, r.Top);
+                    graphics.DrawLine(accentPen, r.Right - scaledDimension, r.Bottom, r.Right, r.Bottom - scaledDimension);
                 }
             }
-            using (Pen pen3 = new Pen(Theme.Stroke))
+            using (Pen strokePen = new Pen(Theme.Stroke))
             {
                 if (HeaderLine > 0)
                 {
-                    graphics.DrawLine(pen3, Theme.S(20), HeaderLine, base.Width - Theme.S(20), HeaderLine);
+                    graphics.DrawLine(strokePen, Theme.S(20), HeaderLine, base.Width - Theme.S(20), HeaderLine);
                 }
                 if (DivisionX > 0 && DivisionBottom > DivisionTop)
                 {
-                    graphics.DrawLine(pen3, DivisionX, DivisionTop, DivisionX, DivisionBottom);
+                    graphics.DrawLine(strokePen, DivisionX, DivisionTop, DivisionX, DivisionBottom);
                 }
             }
         }

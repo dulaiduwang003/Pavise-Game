@@ -46,15 +46,13 @@ namespace PaviseApp
         internal static AcGroup RecordOnlyGroupOf(string name)
         {
             string b = NormalizeName(name);
-            AcGroup[] groups = Groups;
-            foreach (AcGroup acGroup in groups)
+            foreach (AcGroup acGroup in Groups)
             {
                 if (!acGroup.RecordOnly)
                 {
                     continue;
                 }
-                string[] procs = acGroup.Procs;
-                foreach (string a in procs)
+                foreach (string a in acGroup.Procs)
                 {
                     if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
                     {
@@ -67,26 +65,22 @@ namespace PaviseApp
 
         private static HashSet<string> BuildProcessNames()
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AcGroup[] groups = Groups;
-            foreach (AcGroup acGroup in groups)
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (AcGroup acGroup in Groups)
             {
-                string[] procs = acGroup.Procs;
-                foreach (string item in procs)
+                foreach (string proc in acGroup.Procs)
                 {
-                    hashSet.Add(item);
+                    textsSet.Add(proc);
                 }
             }
-            AcProtectionGroup[] protectionOnlyGroups = ProtectionOnlyGroups;
-            foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
+            foreach (AcProtectionGroup acProtectionGroup in ProtectionOnlyGroups)
             {
-                string[] procs2 = acProtectionGroup.Procs;
-                foreach (string item2 in procs2)
+                foreach (string text in acProtectionGroup.Procs)
                 {
-                    hashSet.Add(item2);
+                    textsSet.Add(text);
                 }
             }
-            return hashSet;
+            return textsSet;
         }
 
         private static string NormalizeName(string name)
@@ -108,8 +102,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] nameTokens = NameTokens;
-            foreach (string value in nameTokens)
+            foreach (string value in NameTokens)
             {
                 if (lowered.Contains(value))
                 {
@@ -126,13 +119,11 @@ namespace PaviseApp
             {
                 return true;
             }
-            AcProtectionGroup[] protectionOnlyGroups = ProtectionOnlyGroups;
-            foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
+            foreach (AcProtectionGroup acProtectionGroup in ProtectionOnlyGroups)
             {
-                string[] prefixes = acProtectionGroup.Prefixes;
-                foreach (string value in prefixes)
+                foreach (string prefixe in acProtectionGroup.Prefixes)
                 {
-                    if (name2.StartsWith(value, StringComparison.OrdinalIgnoreCase))
+                    if (name2.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }
@@ -176,34 +167,30 @@ namespace PaviseApp
                 return false;
             }
             string[] replaceResultParts = replaceResult.Split(new char[1] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
-            int isAntiCheatPathValue = (driveRooted ? 1 : 2);
-            if (replaceResultParts.Length <= isAntiCheatPathValue)
+            int pathPrefixLength = (driveRooted ? 1 : 2);
+            if (replaceResultParts.Length <= pathPrefixLength)
             {
                 return false;
             }
-            string[] textEntries = replaceResultParts;
-            foreach (string entryText in textEntries)
+            foreach (string entryText in replaceResultParts)
             {
                 if (entryText == "." || entryText == "..")
                 {
                     return false;
                 }
             }
-            for (int j = isAntiCheatPathValue; j < replaceResultParts.Length - 1; j++)
+            for (int j = pathPrefixLength; j < replaceResultParts.Length - 1; j++)
             {
-                string[] sharedDirectories = SharedDirectories;
-                foreach (string directory in sharedDirectories)
+                foreach (string directory in SharedDirectories)
                 {
                     if (MatchesDirectory(replaceResultParts, j, directory))
                     {
                         return true;
                     }
                 }
-                AcProtectionGroup[] protectionOnlyGroups = ProtectionOnlyGroups;
-                foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
+                foreach (AcProtectionGroup acProtectionGroup in ProtectionOnlyGroups)
                 {
-                    string[] directories = acProtectionGroup.Directories;
-                    foreach (string directory2 in directories)
+                    foreach (string directory2 in acProtectionGroup.Directories)
                     {
                         if (MatchesDirectory(replaceResultParts, j, directory2))
                         {
@@ -231,13 +218,12 @@ namespace PaviseApp
 
         internal static string[] DirectoryNamesForDisplay()
         {
-            List<string> list = new List<string>(SharedDirectories);
-            AcProtectionGroup[] protectionOnlyGroups = ProtectionOnlyGroups;
-            foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
+            List<string> SharedDirectoriesSnapshot = new List<string>(SharedDirectories);
+            foreach (AcProtectionGroup acProtectionGroup in ProtectionOnlyGroups)
             {
-                list.AddRange(acProtectionGroup.Directories);
+                SharedDirectoriesSnapshot.AddRange(acProtectionGroup.Directories);
             }
-            return list.ToArray();
+            return SharedDirectoriesSnapshot.ToArray();
         }
 
         internal static string[] NameTokensForDisplay()

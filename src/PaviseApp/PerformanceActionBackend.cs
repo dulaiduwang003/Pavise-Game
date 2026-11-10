@@ -21,8 +21,6 @@ namespace PaviseApp
             }
         }
 
-        private const string MitigationNativeSource = "\nusing System;\nusing System.Reflection;\nusing System.Runtime.InteropServices;\nusing System.IO;\nusing Microsoft.Win32;\npublic static class PaviseNativeMitigationRestore\n{\nprivate const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;\nprivate const string Prefix = \"Microsoft.Samples.PowerShell.Commands.Ntdll\";\nprivate static readonly string[] Fields = { \"ControlFlowGuard\", \"EnableExportAddressFilter\", \"EnableExportAddressFilterPlus\", \"EnableImportAddressFilter\", \"EnableRopCallerCheck\", \"EnableRopSimExec\" };\nprivate sealed class Group\n{\ninternal Type Type;\ninternal object Kind, Buffer;\ninternal MethodInfo Query, Set;\ninternal string Name;\n}\nprivate static Group ReadGroup(Assembly assembly, string target, string typeName, string kindName, uint flags)\n{\nType native = assembly.GetType(Prefix, true);\nType type = assembly.GetType(Prefix + \"+\" + typeName, true);\nType kindType = assembly.GetType(Prefix + \"+IMAGE_MITIGATION_POLICY\", true);\nvar group = new Group { Type = type, Kind = Enum.Parse(kindType, kindName), Buffer = Activator.CreateInstance(type), Name = kindName };\nforeach (MethodInfo method in native.GetMethods(Flags))\n{\nif (!method.IsGenericMethodDefinition || method.GetGenericArguments().Length != 1 || method.GetParameters().Length != 4) continue;\nif (method.Name == \"QueryImageMitigationPolicy\") group.Query = method.MakeGenericMethod(type);\nif (method.Name == \"SetImageMitigationPolicy\") group.Set = method.MakeGenericMethod(type);\n}\nif (group.Query == null || group.Set == null) throw new NotSupportedException(\"Unsupported image mitigation API\");\nFieldInfo modules = type.GetField(\"ModuleList\");\nif (modules != null)\n{\nvar marshal = (MarshalAsAttribute)Attribute.GetCustomAttribute(modules, typeof(MarshalAsAttribute));\nif (marshal == null || marshal.SizeConst != 512) throw new NotSupportedException(\"Unsupported mitigation module list\");\nmodules.SetValue(group.Buffer, new char[marshal.SizeConst]);\n}\nobject[] args = { target, group.Kind, flags, group.Buffer };\nint status = (int)group.Query.Invoke(null, args);\n// An absent application has no local overrides. Every other error must retain its receipt.\nif (status != 0 && status != unchecked((int)0xc0000034)) ThrowStatus(\"Query \" + kindName, status);\nif (status == 0) group.Buffer = args[3];\nreturn group;\n}\nprivate static Group ReadCfg(Assembly assembly, string target)\n{ return ReadGroup(assembly, target, \"RTL_IMAGE_MITIGATION_CONTROL_FLOW_GUARD_POLICY\", \"ImageControlFlowGuardPolicy\", 0); }\nprivate static Group ReadPayload(Assembly assembly, string target, uint flags)\n{ return ReadGroup(assembly, target, \"RTL_IMAGE_MITIGATION_PAYLOAD_RESTRICTION_POLICY\", \"ImagePayloadRestrictionPolicy\", flags); }\nprivate static void ThrowStatus(string operation, int status)\n{ throw new InvalidOperationException(operation + \" failed: 0x\" + unchecked((uint)status).ToString(\"X8\")); }\nprivate static ulong ReadField(Group group, string name)\n{\nFieldInfo field = group.Type.GetField(name);\nif (field == null) throw new NotSupportedException(\"Missing mitigation field \" + name);\nobject policy = field.GetValue(group.Buffer);\nFieldInfo state = policy.GetType().GetField(\"PolicyState\");\nif (state == null || state.FieldType != typeof(ulong)) throw new NotSupportedException(\"Unsupported mitigation state\");\nreturn (ulong)state.GetValue(policy);\n}\nprivate static bool ChangeField(Group group, string name, ulong bits, ulong mask)\n{\nulong oldValue = ReadField(group, name), wanted = (oldValue & ~mask) | bits;\nif (wanted == oldValue) return false;\nFieldInfo field = group.Type.GetField(name);\nobject policy = field.GetValue(group.Buffer);\npolicy.GetType().GetField(\"PolicyState\").SetValue(policy, wanted);\nfield.SetValue(group.Buffer, policy);\nreturn true;\n}\nprivate static void Commit(Group group, string target, bool changed)\n{\nif (!changed) return;\nint status = (int)group.Set.Invoke(null, new object[] { target, group.Kind, (uint)0, group.Buffer });\nif (status != 0) ThrowStatus(\"Set \" + group.Name, status);\n}\nprivate static bool Same(byte[] a, byte[] b)\n{\nif (a == null || b == null || a.Length != b.Length) return false;\nfor (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;\nreturn true;\n}\nprivate static void ValidateTarget(string target)\n{\nif (string.IsNullOrEmpty(target) || !Path.IsPathRooted(target) || !string.Equals(Path.GetFullPath(target), target, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(target).Length == 0)\nthrow new NotSupportedException(\"An absolute canonical image path is required\");\n}\nprivate static void WriteCfg(Assembly assembly, string target, ulong bits, byte mask)\n{\nif (!Path.IsPathRooted(target) || Path.GetFileName(target).Length == 0)\nthrow new NotSupportedException(\"An absolute image path is required\");\nGroup cfg = ReadCfg(assembly, target);\nif ((ReadField(cfg, \"ControlFlowGuard\") & mask) == bits) return;\nstring path = Path.GetFullPath(target);\nconst string root = \"SOFTWARE\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Image File Execution Options\\\\\";\nusing (RegistryKey machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))\nusing (RegistryKey image = machine.OpenSubKey(root + Path.GetFileName(path), false))\n{\nif (image == null || !(image.GetValue(\"UseFilter\") is int) || (int)image.GetValue(\"UseFilter\") != 1)\nthrow new NotSupportedException(\"No image path mitigation filter\");\nstring match = null;\nforeach (string child in image.GetSubKeyNames())\n{\nusing (RegistryKey filter = image.OpenSubKey(child, false))\n{\nstring fullPath = filter == null ? null : filter.GetValue(\"FilterFullPath\") as string;\nif (fullPath == null || !string.Equals(fullPath, path, StringComparison.OrdinalIgnoreCase)) continue;\nif (match != null) throw new NotSupportedException(\"Multiple image mitigation filters\");\nmatch = child;\n}\n}\nif (match == null) throw new NotSupportedException(\"No exact image path mitigation filter\");\nusing (RegistryKey filter = machine.OpenSubKey(root + Path.GetFileName(path) + \"\\\\\" + match, true))\n{\nif (filter == null || !string.Equals(filter.GetValue(\"FilterFullPath\") as string, path, StringComparison.OrdinalIgnoreCase))\nthrow new NotSupportedException(\"Image mitigation filter changed\");\nfor (int attempt = 0; attempt < 3; attempt++)\n{\nbyte[] current = filter.GetValue(\"MitigationOptions\") as byte[];\nif (current == null || (current.Length != 16 && current.Length != 24) || filter.GetValueKind(\"MitigationOptions\") != RegistryValueKind.Binary)\nthrow new NotSupportedException(\"Unsupported image mitigation options\");\nulong actual = ReadField(ReadCfg(assembly, target), \"ControlFlowGuard\");\nif ((ulong)(current[5] & 7) != (actual & 7)) throw new NotSupportedException(\"Image mitigation layout does not match the native query\");\nif (!Same(current, filter.GetValue(\"MitigationOptions\") as byte[])) continue;\nbyte[] wanted = (byte[])current.Clone();\n// CFG uses bits 40..42. Changing this field through RtlSet also forces StrictCFG off.\n// Restrict this write to the exact path filter and preserve every other persisted bit.\nwanted[5] = (byte)((wanted[5] & ~mask) | (int)bits);\nif (Same(current, wanted)) return;\nfilter.SetValue(\"MitigationOptions\", wanted, RegistryValueKind.Binary);\nif (!Same(wanted, filter.GetValue(\"MitigationOptions\") as byte[]))\nthrow new InvalidOperationException(\"Image mitigation write could not be verified\");\nreturn;\n}\nthrow new InvalidOperationException(\"Image mitigation options kept changing\");\n}\n}\n}\nprivate static ulong[] Validate(string[] states)\n{\nif (states == null || states.Length != 5 && states.Length != Fields.Length) throw new FormatException(\"Invalid mitigation snapshot\");\nvar parsed = new ulong[states.Length];\nfor (int i = 0; i < states.Length; i++)\n{\nstring[] pieces = (states[i] ?? \"\").Split(':'); bool force;\nif (pieces.Length != 2 || !bool.TryParse(pieces[1], out force) || (pieces[0] != \"ON\" && pieces[0] != \"OFF\" && pieces[0] != \"NOTSET\"))\nthrow new FormatException(\"Invalid mitigation state\");\nparsed[i] = (pieces[0] == \"ON\" ? 1UL : pieces[0] == \"OFF\" ? 2UL : 0UL) | (force ? 4UL : 0UL);\n}\nreturn parsed;\n}\npublic static void Restore(Assembly assembly, string target, string[] states)\n{\nValidateTarget(target);\nulong[] wanted = Validate(states);\nGroup payload = ReadPayload(assembly, target, 0);\nbool payloadChanged = false;\nfor (int i = 1; i < wanted.Length; i++) payloadChanged |= ChangeField(payload, Fields[i], wanted[i], 7);\nCommit(payload, target, payloadChanged);\nWriteCfg(assembly, target, wanted[0], 7);\n}\npublic static void Apply(Assembly assembly, string target, bool includeSimExec)\n{\nValidateTarget(target);\nGroup payload = ReadPayload(assembly, target, 0);\nbool payloadChanged = false;\nfor (int i = 1; i < (includeSimExec ? Fields.Length : Fields.Length - 1); i++) payloadChanged |= ChangeField(payload, Fields[i], 2, 3);\nCommit(payload, target, payloadChanged);\nWriteCfg(assembly, target, 2, 3);\n}\n}\n";
-
         internal static bool DefenderRunning()
         {
             return SvcState.Query("WinDefend") == 4;
@@ -76,18 +74,18 @@ namespace PaviseApp
 
         private static string[] MitigationNames(bool includeSimExec)
         {
-            List<string> list = new List<string>();
-            list.Add("CFG");
-            list.Add("EnableExportAddressFilter");
-            list.Add("EnableExportAddressFilterPlus");
-            list.Add("EnableImportAddressFilter");
-            list.Add("EnableRopCallerCheck");
-            List<string> list2 = list;
+            List<string> texts = new List<string>();
+            texts.Add("CFG");
+            texts.Add("EnableExportAddressFilter");
+            texts.Add("EnableExportAddressFilterPlus");
+            texts.Add("EnableImportAddressFilter");
+            texts.Add("EnableRopCallerCheck");
+            List<string> currentTexts = texts;
             if (includeSimExec)
             {
-                list2.Add("EnableRopSimExec");
+                currentTexts.Add("EnableRopSimExec");
             }
-            return list2.ToArray();
+            return currentTexts.ToArray();
         }
 
         internal static bool Is32Bit(string target)
@@ -150,8 +148,7 @@ namespace PaviseApp
         internal static string MitigationQuery(string target)
         {
             StringBuilder stringBuilder = new StringBuilder("Import-Module ProcessMitigations; $q=Get-ProcessMitigation -Name " + Quote(target) + "; $r=@(); ");
-            string[] mitigationNamesResult = MitigationNames(true);
-            foreach (string entryText in mitigationNamesResult)
+            foreach (string entryText in MitigationNames(true))
             {
                 string message = ((entryText == "CFG") ? "CFG" : "Payload");
                 string message2 = ((entryText == "CFG") ? "Enable" : entryText);
@@ -348,8 +345,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] partsSnapshot = parts;
-            foreach (string entryText in partsSnapshot)
+            foreach (string entryText in parts)
             {
                 string[] entryTextParts = entryText.Split(':');
                 bool result;
@@ -409,13 +405,13 @@ namespace PaviseApp
             {
                 cloneResult2[j] = "OFF:" + parts2[j].Split(':')[1];
             }
-            PerformanceActionStore.Receipt receipt2 = new PerformanceActionStore.Receipt();
-            receipt2.Id = receipt.Id;
-            receipt2.Target = receipt.Target;
-            receipt2.Original = string.Join(";", cloneResult);
-            receipt2.Expected = string.Join(";", cloneResult2);
-            receipt2.Committed = false;
-            return receipt2;
+            PerformanceActionStore.Receipt currentReceipt = new PerformanceActionStore.Receipt();
+            currentReceipt.Id = receipt.Id;
+            currentReceipt.Target = receipt.Target;
+            currentReceipt.Original = string.Join(";", cloneResult);
+            currentReceipt.Expected = string.Join(";", cloneResult2);
+            currentReceipt.Committed = false;
+            return currentReceipt;
         }
 
         internal static bool Restore(PerformanceActionStore.Receipt r)
@@ -530,17 +526,17 @@ namespace PaviseApp
             }
             using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(targetParts[0]))
             {
-                object value = ((registryKey == null) ? null : registryKey.GetValue(targetParts[1]));
-                if (value == null)
+                object instance = ((registryKey == null) ? null : registryKey.GetValue(targetParts[1]));
+                if (instance == null)
                 {
                     return "absent";
                 }
                 switch (registryKey.GetValueKind(targetParts[1]))
                 {
                 case RegistryValueKind.DWord:
-                    return "d:" + ((int)value).ToString(CultureInfo.InvariantCulture);
+                    return "d:" + ((int)instance).ToString(CultureInfo.InvariantCulture);
                 case RegistryValueKind.Binary:
-                    return "b:" + Convert.ToBase64String((byte[])value);
+                    return "b:" + Convert.ToBase64String((byte[])instance);
                 default:
                     throw new InvalidOperationException("Unexpected registry value type");
                 }
@@ -641,22 +637,21 @@ namespace PaviseApp
                 return new string[1] { RegistryTarget("SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation") };
             default:
             {
-                List<string> list = new List<string>();
+                List<string> registryTargets = new List<string>();
                 if (id == "EnvAudioIdleV1")
                 {
                     using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e96c-e325-11ce-bfc1-08002be10318}"))
                     {
                         if (registryKey != null)
                         {
-                            string[] subKeyNames = registryKey.GetSubKeyNames();
-                            foreach (string entryKey in subKeyNames)
+                            foreach (string entryKey in registryKey.GetSubKeyNames())
                             {
                                 string message = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e96c-e325-11ce-bfc1-08002be10318}\\" + entryKey + "\\PowerSettings";
-                                using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey(message))
+                                using (RegistryKey currentRegistryKey = Registry.LocalMachine.OpenSubKey(message))
                                 {
-                                    if (registryKey2 != null && registryKey2.GetValue("PerformanceIdleTime") is byte[] && ((byte[])registryKey2.GetValue("PerformanceIdleTime")).Length == 4)
+                                    if (currentRegistryKey != null && currentRegistryKey.GetValue("PerformanceIdleTime") is byte[] && ((byte[])currentRegistryKey.GetValue("PerformanceIdleTime")).Length == 4)
                                     {
-                                        list.Add(RegistryTarget(message, "PerformanceIdleTime"));
+                                        registryTargets.Add(RegistryTarget(message, "PerformanceIdleTime"));
                                     }
                                 }
                             }
@@ -669,33 +664,31 @@ namespace PaviseApp
                     string message2 = "SYSTEM\\CurrentControlSet\\Enum\\" + (storageIdleAction ? "SCSI" : "PCI");
                     string b = (storageIdleAction ? "{4d36e967-e325-11ce-bfc1-08002be10318}" : "{4d36e97b-e325-11ce-bfc1-08002be10318}");
                     string name = (storageIdleAction ? "DisableIdlePowerManagement" : ((id == "EnvStorageRuntimeV1") ? "DisableRuntimePowerManagement" : "DisableD3Cold"));
-                    using (RegistryKey registryKey3 = Registry.LocalMachine.OpenSubKey(message2))
+                    using (RegistryKey candidateRegistryKey = Registry.LocalMachine.OpenSubKey(message2))
                     {
-                        if (registryKey3 != null)
+                        if (candidateRegistryKey != null)
                         {
-                            string[] subKeyNames2 = registryKey3.GetSubKeyNames();
-                            foreach (string entryKey2 in subKeyNames2)
+                            foreach (string entryKey2 in candidateRegistryKey.GetSubKeyNames())
                             {
-                                using (RegistryKey registryKey4 = registryKey3.OpenSubKey(entryKey2))
+                                using (RegistryKey resolvedRegistryKey = candidateRegistryKey.OpenSubKey(entryKey2))
                                 {
-                                    if (registryKey4 == null)
+                                    if (resolvedRegistryKey == null)
                                     {
                                         continue;
                                     }
-                                    string[] subKeyNames3 = registryKey4.GetSubKeyNames();
-                                    foreach (string entryKey3 in subKeyNames3)
+                                    foreach (string entryKey3 in resolvedRegistryKey.GetSubKeyNames())
                                     {
-                                        using (RegistryKey registryKey5 = registryKey4.OpenSubKey(entryKey3))
+                                        using (RegistryKey selectedRegistryKey = resolvedRegistryKey.OpenSubKey(entryKey3))
                                         {
-                                            if (registryKey5 == null || !string.Equals(registryKey5.GetValue("ClassGUID") as string, b, StringComparison.OrdinalIgnoreCase))
+                                            if (selectedRegistryKey == null || !string.Equals(selectedRegistryKey.GetValue("ClassGUID") as string, b, StringComparison.OrdinalIgnoreCase))
                                             {
                                                 continue;
                                             }
-                                            using (RegistryKey registryKey6 = registryKey5.OpenSubKey("Device Parameters\\StorPort"))
+                                            using (RegistryKey workingRegistryKey = selectedRegistryKey.OpenSubKey("Device Parameters\\StorPort"))
                                             {
-                                                if (registryKey6 != null)
+                                                if (workingRegistryKey != null)
                                                 {
-                                                    list.Add(RegistryTarget(message2 + "\\" + entryKey2 + "\\" + entryKey3 + "\\Device Parameters\\StorPort", name));
+                                                    registryTargets.Add(RegistryTarget(message2 + "\\" + entryKey2 + "\\" + entryKey3 + "\\Device Parameters\\StorPort", name));
                                                 }
                                             }
                                         }
@@ -705,7 +698,7 @@ namespace PaviseApp
                         }
                     }
                 }
-                return list.ToArray();
+                return registryTargets.ToArray();
             }
             }
         }
@@ -760,13 +753,13 @@ namespace PaviseApp
                 {
                     throw new InvalidOperationException("NVIDIA profile unavailable");
                 }
-                uint value;
-                int dword = NvApi.TryGetDword(session, profile, NvId(id), out value);
+                uint driverSettingValue;
+                int dword = NvApi.TryGetDword(session, profile, NvId(id), out driverSettingValue);
                 if (dword < 0)
                 {
                     throw new InvalidOperationException("NVIDIA setting unavailable");
                 }
-                return (dword == 0) ? "absent" : value.ToString(CultureInfo.InvariantCulture);
+                return (dword == 0) ? "absent" : driverSettingValue.ToString(CultureInfo.InvariantCulture);
             }
             finally
             {
@@ -815,8 +808,7 @@ namespace PaviseApp
                 {
                     throw new FormatException("Invalid mitigation snapshot");
                 }
-                string[] textEntries = parts;
-                foreach (string entryText in textEntries)
+                foreach (string entryText in parts)
                 {
                     string[] entryTextParts = entryText.Split(':');
                     bool result;

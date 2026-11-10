@@ -73,9 +73,9 @@ namespace PaviseApp
             {
                 lock (sync)
                 {
-                    foreach (Entry value in map.Values)
+                    foreach (Entry suppressionEntry in map.Values)
                     {
-                        if (value.AutomaticLayoutSets != null)
+                        if (suppressionEntry.AutomaticLayoutSets != null)
                         {
                             return true;
                         }

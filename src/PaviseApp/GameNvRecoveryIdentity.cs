@@ -77,12 +77,12 @@ namespace PaviseApp
         internal GameNvRecoveryIdentity(string planText, string planHash, string executable, string imageHash)
         {
             byte[] bytes = new UTF8Encoding(false, true).GetBytes(planText);
-            Dictionary<string, string> dictionary = GameNvText.Decode(bytes);
-            if (GameNvText.Hash(bytes) != planHash || dictionary.Count != 16 || dictionary["rule"] != "game-nv-prelaunch-intent-1" || dictionary["executable"] != executable || dictionary["image"] != imageHash || !GameNvText.IsHash(dictionary["evidence"]) || !GameNvText.IsHash(dictionary["machine"]) || !GameNvText.IsHash(dictionary["physical"]))
+            Dictionary<string, string> textsByName = GameNvText.Decode(bytes);
+            if (GameNvText.Hash(bytes) != planHash || textsByName.Count != 16 || textsByName["rule"] != "game-nv-prelaunch-intent-1" || textsByName["executable"] != executable || textsByName["image"] != imageHash || !GameNvText.IsHash(textsByName["evidence"]) || !GameNvText.IsHash(textsByName["machine"]) || !GameNvText.IsHash(textsByName["physical"]))
             {
                 throw new InvalidDataException("Recovery lacks its complete original game plan identity");
             }
-            Generation = long.Parse(dictionary["generation"], CultureInfo.InvariantCulture);
+            Generation = long.Parse(textsByName["generation"], CultureInfo.InvariantCulture);
             if (Generation < 1)
             {
                 throw new InvalidDataException("Invalid original game policy generation");
@@ -90,9 +90,9 @@ namespace PaviseApp
             Executable = executable;
             ImageHash = imageHash;
             PlanHash = planHash;
-            EvidenceHash = dictionary["evidence"];
-            MachineHash = dictionary["machine"];
-            PhysicalToken = dictionary["physical"];
+            EvidenceHash = textsByName["evidence"];
+            MachineHash = textsByName["machine"];
+            PhysicalToken = textsByName["physical"];
         }
     }
 }

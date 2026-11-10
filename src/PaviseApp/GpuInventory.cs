@@ -19,12 +19,6 @@ namespace PaviseApp
             public IntPtr Reserved;
         }
 
-        private const uint DigcfPresent = 2u;
-
-        private const uint SpdrpBusNumber = 21u;
-
-        private const string ClassPath = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}";
-
         private static Guid DisplayClass = new Guid("4d36e968-e325-11ce-bfc1-08002be10318");
 
         private static readonly object lk = new object();
@@ -37,8 +31,7 @@ namespace PaviseApp
         {
             get
             {
-                GpuAdapter[] adaptersResult = Adapters();
-                foreach (GpuAdapter gpuAdapter in adaptersResult)
+                foreach (GpuAdapter gpuAdapter in Adapters())
                 {
                     if (!gpuAdapter.Integrated)
                     {
@@ -55,8 +48,7 @@ namespace PaviseApp
             {
                 bool hasIntegratedGpu = false;
                 bool hasDiscreteGpu = false;
-                GpuAdapter[] adaptersResult = Adapters();
-                foreach (GpuAdapter gpuAdapter in adaptersResult)
+                foreach (GpuAdapter gpuAdapter in Adapters())
                 {
                     if (gpuAdapter.Integrated)
                     {
@@ -103,23 +95,22 @@ namespace PaviseApp
         public static GpuAdapter Primary()
         {
             GpuAdapter gpuAdapter = null;
-            GpuAdapter[] adaptersResult = Adapters();
-            foreach (GpuAdapter gpuAdapter2 in adaptersResult)
+            foreach (GpuAdapter currentAdaptersResult in Adapters())
             {
                 if (gpuAdapter == null)
                 {
-                    gpuAdapter = gpuAdapter2;
+                    gpuAdapter = currentAdaptersResult;
                 }
-                else if (gpuAdapter.Integrated != gpuAdapter2.Integrated)
+                else if (gpuAdapter.Integrated != currentAdaptersResult.Integrated)
                 {
                     if (gpuAdapter.Integrated)
                     {
-                        gpuAdapter = gpuAdapter2;
+                        gpuAdapter = currentAdaptersResult;
                     }
                 }
-                else if (gpuAdapter2.VideoMemoryBytes > gpuAdapter.VideoMemoryBytes)
+                else if (currentAdaptersResult.VideoMemoryBytes > gpuAdapter.VideoMemoryBytes)
                 {
-                    gpuAdapter = gpuAdapter2;
+                    gpuAdapter = currentAdaptersResult;
                 }
             }
             return gpuAdapter;
@@ -132,8 +123,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            GpuAdapter[] adaptersResult = Adapters();
-            foreach (GpuAdapter gpuAdapter in adaptersResult)
+            foreach (GpuAdapter gpuAdapter in Adapters())
             {
                 if (string.Equals(VenDevKey(gpuAdapter.HardwareId), venDevKeyResult, StringComparison.OrdinalIgnoreCase))
                 {
@@ -150,13 +140,12 @@ namespace PaviseApp
             {
                 return null;
             }
-            List<string> list = new List<string>();
-            GpuAdapter[] gpuAdapterItems = adaptersResult;
-            foreach (GpuAdapter gpuAdapter in gpuAdapterItems)
+            List<string> texts = new List<string>();
+            foreach (GpuAdapter gpuAdapter in adaptersResult)
             {
-                list.Add(gpuAdapter.Name + " " + gpuAdapter.KindText + " ");
+                texts.Add(gpuAdapter.Name + " " + gpuAdapter.KindText + " ");
             }
-            return string.Join(" + ", list.ToArray());
+            return string.Join(" + ", texts.ToArray());
         }
 
         internal static GpuVendor VendorOf(string hardwareId)
@@ -238,58 +227,58 @@ namespace PaviseApp
             if (!GpuInventoryDiscovery.TryMapPresent(instances, ReadCurrentDriver, out bindings))
                 return UnverifiedInventory();
             if (bindings.Length == 0) return new GpuAdapter[0];
-            Dictionary<string, bool> dictionary2 = DxCoreGpuProbe.CollectIntegrated();
-            List<GpuAdapter> list = new List<GpuAdapter>();
+            Dictionary<string, bool> conditionsByName = DxCoreGpuProbe.CollectIntegrated();
+            List<GpuAdapter> gpuAdapters = new List<GpuAdapter>();
             try
             {
                 using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"))
                 {
                     if (registryKey == null)
                     {
-                        return list.ToArray();
+                        return gpuAdapters.ToArray();
                     }
                     foreach (GpuDriverBinding binding in bindings)
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(binding.SoftwareKey))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(binding.SoftwareKey))
                         {
-                            if (registryKey2 == null)
+                            if (currentRegistryKey == null)
                             {
                                 return UnverifiedInventory();
                             }
-                            string hardwareId = registryKey2.GetValue("MatchingDeviceId") as string;
+                            string hardwareId = currentRegistryKey.GetValue("MatchingDeviceId") as string;
                             if (!GpuInventoryDiscovery.MatchesInstance(binding.InstanceId, hardwareId))
                             {
                                 return UnverifiedInventory();
                             }
-                            string compactResult = Compact(registryKey2.GetValue("DriverDesc") as string);
+                            string compactResult = Compact(currentRegistryKey.GetValue("DriverDesc") as string);
                             if (compactResult.Length == 0)
                             {
                                 return UnverifiedInventory();
                             }
                             GpuVendor vendor = VendorOf(hardwareId);
-                            long videoMemoryBytes = VideoMemoryBytes(registryKey2);
+                            long videoMemoryBytes = VideoMemoryBytes(currentRegistryKey);
                             string venDevKeyResult = VenDevKey(hardwareId);
-                            int value;
-                            if (!buses.TryGetValue(binding.InstanceId, out value))
+                            int buse;
+                            if (!buses.TryGetValue(binding.InstanceId, out buse))
                             {
-                                value = -1;
+                                buse = -1;
                             }
-                            bool value2;
-                            bool? driverReported = ((venDevKeyResult != null && dictionary2.TryGetValue(venDevKeyResult, out value2)) ? new bool?(value2) : null);
+                            bool integratedDriverReported;
+                            bool? driverReported = ((venDevKeyResult != null && conditionsByName.TryGetValue(venDevKeyResult, out integratedDriverReported)) ? new bool?(integratedDriverReported) : null);
                             if (!driverReported.HasValue && !degradeLogged)
                             {
                                 degradeLogged = true;
                                 Logger.Log(Lang.T("log.gpuinventory.6", 0) + compactResult);
                             }
-                            list.Add(new GpuAdapter
+                            gpuAdapters.Add(new GpuAdapter
                             {
                                 Name = compactResult,
                                 HardwareId = hardwareId,
                                 Vendor = vendor,
-                                BusNumber = value,
+                                BusNumber = buse,
                                 VideoMemoryBytes = videoMemoryBytes,
                                 IntegratedKnown = driverReported.HasValue,
-                                Integrated = IntegratedFrom(vendor, value, videoMemoryBytes, driverReported)
+                                Integrated = IntegratedFrom(vendor, buse, videoMemoryBytes, driverReported)
                             });
                         }
                     }
@@ -299,7 +288,7 @@ namespace PaviseApp
             {
                 return UnverifiedInventory();
             }
-            return list.ToArray();
+            return gpuAdapters.ToArray();
         }
 
         private static string ReadCurrentDriver(string instanceId)
@@ -316,22 +305,21 @@ namespace PaviseApp
 
         private static long VideoMemoryBytes(RegistryKey key)
         {
-            string[] textEntries = new string[2] { "HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize" };
-            string[] textEntries2 = textEntries;
-            foreach (string name in textEntries2)
+            string[] memoryValueNames = new string[2] { "HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize" };
+            foreach (string name in memoryValueNames)
             {
                 try
                 {
-                    object value = key.GetValue(name);
-                    if (value is long)
+                    object instance = key.GetValue(name);
+                    if (instance is long)
                     {
-                        return (long)value;
+                        return (long)instance;
                     }
-                    if (value is int)
+                    if (instance is int)
                     {
-                        return (uint)(int)value;
+                        return (uint)(int)instance;
                     }
-                    byte[] valueOffset = value as byte[];
+                    byte[] valueOffset = instance as byte[];
                     if (valueOffset != null && valueOffset.Length >= 4)
                     {
                         long videoMemoryBytesResult = 0L;
@@ -367,11 +355,11 @@ namespace PaviseApp
         private static bool TryReadPresentInstances(Dictionary<string, int> buses, out List<string> instances)
         {
             instances = new List<string>();
-            IntPtr intPtr = IntPtr.Zero;
+            IntPtr deviceInfoSet = IntPtr.Zero;
             try
             {
-                intPtr = SetupDiGetClassDevsW(ref DisplayClass, null, IntPtr.Zero, 2u);
-                if (intPtr == IntPtr.Zero || intPtr == new IntPtr(-1))
+                deviceInfoSet = SetupDiGetClassDevsW(ref DisplayClass, null, IntPtr.Zero, 2u);
+                if (deviceInfoSet == IntPtr.Zero || deviceInfoSet == new IntPtr(-1))
                 {
                     return false;
                 }
@@ -379,15 +367,15 @@ namespace PaviseApp
                 data.Size = (uint)Marshal.SizeOf(typeof(SpDevinfoData));
                 for (uint iterationIndex = 0u; ; iterationIndex++)
                 {
-                    if (!SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data))
+                    if (!SetupDiEnumDeviceInfo(deviceInfoSet, iterationIndex, ref data))
                         return Marshal.GetLastWin32Error() == 259;
                     StringBuilder stringBuilder = new StringBuilder(512);
                     uint required;
-                    if (!SetupDiGetDeviceInstanceIdW(intPtr, ref data, stringBuilder, 512u, out required))
+                    if (!SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref data, stringBuilder, 512u, out required))
                     {
                         if (Marshal.GetLastWin32Error() != 122 || required == 0 || required > 4096) return false;
                         stringBuilder = new StringBuilder((int)required);
-                        if (!SetupDiGetDeviceInstanceIdW(intPtr, ref data, stringBuilder, required, out required)) return false;
+                        if (!SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref data, stringBuilder, required, out required)) return false;
                     }
                     string stringBuilderText = stringBuilder.ToString();
                     if (stringBuilderText.Length == 0) return false;
@@ -395,7 +383,7 @@ namespace PaviseApp
                     {
                         instances.Add(stringBuilderText);
                         int bus;
-                        if (TryReadBusNumber(intPtr, ref data, out bus))
+                        if (TryReadBusNumber(deviceInfoSet, ref data, out bus))
                         {
                             buses[stringBuilderText] = bus;
                         }
@@ -406,11 +394,11 @@ namespace PaviseApp
             catch { return false; }
             finally
             {
-                if (intPtr != IntPtr.Zero && intPtr != new IntPtr(-1))
+                if (deviceInfoSet != IntPtr.Zero && deviceInfoSet != new IntPtr(-1))
                 {
                     try
                     {
-                        SetupDiDestroyDeviceInfoList(intPtr);
+                        SetupDiDestroyDeviceInfoList(deviceInfoSet);
                     }
                     catch
                     {

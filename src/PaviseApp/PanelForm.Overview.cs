@@ -141,10 +141,9 @@ namespace PaviseApp
             {
                 AddCoreShortcut("ccd" + i, Lang.F(((dieMasksResult[i] & cacheHeavyMaskResult) != 0) ? "core.band.ccd.cache" : "core.band.ccd", i), dieMasksResult[i], 0);
             }
-            ulong[] physicalCoreMasksResult = CpuTopology.PhysicalCoreMasks();
-            foreach (ulong numericValueEntry in physicalCoreMasksResult)
+            foreach (ulong physicalCoreMask in CpuTopology.PhysicalCoreMasks())
             {
-                if (CpuTopology.CountSetBits(numericValueEntry & CpuTopology.AllMask) > 1)
+                if (CpuTopology.CountSetBits(physicalCoreMask & CpuTopology.AllMask) > 1)
                 {
                     AddCoreShortcut("noSmt", Lang.T("schedule.quick.nosmt"), 0uL, 1);
                     AddCoreShortcut("withSmt", Lang.T("schedule.quick.smt"), 0uL, 2);
@@ -234,12 +233,12 @@ namespace PaviseApp
             overviewHudGeneration++;
             overviewSpecs = new OverviewSpecItem[4];
             overviewUsage = new OverviewUsageItem[3];
-            string[] textEntries = new string[4] { "cpu", "gpu", "memory", "display" };
+            string[] metricNames = new string[4] { "cpu", "gpu", "memory", "display" };
             for (int i = 0; i < overviewSpecs.Length; i++)
             {
                 overviewSpecs[i] = new OverviewSpecItem
                 {
-                    Name = "overviewSpec" + textEntries[i]
+                    Name = "overviewSpec" + metricNames[i]
                 };
                 pageOverview.Controls.Add(overviewSpecs[i]);
             }
@@ -372,8 +371,8 @@ namespace PaviseApp
                     overviewUsage[1].AccessibleDescription = overviewUsage[1].Value + "\r\n" + resources.GpuUsageDescription;
                 }
                 double? nullable = ((resources.TotalMemoryBytes != 0 && resources.UsedMemoryBytes <= resources.TotalMemoryBytes) ? new double?((double)resources.UsedMemoryBytes * 100.0 / (double)resources.TotalMemoryBytes) : null);
-                string value = (nullable.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
-                overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), value, nullable.HasValue ? OverviewPercentText(nullable) : "", nullable);
+                string text = (nullable.HasValue ? (OverviewCapacity(resources.UsedMemoryBytes, "0.0") + " / " + OverviewCapacity(resources.TotalMemoryBytes, "0.#") + " GB") : "--");
+                overviewUsage[2].SetReading(PerformancePolicy.Text("内存", "Memory"), text, nullable.HasValue ? OverviewPercentText(nullable) : "", nullable);
                 bool heightChanged = false;
                 for (int j = 0; j < overviewUsage.Length; j++)
                 {
@@ -399,83 +398,77 @@ namespace PaviseApp
             {
                 return pageHeight;
             }
-            int arrangeOverviewHudValue = ((pageWidth >= 1100) ? 64 : 28);
-            int arrangeOverviewHudValue2 = 20;
-            int maxLimit = Math.Min(264, Math.Max(188, (pageWidth - 560 - (arrangeOverviewHudValue + arrangeOverviewHudValue2) * 2) / 2));
-            int coreWidthLimit = Math.Min(coreWidth, pageWidth - (arrangeOverviewHudValue + arrangeOverviewHudValue2 + maxLimit) * 2);
+            int sidePadding = ((pageWidth >= 1100) ? 64 : 28);
+            int columnGap = 20;
+            int maxLimit = Math.Min(264, Math.Max(188, (pageWidth - 560 - (sidePadding + columnGap) * 2) / 2));
+            int coreWidthLimit = Math.Min(coreWidth, pageWidth - (sidePadding + columnGap + maxLimit) * 2);
             bool wideHud = pageWidth >= 900 && coreWidthLimit >= 340;
-            int arrangeOverviewHudValue3 = 0;
-            int arrangeOverviewHudValue4 = 0;
+            int specHeight = 0;
+            int usageHeight = 0;
             int maximumSummaryWidth = Math.Min(208, maxLimit);
-            OverviewSpecItem[] overviewSpecsSnapshot = overviewSpecs;
-            foreach (OverviewSpecItem overviewSpecItem in overviewSpecsSnapshot)
+            foreach (OverviewSpecItem overviewSpecItem in overviewSpecs)
             {
                 overviewSpecItem.Compact = !wideHud || pageWidth < 1080;
-                arrangeOverviewHudValue3 += OverviewMeasuredHeight(overviewSpecItem, maxLimit);
+                specHeight += OverviewMeasuredHeight(overviewSpecItem, maxLimit);
             }
-            OverviewUsageItem[] overviewUsageSnapshot = overviewUsage;
-            foreach (OverviewUsageItem overviewUsageItem in overviewUsageSnapshot)
+            foreach (OverviewUsageItem overviewUsageItem in overviewUsage)
             {
                 overviewUsageItem.Compact = !wideHud || pageWidth < 1080;
-                arrangeOverviewHudValue4 += OverviewMeasuredHeight(overviewUsageItem, maximumSummaryWidth);
+                usageHeight += OverviewMeasuredHeight(overviewUsageItem, maximumSummaryWidth);
             }
-            arrangeOverviewHudValue3 += 36;
-            arrangeOverviewHudValue4 += 36;
-            if (wideHud & (Math.Max(arrangeOverviewHudValue3, arrangeOverviewHudValue4) + 32 <= statusY))
+            specHeight += 36;
+            usageHeight += 36;
+            if (wideHud & (Math.Max(specHeight, usageHeight) + 32 <= statusY))
             {
                 coreWidth = coreWidthLimit;
                 coreHeight = Math.Min(coreHeight, (int)Math.Round((float)coreWidth * 450f / 580f));
                 coreY = Math.Max(0, (statusY - (overviewSecurityWarningShown ? 44 : 0) - coreHeight) / 2);
-                int minLimit = Math.Max(8, Math.Min((statusY - arrangeOverviewHudValue3) / 2 + 24, statusY - arrangeOverviewHudValue3 - 16));
-                OverviewSpecItem[] overviewSpecsSnapshot2 = overviewSpecs;
-                foreach (OverviewSpecItem control in overviewSpecsSnapshot2)
+                int minLimit = Math.Max(8, Math.Min((statusY - specHeight) / 2 + 24, statusY - specHeight - 16));
+                foreach (OverviewSpecItem control in overviewSpecs)
                 {
                     int overviewMeasuredHeightResult = OverviewMeasuredHeight(control, maxLimit);
-                    SetOverviewBounds(control, arrangeOverviewHudValue, minLimit, maxLimit, overviewMeasuredHeightResult);
+                    SetOverviewBounds(control, sidePadding, minLimit, maxLimit, overviewMeasuredHeightResult);
                     minLimit += overviewMeasuredHeightResult + 12;
                 }
-                minLimit = Math.Max(8, Math.Min((statusY - arrangeOverviewHudValue4) / 2 + 24, statusY - arrangeOverviewHudValue4 - 16));
-                OverviewUsageItem[] overviewUsageSnapshot2 = overviewUsage;
-                foreach (OverviewUsageItem control2 in overviewUsageSnapshot2)
+                minLimit = Math.Max(8, Math.Min((statusY - usageHeight) / 2 + 24, statusY - usageHeight - 16));
+                foreach (OverviewUsageItem control2 in overviewUsage)
                 {
                     int overviewMeasuredHeightResult2 = OverviewMeasuredHeight(control2, maximumSummaryWidth);
-                    SetOverviewBounds(control2, pageWidth - arrangeOverviewHudValue - maximumSummaryWidth, minLimit, maximumSummaryWidth, overviewMeasuredHeightResult2);
+                    SetOverviewBounds(control2, pageWidth - sidePadding - maximumSummaryWidth, minLimit, maximumSummaryWidth, overviewMeasuredHeightResult2);
                     minLimit += overviewMeasuredHeightResult2 + 18;
                 }
                 return pageHeight;
             }
             int lowerBound = Math.Max(1, pageWidth - Dpi.U(SystemInformation.VerticalScrollBarWidth));
-            arrangeOverviewHudValue = ((lowerBound >= 760) ? 32 : 20);
+            sidePadding = ((lowerBound >= 760) ? 32 : 20);
             bool wideLayout = lowerBound >= 760;
-            coreWidth = Math.Min(460, Math.Max(180, lowerBound - arrangeOverviewHudValue * 2));
+            coreWidth = Math.Min(460, Math.Max(180, lowerBound - sidePadding * 2));
             coreHeight = Math.Min((int)Math.Round((float)coreWidth * 450f / 580f), Math.Max(1, pageHeight - 16));
             coreWidth = Math.Min(coreWidth, (int)Math.Round((float)coreHeight * 580f / 450f));
             coreY = 8;
             statusY = coreY + coreHeight + 8 + (overviewSecurityWarningShown ? 44 : 0);
-            int arrangeOverviewHudValue5 = statusY + 62 + (overviewActivityShown ? 30 : 0);
-            int lowerBound2 = Math.Max(1, lowerBound - arrangeOverviewHudValue * 2);
+            int detailsTop = statusY + 62 + (overviewActivityShown ? 30 : 0);
+            int lowerBound2 = Math.Max(1, lowerBound - sidePadding * 2);
             int ratio = (wideLayout ? ((lowerBound2 - 48) / 2) : lowerBound2);
-            int arrangeOverviewHudValue6 = arrangeOverviewHudValue5;
-            int arrangeOverviewHudValue7 = arrangeOverviewHudValue5;
-            OverviewSpecItem[] overviewSpecsSnapshot3 = overviewSpecs;
-            foreach (OverviewSpecItem overviewSpecItem2 in overviewSpecsSnapshot3)
+            int specBottom = detailsTop;
+            int detailsBottom = detailsTop;
+            foreach (OverviewSpecItem currentOverviewSpecItem in overviewSpecs)
             {
-                overviewSpecItem2.Compact = true;
-                int overviewMeasuredHeightResult3 = OverviewMeasuredHeight(overviewSpecItem2, ratio);
-                SetOverviewBounds(overviewSpecItem2, arrangeOverviewHudValue, arrangeOverviewHudValue7, ratio, overviewMeasuredHeightResult3);
-                arrangeOverviewHudValue7 += overviewMeasuredHeightResult3 + 12;
+                currentOverviewSpecItem.Compact = true;
+                int overviewMeasuredHeightResult3 = OverviewMeasuredHeight(currentOverviewSpecItem, ratio);
+                SetOverviewBounds(currentOverviewSpecItem, sidePadding, detailsBottom, ratio, overviewMeasuredHeightResult3);
+                detailsBottom += overviewMeasuredHeightResult3 + 12;
             }
-            arrangeOverviewHudValue6 = arrangeOverviewHudValue7;
-            arrangeOverviewHudValue7 = (wideLayout ? arrangeOverviewHudValue5 : (arrangeOverviewHudValue7 + 16));
-            OverviewUsageItem[] overviewUsageSnapshot3 = overviewUsage;
-            foreach (OverviewUsageItem overviewUsageItem2 in overviewUsageSnapshot3)
+            specBottom = detailsBottom;
+            detailsBottom = (wideLayout ? detailsTop : (detailsBottom + 16));
+            foreach (OverviewUsageItem currentOverviewUsageItem in overviewUsage)
             {
-                overviewUsageItem2.Compact = true;
-                int overviewMeasuredHeightResult4 = OverviewMeasuredHeight(overviewUsageItem2, ratio);
-                SetOverviewBounds(overviewUsageItem2, wideLayout ? (arrangeOverviewHudValue + ratio + 48) : arrangeOverviewHudValue, arrangeOverviewHudValue7, ratio, overviewMeasuredHeightResult4);
-                arrangeOverviewHudValue7 += overviewMeasuredHeightResult4 + 18;
+                currentOverviewUsageItem.Compact = true;
+                int overviewMeasuredHeightResult4 = OverviewMeasuredHeight(currentOverviewUsageItem, ratio);
+                SetOverviewBounds(currentOverviewUsageItem, wideLayout ? (sidePadding + ratio + 48) : sidePadding, detailsBottom, ratio, overviewMeasuredHeightResult4);
+                detailsBottom += overviewMeasuredHeightResult4 + 18;
             }
-            return Math.Max(pageHeight, Math.Max(arrangeOverviewHudValue6, arrangeOverviewHudValue7) + 12);
+            return Math.Max(pageHeight, Math.Max(specBottom, detailsBottom) + 12);
         }
         private void SetOverviewTelemetryActive(bool active)
         {
@@ -666,7 +659,7 @@ namespace PaviseApp
                 BackColor = Theme.StrokeHi
             };
             pageOverview.Controls.Add(overviewStatusDivider);
-            string message = ((Lang.Cur == 0) ? "守护" : ((Lang.Cur == 2) ? "保護" : "Guard"));
+            string message = ((Lang.Cur == 0) ? "守护" : (("Guard")));
             lblOverviewGuard = CardLabel(pageOverview, message, 0, 0, 42, 42, 11.5f, false, Theme.Dim);
             lblOverviewGuard.Name = "overviewGuardLabel";
             lblOverviewGuard.TextAlign = ContentAlignment.MiddleLeft;
@@ -695,21 +688,6 @@ namespace PaviseApp
                 LayoutOverviewPage();
             };
             LayoutOverviewPage();
-        }
-        private RogLinkButton AddOverviewLink(Control parent, int x, int y, int w, int h, string text, string code, string glyph, string url)
-        {
-            RogLinkButton rogLinkButton = new RogLinkButton(text, code, glyph);
-            rogLinkButton.Bg = Theme.Nav;
-            rogLinkButton.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
-            if (url != null)
-            {
-                rogLinkButton.Click += delegate
-                {
-                    OpenExternal(url);
-                };
-            }
-            parent.Controls.Add(rogLinkButton);
-            return rogLinkButton;
         }
     }
 }

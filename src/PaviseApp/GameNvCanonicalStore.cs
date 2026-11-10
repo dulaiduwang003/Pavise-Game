@@ -38,14 +38,14 @@ namespace PaviseApp
 
         internal static GameNvCanonicalStore Open(string dataRoot)
         {
-            string value;
+            string text;
             using (WindowsIdentity windowsIdentity = WindowsIdentity.GetCurrent())
             {
                 if (windowsIdentity.User == null)
                 {
                     throw new UnauthorizedAccessException();
                 }
-                value = windowsIdentity.User.Value;
+                text = windowsIdentity.User.Value;
             }
             string input;
             using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
@@ -57,17 +57,17 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Native recovery machine identity unavailable");
             }
-            return new GameNvCanonicalStore(dataRoot, value, GameNvText.Hash(Encoding.UTF8.GetBytes(result.ToString("N") + "\n" + value)), true);
+            return new GameNvCanonicalStore(dataRoot, text, GameNvText.Hash(Encoding.UTF8.GetBytes(result.ToString("N") + "\n" + text)), true);
         }
 
         private byte[] Header()
         {
-            Dictionary<string, string> dictionary = new Dictionary<string, string>();
-            dictionary.Add("schema", "game-nv-owner-2");
-            dictionary.Add("user", user);
-            dictionary.Add("machine", machine);
-            dictionary.Add("root", Root.ToUpperInvariant());
-            return GameNvText.Encode(dictionary);
+            Dictionary<string, string> textsByName = new Dictionary<string, string>();
+            textsByName.Add("schema", "game-nv-owner-2");
+            textsByName.Add("user", user);
+            textsByName.Add("machine", machine);
+            textsByName.Add("root", Root.ToUpperInvariant());
+            return GameNvText.Encode(textsByName);
         }
 
         internal void RequireNativeOwner()
@@ -93,23 +93,22 @@ namespace PaviseApp
                 throw new InvalidDataException("Journal outside canonical NVIDIA root");
             }
             byte[] bytes = Read(Path.Combine(journal, "original.tsv"), 1048576);
-            Dictionary<string, string> dictionary = GameNvText.Decode(bytes);
-            if (dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || (dictionary["own"] != "0" && dictionary["own"] != "1"))
+            Dictionary<string, string> textsByName = GameNvText.Decode(bytes);
+            if (textsByName.Count != 14 || textsByName["schema"] != "game-nv-original-1" || (textsByName["own"] != "0" && textsByName["own"] != "1"))
             {
                 throw new InvalidDataException("Invalid NVIDIA original record");
             }
-            GameNvRecoveryIdentity gameNvRecoveryIdentity = new GameNvRecoveryIdentity(dictionary["plan_text"], dictionary["plan"], dictionary["target"], dictionary["image"]).WithJournal(journal, GameNvText.Hash(bytes), dictionary["profile"], uint.Parse(dictionary["predefined"], CultureInfo.InvariantCulture), dictionary["scope"], dictionary["lease"], dictionary["own"] == "1");
+            GameNvRecoveryIdentity gameNvRecoveryIdentity = new GameNvRecoveryIdentity(textsByName["plan_text"], textsByName["plan"], textsByName["target"], textsByName["image"]).WithJournal(journal, GameNvText.Hash(bytes), textsByName["profile"], uint.Parse(textsByName["predefined"], CultureInfo.InvariantCulture), textsByName["scope"], textsByName["lease"], textsByName["own"] == "1");
             if (!Path.IsPathRooted(gameNvRecoveryIdentity.Executable) || Path.GetFullPath(gameNvRecoveryIdentity.Executable) != gameNvRecoveryIdentity.Executable)
             {
                 throw new InvalidDataException("Original recovery target is not an exact absolute path");
             }
             int processedCount = 0;
-            uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
-            foreach (uint numericValueEntry in numericValueItems)
+            foreach (uint settingId in new uint[2] { 274197361u, 549528094u })
             {
-                string numericValueEntryText = numericValueEntry.ToString("X8");
-                GameNvSetting.Parse(dictionary["original." + numericValueEntryText]);
-                string message = dictionary["target." + numericValueEntryText];
+                string settingIdText = settingId.ToString("X8");
+                GameNvSetting.Parse(textsByName["original." + settingIdText]);
+                string message = textsByName["target." + settingIdText];
                 if (message == "1")
                 {
                     processedCount++;
@@ -189,11 +188,11 @@ namespace PaviseApp
                     throw new InvalidDataException("NVIDIA ledger record exceeds bound");
                 }
                 byte[] rawBytes = new byte[(int)fileStream.Length];
-                int value;
-                for (int i = 0; i < rawBytes.Length; i += value)
+                int bytesRead;
+                for (int i = 0; i < rawBytes.Length; i += bytesRead)
                 {
-                    value = fileStream.Read(rawBytes, i, rawBytes.Length - i);
-                    if (value <= 0)
+                    bytesRead = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+                    if (bytesRead <= 0)
                     {
                         throw new EndOfStreamException();
                     }
@@ -222,12 +221,12 @@ namespace PaviseApp
                 throw new InvalidDataException("Receipt escaped canonical NVIDIA owner root");
             }
             byte[] bytes = Read(Path.Combine(original.JournalDirectory, "original.tsv"), 1048576);
-            Dictionary<string, string> dictionary = GameNvText.Decode(bytes);
-            if (GameNvText.Hash(bytes) != original.OriginalHash || dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != original.LeaseToken || dictionary["profile"] != original.ProfileName || dictionary["predefined"] != original.ProfilePredefined.ToString(CultureInfo.InvariantCulture) || dictionary["scope"] != original.ProfileScopeHash || dictionary["own"] != (original.OwnResources ? "1" : "0") || dictionary["target"] != original.Executable || dictionary["image"] != original.ImageHash || dictionary["plan"] != original.PlanHash)
+            Dictionary<string, string> textsByName = GameNvText.Decode(bytes);
+            if (GameNvText.Hash(bytes) != original.OriginalHash || textsByName.Count != 14 || textsByName["schema"] != "game-nv-original-1" || textsByName["lease"] != original.LeaseToken || textsByName["profile"] != original.ProfileName || textsByName["predefined"] != original.ProfilePredefined.ToString(CultureInfo.InvariantCulture) || textsByName["scope"] != original.ProfileScopeHash || textsByName["own"] != (original.OwnResources ? "1" : "0") || textsByName["target"] != original.Executable || textsByName["image"] != original.ImageHash || textsByName["plan"] != original.PlanHash)
             {
                 throw new InvalidDataException("Recovery no longer owns its exact original resource");
             }
-            new GameNvRecoveryIdentity(dictionary["plan_text"], original.PlanHash, original.Executable, original.ImageHash);
+            new GameNvRecoveryIdentity(textsByName["plan_text"], original.PlanHash, original.Executable, original.ImageHash);
             string hashResult = GameNvText.Hash(Encoding.UTF8.GetBytes(original.ProfileName.ToUpperInvariant() + "\n" + original.ProfilePredefined.ToString(CultureInfo.InvariantCulture)));
             if (Path.GetFileName(Path.GetDirectoryName(original.JournalDirectory)) != hashResult)
             {
@@ -242,30 +241,27 @@ namespace PaviseApp
                 return new string[0];
             }
             RequireOwner(false);
-            string[] files = Directory.GetFiles(Root);
-            foreach (string path in files)
+            foreach (string path in Directory.GetFiles(Root))
             {
                 if (Path.GetFileName(path) != "owner.tsv" && Path.GetFileName(path) != "store.lock")
                 {
                     throw new InvalidDataException("Unknown root-level NVIDIA recovery record");
                 }
             }
-            List<string> list = new List<string>();
+            List<string> entryTexts = new List<string>();
             string[] directories = Directory.GetDirectories(Root);
             if (directories.Length > 256)
             {
                 throw new InvalidDataException("NVIDIA history exceeds bound");
             }
-            string[] directoriesSnapshot = directories;
-            foreach (string path2 in directoriesSnapshot)
+            foreach (string path2 in directories)
             {
                 NoReparse.CheckPath(path2);
                 if (!GameNvText.IsHash(Path.GetFileName(path2)))
                 {
                     throw new InvalidDataException("Unknown NVIDIA profile directory");
                 }
-                string[] files2 = Directory.GetFiles(path2);
-                foreach (string path3 in files2)
+                foreach (string path3 in Directory.GetFiles(path2))
                 {
                     if (Path.GetFileName(path3) != "profile.lock")
                     {
@@ -277,8 +273,7 @@ namespace PaviseApp
                 {
                     throw new InvalidDataException("NVIDIA lease history exceeds bound");
                 }
-                string[] directories2Snapshot = directories2;
-                foreach (string entryText in directories2Snapshot)
+                foreach (string entryText in directories2)
                 {
                     if (!IsJournal(entryText))
                     {
@@ -293,11 +288,11 @@ namespace PaviseApp
                     }
                     else if (!Terminal(entryText))
                     {
-                        list.Add(entryText);
+                        entryTexts.Add(entryText);
                     }
                 }
             }
-            return list.ToArray();
+            return entryTexts.ToArray();
         }
 
         private bool Terminal(string journal)
@@ -309,39 +304,38 @@ namespace PaviseApp
             }
             ReadOriginal(journal);
             byte[] bytes = Read(Path.Combine(journal, "original.tsv"), 1048576);
-            Dictionary<string, string> dictionary = GameNvText.Decode(bytes);
+            Dictionary<string, string> textsByName = GameNvText.Decode(bytes);
             string fileName = Path.GetFileName(journal);
-            if (dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != fileName)
+            if (textsByName.Count != 14 || textsByName["schema"] != "game-nv-original-1" || textsByName["lease"] != fileName)
             {
                 throw new InvalidDataException("Invalid terminal original");
             }
-            Dictionary<string, string> dictionary2 = new Dictionary<string, string>();
-            dictionary2.Add("schema", "game-nv-phase-1");
-            dictionary2.Add("lease", fileName);
-            dictionary2.Add("original", GameNvText.Hash(bytes));
-            dictionary2.Add("operation", "terminal");
-            byte[] second = GameNvText.Encode(dictionary2);
+            Dictionary<string, string> currentTextsByName = new Dictionary<string, string>();
+            currentTextsByName.Add("schema", "game-nv-phase-1");
+            currentTextsByName.Add("lease", fileName);
+            currentTextsByName.Add("original", GameNvText.Hash(bytes));
+            currentTextsByName.Add("operation", "terminal");
+            byte[] second = GameNvText.Encode(currentTextsByName);
             if (!Read(path, 4096).SequenceEqual(second))
             {
                 throw new InvalidDataException("Terminal file is not original-bound proof");
             }
-            HashSet<string> hashSet = new HashSet<string>(new string[10] { "original.tsv", "terminal.tsv", "issued-create.tsv", "issued-bind.tsv", "issued-unbind.tsv", "issued-delete.tsv", "issued-set-1057EB71.tsv", "issued-set-20C1221E.tsv", "issued-restore-1057EB71.tsv", "issued-restore-20C1221E.tsv" }, StringComparer.Ordinal);
-            string[] files = Directory.GetFiles(journal);
-            foreach (string path2 in files)
+            HashSet<string> textsSet = new HashSet<string>(new string[10] { "original.tsv", "terminal.tsv", "issued-create.tsv", "issued-bind.tsv", "issued-unbind.tsv", "issued-delete.tsv", "issued-set-1057EB71.tsv", "issued-set-20C1221E.tsv", "issued-restore-1057EB71.tsv", "issued-restore-20C1221E.tsv" }, StringComparer.Ordinal);
+            foreach (string path2 in Directory.GetFiles(journal))
             {
                 string fileName2 = Path.GetFileName(path2);
-                if (!hashSet.Contains(fileName2))
+                if (!textsSet.Contains(fileName2))
                 {
                     throw new InvalidDataException("Unknown terminal phase retained for review");
                 }
                 if (fileName2 != "original.tsv" && fileName2 != "terminal.tsv")
                 {
-                    Dictionary<string, string> dictionary3 = new Dictionary<string, string>();
-                    dictionary3.Add("schema", "game-nv-phase-1");
-                    dictionary3.Add("lease", fileName);
-                    dictionary3.Add("original", GameNvText.Hash(bytes));
-                    dictionary3.Add("operation", Path.GetFileNameWithoutExtension(fileName2));
-                    byte[] second2 = GameNvText.Encode(dictionary3);
+                    Dictionary<string, string> candidateTextsByName = new Dictionary<string, string>();
+                    candidateTextsByName.Add("schema", "game-nv-phase-1");
+                    candidateTextsByName.Add("lease", fileName);
+                    candidateTextsByName.Add("original", GameNvText.Hash(bytes));
+                    candidateTextsByName.Add("operation", Path.GetFileNameWithoutExtension(fileName2));
+                    byte[] second2 = GameNvText.Encode(candidateTextsByName);
                     if (!Read(path2, 4096).SequenceEqual(second2))
                     {
                         throw new InvalidDataException("Terminal history contains an unbound issued phase");
@@ -373,25 +367,22 @@ namespace PaviseApp
                     where File.Exists(Path.Combine(x, "original.tsv")) && Terminal(x)
                     orderby File.GetLastWriteTimeUtc(Path.Combine(x, "terminal.tsv")) descending
                     select x).ToArray();
-                foreach (string item in source.Skip(keep))
+                foreach (string skip in source.Skip(keep))
                 {
-                    if (!IsJournal(item) || !Terminal(item))
+                    if (!IsJournal(skip) || !Terminal(skip))
                     {
                         throw new InvalidDataException("Terminal scope changed before retention cleanup");
                     }
-                    string[] files = Directory.GetFiles(item);
-                    foreach (string path in files)
+                    foreach (string path in Directory.GetFiles(skip))
                     {
                         NoReparse.CheckPath(path);
                         File.Delete(path);
                     }
-                    Directory.Delete(item, false);
+                    Directory.Delete(skip, false);
                 }
-                string[] directories = Directory.GetDirectories(Root);
-                foreach (string path2 in directories)
+                foreach (string path2 in Directory.GetDirectories(Root))
                 {
-                    string[] directories2 = Directory.GetDirectories(path2);
-                    foreach (string entryText in directories2)
+                    foreach (string entryText in Directory.GetDirectories(path2))
                     {
                         if (!IsJournal(entryText))
                         {
@@ -403,8 +394,7 @@ namespace PaviseApp
                         }
                     }
                 }
-                string[] directories3 = Directory.GetDirectories(Root);
-                foreach (string path3 in directories3)
+                foreach (string path3 in Directory.GetDirectories(Root))
                 {
                     NoReparse.CheckPath(path3);
                     if (Directory.GetDirectories(path3).Length != 0)
@@ -414,8 +404,7 @@ namespace PaviseApp
                     string[] files2 = Directory.GetFiles(path3);
                     if (!files2.Any((string x) => Path.GetFileName(x) != "profile.lock"))
                     {
-                        string[] files2Snapshot = files2;
-                        foreach (string path4 in files2Snapshot)
+                        foreach (string path4 in files2)
                         {
                             NoReparse.CheckPath(path4);
                             File.Delete(path4);

@@ -26,10 +26,10 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value))
+                string text;
+                if (Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out text))
                 {
-                    return value.Length > 0;
+                    return text.Length > 0;
                 }
                 return true;
             }
@@ -47,12 +47,12 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> tids = new HashSet<int>();
             for (int i = 1; i < rawParts.Length; i++)
             {
                 string[] parts = rawParts[i].Split('|');
                 FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
-                if (parts.Length != 5 || !int.TryParse(parts[0], out frameThreadReceipt.Pid) || !long.TryParse(parts[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(parts[2], out frameThreadReceipt.Tid) || !long.TryParse(parts[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(parts[4], out frameThreadReceipt.Original) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < 1 || frameThreadReceipt.Original >= 5 || !hashSet.Add(frameThreadReceipt.Tid))
+                if (parts.Length != 5 || !int.TryParse(parts[0], out frameThreadReceipt.Pid) || !long.TryParse(parts[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(parts[2], out frameThreadReceipt.Tid) || !long.TryParse(parts[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(parts[4], out frameThreadReceipt.Original) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < 1 || frameThreadReceipt.Original >= 5 || !tids.Add(frameThreadReceipt.Tid))
                 {
                     return false;
                 }
@@ -83,58 +83,58 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                List<FrameThreadReceipt> list = new List<FrameThreadReceipt>();
-                foreach (FrameThreadReceipt item in selected)
+                List<FrameThreadReceipt> frameThreadReceipts = new List<FrameThreadReceipt>();
+                foreach (FrameThreadReceipt currentSelected in selected)
                 {
                     int priority;
-                    if (item.Original >= -2 && item.Original < 1 && adapter.ReadMemory(item, out priority) == 0 && priority >= 1 && priority < 5)
+                    if (currentSelected.Original >= -2 && currentSelected.Original < 1 && adapter.ReadMemory(currentSelected, out priority) == 0 && priority >= 1 && priority < 5)
                     {
-                        list.Add(new FrameThreadReceipt
+                        frameThreadReceipts.Add(new FrameThreadReceipt
                         {
-                            Pid = item.Pid,
-                            ProcessBirth = item.ProcessBirth,
-                            Tid = item.Tid,
-                            ThreadBirth = item.ThreadBirth,
+                            Pid = currentSelected.Pid,
+                            ProcessBirth = currentSelected.ProcessBirth,
+                            Tid = currentSelected.Tid,
+                            ThreadBirth = currentSelected.ThreadBirth,
                             Original = priority
                         });
                     }
                 }
-                if (list.Count == 0)
+                if (frameThreadReceipts.Count == 0)
                 {
                     return true;
                 }
-                List<string> list2 = new List<string>();
-                list2.Add("v1");
-                List<string> list3 = list2;
-                foreach (FrameThreadReceipt item2 in list)
+                List<string> texts = new List<string>();
+                texts.Add("v1");
+                List<string> encodes = texts;
+                foreach (FrameThreadReceipt frameThreadReceipt in frameThreadReceipts)
                 {
-                    list3.Add(item2.Encode());
+                    encodes.Add(frameThreadReceipt.Encode());
                 }
-                string joinResult = string.Join(";", list3.ToArray());
+                string joinResult = string.Join(";", encodes.ToArray());
                 if (!alive())
                 {
                     return false;
                 }
-                string value;
-                if (!Settings.SaveStrDurable("FrameMemoryProtectionJournalV1", joinResult) || !Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value) || joinResult != value)
+                string text;
+                if (!Settings.SaveStrDurable("FrameMemoryProtectionJournalV1", joinResult) || !Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out text) || joinResult != text)
                 {
                     executionFailure = "Memory protection recovery record could not be saved or verified";
                     return false;
                 }
                 FrameRecoveryBudget.Own("memory", selected[0].Pid, selected[0].ProcessBirth);
                 platform = adapter;
-                foreach (FrameThreadReceipt item3 in list)
+                foreach (FrameThreadReceipt currentFrameThreadReceipt in frameThreadReceipts)
                 {
                     if (!alive())
                     {
                         RestoreLocked();
                         return false;
                     }
-                    if (!platform.SetMemory(item3, item3.Original, 5))
+                    if (!platform.SetMemory(currentFrameThreadReceipt, currentFrameThreadReceipt.Original, 5))
                     {
                         int priority2;
-                        int memory = platform.ReadMemory(item3, out priority2);
-                        if (memory <= 0 && (memory < 0 || priority2 == item3.Original || priority2 == 5))
+                        int memory = platform.ReadMemory(currentFrameThreadReceipt, out priority2);
+                        if (memory <= 0 && (memory < 0 || priority2 == currentFrameThreadReceipt.Original || priority2 == 5))
                         {
                             executionFailure = "Memory protection apply or readback failed";
                         }
@@ -155,16 +155,16 @@ namespace PaviseApp
         {
             lock (gate)
             {
-                string value;
+                string text;
                 List<FrameThreadReceipt> rows;
-                if (!Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value) || !Parse(value, out rows))
+                if (!Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out text) || !Parse(text, out rows))
                 {
                     return false;
                 }
-                foreach (FrameThreadReceipt item in rows)
+                foreach (FrameThreadReceipt row in rows)
                 {
                     int priority;
-                    if (platform.ReadMemory(item, out priority) != 0 || priority != 5)
+                    if (platform.ReadMemory(row, out priority) != 0 || priority != 5)
                     {
                         return false;
                     }
@@ -244,34 +244,34 @@ namespace PaviseApp
 
         private static bool RestoreCore()
         {
-            string value;
+            string text;
             List<FrameThreadReceipt> rows;
-            if (!Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value) || !Parse(value, out rows))
+            if (!Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out text) || !Parse(text, out rows))
             {
                 return false;
             }
-            if (value == "")
+            if (text == "")
             {
                 return true;
             }
             bool allRestored = true;
-            foreach (FrameThreadReceipt item in rows)
+            foreach (FrameThreadReceipt row in rows)
             {
                 int priority;
-                int memory = platform.ReadMemory(item, out priority);
+                int memory = platform.ReadMemory(row, out priority);
                 if (memory < 0)
                 {
                     allRestored = false;
                 }
-                else if (memory == 0 && priority == 5 && !platform.SetMemory(item, 5, item.Original))
+                else if (memory == 0 && priority == 5 && !platform.SetMemory(row, 5, row.Original))
                 {
                     allRestored = false;
                 }
             }
-            string value2;
-            if (allRestored && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameMemoryProtectionJournalV1", "") && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out value2))
+            string currentText;
+            if (allRestored && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out currentText) && currentText == text && Settings.SaveStr("FrameMemoryProtectionJournalV1", "") && Settings.TryLoadStr("FrameMemoryProtectionJournalV1", out currentText))
             {
-                return value2 == "";
+                return currentText == "";
             }
             return false;
         }

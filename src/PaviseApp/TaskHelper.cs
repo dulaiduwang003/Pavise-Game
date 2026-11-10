@@ -20,10 +20,6 @@ namespace PaviseApp
 
         internal const string AutostartDataArgument = "--autostart-data";
 
-        private const string RepairFailKey = "AutostartRepairFails";
-
-        private const int RepairGiveUp = 3;
-
         private static int cachedExists = -1;
 
         private static volatile int cachedEnabled = -1;
@@ -182,29 +178,29 @@ namespace PaviseApp
 
         internal static string BuildStartupTaskXml(string exePath, string arguments)
         {
-            string value;
+            string text;
             try
             {
                 using (WindowsIdentity windowsIdentity = WindowsIdentity.GetCurrent())
                 {
-                    value = windowsIdentity.User.Value;
+                    text = windowsIdentity.User.Value;
                 }
             }
             catch
             {
-                value = null;
+                text = null;
             }
-            if (string.IsNullOrEmpty(value))
+            if (string.IsNullOrEmpty(text))
             {
-                value = Environment.UserDomainName + "\\" + Environment.UserName;
-                if (value.Length <= 1)
+                text = Environment.UserDomainName + "\\" + Environment.UserName;
+                if (text.Length <= 1)
                 {
                     return null;
                 }
             }
             string xmlTextResult = XmlText(exePath);
             string nowText = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
-            return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo><URI>\\PaviseAuto</URI></RegistrationInfo>\r\n  <Principals><Principal id=\"Author\"><UserId>" + XmlText(value) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\r\n  <Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>\r\n  <Triggers><LogonTrigger><StartBoundary>" + nowText + "</StartBoundary></LogonTrigger></Triggers>\r\n  <Actions Context=\"Author\"><Exec><Command>" + xmlTextResult + "</Command><Arguments>" + XmlText(arguments) + "</Arguments><WorkingDirectory>" + XmlText(Path.GetDirectoryName(exePath)) + "</WorkingDirectory></Exec></Actions>\r\n</Task>";
+            return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo><URI>\\PaviseAuto</URI></RegistrationInfo>\r\n  <Principals><Principal id=\"Author\"><UserId>" + XmlText(text) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\r\n  <Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>\r\n  <Triggers><LogonTrigger><StartBoundary>" + nowText + "</StartBoundary></LogonTrigger></Triggers>\r\n  <Actions Context=\"Author\"><Exec><Command>" + xmlTextResult + "</Command><Arguments>" + XmlText(arguments) + "</Arguments><WorkingDirectory>" + XmlText(Path.GetDirectoryName(exePath)) + "</WorkingDirectory></Exec></Actions>\r\n</Task>";
         }
 
         private static string XmlText(string value)
@@ -230,8 +226,7 @@ namespace PaviseApp
         {
             StringBuilder stringBuilder = new StringBuilder("\"");
             int processedCount = 0;
-            string valueOffset = value ?? "";
-            foreach (char c in valueOffset)
+            foreach (char c in value ?? "")
             {
                 switch (c)
                 {
@@ -376,8 +371,7 @@ namespace PaviseApp
             }
             finally
             {
-                object[] instanceItems = new object[3] { invokeMemberResult2, invokeMemberResult, instance };
-                foreach (object instanceEntry in instanceItems)
+                foreach (object instanceEntry in new object[3] { invokeMemberResult2, invokeMemberResult, instance })
                 {
                     if (instanceEntry != null && Marshal.IsComObject(instanceEntry))
                     {
@@ -786,8 +780,8 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                XmlNode xmlNode2 = xmlNode.SelectSingleNode("*[local-name()='Arguments']");
-                return (xmlNode2 == null) ? "" : (xmlNode2.InnerText ?? "").Trim();
+                XmlNode singleNode = xmlNode.SelectSingleNode("*[local-name()='Arguments']");
+                return (singleNode == null) ? "" : (singleNode.InnerText ?? "").Trim();
             }
             catch
             {
@@ -907,21 +901,20 @@ namespace PaviseApp
                 return null;
             }
             string[] rawParts = raw.Split(new char[2] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            List<string> list = new List<string>();
-            string[] textEntries = rawParts;
-            foreach (string entryText in textEntries)
+            List<string> entryTextTrimmeds = new List<string>();
+            foreach (string entryText in rawParts)
             {
                 string entryTextTrimmed = entryText.Trim();
                 if (entryTextTrimmed.Length > 0)
                 {
-                    list.Add(entryTextTrimmed);
+                    entryTextTrimmeds.Add(entryTextTrimmed);
                 }
             }
-            if (list.Count == 0)
+            if (entryTextTrimmeds.Count == 0)
             {
                 return null;
             }
-            string joinResult = string.Join(" ", list.ToArray());
+            string joinResult = string.Join(" ", entryTextTrimmeds.ToArray());
             if (joinResult.Length <= 240)
             {
                 return joinResult;

@@ -8,7 +8,6 @@ namespace PaviseApp
     {
         private sealed class FormEntry
         {
-            private const int DurationMs = 180;
 
             private readonly Form form;
 

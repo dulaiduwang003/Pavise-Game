@@ -60,8 +60,8 @@ namespace PaviseApp
                 needTweak = !tweakApplied.Contains(pid);
                 ulong value;
                 needPlacement = pass.Exclusive && !placementGaveUp.Contains(pid) && (!gamePlacement.TryGetValue(pid, out value) || value != pass.DesiredMask);
-                long value2;
-                return !known || needTweak || needPlacement || !gameBoostNextAudit.TryGetValue(pid, out value2) || DateTime.UtcNow.Ticks >= value2;
+                long currentGameBoostNextAudit;
+                return !known || needTweak || needPlacement || !gameBoostNextAudit.TryGetValue(pid, out currentGameBoostNextAudit) || DateTime.UtcNow.Ticks >= currentGameBoostNextAudit;
             }
         }
         private void HandlePidReuse(int pid, long currentCreation, ref bool known, ref bool needPlacement)
@@ -71,10 +71,10 @@ namespace PaviseApp
                 return;
             }
             bool staleBoostRemoved = false;
-            Snap value;
+            Snap currentGameBoost;
             lock (sync)
             {
-                if (gameBoost.TryGetValue(pid, out value) && value.Creation > 0 && value.Creation != currentCreation)
+                if (gameBoost.TryGetValue(pid, out currentGameBoost) && currentGameBoost.Creation > 0 && currentGameBoost.Creation != currentCreation)
                 {
                     gameBoost.Remove(pid);
                     gameGpu.Remove(pid);
@@ -98,7 +98,7 @@ namespace PaviseApp
             if (staleBoostRemoved)
             {
                 needPlacement = true;
-                CrashGuard.ReleaseBoostProcess(pid, value.Creation);
+                CrashGuard.ReleaseBoostProcess(pid, currentGameBoost.Creation);
             }
         }
         private bool CaptureAndTrack(IntPtr h, int pid, long currentCreation, BoostPass pass, bool known, out bool newlyTracked, out bool gpuOk, bool applyGpu = true)
@@ -171,20 +171,19 @@ namespace PaviseApp
                     controlMask = recovered.QoSControl;
                     stateMask = recovered.QoSState;
                 }
-                Snap snap = default(Snap);
-                snap.Pri = priValue;
-                snap.Aff = affValue;
-                snap.Io = ioValue;
-                snap.Pg = pgValue;
-                snap.Name = pass.RendererName;
-                snap.Creation = currentCreation;
-                snap.CpuSets = cpuSetsValue;
-                snap.QoSControl = controlMask;
-                snap.QoSState = stateMask;
-                Snap value2 = snap;
+                Snap currentSnap = default(Snap);
+                currentSnap.Pri = priValue;
+                currentSnap.Aff = affValue;
+                currentSnap.Io = ioValue;
+                currentSnap.Pg = pgValue;
+                currentSnap.Name = pass.RendererName;
+                currentSnap.Creation = currentCreation;
+                currentSnap.CpuSets = cpuSetsValue;
+                currentSnap.QoSControl = controlMask;
+                currentSnap.QoSState = stateMask;
                 lock (sync)
                 {
-                    gameBoost[pid] = value2;
+                    gameBoost[pid] = currentSnap;
                     if (!string.IsNullOrEmpty(pass.ActionTarget))
                     {
                         boostActionTargets[pid] = pass.ActionTarget;
@@ -264,11 +263,9 @@ namespace PaviseApp
                 {
                     return;
                 }
-                string[] retiredIrqObservationFiles = RetiredIrqObservationFiles;
-                foreach (string searchPattern in retiredIrqObservationFiles)
+                foreach (string searchPattern in RetiredIrqObservationFiles)
                 {
-                    string[] files = Directory.GetFiles(dir, searchPattern);
-                    foreach (string path in files)
+                    foreach (string path in Directory.GetFiles(dir, searchPattern))
                     {
                         try
                         {
@@ -292,52 +289,6 @@ namespace PaviseApp
             }
             return s.Substring(0, s.Length - 4);
         }
-        private void IsolateOptionalServiceAudit(string reason)
-        {
-            ActionFailureStore.Trip(EnvFailureAction("services"), "system", reason ?? "Service pause verification failed");
-            lock (sync)
-            {
-                envRestorePending.Add("services");
-            }
-        }
-        private Func<bool> CaptureOptionalServicesAdmission()
-        {
-            int generation = Volatile.Read(ref optionalServiceGeneration);
-            return () => generation == Volatile.Read(ref optionalServiceGeneration) && !stopping && !panicReq && enabled && !ProfileStoreSaveFailed && OptionalServicesRequested;
-        }
-        private bool StepOptionalServices(bool want, bool applied, Func<bool> hasResidue, Func<bool> isApplied, Func<bool> activate, Func<bool> restore)
-        {
-            lock (sync)
-            {
-                if (optionalServicesWanted != want)
-                {
-                    optionalServicesWanted = want;
-                    if (!envRestorePending.Contains("services"))
-                    {
-                        envNextAttempt.Remove("services");
-                        envFailures.Remove("services");
-                    }
-                }
-            }
-            if (want)
-            {
-                applied = isApplied();
-            }
-            else if (hasResidue())
-            {
-                applied = true;
-            }
-            bool envStepSucceeded = EnvStep("services", want, applied, activate, restore);
-            if (!want)
-            {
-                return envStepSucceeded;
-            }
-            if (envStepSucceeded)
-            {
-                return isApplied();
-            }
-            return false;
-        }
         internal static bool ForegroundConsumesService(string foregroundName, string envKey)
         {
             if (string.IsNullOrEmpty(foregroundName) || string.IsNullOrEmpty(envKey))
@@ -345,10 +296,9 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = WhitelistRule.NormalizeName(foregroundName).ToLowerInvariant();
-            string[][] foregroundServiceConsumers = ForegroundServiceConsumers;
-            foreach (string[] textEntriesEntry in foregroundServiceConsumers)
+            foreach (string[] serviceConsumer in ForegroundServiceConsumers)
             {
-                if (textEntriesEntry[0] == toLowerInvariantResult && textEntriesEntry[1] == envKey)
+                if (serviceConsumer[0] == toLowerInvariantResult && serviceConsumer[1] == envKey)
                 {
                     return true;
                 }
@@ -518,38 +468,37 @@ namespace PaviseApp
         }
         private Dictionary<int, PlatformProcessOwner> CollectPlatformMembers(ProcessSnapshot snapshot)
         {
-            HashSet<int> hashSet = new HashSet<int>();
-            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<int> rendererPids = new HashSet<int>();
+            HashSet<string> executablePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             lock (sync)
             {
                 if (activeDetection != null && activeDetection.RendererPid > 4)
                 {
-                    hashSet.Add(activeDetection.RendererPid);
+                    rendererPids.Add(activeDetection.RendererPid);
                 }
                 foreach (GameProfile profile in profiles)
                 {
                     if (!string.IsNullOrEmpty(profile.ExecutablePath))
                     {
-                        hashSet2.Add(profile.ExecutablePath);
+                        executablePaths.Add(profile.ExecutablePath);
                     }
                     if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                     {
-                        hashSet2.Add(profile.LearnedExecutablePath);
+                        executablePaths.Add(profile.LearnedExecutablePath);
                     }
                 }
             }
             if (snapshot != null)
             {
-                ProcEntry[] entries = snapshot.Entries;
-                foreach (ProcEntry procEntry in entries)
+                foreach (ProcEntry procEntry in snapshot.Entries)
                 {
-                    if (procEntry != null && (hashSet2.Contains(procEntry.Path) || (PlatformRuntimePolicy.RuntimePlatform(procEntry.Name) == null && FamilyBoundary.CatalogProtected(procEntry.Pid, procEntry.Creation, procEntry.Name, procEntry.Path))))
+                    if (procEntry != null && (executablePaths.Contains(procEntry.Path) || (PlatformRuntimePolicy.RuntimePlatform(procEntry.Name) == null && FamilyBoundary.CatalogProtected(procEntry.Pid, procEntry.Creation, procEntry.Name, procEntry.Path))))
                     {
-                        hashSet.Add(procEntry.Pid);
+                        rendererPids.Add(procEntry.Pid);
                     }
                 }
             }
-            platformMembers = PlatformRuntimePolicy.Collect(snapshot, selfPid, selfSession, hashSet, platformMembers);
+            platformMembers = PlatformRuntimePolicy.Collect(snapshot, selfPid, selfSession, rendererPids, platformMembers);
             return platformMembers;
         }
         private static bool PlatformRuleEnabled(PlatformProcessOwner owner)
@@ -562,8 +511,7 @@ namespace PaviseApp
         }
         private void AppendPlatformRuleViews(List<WhitelistRuleView> views, Dictionary<int, PlatformProcessOwner> members)
         {
-            string[] ids = PlatformRuntimePolicy.Ids;
-            foreach (string entryText in ids)
+            foreach (string entryText in PlatformRuntimePolicy.Ids)
             {
                 if (!PlatformRuntimePolicy.Enabled(entryText))
                 {
@@ -572,9 +520,9 @@ namespace PaviseApp
                 int processedCount = ((members == null) ? (-1) : 0);
                 if (members != null)
                 {
-                    foreach (PlatformProcessOwner value in members.Values)
+                    foreach (PlatformProcessOwner platformRule in members.Values)
                     {
-                        if (value.Platform == entryText)
+                        if (platformRule.Platform == entryText)
                         {
                             processedCount++;
                         }
@@ -759,10 +707,10 @@ namespace PaviseApp
                 if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase) && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
                 {
                     bool canReplaceStickyRenderer = false;
-                    GameId value;
+                    GameId stickyId;
                     string name;
                     long creation;
-                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out value) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, value.Creation, RendererForegroundHeldMs(hit.RendererPid)))
+                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out stickyId) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, stickyId.Creation, RendererForegroundHeldMs(hit.RendererPid)))
                     {
                         canReplaceStickyRenderer = true;
                     }
@@ -780,9 +728,9 @@ namespace PaviseApp
                     return ApplyStickiness(null);
                 }
                 {
-                    foreach (int item in LiveStickyFamily())
+                    foreach (int liveStickyFamily in LiveStickyFamily())
                     {
-                        hit.FamilyPids.Add(item);
+                        hit.FamilyPids.Add(liveStickyFamily);
                     }
                     return hit;
                 }
@@ -791,29 +739,28 @@ namespace PaviseApp
             {
                 stickyGraceOnly = false;
                 stickyMiss = 0;
-                GameDetection gameDetection = new GameDetection();
-                gameDetection.Profile = stickyDetection.Profile;
-                gameDetection.RendererPid = stickyDetection.RendererPid;
-                gameDetection.RendererCreation = stickyDetection.RendererCreation;
-                gameDetection.RendererName = stickyDetection.RendererName;
-                gameDetection.RendererPath = stickyDetection.RendererPath;
-                gameDetection.RendererForeground = stickyDetection.RendererForeground;
-                gameDetection.RendererCandidateSelected = true;
-                gameDetection.RendererUserSelected = stickyDetection.RendererUserSelected;
-                gameDetection.RendererLearnable = stickyDetection.RendererLearnable;
-                gameDetection.Evidence = stickyDetection.Evidence;
-                GameDetection gameDetection2 = gameDetection;
-                gameDetection2.FamilyPids.Add(stickyDetection.RendererPid);
-                foreach (int item2 in LiveStickyFamily())
+                GameDetection currentGameDetection = new GameDetection();
+                currentGameDetection.Profile = stickyDetection.Profile;
+                currentGameDetection.RendererPid = stickyDetection.RendererPid;
+                currentGameDetection.RendererCreation = stickyDetection.RendererCreation;
+                currentGameDetection.RendererName = stickyDetection.RendererName;
+                currentGameDetection.RendererPath = stickyDetection.RendererPath;
+                currentGameDetection.RendererForeground = stickyDetection.RendererForeground;
+                currentGameDetection.RendererCandidateSelected = true;
+                currentGameDetection.RendererUserSelected = stickyDetection.RendererUserSelected;
+                currentGameDetection.RendererLearnable = stickyDetection.RendererLearnable;
+                currentGameDetection.Evidence = stickyDetection.Evidence;
+                currentGameDetection.FamilyPids.Add(stickyDetection.RendererPid);
+                foreach (int currentLiveStickyFamily in LiveStickyFamily())
                 {
-                    gameDetection2.FamilyPids.Add(item2);
+                    currentGameDetection.FamilyPids.Add(currentLiveStickyFamily);
                 }
                 foreach (string familyName in stickyDetection.FamilyNames)
                 {
-                    gameDetection2.FamilyNames.Add(familyName);
+                    currentGameDetection.FamilyNames.Add(familyName);
                 }
-                stickyDetection = gameDetection2;
-                return gameDetection2;
+                stickyDetection = currentGameDetection;
+                return currentGameDetection;
             }
             if (stickyDetection != null && stickyMiss < 1 && !AnyStickyReused())
             {
@@ -855,21 +802,21 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                name = Native.ImageName(intPtr);
+                name = Native.ImageName(processHandle);
                 long cpu;
                 ulong io;
-                return Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && !string.IsNullOrEmpty(name);
+                return Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && !string.IsNullOrEmpty(name);
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
         internal static bool IsHandheld(PerformancePreset mode)
@@ -886,28 +833,28 @@ namespace PaviseApp
             {
                 serviceImagePaths = new Dictionary<int, KeyValuePair<long, string>>();
             }
-            KeyValuePair<long, string> value;
-            if (serviceImagePaths.TryGetValue(p.Pid, out value) && value.Key == p.Creation)
+            KeyValuePair<long, string> serviceImagePath;
+            if (serviceImagePaths.TryGetValue(p.Pid, out serviceImagePath) && serviceImagePath.Key == p.Creation)
             {
-                return value.Value;
+                return serviceImagePath.Value;
             }
             string imagePathResult = null;
-            IntPtr intPtr = Native.OpenProcess(4096, false, p.Pid);
-            if (intPtr != IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, p.Pid);
+            if (processHandle != IntPtr.Zero)
             {
                 try
                 {
                     long creation;
                     long cpu;
                     ulong io;
-                    if (Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == p.Creation && !Native.IsProtectedProcess(intPtr))
+                    if (Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation == p.Creation && !Native.IsProtectedProcess(processHandle))
                     {
-                        imagePathResult = Native.ImagePath(intPtr);
+                        imagePathResult = Native.ImagePath(processHandle);
                     }
                 }
                 finally
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
             }
             if (serviceImagePaths.Count > 1024)

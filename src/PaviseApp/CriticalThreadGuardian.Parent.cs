@@ -59,10 +59,10 @@ namespace PaviseApp
                             {
                                 return false;
                             }
-                            foreach (HardThreadCleanupPart value in Enum.GetValues(typeof(HardThreadCleanupPart)))
+                            foreach (HardThreadCleanupPart cleanupPart in Enum.GetValues(typeof(HardThreadCleanupPart)))
                             {
-                                string path = PartPath(value);
-                                if (owner.cleanupState.Removed(value))
+                                string path = PartPath(cleanupPart);
+                                if (owner.cleanupState.Removed(cleanupPart))
                                 {
                                     if (!Missing(path))
                                     {
@@ -71,11 +71,11 @@ namespace PaviseApp
                                 }
                                 else
                                 {
-                                    if (owner.cleanupState.Deferred(value))
+                                    if (owner.cleanupState.Deferred(cleanupPart))
                                     {
                                         continue;
                                     }
-                                    if (value == HardThreadCleanupPart.Directory)
+                                    if (cleanupPart == HardThreadCleanupPart.Directory)
                                     {
                                         if (owner.SessionDirectory != null)
                                         {
@@ -90,7 +90,7 @@ namespace PaviseApp
                                             return false;
                                         }
                                     }
-                                    else if (!VerifyFile(path, ExpectedHash(value)))
+                                    else if (!VerifyFile(path, ExpectedHash(cleanupPart)))
                                     {
                                         return false;
                                     }

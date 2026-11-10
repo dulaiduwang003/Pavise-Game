@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 
 namespace PaviseApp
@@ -155,25 +154,25 @@ namespace PaviseApp
             {
                 return null;
             }
-            ulong[] numericValueItems = whereItems;
-            if (performance != 0 && numericValueItems.Count((ulong x) => (x & performance) == x) >= count)
+            ulong[] availableCpuSetIds = whereItems;
+            if (performance != 0 && availableCpuSetIds.Count((ulong x) => (x & performance) == x) >= count)
             {
-                numericValueItems = numericValueItems.Where((ulong x) => (x & performance) == x).ToArray();
+                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & performance) == x).ToArray();
             }
-            if (numericValueItems.Count((ulong x) => (x & 1) == 0) >= count)
+            if (availableCpuSetIds.Count((ulong x) => (x & 1) == 0) >= count)
             {
-                numericValueItems = numericValueItems.Where((ulong x) => (x & 1) == 0).ToArray();
+                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & 1) == 0).ToArray();
             }
-            if (crowded != 0 && numericValueItems.Count((ulong x) => (x & crowded) == 0) >= count)
+            if (crowded != 0 && availableCpuSetIds.Count((ulong x) => (x & crowded) == 0) >= count)
             {
-                numericValueItems = numericValueItems.Where((ulong x) => (x & crowded) == 0).ToArray();
+                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & crowded) == 0).ToArray();
             }
-            ulong domain = Domain(numericValueItems, count, favored, domains, preferredDomain);
+            ulong domain = Domain(availableCpuSetIds, count, favored, domains, preferredDomain);
             if (domain != 0)
             {
-                numericValueItems = numericValueItems.Where((ulong x) => (x & domain) == x).ToArray();
+                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & domain) == x).ToArray();
             }
-            ulong[] items = (from x in numericValueItems
+            ulong[] items = (from x in availableCpuSetIds
                 orderby (x & favored) != 0 descending, x descending
                 select x).ToArray();
             if (items.Length < count)
@@ -210,8 +209,8 @@ namespace PaviseApp
                 return 0uL;
             }
             ulong result = 0uL;
-            int domainValue = -1;
-            int domainValue2 = -1;
+            int bestSelectedCount = -1;
+            int bestAvailableCount = -1;
             foreach (ulong domain in domains)
             {
                 if (domain == 0)
@@ -222,11 +221,11 @@ namespace PaviseApp
                 if (whereItems.Length >= count)
                 {
                     int countResult = whereItems.Count((ulong x) => (x & favored) != 0);
-                    if (countResult > domainValue || (countResult == domainValue && whereItems.Length > domainValue2))
+                    if (countResult > bestSelectedCount || (countResult == bestSelectedCount && whereItems.Length > bestAvailableCount))
                     {
                         result = domain;
-                        domainValue = countResult;
-                        domainValue2 = whereItems.Length;
+                        bestSelectedCount = countResult;
+                        bestAvailableCount = whereItems.Length;
                     }
                 }
             }

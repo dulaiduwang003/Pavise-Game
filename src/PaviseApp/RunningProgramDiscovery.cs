@@ -39,7 +39,7 @@ namespace PaviseApp
                 string folderPath = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
                 string windowsRoot = (string.IsNullOrEmpty(folderPath) ? "C:\\Windows\\" : (folderPath.TrimEnd('\\') + "\\"));
                 bool succeeded;
-                HashSet<int> hashSet = RunningProgramWindows.Capture(out succeeded);
+                HashSet<int> visiblePids = RunningProgramWindows.Capture(out succeeded);
                 if (!succeeded)
                 {
                     return null;
@@ -49,34 +49,34 @@ namespace PaviseApp
                     return null;
                 }
                 runningProcesses = Process.GetProcesses();
-                Dictionary<string, RunningProgram> dictionary = new Dictionary<string, RunningProgram>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, RunningProgram> runningProgramsByName = new Dictionary<string, RunningProgram>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < runningProcesses.Length; i++)
                 {
                     if (IsCanceled(canceled))
                     {
                         return null;
                     }
-                    Process process2 = runningProcesses[i];
+                    Process runningProcesse = runningProcesses[i];
                     try
                     {
-                        int id2 = process2.Id;
-                        if (id2 <= 4 || id2 == id || !hashSet.Contains(id2) || process2.SessionId != sessionId)
+                        int id2 = runningProcesse.Id;
+                        if (id2 <= 4 || id2 == id || !visiblePids.Contains(id2) || runningProcesse.SessionId != sessionId)
                         {
                             continue;
                         }
-                        IntPtr intPtr = Native.OpenProcess(4096, false, id2);
-                        if (intPtr == IntPtr.Zero)
+                        IntPtr processHandle = Native.OpenProcess(4096, false, id2);
+                        if (processHandle == IntPtr.Zero)
                         {
                             continue;
                         }
                         string pathValue;
                         try
                         {
-                            pathValue = Native.ImagePath(intPtr);
+                            pathValue = Native.ImagePath(processHandle);
                         }
                         finally
                         {
-                            Native.CloseHandle(intPtr);
+                            Native.CloseHandle(processHandle);
                         }
                         string processNameValue = GameSessionDetector.ImageNameFromVerifiedPath(pathValue);
                         if (!(whitelist ? IsWhitelistCandidate(processNameValue, pathValue, windowsRoot)
@@ -84,23 +84,23 @@ namespace PaviseApp
                         {
                             continue;
                         }
-                        RunningProgram value;
-                        if (!dictionary.TryGetValue(pathValue, out value))
+                        RunningProgram currentRunningProgram;
+                        if (!runningProgramsByName.TryGetValue(pathValue, out currentRunningProgram))
                         {
                             RunningProgram runningProgram = new RunningProgram();
                             runningProgram.Path = pathValue;
                             runningProgram.ProcessName = processNameValue;
                             runningProgram.Title = processNameValue;
-                            value = runningProgram;
-                            dictionary.Add(pathValue, value);
+                            currentRunningProgram = runningProgram;
+                            runningProgramsByName.Add(pathValue, currentRunningProgram);
                         }
-                        if (!value.ProcessIds.Contains(id2))
+                        if (!currentRunningProgram.ProcessIds.Contains(id2))
                         {
-                            value.ProcessIds.Add(id2);
+                            currentRunningProgram.ProcessIds.Add(id2);
                             try
                             {
-                                long workingSet64Limit = Math.Max(0L, process2.WorkingSet64);
-                                value.Memory = ((workingSet64Limit > long.MaxValue - value.Memory) ? long.MaxValue : (value.Memory + workingSet64Limit));
+                                long workingSet64Limit = Math.Max(0L, runningProcesse.WorkingSet64);
+                                currentRunningProgram.Memory = ((workingSet64Limit > long.MaxValue - currentRunningProgram.Memory) ? long.MaxValue : (currentRunningProgram.Memory + workingSet64Limit));
                             }
                             catch
                             {
@@ -113,11 +113,11 @@ namespace PaviseApp
                     finally
                     {
                         runningProcesses[i] = null;
-                        if (process2 != null)
+                        if (runningProcesse != null)
                         {
                             try
                             {
-                                process2.Dispose();
+                                runningProcesse.Dispose();
                             }
                             catch
                             {
@@ -125,16 +125,16 @@ namespace PaviseApp
                         }
                     }
                 }
-                List<RunningProgram> list = new List<RunningProgram>(dictionary.Values);
-                foreach (RunningProgram item in list)
+                List<RunningProgram> valuesSnapshot = new List<RunningProgram>(runningProgramsByName.Values);
+                foreach (RunningProgram currentValuesSnapshot in valuesSnapshot)
                 {
                     if (IsCanceled(canceled))
                     {
                         return null;
                     }
-                    item.Title = TitleOf(item.Path, item.ProcessName);
+                    currentValuesSnapshot.Title = TitleOf(currentValuesSnapshot.Path, currentValuesSnapshot.ProcessName);
                 }
-                return IsCanceled(canceled) ? null : list;
+                return IsCanceled(canceled) ? null : valuesSnapshot;
             }
             catch
             {
@@ -144,14 +144,13 @@ namespace PaviseApp
             {
                 if (runningProcesses != null)
                 {
-                    Process[] processItems = runningProcesses;
-                    foreach (Process process3 in processItems)
+                    foreach (Process processItem in runningProcesses)
                     {
-                        if (process3 != null)
+                        if (processItem != null)
                         {
                             try
                             {
-                                process3.Dispose();
+                                processItem.Dispose();
                             }
                             catch
                             {

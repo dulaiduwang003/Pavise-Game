@@ -19,21 +19,21 @@ namespace PaviseApp
                     hasModernTransport = true;
                 }
             }
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             foreach (InputDevice device2 in devices)
             {
                 if (device2.IsMouse == mouse && device2.Transport != InputTransport.Virtual && (device2.Transport != InputTransport.Ps2 || !hasModernTransport))
                 {
-                    string item = InputChainProbe.TransportText(device2.Transport);
-                    if (!list.Contains(item))
+                    string transportText = InputChainProbe.TransportText(device2.Transport);
+                    if (!texts.Contains(transportText))
                     {
-                        list.Add(item);
+                        texts.Add(transportText);
                     }
                 }
             }
-            if (list.Count != 0)
+            if (texts.Count != 0)
             {
-                return string.Join(Lang.T("t.systemaudit.101"), list.ToArray());
+                return string.Join(Lang.T("t.systemaudit.101"), texts.ToArray());
             }
             return null;
         }

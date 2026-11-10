@@ -32,13 +32,13 @@ namespace PaviseApp
             int width = scaledDimension - left * 2;
             Label label = MakeLabel("FAMILY // CAUTION", Theme.Mono(7.3f), Theme.Accent);
             label.SetBounds(left, Theme.S(21), width, Theme.S(19));
-            Label label2 = MakeLabel(Text, Theme.UI(15f, true), Theme.Fg);
-            label2.SetBounds(left, Theme.S(48), width, Theme.S(34));
-            Label label3 = MakeLabel(gameName ?? "", Theme.UI(9.2f, true), Theme.Dim);
-            label3.AutoEllipsis = true;
-            label3.SetBounds(left, Theme.S(92), width, Theme.S(24));
-            Label label4 = MakeLabel(Lang.T("lib.family.warning.target"), Theme.UI(8f, false), Theme.Dim);
-            label4.SetBounds(left, Theme.S(126), width, Theme.S(22));
+            Label makeLabel = MakeLabel(Text, Theme.UI(15f, true), Theme.Fg);
+            makeLabel.SetBounds(left, Theme.S(48), width, Theme.S(34));
+            Label currentMakeLabel = MakeLabel(gameName ?? "", Theme.UI(9.2f, true), Theme.Dim);
+            currentMakeLabel.AutoEllipsis = true;
+            currentMakeLabel.SetBounds(left, Theme.S(92), width, Theme.S(24));
+            Label candidateMakeLabel = MakeLabel(Lang.T("lib.family.warning.target"), Theme.UI(8f, false), Theme.Dim);
+            candidateMakeLabel.SetBounds(left, Theme.S(126), width, Theme.S(22));
             ExecutableBox = new TextBox();
             ExecutableBox.ReadOnly = true;
             ExecutableBox.Multiline = true;
@@ -55,10 +55,10 @@ namespace PaviseApp
             ExecutableBox.SetBounds(left, Theme.S(150), width, Theme.S(70));
             string libFamilyWarningBodyText = Lang.T("lib.family.warning.body");
             int height = TextRenderer.MeasureText(libFamilyWarningBodyText, Theme.UI(9.2f, false), new Size(width, int.MaxValue), TextFormatFlags.WordBreak).Height + Theme.S(12);
-            Label label5 = MakeLabel(libFamilyWarningBodyText, Theme.UI(9.2f, false), Theme.Dim);
+            Label resolvedMakeLabel = MakeLabel(libFamilyWarningBodyText, Theme.UI(9.2f, false), Theme.Dim);
             int top = Theme.S(240);
-            label5.SetBounds(left, top, width, height);
-            int top2 = label5.Bottom + Theme.S(25);
+            resolvedMakeLabel.SetBounds(left, top, width, height);
+            int top2 = resolvedMakeLabel.Bottom + Theme.S(25);
             int height2 = Theme.S(40);
             keepClosed = new LibraryDialogButton(Lang.T("lib.family.warning.cancel"), true);
             keepClosed.DialogResult = DialogResult.Cancel;
@@ -72,7 +72,7 @@ namespace PaviseApp
             keepClosed.SetBounds(scaledDimension - left - width2 - scaledDimension2 - width3, top2, width3, height2);
             EnableAnyway.SetBounds(scaledDimension - left - width2, top2, width2, height2);
             base.ClientSize = new Size(scaledDimension, top2 + height2 + Theme.S(24));
-            base.Controls.AddRange(new Control[8] { label, label2, label3, label4, ExecutableBox, label5, keepClosed, EnableAnyway });
+            base.Controls.AddRange(new Control[8] { label, makeLabel, currentMakeLabel, candidateMakeLabel, ExecutableBox, resolvedMakeLabel, keepClosed, EnableAnyway });
             base.AcceptButton = keepClosed;
             base.CancelButton = keepClosed;
             base.ActiveControl = keepClosed;
@@ -109,15 +109,15 @@ namespace PaviseApp
                     graphics.DrawPath(pen, path);
                 }
             }
-            using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
+            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
             {
-                graphics.DrawLine(pen2, Theme.S(1), Theme.S(1), Theme.S(116), Theme.S(1));
-                graphics.DrawLine(pen2, base.Width - Theme.S(13), Theme.S(1), base.Width - Theme.S(1), Theme.S(13));
+                graphics.DrawLine(accentPen, Theme.S(1), Theme.S(1), Theme.S(116), Theme.S(1));
+                graphics.DrawLine(accentPen, base.Width - Theme.S(13), Theme.S(1), base.Width - Theme.S(1), Theme.S(13));
             }
             int top = keepClosed.Top - Theme.S(13);
-            using (Pen pen3 = new Pen(Theme.Stroke))
+            using (Pen strokePen = new Pen(Theme.Stroke))
             {
-                graphics.DrawLine(pen3, Theme.S(26), top, base.Width - Theme.S(26), top);
+                graphics.DrawLine(strokePen, Theme.S(26), top, base.Width - Theme.S(26), top);
             }
         }
     }

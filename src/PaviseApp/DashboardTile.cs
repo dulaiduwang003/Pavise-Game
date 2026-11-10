@@ -35,11 +35,11 @@ namespace PaviseApp
                 color = Col.Lerp(color, Theme.Accent, 0.025f + hover.Value * 0.025f);
             }
             Color baseFill = (Theme.LightMode ? Col.Lerp(color, Theme.Inset, 0.34f) : Col.Lerp(color, Theme.Inset, 0.22f));
-            Color color2 = Backdrop.CardFill(this, color);
-            Color color3 = Backdrop.CardFill(this, baseFill);
+            Color cardFill = Backdrop.CardFill(this, color);
+            Color currentCardFill = Backdrop.CardFill(this, baseFill);
             using (GraphicsPath path = Theme.TechPath(rectangle, Theme.S(8)))
             {
-                using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, color2, color3, LinearGradientMode.Horizontal))
+                using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, cardFill, currentCardFill, LinearGradientMode.Horizontal))
                 {
                     graphics.FillPath(brush, path);
                 }
@@ -61,29 +61,29 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush3, path2);
                 }
-                using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, (int)(72f + hover.Value * 92f))))
+                using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, (int)(72f + hover.Value * 92f))))
                 {
-                    graphics.DrawPath(pen2, path2);
+                    graphics.DrawPath(currentPen, path2);
                 }
             }
             Glyphs.Draw(graphics, Glyph, new Rectangle(scaledDimension + Theme.S(14), scaledDimension2 + Theme.S(14), Theme.S(22), Theme.S(22)), Theme.Accent);
             int left = Theme.S(82);
-            using (Pen pen3 = new Pen(Col.Alpha(Theme.StrokeHi, 92)))
+            using (Pen candidatePen = new Pen(Col.Alpha(Theme.StrokeHi, 92)))
             {
-                graphics.DrawLine(pen3, left, Theme.S(20), left, base.Height - Theme.S(20));
+                graphics.DrawLine(candidatePen, left, Theme.S(20), left, base.Height - Theme.S(20));
             }
-            using (Pen pen4 = new Pen(Theme.Accent, Math.Max(1f, Theme.S(1))))
+            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1f, Theme.S(1))))
             {
-                graphics.DrawLine(pen4, left, Theme.S(28), left, Theme.S(51));
+                graphics.DrawLine(accentPen, left, Theme.S(28), left, Theme.S(51));
             }
             TextRenderer.DrawText(graphics, Title, Theme.UI(11f, true), new Rectangle(Theme.S(98), Theme.S(22), base.Width - Theme.S(145), Theme.S(28)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(graphics, Detail, Theme.UI(8.4f, false), new Rectangle(Theme.S(98), Theme.S(56), base.Width - Theme.S(112), Theme.S(34)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(graphics, Channel.ToString("00"), Theme.Mono(6.7f), new Rectangle(base.Width - Theme.S(39), Theme.S(20), Theme.S(24), Theme.S(18)), Theme.Faint, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             int top = base.Height - Theme.S(8);
             int sLimit = Math.Max(Theme.S(34), (base.Width - Theme.S(120)) / 3);
-            using (Pen pen5 = new Pen(Col.Alpha(Theme.Accent, (int)(120f + 80f * hover.Value))))
+            using (Pen resolvedPen = new Pen(Col.Alpha(Theme.Accent, (int)(120f + 80f * hover.Value))))
             {
-                graphics.DrawLine(pen5, Theme.S(98), top, Theme.S(98) + sLimit, top);
+                graphics.DrawLine(resolvedPen, Theme.S(98), top, Theme.S(98) + sLimit, top);
             }
         }
     }

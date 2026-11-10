@@ -128,12 +128,12 @@ namespace PaviseApp
             bool runSessionRecoveryRouteSucceeded3 = RunSessionRecoveryRoute("unboost", () => UnboostGames());
             EndAutoCores();
             slowEnvAtTicks = 0L;
-            int deactivateCoreValue = 0;
+            int releasedBackgroundCount = 0;
             bool runSessionRecoveryRouteSucceeded4 = RunSessionRecoveryRoute("background", delegate
             {
-                List<int> list = core.PidsWith(SuppressReason.Background);
-                deactivateCoreValue += core.ReleaseReason(SuppressReason.Background);
-                foreach (int item in list) if (core.IsThrottled(item)) return false;
+                List<int> backgroundPids = core.PidsWith(SuppressReason.Background);
+                releasedBackgroundCount += core.ReleaseReason(SuppressReason.Background);
+                foreach (int backgroundPid in backgroundPids) if (core.IsThrottled(backgroundPid)) return false;
                 return true;
             });
             bool restoreEnvSucceeded = RestoreEnv();
@@ -142,7 +142,7 @@ namespace PaviseApp
             {
                 CrashGuard.ClearBoost();
             }
-            int deactivateCoreValueOffset = deactivateCoreValue + gracePreReleased;
+            int deactivateCoreValueOffset = releasedBackgroundCount + gracePreReleased;
             gracePreReleased = 0;
             if (!quiet || deactivateCoreValueOffset > 0)
             {

@@ -26,10 +26,6 @@ namespace PaviseApp
 
         internal const string FileName = "Pavise.renderer-observations.dat";
 
-        private const string Header = "PAVISE_RENDER_ACTIVITY_V1";
-
-        private const int MaxRecords = 2048;
-
         private readonly object gate = new object();
 
         private bool closed;
@@ -81,10 +77,10 @@ namespace PaviseApp
 
         internal bool Validate(string profileId, string executablePath)
         {
-            Record value;
+            Record record;
             lock (gate)
             {
-                if (closed || profileId == null || !records.TryGetValue(profileId, out value) || !SamePath(value.Exe, executablePath))
+                if (closed || profileId == null || !records.TryGetValue(profileId, out record) || !SamePath(record.Exe, executablePath))
                 {
                     return false;
                 }
@@ -92,15 +88,15 @@ namespace PaviseApp
             RendererFileStamp rendererFileStamp = RendererFileStamp.Read(executablePath);
             lock (gate)
             {
-                Record value2;
-                if (closed || !records.TryGetValue(profileId, out value2) || !object.ReferenceEquals(value, value2))
+                Record currentRecord;
+                if (closed || !records.TryGetValue(profileId, out currentRecord) || !object.ReferenceEquals(record, currentRecord))
                 {
                     return false;
                 }
-                bool validatedValue = rendererFileStamp != null && value.Stamp.Same(rendererFileStamp);
-                bool validationChanged = value.Validated != validatedValue;
-                value.Validated = validatedValue;
-                value.CheckedTicks = DateTime.UtcNow.Ticks;
+                bool validatedValue = rendererFileStamp != null && record.Stamp.Same(rendererFileStamp);
+                bool validationChanged = record.Validated != validatedValue;
+                record.Validated = validatedValue;
+                record.CheckedTicks = DateTime.UtcNow.Ticks;
                 if (!validatedValue)
                 {
                     records.Remove(profileId);
@@ -138,46 +134,45 @@ namespace PaviseApp
                 {
                     return RendererObservationWriteResult.Closed;
                 }
-                Record value;
-                if (records.TryGetValue(profileId, out value) && SamePath(value.Exe, executablePath) && value.Stamp.Same(rendererFileStamp))
+                Record currentRecord;
+                if (records.TryGetValue(profileId, out currentRecord) && SamePath(currentRecord.Exe, executablePath) && currentRecord.Stamp.Same(rendererFileStamp))
                 {
-                    value.Validated = true;
-                    value.CheckedTicks = DateTime.UtcNow.Ticks;
+                    currentRecord.Validated = true;
+                    currentRecord.CheckedTicks = DateTime.UtcNow.Ticks;
                     return RendererObservationWriteResult.Recorded;
                 }
-                Record record = new Record();
-                record.Id = profileId;
-                record.Exe = Path.GetFullPath(executablePath);
-                record.Stamp = rendererFileStamp;
-                record.ObservedTicks = DateTime.UtcNow.Ticks;
-                record.Validated = true;
-                record.CheckedTicks = DateTime.UtcNow.Ticks;
-                Record value2 = record;
-                Dictionary<string, Record> dictionary = new Dictionary<string, Record>(records, StringComparer.OrdinalIgnoreCase);
-                dictionary[profileId] = value2;
-                if (dictionary.Count > 2048)
+                Record candidateRecord = new Record();
+                candidateRecord.Id = profileId;
+                candidateRecord.Exe = Path.GetFullPath(executablePath);
+                candidateRecord.Stamp = rendererFileStamp;
+                candidateRecord.ObservedTicks = DateTime.UtcNow.Ticks;
+                candidateRecord.Validated = true;
+                candidateRecord.CheckedTicks = DateTime.UtcNow.Ticks;
+                Dictionary<string, Record> recordsSnapshot = new Dictionary<string, Record>(records, StringComparer.OrdinalIgnoreCase);
+                recordsSnapshot[profileId] = candidateRecord;
+                if (recordsSnapshot.Count > 2048)
                 {
-                    Record record2 = null;
-                    foreach (Record value3 in dictionary.Values)
+                    Record resolvedRecord = null;
+                    foreach (Record retainedRecord in recordsSnapshot.Values)
                     {
-                        if (record2 == null || value3.ObservedTicks < record2.ObservedTicks)
+                        if (resolvedRecord == null || retainedRecord.ObservedTicks < resolvedRecord.ObservedTicks)
                         {
-                            record2 = value3;
+                            resolvedRecord = retainedRecord;
                         }
                     }
-                    if (record2 != null)
+                    if (resolvedRecord != null)
                     {
-                        dictionary.Remove(record2.Id);
+                        recordsSnapshot.Remove(resolvedRecord.Id);
                     }
                 }
-                if (!Save(dictionary))
+                if (!Save(recordsSnapshot))
                 {
                     return RendererObservationWriteResult.SaveFailed;
                 }
                 records.Clear();
-                foreach (KeyValuePair<string, Record> item in dictionary)
+                foreach (KeyValuePair<string, Record> recordsSnapshotEntry in recordsSnapshot)
                 {
-                    records.Add(item.Key, item.Value);
+                    records.Add(recordsSnapshotEntry.Key, recordsSnapshotEntry.Value);
                 }
                 return RendererObservationWriteResult.Recorded;
             }
@@ -216,9 +211,9 @@ namespace PaviseApp
                     using (StreamWriter streamWriter = new StreamWriter(fileStream, new UTF8Encoding(false)))
                     {
                         streamWriter.WriteLine("PAVISE_RENDER_ACTIVITY_V1");
-                        foreach (Record value in values.Values)
+                        foreach (Record record in values.Values)
                         {
-                            streamWriter.WriteLine(B64(value.Id) + "|" + B64(value.Exe) + "|" + value.Stamp.Length.ToString(CultureInfo.InvariantCulture) + "|" + value.Stamp.WriteTicks.ToString(CultureInfo.InvariantCulture) + "|" + value.ObservedTicks.ToString(CultureInfo.InvariantCulture) + "|gpu3d");
+                            streamWriter.WriteLine(B64(record.Id) + "|" + B64(record.Exe) + "|" + record.Stamp.Length.ToString(CultureInfo.InvariantCulture) + "|" + record.Stamp.WriteTicks.ToString(CultureInfo.InvariantCulture) + "|" + record.ObservedTicks.ToString(CultureInfo.InvariantCulture) + "|gpu3d");
                         }
                         streamWriter.Flush();
                         fileStream.Flush(true);

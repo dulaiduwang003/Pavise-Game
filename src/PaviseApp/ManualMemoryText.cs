@@ -8,7 +8,7 @@ namespace PaviseApp
         {
             get
             {
-                return T("极限内存清理", "Extreme memory cleanup", "強力メモリ解放");
+                return T("极限内存清理", "Extreme memory cleanup");
             }
         }
 
@@ -16,7 +16,7 @@ namespace PaviseApp
         {
             get
             {
-                return T("极限清理", "Deep clean", "強力解放");
+                return T("极限清理", "Deep clean");
             }
         }
 
@@ -24,7 +24,7 @@ namespace PaviseApp
         {
             get
             {
-                return T("全量回收", "Full cleanup", "全体を解放");
+                return T("全量回收", "Full cleanup");
             }
         }
 
@@ -32,24 +32,14 @@ namespace PaviseApp
         {
             get
             {
-                return T("需要管理员权限", "Administrator rights required", "管理者権限が必要です");
+                return T("需要管理员权限", "Administrator rights required");
             }
         }
-        internal static string GameButton { get { return T("轻量清理", "Light clean", "軽量解放"); } }
-        internal static string GameHint { get { return T("游戏中 · 仅回收 Pavise 自身内存", "In game · Pavise memory only", "ゲーム中 · Pavise自身のメモリのみ"); } }
+        internal static string GameButton { get { return T("轻量清理", "Light clean"); } }
+        internal static string GameHint { get { return T("游戏中 · 仅回收 Pavise 自身内存", "In game · Pavise memory only"); } }
 
-        internal static string T(string chinese, string english, string japanese)
-        {
-            if (Lang.Cur != 0)
-            {
-                if (Lang.Cur != 2)
-                {
-                    return english;
-                }
-                return japanese;
-            }
-            return chinese;
-        }
+        internal static string T(string chinese, string english)
+        { return Lang.Cur == 1 ? english : chinese; }
 
         internal static string Stage(ManualMemoryStep step)
         {
@@ -58,17 +48,17 @@ namespace PaviseApp
             case ManualMemoryStep.PaviseMemory:
                 return GameHint;
             case ManualMemoryStep.CombinePages:
-                return T("合并重复页", "Combining duplicate pages", "重複ページを統合");
+                return T("合并重复页", "Combining duplicate pages");
             case ManualMemoryStep.WorkingSets:
-                return T("回收全局工作集", "Trimming all working sets", "全体のワーキングセットを縮小");
+                return T("回收全局工作集", "Trimming all working sets");
             case ManualMemoryStep.FileCache:
-                return T("整理系统文件缓存", "Trimming system file cache", "システムファイルキャッシュを解放");
+                return T("整理系统文件缓存", "Trimming system file cache");
             case ManualMemoryStep.RegistryCache:
-                return T("整理注册表缓存", "Reconciling registry cache", "レジストリキャッシュを整理");
+                return T("整理注册表缓存", "Reconciling registry cache");
             case ManualMemoryStep.ModifiedPages:
-                return T("请求修改页写回", "Requesting modified-page writeback", "変更済みページの書き戻しを要求");
+                return T("请求修改页写回", "Requesting modified-page writeback");
             default:
-                return T("清空全部待机缓存", "Purging all standby lists", "すべてのスタンバイリストを解放");
+                return T("清空全部待机缓存", "Purging all standby lists");
             }
         }
 
@@ -86,23 +76,23 @@ namespace PaviseApp
         {
             if (report.Busy)
             {
-                return T("已有清理正在运行", "A cleanup is already running", "解放処理は実行中です");
+                return T("已有清理正在运行", "A cleanup is already running");
             }
             if (report.Cancelled)
             {
-                return T("清理已中止", "Cleanup stopped", "解放を中止しました");
+                return T("清理已中止", "Cleanup stopped");
             }
             if (report.GameProtected && report.Completed)
-                return T("轻量回收完成", "Light cleanup completed", "軽量解放完了");
+                return T("轻量回收完成", "Light cleanup completed");
             if (!report.Completed)
             {
                 if (report.SucceededCount <= 0)
                 {
-                    return T("清理未完成", "Cleanup incomplete", "未完了");
+                    return T("清理未完成", "Cleanup incomplete");
                 }
-                return T("部分完成", "Partially completed", "一部完了");
+                return T("部分完成", "Partially completed");
             }
-            return T("清理完成", "Completed", "完了");
+            return T("清理完成", "Completed");
         }
 
         internal static string Summary(ManualMemoryReport report)
@@ -111,9 +101,9 @@ namespace PaviseApp
             long? availableChangeBytes = report.AvailableChangeBytes;
             if (!availableChangeBytes.HasValue)
             {
-                return Outcome(report) + " · " + T("内存读数不可用", "Memory readings unavailable", "メモリ値を取得できません");
+                return Outcome(report) + " · " + T("内存读数不可用", "Memory readings unavailable");
             }
-            return T("可用 ", "Available ", "利用可能 ") + Delta(availableChangeBytes.Value) + (report.Completed ? "" : (" · " + Outcome(report)));
+            return T("可用 ", "Available ") + Delta(availableChangeBytes.Value) + (report.Completed ? "" : (" · " + Outcome(report)));
         }
     }
 }

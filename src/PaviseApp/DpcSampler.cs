@@ -39,11 +39,11 @@ namespace PaviseApp
             idle = null;
             int processorCountLimit = Math.Min(64, Environment.ProcessorCount);
             int sizeOfResult = Marshal.SizeOf(typeof(ProcessorPerf));
-            IntPtr intPtr = Marshal.AllocHGlobal(sizeOfResult * processorCountLimit);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(sizeOfResult * processorCountLimit);
             try
             {
                 int returned;
-                if (NtQuerySystemInformation(8, intPtr, sizeOfResult * processorCountLimit, out returned) != 0)
+                if (NtQuerySystemInformation(8, nativeBuffer, sizeOfResult * processorCountLimit, out returned) != 0)
                 {
                     return false;
                 }
@@ -56,7 +56,7 @@ namespace PaviseApp
                 idle = new long[returnedProcessorCount];
                 for (int i = 0; i < returnedProcessorCount; i++)
                 {
-                    ProcessorPerf processorPerf = (ProcessorPerf)Marshal.PtrToStructure((IntPtr)((long)intPtr + i * sizeOfResult), typeof(ProcessorPerf));
+                    ProcessorPerf processorPerf = (ProcessorPerf)Marshal.PtrToStructure((IntPtr)((long)nativeBuffer + i * sizeOfResult), typeof(ProcessorPerf));
                     irq[i] = processorPerf.DpcTime + processorPerf.InterruptTime;
                     idle[i] = processorPerf.IdleTime;
                 }
@@ -68,7 +68,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 

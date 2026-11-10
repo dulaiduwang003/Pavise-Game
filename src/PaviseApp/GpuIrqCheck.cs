@@ -23,8 +23,6 @@ namespace PaviseApp
 
         internal const string FuseKey = "GpuIrqFuseV1";
 
-        private const string DisplayClass = "{4d36e968-e325-11ce-bfc1-08002be10318}";
-
         private static readonly object lk = new object();
 
         private static readonly IrqAffinityEngine engine = new IrqAffinityEngine("GpuIrqAutoOn", "GpuIrqAuto_", "GPU IRQ ");
@@ -63,11 +61,11 @@ namespace PaviseApp
                 return 0uL;
             }
             ulong wholeCoresResult = 0uL;
-            foreach (ulong numericValueEntry in physical)
+            foreach (ulong currentPhysical in physical)
             {
-                if ((numericValueEntry & mask) != 0)
+                if ((currentPhysical & mask) != 0)
                 {
-                    wholeCoresResult |= numericValueEntry;
+                    wholeCoresResult |= currentPhysical;
                 }
             }
             return wholeCoresResult;
@@ -200,22 +198,21 @@ namespace PaviseApp
                 }
                 if (driverInterrupt != null)
                 {
-                    GpuIrqSample gpuIrqSample2 = new GpuIrqSample();
-                    gpuIrqSample2.DeviceId = device.InstanceId;
-                    gpuIrqSample2.Name = device.Name;
-                    gpuIrqSample2.Driver = driverInterrupt.Driver ?? "";
-                    gpuIrqSample2.DriverVersion = device.DriverVersion ?? "";
-                    gpuIrqSample2.Seen = (driverInterrupt.CpuMaskTruncated ? 0 : driverInterrupt.CpuMask);
-                    gpuIrqSample2.Events = driverInterrupt.Dpc;
-                    gpuIrqSample2.P99Us = IrqPercentile.ApproxUs(driverInterrupt.DpcBuckets, driverInterrupt.DpcMaxUs, 0.99);
-                    gpuIrqSample2.MaxUs = driverInterrupt.DpcMaxUs;
-                    gpuIrqSample2.MultiMessage = device.MultiMessageRisk;
-                    gpuIrqSample2.ConfigurationKnown = device.ConfigurationKnown;
-                    gpuIrqSample2.ExternalPin = device.IsPinned && !string.Equals(device.InstanceId, ownedDevice ?? "", StringComparison.OrdinalIgnoreCase);
-                    GpuIrqSample gpuIrqSample3 = gpuIrqSample2;
-                    if (gpuIrqSample == null || gpuIrqSample3.Events > gpuIrqSample.Events)
+                    GpuIrqSample candidateGpuIrqSample = new GpuIrqSample();
+                    candidateGpuIrqSample.DeviceId = device.InstanceId;
+                    candidateGpuIrqSample.Name = device.Name;
+                    candidateGpuIrqSample.Driver = driverInterrupt.Driver ?? "";
+                    candidateGpuIrqSample.DriverVersion = device.DriverVersion ?? "";
+                    candidateGpuIrqSample.Seen = (driverInterrupt.CpuMaskTruncated ? 0 : driverInterrupt.CpuMask);
+                    candidateGpuIrqSample.Events = driverInterrupt.Dpc;
+                    candidateGpuIrqSample.P99Us = IrqPercentile.ApproxUs(driverInterrupt.DpcBuckets, driverInterrupt.DpcMaxUs, 0.99);
+                    candidateGpuIrqSample.MaxUs = driverInterrupt.DpcMaxUs;
+                    candidateGpuIrqSample.MultiMessage = device.MultiMessageRisk;
+                    candidateGpuIrqSample.ConfigurationKnown = device.ConfigurationKnown;
+                    candidateGpuIrqSample.ExternalPin = device.IsPinned && !string.Equals(device.InstanceId, ownedDevice ?? "", StringComparison.OrdinalIgnoreCase);
+                    if (gpuIrqSample == null || candidateGpuIrqSample.Events > gpuIrqSample.Events)
                     {
-                        gpuIrqSample = gpuIrqSample3;
+                        gpuIrqSample = candidateGpuIrqSample;
                     }
                 }
             }
@@ -224,10 +221,10 @@ namespace PaviseApp
 
         internal static List<SlowDriver> SlowDrivers(List<DriverInterrupt> drivers, List<IrqDevice> devices)
         {
-            List<SlowDriver> list = new List<SlowDriver>();
+            List<SlowDriver> slowDrivers = new List<SlowDriver>();
             if (drivers == null)
             {
-                return list;
+                return slowDrivers;
             }
             foreach (DriverInterrupt driver in drivers)
             {
@@ -252,7 +249,7 @@ namespace PaviseApp
                         }
                     }
                 }
-                list.Add(new SlowDriver
+                slowDrivers.Add(new SlowDriver
                 {
                     Driver = driver.Driver,
                     Device = device,
@@ -262,40 +259,40 @@ namespace PaviseApp
                     Events = driver.Dpc
                 });
             }
-            list.Sort((SlowDriver a, SlowDriver b) => b.MaxUs.CompareTo(a.MaxUs));
-            if (list.Count > 5)
+            slowDrivers.Sort((SlowDriver a, SlowDriver b) => b.MaxUs.CompareTo(a.MaxUs));
+            if (slowDrivers.Count > 5)
             {
-                list.RemoveRange(5, list.Count - 5);
+                slowDrivers.RemoveRange(5, slowDrivers.Count - 5);
             }
-            return list;
+            return slowDrivers;
         }
 
         internal static string EncodeSlow(List<SlowDriver> slow, long ticks)
         {
-            List<string> list = new List<string>();
-            list.Add("1");
-            list.Add(ticks.ToString(CultureInfo.InvariantCulture));
-            List<string> list2 = list;
+            List<string> currentTicks = new List<string>();
+            currentTicks.Add("1");
+            currentTicks.Add(ticks.ToString(CultureInfo.InvariantCulture));
+            List<string> texts = currentTicks;
             foreach (SlowDriver item in slow)
             {
-                list2.Add(Uri.EscapeDataString(item.Driver) + "," + Uri.EscapeDataString(item.Device) + "," + item.MaxUs.ToString("F0", CultureInfo.InvariantCulture) + "," + item.P99Us.ToString("F0", CultureInfo.InvariantCulture) + "," + item.Over1Ms.ToString(CultureInfo.InvariantCulture) + "," + item.Events.ToString(CultureInfo.InvariantCulture));
+                texts.Add(Uri.EscapeDataString(item.Driver) + "," + Uri.EscapeDataString(item.Device) + "," + item.MaxUs.ToString("F0", CultureInfo.InvariantCulture) + "," + item.P99Us.ToString("F0", CultureInfo.InvariantCulture) + "," + item.Over1Ms.ToString(CultureInfo.InvariantCulture) + "," + item.Events.ToString(CultureInfo.InvariantCulture));
             }
-            return string.Join("|", list2.ToArray());
+            return string.Join("|", texts.ToArray());
         }
 
         internal static List<SlowDriver> DecodeSlow(string raw, out long ticks)
         {
             ticks = 0L;
-            List<SlowDriver> list = new List<SlowDriver>();
+            List<SlowDriver> slowDrivers = new List<SlowDriver>();
             if (string.IsNullOrEmpty(raw))
             {
-                return list;
+                return slowDrivers;
             }
             string[] rawParts = raw.Split('|');
             if (rawParts.Length < 2 || rawParts[0] != "1" || !long.TryParse(rawParts[1], NumberStyles.None, CultureInfo.InvariantCulture, out ticks))
             {
                 ticks = 0L;
-                return list;
+                return slowDrivers;
             }
             for (int i = 2; i < rawParts.Length; i++)
             {
@@ -308,7 +305,7 @@ namespace PaviseApp
                 {
                     try
                     {
-                        list.Add(new SlowDriver
+                        slowDrivers.Add(new SlowDriver
                         {
                             Driver = Uri.UnescapeDataString(parts[0]),
                             Device = Uri.UnescapeDataString(parts[1]),
@@ -323,7 +320,7 @@ namespace PaviseApp
                     }
                 }
             }
-            return list;
+            return slowDrivers;
         }
 
         public static List<SlowDriver> LoadSlow(out long ticks)
@@ -339,8 +336,7 @@ namespace PaviseApp
         internal static bool IsFused(string deviceId, string version)
         {
             string b = FuseToken(deviceId, version);
-            string[] loadStrParts = Settings.LoadStr("GpuIrqFuseV1", "").Split('\n');
-            foreach (string entryText in loadStrParts)
+            foreach (string entryText in Settings.LoadStr("GpuIrqFuseV1", "").Split('\n'))
             {
                 if (string.Equals(entryText.Trim(), b, StringComparison.Ordinal))
                 {
@@ -445,30 +441,29 @@ namespace PaviseApp
                 gpuIrqResult.Outcome = (AwaitingReboot(gpuIrqState) ? GpuIrqOutcome.AwaitingReboot : GpuIrqOutcome.NeedsVerification);
                 return gpuIrqResult;
             }
-            GpuIrqResult gpuIrqResult2 = new GpuIrqResult();
-            gpuIrqResult2.Outcome = fix.Outcome;
-            gpuIrqResult2.Detail = fix.Detail ?? "";
-            gpuIrqResult2.Gpu = fix.Gpu;
-            gpuIrqResult2.Region = fix.Region;
-            gpuIrqResult2.Target = fix.Target;
-            gpuIrqResult2.Slow = fix.Slow ?? new List<SlowDriver>();
-            GpuIrqResult gpuIrqResult3 = gpuIrqResult2;
+            GpuIrqResult candidateGpuIrqResult = new GpuIrqResult();
+            candidateGpuIrqResult.Outcome = fix.Outcome;
+            candidateGpuIrqResult.Detail = fix.Detail ?? "";
+            candidateGpuIrqResult.Gpu = fix.Gpu;
+            candidateGpuIrqResult.Region = fix.Region;
+            candidateGpuIrqResult.Target = fix.Target;
+            candidateGpuIrqResult.Slow = fix.Slow ?? new List<SlowDriver>();
             switch (fix.Outcome)
             {
             case GpuIrqOutcome.Verified:
-                gpuIrqResult3.Outcome = GpuIrqOutcome.Clear;
-                gpuIrqResult3.Detail = "";
+                candidateGpuIrqResult.Outcome = GpuIrqOutcome.Clear;
+                candidateGpuIrqResult.Detail = "";
                 break;
             case GpuIrqOutcome.Restored:
-                gpuIrqResult3.Outcome = GpuIrqOutcome.NoRegion;
-                gpuIrqResult3.Detail = "";
+                candidateGpuIrqResult.Outcome = GpuIrqOutcome.NoRegion;
+                candidateGpuIrqResult.Detail = "";
                 break;
             case GpuIrqOutcome.RolledBack:
-                gpuIrqResult3.Outcome = GpuIrqOutcome.Skipped;
-                gpuIrqResult3.Detail = Lang.T("irqcheck.reason.fused");
+                candidateGpuIrqResult.Outcome = GpuIrqOutcome.Skipped;
+                candidateGpuIrqResult.Detail = Lang.T("irqcheck.reason.fused");
                 break;
             }
-            return gpuIrqResult3;
+            return candidateGpuIrqResult;
         }
 
         public static GpuIrqResult Run(Func<bool> cancelled, Action<float> progress)

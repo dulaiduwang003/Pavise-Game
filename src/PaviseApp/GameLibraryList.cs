@@ -83,7 +83,7 @@ namespace PaviseApp
         public void SetItems(List<GameLibraryItem> fresh)
         {
             string id = ((SelectedItem == null) ? null : SelectedItem.Profile.Id);
-            int setItemsValue = -base.AutoScrollPosition.Y;
+            int scrollTop = -base.AutoScrollPosition.Y;
             bool itemsChanged = fresh.Count != items.Count;
             if (!itemsChanged)
             {
@@ -108,9 +108,9 @@ namespace PaviseApp
                     rows.Clear();
                     items.Clear();
                     selectedIndex = -1;
-                    foreach (GameLibraryItem item in fresh)
+                    foreach (GameLibraryItem currentFresh in fresh)
                     {
-                        GameLibraryRow row = new GameLibraryRow(item, tips);
+                        GameLibraryRow row = new GameLibraryRow(currentFresh, tips);
                         row.IconProvider = IconProvider;
                         row.TabIndex = rows.Count;
                         row.SelectionRequested += delegate
@@ -193,7 +193,7 @@ namespace PaviseApp
                             HandleRowKey(row, e);
                         };
                         rows.Add(row);
-                        items.Add(item);
+                        items.Add(currentFresh);
                         base.Controls.Add(row);
                     }
                 }
@@ -210,22 +210,22 @@ namespace PaviseApp
             {
                 ResumeLayout(true);
             }
-            int value = -1;
+            int currentIndex = -1;
             if (id != null)
             {
                 for (int k = 0; k < items.Count; k++)
                 {
                     if (string.Equals(items[k].Profile.Id, id, StringComparison.OrdinalIgnoreCase))
                     {
-                        value = k;
+                        currentIndex = k;
                         break;
                     }
                 }
             }
-            SelectIndex(value, false);
+            SelectIndex(currentIndex, false);
             if (itemsChanged)
             {
-                base.AutoScrollPosition = new Point(0, setItemsValue);
+                base.AutoScrollPosition = new Point(0, scrollTop);
             }
             RefreshRows();
         }

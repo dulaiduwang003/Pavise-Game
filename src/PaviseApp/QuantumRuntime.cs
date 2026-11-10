@@ -54,24 +54,24 @@ namespace PaviseApp
                     supported = Environment.Is64BitOperatingSystem && Native.OsBuild() >= 19041;
 #endif
                     if (!supported) return new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, 0, "Online quantum update is unavailable on this platform");
-                    uint value = raw & 63u;
+                    uint quantumBits = raw & 63u;
                     QuantumRuntimeResult direct;
 #if PAVISE_SELFTEST
                     if (DirectForTest == null) return new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, 0, "Native updates are disabled in self-tests");
-                    direct = DirectForTest(value);
+                    direct = DirectForTest(quantumBits);
 #else
                     // 已超时的旧辅助进程必须终结后，才能执行新的更新。
                     if (!ReapOwnedTasks()) return new QuantumRuntimeResult(QuantumRuntimeState.Uncertain, 0, "Previous online quantum helper has not terminated", true);
-                    direct = ApplyDirect(value);
+                    direct = ApplyDirect(quantumBits);
 #endif
                     if (direct == null) return new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "Online quantum update returned no result");
                     if (direct.Applied || direct.Status != PrivilegeNotHeld && direct.Status != AccessDenied && direct.Status != NotAllAssigned) return direct;
 #if PAVISE_SELFTEST
                     return SystemTaskForTest == null
                         ? new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, direct.Status, "SYSTEM helper is disabled in self-tests")
-                        : SystemTaskForTest(value) ?? new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "SYSTEM helper returned no result", true);
+                        : SystemTaskForTest(quantumBits) ?? new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "SYSTEM helper returned no result", true);
 #else
-                    return ApplyViaSystemTask(value);
+                    return ApplyViaSystemTask(quantumBits);
 #endif
                 }
                 catch (Exception error)

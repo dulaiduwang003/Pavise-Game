@@ -137,8 +137,7 @@ namespace PaviseApp
                 bool hasServiceCandidate = false;
                 if (all != null)
                 {
-                    ProcEntry[] entries = all.Entries;
-                    foreach (ProcEntry procEntry in entries)
+                    foreach (ProcEntry procEntry in all.Entries)
                     {
                         if (procEntry.Pid > 4 && procEntry.Session == 0 && procEntry.Creation > 0 && BackgroundServicePolicy.CandidateName(procEntry.Name))
                         {

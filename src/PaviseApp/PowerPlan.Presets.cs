@@ -129,10 +129,10 @@ namespace PaviseApp
                 var classes = new HashSet<byte>(); int packages = 0;
                 for (int offset = 0; offset + 8 <= size; )
                 {
-                    IntPtr item = IntPtr.Add(buffer, offset);
-                    int relation = Marshal.ReadInt32(item), bytes = Marshal.ReadInt32(item, 4);
+                    IntPtr addHandle = IntPtr.Add(buffer, offset);
+                    int relation = Marshal.ReadInt32(addHandle), bytes = Marshal.ReadInt32(addHandle, 4);
                     if (bytes < 8 || bytes > size - offset) return;
-                    if (relation == 0 && bytes >= 10) classes.Add(Marshal.ReadByte(item, 9));
+                    if (relation == 0 && bytes >= 10) classes.Add(Marshal.ReadByte(addHandle, 9));
                     if (relation == 3) packages++;
                     offset += bytes;
                 }
@@ -404,22 +404,22 @@ namespace PaviseApp
             {
                 // 在本机 AC/DC 适配前核对写入值；未注册项已在创建阶段跳过。
                 var readEvidence = plans as IManagedPowerReadEvidence;
-                foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
+                foreach (ManagedPowerPresetValue entry in selection.Preset.Entries)
                 {
-                    if (PreserveBaseAc(value.Sub, value.Setting, selection.PreserveParking)) continue;
-                    if (value.Ac.HasValue && readEvidence != null)
+                    if (PreserveBaseAc(entry.Sub, entry.Setting, selection.PreserveParking)) continue;
+                    if (entry.Ac.HasValue && readEvidence != null)
                     {
-                        ManagedPowerReadEvidence read = readEvidence.ReadEvidence(scheme, value.Sub, value.Setting, true);
+                        ManagedPowerReadEvidence read = readEvidence.ReadEvidence(scheme, entry.Sub, entry.Setting, true);
                         if (read.State == ManagedPowerReadState.Unavailable)
-                            return PresetPreparationFailed("AC value unavailable: " + value.Sub + "/" + value.Setting
+                            return PresetPreparationFailed("AC value unavailable: " + entry.Sub + "/" + entry.Setting
                                 + " code=" + read.NativeCode + " resolution=" + read.ResolutionCode, read.NativeCode, read.ResolutionCode);
-                        if (read.State == ManagedPowerReadState.Value && read.Value != value.Ac.Value)
-                            return PresetPreparationFailed("AC readback mismatch: " + value.Sub + "/" + value.Setting);
+                        if (read.State == ManagedPowerReadState.Value && read.Value != entry.Ac.Value)
+                            return PresetPreparationFailed("AC readback mismatch: " + entry.Sub + "/" + entry.Setting);
                         continue;
                     }
-                    uint? actual = plans.Read(scheme, value.Sub, value.Setting, true);
-                    if (value.Ac.HasValue && actual.HasValue && actual.Value != value.Ac.Value)
-                        return PresetPreparationFailed("AC readback mismatch: " + value.Sub + "/" + value.Setting);
+                    uint? actual = plans.Read(scheme, entry.Sub, entry.Setting, true);
+                    if (entry.Ac.HasValue && actual.HasValue && actual.Value != entry.Ac.Value)
+                        return PresetPreparationFailed("AC readback mismatch: " + entry.Sub + "/" + entry.Setting);
                 }
                 Guid[] baseGroups = plans.Subgroups(record.Base), targetGroups = plans.Subgroups(scheme);
                 if (baseGroups == null || targetGroups == null) return PresetPreparationFailed("Subgroup enumeration failed");
@@ -468,30 +468,30 @@ namespace PaviseApp
                 return NoteIntactMismatch("preset-fingerprint");
             HashSet<Guid> laboratory = LaboratoryPower.OwnedSettings(scheme);
             if (laboratory == null) return NoteIntactMismatch("laboratory-ownership-unreadable");
-            foreach (ManagedPowerPresetValue value in selection.Preset.Entries)
+            foreach (ManagedPowerPresetValue entry in selection.Preset.Entries)
             {
                 // 日常 AC 设置和全部电池设置仍是本机偏好；实验室修改有独立的核验与恢复所有者。
 
-                if (!value.Ac.HasValue || PreserveBaseAc(value.Sub, value.Setting, selection.PreserveParking)
-                    || value.Sub == SubProcessor && laboratory.Contains(value.Setting)) continue;
+                if (!entry.Ac.HasValue || PreserveBaseAc(entry.Sub, entry.Setting, selection.PreserveParking)
+                    || entry.Sub == SubProcessor && laboratory.Contains(entry.Setting)) continue;
                 var evidence = plans as IManagedPowerReadEvidence;
                 if (evidence != null)
                 {
-                    ManagedPowerReadEvidence actualRead = evidence.ReadEvidence(scheme, value.Sub, value.Setting, true);
+                    ManagedPowerReadEvidence actualRead = evidence.ReadEvidence(scheme, entry.Sub, entry.Setting, true);
                     if (actualRead.State == ManagedPowerReadState.Unavailable)
-                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unreadable code=" + actualRead.NativeCode);
-                    if (actualRead.State == ManagedPowerReadState.Value && actualRead.Value != value.Ac.Value)
-                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac expected=" + value.Ac.Value + " actual=" + actualRead.Value);
+                        return NoteIntactMismatch("setting=" + entry.Setting.ToString("D") + " ac=unreadable code=" + actualRead.NativeCode);
+                    if (actualRead.State == ManagedPowerReadState.Value && actualRead.Value != entry.Ac.Value)
+                        return NoteIntactMismatch("setting=" + entry.Setting.ToString("D") + " ac expected=" + entry.Ac.Value + " actual=" + actualRead.Value);
                     if (actualRead.State == ManagedPowerReadState.ConfirmedUnregistered
-                        && evidence.ReadEvidence(record.Base, value.Sub, value.Setting, true).State != ManagedPowerReadState.ConfirmedUnregistered)
-                        return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unregistered-in-plan-only");
+                        && evidence.ReadEvidence(record.Base, entry.Sub, entry.Setting, true).State != ManagedPowerReadState.ConfirmedUnregistered)
+                        return NoteIntactMismatch("setting=" + entry.Setting.ToString("D") + " ac=unregistered-in-plan-only");
                     continue;
                 }
-                uint? actual = plans.Read(scheme, value.Sub, value.Setting, true);
-                if (!actual.HasValue && plans.Read(record.Base, value.Sub, value.Setting, true).HasValue)
-                    return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac=unreadable");
-                if (actual.HasValue && actual.Value != value.Ac.Value)
-                    return NoteIntactMismatch("setting=" + value.Setting.ToString("D") + " ac expected=" + value.Ac.Value + " actual=" + actual.Value);
+                uint? actual = plans.Read(scheme, entry.Sub, entry.Setting, true);
+                if (!actual.HasValue && plans.Read(record.Base, entry.Sub, entry.Setting, true).HasValue)
+                    return NoteIntactMismatch("setting=" + entry.Setting.ToString("D") + " ac=unreadable");
+                if (actual.HasValue && actual.Value != entry.Ac.Value)
+                    return NoteIntactMismatch("setting=" + entry.Setting.ToString("D") + " ac expected=" + entry.Ac.Value + " actual=" + actual.Value);
             }
             return true;
         }
@@ -606,7 +606,7 @@ namespace PaviseApp
 
         private static ManagedPowerReadEvidence ReadPresetPowerEvidence(Guid scheme, Guid sub, Guid setting, bool ac)
         {
-            uint value, code = ReadPresetIndex(scheme, sub, setting, ac, out value);
+            uint presetValue, code = ReadPresetIndex(scheme, sub, setting, ac, out presetValue);
             // 访问拒绝、无效句柄及未知错误都不能证明配置不存在。
             if (code != 0 && code != 2 && code != 3 && code != 87)
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, code, false);
@@ -616,13 +616,13 @@ namespace PaviseApp
             if ((code == 0 || code == 2 || code == 3) && (definition == 2 || definition == 3))
                 return new ManagedPowerReadEvidence(ManagedPowerReadState.ConfirmedUnregistered, 0, code, definition, false);
             if (definition != 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, definition, false);
-            if (code == 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Value, value, 0, 0, false);
-            uint storedCode = ReadPresetStoredIndex(scheme, sub, setting, ac, out value);
+            if (code == 0) return new ManagedPowerReadEvidence(ManagedPowerReadState.Value, presetValue, 0, 0, false);
+            uint storedCode = ReadPresetStoredIndex(scheme, sub, setting, ac, out presetValue);
             // 只有确认覆盖值不存在后才解析默认值；ERROR_INVALID_PARAMETER 不能证明不存在。
             if (storedCode != 2) return new ManagedPowerReadEvidence(ManagedPowerReadState.Unavailable, 0, code, storedCode == 0 ? code : storedCode, false);
-            uint resolution = ReadPresetEffectiveDefault(scheme, sub, setting, ac, out value);
+            uint resolution = ReadPresetEffectiveDefault(scheme, sub, setting, ac, out presetValue);
             return new ManagedPowerReadEvidence(resolution == 0 ? ManagedPowerReadState.Value : ManagedPowerReadState.Unavailable,
-                value, code, resolution, resolution == 0);
+                presetValue, code, resolution, resolution == 0);
         }
 
         private static uint ReadPresetEffectiveDefault(Guid scheme, Guid sub, Guid setting, bool ac, out uint value)
@@ -655,15 +655,6 @@ namespace PaviseApp
         private static extern uint OpenPresetDefinition(IntPtr root, string path, uint options, int access, out IntPtr key);
         [DllImport("advapi32.dll", EntryPoint = "RegCloseKey")]
         private static extern uint ClosePresetDefinition(IntPtr key);
-
-        private static bool SamePresetRegistryValue(object expected, object actual)
-        {
-            Array a = expected as Array, b = actual as Array;
-            if (a == null || b == null) return object.Equals(expected, actual);
-            if (a.Length != b.Length || a.GetType() != b.GetType()) return false;
-            for (int i = 0; i < a.Length; i++) if (!object.Equals(a.GetValue(i), b.GetValue(i))) return false;
-            return true;
-        }
 
         private static bool RecoverPresetCreation(IManagedPowerPlans plans)
         {

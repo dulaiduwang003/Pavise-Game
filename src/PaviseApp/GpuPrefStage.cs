@@ -23,8 +23,6 @@ namespace PaviseApp
             internal string Original;
         }
 
-        private const string GpuKey = "SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences";
-
         internal const string JournalKey = "GpuPrefStage";
 
         private static readonly object lk = new object();
@@ -57,10 +55,10 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (Settings.TryLoadStr("GpuPrefStage", out value))
+                string text;
+                if (Settings.TryLoadStr("GpuPrefStage", out text))
                 {
-                    return value.Length > 0;
+                    return text.Length > 0;
                 }
                 return true;
             }
@@ -82,15 +80,15 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                string value;
-                if (!Settings.TryLoadStr("GpuPrefStage", out value))
+                string text;
+                if (!Settings.TryLoadStr("GpuPrefStage", out text))
                 {
                     return false;
                 }
-                if (value.Length != 0)
+                if (text.Length != 0)
                 {
                     StageRecord record;
-                    if (!TryDecodeRecord(value, out record))
+                    if (!TryDecodeRecord(text, out record))
                     {
                         return false;
                     }
@@ -113,16 +111,16 @@ namespace PaviseApp
                 }
                 try
                 {
-                    string value2;
-                    if (!TryReadPreference(exePath, out value2))
+                    string currentText;
+                    if (!TryReadPreference(exePath, out currentText))
                     {
                         return false;
                     }
-                    if (!ValidPreferenceFields(value2))
+                    if (!ValidPreferenceFields(currentText))
                     {
                         return false;
                     }
-                    string field = PrefFieldText.ReadField(value2, "GpuPreference");
+                    string field = PrefFieldText.ReadField(currentText, "GpuPreference");
                     if (field == "1" || field == "2")
                     {
                         return true;
@@ -131,29 +129,29 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    string value3 = EncodeJournal(exePath, value2);
+                    string encodeJournal = EncodeJournal(exePath, currentText);
                     pendingApplyReceipt = (pendingApplyNotIssued = (pendingRestoreNotIssued = (settledIdentity = null)));
-                    if (!SaveJournal(value3))
+                    if (!SaveJournal(encodeJournal))
                     {
                         return false;
                     }
-                    string value4;
-                    if (!TryReadPreference(exePath, out value4) || !string.Equals(value4, value2, StringComparison.Ordinal))
+                    string candidateText;
+                    if (!TryReadPreference(exePath, out candidateText) || !string.Equals(candidateText, currentText, StringComparison.Ordinal))
                     {
-                        pendingApplyNotIssued = value3;
+                        pendingApplyNotIssued = encodeJournal;
                         return false;
                     }
-                    WriteResult writeResult = WriteAndVerify(exePath, PrefFieldText.MergeField(value2, "GpuPreference", "2"));
+                    WriteResult writeResult = WriteAndVerify(exePath, PrefFieldText.MergeField(currentText, "GpuPreference", "2"));
                     if (writeResult != 0)
                     {
                         if (writeResult == WriteResult.NotIssued)
                         {
-                            pendingApplyNotIssued = value3;
+                            pendingApplyNotIssued = encodeJournal;
                         }
                         return false;
                     }
-                    pendingApplyReceipt = value3;
-                    if (!SaveJournal(EncodeRecord('O', exePath, value2)))
+                    pendingApplyReceipt = encodeJournal;
+                    if (!SaveJournal(EncodeRecord('O', exePath, currentText)))
                     {
                         return false;
                     }
@@ -180,17 +178,17 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                string value;
-                if (!Settings.TryLoadStr("GpuPrefStage", out value))
+                string text;
+                if (!Settings.TryLoadStr("GpuPrefStage", out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     return true;
                 }
                 StageRecord record;
-                if (!TryDecodeRecord(value, out record))
+                if (!TryDecodeRecord(text, out record))
                 {
                     return false;
                 }
@@ -204,17 +202,17 @@ namespace PaviseApp
             original = null;
             lock (lk)
             {
-                string value;
-                if (!Settings.TryLoadStr("GpuPrefStage", out value))
+                string text;
+                if (!Settings.TryLoadStr("GpuPrefStage", out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     return true;
                 }
                 StageRecord record;
-                if (!TryDecodeRecord(value, out record))
+                if (!TryDecodeRecord(text, out record))
                 {
                     return false;
                 }
@@ -226,24 +224,24 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                string value2;
-                if (!TryReadPreference(path, out value2))
+                string currentText;
+                if (!TryReadPreference(path, out currentText))
                 {
                     return false;
                 }
-                if (PrefFieldText.ReadField(value2, "GpuPreference") != "2")
+                if (PrefFieldText.ReadField(currentText, "GpuPreference") != "2")
                 {
                     return true;
                 }
-                if (!ValidPreferenceFields(value2))
+                if (!ValidPreferenceFields(currentText))
                 {
                     return false;
                 }
-                if (record.Phase == 'P' && string.Equals(value, pendingApplyNotIssued, StringComparison.Ordinal))
+                if (record.Phase == 'P' && string.Equals(text, pendingApplyNotIssued, StringComparison.Ordinal))
                 {
                     return true;
                 }
-                if (record.Phase != 'O' && (record.Phase != 'P' || !string.Equals(value, pendingApplyReceipt, StringComparison.Ordinal)) && (record.Phase != 'R' || !string.Equals(value, pendingRestoreNotIssued, StringComparison.Ordinal)))
+                if (record.Phase != 'O' && (record.Phase != 'P' || !string.Equals(text, pendingApplyReceipt, StringComparison.Ordinal)) && (record.Phase != 'R' || !string.Equals(text, pendingRestoreNotIssued, StringComparison.Ordinal)))
                 {
                     return false;
                 }
@@ -268,20 +266,20 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                string value;
-                if (!Settings.TryLoadStr("GpuPrefStage", out value))
+                string text;
+                if (!Settings.TryLoadStr("GpuPrefStage", out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     return true;
                 }
                 string path = null;
                 StageRecord record;
-                if (TryDecodeRecord(value, out record))
+                if (TryDecodeRecord(text, out record))
                 {
-                    if ((record.Phase != 'P' || string.Equals(value, pendingApplyReceipt, StringComparison.Ordinal) || string.Equals(value, pendingApplyNotIssued, StringComparison.Ordinal)) && (record.Phase != 'R' || string.Equals(value, pendingRestoreNotIssued, StringComparison.Ordinal)))
+                    if ((record.Phase != 'P' || string.Equals(text, pendingApplyReceipt, StringComparison.Ordinal) || string.Equals(text, pendingApplyNotIssued, StringComparison.Ordinal)) && (record.Phase != 'R' || string.Equals(text, pendingRestoreNotIssued, StringComparison.Ordinal)))
                     {
                         return false;
                     }
@@ -305,17 +303,17 @@ namespace PaviseApp
 
         private static bool RestoreLocked()
         {
-            string value;
-            if (!Settings.TryLoadStr("GpuPrefStage", out value))
+            string text;
+            if (!Settings.TryLoadStr("GpuPrefStage", out text))
             {
                 return false;
             }
-            if (value.Length == 0)
+            if (text.Length == 0)
             {
                 return true;
             }
             StageRecord record;
-            if (!TryDecodeRecord(value, out record))
+            if (!TryDecodeRecord(text, out record))
             {
                 return false;
             }
@@ -323,7 +321,7 @@ namespace PaviseApp
             {
                 return Settle(record);
             }
-            if (record.Phase == 'P' && string.Equals(value, pendingApplyNotIssued, StringComparison.Ordinal))
+            if (record.Phase == 'P' && string.Equals(text, pendingApplyNotIssued, StringComparison.Ordinal))
             {
                 return Settle(record);
             }
@@ -339,20 +337,20 @@ namespace PaviseApp
             }
             try
             {
-                string value2;
-                if (!TryReadPreference(path, out value2))
+                string currentText;
+                if (!TryReadPreference(path, out currentText))
                 {
                     return false;
                 }
-                if (PrefFieldText.ReadField(value2, "GpuPreference") != "2")
+                if (PrefFieldText.ReadField(currentText, "GpuPreference") != "2")
                 {
                     return Settle(record);
                 }
-                if (!ValidPreferenceFields(value2))
+                if (!ValidPreferenceFields(currentText))
                 {
                     return false;
                 }
-                if ((record.Phase == 'R' && !string.Equals(value, pendingRestoreNotIssued, StringComparison.Ordinal)) || (record.Phase == 'P' && !string.Equals(value, pendingApplyReceipt, StringComparison.Ordinal)))
+                if ((record.Phase == 'R' && !string.Equals(text, pendingRestoreNotIssued, StringComparison.Ordinal)) || (record.Phase == 'P' && !string.Equals(text, pendingApplyReceipt, StringComparison.Ordinal)))
                 {
                     return false;
                 }
@@ -361,22 +359,22 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                string value3;
-                if (!TryReadPreference(path, out value3))
+                string candidateText;
+                if (!TryReadPreference(path, out candidateText))
                 {
                     MarkRestoreNotIssued(record, message);
                     return false;
                 }
-                if (PrefFieldText.ReadField(value3, "GpuPreference") != "2")
+                if (PrefFieldText.ReadField(candidateText, "GpuPreference") != "2")
                 {
                     return Settle(record);
                 }
-                if (!ValidPreferenceFields(value3) || !string.Equals(value3, value2, StringComparison.Ordinal))
+                if (!ValidPreferenceFields(candidateText) || !string.Equals(candidateText, currentText, StringComparison.Ordinal))
                 {
                     MarkRestoreNotIssued(record, message);
                     return false;
                 }
-                string restoreFieldResult = ((original != null) ? PrefFieldText.RestoreField(value2, original, "GpuPreference") : PrefFieldText.RemoveField(value2, "GpuPreference"));
+                string restoreFieldResult = ((original != null) ? PrefFieldText.RestoreField(currentText, original, "GpuPreference") : PrefFieldText.RemoveField(currentText, "GpuPreference"));
                 pendingRestoreNotIssued = null;
                 WriteResult writeResult = WriteAndVerify(path, (restoreFieldResult.Length == 0 && original == null) ? null : restoreFieldResult);
                 if (writeResult != 0)
@@ -506,13 +504,12 @@ namespace PaviseApp
             {
                 return false;
             }
-            int validPreferenceFieldsValue = 0;
-            string[] valueParts = value.Split(';');
-            foreach (string entryText in valueParts)
+            int preferenceCount = 0;
+            foreach (string entryText in value.Split(';'))
             {
                 int matchIndex = entryText.IndexOf('=');
                 string a = ((matchIndex < 0) ? entryText : entryText.Substring(0, matchIndex)).Trim();
-                if (string.Equals(a, "GpuPreference", StringComparison.OrdinalIgnoreCase) && (matchIndex < 0 || ++validPreferenceFieldsValue > 1 || entryText.Substring(matchIndex + 1).Trim().Length == 0))
+                if (string.Equals(a, "GpuPreference", StringComparison.OrdinalIgnoreCase) && (matchIndex < 0 || ++preferenceCount > 1 || entryText.Substring(matchIndex + 1).Trim().Length == 0))
                 {
                     return false;
                 }
@@ -534,10 +531,10 @@ namespace PaviseApp
 
         private static bool SaveJournal(string value)
         {
-            string value2;
-            if (Settings.SaveStr("GpuPrefStage", value) && Settings.TryLoadStr("GpuPrefStage", out value2))
+            string text;
+            if (Settings.SaveStr("GpuPrefStage", value) && Settings.TryLoadStr("GpuPrefStage", out text))
             {
-                return string.Equals(value, value2, StringComparison.Ordinal);
+                return string.Equals(value, text, StringComparison.Ordinal);
             }
             return false;
         }
@@ -549,8 +546,8 @@ namespace PaviseApp
             {
                 return writeResult;
             }
-            string value2;
-            if (!TryReadPreference(path, out value2) || !string.Equals(value2, value, StringComparison.Ordinal))
+            string text;
+            if (!TryReadPreference(path, out text) || !string.Equals(text, value, StringComparison.Ordinal))
             {
                 return WriteResult.Unconfirmed;
             }
@@ -564,12 +561,12 @@ namespace PaviseApp
             {
                 using (RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences"))
                 {
-                    object value2 = ((registryKey == null) ? null : registryKey.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames));
-                    if (value2 != null && (!(value2 is string) || registryKey.GetValueKind(path) != RegistryValueKind.String))
+                    object instance = ((registryKey == null) ? null : registryKey.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                    if (instance != null && (!(instance is string) || registryKey.GetValueKind(path) != RegistryValueKind.String))
                     {
                         return false;
                     }
-                    value = value2 as string;
+                    value = instance as string;
                     return true;
                 }
             }

@@ -212,20 +212,20 @@ namespace PaviseApp
                 }
                 current.Attempts++;
                 nextProbeMs = nowMs + 8000;
-                int beginProbeValue = 8000;
+                int retryDelayMs = 8000;
                 if (current.Attempts >= 2 || nowMs - current.FirstSeenMs >= 10000)
                 {
-                    beginProbeValue = 30000;
+                    retryDelayMs = 30000;
                     for (int i = 2; i < current.Attempts; i++)
                     {
-                        if (beginProbeValue >= 120000)
+                        if (retryDelayMs >= 120000)
                         {
                             break;
                         }
-                        beginProbeValue = Math.Min(120000, beginProbeValue * 2);
+                        retryDelayMs = Math.Min(120000, retryDelayMs * 2);
                     }
                 }
-                current.NextAttemptMs = nowMs + beginProbeValue;
+                current.NextAttemptMs = nowMs + retryDelayMs;
                 inFlight = new RendererProbeTicket(current.Generation, nowMs, current.Detection);
                 return inFlight;
             }
@@ -387,8 +387,8 @@ namespace PaviseApp
             }
             foreach (int familyPid in candidate.FamilyPids)
             {
-                double value2;
-                if (familyPid != candidate.RendererPid && utilization.TryGetValue(familyPid, out value2) && !double.IsNaN(value2) && !double.IsInfinity(value2) && value2 > value)
+                double currentUtilization;
+                if (familyPid != candidate.RendererPid && utilization.TryGetValue(familyPid, out currentUtilization) && !double.IsNaN(currentUtilization) && !double.IsInfinity(currentUtilization) && currentUtilization > value)
                 {
                     return false;
                 }
@@ -425,25 +425,24 @@ namespace PaviseApp
             {
                 return null;
             }
-            GameDetection gameDetection = new GameDetection();
-            gameDetection.Profile = ((source.Profile == null) ? null : source.Profile.Clone());
-            gameDetection.RendererPid = source.RendererPid;
-            gameDetection.RendererCreation = source.RendererCreation;
-            gameDetection.RendererName = source.RendererName;
-            gameDetection.RendererPath = source.RendererPath;
-            gameDetection.RendererForeground = source.RendererForeground;
-            gameDetection.RendererCandidateSelected = source.RendererCandidateSelected;
-            gameDetection.RendererUserSelected = source.RendererUserSelected;
-            gameDetection.RendererLearnable = source.RendererLearnable;
-            gameDetection.RequiresGpuConfirm = source.RequiresGpuConfirm;
-            gameDetection.RendererSafetyOnly = source.RendererSafetyOnly;
-            gameDetection.RendererGpuProofExpiresMs = source.RendererGpuProofExpiresMs;
-            gameDetection.RendererMatchRank = source.RendererMatchRank;
-            gameDetection.Evidence = source.Evidence;
-            GameDetection gameDetection2 = gameDetection;
-            gameDetection2.FamilyPids.UnionWith(source.FamilyPids);
-            gameDetection2.FamilyNames.UnionWith(source.FamilyNames);
-            return gameDetection2;
+            GameDetection currentGameDetection = new GameDetection();
+            currentGameDetection.Profile = ((source.Profile == null) ? null : source.Profile.Clone());
+            currentGameDetection.RendererPid = source.RendererPid;
+            currentGameDetection.RendererCreation = source.RendererCreation;
+            currentGameDetection.RendererName = source.RendererName;
+            currentGameDetection.RendererPath = source.RendererPath;
+            currentGameDetection.RendererForeground = source.RendererForeground;
+            currentGameDetection.RendererCandidateSelected = source.RendererCandidateSelected;
+            currentGameDetection.RendererUserSelected = source.RendererUserSelected;
+            currentGameDetection.RendererLearnable = source.RendererLearnable;
+            currentGameDetection.RequiresGpuConfirm = source.RequiresGpuConfirm;
+            currentGameDetection.RendererSafetyOnly = source.RendererSafetyOnly;
+            currentGameDetection.RendererGpuProofExpiresMs = source.RendererGpuProofExpiresMs;
+            currentGameDetection.RendererMatchRank = source.RendererMatchRank;
+            currentGameDetection.Evidence = source.Evidence;
+            currentGameDetection.FamilyPids.UnionWith(source.FamilyPids);
+            currentGameDetection.FamilyNames.UnionWith(source.FamilyNames);
+            return currentGameDetection;
         }
     }
 }

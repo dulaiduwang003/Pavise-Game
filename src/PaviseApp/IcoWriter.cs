@@ -14,7 +14,7 @@ namespace PaviseApp
 
         public static byte[] Build(int[] sizes, PerformancePreset mode, bool enabled)
         {
-            List<byte[]> list = new List<byte[]>();
+            List<byte[]> toArraies = new List<byte[]>();
             foreach (int px in sizes)
             {
                 using (Bitmap bitmap = IconArt.Render(px, mode, enabled))
@@ -22,37 +22,37 @@ namespace PaviseApp
                     using (MemoryStream memoryStream = new MemoryStream())
                     {
                         bitmap.Save(memoryStream, ImageFormat.Png);
-                        list.Add(memoryStream.ToArray());
+                        toArraies.Add(memoryStream.ToArray());
                     }
                 }
             }
-            using (MemoryStream memoryStream2 = new MemoryStream())
+            using (MemoryStream currentMemoryStream = new MemoryStream())
             {
-                using (BinaryWriter binaryWriter = new BinaryWriter(memoryStream2))
+                using (BinaryWriter binaryWriter = new BinaryWriter(currentMemoryStream))
                 {
                     binaryWriter.Write((short)0);
                     binaryWriter.Write((short)1);
-                    binaryWriter.Write((short)list.Count);
-                    int value = 6 + 16 * list.Count;
-                    for (int j = 0; j < list.Count; j++)
+                    binaryWriter.Write((short)toArraies.Count);
+                    int imageDataOffset = 6 + 16 * toArraies.Count;
+                    for (int j = 0; j < toArraies.Count; j++)
                     {
-                        int value2 = sizes[j];
-                        binaryWriter.Write((byte)((value2 < 256) ? ((uint)value2) : 0u));
-                        binaryWriter.Write((byte)((value2 < 256) ? ((uint)value2) : 0u));
+                        int size = sizes[j];
+                        binaryWriter.Write((byte)((size < 256) ? ((uint)size) : 0u));
+                        binaryWriter.Write((byte)((size < 256) ? ((uint)size) : 0u));
                         binaryWriter.Write((byte)0);
                         binaryWriter.Write((byte)0);
                         binaryWriter.Write((short)1);
                         binaryWriter.Write((short)32);
-                        binaryWriter.Write(list[j].Length);
-                        binaryWriter.Write(value);
-                        value += list[j].Length;
+                        binaryWriter.Write(toArraies[j].Length);
+                        binaryWriter.Write(imageDataOffset);
+                        imageDataOffset += toArraies[j].Length;
                     }
-                    foreach (byte[] item in list)
+                    foreach (byte[] toArray in toArraies)
                     {
-                        binaryWriter.Write(item);
+                        binaryWriter.Write(toArray);
                     }
                     binaryWriter.Flush();
-                    return memoryStream2.ToArray();
+                    return currentMemoryStream.ToArray();
                 }
             }
         }

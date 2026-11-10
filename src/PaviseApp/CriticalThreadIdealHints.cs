@@ -216,9 +216,9 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                ProcessorNumber value = new ProcessorNumber { Group = 0, Number = (byte)desired };
+                ProcessorNumber processorNumber = new ProcessorNumber { Group = 0, Number = (byte)desired };
                 ProcessorNumber previous;
-                if (!SetThreadIdealProcessorEx(handle, ref value, out previous))
+                if (!SetThreadIdealProcessorEx(handle, ref processorNumber, out previous))
                 {
                     return false;
                 }

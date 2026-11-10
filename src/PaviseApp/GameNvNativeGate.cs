@@ -6,13 +6,6 @@ namespace PaviseApp
 {
     internal static class GameNvNativeGate
     {
-        private sealed class LocalTestHeld : IDisposable
-        {
-            public void Dispose()
-            {
-                Monitor.Exit(SyncRoot);
-            }
-        }
 
         private sealed class Held : IDisposable
         {

@@ -61,22 +61,22 @@ namespace PaviseApp
             long nowResult = Now();
             lock (gate)
             {
-                Cached value;
-                if (cache.TryGetValue(imagePath, out value) && nowResult < value.Until)
+                Cached currentCache;
+                if (cache.TryGetValue(imagePath, out currentCache) && nowResult < currentCache.Until)
                 {
-                    return value.Denied;
+                    return currentCache.Denied;
                 }
             }
             Metadata metadata = null;
             try
             {
                 FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(imagePath);
-                Metadata metadata2 = new Metadata();
-                metadata2.Company = versionInfo.CompanyName;
-                metadata2.Product = versionInfo.ProductName;
-                metadata2.Description = versionInfo.FileDescription;
-                metadata2.Original = versionInfo.OriginalFilename;
-                metadata = metadata2;
+                Metadata currentMetadata = new Metadata();
+                currentMetadata.Company = versionInfo.CompanyName;
+                currentMetadata.Product = versionInfo.ProductName;
+                currentMetadata.Description = versionInfo.FileDescription;
+                currentMetadata.Original = versionInfo.OriginalFilename;
+                metadata = currentMetadata;
             }
             catch
             {
@@ -179,18 +179,18 @@ namespace PaviseApp
 
         internal static string[] FilterGameTargets(string[] paths, bool requireExisting = false)
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> entryPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (paths != null)
             {
                 foreach (string entryPath in paths)
                 {
                     if ((!requireExisting || ExistingExecutable(entryPath)) && AllowsGameTarget(entryPath))
                     {
-                        hashSet.Add(entryPath);
+                        entryPaths.Add(entryPath);
                     }
                 }
             }
-            return new List<string>(hashSet).ToArray();
+            return new List<string>(entryPaths).ToArray();
         }
 
         private static bool ExistingExecutable(string path)

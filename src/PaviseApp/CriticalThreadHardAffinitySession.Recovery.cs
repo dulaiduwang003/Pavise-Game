@@ -225,7 +225,7 @@ namespace PaviseApp
                     Status = HardThreadStatus.RecoveryPending;
                     Detail = "unrestored original ledger retained on disposal";
                 }
-                List<Exception> list = new List<Exception>();
+                List<Exception> exceptions = new List<Exception>();
                 if (!nativeClosed)
                 {
                     try
@@ -235,7 +235,7 @@ namespace PaviseApp
                     }
                     catch (Exception item)
                     {
-                        list.Add(item);
+                        exceptions.Add(item);
                     }
                 }
                 if (!storeClosed)
@@ -247,7 +247,7 @@ namespace PaviseApp
                     }
                     catch (Exception item2)
                     {
-                        list.Add(item2);
+                        exceptions.Add(item2);
                     }
                 }
                 if (guardian == null)
@@ -263,15 +263,15 @@ namespace PaviseApp
                     }
                     catch (Exception item3)
                     {
-                        list.Add(item3);
+                        exceptions.Add(item3);
                     }
                 }
                 resourcesClosed = nativeClosed && storeClosed && guardianClosed;
-                if (list.Count <= 0)
+                if (exceptions.Count <= 0)
                 {
                     return;
                 }
-                throw new AggregateException("original hard affinity resource closure is incomplete", list);
+                throw new AggregateException("original hard affinity resource closure is incomplete", exceptions);
             }
         }
 

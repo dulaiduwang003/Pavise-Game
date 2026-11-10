@@ -4,11 +4,6 @@ namespace PaviseApp
 {
     internal static class CfgOffTweak
     {
-        private const string ValName = "MitigationOptions";
-
-        private const string ListKey = "CfgList";
-
-        private const string EnableKey = "CfgOff";
 
         private static readonly object lk = new object();
 
@@ -31,16 +26,15 @@ namespace PaviseApp
             lock (lk)
             {
                 bool cfgOffEnabled = Settings.Save("CfgOff", false);
-                string[] list = ParseList(Settings.LoadStr("CfgList", ""));
-                foreach (string entryText in list)
+                foreach (string entryText in ParseList(Settings.LoadStr("CfgList", "")))
                 {
                     if (!RegOf(entryText).Restore())
                     {
                         cfgOffEnabled = false;
                         continue;
                     }
-                    string value = Settings.LoadStr("CfgMk_" + entryText, "1");
-                    bool ourExe = value.Length == 0 || value[0] != '1';
+                    string str = Settings.LoadStr("CfgMk_" + entryText, "1");
+                    bool ourExe = str.Length == 0 || str[0] != '1';
                     IfeoStore.CleanupEmpty(entryText, null, false, ourExe);
                     Settings.SaveStr("CfgMk_" + entryText, "");
                     IfeoStore.RemoveFromList("CfgList", entryText);

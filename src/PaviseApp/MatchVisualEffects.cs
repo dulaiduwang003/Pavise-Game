@@ -63,8 +63,7 @@ namespace PaviseApp
 
         private static Effect Find(string target)
         {
-            Effect[] effects = Effects;
-            foreach (Effect effect in effects)
+            foreach (Effect effect in Effects)
             {
                 if (effect.Name == target)
                 {
@@ -78,25 +77,24 @@ namespace PaviseApp
         {
             SharedSpiManual.RequirePrimitive(target, false);
             Effect effect = Find(target);
-            int value = 0;
+            int animationValue = 0;
             bool animationParametersSucceeded;
             if (effect.Animation)
             {
-                AnimationInfo animationInfo = default(AnimationInfo);
-                animationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
-                AnimationInfo value2 = animationInfo;
-                animationParametersSucceeded = AnimationParameters(effect.Get, value2.Size, ref value2, 0u);
-                value = value2.MinAnimate;
+                AnimationInfo currentAnimationInfo = default(AnimationInfo);
+                currentAnimationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
+                animationParametersSucceeded = AnimationParameters(effect.Get, currentAnimationInfo.Size, ref currentAnimationInfo, 0u);
+                animationValue = currentAnimationInfo.MinAnimate;
             }
             else
             {
-                animationParametersSucceeded = Native.SystemParametersInfoGet(effect.Get, 0u, ref value, 0u);
+                animationParametersSucceeded = Native.SystemParametersInfoGet(effect.Get, 0u, ref animationValue, 0u);
             }
             if (!animationParametersSucceeded)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot read desktop effect: " + target);
             }
-            if (value != 0)
+            if (animationValue != 0)
             {
                 return "1";
             }
@@ -114,11 +112,10 @@ namespace PaviseApp
             int minAnimateValue = ((value == "1") ? 1 : 0);
             if (effect.Animation)
             {
-                AnimationInfo animationInfo = default(AnimationInfo);
-                animationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
-                animationInfo.MinAnimate = minAnimateValue;
-                AnimationInfo value2 = animationInfo;
-                return AnimationParameters(effect.Set, value2.Size, ref value2, 2u);
+                AnimationInfo currentAnimationInfo = default(AnimationInfo);
+                currentAnimationInfo.Size = (uint)Marshal.SizeOf(typeof(AnimationInfo));
+                currentAnimationInfo.MinAnimate = minAnimateValue;
+                return AnimationParameters(effect.Set, currentAnimationInfo.Size, ref currentAnimationInfo, 2u);
             }
             return Native.SystemParametersInfoSet(effect.Set, effect.UiParam ? ((uint)minAnimateValue) : 0u, effect.UiParam ? IntPtr.Zero : new IntPtr(minAnimateValue), 2u);
         }

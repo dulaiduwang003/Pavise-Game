@@ -22,18 +22,18 @@ namespace PaviseApp
                 {
                     int uLimit = Math.Max(240, Dpi.U(pageAbout.ClientSize.Width));
                     int uLimit2 = Math.Max(1, Dpi.U(pageAbout.ClientSize.Height));
-                    int layoutAboutViewportValue = ((uLimit < 500) ? 16 : 24);
-                    int lowerBound = Math.Max(1, uLimit - layoutAboutViewportValue * 2);
+                    int pagePadding = ((uLimit < 500) ? 16 : 24);
+                    int lowerBound = Math.Max(1, uLimit - pagePadding * 2);
                     bool compactWidth = uLimit < 900;
                     bool compactHeight = lowerBound < 430;
-                    int layoutAboutViewportValue2 = ((!compactWidth) ? 130 : (compactHeight ? 328 : 210));
-                    int layoutAboutViewportValue3 = aboutContentTop + layoutAboutViewportValue2 + 12;
-                    int lowerBound2 = (compactWidth ? 366 : Math.Max(366, uLimit2 - layoutAboutViewportValue3 - 16));
-                    int layoutAboutViewportValue4 = 14;
-                    int ratio = (compactWidth ? lowerBound : ((lowerBound - layoutAboutViewportValue4) / 2));
-                    int v = (compactWidth ? lowerBound : (lowerBound - ratio - layoutAboutViewportValue4));
-                    int layoutAboutViewportValue5 = (compactWidth ? (layoutAboutViewportValue3 + lowerBound2 + 12) : layoutAboutViewportValue3);
-                    int v2 = layoutAboutViewportValue5 + lowerBound2 + 16;
+                    int heroHeight = ((!compactWidth) ? 130 : (compactHeight ? 328 : 210));
+                    int identityTop = aboutContentTop + heroHeight + 12;
+                    int lowerBound2 = (compactWidth ? 366 : Math.Max(366, uLimit2 - identityTop - 16));
+                    int columnGap = 14;
+                    int ratio = (compactWidth ? lowerBound : ((lowerBound - columnGap) / 2));
+                    int v = (compactWidth ? lowerBound : (lowerBound - ratio - columnGap));
+                    int releaseTop = (compactWidth ? (identityTop + lowerBound2 + 12) : identityTop);
+                    int v2 = releaseTop + lowerBound2 + 16;
                     bool autoScrollValue = Theme.S(v2) > pageAbout.ClientSize.Height;
                     pageAbout.AutoScrollMargin = Size.Empty;
                     pageAbout.AutoScrollMinSize = (autoScrollValue ? new Size(0, Theme.S(v2)) : Size.Empty);
@@ -43,29 +43,29 @@ namespace PaviseApp
                         pageAbout.AutoScrollPosition = Point.Empty;
                     }
                     int top = pageAbout.AutoScrollPosition.Y;
-                    aboutHeroPanel.SetBounds(Theme.S(layoutAboutViewportValue), Theme.S(aboutContentTop) + top, Theme.S(lowerBound), Theme.S(layoutAboutViewportValue2));
-                    aboutIdentityPanel.SetBounds(Theme.S(layoutAboutViewportValue), Theme.S(layoutAboutViewportValue3) + top, Theme.S(ratio), Theme.S(lowerBound2));
-                    aboutReleasePanel.SetBounds(Theme.S(compactWidth ? layoutAboutViewportValue : (layoutAboutViewportValue + ratio + layoutAboutViewportValue4)), Theme.S(layoutAboutViewportValue5) + top, Theme.S(v), Theme.S(lowerBound2));
+                    aboutHeroPanel.SetBounds(Theme.S(pagePadding), Theme.S(aboutContentTop) + top, Theme.S(lowerBound), Theme.S(heroHeight));
+                    aboutIdentityPanel.SetBounds(Theme.S(pagePadding), Theme.S(identityTop) + top, Theme.S(ratio), Theme.S(lowerBound2));
+                    aboutReleasePanel.SetBounds(Theme.S(compactWidth ? pagePadding : (pagePadding + ratio + columnGap)), Theme.S(releaseTop) + top, Theme.S(v), Theme.S(lowerBound2));
                     int v3 = ((lowerBound < 430) ? 64 : 84);
-                    int layoutAboutViewportValue6 = ((lowerBound < 430) ? 100 : 132);
+                    int heroTextLeft = ((lowerBound < 430) ? 100 : 132);
                     aboutIcon.SetBounds(Theme.S(24), Theme.S(23), Theme.S(v3), Theme.S(v3));
                     int lowerBound3 = ((!compactWidth) ? Math.Max(132, Dpi.U(TextRenderer.MeasureText("WINDOWS x64", Theme.UI(9.2f, true), Size.Empty, TextFormatFlags.NoPadding).Width) + 4) : (compactHeight ? (lowerBound - 40) : ((lowerBound - 56) / 3)));
-                    int layoutAboutViewportValue7 = ((!compactWidth) ? (lowerBound - 20 - (lowerBound3 * 3 + 24)) : 20);
-                    int maximumTextWidth = ((!compactWidth) ? (layoutAboutViewportValue7 - layoutAboutViewportValue6 - 16) : (lowerBound - layoutAboutViewportValue6 - 20));
+                    int metricsLeft = ((!compactWidth) ? (lowerBound - 20 - (lowerBound3 * 3 + 24)) : 20);
+                    int maximumTextWidth = ((!compactWidth) ? (metricsLeft - heroTextLeft - 16) : (lowerBound - heroTextLeft - 20));
                     int[] integerValues = new int[4] { 12, 31, 71, 96 };
                     int[] integerValues2 = new int[4] { 20, 40, 22, 29 };
                     for (int j = 0; j < aboutHeroLabels.Length; j++)
                     {
-                        aboutHeroLabels[j].SetBounds(Theme.S(layoutAboutViewportValue6), Theme.S(integerValues[j]), Theme.S(Math.Max(1, maximumTextWidth)), Theme.S(integerValues2[j]));
+                        aboutHeroLabels[j].SetBounds(Theme.S(heroTextLeft), Theme.S(integerValues[j]), Theme.S(Math.Max(1, maximumTextWidth)), Theme.S(integerValues2[j]));
                     }
                     for (int k = 0; k < aboutMetricControls.Length; k++)
                     {
-                        int v4 = (compactWidth ? (compactHeight ? 20 : (20 + k * (lowerBound3 + 8))) : (layoutAboutViewportValue7 + k * (lowerBound3 + 12)));
-                        int layoutAboutViewportValue8 = (compactWidth ? (compactHeight ? (140 + k * 60) : 140) : 27);
+                        int v4 = (compactWidth ? (compactHeight ? 20 : (20 + k * (lowerBound3 + 8))) : (metricsLeft + k * (lowerBound3 + 12)));
+                        int metricTop = (compactWidth ? (compactHeight ? (140 + k * 60) : 140) : 27);
                         Control[] controlItems = aboutMetricControls[k];
-                        controlItems[0].SetBounds(Theme.S(v4), Theme.S(layoutAboutViewportValue8), Theme.S(lowerBound3), Theme.S(18));
-                        controlItems[1].SetBounds(Theme.S(v4), Theme.S(layoutAboutViewportValue8 + 22), Theme.S(lowerBound3), Theme.S(27));
-                        controlItems[2].SetBounds(Theme.S(v4), Theme.S(layoutAboutViewportValue8 + 52), Theme.S(Math.Max(1, lowerBound3 - 14)), Theme.S(1));
+                        controlItems[0].SetBounds(Theme.S(v4), Theme.S(metricTop), Theme.S(lowerBound3), Theme.S(18));
+                        controlItems[1].SetBounds(Theme.S(v4), Theme.S(metricTop + 22), Theme.S(lowerBound3), Theme.S(27));
+                        controlItems[2].SetBounds(Theme.S(v4), Theme.S(metricTop + 52), Theme.S(Math.Max(1, lowerBound3 - 14)), Theme.S(1));
                     }
                     LayoutAboutActions(aboutReleasePanel, "aboutReleaseNotes", "aboutWebsiteDownload");
                     if (Dpi.U(pageAbout.ClientSize.Width) == uLimit)
@@ -84,14 +84,14 @@ namespace PaviseApp
         private void LayoutAboutActions(Control card, string firstName, string secondName)
         {
             Control control = card.Controls[firstName];
-            Control control2 = card.Controls[secondName];
-            if (control != null && control2 != null)
+            Control currentControl = card.Controls[secondName];
+            if (control != null && currentControl != null)
             {
                 int lowerBound = Math.Max(1, card.ClientSize.Width - Theme.S(52));
                 int width = lowerBound / 2;
                 int top = Math.Max(0, card.ClientSize.Height - Theme.S(50));
                 control.SetBounds(Theme.S(20), top, width, Theme.S(36));
-                control2.SetBounds(Theme.S(32) + width, top, lowerBound - width, Theme.S(36));
+                currentControl.SetBounds(Theme.S(32) + width, top, lowerBound - width, Theme.S(36));
             }
         }
         private void LayoutAntiCheatViewport()
@@ -119,14 +119,14 @@ namespace PaviseApp
                 int width2 = Math.Max(1, width - left3 - left2);
                 int width3 = (compactLayout ? (width - left2 * 2) : (minLimit - left2));
                 int layoutAcControlBayResult = LayoutAcControlBay(width3, compactLayout);
-                int layoutAntiCheatViewportValue = 0;
+                int moduleListHeight = 0;
                 foreach (SettingCard acCard in acCards)
                 {
-                    layoutAntiCheatViewportValue += ((AntiCheatModuleRow)acCard).MeasureHeight(width2);
+                    moduleListHeight += ((AntiCheatModuleRow)acCard).MeasureHeight(width2);
                 }
-                layoutAntiCheatViewportValue += Math.Max(0, acCards.Count - 1);
+                moduleListHeight += Math.Max(0, acCards.Count - 1);
                 int top2 = (compactLayout ? (layoutAcControlBayResult + Theme.S(20)) : left2);
-                int requiredHeight = Math.Max((!compactLayout) ? (layoutAcControlBayResult + left2) : 0, top2 + layoutAntiCheatViewportValue + height + left2);
+                int requiredHeight = Math.Max((!compactLayout) ? (layoutAcControlBayResult + left2) : 0, top2 + moduleListHeight + height + left2);
                 int height2 = Math.Max(requiredHeight, Math.Min(Theme.S(540), acViewport.Height));
                 bool contentOverflows = height2 > acViewport.Height;
                 if (contentOverflows)
@@ -138,22 +138,22 @@ namespace PaviseApp
                     width3 = (compactLayout ? (width - left2 * 2) : (minLimit - left2));
                     layoutAcControlBayResult = LayoutAcControlBay(width3, compactLayout);
                     top2 = (compactLayout ? (layoutAcControlBayResult + Theme.S(20)) : left2);
-                    layoutAntiCheatViewportValue = 0;
+                    moduleListHeight = 0;
                     foreach (SettingCard acCard2 in acCards)
                     {
-                        layoutAntiCheatViewportValue += ((AntiCheatModuleRow)acCard2).MeasureHeight(width2);
+                        moduleListHeight += ((AntiCheatModuleRow)acCard2).MeasureHeight(width2);
                     }
-                    layoutAntiCheatViewportValue += Math.Max(0, acCards.Count - 1);
-                    height2 = Math.Max(height2, Math.Max((!compactLayout) ? (layoutAcControlBayResult + left2) : 0, top2 + layoutAntiCheatViewportValue + height + left2));
+                    moduleListHeight += Math.Max(0, acCards.Count - 1);
+                    height2 = Math.Max(height2, Math.Max((!compactLayout) ? (layoutAcControlBayResult + left2) : 0, top2 + moduleListHeight + height + left2));
                 }
                 acRosterBar.SetBounds(0, 0, width, height2);
                 acControlBay.SetBounds(left2, left2, width3, compactLayout ? layoutAcControlBayResult : (height2 - left2 * 2));
                 int top3 = height2 - left2 - height;
-                int height3 = Math.Max(layoutAntiCheatViewportValue, top3 - top2);
+                int height3 = Math.Max(moduleListHeight, top3 - top2);
                 acList.SetBounds(left3, top2, width2, height3);
                 int top4 = 0;
                 int processedCount = 0;
-                int lowerBound = Math.Max(0, height3 - layoutAntiCheatViewportValue);
+                int lowerBound = Math.Max(0, height3 - moduleListHeight);
                 foreach (SettingCard acCard3 in acCards)
                 {
                     AntiCheatModuleRow antiCheatModuleRow = (AntiCheatModuleRow)acCard3;
@@ -222,10 +222,6 @@ namespace PaviseApp
             acStrengthHelp.SetBounds(left, top2, width - left * 2, Theme.S(32));
             return acStrengthHelp.Bottom + Theme.S(20);
         }
-        private void LayoutAntiCheatCards()
-        {
-            LayoutAntiCheatViewport();
-        }
         private void RestoreAcScrollPosition(AcViewState state)
         {
             if (state != null && state.Drawer == acDrawerKind && curPage == pageAntiCheat)
@@ -267,14 +263,14 @@ namespace PaviseApp
             int top3 = 0;
             if (acDrawerKind == "records")
             {
-                int layoutAcDrawerValue = ((width2 < Theme.S(620)) ? 1 : 2);
+                int columnCount = ((width2 < Theme.S(620)) ? 1 : 2);
                 int scaledDimension = Theme.S(10);
-                int width3 = Math.Max(1, (width2 - (layoutAcDrawerValue - 1) * scaledDimension) / layoutAcDrawerValue);
+                int width3 = Math.Max(1, (width2 - (columnCount - 1) * scaledDimension) / columnCount);
                 for (int i = 0; i < acReadOnlyCards.Count; i++)
                 {
-                    acReadOnlyCards[i].SetBounds(i % layoutAcDrawerValue * (width3 + scaledDimension), i / layoutAcDrawerValue * Theme.S(62), width3, Theme.S(52));
+                    acReadOnlyCards[i].SetBounds(i % columnCount * (width3 + scaledDimension), i / columnCount * Theme.S(62), width3, Theme.S(52));
                 }
-                top3 = (acReadOnlyCards.Count + layoutAcDrawerValue - 1) / layoutAcDrawerValue * Theme.S(62);
+                top3 = (acReadOnlyCards.Count + columnCount - 1) / columnCount * Theme.S(62);
             }
             else if (acDrawerKind == "roster")
             {
@@ -351,8 +347,7 @@ namespace PaviseApp
                 Array.Sort(controlItems, (Control a, Control b) => a.Top.CompareTo(b.Top));
                 int topValue = 0;
                 int auditContentWidth = AuditContentWidth;
-                Control[] controlItems2 = controlItems;
-                foreach (Control control in controlItems2)
+                foreach (Control control in controlItems)
                 {
                     control.Top += topValue;
                     AuditRowCard auditRowCard = control as AuditRowCard;
@@ -397,8 +392,7 @@ namespace PaviseApp
             LayoutConfigurationPresetControls(left2, top2, left2Limit);
             int left3 = Theme.S(20);
             int scaledDimension = Theme.S(8);
-            DBPanel[] performanceTabPanelsSnapshot = performanceTabPanels;
-            foreach (DBPanel dBPanel in performanceTabPanelsSnapshot)
+            foreach (DBPanel dBPanel in performanceTabPanels)
             {
                 if (dBPanel != null && !dBPanel.IsDisposed)
                 {
@@ -424,22 +418,22 @@ namespace PaviseApp
         }
         private void LayoutCoreShortcuts()
         {
-            int layoutCoreShortcutsValue = 0;
-            int layoutCoreShortcutsValue2 = 0;
+            int shortcutLeft = 0;
+            int shortcutTop = 0;
             int scaledDimension = Theme.S(6);
             int scaledDimension2 = Theme.S(30);
             foreach (Control control in coreQuickPanel.Controls)
             {
-                if (layoutCoreShortcutsValue > 0 && layoutCoreShortcutsValue + control.Width > coreQuickPanel.Width)
+                if (shortcutLeft > 0 && shortcutLeft + control.Width > coreQuickPanel.Width)
                 {
-                    layoutCoreShortcutsValue = 0;
-                    layoutCoreShortcutsValue2 += scaledDimension2 + scaledDimension;
+                    shortcutLeft = 0;
+                    shortcutTop += scaledDimension2 + scaledDimension;
                 }
-                control.Location = new Point(layoutCoreShortcutsValue, layoutCoreShortcutsValue2);
-                layoutCoreShortcutsValue += control.Width + scaledDimension;
+                control.Location = new Point(shortcutLeft, shortcutTop);
+                shortcutLeft += control.Width + scaledDimension;
             }
             coreQuickPanel.Top = Theme.S(coreWorkspaceCompact ? 38 : 64);
-            coreQuickPanel.Height = layoutCoreShortcutsValue2 + scaledDimension2;
+            coreQuickPanel.Height = shortcutTop + scaledDimension2;
         }
         private void LayoutCriticalThreadEditor()
         {
@@ -499,13 +493,13 @@ namespace PaviseApp
                 coreQuickPanel.SetBounds(left2, Theme.S(coreWorkspaceCompact ? 38 : 64), width3, coreQuickPanel.Height);
                 LayoutCoreShortcuts();
                 coreTopologyCount.Text = CpuTopology.MultiGroup ? PerformancePolicy.Text("全机核心范围未确认", "Total CPU range unconfirmed") : CoreMatrix.TopologyCountsConfirmed ? CpuTopology.PhysicalCoreCount + PerformancePolicy.Text(" 物理核 / ", " cores / ") + CpuTopology.CountSetBits(CpuTopology.AllMask) + PerformancePolicy.Text(" 逻辑核", " logical CPUs") : CpuTopology.CountSetBits(CpuTopology.AllMask) + PerformancePolicy.Text(" 逻辑核 · 物理核数未确认", " logical CPUs · physical core count unconfirmed");
-                int layoutCoreWorkspaceValue = 0;
+                int shortcutsWidth = 0;
                 foreach (Control control in coreQuickPanel.Controls)
                 {
-                    layoutCoreWorkspaceValue = Math.Max(layoutCoreWorkspaceValue, control.Right);
+                    shortcutsWidth = Math.Max(shortcutsWidth, control.Right);
                 }
                 int width4 = TextRenderer.MeasureText(coreTopologyCount.Text, coreTopologyCount.Font).Width + Theme.S(6);
-                coreTopologyCount.Visible = coreQuickPanel.Height <= Theme.S(30) && layoutCoreWorkspaceValue + Theme.S(14) + width4 <= width3;
+                coreTopologyCount.Visible = coreQuickPanel.Height <= Theme.S(30) && shortcutsWidth + Theme.S(14) + width4 <= width3;
                 coreTopologyCount.TextAlign = ContentAlignment.MiddleRight;
                 coreTopologyCount.SetBounds(width2 - left2 - width4, coreQuickPanel.Top + Theme.S(3), width4, Theme.S(24));
                 coreMatrixViewport.SetBounds(left2 - Theme.S(2), coreQuickPanel.Bottom + Theme.S(coreWorkspaceCompact ? 10 : 18), width3 + Theme.S(6), Math.Max(1, coreEditor.Height - coreQuickPanel.Bottom - Theme.S(coreWorkspaceCompact ? 18 : 34)));
@@ -603,24 +597,24 @@ namespace PaviseApp
             {
                 int uLimit = Math.Max(280, Dpi.U(pageLibrary.ClientSize.Width));
                 int uResult = Dpi.U(pageLibrary.ClientSize.Height);
-                int layoutLibraryViewportValue = ((uLimit < 500) ? 16 : 24);
-                int remainingULimit = uLimit - layoutLibraryViewportValue * 2;
+                int pagePadding = ((uLimit < 500) ? 16 : 24);
+                int remainingULimit = uLimit - pagePadding * 2;
                 bool wideLayout = uLimit >= 1040;
                 bool mediumLayout = uLimit >= 570;
                 int filterWidth = (wideLayout ? 238 : (mediumLayout ? (remainingULimit - 132) : remainingULimit));
-                SetOverviewBounds(librarySearchPanel, layoutLibraryViewportValue, 16, filterWidth, 36);
+                SetOverviewBounds(librarySearchPanel, pagePadding, 16, filterWidth, 36);
                 librarySearch.SetBounds(Theme.S(42), Theme.S(9), Math.Max(1, librarySearchPanel.Width - Theme.S(54)), Theme.S(24));
-                SetOverviewBounds(libraryAdd, uLimit - layoutLibraryViewportValue - 120, mediumLayout ? 16 : 62, 120, 36);
-                int layoutLibraryViewportValue2 = (wideLayout ? 16 : 62);
-                SetOverviewBounds(libraryPlatforms, wideLayout ? (layoutLibraryViewportValue + 250) : layoutLibraryViewportValue, layoutLibraryViewportValue2, mediumLayout ? 214 : (remainingULimit - 132), 36);
-                int layoutLibraryViewportValue3 = (wideLayout ? 16 : (mediumLayout ? 62 : 108));
-                int layoutLibraryViewportValue4 = (wideLayout ? (uLimit - layoutLibraryViewportValue - 120 - 12 - 196) : (mediumLayout ? (uLimit - layoutLibraryViewportValue - 196) : layoutLibraryViewportValue));
-                SetOverviewBounds(swAutoAdd, layoutLibraryViewportValue4, layoutLibraryViewportValue3, 152, 36);
-                SetOverviewBounds(libraryAutoSettings, layoutLibraryViewportValue4 + 160, layoutLibraryViewportValue3, 36, 36);
-                int layoutLibraryViewportValueOffset = (wideLayout ? (layoutLibraryViewportValue + 480) : (mediumLayout ? (layoutLibraryViewportValue + 226) : (uLimit - layoutLibraryViewportValue - 100)));
-                SetOverviewBounds(lblLibraryCount, layoutLibraryViewportValueOffset, wideLayout ? 20 : (mediumLayout ? 66 : 112), wideLayout ? Math.Max(0, layoutLibraryViewportValue4 - layoutLibraryViewportValueOffset - 12) : (mediumLayout ? Math.Max(0, layoutLibraryViewportValue4 - layoutLibraryViewportValueOffset - 12) : 100), 28);
-                int layoutLibraryViewportValue5 = (wideLayout ? 68 : (mediumLayout ? 114 : 160));
-                SetOverviewBounds(lstGames, layoutLibraryViewportValue, layoutLibraryViewportValue5, remainingULimit, Math.Max(80, uResult - layoutLibraryViewportValue5 - 8));
+                SetOverviewBounds(libraryAdd, uLimit - pagePadding - 120, mediumLayout ? 16 : 62, 120, 36);
+                int platformFilterTop = (wideLayout ? 16 : 62);
+                SetOverviewBounds(libraryPlatforms, wideLayout ? (pagePadding + 250) : pagePadding, platformFilterTop, mediumLayout ? 214 : (remainingULimit - 132), 36);
+                int autoAddTop = (wideLayout ? 16 : (mediumLayout ? 62 : 108));
+                int autoAddLeft = (wideLayout ? (uLimit - pagePadding - 120 - 12 - 196) : (mediumLayout ? (uLimit - pagePadding - 196) : pagePadding));
+                SetOverviewBounds(swAutoAdd, autoAddLeft, autoAddTop, 152, 36);
+                SetOverviewBounds(libraryAutoSettings, autoAddLeft + 160, autoAddTop, 36, 36);
+                int layoutLibraryViewportValueOffset = (wideLayout ? (pagePadding + 480) : (mediumLayout ? (pagePadding + 226) : (uLimit - pagePadding - 100)));
+                SetOverviewBounds(lblLibraryCount, layoutLibraryViewportValueOffset, wideLayout ? 20 : (mediumLayout ? 66 : 112), wideLayout ? Math.Max(0, autoAddLeft - layoutLibraryViewportValueOffset - 12) : (mediumLayout ? Math.Max(0, autoAddLeft - layoutLibraryViewportValueOffset - 12) : 100), 28);
+                int gameListTop = (wideLayout ? 68 : (mediumLayout ? 114 : 160));
+                SetOverviewBounds(lstGames, pagePadding, gameListTop, remainingULimit, Math.Max(80, uResult - gameListTop - 8));
                 lstGames.CardGap = 12;
                 AdjustLibraryCardDensity();
                 pageLibrary.AutoScroll = false;
@@ -657,8 +651,8 @@ namespace PaviseApp
                 pageOverview.AutoScroll = false;
                 int uLimit = Math.Max(1, Dpi.U(pageOverview.ClientSize.Width));
                 int uLimit2 = Math.Max(1, Dpi.U(pageOverview.ClientSize.Height));
-                int layoutOverviewPageValue = 42;
-                int statusY = Math.Max(8, Math.Min(uLimit2 - layoutOverviewPageValue - 8 - (overviewActivityShown ? 30 : 0), (int)Math.Round((float)uLimit2 * 0.87f) - layoutOverviewPageValue / 2));
+                int statusHeight = 42;
+                int statusY = Math.Max(8, Math.Min(uLimit2 - statusHeight - 8 - (overviewActivityShown ? 30 : 0), (int)Math.Round((float)uLimit2 * 0.87f) - statusHeight / 2));
                 int warningReserve = overviewSecurityWarningShown ? 44 : 0;
                 int maximumStatusWidth = Math.Max(1, Math.Min(450, statusY - 26 - warningReserve));
                 int minLimit = Math.Max(1, Math.Min(580, uLimit - 48));
@@ -670,25 +664,25 @@ namespace PaviseApp
                 int lowerBound = ((arrangeOverviewHudResult > uLimit2) ? Math.Max(1, uLimit - Dpi.U(SystemInformation.VerticalScrollBarWidth)) : uLimit);
                 int roundedValue = (int)Math.Ceiling((float)TextRenderer.MeasureText(lblOverviewGuard.Text, lblOverviewGuard.Font, Size.Empty, TextFormatFlags.NoPadding).Width / Math.Max(0.1f, Dpi.Scale));
                 int measuredStatusWidth = (int)Math.Ceiling((float)TextRenderer.MeasureText(lblStatus.Text, Theme.UI(14.5f, true), Size.Empty, TextFormatFlags.NoPadding).Width / Math.Max(0.1f, Dpi.Scale)) + 3;
-                int layoutOverviewPageValue2 = 86 + roundedValue + 12 + 72;
-                measuredStatusWidth = Math.Min(measuredStatusWidth, Math.Max(24, lowerBound - 32 - layoutOverviewPageValue2));
-                int layoutOverviewPageValue2Offset = layoutOverviewPageValue2 + measuredStatusWidth;
+                int statusDecorationWidth = 86 + roundedValue + 12 + 72;
+                measuredStatusWidth = Math.Min(measuredStatusWidth, Math.Max(24, lowerBound - 32 - statusDecorationWidth));
+                int layoutOverviewPageValue2Offset = statusDecorationWidth + measuredStatusWidth;
                 int lowerBound2 = Math.Max(8, (lowerBound - layoutOverviewPageValue2Offset) / 2);
                 SetOverviewBounds(statusDot, lowerBound2, statusY + 9, 24, 24);
                 lowerBound2 += 33;
-                SetOverviewBounds(lblStatus, lowerBound2, statusY, measuredStatusWidth, layoutOverviewPageValue);
+                SetOverviewBounds(lblStatus, lowerBound2, statusY, measuredStatusWidth, statusHeight);
                 FitLabelFont(lblStatus, true, 14.5f, 9.5f);
                 lowerBound2 += measuredStatusWidth + 26;
                 SetOverviewBounds(overviewStatusDivider, lowerBound2, statusY + 11, 1, 20);
                 lowerBound2 += 27;
-                SetOverviewBounds(lblOverviewGuard, lowerBound2, statusY, roundedValue, layoutOverviewPageValue);
+                SetOverviewBounds(lblOverviewGuard, lowerBound2, statusY, roundedValue, statusHeight);
                 lowerBound2 += roundedValue + 12;
                 SetOverviewBounds(swGame, lowerBound2, statusY + 5, 72, 32);
                 LayoutOverviewSecurityWarning(lowerBound, statusY);
                 if (overviewActivity != null)
                 {
-                    SetOverviewBounds(overviewActivity, 16, statusY + layoutOverviewPageValue + 2, Math.Max(1, lowerBound - 32), 26);
-                    if (overviewActivityShown) arrangeOverviewHudResult = Math.Max(arrangeOverviewHudResult, statusY + layoutOverviewPageValue + 36);
+                    SetOverviewBounds(overviewActivity, 16, statusY + statusHeight + 2, Math.Max(1, lowerBound - 32), 26);
+                    if (overviewActivityShown) arrangeOverviewHudResult = Math.Max(arrangeOverviewHudResult, statusY + statusHeight + 36);
                 }
                 pageOverview.AutoScrollMinSize = ((arrangeOverviewHudResult > uLimit2) ? new Size(0, Theme.S(arrangeOverviewHudResult)) : Size.Empty);
                 pageOverview.AutoScroll = arrangeOverviewHudResult > uLimit2;
@@ -712,48 +706,48 @@ namespace PaviseApp
         }
         private void RestackCards(Control panel)
         {
-            Dictionary<Control, int> value;
-            if (!stackBase.TryGetValue(panel, out value))
+            Dictionary<Control, int> baseTopByCard;
+            if (!stackBase.TryGetValue(panel, out baseTopByCard))
             {
                 return;
             }
-            List<int[]> list = new List<int[]>();
+            List<int[]> values = new List<int[]>();
             Theme.S(8);
-            foreach (Control control3 in panel.Controls)
+            foreach (Control control in panel.Controls)
             {
-                SettingCard settingCard = control3 as SettingCard;
-                int value2;
-                if (settingCard != null && value.TryGetValue(settingCard, out value2) && settingCard.Collapsible)
+                SettingCard settingCard = control as SettingCard;
+                int cardBaseTop;
+                if (settingCard != null && baseTopByCard.TryGetValue(settingCard, out cardBaseTop) && settingCard.Collapsible)
                 {
                     int remainingHeight = settingCard.Height - settingCard.ExpandedHeight;
                     if (remainingHeight != 0)
                     {
-                        list.Add(new int[2] { value2, remainingHeight });
+                        values.Add(new int[2] { cardBaseTop, remainingHeight });
                     }
                 }
             }
             ScrollableControl scrollableControl = panel as ScrollableControl;
             int top = ((scrollableControl != null) ? scrollableControl.AutoScrollPosition.Y : 0);
             panel.SuspendLayout();
-            foreach (Control control4 in panel.Controls)
+            foreach (Control currentControl in panel.Controls)
             {
-                int value3;
-                if (!value.TryGetValue(control4, out value3))
+                int baseTop;
+                if (!baseTopByCard.TryGetValue(currentControl, out baseTop))
                 {
                     continue;
                 }
-                int restackCardsValue = 0;
-                foreach (int[] item in list)
+                int precedingExpansionHeight = 0;
+                foreach (int[] expansion in values)
                 {
-                    if (item[0] < value3)
+                    if (expansion[0] < baseTop)
                     {
-                        restackCardsValue += item[1];
+                        precedingExpansionHeight += expansion[1];
                     }
                 }
-                int topValue = value3 + restackCardsValue + top;
-                if (control4.Top != topValue)
+                int topValue = baseTop + precedingExpansionHeight + top;
+                if (currentControl.Top != topValue)
                 {
-                    control4.Top = topValue;
+                    currentControl.Top = topValue;
                 }
             }
             panel.ResumeLayout();
@@ -763,7 +757,7 @@ namespace PaviseApp
             Point autoScrollPosition = new Point(0, -panel.AutoScrollPosition.Y);
             panel.AutoScrollPosition = Point.Empty;
             int width = SettingsContentWidth(panel);
-            int layoutCompactSettingsAppearanceValue = 0;
+            int contentTop = 0;
             SettingsAppearanceEditorPanel settingsAppearanceEditorPanel = panel.Controls["SettingsAppearanceEditor"] as SettingsAppearanceEditorPanel;
             if (settingsAppearanceEditorPanel != null)
             {
@@ -798,29 +792,29 @@ namespace PaviseApp
                 bool stackActions = remainingLeft < compactAppearanceButtonWidthLimit + compactAppearanceButtonWidthResult + scaledDimension3;
                 btnBackdropReset.SetBounds(left3, top3, Math.Min(compactAppearanceButtonWidthResult, remainingLeft), Theme.S(32));
                 btnBackdrop.SetBounds(stackActions ? left3 : (btnBackdropReset.Right + scaledDimension3), stackActions ? (btnBackdropReset.Bottom + scaledDimension3) : top3, Math.Min(compactAppearanceButtonWidthLimit, remainingLeft), Theme.S(32));
-                Control control2 = settingsAppearanceEditorPanel.Controls["SettingsBackdropDimTitle"];
+                Control currentControl = settingsAppearanceEditorPanel.Controls["SettingsBackdropDimTitle"];
                 int top4 = Math.Max(Math.Max(backdropPreview.Bottom, lblBackdropState.Bottom), btnBackdrop.Bottom) + Theme.S(16);
-                int scaledDimension4 = ((control2 == null) ? Theme.S(100) : TextRenderer.MeasureText(control2.Text, control2.Font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
+                int scaledDimension4 = ((currentControl == null) ? Theme.S(100) : TextRenderer.MeasureText(currentControl.Text, currentControl.Font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
                 int compactAppearancePickerWidthResult = CompactAppearancePickerWidth(pickBackdropDim);
                 bool valuesMatch = sLimit - left * 2 >= scaledDimension4 + Theme.S(16) + compactAppearancePickerWidthResult;
-                if (control2 != null)
+                if (currentControl != null)
                 {
-                    control2.SetBounds(left, top4, Math.Min(availableWidth, scaledDimension4 + Theme.S(4)), Theme.S(32));
+                    currentControl.SetBounds(left, top4, Math.Min(availableWidth, scaledDimension4 + Theme.S(4)), Theme.S(32));
                 }
                 int left4 = (valuesMatch ? (left + scaledDimension4 + Theme.S(16)) : left);
                 pickBackdropDim.SetBounds(left4, valuesMatch ? top4 : (top4 + Theme.S(34)), Math.Min(compactAppearancePickerWidthResult, Math.Max(1, sLimit - left4 - left)), Theme.S(32));
                 int bottom = pickBackdropDim.Bottom;
                 int top5 = (sideBySide ? top : (bottom + Theme.S(28)));
                 settingsAppearanceEditorPanel.AccentIconBounds = new Rectangle(sLimitOffset + left, top5, scaledDimension2, scaledDimension2);
-                Control control3 = settingsAppearanceEditorPanel.Controls["SettingsAccentTitle"];
-                Control control4 = settingsAppearanceEditorPanel.Controls["SettingsAccentHint"];
-                if (control3 != null)
+                Control candidateControl = settingsAppearanceEditorPanel.Controls["SettingsAccentTitle"];
+                Control resolvedControl = settingsAppearanceEditorPanel.Controls["SettingsAccentHint"];
+                if (candidateControl != null)
                 {
-                    control3.SetBounds(sLimitOffset + left + Theme.S(34), top5, Math.Max(1, remainingWidth - left * 2 - Theme.S(34)), Theme.S(24));
+                    candidateControl.SetBounds(sLimitOffset + left + Theme.S(34), top5, Math.Max(1, remainingWidth - left * 2 - Theme.S(34)), Theme.S(24));
                 }
-                if (control4 != null)
+                if (resolvedControl != null)
                 {
-                    control4.Visible = false;
+                    resolvedControl.Visible = false;
                 }
                 int top6 = top5 + Theme.S(36);
                 int scaledDimension5 = Theme.S(30);
@@ -829,8 +823,7 @@ namespace PaviseApp
                 int sOffset = sLimitOffset + left + width3 + Theme.S(8);
                 int lowerBound = Math.Max(1, remainingWidth - left * 2 - width3 - Theme.S(8));
                 int lowerBound2 = Math.Max(1, (lowerBound + scaledDimension5 - height2) / scaledDimension5);
-                PerformancePreset[] visibleOrderResult = PresetValue.VisibleOrder();
-                foreach (PerformancePreset performancePreset in visibleOrderResult)
+                foreach (PerformancePreset performancePreset in PresetValue.VisibleOrder())
                 {
                     Label label = modeAccentLabels[(int)performancePreset];
                     if (label != null)
@@ -838,50 +831,50 @@ namespace PaviseApp
                         label.SetBounds(sLimitOffset + left, top6, width3, height2);
                     }
                     int processedCount = 0;
-                    foreach (ColorSwatch item in modeSwatches[(int)performancePreset])
+                    foreach (ColorSwatch modeSwatche in modeSwatches[(int)performancePreset])
                     {
-                        item.SetBounds(sOffset + processedCount % lowerBound2 * scaledDimension5, top6 + processedCount / lowerBound2 * scaledDimension5, height2, height2);
+                        modeSwatche.SetBounds(sOffset + processedCount % lowerBound2 * scaledDimension5, top6 + processedCount / lowerBound2 * scaledDimension5, height2, height2);
                         processedCount++;
                     }
                     top6 += Math.Max(Theme.S(32), (processedCount + lowerBound2 - 1) / lowerBound2 * scaledDimension5);
                 }
                 int height3 = Math.Max(bottom, top6) + Theme.S(16);
-                Control control5 = settingsAppearanceEditorPanel.Controls["SettingsAppearanceSeparator"];
-                if (control5 != null)
+                Control selectedControl = settingsAppearanceEditorPanel.Controls["SettingsAppearanceSeparator"];
+                if (selectedControl != null)
                 {
                     if (sideBySide)
                     {
-                        control5.SetBounds(sLimit + scaledDimension / 2, Theme.S(12), Math.Max(1, Theme.S(1)), Math.Max(1, height3 - Theme.S(24)));
+                        selectedControl.SetBounds(sLimit + scaledDimension / 2, Theme.S(12), Math.Max(1, Theme.S(1)), Math.Max(1, height3 - Theme.S(24)));
                     }
                     else
                     {
-                        control5.SetBounds(left, bottom + Theme.S(14), availableWidth, Math.Max(1, Theme.S(1)));
+                        selectedControl.SetBounds(left, bottom + Theme.S(14), availableWidth, Math.Max(1, Theme.S(1)));
                     }
                 }
                 settingsAppearanceEditorPanel.SetBounds(0, 0, width, height3);
                 settingsAppearanceEditorPanel.Invalidate();
-                layoutCompactSettingsAppearanceValue = settingsAppearanceEditorPanel.Bottom;
+                contentTop = settingsAppearanceEditorPanel.Bottom;
             }
             if (motionAppearance != null && !motionAppearance.IsDisposed && motionAppearance.Parent == panel)
             {
-                motionAppearance.SetBounds(0, layoutCompactSettingsAppearanceValue + Theme.S(12), width, motionAppearance.MeasureHeight(width));
+                motionAppearance.SetBounds(0, contentTop + Theme.S(12), width, motionAppearance.MeasureHeight(width));
                 motionAppearance.PerformLayout();
-                layoutCompactSettingsAppearanceValue = Math.Max(motionAppearance.Bottom, motionAppearance.Top + motionAppearance.Controls["MotionSaveStatus"].Bottom + Theme.S(12));
-                if (motionAppearance.Bottom < layoutCompactSettingsAppearanceValue) motionAppearance.Height = layoutCompactSettingsAppearanceValue - motionAppearance.Top;
+                contentTop = Math.Max(motionAppearance.Bottom, motionAppearance.Top + motionAppearance.Controls["MotionSaveStatus"].Bottom + Theme.S(12));
+                if (motionAppearance.Bottom < contentTop) motionAppearance.Height = contentTop - motionAppearance.Top;
             }
-            foreach (Control control6 in panel.Controls)
+            foreach (Control workingControl in panel.Controls)
             {
-                if (control6 is SettingsWorkspaceTile)
+                if (workingControl is SettingsWorkspaceTile)
                 {
-                    SettingsWorkspaceTile settingsWorkspaceTile = (SettingsWorkspaceTile)control6;
+                    SettingsWorkspaceTile settingsWorkspaceTile = (SettingsWorkspaceTile)workingControl;
                     settingsWorkspaceTile.CompactRow = true;
                     settingsWorkspaceTile.BottomSeparator = false;
-                    settingsWorkspaceTile.SetBounds(0, layoutCompactSettingsAppearanceValue + Theme.S(4), width, settingsWorkspaceTile.MeasureHeight(width));
+                    settingsWorkspaceTile.SetBounds(0, contentTop + Theme.S(4), width, settingsWorkspaceTile.MeasureHeight(width));
                     settingsWorkspaceTile.ArrangeContent();
-                    layoutCompactSettingsAppearanceValue = settingsWorkspaceTile.Bottom;
+                    contentTop = settingsWorkspaceTile.Bottom;
                 }
             }
-            panel.AutoScrollMinSize = new Size(0, layoutCompactSettingsAppearanceValue + Theme.S(4));
+            panel.AutoScrollMinSize = new Size(0, contentTop + Theme.S(4));
             panel.AutoScrollPosition = autoScrollPosition;
         }
         private static int CompactAppearanceTextHeight(string text, Font font, int width)
@@ -895,8 +888,7 @@ namespace PaviseApp
         private static int CompactAppearancePickerWidth(TierPicker picker)
         {
             int scaledDimension = Theme.S(48);
-            string[] labels = picker.Labels;
-            foreach (string entryText in labels)
+            foreach (string entryText in picker.Labels)
             {
                 scaledDimension = Math.Max(scaledDimension, TextRenderer.MeasureText(entryText, DsType.Font(DsText.Label, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(20));
             }
@@ -979,12 +971,11 @@ namespace PaviseApp
         private void LayoutSettingsGeneral(DBPanel panel)
         {
             SettingsWorkspaceTile settingsWorkspaceTile = SettingsTile(panel, "SettingsStartup");
-            SettingsWorkspaceTile settingsWorkspaceTile2 = SettingsTile(panel, "SettingsAutoHide");
-            SettingsWorkspaceTile settingsWorkspaceTile3 = SettingsTile(panel, "SettingsExitGrace");
-            SettingsWorkspaceTile settingsWorkspaceTile4 = SettingsTile(panel, "SettingsLanguage");
-            SettingsWorkspaceTile settingsWorkspaceTile5 = SettingsTile(panel, "SettingsStandbyCleanerCard");
-            SettingsWorkspaceTile aiTuning = SettingsTile(panel, "SettingsAiTuning");
-            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || settingsWorkspaceTile5 == null || aiTuning == null)
+            SettingsWorkspaceTile settingsTile = SettingsTile(panel, "SettingsAutoHide");
+            SettingsWorkspaceTile currentSettingsTile = SettingsTile(panel, "SettingsExitGrace");
+            SettingsWorkspaceTile candidateSettingsTile = SettingsTile(panel, "SettingsLanguage");
+            SettingsWorkspaceTile resolvedSettingsTile = SettingsTile(panel, "SettingsStandbyCleanerCard");
+            if (settingsWorkspaceTile == null || settingsTile == null || currentSettingsTile == null || candidateSettingsTile == null || resolvedSettingsTile == null)
             {
                 return;
             }
@@ -996,33 +987,28 @@ namespace PaviseApp
             if (width >= Theme.S(806))
             {
                 int width2 = (width - scaledDimension) / 2;
-                int height = Math.Max(settingsWorkspaceTile.MeasureHeight(width2), settingsWorkspaceTile3.MeasureHeight(width2));
-                int height2 = Math.Max(settingsWorkspaceTile2.MeasureHeight(width2), settingsWorkspaceTile4.MeasureHeight(width2));
-                int height3 = settingsWorkspaceTile5.MeasureHeight(width);
+                int height = Math.Max(settingsWorkspaceTile.MeasureHeight(width2), currentSettingsTile.MeasureHeight(width2));
+                int height2 = Math.Max(settingsTile.MeasureHeight(width2), candidateSettingsTile.MeasureHeight(width2));
+                int height3 = resolvedSettingsTile.MeasureHeight(width);
                 settingsWorkspaceTile.SetBounds(0, 0, width2, height);
-                settingsWorkspaceTile3.SetBounds(width2 + scaledDimension, 0, width - width2 - scaledDimension, height);
-                settingsWorkspaceTile2.SetBounds(0, height, width2, height2);
-                settingsWorkspaceTile4.SetBounds(width2 + scaledDimension, height, width - width2 - scaledDimension, height2);
-                settingsWorkspaceTile5.SetBounds(0, height + height2, width, height3);
-                top = settingsWorkspaceTile5.Bottom;
+                currentSettingsTile.SetBounds(width2 + scaledDimension, 0, width - width2 - scaledDimension, height);
+                settingsTile.SetBounds(0, height, width2, height2);
+                candidateSettingsTile.SetBounds(width2 + scaledDimension, height, width - width2 - scaledDimension, height2);
+                resolvedSettingsTile.SetBounds(0, height + height2, width, height3);
+                top = resolvedSettingsTile.Bottom;
             }
             else
             {
-                SettingsWorkspaceTile[] settingsWorkspaceTileItems = new SettingsWorkspaceTile[5] { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, settingsWorkspaceTile5 };
-                foreach (SettingsWorkspaceTile settingsWorkspaceTile7 in settingsWorkspaceTileItems)
+                foreach (SettingsWorkspaceTile settingsWorkspaceTileItem in new SettingsWorkspaceTile[5] { settingsWorkspaceTile, settingsTile, currentSettingsTile, candidateSettingsTile, resolvedSettingsTile })
                 {
-                    settingsWorkspaceTile7.SetBounds(0, top, width, settingsWorkspaceTile7.MeasureHeight(width));
-                    top = settingsWorkspaceTile7.Bottom;
+                    settingsWorkspaceTileItem.SetBounds(0, top, width, settingsWorkspaceTileItem.MeasureHeight(width));
+                    top = settingsWorkspaceTileItem.Bottom;
                 }
             }
-            aiTuning.SetBounds(0, top, width, aiTuning.MeasureHeight(width));
-            top = aiTuning.Bottom;
-            settingsWorkspaceTile5.BottomSeparator = true;
-            aiTuning.BottomSeparator = false;
-            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = new SettingsWorkspaceTile[6] { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, settingsWorkspaceTile5, aiTuning };
-            foreach (SettingsWorkspaceTile settingsWorkspaceTile8 in settingsWorkspaceTileItems2)
+            resolvedSettingsTile.BottomSeparator = false;
+            foreach (SettingsWorkspaceTile currentSettingsWorkspaceTile in new SettingsWorkspaceTile[5] { settingsWorkspaceTile, settingsTile, currentSettingsTile, candidateSettingsTile, resolvedSettingsTile })
             {
-                settingsWorkspaceTile8.ArrangeContent();
+                currentSettingsWorkspaceTile.ArrangeContent();
             }
             panel.AutoScrollMinSize = new Size(0, top);
             panel.AutoScrollPosition = autoScrollPosition;
@@ -1088,62 +1074,62 @@ namespace PaviseApp
                     int width = pageWhitelist.ClientSize.Width;
                     int uLimit = Math.Max(280, Dpi.U(width));
                     int uLimit2 = Math.Max(1, Dpi.U(pageWhitelist.ClientSize.Height));
-                    int layoutWhitelistViewportValue = ((uLimit < 600) ? 16 : 24);
-                    int remainingULimit = uLimit - layoutWhitelistViewportValue * 2;
-                    int layoutWhitelistViewportValue2 = 10;
+                    int pagePadding = ((uLimit < 600) ? 16 : 24);
+                    int remainingULimit = uLimit - pagePadding * 2;
+                    int columnGap = 10;
                     bool wideLayout = uLimit >= 920;
                     bool mediumLayout = uLimit >= 520;
-                    int layoutWhitelistViewportValue3 = 16;
-                    int layoutWhitelistViewportValue4;
+                    int toolbarTop = 16;
+                    int contentTop;
                     if (wideLayout)
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, 280, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue + 292, layoutWhitelistViewportValue3, 300, 38);
-                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + 608, layoutWhitelistViewportValue3, Math.Max(1, remainingULimit - 864), 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 248, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 112, layoutWhitelistViewportValue3, 112, 38);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 38 + 12;
+                        WhiteBounds(whiteSearchPanel, pagePadding, toolbarTop, 280, 38);
+                        WhiteBounds(whiteFilters, pagePadding + 292, toolbarTop, 300, 38);
+                        WhiteBounds(whiteCount, pagePadding + 608, toolbarTop, Math.Max(1, remainingULimit - 864), 38);
+                        WhiteBounds(whitePick, uLimit - pagePadding - 248, toolbarTop, 126, 38);
+                        WhiteBounds(whiteBrowse, uLimit - pagePadding - 112, toolbarTop, 112, 38);
+                        contentTop = toolbarTop + 38 + 12;
                     }
                     else if (mediumLayout)
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit - 248, 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 238, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 102, layoutWhitelistViewportValue3, 102, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, Math.Min(330, remainingULimit - 100), 34);
-                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + Math.Min(330, remainingULimit - 100) + 12, layoutWhitelistViewportValue3 + 48, Math.Max(1, remainingULimit - 342), 34);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 94;
+                        WhiteBounds(whiteSearchPanel, pagePadding, toolbarTop, remainingULimit - 248, 38);
+                        WhiteBounds(whitePick, uLimit - pagePadding - 238, toolbarTop, 126, 38);
+                        WhiteBounds(whiteBrowse, uLimit - pagePadding - 102, toolbarTop, 102, 38);
+                        WhiteBounds(whiteFilters, pagePadding, toolbarTop + 48, Math.Min(330, remainingULimit - 100), 34);
+                        WhiteBounds(whiteCount, pagePadding + Math.Min(330, remainingULimit - 100) + 12, toolbarTop + 48, Math.Max(1, remainingULimit - 342), 34);
+                        contentTop = toolbarTop + 94;
                     }
                     else
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, remainingULimit, 34);
-                        int ratio = (remainingULimit - layoutWhitelistViewportValue2) / 2;
-                        WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, ratio, 34);
-                        WhiteBounds(whiteBrowse, layoutWhitelistViewportValue + ratio + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, remainingULimit - ratio - layoutWhitelistViewportValue2, 34);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 138;
+                        WhiteBounds(whiteSearchPanel, pagePadding, toolbarTop, remainingULimit, 38);
+                        WhiteBounds(whiteFilters, pagePadding, toolbarTop + 48, remainingULimit, 34);
+                        int ratio = (remainingULimit - columnGap) / 2;
+                        WhiteBounds(whitePick, pagePadding, toolbarTop + 92, ratio, 34);
+                        WhiteBounds(whiteBrowse, pagePadding + ratio + columnGap, toolbarTop + 92, remainingULimit - ratio - columnGap, 34);
+                        contentTop = toolbarTop + 138;
                     }
                     whiteCount.Visible = (wideLayout || mediumLayout) && whiteCount.Width >= Theme.S(70);
                     whiteSearch.SetBounds(Theme.S(40), Theme.S(10), Math.Max(1, whiteSearchPanel.Width - Theme.S(52)), Theme.S(24));
                     bool compactContent = remainingULimit < 620;
-                    int layoutWhitelistViewportValue5 = (compactContent ? 82 : 36);
-                    int lowerBound = Math.Max(layoutWhitelistViewportValue4 + 152, uLimit2 - layoutWhitelistViewportValue - layoutWhitelistViewportValue5);
-                    WhiteBounds(whitePanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue4, remainingULimit, lowerBound - layoutWhitelistViewportValue4 - 12);
+                    int footerHeight = (compactContent ? 82 : 36);
+                    int lowerBound = Math.Max(contentTop + 152, uLimit2 - pagePadding - footerHeight);
+                    WhiteBounds(whitePanel, pagePadding, contentTop, remainingULimit, lowerBound - contentTop - 12);
                     if (compactContent)
                     {
-                        int ratio2 = (remainingULimit - layoutWhitelistViewportValue2) / 2;
-                        WhiteBounds(btnRestorePlatformProtection, layoutWhitelistViewportValue, lowerBound, ratio2, 34);
-                        WhiteBounds(whiteReset, layoutWhitelistViewportValue + ratio2 + layoutWhitelistViewportValue2, lowerBound, remainingULimit - ratio2 - layoutWhitelistViewportValue2, 34);
-                        WhiteBounds(btnRemoveWhitelist, uLimit - layoutWhitelistViewportValue - 88, lowerBound + 44, 88, 34);
-                        WhiteBounds(lblWhiteHint, layoutWhitelistViewportValue + 2, lowerBound + 44, Math.Max(1, remainingULimit - 104), 34);
+                        int ratio2 = (remainingULimit - columnGap) / 2;
+                        WhiteBounds(btnRestorePlatformProtection, pagePadding, lowerBound, ratio2, 34);
+                        WhiteBounds(whiteReset, pagePadding + ratio2 + columnGap, lowerBound, remainingULimit - ratio2 - columnGap, 34);
+                        WhiteBounds(btnRemoveWhitelist, uLimit - pagePadding - 88, lowerBound + 44, 88, 34);
+                        WhiteBounds(lblWhiteHint, pagePadding + 2, lowerBound + 44, Math.Max(1, remainingULimit - 104), 34);
                     }
                     else
                     {
-                        WhiteBounds(btnRemoveWhitelist, uLimit - layoutWhitelistViewportValue - 88, lowerBound, 88, 36);
-                        WhiteBounds(whiteReset, uLimit - layoutWhitelistViewportValue - 206, lowerBound, 108, 36);
-                        WhiteBounds(btnRestorePlatformProtection, uLimit - layoutWhitelistViewportValue - 356, lowerBound, 140, 36);
-                        WhiteBounds(lblWhiteHint, layoutWhitelistViewportValue + 2, lowerBound, Math.Max(1, remainingULimit - 374), 36);
+                        WhiteBounds(btnRemoveWhitelist, uLimit - pagePadding - 88, lowerBound, 88, 36);
+                        WhiteBounds(whiteReset, uLimit - pagePadding - 206, lowerBound, 108, 36);
+                        WhiteBounds(btnRestorePlatformProtection, uLimit - pagePadding - 356, lowerBound, 140, 36);
+                        WhiteBounds(lblWhiteHint, pagePadding + 2, lowerBound, Math.Max(1, remainingULimit - 374), 36);
                     }
-                    int v = lowerBound + layoutWhitelistViewportValue5 + layoutWhitelistViewportValue;
+                    int v = lowerBound + footerHeight + pagePadding;
                     bool autoScrollValue = Theme.S(v) > pageWhitelist.ClientSize.Height;
                     pageWhitelist.AutoScrollMargin = Size.Empty;
                     pageWhitelist.AutoScrollMinSize = (autoScrollValue ? new Size(0, Theme.S(v)) : Size.Empty);
@@ -1194,21 +1180,19 @@ namespace PaviseApp
             int remainingTop = ((nav == null) ? scaledDimension : (nav.Top - Theme.S(8)));
             if (pages != null)
             {
-                DBPanel[] pagesSnapshot = pages;
-                foreach (DBPanel dBPanel in pagesSnapshot)
+                foreach (DBPanel dBPanel in pages)
                 {
                     dBPanel.SetBounds(0, height, width, Math.Max(1, remainingTop - height));
                     if (dBPanel != pageOverview && dBPanel != pageLibrary && dBPanel != pageWhitelist && dBPanel != pagePolicy && dBPanel != pageAntiCheat && dBPanel != pageAbout && dBPanel != pageCoreScheduling && dBPanel != pageSettings && dBPanel != pageAudit)
                     {
                         dBPanel.AutoScroll = true;
                     }
-                    DBPanel[] value;
-                    if (!pageTabPanels.TryGetValue(dBPanel, out value))
+                    DBPanel[] pageTabPanel;
+                    if (!pageTabPanels.TryGetValue(dBPanel, out pageTabPanel))
                     {
                         continue;
                     }
-                    DBPanel[] valueSnapshot = value;
-                    foreach (DBPanel dBPanel2 in valueSnapshot)
+                    foreach (DBPanel dBPanel2 in pageTabPanel)
                     {
                         if (!(dBPanel2 is PerformanceFeatureGrid))
                         {
@@ -1249,14 +1233,14 @@ namespace PaviseApp
             int width = Theme.S(40);
             int height = Math.Min(bar.Height, Theme.S(60));
             Control control = bar.Controls["WindowClose"];
-            Control control3 = bar.Controls["WindowMinimize"];
+            Control currentControl = bar.Controls["WindowMinimize"];
             if (control != null)
             {
                 control.SetBounds(bar.Width - scaledDimension - width, 0, width, height);
             }
-            if (control3 != null)
+            if (currentControl != null)
             {
-                control3.SetBounds(bar.Width - scaledDimension - width * 2, 0, width, height);
+                currentControl.SetBounds(bar.Width - scaledDimension - width * 2, 0, width, height);
             }
             bool tallHeader = TopH > 60;
             int remainingWidth = (tallHeader ? (bar.Width - Theme.S(24)) : (bar.Width - scaledDimension - width * 2 - Theme.S(14)));
@@ -1272,15 +1256,15 @@ namespace PaviseApp
             {
                 themeSwitch.SetBounds(Math.Max(0, remainingWidth - width3 - scaledDimension2 - width2), rowY, width2, Theme.S(44));
             }
-            Control control4 = ((coreBackBar != null && coreBackBar.Visible) ? coreBackBar : ((overviewBackBar != null && overviewBackBar.Visible) ? overviewBackBar : null));
-            int floor = (tallHeader ? Theme.S(24) : ((control4 != null) ? (control4.Right + Theme.S(20)) : Theme.S(196)));
+            Control candidateControl = ((coreBackBar != null && coreBackBar.Visible) ? coreBackBar : ((overviewBackBar != null && overviewBackBar.Visible) ? overviewBackBar : null));
+            int floor = (tallHeader ? Theme.S(24) : ((candidateControl != null) ? (candidateControl.Right + Theme.S(20)) : Theme.S(196)));
             int layoutHeaderLinksResult = LayoutHeaderLinks(themeSwitch.Left, rowY, scaledDimension2, floor);
-            Control control5 = bar.Controls["WorkspaceBrand"];
-            if (control5 != null)
+            Control resolvedControl = bar.Controls["WorkspaceBrand"];
+            if (resolvedControl != null)
             {
                 int remainingS = (tallHeader ? (bar.Width - scaledDimension - width * 2 - Theme.S(12)) : (layoutHeaderLinksResult - Theme.S(20)));
-                control5.SetBounds(Theme.S(24), Theme.S(4), Math.Max(1, Math.Min(Theme.S(270), remainingS - Theme.S(24))), Theme.S(52));
-                control5.Visible = control4 == null;
+                resolvedControl.SetBounds(Theme.S(24), Theme.S(4), Math.Max(1, Math.Min(Theme.S(270), remainingS - Theme.S(24))), Theme.S(52));
+                resolvedControl.Visible = candidateControl == null;
             }
         }
         private void LayoutModeFlyout()

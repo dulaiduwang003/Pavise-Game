@@ -1,19 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -70,15 +62,15 @@ namespace PaviseApp
                         new Point(base.Width - 1, base.Height - Theme.S(28))
                     });
                 }
-                using (Pen pen2 = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.62f)))
+                using (Pen currentPen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.62f)))
                 {
                     if (SplitX > 0)
                     {
-                        graphics.DrawLine(pen2, SplitX, Theme.S(12), SplitX, base.Height - Theme.S(12));
+                        graphics.DrawLine(currentPen, SplitX, Theme.S(12), SplitX, base.Height - Theme.S(12));
                     }
                     if (!UtilityBounds.IsEmpty)
                     {
-                        graphics.DrawLine(pen2, UtilityBounds.Left, UtilityBounds.Top, UtilityBounds.Right, UtilityBounds.Top);
+                        graphics.DrawLine(currentPen, UtilityBounds.Left, UtilityBounds.Top, UtilityBounds.Right, UtilityBounds.Top);
                     }
                 }
             }
@@ -536,14 +528,14 @@ namespace PaviseApp
                     AccessibleName = Lang.T("nav.corescheduling")
                 };
                 GameCardDetailsButton gameCardDetailsButton = coreDetails;
-                EventHandler value = delegate
+                EventHandler eventHandler = delegate
                 {
                     if (item != null)
                     {
                         owner.OpenLibraryCoreScheduling(item.Profile.Id);
                     }
                 };
-                gameCardDetailsButton.Click += value;
+                gameCardDetailsButton.Click += eventHandler;
                 core.Controls.Add(coreDetails);
                 extensionTitle = new Label
                 {
@@ -568,20 +560,19 @@ namespace PaviseApp
 
             private FamilySuppressionSwitch MakeOption(string name, string text, bool isCore, Action<GameLibraryItem> action)
             {
-                FamilySuppressionSwitch familySuppressionSwitch = new FamilySuppressionSwitch(isCore);
-                familySuppressionSwitch.Name = name;
-                familySuppressionSwitch.Text = text;
-                familySuppressionSwitch.Surface = Theme.Card;
-                FamilySuppressionSwitch familySuppressionSwitch2 = familySuppressionSwitch;
-                familySuppressionSwitch2.Click += delegate
+                FamilySuppressionSwitch currentFamilySuppressionSwitch = new FamilySuppressionSwitch(isCore);
+                currentFamilySuppressionSwitch.Name = name;
+                currentFamilySuppressionSwitch.Text = text;
+                currentFamilySuppressionSwitch.Surface = Theme.Card;
+                currentFamilySuppressionSwitch.Click += delegate
                 {
                     if (item != null)
                     {
                         action(item);
                     }
                 };
-                base.Controls.Add(familySuppressionSwitch2);
-                return familySuppressionSwitch2;
+                base.Controls.Add(currentFamilySuppressionSwitch);
+                return currentFamilySuppressionSwitch;
             }
 
             internal void RefreshItem(GameLibraryItem fresh)
@@ -602,7 +593,7 @@ namespace PaviseApp
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
                 FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-                string[] textEntries = new string[4]
+                string[] tooltipKeys = new string[4]
                 {
                     "lib.cores.toggle.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
@@ -612,7 +603,7 @@ namespace PaviseApp
                 for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                 {
                     familySuppressionSwitchItems[i].AccessibleName = profile.Name + " · " + familySuppressionSwitchItems[i].Text;
-                    familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(textEntries[i]);
+                    familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(tooltipKeys[i]);
                     tips.SetToolTip(familySuppressionSwitchItems[i], familySuppressionSwitchItems[i].AccessibleDescription);
                 }
                 string learnedExecutablePathOffset = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath + "|" + profile.LearnedExecutablePath;
@@ -795,22 +786,6 @@ namespace PaviseApp
             }
         }
 
-        private const int AuditWindowMs = 120000;
-
-        private const int SystemPerformanceTab = 3;
-
-        private const int CollapsedCardH = 52;
-
-        private const int ContentX = 30;
-
-        private const string LastAdvancedPageKey = "DeepTuningLastPage";
-
-        private const int WmPowerBroadcast = 536;
-
-        private const int PbtPowerSettingChange = 32787;
-
-        private const uint DeviceNotifyWindowHandle = 0u;
-
         internal const int DescMaxLines = 3;
 
         internal const int CollapseChevronW = 20;
@@ -818,14 +793,6 @@ namespace PaviseApp
         internal const float StatusFontMax = 14.5f;
 
         internal const float StatusFontMin = 9.5f;
-
-        private const string AutoHideKey = "AutoHideOnGame";
-
-        private const bool AutoHideDefault = true;
-
-        private const int AutoHideDelayMs = 10000;
-
-        private const int OutroMs = 220;
 
         private Label lblAboutUpdate;
 

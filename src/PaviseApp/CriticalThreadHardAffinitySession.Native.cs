@@ -328,53 +328,52 @@ namespace PaviseApp
 
             public HardThreadMachine ReadProcessScope()
             {
-                HardThreadMachine hardThreadMachine = new HardThreadMachine();
-                hardThreadMachine.Read = HardThreadRead.Unknown;
-                hardThreadMachine.Detail = "native process or topology unavailable";
-                HardThreadMachine hardThreadMachine2 = hardThreadMachine;
-                hardThreadMachine2.Read = ProcessIdentity();
-                if (hardThreadMachine2.Read != 0)
+                HardThreadMachine currentHardThreadMachine = new HardThreadMachine();
+                currentHardThreadMachine.Read = HardThreadRead.Unknown;
+                currentHardThreadMachine.Detail = "native process or topology unavailable";
+                currentHardThreadMachine.Read = ProcessIdentity();
+                if (currentHardThreadMachine.Read != 0)
                 {
-                    return hardThreadMachine2;
+                    return currentHardThreadMachine;
                 }
                 try
                 {
-                    hardThreadMachine2.GroupCount = GetActiveProcessorGroupCount();
-                    if (hardThreadMachine2.GroupCount != 1)
+                    currentHardThreadMachine.GroupCount = GetActiveProcessorGroupCount();
+                    if (currentHardThreadMachine.GroupCount != 1)
                     {
-                        hardThreadMachine2.Detail = "multiple processor groups unsupported";
-                        return hardThreadMachine2;
+                        currentHardThreadMachine.Detail = "multiple processor groups unsupported";
+                        return currentHardThreadMachine;
                     }
                     UIntPtr processMask;
                     UIntPtr systemMask;
                     if (!GetProcessAffinityMask(process, out processMask, out systemMask) || processMask == UIntPtr.Zero)
                     {
-                        hardThreadMachine2.Read = HardThreadRead.Unknown;
-                        return hardThreadMachine2;
+                        currentHardThreadMachine.Read = HardThreadRead.Unknown;
+                        return currentHardThreadMachine;
                     }
-                    hardThreadMachine2.ProcessMask = processMask.ToUInt64();
-                    hardThreadMachine2.Group = 0;
+                    currentHardThreadMachine.ProcessMask = processMask.ToUInt64();
+                    currentHardThreadMachine.Group = 0;
                     bool empty;
                     bool empty2;
                     if (!CpuSetIdsEmpty(process, false, out empty) || !CpuSetMasksEmpty(process, false, out empty2))
                     {
-                        hardThreadMachine2.Read = HardThreadRead.Unknown;
-                        return hardThreadMachine2;
+                        currentHardThreadMachine.Read = HardThreadRead.Unknown;
+                        return currentHardThreadMachine;
                     }
-                    hardThreadMachine2.CpuSetsEmpty = empty && empty2;
+                    currentHardThreadMachine.CpuSetsEmpty = empty && empty2;
                     try
                     {
                         uint priority = GetPriorityClass(process);
-                        if (priority != 0) { hardThreadMachine2.ProcessPriorityClass = priority; hardThreadMachine2.ProcessPriorityClassKnown = true; }
+                        if (priority != 0) { currentHardThreadMachine.ProcessPriorityClass = priority; currentHardThreadMachine.ProcessPriorityClassKnown = true; }
                     }
                     catch { }
-                    return hardThreadMachine2;
+                    return currentHardThreadMachine;
                 }
                 catch (Exception ex)
                 {
-                    hardThreadMachine2.Read = HardThreadRead.Unknown;
-                    hardThreadMachine2.Detail = ex.GetType().Name;
-                    return hardThreadMachine2;
+                    currentHardThreadMachine.Read = HardThreadRead.Unknown;
+                    currentHardThreadMachine.Detail = ex.GetType().Name;
+                    return currentHardThreadMachine;
                 }
             }
 
@@ -385,46 +384,46 @@ namespace PaviseApp
                 {
                     throw new InvalidDataException("bounded native physical topology required");
                 }
-                IntPtr intPtr = Marshal.AllocHGlobal((int)length);
+                IntPtr nativeBuffer = Marshal.AllocHGlobal((int)length);
                 try
                 {
                     uint length2 = length;
-                    if (!GetLogicalProcessorInformationEx(0, intPtr, ref length2) || length2 > length)
+                    if (!GetLogicalProcessorInformationEx(0, nativeBuffer, ref length2) || length2 > length)
                     {
                         throw new InvalidDataException("physical topology changed");
                     }
                     int i = 0;
-                    List<ulong> list = new List<ulong>();
-                    int physicalCoresValue;
-                    for (; i < length2; i += physicalCoresValue)
+                    List<ulong> physicalCoreMasks = new List<ulong>();
+                    int recordSize;
+                    for (; i < length2; i += recordSize)
                     {
                         if (length2 - i < 8)
                         {
                             throw new InvalidDataException("truncated physical record");
                         }
-                        IntPtr intPtr2 = IntPtr.Add(intPtr, i);
-                        int int32 = Marshal.ReadInt32(intPtr2);
-                        physicalCoresValue = Marshal.ReadInt32(intPtr2, 4);
-                        if (int32 != 0 || physicalCoresValue < 48 || physicalCoresValue > length2 - i || Marshal.ReadInt16(intPtr2, 30) != 1)
+                        IntPtr recordPointer = IntPtr.Add(nativeBuffer, i);
+                        int relationship = Marshal.ReadInt32(recordPointer);
+                        recordSize = Marshal.ReadInt32(recordPointer, 4);
+                        if (relationship != 0 || recordSize < 48 || recordSize > length2 - i || Marshal.ReadInt16(recordPointer, 30) != 1)
                         {
                             throw new InvalidDataException("unsupported physical record");
                         }
-                        GroupAffinity groupAffinity = (GroupAffinity)Marshal.PtrToStructure(IntPtr.Add(intPtr2, 32), typeof(GroupAffinity));
+                        GroupAffinity groupAffinity = (GroupAffinity)Marshal.PtrToStructure(IntPtr.Add(recordPointer, 32), typeof(GroupAffinity));
                         if (groupAffinity.Group != 0 || groupAffinity.Mask == UIntPtr.Zero)
                         {
                             throw new InvalidDataException("unsupported physical group");
                         }
-                        list.Add(groupAffinity.Mask.ToUInt64());
+                        physicalCoreMasks.Add(groupAffinity.Mask.ToUInt64());
                     }
-                    if (i != length2 || list.Count == 0)
+                    if (i != length2 || physicalCoreMasks.Count == 0)
                     {
                         throw new InvalidDataException("empty physical topology");
                     }
-                    return list.ToArray();
+                    return physicalCoreMasks.ToArray();
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(intPtr);
+                    Marshal.FreeHGlobal(nativeBuffer);
                 }
             }
 
@@ -487,13 +486,13 @@ namespace PaviseApp
 
             private IntPtr OriginalThread(HardThreadIdentity thread)
             {
-                IntPtr value;
-                if (threads.TryGetValue(thread.Key, out value))
+                IntPtr threadHandle;
+                if (threads.TryGetValue(thread.Key, out threadHandle))
                 {
-                    return value;
+                    return threadHandle;
                 }
-                value = OpenThread(1050656u, false, thread.Tid);
-                if (value == IntPtr.Zero)
+                threadHandle = OpenThread(1050656u, false, thread.Tid);
+                if (threadHandle == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
@@ -501,13 +500,13 @@ namespace PaviseApp
                 long exited;
                 long kernel;
                 long user;
-                if (GetProcessIdOfThread(value) != target.ProcessId || !GetThreadTimes(value, out born, out exited, out kernel, out user) || born != thread.Creation)
+                if (GetProcessIdOfThread(threadHandle) != target.ProcessId || !GetThreadTimes(threadHandle, out born, out exited, out kernel, out user) || born != thread.Creation)
                 {
-                    CloseHandle(value);
+                    CloseHandle(threadHandle);
                     return IntPtr.Zero;
                 }
-                threads.Add(thread.Key, value);
-                return value;
+                threads.Add(thread.Key, threadHandle);
+                return threadHandle;
             }
 
             public HardThreadObserved ReadThread(HardThreadIdentity thread)
@@ -527,52 +526,51 @@ namespace PaviseApp
 
             private HardThreadObserved ReadThreadCore(HardThreadIdentity thread, bool includePriority, PlacementBatch batch)
             {
-                HardThreadObserved hardThreadObserved = new HardThreadObserved();
-                hardThreadObserved.Read = HardThreadRead.Unknown;
-                hardThreadObserved.Detail = "original thread identity unknown";
-                HardThreadObserved hardThreadObserved2 = hardThreadObserved;
+                HardThreadObserved currentHardThreadObserved = new HardThreadObserved();
+                currentHardThreadObserved.Read = HardThreadRead.Unknown;
+                currentHardThreadObserved.Detail = "original thread identity unknown";
                 if ((batch == null ? ProcessIdentity() : batch.Alive()) != HardThreadRead.Known)
                 {
-                    return hardThreadObserved2;
+                    return currentHardThreadObserved;
                 }
-                IntPtr intPtr = OriginalThread(thread);
-                if (intPtr == IntPtr.Zero)
+                IntPtr originalThreadHandle = OriginalThread(thread);
+                if (originalThreadHandle == IntPtr.Zero)
                 {
-                    return hardThreadObserved2;
+                    return currentHardThreadObserved;
                 }
-                switch (WaitForSingleObject(intPtr, 0u))
+                switch (WaitForSingleObject(originalThreadHandle, 0u))
                 {
                 case 0u:
-                    hardThreadObserved2.Read = HardThreadRead.Gone;
-                    return hardThreadObserved2;
+                    currentHardThreadObserved.Read = HardThreadRead.Gone;
+                    return currentHardThreadObserved;
                 default:
-                    return hardThreadObserved2;
+                    return currentHardThreadObserved;
                 case 258u:
                     try
                     {
                         GroupAffinity affinity;
                         bool empty;
                         bool empty2;
-                        if (!GetThreadGroupAffinity(intPtr, out affinity) || !CpuSetIdsEmpty(intPtr, true, out empty) || !CpuSetMasksEmpty(intPtr, true, out empty2))
+                        if (!GetThreadGroupAffinity(originalThreadHandle, out affinity) || !CpuSetIdsEmpty(originalThreadHandle, true, out empty) || !CpuSetMasksEmpty(originalThreadHandle, true, out empty2))
                         {
-                            return hardThreadObserved2;
+                            return currentHardThreadObserved;
                         }
-                        hardThreadObserved2.Read = HardThreadRead.Known;
-                        hardThreadObserved2.Group = affinity.Group;
-                        hardThreadObserved2.Mask = affinity.Mask.ToUInt64();
-                        hardThreadObserved2.CpuSetsEmpty = empty && empty2;
+                        currentHardThreadObserved.Read = HardThreadRead.Known;
+                        currentHardThreadObserved.Group = affinity.Group;
+                        currentHardThreadObserved.Mask = affinity.Mask.ToUInt64();
+                        currentHardThreadObserved.CpuSetsEmpty = empty && empty2;
                         if (includePriority) try
                         {
-                            int priority = GetThreadPriority(intPtr);
-                            if (priority != int.MaxValue) { hardThreadObserved2.ThreadPriorityLevel = priority; hardThreadObserved2.ThreadPriorityKnown = true; }
+                            int priority = GetThreadPriority(originalThreadHandle);
+                            if (priority != int.MaxValue) { currentHardThreadObserved.ThreadPriorityLevel = priority; currentHardThreadObserved.ThreadPriorityKnown = true; }
                         }
                         catch { }
-                        return hardThreadObserved2;
+                        return currentHardThreadObserved;
                     }
                     catch (Exception ex)
                     {
-                        hardThreadObserved2.Detail = ex.GetType().Name;
-                        return hardThreadObserved2;
+                        currentHardThreadObserved.Detail = ex.GetType().Name;
+                        return currentHardThreadObserved;
                     }
                 }
             }
@@ -585,17 +583,16 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                IntPtr value;
-                if (!threads.TryGetValue(thread.Key, out value) || WaitForSingleObject(value, 0u) != 258)
+                IntPtr nativePointer;
+                if (!threads.TryGetValue(thread.Key, out nativePointer) || WaitForSingleObject(nativePointer, 0u) != 258)
                 {
                     return false;
                 }
-                GroupAffinity groupAffinity = default(GroupAffinity);
-                groupAffinity.Mask = new UIntPtr(mask);
-                groupAffinity.Group = group;
-                GroupAffinity affinity = groupAffinity;
+                GroupAffinity affinity = default(GroupAffinity);
+                affinity.Mask = new UIntPtr(mask);
+                affinity.Group = group;
                 GroupAffinity previous;
-                if (!SetThreadGroupAffinity(value, ref affinity, out previous))
+                if (!SetThreadGroupAffinity(nativePointer, ref affinity, out previous))
                 {
                     return false;
                 }
@@ -606,20 +603,20 @@ namespace PaviseApp
 
             public bool ReleaseUnowned(string[] retainedIdentities)
             {
-                HashSet<string> hashSet = new HashSet<string>(retainedIdentities, StringComparer.Ordinal);
-                List<string> list = new List<string>();
+                HashSet<string> retainedIdentitiesSnapshot = new HashSet<string>(retainedIdentities, StringComparer.Ordinal);
+                List<string> keys = new List<string>();
                 bool result = true;
                 foreach (string key in threads.Keys)
                 {
-                    if (!hashSet.Contains(key))
+                    if (!retainedIdentitiesSnapshot.Contains(key))
                     {
-                        list.Add(key);
+                        keys.Add(key);
                     }
                 }
-                foreach (string item in list)
+                foreach (string currentKey in keys)
                 {
-                    IntPtr handle = threads[item];
-                    threads.Remove(item);
+                    IntPtr handle = threads[currentKey];
+                    threads.Remove(currentKey);
                     if (!CloseHandle(handle))
                     {
                         result = false;
@@ -632,9 +629,9 @@ namespace PaviseApp
             public void Dispose()
             {
                 bool releaseFailed = false;
-                foreach (IntPtr value in threads.Values)
+                foreach (IntPtr nativePointer in threads.Values)
                 {
-                    if (!CloseHandle(value))
+                    if (!CloseHandle(nativePointer))
                     {
                         releaseFailed = true;
                     }

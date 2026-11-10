@@ -197,9 +197,9 @@ namespace PaviseApp
         private void UpdateGroups()
         {
             bool hasSectionHeading = false;
-            foreach (Control control3 in base.Controls)
+            foreach (Control control in base.Controls)
             {
-                if (control3 is PerformanceSectionHeading)
+                if (control is PerformanceSectionHeading)
                 {
                     hasSectionHeading = true;
                     break;
@@ -209,14 +209,14 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (Control control4 in base.Controls)
+            foreach (Control currentControl in base.Controls)
             {
-                foreach (PerformanceFeatureCard item in Features(control4))
+                foreach (PerformanceFeatureCard feature in Features(currentControl))
                 {
-                    if (item.Parent != this && observedNested.Add(item))
+                    if (feature.Parent != this && observedNested.Add(feature))
                     {
-                        item.PresentationChanged = (Action)Delegate.Combine(item.PresentationChanged, new Action(Reflow));
-                        item.PresentationStateChanged = (Action)Delegate.Combine(item.PresentationStateChanged, new Action(UpdateGroups));
+                        feature.PresentationChanged = (Action)Delegate.Combine(feature.PresentationChanged, new Action(Reflow));
+                        feature.PresentationStateChanged = (Action)Delegate.Combine(feature.PresentationStateChanged, new Action(UpdateGroups));
                     }
                 }
             }
@@ -224,13 +224,13 @@ namespace PaviseApp
             int processedCount = 0;
             int processedCount2 = 0;
             int processedCount3 = 0;
-            foreach (Control control5 in base.Controls)
+            foreach (Control candidateControl in base.Controls)
             {
-                PerformanceSectionHeading performanceSectionHeading2 = control5 as PerformanceSectionHeading;
-                if (performanceSectionHeading2 != null)
+                PerformanceSectionHeading currentPerformanceSectionHeading = candidateControl as PerformanceSectionHeading;
+                if (currentPerformanceSectionHeading != null)
                 {
                     UpdateGroup(performanceSectionHeading, processedCount, processedCount2, processedCount3);
-                    performanceSectionHeading = performanceSectionHeading2;
+                    performanceSectionHeading = currentPerformanceSectionHeading;
                     processedCount = (processedCount2 = (processedCount3 = 0));
                 }
                 else
@@ -239,15 +239,15 @@ namespace PaviseApp
                     {
                         continue;
                     }
-                    foreach (PerformanceFeatureCard item2 in Features(control5))
+                    foreach (PerformanceFeatureCard currentFeature in Features(candidateControl))
                     {
                         processedCount++;
-                        Toggle toggle = item2.Hosted as Toggle;
+                        Toggle toggle = currentFeature.Hosted as Toggle;
                         if (toggle != null && toggle.Checked)
                         {
                             processedCount2++;
                         }
-                        if (item2.HasStatus && item2.StatusColor == Theme.Warning)
+                        if (currentFeature.HasStatus && currentFeature.StatusColor == Theme.Warning)
                         {
                             processedCount3++;
                         }
@@ -284,30 +284,30 @@ namespace PaviseApp
         private List<Placement> Plan(int width, bool prepareCompositeWidths, out int height, out bool widthsReady)
         {
             int scaledDimension = ((!autoSizeContent) ? Theme.S(8) : 0);
-            int planValue = 1;
-            int columnsRatio = (width - (Columns - 1) * planValue) / Columns;
-            int planValue2 = scaledDimension;
-            List<Control> list = new List<Control>();
-            foreach (Control control2 in base.Controls)
+            int columnGap = 1;
+            int columnsRatio = (width - (Columns - 1) * columnGap) / Columns;
+            int rowTop = scaledDimension;
+            List<Control> controls = new List<Control>();
+            foreach (Control currentControl in base.Controls)
             {
-                list.Add(control2);
+                controls.Add(currentControl);
             }
-            List<Placement> list2 = new List<Placement>();
+            List<Placement> placements = new List<Placement>();
             widthsReady = true;
             int processedCount = 0;
-            while (processedCount < list.Count)
+            while (processedCount < controls.Count)
             {
-                Control control = list[processedCount];
+                Control control = controls[processedCount];
                 PerformanceFeatureCard performanceFeatureCard = control as PerformanceFeatureCard;
                 if (performanceFeatureCard != null)
                 {
                     int i = 1;
                     if (performanceFeatureCard.MinimumPresentationWidth <= columnsRatio)
                     {
-                        for (; i < Columns && processedCount + i < list.Count; i++)
+                        for (; i < Columns && processedCount + i < controls.Count; i++)
                         {
-                            PerformanceFeatureCard performanceFeatureCard2 = list[processedCount + i] as PerformanceFeatureCard;
-                            if (performanceFeatureCard2 == null || performanceFeatureCard2.MinimumPresentationWidth > columnsRatio)
+                            PerformanceFeatureCard currentPerformanceFeatureCard = controls[processedCount + i] as PerformanceFeatureCard;
+                            if (currentPerformanceFeatureCard == null || currentPerformanceFeatureCard.MinimumPresentationWidth > columnsRatio)
                             {
                                 break;
                             }
@@ -315,26 +315,26 @@ namespace PaviseApp
                     }
                     if (i > 1)
                     {
-                        int iRatio = (width - (i - 1) * planValue) / i;
-                        int planValue3 = 0;
+                        int iRatio = (width - (i - 1) * columnGap) / i;
+                        int rowHeight = 0;
                         for (int j = 0; j < i; j++)
                         {
-                            int remainingWidth = ((j == i - 1) ? (width - j * (iRatio + planValue)) : iRatio);
-                            planValue3 = Math.Max(planValue3, ((PerformanceFeatureCard)list[processedCount + j]).PresentationHeight(remainingWidth));
+                            int remainingWidth = ((j == i - 1) ? (width - j * (iRatio + columnGap)) : iRatio);
+                            rowHeight = Math.Max(rowHeight, ((PerformanceFeatureCard)controls[processedCount + j]).PresentationHeight(remainingWidth));
                         }
                         for (int k = 0; k < i; k++)
                         {
-                            int remainingWidth2 = ((k == i - 1) ? (width - k * (iRatio + planValue)) : iRatio);
-                            list2.Add(new Placement(list[processedCount + k], scaledDimension + k * (iRatio + planValue), planValue2, remainingWidth2, planValue3));
+                            int remainingWidth2 = ((k == i - 1) ? (width - k * (iRatio + columnGap)) : iRatio);
+                            placements.Add(new Placement(controls[processedCount + k], scaledDimension + k * (iRatio + columnGap), rowTop, remainingWidth2, rowHeight));
                         }
-                        planValue2 += planValue3 + planValue;
+                        rowTop += rowHeight + columnGap;
                         processedCount += i;
                     }
                     else
                     {
                         int presentationHeightResult = performanceFeatureCard.PresentationHeight(width);
-                        list2.Add(new Placement(performanceFeatureCard, scaledDimension, planValue2, width, presentationHeightResult));
-                        planValue2 += presentationHeightResult + planValue;
+                        placements.Add(new Placement(performanceFeatureCard, scaledDimension, rowTop, width, presentationHeightResult));
+                        rowTop += presentationHeightResult + columnGap;
                         processedCount++;
                     }
                     continue;
@@ -349,12 +349,12 @@ namespace PaviseApp
                     }
                 }
                 int height2 = ((performanceSectionHeading == null) ? control.Height : performanceSectionHeading.MeasureHeight(width));
-                list2.Add(new Placement(control, scaledDimension, planValue2, width, height2));
-                planValue2 += height2 + ((performanceSectionHeading == null) ? planValue : Theme.S(4));
+                placements.Add(new Placement(control, scaledDimension, rowTop, width, height2));
+                rowTop += height2 + ((performanceSectionHeading == null) ? columnGap : Theme.S(4));
                 processedCount++;
             }
-            height = Math.Max(scaledDimension * 2, planValue2 - ((list2.Count > 0) ? planValue : 0) + scaledDimension);
-            return list2;
+            height = Math.Max(scaledDimension * 2, rowTop - ((placements.Count > 0) ? columnGap : 0) + scaledDimension);
+            return placements;
         }
 
         private void UpdateConsoleGeometry(List<Placement> plan, int width, int height)
@@ -383,11 +383,11 @@ namespace PaviseApp
                 return false;
             }
             Point autoScrollPosition = base.AutoScrollPosition;
-            foreach (Placement item in plan)
+            foreach (Placement currentPlan in plan)
             {
-                Rectangle bounds = item.Control.Bounds;
+                Rectangle bounds = currentPlan.Control.Bounds;
                 bounds.Offset(-autoScrollPosition.X, -autoScrollPosition.Y);
-                if (bounds != item.Bounds)
+                if (bounds != currentPlan.Bounds)
                 {
                     return false;
                 }
@@ -425,23 +425,23 @@ namespace PaviseApp
             {
                 int scaledDimension = ((!autoSizeContent) ? Theme.S(8) : 0);
                 int lowerBound = Math.Max(1, base.Width - scaledDimension * 2);
-                int reflowValue = lowerBound;
-                Columns = ColumnCount(reflowValue);
+                int availableWidth = lowerBound;
+                Columns = ColumnCount(availableWidth);
                 UpdateGroups();
                 int contentHeight2;
                 bool widthsReady;
-                List<Placement> list = Plan(reflowValue, false, out contentHeight2, out widthsReady);
+                List<Placement> placements = Plan(availableWidth, false, out contentHeight2, out widthsReady);
                 if (!autoSizeContent && ScrollHeightFor(contentHeight2) > base.Height)
                 {
-                    reflowValue = Math.Max(1, lowerBound - SystemInformation.VerticalScrollBarWidth);
-                    Columns = ColumnCount(reflowValue);
-                    list = Plan(reflowValue, false, out contentHeight2, out widthsReady);
+                    availableWidth = Math.Max(1, lowerBound - SystemInformation.VerticalScrollBarWidth);
+                    Columns = ColumnCount(availableWidth);
+                    placements = Plan(availableWidth, false, out contentHeight2, out widthsReady);
                 }
-                if (widthsReady && Matches(list, contentHeight2))
+                if (widthsReady && Matches(placements, contentHeight2))
                 {
-                    foreach (Placement item in list)
+                    foreach (Placement placement in placements)
                     {
-                        PerformanceFeatureCard performanceFeatureCard = item.Control as PerformanceFeatureCard;
+                        PerformanceFeatureCard performanceFeatureCard = placement.Control as PerformanceFeatureCard;
                         if (performanceFeatureCard != null)
                         {
                             performanceFeatureCard.ArrangePresentation();
@@ -454,31 +454,31 @@ namespace PaviseApp
                 try
                 {
                     base.AutoScrollPosition = Point.Empty;
-                    list = Plan(reflowValue, true, out contentHeight2, out widthsReady);
-                    if (!autoSizeContent && ScrollHeightFor(contentHeight2) > base.Height && reflowValue == lowerBound)
+                    placements = Plan(availableWidth, true, out contentHeight2, out widthsReady);
+                    if (!autoSizeContent && ScrollHeightFor(contentHeight2) > base.Height && availableWidth == lowerBound)
                     {
-                        reflowValue = Math.Max(1, lowerBound - SystemInformation.VerticalScrollBarWidth);
-                        Columns = ColumnCount(reflowValue);
-                        list = Plan(reflowValue, true, out contentHeight2, out widthsReady);
+                        availableWidth = Math.Max(1, lowerBound - SystemInformation.VerticalScrollBarWidth);
+                        Columns = ColumnCount(availableWidth);
+                        placements = Plan(availableWidth, true, out contentHeight2, out widthsReady);
                     }
                     int processedCount = 0;
-                    foreach (Placement item2 in list)
+                    foreach (Placement currentPlacement in placements)
                     {
-                        Control control = item2.Control;
+                        Control control = currentPlacement.Control;
                         control.TabIndex = processedCount++;
                         control.Visible = true;
-                        if (control.Bounds != item2.Bounds)
+                        if (control.Bounds != currentPlacement.Bounds)
                         {
-                            control.Bounds = item2.Bounds;
+                            control.Bounds = currentPlacement.Bounds;
                         }
-                        PerformanceFeatureCard performanceFeatureCard2 = control as PerformanceFeatureCard;
-                        if (performanceFeatureCard2 != null)
+                        PerformanceFeatureCard currentPerformanceFeatureCard = control as PerformanceFeatureCard;
+                        if (currentPerformanceFeatureCard != null)
                         {
-                            performanceFeatureCard2.ArrangePresentation();
+                            currentPerformanceFeatureCard.ArrangePresentation();
                         }
                     }
                     ContentHeight = contentHeight2;
-                    UpdateConsoleGeometry(list, reflowValue, contentHeight2);
+                    UpdateConsoleGeometry(placements, availableWidth, contentHeight2);
                     if (autoSizeContent)
                     {
                         base.AutoScrollMinSize = Size.Empty;

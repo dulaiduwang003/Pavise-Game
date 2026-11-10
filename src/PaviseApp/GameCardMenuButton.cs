@@ -7,7 +7,6 @@ namespace PaviseApp
 {
     internal sealed class GameCardMenuButton : PillButton
     {
-        private const int MenuGap = 5;
 
         private readonly DropdownHost host;
 

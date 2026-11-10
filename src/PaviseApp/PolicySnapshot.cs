@@ -361,19 +361,19 @@ namespace PaviseApp
             {
                 overridden.Add("GmManualCorePlanV2");
             }
-            Dictionary<string, string> dictionary = new Dictionary<string, string>(profile.Overrides, StringComparer.Ordinal);
-            if (!ThreadBoostSelection.MigrateOverrides(dictionary))
+            Dictionary<string, string> overridesSnapshot = new Dictionary<string, string>(profile.Overrides, StringComparer.Ordinal);
+            if (!ThreadBoostSelection.MigrateOverrides(overridesSnapshot))
             {
-                dictionary["GmThreadBoostStrategyV1"] = "off";
+                overridesSnapshot["GmThreadBoostStrategyV1"] = "off";
             }
-            foreach (PolicyItem item in PolicyCatalog.All)
+            foreach (PolicyItem all in PolicyCatalog.All)
             {
-                string value;
-                if (item.Key != "PerformancePreset" && item.Key != "PowerPlanOn" && dictionary.TryGetValue(item.Key, out value))
+                string currentOverridesSnapshot;
+                if (all.Key != "PerformancePreset" && all.Key != "PowerPlanOn" && overridesSnapshot.TryGetValue(all.Key, out currentOverridesSnapshot))
                 {
-                    string canonicalResult = PolicyCatalog.Canonical(item.Key, value);
-                    values[item.Key] = canonicalResult ?? item.Fallback;
-                    overridden.Add(item.Key);
+                    string canonicalResult = PolicyCatalog.Canonical(all.Key, currentOverridesSnapshot);
+                    values[all.Key] = canonicalResult ?? all.Fallback;
+                    overridden.Add(all.Key);
                 }
             }
             ProfileId = profile.Id;

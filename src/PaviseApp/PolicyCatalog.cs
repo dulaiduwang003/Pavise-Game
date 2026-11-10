@@ -156,13 +156,12 @@ namespace PaviseApp
 
         private static Dictionary<string, PolicyItem> BuildIndex()
         {
-            Dictionary<string, PolicyItem> dictionary = new Dictionary<string, PolicyItem>(StringComparer.Ordinal);
-            PolicyItem[] items = Items;
-            foreach (PolicyItem policyItem in items)
+            Dictionary<string, PolicyItem> policyItemsByName = new Dictionary<string, PolicyItem>(StringComparer.Ordinal);
+            foreach (PolicyItem policyItem in Items)
             {
-                dictionary[policyItem.Key] = policyItem;
+                policyItemsByName[policyItem.Key] = policyItem;
             }
-            return dictionary;
+            return policyItemsByName;
         }
 
         public static PolicyItem ItemOf(string key)
@@ -217,8 +216,7 @@ namespace PaviseApp
                     return policyItem.Fallback;
                 }
                 string resultText = result.ToString(CultureInfo.InvariantCulture);
-                string[] choices2 = policyItem.Choices;
-                foreach (string entryText in choices2)
+                foreach (string entryText in policyItem.Choices)
                 {
                     if (entryText == resultText)
                     {
@@ -233,8 +231,7 @@ namespace PaviseApp
             }
             case PolicyValueKind.Choice:
             {
-                string[] choices = policyItem.Choices;
-                foreach (string entryText2 in choices)
+                foreach (string entryText2 in policyItem.Choices)
                 {
                     if (string.Equals(entryText2, trimmed, StringComparison.OrdinalIgnoreCase))
                     {

@@ -111,11 +111,11 @@ namespace PaviseApp
                         GetCurrentProcessorNumberEx(out after);
                         if (before.Group != 0 || after.Group != 0 || before.Number != logical || after.Number != logical)
                         { reason = "cpuid-processor-mismatch"; return Unknown(); }
-                        int value = type == null ? -1 : (int)(type[0] >> 24);
+                        int coreTypeId = type == null ? -1 : (int)(type[0] >> 24);
                         // 这些值是标识，不是性能高低的数值排名。
-                        if (value != 0x20 && value != 0x40)
+                        if (coreTypeId != 0x20 && coreTypeId != 0x40)
                         { reason = "cpuid-core-type-unavailable"; return Unknown(); }
-                        result[logical] = value;
+                        result[logical] = coreTypeId;
                     }
                     complete = true;
                 }

@@ -193,12 +193,11 @@ namespace PaviseApp
             public void CreateProfile(string name)
             {
                 Text(name);
-                Profile profile = default(Profile);
-                profile.Version = Version<Profile>();
-                profile.Name = name;
-                Profile profile2 = profile;
+                Profile currentProfile = default(Profile);
+                currentProfile.Version = Version<Profile>();
+                currentProfile.Name = name;
                 IntPtr handle;
-                Ok(create(reader.session, ref profile2, out handle), "create game profile");
+                Ok(create(reader.session, ref currentProfile, out handle), "create game profile");
                 if (handle == IntPtr.Zero)
                 {
                     throw new InvalidDataException("Created NVIDIA profile has no handle");
@@ -208,16 +207,15 @@ namespace PaviseApp
             public void Bind(string name, string path)
             {
                 Text(path);
-                Application application = default(Application);
-                application.Version = Version<Application>(4u);
-                application.Name = path;
-                application.Friendly = "";
-                application.Launcher = "";
-                application.Folder = "";
-                application.Flags = 0u;
-                application.Command = "";
-                Application application2 = application;
-                Ok(bind(reader.session, reader.Handle(name), ref application2), "bind exact game application");
+                Application currentApplication = default(Application);
+                currentApplication.Version = Version<Application>(4u);
+                currentApplication.Name = path;
+                currentApplication.Friendly = "";
+                currentApplication.Launcher = "";
+                currentApplication.Folder = "";
+                currentApplication.Flags = 0u;
+                currentApplication.Command = "";
+                Ok(bind(reader.session, reader.Handle(name), ref currentApplication), "bind exact game application");
             }
 
             public void SetUserOverride(string name, uint id, uint? value)
@@ -359,11 +357,11 @@ namespace PaviseApp
                 }
                 byte[] rawBytes = new byte[(int)originalPin.Length];
                 originalPin.Position = 0L;
-                int requireOriginalValue;
-                for (int i = 0; i < rawBytes.Length; i += requireOriginalValue)
+                int bytesRead;
+                for (int i = 0; i < rawBytes.Length; i += bytesRead)
                 {
-                    requireOriginalValue = originalPin.Read(rawBytes, i, rawBytes.Length - i);
-                    if (requireOriginalValue <= 0)
+                    bytesRead = originalPin.Read(rawBytes, i, rawBytes.Length - i);
+                    if (bytesRead <= 0)
                     {
                         throw new EndOfStreamException();
                     }
@@ -373,18 +371,18 @@ namespace PaviseApp
                 {
                     throw new InvalidDataException("Native original bytes changed");
                 }
-                Dictionary<string, string> dictionary = GameNvText.Decode(rawBytes);
-                if (dictionary.Count != 14 || dictionary["schema"] != "game-nv-original-1" || dictionary["lease"] != original.LeaseToken || dictionary["profile"] != name || dictionary["predefined"] != predefined.ToString(CultureInfo.InvariantCulture) || dictionary["scope"] != scope || dictionary["own"] != (own ? "1" : "0") || dictionary["target"] != path || dictionary["image"] != original.ImageHash || dictionary["plan"] != original.PlanHash)
+                Dictionary<string, string> textsByName = GameNvText.Decode(rawBytes);
+                if (textsByName.Count != 14 || textsByName["schema"] != "game-nv-original-1" || textsByName["lease"] != original.LeaseToken || textsByName["profile"] != name || textsByName["predefined"] != predefined.ToString(CultureInfo.InvariantCulture) || textsByName["scope"] != scope || textsByName["own"] != (own ? "1" : "0") || textsByName["target"] != path || textsByName["image"] != original.ImageHash || textsByName["plan"] != original.PlanHash)
                 {
                     throw new InvalidDataException("Native original resource fields differ");
                 }
-                new GameNvRecoveryIdentity(dictionary["plan_text"], original.PlanHash, path, original.ImageHash);
-                uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
-                for (int j = 0; j < numericValueItems.Length; j++)
+                new GameNvRecoveryIdentity(textsByName["plan_text"], original.PlanHash, path, original.ImageHash);
+                uint[] requiredSettingIds = new uint[2] { 274197361u, 549528094u };
+                for (int j = 0; j < requiredSettingIds.Length; j++)
                 {
-                    uint key = numericValueItems[j];
+                    uint key = requiredSettingIds[j];
                     string keyText = key.ToString("X8");
-                    if (dictionary["original." + keyText] != originals[key].Text || dictionary["target." + keyText] != (targets.ContainsKey(key) ? "1" : "leave"))
+                    if (textsByName["original." + keyText] != originals[key].Text || textsByName["target." + keyText] != (targets.ContainsKey(key) ? "1" : "leave"))
                     {
                         throw new InvalidDataException("Native original key vector differs");
                     }
@@ -396,12 +394,12 @@ namespace PaviseApp
                 RequireOriginal();
                 string combinedPath = Path.Combine(original.JournalDirectory, "issued-" + operation + ".tsv");
                 NoReparse.CheckPath(combinedPath);
-                Dictionary<string, string> dictionary = new Dictionary<string, string>();
-                dictionary.Add("schema", "game-nv-phase-1");
-                dictionary.Add("lease", original.LeaseToken);
-                dictionary.Add("original", original.OriginalHash);
-                dictionary.Add("operation", "issued-" + operation);
-                byte[] encodeResult = GameNvText.Encode(dictionary);
+                Dictionary<string, string> textsByName = new Dictionary<string, string>();
+                textsByName.Add("schema", "game-nv-phase-1");
+                textsByName.Add("lease", original.LeaseToken);
+                textsByName.Add("original", original.OriginalHash);
+                textsByName.Add("operation", "issued-" + operation);
+                byte[] encodeResult = GameNvText.Encode(textsByName);
                 using (FileStream fileStream = new FileStream(combinedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     if (fileStream.Length != encodeResult.Length)
@@ -586,8 +584,8 @@ namespace PaviseApp
                 }
                 Stage(profile, null, "bind", delegate(IGameNvProfileWriter api)
                 {
-                    GameNvProfile gameNvProfile2 = Scope(api, false);
-                    if (gameNvProfile2.Applications.Count != 0 || gameNvProfile2.LocalSettingCount != 0 || api.FindApplication(path) != null || api.FindApplication(Path.GetFileName(path)) != null)
+                    GameNvProfile currentScope = Scope(api, false);
+                    if (currentScope.Applications.Count != 0 || currentScope.LocalSettingCount != 0 || api.FindApplication(path) != null || api.FindApplication(Path.GetFileName(path)) != null)
                     {
                         throw new IOException("Owned application binding changed");
                     }
@@ -622,20 +620,20 @@ namespace PaviseApp
                     {
                         throw new IOException("No exact target binding");
                     }
-                    GameNvSetting gameNvSetting2 = api.Read(name, id);
+                    GameNvSetting currentGameNvSetting = api.Read(name, id);
                     bool ownershipChanged;
                     if (recovery)
                     {
-                        ownershipChanged = !gameNvSetting2.UserOverride || gameNvSetting2.Value != expected;
+                        ownershipChanged = !currentGameNvSetting.UserOverride || currentGameNvSetting.Value != expected;
                     }
                     else if (own)
                     {
-                        ownershipChanged = gameNvSetting2.UserOverride || gameNvSetting2.Resolved != baseline.Resolved
-                            || (gameNvSetting2.Resolved && gameNvSetting2.Value != baseline.Value);
+                        ownershipChanged = currentGameNvSetting.UserOverride || currentGameNvSetting.Resolved != baseline.Resolved
+                            || (currentGameNvSetting.Resolved && currentGameNvSetting.Value != baseline.Value);
                     }
                     else
                     {
-                        ownershipChanged = gameNvSetting2.Text != baseline.Text;
+                        ownershipChanged = currentGameNvSetting.Text != baseline.Text;
                     }
                     if (ownershipChanged)
                     {
@@ -707,7 +705,7 @@ namespace PaviseApp
                     throw new InvalidOperationException("No issued native operation to save");
                 }
                 Action<IGameNvProfileWriter> action = pending;
-                Action<IGameNvProfileWriter> action2 = verify;
+                Action<IGameNvProfileWriter> currentVerify = verify;
                 try
                 {
                     Require();
@@ -735,7 +733,7 @@ namespace PaviseApp
                             Require();
                             gameNvProfileWriter2.Reload();
                             Require();
-                            action2(gameNvProfileWriter2);
+                            currentVerify(gameNvProfileWriter2);
                             Require();
                         }
                     }
@@ -790,12 +788,12 @@ namespace PaviseApp
 
         private static T Resolve<T>(uint id) where T : class
         {
-            IntPtr intPtr = Query(id);
-            if (intPtr == IntPtr.Zero)
+            IntPtr nativePointer = Query(id);
+            if (nativePointer == IntPtr.Zero)
             {
                 throw new NotSupportedException("NVIDIA readonly entry unavailable: " + id.ToString("X8"));
             }
-            return (T)(object)Marshal.GetDelegateForFunctionPointer(intPtr, typeof(T));
+            return (T)(object)Marshal.GetDelegateForFunctionPointer(nativePointer, typeof(T));
         }
 
         private static void Ok(int status, string operation)
@@ -871,9 +869,8 @@ namespace PaviseApp
         public GameNvProfile FindApplication(string fullPathOrName)
         {
             Active();
-            Application application = default(Application);
-            application.Version = Version<Application>(4u);
-            Application app = application;
+            Application app = default(Application);
+            app.Version = Version<Application>(4u);
             IntPtr profile;
             int status = findApp(session, fullPathOrName, out profile, ref app);
             if (!FoundStatus(status, -166, "find application"))
@@ -913,33 +910,31 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Missing readonly profile handle");
             }
-            Profile profile2 = default(Profile);
-            profile2.Version = Version<Profile>();
-            Profile profile3 = profile2;
-            Ok(info(session, profile, ref profile3), "profile metadata");
-            if (profile3.Version != Version<Profile>())
+            Profile candidateProfile = default(Profile);
+            candidateProfile.Version = Version<Profile>();
+            Ok(info(session, profile, ref candidateProfile), "profile metadata");
+            if (candidateProfile.Version != Version<Profile>())
             {
                 throw new InvalidDataException("Profile metadata version changed");
             }
-            List<GameNvApplication> list = new List<GameNvApplication>();
-            if (profile3.Apps == 1)
+            List<GameNvApplication> gameNvApplications = new List<GameNvApplication>();
+            if (candidateProfile.Apps == 1)
             {
                 uint count = 1u;
-                Application application = default(Application);
-                application.Version = Version<Application>(4u);
-                Application app = application;
+                Application app = default(Application);
+                app.Version = Version<Application>(4u);
                 Ok(enumApps(session, profile, 0u, ref count, ref app), "application metadata");
                 if (count != 1 || app.Version != Version<Application>(4u))
                 {
                     throw new InvalidDataException("Application membership/version changed");
                 }
-                list.Add(new GameNvApplication(app.Name, app.Friendly, app.Launcher, app.Folder, app.Flags, app.Command, app.Predefined));
+                gameNvApplications.Add(new GameNvApplication(app.Name, app.Friendly, app.Launcher, app.Folder, app.Flags, app.Command, app.Predefined));
             }
             uint processedCount = 0u;
             bool completeLocalSettings = false;
-            if (profile3.Settings <= 4096)
+            if (candidateProfile.Settings <= 4096)
             {
-                HashSet<uint> hashSet = new HashSet<uint>();
+                HashSet<uint> ids = new HashSet<uint>();
                 for (uint iterationIndex = 0u; iterationIndex <= 4096; iterationIndex++)
                 {
                     uint count2 = 1u;
@@ -951,7 +946,7 @@ namespace PaviseApp
                         break;
                     }
                     Ok(enumSettingsResult, "enumerate profile settings");
-                    if (count2 != 1 || setting.Version != Version<Setting>() || setting.Location > 3 || !hashSet.Add(setting.Id))
+                    if (count2 != 1 || setting.Version != Version<Setting>() || setting.Location > 3 || !ids.Add(setting.Id))
                     {
                         throw new InvalidDataException("Incomplete or inconsistent NVIDIA local setting enumeration");
                     }
@@ -965,15 +960,14 @@ namespace PaviseApp
                     }
                 }
             }
-            Profile profile4 = default(Profile);
-            profile4.Version = Version<Profile>();
-            Profile profile5 = profile4;
-            Ok(info(session, profile, ref profile5), "verify profile membership");
-            if (profile5.Version != profile3.Version || profile5.Name != profile3.Name || profile5.Predefined != profile3.Predefined || profile5.Apps != profile3.Apps || profile5.Settings != profile3.Settings)
+            Profile selectedProfile = default(Profile);
+            selectedProfile.Version = Version<Profile>();
+            Ok(info(session, profile, ref selectedProfile), "verify profile membership");
+            if (selectedProfile.Version != candidateProfile.Version || selectedProfile.Name != candidateProfile.Name || selectedProfile.Predefined != candidateProfile.Predefined || selectedProfile.Apps != candidateProfile.Apps || selectedProfile.Settings != candidateProfile.Settings)
             {
                 throw new IOException("NVIDIA application/settings membership changed during metadata read");
             }
-            return new GameNvProfile(profile3.Name, profile3.Predefined, profile3.Settings, list, profile3.Apps <= 1, processedCount, completeLocalSettings);
+            return new GameNvProfile(candidateProfile.Name, candidateProfile.Predefined, candidateProfile.Settings, gameNvApplications, candidateProfile.Apps <= 1, processedCount, completeLocalSettings);
         }
 
         private static Setting NewSetting(uint id)
@@ -1022,11 +1016,11 @@ namespace PaviseApp
 
         public void Dispose()
         {
-            IntPtr intPtr = session;
+            IntPtr sessionHandle = session;
             session = IntPtr.Zero;
-            if (intPtr != IntPtr.Zero)
+            if (sessionHandle != IntPtr.Zero)
             {
-                Ok(close(intPtr), "close session");
+                Ok(close(sessionHandle), "close session");
             }
         }
 

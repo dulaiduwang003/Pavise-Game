@@ -11,7 +11,6 @@ namespace PaviseApp
 {
     internal static class LolLcuClient
     {
-        private const int MaximumResponseChars = 32768;
 
         private static readonly string[] GameflowPhases = new string[14]
         {
@@ -28,8 +27,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            LolHttpResult lolHttpResult2 = Send(credentials, "GET", "/lol-summoner/v1/current-summoner");
-            return lolHttpResult2.Success;
+            LolHttpResult send = Send(credentials, "GET", "/lol-summoner/v1/current-summoner");
+            return send.Success;
         }
 
         public static string GetGameflowPhase(LolLcuCredentials credentials)
@@ -160,8 +159,8 @@ namespace PaviseApp
             {
                 return TryShowExistingUx(credentials, lolRoot);
             }
-            LolHttpResult lolHttpResult2 = Send(credentials, "POST", "/riotclient/kill-and-restart-ux");
-            if (!lolHttpResult2.Success)
+            LolHttpResult send = Send(credentials, "POST", "/riotclient/kill-and-restart-ux");
+            if (!send.Success)
             {
                 return false;
             }
@@ -207,14 +206,14 @@ namespace PaviseApp
         private static bool WaitForUxExit(string lolRoot, int timeoutMs)
         {
             int i = 0;
-            int waitForUxExitValue = 0;
+            int absentObservations = 0;
             for (; i < timeoutMs; i += 250)
             {
                 if (LolRuntimeProcesses.IsUxRunning(lolRoot))
                 {
-                    waitForUxExitValue = 0;
+                    absentObservations = 0;
                 }
-                else if (++waitForUxExitValue >= 2)
+                else if (++absentObservations >= 2)
                 {
                     return true;
                 }
@@ -267,14 +266,14 @@ namespace PaviseApp
             }
             catch (WebException ex)
             {
-                HttpWebResponse httpWebResponse2 = ex.Response as HttpWebResponse;
-                if (httpWebResponse2 != null)
+                HttpWebResponse currentHttpWebResponse = ex.Response as HttpWebResponse;
+                if (currentHttpWebResponse != null)
                 {
-                    using (httpWebResponse2)
+                    using (currentHttpWebResponse)
                     {
                         lolHttpResult.Reached = true;
-                        lolHttpResult.Status = (int)httpWebResponse2.StatusCode;
-                        lolHttpResult.Body = ReadBody(httpWebResponse2);
+                        lolHttpResult.Status = (int)currentHttpWebResponse.StatusCode;
+                        lolHttpResult.Body = ReadBody(currentHttpWebResponse);
                     }
                 }
             }

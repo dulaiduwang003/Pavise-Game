@@ -374,11 +374,11 @@ namespace PaviseApp
                 foreach (Guid setting in new[] { VideoBrightness, VideoDimBrightness, VideoAdaptive })
                     foreach (bool ac in new[] { true, false })
                     {
-                        uint value;
-                        ManagedPowerReadState state = ReadLegacy3110Value(plans, source, SubVideo, setting, ac, out value, true);
+                        uint originalValue;
+                        ManagedPowerReadState state = ReadLegacy3110Value(plans, source, SubVideo, setting, ac, out originalValue, true);
                         if (state == ManagedPowerReadState.ConfirmedUnregistered) continue;
                         if (state != ManagedPowerReadState.Value
-                            || !WriteLegacy3110Verified(plans, destination, SubVideo, setting, ac, value))
+                            || !WriteLegacy3110Verified(plans, destination, SubVideo, setting, ac, originalValue))
                             return PresetPreparationFailed("legacy3110 display preference read/write failed " + setting.ToString("D"));
                     }
                 return true;

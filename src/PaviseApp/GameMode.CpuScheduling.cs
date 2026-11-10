@@ -283,28 +283,28 @@ namespace PaviseApp
                 return;
             }
             core.EnforceBackgroundAffinity = true;
-            foreach (int item in core.PidsWith(SuppressReason.Background))
+            foreach (int pidsWith in core.PidsWith(SuppressReason.Background))
             {
-                long creation = core.CreationOf(item);
-                string processName = core.NameOf(item);
+                long creation = core.CreationOf(pidsWith);
+                string processName = core.NameOf(pidsWith);
                 if (creation > 0 && !string.IsNullOrEmpty(processName))
                 {
                     bool changed;
-                    if (IsCriticalThreadGuardian(item, creation))
+                    if (IsCriticalThreadGuardian(pidsWith, creation))
                     {
                         ReleaseCriticalGuardianBackground();
                     }
-                    else if (GameAffinityJobLease.IsGuardian(item, creation))
+                    else if (GameAffinityJobLease.IsGuardian(pidsWith, creation))
                     {
-                        ReleaseJobGuardianBackground(item, creation, processName);
+                        ReleaseJobGuardianBackground(pidsWith, creation, processName);
                     }
-                    else if (item == foreground || item == coreWatchPid || protectedPids.Contains(item) || WeGameRuntimeProtection.IsProtectedRuntimeName(processName) || PeripheralCatalog.IsInputAudioLike(processName))
+                    else if (pidsWith == foreground || pidsWith == coreWatchPid || protectedPids.Contains(pidsWith) || WeGameRuntimeProtection.IsProtectedRuntimeName(processName) || PeripheralCatalog.IsInputAudioLike(processName))
                     {
-                        core.SetSqueeze(item, creation, processName, 0uL, SuppressReason.Background, out changed);
+                        core.SetSqueeze(pidsWith, creation, processName, 0uL, SuppressReason.Background, out changed);
                     }
-                    else if (!core.IsSqueezed(item))
+                    else if (!core.IsSqueezed(pidsWith))
                     {
-                        core.SetSqueeze(item, creation, processName, backgroundMask, SuppressReason.Background, out changed);
+                        core.SetSqueeze(pidsWith, creation, processName, backgroundMask, SuppressReason.Background, out changed);
                     }
                 }
             }
@@ -343,12 +343,12 @@ namespace PaviseApp
             string jobFallback = null;
             lock (sync)
             {
-                HardPin value;
-                if (coreEngaged && hardPins.TryGetValue(coreWatchPid, out value))
+                HardPin hardPin;
+                if (coreEngaged && hardPins.TryGetValue(coreWatchPid, out hardPin))
                 {
-                    appliedAffinity = value.AppliedAffinity;
-                    jobBound = value.JobBound;
-                    jobFallback = value.JobFallbackReason;
+                    appliedAffinity = hardPin.AppliedAffinity;
+                    jobBound = hardPin.JobBound;
+                    jobFallback = hardPin.JobFallbackReason;
                 }
             }
             AutoCoreStatus autoCoreStatus = new AutoCoreStatus();
@@ -452,8 +452,7 @@ namespace PaviseApp
         {
             string renderLaneState = AutomaticExecutionState("GmRenderLane");
             string frameCoordinationState = AutomaticExecutionState("FrameCoordination");
-            string[] textEntries = new string[2] { renderLaneState, frameCoordinationState };
-            foreach (string entryText in textEntries)
+            foreach (string entryText in new string[2] { renderLaneState, frameCoordinationState })
             {
                 switch (entryText)
                 {

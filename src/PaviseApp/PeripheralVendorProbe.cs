@@ -6,9 +6,6 @@ namespace PaviseApp
 {
     internal static class PeripheralVendorProbe
     {
-        private const int RefreshMs = 600000;
-
-        private const int MaxTokens = 64;
 
         private static readonly object sync = new object();
 
@@ -79,27 +76,27 @@ namespace PaviseApp
 
         private static string[] Scan()
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.Ordinal);
             try
             {
-                foreach (InputDevice item in InputChainProbe.Devices())
+                foreach (InputDevice device in InputChainProbe.Devices())
                 {
-                    if (item.Transport == InputTransport.Virtual)
+                    if (device.Transport == InputTransport.Virtual)
                     {
                         continue;
                     }
-                    CollectNode(item.InstanceId, hashSet);
-                    if (item.Transport != InputTransport.Usb)
+                    CollectNode(device.InstanceId, textsSet);
+                    if (device.Transport != InputTransport.Usb)
                     {
                         continue;
                     }
-                    foreach (string item2 in PresentDevices.ParentChain(item.InstanceId))
+                    foreach (string parentChain in PresentDevices.ParentChain(device.InstanceId))
                     {
                         string hardware;
                         string instance;
-                        if (item2.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase) && InputChainProbe.SplitUsbInstance(item2, out hardware, out instance) && !hardware.StartsWith("ROOT_HUB", StringComparison.OrdinalIgnoreCase))
+                        if (parentChain.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase) && InputChainProbe.SplitUsbInstance(parentChain, out hardware, out instance) && !hardware.StartsWith("ROOT_HUB", StringComparison.OrdinalIgnoreCase))
                         {
-                            CollectNode(item2, hashSet);
+                            CollectNode(parentChain, textsSet);
                         }
                     }
                 }
@@ -108,13 +105,13 @@ namespace PaviseApp
             {
                 Logger.Warn(Lang.T("log.peripheralvendorprobe.3", 0) + ex.Message);
             }
-            List<string> list = new List<string>(hashSet);
-            list.Sort(StringComparer.Ordinal);
-            if (list.Count > 64)
+            List<string> textsSetSnapshot = new List<string>(textsSet);
+            textsSetSnapshot.Sort(StringComparer.Ordinal);
+            if (textsSetSnapshot.Count > 64)
             {
-                list.RemoveRange(64, list.Count - 64);
+                textsSetSnapshot.RemoveRange(64, textsSetSnapshot.Count - 64);
             }
-            return list.ToArray();
+            return textsSetSnapshot.ToArray();
         }
 
         private static void CollectNode(string instanceId, HashSet<string> set)
@@ -143,21 +140,21 @@ namespace PaviseApp
             {
                 return;
             }
-            int addTokensValue = -1;
+            int tokenStart = -1;
             for (int i = 0; i <= raw.Length; i++)
             {
                 char c = ((i < raw.Length) ? raw[i] : ' ');
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
                 {
-                    if (addTokensValue < 0)
+                    if (tokenStart < 0)
                     {
-                        addTokensValue = i;
+                        tokenStart = i;
                     }
                 }
-                else if (addTokensValue >= 0)
+                else if (tokenStart >= 0)
                 {
-                    Take(raw, addTokensValue, i - addTokensValue, set);
-                    addTokensValue = -1;
+                    Take(raw, tokenStart, i - tokenStart, set);
+                    tokenStart = -1;
                 }
             }
         }

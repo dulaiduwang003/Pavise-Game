@@ -30,8 +30,7 @@ namespace PaviseApp
             {
                 return HardThreadGoneReason.None;
             }
-            HardThreadProcessFact[] hardThreadProcessFactItems = new HardThreadProcessFact[2] { first, second };
-            foreach (HardThreadProcessFact hardThreadProcessFact in hardThreadProcessFactItems)
+            foreach (HardThreadProcessFact hardThreadProcessFact in new HardThreadProcessFact[2] { first, second })
             {
                 if (hardThreadProcessFact != null && hardThreadProcessFact.Opened && hardThreadProcessFact.Pid == target.ProcessId && hardThreadProcessFact.TimesKnown && hardThreadProcessFact.Birth > 0 && (hardThreadProcessFact.Wait == 0 || hardThreadProcessFact.Wait == 258))
                 {

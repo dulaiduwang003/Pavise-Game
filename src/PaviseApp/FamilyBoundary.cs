@@ -23,8 +23,6 @@ namespace PaviseApp
             public bool Protected;
         }
 
-        private const int CatalogVerdictCap = 8192;
-
         private static readonly object catalogSync = new object();
 
         private static readonly Dictionary<int, CatalogVerdict> catalogVerdicts = new Dictionary<int, CatalogVerdict>();
@@ -95,10 +93,10 @@ namespace PaviseApp
             {
                 lock (catalogSync)
                 {
-                    CatalogVerdict value;
-                    if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == currentGenerationResult && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
+                    CatalogVerdict catalogVerdict;
+                    if (catalogVerdicts.TryGetValue(pid, out catalogVerdict) && catalogVerdict.Creation == creation && catalogVerdict.VendorGeneration == currentGenerationResult && catalogVerdict.SecurityGeneration == currentGenerationResult2 && catalogVerdict.PlatformMask == mask && string.Equals(catalogVerdict.Name, name, StringComparison.Ordinal) && string.Equals(catalogVerdict.Path, path, StringComparison.Ordinal))
                     {
-                        return value.Protected;
+                        return catalogVerdict.Protected;
                     }
                 }
             }
@@ -138,25 +136,25 @@ namespace PaviseApp
                 {
                     return;
                 }
-                List<int> list = null;
+                List<int> keys = null;
                 foreach (int key in catalogVerdicts.Keys)
                 {
                     if (!live.Contains(key))
                     {
-                        if (list == null)
+                        if (keys == null)
                         {
-                            list = new List<int>();
+                            keys = new List<int>();
                         }
-                        list.Add(key);
+                        keys.Add(key);
                     }
                 }
-                if (list == null)
+                if (keys == null)
                 {
                     return;
                 }
-                foreach (int item in list)
+                foreach (int currentKey in keys)
                 {
-                    catalogVerdicts.Remove(item);
+                    catalogVerdicts.Remove(currentKey);
                 }
             }
         }
@@ -254,103 +252,102 @@ namespace PaviseApp
 
         internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured, ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null, bool exactExecutablesOnly = false, bool forceFamilyProtection = false)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> protectedPids = new HashSet<int>();
             if (configured == null || snapshot == null || ownerSession < 0)
             {
-                return hashSet;
+                return protectedPids;
             }
-            List<string> list = new List<string>();
-            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<string> roots = new List<string>();
+            HashSet<string> executables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             HashSet<string> legacyGameNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (GameProfile item in configured)
+            foreach (GameProfile currentConfigured in configured)
             {
-                if (item != null && (exactExecutablesOnly || forceFamilyProtection || FamilyExemptFor(item)))
+                if (currentConfigured != null && (exactExecutablesOnly || forceFamilyProtection || FamilyExemptFor(currentConfigured)))
                 {
-                    string executable = WhitelistRule.NormalizeImagePath(item.ExecutablePath);
-                    string learned = WhitelistRule.NormalizeImagePath(item.LearnedExecutablePath);
+                    string executable = WhitelistRule.NormalizeImagePath(currentConfigured.ExecutablePath);
+                    string learned = WhitelistRule.NormalizeImagePath(currentConfigured.LearnedExecutablePath);
                     if (executable.Length > 0)
                     {
-                        hashSet2.Add(executable);
+                        executables.Add(executable);
                     }
                     if (learned.Length > 0)
                     {
-                        hashSet2.Add(learned);
+                        executables.Add(learned);
                     }
                     if (exactExecutablesOnly && forceFamilyProtection && executable.Length == 0 && learned.Length == 0)
-                        foreach (string entry in item.Entries)
+                        foreach (string entry in currentConfigured.Entries)
                         {
                             string gameName = WhitelistRule.NormalizeName(entry);
                             if (gameName.Length > 0) legacyGameNames.Add(gameName);
                         }
-                    if (!exactExecutablesOnly && SafeFamilyDir(item.Root))
+                    if (!exactExecutablesOnly && SafeFamilyDir(currentConfigured.Root))
                     {
-                        list.Add(item.Root);
+                        roots.Add(currentConfigured.Root);
                     }
                 }
             }
-            if (hashSet2.Count == 0 && list.Count == 0 && legacyGameNames.Count == 0)
+            if (executables.Count == 0 && roots.Count == 0 && legacyGameNames.Count == 0)
             {
-                return hashSet;
+                return protectedPids;
             }
-            Dictionary<int, int> dictionary = exactExecutablesOnly ? null : new Dictionary<int, int>();
-            HashSet<int> hashSet3 = new HashSet<int>();
-            ProcEntry[] entries = snapshot.Entries;
-            foreach (ProcEntry procEntry in entries)
+            Dictionary<int, int> pidsByPid = exactExecutablesOnly ? null : new Dictionary<int, int>();
+            HashSet<int> pids = new HashSet<int>();
+            foreach (ProcEntry procEntry in snapshot.Entries)
             {
                 if (procEntry.Pid <= 4 || procEntry.Pid == selfPid || procEntry.Session != ownerSession || procEntry.Creation <= 0)
                 {
                     continue;
                 }
-                if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(WhitelistRule.NormalizeImagePath(procEntry.Path)) || LibraryRootOf(procEntry.Path, list) != null))
+                if ((!string.IsNullOrEmpty(procEntry.Path) && (executables.Contains(WhitelistRule.NormalizeImagePath(procEntry.Path)) || LibraryRootOf(procEntry.Path, roots) != null))
                     || legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name)))
                 {
-                    hashSet3.Add(procEntry.Pid);
+                    pids.Add(procEntry.Pid);
                 }
                 if (!exactExecutablesOnly && familyEvidence != null)
                 {
-                    foreach (GameProfile item2 in configured)
+                    foreach (GameProfile candidateConfigured in configured)
                     {
-                        if (item2 != null && (forceFamilyProtection || FamilyExemptFor(item2)) && familyEvidence.Contains(item2, procEntry.Pid, procEntry.Creation, procEntry.Path))
+                        if (candidateConfigured != null && (forceFamilyProtection || FamilyExemptFor(candidateConfigured)) && familyEvidence.Contains(candidateConfigured, procEntry.Pid, procEntry.Creation, procEntry.Path))
                         {
-                            hashSet3.Add(procEntry.Pid);
+                            pids.Add(procEntry.Pid);
                             break;
                         }
                     }
                 }
                 if (!exactExecutablesOnly)
                 {
-                    ProcEntry procEntry2 = snapshot.Find(procEntry.ParentPid);
-                    if (procEntry2 != null && procEntry2.Pid > 4 && procEntry2.Pid != selfPid && procEntry2.Pid != procEntry.Pid && procEntry2.Session == ownerSession && procEntry2.Creation > 0 && procEntry2.Creation <= procEntry.Creation)
+                    ProcEntry processEntry = snapshot.Find(procEntry.ParentPid);
+                    if (processEntry != null && processEntry.Pid > 4 && processEntry.Pid != selfPid && processEntry.Pid != procEntry.Pid && processEntry.Session == ownerSession && processEntry.Creation > 0 && processEntry.Creation <= procEntry.Creation)
                     {
-                        dictionary[procEntry.Pid] = procEntry2.Pid;
+                        pidsByPid[procEntry.Pid] = processEntry.Pid;
                     }
                 }
             }
-            hashSet.UnionWith(hashSet3);
+            protectedPids.UnionWith(pids);
             if (exactExecutablesOnly)
             {
-                return hashSet;
+                return protectedPids;
             }
-            hashSet.UnionWith(WalkDescendants(dictionary, hashSet3, selfPid, 24));
-            foreach (int item3 in hashSet3)
+            protectedPids.UnionWith(WalkDescendants(pidsByPid, pids, selfPid, 24));
+            foreach (int pid in pids)
             {
-                hashSet.UnionWith(WalkAncestorChain(dictionary, item3, selfPid, 24));
+                protectedPids.UnionWith(WalkAncestorChain(pidsByPid, pid, selfPid, 24));
             }
-            return hashSet;
+            return protectedPids;
         }
 
         internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents, Dictionary<int, string> names, HashSet<int> roots)
         {
-            HashSet<int> hashSet = new HashSet<int>(roots ?? new HashSet<int>());
-            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<int> familyPids = new HashSet<int>(roots ?? new HashSet<int>());
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (names != null)
             {
-                foreach (int item in hashSet)
+                foreach (int familyPid in familyPids)
                 {
-                    string value;
-                    if (names.TryGetValue(item, out value) && !string.IsNullOrEmpty(value))
+                    string currentName;
+                    if (names.TryGetValue(familyPid, out currentName) && !string.IsNullOrEmpty(currentName))
                     {
-                        hashSet2.Add(value);
+                        textsSet.Add(currentName);
                     }
                 }
             }
@@ -358,9 +355,9 @@ namespace PaviseApp
             {
                 foreach (KeyValuePair<int, string> name in names)
                 {
-                    if (hashSet2.Contains(name.Value))
+                    if (textsSet.Contains(name.Value))
                     {
-                        hashSet.Add(name.Key);
+                        familyPids.Add(name.Key);
                     }
                 }
             }
@@ -374,16 +371,16 @@ namespace PaviseApp
                 }
                 foreach (KeyValuePair<int, int> parent in parents)
                 {
-                    string value2;
-                    if (!hashSet.Contains(parent.Key) && hashSet.Contains(parent.Value) && names.TryGetValue(parent.Value, out value2) && !SystemProcessCatalog.IsShellProcess(value2))
+                    string candidateName;
+                    if (!familyPids.Contains(parent.Key) && familyPids.Contains(parent.Value) && names.TryGetValue(parent.Value, out candidateName) && !SystemProcessCatalog.IsShellProcess(candidateName))
                     {
-                        hashSet.Add(parent.Key);
+                        familyPids.Add(parent.Key);
                         membersAdded = true;
                     }
                 }
             }
             while (membersAdded);
-            return hashSet;
+            return familyPids;
         }
 
         internal static void FilterUserFacingGameFamily(HashSet<int> userFacingFamily, GameProfile profile, ProcessSnapshot snapshot, int rendererPid, int selfPid, int ownerSession, ICollection<int> gamePids, ICollection<int> gameDescendants, ICollection<int> gameHostAncestors, GameFamilyEvidence familyEvidence = null)
@@ -409,42 +406,41 @@ namespace PaviseApp
             {
                 return;
             }
-            Dictionary<int, ProcEntry> dictionary = new Dictionary<int, ProcEntry>();
-            HashSet<int> hashSet = new HashSet<int>();
-            ProcEntry[] entries = snapshot.Entries;
-            foreach (ProcEntry procEntry in entries)
+            Dictionary<int, ProcEntry> processEntriesById = new Dictionary<int, ProcEntry>();
+            HashSet<int> pids = new HashSet<int>();
+            foreach (ProcEntry procEntry in snapshot.Entries)
             {
                 if (procEntry != null)
                 {
-                    if (!hashSet.Add(procEntry.Pid))
+                    if (!pids.Add(procEntry.Pid))
                     {
-                        dictionary.Remove(procEntry.Pid);
+                        processEntriesById.Remove(procEntry.Pid);
                     }
                     else if (procEntry.Pid > 4 && procEntry.Pid != selfPid && procEntry.Session == ownerSession && procEntry.Creation > 0 && !string.IsNullOrEmpty(procEntry.Name) && GameFamilyHistory.CanonicalPath(procEntry.Path) && string.Equals(procEntry.Name, Path.GetFileNameWithoutExtension(procEntry.Path), StringComparison.OrdinalIgnoreCase))
                     {
-                        dictionary.Add(procEntry.Pid, procEntry);
+                        processEntriesById.Add(procEntry.Pid, procEntry);
                     }
                 }
             }
             bool safeFamilyDirSucceeded = SafeFamilyDir(profile.Root);
-            HashSet<int> hashSet2 = new HashSet<int>();
-            Dictionary<int, int> dictionary2 = new Dictionary<int, int>();
-            foreach (ProcEntry value2 in dictionary.Values)
+            HashSet<int> currentPids = new HashSet<int>();
+            Dictionary<int, int> parentByPid = new Dictionary<int, int>();
+            foreach (ProcEntry processInfo in processEntriesById.Values)
             {
-                if (string.Equals(value2.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || string.Equals(value2.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || (safeFamilyDirSucceeded && UnderRoot(value2.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, value2.Pid, value2.Creation, value2.Path)))
+                if (string.Equals(processInfo.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || string.Equals(processInfo.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || (safeFamilyDirSucceeded && UnderRoot(processInfo.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, processInfo.Pid, processInfo.Creation, processInfo.Path)))
                 {
-                    hashSet2.Add(value2.Pid);
+                    currentPids.Add(processInfo.Pid);
                 }
-                ProcEntry value;
-                if (value2.ParentPid != value2.Pid && dictionary.TryGetValue(value2.ParentPid, out value) && value.Creation <= value2.Creation)
+                ProcEntry processEntry;
+                if (processInfo.ParentPid != processInfo.Pid && processEntriesById.TryGetValue(processInfo.ParentPid, out processEntry) && processEntry.Creation <= processInfo.Creation)
                 {
-                    dictionary2.Add(value2.Pid, value.Pid);
+                    parentByPid.Add(processInfo.Pid, processEntry.Pid);
                 }
             }
-            if (hashSet2.Count != 0)
+            if (currentPids.Count != 0)
             {
-                userFacingFamily.ExceptWith(hashSet2);
-                userFacingFamily.ExceptWith(WalkDescendants(dictionary2, hashSet2, selfPid, 24));
+                userFacingFamily.ExceptWith(currentPids);
+                userFacingFamily.ExceptWith(WalkDescendants(parentByPid, currentPids, selfPid, 24));
             }
         }
 
@@ -488,8 +484,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            Environment.SpecialFolder[] unsafeRoots = UnsafeRoots;
-            foreach (Environment.SpecialFolder folder in unsafeRoots)
+            foreach (Environment.SpecialFolder folder in UnsafeRoots)
             {
                 string folderPath;
                 try
@@ -540,52 +535,52 @@ namespace PaviseApp
 
         internal static HashSet<int> WalkDescendants(Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth, Dictionary<int, long> creations)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> keys = new HashSet<int>();
             if (parents == null || rootPids == null || rootPids.Count == 0)
             {
-                return hashSet;
+                return keys;
             }
-            HashSet<int> hashSet2 = new HashSet<int>(rootPids);
+            HashSet<int> rootPidsSnapshot = new HashSet<int>(rootPids);
             foreach (KeyValuePair<int, int> parent in parents)
             {
                 int key = parent.Key;
-                if (key <= 4 || key == selfPid || hashSet2.Contains(key) || hashSet.Contains(key))
+                if (key <= 4 || key == selfPid || rootPidsSnapshot.Contains(key) || keys.Contains(key))
                 {
                     continue;
                 }
                 int keySnapshot = key;
                 for (int i = 0; i < maxDepth; i++)
                 {
-                    int value;
-                    if (!parents.TryGetValue(keySnapshot, out value))
+                    int currentParent;
+                    if (!parents.TryGetValue(keySnapshot, out currentParent))
                     {
                         break;
                     }
-                    if (value <= 4)
+                    if (currentParent <= 4)
                     {
                         break;
                     }
-                    if (value == keySnapshot)
+                    if (currentParent == keySnapshot)
                     {
                         break;
                     }
-                    if (!ParentNotNewer(creations, value, keySnapshot))
+                    if (!ParentNotNewer(creations, currentParent, keySnapshot))
                     {
                         break;
                     }
-                    if (hashSet2.Contains(value))
+                    if (rootPidsSnapshot.Contains(currentParent))
                     {
-                        hashSet.Add(key);
+                        keys.Add(key);
                         break;
                     }
-                    if (value == selfPid)
+                    if (currentParent == selfPid)
                     {
                         break;
                     }
-                    keySnapshot = value;
+                    keySnapshot = currentParent;
                 }
             }
-            return hashSet;
+            return keys;
         }
 
         internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)
@@ -595,43 +590,43 @@ namespace PaviseApp
 
         internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops, Dictionary<int, long> creations)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> visitedPids = new HashSet<int>();
             if (parents == null || startPid <= 4)
             {
-                return hashSet;
+                return visitedPids;
             }
             int startPidSnapshot = startPid;
             for (int i = 0; i < maxHops; i++)
             {
-                int value;
-                if (!parents.TryGetValue(startPidSnapshot, out value))
+                int parent;
+                if (!parents.TryGetValue(startPidSnapshot, out parent))
                 {
                     break;
                 }
-                if (value <= 4)
+                if (parent <= 4)
                 {
                     break;
                 }
-                if (value == selfPid)
+                if (parent == selfPid)
                 {
                     break;
                 }
-                if (value == startPid)
+                if (parent == startPid)
                 {
                     break;
                 }
-                if (hashSet.Contains(value))
+                if (visitedPids.Contains(parent))
                 {
                     break;
                 }
-                if (!ParentNotNewer(creations, value, startPidSnapshot))
+                if (!ParentNotNewer(creations, parent, startPidSnapshot))
                 {
                     break;
                 }
-                hashSet.Add(value);
-                startPidSnapshot = value;
+                visitedPids.Add(parent);
+                startPidSnapshot = parent;
             }
-            return hashSet;
+            return visitedPids;
         }
 
         private static bool ParentNotNewer(Dictionary<int, long> creations, int parentPid, int childPid)
@@ -641,16 +636,16 @@ namespace PaviseApp
                 return true;
             }
             long value;
-            long value2;
-            if (!creations.TryGetValue(parentPid, out value) || !creations.TryGetValue(childPid, out value2))
+            long creation;
+            if (!creations.TryGetValue(parentPid, out value) || !creations.TryGetValue(childPid, out creation))
             {
                 return true;
             }
-            if (value <= 0 || value2 <= 0)
+            if (value <= 0 || creation <= 0)
             {
                 return true;
             }
-            return value <= value2;
+            return value <= creation;
         }
     }
 }

@@ -25,8 +25,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (!performanceAction.Environment && performanceAction.Key != "MatchVisualEffectsV1" && PerformanceActionCategory(performanceAction) == category && PerformanceRestartFor(performanceAction.Key) == scope)
                 {
@@ -49,34 +48,13 @@ namespace PaviseApp
             {
                 AddManualPerformanceToggle(parent, ref y, "GpuPrefStageOn", AutoText("游戏高性能显卡预选", "Prefer the high-performance GPU for games"), AutoText("为游戏登记显卡偏好，下次启动生效。", "Registers the game GPU preference for the next launch."), () => Settings.LoadCached("GpuPrefStageOn", true), (bool value) => SaveManualPerformancePreference("GpuPrefStageOn", value), () => Native.OsBuild() >= 17134);
             }
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (!performanceAction.Environment && performanceAction.Key != "MatchVisualEffectsV1" && PerformanceActionCategory(performanceAction) == category && PerformanceRestartFor(performanceAction.Key) == scope)
                 {
                     PerformanceAction captured = performanceAction;
                     AddManualPerformanceToggle(parent, ref y, performanceAction.Key, performanceAction.Title, ManualPerformanceActionDetail(performanceAction), () => Settings.LoadCached(captured.Key, false), (bool value) => SaveManualPerformanceAction(captured, value), () => ManualPerformanceActionSupported(captured.Key), null, () => gameMode.PerformanceExecutionState(captured.Key));
                 }
-            }
-        }
-        private void AddPerformanceRelatedSettings(Control parent, ref int y, int category)
-        {
-            if (category != 2)
-            {
-                AddAutomationSection(parent, ref y, AutoText("相关设置", "Related settings"));
-            }
-            if (category == 0)
-            {
-                AddAutomationDestination(parent, ref y, "GameSettings", "逐游戏设置", "Per-game settings", "核心范围、家族后台、ReBAR、禁用全屏优化与入库设置。", "Core selection, game-family control, ReBAR, fullscreen optimization and auto-add.", PageId.Library);
-            }
-            if (category == 1)
-            {
-                AddAutomationDestination(parent, ref y, "WhitelistSettings", "白名单", "Whitelist", "为需要保持正常运行的后台程序添加保护。", "Protect background applications that need to keep running normally.", PageId.Whitelist);
-                AddAutomationDestination(parent, ref y, "AntiCheatSettings", "反作弊进程", "Anti-cheat processes", "兼容性专项，按明确的手动选择设置。", "Compatibility-specific options controlled by your explicit choices.", PageId.AntiCheat);
-            }
-            if (category == 0)
-            {
-                AddAutomationDestination(parent, ref y, "ProtectionSettings", "故障与恢复", "Faults & recovery", "查看动作故障与恢复记录，未完成的恢复不会因关闭功能丢失。", "Review action faults and recovery records; disabling a feature keeps unfinished recovery records.", PageId.Settings);
             }
         }
         private bool SaveManualPerformanceAction(PerformanceAction action, bool value)
@@ -124,48 +102,9 @@ namespace PaviseApp
             }
             return action.Detail;
         }
-        private void AddAutomationDestination(Control parent, ref int y, string id, string zh, string en, string detailZh, string detailEn, PageId target)
-        {
-            PillButton pillButton = new PillButton(AutoText("前往设置", "Configure"));
-            pillButton.Name = "manualDestination_" + id;
-            pillButton.Size = new Size(Theme.S(124), Theme.S(32));
-            PillButton pillButton2 = pillButton;
-            pillButton2.Click += delegate
-            {
-                nav.Select((int)target);
-            };
-            string desc = AutoText(detailZh, detailEn);
-            int used;
-            MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(desc, ScrollContentW, pillButton2, 82), AutoText(zh, en), desc, pillButton2, out used);
-            y += used + 8;
-        }
-        private string AutomationPreferenceStatus(string key)
-        {
-            string value = gameMode.AutomaticExecutionState(key);
-            if (!string.IsNullOrEmpty(value))
-            {
-                return GameMode.AutomationStateLabel(value);
-            }
-            if (!PerformancePolicy.EnvironmentPreference(key))
-            {
-                return AutoText("已关闭", "Off");
-            }
-            return AutoText("已开启", "Enabled");
-        }
         private static string AutoText(string zh, string en)
         {
             return PerformancePolicy.Text(zh, en);
-        }
-        private PillButton AddAutomationLink(Control parent, string zh, string en, PageId target, int x, int y, int width)
-        {
-            PillButton pillButton = new PillButton(AutoText(zh, en));
-            pillButton.SetBounds(Theme.S(x), Theme.S(y), Theme.S(width), Theme.S(34));
-            pillButton.Click += delegate
-            {
-                nav.Select((int)target);
-            };
-            parent.Controls.Add(pillButton);
-            return pillButton;
         }
         private static int ManualPolicyCategory(PolicyItem item)
         {
@@ -300,8 +239,7 @@ namespace PaviseApp
                     heading.Dispose();
                 }
                 int index = 0;
-                PerformanceLifetime[] order = new PerformanceLifetime[2] { PerformanceLifetime.Session, PerformanceLifetime.Persistent };
-                foreach (PerformanceLifetime lifetime in order)
+                foreach (PerformanceLifetime lifetime in new PerformanceLifetime[2] { PerformanceLifetime.Session, PerformanceLifetime.Persistent })
                 {
                     if (((lifetime == PerformanceLifetime.Session) ? session : persistent).Count > 0)
                     {
@@ -368,15 +306,15 @@ namespace PaviseApp
                 return;
             }
             string[] choices = (string[])item.Choices.Clone();
-            string[] textEntries = new string[choices.Length];
+            string[] choiceLabels = new string[choices.Length];
             for (int i = 0; i < choices.Length; i++)
             {
-                textEntries[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
+                choiceLabels[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
             }
             TierPicker picker = new TierPicker
             {
                 Name = "manualPerformance_" + key,
-                Labels = textEntries,
+                Labels = choiceLabels,
                 AccessibleName = autoTextResult,
                 AccessibleDescription = manualPolicyDescriptionResult,
                 Size = new Size(Theme.S(180), Theme.S(30))
@@ -643,8 +581,7 @@ namespace PaviseApp
         private static string PerformanceFeatureKey(string name)
         {
             string nameOffset = name ?? "";
-            string[] textEntries = new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" };
-            foreach (string entryText in textEntries)
+            foreach (string entryText in new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" })
             {
                 if (nameOffset.StartsWith(entryText, StringComparison.Ordinal))
                 {
@@ -800,26 +737,26 @@ namespace PaviseApp
         }
         private void OrderPerformanceConsole()
         {
-            string[] textEntries = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
+            string[] preferredFeatureOrder = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
             Control control = performanceTabPanels[0];
-            List<PerformanceFeatureCard> list = new List<PerformanceFeatureCard>();
-            foreach (Control control2 in control.Controls)
+            List<PerformanceFeatureCard> performanceFeatureCards = new List<PerformanceFeatureCard>();
+            foreach (Control currentControl in control.Controls)
             {
-                if (control2 is PerformanceFeatureCard)
+                if (currentControl is PerformanceFeatureCard)
                 {
-                    list.Add((PerformanceFeatureCard)control2);
+                    performanceFeatureCards.Add((PerformanceFeatureCard)currentControl);
                 }
             }
             control.SuspendLayout();
             try
             {
-                for (int textEntriesIndex = textEntries.Length - 1; textEntriesIndex >= 0; textEntriesIndex--)
+                for (int featureOrderIndex = preferredFeatureOrder.Length - 1; featureOrderIndex >= 0; featureOrderIndex--)
                 {
-                    foreach (PerformanceFeatureCard item in list)
+                    foreach (PerformanceFeatureCard performanceFeatureCard in performanceFeatureCards)
                     {
-                        if (item.IconKey == textEntries[textEntriesIndex])
+                        if (performanceFeatureCard.IconKey == preferredFeatureOrder[featureOrderIndex])
                         {
-                            control.Controls.SetChildIndex(item, 0);
+                            control.Controls.SetChildIndex(performanceFeatureCard, 0);
                         }
                     }
                 }

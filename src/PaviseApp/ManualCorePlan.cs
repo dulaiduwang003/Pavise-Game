@@ -35,9 +35,9 @@ namespace PaviseApp
             string allText = all.ToString("X", CultureInfo.InvariantCulture);
             if (physical != null)
             {
-                foreach (ulong numericValueEntry in physical)
+                foreach (ulong currentPhysical in physical)
                 {
-                    allText = allText + "," + numericValueEntry.ToString("X", CultureInfo.InvariantCulture);
+                    allText = allText + "," + currentPhysical.ToString("X", CultureInfo.InvariantCulture);
                 }
             }
             return allText;
@@ -60,8 +60,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            ulong value;
-            if ((parts[3] != "0" && parts[3] != "1") || !Hex(parts[2], out value) || value == 0)
+            ulong selectedMask;
+            if ((parts[3] != "0" && parts[3] != "1") || !Hex(parts[2], out selectedMask) || selectedMask == 0)
             {
                 return null;
             }
@@ -70,16 +70,15 @@ namespace PaviseApp
             {
                 return null;
             }
-            string[] textEntries = parts2;
-            foreach (string entryText in textEntries)
+            foreach (string entryText in parts2)
             {
-                ulong value2;
-                if (!Hex(entryText, out value2) || value2 == 0)
+                ulong physicalCoreMask;
+                if (!Hex(entryText, out physicalCoreMask) || physicalCoreMask == 0)
                 {
                     return null;
                 }
             }
-            return new ManualCorePlan(value, parts[3] == "1", parts[1].ToUpperInvariant(), isolationEnabled);
+            return new ManualCorePlan(selectedMask, parts[3] == "1", parts[1].ToUpperInvariant(), isolationEnabled);
         }
 
         private static bool Hex(string text, out ulong value)
@@ -108,20 +107,20 @@ namespace PaviseApp
             {
                 return "schedule.manual.topology";
             }
-            ulong numericValue = 0uL;
+            ulong coveredCoreMask = 0uL;
             if (physical == null || physical.Length == 0)
             {
                 return "schedule.manual.topology";
             }
-            foreach (ulong numericValueEntry in physical)
+            foreach (ulong currentPhysical in physical)
             {
-                if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
+                if (currentPhysical == 0 || (currentPhysical & ~all) != 0 || (coveredCoreMask & currentPhysical) != 0)
                 {
                     return "schedule.manual.topology";
                 }
-                numericValue |= numericValueEntry;
+                coveredCoreMask |= currentPhysical;
             }
-            if (numericValue != all)
+            if (coveredCoreMask != all)
             {
                 return "schedule.manual.topology";
             }

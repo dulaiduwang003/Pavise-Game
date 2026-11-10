@@ -13,8 +13,7 @@ namespace PaviseApp
         {
             bool hasWireless = false;
             bool hasWired = false;
-            NetworkInterface[] allNetworkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-            foreach (NetworkInterface networkInterface in allNetworkInterfaces)
+            foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
             {
                 if (networkInterface.OperationalStatus != OperationalStatus.Up)
                 {
@@ -106,25 +105,25 @@ namespace PaviseApp
             {
                 int maxValue = int.MaxValue;
                 int hardwareHealthValue = 0;
-                List<string> list = new List<string>();
-                foreach (int item in facts.AllHz)
+                List<string> texts = new List<string>();
+                foreach (int allHz in facts.AllHz)
                 {
-                    if (item < maxValue)
+                    if (allHz < maxValue)
                     {
-                        maxValue = item;
+                        maxValue = allHz;
                     }
-                    if (item > hardwareHealthValue)
+                    if (allHz > hardwareHealthValue)
                     {
-                        hardwareHealthValue = item;
+                        hardwareHealthValue = allHz;
                     }
-                    list.Add(item + "Hz");
+                    texts.Add(allHz + "Hz");
                 }
                 bool valuesMatch = hardwareHealthValue - maxValue > 5;
                 bool belowPreferredBuild = facts.OsBuild > 0 && facts.OsBuild < 26100;
                 report.Machine.Add(new AuditRow
                 {
                     Name = Lang.T("t.systemaudithardware.10"),
-                    Value = string.Join(" / ", list.ToArray()),
+                    Value = string.Join(" / ", texts.ToArray()),
                     Note = ((valuesMatch && belowPreferredBuild) ? Lang.T("t.systemaudithardware.11") : (valuesMatch ? Lang.T("t.systemaudithardware.12") : Lang.T("t.systemaudithardware.13"))),
                     Evidence = "机制明确",
                     Warn = (valuesMatch && belowPreferredBuild)
@@ -226,12 +225,12 @@ namespace PaviseApp
             {
                 return null;
             }
-            List<string> list = new List<string>();
+            List<string> itemSnapshots = new List<string>();
             bool equalModuleSizes = true;
-            foreach (double item in moduleGb)
+            foreach (double currentModuleGb in moduleGb)
             {
-                double itemSnapshot = item;
-                list.Add(itemSnapshot.ToString("F0"));
+                double itemSnapshot = currentModuleGb;
+                itemSnapshots.Add(itemSnapshot.ToString("F0"));
                 if (Math.Abs(itemSnapshot - moduleGb[0]) > 0.5)
                 {
                     equalModuleSizes = false;
@@ -242,7 +241,7 @@ namespace PaviseApp
                 warn = true;
                 return moduleGb[0].ToString("F0") + "GB " + Lang.T("t.memchannel.2");
             }
-            string joinOffset = string.Join("+", list.ToArray()) + "GB ";
+            string joinOffset = string.Join("+", itemSnapshots.ToArray()) + "GB ";
             if (equalModuleSizes)
             {
                 return joinOffset + Lang.T("t.memchannel.3");

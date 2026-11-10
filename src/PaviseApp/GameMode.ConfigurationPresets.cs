@@ -1,4 +1,3 @@
-using System;
 
 namespace PaviseApp
 {
@@ -89,11 +88,11 @@ namespace PaviseApp
                 if (key == LaboratoryAudio.Key && !LaboratoryAudio.Restore()) return false;
                 Poke(); return true;
             }
-            PolicyItem item = PolicyCatalog.ItemOf(key);
-            if (item == null || key == PolicyCatalog.KeyPreset || PerformancePolicy.IsIntent(key) || key == PolicyCatalog.KeyPowerPlan) return false;
+            PolicyItem itemOf = PolicyCatalog.ItemOf(key);
+            if (itemOf == null || key == PolicyCatalog.KeyPreset || PerformancePolicy.IsIntent(key) || key == PolicyCatalog.KeyPowerPlan) return false;
             if (key == ThreadBoostSelection.Key)
             { if (!ThreadBoostSelection.Save(value)) return false; }
-            else if (item.Kind == PolicyValueKind.Bool)
+            else if (itemOf.Kind == PolicyValueKind.Bool)
             { if (!Settings.SaveDurable(key, on)) return false; }
             else if (!Settings.SaveStrDurable(key, value)) return false;
             RefreshAutomaticPreferences(); return true;

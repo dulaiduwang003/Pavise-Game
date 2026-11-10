@@ -78,42 +78,42 @@ namespace PaviseApp
                 {
                     g.FillPath(brush3, path);
                 }
-                using (Pen pen6 = new Pen(Col.Alpha(Color.White, 72)))
+                using (Pen currentPen = new Pen(Col.Alpha(Color.White, 72)))
                 {
-                    g.DrawLine(pen6, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
+                    g.DrawLine(currentPen, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
                 }
                 break;
             }
             case BtnKind.Danger:
             {
-                Color color3 = (Theme.LightMode ? Col.Lerp(Color.White, Theme.Danger, 0.05f + hoverIfEnabled * 0.05f) : Col.Lerp(DsPalette.DangerTopDark, Theme.Danger, 0.1f + hoverIfEnabled * 0.13f));
-                Color color4 = (Theme.LightMode ? Col.Lerp(Color.White, Theme.Danger, 0.11f + hoverIfEnabled * 0.07f) : Col.Lerp(DsPalette.DangerBottomDark, Theme.Danger, 0.04f + hoverIfEnabled * 0.1f));
-                using (LinearGradientBrush brush2 = new LinearGradientBrush(GradientRect(r), color3, color4, LinearGradientMode.Vertical))
+                Color currentColor = (Theme.LightMode ? Col.Lerp(Color.White, Theme.Danger, 0.05f + hoverIfEnabled * 0.05f) : Col.Lerp(DsPalette.DangerTopDark, Theme.Danger, 0.1f + hoverIfEnabled * 0.13f));
+                Color candidateColor = (Theme.LightMode ? Col.Lerp(Color.White, Theme.Danger, 0.11f + hoverIfEnabled * 0.07f) : Col.Lerp(DsPalette.DangerBottomDark, Theme.Danger, 0.04f + hoverIfEnabled * 0.1f));
+                using (LinearGradientBrush brush2 = new LinearGradientBrush(GradientRect(r), currentColor, candidateColor, LinearGradientMode.Vertical))
                 {
                     g.FillPath(brush2, path);
                 }
-                using (Pen pen3 = new Pen(Col.Alpha(Theme.Danger, (int)(Theme.LightMode ? (150f + 70f * hoverIfEnabled) : (125f + 80f * hoverIfEnabled)))))
+                using (Pen candidatePen = new Pen(Col.Alpha(Theme.Danger, (int)(Theme.LightMode ? (150f + 70f * hoverIfEnabled) : (125f + 80f * hoverIfEnabled)))))
                 {
-                    g.DrawPath(pen3, path);
+                    g.DrawPath(candidatePen, path);
                 }
                 if (!Theme.LightMode)
                 {
-                    using (Pen pen4 = new Pen(Col.Alpha(Color.White, (int)(24f + 24f * hoverIfEnabled))))
+                    using (Pen resolvedPen = new Pen(Col.Alpha(Color.White, (int)(24f + 24f * hoverIfEnabled))))
                     {
-                        g.DrawLine(pen4, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
+                        g.DrawLine(resolvedPen, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
                     }
                 }
-                using (Pen pen5 = new Pen(Theme.Danger, DsSpace.Line(2)))
+                using (Pen dangerPen = new Pen(Theme.Danger, DsSpace.Line(2)))
                 {
-                    g.DrawLine(pen5, Theme.S(1), Theme.S(10), Theme.S(1), size.Height - Theme.S(10));
+                    g.DrawLine(dangerPen, Theme.S(1), Theme.S(10), Theme.S(1), size.Height - Theme.S(10));
                 }
                 break;
             }
             default:
             {
                 Color color = Col.Lerp(Theme.CardHover, Color.White, 0.015f + hoverIfEnabled * 0.035f);
-                Color color2 = Col.Lerp(Theme.Card, Color.Black, 0.06f - hoverIfEnabled * 0.02f);
-                using (LinearGradientBrush brush = new LinearGradientBrush(GradientRect(r), color, color2, LinearGradientMode.Vertical))
+                Color lerp = Col.Lerp(Theme.Card, Color.Black, 0.06f - hoverIfEnabled * 0.02f);
+                using (LinearGradientBrush brush = new LinearGradientBrush(GradientRect(r), color, lerp, LinearGradientMode.Vertical))
                 {
                     g.FillPath(brush, path);
                 }
@@ -121,9 +121,9 @@ namespace PaviseApp
                 {
                     g.DrawPath(pen, path);
                 }
-                using (Pen pen2 = new Pen(Col.Alpha(Color.White, (int)(18f + 24f * hoverIfEnabled))))
+                using (Pen selectedPen = new Pen(Col.Alpha(Color.White, (int)(18f + 24f * hoverIfEnabled))))
                 {
-                    g.DrawLine(pen2, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
+                    g.DrawLine(selectedPen, Theme.S(2), Theme.S(1), width - cut - Theme.S(1), Theme.S(1));
                 }
                 break;
             }
@@ -222,14 +222,14 @@ namespace PaviseApp
 
         public static void DropArrow(Graphics g, int x, int y, int delta, bool open, Color color)
         {
-            int dropArrowValue = ((!open) ? 1 : (-1));
+            int arrowDirection = ((!open) ? 1 : (-1));
             using (Pen pen = new Pen(color, DsSpace.Line(1)))
             {
                 g.DrawLines(pen, new Point[3]
                 {
-                    new Point(x - delta, y - dropArrowValue * delta / 2),
-                    new Point(x, y + dropArrowValue * delta / 2),
-                    new Point(x + delta, y - dropArrowValue * delta / 2)
+                    new Point(x - delta, y - arrowDirection * delta / 2),
+                    new Point(x, y + arrowDirection * delta / 2),
+                    new Point(x + delta, y - arrowDirection * delta / 2)
                 });
             }
         }
@@ -266,9 +266,9 @@ namespace PaviseApp
             {
                 return;
             }
-            using (Pen pen2 = new Pen(Col.Alpha(accent, 235), width))
+            using (Pen currentPen = new Pen(Col.Alpha(accent, 235), width))
             {
-                g.DrawLine(pen2, left2, top, width3, top);
+                g.DrawLine(currentPen, left2, top, width3, top);
             }
         }
     }

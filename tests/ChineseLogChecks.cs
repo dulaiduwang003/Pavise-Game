@@ -22,7 +22,7 @@ namespace PaviseApp
 
         private static void CheckRecords()
         {
-            foreach (int language in new[] { 0, 1, 2 })
+            foreach (int language in new[] { 0, 1 })
             {
                 Lang.Cur = language;
                 Check(Lang.T("auto.log.started") == Lang.T("auto.log.started", 0), "日志资源受界面语言影响");

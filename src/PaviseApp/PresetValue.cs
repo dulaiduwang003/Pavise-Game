@@ -82,23 +82,23 @@ namespace PaviseApp
 
         private static PerformancePreset[] Order()
         {
-            List<PerformancePreset> list = new List<PerformancePreset>(2);
-            list.Add(PerformancePreset.Standard);
-            list.Add(PerformancePreset.Competitive);
-            return list.ToArray();
+            List<PerformancePreset> standards = new List<PerformancePreset>(2);
+            standards.Add(PerformancePreset.Standard);
+            standards.Add(PerformancePreset.Competitive);
+            return standards.ToArray();
         }
 
         public static string[] VisibleChoices()
         {
             PerformancePreset[] orderResult = Order();
-            string[] textEntries = new string[orderResult.Length];
+            string[] choiceLabels = new string[orderResult.Length];
             for (int i = 0; i < orderResult.Length; i++)
             {
                 int iSnapshot = i;
-                int visibleChoicesValue = (int)orderResult[i];
-                textEntries[iSnapshot] = visibleChoicesValue.ToString(CultureInfo.InvariantCulture);
+                int choiceId = (int)orderResult[i];
+                choiceLabels[iSnapshot] = choiceId.ToString(CultureInfo.InvariantCulture);
             }
-            return textEntries;
+            return choiceLabels;
         }
 
         public static PerformancePreset[] VisibleOrder()

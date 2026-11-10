@@ -190,22 +190,22 @@ namespace PaviseApp
                 throw new InvalidDataException("SPI owner initialization evidence is missing");
             }
             string @string = new UTF8Encoding(false, true).GetString(initialization);
-            List<string> list = new List<string>(@string.Split('\n'));
-            if (list.Count == 8 && list[0] == "pavise-spi-initialization-2")
+            List<string> splitSnapshot = new List<string>(@string.Split('\n'));
+            if (splitSnapshot.Count == 8 && splitSnapshot[0] == "pavise-spi-initialization-2")
             {
-                if (!list[3].StartsWith("known_root64\t", StringComparison.Ordinal) || !list[4].StartsWith("root_ledger\t", StringComparison.Ordinal))
+                if (!splitSnapshot[3].StartsWith("known_root64\t", StringComparison.Ordinal) || !splitSnapshot[4].StartsWith("root_ledger\t", StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("Invalid SPI owner initialization evidence");
                 }
-                list.RemoveRange(3, 2);
-                list[0] = "pavise-spi-initialization-3";
+                splitSnapshot.RemoveRange(3, 2);
+                splitSnapshot[0] = "pavise-spi-initialization-3";
             }
-            if (list.Count != 6 || list[0] != "pavise-spi-initialization-3" || list[1] != "user_sid\t" + sid || !list[2].StartsWith("nonce\t", StringComparison.Ordinal) || !list[3].StartsWith("legacy_closure\t", StringComparison.Ordinal) || list[4] != "main\toriginal-single-instance-lease-v1" || list[5] != "")
+            if (splitSnapshot.Count != 6 || splitSnapshot[0] != "pavise-spi-initialization-3" || splitSnapshot[1] != "user_sid\t" + sid || !splitSnapshot[2].StartsWith("nonce\t", StringComparison.Ordinal) || !splitSnapshot[3].StartsWith("legacy_closure\t", StringComparison.Ordinal) || splitSnapshot[4] != "main\toriginal-single-instance-lease-v1" || splitSnapshot[5] != "")
             {
                 throw new InvalidDataException("Invalid SPI owner initialization evidence");
             }
-            SpiOwnerIdentity.Nonce(list[2].Substring(6));
-            string substringResult = list[3].Substring(15);
+            SpiOwnerIdentity.Nonce(splitSnapshot[2].Substring(6));
+            string substringResult = splitSnapshot[3].Substring(15);
             if (substringResult != "none")
             {
                 SpiOwnerIdentity.Hash(substringResult);

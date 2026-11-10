@@ -48,8 +48,6 @@ namespace PaviseApp
             internal int WaitHint;
         }
 
-        private const string AppPrivacyPath = "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy";
-
         private static string R(string hive, string path, string name)
         {
             return "reg|" + hive + "|" + path + "|" + name;
@@ -60,9 +58,9 @@ namespace PaviseApp
             string input;
             using (RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
             {
-                using (RegistryKey registryKey2 = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
+                using (RegistryKey currentRegistryKey = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
                 {
-                    input = ((registryKey2 == null) ? null : (registryKey2.GetValue("MachineGuid", null) as string));
+                    input = ((currentRegistryKey == null) ? null : (currentRegistryKey.GetValue("MachineGuid", null) as string));
                 }
             }
             Guid result;
@@ -114,15 +112,15 @@ namespace PaviseApp
             {
             case "EnvPrivacyDiagnosticsV1":
             {
-                List<RegSetting> list = new List<RegSetting>();
-                list.Add(new RegSetting("LM", platform.PolicyCapable ? "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" : "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection", "AllowTelemetry", (!platform.Enterprise) ? 1 : 0));
-                List<RegSetting> list2 = list;
+                List<RegSetting> regSettings = new List<RegSetting>();
+                regSettings.Add(new RegSetting("LM", platform.PolicyCapable ? "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" : "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection", "AllowTelemetry", (!platform.Enterprise) ? 1 : 0));
+                List<RegSetting> currentRegSettings = regSettings;
                 if (platform.PolicyCapable && platform.Build >= 22000)
                 {
-                    list2.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1));
-                    list2.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDumpCollection", 1));
+                    currentRegSettings.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1));
+                    currentRegSettings.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDumpCollection", 1));
                 }
-                return list2.ToArray();
+                return currentRegSettings.ToArray();
             }
             case "EnvPrivacyServiceV1":
                 return new RegSetting[0];
@@ -156,16 +154,16 @@ namespace PaviseApp
                 };
             case "EnvPrivacyInputV1":
             {
-                List<RegSetting> list3 = new List<RegSetting>();
-                list3.Add(new RegSetting("CU", "SOFTWARE\\Microsoft\\Input\\TIPC", "Enabled", 0));
-                List<RegSetting> list4 = list3;
+                List<RegSetting> candidateRegSettings = new List<RegSetting>();
+                candidateRegSettings.Add(new RegSetting("CU", "SOFTWARE\\Microsoft\\Input\\TIPC", "Enabled", 0));
+                List<RegSetting> resolvedRegSettings = candidateRegSettings;
                 if (platform.PolicyCapable)
                 {
-                    list4.Add(new RegSetting("LM", "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\TextInput", "AllowLinguisticDataCollection", 0));
-                    list4.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\TabletPC", "PreventHandwritingDataSharing", 1));
-                    list4.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\HandwritingErrorReports", "PreventHandwritingErrorReports", 1));
+                    resolvedRegSettings.Add(new RegSetting("LM", "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\TextInput", "AllowLinguisticDataCollection", 0));
+                    resolvedRegSettings.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\TabletPC", "PreventHandwritingDataSharing", 1));
+                    resolvedRegSettings.Add(new RegSetting("LM", "SOFTWARE\\Policies\\Microsoft\\Windows\\HandwritingErrorReports", "PreventHandwritingErrorReports", 1));
                 }
-                return list4.ToArray();
+                return resolvedRegSettings.ToArray();
             }
             case "EnvPrivacyPersonalizedV1":
                 return new RegSetting[2]
@@ -208,15 +206,15 @@ namespace PaviseApp
         {
             using (RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
             {
-                using (RegistryKey registryKey2 = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"))
+                using (RegistryKey currentRegistryKey = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"))
                 {
-                    if (registryKey2 == null)
+                    if (currentRegistryKey == null)
                     {
                         throw new InvalidOperationException("Windows version unavailable");
                     }
-                    string getValueOffset = registryKey2.GetValue("EditionID", null) as string;
+                    string getValueOffset = currentRegistryKey.GetValue("EditionID", null) as string;
                     int result;
-                    if (string.IsNullOrEmpty(getValueOffset) || !int.TryParse(Convert.ToString(registryKey2.GetValue("CurrentBuildNumber", null), CultureInfo.InvariantCulture), out result))
+                    if (string.IsNullOrEmpty(getValueOffset) || !int.TryParse(Convert.ToString(currentRegistryKey.GetValue("CurrentBuildNumber", null), CultureInfo.InvariantCulture), out result))
                     {
                         throw new InvalidOperationException("Windows version unavailable");
                     }
@@ -313,8 +311,7 @@ namespace PaviseApp
             }
             if (localTargetResult.StartsWith("task|", StringComparison.Ordinal))
             {
-                string[] tasksForResult = TasksFor(action);
-                foreach (string entryText in tasksForResult)
+                foreach (string entryText in TasksFor(action))
                 {
                     if (localTargetResult == "task|" + entryText)
                     {
@@ -322,15 +319,13 @@ namespace PaviseApp
                     }
                 }
             }
-            string[] textEntries = new string[2] { "Enterprise", "Core" };
-            foreach (string edition in textEntries)
+            foreach (string edition in new string[2] { "Enterprise", "Core" })
             {
-                RegSetting[] settingsForResult = SettingsFor(action, new PrivacyPlatform
+                foreach (RegSetting regSetting in SettingsFor(action, new PrivacyPlatform
                 {
                     Edition = edition,
                     Build = int.MaxValue
-                });
-                foreach (RegSetting regSetting in settingsForResult)
+                }))
                 {
                     if (string.Equals(regSetting.Target, localTargetResult, StringComparison.OrdinalIgnoreCase))
                     {
@@ -432,13 +427,12 @@ namespace PaviseApp
                 return ((kind == RegistryValueKind.String) ? "s:" : "e:") + B64((string)value);
             case RegistryValueKind.MultiString:
             {
-                List<string> list = new List<string>();
-                string[] valueSnapshot = (string[])value;
-                foreach (string value2 in valueSnapshot)
+                List<string> texts = new List<string>();
+                foreach (string currentValueSnapshot in (string[])value)
                 {
-                    list.Add(B64(value2));
+                    texts.Add(B64(currentValueSnapshot));
                 }
-                return "m:" + string.Join(",", list.ToArray());
+                return "m:" + string.Join(",", texts.ToArray());
             }
             case RegistryValueKind.Binary:
                 return "b:" + Convert.ToBase64String((byte[])value);
@@ -520,14 +514,14 @@ namespace PaviseApp
             string[] registryPartsResult = RegistryParts(target);
             using (RegistryKey registryKey = RegistryKey.OpenBaseKey((registryPartsResult[1] == "LM") ? RegistryHive.LocalMachine : RegistryHive.CurrentUser, RegistryView.Registry64))
             {
-                using (RegistryKey registryKey2 = registryKey.OpenSubKey(registryPartsResult[2]))
+                using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(registryPartsResult[2]))
                 {
-                    if (registryKey2 == null)
+                    if (currentRegistryKey == null)
                     {
                         return "absent";
                     }
-                    object value = registryKey2.GetValue(registryPartsResult[3], null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                    return PackRegistry(value, (value == null) ? RegistryValueKind.None : registryKey2.GetValueKind(registryPartsResult[3]));
+                    object value = currentRegistryKey.GetValue(registryPartsResult[3], null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                    return PackRegistry(value, (value == null) ? RegistryValueKind.None : currentRegistryKey.GetValueKind(registryPartsResult[3]));
                 }
             }
         }
@@ -541,24 +535,24 @@ namespace PaviseApp
             {
                 if (unpackRegistryResult == null)
                 {
-                    using (RegistryKey registryKey2 = registryKey.OpenSubKey(registryPartsResult[2], true))
+                    using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(registryPartsResult[2], true))
                     {
-                        if (registryKey2 != null)
+                        if (currentRegistryKey != null)
                         {
-                            registryKey2.DeleteValue(registryPartsResult[3], false);
+                            currentRegistryKey.DeleteValue(registryPartsResult[3], false);
                         }
                     }
                 }
                 else
                 {
-                    using (RegistryKey registryKey3 = registryKey.CreateSubKey(registryPartsResult[2]))
+                    using (RegistryKey subKey = registryKey.CreateSubKey(registryPartsResult[2]))
                     {
-                        if (registryKey3 == null)
+                        if (subKey == null)
                         {
                             return false;
                         }
-                        registryKey3.SetValue(registryPartsResult[3], unpackRegistryResult, kind);
-                        registryKey3.Flush();
+                        subKey.SetValue(registryPartsResult[3], unpackRegistryResult, kind);
+                        subKey.Flush();
                     }
                 }
             }
@@ -599,23 +593,23 @@ namespace PaviseApp
             {
                 throw new FormatException("Unknown service identity");
             }
-            int serviceIdentityValue = 5;
+            int fieldOffset = 5;
             StringBuilder stringBuilder = new StringBuilder("svc1|");
             int processedCount = 0;
-            while (serviceIdentityValue < configuration.Length)
+            while (fieldOffset < configuration.Length)
             {
-                int matchIndex = configuration.IndexOf(':', serviceIdentityValue);
+                int matchIndex = configuration.IndexOf(':', fieldOffset);
                 int result;
-                if (matchIndex < serviceIdentityValue || !int.TryParse(configuration.Substring(serviceIdentityValue, matchIndex - serviceIdentityValue), out result) || result < 0 || result > configuration.Length - matchIndex - 2 || configuration[matchIndex + 1 + result] != '|')
+                if (matchIndex < fieldOffset || !int.TryParse(configuration.Substring(fieldOffset, matchIndex - fieldOffset), out result) || result < 0 || result > configuration.Length - matchIndex - 2 || configuration[matchIndex + 1 + result] != '|')
                 {
                     throw new FormatException("Invalid service identity");
                 }
-                string value = configuration.Substring(serviceIdentityValue, matchIndex + result + 2 - serviceIdentityValue);
+                string substring = configuration.Substring(fieldOffset, matchIndex + result + 2 - fieldOffset);
                 if (processedCount != 1)
                 {
-                    stringBuilder.Append(value);
+                    stringBuilder.Append(substring);
                 }
-                serviceIdentityValue = matchIndex + result + 2;
+                fieldOffset = matchIndex + result + 2;
                 processedCount++;
             }
             return stringBuilder.ToString();
@@ -634,11 +628,6 @@ namespace PaviseApp
                 throw new NotSupportedException("Service is transitioning; retry after it settles");
             }
             return "v:" + optionalServiceSnapshot.State.ToString(CultureInfo.InvariantCulture) + ":" + B64(ServiceIdentity(optionalServiceSnapshot.Configuration));
-        }
-
-        private static string throwUnknown()
-        {
-            throw new InvalidOperationException("Unknown service state");
         }
 
         private static string ServiceStartRead(string name)
@@ -668,11 +657,6 @@ namespace PaviseApp
             return ChangeServiceValue(current, 'v', (!running) ? 1 : 4);
         }
 
-        private static string ServiceStartWanted(string current, int startup)
-        {
-            return ChangeServiceValue(current, 'c', startup);
-        }
-
         private static bool ServiceStartWrite(string name, string desired)
         {
             string[] parts = (desired ?? "").Split(':');
@@ -690,35 +674,35 @@ namespace PaviseApp
             {
                 return true;
             }
-            IntPtr intPtr = PrivacyOpenSCManager(null, null, 1u);
-            if (intPtr == IntPtr.Zero)
+            IntPtr privacyOpenSCManagerHandle = PrivacyOpenSCManager(null, null, 1u);
+            if (privacyOpenSCManagerHandle == IntPtr.Zero)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             try
             {
-                IntPtr intPtr2 = PrivacyOpenService(intPtr, name, 15u);
-                if (intPtr2 == IntPtr.Zero)
+                IntPtr privacyOpenServiceHandle = PrivacyOpenService(privacyOpenSCManagerHandle, name, 15u);
+                if (privacyOpenServiceHandle == IntPtr.Zero)
                 {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
                 try
                 {
                     OptionalServiceSnapshot snapshot;
-                    if (!OptionalServiceControl.TryQueryHandleForPrivacy(intPtr2, out snapshot) || !snapshot.Exists || B64(ServiceIdentity(snapshot.Configuration)) != parts[2] || snapshot.StartType.ToString(CultureInfo.InvariantCulture) != serviceStartReadParts[1] || (result == 4 && snapshot.State != 1))
+                    if (!OptionalServiceControl.TryQueryHandleForPrivacy(privacyOpenServiceHandle, out snapshot) || !snapshot.Exists || B64(ServiceIdentity(snapshot.Configuration)) != parts[2] || snapshot.StartType.ToString(CultureInfo.InvariantCulture) != serviceStartReadParts[1] || (result == 4 && snapshot.State != 1))
                     {
                         return false;
                     }
-                    return PrivacyChangeServiceConfig(intPtr2, uint.MaxValue, result, uint.MaxValue, null, null, IntPtr.Zero, null, null, null, null) && ServiceStartRead(name) == desired;
+                    return PrivacyChangeServiceConfig(privacyOpenServiceHandle, uint.MaxValue, result, uint.MaxValue, null, null, IntPtr.Zero, null, null, null, null) && ServiceStartRead(name) == desired;
                 }
                 finally
                 {
-                    PrivacyCloseServiceHandle(intPtr2);
+                    PrivacyCloseServiceHandle(privacyOpenServiceHandle);
                 }
             }
             finally
             {
-                PrivacyCloseServiceHandle(intPtr);
+                PrivacyCloseServiceHandle(privacyOpenSCManagerHandle);
             }
         }
 
@@ -752,34 +736,34 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = PrivacyOpenSCManager(null, null, 1u);
-            if (intPtr == IntPtr.Zero)
+            IntPtr privacyOpenSCManagerHandle = PrivacyOpenSCManager(null, null, 1u);
+            if (privacyOpenSCManagerHandle == IntPtr.Zero)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             try
             {
-                IntPtr intPtr2 = PrivacyOpenService(intPtr, name, 61u);
-                if (intPtr2 == IntPtr.Zero)
+                IntPtr privacyOpenServiceHandle = PrivacyOpenService(privacyOpenSCManagerHandle, name, 61u);
+                if (privacyOpenServiceHandle == IntPtr.Zero)
                 {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
                 try
                 {
                     OptionalServiceSnapshot snapshot;
-                    if (!OptionalServiceControl.TryQueryHandleForPrivacy(intPtr2, out snapshot) || !snapshot.Exists || B64(ServiceIdentity(snapshot.Configuration)) != parts[2] || snapshot.State != optionalServiceSnapshot.State || snapshot.StartType != optionalServiceSnapshot.StartType || (result == 1 && (!snapshot.AcceptsStop || snapshot.HasActiveDependents)))
+                    if (!OptionalServiceControl.TryQueryHandleForPrivacy(privacyOpenServiceHandle, out snapshot) || !snapshot.Exists || B64(ServiceIdentity(snapshot.Configuration)) != parts[2] || snapshot.State != optionalServiceSnapshot.State || snapshot.StartType != optionalServiceSnapshot.StartType || (result == 1 && (!snapshot.AcceptsStop || snapshot.HasActiveDependents)))
                     {
                         return false;
                     }
                     PrivacyServiceStatus status;
-                    if (!((result == 1) ? PrivacyControlService(intPtr2, 1u, out status) : PrivacyStartService(intPtr2, 0u, IntPtr.Zero)))
+                    if (!((result == 1) ? PrivacyControlService(privacyOpenServiceHandle, 1u, out status) : PrivacyStartService(privacyOpenServiceHandle, 0u, IntPtr.Zero)))
                     {
                         return false;
                     }
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     while (stopwatch.ElapsedMilliseconds < 5000)
                     {
-                        if (!PrivacyQueryServiceStatus(intPtr2, out status))
+                        if (!PrivacyQueryServiceStatus(privacyOpenServiceHandle, out status))
                         {
                             return false;
                         }
@@ -800,12 +784,12 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    PrivacyCloseServiceHandle(intPtr2);
+                    PrivacyCloseServiceHandle(privacyOpenServiceHandle);
                 }
             }
             finally
             {
-                PrivacyCloseServiceHandle(intPtr);
+                PrivacyCloseServiceHandle(privacyOpenSCManagerHandle);
             }
         }
 
@@ -890,9 +874,8 @@ namespace PaviseApp
 
         internal static string TaskIdentity(string xml)
         {
-            XmlDocument xmlDocument = new XmlDocument();
-            xmlDocument.XmlResolver = null;
-            XmlDocument xmlDocument2 = xmlDocument;
+            XmlDocument currentXmlDocument = new XmlDocument();
+            currentXmlDocument.XmlResolver = null;
             using (XmlReader reader = XmlReader.Create(new StringReader(xml), new XmlReaderSettings
             {
                 DtdProcessing = DtdProcessing.Prohibit,
@@ -900,18 +883,18 @@ namespace PaviseApp
                 MaxCharactersInDocument = 1048576L
             }))
             {
-                xmlDocument2.Load(reader);
+                currentXmlDocument.Load(reader);
             }
-            XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(xmlDocument2.NameTable);
+            XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(currentXmlDocument.NameTable);
             xmlNamespaceManager.AddNamespace("t", "http://schemas.microsoft.com/windows/2004/02/mit/task");
-            XmlNode xmlNode = xmlDocument2.SelectSingleNode("/t:Task/t:Settings/t:Enabled", xmlNamespaceManager);
+            XmlNode xmlNode = currentXmlDocument.SelectSingleNode("/t:Task/t:Settings/t:Enabled", xmlNamespaceManager);
             if (xmlNode != null)
             {
                 xmlNode.ParentNode.RemoveChild(xmlNode);
             }
             using (SHA256 sHA = SHA256.Create())
             {
-                return Convert.ToBase64String(sHA.ComputeHash(Encoding.UTF8.GetBytes(xmlDocument2.OuterXml)));
+                return Convert.ToBase64String(sHA.ComputeHash(Encoding.UTF8.GetBytes(currentXmlDocument.OuterXml)));
             }
         }
 

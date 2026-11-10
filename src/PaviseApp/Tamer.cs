@@ -23,12 +23,6 @@ namespace PaviseApp
             public string FailureDetail;
         }
 
-        private const int PollingFullSweepIntervalMs = 8000;
-
-        private const int EventBackedFullSweepIntervalMs = 60000;
-
-        private const int WorkerWakeIntervalMs = 8000;
-
         internal const int OverflowSweepIntervalMs = 8000;
 
         internal const int FailedSweepRetryMs = 1000;
@@ -112,8 +106,6 @@ namespace PaviseApp
             if (!sweepRetryPhases.TryGetValue(key, out phase)) sweepRetryPhases[key] = phase = new SweepRetryPhase();
             return phase;
         }
-
-        private const int MaxPendingChanges = 512;
 
         private readonly object sync = new object();
 
@@ -260,8 +252,7 @@ namespace PaviseApp
                 }
             }
             groupMigrationReady = MigrateGroupControls();
-            AcGroup[] groups = AntiCheatCatalog.Groups;
-            foreach (AcGroup acGroup in groups)
+            foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
             {
                 enabled[acGroup.Key] = groupMigrationReady && Settings.Load("Tame_" + acGroup.Key, acGroup.Default);
             }
@@ -280,8 +271,7 @@ namespace PaviseApp
 
         private void RetireNonSuppressibleGroups()
         {
-            AcGroup[] groups = AntiCheatCatalog.Groups;
-            foreach (AcGroup acGroup in groups)
+            foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
             {
                 if (!acGroup.Suppressible && Settings.Load("Tame_" + acGroup.Key, false))
                 {
@@ -339,8 +329,8 @@ namespace PaviseApp
             }
             lock (sync)
             {
-                bool value;
-                if (!enabled.TryGetValue(key, out value) || !value)
+                bool currentEnabled;
+                if (!enabled.TryGetValue(key, out currentEnabled) || !currentEnabled)
                 {
                     return WithAffinity(Lang.T("gs.noff"), key);
                 }
@@ -368,8 +358,8 @@ namespace PaviseApp
             }
             lock (sync)
             {
-                bool value;
-                if (!enabled.TryGetValue(key, out value) || !value)
+                bool currentEnabled;
+                if (!enabled.TryGetValue(key, out currentEnabled) || !currentEnabled)
                 {
                     return 0;
                 }
@@ -428,8 +418,7 @@ namespace PaviseApp
                 }
                 else
                 {
-                    ProcessChange[] changes = batch.Changes;
-                    foreach (ProcessChange processChange in changes)
+                    foreach (ProcessChange processChange in batch.Changes)
                     {
                         if (processChange != null && processChange.Pid > 0)
                         {
@@ -445,9 +434,9 @@ namespace PaviseApp
         {
             Logger.Log(Lang.T("log.tamer.5", 0));
             affinityRuntime = new AntiCheatAffinityRuntime(core.PrepareAntiCheatAffinity, CheckAffinityAdmission);
-            long numericValue = 0L;
-            long numericValue2 = 0L;
-            long numericValue3 = 0L;
+            long nextFullSweepTicks = 0L;
+            long nextOverflowSweepTicks = 0L;
+            long nextMaintenanceTicks = 0L;
             long nextCoreRetry = 0L;
             long failedSweepRetryNotBefore = 0L;
             while (!stopping)
@@ -467,15 +456,15 @@ namespace PaviseApp
                         captureRetryPhase = retryPhase;
                         iterationSnapshot = null;
                         iterationCaptureAttempted = false;
-                        if (ticks >= numericValue3)
+                        if (ticks >= nextMaintenanceTicks)
                         {
-                            numericValue3 = ticks + TimeSpan.FromSeconds(30).Ticks;
+                            nextMaintenanceTicks = ticks + TimeSpan.FromSeconds(30).Ticks;
                             try { ObserveRecordOnlyProcesses(CaptureSweepSnapshot()); } catch { }
                         }
                         if (!Paused && !panicCooldown)
                         {
                             failedSweepRetryNotBefore = retryPhase.NotBefore;
-                            if (phaseChanged) numericValue = retryPhase.NotBefore;
+                            if (phaseChanged) nextFullSweepTicks = retryPhase.NotBefore;
                             fullSweep = Interlocked.Exchange(ref fullSweepRequested, 0) != 0;
                             overflowSweep = Interlocked.Exchange(ref overflowSweepRequested, 0) != 0;
                         }
@@ -485,7 +474,7 @@ namespace PaviseApp
                         }
                         // 只有执行失败才消耗阶段预算，Poke 不能重置预算或截止时间。
                         else if (retryPhase.Failures < 3 && ticks >= failedSweepRetryNotBefore
-                            && (phaseChanged || (fullSweep && retryPhase.Failures == 0) || ticks >= numericValue || (overflowSweep && ticks >= numericValue2)))
+                            && (phaseChanged || (fullSweep && retryPhase.Failures == 0) || ticks >= nextFullSweepTicks || (overflowSweep && ticks >= nextOverflowSweepTicks)))
                         {
                             bool sweepSucceeded = false;
                             try
@@ -499,10 +488,10 @@ namespace PaviseApp
                                     failedSweepRetryNotBefore = 0L;
                                     retryPhase.Failures = 0;
                                     retryPhase.NotBefore = 0L;
-                                    numericValue = DateTime.UtcNow.AddMilliseconds(FullSweepInterval(ProcessEventsAvailable)).Ticks;
+                                    nextFullSweepTicks = DateTime.UtcNow.AddMilliseconds(FullSweepInterval(ProcessEventsAvailable)).Ticks;
                                     if (overflowSweep)
                                     {
-                                        numericValue2 = DateTime.UtcNow.AddMilliseconds(8000.0).Ticks;
+                                        nextOverflowSweepTicks = DateTime.UtcNow.AddMilliseconds(8000.0).Ticks;
                                     }
                                 }
                                 else
@@ -516,7 +505,7 @@ namespace PaviseApp
                                     retryPhase.NotBefore = failedSweepRetryNotBefore;
                                     Logger.Log("后台治理扫描恢复：阶段=" + sweepPhaseKey + " 尝试=" + retryPhase.Failures + "/3; "
                                         + (retryPhase.Failures >= 3 ? "已停止主动重试，进程事件继续运行" : "backoff"));
-                                    numericValue = failedSweepRetryNotBefore;
+                                    nextFullSweepTicks = failedSweepRetryNotBefore;
                                     // 快照失败后，将已取出的事件重新入队，交给有界队列按原预算重试。
                                     if (changes != null && changes.Count > 0)
                                         NotifyProcessChanges(new ProcessChangeBatch(changes.ToArray(), false));
@@ -540,7 +529,7 @@ namespace PaviseApp
                                 if (ticks >= failedSweepRetryNotBefore)
                                     failedSweepRetryNotBefore = DateTime.UtcNow.AddMilliseconds(FailedSweepRetryMs).Ticks;
                                 retryPhase.NotBefore = failedSweepRetryNotBefore;
-                                numericValue = failedSweepRetryNotBefore;
+                                nextFullSweepTicks = failedSweepRetryNotBefore;
                                 throw;
                             }
                         }
@@ -557,8 +546,8 @@ namespace PaviseApp
                 {
                     Logger.RepeatedError("Tamer", Lang.T("log.tamer.7", 0) + ex.GetType().Name + ": " + ex.Message, -1L);
                 }
-                long remainingNumericValue = numericValue - DateTime.UtcNow.Ticks;
-                long remainingMax = Math.Max(numericValue2, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
+                long remainingNumericValue = nextFullSweepTicks - DateTime.UtcNow.Ticks;
+                long remainingMax = Math.Max(nextOverflowSweepTicks, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
                 if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0 && remainingMax > 0 && (remainingNumericValue <= 0 || remainingMax < remainingNumericValue))
                 {
                     remainingNumericValue = remainingMax;
@@ -688,10 +677,10 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                List<ProcessChange> list = new List<ProcessChange>(pendingChanges);
+                List<ProcessChange> pendingChangesSnapshot = new List<ProcessChange>(pendingChanges);
                 pendingChanges.Clear();
-                list.Sort((ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
-                return list;
+                pendingChangesSnapshot.Sort((ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
+                return pendingChangesSnapshot;
             }
         }
 
@@ -701,36 +690,36 @@ namespace PaviseApp
             {
                 return;
             }
-            Dictionary<string, string> dictionary = BuildActive();
-            Dictionary<int, AcquireRequest> dictionary2 = new Dictionary<int, AcquireRequest>();
-            HashSet<int> hashSet = new HashSet<int>();
-            HashSet<int> hashSet2 = new HashSet<int>(core.PidsWith(SuppressReason.AntiCheat));
+            Dictionary<string, string> textsByName = BuildActive();
+            Dictionary<int, AcquireRequest> requestsByPid = new Dictionary<int, AcquireRequest>();
+            HashSet<int> pids = new HashSet<int>();
+            HashSet<int> pidsWithSnapshot = new HashSet<int>(core.PidsWith(SuppressReason.AntiCheat));
             foreach (ProcessChange change in changes)
             {
-                string value;
+                string text;
                 AcquireRequest request;
                 if (change.Kind == ProcessChangeKind.Stopped)
                 {
-                    if ((hashSet2.Contains(change.Pid) || dictionary2.ContainsKey(change.Pid)) && !IsPidCurrentlyAlive(change.Pid))
+                    if ((pidsWithSnapshot.Contains(change.Pid) || requestsByPid.ContainsKey(change.Pid)) && !IsPidCurrentlyAlive(change.Pid))
                     {
-                        dictionary2.Remove(change.Pid);
-                        hashSet.Add(change.Pid);
-                        hashSet2.Remove(change.Pid);
+                        requestsByPid.Remove(change.Pid);
+                        pids.Add(change.Pid);
+                        pidsWithSnapshot.Remove(change.Pid);
                     }
                 }
-                else if (!string.IsNullOrEmpty(change.Name) && dictionary.TryGetValue(change.Name, out value) && TryBuildAcquireRequest(change.Pid, change.Name, value, out request))
+                else if (!string.IsNullOrEmpty(change.Name) && textsByName.TryGetValue(change.Name, out text) && TryBuildAcquireRequest(change.Pid, change.Name, text, out request))
                 {
-                    hashSet.Remove(change.Pid);
-                    dictionary2[change.Pid] = request;
+                    pids.Remove(change.Pid);
+                    requestsByPid[change.Pid] = request;
                 }
             }
-            ApplyBatch(new List<AcquireRequest>(dictionary2.Values), new List<int>(hashSet));
+            ApplyBatch(new List<AcquireRequest>(requestsByPid.Values), new List<int>(pids));
         }
 
         private static bool IsPidCurrentlyAlive(int pid)
         {
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return !Native.LastOpenProcessFailureWasNoSuchProcess();
             }
@@ -740,30 +729,28 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
 
         private Dictionary<string, string> BuildActive()
         {
-            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> textsByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             lock (sync)
             {
-                if (!groupMigrationReady) return dictionary;
-                AcGroup[] groups = AntiCheatCatalog.Groups;
-                foreach (AcGroup acGroup in groups)
+                if (!groupMigrationReady) return textsByKey;
+                foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
                 {
-                    bool value;
-                    if (acGroup.Suppressible && enabled.TryGetValue(acGroup.Key, out value) && value)
+                    bool currentEnabled;
+                    if (acGroup.Suppressible && enabled.TryGetValue(acGroup.Key, out currentEnabled) && currentEnabled)
                     {
-                        string[] procs = acGroup.Procs;
-                        foreach (string key in procs)
+                        foreach (string key in acGroup.Procs)
                         {
-                            dictionary[key] = acGroup.Key;
+                            textsByKey[key] = acGroup.Key;
                         }
                     }
                 }
-                return dictionary;
+                return textsByKey;
             }
         }
 
@@ -773,10 +760,9 @@ namespace PaviseApp
             {
                 return 0;
             }
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> pids = new HashSet<int>();
             int processedCount = 0;
-            ProcEntry[] entries = snapshot.Entries;
-            foreach (ProcEntry procEntry in entries)
+            foreach (ProcEntry procEntry in snapshot.Entries)
             {
                 if (procEntry.Pid <= 0 || procEntry.Pid == selfPid || procEntry.Creation <= 0 || selfSession < 0 || (procEntry.Session != selfSession && procEntry.Session != 0))
                 {
@@ -785,9 +771,9 @@ namespace PaviseApp
                 AcGroup acGroup = AntiCheatCatalog.RecordOnlyGroupOf(procEntry.Name);
                 if (acGroup != null)
                 {
-                    hashSet.Add(procEntry.Pid);
-                    long value;
-                    if (!recordedProcesses.TryGetValue(procEntry.Pid, out value) || value != procEntry.Creation)
+                    pids.Add(procEntry.Pid);
+                    long recordedProcesse;
+                    if (!recordedProcesses.TryGetValue(procEntry.Pid, out recordedProcesse) || recordedProcesse != procEntry.Creation)
                     {
                         recordedProcesses[procEntry.Pid] = procEntry.Creation;
                         Logger.Info(string.Format(Lang.T("log.tamer.recordonly", 0), acGroup.Name, procEntry.Name, procEntry.Pid));
@@ -795,11 +781,11 @@ namespace PaviseApp
                     }
                 }
             }
-            foreach (int item in new List<int>(recordedProcesses.Keys))
+            foreach (int observedPid in new List<int>(recordedProcesses.Keys))
             {
-                if (!hashSet.Contains(item))
+                if (!pids.Contains(observedPid))
                 {
-                    recordedProcesses.Remove(item);
+                    recordedProcesses.Remove(observedPid);
                 }
             }
             return processedCount;
@@ -807,11 +793,11 @@ namespace PaviseApp
 
         private bool Sweep()
         {
-            Dictionary<string, string> dictionary = BuildActive();
-            HashSet<int> hashSet = new HashSet<int>();
-            HashSet<int> hashSet2 = new HashSet<int>(core.PidsWith(SuppressReason.AntiCheat));
-            List<AcquireRequest> list = new List<AcquireRequest>();
-            if (dictionary.Count > 0)
+            Dictionary<string, string> textsByName = BuildActive();
+            HashSet<int> sweepValues = new HashSet<int>();
+            HashSet<int> pidsWithSnapshot = new HashSet<int>(core.PidsWith(SuppressReason.AntiCheat));
+            List<AcquireRequest> acquireRequests = new List<AcquireRequest>();
+            if (textsByName.Count > 0)
             {
                 ProcessSnapshot processSnapshot;
                 try
@@ -826,26 +812,25 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                ProcEntry[] entries = processSnapshot.Entries;
-                foreach (ProcEntry procEntry in entries)
+                foreach (ProcEntry procEntry in processSnapshot.Entries)
                 {
-                    int sweepValue = -1;
+                    int candidatePid = -1;
                     try
                     {
-                        sweepValue = procEntry.Pid;
+                        candidatePid = procEntry.Pid;
                         string name = procEntry.Name;
-                        if (sweepValue != selfPid)
+                        if (candidatePid != selfPid)
                         {
                             int session = procEntry.Session;
-                            string value;
-                            if (dictionary.TryGetValue(name, out value) && selfSession >= 0 && (session == selfSession || session == 0))
+                            string text;
+                            if (textsByName.TryGetValue(name, out text) && selfSession >= 0 && (session == selfSession || session == 0))
                             {
-                                hashSet.Add(sweepValue);
-                                list.Add(new AcquireRequest
+                                sweepValues.Add(candidatePid);
+                                acquireRequests.Add(new AcquireRequest
                                 {
-                                    Pid = sweepValue,
+                                    Pid = candidatePid,
                                     Name = name,
-                                    Group = value,
+                                    Group = text,
                                     Birth = procEntry.Creation
                                 });
                             }
@@ -853,22 +838,22 @@ namespace PaviseApp
                     }
                     catch
                     {
-                        if (sweepValue > 0 && hashSet2.Contains(sweepValue))
+                        if (candidatePid > 0 && pidsWithSnapshot.Contains(candidatePid))
                         {
-                            hashSet.Add(sweepValue);
+                            sweepValues.Add(candidatePid);
                         }
                     }
                 }
             }
-            List<int> list2 = new List<int>();
-            foreach (int item in hashSet2)
+            List<int> exitedPids = new List<int>();
+            foreach (int currentPidsWithSnapshot in pidsWithSnapshot)
             {
-                if (!hashSet.Contains(item))
+                if (!sweepValues.Contains(currentPidsWithSnapshot))
                 {
-                    list2.Add(item);
+                    exitedPids.Add(currentPidsWithSnapshot);
                 }
             }
-            ApplyBatch(list, list2);
+            ApplyBatch(acquireRequests, exitedPids);
             return true;
         }
 

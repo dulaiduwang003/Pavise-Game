@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -307,8 +306,8 @@ namespace PaviseApp
             if (session != 0)
             {
                 rc = Control(session, name, properties, Native.EventTraceControlStop);
-                var value = (Native.EventTraceProperties)Marshal.PtrToStructure(properties, typeof(Native.EventTraceProperties));
-                Lost = value.EventsLost + value.RealTimeBuffersLost;
+                var ptrToStructure = (Native.EventTraceProperties)Marshal.PtrToStructure(properties, typeof(Native.EventTraceProperties));
+                Lost = ptrToStructure.EventsLost + ptrToStructure.RealTimeBuffersLost;
                 // 停止失败时保留会话句柄，由所属预算控制后续恢复。
                 if (rc == 0 || rc == 4201 || rc == 234) session = 0;
             }

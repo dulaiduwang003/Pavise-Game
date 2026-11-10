@@ -10,8 +10,8 @@ namespace PaviseApp
         internal List<string> ApplyNvGamePlan(string path, NvGamePlan plan, out bool retry, long now = -1L, bool preStage = false)
         {
             SyncNvAutomaticPhase(path, plan);
-            List<string> list = NvDrsTweaks.ApplyForGame(path, plan, out retry);
-            if (list == null && retry && plan != null)
+            List<string> texts = NvDrsTweaks.ApplyForGame(path, plan, out retry);
+            if (texts == null && retry && plan != null)
             {
                 if (plan.MaxPerf)
                 {
@@ -26,7 +26,7 @@ namespace PaviseApp
                     RecordNvAutomation("NvLowLat", "failed", preStage);
                 }
             }
-            return list;
+            return texts;
         }
         internal void ResetNvApplyAttempts()
         {
@@ -110,37 +110,6 @@ namespace PaviseApp
                 InvalidateCacheWarm();
             }
         }
-        private Func<bool> CaptureCacheWarmAdmission(out string key, out string executable, out string root)
-        {
-            string profileId;
-            string rendererPath;
-            string installRoot;
-            string profileEntry;
-            long session;
-            int generation;
-            lock (sync)
-            {
-                GameDetection gameDetection = activeDetection;
-                profileId = ((gameDetection != null && gameDetection.Profile != null) ? gameDetection.Profile.Id : null);
-                executable = ((gameDetection != null) ? gameDetection.RendererPath : null);
-                root = ((gameDetection != null && gameDetection.Profile != null) ? gameDetection.Profile.Root : null);
-                rendererPath = executable;
-                installRoot = root;
-                profileEntry = ((gameDetection != null && gameDetection.Profile != null) ? gameDetection.Profile.ExecutablePath : null);
-                session = Interlocked.Read(ref cacheWarmSessionId);
-                generation = cacheWarmGeneration;
-                key = profileId + ":" + session + ":" + generation + "|" + installRoot + "|" + rendererPath + "|" + profileEntry;
-            }
-            return delegate
-            {
-                lock (sync)
-                {
-                    GameDetection gameDetection2 = activeDetection;
-                    GameProfile gameProfile = FindProfileLocked(profileId);
-                    return generation == cacheWarmGeneration && active && enabled && !stopping && !panicReq && !ProfileStoreSaveFailed && !stickyGraceOnly && gameGoneSinceTicks == 0 && session > 0 && Volatile.Read(ref standbyCleanerRestorePending) == 0 && session == Interlocked.Read(ref cacheWarmSessionId) && !string.IsNullOrEmpty(profileId) && gameDetection2 != null && gameDetection2.Profile != null && gameDetection2.Profile.Id == profileId && string.Equals(gameDetection2.RendererPath, rendererPath, StringComparison.OrdinalIgnoreCase) && string.Equals(gameDetection2.Profile.Root, installRoot, StringComparison.OrdinalIgnoreCase) && gameProfile != null && string.Equals(gameProfile.Root, installRoot, StringComparison.OrdinalIgnoreCase) && string.Equals(gameProfile.ExecutablePath, profileEntry, StringComparison.OrdinalIgnoreCase) && LiveBoolPreferenceLocked("GmCacheWarmV2", cacheWarmOn) && !LiveBoolPreferenceLocked("GmStandbyCleanerV2", standbyCleanerOn);
-                }
-            };
-        }
         private void ApplyCacheWarmPolicy()
         {
             if (cacheWarm != null)
@@ -183,17 +152,17 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                GameDetection gameDetection2 = Volatile.Read(ref activeDetection);
-                if (gameDetection2 == null || gameDetection2.Profile == null || !string.Equals(gameDetection2.Profile.Id, id, StringComparison.OrdinalIgnoreCase))
+                GameDetection currentGameDetection = Volatile.Read(ref activeDetection);
+                if (currentGameDetection == null || currentGameDetection.Profile == null || !string.Equals(currentGameDetection.Profile.Id, id, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
-                bool rendererConfirmed = gameDetection2.RendererCandidateSelected && !gameDetection2.RendererSafetyOnly && !gameDetection2.RequiresGpuConfirm;
-                if (rendererConfirmed && gameDetection2.RendererCreation > 0 && gameDetection2.RendererCreation < creationFloor)
+                bool rendererConfirmed = currentGameDetection.RendererCandidateSelected && !currentGameDetection.RendererSafetyOnly && !currentGameDetection.RequiresGpuConfirm;
+                if (rendererConfirmed && currentGameDetection.RendererCreation > 0 && currentGameDetection.RendererCreation < creationFloor)
                 {
                     return false;
                 }
-                return entry || (rendererConfirmed && renderer.IsValid && renderer.Creation >= creationFloor && gameDetection2.RendererPid == renderer.Pid && gameDetection2.RendererCreation == renderer.Creation);
+                return entry || (rendererConfirmed && renderer.IsValid && renderer.Creation >= creationFloor && currentGameDetection.RendererPid == renderer.Pid && currentGameDetection.RendererCreation == renderer.Creation);
             };
         }
         private void BeginEnglishInputSession()
@@ -361,10 +330,10 @@ namespace PaviseApp
             long ticks = DateTime.UtcNow.Ticks;
             lock (sync)
             {
-                long value;
-                if (envNextAttempt.TryGetValue(key, out value) && ticks < value)
+                long currentEnvNextAttempt;
+                if (envNextAttempt.TryGetValue(key, out currentEnvNextAttempt) && ticks < currentEnvNextAttempt)
                 {
-                    if (!want) { if (value == long.MaxValue) RecoveryAttemptTrace.Exhausted(); else RecoveryAttemptTrace.DeferredUntil(value); }
+                    if (!want) { if (currentEnvNextAttempt == long.MaxValue) RecoveryAttemptTrace.Exhausted(); else RecoveryAttemptTrace.DeferredUntil(currentEnvNextAttempt); }
                     return active;
                 }
             }
@@ -618,14 +587,6 @@ namespace PaviseApp
             }
             return false;
         }
-        private void DisableEnvSwitch(string key)
-        {
-            ActionFailureStore.Trip(EnvFailureAction(key), "system", PerformancePolicy.Text("执行失败，已停止后续应用", "Apply failed; later attempts isolated"));
-            lock (sync)
-            {
-                envFused.Add(key);
-            }
-        }
         private static string EnvPolicyKey(string key)
         {
             switch (key)
@@ -672,8 +633,8 @@ namespace PaviseApp
             long ticks = DateTime.UtcNow.Ticks;
             SyncAutomationPolicy();
             PolicySnapshot policySnapshot = sessionPolicy;
-            PolicySnapshot policySnapshot2 = policySnapshot ?? PolicyResolver.Global();
-            if (policySnapshot2.GlobalTimerLease && timerMode.GlobalReady)
+            PolicySnapshot currentPolicySnapshot = policySnapshot ?? PolicyResolver.Global();
+            if (currentPolicySnapshot.GlobalTimerLease && timerMode.GlobalReady)
             {
                 RunGuarded(() => timerLease.Update(true, DateTime.UtcNow.Ticks));
             }
@@ -683,14 +644,14 @@ namespace PaviseApp
             }
             RecordAutomation("AutoGlobalTimer", AutomaticExecutionState("AutoGlobalTimer"));
             SyncGameDvr();
-            PerformancePreset mode = policySnapshot2.Preset;
-            bool pauseDownloads = BackgroundSessionPolicy.PauseDownloads(policySnapshot2, enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed, activeDetection);
-            bool pauseUpdate = policySnapshot2.PauseUpdate;
-            bool pauseMaintenance = policySnapshot2.PauseMaintenance;
+            PerformancePreset mode = currentPolicySnapshot.Preset;
+            bool pauseDownloads = BackgroundSessionPolicy.PauseDownloads(currentPolicySnapshot, enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed, activeDetection);
+            bool pauseUpdate = currentPolicySnapshot.PauseUpdate;
+            bool pauseMaintenance = currentPolicySnapshot.PauseMaintenance;
             bool awake = BackgroundSessionPolicy.KeepAwake(enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed, activeDetection);
-            bool powerPlanOn = policySnapshot2.PowerPlanOn;
+            bool powerPlanOn = currentPolicySnapshot.PowerPlanOn;
             bool afmfRequested = false;
-            bool dwmBoost = policySnapshot2.DwmBoost;
+            bool dwmBoost = currentPolicySnapshot.DwmBoost;
             bool slowActionsDue = slowEnvAtTicks == 0 || ticks >= slowEnvAtTicks;
             bool want = pauseDownloads && slowActionsDue && Native.IsElevated() && !SessionServiceSuspended("do", ticks)
                 && (doActive || DoTweak.HasResidue || DeliveryOptimizationActivity.IsDownloading());
@@ -698,7 +659,7 @@ namespace PaviseApp
             bool want3 = pauseMaintenance && slowActionsDue && !SessionServiceSuspended("maint", ticks);
             bool powerPlanEnabled = ResolvePowerPlanEnabled(mode, powerPlanOn);
             bool managePowerPlan = powerPlanEnabled;
-            SuppressionCore.GpuDemoteEnabled = policySnapshot2.GpuDemote;
+            SuppressionCore.GpuDemoteEnabled = currentPolicySnapshot.GpuDemote;
             doActive = EnvStep("do", want, doActive, DoTweak.Activate, DoTweak.Restore);
             wuActive = EnvStep("wu", want2, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             maintActive = EnvStep("maint", want3, maintActive, MaintenancePause.Activate, MaintenancePause.Restore);
@@ -714,7 +675,7 @@ namespace PaviseApp
             amdAfmfActive = EnvStep("amdafmf", afmfRequested && AdlxTweaks.AfmfSupported(), amdAfmfActive, AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
             StepLaptopPerformancePolicy();
             StepPowerPlanMaintenance();
-            bool processorTuningRequestedSucceeded = ProcessorTuningRequested(policySnapshot2);
+            bool processorTuningRequestedSucceeded = ProcessorTuningRequested(currentPolicySnapshot);
             int powerPolicyKeyResult = PowerPolicyKey(processorTuningRequestedSucceeded, managePowerPlan);
             long ticks2 = DateTime.UtcNow.Ticks;
             bool restoreFailedPowerPlanSucceeded = RestoreFailedPowerPlan(ticks2);
@@ -724,11 +685,11 @@ namespace PaviseApp
                 {
                     return;
                 }
-                int applyEnvValue = powerPolicyKeyResult;
+                int requestedPowerPolicy = powerPolicyKeyResult;
                 bool aggrShot = processorTuningRequestedSucceeded;
                 int genShot = Volatile.Read(ref powerSessionGen);
                 planActive = true;
-                lastPowerPolicyKey = applyEnvValue;
+                lastPowerPolicyKey = requestedPowerPolicy;
                 Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
                 bool powerWorkQueued = false;
                 try
@@ -1069,8 +1030,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                GameDetection gameDetection2 = Volatile.Read(ref activeDetection);
-                return gameDetection2 != null && gameDetection2.Profile != null && string.Equals(gameDetection2.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase);
+                GameDetection currentGameDetection = Volatile.Read(ref activeDetection);
+                return currentGameDetection != null && currentGameDetection.Profile != null && string.Equals(currentGameDetection.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase);
             };
         }
         private void ApplyStandbyCleanerPolicy()

@@ -31,10 +31,9 @@ namespace PaviseApp
                 return true;
             }
             string toLowerInvariantResult = name.ToLowerInvariant();
-            string[] tokens = Tokens;
-            foreach (string value in tokens)
+            foreach (string token in Tokens)
             {
-                if (toLowerInvariantResult.Contains(value))
+                if (toLowerInvariantResult.Contains(token))
                 {
                     return true;
                 }
@@ -62,10 +61,9 @@ namespace PaviseApp
                     {
                         break;
                     }
-                    string[] tokens = Tokens;
-                    foreach (string value in tokens)
+                    foreach (string token in Tokens)
                     {
-                        if (toLowerInvariantResult.Contains(value))
+                        if (toLowerInvariantResult.Contains(token))
                         {
                             return true;
                         }
@@ -81,10 +79,10 @@ namespace PaviseApp
 
         internal static string[] ProcessNamesForDisplay()
         {
-            string[] textEntries = new string[ProcessNames.Count];
-            ProcessNames.CopyTo(textEntries);
-            Array.Sort(textEntries, StringComparer.OrdinalIgnoreCase);
-            return textEntries;
+            string[] displayNames = new string[ProcessNames.Count];
+            ProcessNames.CopyTo(displayNames);
+            Array.Sort(displayNames, StringComparer.OrdinalIgnoreCase);
+            return displayNames;
         }
 
         internal static string[] TokensForDisplay()

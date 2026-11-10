@@ -71,9 +71,9 @@ namespace PaviseApp
                 g.DrawLine(pen, base.Width - Theme.S(16), Theme.S(34), base.Width - Theme.S(16), base.Height - Theme.S(34));
             }
             int top = base.Height - Theme.S(28);
-            using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, 100)))
+            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 100)))
             {
-                g.DrawLine(pen2, base.Width - Theme.S(238), top, base.Width - Theme.S(32), top);
+                g.DrawLine(currentPen, base.Width - Theme.S(238), top, base.Width - Theme.S(32), top);
             }
             using (SolidBrush brush2 = new SolidBrush(Theme.Accent))
             {

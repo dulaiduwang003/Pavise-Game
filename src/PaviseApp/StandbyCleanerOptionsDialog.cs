@@ -47,9 +47,9 @@ namespace PaviseApp
             int width = maxLimit - left * 2;
             Label label = MakeLabel("MEMORY // OPTIONS", Theme.Mono(7.3f), Theme.Accent);
             label.SetBounds(left, Theme.S(21), width, Theme.S(19));
-            Label label2 = MakeLabel(Text, Theme.UI(15f, true), Theme.Fg);
-            int messageHeight = Measure(Text, label2.Font, width);
-            label2.SetBounds(left, Theme.S(48), width, Math.Max(Theme.S(34), messageHeight));
+            Label makeLabel = MakeLabel(Text, Theme.UI(15f, true), Theme.Fg);
+            int messageHeight = Measure(Text, makeLabel.Font, width);
+            makeLabel.SetBounds(left, Theme.S(48), width, Math.Max(Theme.S(34), messageHeight));
             DBPanel dBPanel = new DBPanel
             {
                 BackColor = Theme.Bg,
@@ -73,7 +73,7 @@ namespace PaviseApp
             errorLabel = MakeLabel("", Theme.UI(9f, false), Color.FromArgb(255, 176, 32));
             errorLabel.AccessibleName = Lang.T("standbycleaner.options.invalid");
             int height = Math.Max(Measure(Lang.T("standbycleaner.options.invalid"), errorLabel.Font, width), Measure(Lang.T("standbycleaner.options.savefailed"), errorLabel.Font, width)) + Theme.S(4);
-            int top = label2.Bottom + Theme.S(16);
+            int top = makeLabel.Bottom + Theme.S(16);
             int sOffset = top + height + Theme.S(92);
             int height2 = Math.Min(ctorValue, Math.Max(Theme.S(40), workingArea.Height - Theme.S(40) - sOffset));
             dBPanel.SetBounds(left, top, width, height2);
@@ -93,7 +93,7 @@ namespace PaviseApp
                 SaveInputs();
             };
             base.ClientSize = new Size(maxLimit, top2 + height3 + Theme.S(24));
-            base.Controls.AddRange(new Control[6] { label, label2, dBPanel, errorLabel, cancelButton, libraryDialogButton });
+            base.Controls.AddRange(new Control[6] { label, makeLabel, dBPanel, errorLabel, cancelButton, libraryDialogButton });
             base.AcceptButton = libraryDialogButton;
             base.CancelButton = cancelButton;
             SetInputs((initial != null && initial.IsValid) ? initial : StandbyCleanerOptions.Default);
@@ -106,7 +106,7 @@ namespace PaviseApp
             label.SetBounds(0, y, width, Measure(label.Text, label.Font, width) + Theme.S(4));
             parent.Controls.Add(label);
             y = label.Bottom + Theme.S(6);
-            string[] textEntries = new string[3] { "standbycleaner.options.preset.light", "standbycleaner.options.preset.standard", "standbycleaner.options.preset.heavy" };
+            string[] presetLabelKeys = new string[3] { "standbycleaner.options.preset.light", "standbycleaner.options.preset.standard", "standbycleaner.options.preset.heavy" };
             StandbyCleanerOptions[] standbyCleanerOptionsItems = new StandbyCleanerOptions[3]
             {
                 StandbyCleanerOptions.Conservative,
@@ -117,13 +117,13 @@ namespace PaviseApp
             int width2 = (width - scaledDimension * 2) / 3;
             int height = Theme.S(30);
             int left = 0;
-            for (int i = 0; i < textEntries.Length; i++)
+            for (int i = 0; i < presetLabelKeys.Length; i++)
             {
                 StandbyCleanerOptions preset = standbyCleanerOptionsItems[i];
-                PillButton pillButton = new PillButton(Lang.T(textEntries[i]), BtnKind.Normal);
+                PillButton pillButton = new PillButton(Lang.T(presetLabelKeys[i]), BtnKind.Normal);
                 pillButton.SetBounds(left, y, width2, height);
                 pillButton.TabIndex = 3 + i;
-                pillButton.AccessibleName = Lang.T(textEntries[i]);
+                pillButton.AccessibleName = Lang.T(presetLabelKeys[i]);
                 pillButton.Click += delegate
                 {
                     SetInputs(preset);
@@ -139,13 +139,13 @@ namespace PaviseApp
         {
             options = null;
             int value;
-            int value2;
-            int value3;
-            if (!TryInteger(list, 0, 1048576, out value) || !TryInteger(free, 0, 1048576, out value2) || !TryInteger(polling, 250, 300000, out value3))
+            int freeThresholdMb;
+            int pollingIntervalMs;
+            if (!TryInteger(list, 0, 1048576, out value) || !TryInteger(free, 0, 1048576, out freeThresholdMb) || !TryInteger(polling, 250, 300000, out pollingIntervalMs))
             {
                 return false;
             }
-            options = new StandbyCleanerOptions(value, value2, value3);
+            options = new StandbyCleanerOptions(value, freeThresholdMb, pollingIntervalMs);
             return true;
         }
 
@@ -228,10 +228,10 @@ namespace PaviseApp
             textBox.MaxLength = 10;
             textBox.TabIndex = tabIndex;
             textBox.AccessibleName = Lang.T(titleKey);
-            Label label2 = MakeLabel(Lang.T(detailKey), Theme.UI(9f, false), Theme.Dim);
-            label2.SetBounds(0, y + Math.Max(rowHeight, textBox.Height) + Theme.S(3), width, Measure(label2.Text, label2.Font, width) + Theme.S(4));
-            parent.Controls.AddRange(new Control[3] { label, textBox, label2 });
-            y = label2.Bottom + Theme.S(14);
+            Label makeLabel = MakeLabel(Lang.T(detailKey), Theme.UI(9f, false), Theme.Dim);
+            makeLabel.SetBounds(0, y + Math.Max(rowHeight, textBox.Height) + Theme.S(3), width, Measure(makeLabel.Text, makeLabel.Font, width) + Theme.S(4));
+            parent.Controls.AddRange(new Control[3] { label, textBox, makeLabel });
+            y = makeLabel.Bottom + Theme.S(14);
             return textBox;
         }
 
@@ -247,13 +247,13 @@ namespace PaviseApp
                     graphics.DrawPath(pen, path);
                 }
             }
-            using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
+            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
             {
-                graphics.DrawLine(pen2, Theme.S(1), Theme.S(1), Theme.S(116), Theme.S(1));
+                graphics.DrawLine(accentPen, Theme.S(1), Theme.S(1), Theme.S(116), Theme.S(1));
             }
-            using (Pen pen3 = new Pen(Theme.Stroke))
+            using (Pen strokePen = new Pen(Theme.Stroke))
             {
-                graphics.DrawLine(pen3, Theme.S(26), dividerY, base.Width - Theme.S(26), dividerY);
+                graphics.DrawLine(strokePen, Theme.S(26), dividerY, base.Width - Theme.S(26), dividerY);
             }
         }
     }

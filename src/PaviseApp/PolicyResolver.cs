@@ -27,17 +27,17 @@ namespace PaviseApp
                     values.Clear();
                     generation = mutationGeneration;
                 }
-                string value;
-                if (values.TryGetValue(key, out value))
+                string cachedValue;
+                if (values.TryGetValue(key, out cachedValue))
                 {
-                    return value;
+                    return cachedValue;
                 }
-                value = ReadRawGlobalValue(key);
+                cachedValue = ReadRawGlobalValue(key);
                 if (generation == Settings.MutationGeneration)
                 {
-                    values[key] = value;
+                    values[key] = cachedValue;
                 }
-                return value;
+                return cachedValue;
             }
 
             public void Dispose()
@@ -113,44 +113,43 @@ namespace PaviseApp
             {
                 return;
             }
-            List<string> list = new List<string>(profile.Overrides.Keys);
-            foreach (string item in list)
+            foreach (string currentKeysSnapshot in new List<string>(profile.Overrides.Keys))
             {
-                string canonicalResult = (GameProfile.IsRetiredOverrideKey(item) ? null : PolicyCatalog.Canonical(item, profile.Overrides[item]));
+                string canonicalResult = (GameProfile.IsRetiredOverrideKey(currentKeysSnapshot) ? null : PolicyCatalog.Canonical(currentKeysSnapshot, profile.Overrides[currentKeysSnapshot]));
                 if (canonicalResult == null)
                 {
-                    profile.Overrides.Remove(item);
+                    profile.Overrides.Remove(currentKeysSnapshot);
                 }
                 else
                 {
-                    profile.Overrides[item] = canonicalResult;
+                    profile.Overrides[currentKeysSnapshot] = canonicalResult;
                 }
             }
         }
 
         public static List<PolicyDiff> Diff(GameProfile profile)
         {
-            List<PolicyDiff> list = new List<PolicyDiff>();
+            List<PolicyDiff> policyDiffs = new List<PolicyDiff>();
             if (profile == null)
             {
-                return list;
+                return policyDiffs;
             }
-            foreach (PolicyItem item in PolicyCatalog.All)
+            foreach (PolicyItem all in PolicyCatalog.All)
             {
-                string value;
-                if (profile.Overrides.TryGetValue(item.Key, out value))
+                string overrideValue;
+                if (profile.Overrides.TryGetValue(all.Key, out overrideValue))
                 {
-                    string globalValueResult = GlobalValue(item.Key);
-                    list.Add(new PolicyDiff
+                    string globalValueResult = GlobalValue(all.Key);
+                    policyDiffs.Add(new PolicyDiff
                     {
-                        Key = item.Key,
-                        Value = value,
+                        Key = all.Key,
+                        Value = overrideValue,
                         GlobalValue = globalValueResult,
-                        SameAsGlobal = string.Equals(value, globalValueResult, StringComparison.Ordinal)
+                        SameAsGlobal = string.Equals(overrideValue, globalValueResult, StringComparison.Ordinal)
                     });
                 }
             }
-            return list;
+            return policyDiffs;
         }
 
         public static PolicySnapshot For(GameProfile profile)
@@ -240,15 +239,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            bool value;
+            bool storedEnabled;
             if (policyItem.Kind == PolicyValueKind.Bool)
             {
-                return Settings.TryLoadStoredBool(key, out value);
+                return Settings.TryLoadStoredBool(key, out storedEnabled);
             }
-            string value2;
-            if (Settings.TryLoadStr(key, out value2))
+            string text;
+            if (Settings.TryLoadStr(key, out text))
             {
-                return !string.IsNullOrEmpty(value2);
+                return !string.IsNullOrEmpty(text);
             }
             return false;
         }

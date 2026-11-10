@@ -119,8 +119,7 @@ namespace PaviseApp
             }
             if (filePaths != null)
             {
-                FileInfo[] fileInfoItems = filePaths;
-                foreach (FileInfo fileInfo in fileInfoItems)
+                foreach (FileInfo fileInfo in filePaths)
                 {
                     try
                     {
@@ -136,8 +135,7 @@ namespace PaviseApp
             }
             if (directoryPaths != null)
             {
-                DirectoryInfo[] directoryInfoItems = directoryPaths;
-                foreach (DirectoryInfo directoryInfo in directoryInfoItems)
+                foreach (DirectoryInfo directoryInfo in directoryPaths)
                 {
                     if (!IsReparse(directoryInfo))
                     {
@@ -174,8 +172,7 @@ namespace PaviseApp
                 }
                 if (filePaths != null)
                 {
-                    FileInfo[] fileInfoItems = filePaths;
-                    foreach (FileInfo fileInfo in fileInfoItems)
+                    foreach (FileInfo fileInfo in filePaths)
                     {
                         if (!TryDirectoryChain(di, out exists))
                         {
@@ -216,8 +213,7 @@ namespace PaviseApp
                 }
                 if (directoryPaths != null)
                 {
-                    DirectoryInfo[] directoryInfoItems = directoryPaths;
-                    foreach (DirectoryInfo directoryInfo in directoryInfoItems)
+                    foreach (DirectoryInfo directoryInfo in directoryPaths)
                     {
                         directoryInfo.Refresh();
                         if (!IsReparse(directoryInfo))

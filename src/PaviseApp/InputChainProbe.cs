@@ -18,10 +18,6 @@ namespace PaviseApp
 
         internal const string MousePath = "Control Panel\\Mouse";
 
-        private const string BtClassicUuid = "{00001124-0000-1000-8000-00805f9b34fb}";
-
-        private const string BtLeUuid = "{00001812-0000-1000-8000-00805f9b34fb}";
-
         internal const string MouseClassGuid = "{4d36e96f-e325-11ce-bfc1-08002be10318}";
 
         internal const string KeyboardClassGuid = "{4d36e96b-e325-11ce-bfc1-08002be10318}";
@@ -153,9 +149,9 @@ namespace PaviseApp
 
         private static InputTransport ClassifyBareHid(string instanceId)
         {
-            foreach (string item in PresentDevices.ParentChain(instanceId))
+            foreach (string parentChain in PresentDevices.ParentChain(instanceId))
             {
-                string toUpperInvariantResult = item.ToUpperInvariant();
+                string toUpperInvariantResult = parentChain.ToUpperInvariant();
                 if (toUpperInvariantResult.StartsWith("ACPI\\", StringComparison.Ordinal))
                 {
                     return InputTransport.Internal;
@@ -194,20 +190,19 @@ namespace PaviseApp
             int matchIndex = hidInstanceId.IndexOf('\\', length);
             string substringResult = ((matchIndex < 0) ? hidInstanceId.Substring(length) : hidInstanceId.Substring(length, matchIndex - length));
             string[] substringResultParts = substringResult.Split('&');
-            List<string> list = new List<string>();
-            string[] textEntries = substringResultParts;
-            foreach (string entryText in textEntries)
+            List<string> entryTexts = new List<string>();
+            foreach (string entryText in substringResultParts)
             {
                 if (!entryText.StartsWith("COL", StringComparison.OrdinalIgnoreCase))
                 {
-                    list.Add(entryText);
+                    entryTexts.Add(entryText);
                 }
             }
-            if (list.Count == 0)
+            if (entryTexts.Count == 0)
             {
                 return null;
             }
-            return string.Join("&", list.ToArray());
+            return string.Join("&", entryTexts.ToArray());
         }
 
         public static AccessibilityState ReadAccessibility()
@@ -262,16 +257,16 @@ namespace PaviseApp
 
         public static List<InputDevice> Devices()
         {
-            List<InputDevice> list = new List<InputDevice>();
+            List<InputDevice> inputDevices = new List<InputDevice>();
             try
             {
-                Collect(PresentDevices.ByClass(new Guid("{4d36e96f-e325-11ce-bfc1-08002be10318}")), true, list);
-                Collect(PresentDevices.ByClass(new Guid("{4d36e96b-e325-11ce-bfc1-08002be10318}")), false, list);
+                Collect(PresentDevices.ByClass(new Guid("{4d36e96f-e325-11ce-bfc1-08002be10318}")), true, inputDevices);
+                Collect(PresentDevices.ByClass(new Guid("{4d36e96b-e325-11ce-bfc1-08002be10318}")), false, inputDevices);
             }
             catch
             {
             }
-            return list;
+            return inputDevices;
         }
 
         private static void Collect(List<string> ids, bool mouse, List<InputDevice> list)

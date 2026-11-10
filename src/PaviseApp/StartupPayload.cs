@@ -10,10 +10,6 @@ namespace PaviseApp
     {
         internal const string ExecutableName = "PaviseAuto.exe";
 
-        private const string StagePrefix = ".PaviseAuto.";
-
-        private const string StageSuffix = ".tmp";
-
         internal static string ManagedRoot
         {
             get
@@ -56,10 +52,10 @@ namespace PaviseApp
                 try
                 {
                     fileStream.Position = 0L;
-                    using (FileStream fileStream2 = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    using (FileStream currentFileStream = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     {
-                        fileStream.CopyTo(fileStream2);
-                        fileStream2.Flush(true);
+                        fileStream.CopyTo(currentFileStream);
+                        currentFileStream.Flush(true);
                     }
                     Verify(combinedPath2, hashResult);
                     try
@@ -178,8 +174,7 @@ namespace PaviseApp
             {
                 return 0;
             }
-            string[] directoriesSnapshot = directories;
-            foreach (string entryText in directoriesSnapshot)
+            foreach (string entryText in directories)
             {
                 try
                 {
@@ -188,8 +183,7 @@ namespace PaviseApp
                         continue;
                     }
                     RejectReparse(entryText);
-                    string[] files = Directory.GetFiles(entryText, "*", SearchOption.TopDirectoryOnly);
-                    foreach (string filePath in files)
+                    foreach (string filePath in Directory.GetFiles(entryText, "*", SearchOption.TopDirectoryOnly))
                     {
                         string fileName = Path.GetFileName(filePath);
                         if ((string.Equals(fileName, "PaviseAuto.exe", StringComparison.OrdinalIgnoreCase) || IsStageName(fileName)) && !SamePath(filePath, keep) && !SamePath(filePath, alsoKeep))
@@ -241,8 +235,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string message = substringResult;
-            foreach (char c in message)
+            foreach (char c in substringResult)
             {
                 if (!IsHex(c))
                 {
@@ -335,8 +328,7 @@ namespace PaviseApp
             {
                 byte[] hash = sHA.ComputeHash(stream);
                 StringBuilder stringBuilder = new StringBuilder(hash.Length * 2);
-                byte[] rawBytes = hash;
-                foreach (byte b in rawBytes)
+                foreach (byte b in hash)
                 {
                     stringBuilder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
                 }

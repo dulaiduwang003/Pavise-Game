@@ -511,8 +511,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] detailParts = detail.Split(',');
-            foreach (string entryText in detailParts)
+            foreach (string entryText in detail.Split(','))
             {
                 if (entryText != "affinity-write" && entryText != "affinity-readback")
                 {
@@ -560,16 +559,16 @@ namespace PaviseApp
             {
                 e.ReconcileFailures++;
             }
-            int scheduleAfterApplyValue = 4;
+            int reconcileDelaySeconds = 4;
             for (int i = 1; i < e.ReconcileFailures; i++)
             {
-                if (scheduleAfterApplyValue >= 60)
+                if (reconcileDelaySeconds >= 60)
                 {
                     break;
                 }
-                scheduleAfterApplyValue = Math.Min(60, scheduleAfterApplyValue * 2);
+                reconcileDelaySeconds = Math.Min(60, reconcileDelaySeconds * 2);
             }
-            e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(scheduleAfterApplyValue).Ticks;
+            e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(reconcileDelaySeconds).Ticks;
             RecordFailureBudget(e, "reconcile", false, e.NextReconcileTicks);
             if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
         }

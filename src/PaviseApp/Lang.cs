@@ -4,7 +4,13 @@ namespace PaviseApp
 {
     internal static partial class Lang
     {
-        public static int Cur;
+        private static int currentLanguage;
+
+        public static int Cur
+        {
+            get { return currentLanguage; }
+            set { currentLanguage = value == 1 ? 1 : 0; }
+        }
 
         internal static readonly object ChangeGate = new object();
 

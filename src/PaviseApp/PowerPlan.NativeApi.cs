@@ -330,9 +330,9 @@ namespace PaviseApp
 
         private static List<Guid> EnumerateSchemes()
         {
-            List<Guid> list;
-            TryEnumerateSchemes(out list);
-            return list;
+            List<Guid> guids;
+            TryEnumerateSchemes(out guids);
+            return guids;
         }
 
         private static bool TryEnumerateSchemes(out List<Guid> list)
@@ -376,21 +376,20 @@ namespace PaviseApp
         internal static void SyncDisplayFeel(Guid src, Guid dst)
         {
             Guid[] guidItems = new Guid[3] { VideoBrightness, VideoDimBrightness, VideoAdaptive };
-            Guid[] guidItems2 = guidItems;
-            foreach (Guid guid in guidItems2)
+            foreach (Guid guid in guidItems)
             {
                 Guid scheme = src;
                 Guid scheme2 = dst;
                 Guid sub = SubVideo;
                 Guid setting = guid;
-                uint value;
-                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value) == 0)
+                uint settingValue;
+                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out settingValue) == 0)
                 {
-                    PowerWriteACValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, value);
+                    PowerWriteACValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, settingValue);
                 }
-                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out value) == 0)
+                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sub, ref setting, out settingValue) == 0)
                 {
-                    PowerWriteDCValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, value);
+                    PowerWriteDCValueIndex(IntPtr.Zero, ref scheme2, ref sub, ref setting, settingValue);
                 }
             }
         }

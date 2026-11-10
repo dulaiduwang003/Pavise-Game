@@ -55,9 +55,9 @@ namespace PaviseApp
                 int scaledDimension3 = Theme.S(7);
                 Rectangle rect = new Rectangle(r.X + (r.Width - scaledDimension3) / 2, r.Y + (r.Height - scaledDimension3) / 2, scaledDimension3, scaledDimension3);
                 double measuredValue = 0.299 * (double)(int)Swatch.R + 0.587 * (double)(int)Swatch.G + 0.114 * (double)(int)Swatch.B;
-                using (Pen pen2 = new Pen((measuredValue > 150.0) ? Color.FromArgb(40, 40, 40) : Color.White, Math.Max(1f, Theme.S(1))))
+                using (Pen currentPen = new Pen((measuredValue > 150.0) ? Color.FromArgb(40, 40, 40) : Color.White, Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawEllipse(pen2, rect);
+                    graphics.DrawEllipse(currentPen, rect);
                 }
             }
             if (!Selected)
@@ -67,9 +67,9 @@ namespace PaviseApp
             Rectangle r2 = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
             using (GraphicsPath path2 = Theme.TechPath(r2, scaledDimension2 + Theme.S(2)))
             {
-                using (Pen pen3 = new Pen(Theme.Accent, Math.Max(1.5f, Theme.S(2))))
+                using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1.5f, Theme.S(2))))
                 {
-                    graphics.DrawPath(pen3, path2);
+                    graphics.DrawPath(accentPen, path2);
                 }
             }
         }

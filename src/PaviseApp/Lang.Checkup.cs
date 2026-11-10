@@ -80,7 +80,7 @@ namespace PaviseApp
             messages.Add("audit.fix.revert", new string[2] { "还原修复", "Revert fix" });
             messages.Add("irqauto.logprefix", new string[2] { "自动中断编排 ", "IRQ autopilot: " });
             messages.Add("rep.log.none", new string[2] { "日志为空", "Log is empty" });
-            messages.Add("rep.clear.log", new string[3] { "清除日志", "Clear log", "ログを消去" });
+            messages.Add("rep.clear.log", new string[2] { "清除日志", "Clear log" });
             messages.Add("rep.clear.ask", new string[2] { "清空 Pavise.log？归档日志不受影响。", "Clear Pavise.log? Archived logs are unaffected." });
             messages.Add("audit.fth.confirm", new string[2] { "解除 FTH 垫片？\r\n\r\n可能减少开销，也可能恢复崩溃；文件保留，可还原。", "Remove the FTH shim?\r\n\r\nIt may reduce overhead or restore crashes. The file remains; reversible." });
             messages.Add("audit.input.devices", new string[2] { "输入设备", "Input devices" });
@@ -274,9 +274,9 @@ namespace PaviseApp
             messages.Add("t.systemaudit.59", new string[2] { "Hz，该显示器在相同分辨率下支持 ", "Hz; at the same resolution this display supports " });
             messages.Add("t.systemaudit.60", new string[2] { "Hz。差值会直接损失帧率。请在设置 → 显示 → 高级显示中改为 ", "Hz. The difference directly costs FPS. In Settings → Display → Advanced display, change it to " });
             messages.Add("t.systemaudit.61", new string[2] { "Hz。该项为持久设置，修改一次后长期生效。", "Hz. This is a persistent setting: change it once and it stays." });
-            messages.Add("t.systemaudit.62", new string[3] { "NVIDIA 驱动降频标记", "NVIDIA performance-decrease flags", "NVIDIA 性能低下フラグ" });
-            messages.Add("t.systemaudit.63", new string[3] { "驱动报告了上述标记；可能来自读取到的任一 NVIDIA 显卡。仅凭标记不能确认游戏瓶颈或实际电池供电，需结合游戏显卡的负载、频率及供电状态判断。", "The driver reported these flags on a queried NVIDIA GPU. Flags alone do not establish a game bottleneck or battery operation; correlate the game GPU's load, clocks and power source.", "照会した NVIDIA GPU のドライバーが上記フラグを報告しました。これだけではゲームのボトルネックやバッテリー駆動を判断できません。ゲーム用 GPU の負荷、クロック、電源状態と合わせて確認してください。" });
-            messages.Add("t.systemaudit.64", new string[3] { "当前未报告降频标记。对局中采样命中的标记会在退局时汇总到运行日志；比例不代表帧率损失。", "No performance-decrease flag is currently reported. Match sample hits are summarized in the log at match end; percentages are not FPS loss.", "現在、性能低下フラグの報告はありません。対局中に検出したフラグは終了時にログへ集計されます。割合は FPS の損失率ではありません。" });
+            messages.Add("t.systemaudit.62", new string[2] { "NVIDIA 驱动降频标记", "NVIDIA performance-decrease flags" });
+            messages.Add("t.systemaudit.63", new string[2] { "驱动报告了上述标记；可能来自读取到的任一 NVIDIA 显卡。仅凭标记不能确认游戏瓶颈或实际电池供电，需结合游戏显卡的负载、频率及供电状态判断。", "The driver reported these flags on a queried NVIDIA GPU. Flags alone do not establish a game bottleneck or battery operation; correlate the game GPU's load, clocks and power source." });
+            messages.Add("t.systemaudit.64", new string[2] { "当前未报告降频标记。对局中采样命中的标记会在退局时汇总到运行日志；比例不代表帧率损失。", "No performance-decrease flag is currently reported. Match sample hits are summarized in the log at match end; percentages are not FPS loss." });
             messages.Add("t.systemaudit.65", new string[2] { "节能模式", "Energy saver mode" });
             messages.Add("t.systemaudit.66", new string[2] { "开着", "On" });
             messages.Add("t.systemaudit.67", new string[2] { "关着", "Off" });

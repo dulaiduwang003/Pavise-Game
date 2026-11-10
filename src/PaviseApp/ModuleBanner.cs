@@ -155,9 +155,9 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush2, path);
                 }
-                using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, 118)))
+                using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 118)))
                 {
-                    graphics.DrawPath(pen2, path);
+                    graphics.DrawPath(currentPen, path);
                 }
             }
             Glyphs.Draw(graphics, glyph, new Rectangle(r2.Left + Theme.S(11), r2.Top + Theme.S(11), Theme.S(20), Theme.S(20)), Theme.Accent);
@@ -176,9 +176,9 @@ namespace PaviseApp
                 graphics.FillEllipse(brush4, left + Theme.S(6), Theme.S(24), Theme.S(8), Theme.S(8));
             }
             TextRenderer.DrawText(graphics, state.ToUpperInvariant(), Theme.MonoFor(state, 7.2f), new Rectangle(left + Theme.S(28), Theme.S(15), Theme.S(230), Theme.S(28)), stateColor, TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            using (Pen pen3 = new Pen(Col.Alpha(stateColor, 128)))
+            using (Pen candidatePen = new Pen(Col.Alpha(stateColor, 128)))
             {
-                graphics.DrawLine(pen3, left + Theme.S(28), Theme.S(48), base.Width - Theme.S(18), Theme.S(48));
+                graphics.DrawLine(candidatePen, left + Theme.S(28), Theme.S(48), base.Width - Theme.S(18), Theme.S(48));
             }
         }
     }

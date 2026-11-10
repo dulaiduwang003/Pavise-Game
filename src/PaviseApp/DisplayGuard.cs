@@ -72,10 +72,6 @@ namespace PaviseApp
             public int dmPanningHeight;
         }
 
-        private const string Slot = "PrevRefreshHz";
-
-        private const int ENUM_CURRENT_SETTINGS = -1;
-
         private static readonly object lk = new object();
 
         internal static int CurrentRefreshRate()
@@ -115,23 +111,22 @@ namespace PaviseApp
 
         internal static List<int> AllRefreshRates()
         {
-            List<int> list = new List<int>();
+            List<int> dmDisplayFrequencies = new List<int>();
             try
             {
-                Screen[] allScreens = Screen.AllScreens;
-                foreach (Screen screen in allScreens)
+                foreach (Screen screen in Screen.AllScreens)
                 {
                     DEVMODE dm = NewDm();
                     if (EnumDisplaySettingsW(screen.DeviceName, -1, ref dm) && dm.dmDisplayFrequency > 1)
                     {
-                        list.Add(dm.dmDisplayFrequency);
+                        dmDisplayFrequencies.Add(dm.dmDisplayFrequency);
                     }
                 }
             }
             catch
             {
             }
-            return list;
+            return dmDisplayFrequencies;
         }
 
         internal static void QueryRefreshRates(out int current, out int best)

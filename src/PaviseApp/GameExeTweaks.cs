@@ -5,7 +5,6 @@ namespace PaviseApp
 {
     internal static class GameExeTweaks
     {
-        private const string GpuKey = "SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences";
 
         internal static string ReadField(string current, string field)
         {

@@ -4,7 +4,6 @@ namespace PaviseApp
 {
     internal static class SvcPause
     {
-        private const string Flag = "PrevSvcPaused";
 
         internal static readonly string[] Names = new string[2] { "SysMain", "WSearch" };
 

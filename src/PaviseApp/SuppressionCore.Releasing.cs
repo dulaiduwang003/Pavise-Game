@@ -154,10 +154,10 @@ namespace PaviseApp
             BeginJournalDefer();
             try
             {
-                foreach (int item in pids)
+                foreach (int pid in pids)
                 {
                     bool had;
-                    releasedCount += ReleaseOne(item, reason, out had);
+                    releasedCount += ReleaseOne(pid, reason, out had);
                 }
                 return releasedCount;
             }

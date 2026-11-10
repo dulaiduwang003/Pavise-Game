@@ -237,10 +237,10 @@ namespace PaviseApp
         }
         private bool CachedEnvironmentPreference(string key)
         {
-            bool value;
-            if (environmentPreferenceOverrides.TryGetValue(key, out value))
+            bool environmentPreferenceOverride;
+            if (environmentPreferenceOverrides.TryGetValue(key, out environmentPreferenceOverride))
             {
-                return value;
+                return environmentPreferenceOverride;
             }
             EnvironmentGraphicsObservation snapshot = environmentObservation.Snapshot;
             if (snapshot == null)
@@ -259,8 +259,7 @@ namespace PaviseApp
         }
         private static bool HasPerformanceEnvironmentGraphics(PerformanceRestartScope scope)
         {
-            string[] textEntries = new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" };
-            foreach (string key in textEntries)
+            foreach (string key in new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" })
             {
                 if (PerformanceRestartFor(key) == scope)
                 {
@@ -284,49 +283,48 @@ namespace PaviseApp
         {
             bool fullyConfigured = configured == 2;
             bool partlyConfigured = configured == 1;
-            HagsUiPresentation hagsUiPresentation = new HagsUiPresentation();
-            hagsUiPresentation.Checked = partlyConfigured ? false : (owned || fullyConfigured || (known && on));
-            hagsUiPresentation.External = !owned && (fullyConfigured || (known && on));
-            hagsUiPresentation.Ink = Theme.Dim;
-            HagsUiPresentation hagsUiPresentation2 = hagsUiPresentation;
-            hagsUiPresentation2.Editable = known && supported;
+            HagsUiPresentation currentHagsUiPresentation = new HagsUiPresentation();
+            currentHagsUiPresentation.Checked = partlyConfigured ? false : (owned || fullyConfigured || (known && on));
+            currentHagsUiPresentation.External = !owned && (fullyConfigured || (known && on));
+            currentHagsUiPresentation.Ink = Theme.Dim;
+            currentHagsUiPresentation.Editable = known && supported;
             if (owned && !fullyConfigured)
             {
-                hagsUiPresentation2.Status = (partlyConfigured ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
-                hagsUiPresentation2.Status += ((!known) ? AutoText(" · 当前未核验", " · current state unverified") : (on ? AutoText(" · 当前已开启", " · currently on") : AutoText(" · 当前已关闭", " · currently off")));
-                hagsUiPresentation2.Ink = Theme.Warning;
-                return hagsUiPresentation2;
+                currentHagsUiPresentation.Status = (partlyConfigured ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
+                currentHagsUiPresentation.Status += ((!known) ? AutoText(" · 当前未核验", " · current state unverified") : (on ? AutoText(" · 当前已开启", " · currently on") : AutoText(" · 当前已关闭", " · currently off")));
+                currentHagsUiPresentation.Ink = Theme.Warning;
+                return currentHagsUiPresentation;
             }
             if (!known)
             {
-                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (partlyConfigured ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
+                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (partlyConfigured ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
                 if (owned || fullyConfigured)
                 {
-                    hagsUiPresentation2.Ink = Theme.Warning;
+                    currentHagsUiPresentation.Ink = Theme.Warning;
                 }
             }
             else if (!supported)
             {
-                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
+                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
                 if (owned || fullyConfigured)
                 {
-                    hagsUiPresentation2.Ink = Theme.Warning;
+                    currentHagsUiPresentation.Ink = Theme.Warning;
                 }
             }
             else if (on)
             {
-                hagsUiPresentation2.Status = (partlyConfigured ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
-                hagsUiPresentation2.Ink = (partlyConfigured ? Theme.Warning : Theme.Accent);
+                currentHagsUiPresentation.Status = (partlyConfigured ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
+                currentHagsUiPresentation.Ink = (partlyConfigured ? Theme.Warning : Theme.Accent);
             }
             else
             {
-                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
+                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
                 if (owned || fullyConfigured)
                 {
-                    hagsUiPresentation2.Ink = Theme.Warning;
+                    currentHagsUiPresentation.Ink = Theme.Warning;
                 }
             }
-            return hagsUiPresentation2;
+            return currentHagsUiPresentation;
         }
         private HagsUiPresentation CachedHagsPresentation()
         {
@@ -348,12 +346,11 @@ namespace PaviseApp
             if (key == "AutoGlobalTimer")
             {
                 string readback = Lang.F("env.gtimer.readback", "0.5000", "15.6250", "0.5000");
-                string[] textEntries = new string[14]
+                foreach (string entryText in new string[14]
                 {
                     "ready", "timer-locked", "timer-limited", "timer-unverified", "pending-reboot", "restore-pending-reboot", "unverified", "failed", "stopped", "restore-failed",
                     "restored", "unsupported", "timer-requested", ""
-                };
-                foreach (string entryText in textEntries)
+                })
                 {
                     fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, true, readback), ScrollContentW, host, 88));
                     fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, false, readback), ScrollContentW, host, 88));

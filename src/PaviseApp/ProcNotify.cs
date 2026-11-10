@@ -8,11 +8,6 @@ namespace PaviseApp
 {
     internal sealed class ProcNotify
     {
-        private const int FastStartMinGapMs = 250;
-
-        private const int WindowMs = 750;
-
-        private const int MaxBatchChanges = 256;
 
         public Func<string, int, bool> CaptureStartIdentity;
 
@@ -145,8 +140,8 @@ namespace PaviseApp
                 {
                     return;
                 }
-                IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-                if (intPtr == IntPtr.Zero)
+                IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+                if (processHandle == IntPtr.Zero)
                 {
                     return;
                 }
@@ -154,15 +149,15 @@ namespace PaviseApp
                 int sessionId;
                 try
                 {
-                    name = ResolveCurrentProcessName(Native.ImagePath(intPtr));
-                    if (!Native.TryGetLiveProcessSessionId(intPtr, pid, out sessionId))
+                    name = ResolveCurrentProcessName(Native.ImagePath(processHandle));
+                    if (!Native.TryGetLiveProcessSessionId(processHandle, pid, out sessionId))
                     {
                         return;
                     }
                 }
                 finally
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
                 FastTrackMaybe(name, sessionId);
             }
@@ -237,12 +232,12 @@ namespace PaviseApp
                         string name = Convert.ToString(newEvent["ProcessName"]);
                         if (pidValue > 0)
                         {
-                            ProcessChange processChange2 = new ProcessChange();
-                            processChange2.Pid = pidValue;
-                            processChange2.Name = StripExe(name);
-                            processChange2.Kind = kind;
-                            processChange2.Sequence = Interlocked.Increment(ref sequence);
-                            processChange = processChange2;
+                            ProcessChange currentProcessChange = new ProcessChange();
+                            currentProcessChange.Pid = pidValue;
+                            currentProcessChange.Name = StripExe(name);
+                            currentProcessChange.Kind = kind;
+                            currentProcessChange.Sequence = Interlocked.Increment(ref sequence);
+                            processChange = currentProcessChange;
                             try
                             {
                                 processChange.ParentPid = Convert.ToInt32(newEvent["ParentProcessID"]);
@@ -287,47 +282,47 @@ namespace PaviseApp
                                     processChange.Name = "";
                                     processChange.Path = null;
                                     processChange.Creation = 0L;
-                                    IntPtr intPtr = Native.OpenProcess(1052672, false, pidValue);
-                                    if (intPtr != IntPtr.Zero)
+                                    IntPtr processHandle = Native.OpenProcess(1052672, false, pidValue);
+                                    if (processHandle != IntPtr.Zero)
                                     {
                                         try
                                         {
-                                            string pathValue = Native.ImagePath(intPtr);
+                                            string pathValue = Native.ImagePath(processHandle);
                                             string nameValue = ResolveCurrentProcessName(pathValue);
                                             int sessionId;
-                                            int sessionValue = ResolveVerifiedSessionId(session, Native.TryGetLiveProcessSessionId(intPtr, pidValue, out sessionId), sessionId);
+                                            int sessionValue = ResolveVerifiedSessionId(session, Native.TryGetLiveProcessSessionId(processHandle, pidValue, out sessionId), sessionId);
                                             long creation;
                                             long cpu;
                                             ulong io;
-                                            if (sessionValue >= 0 && nameValue.Length > 0 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
+                                            if (sessionValue >= 0 && nameValue.Length > 0 && Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation > 0)
                                             {
                                                 processChange.Session = sessionValue;
                                                 processChange.Name = nameValue;
                                                 processChange.Path = pathValue;
                                                 processChange.Creation = creation;
-                                                processChange.ParentPid = ResolveVerifiedParentPid(parentPid, Native.ParentProcessId(intPtr));
+                                                processChange.ParentPid = ResolveVerifiedParentPid(parentPid, Native.ParentProcessId(processHandle));
                                             }
                                         }
                                         finally
                                         {
-                                            Native.CloseHandle(intPtr);
+                                            Native.CloseHandle(processHandle);
                                         }
                                     }
                                 }
                                 if (captureParent && processChange.ParentPid > 0)
                                 {
-                                    IntPtr intPtr2 = Native.OpenProcess(4096, false, processChange.ParentPid);
-                                    if (intPtr2 != IntPtr.Zero)
+                                    IntPtr currentProcessHandle = Native.OpenProcess(4096, false, processChange.ParentPid);
+                                    if (currentProcessHandle != IntPtr.Zero)
                                     {
                                         try
                                         {
                                             long cpu2;
                                             ulong io2;
-                                            Native.QueryProcessSample(intPtr2, out processChange.ParentCreation, out cpu2, out io2);
+                                            Native.QueryProcessSample(currentProcessHandle, out processChange.ParentCreation, out cpu2, out io2);
                                         }
                                         finally
                                         {
-                                            Native.CloseHandle(intPtr2);
+                                            Native.CloseHandle(currentProcessHandle);
                                         }
                                     }
                                 }
@@ -442,14 +437,14 @@ namespace PaviseApp
                 Delegate[] invocationList2 = changed.GetInvocationList();
                 for (int j = 0; j < invocationList2.Length; j++)
                 {
-                    Action action2 = (Action)invocationList2[j];
+                    Action currentAction = (Action)invocationList2[j];
                     if (!IsAccepting(generation))
                     {
                         break;
                     }
                     try
                     {
-                        action2();
+                        currentAction();
                     }
                     catch
                     {

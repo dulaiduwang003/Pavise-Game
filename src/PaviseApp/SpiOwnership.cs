@@ -159,9 +159,9 @@ namespace PaviseApp
             using (enter())
             {
                 proof.RequireCurrent();
-                foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+                foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
                 {
-                    if (item.Id == "MatchVisualEffectsV1")
+                    if (all.Id == "MatchVisualEffectsV1")
                     {
                         throw new InvalidDataException("Visual recovery appeared before SPI bootstrap commit");
                     }
@@ -213,16 +213,16 @@ namespace PaviseApp
                 proof.RequireCurrent();
                 using (new SharedSpiLegacyMigration.PrimitiveScope(proof))
                 {
-                    foreach (SpiLegacyMigrationMember value in proof.Migration.Members.Values)
+                    foreach (SpiLegacyMigrationMember migrationItem in proof.Migration.Members.Values)
                     {
-                        if (!PerformanceActionStore.RestoreLegacyVisualBeforeInitialization(proof.Migration.Current(value.Target)))
+                        if (!PerformanceActionStore.RestoreLegacyVisualBeforeInitialization(proof.Migration.Current(migrationItem.Target)))
                         {
                             throw new IOException("Legacy visual original restoration remains unconfirmed");
                         }
                     }
-                    foreach (SpiLegacyMigrationMember value2 in proof.Migration.Members.Values)
+                    foreach (SpiLegacyMigrationMember migrationItem in proof.Migration.Members.Values)
                     {
-                        PerformanceActionStore.Receipt receipt = proof.Migration.Current(value2.Target);
+                        PerformanceActionStore.Receipt receipt = proof.Migration.Current(migrationItem.Target);
                         if (!receipt.VisualRestored || PerformanceActionBackend.Read(receipt.Id, receipt.Target) != receipt.Original)
                         {
                             throw new IOException("Legacy original readback changed before initialization");
@@ -255,9 +255,9 @@ namespace PaviseApp
                     return;
                 }
                 bool hasUnownedVisualReceipt = false;
-                foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+                foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
                 {
-                    if (item.Id == "MatchVisualEffectsV1" && string.IsNullOrEmpty(item.VisualOwner))
+                    if (all.Id == "MatchVisualEffectsV1" && string.IsNullOrEmpty(all.VisualOwner))
                     {
                         hasUnownedVisualReceipt = true;
                     }

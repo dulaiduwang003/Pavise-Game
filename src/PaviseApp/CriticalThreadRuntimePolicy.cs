@@ -89,13 +89,12 @@ namespace PaviseApp
                 coverage = HardThreadCoverage.Complete;
                 return ordered;
             }
-            HashSet<string> hashSet = new HashSet<string>((receipts ?? new HardThreadOwnership[0]).Select((HardThreadOwnership x) => x.Thread.Key), StringComparer.Ordinal);
-            List<HardThreadIdentity> list = new List<HardThreadIdentity>();
+            HashSet<string> textsSet = new HashSet<string>((receipts ?? new HardThreadOwnership[0]).Select((HardThreadOwnership x) => x.Thread.Key), StringComparer.Ordinal);
+            List<HardThreadIdentity> threads = new List<HardThreadIdentity>();
             int processedCount = 0;
-            HardThreadChoice[] choices = plan.Choices;
-            foreach (HardThreadChoice hardThreadChoice in choices)
+            foreach (HardThreadChoice hardThreadChoice in plan.Choices)
             {
-                list.Add(hardThreadChoice.Thread);
+                threads.Add(hardThreadChoice.Thread);
             }
             for (int j = 0; j < sample.Ids.Length; j++)
             {
@@ -104,18 +103,18 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                bool isInHashSet = hashSet.Contains(hardThreadIdentity.Key);
-                if ((isInHashSet || processedCount < 8) && list.Count < 512)
+                bool isInHashSet = textsSet.Contains(hardThreadIdentity.Key);
+                if ((isInHashSet || processedCount < 8) && threads.Count < 512)
                 {
-                    list.Add(hardThreadIdentity);
+                    threads.Add(hardThreadIdentity);
                     if (!isInHashSet)
                     {
                         processedCount++;
                     }
                 }
             }
-            coverage = ((list.Count != sample.Ids.Length) ? HardThreadCoverage.Partial : HardThreadCoverage.Complete);
-            return list.ToArray();
+            coverage = ((threads.Count != sample.Ids.Length) ? HardThreadCoverage.Partial : HardThreadCoverage.Complete);
+            return threads.ToArray();
         }
 
         internal static bool Verified(ThreadTimes sample, HardThreadPlan plan, HardThreadOwnership[] receipts, long auditStartedUtc, out int candidates, out int workers, out bool complete)
@@ -126,12 +125,12 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<SampleThreadIdentity> hashSet = new HashSet<SampleThreadIdentity>();
+            HashSet<SampleThreadIdentity> sampleThreadIdentitiesSet = new HashSet<SampleThreadIdentity>();
             int eligibleReceipts = 0;
             foreach (HardThreadOwnership hardThreadOwnership in receipts)
             {
                 if (hardThreadOwnership == null || hardThreadOwnership.Thread == null
-                    || !hashSet.Add(new SampleThreadIdentity(hardThreadOwnership.Thread.Tid, hardThreadOwnership.Thread.Creation)))
+                    || !sampleThreadIdentitiesSet.Add(new SampleThreadIdentity(hardThreadOwnership.Thread.Tid, hardThreadOwnership.Thread.Creation)))
                 {
                     return false;
                 }
@@ -148,17 +147,16 @@ namespace PaviseApp
             HardThreadOwnership[] whereItems = receipts.Where((HardThreadOwnership x) => x != null && x.Group == plan.Group
                 && x.VerifiedUtcTicks >= auditStartedUtc && (sampleIdentities == null ? Contains(sample, x.Thread)
                     : sampleIdentities.Contains(new SampleThreadIdentity(x.Thread.Tid, x.Thread.Creation)))).ToArray();
-            HardThreadOwnership[] hardThreadOwnershipItems = whereItems;
-            foreach (HardThreadOwnership hardThreadOwnership2 in hardThreadOwnershipItems)
+            foreach (HardThreadOwnership hardThreadOwnershipItem in whereItems)
             {
-                if (plan.IsCandidate(hardThreadOwnership2.Thread))
+                if (plan.IsCandidate(hardThreadOwnershipItem.Thread))
                 {
-                    if (hardThreadOwnership2.Mask == plan.MaskFor(hardThreadOwnership2.Thread))
+                    if (hardThreadOwnershipItem.Mask == plan.MaskFor(hardThreadOwnershipItem.Thread))
                     {
                         candidates++;
                     }
                 }
-                else if (plan.WorkerMode == HardThreadWorkerMode.AvoidWorkers && hardThreadOwnership2.Mask == plan.Workers)
+                else if (plan.WorkerMode == HardThreadWorkerMode.AvoidWorkers && hardThreadOwnershipItem.Mask == plan.Workers)
                 {
                     workers++;
                 }

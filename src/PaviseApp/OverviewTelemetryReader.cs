@@ -124,14 +124,6 @@ namespace PaviseApp
 
         internal const string GpuScopeDescription = "Busiest 3D engine across all adapters";
 
-        private const uint PdhMoreData = 2147485650u;
-
-        private const uint PdhDouble = 512u;
-
-        private const uint PdhNoCap100 = 32768u;
-
-        private const uint MaximumGpuBuffer = 4194304u;
-
         private static readonly object hardwareGate = new object();
 
         private static OverviewHardwareInfo cachedHardware;
@@ -183,13 +175,13 @@ namespace PaviseApp
             }
             try
             {
-                DisplayMode value = default(DisplayMode);
-                value.Size = (ushort)Marshal.SizeOf(typeof(DisplayMode));
-                if (EnumDisplaySettingsW(string.IsNullOrWhiteSpace(displayDeviceName) ? null : displayDeviceName, -1, ref value))
+                DisplayMode displayMode = default(DisplayMode);
+                displayMode.Size = (ushort)Marshal.SizeOf(typeof(DisplayMode));
+                if (EnumDisplaySettingsW(string.IsNullOrWhiteSpace(displayDeviceName) ? null : displayDeviceName, -1, ref displayMode))
                 {
-                    overviewHardwareInfo.DisplayWidth = Math.Max(0, value.PelsWidth);
-                    overviewHardwareInfo.DisplayHeight = Math.Max(0, value.PelsHeight);
-                    overviewHardwareInfo.DisplayRefreshRate = ((value.DisplayFrequency > 1) ? value.DisplayFrequency : 0);
+                    overviewHardwareInfo.DisplayWidth = Math.Max(0, displayMode.PelsWidth);
+                    overviewHardwareInfo.DisplayHeight = Math.Max(0, displayMode.PelsHeight);
+                    overviewHardwareInfo.DisplayRefreshRate = ((displayMode.DisplayFrequency > 1) ? displayMode.DisplayFrequency : 0);
                 }
             }
             catch
@@ -203,25 +195,24 @@ namespace PaviseApp
             lock (gate)
             {
                 ThrowIfDisposed();
-                OverviewResourceSnapshot overviewResourceSnapshot = new OverviewResourceSnapshot();
-                overviewResourceSnapshot.GpuUsageDescription = "Busiest 3D engine across all adapters";
-                OverviewResourceSnapshot overviewResourceSnapshot2 = overviewResourceSnapshot;
-                overviewResourceSnapshot2.CpuPercent = SampleCpu();
+                OverviewResourceSnapshot currentOverviewResourceSnapshot = new OverviewResourceSnapshot();
+                currentOverviewResourceSnapshot.GpuUsageDescription = "Busiest 3D engine across all adapters";
+                currentOverviewResourceSnapshot.CpuPercent = SampleCpu();
                 try
                 {
                     MemoryStatus memory = default(MemoryStatus);
                     memory.Length = (uint)Marshal.SizeOf(typeof(MemoryStatus));
                     if (GlobalMemoryStatusEx(ref memory) && memory.TotalPhysical != 0 && memory.AvailablePhysical <= memory.TotalPhysical)
                     {
-                        overviewResourceSnapshot2.TotalMemoryBytes = memory.TotalPhysical;
-                        overviewResourceSnapshot2.UsedMemoryBytes = memory.TotalPhysical - memory.AvailablePhysical;
+                        currentOverviewResourceSnapshot.TotalMemoryBytes = memory.TotalPhysical;
+                        currentOverviewResourceSnapshot.UsedMemoryBytes = memory.TotalPhysical - memory.AvailablePhysical;
                     }
                 }
                 catch
                 {
                 }
-                overviewResourceSnapshot2.GpuPercent = SampleGpu();
-                return overviewResourceSnapshot2;
+                currentOverviewResourceSnapshot.GpuPercent = SampleGpu();
+                return currentOverviewResourceSnapshot;
             }
         }
 
@@ -337,12 +328,12 @@ namespace PaviseApp
             {
                 if (bytes > gpuBufferCapacity)
                 {
-                    IntPtr intPtr = Marshal.AllocHGlobal((int)bytes);
+                    IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bytes);
                     if (gpuBuffer != IntPtr.Zero)
                     {
                         Marshal.FreeHGlobal(gpuBuffer);
                     }
-                    gpuBuffer = intPtr;
+                    gpuBuffer = nativeBuffer;
                     gpuBufferCapacity = bytes;
                 }
                 bytes = gpuBufferCapacity;
@@ -360,16 +351,16 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                List<KeyValuePair<string, double>> list = new List<KeyValuePair<string, double>>((int)count);
+                List<KeyValuePair<string, double>> keyValuePairs = new List<KeyValuePair<string, double>>((int)count);
                 for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
                 {
                     PdhValueItem pdhValueItem = (PdhValueItem)Marshal.PtrToStructure(new IntPtr(gpuBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhValueItem));
                     if (pdhValueItem.Value.Status <= 1 && pdhValueItem.Name != IntPtr.Zero)
                     {
-                        list.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
+                        keyValuePairs.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
                     }
                 }
-                return AggregateGpu3D(list);
+                return AggregateGpu3D(keyValuePairs);
             }
             return null;
         }
@@ -380,25 +371,25 @@ namespace PaviseApp
             {
                 return null;
             }
-            Dictionary<string, double> dictionary = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<string, double> value2 in values)
+            Dictionary<string, double> minsByGpuEngineKeyResult = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, double> valueEntry in values)
             {
-                string gpuEngineKeyResult = GpuEngineKey(value2.Key);
-                if (gpuEngineKeyResult != null && !double.IsNaN(value2.Value) && !double.IsInfinity(value2.Value) && !(value2.Value < 0.0))
+                string gpuEngineKeyResult = GpuEngineKey(valueEntry.Key);
+                if (gpuEngineKeyResult != null && !double.IsNaN(valueEntry.Value) && !double.IsInfinity(valueEntry.Value) && !(valueEntry.Value < 0.0))
                 {
-                    double value;
-                    dictionary.TryGetValue(gpuEngineKeyResult, out value);
-                    dictionary[gpuEngineKeyResult] = Math.Min(100.0, value + Math.Min(100.0, value2.Value));
+                    double min;
+                    minsByGpuEngineKeyResult.TryGetValue(gpuEngineKeyResult, out min);
+                    minsByGpuEngineKeyResult[gpuEngineKeyResult] = Math.Min(100.0, min + Math.Min(100.0, valueEntry.Value));
                 }
             }
-            if (dictionary.Count == 0)
+            if (minsByGpuEngineKeyResult.Count == 0)
             {
                 return null;
             }
             double aggregateGpu3DResult = 0.0;
-            foreach (double value3 in dictionary.Values)
+            foreach (double processLoad in minsByGpuEngineKeyResult.Values)
             {
-                double maximumGpuPercent = value3;
+                double maximumGpuPercent = processLoad;
                 aggregateGpu3DResult = Math.Max(aggregateGpu3DResult, maximumGpuPercent);
             }
             return aggregateGpu3DResult;
@@ -551,21 +542,21 @@ namespace PaviseApp
             {
                 return 0;
             }
-            IntPtr intPtr = Marshal.AllocHGlobal((int)bytes);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bytes);
             try
             {
-                if (!GetLogicalProcessorInformationEx(0, intPtr, ref bytes))
+                if (!GetLogicalProcessorInformationEx(0, nativeBuffer, ref bytes))
                 {
                     return 0;
                 }
                 int processedCount = 0;
-                long numericValue;
+                long recordOffset;
                 int physicalCoreCountValue;
-                for (numericValue = 0L; numericValue + 8 <= bytes; numericValue += physicalCoreCountValue)
+                for (recordOffset = 0L; recordOffset + 8 <= bytes; recordOffset += physicalCoreCountValue)
                 {
-                    IntPtr ptr = new IntPtr(intPtr.ToInt64() + numericValue);
+                    IntPtr ptr = new IntPtr(nativeBuffer.ToInt64() + recordOffset);
                     physicalCoreCountValue = Marshal.ReadInt32(ptr, 4);
-                    if (physicalCoreCountValue < 8 || numericValue + physicalCoreCountValue > bytes)
+                    if (physicalCoreCountValue < 8 || recordOffset + physicalCoreCountValue > bytes)
                     {
                         return 0;
                     }
@@ -574,11 +565,11 @@ namespace PaviseApp
                         processedCount++;
                     }
                 }
-                return (numericValue == bytes) ? processedCount : 0;
+                return (recordOffset == bytes) ? processedCount : 0;
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 
@@ -587,11 +578,10 @@ namespace PaviseApp
             MemoryFacts memoryFacts = new MemoryFacts();
             try
             {
-                EnumerationOptions enumerationOptions = new EnumerationOptions();
-                enumerationOptions.Timeout = TimeSpan.FromMilliseconds(1200.0);
-                enumerationOptions.ReturnImmediately = false;
-                enumerationOptions.Rewindable = false;
-                EnumerationOptions options = enumerationOptions;
+                EnumerationOptions options = new EnumerationOptions();
+                options.Timeout = TimeSpan.FromMilliseconds(1200.0);
+                options.ReturnImmediately = false;
+                options.Rewindable = false;
                 using (ManagementObjectSearcher managementObjectSearcher = new ManagementObjectSearcher(new ManagementScope("\\\\.\\root\\cimv2"), new ObjectQuery("SELECT Capacity, SMBIOSMemoryType, ConfiguredClockSpeed FROM Win32_PhysicalMemory"), options))
                 {
                     using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
@@ -602,21 +592,21 @@ namespace PaviseApp
                         bool typeKnown = true;
                         bool speedKnown = true;
                         bool capacityKnown = true;
-                        ulong numericValue = 0uL;
-                        foreach (ManagementObject item in managementObjectCollection)
+                        ulong totalModuleCapacity = 0uL;
+                        foreach (ManagementObject currentManagementObjectCollection in managementObjectCollection)
                         {
-                            using (item)
+                            using (currentManagementObjectCollection)
                             {
-                                ulong toUnsignedResult = ToUnsigned(item["Capacity"]);
-                                if (toUnsignedResult == 0 || toUnsignedResult > (ulong)(-1L - (long)numericValue))
+                                ulong toUnsignedResult = ToUnsigned(currentManagementObjectCollection["Capacity"]);
+                                if (toUnsignedResult == 0 || toUnsignedResult > (ulong)(-1L - (long)totalModuleCapacity))
                                 {
                                     capacityKnown = false;
                                 }
                                 else
                                 {
-                                    numericValue += toUnsignedResult;
+                                    totalModuleCapacity += toUnsignedResult;
                                 }
-                                string memoryTypeNameResult = MemoryTypeName((int)ToUnsigned(item["SMBIOSMemoryType"]));
+                                string memoryTypeNameResult = MemoryTypeName((int)ToUnsigned(currentManagementObjectCollection["SMBIOSMemoryType"]));
                                 if (memoryTypeNameResult == null || (message != null && message != memoryTypeNameResult))
                                 {
                                     typeKnown = false;
@@ -625,7 +615,7 @@ namespace PaviseApp
                                 {
                                     message = memoryTypeNameResult;
                                 }
-                                ulong toUnsignedResult2 = ToUnsigned(item["ConfiguredClockSpeed"]);
+                                ulong toUnsignedResult2 = ToUnsigned(currentManagementObjectCollection["ConfiguredClockSpeed"]);
                                 if (toUnsignedResult2 == 0 || toUnsignedResult2 > 100000)
                                 {
                                     speedKnown = false;
@@ -641,7 +631,7 @@ namespace PaviseApp
                         {
                             memoryFacts.Type = (typeKnown ? message : null);
                             memoryFacts.Speed = ((speedKnown && maxValue != int.MaxValue) ? maxValue : 0);
-                            memoryFacts.Capacity = (capacityKnown ? numericValue : 0);
+                            memoryFacts.Capacity = (capacityKnown ? totalModuleCapacity : 0);
                         }
                     }
                 }

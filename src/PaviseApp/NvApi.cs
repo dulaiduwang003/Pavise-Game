@@ -192,46 +192,6 @@ namespace PaviseApp
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate int FnPowerStatus(IntPtr gpu, ref NvPowerStatus status);
 
-        private const uint IdInitialize = 22079528u;
-
-        private const uint IdDrsCreateSession = 110417198u;
-
-        private const uint IdDrsDestroySession = 3671707640u;
-
-        private const uint IdDrsLoadSettings = 928890219u;
-
-        private const uint IdDrsSaveSettings = 4240211476u;
-
-        private const uint IdDrsCreateProfile = 3424084072u;
-
-        private const uint IdDrsCreateApplication = 1128770014u;
-
-        private const uint IdDrsFindApplicationByName = 4008011442u;
-
-        private const uint IdDrsSetSetting = 1467863554u;
-
-        private const uint IdDrsGetSetting = 1941930808u;
-
-        private const uint IdDrsDeleteProfileSetting = 3835847522u;
-
-        private const uint IdDrsGetBaseProfile = 3666110112u;
-
-        private const uint IdDrsGetSettingNameFromId = 3592207982u;
-
-        private const uint IdDrsEnumAvailableSettingIds = 4028653898u;
-
-        private const uint IdEnumPhysicalGPUs = 3853292063u;
-
-        private const uint IdGpuGetPerfDecreaseInfo = 2139047424u;
-
-        private const uint IdSysGetDriverAndBranchVersion = 690399917u;
-
-        private const uint IdClientPowerPoliciesGetInfo = 874540422u;
-
-        private const uint IdClientPowerPoliciesGetStatus = 1888575857u;
-
-        private const uint IdClientPowerPoliciesSetStatus = 2912286189u;
-
         public const uint SettingPreferredPState = 274197361u;
 
         public const uint SettingFrlFps = 277041154u;
@@ -390,10 +350,10 @@ namespace PaviseApp
 
         private static T Resolve<T>(uint id) where T : class
         {
-            IntPtr intPtr = QueryInterface(id);
-            if (intPtr != IntPtr.Zero)
+            IntPtr interfaceHandle = QueryInterface(id);
+            if (interfaceHandle != IntPtr.Zero)
             {
-                return (T)(object)Marshal.GetDelegateForFunctionPointer(intPtr, typeof(T));
+                return (T)(object)Marshal.GetDelegateForFunctionPointer(interfaceHandle, typeof(T));
             }
             return null;
         }
@@ -463,13 +423,13 @@ namespace PaviseApp
             {
                 if (disposable != null)
                 {
-                    IntPtr intPtr = session;
+                    IntPtr sessionHandle = session;
                     session = IntPtr.Zero;
                     try
                     {
-                        if (intPtr != IntPtr.Zero && drsDestroySession != null)
+                        if (sessionHandle != IntPtr.Zero && drsDestroySession != null)
                         {
-                            drsDestroySession(intPtr);
+                            drsDestroySession(sessionHandle);
                         }
                     }
                     finally
@@ -525,27 +485,24 @@ namespace PaviseApp
             try
             {
                 RequireDrsPermit(session);
-                DrsApplication drsApplication = default(DrsApplication);
-                drsApplication.Version = VersionOf<DrsApplication>(1);
-                DrsApplication app = drsApplication;
+                DrsApplication app = default(DrsApplication);
+                app.Version = VersionOf<DrsApplication>(1);
                 if (drsFindApp(session, exeName, out profile, ref app) == 0 && profile != IntPtr.Zero)
                 {
                     return true;
                 }
-                DrsProfile drsProfile = default(DrsProfile);
-                drsProfile.Version = VersionOf<DrsProfile>(1);
-                drsProfile.ProfileName = "Pavise - " + exeName;
-                DrsProfile profile2 = drsProfile;
+                DrsProfile profile2 = default(DrsProfile);
+                profile2.Version = VersionOf<DrsProfile>(1);
+                profile2.ProfileName = "Pavise - " + exeName;
                 if (drsCreateProfile(session, ref profile2, out profile) != 0 || profile == IntPtr.Zero)
                 {
                     return false;
                 }
-                DrsApplication drsApplication2 = default(DrsApplication);
-                drsApplication2.Version = VersionOf<DrsApplication>(1);
-                drsApplication2.AppName = exeName;
-                drsApplication2.UserFriendlyName = exeName;
-                drsApplication2.Launcher = "";
-                DrsApplication app2 = drsApplication2;
+                DrsApplication app2 = default(DrsApplication);
+                app2.Version = VersionOf<DrsApplication>(1);
+                app2.AppName = exeName;
+                app2.UserFriendlyName = exeName;
+                app2.Launcher = "";
                 return drsCreateApp(session, profile, ref app2) == 0;
             }
             catch
@@ -561,9 +518,8 @@ namespace PaviseApp
             try
             {
                 RequireDrsPermit(session);
-                DrsSetting drsSetting = default(DrsSetting);
-                drsSetting.Version = VersionOf<DrsSetting>(1);
-                DrsSetting setting = drsSetting;
+                DrsSetting setting = default(DrsSetting);
+                setting.Version = VersionOf<DrsSetting>(1);
                 switch (drsGetSetting(session, profile, settingId, ref setting))
                 {
                 case -160:
@@ -596,12 +552,11 @@ namespace PaviseApp
             try
             {
                 RequireDrsPermit(session);
-                DrsSetting drsSetting = default(DrsSetting);
-                drsSetting.Version = VersionOf<DrsSetting>(1);
-                drsSetting.SettingId = settingId;
-                drsSetting.SettingType = 0u;
-                drsSetting.CurrentValue = value;
-                DrsSetting setting = drsSetting;
+                DrsSetting setting = default(DrsSetting);
+                setting.Version = VersionOf<DrsSetting>(1);
+                setting.SettingId = settingId;
+                setting.SettingType = 0u;
+                setting.CurrentValue = value;
                 status = drsSetSetting(session, profile, ref setting);
                 return status == 0;
             }
@@ -652,9 +607,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                DrsSetting drsSetting = default(DrsSetting);
-                drsSetting.Version = VersionOf<DrsSetting>(1);
-                DrsSetting setting = drsSetting;
+                DrsSetting setting = default(DrsSetting);
+                setting.Version = VersionOf<DrsSetting>(1);
                 return drsGetSetting(session, profile, settingId, ref setting) == 0 && setting.SettingType == 0;
             }
             catch
@@ -714,15 +668,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = Marshal.AllocHGlobal(4096);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(4096);
             try
             {
-                Marshal.WriteInt16(intPtr, 0, 0);
-                if (drsSettingName(settingId, intPtr) != 0)
+                Marshal.WriteInt16(nativeBuffer, 0, 0);
+                if (drsSettingName(settingId, nativeBuffer) != 0)
                 {
                     return false;
                 }
-                name = Marshal.PtrToStringUni(intPtr);
+                name = Marshal.PtrToStringUni(nativeBuffer);
                 return !string.IsNullOrEmpty(name);
             }
             catch
@@ -731,7 +685,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 
@@ -745,14 +699,14 @@ namespace PaviseApp
             try
             {
                 uint maxCount = 2048u;
-                uint[] numericValueItems = new uint[2048];
-                if (drsEnumSettingIds(numericValueItems, ref maxCount) != 0 || maxCount == 0 || maxCount > 2048)
+                uint[] settingIdBuffer = new uint[2048];
+                if (drsEnumSettingIds(settingIdBuffer, ref maxCount) != 0 || maxCount == 0 || maxCount > 2048)
                 {
                     return null;
                 }
-                uint[] numericValueItems2 = new uint[maxCount];
-                Array.Copy(numericValueItems, numericValueItems2, (int)maxCount);
-                return numericValueItems2;
+                uint[] availableSettingIds = new uint[maxCount];
+                Array.Copy(settingIdBuffer, availableSettingIds, (int)maxCount);
+                return availableSettingIds;
             }
             catch
             {
@@ -849,28 +803,26 @@ namespace PaviseApp
             def = 0u;
             max = 0u;
             EnsurePowerResolved();
-            IntPtr intPtr = FirstPhysicalGpu();
-            if (powerGetInfo == null || powerGetStatus == null || intPtr == IntPtr.Zero)
+            IntPtr firstPhysicalGpuHandle = FirstPhysicalGpu();
+            if (powerGetInfo == null || powerGetStatus == null || firstPhysicalGpuHandle == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                NvPowerInfo nvPowerInfo = default(NvPowerInfo);
-                nvPowerInfo.Version = 65720u;
-                nvPowerInfo.Entries = new NvPowerInfoEntry[4];
-                NvPowerInfo info = nvPowerInfo;
-                if (powerGetInfo(intPtr, ref info) != 0 || info.Count == 0)
+                NvPowerInfo info = default(NvPowerInfo);
+                info.Version = 65720u;
+                info.Entries = new NvPowerInfoEntry[4];
+                if (powerGetInfo(firstPhysicalGpuHandle, ref info) != 0 || info.Count == 0)
                 {
                     return false;
                 }
                 def = info.Entries[0].DefPower;
                 max = info.Entries[0].MaxPower;
-                NvPowerStatus nvPowerStatus = default(NvPowerStatus);
-                nvPowerStatus.Version = 65608u;
-                nvPowerStatus.Entries = new NvPowerStatusEntry[4];
-                NvPowerStatus status = nvPowerStatus;
-                if (powerGetStatus(intPtr, ref status) != 0)
+                NvPowerStatus status = default(NvPowerStatus);
+                status.Version = 65608u;
+                status.Entries = new NvPowerStatusEntry[4];
+                if (powerGetStatus(firstPhysicalGpuHandle, ref status) != 0)
                 {
                     return false;
                 }
@@ -886,20 +838,19 @@ namespace PaviseApp
         public static bool TrySetPowerLimit(uint value)
         {
             EnsurePowerResolved();
-            IntPtr intPtr = FirstPhysicalGpu();
-            if (powerSetStatus == null || intPtr == IntPtr.Zero)
+            IntPtr firstPhysicalGpuHandle = FirstPhysicalGpu();
+            if (powerSetStatus == null || firstPhysicalGpuHandle == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                NvPowerStatus nvPowerStatus = default(NvPowerStatus);
-                nvPowerStatus.Version = 65608u;
-                nvPowerStatus.Flags = 1u;
-                nvPowerStatus.Entries = new NvPowerStatusEntry[4];
-                NvPowerStatus status = nvPowerStatus;
+                NvPowerStatus status = default(NvPowerStatus);
+                status.Version = 65608u;
+                status.Flags = 1u;
+                status.Entries = new NvPowerStatusEntry[4];
                 status.Entries[0].Power = value;
-                if (powerSetStatus(intPtr, ref status) != 0)
+                if (powerSetStatus(firstPhysicalGpuHandle, ref status) != 0)
                 {
                     return false;
                 }
@@ -925,11 +876,11 @@ namespace PaviseApp
             EnsureExtResolved();
             if (sysDriverVersion != null)
             {
-                IntPtr intPtr = Marshal.AllocHGlobal(64);
+                IntPtr nativeBuffer = Marshal.AllocHGlobal(64);
                 try
                 {
                     uint version;
-                    if (sysDriverVersion(out version, intPtr) == 0)
+                    if (sysDriverVersion(out version, nativeBuffer) == 0)
                     {
                         driverVersionResult = version;
                     }
@@ -939,7 +890,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(intPtr);
+                    Marshal.FreeHGlobal(nativeBuffer);
                 }
             }
             Interlocked.CompareExchange(ref driverVersionCache, (int)driverVersionResult, -1);

@@ -47,9 +47,9 @@ namespace PaviseApp
             int remainingWidth = showAdjustLabel ? base.Width - Theme.S(10) : base.Width / 2;
             int heightRatio = base.Height / 2;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (Pen pen2 = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
+            using (Pen currentPen = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
             {
-                e.Graphics.DrawLines(pen2, new Point[3]
+                e.Graphics.DrawLines(currentPen, new Point[3]
                 {
                     new Point(remainingWidth - Theme.S(2), heightRatio - Theme.S(4)),
                     new Point(remainingWidth + Theme.S(2), heightRatio),

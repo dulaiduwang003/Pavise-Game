@@ -42,19 +42,19 @@ namespace PaviseApp
         {
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            ToolStripItem item = e.Item;
-            bool submenuOpen = item is ToolStripMenuItem && ((ToolStripMenuItem)item).DropDown.Visible;
-            if (item.Selected || submenuOpen)
+            ToolStripItem currentItem = e.Item;
+            bool submenuOpen = currentItem is ToolStripMenuItem && ((ToolStripMenuItem)currentItem).DropDown.Visible;
+            if (currentItem.Selected || submenuOpen)
             {
-                Rectangle r = new Rectangle(Theme.S(4), Theme.S(2), item.Width - Theme.S(8), item.Height - Theme.S(4));
+                Rectangle r = new Rectangle(Theme.S(4), Theme.S(2), currentItem.Width - Theme.S(8), currentItem.Height - Theme.S(4));
                 Theme.FillRound(graphics, r, Theme.S(7), submenuOpen ? Theme.Sel : Theme.CardHover);
             }
-            ToolStripMenuItem toolStripMenuItem = item as ToolStripMenuItem;
+            ToolStripMenuItem toolStripMenuItem = currentItem as ToolStripMenuItem;
             if (toolStripMenuItem != null && toolStripMenuItem.Checked)
             {
                 int scaledDimension = Theme.S(13);
-                int x = item.Width - Theme.S(14) - scaledDimension;
-                DrawCheck(graphics, new Rectangle(x, (item.Height - scaledDimension) / 2, scaledDimension, scaledDimension));
+                int x = currentItem.Width - Theme.S(14) - scaledDimension;
+                DrawCheck(graphics, new Rectangle(x, (currentItem.Height - scaledDimension) / 2, scaledDimension, scaledDimension));
             }
         }
 
@@ -71,9 +71,9 @@ namespace PaviseApp
                 pen.EndCap = LineCap.Round;
                 pen.LineJoin = LineJoin.Round;
                 PointF pointF = new PointF((float)rect.X + (float)rect.Width * 0.12f, (float)rect.Y + (float)rect.Height * 0.52f);
-                PointF pointF2 = new PointF((float)rect.X + (float)rect.Width * 0.4f, (float)rect.Y + (float)rect.Height * 0.78f);
-                PointF pointF3 = new PointF((float)rect.X + (float)rect.Width * 0.86f, (float)rect.Y + (float)rect.Height * 0.24f);
-                g.DrawLines(pen, new PointF[3] { pointF, pointF2, pointF3 });
+                PointF currentPointF = new PointF((float)rect.X + (float)rect.Width * 0.4f, (float)rect.Y + (float)rect.Height * 0.78f);
+                PointF candidatePointF = new PointF((float)rect.X + (float)rect.Width * 0.86f, (float)rect.Y + (float)rect.Height * 0.24f);
+                g.DrawLines(pen, new PointF[3] { pointF, currentPointF, candidatePointF });
             }
         }
 

@@ -111,16 +111,14 @@ namespace PaviseApp
             cacheWarmOn = Settings.Load("GmCacheWarmV2", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
-            string[] retiredSettings = AutoCores.RetiredSettings;
-            foreach (string name in retiredSettings)
+            foreach (string name in AutoCores.RetiredSettings)
             {
                 Settings.Remove(name);
             }
             planSwitch = PolicyResolver.Global().PowerPlanOn;
             renderLaneOn = PolicyResolver.Global().RenderLane;
             SuppressionCore.GpuDemoteEnabled = bgSuppressOn;
-            string[] envKeys = EnvKeys;
-            foreach (string entryKey in envKeys)
+            foreach (string entryKey in EnvKeys)
             {
                 if (Settings.Load("EnvFuse_" + entryKey, false))
                 {
@@ -142,10 +140,9 @@ namespace PaviseApp
                 bool whitelistReadFailed = false;
                 bool rewriteWhitelist = false;
                 string a = null;
-                List<WhitelistRule> list = new List<WhitelistRule>();
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                string[] allLines = File.ReadAllLines(whitePath);
-                foreach (string entryText in allLines)
+                List<WhitelistRule> rules = new List<WhitelistRule>();
+                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string entryText in File.ReadAllLines(whitePath))
                 {
                     string entryTextTrimmed = entryText.Trim();
                     if (entryTextTrimmed.Length == 0 || entryTextTrimmed.StartsWith("#"))
@@ -177,10 +174,10 @@ namespace PaviseApp
                     {
                         throw new InvalidDataException(Lang.T("t.gamemode.13"));
                     }
-                    WhitelistRule rule2;
+                    WhitelistRule rule;
                     if (headerRead)
                     {
-                        if (!WhitelistRule.TryParseVersioned(entryTextTrimmed, out rule2))
+                        if (!WhitelistRule.TryParseVersioned(entryTextTrimmed, out rule))
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.14"));
                         }
@@ -191,21 +188,21 @@ namespace PaviseApp
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.15"));
                         }
-                        if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entryTextTrimmed, out rule2))
+                        if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entryTextTrimmed, out rule))
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.16"));
                         }
                     }
                     malformedWhitelist = true;
-                    if (!hashSet.Add(rule2.Key))
+                    if (!textsSet.Add(rule.Key))
                     {
                         throw new InvalidDataException(Lang.T("t.gamemode.17"));
                     }
-                    list.Add(rule2);
+                    rules.Add(rule);
                 }
                 if (headerRead && whitelistReadFailed)
                 {
-                    if (!string.Equals(a, BuildWhitelistFooter(list), StringComparison.Ordinal))
+                    if (!string.Equals(a, BuildWhitelistFooter(rules), StringComparison.Ordinal))
                     {
                         throw new InvalidDataException(Lang.T("t.gamemode.18"));
                     }
@@ -236,36 +233,34 @@ namespace PaviseApp
                 }
                 if (needsWhitelistUpgrade)
                 {
-                    hashSet.Clear();
-                    foreach (WhitelistRule item in list)
+                    textsSet.Clear();
+                    foreach (WhitelistRule currentRule in rules)
                     {
-                        hashSet.Add(item.Key);
+                        textsSet.Add(currentRule.Key);
                     }
                     rewriteWhitelist = true;
                 }
-                string[] presetWhitelist = SystemProcessCatalog.PresetWhitelist;
-                foreach (string value in presetWhitelist)
+                foreach (string currentPresetWhitelist in SystemProcessCatalog.PresetWhitelist)
                 {
-                    WhitelistRule rule3;
-                    if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, value, out rule3) && hashSet.Add(rule3.Key))
+                    WhitelistRule candidateRule;
+                    if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, currentPresetWhitelist, out candidateRule) && textsSet.Add(candidateRule.Key))
                     {
-                        list.Add(rule3);
+                        rules.Add(candidateRule);
                         rewriteWhitelist = true;
                     }
                 }
-                foreach (WhitelistRule item2 in list)
+                foreach (WhitelistRule resolvedRule in rules)
                 {
-                    AddWhiteRuleNoSave(item2);
+                    AddWhiteRuleNoSave(resolvedRule);
                 }
-                if (rewriteWhitelist && !SaveWhite(list))
+                if (rewriteWhitelist && !SaveWhite(rules))
                 {
                     Logger.Log(Lang.T("log.gamemode.24", 0));
                 }
             }
             catch (Exception ex)
             {
-                string[] presetWhitelist2 = SystemProcessCatalog.PresetWhitelist;
-                foreach (string n in presetWhitelist2)
+                foreach (string n in SystemProcessCatalog.PresetWhitelist)
                 {
                     AddWhiteNoSave(n);
                 }
@@ -274,11 +269,11 @@ namespace PaviseApp
             try
             {
                 profiles.AddRange(profileStore.LoadProfiles(!libraryIgnoreTransaction.RecoveryPending));
-                List<GameProfile> list2 = GetProfiles();
-                if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending && RefreshLibraryInstallRoots(list2) && SaveProfileSnapshotLocked(list2))
+                List<GameProfile> currentProfiles = GetProfiles();
+                if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending && RefreshLibraryInstallRoots(currentProfiles) && SaveProfileSnapshotLocked(currentProfiles))
                 {
                     profiles.Clear();
-                    profiles.AddRange(list2);
+                    profiles.AddRange(currentProfiles);
                 }
             }
             catch

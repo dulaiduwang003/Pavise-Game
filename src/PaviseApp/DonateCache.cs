@@ -6,7 +6,6 @@ namespace PaviseApp
 {
     internal static class DonateCache
     {
-        private const string IdKey = "DonateImageId";
 
         public const int MaxImageBytes = 2097152;
 

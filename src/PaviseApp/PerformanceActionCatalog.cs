@@ -54,20 +54,18 @@ namespace PaviseApp
 
         internal static PerformanceAction Find(string key)
         {
-            PerformanceAction[] all = All;
-            foreach (PerformanceAction performanceAction in all)
+            foreach (PerformanceAction performanceAction in All)
             {
                 if (performanceAction.Key == key)
                 {
                     return performanceAction;
                 }
             }
-            PerformanceAction[] retired = Retired;
-            foreach (PerformanceAction performanceAction2 in retired)
+            foreach (PerformanceAction currentRetired in Retired)
             {
-                if (performanceAction2.Key == key)
+                if (currentRetired.Key == key)
                 {
-                    return performanceAction2;
+                    return currentRetired;
                 }
             }
             return null;

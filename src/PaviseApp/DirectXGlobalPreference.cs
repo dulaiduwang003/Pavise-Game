@@ -6,9 +6,6 @@ namespace PaviseApp
 {
     internal sealed class DirectXGlobalPreference
     {
-        private const string GpuKey = "SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences";
-
-        private const string ValueName = "DirectXUserGlobalSettings";
 
         private static readonly object gate = new object();
 

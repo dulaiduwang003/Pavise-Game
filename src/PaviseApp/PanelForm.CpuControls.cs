@@ -140,13 +140,12 @@ namespace PaviseApp
                 Mask = mask,
                 Threads = threads
             };
-            PillButton pillButton = new PillButton(title);
-            pillButton.Name = "coreQuick_" + name;
-            pillButton.Tag = choice;
-            pillButton.AccessibleName = title;
-            PillButton pillButton2 = pillButton;
-            pillButton2.Size = new Size(Math.Max(Theme.S(72), TextRenderer.MeasureText(title, Theme.UI(9f, true)).Width + Theme.S(28)), Theme.S(30));
-            pillButton2.Click += delegate
+            PillButton currentPillButton = new PillButton(title);
+            currentPillButton.Name = "coreQuick_" + name;
+            currentPillButton.Tag = choice;
+            currentPillButton.AccessibleName = title;
+            currentPillButton.Size = new Size(Math.Max(Theme.S(72), TextRenderer.MeasureText(title, Theme.UI(9f, true)).Width + Theme.S(28)), Theme.S(30));
+            currentPillButton.Click += delegate
             {
                 if (coreDraftProfile != null)
                 {
@@ -155,7 +154,7 @@ namespace PaviseApp
                     SaveCoreDraft();
                 }
             };
-            coreQuickPanel.Controls.Add(pillButton2);
+            coreQuickPanel.Controls.Add(currentPillButton);
         }
         private ulong CoreShortcutTarget(CoreQuickChoice choice)
         {
@@ -169,12 +168,12 @@ namespace PaviseApp
         internal static ulong CoreShortcutThreads(ulong selected, ulong available, ulong[] physical, bool includeSiblings)
         {
             ulong coreShortcutThreadsResult = 0uL;
-            foreach (ulong numericValueEntry in physical)
+            foreach (ulong currentPhysical in physical)
             {
-                ulong availableMask = numericValueEntry & selected & available;
+                ulong availableMask = currentPhysical & selected & available;
                 if (availableMask != 0)
                 {
-                    coreShortcutThreadsResult |= (includeSiblings ? (numericValueEntry & available) : (availableMask & (~availableMask + 1)));
+                    coreShortcutThreadsResult |= (includeSiblings ? (currentPhysical & available) : (availableMask & (~availableMask + 1)));
                 }
             }
             return coreShortcutThreadsResult;
@@ -278,8 +277,8 @@ namespace PaviseApp
             ulong[] candidateMasks = criticalThreadUiState.CandidateMasks;
             for (int i = 0; i < candidateMasks.Length; i++)
             {
-                object instance2 = threadUiResultOffset;
-                threadUiResultOffset = string.Concat(instance2, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
+                object currentThreadUiResultOffset = threadUiResultOffset;
+                threadUiResultOffset = string.Concat(currentThreadUiResultOffset, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
             }
             if (!string.IsNullOrEmpty(criticalThreadUiState.Detail))
             {
@@ -308,17 +307,16 @@ namespace PaviseApp
         }
         private PerformanceInfoButton CoreInfo(Control parent, string name, string title, Func<string> body)
         {
-            PerformanceInfoButton performanceInfoButton = new PerformanceInfoButton();
-            performanceInfoButton.Name = name;
-            performanceInfoButton.AccessibleName = title;
-            performanceInfoButton.Bg = Theme.Card;
-            PerformanceInfoButton performanceInfoButton2 = performanceInfoButton;
-            performanceInfoButton2.Click += delegate
+            PerformanceInfoButton currentPerformanceInfoButton = new PerformanceInfoButton();
+            currentPerformanceInfoButton.Name = name;
+            currentPerformanceInfoButton.AccessibleName = title;
+            currentPerformanceInfoButton.Bg = Theme.Card;
+            currentPerformanceInfoButton.Click += delegate
             {
                 ShowCoreInformation(title, body());
             };
-            parent.Controls.Add(performanceInfoButton2);
-            return performanceInfoButton2;
+            parent.Controls.Add(currentPerformanceInfoButton);
+            return currentPerformanceInfoButton;
         }
         private string CoreWorkspaceLayoutKey()
         {

@@ -449,28 +449,28 @@ namespace PaviseApp
             List<GameProcessSnapshot> result = new List<GameProcessSnapshot>();
             Dictionary<int, GameProcessSnapshot> byPid = new Dictionary<int, GameProcessSnapshot>();
             if (entries == null) return result;
-            foreach (GameProcessSnapshot item in entries)
+            foreach (GameProcessSnapshot entry in entries)
             {
-                if (item == null || item.Pid <= 0 || item.Creation <= 0 || byPid.ContainsKey(item.Pid)) return result;
-                byPid.Add(item.Pid, item);
+                if (entry == null || entry.Pid <= 0 || entry.Creation <= 0 || byPid.ContainsKey(entry.Pid)) return result;
+                byPid.Add(entry.Pid, entry);
             }
-            foreach (GameProcessSnapshot item in entries)
+            foreach (GameProcessSnapshot currentEntry in entries)
             {
-                if (!IsShellCandidate(item.Path, root) || !NameMatchesPath(item)) continue;
-                bool helper = IsHelper(item.Path);
+                if (!IsShellCandidate(currentEntry.Path, root) || !NameMatchesPath(currentEntry)) continue;
+                bool helper = IsHelper(currentEntry.Path);
                 bool shellAncestor = false; bool protectedAncestor = false;
-                GameProcessSnapshot node = item;
+                GameProcessSnapshot node = currentEntry;
                 HashSet<int> visited = new HashSet<int>();
                 while (node != null)
                 {
                     if (!visited.Add(node.Pid) || !NameMatchesPath(node) || IsProtectedRole(node)) { protectedAncestor = true; break; }
-                    if (node.Pid != item.Pid && IsShellCandidate(node.Path, root) && !IsHelper(node.Path)) shellAncestor = true;
+                    if (node.Pid != currentEntry.Pid && IsShellCandidate(node.Path, root) && !IsHelper(node.Path)) shellAncestor = true;
                     GameProcessSnapshot parent;
                     if (node.ParentPid <= 0 || !byPid.TryGetValue(node.ParentPid, out parent)) break;
                     if (parent.Creation >= node.Creation) { protectedAncestor = true; break; }
                     node = parent;
                 }
-                if (!protectedAncestor && (!helper || shellAncestor)) result.Add(item);
+                if (!protectedAncestor && (!helper || shellAncestor)) result.Add(currentEntry);
             }
             // 先关闭界面子进程，再关闭根进程，便于后续祖先核对保留证据。
             result.Sort(delegate(GameProcessSnapshot a, GameProcessSnapshot b) { return b.Creation.CompareTo(a.Creation); });

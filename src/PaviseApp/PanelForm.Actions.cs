@@ -221,13 +221,13 @@ namespace PaviseApp
                 return;
             }
             int processedCount = 0;
-            foreach (AuditFix value in BuildAuditFixes().Values)
+            foreach (AuditFix auditItem in BuildAuditFixes().Values)
             {
                 try
                 {
-                    if (value.CanFix() && (value.ConfirmKey == null || PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(value.ConfirmKey), DlgKind.Warn)))
+                    if (auditItem.CanFix() && (auditItem.ConfirmKey == null || PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(auditItem.ConfirmKey), DlgKind.Warn)))
                     {
-                        value.Fix();
+                        auditItem.Fix();
                         processedCount++;
                     }
                 }
@@ -368,10 +368,6 @@ namespace PaviseApp
                 }
             }
         }
-        private void OnIrqCheck(object sender, EventArgs e)
-        {
-            RunIrqCheck();
-        }
         private void OnIrqRestore(object sender, EventArgs e)
         {
             if (!Native.IsElevated())
@@ -436,19 +432,19 @@ namespace PaviseApp
         }
         private void ShowAddGameDialog(IEnumerable<string> seeds)
         {
-            List<string> list = new List<string>();
+            List<string> executablePaths = new List<string>();
             foreach (GameProfile profile in gameMode.GetProfiles())
             {
                 if (!string.IsNullOrEmpty(profile.ExecutablePath))
                 {
-                    list.Add(profile.ExecutablePath);
+                    executablePaths.Add(profile.ExecutablePath);
                 }
                 if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                 {
-                    list.Add(profile.LearnedExecutablePath);
+                    executablePaths.Add(profile.LearnedExecutablePath);
                 }
             }
-            using (AddGameDialog addGameDialog = new AddGameDialog(list, gameMode.ActiveGame == null, seeds))
+            using (AddGameDialog addGameDialog = new AddGameDialog(executablePaths, gameMode.ActiveGame == null, seeds))
             {
                 if (ShowDim(addGameDialog) != DialogResult.OK || addGameDialog.Selected.Count == 0)
                 {
@@ -603,7 +599,7 @@ namespace PaviseApp
                 {
                     PostManualMemoryUi(delegate
                     {
-                        overviewMemoryCleanup.ShowError(ManualMemoryText.T("清理未完成 · 可重试", "Cleanup failed · retry available", "未完了 · 再試行できます"));
+                        overviewMemoryCleanup.ShowError(ManualMemoryText.T("清理未完成 · 可重试", "Cleanup failed · retry available"));
                         Interlocked.Exchange(ref manualMemoryPending, 0);
                     });
                 }
@@ -621,7 +617,7 @@ namespace PaviseApp
             catch
             {
                 Interlocked.Exchange(ref manualMemoryPending, 0);
-                overviewMemoryCleanup.ShowError(ManualMemoryText.T("无法启动清理 · 可重试", "Cannot start cleanup · retry available", "開始できません · 再試行できます"));
+                overviewMemoryCleanup.ShowError(ManualMemoryText.T("无法启动清理 · 可重试", "Cannot start cleanup · retry available"));
             }
         }
         private void ShowDonate()
@@ -750,10 +746,10 @@ namespace PaviseApp
             }
             bool hasModeColorOverride = Theme.HasModeColorOverride(mode);
             Color b = Theme.ModeColor(mode);
-            foreach (ColorSwatch item in modeSwatches[(int)mode])
+            foreach (ColorSwatch modeSwatche in modeSwatches[(int)mode])
             {
-                item.Selected = (item.IsDefault ? (!hasModeColorOverride) : (hasModeColorOverride && SameRgb(item.Swatch, b)));
-                item.Invalidate();
+                modeSwatche.Selected = (modeSwatche.IsDefault ? (!hasModeColorOverride) : (hasModeColorOverride && SameRgb(modeSwatche.Swatch, b)));
+                modeSwatche.Invalidate();
             }
             RefreshModeAccentLabels();
             if (motionAppearance != null && !motionAppearance.IsDisposed) motionAppearance.RefreshPalette();
@@ -1057,8 +1053,7 @@ namespace PaviseApp
             dBPanel.SuspendLayout();
             try
             {
-                DBPanel[] pagesSnapshot = pages;
-                foreach (DBPanel dBPanel2 in pagesSnapshot)
+                foreach (DBPanel dBPanel2 in pages)
                 {
                     dBPanel2.Visible = dBPanel2 == dBPanel;
                 }
@@ -1189,24 +1184,24 @@ namespace PaviseApp
                 paviseCore.SetAnimationEnabled(false);
             }
             DetachFormFrame();
-            foreach (Bitmap value in gameIconCache.Values)
+            foreach (Bitmap trackedImage in gameIconCache.Values)
             {
                 try
                 {
-                    value.Dispose();
+                    trackedImage.Dispose();
                 }
                 catch
                 {
                 }
             }
             gameIconCache.Clear();
-            foreach (Bitmap value2 in whiteIconCache.Values)
+            foreach (Bitmap control in whiteIconCache.Values)
             {
-                if (value2 != null)
+                if (control != null)
                 {
                     try
                     {
-                        value2.Dispose();
+                        control.Dispose();
                     }
                     catch
                     {

@@ -5,13 +5,6 @@ namespace PaviseApp
 {
     internal static class LegacyReservedCores
     {
-        private const string KeyPath = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel";
-
-        private const string ValueName = "ReservedCpuSets";
-
-        private const string OnKey = "ReservedCoresByPavise";
-
-        private const string SnapKey = "PrevReservedCpuSets";
 
         internal const string ClearedKey = "LegacyReservedCoresClearedV1";
 
@@ -26,19 +19,19 @@ namespace PaviseApp
                 return 0uL;
             }
             ulong legacyMaskResult = 0uL;
-            int legacyMaskValue = 0;
-            foreach (ulong numericValueEntry in physicalCores)
+            int selectedCoreCount = 0;
+            foreach (ulong physicalCore in physicalCores)
             {
-                if (numericValueEntry != 0 && (numericValueEntry & 1) == 0 && (!hybrid || (numericValueEntry & perfMask) != 0))
+                if (physicalCore != 0 && (physicalCore & 1) == 0 && (!hybrid || (physicalCore & perfMask) != 0))
                 {
-                    legacyMaskResult |= numericValueEntry;
-                    if (++legacyMaskValue == 2)
+                    legacyMaskResult |= physicalCore;
+                    if (++selectedCoreCount == 2)
                     {
                         break;
                     }
                 }
             }
-            if (legacyMaskValue < 2)
+            if (selectedCoreCount < 2)
             {
                 return 0uL;
             }

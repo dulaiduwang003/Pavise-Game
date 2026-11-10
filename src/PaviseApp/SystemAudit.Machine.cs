@@ -241,20 +241,20 @@ namespace PaviseApp
         private static void BuildMachineTopConsumers(AuditReport report)
         {
             int minLimit = Math.Max(600, Math.Min(3000, report.MeasureWindowMs / 10));
-            List<LoadEntry> list = TopConsumers(minLimit, 3);
-            if (list.Count <= 0)
+            List<LoadEntry> loadEntries = TopConsumers(minLimit, 3);
+            if (loadEntries.Count <= 0)
             {
                 return;
             }
-            List<string> list2 = new List<string>();
-            foreach (LoadEntry item in list)
+            List<string> texts = new List<string>();
+            foreach (LoadEntry loadEntry in loadEntries)
             {
-                list2.Add(item.Name + " " + PercentText(item.Ratio));
+                texts.Add(loadEntry.Name + " " + PercentText(loadEntry.Ratio));
             }
             report.Machine.Add(new AuditRow
             {
                 Name = Lang.T("t.systemaudit.98"),
-                Value = string.Join("   ", list2.ToArray()),
+                Value = string.Join("   ", texts.ToArray()),
                 Note = Lang.T("t.systemaudit.99") + ((double)minLimit / 1000.0).ToString("0.#") + Lang.T("t.systemaudit.100"),
                 Evidence = "本机实测",
                 Warn = false

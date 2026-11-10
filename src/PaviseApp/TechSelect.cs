@@ -255,25 +255,24 @@ namespace PaviseApp
 
         private ContextMenuStrip BuildMenu()
         {
-            ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
-            contextMenuStrip.Renderer = new TechMenuRenderer();
-            contextMenuStrip.BackColor = Theme.Card;
-            contextMenuStrip.ForeColor = Theme.Fg;
-            contextMenuStrip.Font = DsType.Font(DsText.Body);
-            contextMenuStrip.ShowImageMargin = false;
-            contextMenuStrip.ShowCheckMargin = false;
-            contextMenuStrip.AutoSize = false;
-            contextMenuStrip.AutoClose = true;
-            contextMenuStrip.Padding = new Padding(Theme.S(6));
-            contextMenuStrip.DropShadowEnabled = false;
-            ContextMenuStrip contextMenuStrip2 = contextMenuStrip;
+            ContextMenuStrip currentContextMenuStrip = new ContextMenuStrip();
+            currentContextMenuStrip.Renderer = new TechMenuRenderer();
+            currentContextMenuStrip.BackColor = Theme.Card;
+            currentContextMenuStrip.ForeColor = Theme.Fg;
+            currentContextMenuStrip.Font = DsType.Font(DsText.Body);
+            currentContextMenuStrip.ShowImageMargin = false;
+            currentContextMenuStrip.ShowCheckMargin = false;
+            currentContextMenuStrip.AutoSize = false;
+            currentContextMenuStrip.AutoClose = true;
+            currentContextMenuStrip.Padding = new Padding(Theme.S(6));
+            currentContextMenuStrip.DropShadowEnabled = false;
             int popupWidth = Math.Max(base.Width, Theme.S(170));
             for (int i = 0; i < items.Length; i++)
             {
                 MenuBadge badge = BadgeFor(i);
                 string badgeText = badge == null ? "" : badge.Text;
                 int badgeWidth = string.IsNullOrEmpty(badgeText) ? 0 : TextRenderer.MeasureText(badgeText, DsType.MonoFor(DsMono.Badge, badgeText)).Width + Theme.S(34);
-                popupWidth = Math.Max(popupWidth, TextRenderer.MeasureText(items[i], contextMenuStrip2.Font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + badgeWidth + Theme.S(30));
+                popupWidth = Math.Max(popupWidth, TextRenderer.MeasureText(items[i], currentContextMenuStrip.Font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + badgeWidth + Theme.S(30));
             }
             Rectangle workingArea = Screen.FromControl(this).WorkingArea;
             popupWidth = DsPopup.Fit(new Size(popupWidth, 1), workingArea, Theme.S(20), Theme.S(170)).Width;
@@ -281,44 +280,43 @@ namespace PaviseApp
             {
                 popupWidth = DsPopup.Fit(new Size(popupWidth + SystemInformation.VerticalScrollBarWidth, 1), workingArea, Theme.S(20), Theme.S(170)).Width;
                 int height = Math.Min(Theme.S(34) * Math.Max(1, MaximumVisibleItems),
-                    Math.Max(1, workingArea.Height - Theme.S(20) - contextMenuStrip2.Padding.Vertical));
-                var list = new SelectScrollList(this, items, Math.Max(1, popupWidth - contextMenuStrip2.Padding.Horizontal), height);
-                var host = new ToolStripControlHost(list) { AutoSize = false, Margin = Padding.Empty, Padding = Padding.Empty, Size = list.Size };
-                contextMenuStrip2.Items.Add(host);
-                contextMenuStrip2.Size = new Size(popupWidth, height + contextMenuStrip2.Padding.Vertical);
-                contextMenuStrip2.Opened += delegate { if (!list.IsDisposed) { list.SelectedIndex = selectedIndex; list.Focus(); } };
-                contextMenuStrip2.PerformLayout();
-                using (var path = Theme.TechPath(new Rectangle(0, 0, contextMenuStrip2.Width, contextMenuStrip2.Height), Theme.S(8)))
-                    contextMenuStrip2.Region = new Region(path);
-                return contextMenuStrip2;
+                    Math.Max(1, workingArea.Height - Theme.S(20) - currentContextMenuStrip.Padding.Vertical));
+                var selectScrollList = new SelectScrollList(this, items, Math.Max(1, popupWidth - currentContextMenuStrip.Padding.Horizontal), height);
+                var host = new ToolStripControlHost(selectScrollList) { AutoSize = false, Margin = Padding.Empty, Padding = Padding.Empty, Size = selectScrollList.Size };
+                currentContextMenuStrip.Items.Add(host);
+                currentContextMenuStrip.Size = new Size(popupWidth, height + currentContextMenuStrip.Padding.Vertical);
+                currentContextMenuStrip.Opened += delegate { if (!selectScrollList.IsDisposed) { selectScrollList.SelectedIndex = selectedIndex; selectScrollList.Focus(); } };
+                currentContextMenuStrip.PerformLayout();
+                using (var path = Theme.TechPath(new Rectangle(0, 0, currentContextMenuStrip.Width, currentContextMenuStrip.Height), Theme.S(8)))
+                    currentContextMenuStrip.Region = new Region(path);
+                return currentContextMenuStrip;
             }
-            int vertical = contextMenuStrip2.Padding.Vertical;
+            int vertical = currentContextMenuStrip.Padding.Vertical;
             for (int j = 0; j < items.Length; j++)
             {
                 int index = j;
-                ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(items[j]);
-                toolStripMenuItem.AutoSize = false;
-                toolStripMenuItem.Margin = Padding.Empty;
-                toolStripMenuItem.Size = new Size(Math.Max(1, popupWidth - contextMenuStrip2.Padding.Horizontal), Theme.S(34));
-                toolStripMenuItem.ForeColor = Theme.Fg;
-                toolStripMenuItem.Tag = BadgeFor(j);
-                ToolStripMenuItem toolStripMenuItem2 = toolStripMenuItem;
-                toolStripMenuItem2.Click += delegate
+                ToolStripMenuItem currentToolStripMenuItem = new ToolStripMenuItem(items[j]);
+                currentToolStripMenuItem.AutoSize = false;
+                currentToolStripMenuItem.Margin = Padding.Empty;
+                currentToolStripMenuItem.Size = new Size(Math.Max(1, popupWidth - currentContextMenuStrip.Padding.Horizontal), Theme.S(34));
+                currentToolStripMenuItem.ForeColor = Theme.Fg;
+                currentToolStripMenuItem.Tag = BadgeFor(j);
+                currentToolStripMenuItem.Click += delegate
                 {
                     SelectIndex(index);
                 };
-                contextMenuStrip2.Items.Add(toolStripMenuItem2);
-                vertical += toolStripMenuItem2.Height;
+                currentContextMenuStrip.Items.Add(currentToolStripMenuItem);
+                vertical += currentToolStripMenuItem.Height;
             }
             int visibleRows = Math.Min(items.Length, Math.Max(1, MaximumVisibleItems));
-            int boundedHeight = Math.Min(vertical, contextMenuStrip2.Padding.Vertical + visibleRows * Theme.S(34));
+            int boundedHeight = Math.Min(vertical, currentContextMenuStrip.Padding.Vertical + visibleRows * Theme.S(34));
             boundedHeight = Math.Min(boundedHeight, Math.Max(1, workingArea.Height - Theme.S(20)));
-            contextMenuStrip2.Size = new Size(popupWidth, Math.Max(1, boundedHeight));
-            contextMenuStrip2.PerformLayout();
-            using (GraphicsPath path = Theme.TechPath(new Rectangle(0, 0, contextMenuStrip2.Width, contextMenuStrip2.Height), Theme.S(8)))
+            currentContextMenuStrip.Size = new Size(popupWidth, Math.Max(1, boundedHeight));
+            currentContextMenuStrip.PerformLayout();
+            using (GraphicsPath path = Theme.TechPath(new Rectangle(0, 0, currentContextMenuStrip.Width, currentContextMenuStrip.Height), Theme.S(8)))
             {
-                contextMenuStrip2.Region = new Region(path);
-                return contextMenuStrip2;
+                currentContextMenuStrip.Region = new Region(path);
+                return currentContextMenuStrip;
             }
         }
 

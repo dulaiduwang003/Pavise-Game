@@ -32,8 +32,8 @@ namespace PaviseApp
                     {
                         return null;
                     }
-                    object value = registryKey.GetValue("NetworkThrottlingIndex");
-                    return (value is int) ? new int?((int)value) : null;
+                    object instance = registryKey.GetValue("NetworkThrottlingIndex");
+                    return (instance is int) ? new int?((int)instance) : null;
                 }
             }
             catch

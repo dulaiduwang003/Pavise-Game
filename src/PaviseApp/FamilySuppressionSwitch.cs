@@ -169,7 +169,7 @@ namespace PaviseApp
             }
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float value = switchMotion.Value;
+            float switchProgress = switchMotion.Value;
             Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
             Color color = Col.Lerp(Theme.Inset, Theme.Accent, (base.Checked ? 0.065f : 0.015f) + hoverMotion.Value * 0.05f);
             using (GraphicsPath path = Theme.TechPath(rectangle, Theme.S(6)))
@@ -185,14 +185,14 @@ namespace PaviseApp
             }
             int scaledDimension = (corePolicy ? Theme.S(DetailsWidth) : 0);
             Rectangle r = new Rectangle(base.Width - scaledDimension - Theme.S(44), (base.Height - Theme.S(16)) / 2, Theme.S(32), Theme.S(16));
-            Rectangle rectangle2 = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
+            Rectangle currentRectangle = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
             if (!string.IsNullOrEmpty(IconKey))
             {
-                GameTuningIcons.Draw(graphics, rectangle2, IconKey, base.Checked ? Theme.Accent : Theme.Dim);
+                GameTuningIcons.Draw(graphics, currentRectangle, IconKey, base.Checked ? Theme.Accent : Theme.Dim);
             }
             else
             {
-                Glyphs.Draw(graphics, corePolicy ? "chip" : "tiles", rectangle2, base.Checked ? Theme.Accent : Theme.Dim);
+                Glyphs.Draw(graphics, corePolicy ? "chip" : "tiles", currentRectangle, base.Checked ? Theme.Accent : Theme.Dim);
             }
             int scaledDimension2 = Theme.S(32);
             int lowerBound = Math.Max(1, r.Left - scaledDimension2 - Theme.S(8));
@@ -200,21 +200,21 @@ namespace PaviseApp
             TextRenderer.DrawText(graphics, Text, Theme.UI(8f, true), new Rectangle(scaledDimension2, 0, lowerBound, base.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             using (GraphicsPath path2 = Theme.TechPath(r, Theme.S(4)))
             {
-                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.TrackOff, Col.Lerp(Surface, Theme.Accent, 0.24f), value)))
+                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.TrackOff, Col.Lerp(Surface, Theme.Accent, 0.24f), switchProgress)))
                 {
                     graphics.FillPath(brush2, path2);
                 }
-                using (Pen pen2 = new Pen(base.Checked ? Theme.Accent : (locked ? Theme.Stroke : Theme.StrokeHi)))
+                using (Pen currentPen = new Pen(base.Checked ? Theme.Accent : (locked ? Theme.Stroke : Theme.StrokeHi)))
                 {
-                    graphics.DrawPath(pen2, path2);
+                    graphics.DrawPath(currentPen, path2);
                 }
             }
             int scaledDimension3 = Theme.S(10);
             int scaledDimension4 = Theme.S(3);
-            Rectangle r2 = new Rectangle(r.Left + scaledDimension4 + (int)((float)(r.Width - scaledDimension4 * 2 - scaledDimension3) * value), r.Top + scaledDimension4, scaledDimension3, scaledDimension3);
+            Rectangle r2 = new Rectangle(r.Left + scaledDimension4 + (int)((float)(r.Width - scaledDimension4 * 2 - scaledDimension3) * switchProgress), r.Top + scaledDimension4, scaledDimension3, scaledDimension3);
             using (GraphicsPath path3 = Theme.TechPath(r2, Theme.S(3)))
             {
-                using (SolidBrush brush3 = new SolidBrush(Col.Lerp(Theme.Dim, Theme.Accent, value)))
+                using (SolidBrush brush3 = new SolidBrush(Col.Lerp(Theme.Dim, Theme.Accent, switchProgress)))
                 {
                     graphics.FillPath(brush3, path3);
                 }

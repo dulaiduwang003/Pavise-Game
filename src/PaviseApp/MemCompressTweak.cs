@@ -5,15 +5,8 @@ namespace PaviseApp
 {
     internal static class MemCompressTweak
     {
-        private const string OnKey = "MemCompressOffByPavise";
-
-        private const string SnapKey = "PrevMMAgent";
-
-        private const string RepairKey = "PrevMemoryCompressionRepairV1";
 
         internal const string UnavailableOutput = "PAVISE_MMAGENT_UNAVAILABLE";
-
-        private const string ModuleScript = "try { Import-Module -Name ([IO.Path]::Combine($PSHOME, 'Modules', 'MMAgent', 'MMAgent.psd1')) -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null } catch { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n";
 
         internal const string QueryScript = "try { Import-Module -Name ([IO.Path]::Combine($PSHOME, 'Modules', 'MMAgent', 'MMAgent.psd1')) -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null } catch { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n$mmQuery = Get-Command -Name 'MMAgent\\Get-MMAgent' -ErrorAction SilentlyContinue;\r\nif ($null -eq $mmQuery) { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\n$m = & $mmQuery -ErrorAction Stop;\r\nif ($m.MemoryCompression -isnot [bool] -or $m.PageCombining -isnot [bool]) { Write-Output 'PAVISE_MMAGENT_UNAVAILABLE'; exit 0 }\r\nWrite-Output ($m.MemoryCompression.ToString() + ',' + $m.PageCombining.ToString())";
 
@@ -191,13 +184,13 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                string value;
-                if (!Settings.TryLoadStr("PrevMemoryCompressionRepairV1", out value) || (value.Length > 0 && value != "0"))
+                string text;
+                if (!Settings.TryLoadStr("PrevMemoryCompressionRepairV1", out text) || (text.Length > 0 && text != "0"))
                 {
                     Logger.Log(Lang.T("log.memcompress.2", 0));
                     return false;
                 }
-                bool recordAbsent = value.Length == 0;
+                bool recordAbsent = text.Length == 0;
                 if (recordAbsent && (!Settings.SaveStr("PrevMemoryCompressionRepairV1", "0") || Settings.LoadStr("PrevMemoryCompressionRepairV1", "") != "0"))
                 {
                     Logger.Log(Lang.T("log.memcompress.2", 0));
@@ -234,16 +227,16 @@ namespace PaviseApp
 
         private static bool RestoreCompressionRepair()
         {
-            string value;
-            if (!Settings.TryLoadStr("PrevMemoryCompressionRepairV1", out value))
+            string text;
+            if (!Settings.TryLoadStr("PrevMemoryCompressionRepairV1", out text))
             {
                 return false;
             }
-            if (value.Length == 0)
+            if (text.Length == 0)
             {
                 return true;
             }
-            if (value != "0")
+            if (text != "0")
             {
                 return false;
             }

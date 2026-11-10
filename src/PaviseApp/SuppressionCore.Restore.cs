@@ -511,15 +511,15 @@ namespace PaviseApp
             long ticks = DateTime.UtcNow.Ticks;
             lock (sync)
             {
-                foreach (KeyValuePair<int, Entry> item in map)
+                foreach (KeyValuePair<int, Entry> mapEntry in map)
                 {
-                    if (item.Value.Reasons == SuppressReason.None && !RestoreBudgetBlocked(item.Value, "restore", true) && ticks >= item.Value.NextRetryTicks)
+                    if (mapEntry.Value.Reasons == SuppressReason.None && !RestoreBudgetBlocked(mapEntry.Value, "restore", true) && ticks >= mapEntry.Value.NextRetryTicks)
                     {
                         if (pendingRestores == null)
                         {
                             pendingRestores = new List<KeyValuePair<int, Entry>>();
                         }
-                        pendingRestores.Add(item);
+                        pendingRestores.Add(mapEntry);
                     }
                 }
             }

@@ -7,13 +7,6 @@ namespace PaviseApp
 {
     internal class TechListBox : ListBox
     {
-        private const int WmEraseBkgnd = 20;
-
-        private const int WmSetRedraw = 11;
-
-        private const int WsVScroll = 2097152;
-
-        private const int SrcCopy = 13369376;
 
         private IntPtr memDc = IntPtr.Zero;
 
@@ -271,20 +264,20 @@ namespace PaviseApp
             IntPtr hdc = target.GetHdc();
             try
             {
-                IntPtr intPtr = CreateCompatibleDC(hdc);
-                if (intPtr == IntPtr.Zero)
+                IntPtr compatibleDCHandle = CreateCompatibleDC(hdc);
+                if (compatibleDCHandle == IntPtr.Zero)
                 {
                     return false;
                 }
-                IntPtr intPtr2 = CreateCompatibleBitmap(hdc, rightLimit, bottomLimit);
-                if (intPtr2 == IntPtr.Zero)
+                IntPtr compatibleBitmapHandle = CreateCompatibleBitmap(hdc, rightLimit, bottomLimit);
+                if (compatibleBitmapHandle == IntPtr.Zero)
                 {
-                    DeleteDC(intPtr);
+                    DeleteDC(compatibleDCHandle);
                     return false;
                 }
-                memDc = intPtr;
-                memBmp = intPtr2;
-                oldBmp = SelectObject(intPtr, intPtr2);
+                memDc = compatibleDCHandle;
+                memBmp = compatibleBitmapHandle;
+                oldBmp = SelectObject(compatibleDCHandle, compatibleBitmapHandle);
                 bufW = rightLimit;
                 bufH = bottomLimit;
             }
@@ -354,7 +347,7 @@ namespace PaviseApp
             {
                 return;
             }
-            int fillTailValue = 0;
+            int filledHeight = 0;
             int count = base.Items.Count;
             if (count > 0 && ItemHeight > 0)
             {
@@ -366,20 +359,20 @@ namespace PaviseApp
                 int remainingCount = count - topIndex;
                 if (remainingCount > 0)
                 {
-                    fillTailValue = ((remainingCount > height / ItemHeight + 2) ? height : (remainingCount * ItemHeight));
+                    filledHeight = ((remainingCount > height / ItemHeight + 2) ? height : (remainingCount * ItemHeight));
                 }
-                if (fillTailValue > height)
+                if (filledHeight > height)
                 {
-                    fillTailValue = height;
+                    filledHeight = height;
                 }
             }
-            if (fillTailValue >= height)
+            if (filledHeight >= height)
             {
                 return;
             }
             try
             {
-                Rectangle rectangle = new Rectangle(0, fillTailValue, width, height - fillTailValue);
+                Rectangle rectangle = new Rectangle(0, filledHeight, width, height - filledHeight);
                 using (Graphics graphics = Graphics.FromHdc(hdc))
                 {
                     if (Backdrop.AppliesTo(this))

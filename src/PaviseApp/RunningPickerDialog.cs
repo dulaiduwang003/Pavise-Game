@@ -86,24 +86,24 @@ namespace PaviseApp
             label.Font = Theme.UI(14f, true);
             label.SetBounds(Theme.S(22), Theme.S(18), Theme.S(600), Theme.S(30));
             label.MouseDown += DragMove;
-            Label label2 = new Label();
-            label2.Text = "✕";
-            label2.ForeColor = Theme.Dim;
-            label2.BackColor = Theme.Bg;
-            label2.SetBounds(Theme.S(662), Theme.S(12), Theme.S(26), Theme.S(26));
-            label2.TextAlign = ContentAlignment.MiddleCenter;
-            label2.Cursor = Cursors.Hand;
-            label2.Click += delegate
+            Label currentLabel = new Label();
+            currentLabel.Text = "✕";
+            currentLabel.ForeColor = Theme.Dim;
+            currentLabel.BackColor = Theme.Bg;
+            currentLabel.SetBounds(Theme.S(662), Theme.S(12), Theme.S(26), Theme.S(26));
+            currentLabel.TextAlign = ContentAlignment.MiddleCenter;
+            currentLabel.Cursor = Cursors.Hand;
+            currentLabel.Click += delegate
             {
                 base.DialogResult = DialogResult.Cancel;
                 Close();
             };
-            Label label3 = new Label();
-            label3.Text = descriptionText ?? Lang.T("white.pick.sub");
-            label3.ForeColor = Theme.Dim;
-            label3.BackColor = Theme.Bg;
-            label3.Font = Theme.UI(8.5f, false);
-            label3.SetBounds(Theme.S(22), Theme.S(50), Theme.S(656), Theme.S(22));
+            Label candidateLabel = new Label();
+            candidateLabel.Text = descriptionText ?? Lang.T("white.pick.sub");
+            candidateLabel.ForeColor = Theme.Dim;
+            candidateLabel.BackColor = Theme.Bg;
+            candidateLabel.Font = Theme.UI(8.5f, false);
+            candidateLabel.SetBounds(Theme.S(22), Theme.S(50), Theme.S(656), Theme.S(22));
             search.SetBounds(Theme.S(22), Theme.S(80), Theme.S(656), Theme.S(30));
             search.BackColor = Theme.Card;
             search.ForeColor = Theme.Fg;
@@ -138,11 +138,11 @@ namespace PaviseApp
             confirm.Enabled = false;
             confirm.Click += delegate
             {
-                foreach (Entry item in all)
+                foreach (Entry currentAll in all)
                 {
-                    if (item.Checked)
+                    if (currentAll.Checked)
                     {
-                        Selected.Add(item.Path);
+                        Selected.Add(currentAll.Path);
                     }
                 }
                 base.DialogResult = DialogResult.OK;
@@ -155,7 +155,7 @@ namespace PaviseApp
                 base.DialogResult = DialogResult.Cancel;
                 Close();
             };
-            base.Controls.AddRange(new Control[8] { label, label2, label3, search, roundPanel, status, confirm, pillButton });
+            base.Controls.AddRange(new Control[8] { label, currentLabel, candidateLabel, search, roundPanel, status, confirm, pillButton });
             base.MouseDown += DragMove;
             base.KeyPreview = true;
             base.KeyDown += delegate(object s, KeyEventArgs e)
@@ -286,25 +286,25 @@ namespace PaviseApp
             }
             ThreadPool.QueueUserWorkItem(delegate
             {
-                List<Entry> list = null;
+                List<Entry> entries = null;
                 try
                 {
                     try
                     {
-                        list = Scan(known, () => ScanCanceled(generation));
+                        entries = Scan(known, () => ScanCanceled(generation));
                     }
                     catch
                     {
                     }
-                    if (list != null)
+                    if (entries != null)
                     {
-                        foreach (Entry item in list)
+                        foreach (Entry entry in entries)
                         {
                             if (ScanCanceled(generation))
                             {
                                 return;
                             }
-                            item.Icon = LoadIcon(item.Path);
+                            entry.Icon = LoadIcon(entry.Path);
                         }
                     }
                     if (!ScanCanceled(generation))
@@ -312,17 +312,17 @@ namespace PaviseApp
                         ScanResult result = new ScanResult
                         {
                             Generation = generation,
-                            Entries = list
+                            Entries = entries
                         };
                         if (QueueScanResult(result))
                         {
-                            list = null;
+                            entries = null;
                         }
                     }
                 }
                 finally
                 {
-                    DisposeEntries(list);
+                    DisposeEntries(entries);
                 }
             });
         }
@@ -392,31 +392,31 @@ namespace PaviseApp
 
         private static List<Entry> Scan(HashSet<string> exclude, Func<bool> canceled)
         {
-            List<RunningProgram> list = RunningProgramDiscovery.ScanForWhitelist(canceled);
-            if (list == null)
+            List<RunningProgram> runningPrograms = RunningProgramDiscovery.ScanForWhitelist(canceled);
+            if (runningPrograms == null)
             {
                 return null;
             }
-            List<Entry> list2 = new List<Entry>();
-            foreach (RunningProgram item in list)
+            List<Entry> entries = new List<Entry>();
+            foreach (RunningProgram runningProgram in runningPrograms)
             {
                 if (canceled != null && canceled())
                 {
                     return null;
                 }
-                if (exclude == null || !exclude.Contains(item.Path))
+                if (exclude == null || !exclude.Contains(runningProgram.Path))
                 {
-                    list2.Add(new Entry
+                    entries.Add(new Entry
                     {
-                        Path = item.Path,
-                        Title = item.Title,
-                        Memory = item.Memory,
-                        Count = item.ProcessIds.Count
+                        Path = runningProgram.Path,
+                        Title = runningProgram.Title,
+                        Memory = runningProgram.Memory,
+                        Count = runningProgram.ProcessIds.Count
                     });
                 }
             }
-            list2.Sort((Entry a, Entry b) => b.Memory.CompareTo(a.Memory));
-            return list2;
+            entries.Sort((Entry a, Entry b) => b.Memory.CompareTo(a.Memory));
+            return entries;
         }
 
         private static Bitmap LoadIcon(string path)
@@ -438,18 +438,18 @@ namespace PaviseApp
         {
             string textTrimmed = search.Text.Trim();
             shown.Clear();
-            foreach (Entry item in all)
+            foreach (Entry currentAll in all)
             {
-                if (textTrimmed.Length <= 0 || item.Title.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0 || item.Path.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (textTrimmed.Length <= 0 || currentAll.Title.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0 || currentAll.Path.IndexOf(textTrimmed, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    shown.Add(item);
+                    shown.Add(currentAll);
                 }
             }
             list.BeginUpdate();
             list.Items.Clear();
-            foreach (Entry item2 in shown)
+            foreach (Entry currentShown in shown)
             {
-                list.Items.Add(item2);
+                list.Items.Add(currentShown);
             }
             list.EndUpdate();
         }
@@ -468,9 +468,9 @@ namespace PaviseApp
             shown[indexFromPointResult].Checked = !shown[indexFromPointResult].Checked;
             list.Invalidate();
             int processedCount = 0;
-            foreach (Entry item in all)
+            foreach (Entry currentAll in all)
             {
-                if (item.Checked)
+                if (currentAll.Checked)
                 {
                     processedCount++;
                 }
@@ -510,9 +510,9 @@ namespace PaviseApp
             }
             if (entry.Checked)
             {
-                using (Pen pen2 = new Pen(Theme.OnAccent, Math.Max(1.4f, Theme.S(2))))
+                using (Pen onAccentPen = new Pen(Theme.OnAccent, Math.Max(1.4f, Theme.S(2))))
                 {
-                    graphics.DrawLines(pen2, new Point[3]
+                    graphics.DrawLines(onAccentPen, new Point[3]
                     {
                         new Point(r.Left + Theme.S(4), r.Top + Theme.S(8)),
                         new Point(r.Left + Theme.S(7), r.Top + Theme.S(11)),

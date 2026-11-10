@@ -207,16 +207,16 @@ namespace PaviseApp
             int sLimit = (string.IsNullOrEmpty(Text) ? Math.Max(Theme.S(20), base.Width - 1) : Theme.S(44));
             int width = scaledDimension - scaledDimension2 * 2;
             Rectangle rectangle = new Rectangle(0, (base.Height - scaledDimension) / 2, sLimit, scaledDimension);
-            float value = colorBlend.Value;
+            float colorProgress = colorBlend.Value;
             using (GraphicsPath path = Theme.Rounded(rectangle, scaledDimension / 2))
             {
                 using (SolidBrush brush = new SolidBrush(Theme.TrackOff))
                 {
                     graphics.FillPath(brush, path);
                 }
-                if (value > 0.01f)
+                if (colorProgress > 0.01f)
                 {
-                    using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(rectangle), Col.Alpha(Theme.Accent, (int)(255f * value)), Col.Alpha(Theme.Accent2, (int)(255f * value)), LinearGradientMode.Horizontal))
+                    using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(rectangle), Col.Alpha(Theme.Accent, (int)(255f * colorProgress)), Col.Alpha(Theme.Accent2, (int)(255f * colorProgress)), LinearGradientMode.Horizontal))
                     {
                         graphics.FillPath(brush2, path);
                     }

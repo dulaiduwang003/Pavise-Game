@@ -21,8 +21,8 @@ namespace PaviseApp
             {
                 lock (lk)
                 {
-                    string value;
-                    return !Load(out value) || !string.IsNullOrEmpty(value);
+                    string text;
+                    return !Load(out text) || !string.IsNullOrEmpty(text);
                 }
             }
         }
@@ -66,10 +66,10 @@ namespace PaviseApp
 
         private static bool SaveVerified(string value)
         {
-            string value2;
-            if (Save(value) && Load(out value2))
+            string text;
+            if (Save(value) && Load(out text))
             {
-                return value2 == value;
+                return text == value;
             }
             return false;
         }
@@ -78,34 +78,34 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                string value;
-                if (!Load(out value) || value == null)
+                string text;
+                if (!Load(out text) || text == null)
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     owned = false;
                     settled = null;
                     return true;
                 }
-                if (settled == value)
+                if (settled == text)
                 {
                     return Clear();
                 }
                 Guid result;
-                Guid value2;
-                if (!Guid.TryParse(value, out result) || !Read(false, out value2))
+                Guid guid;
+                if (!Guid.TryParse(text, out result) || !Read(false, out guid))
                 {
                     return false;
                 }
-                if (!owned && value2 != Max && value2 != result)
+                if (!owned && guid != Max && guid != result)
                 {
                     Logger.Info(Lang.T("log.poweroverlay.external", 0));
-                    settled = value;
+                    settled = text;
                     return Clear();
                 }
-                if (value2 != result)
+                if (guid != result)
                 {
                     try
                     {
@@ -118,13 +118,13 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    Guid value3;
-                    if (!Read(false, out value3) || value3 != result)
+                    Guid currentGuid;
+                    if (!Read(false, out currentGuid) || currentGuid != result)
                     {
                         return false;
                     }
                 }
-                settled = value;
+                settled = text;
                 Logger.Info(Lang.T("log.poweroverlay.6", 0));
                 return Clear();
             }

@@ -40,29 +40,29 @@ namespace PaviseApp
         internal static GameAffinityJobRecord Parse(string line)
         {
             string[] fields = line.Split('|');
-            var value = new GameAffinityJobRecord();
-            if ((fields.Length != 8 && fields.Length != 9 && fields.Length != 10) || !int.TryParse(fields[1], out value.Pid) || value.Pid <= 4
-                || !long.TryParse(fields[2], out value.Birth) || value.Birth <= 0
-                || !ulong.TryParse(fields[3], out value.Original) || value.Original == 0
-                || !ulong.TryParse(fields[4], out value.Desired) || value.Desired == 0
-                || !int.TryParse(fields[6], out value.OwnerPid) || value.OwnerPid <= 4
-                || !long.TryParse(fields[7], out value.OwnerBirth) || value.OwnerBirth <= 0
-                || !ValidName(fields[0], value.Pid, value.Birth)
+            var gameAffinityJobRecord = new GameAffinityJobRecord();
+            if ((fields.Length != 8 && fields.Length != 9 && fields.Length != 10) || !int.TryParse(fields[1], out gameAffinityJobRecord.Pid) || gameAffinityJobRecord.Pid <= 4
+                || !long.TryParse(fields[2], out gameAffinityJobRecord.Birth) || gameAffinityJobRecord.Birth <= 0
+                || !ulong.TryParse(fields[3], out gameAffinityJobRecord.Original) || gameAffinityJobRecord.Original == 0
+                || !ulong.TryParse(fields[4], out gameAffinityJobRecord.Desired) || gameAffinityJobRecord.Desired == 0
+                || !int.TryParse(fields[6], out gameAffinityJobRecord.OwnerPid) || gameAffinityJobRecord.OwnerPid <= 4
+                || !long.TryParse(fields[7], out gameAffinityJobRecord.OwnerBirth) || gameAffinityJobRecord.OwnerBirth <= 0
+                || !ValidName(fields[0], gameAffinityJobRecord.Pid, gameAffinityJobRecord.Birth)
                 || (fields[5] != "prepared" && fields[5] != "armed" && fields[5] != "neutral")) return null;
-            value.Name = fields[0]; value.Phase = fields[5];
+            gameAffinityJobRecord.Name = fields[0]; gameAffinityJobRecord.Phase = fields[5];
             if (fields.Length == 10)
             {
-                value.Resources = WindowsBackgroundLimits.Parse(fields[9]);
-                if (value.Resources == null) return null;
+                gameAffinityJobRecord.Resources = WindowsBackgroundLimits.Parse(fields[9]);
+                if (gameAffinityJobRecord.Resources == null) return null;
             }
             try
             {
-                value.ThreadRecoveryRoot = fields.Length >= 9 ? Encoding.UTF8.GetString(Convert.FromBase64String(fields[8])) : "";
-                if (value.ThreadRecoveryRoot.Length > 0 && (!Path.IsPathRooted(value.ThreadRecoveryRoot)
-                    || Path.GetFullPath(value.ThreadRecoveryRoot) != value.ThreadRecoveryRoot)) return null;
+                gameAffinityJobRecord.ThreadRecoveryRoot = fields.Length >= 9 ? Encoding.UTF8.GetString(Convert.FromBase64String(fields[8])) : "";
+                if (gameAffinityJobRecord.ThreadRecoveryRoot.Length > 0 && (!Path.IsPathRooted(gameAffinityJobRecord.ThreadRecoveryRoot)
+                    || Path.GetFullPath(gameAffinityJobRecord.ThreadRecoveryRoot) != gameAffinityJobRecord.ThreadRecoveryRoot)) return null;
             }
             catch { return null; }
-            return value;
+            return gameAffinityJobRecord;
         }
 
         internal bool ThreadRecoveryPending()

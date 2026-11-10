@@ -121,7 +121,7 @@ namespace PaviseApp
                         {
                             return;
                         }
-                        int receiveValue = ((timeStamp >= Half) ? 1 : 0);
+                        int sampleHalf = ((timeStamp >= Half) ? 1 : 0);
                         int threadId = (int)r.EventHeader.ThreadId;
                         Guid providerId = r.EventHeader.ProviderId;
                         if (providerId == KernelThread)
@@ -148,27 +148,27 @@ namespace PaviseApp
                                     running[bufferContextMask] = 0;
                                     break;
                                 }
-                                int int32 = Marshal.ReadInt32(r.UserData);
-                                bool isInSampleThreads = Sample.Threads.ContainsKey(int32);
-                                running[bufferContextMask] = (isInSampleThreads ? int32 : 0);
+                                int runningTid = Marshal.ReadInt32(r.UserData);
+                                bool isInSampleThreads = Sample.Threads.ContainsKey(runningTid);
+                                running[bufferContextMask] = (isInSampleThreads ? runningTid : 0);
                                 break;
                             }
                             case 50:
                             {
-                                if (r.UserDataLength < 8 || ((uint)Marshal.ReadByte(r.UserData, 6) & (true ? 1u : 0u)) != 0)
+                                if (r.UserDataLength < 8 || ((uint)Marshal.ReadByte(r.UserData, 6) & ((1u))) != 0)
                                 {
                                     break;
                                 }
-                                int receiveValue2 = running[bufferContextMask];
+                                int previousRunningTid = running[bufferContextMask];
                                 // 非零条目均由本次采样固定线程集中的 CSwitch 事件准入。
-                                if (FixedThreadSet && receiveValue2 == 0) break;
-                                int int322 = Marshal.ReadInt32(r.UserData);
-                                if (receiveValue2 != int322 && Sample.Threads.ContainsKey(int322) && (FixedThreadSet || Sample.Threads.ContainsKey(receiveValue2)) && AdmitRelevantEvent())
+                                if (FixedThreadSet && previousRunningTid == 0) break;
+                                int readyTid = Marshal.ReadInt32(r.UserData);
+                                if (previousRunningTid != readyTid && Sample.Threads.ContainsKey(readyTid) && (FixedThreadSet || Sample.Threads.ContainsKey(previousRunningTid)) && AdmitRelevantEvent())
                                 {
-                                    long key = ((long)int322 << 32) | (uint)receiveValue2;
-                                    Dictionary<long, int> edges = Edges[receiveValue];
-                                    int value;
-                                    bool known = edges.TryGetValue(key, out value);
+                                    long key = ((long)readyTid << 32) | (uint)previousRunningTid;
+                                    Dictionary<long, int> edges = Edges[sampleHalf];
+                                    int edge;
+                                    bool known = edges.TryGetValue(key, out edge);
                                     if (edges.Count >= 2048 && !known)
                                     {
                                         Fault = FrameCaptureIssue.EdgeBudget;
@@ -176,7 +176,7 @@ namespace PaviseApp
                                     }
                                     else
                                     {
-                                        edges[key] = value + 1;
+                                        edges[key] = edge + 1;
                                     }
                                 }
                                 break;
@@ -200,16 +200,15 @@ namespace PaviseApp
                             {
                                 return;
                             }
-                            int value2;
+                            int currentPending;
                             if (id == ((!isDxgi) ? 1 : 42))
                             {
                                 if (isDxgi)
                                 {
-                                    Property property = default(Property);
-                                    property.Name = (ulong)FlagsName.ToInt64();
-                                    property.Index = uint.MaxValue;
-                                    Property property2 = property;
-                                    if (TdhGetProperty(ref r, 0u, IntPtr.Zero, 1u, ref property2, 4u, flagBuffer) != 0 || (BitConverter.ToUInt32(flagBuffer, 0) & (true ? 1u : 0u)) != 0)
+                                    Property currentProperty = default(Property);
+                                    currentProperty.Name = (ulong)FlagsName.ToInt64();
+                                    currentProperty.Index = uint.MaxValue;
+                                    if (TdhGetProperty(ref r, 0u, IntPtr.Zero, 1u, ref currentProperty, 4u, flagBuffer) != 0 || (BitConverter.ToUInt32(flagBuffer, 0) & ((1u))) != 0)
                                     {
                                         pending.Remove(threadId);
                                         return;
@@ -217,14 +216,14 @@ namespace PaviseApp
                                 }
                                 pending[threadId] = id;
                             }
-                            else if (id == (isDxgi ? 43 : 2) && pending.TryGetValue(threadId, out value2) && value2 == ((!isDxgi) ? 1 : 42))
+                            else if (id == (isDxgi ? 43 : 2) && pending.TryGetValue(threadId, out currentPending) && currentPending == ((!isDxgi) ? 1 : 42))
                             {
                                 pending.Remove(threadId);
                                 if (r.UserDataLength >= 4 && Marshal.ReadInt32(r.UserData) == 0)
                                 {
-                                    int value3;
-                                    Presents[receiveValue].TryGetValue(threadId, out value3);
-                                    Presents[receiveValue][threadId] = value3 + 1;
+                                    int Present;
+                                    Presents[sampleHalf].TryGetValue(threadId, out Present);
+                                    Presents[sampleHalf][threadId] = Present + 1;
                                 }
                             }
                         }
@@ -257,19 +256,19 @@ namespace PaviseApp
 
         internal static int Dominant(Dictionary<int, int> counts, int minimum, double share)
         {
-            int dominantValue = 0;
+            int totalSamples = 0;
             int result = 0;
-            int dominantValue2 = 0;
+            int dominantSamples = 0;
             foreach (KeyValuePair<int, int> count in counts)
             {
-                dominantValue += count.Value;
-                if (count.Value > dominantValue2)
+                totalSamples += count.Value;
+                if (count.Value > dominantSamples)
                 {
-                    dominantValue2 = count.Value;
+                    dominantSamples = count.Value;
                     result = count.Key;
                 }
             }
-            if (dominantValue2 < minimum || !((double)dominantValue2 >= (double)dominantValue * share))
+            if (dominantSamples < minimum || !((double)dominantSamples >= (double)totalSamples * share))
             {
                 return 0;
             }
@@ -357,8 +356,8 @@ namespace PaviseApp
 
         private static bool AdmitPresenter(FrameCoordinationSample sample, int tid)
         {
-            IntPtr intPtr = Native.OpenThread(2048, false, tid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr threadHandle = Native.OpenThread(2048, false, tid);
+            if (threadHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -368,7 +367,7 @@ namespace PaviseApp
                 long exit;
                 long kernel;
                 long user;
-                if (Native.QueryThreadOwnerPid(intPtr) != sample.Pid || !Native.GetThreadTimes(intPtr, out creation, out exit, out kernel, out user) || exit != 0 || creation <= 0)
+                if (Native.QueryThreadOwnerPid(threadHandle) != sample.Pid || !Native.GetThreadTimes(threadHandle, out creation, out exit, out kernel, out user) || exit != 0 || creation <= 0)
                 {
                     return false;
                 }
@@ -377,33 +376,31 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(threadHandle);
             }
         }
 
         internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly)
         {
-            FrameCoordinationSample frameCoordinationSample = new FrameCoordinationSample();
-            frameCoordinationSample.Pid = pid;
-            frameCoordinationSample.Birth = birth;
-            frameCoordinationSample.PresenterOnly = presenterOnly;
-            FrameCoordinationSample frameCoordinationSample2 = frameCoordinationSample;
-            frameCoordinationSample2.Reject(FrameCaptureIssue.InsufficientEvidence);
-            Evidence evidence = new Evidence();
-            evidence.Sample = frameCoordinationSample2;
-            evidence.PresenterOnly = presenterOnly;
-            Evidence evidence2 = evidence;
+            FrameCoordinationSample currentFrameCoordinationSample = new FrameCoordinationSample();
+            currentFrameCoordinationSample.Pid = pid;
+            currentFrameCoordinationSample.Birth = birth;
+            currentFrameCoordinationSample.PresenterOnly = presenterOnly;
+            currentFrameCoordinationSample.Reject(FrameCaptureIssue.InsufficientEvidence);
+            Evidence currentEvidence = new Evidence();
+            currentEvidence.Sample = currentFrameCoordinationSample;
+            currentEvidence.PresenterOnly = presenterOnly;
             FrameCoordinationTrace frameCoordinationTrace = new FrameCoordinationTrace();
             try
             {
                 if (!alive())
                 {
-                    return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
+                    return currentFrameCoordinationSample.Reject(FrameCaptureIssue.Canceled);
                 }
                 int processStateResult = NativeFrameThreads.ProcessState(pid, birth);
                 if (processStateResult != 0)
                 {
-                    return frameCoordinationSample2.Reject((processStateResult > 0) ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.TargetUnavailable);
+                    return currentFrameCoordinationSample.Reject((processStateResult > 0) ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.TargetUnavailable);
                 }
                 if (!presenterOnly)
                 {
@@ -411,12 +408,12 @@ namespace PaviseApp
                     {
                         foreach (ProcessThread thread in process.Threads)
                         {
-                            if (frameCoordinationSample2.Threads.Count >= 512)
+                            if (currentFrameCoordinationSample.Threads.Count >= 512)
                             {
-                                return frameCoordinationSample2.Reject(FrameCaptureIssue.ThreadBudget);
+                                return currentFrameCoordinationSample.Reject(FrameCaptureIssue.ThreadBudget);
                             }
-                            IntPtr intPtr = Native.OpenThread(2048, false, thread.Id);
-                            if (intPtr == IntPtr.Zero)
+                            IntPtr threadHandle = Native.OpenThread(2048, false, thread.Id);
+                            if (threadHandle == IntPtr.Zero)
                             {
                                 continue;
                             }
@@ -426,84 +423,84 @@ namespace PaviseApp
                                 long exit;
                                 long kernel;
                                 long user;
-                                if (Native.QueryThreadOwnerPid(intPtr) == pid && Native.GetThreadTimes(intPtr, out creation, out exit, out kernel, out user) && exit == 0)
+                                if (Native.QueryThreadOwnerPid(threadHandle) == pid && Native.GetThreadTimes(threadHandle, out creation, out exit, out kernel, out user) && exit == 0)
                                 {
-                                    frameCoordinationSample2.Threads[thread.Id] = creation;
+                                    currentFrameCoordinationSample.Threads[thread.Id] = creation;
                                 }
                             }
                             finally
                             {
-                                Native.CloseHandle(intPtr);
+                                Native.CloseHandle(threadHandle);
                             }
                         }
                     }
                 }
-                evidence2.FixedThreadSet = !presenterOnly;
-                evidence2.FlagsName = Marshal.StringToHGlobalUni("Flags");
-                evidence2.Begin = Stopwatch.GetTimestamp();
-                evidence2.Half = evidence2.Begin + Stopwatch.Frequency * 8 / 5;
-                evidence2.End = evidence2.Begin + Stopwatch.Frequency * 16 / 5;
-                if (!frameCoordinationTrace.Start(pid, evidence2.Receive, presenterOnly))
+                currentEvidence.FixedThreadSet = !presenterOnly;
+                currentEvidence.FlagsName = Marshal.StringToHGlobalUni("Flags");
+                currentEvidence.Begin = Stopwatch.GetTimestamp();
+                currentEvidence.Half = currentEvidence.Begin + Stopwatch.Frequency * 8 / 5;
+                currentEvidence.End = currentEvidence.Begin + Stopwatch.Frequency * 16 / 5;
+                if (!frameCoordinationTrace.Start(pid, currentEvidence.Receive, presenterOnly))
                 {
-                    frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
-                    return frameCoordinationSample2.Reject(FrameCaptureIssue.TraceUnavailable);
+                    currentFrameCoordinationSample.TraceCode = frameCoordinationTrace.Error;
+                    return currentFrameCoordinationSample.Reject(FrameCaptureIssue.TraceUnavailable);
                 }
-                while (Stopwatch.GetTimestamp() < evidence2.End && alive() && !evidence2.Invalid)
+                while (Stopwatch.GetTimestamp() < currentEvidence.End && alive() && !currentEvidence.Invalid)
                 {
                     Thread.Sleep(100);
                 }
                 bool stopped = frameCoordinationTrace.Stop();
-                frameCoordinationSample2.CpuMs = frameCoordinationTrace.CpuMs;
-                frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
-                frameCoordinationSample2.LostEvents = frameCoordinationTrace.Lost;
-                frameCoordinationSample2.Events = evidence2.RelevantCount;
-                frameCoordinationSample2.SystemEvents = evidence2.Count;
-                frameCoordinationSample2.SchedulerSwitches = evidence2.SchedulerSwitches;
-                FrameCaptureIssue frameCaptureIssue = CaptureIssue(alive(), NativeFrameThreads.ProcessState(pid, birth), stopped, frameCoordinationTrace.Drained, frameCoordinationTrace.Error, frameCoordinationTrace.Lost, evidence2.Fault, frameCoordinationSample2.CpuMs);
+                currentFrameCoordinationSample.CpuMs = frameCoordinationTrace.CpuMs;
+                currentFrameCoordinationSample.TraceCode = frameCoordinationTrace.Error;
+                currentFrameCoordinationSample.LostEvents = frameCoordinationTrace.Lost;
+                currentFrameCoordinationSample.Events = currentEvidence.RelevantCount;
+                currentFrameCoordinationSample.SystemEvents = currentEvidence.Count;
+                currentFrameCoordinationSample.SchedulerSwitches = currentEvidence.SchedulerSwitches;
+                FrameCaptureIssue frameCaptureIssue = CaptureIssue(alive(), NativeFrameThreads.ProcessState(pid, birth), stopped, frameCoordinationTrace.Drained, frameCoordinationTrace.Error, frameCoordinationTrace.Lost, currentEvidence.Fault, currentFrameCoordinationSample.CpuMs);
                 if (frameCaptureIssue != 0)
                 {
-                    return frameCoordinationSample2.Reject(frameCaptureIssue);
+                    return currentFrameCoordinationSample.Reject(frameCaptureIssue);
                 }
-                int presentTidValue = Dominant(evidence2.Presents[0], 16, 0.7);
-                int dominantResult = Dominant(evidence2.Presents[1], 16, 0.7);
+                int presentTidValue = Dominant(currentEvidence.Presents[0], 16, 0.7);
+                int dominantResult = Dominant(currentEvidence.Presents[1], 16, 0.7);
                 if (presentTidValue == 0 || presentTidValue != dominantResult)
                 {
-                    return frameCoordinationSample2;
+                    return currentFrameCoordinationSample;
                 }
-                if (presenterOnly && !AdmitPresenter(frameCoordinationSample2, presentTidValue))
+                if (presenterOnly && !AdmitPresenter(currentFrameCoordinationSample, presentTidValue))
                 {
-                    return frameCoordinationSample2;
+                    return currentFrameCoordinationSample;
                 }
-                frameCoordinationSample2.PresentTid = presentTidValue;
-                frameCoordinationSample2.WorkerTid = SelectWorker(evidence2, presentTidValue);
-                frameCoordinationSample2.Valid = true;
-                frameCoordinationSample2.Issue = FrameCaptureIssue.None;
-                frameCoordinationSample2.Detail = (presenterOnly ? "presenter confirmed; presenter-only capture" : ((frameCoordinationSample2.WorkerTid == 0) ? "presenter confirmed; no stable worker" : "presenter and worker confirmed"));
-                return frameCoordinationSample2;
+                currentFrameCoordinationSample.PresentTid = presentTidValue;
+                currentFrameCoordinationSample.WorkerTid = SelectWorker(currentEvidence, presentTidValue);
+                currentFrameCoordinationSample.Valid = true;
+                currentFrameCoordinationSample.Issue = FrameCaptureIssue.None;
+                currentFrameCoordinationSample.Detail = (presenterOnly ? "presenter confirmed; presenter-only capture" : ((currentFrameCoordinationSample.WorkerTid == 0) ? "presenter confirmed; no stable worker" : "presenter and worker confirmed"));
+                return currentFrameCoordinationSample;
             }
             catch (ArgumentException ex)
             {
                 if (!alive() || NativeFrameThreads.ProcessState(pid, birth) > 0)
                 {
-                    return frameCoordinationSample2.Reject(FrameCaptureIssue.TargetChanged);
+                    return currentFrameCoordinationSample.Reject(FrameCaptureIssue.TargetChanged);
                 }
-                return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, ex.GetType().Name + ": " + ex.Message);
+                return currentFrameCoordinationSample.Reject(FrameCaptureIssue.CaptureFailed, ex.GetType().Name + ": " + ex.Message);
             }
             catch (Win32Exception ex2)
             {
-                return frameCoordinationSample2.Reject(FrameCaptureIssue.TargetUnavailable, "code=" + ex2.NativeErrorCode);
+                return currentFrameCoordinationSample.Reject(FrameCaptureIssue.TargetUnavailable, "code=" + ex2.NativeErrorCode);
             }
             catch (Exception ex3)
             {
-                return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, ex3.GetType().Name + ": " + ex3.Message);
+                return currentFrameCoordinationSample.Reject(FrameCaptureIssue.CaptureFailed, ex3.GetType().Name + ": " + ex3.Message);
             }
             finally
             {
-                evidence2.Invalid = true;
+                currentEvidence.Invalid = true;
                 frameCoordinationTrace.Stop();
-                if (frameCoordinationTrace.Drained && evidence2.FlagsName != IntPtr.Zero)
+                if (frameCoordinationTrace.Drained && currentEvidence.FlagsName != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(evidence2.FlagsName);
+                    Marshal.FreeHGlobal(currentEvidence.FlagsName);
                 }
             }
         }

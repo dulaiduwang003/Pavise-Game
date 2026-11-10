@@ -381,13 +381,13 @@ namespace PaviseApp
                 r2.Width--;
                 r2.Height--;
                 DsPaint.TechFrame(graphics, r2, scaledDimension, Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.Accent, 0.16f)), Col.Alpha(Theme.Accent, 220));
-                using (Pen pen2 = new Pen(Theme.Accent, DsSpace.Line(2)))
+                using (Pen accentPen = new Pen(Theme.Accent, DsSpace.Line(2)))
                 {
-                    graphics.DrawLine(pen2, r2.Left, r2.Top + scaledDimension, r2.Left, r2.Bottom - scaledDimension);
+                    graphics.DrawLine(accentPen, r2.Left, r2.Top + scaledDimension, r2.Left, r2.Bottom - scaledDimension);
                 }
-                using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 200), DsSpace.Line(1)))
+                using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 200), DsSpace.Line(1)))
                 {
-                    graphics.DrawLine(pen3, r2.Right - scaledDimension, r2.Top, r2.Right, r2.Top + scaledDimension);
+                    graphics.DrawLine(currentPen, r2.Right - scaledDimension, r2.Top, r2.Right, r2.Top + scaledDimension);
                 }
             }
             for (int j = 0; j < labels.Length; j++)

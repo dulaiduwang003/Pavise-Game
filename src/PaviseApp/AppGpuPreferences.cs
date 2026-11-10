@@ -22,7 +22,6 @@ namespace PaviseApp
 
         private sealed class WindowsAppGpuPreferenceControl : IAppGpuPreferenceControl
         {
-            private const string GpuKey = "SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences";
 
             public bool Supported
             {
@@ -75,16 +74,16 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                object value2 = key.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                if (value2 == null)
+                object instance = key.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                if (instance == null)
                 {
                     return true;
                 }
-                if (!(value2 is string) || key.GetValueKind(path) != RegistryValueKind.String)
+                if (!(instance is string) || key.GetValueKind(path) != RegistryValueKind.String)
                 {
                     return false;
                 }
-                value = (string)value2;
+                value = (string)instance;
                 return true;
             }
 
@@ -100,12 +99,12 @@ namespace PaviseApp
                         {
                             return AppGpuPreferenceWriteResult.NotIssued;
                         }
-                        string value;
-                        if (!Read(registryKey, path, out value))
+                        string text;
+                        if (!Read(registryKey, path, out text))
                         {
                             return AppGpuPreferenceWriteResult.NotIssued;
                         }
-                        if (!string.Equals(value, expected, StringComparison.Ordinal))
+                        if (!string.Equals(text, expected, StringComparison.Ordinal))
                         {
                             return AppGpuPreferenceWriteResult.Changed;
                         }
@@ -178,20 +177,20 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> currentTextsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (GpuAdapter adapter in adapters)
             {
                 if (adapter != null && adapter.IntegratedKnown && !string.IsNullOrEmpty(adapter.HardwareId))
                 {
-                    (adapter.Integrated ? hashSet : hashSet2).Add(adapter.HardwareId);
+                    (adapter.Integrated ? textsSet : currentTextsSet).Add(adapter.HardwareId);
                 }
             }
-            foreach (string item in hashSet)
+            foreach (string candidateTextsSet in textsSet)
             {
-                foreach (string item2 in hashSet2)
+                foreach (string resolvedTextsSet in currentTextsSet)
                 {
-                    if (!string.Equals(item, item2, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(candidateTextsSet, resolvedTextsSet, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }

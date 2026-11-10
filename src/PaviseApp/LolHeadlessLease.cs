@@ -7,13 +7,6 @@ namespace PaviseApp
 {
     internal static class LolHeadlessLease
     {
-        private const string Key = "LolHeadlessEngagedRoot";
-
-        private const string Prefix = "V2|";
-
-        private const string GlobalMutex = "Global\\Pavise_LolHeadlessLease";
-
-        private const string LocalMutex = "Pavise_LolHeadlessLease";
 
         public static bool Exists()
         {
@@ -138,14 +131,14 @@ namespace PaviseApp
 
         internal static string StableHash(string value)
         {
-            uint numericValue = 2166136261u;
+            uint hashValue = 2166136261u;
             string toUpperInvariantResult = (value ?? "").ToUpperInvariant();
             for (int i = 0; i < toUpperInvariantResult.Length; i++)
             {
-                numericValue ^= toUpperInvariantResult[i];
-                numericValue *= 16777619;
+                hashValue ^= toUpperInvariantResult[i];
+                hashValue *= 16777619;
             }
-            return numericValue.ToString("X8");
+            return hashValue.ToString("X8");
         }
 
         private static bool WithLeaseLock(Func<bool> action)

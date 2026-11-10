@@ -225,20 +225,6 @@ namespace PaviseApp
 
         internal const string FailureAction = "BackgroundSuppression";
 
-        private const int ProtectedBackoffBaseSeconds = 8;
-
-        private const int ProtectedBackoffCapSeconds = 300;
-
-        private const int ProtectedBackoffMax = 8;
-
-        private const int ReconcileFastSeconds = 4;
-
-        private const int ReconcileStableBaseSeconds = 20;
-
-        private const int ReconcileStableJitterSeconds = 11;
-
-        private const int ReconcileFailureCapSeconds = 60;
-
         private static readonly IAutomaticLayoutPlatform automaticLayoutPlatform = new AutomaticLayoutPlatform();
 
         public static volatile bool GpuDemoteEnabled;
@@ -538,17 +524,17 @@ namespace PaviseApp
             long version = Interlocked.Read(ref groupCountsVersion);
             if (version == publishedGroupCountsVersion) return;
             Dictionary<string, int[]> groupCounts = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<int, Entry> item in map)
+            foreach (KeyValuePair<int, Entry> mapEntry in map)
             {
-                if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0)
+                if ((mapEntry.Value.Reasons & SuppressReason.AntiCheat) != 0)
                 {
-                    string key = item.Value.Group ?? "";
+                    string key = mapEntry.Value.Group ?? "";
                     int[] counts;
                     if (!groupCounts.TryGetValue(key, out counts))
                     {
                         counts = (groupCounts[key] = new int[2]);
                     }
-                    if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
+                    if (mapEntry.Value.OrigPri == uint.MaxValue || !mapEntry.Value.Applied)
                     {
                         counts[1]++;
                     }
@@ -582,19 +568,19 @@ namespace PaviseApp
                 try { RefreshGroupCountsLocked(); }
                 finally { Monitor.Exit(sync); }
             }
-            int antiCheatGroupCountsCachedValue = 0;
-            int antiCheatGroupCountsCachedValue2 = 0;
+            int throttledCount = 0;
+            int protectedCount = 0;
             lock (lastGroupCounts)
             {
                 int[] counts;
                 if (lastGroupCounts.TryGetValue(groupKey ?? "", out counts))
                 {
-                    antiCheatGroupCountsCachedValue = counts[0];
-                    antiCheatGroupCountsCachedValue2 = counts[1];
+                    throttledCount = counts[0];
+                    protectedCount = counts[1];
                 }
             }
-            throttled = antiCheatGroupCountsCachedValue;
-            protectedCnt = antiCheatGroupCountsCachedValue2;
+            throttled = throttledCount;
+            protectedCnt = protectedCount;
         }
 
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
@@ -619,11 +605,11 @@ namespace PaviseApp
             }
             try
             {
-                foreach (KeyValuePair<int, Entry> item in map)
+                foreach (KeyValuePair<int, Entry> mapEntry in map)
                 {
-                    if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(item.Value.Group, groupKey))
+                    if ((mapEntry.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(mapEntry.Value.Group, groupKey))
                     {
-                        if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
+                        if (mapEntry.Value.OrigPri == uint.MaxValue || !mapEntry.Value.Applied)
                         {
                             processedCount2++;
                         }

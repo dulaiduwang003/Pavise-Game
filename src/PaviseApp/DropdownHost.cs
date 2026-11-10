@@ -183,14 +183,14 @@ namespace PaviseApp
             if (object.ReferenceEquals(next, menu))
             {
                 closeOnClick = false;
-                Rectangle rectangle2 = (LastPlacement = Placement(next.Size));
-                if (next.Size != rectangle2.Size)
+                Rectangle rectangle = (LastPlacement = Placement(next.Size));
+                if (next.Size != rectangle.Size)
                 {
-                    next.Size = rectangle2.Size;
+                    next.Size = rectangle.Size;
                 }
                 try
                 {
-                    next.Show(owner, owner.PointToClient(rectangle2.Location));
+                    next.Show(owner, owner.PointToClient(rectangle.Location));
                 }
                 catch
                 {

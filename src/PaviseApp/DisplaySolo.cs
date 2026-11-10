@@ -15,18 +15,6 @@ namespace PaviseApp
 
         internal const uint TopologyExternal = 8u;
 
-        private const uint QdcOnlyActivePaths = 2u;
-
-        private const uint QdcDatabaseCurrent = 4u;
-
-        private const uint SdcApply = 128u;
-
-        private const int SmRemoteSession = 4096;
-
-        private const uint PathInfoSize = 72u;
-
-        private const uint ModeInfoSize = 64u;
-
         private static readonly object lk = new object();
 
         private static bool SettledAsSingleDisplay()
@@ -104,8 +92,8 @@ namespace PaviseApp
         private static bool TryCurrentTopology(out uint topology)
         {
             topology = 0u;
-            IntPtr intPtr = IntPtr.Zero;
-            IntPtr intPtr2 = IntPtr.Zero;
+            IntPtr nativeBuffer = IntPtr.Zero;
+            IntPtr currentNativeBuffer = IntPtr.Zero;
             try
             {
                 uint numPaths;
@@ -114,9 +102,9 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                intPtr = Marshal.AllocHGlobal((int)(numPaths * 72));
-                intPtr2 = Marshal.AllocHGlobal((int)(Math.Max(numModes, 1u) * 64));
-                if (QueryDisplayConfig(4u, ref numPaths, intPtr, ref numModes, intPtr2, out topology) != 0)
+                nativeBuffer = Marshal.AllocHGlobal((int)(numPaths * 72));
+                currentNativeBuffer = Marshal.AllocHGlobal((int)(Math.Max(numModes, 1u) * 64));
+                if (QueryDisplayConfig(4u, ref numPaths, nativeBuffer, ref numModes, currentNativeBuffer, out topology) != 0)
                 {
                     return false;
                 }
@@ -128,13 +116,13 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr != IntPtr.Zero)
+                if (nativeBuffer != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(intPtr);
+                    Marshal.FreeHGlobal(nativeBuffer);
                 }
-                if (intPtr2 != IntPtr.Zero)
+                if (currentNativeBuffer != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(intPtr2);
+                    Marshal.FreeHGlobal(currentNativeBuffer);
                 }
             }
         }

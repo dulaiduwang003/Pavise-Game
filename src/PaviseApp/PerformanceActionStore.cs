@@ -106,19 +106,18 @@ namespace PaviseApp
             string[] parts = (text ?? "").Split('|');
             if (parts.Length == 6 && parts[0] == "visual-legacy-terminal1" && parts[1] == "1")
             {
-                Receipt receipt = new Receipt();
-                receipt.Id = Decode(parts[2]);
-                receipt.Target = Decode(parts[3]);
-                receipt.Original = Decode(parts[4]);
-                receipt.Expected = Decode(parts[5]);
-                receipt.Committed = true;
-                receipt.VisualRestored = true;
-                Receipt receipt2 = receipt;
-                if (Pack(receipt2) != text)
+                Receipt currentReceipt = new Receipt();
+                currentReceipt.Id = Decode(parts[2]);
+                currentReceipt.Target = Decode(parts[3]);
+                currentReceipt.Original = Decode(parts[4]);
+                currentReceipt.Expected = Decode(parts[5]);
+                currentReceipt.Committed = true;
+                currentReceipt.VisualRestored = true;
+                if (Pack(currentReceipt) != text)
                 {
                     throw new FormatException("Noncanonical legacy visual terminal receipt");
                 }
-                return receipt2;
+                return currentReceipt;
             }
             if (parts.Length == 8 && parts[0] == "visual2")
             {
@@ -126,33 +125,32 @@ namespace PaviseApp
                 {
                     throw new FormatException("Invalid owned visual effect receipt state");
                 }
-                Receipt receipt3 = new Receipt();
-                receipt3.Committed = parts[1] == "1";
-                receipt3.Id = Decode(parts[2]);
-                receipt3.Target = Decode(parts[3]);
-                receipt3.Original = Decode(parts[4]);
-                receipt3.Expected = Decode(parts[5]);
-                receipt3.VisualOwner = Decode(parts[6]);
-                receipt3.VisualRestored = parts[7] == "1";
-                Receipt receipt4 = receipt3;
-                ValidateVisualOwner(receipt4);
-                if (Pack(receipt4) != text)
+                Receipt resolvedReceipt = new Receipt();
+                resolvedReceipt.Committed = parts[1] == "1";
+                resolvedReceipt.Id = Decode(parts[2]);
+                resolvedReceipt.Target = Decode(parts[3]);
+                resolvedReceipt.Original = Decode(parts[4]);
+                resolvedReceipt.Expected = Decode(parts[5]);
+                resolvedReceipt.VisualOwner = Decode(parts[6]);
+                resolvedReceipt.VisualRestored = parts[7] == "1";
+                ValidateVisualOwner(resolvedReceipt);
+                if (Pack(resolvedReceipt) != text)
                 {
                     throw new FormatException("Noncanonical owned visual effect receipt");
                 }
-                return receipt4;
+                return resolvedReceipt;
             }
             if (parts.Length != 5 || (parts[0] != "0" && parts[0] != "1"))
             {
                 throw new FormatException("Invalid performance receipt");
             }
-            Receipt receipt5 = new Receipt();
-            receipt5.Committed = parts[0] == "1";
-            receipt5.Id = Decode(parts[1]);
-            receipt5.Target = Decode(parts[2]);
-            receipt5.Original = Decode(parts[3]);
-            receipt5.Expected = Decode(parts[4]);
-            return receipt5;
+            Receipt selectedReceipt = new Receipt();
+            selectedReceipt.Committed = parts[0] == "1";
+            selectedReceipt.Id = Decode(parts[1]);
+            selectedReceipt.Target = Decode(parts[2]);
+            selectedReceipt.Original = Decode(parts[3]);
+            selectedReceipt.Expected = Decode(parts[4]);
+            return selectedReceipt;
         }
 
         private static string Read(string key)
@@ -178,15 +176,14 @@ namespace PaviseApp
         {
             lock (gate)
             {
-                List<Receipt> list = new List<Receipt>();
-                List<string> list2 = new List<string>();
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                string[] readParts = Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string item in readParts)
+                List<Receipt> receipts = new List<Receipt>();
+                List<string> texts = new List<string>();
+                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string readPart in Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (hashSet.Add(item))
+                    if (textsSet.Add(readPart))
                     {
-                        list2.Add(item);
+                        texts.Add(readPart);
                     }
                 }
                 string[] names;
@@ -194,39 +191,38 @@ namespace PaviseApp
                 {
                     throw new InvalidOperationException("Unreadable performance receipt names");
                 }
-                string[] namesSnapshot = names;
-                foreach (string item2 in namesSnapshot)
+                foreach (string currentNamesSnapshot in names)
                 {
-                    if (hashSet.Add(item2))
+                    if (textsSet.Add(currentNamesSnapshot))
                     {
-                        list2.Add(item2);
+                        texts.Add(currentNamesSnapshot);
                     }
                 }
-                foreach (string item3 in list2)
+                foreach (string text in texts)
                 {
-                    bool receiptKey = item3.StartsWith("PerformanceReceipt_", StringComparison.OrdinalIgnoreCase) && item3.Length == "PerformanceReceipt_".Length + 64;
+                    bool receiptKey = text.StartsWith("PerformanceReceipt_", StringComparison.OrdinalIgnoreCase) && text.Length == "PerformanceReceipt_".Length + 64;
                     int processedCount = "PerformanceReceipt_".Length;
-                    while (receiptKey && processedCount < item3.Length)
+                    while (receiptKey && processedCount < text.Length)
                     {
-                        receiptKey = (item3[processedCount] >= '0' && item3[processedCount] <= '9') || (item3[processedCount] >= 'a' && item3[processedCount] <= 'f') || (item3[processedCount] >= 'A' && item3[processedCount] <= 'F');
+                        receiptKey = (text[processedCount] >= '0' && text[processedCount] <= '9') || (text[processedCount] >= 'a' && text[processedCount] <= 'f') || (text[processedCount] >= 'A' && text[processedCount] <= 'F');
                         processedCount++;
                     }
                     if (!receiptKey)
                     {
-                        throw new FormatException("Invalid performance receipt key: " + item3);
+                        throw new FormatException("Invalid performance receipt key: " + text);
                     }
-                    string readResult = Read(item3);
+                    string readResult = Read(text);
                     if (readResult.Length != 0)
                     {
                         Receipt receipt = Unpack(readResult);
-                        if (string.IsNullOrEmpty(receipt.Id) || string.IsNullOrEmpty(receipt.Target) || !string.Equals(item3, Slot(receipt.Id, receipt.Target), StringComparison.OrdinalIgnoreCase))
+                        if (string.IsNullOrEmpty(receipt.Id) || string.IsNullOrEmpty(receipt.Target) || !string.Equals(text, Slot(receipt.Id, receipt.Target), StringComparison.OrdinalIgnoreCase))
                         {
-                            throw new FormatException("Invalid performance receipt ownership: " + item3);
+                            throw new FormatException("Invalid performance receipt ownership: " + text);
                         }
-                        list.Add(receipt);
+                        receipts.Add(receipt);
                     }
                 }
-                return list;
+                return receipts;
             }
         }
 
@@ -250,12 +246,12 @@ namespace PaviseApp
 
         private static bool Track(string key)
         {
-            List<string> list = new List<string>(Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
-            if (!list.Contains(key))
+            List<string> splitSnapshot = new List<string>(Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            if (!splitSnapshot.Contains(key))
             {
-                list.Add(key);
+                splitSnapshot.Add(key);
             }
-            return Save("PerformanceActionReceiptsV1", string.Join(";", list.ToArray()));
+            return Save("PerformanceActionReceiptsV1", string.Join(";", splitSnapshot.ToArray()));
         }
 
         private static bool Clear(string key, string expected = null)
@@ -276,9 +272,9 @@ namespace PaviseApp
             {
                 return false;
             }
-            List<string> list = new List<string>(Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
-            list.Remove(key);
-            return Save("PerformanceActionReceiptsV1", string.Join(";", list.ToArray()));
+            List<string> splitSnapshot = new List<string>(Read("PerformanceActionReceiptsV1").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            splitSnapshot.Remove(key);
+            return Save("PerformanceActionReceiptsV1", string.Join(";", splitSnapshot.ToArray()));
         }
 
         internal static bool Change(string id, string target, string wanted, Func<string> read, Func<string, bool> write, Func<string, bool> satisfied)
@@ -323,8 +319,8 @@ namespace PaviseApp
                 {
                     for (int i = 0; i < 3; i++)
                     {
-                        Receipt receipt2 = reconcile(receipt, originalValue);
-                        if (receipt2 == null || receipt2.Id != id || !string.Equals(receipt2.Target, target, StringComparison.OrdinalIgnoreCase))
+                        Receipt currentReconcile = reconcile(receipt, originalValue);
+                        if (currentReconcile == null || currentReconcile.Id != id || !string.Equals(currentReconcile.Target, target, StringComparison.OrdinalIgnoreCase))
                         {
                             return ChangeFailed("Recovery snapshot cannot be reconciled");
                         }
@@ -334,11 +330,11 @@ namespace PaviseApp
                             originalValue = readResult2;
                             continue;
                         }
-                        if (!Track(key) || !Save(key, Pack(receipt2)))
+                        if (!Track(key) || !Save(key, Pack(currentReconcile)))
                         {
                             return ChangeFailed("Could not save the reconciled recovery record");
                         }
-                        receipt = receipt2;
+                        receipt = currentReconcile;
                         reconciled = true;
                         break;
                     }
@@ -361,12 +357,12 @@ namespace PaviseApp
                 }
                 if (receipt == null)
                 {
-                    Receipt receipt3 = new Receipt();
-                    receipt3.Id = id;
-                    receipt3.Target = target;
-                    receipt3.Original = originalValue;
-                    receipt3.Expected = wanted;
-                    receipt = receipt3;
+                    Receipt currentReceipt = new Receipt();
+                    currentReceipt.Id = id;
+                    currentReceipt.Target = target;
+                    currentReceipt.Original = originalValue;
+                    currentReceipt.Expected = wanted;
+                    receipt = currentReceipt;
                 }
                 if (!reconciled && (!Track(key) || !Save(key, Pack(receipt))))
                 {
@@ -376,13 +372,13 @@ namespace PaviseApp
                 {
                     if (!reconciled && (receipt.Committed || receipt.Expected != wanted))
                     {
-                        Receipt receipt4 = new Receipt();
-                        receipt4.Id = id;
-                        receipt4.Target = target;
-                        receipt4.Original = receipt.Original;
-                        receipt4.Expected = wanted;
-                        receipt4.Committed = false;
-                        receipt = receipt4;
+                        Receipt candidateReceipt = new Receipt();
+                        candidateReceipt.Id = id;
+                        candidateReceipt.Target = target;
+                        candidateReceipt.Original = receipt.Original;
+                        candidateReceipt.Expected = wanted;
+                        candidateReceipt.Committed = false;
+                        receipt = candidateReceipt;
                         if (!Save(key, Pack(receipt)))
                         {
                             return ChangeFailed("Could not prepare the recovery record");
@@ -499,13 +495,13 @@ namespace PaviseApp
                     }
                     if (receipt == null)
                     {
-                        Receipt receipt2 = new Receipt();
-                        receipt2.Id = "MatchVisualEffectsV1";
-                        receipt2.Target = target;
-                        receipt2.Original = originalValue;
-                        receipt2.Expected = wanted;
-                        receipt2.VisualOwner = manualReceiptOwner;
-                        receipt = receipt2;
+                        Receipt currentReceipt = new Receipt();
+                        currentReceipt.Id = "MatchVisualEffectsV1";
+                        currentReceipt.Target = target;
+                        currentReceipt.Original = originalValue;
+                        currentReceipt.Expected = wanted;
+                        currentReceipt.VisualOwner = manualReceiptOwner;
+                        receipt = currentReceipt;
                     }
                     else
                     {
@@ -572,15 +568,14 @@ namespace PaviseApp
                         return false;
                     }
                 }
-                Receipt receipt2 = new Receipt();
-                receipt2.Id = receipt.Id;
-                receipt2.Target = receipt.Target;
-                receipt2.Original = receipt.Original;
-                receipt2.Expected = receipt.Original;
-                receipt2.VisualOwner = receipt.VisualOwner;
-                receipt2.Committed = true;
-                receipt2.VisualRestored = true;
-                Receipt r = receipt2;
+                Receipt r = new Receipt();
+                r.Id = receipt.Id;
+                r.Target = receipt.Target;
+                r.Original = receipt.Original;
+                r.Expected = receipt.Original;
+                r.VisualOwner = receipt.VisualOwner;
+                r.Committed = true;
+                r.VisualRestored = true;
                 return Save(key, Pack(r));
             }
         }
@@ -593,21 +588,21 @@ namespace PaviseApp
             }
             closedAccess.AssertMetadata(closedAccess.Stamp, true);
             string manualReceiptOwner = closedAccess.Stamp.ManualReceiptOwner;
-            IDictionary<string, string> dictionary = SpiManualClosureManifest.Read(closedAccess);
+            IDictionary<string, string> iDictionary = SpiManualClosureManifest.Read(closedAccess);
             lock (gate)
             {
-                List<Receipt> list = All();
-                foreach (Receipt item in list)
+                List<Receipt> receipts = All();
+                foreach (Receipt receipt in receipts)
                 {
-                    string value;
-                    if (item.Id == "MatchVisualEffectsV1" && (item.VisualOwner != manualReceiptOwner || !item.VisualRestored || !dictionary.TryGetValue(Slot(item.Id, item.Target), out value) || SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(Pack(item))) != value))
+                    string currentIDictionary;
+                    if (receipt.Id == "MatchVisualEffectsV1" && (receipt.VisualOwner != manualReceiptOwner || !receipt.VisualRestored || !iDictionary.TryGetValue(Slot(receipt.Id, receipt.Target), out currentIDictionary) || SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(Pack(receipt))) != currentIDictionary))
                     {
                         return false;
                     }
                 }
-                foreach (Receipt item2 in list)
+                foreach (Receipt currentReceipt in receipts)
                 {
-                    if (item2.Id == "MatchVisualEffectsV1" && !Clear(Slot(item2.Id, item2.Target), Pack(item2)))
+                    if (currentReceipt.Id == "MatchVisualEffectsV1" && !Clear(Slot(currentReceipt.Id, currentReceipt.Target), Pack(currentReceipt)))
                     {
                         return false;
                     }

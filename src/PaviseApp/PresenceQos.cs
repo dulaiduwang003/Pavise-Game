@@ -66,8 +66,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object value = registryKey.GetValue("DisableUserPresenceQos");
-                    return value != null && Convert.ToInt32(value) == 1;
+                    object instance = registryKey.GetValue("DisableUserPresenceQos");
+                    return instance != null && Convert.ToInt32(instance) == 1;
                 }
             }
             catch

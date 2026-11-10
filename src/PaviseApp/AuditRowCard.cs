@@ -7,23 +7,6 @@ namespace PaviseApp
 {
     internal sealed class AuditRowCard : FxControl
     {
-        private const int PadL = 16;
-
-        private const int PadR = 16;
-
-        private const int BtnW = 120;
-
-        private const int BtnH = 32;
-
-        private const int RightCol = 132;
-
-        private const int NoteMaxLines = 3;
-
-        private const float NameSize = 9.5f;
-
-        private const float NoteSize = 8f;
-
-        private const float MetaSize = 7.4f;
 
         private readonly string name;
 
@@ -171,22 +154,22 @@ namespace PaviseApp
             Graphics graphics = e.Graphics;
             FillBg(graphics);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float value2 = hover.Value;
+            float hoverProgress = hover.Value;
             Rectangle r = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
             using (GraphicsPath path = Theme.TechPath(r, Theme.S(9)))
             {
-                using (SolidBrush brush = new SolidBrush(Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.CardHover, value2 * 0.5f))))
+                using (SolidBrush brush = new SolidBrush(Backdrop.CardFill(this, Col.Lerp(Theme.Card, Theme.CardHover, hoverProgress * 0.5f))))
                 {
                     graphics.FillPath(brush, path);
                 }
-                using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, warn ? Col.Alpha(Theme.Accent, 150) : Theme.StrokeHi, warn ? (0.55f + value2 * 0.35f) : value2)))
+                using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, warn ? Col.Alpha(Theme.Accent, 150) : Theme.StrokeHi, warn ? (0.55f + hoverProgress * 0.35f) : hoverProgress)))
                 {
                     graphics.DrawPath(pen, path);
                 }
             }
-            using (Pen pen2 = new Pen(warn ? Theme.Accent : Col.Lerp(Theme.Stroke, Theme.Accent, value2 * 0.6f), Math.Max(1f, Theme.S(2))))
+            using (Pen currentPen = new Pen(warn ? Theme.Accent : Col.Lerp(Theme.Stroke, Theme.Accent, hoverProgress * 0.6f), Math.Max(1f, Theme.S(2))))
             {
-                graphics.DrawLine(pen2, 0, Theme.S(12), 0, base.Height - Theme.S(13));
+                graphics.DrawLine(currentPen, 0, Theme.S(12), 0, base.Height - Theme.S(13));
             }
             int upperBound = ((evidence.Length > 0) ? Math.Min(base.Width / 3, TextRenderer.MeasureText(graphics, evidence, Theme.UI(7.4f, false), Size.Empty, TextFormatFlags.SingleLine).Width + Theme.S(8)) : 0);
             int scaledDimension = (hasButton ? Theme.S(132) : 0);
@@ -268,13 +251,13 @@ namespace PaviseApp
                 sOffset = scaledDimension3;
             }
             btnRect = new Rectangle(base.Width - Theme.S(16) - scaledDimension, sOffset, scaledDimension, scaledDimension2);
-            float value2 = btnHover.Value;
+            float btnHoverProgress = btnHover.Value;
             int sLimit = Math.Max(Theme.S(6), scaledDimension2 / 4);
             using (GraphicsPath path = Theme.TechPath(btnRect, sLimit))
             {
                 if (btnPrimary)
                 {
-                    using (LinearGradientBrush brush = new LinearGradientBrush(btnRect, Col.Lerp(Theme.Accent, Color.White, value2 * 0.14f), Col.Lerp(Theme.Accent2, Color.White, value2 * 0.14f), LinearGradientMode.Horizontal))
+                    using (LinearGradientBrush brush = new LinearGradientBrush(btnRect, Col.Lerp(Theme.Accent, Color.White, btnHoverProgress * 0.14f), Col.Lerp(Theme.Accent2, Color.White, btnHoverProgress * 0.14f), LinearGradientMode.Horizontal))
                     {
                         g.FillPath(brush, path);
                     }
@@ -285,15 +268,15 @@ namespace PaviseApp
                 }
                 else
                 {
-                    Color color = Col.Lerp(Theme.CardHover, Color.White, 0.02f + value2 * 0.05f);
-                    Color color2 = Col.Lerp(Theme.Card, Color.Black, 0.05f);
-                    using (LinearGradientBrush brush2 = new LinearGradientBrush(btnRect, color, color2, LinearGradientMode.Vertical))
+                    Color color = Col.Lerp(Theme.CardHover, Color.White, 0.02f + btnHoverProgress * 0.05f);
+                    Color lerp = Col.Lerp(Theme.Card, Color.Black, 0.05f);
+                    using (LinearGradientBrush brush2 = new LinearGradientBrush(btnRect, color, lerp, LinearGradientMode.Vertical))
                     {
                         g.FillPath(brush2, path);
                     }
-                    using (Pen pen2 = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.3f + value2 * 0.5f)))
+                    using (Pen currentPen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.3f + btnHoverProgress * 0.5f)))
                     {
-                        g.DrawPath(pen2, path);
+                        g.DrawPath(currentPen, path);
                     }
                 }
                 if (btnPress.Value > 0.01f)
@@ -304,7 +287,7 @@ namespace PaviseApp
                     }
                 }
             }
-            Color foreColor = (btnPrimary ? Theme.OnAccent : Col.Lerp(Theme.Fg, Theme.Accent, value2 * 0.5f));
+            Color foreColor = (btnPrimary ? Theme.OnAccent : Col.Lerp(Theme.Fg, Theme.Accent, btnHoverProgress * 0.5f));
             TextRenderer.DrawText(g, btnText, Theme.UI(8.75f, btnPrimary), btnRect, foreColor, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
     }

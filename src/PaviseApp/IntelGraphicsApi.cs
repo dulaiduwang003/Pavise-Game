@@ -34,10 +34,6 @@ namespace PaviseApp
 
         internal const uint CustomValueType = 5u;
 
-        private const int EnduranceBlockBytes = 8;
-
-        private const uint SearchSystem32 = 2048u;
-
         private static readonly IntelGraphicsApi availabilityApi = new IntelGraphicsApi();
 
         private readonly object gate = new object();
@@ -69,8 +65,7 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                IntelGraphicsAdapter[] adaptersSnapshot = adapters;
-                foreach (IntelGraphicsAdapter intelGraphicsAdapter in adaptersSnapshot)
+                foreach (IntelGraphicsAdapter intelGraphicsAdapter in adapters)
                 {
                     if (intelGraphicsAdapter != null && intelGraphicsAdapter.VendorId == 32902)
                     {
@@ -94,11 +89,11 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    List<IntelGraphicsAdapter> list = new List<IntelGraphicsAdapter>();
-                    foreach (NativeAdapter item in result)
+                    List<IntelGraphicsAdapter> intelGraphicsAdapters = new List<IntelGraphicsAdapter>();
+                    foreach (NativeAdapter currentResult in result)
                     {
-                        IntelGraphicsAdapter description = item.Description;
-                        list.Add(new IntelGraphicsAdapter
+                        IntelGraphicsAdapter description = currentResult.Description;
+                        intelGraphicsAdapters.Add(new IntelGraphicsAdapter
                         {
                             Id = description.Id,
                             Name = description.Name,
@@ -106,7 +101,7 @@ namespace PaviseApp
                             Integrated = description.Integrated
                         });
                     }
-                    adapters = list.ToArray();
+                    adapters = intelGraphicsAdapters.ToArray();
                     return true;
                 }
                 catch
@@ -130,11 +125,11 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    foreach (NativeAdapter item in result)
+                    foreach (NativeAdapter currentResult in result)
                     {
                         int outControl;
                         int outMode;
-                        if (item.Description.VendorId == 32902 && EnduranceCall(item.Handle, false, 0, 0, out outControl, out outMode))
+                        if (currentResult.Description.VendorId == 32902 && EnduranceCall(currentResult.Handle, false, 0, 0, out outControl, out outMode))
                         {
                             control = outControl;
                             mode = outMode;
@@ -163,11 +158,11 @@ namespace PaviseApp
                         return false;
                     }
                     bool result2 = false;
-                    foreach (NativeAdapter item in result)
+                    foreach (NativeAdapter currentResult in result)
                     {
                         int outControl;
                         int outMode;
-                        if (item.Description.VendorId == 32902 && EnduranceCall(item.Handle, true, control, mode, out outControl, out outMode))
+                        if (currentResult.Description.VendorId == 32902 && EnduranceCall(currentResult.Handle, true, control, mode, out outControl, out outMode))
                         {
                             result2 = true;
                         }
@@ -185,21 +180,21 @@ namespace PaviseApp
         {
             outControl = -1;
             outMode = -1;
-            IntPtr intPtr = AllocateZeroed(8);
+            IntPtr allocateZeroedHandle = AllocateZeroed(8);
             try
             {
                 if (set)
                 {
-                    Marshal.WriteInt32(intPtr, 0, control);
-                    Marshal.WriteInt32(intPtr, 4, mode);
+                    Marshal.WriteInt32(allocateZeroedHandle, 0, control);
+                    Marshal.WriteInt32(allocateZeroedHandle, 4, mode);
                 }
-                IntelCtlFeatureValue value = EnduranceRequest(set, intPtr);
-                if (feature(device, ref value) != 0)
+                IntelCtlFeatureValue enduranceRequest = EnduranceRequest(set, allocateZeroedHandle);
+                if (feature(device, ref enduranceRequest) != 0)
                 {
                     return false;
                 }
-                outControl = Marshal.ReadInt32(intPtr, 0);
-                outMode = Marshal.ReadInt32(intPtr, 4);
+                outControl = Marshal.ReadInt32(allocateZeroedHandle, 0);
+                outMode = Marshal.ReadInt32(allocateZeroedHandle, 4);
                 return outControl >= 0 && outControl <= 2;
             }
             catch
@@ -208,7 +203,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(allocateZeroedHandle);
             }
         }
 
@@ -244,23 +239,23 @@ namespace PaviseApp
                 cachedTick = Environment.TickCount;
                 return true;
             }
-            IntPtr intPtr = AllocateZeroed(checked((int)count * IntPtr.Size));
+            IntPtr allocateZeroedHandle = AllocateZeroed(checked((int)count * IntPtr.Size));
             try
             {
                 uint countSnapshot = count;
-                if (enumerate(api, ref count, intPtr) != 0 || count > countSnapshot)
+                if (enumerate(api, ref count, allocateZeroedHandle) != 0 || count > countSnapshot)
                 {
                     return false;
                 }
                 for (int i = 0; i < count; i++)
                 {
-                    IntPtr intPtr2 = Marshal.ReadIntPtr(intPtr, i * IntPtr.Size);
-                    if (intPtr2 == IntPtr.Zero)
+                    IntPtr nativePointer = Marshal.ReadIntPtr(allocateZeroedHandle, i * IntPtr.Size);
+                    if (nativePointer == IntPtr.Zero)
                     {
                         return false;
                     }
                     IntelCtlAdapterProperties info;
-                    if (!ReadProperties(intPtr2, out info))
+                    if (!ReadProperties(nativePointer, out info))
                     {
                         return false;
                     }
@@ -274,7 +269,7 @@ namespace PaviseApp
                         List<NativeAdapter> resultSnapshot = result;
                         NativeAdapter nativeAdapter = new NativeAdapter
                         {
-                            Handle = intPtr2
+                            Handle = nativePointer
                         };
                         IntelGraphicsAdapter intelGraphicsAdapter = new IntelGraphicsAdapter
                         {
@@ -295,21 +290,21 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(allocateZeroedHandle);
             }
         }
 
         private bool ReadProperties(IntPtr handle, out IntelCtlAdapterProperties info)
         {
             info = default(IntelCtlAdapterProperties);
-            IntPtr intPtr = AllocateZeroed(8);
+            IntPtr allocateZeroedHandle = AllocateZeroed(8);
             try
             {
                 info = new IntelCtlAdapterProperties
                 {
                     Size = (uint)Marshal.SizeOf(typeof(IntelCtlAdapterProperties)),
                     Version = 2,
-                    DeviceId = intPtr,
+                    DeviceId = allocateZeroedHandle,
                     DeviceIdSize = 8u,
                     Name = new byte[100],
                     Reserved = new byte[108]
@@ -318,7 +313,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(allocateZeroedHandle);
             }
         }
 
@@ -351,10 +346,9 @@ namespace PaviseApp
                 enumerate = Function<FnEnumerate>("ctlEnumerateDevices");
                 properties = Function<FnProperties>("ctlGetDeviceProperties");
                 feature = Function<FnFeature>("ctlGetSet3DFeature");
-                IntelCtlInit intelCtlInit = default(IntelCtlInit);
-                intelCtlInit.Size = (uint)Marshal.SizeOf(typeof(IntelCtlInit));
-                intelCtlInit.AppVersion = 65537u;
-                IntelCtlInit args = intelCtlInit;
+                IntelCtlInit args = default(IntelCtlInit);
+                args.Size = (uint)Marshal.SizeOf(typeof(IntelCtlInit));
+                args.AppVersion = 65537u;
                 IntPtr handle;
                 if (fnInit(ref args, out handle) != 0 || handle == IntPtr.Zero)
                 {
@@ -407,15 +401,15 @@ namespace PaviseApp
         private static IntPtr AllocateZeroed(int bytes)
         {
             byte[] source = new byte[bytes];
-            IntPtr intPtr = Marshal.AllocHGlobal(bytes);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(bytes);
             try
             {
-                Marshal.Copy(source, 0, intPtr, bytes);
-                return intPtr;
+                Marshal.Copy(source, 0, nativeBuffer, bytes);
+                return nativeBuffer;
             }
             catch
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
                 throw;
             }
         }

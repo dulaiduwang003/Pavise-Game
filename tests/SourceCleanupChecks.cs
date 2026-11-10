@@ -29,7 +29,7 @@ namespace PaviseApp
                 { "unsupported", "auto.log.unsupported" }, { "unchanged", "auto.log.unchanged" },
                 { "stopped", "auto.log.stopped" }, { "restoring", "auto.log.restoring" }
             };
-            for (int language = 0; language < 3; language++)
+            for (int language = 0; language < 2; language++)
             {
                 Lang.Cur = language;
                 for (int index = 0; index < labels.GetLength(0); index++)
@@ -39,6 +39,30 @@ namespace PaviseApp
                 foreach (string unknown in new[] { "custom-state", "STARTED", " started", "started " })
                     Check(GameMode.AutomationStateLabel(unknown) == unknown, "Unknown or case-distinct state was rewritten");
             }
+        }
+
+        private static void CheckLanguageAndRemovedFeatures()
+        {
+            Lang.Set(1);
+            Check(Lang.Cur == 1 && Settings.LoadStr("Lang", "") == "en", "English selection was not retained");
+            Lang.Set(2);
+            Check(Lang.Cur == 0 && Settings.LoadStr("Lang", "") == "zh", "Unsupported language did not fall back to Chinese");
+            Lang.Cur = -1;
+            Check(Lang.Cur == 0, "Negative language index was retained");
+            var messages = (System.Collections.Generic.Dictionary<string, string[]>)typeof(Lang)
+                .GetField("M", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            foreach (var entry in messages)
+            {
+                Check(entry.Value != null && entry.Value.Length > 0 && entry.Value.Length <= 2,
+                    "Unsupported translation row remains: " + entry.Key);
+                Check(Lang.T(entry.Key, 2) == Lang.T(entry.Key, 0), "Unsupported translation index changed fallback: " + entry.Key);
+                foreach (string value in entry.Value)
+                    Check(!System.Text.RegularExpressions.Regex.IsMatch(value ?? "", @"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]"),
+                        "Removed translation remains: " + entry.Key);
+            }
+            Check(Array.TrueForAll(typeof(Program).Assembly.GetTypes(), type => !type.Name.StartsWith("AiTuning", StringComparison.Ordinal)),
+                "Removed tuning module remains in the product assembly");
+            Lang.Set(0);
         }
 
         private static void CheckKeyboardNavigation()
@@ -81,6 +105,7 @@ namespace PaviseApp
                 Settings.UseTransientStoreForCurrentProcess();
                 Logger.WritesEnabled = false;
                 Lang.Init();
+                CheckLanguageAndRemovedFeatures();
                 CheckAutomationLabels();
                 CheckKeyboardNavigation();
                 CheckAnimationAdmission();

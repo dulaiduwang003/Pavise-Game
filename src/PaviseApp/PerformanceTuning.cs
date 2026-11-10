@@ -148,10 +148,10 @@ namespace PaviseApp
             {
                 string textResult = PerformancePolicy.Text("对已登记 StorPort 的设备持久关闭三项电源管理：磁盘空闲电源管理、存储控制器运行时电源管理和 D3Cold。默认关闭；开启或恢复后需重启电脑，关闭时恢复原配置，不适用项自动跳过。这些设备将不再进入对应的省电状态，空闲与睡眠功耗可能上升。与电源计划在对局期间调整的存储设置相互独立。", "Persistently disables three power-management settings on devices with registered StorPort configuration: disk idle power management, storage-controller runtime power management and D3Cold. Off by default. Restart after enabling or restoring; switching off restores original settings and unsupported targets are skipped. These devices stop entering the matching power-saving states, so idle and sleep power may rise. Independent of the storage settings the power plan adjusts during matches.");
                 HashSet<string> owned = StorageOwned();
-                foreach (string item in StorageMembers())
+                foreach (string storageMember in StorageMembers())
                 {
                     string message = textResult;
-                    textResult = message + "\n" + EnvironmentMemberName(item) + PerformancePolicy.Text("：", ": ") + StorageMemberLabel(item, owned);
+                    textResult = message + "\n" + EnvironmentMemberName(storageMember) + PerformancePolicy.Text("：", ": ") + StorageMemberLabel(storageMember, owned);
                 }
                 return textResult;
             }
@@ -169,10 +169,10 @@ namespace PaviseApp
         {
             get
             {
-                HashSet<string> hashSet = StorageOwned();
-                foreach (string item in StorageMembers())
+                HashSet<string> textsSet = StorageOwned();
+                foreach (string storageMember in StorageMembers())
                 {
-                    if (EnvironmentPreference(item) || hashSet.Contains(item) || State(item) == "restore-failed")
+                    if (EnvironmentPreference(storageMember) || textsSet.Contains(storageMember) || State(storageMember) == "restore-failed")
                     {
                         return true;
                     }
@@ -238,16 +238,15 @@ namespace PaviseApp
 
         private static string BuildActionSelectionSignature()
         {
-            List<string> list = new List<string>();
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            List<string> texts = new List<string>();
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (!performanceAction.Environment && ActionSelected(performanceAction.Key))
                 {
-                    list.Add(performanceAction.Key);
+                    texts.Add(performanceAction.Key);
                 }
             }
-            return string.Join(",", list.ToArray());
+            return string.Join(",", texts.ToArray());
         }
 
         internal static string State(string id)
@@ -258,24 +257,24 @@ namespace PaviseApp
                 {
                     return "working";
                 }
-                string value;
-                if (!states.TryGetValue(id, out value))
+                string state;
+                if (!states.TryGetValue(id, out state))
                 {
-                    value = Settings.LoadStr(id + "State", "");
+                    state = Settings.LoadStr(id + "State", "");
                 }
-                bool live = value == "live-applied" || value == "live-restored";
-                if (value != "configured" && value != "restored" && !live)
+                bool live = state == "live-applied" || state == "live-restored";
+                if (state != "configured" && state != "restored" && !live)
                 {
-                    return value;
+                    return state;
                 }
                 object result;
                 switch (BootSessionIdentity.Compare(Settings.LoadStr(id + "Boot", ""), Boot()))
                 {
                 default:
-                    result = live ? value : ((value == "configured") ? "pending-reboot" : "restore-pending-reboot");
+                    result = live ? state : ((state == "configured") ? "pending-reboot" : "restore-pending-reboot");
                     break;
                 case IrqRebootState.Rebooted:
-                    result = ((value == "configured" || value == "live-applied") ? "ready" : "restored");
+                    result = ((state == "configured" || state == "live-applied") ? "ready" : "restored");
                     break;
                 case IrqRebootState.Unknown:
                     result = "unverified";
@@ -437,24 +436,24 @@ namespace PaviseApp
 
         private static string VerifiedEnvironmentState(string id, bool on)
         {
-            string value = Settings.LoadStr(id + "State", "");
-            if (id == PerformanceActionCatalog.Quantum && (on ? value == "live-applied" : value == "live-restored"))
-                return value;
+            string str = Settings.LoadStr(id + "State", "");
+            if (id == PerformanceActionCatalog.Quantum && (on ? str == "live-applied" : str == "live-restored"))
+                return str;
             if (!on)
             {
-                if (value != "restored")
+                if (str != "restored")
                 {
                     return "off";
                 }
-                return value;
+                return str;
             }
-            if (value == "configured")
+            if (str == "configured")
             {
-                return value;
+                return str;
             }
-            foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+            foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
             {
-                if (item.Id == id)
+                if (all.Id == id)
                 {
                     return "configured";
                 }
@@ -568,27 +567,27 @@ namespace PaviseApp
 
         private static List<string> RestoreFailures(Predicate<PerformanceActionStore.Receipt> selected, Action<string> progress = null)
         {
-            List<string> list = new List<string>();
-            List<PerformanceActionStore.Receipt> list2;
+            List<string> normalizeErrorOffsets = new List<string>();
+            List<PerformanceActionStore.Receipt> receipts;
             try
             {
-                if (!ReadRecoveryReceipts(out list2)) { list.Add("Recovery journal read budget exhausted; records retained"); return list; }
+                if (!ReadRecoveryReceipts(out receipts)) { normalizeErrorOffsets.Add("Recovery journal read budget exhausted; records retained"); return normalizeErrorOffsets; }
             }
             catch (Exception ex)
             {
                 string normalizeErrorOffset = PerformancePolicy.Text("性能配置恢复记录读取失败", "Performance recovery journal could not be read") + " | " + PsRunner.NormalizeError(ex.Message);
-                list.Add(normalizeErrorOffset);
+                normalizeErrorOffsets.Add(normalizeErrorOffset);
                 Logger.Warn(normalizeErrorOffset);
-                return list;
+                return normalizeErrorOffsets;
             }
-            foreach (PerformanceActionStore.Receipt item in list2)
+            foreach (PerformanceActionStore.Receipt receipt in receipts)
             {
-                if (!selected(item))
+                if (!selected(receipt))
                 {
                     continue;
                 }
-                PerformanceAction performanceAction = PerformanceActionCatalog.Find(item.Id);
-                string id = ((performanceAction == null) ? item.Id : performanceAction.Title);
+                PerformanceAction performanceAction = PerformanceActionCatalog.Find(receipt.Id);
+                string id = ((performanceAction == null) ? receipt.Id : performanceAction.Title);
                 try
                 {
                     if (progress != null)
@@ -602,9 +601,9 @@ namespace PaviseApp
                 string textResult = null;
                 try
                 {
-                    if (PrivacyControl.IsAction(item.Id))
+                    if (PrivacyControl.IsAction(receipt.Id))
                     {
-                        if (!PrivacyControl.RestoreReceipt(item))
+                        if (!PrivacyControl.RestoreReceipt(receipt))
                         {
                             textResult = PerformancePolicy.Text("隐私配置恢复未完成，记录已保留", "Privacy restoration is incomplete; records are retained");
                         }
@@ -613,9 +612,9 @@ namespace PaviseApp
                     {
                         textResult = PerformancePolicy.Text("无法识别恢复项目，已保留恢复记录", "Unknown recovery action; recovery record retained");
                     }
-                    else if (!RestorePerformanceReceipt(item))
+                    else if (!RestorePerformanceReceipt(receipt))
                     {
-                        textResult = PerformanceActionBackend.RestoreFailureHint(item);
+                        textResult = PerformanceActionBackend.RestoreFailureHint(receipt);
                     }
                 }
                 catch (Exception ex2)
@@ -624,12 +623,12 @@ namespace PaviseApp
                 }
                 if (textResult != null)
                 {
-                    string textResultOffset = id + " | " + item.Target + " | " + textResult;
-                    list.Add(textResultOffset);
+                    string textResultOffset = id + " | " + receipt.Target + " | " + textResult;
+                    normalizeErrorOffsets.Add(textResultOffset);
                     Logger.Warn("性能还原 | " + textResultOffset);
                 }
             }
-            return list;
+            return normalizeErrorOffsets;
         }
 
         internal static List<string> RestoreAllFailures(Action<string> progress = null)
@@ -638,9 +637,9 @@ namespace PaviseApp
             {
                 if (busy.Count > 0)
                 {
-                    List<string> list = new List<string>();
-                    list.Add(PerformancePolicy.Text("环境配置仍在运行，恢复记录已保留，请稍后重试", "Environment configuration is still running; recovery records retained. Retry shortly."));
-                    return list;
+                    List<string> texts = new List<string>();
+                    texts.Add(PerformancePolicy.Text("环境配置仍在运行，恢复记录已保留，请稍后重试", "Environment configuration is still running; recovery records retained. Retry shortly."));
+                    return texts;
                 }
             }
             return RestoreFailures((PerformanceActionStore.Receipt param0) => true, progress);
@@ -722,45 +721,44 @@ namespace PaviseApp
 
         private static string EnvironmentBundleIssues()
         {
-            List<string> list = new List<string>();
-            List<string> list2 = new List<string>();
-            foreach (string item in EnvironmentMembers())
+            List<string> environmentMemberNames = new List<string>();
+            List<string> currentEnvironmentMemberNames = new List<string>();
+            foreach (string environmentMember in EnvironmentMembers())
             {
-                string stateResult = State(item);
+                string stateResult = State(environmentMember);
                 if (stateResult == "failed" || stateResult == "stopped")
                 {
-                    list.Add(EnvironmentMemberName(item));
+                    environmentMemberNames.Add(EnvironmentMemberName(environmentMember));
                 }
                 if (stateResult == "restore-failed")
                 {
-                    list2.Add(EnvironmentMemberName(item));
+                    currentEnvironmentMemberNames.Add(EnvironmentMemberName(environmentMember));
                 }
             }
             string environmentBundleIssuesResult = "";
-            if (list.Count > 0)
+            if (environmentMemberNames.Count > 0)
             {
-                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", list.ToArray());
+                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", environmentMemberNames.ToArray());
             }
-            if (list2.Count > 0)
+            if (currentEnvironmentMemberNames.Count > 0)
             {
-                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", list2.ToArray());
+                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", currentEnvironmentMemberNames.ToArray());
             }
             return environmentBundleIssuesResult;
         }
 
         private static List<string> EnvironmentMembers()
         {
-            List<string> list = new List<string>();
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            List<string> texts = new List<string>();
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (EnvironmentBundleMember(performanceAction))
                 {
-                    list.Add(performanceAction.Key);
+                    texts.Add(performanceAction.Key);
                 }
             }
-            list.Add("EnvVbsDisabledV1");
-            return list;
+            texts.Add("EnvVbsDisabledV1");
+            return texts;
         }
 
         private static bool EnvironmentBundleMember(PerformanceAction action)
@@ -1044,8 +1042,7 @@ namespace PaviseApp
         internal static bool ApplyEnvironmentBundle(bool on)
         {
             bool result = true;
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (!EnvironmentBundleMember(performanceAction))
                 {
@@ -1100,16 +1097,15 @@ namespace PaviseApp
 
         internal static List<string> StorageMembers()
         {
-            List<string> list = new List<string>();
-            PerformanceAction[] all = PerformanceActionCatalog.All;
-            foreach (PerformanceAction performanceAction in all)
+            List<string> texts = new List<string>();
+            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
             {
                 if (performanceAction.Environment && StorageMember(performanceAction.Key))
                 {
-                    list.Add(performanceAction.Key);
+                    texts.Add(performanceAction.Key);
                 }
             }
-            return list;
+            return texts;
         }
 
         private static string StorageMemberLabel(string key, HashSet<string> owned)
@@ -1136,28 +1132,28 @@ namespace PaviseApp
 
         private static HashSet<string> StorageOwned()
         {
-            HashSet<string> hashSet = storageOwned;
+            HashSet<string> ids = storageOwned;
             try
             {
                 List<PerformanceActionStore.Receipt> receipts;
                 if (PerformanceActionStore.TryAll(out receipts))
                 {
-                    hashSet = new HashSet<string>(StringComparer.Ordinal);
-                    foreach (PerformanceActionStore.Receipt item in receipts)
+                    ids = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (PerformanceActionStore.Receipt receipt in receipts)
                     {
-                        if (StorageMember(item.Id))
+                        if (StorageMember(receipt.Id))
                         {
-                            hashSet.Add(item.Id);
+                            ids.Add(receipt.Id);
                         }
                     }
                 }
             }
             catch
             {
-                hashSet = new HashSet<string>(StorageMembers(), StringComparer.Ordinal);
+                ids = new HashSet<string>(StorageMembers(), StringComparer.Ordinal);
             }
-            storageOwned = hashSet;
-            return hashSet;
+            storageOwned = ids;
+            return ids;
         }
 
         private static bool StorageRecoveryPending(string key, HashSet<string> owned)
@@ -1176,8 +1172,8 @@ namespace PaviseApp
 
         internal static string StorageGroupState()
         {
-            List<string> list = StorageMembers();
-            string groupStateResult = GroupState(list, EnvironmentPreference);
+            List<string> texts = StorageMembers();
+            string groupStateResult = GroupState(texts, EnvironmentPreference);
             switch (groupStateResult)
             {
             case "working":
@@ -1189,9 +1185,9 @@ namespace PaviseApp
             {
                 HashSet<string> owned = StorageOwned();
                 {
-                    foreach (string item in list)
+                    foreach (string text in texts)
                     {
-                        if (StorageRecoveryPending(item, owned))
+                        if (StorageRecoveryPending(text, owned))
                         {
                             return "recovery-pending";
                         }
@@ -1219,7 +1215,7 @@ namespace PaviseApp
         internal static bool ApplyStorageGroup(bool on)
         {
             bool result = true;
-            foreach (string item in StorageMembers())
+            foreach (string storageMember in StorageMembers())
             {
                 if (EnvironmentWorkClosing)
                 {
@@ -1227,7 +1223,7 @@ namespace PaviseApp
                 }
                 try
                 {
-                    if (!ApplyEnvironment(item, on) && State(item) != "unsupported")
+                    if (!ApplyEnvironment(storageMember, on) && State(storageMember) != "unsupported")
                     {
                         result = false;
                     }
@@ -1235,8 +1231,8 @@ namespace PaviseApp
                 catch (Exception ex)
                 {
                     result = false;
-                    SetState(item, on ? "failed" : "restore-failed");
-                    Logger.Warn(PerformanceActionCatalog.Find(item).Title + " | " + ex.Message);
+                    SetState(storageMember, on ? "failed" : "restore-failed");
+                    Logger.Warn(PerformanceActionCatalog.Find(storageMember).Title + " | " + ex.Message);
                 }
             }
             return result;

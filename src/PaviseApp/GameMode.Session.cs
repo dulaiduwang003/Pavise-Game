@@ -452,10 +452,10 @@ namespace PaviseApp
                     ApplyEnvironmentTimerOptions();
                     if (panicReq)
                     {
-                        int value = Volatile.Read(ref panicSeq);
+                        int panicSequence = Volatile.Read(ref panicSeq);
                         panicReq = false;
                         panicResult = Deactivate(Lang.T("t.gamemode.42"));
-                        Volatile.Write(ref panicServed, value);
+                        Volatile.Write(ref panicServed, panicSequence);
                         panicDone.Set();
                         kick.WaitOne(4000);
                         continue;
@@ -508,10 +508,10 @@ namespace PaviseApp
             }
             if (panicReq)
             {
-                int value2 = Volatile.Read(ref panicSeq);
+                int panicSequence = Volatile.Read(ref panicSeq);
                 panicReq = false;
                 panicResult = deactivated;
-                Volatile.Write(ref panicServed, value2);
+                Volatile.Write(ref panicServed, panicSequence);
                 panicDone.Set();
             }
             try
@@ -723,8 +723,7 @@ namespace PaviseApp
             lock (sync)
             {
                 overflowed |= active || armedAwaitingElection;
-                ProcessChange[] changes = batch.Changes;
-                foreach (ProcessChange processChange in changes)
+                foreach (ProcessChange processChange in batch.Changes)
                 {
                     if (processChange == null)
                     {
@@ -1029,30 +1028,30 @@ namespace PaviseApp
         }
         private void ReportSeal(int pid)
         {
-            long value;
-            long value2;
+            long currentRepCpu;
+            long currentRepCreation;
             lock (sync)
             {
-                if (!repCpu.TryGetValue(pid, out value))
+                if (!repCpu.TryGetValue(pid, out currentRepCpu))
                 {
                     return;
                 }
-                repCreation.TryGetValue(pid, out value2);
+                repCreation.TryGetValue(pid, out currentRepCreation);
                 repCpu.Remove(pid);
                 repCreation.Remove(pid);
             }
-            long numericValue = 0L;
+            long cpuTicksDelta = 0L;
             long ticks;
             long creation;
-            if (CpuTicks(pid, out ticks, out creation) && creation == value2 && ticks > value)
+            if (CpuTicks(pid, out ticks, out creation) && creation == currentRepCreation && ticks > currentRepCpu)
             {
-                numericValue = ticks - value;
+                cpuTicksDelta = ticks - currentRepCpu;
             }
             lock (sync)
             {
-                long value3;
-                repSealed.TryGetValue(pid, out value3);
-                repSealed[pid] = value3 + numericValue;
+                long currentRepSealed;
+                repSealed.TryGetValue(pid, out currentRepSealed);
+                repSealed[pid] = currentRepSealed + cpuTicksDelta;
             }
         }
         private void ReportTrack(int pid, string name)
@@ -1084,19 +1083,19 @@ namespace PaviseApp
         {
             string repGameSnapshot;
             long repStartSnapshot;
-            Dictionary<int, long> dictionary;
-            Dictionary<int, string> dictionary2;
-            Dictionary<int, long> dictionary3;
-            Dictionary<int, long> dictionary4;
+            Dictionary<int, long> startingCpuTicksByPid;
+            Dictionary<int, string> textsById;
+            Dictionary<int, long> creationByPid;
+            Dictionary<int, long> sealedCpuTicksByPid;
             long repPaviseCpuStartSnapshot;
             lock (sync)
             {
                 repGameSnapshot = repGame;
                 repStartSnapshot = repStart;
-                dictionary = new Dictionary<int, long>(repCpu);
-                dictionary2 = new Dictionary<int, string>(repProc);
-                dictionary3 = new Dictionary<int, long>(repCreation);
-                dictionary4 = new Dictionary<int, long>(repSealed);
+                startingCpuTicksByPid = new Dictionary<int, long>(repCpu);
+                textsById = new Dictionary<int, string>(repProc);
+                creationByPid = new Dictionary<int, long>(repCreation);
+                sealedCpuTicksByPid = new Dictionary<int, long>(repSealed);
                 repPaviseCpuStartSnapshot = repPaviseCpuStart;
                 repCpu.Clear();
                 repCreation.Clear();
@@ -1111,46 +1110,46 @@ namespace PaviseApp
                 return;
             }
             TimeSpan timeSpan = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - repStartSnapshot) / (double)Stopwatch.Frequency);
-            foreach (KeyValuePair<int, long> item in dictionary)
+            foreach (KeyValuePair<int, long> processCpuEntry in startingCpuTicksByPid)
             {
-                long value;
-                if (!dictionary4.TryGetValue(item.Key, out value))
+                long sealedCpuTicks;
+                if (!sealedCpuTicksByPid.TryGetValue(processCpuEntry.Key, out sealedCpuTicks))
                 {
-                    value = 0L;
-                    dictionary4[item.Key] = 0L;
+                    sealedCpuTicks = 0L;
+                    sealedCpuTicksByPid[processCpuEntry.Key] = 0L;
                 }
                 long ticks;
                 long creation;
-                long value2;
-                if (CpuTicks(item.Key, out ticks, out creation) && dictionary3.TryGetValue(item.Key, out value2) && creation == value2)
+                long expectedCreation;
+                if (CpuTicks(processCpuEntry.Key, out ticks, out creation) && creationByPid.TryGetValue(processCpuEntry.Key, out expectedCreation) && creation == expectedCreation)
                 {
-                    long remainingTicks = ticks - item.Value;
+                    long remainingTicks = ticks - processCpuEntry.Value;
                     if (remainingTicks >= 0)
                     {
-                        dictionary4[item.Key] = value + remainingTicks;
+                        sealedCpuTicksByPid[processCpuEntry.Key] = sealedCpuTicks + remainingTicks;
                     }
                 }
             }
-            long numericValue = 0L;
-            long numericValue2 = 0L;
+            long totalSavedCpuTicks = 0L;
+            long largestSavedCpuTicks = 0L;
             string value3Snapshot = null;
-            foreach (KeyValuePair<int, long> item2 in dictionary4)
+            foreach (KeyValuePair<int, long> currentLongValueEntry in sealedCpuTicksByPid)
             {
-                numericValue += item2.Value;
-                if (item2.Value > numericValue2)
+                totalSavedCpuTicks += currentLongValueEntry.Value;
+                if (currentLongValueEntry.Value > largestSavedCpuTicks)
                 {
-                    numericValue2 = item2.Value;
-                    string value3;
-                    if (dictionary2.TryGetValue(item2.Key, out value3))
+                    largestSavedCpuTicks = currentLongValueEntry.Value;
+                    string text;
+                    if (textsById.TryGetValue(currentLongValueEntry.Key, out text))
                     {
-                        value3Snapshot = value3;
+                        value3Snapshot = text;
                     }
                 }
             }
-            string repDoneText = Lang.F("rep.done", repGameSnapshot, FmtDur(timeSpan), dictionary4.Count, FmtCpu(numericValue));
-            if (value3Snapshot != null && numericValue2 >= 10000000)
+            string repDoneText = Lang.F("rep.done", repGameSnapshot, FmtDur(timeSpan), sealedCpuTicksByPid.Count, FmtCpu(totalSavedCpuTicks));
+            if (value3Snapshot != null && largestSavedCpuTicks >= 10000000)
             {
-                repDoneText += Lang.F("rep.top", value3Snapshot, FmtCpu(numericValue2));
+                repDoneText += Lang.F("rep.top", value3Snapshot, FmtCpu(largestSavedCpuTicks));
             }
             long currentProcessCpuTicksResult = CurrentProcessCpuTicks();
             long cpuTicks = ((repPaviseCpuStartSnapshot > 0 && currentProcessCpuTicksResult >= repPaviseCpuStartSnapshot) ? (currentProcessCpuTicksResult - repPaviseCpuStartSnapshot) : 0);
@@ -1161,7 +1160,7 @@ namespace PaviseApp
             {
                 return;
             }
-            string repBriefText = Lang.F("rep.brief", repGameSnapshot, FmtDur(timeSpan), dictionary4.Count);
+            string repBriefText = Lang.F("rep.brief", repGameSnapshot, FmtDur(timeSpan), sealedCpuTicksByPid.Count);
             try
             {
                 Settings.SaveStr("LastSessionBrief", repBriefText);
@@ -1268,19 +1267,19 @@ namespace PaviseApp
         }
         private static Dictionary<int, long> CaptureStoppedProcessIdentity(IEnumerable<int> pids)
         {
-            Dictionary<int, long> dictionary = new Dictionary<int, long>();
+            Dictionary<int, long> creationsByPid = new Dictionary<int, long>();
             if (pids == null)
             {
-                return dictionary;
+                return creationsByPid;
             }
             foreach (int pid in pids)
             {
-                IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-                if (intPtr == IntPtr.Zero)
+                IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+                if (processHandle == IntPtr.Zero)
                 {
                     if (Native.LastOpenProcessFailureWasNoSuchProcess())
                     {
-                        dictionary[pid] = 0L;
+                        creationsByPid[pid] = 0L;
                     }
                     continue;
                 }
@@ -1289,17 +1288,17 @@ namespace PaviseApp
                     long creation;
                     long cpu;
                     ulong io;
-                    if (Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
+                    if (Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation > 0)
                     {
-                        dictionary[pid] = creation;
+                        creationsByPid[pid] = creation;
                     }
                 }
                 finally
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
             }
-            return dictionary;
+            return creationsByPid;
         }
     }
 }

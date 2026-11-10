@@ -145,8 +145,7 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                string[] textEntries = parts2;
-                foreach (string entryText in textEntries)
+                foreach (string entryText in parts2)
                 {
                     if (Hex(entryText) == 0)
                     {
@@ -205,16 +204,16 @@ namespace PaviseApp
             {
                 return PerformancePolicy.Text("至少需要三个不同物理核心：一个重点核心和两个工作核心", "At least three distinct physical cores are required: one candidate core and two worker cores");
             }
-            ulong numericValue = 0uL;
-            foreach (ulong numericValueEntry in physical)
+            ulong coveredCoreMask = 0uL;
+            foreach (ulong currentPhysical in physical)
             {
-                if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
+                if (currentPhysical == 0 || (currentPhysical & ~all) != 0 || (coveredCoreMask & currentPhysical) != 0)
                 {
                     return PerformancePolicy.Text("处理器拓扑不可验证", "CPU topology could not be verified");
                 }
-                numericValue |= numericValueEntry;
+                coveredCoreMask |= currentPhysical;
             }
-            if (numericValue != all || allowed == 0 || (allowed & ~all) != 0)
+            if (coveredCoreMask != all || allowed == 0 || (allowed & ~all) != 0)
             {
                 return PerformancePolicy.Text("游戏允许的处理器范围不可验证", "The game's allowed processor range could not be verified");
             }
@@ -228,22 +227,21 @@ namespace PaviseApp
                 }
                 return null;
             }
-            ulong numericValue2 = 0uL;
-            ulong[] targetsSnapshot = targets;
-            foreach (ulong target in targetsSnapshot)
+            ulong selectedThreadMask = 0uL;
+            foreach (ulong target in targets)
             {
                 if ((target & allowed) != target)
                 {
                     return PerformancePolicy.Text("重点核心超出游戏允许范围", "A selected processor is outside the game's allowed range");
                 }
                 ulong singleResult = physical.Single((ulong x) => (x & target) != 0);
-                if ((singleResult & (numericValue2 | reserved)) != 0)
+                if ((singleResult & (selectedThreadMask | reserved)) != 0)
                 {
                     return PerformancePolicy.Text("重点线程需要不同且未被占用的物理核心", "Candidates require separate, unreserved physical cores");
                 }
-                numericValue2 |= singleResult;
+                selectedThreadMask |= singleResult;
             }
-            ulong workers = allowed & ~(numericValue2 | reserved);
+            ulong workers = allowed & ~(selectedThreadMask | reserved);
             if (physical.Count((ulong x) => (x & workers) != 0) < 2)
             {
                 return PerformancePolicy.Text("至少为其他线程保留两个不同物理核心上的逻辑线程", "Reserve logical processors on at least two other physical cores for other threads");

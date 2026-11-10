@@ -22,16 +22,15 @@ namespace PaviseApp
         private static string VendorGpuId(GpuVendor vendor)
         {
             GpuAdapter gpuAdapter = null;
-            GpuAdapter[] adaptersResult = GpuInventory.Adapters();
-            foreach (GpuAdapter gpuAdapter2 in adaptersResult)
+            foreach (GpuAdapter currentAdaptersResult in GpuInventory.Adapters())
             {
-                if (gpuAdapter2.Vendor == vendor)
+                if (currentAdaptersResult.Vendor == vendor)
                 {
                     if (gpuAdapter != null)
                     {
                         return "";
                     }
-                    gpuAdapter = gpuAdapter2;
+                    gpuAdapter = currentAdaptersResult;
                 }
             }
             object venDevKeyResult;
@@ -97,8 +96,8 @@ namespace PaviseApp
 
         private static bool Write(State state, long value)
         {
-            State state2;
-            if (!Read(state.Vendor, out state2) || state2.Id != state.Id || value > state2.Maximum)
+            State currentState;
+            if (!Read(state.Vendor, out currentState) || currentState.Id != state.Id || value > currentState.Maximum)
             {
                 return false;
             }
@@ -130,16 +129,16 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                string value;
-                if (!Settings.TryLoadStr("GpuPowerSnap", out value))
+                string text;
+                if (!Settings.TryLoadStr("GpuPowerSnap", out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     return true;
                 }
-                string[] valueParts = value.Split(':');
+                string[] valueParts = text.Split(':');
                 long result;
                 long result2;
                 if (valueParts.Length != 4 || (valueParts[0] != "nv" && valueParts[0] != "amd") || valueParts[1].Length == 0 || !long.TryParse(valueParts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !long.TryParse(valueParts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2) || result > result2)
@@ -159,8 +158,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                State state2;
-                if (!Read(valueParts[0], out state2) || state2.Id != valueParts[1] || state2.Current != result)
+                State currentState;
+                if (!Read(valueParts[0], out currentState) || currentState.Id != valueParts[1] || currentState.Current != result)
                 {
                     return false;
                 }

@@ -56,9 +56,9 @@ namespace PaviseApp
                         using (RegistryKey machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
                         using (RegistryKey key = machine.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography"))
                         {
-                            Guid value;
-                            return key != null && Guid.TryParse(key.GetValue("MachineGuid", null) as string, out value)
-                                && value != Guid.Empty ? value.ToString("N") : null;
+                            Guid parsedValue;
+                            return key != null && Guid.TryParse(key.GetValue("MachineGuid", null) as string, out parsedValue)
+                                && parsedValue != Guid.Empty ? parsedValue.ToString("N") : null;
                         }
                     }
                     catch { return null; }

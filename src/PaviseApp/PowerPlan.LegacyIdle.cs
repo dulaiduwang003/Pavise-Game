@@ -68,10 +68,10 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+                string text;
+                if (Settings.TryLoadStr("ExtremePowerKnobSnap", out text))
                 {
-                    return !string.IsNullOrEmpty(value);
+                    return !string.IsNullOrEmpty(text);
                 }
                 return true;
             }
@@ -100,26 +100,18 @@ namespace PaviseApp
             }
         }
 
-        internal static bool ExtremeTunePending
-        {
-            get
-            {
-                return extremeTunePending;
-            }
-        }
-
         private static bool RestoreOwnedIdlePolicy()
         {
-            string value;
-            if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+            string text;
+            if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out text))
             {
                 return false;
             }
-            if (string.IsNullOrEmpty(value))
+            if (string.IsNullOrEmpty(text))
             {
                 return true;
             }
-            string[] valueParts = value.Split('|');
+            string[] valueParts = text.Split('|');
             Guid result;
             if (valueParts.Length == 3 && valueParts[0] == "2")
             {
@@ -159,32 +151,31 @@ namespace PaviseApp
         private static bool ReadExtremeSnapshot(Guid scheme, out List<ExtremeSavedValue> values)
         {
             values = new List<ExtremeSavedValue>();
-            string value;
-            if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value))
+            string text;
+            if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out text))
             {
                 return false;
             }
-            if (value.Length == 0)
+            if (text.Length == 0)
             {
                 return true;
             }
-            if (value.IndexOf('|') >= 0)
+            if (text.IndexOf('|') >= 0)
             {
-                string[] valueParts = value.Split('|');
+                string[] valueParts = text.Split('|');
                 Guid result;
                 if (valueParts.Length != 3 || valueParts[0] != "2" || !Guid.TryParse(valueParts[1], out result) || result == Guid.Empty || result != scheme)
                 {
                     return false;
                 }
-                value = valueParts[2];
+                text = valueParts[2];
             }
-            HashSet<Guid> hashSet = new HashSet<Guid>();
-            string[] valueParts2 = value.Split(';');
-            foreach (string entryText in valueParts2)
+            HashSet<Guid> guidsSet = new HashSet<Guid>();
+            foreach (string entryText in text.Split(';'))
             {
                 string[] entryTextParts = entryText.Split('=');
                 Guid result2;
-                if (entryTextParts.Length != 2 || !Guid.TryParse(entryTextParts[0], out result2) || !hashSet.Add(result2) || !IsRetiredIdleKnob(result2))
+                if (entryTextParts.Length != 2 || !Guid.TryParse(entryTextParts[0], out result2) || !guidsSet.Add(result2) || !IsRetiredIdleKnob(result2))
                 {
                     return false;
                 }
@@ -207,12 +198,12 @@ namespace PaviseApp
 
         private static bool SaveExtremeSnapshot(Guid scheme, List<ExtremeSavedValue> values)
         {
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             foreach (ExtremeSavedValue value in values)
             {
-                list.Add(value.Text);
+                texts.Add(value.Text);
             }
-            string encodedIdleReceipt = ((list.Count == 0) ? "" : ("2|" + scheme.ToString("N") + "|" + string.Join(";", list.ToArray())));
+            string encodedIdleReceipt = ((texts.Count == 0) ? "" : ("2|" + scheme.ToString("N") + "|" + string.Join(";", texts.ToArray())));
             return Settings.SaveStrDurable("ExtremePowerKnobSnap", encodedIdleReceipt);
         }
 
@@ -230,47 +221,6 @@ namespace PaviseApp
             return false;
         }
 
-        private static bool DropOrphanExtremeSnapshot(Guid configuringScheme)
-        {
-            string value;
-            if (!Settings.TryLoadStr("ExtremePowerKnobSnap", out value) || value.Length == 0)
-            {
-                return false;
-            }
-            if (value.IndexOf('|') < 0)
-            {
-                return false;
-            }
-            string[] valueParts = value.Split('|');
-            Guid result;
-            if (valueParts.Length != 3 || valueParts[0] != "2" || !Guid.TryParse(valueParts[1], out result) || result == Guid.Empty || result == configuringScheme)
-            {
-                return false;
-            }
-            List<Guid> list;
-            if (!TryEnumerateSchemes(out list) || list.Contains(result))
-            {
-                return false;
-            }
-            if (!SaveExtremeSnapshot(result, new List<ExtremeSavedValue>()))
-            {
-                return false;
-            }
-            Logger.Log(Lang.T("log.powerplanschemes.extremeOrphan", 0));
-            return true;
-        }
-
-        private static bool PrepareExtremeKnobs(Guid scheme)
-        {
-            bool restoreExtremeKnobsSucceeded = RestoreExtremeKnobs(scheme);
-            if (!restoreExtremeKnobsSucceeded && DropOrphanExtremeSnapshot(scheme))
-            {
-                restoreExtremeKnobsSucceeded = RestoreExtremeKnobs(scheme);
-            }
-            extremeTunePending = !restoreExtremeKnobsSucceeded;
-            return restoreExtremeKnobsSucceeded;
-        }
-
         private static bool RestoreExtremeKnobs(Guid scheme)
         {
             List<ExtremeSavedValue> values;
@@ -282,13 +232,13 @@ namespace PaviseApp
             {
                 return true;
             }
-            List<ExtremeSavedValue> list = new List<ExtremeSavedValue>();
+            List<ExtremeSavedValue> extremeSavedValues = new List<ExtremeSavedValue>();
             bool result = true;
-            foreach (ExtremeSavedValue item in values)
+            foreach (ExtremeSavedValue savedValue in values)
             {
-                if (!RestoreExtremeIndex(scheme, item.Setting, true, item.Ac) || !RestoreExtremeIndex(scheme, item.Setting, false, item.Dc))
+                if (!RestoreExtremeIndex(scheme, savedValue.Setting, true, savedValue.Ac) || !RestoreExtremeIndex(scheme, savedValue.Setting, false, savedValue.Dc))
                 {
-                    list.Add(item);
+                    extremeSavedValues.Add(savedValue);
                     result = false;
                 }
             }
@@ -297,7 +247,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            if (SaveExtremeSnapshot(scheme, list))
+            if (SaveExtremeSnapshot(scheme, extremeSavedValues))
             {
                 return result;
             }

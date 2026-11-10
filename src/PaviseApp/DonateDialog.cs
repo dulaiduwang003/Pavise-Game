@@ -8,25 +8,6 @@ namespace PaviseApp
 {
     internal sealed class DonateDialog : Form
     {
-        private const int DlgW = 420;
-
-        private const int PadX = 26;
-
-        private const int TagTop = 17;
-
-        private const int TagHeight = 16;
-
-        private const int TagWidth = 74;
-
-        private const int TitleTop = 43;
-
-        private const int QrSize = 236;
-
-        private const int QrPad = 12;
-
-        private const int BtnH = 34;
-
-        private const int BottomPad = 22;
 
         private Bitmap image;
 
@@ -264,9 +245,9 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush5, path);
                 }
-                using (Pen pen2 = new Pen(Col.Alpha(accent, 110), Math.Max(1f, Theme.S(1))))
+                using (Pen currentPen = new Pen(Col.Alpha(accent, 110), Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawPath(pen2, path);
+                    graphics.DrawPath(currentPen, path);
                 }
             }
             Rectangle rectangle = new Rectangle(r.Left + Theme.S(12), r.Top + Theme.S(12), Theme.S(236), Theme.S(236));
@@ -281,9 +262,9 @@ namespace PaviseApp
                 TextRenderer.DrawText(graphics, status, Theme.UI(9f, false), rectangle, Color.FromArgb(120, 120, 120), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
             }
             TextRenderer.DrawText(graphics, Lang.T("donate.hint"), Theme.UI(8.5f, false), new Rectangle(scaledDimension, hintTop, remainingWidth, Theme.S(22)), Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            using (Pen pen3 = new Pen(Theme.StrokeHi))
+            using (Pen strokeHiPen = new Pen(Theme.StrokeHi))
             {
-                graphics.DrawRectangle(pen3, 0, 0, base.Width - 1, base.Height - 1);
+                graphics.DrawRectangle(strokeHiPen, 0, 0, base.Width - 1, base.Height - 1);
             }
         }
 

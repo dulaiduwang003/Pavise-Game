@@ -28,8 +28,7 @@ namespace PaviseApp
                 root = lolRoot;
                 weGame = weGameRoot;
             }
-            ProcessChange[] changes = batch.Changes;
-            foreach (ProcessChange processChange in changes)
+            foreach (ProcessChange processChange in batch.Changes)
             {
                 bool isCredentialDiscoveryStartEvent = IsCredentialDiscoveryStartEvent(processChange);
                 if (processChange != null && (isCredentialDiscoveryStartEvent || LolRuntimeProcesses.IsRelevantProcessChange(processChange.Name, processChange.Path, root, weGame)))

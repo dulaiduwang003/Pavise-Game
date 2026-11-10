@@ -59,11 +59,11 @@ namespace PaviseApp
             {
                 return 0uL;
             }
-            foreach (ulong numericValueEntry in cores)
+            foreach (ulong core in cores)
             {
-                if ((numericValueEntry & mask) != 0)
+                if ((core & mask) != 0)
                 {
-                    wholeCoresResult |= numericValueEntry;
+                    wholeCoresResult |= core;
                 }
             }
             return wholeCoresResult;
@@ -85,9 +85,9 @@ namespace PaviseApp
             int processedCount = 0;
             if (cores != null)
             {
-                foreach (ulong numericValueEntry in cores)
+                foreach (ulong core in cores)
                 {
-                    if (numericValueEntry != 0 && (mask & numericValueEntry) == numericValueEntry)
+                    if (core != 0 && (mask & core) == core)
                     {
                         processedCount++;
                     }
@@ -133,16 +133,16 @@ namespace PaviseApp
             {
                 return "topology";
             }
-            ulong numericValue = 0uL;
-            foreach (ulong numericValueEntry in cores)
+            ulong coveredCoreMask = 0uL;
+            foreach (ulong core in cores)
             {
-                if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
+                if (core == 0 || (core & ~all) != 0 || (coveredCoreMask & core) != 0)
                 {
                     return "topology";
                 }
-                numericValue |= numericValueEntry;
+                coveredCoreMask |= core;
             }
-            if (numericValue != all)
+            if (coveredCoreMask != all)
             {
                 return "topology";
             }
@@ -155,9 +155,9 @@ namespace PaviseApp
                 return "whole";
             }
             int processedCount = 0;
-            foreach (ulong numericValueEntry2 in cores)
+            foreach (ulong currentCore in cores)
             {
-                if ((numericValueEntry2 & isolation) == 0 && (numericValueEntry2 & ~allocated) != 0)
+                if ((currentCore & isolation) == 0 && (currentCore & ~allocated) != 0)
                 {
                     processedCount++;
                 }

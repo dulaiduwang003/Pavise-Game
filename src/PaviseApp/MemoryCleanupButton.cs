@@ -48,11 +48,11 @@ namespace PaviseApp
             float hoverIfEnabled = dsState.HoverIfEnabled;
             float press = dsState.Press;
             Color color = (base.Enabled ? Theme.Accent : Theme.Dim);
-            Color color2 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.12f + hoverIfEnabled * 0.13f + press * 0.08f) : 0.03f);
-            Color color3 = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.3f + hoverIfEnabled * 0.18f + press * 0.08f) : 0.06f);
+            Color lerp = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.12f + hoverIfEnabled * 0.13f + press * 0.08f) : 0.03f);
+            Color currentLerp = Col.Lerp(Theme.Inset, color, base.Enabled ? (0.3f + hoverIfEnabled * 0.18f + press * 0.08f) : 0.06f);
             using (GraphicsPath graphicsPath = Theme.TechPath(FrameBounds, Theme.S(8)))
             {
-                using (LinearGradientBrush brush = new LinearGradientBrush(FrameBounds, color2, color3, LinearGradientMode.Horizontal))
+                using (LinearGradientBrush brush = new LinearGradientBrush(FrameBounds, lerp, currentLerp, LinearGradientMode.Horizontal))
                 {
                     graphics.FillPath(brush, graphicsPath);
                 }
@@ -64,12 +64,12 @@ namespace PaviseApp
                 try
                 {
                     graphics.SetClip(graphicsPath);
-                    using (Pen pen2 = new Pen(Col.Alpha(color, (int)(18f + hoverIfEnabled * 24f)), Theme.S(5)))
+                    using (Pen currentPen = new Pen(Col.Alpha(color, (int)(18f + hoverIfEnabled * 24f)), Theme.S(5)))
                     {
                         for (int i = 0; i < 3; i++)
                         {
                             int left = base.Width - Theme.S(52 - i * 13);
-                            graphics.DrawLine(pen2, left, 0, left - Theme.S(16), base.Height);
+                            graphics.DrawLine(currentPen, left, 0, left - Theme.S(16), base.Height);
                         }
                     }
                     PaintBusy(graphics, FrameBounds, graphicsPath);
@@ -91,13 +91,13 @@ namespace PaviseApp
             captionBounds.Offset((int)(press * (float)Theme.S(1)), (int)(press * (float)Theme.S(1)));
             TextRenderer.DrawText(graphics, Text, Theme.UI(9f, true), captionBounds, base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             int heightRatio = base.Height / 2;
-            int onPaintValue = base.Width - Theme.S(13) + (int)(hoverIfEnabled * (float)Theme.S(2));
-            using (Pen pen3 = new Pen(Col.Alpha(color, base.Enabled ? 230 : 95), Math.Max(1.2f, Theme.S(1))))
+            int chevronRight = base.Width - Theme.S(13) + (int)(hoverIfEnabled * (float)Theme.S(2));
+            using (Pen candidatePen = new Pen(Col.Alpha(color, base.Enabled ? 230 : 95), Math.Max(1.2f, Theme.S(1))))
             {
                 for (int j = 0; j < 2; j++)
                 {
-                    int remainingOnPaintValue = onPaintValue - j * Theme.S(7);
-                    graphics.DrawLines(pen3, new Point[3]
+                    int remainingOnPaintValue = chevronRight - j * Theme.S(7);
+                    graphics.DrawLines(candidatePen, new Point[3]
                     {
                         new Point(remainingOnPaintValue - Theme.S(4), heightRatio - Theme.S(4)),
                         new Point(remainingOnPaintValue, heightRatio),
@@ -107,14 +107,14 @@ namespace PaviseApp
             }
             if (!base.Busy)
             {
-                using (Pen pen4 = new Pen(Col.Alpha(color, 180), Math.Max(1f, Theme.S(1))))
+                using (Pen resolvedPen = new Pen(Col.Alpha(color, 180), Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawLine(pen4, Theme.S(10), base.Height - Theme.S(3), Theme.S(10) + (int)((float)(base.Width - Theme.S(30)) * (0.3f + hoverIfEnabled * 0.5f)), base.Height - Theme.S(3));
+                    graphics.DrawLine(resolvedPen, Theme.S(10), base.Height - Theme.S(3), Theme.S(10) + (int)((float)(base.Width - Theme.S(30)) * (0.3f + hoverIfEnabled * 0.5f)), base.Height - Theme.S(3));
                 }
             }
             if (base.WantsFocusCue)
             {
-                DsFocus.Draw(graphics, DsFocus.Inset(FrameBounds, 3), Theme.Fg, color2);
+                DsFocus.Draw(graphics, DsFocus.Inset(FrameBounds, 3), Theme.Fg, lerp);
             }
         }
     }

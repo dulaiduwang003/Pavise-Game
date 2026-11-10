@@ -33,13 +33,13 @@ namespace PaviseApp
             {
                 return;
             }
-            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
-            Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, string> namesByMessage = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, string> phasesByToken = new Dictionary<string, string>(StringComparer.Ordinal);
             Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.Ordinal);
             string message = "";
             string message2 = "";
             string message3 = "";
-            int assignSessionsValue = -1;
+            int pendingChangeIndex = -1;
             bool endedWithoutStart = false;
             for (int i = 0; i < chronological.Count; i++)
             {
@@ -64,7 +64,7 @@ namespace PaviseApp
                     if (boundary.State == "start")
                     {
                         string message4 = message;
-                        if (message4.StartsWith("legacy:", StringComparison.Ordinal) && assignSessionsValue < 0 && Phase(dictionary2, message4) == "active" && (boundary.Name.Length == 0 || Name(dictionary, message4) == boundary.Name))
+                        if (message4.StartsWith("legacy:", StringComparison.Ordinal) && pendingChangeIndex < 0 && Phase(phasesByToken, message4) == "active" && (boundary.Name.Length == 0 || Name(namesByMessage, message4) == boundary.Name))
                         {
                             Remap(chronological, i, message4, boundary.Token);
                         }
@@ -72,32 +72,32 @@ namespace PaviseApp
                         message2 = "";
                         if (!string.IsNullOrEmpty(boundary.Name))
                         {
-                            dictionary[message] = boundary.Name;
+                            namesByMessage[message] = boundary.Name;
                         }
                         else if (!string.IsNullOrEmpty(message3))
                         {
-                            dictionary[message] = message3;
+                            namesByMessage[message] = message3;
                         }
-                        else if (dictionary.ContainsKey(message4))
+                        else if (namesByMessage.ContainsKey(message4))
                         {
-                            dictionary[message] = dictionary[message4];
+                            namesByMessage[message] = namesByMessage[message4];
                         }
-                        dictionary2[message] = "active";
-                        AttachPendingChange(chronological, assignSessionsValue, message, Name(dictionary, message));
+                        phasesByToken[message] = "active";
+                        AttachPendingChange(chronological, pendingChangeIndex, message, Name(namesByMessage, message));
                         message3 = "";
-                        assignSessionsValue = -1;
+                        pendingChangeIndex = -1;
                         endedWithoutStart = false;
                     }
                     else
                     {
                         if (!string.IsNullOrEmpty(boundary.Name))
                         {
-                            dictionary[boundary.Token] = boundary.Name;
+                            namesByMessage[boundary.Token] = boundary.Name;
                         }
-                        dictionary2[boundary.Token] = ((boundary.State == "end") ? "restore" : boundary.State);
+                        phasesByToken[boundary.Token] = ((boundary.State == "end") ? "restore" : boundary.State);
                     }
                     logEventEntry.SessionToken = boundary.Token;
-                    logEventEntry.SessionName = Name(dictionary, boundary.Token);
+                    logEventEntry.SessionName = Name(namesByMessage, boundary.Token);
                     logEventEntry.Phase = boundary.State;
                     if (boundary.State == "restored" || boundary.State == "restore-failed")
                     {
@@ -116,14 +116,14 @@ namespace PaviseApp
                 if (stripPrefixSucceeded2)
                 {
                     message3 = remaining2;
-                    assignSessionsValue = i;
+                    pendingChangeIndex = i;
                     endedWithoutStart = false;
                 }
                 else if (stripPrefixSucceeded)
                 {
                     message = SyntheticToken(logEventEntry, remaining, counts);
-                    dictionary[message] = remaining;
-                    dictionary2[message] = "active";
+                    namesByMessage[message] = remaining;
+                    phasesByToken[message] = "active";
                     message2 = "";
                 }
                 if (autoSucceeded)
@@ -132,34 +132,34 @@ namespace PaviseApp
                     if (isSessionAction && IsStarted(state))
                     {
                         string message5 = message;
-                        if (message5.StartsWith("legacy:", StringComparison.Ordinal) && assignSessionsValue < 0 && Phase(dictionary2, message5) == "active")
+                        if (message5.StartsWith("legacy:", StringComparison.Ordinal) && pendingChangeIndex < 0 && Phase(phasesByToken, message5) == "active")
                         {
                             Remap(chronological, i, message5, token);
                         }
                         message = token;
-                        if (!dictionary.ContainsKey(message))
+                        if (!namesByMessage.ContainsKey(message))
                         {
-                            dictionary[message] = ((message3.Length > 0) ? message3 : Name(dictionary, message5));
+                            namesByMessage[message] = ((message3.Length > 0) ? message3 : Name(namesByMessage, message5));
                         }
-                        dictionary2[message] = "active";
+                        phasesByToken[message] = "active";
                         message2 = "";
-                        AttachPendingChange(chronological, assignSessionsValue, message, Name(dictionary, message));
+                        AttachPendingChange(chronological, pendingChangeIndex, message, Name(namesByMessage, message));
                         message3 = "";
-                        assignSessionsValue = -1;
+                        pendingChangeIndex = -1;
                         endedWithoutStart = false;
                     }
-                    else if (token.Length > 0 && message.Length == 0 && !dictionary2.ContainsKey(token))
+                    else if (token.Length > 0 && message.Length == 0 && !phasesByToken.ContainsKey(token))
                     {
                         message = token;
-                        dictionary2[message] = "fragment";
+                        phasesByToken[message] = "fragment";
                     }
                     logEventEntry.SessionToken = token;
-                    logEventEntry.SessionName = Name(dictionary, token);
-                    logEventEntry.Phase = Phase(dictionary2, token);
+                    logEventEntry.SessionName = Name(namesByMessage, token);
+                    logEventEntry.Phase = Phase(phasesByToken, token);
                     if (isSessionAction && (IsRestored(state) || IsRestoreFailed(state)))
                     {
                         logEventEntry.Phase = (IsRestored(state) ? "restored" : "restore-failed");
-                        dictionary2[token] = logEventEntry.Phase;
+                        phasesByToken[token] = logEventEntry.Phase;
                         if (message == token)
                         {
                             message = "";
@@ -174,12 +174,12 @@ namespace PaviseApp
                 }
                 if (endedWithoutStart && !stripPrefixSucceeded2 && !ReliableStartAhead(chronological, i))
                 {
-                    message = SyntheticToken(chronological[assignSessionsValue], message3, counts);
-                    dictionary[message] = message3;
-                    dictionary2[message] = "active";
-                    AttachPendingChange(chronological, assignSessionsValue, message, message3);
+                    message = SyntheticToken(chronological[pendingChangeIndex], message3, counts);
+                    namesByMessage[message] = message3;
+                    phasesByToken[message] = "active";
+                    AttachPendingChange(chronological, pendingChangeIndex, message, message3);
                     message3 = "";
-                    assignSessionsValue = -1;
+                    pendingChangeIndex = -1;
                     endedWithoutStart = false;
                 }
                 string sessionTokenValue = message;
@@ -188,8 +188,8 @@ namespace PaviseApp
                     sessionTokenValue = message2;
                 }
                 logEventEntry.SessionToken = sessionTokenValue;
-                logEventEntry.SessionName = Name(dictionary, sessionTokenValue);
-                logEventEntry.Phase = Phase(dictionary2, sessionTokenValue);
+                logEventEntry.SessionName = Name(namesByMessage, sessionTokenValue);
+                logEventEntry.Phase = Phase(phasesByToken, sessionTokenValue);
                 if (stripPrefixSucceeded)
                 {
                     logEventEntry.Phase = "start";
@@ -198,10 +198,10 @@ namespace PaviseApp
                 {
                     if (sessionTokenValue.Length > 0)
                     {
-                        dictionary2[sessionTokenValue] = "restore";
+                        phasesByToken[sessionTokenValue] = "restore";
                     }
                     logEventEntry.Phase = "end";
-                    if (assignSessionsValue >= 0)
+                    if (pendingChangeIndex >= 0)
                     {
                         endedWithoutStart = true;
                     }
@@ -220,24 +220,24 @@ namespace PaviseApp
             {
                 if (chronological[j] != null && chronological[j].SessionToken.Length > 0)
                 {
-                    chronological[j].SessionName = Name(dictionary, chronological[j].SessionToken);
+                    chronological[j].SessionName = Name(namesByMessage, chronological[j].SessionToken);
                 }
             }
         }
 
         internal static List<LogEventEntry> Project(IList<LogEventEntry> chronological, int filter, string activeSession)
         {
-            List<LogEventEntry> list = new List<LogEventEntry>();
+            List<LogEventEntry> rows = new List<LogEventEntry>();
             if (chronological == null || chronological.Count == 0)
             {
-                return list;
+                return rows;
             }
             string selectSessionResult = SelectSession(chronological, activeSession);
             if (filter == 4 && selectSessionResult.Length == 0)
             {
-                return list;
+                return rows;
             }
-            int projectValue = -1;
+            int sessionStartIndex = -1;
             int chronologicalCount = chronological.Count;
             if (selectSessionResult.Length > 0)
             {
@@ -246,155 +246,155 @@ namespace PaviseApp
                     LogEventEntry logEventEntry = chronological[i];
                     if (logEventEntry != null && logEventEntry.SessionToken == selectSessionResult)
                     {
-                        projectValue = i;
+                        sessionStartIndex = i;
                         break;
                     }
                 }
-                for (int j = projectValue + 1; j < chronological.Count; j++)
+                for (int j = sessionStartIndex + 1; j < chronological.Count; j++)
                 {
-                    LogEventEntry logEventEntry2 = chronological[j];
-                    if (logEventEntry2 != null && logEventEntry2.SessionToken.Length > 0 && logEventEntry2.SessionToken != selectSessionResult && logEventEntry2.Phase == "start")
+                    LogEventEntry currentLogEventEntry = chronological[j];
+                    if (currentLogEventEntry != null && currentLogEventEntry.SessionToken.Length > 0 && currentLogEventEntry.SessionToken != selectSessionResult && currentLogEventEntry.Phase == "start")
                     {
                         chronologicalCount = j;
                         break;
                     }
                 }
             }
-            if (filter == 4 && projectValue < 0)
+            if (filter == 4 && sessionStartIndex < 0)
             {
-                return list;
+                return rows;
             }
-            List<Bucket> list2 = new List<Bucket>();
-            Dictionary<string, Bucket> dictionary = new Dictionary<string, Bucket>(StringComparer.Ordinal);
-            Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.Ordinal);
-            Dictionary<string, Bucket> dictionary3 = new Dictionary<string, Bucket>(StringComparer.Ordinal);
-            Dictionary<string, Bucket> dictionary4 = new Dictionary<string, Bucket>(StringComparer.Ordinal);
-            Dictionary<string, string> dictionary5 = new Dictionary<string, string>(StringComparer.Ordinal);
-            Dictionary<string, int> dictionary6 = new Dictionary<string, int>(StringComparer.Ordinal);
-            Dictionary<string, string> dictionary7 = new Dictionary<string, string>(StringComparer.Ordinal);
-            Dictionary<string, int> dictionary8 = new Dictionary<string, int>(StringComparer.Ordinal);
+            List<Bucket> buckets = new List<Bucket>();
+            Dictionary<string, Bucket> bucketsByName = new Dictionary<string, Bucket>(StringComparer.Ordinal);
+            Dictionary<string, string> concatResultsByModuleOffset = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, Bucket> currentBucketsByName = new Dictionary<string, Bucket>(StringComparer.Ordinal);
+            Dictionary<string, Bucket> candidateBucketsByName = new Dictionary<string, Bucket>(StringComparer.Ordinal);
+            Dictionary<string, string> phasesBySessionToken = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, int> integerValuesBySessionToken = new Dictionary<string, int>(StringComparer.Ordinal);
+            Dictionary<string, string> statesByKey = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, int> currentIntegerValuesBySessionToken = new Dictionary<string, int>(StringComparer.Ordinal);
             Dictionary<string, int> occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
             for (int k = 0; k < chronological.Count; k++)
             {
-                LogEventEntry logEventEntry3 = chronological[k];
-                if (logEventEntry3 == null)
+                LogEventEntry candidateLogEventEntry = chronological[k];
+                if (candidateLogEventEntry == null)
                 {
                     continue;
                 }
-                bool needsAttention = logEventEntry3.Severity == LogEventSeverity.Warning || logEventEntry3.Severity == LogEventSeverity.Error;
-                string bodyResult = Body(logEventEntry3.Raw);
+                bool needsAttention = candidateLogEventEntry.Severity == LogEventSeverity.Warning || candidateLogEventEntry.Severity == LogEventSeverity.Error;
+                string bodyResult = Body(candidateLogEventEntry.Raw);
                 string token;
                 string action;
                 string state;
                 bool autoSucceeded = Auto(bodyResult, out token, out action, out state);
-                string moduleOffset = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Module;
-                string[] textEntries = new string[5];
-                int severity = (int)logEventEntry3.Severity;
-                textEntries[0] = severity.ToString(CultureInfo.InvariantCulture);
-                textEntries[1] = "\u001f";
-                textEntries[2] = logEventEntry3.Phase;
-                textEntries[3] = "\u001f";
-                textEntries[4] = CaptureTelemetry.Replace(bodyResult, "$1=*");
-                string concatResult = string.Concat(textEntries);
-                string value;
-                bool moduleChanged = !dictionary2.TryGetValue(moduleOffset, out value) || value != concatResult;
-                dictionary2[moduleOffset] = concatResult;
-                int value2;
-                dictionary8.TryGetValue(logEventEntry3.SessionToken, out value2);
+                string moduleOffset = candidateLogEventEntry.SessionToken + "\u001f" + candidateLogEventEntry.Module;
+                string[] eventFields = new string[5];
+                int severity = (int)candidateLogEventEntry.Severity;
+                eventFields[0] = severity.ToString(CultureInfo.InvariantCulture);
+                eventFields[1] = "\u001f";
+                eventFields[2] = candidateLogEventEntry.Phase;
+                eventFields[3] = "\u001f";
+                eventFields[4] = CaptureTelemetry.Replace(bodyResult, "$1=*");
+                string concatResult = string.Concat(eventFields);
+                string currentConcatResult;
+                bool moduleChanged = !concatResultsByModuleOffset.TryGetValue(moduleOffset, out currentConcatResult) || currentConcatResult != concatResult;
+                concatResultsByModuleOffset[moduleOffset] = concatResult;
+                int sessionDurationMinutes;
+                currentIntegerValuesBySessionToken.TryGetValue(candidateLogEventEntry.SessionToken, out sessionDurationMinutes);
                 bool stateChanged = false;
                 if (autoSucceeded)
                 {
-                    string key = logEventEntry3.SessionToken + "\u001f" + action;
-                    stateChanged = dictionary7.TryGetValue(key, out value) && value != state;
-                    dictionary7[key] = state;
+                    string key = candidateLogEventEntry.SessionToken + "\u001f" + action;
+                    stateChanged = statesByKey.TryGetValue(key, out currentConcatResult) && currentConcatResult != state;
+                    statesByKey[key] = state;
                 }
-                bool sessionBoundary = logEventEntry3.SessionToken.Length > 0 && (SessionBoundary(bodyResult) != null || (autoSucceeded && IsSessionAction(action)) || (logEventEntry3.Phase == "start" && (bodyResult.StartsWith("游戏模式", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode ", StringComparison.Ordinal))) || (logEventEntry3.Phase == "end" && (bodyResult.StartsWith("本局结束 ", StringComparison.Ordinal) || bodyResult.StartsWith("Match ended ", StringComparison.Ordinal)))) && (logEventEntry3.Phase == "start" || logEventEntry3.Phase == "end" || logEventEntry3.Phase == "restored" || logEventEntry3.Phase == "restore-failed");
-                int value3;
-                dictionary6.TryGetValue(logEventEntry3.SessionToken, out value3);
+                bool sessionBoundary = candidateLogEventEntry.SessionToken.Length > 0 && (SessionBoundary(bodyResult) != null || (autoSucceeded && IsSessionAction(action)) || (candidateLogEventEntry.Phase == "start" && (bodyResult.StartsWith("游戏模式", StringComparison.Ordinal) || bodyResult.StartsWith("Game mode ", StringComparison.Ordinal))) || (candidateLogEventEntry.Phase == "end" && (bodyResult.StartsWith("本局结束 ", StringComparison.Ordinal) || bodyResult.StartsWith("Match ended ", StringComparison.Ordinal)))) && (candidateLogEventEntry.Phase == "start" || candidateLogEventEntry.Phase == "end" || candidateLogEventEntry.Phase == "restored" || candidateLogEventEntry.Phase == "restore-failed");
+                int sessionEventCount;
+                integerValuesBySessionToken.TryGetValue(candidateLogEventEntry.SessionToken, out sessionEventCount);
                 if (sessionBoundary)
                 {
-                    if (dictionary5.TryGetValue(logEventEntry3.SessionToken, out value) && value != logEventEntry3.Phase)
+                    if (phasesBySessionToken.TryGetValue(candidateLogEventEntry.SessionToken, out currentConcatResult) && currentConcatResult != candidateLogEventEntry.Phase)
                     {
-                        value3++;
-                        dictionary6[logEventEntry3.SessionToken] = value3;
+                        sessionEventCount++;
+                        integerValuesBySessionToken[candidateLogEventEntry.SessionToken] = sessionEventCount;
                     }
-                    dictionary5[logEventEntry3.SessionToken] = logEventEntry3.Phase;
+                    phasesBySessionToken[candidateLogEventEntry.SessionToken] = candidateLogEventEntry.Phase;
                 }
-                if ((filter == 1 && !needsAttention) || (filter == 2 && logEventEntry3.Severity != LogEventSeverity.Error) || (filter == 3 && !autoSucceeded) || (filter == 4 && selectSessionResult.Length > 0 && logEventEntry3.SessionToken != selectSessionResult && (!needsAttention || logEventEntry3.SessionToken.Length != 0 || k < projectValue || k >= chronologicalCount)))
+                if ((filter == 1 && !needsAttention) || (filter == 2 && candidateLogEventEntry.Severity != LogEventSeverity.Error) || (filter == 3 && !autoSucceeded) || (filter == 4 && selectSessionResult.Length > 0 && candidateLogEventEntry.SessionToken != selectSessionResult && (!needsAttention || candidateLogEventEntry.SessionToken.Length != 0 || k < sessionStartIndex || k >= chronologicalCount)))
                 {
                     continue;
                 }
                 if (sessionBoundary)
                 {
-                    string key2 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + value3;
-                    Bucket value4;
-                    if (!dictionary4.TryGetValue(key2, out value4))
+                    string key2 = candidateLogEventEntry.SessionToken + "\u001f" + candidateLogEventEntry.Phase + "\u001f" + sessionEventCount;
+                    Bucket candidateBucket;
+                    if (!candidateBucketsByName.TryGetValue(key2, out candidateBucket))
                     {
-                        value4 = Create(logEventEntry3, k, "boundary:", occurrences);
-                        value4.Row.Details.Add(Copy(logEventEntry3));
-                        dictionary4[key2] = value4;
-                        list2.Add(value4);
+                        candidateBucket = Create(candidateLogEventEntry, k, "boundary:", occurrences);
+                        candidateBucket.Row.Details.Add(Copy(candidateLogEventEntry));
+                        candidateBucketsByName[key2] = candidateBucket;
+                        buckets.Add(candidateBucket);
                     }
                     else
                     {
-                        Append(value4, logEventEntry3, k);
+                        Append(candidateBucket, candidateLogEventEntry, k);
                     }
-                    value4.Row.Module = Text("对局", "SESSION", "セッション");
-                    value4.Row.Message = BoundaryMessage(logEventEntry3.SessionName, logEventEntry3.Phase);
-                    value4.Row.Severity = BoundarySeverity(value4.Row.Severity, logEventEntry3.Severity, logEventEntry3.Phase);
+                    candidateBucket.Row.Module = Text("对局", "SESSION");
+                    candidateBucket.Row.Message = BoundaryMessage(candidateLogEventEntry.SessionName, candidateLogEventEntry.Phase);
+                    candidateBucket.Row.Severity = BoundarySeverity(candidateBucket.Row.Severity, candidateLogEventEntry.Severity, candidateLogEventEntry.Phase);
                 }
-                else if ((!autoSucceeded && logEventEntry3.Severity == LogEventSeverity.Success && logEventEntry3.SessionToken.Length > 0 && (logEventEntry3.Phase == "active" || logEventEntry3.Phase == "restore") && !string.Equals(logEventEntry3.Module, "FRAME", StringComparison.OrdinalIgnoreCase) && !string.Equals(logEventEntry3.Module, "SESSION", StringComparison.OrdinalIgnoreCase)) || (logEventEntry3.Severity == LogEventSeverity.Success && autoSucceeded && logEventEntry3.SessionToken.Length > 0 && !IsSessionAction(action) && (IsApplied(state) || IsRestored(state))))
+                else if ((!autoSucceeded && candidateLogEventEntry.Severity == LogEventSeverity.Success && candidateLogEventEntry.SessionToken.Length > 0 && (candidateLogEventEntry.Phase == "active" || candidateLogEventEntry.Phase == "restore") && !string.Equals(candidateLogEventEntry.Module, "FRAME", StringComparison.OrdinalIgnoreCase) && !string.Equals(candidateLogEventEntry.Module, "SESSION", StringComparison.OrdinalIgnoreCase)) || (candidateLogEventEntry.Severity == LogEventSeverity.Success && autoSucceeded && candidateLogEventEntry.SessionToken.Length > 0 && !IsSessionAction(action) && (IsApplied(state) || IsRestored(state))))
                 {
-                    string message = ((!autoSucceeded) ? ((logEventEntry3.Phase == "restore" || RestorationText(bodyResult)) ? "restored" : "applied") : (IsApplied(state) ? "applied" : "restored"));
-                    string key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + message + "\u001f" + value2;
-                    Bucket value5;
-                    if (stateChanged && dictionary3.TryGetValue(key3, out value5) && value5.Actions.Contains(action))
+                    string message = ((!autoSucceeded) ? ((candidateLogEventEntry.Phase == "restore" || RestorationText(bodyResult)) ? "restored" : "applied") : (IsApplied(state) ? "applied" : "restored"));
+                    string key3 = candidateLogEventEntry.SessionToken + "\u001f" + candidateLogEventEntry.Phase + "\u001f" + message + "\u001f" + sessionDurationMinutes;
+                    Bucket currentBucket;
+                    if (stateChanged && currentBucketsByName.TryGetValue(key3, out currentBucket) && currentBucket.Actions.Contains(action))
                     {
-                        value2++;
-                        dictionary8[logEventEntry3.SessionToken] = value2;
-                        key3 = logEventEntry3.SessionToken + "\u001f" + logEventEntry3.Phase + "\u001f" + message + "\u001f" + value2;
+                        sessionDurationMinutes++;
+                        currentIntegerValuesBySessionToken[candidateLogEventEntry.SessionToken] = sessionDurationMinutes;
+                        key3 = candidateLogEventEntry.SessionToken + "\u001f" + candidateLogEventEntry.Phase + "\u001f" + message + "\u001f" + sessionDurationMinutes;
                     }
-                    if (!dictionary3.TryGetValue(key3, out value5))
+                    if (!currentBucketsByName.TryGetValue(key3, out currentBucket))
                     {
-                        value5 = Create(logEventEntry3, k, "summary:", occurrences);
-                        value5.Row.IsSummary = true;
-                        value5.Row.Module = Text("对局摘要", "SESSION", "セッション");
-                        value5.Row.Details.Add(Copy(logEventEntry3));
-                        dictionary3[key3] = value5;
-                        list2.Add(value5);
+                        currentBucket = Create(candidateLogEventEntry, k, "summary:", occurrences);
+                        currentBucket.Row.IsSummary = true;
+                        currentBucket.Row.Module = Text("对局摘要", "SESSION");
+                        currentBucket.Row.Details.Add(Copy(candidateLogEventEntry));
+                        currentBucketsByName[key3] = currentBucket;
+                        buckets.Add(currentBucket);
                     }
                     else
                     {
-                        Append(value5, logEventEntry3, k);
+                        Append(currentBucket, candidateLogEventEntry, k);
                     }
                     if (autoSucceeded)
                     {
-                        value5.Actions.Add(action);
+                        currentBucket.Actions.Add(action);
                     }
-                    value5.Row.Message = SummaryMessage(value5.Row.SessionName, value5.Row.Phase, message, value5.Actions.Count);
+                    currentBucket.Row.Message = SummaryMessage(currentBucket.Row.SessionName, currentBucket.Row.Phase, message, currentBucket.Actions.Count);
                 }
                 else
                 {
                     string key4 = moduleOffset + "\u001f" + concatResult;
-                    Bucket value6;
-                    if (!moduleChanged && dictionary.TryGetValue(key4, out value6))
+                    Bucket bucket;
+                    if (!moduleChanged && bucketsByName.TryGetValue(key4, out bucket))
                     {
-                        Append(value6, logEventEntry3, k);
-                        value6.Row.Message = logEventEntry3.Message;
+                        Append(bucket, candidateLogEventEntry, k);
+                        bucket.Row.Message = candidateLogEventEntry.Message;
                     }
                     else
                     {
-                        value6 = (dictionary[key4] = Create(logEventEntry3, k, "event:", occurrences));
-                        list2.Add(value6);
+                        bucket = (bucketsByName[key4] = Create(candidateLogEventEntry, k, "event:", occurrences));
+                        buckets.Add(bucket);
                     }
                 }
             }
-            list2.Sort((Bucket a, Bucket b) => b.LastIndex.CompareTo(a.LastIndex));
-            for (int l = 0; l < list2.Count; l++)
+            buckets.Sort((Bucket a, Bucket b) => b.LastIndex.CompareTo(a.LastIndex));
+            for (int l = 0; l < buckets.Count; l++)
             {
-                list.Add(list2[l].Row);
+                rows.Add(buckets[l].Row);
             }
-            return list;
+            return rows;
         }
 
         private static Bucket Create(LogEventEntry source, int index, string prefix, Dictionary<string, int> occurrences)
@@ -459,14 +459,14 @@ namespace PaviseApp
             }
             string selectSessionResult = "";
             string result = "";
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> sessionTokens = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < events.Count; i++)
             {
                 LogEventEntry logEventEntry = events[i];
                 if (logEventEntry != null && logEventEntry.SessionToken.Length != 0)
                 {
                     result = logEventEntry.SessionToken;
-                    if (logEventEntry.Phase == "start" || (logEventEntry.Phase == "fragment" && hashSet.Add(logEventEntry.SessionToken)))
+                    if (logEventEntry.Phase == "start" || (logEventEntry.Phase == "fragment" && sessionTokens.Add(logEventEntry.SessionToken)))
                     {
                         selectSessionResult = logEventEntry.SessionToken;
                     }
@@ -481,12 +481,12 @@ namespace PaviseApp
 
         private static string SummaryMessage(string name, string phase, string state, int actions)
         {
-            string textResult = ((state == "applied") ? Text("已应用", "Applied", "適用済み") : ((phase == "restore") ? Text("退局还原记录", "Exit restoration records", "終了時の復元記録") : Text("局部还原记录", "Individual restoration records", "個別の復元記録")));
+            string textResult = ((state == "applied") ? Text("已应用", "Applied") : ((phase == "restore") ? Text("退局还原记录", "Exit restoration records") : Text("局部还原记录", "Individual restoration records")));
             if (actions == 0)
             {
-                return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + ((state == "restored") ? Text("还原记录", "Restoration records", "復元記録") : Text("执行记录", "Execution records", "実行記録"));
+                return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + ((state == "restored") ? Text("还原记录", "Restoration records") : Text("执行记录", "Execution records"));
             }
-            return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + textResult + " " + actions.ToString(CultureInfo.InvariantCulture) + Text(" 项", " actions", " 項目");
+            return (string.IsNullOrEmpty(name) ? "" : (name + " · ")) + textResult + " " + actions.ToString(CultureInfo.InvariantCulture) + Text(" 项", " actions");
         }
 
         private static string BoundaryMessage(string name, string phase)
@@ -495,16 +495,16 @@ namespace PaviseApp
             switch (phase)
             {
             default:
-                textResult = Text("还原未完成", "Restoration incomplete", "復元未完了");
+                textResult = Text("还原未完成", "Restoration incomplete");
                 break;
             case "restored":
-                textResult = Text("恢复检查通过", "Restoration checks passed", "復元チェック完了");
+                textResult = Text("恢复检查通过", "Restoration checks passed");
                 break;
             case "end":
-                textResult = Text("退局，开始还原", "Game ended; restoring", "ゲーム終了、復元を開始");
+                textResult = Text("退局，开始还原", "Game ended; restoring");
                 break;
             case "start":
-                textResult = Text("开始接管", "Management started", "管理を開始");
+                textResult = Text("开始接管", "Management started");
                 break;
             }
             string message = textResult;
@@ -546,12 +546,12 @@ namespace PaviseApp
                 trimmed = trimmed.Substring(19).Trim();
             }
             trimmed = LogText.Canonical(trimmed);
-            string[] textEntries = new string[4] { "WARN ", "FAIL ", "INFO ", "PASS " };
-            for (int i = 0; i < textEntries.Length; i++)
+            string[] levelPrefixes = new string[4] { "WARN ", "FAIL ", "INFO ", "PASS " };
+            for (int i = 0; i < levelPrefixes.Length; i++)
             {
-                if (trimmed.StartsWith(textEntries[i], StringComparison.Ordinal))
+                if (trimmed.StartsWith(levelPrefixes[i], StringComparison.Ordinal))
                 {
-                    return trimmed.Substring(textEntries[i].Length).Trim();
+                    return trimmed.Substring(levelPrefixes[i].Length).Trim();
                 }
             }
             return trimmed;
@@ -770,7 +770,7 @@ namespace PaviseApp
             return true;
         }
 
-        private static string Text(string chinese, string english, string japanese)
+        private static string Text(string chinese, string english)
         {
             return chinese;
         }

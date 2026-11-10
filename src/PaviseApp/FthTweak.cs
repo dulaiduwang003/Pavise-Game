@@ -24,28 +24,6 @@ namespace PaviseApp
             Unknown
         }
 
-        private const string FthKey = "SOFTWARE\\Microsoft\\FTH";
-
-        private const string FthStateKey = "SOFTWARE\\Microsoft\\FTH\\State";
-
-        private const string CustomKey = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Custom";
-
-        private const string InstalledSdbKey = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\InstalledSDB";
-
-        private const string ExclusionValue = "ExclusionList";
-
-        private const string ExclusionBakKey = "FthExclusionBak";
-
-        private const string CustomBakKey = "FthCustomBak";
-
-        private const string Absent = "__pavise_absent__";
-
-        private const char RecordSep = '\u001e';
-
-        private const char FieldSep = '\u001f';
-
-        private const int CacheMs = 2000;
-
         private static readonly object lk = new object();
 
         private static List<Shim> cached;
@@ -74,8 +52,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object value = registryKey.GetValue("Enabled");
-                    return value == null || Convert.ToInt64(value) != 0;
+                    object instance = registryKey.GetValue("Enabled");
+                    return instance == null || Convert.ToInt64(instance) != 0;
                 }
             }
             catch
@@ -96,14 +74,14 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object value = registryKey.GetValue("CrashVelocity");
-                    object value2 = registryKey.GetValue("CrashWindowInMinutes");
-                    if (value == null || value2 == null)
+                    object instance = registryKey.GetValue("CrashVelocity");
+                    object currentInstance = registryKey.GetValue("CrashWindowInMinutes");
+                    if (instance == null || currentInstance == null)
                     {
                         return false;
                     }
-                    velocity = Convert.ToInt32(value);
-                    windowMinutes = Convert.ToInt32(value2);
+                    velocity = Convert.ToInt32(instance);
+                    windowMinutes = Convert.ToInt32(currentInstance);
                     return velocity > 0 && windowMinutes > 0;
                 }
             }
@@ -138,8 +116,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] exclusionsResult = Exclusions();
-            foreach (string a in exclusionsResult)
+            foreach (string a in Exclusions())
             {
                 if (string.Equals(a, exe, StringComparison.OrdinalIgnoreCase))
                 {
@@ -151,29 +128,27 @@ namespace PaviseApp
 
         private static HashSet<string> StateNames()
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> entryTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\FTH\\State"))
                 {
                     if (registryKey == null)
                     {
-                        return hashSet;
+                        return entryTexts;
                     }
-                    string[] valueNames = registryKey.GetValueNames();
-                    foreach (string entryText in valueNames)
+                    foreach (string entryText in registryKey.GetValueNames())
                     {
                         if (entryText.Length > 0)
                         {
-                            hashSet.Add(entryText);
+                            entryTexts.Add(entryText);
                         }
                     }
-                    string[] subKeyNames = registryKey.GetSubKeyNames();
-                    foreach (string entryKey in subKeyNames)
+                    foreach (string entryKey in registryKey.GetSubKeyNames())
                     {
                         if (entryKey.Length > 0)
                         {
-                            hashSet.Add(entryKey);
+                            entryTexts.Add(entryKey);
                         }
                     }
                 }
@@ -181,7 +156,7 @@ namespace PaviseApp
             catch
             {
             }
-            return hashSet;
+            return entryTexts;
         }
 
         internal static SdbVerdict ClassifySdb(string valueName, out string sdbPath)
@@ -248,35 +223,33 @@ namespace PaviseApp
 
         private static List<Shim> Scan()
         {
-            List<Shim> list = new List<Shim>();
-            HashSet<string> hashSet = StateNames();
+            List<Shim> shims = new List<Shim>();
+            HashSet<string> textsSet = StateNames();
             try
             {
                 using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Custom"))
                 {
                     if (registryKey == null)
                     {
-                        return list;
+                        return shims;
                     }
-                    string[] subKeyNames = registryKey.GetSubKeyNames();
-                    foreach (string entryKey in subKeyNames)
+                    foreach (string entryKey in registryKey.GetSubKeyNames())
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(entryKey))
                         {
-                            if (registryKey2 == null)
+                            if (currentRegistryKey == null)
                             {
                                 continue;
                             }
-                            string[] valueNames = registryKey2.GetValueNames();
-                            foreach (string entryText in valueNames)
+                            foreach (string entryText in currentRegistryKey.GetValueNames())
                             {
                                 if (entryText.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase))
                                 {
                                     string sdbPath;
                                     SdbVerdict sdbVerdict = ClassifySdb(entryText, out sdbPath);
-                                    if (sdbVerdict != 0 && (sdbVerdict != SdbVerdict.Unknown || hashSet.Contains(entryKey)))
+                                    if (sdbVerdict != 0 && (sdbVerdict != SdbVerdict.Unknown || textsSet.Contains(entryKey)))
                                     {
-                                        list.Add(new Shim
+                                        shims.Add(new Shim
                                         {
                                             Exe = entryKey,
                                             ValueName = entryText,
@@ -292,7 +265,7 @@ namespace PaviseApp
             catch
             {
             }
-            return list;
+            return shims;
         }
 
         public static bool NeedsRepair()
@@ -306,8 +279,8 @@ namespace PaviseApp
             {
                 return Lang.T("fth.off");
             }
-            List<Shim> list = Detect();
-            if (list.Count == 0)
+            List<Shim> shims = Detect();
+            if (shims.Count == 0)
             {
                 if (!RepairedByPavise)
                 {
@@ -315,60 +288,60 @@ namespace PaviseApp
                 }
                 return Lang.T("fth.cleared");
             }
-            List<string> list2 = new List<string>();
-            foreach (Shim item in list)
+            List<string> exes = new List<string>();
+            foreach (Shim shim in shims)
             {
-                if (!list2.Contains(item.Exe))
+                if (!exes.Contains(shim.Exe))
                 {
-                    list2.Add(item.Exe);
+                    exes.Add(shim.Exe);
                 }
             }
             int velocity;
             int windowMinutes;
             if (TryReadTrigger(out velocity, out windowMinutes))
             {
-                return Lang.F("fth.hit.why", string.Join(" ", list2.ToArray()), windowMinutes, velocity);
+                return Lang.F("fth.hit.why", string.Join(" ", exes.ToArray()), windowMinutes, velocity);
             }
-            return Lang.F("fth.hit", string.Join(" ", list2.ToArray()));
+            return Lang.F("fth.hit", string.Join(" ", exes.ToArray()));
         }
 
         public static bool Repair()
         {
             lock (lk)
             {
-                List<Shim> list = Detect();
-                if (list.Count == 0)
+                List<Shim> shims = Detect();
+                if (shims.Count == 0)
                 {
                     return true;
                 }
-                List<string> list2 = new List<string>();
-                foreach (Shim item in list)
+                List<string> exes = new List<string>();
+                foreach (Shim shim in shims)
                 {
-                    if (!HasName(list2, item.Exe))
+                    if (!HasName(exes, shim.Exe))
                     {
-                        list2.Add(item.Exe);
+                        exes.Add(shim.Exe);
                     }
                 }
-                if (!AddExclusions(list2))
+                if (!AddExclusions(exes))
                 {
                     Logger.Log(Lang.T("log.fthtweak.1", 0));
                     return false;
                 }
                 int processedCount = 0;
-                foreach (Shim item2 in list)
+                foreach (Shim currentShim in shims)
                 {
-                    if (DropPointer(item2))
+                    if (DropPointer(currentShim))
                     {
                         processedCount++;
                     }
                     else
                     {
-                        Logger.Log(Lang.T("log.fthtweak.2", 0) + item2.Exe + " " + item2.ValueName);
+                        Logger.Log(Lang.T("log.fthtweak.2", 0) + currentShim.Exe + " " + currentShim.ValueName);
                     }
                 }
                 InvalidateCache();
-                Logger.Log(string.Format(Lang.T("log.fthtweak.3", 0), processedCount, string.Join(" ", list2.ToArray())));
-                return processedCount == list.Count;
+                Logger.Log(string.Format(Lang.T("log.fthtweak.3", 0), processedCount, string.Join(" ", exes.ToArray())));
+                return processedCount == shims.Count;
             }
         }
 
@@ -401,8 +374,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object value = registryKey.GetValue("ExclusionList");
-                    if (value != null)
+                    object instance = registryKey.GetValue("ExclusionList");
+                    if (instance != null)
                     {
                         RegistryValueKind registryValueKind = RegistryValueKind.Unknown;
                         try
@@ -418,7 +391,7 @@ namespace PaviseApp
                             return false;
                         }
                     }
-                    string[] valueOffset = value as string[];
+                    string[] valueOffset = instance as string[];
                     if (Settings.LoadStr("FthExclusionBak", "").Length == 0)
                     {
                         string encodeListResult = ((valueOffset == null) ? "__pavise_absent__" : EncodeList(valueOffset));
@@ -428,23 +401,23 @@ namespace PaviseApp
                             return false;
                         }
                     }
-                    List<string> list = new List<string>();
+                    List<string> exs = new List<string>();
                     if (valueOffset != null)
                     {
-                        list.AddRange(valueOffset);
+                        exs.AddRange(valueOffset);
                     }
                     foreach (string ex in exes)
                     {
-                        if (!HasName(list, ex))
+                        if (!HasName(exs, ex))
                         {
-                            list.Add(ex);
+                            exs.Add(ex);
                         }
                     }
-                    if (valueOffset != null && ListsEqual(valueOffset, list.ToArray()))
+                    if (valueOffset != null && ListsEqual(valueOffset, exs.ToArray()))
                     {
                         return true;
                     }
-                    registryKey.SetValue("ExclusionList", list.ToArray(), RegistryValueKind.MultiString);
+                    registryKey.SetValue("ExclusionList", exs.ToArray(), RegistryValueKind.MultiString);
                     string[] getValueOffset = registryKey.GetValue("ExclusionList") as string[];
                     if (getValueOffset == null)
                     {
@@ -524,8 +497,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object value = registryKey.GetValue(shim.ValueName);
-                    if (value == null)
+                    object instance = registryKey.GetValue(shim.ValueName);
+                    if (instance == null)
                     {
                         return true;
                     }
@@ -546,7 +519,7 @@ namespace PaviseApp
                     int valueKindSnapshot = (int)valueKind;
                     instanceItems[4] = valueKindSnapshot.ToString();
                     instanceItems[5] = '\u001f';
-                    instanceItems[6] = EncodeValue(value);
+                    instanceItems[6] = EncodeValue(instance);
                     string concatResult = string.Concat(instanceItems);
                     string fthCustomBakValue = Settings.LoadStr("FthCustomBak", "");
                     if (!HasBackupRecord(fthCustomBakValue, shim.Exe, shim.ValueName))
@@ -576,8 +549,7 @@ namespace PaviseApp
                 return true;
             }
             bool restorePointersSucceeded = true;
-            string[] fthCustomBakValueParts = fthCustomBakValue.Split('\u001e');
-            foreach (string entryText in fthCustomBakValueParts)
+            foreach (string entryText in fthCustomBakValue.Split('\u001e'))
             {
                 if (entryText.Length == 0)
                 {
@@ -757,8 +729,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] storedParts = stored.Split('\u001e');
-            foreach (string entryText in storedParts)
+            foreach (string entryText in stored.Split('\u001e'))
             {
                 if (entryText.Length != 0)
                 {

@@ -31,10 +31,9 @@ namespace PaviseApp
                 {
                     using (StreamWriter streamWriter = new StreamWriter(fileStream, new UTF8Encoding(false)))
                     {
-                        string[] linesOffset = lines ?? new string[0];
-                        foreach (string value in linesOffset)
+                        foreach (string currentLinesOffset in lines ?? new string[0])
                         {
-                            streamWriter.WriteLine(value);
+                            streamWriter.WriteLine(currentLinesOffset);
                         }
                         streamWriter.Flush();
                         fileStream.Flush(true);

@@ -110,12 +110,12 @@ namespace PaviseApp
                 {
                     try
                     {
-                        ConfigurationPresetKind? value = coordinator.CurrentPreset();
+                        ConfigurationPresetKind? currentPreset = coordinator.CurrentPreset();
                         lock (stateGate)
                         {
                             if (object.ReferenceEquals(phase, identityPhase) && IdentityObservationCurrent(session, generation, observationEpoch))
                             {
-                                current = value;
+                                current = currentPreset;
                                 currentConfiguration = phase.Configuration;
                                 phase.Failures = 0; // 完整确认目标不存在，也属于健康观测。
                                 Volatile.Write(ref observedGeneration, generation);

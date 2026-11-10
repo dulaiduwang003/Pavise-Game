@@ -67,16 +67,15 @@ namespace PaviseApp
 
         internal static CacheWarmEnvironment Sample()
         {
-            Memory memory = default(Memory);
-            memory.Length = (uint)Marshal.SizeOf(typeof(Memory));
-            Memory value = memory;
-            Power value2;
-            if (!GlobalMemoryStatusEx(ref value) || !GetSystemPowerStatus(out value2))
+            Memory value = default(Memory);
+            value.Length = (uint)Marshal.SizeOf(typeof(Memory));
+            Power power;
+            if (!GlobalMemoryStatusEx(ref value) || !GetSystemPowerStatus(out power))
             {
                 return new CacheWarmEnvironment();
             }
             CacheWarmEnvironment cacheWarmEnvironment = new CacheWarmEnvironment();
-            cacheWarmEnvironment.Ac = value2.Ac == 1 && value2.Saver == 0;
+            cacheWarmEnvironment.Ac = power.Ac == 1 && power.Saver == 0;
             cacheWarmEnvironment.Total = value.Total;
             cacheWarmEnvironment.Available = value.Available;
             return cacheWarmEnvironment;

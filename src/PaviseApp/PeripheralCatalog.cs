@@ -53,14 +53,13 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = (name ?? "").ToLowerInvariant();
-            string[] textEntries = tokensResult;
-            foreach (string value in textEntries)
+            foreach (string deviceToken in tokensResult)
             {
-                if (toLowerInvariantResult.Contains(value))
+                if (toLowerInvariantResult.Contains(deviceToken))
                 {
                     return true;
                 }
-                if (info.Length > 0 && info.Contains(value))
+                if (info.Length > 0 && info.Contains(deviceToken))
                 {
                     return true;
                 }
@@ -75,8 +74,7 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = name.ToLowerInvariant();
-            string[] nameKeywords = NameKeywords;
-            foreach (string value in nameKeywords)
+            foreach (string value in NameKeywords)
             {
                 if (toLowerInvariantResult.Contains(value))
                 {
@@ -93,8 +91,7 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = description.ToLowerInvariant();
-            string[] descriptionWords = DescriptionWords;
-            foreach (string value in descriptionWords)
+            foreach (string value in DescriptionWords)
             {
                 if (toLowerInvariantResult.Contains(value))
                 {
@@ -127,10 +124,10 @@ namespace PaviseApp
             }
             lock (infoCacheSync)
             {
-                string value;
-                if (infoCache.TryGetValue(path, out value))
+                string currentInfoCache;
+                if (infoCache.TryGetValue(path, out currentInfoCache))
                 {
-                    return value;
+                    return currentInfoCache;
                 }
             }
             string fileInfoTextResult = "";

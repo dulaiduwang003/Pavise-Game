@@ -61,12 +61,12 @@ namespace PaviseApp
         {
             try
             {
-                IntPtr intPtr = FindWindow("Shell_TrayWnd", null);
-                if (intPtr == IntPtr.Zero)
+                IntPtr windowHandle = FindWindow("Shell_TrayWnd", null);
+                if (windowHandle == IntPtr.Zero)
                 {
                     return false;
                 }
-                return FindWindowEx(intPtr, IntPtr.Zero, "TrayNotifyWnd", null) != IntPtr.Zero;
+                return FindWindowEx(windowHandle, IntPtr.Zero, "TrayNotifyWnd", null) != IntPtr.Zero;
             }
             catch
             {
@@ -111,17 +111,17 @@ namespace PaviseApp
             try
             {
                 uint dragQueryFileWResult = DragQueryFileW(hDrop, uint.MaxValue, null, 0u);
-                List<string> list = new List<string>();
+                List<string> stringBuilders = new List<string>();
                 StringBuilder stringBuilder = new StringBuilder(1024);
                 for (uint iterationIndex = 0u; iterationIndex < dragQueryFileWResult; iterationIndex++)
                 {
                     stringBuilder.Length = 0;
                     if (DragQueryFileW(hDrop, iterationIndex, stringBuilder, (uint)stringBuilder.Capacity) != 0)
                     {
-                        list.Add(stringBuilder.ToString());
+                        stringBuilders.Add(stringBuilder.ToString());
                     }
                 }
-                return list.ToArray();
+                return stringBuilders.ToArray();
             }
             catch
             {

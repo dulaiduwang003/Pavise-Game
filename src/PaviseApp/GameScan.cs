@@ -16,14 +16,6 @@ namespace PaviseApp
             internal int Depth;
         }
 
-        private const int ShortcutDirectoryLimit = 128;
-
-        private const int ShortcutFileLimit = 1024;
-
-        private const int ShortcutRootLimit = 128;
-
-        private const int ShortcutDepthLimit = 4;
-
         private static readonly HashSet<string> SkipDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "windows", "programdata", "$recycle.bin", "system volume information", "recovery", "perflogs", "onedrivetemp", "node_modules", ".git", "temp",
@@ -71,8 +63,7 @@ namespace PaviseApp
                 return false;
             }
             int processedCount = 0;
-            string[] textEntries = nameParts;
-            foreach (string entryText in textEntries)
+            foreach (string entryText in nameParts)
             {
                 if (entryText.Length != 0)
                 {
@@ -88,10 +79,10 @@ namespace PaviseApp
 
         public static List<ScanHit> RunManifests(Func<bool> canceled)
         {
-            List<ScanHit> list = new List<ScanHit>();
+            List<ScanHit> scanHits = new List<ScanHit>();
             HashSet<string> roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            CollectManifests(null, list, roots, canceled);
-            return list;
+            CollectManifests(null, scanHits, roots, canceled);
+            return scanHits;
         }
 
         private static void CollectManifests(string root, List<ScanHit> hits, HashSet<string> roots, Func<bool> canceled)
@@ -270,10 +261,10 @@ namespace PaviseApp
                 {
                 }
             }
-            List<ExecutableCandidateFacts> list = null;
+            List<ExecutableCandidateFacts> executableCandidateFacts = null;
             if (executablePath == null)
             {
-                list = ExecutableCandidateProbe.ListCandidates(dir, 24, out executablePath);
+                executableCandidateFacts = ExecutableCandidateProbe.ListCandidates(dir, 24, out executablePath);
             }
             bool hasExecutable = executablePath != null;
             if (executablePath != null)
@@ -282,12 +273,12 @@ namespace PaviseApp
             }
             else
             {
-                foreach (ExecutableCandidateFacts item in list)
+                foreach (ExecutableCandidateFacts executableCandidateFact in executableCandidateFacts)
                 {
-                    if (ExecutableCandidateProbe.Rank(item) > 0)
+                    if (ExecutableCandidateProbe.Rank(executableCandidateFact) > 0)
                     {
                         hasExecutable = true;
-                        AddUniqueManifestEntry(hits, name, dir, item.Path, true);
+                        AddUniqueManifestEntry(hits, name, dir, executableCandidateFact.Path, true);
                     }
                 }
             }
@@ -325,7 +316,7 @@ namespace PaviseApp
                 Registry.LocalMachine,
                 Registry.CurrentUser
             };
-            string[] textEntries = new string[3] { "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" };
+            string[] uninstallRegistryPaths = new string[3] { "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" };
             for (int i = 0; i < registryKeyItems.Length; i++)
             {
                 if (Stop(canceled))
@@ -334,7 +325,7 @@ namespace PaviseApp
                 }
                 try
                 {
-                    ScanUninstallHive(registryKeyItems[i], textEntries[i], root, hits, roots, seen, canceled);
+                    ScanUninstallHive(registryKeyItems[i], uninstallRegistryPaths[i], root, hits, roots, seen, canceled);
                 }
                 catch
                 {
@@ -350,8 +341,7 @@ namespace PaviseApp
                 {
                     return;
                 }
-                string[] subKeyNames = registryKey.GetSubKeyNames();
-                foreach (string name in subKeyNames)
+                foreach (string name in registryKey.GetSubKeyNames())
                 {
                     if (Stop(canceled))
                     {
@@ -359,12 +349,12 @@ namespace PaviseApp
                     }
                     try
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(name))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(name))
                         {
-                            if (registryKey2 != null && (!(registryKey2.GetValue("SystemComponent") is int) || (int)registryKey2.GetValue("SystemComponent") == 0) && registryKey2.GetValue("ParentKeyName") == null)
+                            if (currentRegistryKey != null && (!(currentRegistryKey.GetValue("SystemComponent") is int) || (int)currentRegistryKey.GetValue("SystemComponent") == 0) && currentRegistryKey.GetValue("ParentKeyName") == null)
                             {
-                                string[] candidates = InstalledDirectoryCandidates(registryKey2.GetValue("InstallLocation") as string, registryKey2.GetValue("DisplayIcon") as string, registryKey2.GetValue("UninstallString") as string, registryKey2.GetValue("InstallSource") as string);
-                                ScanInstalledRecord(registryKey2.GetValue("DisplayName") as string, candidates, root, hits, roots, seen, canceled);
+                                string[] candidates = InstalledDirectoryCandidates(currentRegistryKey.GetValue("InstallLocation") as string, currentRegistryKey.GetValue("DisplayIcon") as string, currentRegistryKey.GetValue("UninstallString") as string, currentRegistryKey.GetValue("InstallSource") as string);
+                                ScanInstalledRecord(currentRegistryKey.GetValue("DisplayName") as string, candidates, root, hits, roots, seen, canceled);
                             }
                         }
                     }
@@ -377,13 +367,13 @@ namespace PaviseApp
 
         internal static string[] InstalledDirectoryCandidates(string installLocation, string displayIcon, string uninstallString, string installSource)
         {
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             HashSet<string> unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AddInstalledDirectoryCandidate(installLocation, list, unique);
-            AddInstalledCommandDirectories(displayIcon, list, unique);
-            AddInstalledCommandDirectories(uninstallString, list, unique);
-            AddInstalledDirectoryCandidate(installSource, list, unique);
-            return list.ToArray();
+            AddInstalledDirectoryCandidate(installLocation, texts, unique);
+            AddInstalledCommandDirectories(displayIcon, texts, unique);
+            AddInstalledCommandDirectories(uninstallString, texts, unique);
+            AddInstalledDirectoryCandidate(installSource, texts, unique);
+            return texts.ToArray();
         }
 
         private static void AddInstalledDirectoryCandidate(string value, List<string> candidates, HashSet<string> unique)
@@ -411,7 +401,7 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (string value in candidates)
+            foreach (string candidate in candidates)
             {
                 if (Stop(canceled))
                 {
@@ -419,7 +409,7 @@ namespace PaviseApp
                 }
                 try
                 {
-                    string cleanDirResult = CleanDir(value);
+                    string cleanDirResult = CleanDir(candidate);
                     if (cleanDirResult == null || !UnderRoot(cleanDirResult, root) || !Directory.Exists(cleanDirResult) || IsSystemOrTooBroad(cleanDirResult) || IsSystemWideDirName(Path.GetFileName(cleanDirResult)))
                     {
                         continue;
@@ -498,10 +488,10 @@ namespace PaviseApp
                 }
                 else
                 {
-                    int installedCommandTargetValue = 0;
-                    while (installedCommandTargetValue < expandEnvironmentVariablesResult.Length)
+                    int commandOffset = 0;
+                    while (commandOffset < expandEnvironmentVariablesResult.Length)
                     {
-                        int matchIndex2 = expandEnvironmentVariablesResult.IndexOf(".exe", installedCommandTargetValue, StringComparison.OrdinalIgnoreCase);
+                        int matchIndex2 = expandEnvironmentVariablesResult.IndexOf(".exe", commandOffset, StringComparison.OrdinalIgnoreCase);
                         if (matchIndex2 < 0)
                         {
                             break;
@@ -512,7 +502,7 @@ namespace PaviseApp
                             expandEnvironmentVariablesResult = expandEnvironmentVariablesResult.Substring(0, matchIndex2Offset);
                             break;
                         }
-                        installedCommandTargetValue = matchIndex2Offset;
+                        commandOffset = matchIndex2Offset;
                     }
                     int matchIndex3 = expandEnvironmentVariablesResult.LastIndexOf(',');
                     int result;
@@ -604,11 +594,10 @@ namespace PaviseApp
             {
                 return false;
             }
-            int looksLikeGameDirValue = 0;
-            string[] directoriesSnapshot = directories;
-            foreach (string entryText in directoriesSnapshot)
+            int inspectedDirectories = 0;
+            foreach (string entryText in directories)
             {
-                if (++looksLikeGameDirValue > 24)
+                if (++inspectedDirectories > 24)
                 {
                     break;
                 }
@@ -842,21 +831,21 @@ namespace PaviseApp
 
         internal static void FromSteamLibraries(string steam, string root, List<ScanHit> hits, HashSet<string> roots)
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            hashSet.Add(steam);
+            HashSet<string> steams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            steams.Add(steam);
             string path = Path.Combine(steam, "steamapps\\libraryfolders.vdf");
             try
             {
                 if (File.Exists(path))
                 {
-                    foreach (Match item in Regex.Matches(File.ReadAllText(path), "\"(?:path|[0-9]+)\"\\s+\"((?:\\\\.|[^\"\\\\])*)\"", RegexOptions.IgnoreCase))
+                    foreach (Match matche in Regex.Matches(File.ReadAllText(path), "\"(?:path|[0-9]+)\"\\s+\"((?:\\\\.|[^\"\\\\])*)\"", RegexOptions.IgnoreCase))
                     {
                         try
                         {
-                            string replaceResult = item.Groups[1].Value.Replace("\\\\", "\\").Replace('/', '\\');
+                            string replaceResult = matche.Groups[1].Value.Replace("\\\\", "\\").Replace('/', '\\');
                             if (Path.IsPathRooted(replaceResult))
                             {
-                                hashSet.Add(replaceResult);
+                                steams.Add(replaceResult);
                             }
                         }
                         catch
@@ -868,31 +857,30 @@ namespace PaviseApp
             catch
             {
             }
-            foreach (string item2 in hashSet)
+            foreach (string currentSteam in steams)
             {
                 string steamappsPath;
                 string[] files;
                 try
                 {
-                    steamappsPath = Path.Combine(item2, "steamapps");
+                    steamappsPath = Path.Combine(currentSteam, "steamapps");
                     files = Directory.GetFiles(steamappsPath, "appmanifest_*.acf");
                 }
                 catch
                 {
                     continue;
                 }
-                string[] filesSnapshot = files;
-                foreach (string path2 in filesSnapshot)
+                foreach (string path2 in files)
                 {
                     try
                     {
                         string input = File.ReadAllText(path2);
-                        Match match2 = Regex.Match(input, "\"name\"\\s+\"([^\"]+)\"");
-                        Match match3 = Regex.Match(input, "\"installdir\"\\s+\"([^\"]+)\"");
-                        if (match3.Success)
+                        Match match = Regex.Match(input, "\"name\"\\s+\"([^\"]+)\"");
+                        Match currentMatch = Regex.Match(input, "\"installdir\"\\s+\"([^\"]+)\"");
+                        if (currentMatch.Success)
                         {
-                            string name = (match2.Success ? match2.Groups[1].Value : null);
-                            AddManifestHit(root, hits, roots, name, Path.Combine(steamappsPath, "common\\" + match3.Groups[1].Value), null);
+                            string name = (match.Success ? match.Groups[1].Value : null);
+                            AddManifestHit(root, hits, roots, name, Path.Combine(steamappsPath, "common\\" + currentMatch.Groups[1].Value), null);
                         }
                     }
                     catch
@@ -914,12 +902,12 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                string value;
-                if (!ReadJsonString(json, ref i, out value))
+                string text;
+                if (!ReadJsonString(json, ref i, out text))
                 {
                     return null;
                 }
-                if (!string.Equals(value, key, StringComparison.Ordinal))
+                if (!string.Equals(text, key, StringComparison.Ordinal))
                 {
                     i--;
                     continue;
@@ -936,12 +924,12 @@ namespace PaviseApp
                 for (j++; j < json.Length && char.IsWhiteSpace(json[j]); j++)
                 {
                 }
-                string value2;
-                if (!ReadJsonString(json, ref j, out value2))
+                string currentText;
+                if (!ReadJsonString(json, ref j, out currentText))
                 {
                     return null;
                 }
-                return value2;
+                return currentText;
             }
             return null;
         }
@@ -1046,8 +1034,7 @@ namespace PaviseApp
             {
                 return;
             }
-            string[] filesSnapshot = files;
-            foreach (string path in filesSnapshot)
+            foreach (string path in files)
             {
                 try
                 {
@@ -1068,9 +1055,8 @@ namespace PaviseApp
 
         private static void FromGog(string root, List<ScanHit> hits, HashSet<string> roots)
         {
-            string[] textEntries = new string[2] { "SOFTWARE\\WOW6432Node\\GOG.com\\Games", "SOFTWARE\\GOG.com\\Games" };
-            string[] textEntries2 = textEntries;
-            foreach (string name in textEntries2)
+            string[] gogRegistryPaths = new string[2] { "SOFTWARE\\WOW6432Node\\GOG.com\\Games", "SOFTWARE\\GOG.com\\Games" };
+            foreach (string name in gogRegistryPaths)
             {
                 using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(name))
                 {
@@ -1078,18 +1064,17 @@ namespace PaviseApp
                     {
                         continue;
                     }
-                    string[] subKeyNames = registryKey.GetSubKeyNames();
-                    foreach (string name2 in subKeyNames)
+                    foreach (string name2 in registryKey.GetSubKeyNames())
                     {
                         try
                         {
-                            using (RegistryKey registryKey2 = registryKey.OpenSubKey(name2))
+                            using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(name2))
                             {
-                                if (registryKey2 != null)
+                                if (currentRegistryKey != null)
                                 {
-                                    string dir = registryKey2.GetValue("path") as string;
-                                    string exePath = registryKey2.GetValue("exe") as string;
-                                    AddManifestHit(root, hits, roots, registryKey2.GetValue("gameName") as string, dir, exePath);
+                                    string dir = currentRegistryKey.GetValue("path") as string;
+                                    string exePath = currentRegistryKey.GetValue("exe") as string;
+                                    AddManifestHit(root, hits, roots, currentRegistryKey.GetValue("gameName") as string, dir, exePath);
                                 }
                             }
                         }
@@ -1109,16 +1094,15 @@ namespace PaviseApp
                 {
                     return;
                 }
-                string[] subKeyNames = registryKey.GetSubKeyNames();
-                foreach (string name in subKeyNames)
+                foreach (string name in registryKey.GetSubKeyNames())
                 {
                     try
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(name))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(name))
                         {
-                            if (registryKey2 != null)
+                            if (currentRegistryKey != null)
                             {
-                                AddManifestHit(root, hits, roots, null, registryKey2.GetValue("InstallDir") as string, null);
+                                AddManifestHit(root, hits, roots, null, currentRegistryKey.GetValue("InstallDir") as string, null);
                             }
                         }
                     }
@@ -1131,17 +1115,16 @@ namespace PaviseApp
 
         private static string[] FixedDriveRoots()
         {
-            List<string> list = new List<string>();
+            List<string> fullNames = new List<string>();
             try
             {
-                DriveInfo[] drives = DriveInfo.GetDrives();
-                foreach (DriveInfo driveInfo in drives)
+                foreach (DriveInfo driveInfo in DriveInfo.GetDrives())
                 {
                     try
                     {
                         if (driveInfo.IsReady)
                         {
-                            list.Add(driveInfo.RootDirectory.FullName);
+                            fullNames.Add(driveInfo.RootDirectory.FullName);
                         }
                     }
                     catch
@@ -1152,13 +1135,12 @@ namespace PaviseApp
             catch
             {
             }
-            return list.ToArray();
+            return fullNames.ToArray();
         }
 
         private static void FromXbox(string root, List<ScanHit> hits, HashSet<string> roots)
         {
-            string[] fixedDriveRootsResult = FixedDriveRoots();
-            foreach (string path in fixedDriveRootsResult)
+            foreach (string path in FixedDriveRoots())
             {
                 string[] directories;
                 try
@@ -1169,8 +1151,7 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                string[] directoriesSnapshot = directories;
-                foreach (string entryText in directoriesSnapshot)
+                foreach (string entryText in directories)
                 {
                     try
                     {
@@ -1191,10 +1172,10 @@ namespace PaviseApp
                                     exePath = combinedPath;
                                 }
                             }
-                            Match match2 = Regex.Match(input, "DefaultDisplayName\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
-                            if (match2.Success && match2.Groups[1].Value.Trim().Length > 0 && !match2.Groups[1].Value.StartsWith("ms-resource", StringComparison.OrdinalIgnoreCase))
+                            Match currentMatch = Regex.Match(input, "DefaultDisplayName\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+                            if (currentMatch.Success && currentMatch.Groups[1].Value.Trim().Length > 0 && !currentMatch.Groups[1].Value.StartsWith("ms-resource", StringComparison.OrdinalIgnoreCase))
                             {
-                                name = match2.Groups[1].Value.Trim();
+                                name = currentMatch.Groups[1].Value.Trim();
                             }
                         }
                         AddManifestHit(root, hits, roots, name, message, exePath);
@@ -1219,18 +1200,17 @@ namespace PaviseApp
                 {
                     return;
                 }
-                string[] subKeyNames = registryKey.GetSubKeyNames();
-                foreach (string entryKey in subKeyNames)
+                foreach (string entryKey in registryKey.GetSubKeyNames())
                 {
                     try
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(entryKey))
                         {
-                            if (registryKey2 == null)
+                            if (currentRegistryKey == null)
                             {
                                 continue;
                             }
-                            string getValueOffset = registryKey2.GetValue("PackageRootFolder") as string;
+                            string getValueOffset = currentRegistryKey.GetValue("PackageRootFolder") as string;
                             if (string.IsNullOrEmpty(getValueOffset))
                             {
                                 continue;
@@ -1267,10 +1247,10 @@ namespace PaviseApp
                                 {
                                     try
                                     {
-                                        Match match2 = Regex.Match(File.ReadAllText(path2), "<Application\\b[^>]*\\bExecutable\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
-                                        if (match2.Success)
+                                        Match currentMatch = Regex.Match(File.ReadAllText(path2), "<Application\\b[^>]*\\bExecutable\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+                                        if (currentMatch.Success)
                                         {
-                                            string combinedPath2 = Path.Combine(getValueOffset, match2.Groups[1].Value.Replace('/', '\\'));
+                                            string combinedPath2 = Path.Combine(getValueOffset, currentMatch.Groups[1].Value.Replace('/', '\\'));
                                             if (File.Exists(combinedPath2))
                                             {
                                                 message = combinedPath2;
@@ -1282,7 +1262,7 @@ namespace PaviseApp
                                     }
                                 }
                             }
-                            string getValueOffset2 = registryKey2.GetValue("DisplayName") as string;
+                            string getValueOffset2 = currentRegistryKey.GetValue("DisplayName") as string;
                             if (string.IsNullOrEmpty(getValueOffset2) || getValueOffset2.StartsWith("@"))
                             {
                                 getValueOffset2 = PackageBaseName(entryKey);
@@ -1325,13 +1305,11 @@ namespace PaviseApp
             {
                 return;
             }
-            string[] directoriesSnapshot = directories;
-            foreach (string path2 in directoriesSnapshot)
+            foreach (string path2 in directories)
             {
                 try
                 {
-                    string[] files = Directory.GetFiles(path2, "*.yaml");
-                    foreach (string path3 in files)
+                    foreach (string path3 in Directory.GetFiles(path2, "*.yaml"))
                     {
                         Match match = Regex.Match(File.ReadAllText(path3), "product_install_full_path:\\s*\"?([^\"\\r\\n]+?)\"?\\s*$", RegexOptions.Multiline);
                         if (match.Success)
@@ -1349,17 +1327,15 @@ namespace PaviseApp
 
         private static void FromWeGameApps(string root, List<ScanHit> hits, HashSet<string> roots)
         {
-            string[] fixedDriveRootsResult = FixedDriveRoots();
-            foreach (string path in fixedDriveRootsResult)
+            foreach (string path in FixedDriveRoots())
             {
-                string[] textEntries = new string[3]
+                string[] gameDirectoryCandidates = new string[3]
                 {
                     Path.Combine(path, "WeGameApps"),
                     Path.Combine(path, "Program Files\\WeGameApps"),
                     Path.Combine(path, "Program Files (x86)\\WeGameApps")
                 };
-                string[] textEntries2 = textEntries;
-                foreach (string path2 in textEntries2)
+                foreach (string path2 in gameDirectoryCandidates)
                 {
                     string[] directories;
                     try
@@ -1370,8 +1346,7 @@ namespace PaviseApp
                     {
                         continue;
                     }
-                    string[] directoriesSnapshot = directories;
-                    foreach (string entryText in directoriesSnapshot)
+                    foreach (string entryText in directories)
                     {
                         try
                         {
@@ -1405,11 +1380,11 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (Match item in Regex.Matches(@string, "[A-Za-z]:[/\\\\][^\\x00-\\x1f\"|?*<>]{2,200}"))
+            foreach (Match matche in Regex.Matches(@string, "[A-Za-z]:[/\\\\][^\\x00-\\x1f\"|?*<>]{2,200}"))
             {
                 try
                 {
-                    string replaceTrimmed = item.Value.Replace('/', '\\').TrimEnd('\\');
+                    string replaceTrimmed = matche.Value.Replace('/', '\\').TrimEnd('\\');
                     if (Directory.Exists(replaceTrimmed) && File.Exists(Path.Combine(replaceTrimmed, ".build.info")))
                     {
                         AddManifestHit(root, hits, roots, Path.GetFileName(replaceTrimmed), replaceTrimmed, null);
@@ -1423,29 +1398,28 @@ namespace PaviseApp
 
         private static void FromShortcuts(string root, List<ScanHit> hits, HashSet<string> roots, Func<bool> canceled)
         {
-            List<string> list = new List<string>();
-            Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[4]
+            List<string> folderPaths = new List<string>();
+            foreach (Environment.SpecialFolder folder in new Environment.SpecialFolder[4]
             {
                 Environment.SpecialFolder.DesktopDirectory,
                 Environment.SpecialFolder.CommonDesktopDirectory,
                 Environment.SpecialFolder.StartMenu,
                 Environment.SpecialFolder.CommonStartMenu
-            };
-            foreach (Environment.SpecialFolder folder in specialFolderItems)
+            })
             {
                 try
                 {
                     string folderPath = Environment.GetFolderPath(folder);
                     if (!string.IsNullOrEmpty(folderPath))
                     {
-                        list.Add(folderPath);
+                        folderPaths.Add(folderPath);
                     }
                 }
                 catch
                 {
                 }
             }
-            ScanShortcutDirectories(list, root, hits, roots, canceled);
+            ScanShortcutDirectories(folderPaths, root, hits, roots, canceled);
         }
 
         internal static void ScanShortcutDirectories(IEnumerable<string> locations, string root, List<ScanHit> hits, HashSet<string> roots, Func<bool> canceled)
@@ -1455,14 +1429,14 @@ namespace PaviseApp
                 return;
             }
             Queue<ShortcutDirectory> queue = new Queue<ShortcutDirectory>();
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> cleanDirResults = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string location in locations)
             {
-                if (!Stop(canceled) && hashSet.Count < 128)
+                if (!Stop(canceled) && cleanDirResults.Count < 128)
                 {
                     string cleanDirResult = CleanDir(location);
-                    if (cleanDirResult != null && hashSet.Add(cleanDirResult))
+                    if (cleanDirResult != null && cleanDirResults.Add(cleanDirResult))
                     {
                         queue.Enqueue(new ShortcutDirectory
                         {
@@ -1490,7 +1464,7 @@ namespace PaviseApp
                 }
                 try
                 {
-                    foreach (string item in Directory.EnumerateFiles(shortcutDirectory.Path, "*.lnk"))
+                    foreach (string enumerateFile in Directory.EnumerateFiles(shortcutDirectory.Path, "*.lnk"))
                     {
                         if (Stop(canceled) || processedCount++ >= 1024)
                         {
@@ -1498,11 +1472,11 @@ namespace PaviseApp
                         }
                         try
                         {
-                            if ((File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
+                            if ((File.GetAttributes(enumerateFile) & FileAttributes.ReparsePoint) != 0)
                             {
                                 continue;
                             }
-                            string shortcut = GameExecutableResolver.ResolveShortcut(item);
+                            string shortcut = GameExecutableResolver.ResolveShortcut(enumerateFile);
                             if (string.IsNullOrWhiteSpace(shortcut))
                             {
                                 continue;
@@ -1533,22 +1507,22 @@ namespace PaviseApp
                                     break;
                                 }
                             }
-                            if (underLibraryRoot || hashSet2.Contains(cleanDirResult2))
+                            if (underLibraryRoot || textsSet.Contains(cleanDirResult2))
                             {
                                 continue;
                             }
-                            if (hashSet2.Count >= 128)
+                            if (textsSet.Count >= 128)
                             {
                                 return;
                             }
-                            hashSet2.Add(cleanDirResult2);
+                            textsSet.Add(cleanDirResult2);
                             if (LooksLikeGameDir(cleanDirResult2, 3) && !Stop(canceled))
                             {
                                 int count = hits.Count;
                                 AddManifestHit(root, hits, roots, Path.GetFileName(cleanDirResult2), cleanDirResult2, null);
                                 if (hits.Count == count + 1 && !hits[count].NeedsChoice && string.Equals(hits[count].Exe, executablePath, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    hits[count].Name = Path.GetFileNameWithoutExtension(item);
+                                    hits[count].Name = Path.GetFileNameWithoutExtension(enumerateFile);
                                 }
                             }
                         }
@@ -1566,16 +1540,16 @@ namespace PaviseApp
                 }
                 try
                 {
-                    foreach (string item2 in Directory.EnumerateDirectories(shortcutDirectory.Path))
+                    foreach (string enumerateDirectory in Directory.EnumerateDirectories(shortcutDirectory.Path))
                     {
-                        if (!Stop(canceled) && hashSet.Count < 128)
+                        if (!Stop(canceled) && cleanDirResults.Count < 128)
                         {
-                            string fileName = Path.GetFileName(item2);
-                            if (fileName.Length != 0 && fileName[0] != '.' && !SkipDirs.Contains(fileName) && hashSet.Add(item2))
+                            string fileName = Path.GetFileName(enumerateDirectory);
+                            if (fileName.Length != 0 && fileName[0] != '.' && !SkipDirs.Contains(fileName) && cleanDirResults.Add(enumerateDirectory))
                             {
                                 queue.Enqueue(new ShortcutDirectory
                                 {
-                                    Path = item2,
+                                    Path = enumerateDirectory,
                                     Depth = shortcutDirectory.Depth + 1
                                 });
                             }
@@ -1601,8 +1575,7 @@ namespace PaviseApp
                 }
                 string substringResult = Path.GetDirectoryName(target).Substring(pathRoot.Length);
                 string pathRootSnapshot = pathRoot;
-                string[] substringResultParts = substringResult.Split(new char[1] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string path in substringResultParts)
+                foreach (string path in substringResult.Split(new char[1] { '\\' }, StringSplitOptions.RemoveEmptyEntries))
                 {
                     pathRootSnapshot = Path.Combine(pathRootSnapshot, path);
                     if ((File.GetAttributes(pathRootSnapshot) & FileAttributes.ReparsePoint) != 0)

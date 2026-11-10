@@ -172,25 +172,24 @@ namespace PaviseApp
             {
                 int id;
                 int sessionId;
-                using (Process process2 = Process.GetCurrentProcess())
+                using (Process currentProcess = Process.GetCurrentProcess())
                 {
-                    id = process2.Id;
-                    sessionId = process2.SessionId;
+                    id = currentProcess.Id;
+                    sessionId = currentProcess.SessionId;
                 }
-                Process[] processes = Process.GetProcesses();
-                foreach (Process process3 in processes)
+                foreach (Process processe in Process.GetProcesses())
                 {
-                    if (process3.Id == id)
+                    if (processe.Id == id)
                     {
-                        process3.Dispose();
+                        processe.Dispose();
                         continue;
                     }
                     string fileVersion = null;
                     try
                     {
-                        if (process3.SessionId == sessionId)
+                        if (processe.SessionId == sessionId)
                         {
-                            FileVersionInfo fileVersionInfo = process3.MainModule.FileVersionInfo;
+                            FileVersionInfo fileVersionInfo = processe.MainModule.FileVersionInfo;
                             if (IsOlderPaviseInstance(fileVersionInfo.ProductName, fileVersionInfo.CompanyName, fileVersionInfo.FileVersion))
                             {
                                 fileVersion = fileVersionInfo.FileVersion;
@@ -202,11 +201,11 @@ namespace PaviseApp
                     }
                     if (fileVersion != null && CompareVersions(App.Version, fileVersion) > 0 && process == null)
                     {
-                        process = process3;
+                        process = processe;
                     }
                     else
                     {
-                        process3.Dispose();
+                        processe.Dispose();
                     }
                 }
                 if (process == null)

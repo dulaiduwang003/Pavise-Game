@@ -37,62 +37,62 @@ namespace PaviseApp
                 pen.LineJoin = LineJoin.Round;
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
-                using (Pen pen2 = pen)
+                using (Pen currentPen = pen)
                 {
                     switch ((key ?? "").ToLowerInvariant())
                     {
                     case "cpu":
                     case "chip":
                     {
-                        graphics.DrawRectangle(pen2, 7, 7, 18, 18);
-                        graphics.DrawRectangle(pen2, 11, 11, 10, 10);
+                        graphics.DrawRectangle(currentPen, 7, 7, 18, 18);
+                        graphics.DrawRectangle(currentPen, 11, 11, 10, 10);
                         for (int k = 10; k <= 22; k += 4)
                         {
-                            graphics.DrawLine(pen2, k, 3, k, 7);
-                            graphics.DrawLine(pen2, k, 25, k, 29);
-                            graphics.DrawLine(pen2, 3, k, 7, k);
-                            graphics.DrawLine(pen2, 25, k, 29, k);
+                            graphics.DrawLine(currentPen, k, 3, k, 7);
+                            graphics.DrawLine(currentPen, k, 25, k, 29);
+                            graphics.DrawLine(currentPen, 3, k, 7, k);
+                            graphics.DrawLine(currentPen, 25, k, 29, k);
                         }
                         break;
                     }
                     case "gpu":
                     {
-                        graphics.DrawRectangle(pen2, 3, 7, 26, 18);
-                        graphics.DrawLine(pen2, 1, 6, 1, 28);
+                        graphics.DrawRectangle(currentPen, 3, 7, 26, 18);
+                        graphics.DrawLine(currentPen, 1, 6, 1, 28);
                         for (int l = 0; l < 2; l++)
                         {
-                            int iconValue = 10 + l * 12;
-                            graphics.DrawEllipse(pen2, iconValue - 5, 11, 10, 10);
-                            graphics.DrawLine(pen2, iconValue - 3, 13, iconValue + 3, 19);
-                            graphics.DrawLine(pen2, iconValue - 3, 19, iconValue + 3, 13);
+                            int fanCenterX = 10 + l * 12;
+                            graphics.DrawEllipse(currentPen, fanCenterX - 5, 11, 10, 10);
+                            graphics.DrawLine(currentPen, fanCenterX - 3, 13, fanCenterX + 3, 19);
+                            graphics.DrawLine(currentPen, fanCenterX - 3, 19, fanCenterX + 3, 13);
                         }
-                        graphics.DrawLine(pen2, 7, 28, 15, 28);
+                        graphics.DrawLine(currentPen, 7, 28, 15, 28);
                         break;
                     }
                     case "ram":
                     case "memory":
                     case "mem":
                     {
-                        graphics.DrawRectangle(pen2, 2, 9, 28, 15);
+                        graphics.DrawRectangle(currentPen, 2, 9, 28, 15);
                         for (int i = 5; i <= 23; i += 9)
                         {
-                            graphics.DrawRectangle(pen2, i, 12, 5, 6);
+                            graphics.DrawRectangle(currentPen, i, 12, 5, 6);
                         }
                         for (int j = 5; j <= 27; j += 4)
                         {
-                            graphics.DrawLine(pen2, j, 24, j, 27);
+                            graphics.DrawLine(currentPen, j, 24, j, 27);
                         }
                         break;
                     }
                     case "display":
                     case "monitor":
                     case "screen":
-                        graphics.DrawRectangle(pen2, 3, 4, 26, 20);
-                        graphics.DrawLine(pen2, 16, 24, 16, 29);
-                        graphics.DrawLine(pen2, 10, 29, 22, 29);
+                        graphics.DrawRectangle(currentPen, 3, 4, 26, 20);
+                        graphics.DrawLine(currentPen, 16, 24, 16, 29);
+                        graphics.DrawLine(currentPen, 10, 29, 22, 29);
                         break;
                     default:
-                        graphics.DrawRectangle(pen2, 6, 6, 20, 20);
+                        graphics.DrawRectangle(currentPen, 6, 6, 20, 20);
                         break;
                     }
                 }

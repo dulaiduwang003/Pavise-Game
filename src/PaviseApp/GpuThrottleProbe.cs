@@ -37,8 +37,7 @@ namespace PaviseApp
                 return false;
             }
             bool readMaskSucceeded = false;
-            IntPtr[] nativeHandleItems = gpusSnapshot;
-            foreach (IntPtr gpu in nativeHandleItems)
+            foreach (IntPtr gpu in gpusSnapshot)
             {
                 uint mask;
                 if (NvApi.TryGetPerfDecrease(gpu, out mask))
@@ -69,28 +68,28 @@ namespace PaviseApp
             {
                 return Lang.T("t.gputhrottleprobe.6");
             }
-            List<string> list = new List<string>();
-            if ((combined & (true ? 1u : 0u)) != 0)
+            List<string> ts = new List<string>();
+            if ((combined & ((1u))) != 0)
             {
-                list.Add(Lang.T("t.gputhrottleprobe.7"));
+                ts.Add(Lang.T("t.gputhrottleprobe.7"));
             }
             if ((combined & 0x12u) != 0)
             {
-                list.Add(Lang.T("t.gputhrottleprobe.8"));
+                ts.Add(Lang.T("t.gputhrottleprobe.8"));
             }
             if ((combined & 4u) != 0)
             {
-                list.Add(Lang.T("t.gputhrottleprobe.9"));
+                ts.Add(Lang.T("t.gputhrottleprobe.9"));
             }
             if ((combined & 8u) != 0)
             {
-                list.Add(Lang.T("t.gputhrottleprobe.10"));
+                ts.Add(Lang.T("t.gputhrottleprobe.10"));
             }
-            if (list.Count == 0)
+            if (ts.Count == 0)
             {
                 return Lang.T("t.gputhrottleprobe.11") + combined.ToString("X");
             }
-            return string.Join(" ", list.ToArray());
+            return string.Join(" ", ts.ToArray());
         }
     }
 }

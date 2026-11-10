@@ -44,61 +44,60 @@ namespace PaviseApp
 
         internal static HashSet<int> Collect(ProcessSnapshot snapshot, int selfPid, int ownerSession)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> pids = new HashSet<int>();
             if (snapshot == null || ownerSession < 0)
             {
-                return hashSet;
+                return pids;
             }
-            Dictionary<int, ProcEntry> dictionary = new Dictionary<int, ProcEntry>();
-            Dictionary<int, string> dictionary2 = new Dictionary<int, string>();
-            HashSet<int> hashSet2 = new HashSet<int>();
-            HashSet<string> hashSet3 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            ProcEntry[] entries = snapshot.Entries;
-            foreach (ProcEntry procEntry in entries)
+            Dictionary<int, ProcEntry> procEntriesByPid = new Dictionary<int, ProcEntry>();
+            Dictionary<int, string> imagePathsByPid = new Dictionary<int, string>();
+            HashSet<int> currentPids = new HashSet<int>();
+            HashSet<string> directoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ProcEntry procEntry in snapshot.Entries)
             {
                 if (procEntry == null)
                 {
                     continue;
                 }
-                if (!hashSet2.Add(procEntry.Pid))
+                if (!currentPids.Add(procEntry.Pid))
                 {
-                    dictionary.Remove(procEntry.Pid);
-                    dictionary2.Remove(procEntry.Pid);
+                    procEntriesByPid.Remove(procEntry.Pid);
+                    imagePathsByPid.Remove(procEntry.Pid);
                 }
                 else if (procEntry.Pid > 4 && procEntry.Pid != selfPid && procEntry.Session == ownerSession && procEntry.Creation > 0)
                 {
                     string imagePath = WhitelistRule.NormalizeImagePath(procEntry.Path);
                     if (imagePath.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(imagePath)), StringComparison.OrdinalIgnoreCase))
                     {
-                        dictionary[procEntry.Pid] = procEntry;
-                        dictionary2[procEntry.Pid] = imagePath;
+                        procEntriesByPid[procEntry.Pid] = procEntry;
+                        imagePathsByPid[procEntry.Pid] = imagePath;
                     }
                 }
             }
-            foreach (ProcEntry value2 in dictionary.Values)
+            foreach (ProcEntry protectedProcess in procEntriesByPid.Values)
             {
-                if (FamilyBoundary.CatalogProtected(value2.Pid, value2.Creation, value2.Name, value2.Path))
+                if (FamilyBoundary.CatalogProtected(protectedProcess.Pid, protectedProcess.Creation, protectedProcess.Name, protectedProcess.Path))
                 {
-                    hashSet.Add(value2.Pid);
-                    string directoryName = Path.GetDirectoryName(dictionary2[value2.Pid]);
+                    pids.Add(protectedProcess.Pid);
+                    string directoryName = Path.GetDirectoryName(imagePathsByPid[protectedProcess.Pid]);
                     // 只有身份核验通过的后代继承推流保护，附近的浏览器或编码器进程不自动继承。
-                    if (!StreamingToolCatalog.IsStreamingToolProcess(value2.Name, value2.Path) && FamilyBoundary.SafeFamilyDir(directoryName))
+                    if (!StreamingToolCatalog.IsStreamingToolProcess(protectedProcess.Name, protectedProcess.Path) && FamilyBoundary.SafeFamilyDir(directoryName))
                     {
-                        hashSet3.Add(directoryName);
+                        directoryNames.Add(directoryName);
                     }
                 }
             }
-            foreach (ProcEntry value3 in dictionary.Values)
+            foreach (ProcEntry helperProcess in procEntriesByPid.Values)
             {
-                if (!HelperNames.Contains(WhitelistRule.NormalizeName(value3.Name)))
+                if (!HelperNames.Contains(WhitelistRule.NormalizeName(helperProcess.Name)))
                 {
                     continue;
                 }
-                foreach (string item in hashSet3)
+                foreach (string currentDirectoryName in directoryNames)
                 {
-                    if (FamilyBoundary.UnderRoot(dictionary2[value3.Pid], item))
+                    if (FamilyBoundary.UnderRoot(imagePathsByPid[helperProcess.Pid], currentDirectoryName))
                     {
-                        hashSet.Add(value3.Pid);
+                        pids.Add(helperProcess.Pid);
                         break;
                     }
                 }
@@ -106,12 +105,12 @@ namespace PaviseApp
             for (int j = 0; j < 24; j++)
             {
                 bool descendantsAdded = false;
-                foreach (ProcEntry value4 in dictionary.Values)
+                foreach (ProcEntry childProcess in procEntriesByPid.Values)
                 {
-                    ProcEntry value;
-                    if (!hashSet.Contains(value4.Pid) && hashSet.Contains(value4.ParentPid) && dictionary.TryGetValue(value4.ParentPid, out value) && value.Creation < value4.Creation)
+                    ProcEntry currentProcEntry;
+                    if (!pids.Contains(childProcess.Pid) && pids.Contains(childProcess.ParentPid) && procEntriesByPid.TryGetValue(childProcess.ParentPid, out currentProcEntry) && currentProcEntry.Creation < childProcess.Creation)
                     {
-                        hashSet.Add(value4.Pid);
+                        pids.Add(childProcess.Pid);
                         descendantsAdded = true;
                     }
                 }
@@ -120,7 +119,7 @@ namespace PaviseApp
                     break;
                 }
             }
-            return hashSet;
+            return pids;
         }
     }
 }

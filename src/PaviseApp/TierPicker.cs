@@ -255,17 +255,17 @@ namespace PaviseApp
                     DsPaint.TechFrame(graphics, rectangle, scaledDimension, Col.Lerp(Theme.Card, Theme.CardHover, t), Col.Lerp(Theme.Stroke, Theme.StrokeHi, t));
                 }
             }
-            Rectangle rectangle2 = Rectangle.Empty;
+            Rectangle empty = Rectangle.Empty;
             if (idx < count)
             {
-                rectangle2 = SegmentRect(idx);
-                rectangle2.Width--;
-                rectangle2.Height--;
+                empty = SegmentRect(idx);
+                empty.Width--;
+                empty.Height--;
                 if (StrongSelection)
                 {
-                    using (GraphicsPath path = (PlainSegments ? Theme.Rounded(rectangle2, Theme.S(5)) : Theme.TechPath(rectangle2, scaledDimension)))
+                    using (GraphicsPath path = (PlainSegments ? Theme.Rounded(empty, Theme.S(5)) : Theme.TechPath(empty, scaledDimension)))
                     {
-                        using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(rectangle2), Col.Lerp(Theme.Accent, Color.White, 0.08f), Theme.Accent2, LinearGradientMode.ForwardDiagonal))
+                        using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(empty), Col.Lerp(Theme.Accent, Color.White, 0.08f), Theme.Accent2, LinearGradientMode.ForwardDiagonal))
                         {
                             using (Pen pen = new Pen(Col.Alpha(Theme.Accent, 235)))
                             {
@@ -274,18 +274,18 @@ namespace PaviseApp
                             }
                         }
                     }
-                    using (Pen pen2 = new Pen(Col.Alpha(Color.White, 100), DsSpace.Line(1)))
+                    using (Pen currentPen = new Pen(Col.Alpha(Color.White, 100), DsSpace.Line(1)))
                     {
-                        graphics.DrawLine(pen2, rectangle2.Left + Theme.S(2), rectangle2.Top + Theme.S(1), rectangle2.Right - scaledDimension, rectangle2.Top + Theme.S(1));
+                        graphics.DrawLine(currentPen, empty.Left + Theme.S(2), empty.Top + Theme.S(1), empty.Right - scaledDimension, empty.Top + Theme.S(1));
                     }
                 }
                 else if (PlainSegments)
                 {
-                    DrawPlainFrame(graphics, rectangle2, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
+                    DrawPlainFrame(graphics, empty, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
                 }
                 else
                 {
-                    DsPaint.TechFrame(graphics, rectangle2, scaledDimension, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
+                    DsPaint.TechFrame(graphics, empty, scaledDimension, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
                 }
             }
             for (int j = 0; j < count; j++)
@@ -302,9 +302,9 @@ namespace PaviseApp
             {
                 DsPaint.Veil(graphics, base.ClientRectangle, Col.Alpha(Theme.Card, DsAlpha.VeilTier));
             }
-            if (base.WantsFocusCue && !rectangle2.IsEmpty)
+            if (base.WantsFocusCue && !empty.IsEmpty)
             {
-                DsFocus.Draw(graphics, DsFocus.Inset(rectangle2, 3), Theme.Fg, Theme.Card);
+                DsFocus.Draw(graphics, DsFocus.Inset(empty, 3), Theme.Fg, Theme.Card);
             }
         }
 

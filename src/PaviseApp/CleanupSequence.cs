@@ -11,7 +11,7 @@ namespace PaviseApp
             {
                 throw new ArgumentNullException("obligations");
             }
-            List<Exception> list = new List<Exception>();
+            List<Exception> exceptions = new List<Exception>();
             foreach (Action action in obligations)
             {
                 try
@@ -24,18 +24,18 @@ namespace PaviseApp
                 }
                 catch (Exception item)
                 {
-                    list.Add(item);
+                    exceptions.Add(item);
                 }
             }
-            if (list.Count == 0)
+            if (exceptions.Count == 0)
             {
                 return;
             }
             if (originalFailure != null)
             {
-                list.Insert(0, originalFailure);
+                exceptions.Insert(0, originalFailure);
             }
-            throw new AggregateException("One or more cleanup obligations remain unconfirmed", list);
+            throw new AggregateException("One or more cleanup obligations remain unconfirmed", exceptions);
         }
     }
 }

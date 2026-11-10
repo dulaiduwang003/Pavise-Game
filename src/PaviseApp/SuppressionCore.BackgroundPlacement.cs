@@ -501,11 +501,11 @@ namespace PaviseApp
             List<KeyValuePair<int, Entry>> entriesToClear = new List<KeyValuePair<int, Entry>>();
             lock (sync)
             {
-                foreach (KeyValuePair<int, Entry> item in map)
+                foreach (KeyValuePair<int, Entry> mapEntry in map)
                 {
-                    if ((item.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && item.Value.BackgroundRestorePending)) && SqueezeOwnedBy(item.Value, reason))
+                    if ((mapEntry.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && mapEntry.Value.BackgroundRestorePending)) && SqueezeOwnedBy(mapEntry.Value, reason))
                     {
-                        entriesToClear.Add(item);
+                        entriesToClear.Add(mapEntry);
                     }
                 }
             }

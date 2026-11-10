@@ -68,8 +68,8 @@ namespace PaviseApp
         }
         private Dictionary<string, AuditFix> BuildAuditFixes()
         {
-            Dictionary<string, AuditFix> dictionary = new Dictionary<string, AuditFix>(StringComparer.Ordinal);
-            dictionary.Add("memcompress", new AuditFix
+            Dictionary<string, AuditFix> auditFixsByName = new Dictionary<string, AuditFix>(StringComparer.Ordinal);
+            auditFixsByName.Add("memcompress", new AuditFix
             {
                 CanFix = () => auditReport != null && auditReport.MemoryCompressionCanEnable,
                 CanRevert = () => MemCompressTweak.OwnsState,
@@ -83,7 +83,7 @@ namespace PaviseApp
                 },
                 FixLabel = "audit.mem.enable"
             });
-            dictionary.Add("gpuirq", new AuditFix
+            auditFixsByName.Add("gpuirq", new AuditFix
             {
                 CanFix = () => auditReport != null && auditReport.GpuIrq != null && (auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsPlacement || auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsVerification) && !GpuIrqCheck.AwaitingReboot(GpuIrqCheck.LoadState()) && !gameMode.IsActive,
                 CanRevert = () => false,
@@ -93,7 +93,7 @@ namespace PaviseApp
                 },
                 FixLabel = ((auditReport != null && auditReport.GpuIrq != null && auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsVerification) ? "irqcheck.btn.verify" : "audit.irq.apply")
             });
-            dictionary.Add("gpuirqrestore", new AuditFix
+            auditFixsByName.Add("gpuirqrestore", new AuditFix
             {
                 CanFix = () => false,
                 CanRevert = () => GpuIrqCheck.HasResidue || IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue,
@@ -102,7 +102,7 @@ namespace PaviseApp
                     OnIrqRestore(null, EventArgs.Empty);
                 }
             });
-            dictionary.Add("msi", new AuditFix
+            auditFixsByName.Add("msi", new AuditFix
             {
                 CanFix = () => MsiModeTweak.Disabled().Count > 0,
                 CanRevert = () => MsiModeTweak.EnabledByPavise,
@@ -116,7 +116,7 @@ namespace PaviseApp
                 },
                 ConfirmKey = "audit.msi.confirm"
             });
-            dictionary.Add("quantum", new AuditFix
+            auditFixsByName.Add("quantum", new AuditFix
             {
                 CanFix = () => false,
                 CanRevert = () => false,
@@ -126,7 +126,7 @@ namespace PaviseApp
                 },
                 OpenText = () => PerformancePolicy.Text("前往时间片设置", "Open setting")
             });
-            dictionary.Add("net", new AuditFix
+            auditFixsByName.Add("net", new AuditFix
             {
                 CanFix = () => NetTweak.NeedsRepair(),
                 CanRevert = () => NetTweak.RepairedByPavise,
@@ -139,7 +139,7 @@ namespace PaviseApp
                     NetTweak.Restore();
                 }
             });
-            dictionary.Add("linkmetric", new AuditFix
+            auditFixsByName.Add("linkmetric", new AuditFix
             {
                 CanFix = () => LinkMetricTweak.NeedsRepair(),
                 CanRevert = () => LinkMetricTweak.RepairedByPavise,
@@ -152,7 +152,7 @@ namespace PaviseApp
                     LinkMetricTweak.Restore();
                 }
             });
-            dictionary.Add("fth", new AuditFix
+            auditFixsByName.Add("fth", new AuditFix
             {
                 CanFix = () => FthTweak.NeedsRepair(),
                 CanRevert = () => FthTweak.RepairedByPavise,
@@ -166,21 +166,19 @@ namespace PaviseApp
                 },
                 ConfirmKey = "audit.fth.confirm"
             });
-            return dictionary;
+            return auditFixsByName;
         }
         private void BuildPerformanceSystemOptions(Control scroll, ref int sy)
         {
-            PerformanceRestartScope[] performanceRestartScopeItems = new PerformanceRestartScope[3]
+            foreach (PerformanceRestartScope performanceRestartScope in new PerformanceRestartScope[3]
             {
                 PerformanceRestartScope.None,
                 PerformanceRestartScope.ProcessRestart,
                 PerformanceRestartScope.SystemRestart
-            };
-            foreach (PerformanceRestartScope performanceRestartScope in performanceRestartScopeItems)
+            })
             {
                 bool hasPrivacyOptions = false;
-                PrivacyAction[] all = PrivacyActionCatalog.All;
-                foreach (PrivacyAction privacyAction in all)
+                foreach (PrivacyAction privacyAction in PrivacyActionCatalog.All)
                 {
                     if (privacyAction.Key != PrivacyActionCatalog.BackgroundGlobal && PerformanceRestartFor(privacyAction.Key) == performanceRestartScope)
                     {
@@ -225,12 +223,12 @@ namespace PaviseApp
             {
                 return;
             }
-            Dictionary<Control, int> dictionary = new Dictionary<Control, int>();
+            Dictionary<Control, int> topsByControl = new Dictionary<Control, int>();
             foreach (Control control in scroll.Controls)
             {
-                dictionary[control] = control.Top;
+                topsByControl[control] = control.Top;
             }
-            stackBase[scroll] = dictionary;
+            stackBase[scroll] = topsByControl;
         }
         private void BuildPerformanceEnvironmentGraphics(Control scroll, ref int sy, PerformanceRestartScope scope)
         {
@@ -417,37 +415,34 @@ namespace PaviseApp
                 }
             };
             AddSettingsTile(scroll, "SettingsExitGrace", Lang.T("set.exitgrace"), Lang.T("set.exitgrace.n"), "clock", pickExitGrace).StackHost = true;
-            TierPicker tierPicker = new TierPicker();
-            tierPicker.Name = "SettingsLanguagePicker";
-            TierPicker tierPicker2 = tierPicker;
-            tierPicker2.Labels = new string[2]
+            TierPicker currentTierPicker = new TierPicker();
+            currentTierPicker.Name = "SettingsLanguagePicker";
+            currentTierPicker.Labels = new string[2]
             {
                 Lang.T("lang.zh"),
                 Lang.T("lang.en")
             };
-            tierPicker2.Index = Lang.Cur;
-            tierPicker2.Size = new Size(Theme.S(232), Theme.S(40));
-            tierPicker2.IndexChanged = delegate(int index)
+            currentTierPicker.Index = Lang.Cur;
+            currentTierPicker.Size = new Size(Theme.S(232), Theme.S(40));
+            currentTierPicker.IndexChanged = delegate(int index)
             {
                 Lang.Set(index);
                 BeginInvoke(new MethodInvoker(RebuildUi));
             };
-            AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", tierPicker2);
+            AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", currentTierPicker);
             int sy = 0;
             BuildStandbyCleanerSettingsCard(scroll, ref sy);
-            BuildAiTuningSettingsCard(scroll);
             RefreshStandbyCleanerPresentation();
             scroll = settingsTabPanels[1];
-            PillButton pillButton = new PillButton(Lang.T("workflow.attention.action.logs"));
-            pillButton.Name = "settingsOpenLogs";
-            pillButton.Bg = Theme.Card;
-            pillButton.Size = new Size(Theme.S(136), Theme.S(40));
-            PillButton pillButton2 = pillButton;
-            pillButton2.Click += delegate
+            PillButton currentPillButton = new PillButton(Lang.T("workflow.attention.action.logs"));
+            currentPillButton.Name = "settingsOpenLogs";
+            currentPillButton.Bg = Theme.Card;
+            currentPillButton.Size = new Size(Theme.S(136), Theme.S(40));
+            currentPillButton.Click += delegate
             {
                 nav.Select(7);
             };
-            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.T("v20.log.sub"), "logs", pillButton2);
+            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.T("v20.log.sub"), "logs", currentPillButton);
             btnWipeAll = new PillButton(Lang.T("btn.wipe"), BtnKind.Normal)
             {
                 Bg = Theme.Card,

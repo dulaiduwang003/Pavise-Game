@@ -32,19 +32,17 @@ namespace PaviseApp
                 {
                     throw InvalidRequest("original lease does not authorize worker avoidance");
                 }
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-                HardThreadIdentity[] threadsSnapshot = threads;
-                foreach (HardThreadIdentity hardThreadIdentity in threadsSnapshot)
+                HashSet<string> textsSet = new HashSet<string>(StringComparer.Ordinal);
+                foreach (HardThreadIdentity hardThreadIdentity in threads)
                 {
-                    if (hardThreadIdentity == null || !hashSet.Add(hardThreadIdentity.Key))
+                    if (hardThreadIdentity == null || !textsSet.Add(hardThreadIdentity.Key))
                     {
                         throw InvalidRequest("duplicate thread identity");
                     }
                 }
-                HardThreadChoice[] choices = requested.Choices;
-                foreach (HardThreadChoice hardThreadChoice in choices)
+                foreach (HardThreadChoice hardThreadChoice in requested.Choices)
                 {
-                    if (!hashSet.Contains(hardThreadChoice.Thread.Key))
+                    if (!textsSet.Contains(hardThreadChoice.Thread.Key))
                     {
                         throw InvalidRequest("candidate absent from original thread input");
                     }
@@ -420,15 +418,15 @@ namespace PaviseApp
             }
             try
             {
-                List<string> list = new List<string>();
+                List<string> texts = new List<string>();
                 foreach (HardThreadReceipt row in journal.Rows)
                 {
                     if (!row.Terminal)
                     {
-                        list.Add(row.Thread.Key);
+                        texts.Add(row.Thread.Key);
                     }
                 }
-                if (!hardThreadTransientReads.ReleaseUnowned(list.ToArray()))
+                if (!hardThreadTransientReads.ReleaseUnowned(texts.ToArray()))
                 {
                     Detail += "; some transient query handles did not close";
                 }
@@ -505,12 +503,12 @@ namespace PaviseApp
             {
                 throw new HardThreadOperationException(HardThreadFailureKind.AuthorityUnavailable, "original worker authority revoked", true);
             }
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> textsSet = new HashSet<string>(StringComparer.Ordinal);
             int processedCount = 0;
             int processedCount2 = 0;
             foreach (HardThreadIdentity hardThreadIdentity in threads)
             {
-                if (hardThreadIdentity == null || !hashSet.Add(hardThreadIdentity.Key))
+                if (hardThreadIdentity == null || !textsSet.Add(hardThreadIdentity.Key))
                 {
                     throw InvalidRequest("duplicate new thread identity");
                 }
@@ -545,7 +543,7 @@ namespace PaviseApp
             if (plan.RequireWorkerCoverage)
             {
                 foreach (HardThreadChoice choice in plan.Choices)
-                    if (!hashSet.Contains(choice.Thread.Key)) throw InvalidRequest("complete snapshot is missing an original candidate");
+                    if (!textsSet.Contains(choice.Thread.Key)) throw InvalidRequest("complete snapshot is missing an original candidate");
             }
         }
 
@@ -606,8 +604,7 @@ namespace PaviseApp
                     if (plan.IsCandidate(thread)) ordered.Add(thread);
                 threads = ordered.ToArray();
             }
-            HardThreadChoice[] choices = plan.Choices;
-            foreach (HardThreadChoice hardThreadChoice in choices)
+            foreach (HardThreadChoice hardThreadChoice in plan.Choices)
             {
                 if (Find(hardThreadChoice.Thread) == null)
                 {
@@ -643,10 +640,10 @@ namespace PaviseApp
                     continue;
                 }
                 RequireForwardAuthority();
-                HardThreadObserved hardThreadObserved2 = native.ReadThread(thread);
+                HardThreadObserved currentThread = native.ReadThread(thread);
                 bool isCandidate = plan.IsCandidate(thread);
-                if (RetireConfirmedWorkerExit(thread, hardThreadObserved2)) continue;
-                if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != plan.Group || hardThreadObserved2.Mask != plan.ProcessMask)
+                if (RetireConfirmedWorkerExit(thread, currentThread)) continue;
+                if (currentThread == null || currentThread.Read != 0 || !currentThread.CpuSetsEmpty || currentThread.Group != plan.Group || currentThread.Mask != plan.ProcessMask)
                 {
                     if (isCandidate || plan.RequireWorkerCoverage)
                     {
@@ -657,32 +654,31 @@ namespace PaviseApp
                     continue;
                 }
                 ulong appliedValue = plan.MaskFor(thread);
-                if (appliedValue == hardThreadObserved2.Mask)
+                if (appliedValue == currentThread.Mask)
                 {
                     continue;
                 }
-                HardThreadReceipt hardThreadReceipt = new HardThreadReceipt();
-                hardThreadReceipt.Thread = thread;
-                hardThreadReceipt.Group = hardThreadObserved2.Group;
-                hardThreadReceipt.Captured = hardThreadObserved2.Mask;
-                hardThreadReceipt.Applied = appliedValue;
-                hardThreadReceipt.Phase = HardThreadPhase.ApplyIntent;
-                HardThreadReceipt item = hardThreadReceipt;
-                AddReceipt(item);
+                HardThreadReceipt currentHardThreadReceipt = new HardThreadReceipt();
+                currentHardThreadReceipt.Thread = thread;
+                currentHardThreadReceipt.Group = currentThread.Group;
+                currentHardThreadReceipt.Captured = currentThread.Mask;
+                currentHardThreadReceipt.Applied = appliedValue;
+                currentHardThreadReceipt.Phase = HardThreadPhase.ApplyIntent;
+                AddReceipt(currentHardThreadReceipt);
                 bool nativeWriteAttempted = false;
                 try
                 {
                     Save();
-                    item = journal.Rows[journal.Rows.Count - 1];
+                    currentHardThreadReceipt = journal.Rows[journal.Rows.Count - 1];
                     RequireForwardAuthority();
-                    hardThreadObserved2 = native.ReadThread(thread);
+                    currentThread = native.ReadThread(thread);
                     hardThreadMachine = ReadWriteScope();
-                    if (RetireConfirmedWorkerExit(thread, hardThreadObserved2)) continue;
-                    if (hardThreadMachine == null || hardThreadMachine.Read != 0 || hardThreadMachine.GroupCount != 1 || hardThreadMachine.Group != plan.Group || hardThreadMachine.ProcessMask != plan.ProcessMask || !hardThreadMachine.CpuSetsEmpty || (item.Applied & ~gate.Target.AllowedMask) != 0)
+                    if (RetireConfirmedWorkerExit(thread, currentThread)) continue;
+                    if (hardThreadMachine == null || hardThreadMachine.Read != 0 || hardThreadMachine.GroupCount != 1 || hardThreadMachine.Group != plan.Group || hardThreadMachine.ProcessMask != plan.ProcessMask || !hardThreadMachine.CpuSetsEmpty || (currentHardThreadReceipt.Applied & ~gate.Target.AllowedMask) != 0)
                     {
                         throw new HardThreadOperationException(HardThreadFailureKind.AuthorityUnavailable, "process write admission changed", true);
                     }
-                    if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != item.Group || hardThreadObserved2.Mask != item.Captured)
+                    if (currentThread == null || currentThread.Read != 0 || !currentThread.CpuSetsEmpty || currentThread.Group != currentHardThreadReceipt.Group || currentThread.Mask != currentHardThreadReceipt.Captured)
                     {
                             throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "thread changed before native write", isCandidate || plan.RequireWorkerCoverage);
                     }
@@ -691,30 +687,30 @@ namespace PaviseApp
                     lastOperationNativeAttempt = true;
                     ushort previousGroup;
                     ulong previousMask;
-                    if (!native.Set(thread, item.Group, item.Applied, out previousGroup, out previousMask))
+                    if (!native.Set(thread, currentHardThreadReceipt.Group, currentHardThreadReceipt.Applied, out previousGroup, out previousMask))
                     {
                         if (plan.RequireWorkerCoverage && !isCandidate && RetireConfirmedWorkerExit(thread, native.ReadThread(thread))) continue;
                         throw new InvalidOperationException("native apply is unconfirmed");
                     }
-                    item.PreviousKnown = true;
-                    item.PreviousGroup = previousGroup;
-                    item.Previous = previousMask;
-                    item.Phase = HardThreadPhase.PreviousRecorded;
+                    currentHardThreadReceipt.PreviousKnown = true;
+                    currentHardThreadReceipt.PreviousGroup = previousGroup;
+                    currentHardThreadReceipt.Previous = previousMask;
+                    currentHardThreadReceipt.Phase = HardThreadPhase.PreviousRecorded;
                     Save();
-                    item = journal.Rows[journal.Rows.Count - 1];
-                    if (previousGroup != item.Group || previousMask != item.Captured)
+                    currentHardThreadReceipt = journal.Rows[journal.Rows.Count - 1];
+                    if (previousGroup != currentHardThreadReceipt.Group || previousMask != currentHardThreadReceipt.Captured)
                     {
-                        item.Detail = "external race at native apply";
+                        currentHardThreadReceipt.Detail = "external race at native apply";
                         Save();
                         throw new InvalidOperationException("apply previous differs from captured value");
                     }
-                    hardThreadObserved2 = native.ReadThread(thread);
-                    if (RetireConfirmedWorkerExit(thread, hardThreadObserved2)) continue;
-                    if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != item.Group || hardThreadObserved2.Mask != item.Applied)
+                    currentThread = native.ReadThread(thread);
+                    if (RetireConfirmedWorkerExit(thread, currentThread)) continue;
+                    if (currentThread == null || currentThread.Read != 0 || !currentThread.CpuSetsEmpty || currentThread.Group != currentHardThreadReceipt.Group || currentThread.Mask != currentHardThreadReceipt.Applied)
                     {
                         throw new InvalidOperationException("native apply readback is unconfirmed");
                     }
-                    item.Phase = HardThreadPhase.Applied;
+                    currentHardThreadReceipt.Phase = HardThreadPhase.Applied;
                     // 原生前值已经持久化，下一条意图也会提交本次完成状态。
                     pendingApplied = thread;
                 }
@@ -726,10 +722,10 @@ namespace PaviseApp
                         try
                         {
                             Reload();
-                            HardThreadReceipt hardThreadReceipt2 = Find(thread);
-                            if (hardThreadReceipt2 != null && hardThreadReceipt2.Phase == HardThreadPhase.ApplyIntent && !hardThreadReceipt2.PreviousKnown)
+                            HardThreadReceipt candidateHardThreadReceipt = Find(thread);
+                            if (candidateHardThreadReceipt != null && candidateHardThreadReceipt.Phase == HardThreadPhase.ApplyIntent && !candidateHardThreadReceipt.PreviousKnown)
                             {
-                                hardThreadReceipt2.Phase = HardThreadPhase.NotApplied;
+                                candidateHardThreadReceipt.Phase = HardThreadPhase.NotApplied;
                                 Save();
                                 unappliedRecorded = true;
                             }

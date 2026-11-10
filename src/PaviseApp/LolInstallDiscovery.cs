@@ -107,18 +107,18 @@ namespace PaviseApp
             {
                 return null;
             }
-            string[] textEntries = new string[4]
+            string[] executableCandidates = new string[4]
             {
                 Path.Combine(root, "wegame.exe"),
                 Path.Combine(root, "WeGame.exe"),
                 Path.Combine(root, "WeGameLauncher.exe"),
                 Path.Combine(root, "apps", "wegame.exe")
             };
-            for (int i = 0; i < textEntries.Length; i++)
+            for (int i = 0; i < executableCandidates.Length; i++)
             {
-                if (File.Exists(textEntries[i]))
+                if (File.Exists(executableCandidates[i]))
                 {
-                    return textEntries[i];
+                    return executableCandidates[i];
                 }
             }
             try
@@ -210,7 +210,7 @@ namespace PaviseApp
 
         private static string FindWeGameFromAppPaths()
         {
-            string[] textEntries = new string[2] { "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe", "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe" };
+            string[] appPathRegistryKeys = new string[2] { "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe", "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wegame.exe" };
             RegistryKey[] registryKeyItems = new RegistryKey[2]
             {
                 Registry.CurrentUser,
@@ -218,11 +218,11 @@ namespace PaviseApp
             };
             for (int i = 0; i < registryKeyItems.Length; i++)
             {
-                for (int j = 0; j < textEntries.Length; j++)
+                for (int j = 0; j < appPathRegistryKeys.Length; j++)
                 {
                     try
                     {
-                        using (RegistryKey registryKey = registryKeyItems[i].OpenSubKey(textEntries[j]))
+                        using (RegistryKey registryKey = registryKeyItems[i].OpenSubKey(appPathRegistryKeys[j]))
                         {
                             if (registryKey != null)
                             {
@@ -287,8 +287,7 @@ namespace PaviseApp
                 }
                 try
                 {
-                    Process[] processesByNameSnapshot = processesByName;
-                    foreach (Process process in processesByNameSnapshot)
+                    foreach (Process process in processesByName)
                     {
                         string path;
                         if (LolRuntimeProcesses.TryGetOwnedImagePath(process, sessionId, out path) && candidateName(Path.GetFileName(path)))
@@ -303,14 +302,13 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    Process[] processesByNameSnapshot2 = processesByName;
-                    foreach (Process process2 in processesByNameSnapshot2)
+                    foreach (Process currentProcess in processesByName)
                     {
-                        if (process2 != null)
+                        if (currentProcess != null)
                         {
                             try
                             {
-                                process2.Dispose();
+                                currentProcess.Dispose();
                             }
                             catch
                             {
@@ -326,8 +324,7 @@ namespace PaviseApp
         {
             try
             {
-                DriveInfo[] drives = DriveInfo.GetDrives();
-                foreach (DriveInfo driveInfo in drives)
+                foreach (DriveInfo driveInfo in DriveInfo.GetDrives())
                 {
                     if (cancelled != null && cancelled())
                     {
@@ -338,20 +335,20 @@ namespace PaviseApp
                         continue;
                     }
                     string fullName = driveInfo.RootDirectory.FullName;
-                    string[] textEntries = new string[4]
+                    string[] gameRootCandidates = new string[4]
                     {
                         Path.Combine(fullName, "WeGameApps", "英雄联盟"),
                         Path.Combine(fullName, "Program Files", "WeGameApps", "英雄联盟"),
                         Path.Combine(fullName, "Program Files (x86)", "WeGameApps", "英雄联盟"),
                         Path.Combine(fullName, "英雄联盟")
                     };
-                    for (int j = 0; j < textEntries.Length; j++)
+                    for (int j = 0; j < gameRootCandidates.Length; j++)
                     {
                         if (cancelled != null && cancelled())
                         {
                             return null;
                         }
-                        string lolRoot = NormalizeLolRoot(textEntries[j]);
+                        string lolRoot = NormalizeLolRoot(gameRootCandidates[j]);
                         if (lolRoot != null)
                         {
                             return lolRoot;
@@ -367,32 +364,31 @@ namespace PaviseApp
 
         private static string FindCommonWeGameRoot(Func<bool> cancelled)
         {
-            List<string> list = new List<string>();
+            List<string> combines = new List<string>();
             try
             {
-                list.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "WeGame"));
-                list.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WeGame"));
-                DriveInfo[] drives = DriveInfo.GetDrives();
-                foreach (DriveInfo driveInfo in drives)
+                combines.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "WeGame"));
+                combines.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WeGame"));
+                foreach (DriveInfo driveInfo in DriveInfo.GetDrives())
                 {
                     if (driveInfo.IsReady && driveInfo.DriveType == DriveType.Fixed)
                     {
-                        list.Add(Path.Combine(driveInfo.RootDirectory.FullName, "Program Files (x86)", "WeGame"));
-                        list.Add(Path.Combine(driveInfo.RootDirectory.FullName, "Program Files", "WeGame"));
-                        list.Add(Path.Combine(driveInfo.RootDirectory.FullName, "WeGame"));
+                        combines.Add(Path.Combine(driveInfo.RootDirectory.FullName, "Program Files (x86)", "WeGame"));
+                        combines.Add(Path.Combine(driveInfo.RootDirectory.FullName, "Program Files", "WeGame"));
+                        combines.Add(Path.Combine(driveInfo.RootDirectory.FullName, "WeGame"));
                     }
                 }
             }
             catch
             {
             }
-            for (int j = 0; j < list.Count; j++)
+            for (int j = 0; j < combines.Count; j++)
             {
                 if (cancelled != null && cancelled())
                 {
                     return null;
                 }
-                string weGameRoot = NormalizeWeGameRoot(list[j]);
+                string weGameRoot = NormalizeWeGameRoot(combines[j]);
                 if (weGameRoot != null)
                 {
                     return weGameRoot;
@@ -407,22 +403,21 @@ namespace PaviseApp
             {
                 return null;
             }
-            string[] textEntries = new string[2]
+            string[] launchConfigCandidates = new string[2]
             {
                 Path.Combine(lolRoot, "TCLS", "wegame_launch.ini"),
                 Path.Combine(lolRoot, "TCLS", "wegame_launch.tmp")
             };
-            for (int i = 0; i < textEntries.Length; i++)
+            for (int i = 0; i < launchConfigCandidates.Length; i++)
             {
                 string content;
-                if (!TryReadSmall(textEntries[i], out content))
+                if (!TryReadSmall(launchConfigCandidates[i], out content))
                 {
                     continue;
                 }
-                MatchCollection matchCollection = Regex.Matches(content, "[A-Za-z]:\\\\[^\\\"\\r\\n]*?\\\\(?:wegame\\.exe|WeGameLauncher\\.exe)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-                foreach (Match item in matchCollection)
+                foreach (Match currentMatchCollection in Regex.Matches(content, "[A-Za-z]:\\\\[^\\\"\\r\\n]*?\\\\(?:wegame\\.exe|WeGameLauncher\\.exe)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 {
-                    string weGameRoot = NormalizeWeGameRoot(item.Value);
+                    string weGameRoot = NormalizeWeGameRoot(currentMatchCollection.Value);
                     if (weGameRoot != null)
                     {
                         return weGameRoot;

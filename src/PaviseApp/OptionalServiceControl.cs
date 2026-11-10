@@ -114,80 +114,6 @@ namespace PaviseApp
         }
 #pragma warning restore 0649
 
-        private const uint ScManagerConnect = 1u;
-
-        private const uint ServiceQueryConfig = 1u;
-
-        private const uint ServiceQueryStatus = 4u;
-
-        private const uint ServiceEnumerateDependents = 8u;
-
-        private const uint ServiceStart = 16u;
-
-        private const uint ServiceStop = 32u;
-
-        private const uint QueryAccess = 13u;
-
-        private const uint ServiceActive = 1u;
-
-        private const uint ServiceAcceptStop = 1u;
-
-        private const int ServiceStopped = 1;
-
-        private const int ServiceRunning = 4;
-
-        private const int ServiceDisabled = 4;
-
-        private const int ErrorPathNotFound = 3;
-
-        private const int ErrorAccessDenied = 5;
-
-        private const int ErrorInvalidHandle = 6;
-
-        private const int ErrorInsufficientBuffer = 122;
-
-        private const int ErrorMoreData = 234;
-
-        private const int ErrorServiceRequestTimeout = 1053;
-
-        private const int ErrorServiceDatabaseLocked = 1055;
-
-        private const int ErrorServiceAlreadyRunning = 1056;
-
-        private const int ErrorServiceDisabled = 1058;
-
-        private const int ErrorServiceDoesNotExist = 1060;
-
-        private const int ErrorServiceDependencyFail = 1068;
-
-        private const int ErrorServiceLogonFailed = 1069;
-
-        private const int ErrorServiceMarkedForDelete = 1072;
-
-        private const int ErrorServiceDependencyDeleted = 1075;
-
-        private const int ErrorInvalidServiceControl = 1052;
-
-        private const int ErrorServiceCannotAcceptControl = 1061;
-
-        private const int ErrorServiceNotActive = 1062;
-
-        private const int MaxConfigurationBytes = 65536;
-
-        private const int MaxPrinterBytes = 16777216;
-
-        private const uint PrinterEnumLocal = 2u;
-
-        private const uint PrinterEnumConnections = 4u;
-
-        private const uint PrinterEnumCategoryAll = 33554432u;
-
-        private const uint PrinterAttributeShared = 8u;
-
-        private const uint PrinterAttributeNetwork = 16u;
-
-        private const uint PrinterBusyStates = 18176u;
-
         public bool LastStopWasNormalSkip { get; private set; }
 
         public bool TryGetBootIdentity(out string identity)
@@ -216,22 +142,22 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = IntPtr.Zero;
-            IntPtr intPtr2 = IntPtr.Zero;
+            IntPtr openSCManagerWHandle = IntPtr.Zero;
+            IntPtr openServiceWHandle = IntPtr.Zero;
             try
             {
-                intPtr = OpenSCManagerW(null, null, 1u);
-                if (intPtr == IntPtr.Zero)
+                openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
+                if (openSCManagerWHandle == IntPtr.Zero)
                 {
                     return false;
                 }
-                intPtr2 = OpenServiceW(intPtr, name, 13u);
-                if (intPtr2 == IntPtr.Zero)
+                openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 13u);
+                if (openServiceWHandle == IntPtr.Zero)
                 {
                     return Marshal.GetLastWin32Error() == 1060;
                 }
                 ServiceConfiguration configuration;
-                return TryReadSnapshot(intPtr2, out snapshot, out configuration);
+                return TryReadSnapshot(openServiceWHandle, out snapshot, out configuration);
             }
             catch
             {
@@ -239,13 +165,13 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr2 != IntPtr.Zero)
+                if (openServiceWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr2);
+                    CloseServiceHandle(openServiceWHandle);
                 }
-                if (intPtr != IntPtr.Zero)
+                if (openSCManagerWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr);
+                    CloseServiceHandle(openSCManagerWHandle);
                 }
             }
         }
@@ -281,13 +207,13 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = IntPtr.Zero;
-            IntPtr intPtr2 = IntPtr.Zero;
+            IntPtr openSCManagerWHandle = IntPtr.Zero;
+            IntPtr openServiceWHandle = IntPtr.Zero;
             bool stopIssued = false;
             try
             {
-                intPtr = OpenSCManagerW(null, null, 1u);
-                if (intPtr == IntPtr.Zero)
+                openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
+                if (openSCManagerWHandle == IntPtr.Zero)
                 {
                     LastStopWasNormalSkip = false;
                     return false;
@@ -296,8 +222,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                intPtr2 = OpenServiceW(intPtr, name, 45u);
-                if (intPtr2 == IntPtr.Zero)
+                openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 45u);
+                if (openServiceWHandle == IntPtr.Zero)
                 {
                     int lastWin32Error = Marshal.GetLastWin32Error();
                     LastStopWasNormalSkip = lastWin32Error == 1060 || lastWin32Error == 1072;
@@ -309,7 +235,7 @@ namespace PaviseApp
                 }
                 OptionalServiceSnapshot snapshot;
                 ServiceConfiguration configuration;
-                if (!TryReadSnapshot(intPtr2, out snapshot, out configuration, mayContinue))
+                if (!TryReadSnapshot(openServiceWHandle, out snapshot, out configuration, mayContinue))
                 {
                     LastStopWasNormalSkip = !MayContinue(mayContinue);
                     return false;
@@ -324,7 +250,7 @@ namespace PaviseApp
                 }
                 stopIssued = true;
                 SERVICE_STATUS status;
-                bool controlServiceSucceeded = ControlService(intPtr2, 1u, out status);
+                bool controlServiceSucceeded = ControlService(openServiceWHandle, 1u, out status);
                 int lastWin32Error2 = ((!controlServiceSucceeded) ? Marshal.GetLastWin32Error() : 0);
                 LastStopWasNormalSkip = !controlServiceSucceeded && (lastWin32Error2 == 1062 || lastWin32Error2 == 1052 || lastWin32Error2 == 1061);
                 if (!controlServiceSucceeded && lastWin32Error2 == 1053)
@@ -347,13 +273,13 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr2 != IntPtr.Zero)
+                if (openServiceWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr2);
+                    CloseServiceHandle(openServiceWHandle);
                 }
-                if (intPtr != IntPtr.Zero)
+                if (openSCManagerWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr);
+                    CloseServiceHandle(openSCManagerWHandle);
                 }
             }
         }
@@ -365,39 +291,39 @@ namespace PaviseApp
             {
                 return OptionalServiceStartResult.OwnershipChanged;
             }
-            IntPtr intPtr = IntPtr.Zero;
-            IntPtr intPtr2 = IntPtr.Zero;
+            IntPtr openSCManagerWHandle = IntPtr.Zero;
+            IntPtr openServiceWHandle = IntPtr.Zero;
             bool startIssued = false;
             try
             {
-                intPtr = OpenSCManagerW(null, null, 1u);
-                if (intPtr == IntPtr.Zero)
+                openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
+                if (openSCManagerWHandle == IntPtr.Zero)
                 {
                     return OptionalServiceStartResult.NotIssued;
                 }
-                intPtr2 = OpenServiceW(intPtr, name, 21u);
-                if (intPtr2 == IntPtr.Zero)
+                openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 21u);
+                if (openServiceWHandle == IntPtr.Zero)
                 {
                     return IsStartOwnershipError(Marshal.GetLastWin32Error()) ? OptionalServiceStartResult.OwnershipChanged : OptionalServiceStartResult.NotIssued;
                 }
                 ServiceConfiguration configuration;
                 bool ownershipChanged;
-                if (!TryReadStartState(intPtr2, expectedConfiguration, out configuration, out ownershipChanged))
+                if (!TryReadStartState(openServiceWHandle, expectedConfiguration, out configuration, out ownershipChanged))
                 {
                     return ownershipChanged ? OptionalServiceStartResult.OwnershipChanged : OptionalServiceStartResult.NotIssued;
                 }
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                hashSet.Add(name);
-                if (!DependenciesRunning(intPtr, configuration.Dependencies, hashSet, 0))
+                HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                names.Add(name);
+                if (!DependenciesRunning(openSCManagerWHandle, configuration.Dependencies, names, 0))
                 {
                     return OptionalServiceStartResult.NotIssued;
                 }
-                if (!TryReadStartState(intPtr2, expectedConfiguration, out configuration, out ownershipChanged))
+                if (!TryReadStartState(openServiceWHandle, expectedConfiguration, out configuration, out ownershipChanged))
                 {
                     return ownershipChanged ? OptionalServiceStartResult.OwnershipChanged : OptionalServiceStartResult.NotIssued;
                 }
                 startIssued = true;
-                bool startServiceWSucceeded = StartServiceW(intPtr2, 0u, IntPtr.Zero);
+                bool startServiceWSucceeded = StartServiceW(openServiceWHandle, 0u, IntPtr.Zero);
                 int error = ((!startServiceWSucceeded) ? Marshal.GetLastWin32Error() : 0);
                 return startServiceWSucceeded ? OptionalServiceStartResult.Accepted : ClassifyStartFailure(error);
             }
@@ -411,13 +337,13 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr2 != IntPtr.Zero)
+                if (openServiceWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr2);
+                    CloseServiceHandle(openServiceWHandle);
                 }
-                if (intPtr != IntPtr.Zero)
+                if (openSCManagerWHandle != IntPtr.Zero)
                 {
-                    CloseServiceHandle(intPtr);
+                    CloseServiceHandle(openSCManagerWHandle);
                 }
             }
         }
@@ -465,10 +391,10 @@ namespace PaviseApp
                         return false;
                     }
                     uint neededSnapshot = needed;
-                    IntPtr intPtr = Marshal.AllocHGlobal((int)neededSnapshot);
+                    IntPtr nativeBuffer = Marshal.AllocHGlobal((int)neededSnapshot);
                     try
                     {
-                        enumPrintersWSucceeded2 = EnumPrintersW(flags, null, 2u, intPtr, neededSnapshot, out needed, out count);
+                        enumPrintersWSucceeded2 = EnumPrintersW(flags, null, 2u, nativeBuffer, neededSnapshot, out needed, out count);
                         lastWin32Error = ((!enumPrintersWSucceeded2) ? Marshal.GetLastWin32Error() : 0);
                         if (!MayContinue(mayContinue))
                         {
@@ -483,7 +409,7 @@ namespace PaviseApp
                             }
                             for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
                             {
-                                PRINTER_INFO_2 pRINTER_INFO_ = (PRINTER_INFO_2)Marshal.PtrToStructure(IntPtr.Add(intPtr, (int)iterationIndex * sizeOfResult), typeof(PRINTER_INFO_2));
+                                PRINTER_INFO_2 pRINTER_INFO_ = (PRINTER_INFO_2)Marshal.PtrToStructure(IntPtr.Add(nativeBuffer, (int)iterationIndex * sizeOfResult), typeof(PRINTER_INFO_2));
                                 if (pRINTER_INFO_.Jobs != 0 || (pRINTER_INFO_.Attributes & 0x18u) != 0 || (pRINTER_INFO_.Status & 0x4700u) != 0)
                                 {
                                     return false;
@@ -498,7 +424,7 @@ namespace PaviseApp
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(intPtr);
+                        Marshal.FreeHGlobal(nativeBuffer);
                     }
                 }
                 return false;
@@ -623,8 +549,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                IntPtr intPtr = OpenServiceW(scm, entryText, 5u);
-                if (intPtr == IntPtr.Zero)
+                IntPtr openServiceWHandle = OpenServiceW(scm, entryText, 5u);
+                if (openServiceWHandle == IntPtr.Zero)
                 {
                     return false;
                 }
@@ -632,7 +558,7 @@ namespace PaviseApp
                 {
                     SERVICE_STATUS status;
                     ServiceConfiguration configuration;
-                    if (!QueryServiceStatus(intPtr, out status) || status.State != 4 || !TryReadConfiguration(intPtr, out configuration))
+                    if (!QueryServiceStatus(openServiceWHandle, out status) || status.State != 4 || !TryReadConfiguration(openServiceWHandle, out configuration))
                     {
                         return false;
                     }
@@ -644,7 +570,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    CloseServiceHandle(intPtr);
+                    CloseServiceHandle(openServiceWHandle);
                 }
             }
             return true;
@@ -716,10 +642,10 @@ namespace PaviseApp
                     return false;
                 }
                 uint neededSnapshot = needed;
-                IntPtr intPtr = Marshal.AllocHGlobal((int)neededSnapshot);
+                IntPtr nativeBuffer = Marshal.AllocHGlobal((int)neededSnapshot);
                 try
                 {
-                    serviceConfigW = QueryServiceConfigW(service, intPtr, neededSnapshot, out needed);
+                    serviceConfigW = QueryServiceConfigW(service, nativeBuffer, neededSnapshot, out needed);
                     error = ((!serviceConfigW) ? Marshal.GetLastWin32Error() : 0);
                     if (!MayContinue(mayContinue))
                     {
@@ -727,17 +653,17 @@ namespace PaviseApp
                     }
                     if (serviceConfigW)
                     {
-                        QUERY_SERVICE_CONFIG qUERY_SERVICE_CONFIG = (QUERY_SERVICE_CONFIG)Marshal.PtrToStructure(intPtr, typeof(QUERY_SERVICE_CONFIG));
+                        QUERY_SERVICE_CONFIG qUERY_SERVICE_CONFIG = (QUERY_SERVICE_CONFIG)Marshal.PtrToStructure(nativeBuffer, typeof(QUERY_SERVICE_CONFIG));
                         if (qUERY_SERVICE_CONFIG.StartType > 4)
                         {
                             return false;
                         }
-                        string value;
-                        string value2;
-                        string value3;
-                        string value4;
+                        string text;
+                        string currentText;
+                        string candidateText;
+                        string resolvedText;
                         string[] names;
-                        if (!TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.BinaryPath, out value) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.LoadOrderGroup, out value2) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Account, out value3) || !TryReadString(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.DisplayName, out value4) || !TryReadDependencies(intPtr, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Dependencies, out names))
+                        if (!TryReadString(nativeBuffer, (int)neededSnapshot, qUERY_SERVICE_CONFIG.BinaryPath, out text) || !TryReadString(nativeBuffer, (int)neededSnapshot, qUERY_SERVICE_CONFIG.LoadOrderGroup, out currentText) || !TryReadString(nativeBuffer, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Account, out candidateText) || !TryReadString(nativeBuffer, (int)neededSnapshot, qUERY_SERVICE_CONFIG.DisplayName, out resolvedText) || !TryReadDependencies(nativeBuffer, (int)neededSnapshot, qUERY_SERVICE_CONFIG.Dependencies, out names))
                         {
                             return false;
                         }
@@ -746,15 +672,14 @@ namespace PaviseApp
                         AppendPart(stringBuilder, qUERY_SERVICE_CONFIG.StartType.ToString(CultureInfo.InvariantCulture));
                         AppendPart(stringBuilder, qUERY_SERVICE_CONFIG.ErrorControl.ToString(CultureInfo.InvariantCulture));
                         AppendPart(stringBuilder, qUERY_SERVICE_CONFIG.TagId.ToString(CultureInfo.InvariantCulture));
-                        AppendPart(stringBuilder, value);
-                        AppendPart(stringBuilder, value2);
-                        AppendPart(stringBuilder, value3);
-                        AppendPart(stringBuilder, value4);
+                        AppendPart(stringBuilder, text);
+                        AppendPart(stringBuilder, currentText);
+                        AppendPart(stringBuilder, candidateText);
+                        AppendPart(stringBuilder, resolvedText);
                         AppendPart(stringBuilder, names.Length.ToString(CultureInfo.InvariantCulture));
-                        string[] namesSnapshot = names;
-                        foreach (string value5 in namesSnapshot)
+                        foreach (string currentNamesSnapshot in names)
                         {
-                            AppendPart(stringBuilder, value5);
+                            AppendPart(stringBuilder, currentNamesSnapshot);
                         }
                         configuration = new ServiceConfiguration
                         {
@@ -772,7 +697,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(intPtr);
+                    Marshal.FreeHGlobal(nativeBuffer);
                 }
             }
             return false;
@@ -831,21 +756,21 @@ namespace PaviseApp
             {
                 return true;
             }
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             for (int i = 0; i < 128; i++)
             {
-                string value;
-                if (!TryReadString(buffer, capacity, pointer, out value))
+                string text;
+                if (!TryReadString(buffer, capacity, pointer, out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
-                    names = list.ToArray();
+                    names = texts.ToArray();
                     return true;
                 }
-                list.Add(value);
-                pointer = IntPtr.Add(pointer, (value.Length + 1) * 2);
+                texts.Add(text);
+                pointer = IntPtr.Add(pointer, (text.Length + 1) * 2);
             }
             return false;
         }

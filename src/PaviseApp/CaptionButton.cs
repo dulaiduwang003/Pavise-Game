@@ -1,4 +1,3 @@
-using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -21,21 +20,21 @@ namespace PaviseApp
         {
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float value = hover.Value;
+            float hoverProgress = hover.Value;
             int widthRatio = base.Width / 2;
             int top = base.Height / 2;
-            if (value > 0.01f)
+            if (hoverProgress > 0.01f)
             {
                 int sResult = Dpi.S(15);
-                Color color = (close ? Col.Alpha(Theme.Danger, (int)(210f * value)) : Col.Alpha(Theme.Fg, (int)(22f * value)));
+                Color color = (close ? Col.Alpha(Theme.Danger, (int)(210f * hoverProgress)) : Col.Alpha(Theme.Fg, (int)(22f * hoverProgress)));
                 using (SolidBrush brush = new SolidBrush(color))
                 {
                     graphics.FillEllipse(brush, widthRatio - sResult, top - sResult, sResult * 2, sResult * 2);
                 }
             }
-            Color color2 = (close ? Col.Lerp(Theme.Dim, Color.White, value) : Col.Lerp(Theme.Dim, Theme.Fg, value));
+            Color currentColor = (close ? Col.Lerp(Theme.Dim, Color.White, hoverProgress) : Col.Lerp(Theme.Dim, Theme.Fg, hoverProgress));
             int sResult2 = Dpi.S(5);
-            using (Pen pen = new Pen(color2, (float)Dpi.S(1) + 0.2f))
+            using (Pen pen = new Pen(currentColor, (float)Dpi.S(1) + 0.2f))
             {
                 if (close)
                 {

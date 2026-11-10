@@ -12,8 +12,8 @@ namespace PaviseApp
 
         internal static int ProcessState(int pid, long birth)
         {
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 if (Marshal.GetLastWin32Error() != 87)
                 {
@@ -23,11 +23,11 @@ namespace PaviseApp
             }
             try
             {
-                return Native.QueryProcessIdentityState(intPtr, birth);
+                return Native.QueryProcessIdentityState(processHandle, birth);
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
 
@@ -71,8 +71,8 @@ namespace PaviseApp
             {
                 return processStateResult;
             }
-            IntPtr intPtr = Native.OpenThread(2048, false, id.Tid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr threadHandle = Native.OpenThread(2048, false, id.Tid);
+            if (threadHandle == IntPtr.Zero)
             {
                 if (Marshal.GetLastWin32Error() != 87)
                 {
@@ -82,11 +82,11 @@ namespace PaviseApp
             }
             try
             {
-                return ThreadState(intPtr, id, out priority);
+                return ThreadState(threadHandle, id, out priority);
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(threadHandle);
             }
         }
 
@@ -96,19 +96,19 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = Native.OpenThread(3072, false, id.Tid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr threadHandle = Native.OpenThread(3072, false, id.Tid);
+            if (threadHandle == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
                 int priority;
-                return ThreadState(intPtr, id, out priority) == 0 && priority == expected && Native.SetThreadPriority(intPtr, desired) && Native.GetThreadPriority(intPtr) == desired;
+                return ThreadState(threadHandle, id, out priority) == 0 && priority == expected && Native.SetThreadPriority(threadHandle, desired) && Native.GetThreadPriority(threadHandle) == desired;
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(threadHandle);
             }
         }
 
@@ -134,8 +134,8 @@ namespace PaviseApp
             {
                 return true;
             }
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -147,7 +147,7 @@ namespace PaviseApp
                 UIntPtr min;
                 UIntPtr max;
                 uint flags;
-                return Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == birth && GetProcessWorkingSetSizeEx(intPtr, out min, out max, out flags) && (flags & 4) != 0;
+                return Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation == birth && GetProcessWorkingSetSizeEx(processHandle, out min, out max, out flags) && (flags & 4) != 0;
             }
             catch
             {
@@ -155,7 +155,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
 
@@ -167,8 +167,8 @@ namespace PaviseApp
             {
                 return processStateResult;
             }
-            IntPtr intPtr = Native.OpenThread(2112, false, id.Tid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr threadHandle = Native.OpenThread(2112, false, id.Tid);
+            if (threadHandle == IntPtr.Zero)
             {
                 if (Marshal.GetLastWin32Error() != 87)
                 {
@@ -179,13 +179,13 @@ namespace PaviseApp
             try
             {
                 int priority2;
-                processStateResult = ThreadState(intPtr, id, out priority2);
+                processStateResult = ThreadState(threadHandle, id, out priority2);
                 if (processStateResult != 0)
                 {
                     return processStateResult;
                 }
                 MemoryPriorityInfo info;
-                if (!GetThreadInformation(intPtr, 0, out info, 4u) || info.Priority < 1 || info.Priority > 5)
+                if (!GetThreadInformation(threadHandle, 0, out info, 4u) || info.Priority < 1 || info.Priority > 5)
                 {
                     return -1;
                 }
@@ -198,7 +198,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(threadHandle);
             }
         }
 
@@ -208,8 +208,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = Native.OpenThread(2144, false, id.Tid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr threadHandle = Native.OpenThread(2144, false, id.Tid);
+            if (threadHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -217,14 +217,13 @@ namespace PaviseApp
             {
                 int priority;
                 MemoryPriorityInfo info;
-                if (ThreadState(intPtr, id, out priority) != 0 || !GetThreadInformation(intPtr, 0, out info, 4u) || info.Priority != expected)
+                if (ThreadState(threadHandle, id, out priority) != 0 || !GetThreadInformation(threadHandle, 0, out info, 4u) || info.Priority != expected)
                 {
                     return false;
                 }
-                MemoryPriorityInfo memoryPriorityInfo = default(MemoryPriorityInfo);
-                memoryPriorityInfo.Priority = (uint)desired;
-                MemoryPriorityInfo info2 = memoryPriorityInfo;
-                return SetThreadInformation(intPtr, 0, ref info2, 4u) && GetThreadInformation(intPtr, 0, out info, 4u) && info.Priority == desired;
+                MemoryPriorityInfo info2 = default(MemoryPriorityInfo);
+                info2.Priority = (uint)desired;
+                return SetThreadInformation(threadHandle, 0, ref info2, 4u) && GetThreadInformation(threadHandle, 0, out info, 4u) && info.Priority == desired;
             }
             catch
             {
@@ -232,7 +231,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(threadHandle);
             }
         }
     }

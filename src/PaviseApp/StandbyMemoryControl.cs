@@ -89,8 +89,6 @@ namespace PaviseApp
 
         internal const int PurgeStandbyCommand = 4;
 
-        private const int StatusPrivilegeNotHeld = -1073741727;
-
         internal static readonly object OperationGate = new object();
 
         internal static int ManualCleanupActive;
@@ -143,20 +141,20 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                ulong numericValue = 0uL;
+                ulong standbyPages = 0uL;
                 UIntPtr[] pageCountByPriority = information2.PageCountByPriority;
                 checked
                 {
-                    foreach (UIntPtr uIntPtr in pageCountByPriority)
+                    foreach (UIntPtr pageCount in pageCountByPriority)
                     {
-                        numericValue += uIntPtr.ToUInt64();
+                        standbyPages += pageCount.ToUInt64();
                     }
                     snapshot = new StandbyMemorySnapshot
                     {
                         TotalBytes = information.PhysicalTotal.ToUInt64() * toUInt64Result,
                         AvailableBytes = information.PhysicalAvailable.ToUInt64() * toUInt64Result,
                         FreeBytes = (information2.ZeroPageCount.ToUInt64() + information2.FreePageCount.ToUInt64()) * toUInt64Result,
-                        StandbyBytes = numericValue * toUInt64Result,
+                        StandbyBytes = standbyPages * toUInt64Result,
                         ListBytes = information.SystemCache.ToUInt64() * toUInt64Result
                     };
                     if (StandbyCleanerEngine.ValidSnapshot(snapshot))

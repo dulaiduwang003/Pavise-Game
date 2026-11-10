@@ -10,10 +10,10 @@ namespace PaviseApp
             {
                 return false;
             }
-            int wordValue = 0;
-            while (wordValue <= value.Length - word.Length)
+            int searchOffset = 0;
+            while (searchOffset <= value.Length - word.Length)
             {
-                int matchIndex = value.IndexOf(word, wordValue, StringComparison.OrdinalIgnoreCase);
+                int matchIndex = value.IndexOf(word, searchOffset, StringComparison.OrdinalIgnoreCase);
                 if (matchIndex < 0)
                 {
                     return false;
@@ -23,7 +23,7 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                wordValue = matchIndex + 1;
+                searchOffset = matchIndex + 1;
             }
             return false;
         }
@@ -67,8 +67,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            string[] textEntries = new string[4] { "service", "svc", "engine", "daemon" };
-            foreach (string entryText in textEntries)
+            foreach (string entryText in new string[4] { "service", "svc", "engine", "daemon" })
             {
                 if (substringTrimmed.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
                 {
@@ -84,8 +83,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            string message = substringTrimmed;
-            foreach (char c in message)
+            foreach (char c in substringTrimmed)
             {
                 if (!char.IsDigit(c) && c != '.')
                 {
@@ -101,8 +99,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] textEntries = new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" };
-            foreach (string value in textEntries)
+            foreach (string value in new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" })
             {
                 if (name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                 {

@@ -17,56 +17,6 @@ namespace PaviseApp
             public long NextAttempt;
         }
 
-        private const int SystemProcessInformation = 5;
-
-        private const int StatusInfoLengthMismatch = -1073741820;
-
-        private const int OffsetNextEntry = 0;
-
-        private const int OffsetThreadCount = 4;
-
-        private const int OffsetCreateTime = 32;
-
-        private const int OffsetUserTime = 40;
-
-        private const int OffsetKernelTime = 48;
-
-        private const int OffsetImageNameLength = 56;
-
-        private const int OffsetImageNameBuffer = 64;
-
-        private const int OffsetUniqueProcessId = 80;
-
-        private const int OffsetParentProcessId = 88;
-
-        private const int OffsetSessionId = 100;
-
-        private const int OffsetReadTransferCount = 232;
-
-        private const int OffsetWriteTransferCount = 240;
-
-        private const int ProcessRecordBytes = 256;
-
-        private const int ThreadRecordBytes = 80;
-
-        private const int OffsetThreadKernelTime = 0;
-
-        private const int OffsetThreadUserTime = 8;
-
-        private const int OffsetThreadCreateTime = 16;
-
-        private const int OffsetThreadProcessId = 40;
-
-        private const int OffsetThreadId = 48;
-
-        private const int MaxSampledThreads = 16384;
-
-        private const int InitialBufferBytes = 1048576;
-
-        private const int BufferHeadroomBytes = 262144;
-
-        private const int MaxBufferBytes = 67108864;
-
         internal const int ReuseMaxAgeMs = 5000;
 
         private static readonly object bufferSync = new object();
@@ -332,36 +282,35 @@ namespace PaviseApp
                     {
                         return null;
                     }
-                    int int32 = Marshal.ReadInt32(ptr, 4);
-                    long numericValue = iterationIndex + 256 + (long)int32 * 80L;
-                    if (int32 < 0 || int32 > 16384 || numericValue > used || (threadsValue > 0 && numericValue > iterationIndex + threadsValue))
+                    int threadCount = Marshal.ReadInt32(ptr, 4);
+                    long threadRecordsEnd = iterationIndex + 256 + (long)threadCount * 80L;
+                    if (threadCount < 0 || threadCount > 16384 || threadRecordsEnd > used || (threadsValue > 0 && threadRecordsEnd > iterationIndex + threadsValue))
                     {
                         return null;
                     }
-                    ThreadTimes threadTimes = new ThreadTimes();
-                    threadTimes.Ticks = taken;
-                    threadTimes.Creation = creation;
-                    threadTimes.ProcessCpu = Marshal.ReadInt64(ptr, 40) + Marshal.ReadInt64(ptr, 48);
-                    threadTimes.Ids = new long[int32];
-                    threadTimes.Created = new long[int32];
-                    threadTimes.Cpu = new long[int32];
-                    ThreadTimes threadTimes2 = threadTimes;
-                    for (int i = 0; i < int32; i++)
+                    ThreadTimes currentThreadTimes = new ThreadTimes();
+                    currentThreadTimes.Ticks = taken;
+                    currentThreadTimes.Creation = creation;
+                    currentThreadTimes.ProcessCpu = Marshal.ReadInt64(ptr, 40) + Marshal.ReadInt64(ptr, 48);
+                    currentThreadTimes.Ids = new long[threadCount];
+                    currentThreadTimes.Created = new long[threadCount];
+                    currentThreadTimes.Cpu = new long[threadCount];
+                    for (int i = 0; i < threadCount; i++)
                     {
                         IntPtr ptr2 = new IntPtr(ptr.ToInt64() + 256 + (long)i * 80L);
                         if (Marshal.ReadIntPtr(ptr2, 40).ToInt64() != pid)
                         {
                             return null;
                         }
-                        threadTimes2.Ids[i] = Marshal.ReadIntPtr(ptr2, 48).ToInt64();
-                        threadTimes2.Created[i] = Marshal.ReadInt64(ptr2, 16);
-                        threadTimes2.Cpu[i] = Marshal.ReadInt64(ptr2, 0) + Marshal.ReadInt64(ptr2, 8);
-                        if (threadTimes2.Cpu[i] < 0 || threadTimes2.Created[i] < 0)
+                        currentThreadTimes.Ids[i] = Marshal.ReadIntPtr(ptr2, 48).ToInt64();
+                        currentThreadTimes.Created[i] = Marshal.ReadInt64(ptr2, 16);
+                        currentThreadTimes.Cpu[i] = Marshal.ReadInt64(ptr2, 0) + Marshal.ReadInt64(ptr2, 8);
+                        if (currentThreadTimes.Cpu[i] < 0 || currentThreadTimes.Created[i] < 0)
                         {
                             return null;
                         }
                     }
-                    return threadTimes2;
+                    return currentThreadTimes;
                 }
                 if (threadsValue <= 0)
                 {
@@ -373,35 +322,34 @@ namespace PaviseApp
 
         private static ProcEntry[] Parse(IntPtr buffer)
         {
-            List<ProcEntry> list = new List<ProcEntry>(320);
+            List<ProcEntry> processEntries = new List<ProcEntry>(320);
             IntPtr ptr = buffer;
             while (true)
             {
-                int int32 = Marshal.ReadInt32(ptr, 0);
+                int nextEntryOffset = Marshal.ReadInt32(ptr, 0);
                 int pidValue = Marshal.ReadIntPtr(ptr, 80).ToInt32();
                 if (pidValue > 0)
                 {
                     ushort byteLength = (ushort)Marshal.ReadInt16(ptr, 56);
                     IntPtr namePtr = Marshal.ReadIntPtr(ptr, 64);
-                    ProcEntry procEntry = new ProcEntry();
-                    procEntry.Pid = pidValue;
-                    procEntry.ParentPid = Marshal.ReadIntPtr(ptr, 88).ToInt32();
-                    procEntry.Session = Marshal.ReadInt32(ptr, 100);
-                    procEntry.Threads = Marshal.ReadInt32(ptr, 4);
-                    procEntry.Creation = Marshal.ReadInt64(ptr, 32);
-                    procEntry.Cpu = Marshal.ReadInt64(ptr, 40) + Marshal.ReadInt64(ptr, 48);
-                    procEntry.Io = (ulong)(Marshal.ReadInt64(ptr, 232) + Marshal.ReadInt64(ptr, 240));
-                    procEntry.Name = ReadName(namePtr, byteLength);
-                    ProcEntry item = procEntry;
-                    list.Add(item);
+                    ProcEntry currentProcEntry = new ProcEntry();
+                    currentProcEntry.Pid = pidValue;
+                    currentProcEntry.ParentPid = Marshal.ReadIntPtr(ptr, 88).ToInt32();
+                    currentProcEntry.Session = Marshal.ReadInt32(ptr, 100);
+                    currentProcEntry.Threads = Marshal.ReadInt32(ptr, 4);
+                    currentProcEntry.Creation = Marshal.ReadInt64(ptr, 32);
+                    currentProcEntry.Cpu = Marshal.ReadInt64(ptr, 40) + Marshal.ReadInt64(ptr, 48);
+                    currentProcEntry.Io = (ulong)(Marshal.ReadInt64(ptr, 232) + Marshal.ReadInt64(ptr, 240));
+                    currentProcEntry.Name = ReadName(namePtr, byteLength);
+                    processEntries.Add(currentProcEntry);
                 }
-                if (int32 <= 0)
+                if (nextEntryOffset <= 0)
                 {
                     break;
                 }
-                ptr = new IntPtr(ptr.ToInt64() + int32);
+                ptr = new IntPtr(ptr.ToInt64() + nextEntryOffset);
             }
-            return list.ToArray();
+            return processEntries.ToArray();
         }
 
         private static string ReadName(IntPtr namePtr, ushort byteLength)
@@ -432,30 +380,30 @@ namespace PaviseApp
 
         private static void ResolvePaths(ProcEntry[] entries, int pathSession)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> pids = new HashSet<int>();
             lock (cacheSync)
             {
                 foreach (ProcEntry procEntry in entries)
                 {
-                    hashSet.Add(procEntry.Pid);
+                    pids.Add(procEntry.Pid);
                     if (procEntry.Pid <= 4 || (procEntry.Session != pathSession && (procEntry.Session != 0 || !BackgroundServicePolicy.CandidateName(procEntry.Name))))
                     {
                         continue;
                     }
-                    PathCacheEntry value;
-                    if (pathCache.TryGetValue(procEntry.Pid, out value) && value.Creation == procEntry.Creation)
+                    PathCacheEntry currentPathCache;
+                    if (pathCache.TryGetValue(procEntry.Pid, out currentPathCache) && currentPathCache.Creation == procEntry.Creation)
                     {
-                        procEntry.Path = value.Path;
-                        if (value.Path != null || value.Failures >= 3 || DateTime.UtcNow.Ticks < value.NextAttempt) continue;
+                        procEntry.Path = currentPathCache.Path;
+                        if (currentPathCache.Path != null || currentPathCache.Failures >= 3 || DateTime.UtcNow.Ticks < currentPathCache.NextAttempt) continue;
                     }
-                    else value = new PathCacheEntry { Creation = procEntry.Creation };
+                    else currentPathCache = new PathCacheEntry { Creation = procEntry.Creation };
                     string message = (procEntry.Path = QueryPath(procEntry.Pid));
                     if (message == null)
                     {
-                        value.Failures++;
-                        value.NextAttempt = DateTime.UtcNow.AddSeconds(30).Ticks;
-                        pathCache[procEntry.Pid] = value;
-                        Logger.Info("进程路径读取失败，进程编号=" + procEntry.Pid + " 创建时间=" + procEntry.Creation + " 尝试=" + value.Failures + "/3");
+                        currentPathCache.Failures++;
+                        currentPathCache.NextAttempt = DateTime.UtcNow.AddSeconds(30).Ticks;
+                        pathCache[procEntry.Pid] = currentPathCache;
+                        Logger.Info("进程路径读取失败，进程编号=" + procEntry.Pid + " 创建时间=" + procEntry.Creation + " 尝试=" + currentPathCache.Failures + "/3");
                         continue;
                     }
                     pathCache[procEntry.Pid] = new PathCacheEntry
@@ -464,20 +412,20 @@ namespace PaviseApp
                         Path = message
                     };
                 }
-                DropDeadLocked(hashSet);
+                DropDeadLocked(pids);
             }
         }
 
         private static void PruneCache(ProcEntry[] entries)
         {
-            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<int> pids = new HashSet<int>();
             foreach (ProcEntry procEntry in entries)
             {
-                hashSet.Add(procEntry.Pid);
+                pids.Add(procEntry.Pid);
             }
             lock (cacheSync)
             {
-                DropDeadLocked(hashSet);
+                DropDeadLocked(pids);
             }
         }
 
@@ -487,43 +435,43 @@ namespace PaviseApp
             {
                 return;
             }
-            List<int> list = null;
+            List<int> keys = null;
             foreach (int key in pathCache.Keys)
             {
                 if (!live.Contains(key))
                 {
-                    if (list == null)
+                    if (keys == null)
                     {
-                        list = new List<int>();
+                        keys = new List<int>();
                     }
-                    list.Add(key);
+                    keys.Add(key);
                 }
             }
-            if (list == null)
+            if (keys == null)
             {
                 return;
             }
-            foreach (int item in list)
+            foreach (int currentKey in keys)
             {
-                pathCache.Remove(item);
+                pathCache.Remove(currentKey);
             }
         }
 
         private static string QueryPath(int pid)
         {
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return null;
             }
             Interlocked.Increment(ref pathQueryCount);
             try
             {
-                return Native.ImagePath(intPtr);
+                return Native.ImagePath(processHandle);
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
     }

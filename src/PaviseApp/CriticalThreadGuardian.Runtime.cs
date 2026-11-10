@@ -92,21 +92,19 @@ namespace PaviseApp
                 result.ConfigurationCreated = true;
                 PipeSecurity pipeSecurity = new PipeSecurity();
                 pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-5-2"), PipeAccessRights.FullControl, AccessControlType.Deny));
-                string[] textEntries = new string[3] { userSidResult, "S-1-5-18", "S-1-5-32-544" };
-                foreach (string sddlForm in textEntries)
+                foreach (string sddlForm in new string[3] { userSidResult, "S-1-5-18", "S-1-5-32-544" })
                 {
                     pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(sddlForm), PipeAccessRights.FullControl, AccessControlType.Allow));
                 }
                 result.Pipe = new NamedPipeServerStream(PipeName(original.SessionId, nonceResult), PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, pipeSecurity);
-                StartupInfo startupInfo = default(StartupInfo);
-                startupInfo.Size = Marshal.SizeOf(typeof(StartupInfo));
-                startupInfo.Flags = 1u;
-                startupInfo.Show = 0;
-                StartupInfo startup = startupInfo;
+                StartupInfo startup = default(StartupInfo);
+                startup.Size = Marshal.SizeOf(typeof(StartupInfo));
+                startup.Flags = 1u;
+                startup.Show = 0;
                 string directoryName = Path.GetDirectoryName(canonicalResult);
-                string value = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + nonceResult + " --autostart-data \"" + directoryName + "\"";
+                string text = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + nonceResult + " --autostart-data \"" + directoryName + "\"";
                 ProcessInfo child;
-                if (!CreateProcess(executable, new StringBuilder(value), IntPtr.Zero, IntPtr.Zero, false, 150994944u, IntPtr.Zero, guardsPath, ref startup, out child))
+                if (!CreateProcess(executable, new StringBuilder(text), IntPtr.Zero, IntPtr.Zero, false, 150994944u, IntPtr.Zero, guardsPath, ref startup, out child))
                 {
                     int lastWin32Error = Marshal.GetLastWin32Error();
                     bool inJob = false;
@@ -242,9 +240,9 @@ namespace PaviseApp
                 string canonicalResult = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
                 RequireAcl(canonicalResult, UserSid());
                 NamedPipeClientStream namedPipeClientStream = new NamedPipeClientStream(".", PipeName(result, args[2]), PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
-                NativeRegistration nativeRegistration2 = new NativeRegistration();
-                nativeRegistration2.Pipe = namedPipeClientStream;
-                nativeRegistration = nativeRegistration2;
+                NativeRegistration currentNativeRegistration = new NativeRegistration();
+                currentNativeRegistration.Pipe = namedPipeClientStream;
+                nativeRegistration = currentNativeRegistration;
                 namedPipeClientStream.Connect(5000);
                 uint pid;
                 if (!GetNamedPipeServerProcessId(namedPipeClientStream.SafePipeHandle.DangerousGetHandle(), out pid))
@@ -286,7 +284,7 @@ namespace PaviseApp
                 }
                 Task<byte[]> task = ReadStop(namedPipeClientStream);
                 bool stopRequested = false;
-                long numericValue = 0L;
+                long nextTerminalReadTicks = 0L;
                 int terminalReadFailures = 0;
                 while (true)
                 {
@@ -306,11 +304,11 @@ namespace PaviseApp
                                 stopRequested = true;
                             }
                         }
-                        if (!stopRequested || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < numericValue)
+                        if (!stopRequested || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < nextTerminalReadTicks)
                         {
                             break;
                         }
-                        numericValue = DateTime.UtcNow.AddSeconds(1.0).Ticks;
+                        nextTerminalReadTicks = DateTime.UtcNow.AddSeconds(1.0).Ticks;
                         bool allReceiptsTerminal = false;
                         try
                         {

@@ -13,10 +13,6 @@ namespace PaviseApp
 
         internal const string IgnoreFileName = "Pavise.autoignore.txt";
 
-        private const string Header = "PAVISE_LIBRARY_IGNORE_TXN_V1";
-
-        private const int MaxReceiptBytes = 8388608;
-
         private readonly string profilePath;
 
         private readonly string ignorePath;

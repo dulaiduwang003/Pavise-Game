@@ -151,11 +151,11 @@ namespace PaviseApp
                 Bg = Theme.Card
             };
             PerformanceInfoButton performanceInfoButton = information;
-            EventHandler value = delegate
+            EventHandler eventHandler = delegate
             {
                 ShowDetails();
             };
-            performanceInfoButton.Click += value;
+            performanceInfoButton.Click += eventHandler;
             information.MouseEnter += delegate
             {
                 SyncDetails();
@@ -285,14 +285,14 @@ namespace PaviseApp
             int scaledDimension4 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(94) : Math.Min(base.Hosted.Width, lowerBound)) : 0);
             int scaledDimension5 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(40) : Math.Max(Theme.S(28), base.Hosted.Height)) : 0);
             Font font = Theme.UI(12f, true);
-            Font font2 = Theme.UI(8.5f, false);
-            Font font3 = Theme.UI(9f, false);
-            Font font4 = Theme.UI(8.5f, false);
-            if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale && measured.Host == base.Hosted && measured.HostWidth == scaledDimension4 && measured.HostHeight == scaledDimension5 && measured.Title == base.Title && measured.Provider == Provider && measured.Description == base.Desc && measured.Status == base.StatusText && measured.Lock == base.LockText && object.ReferenceEquals(measured.TitleFont, font) && object.ReferenceEquals(measured.ProviderFont, font2) && object.ReferenceEquals(measured.BodyFont, font3) && object.ReferenceEquals(measured.StatusFont, font4))
+            Font ui = Theme.UI(8.5f, false);
+            Font currentUi = Theme.UI(9f, false);
+            Font candidateUi = Theme.UI(8.5f, false);
+            if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale && measured.Host == base.Hosted && measured.HostWidth == scaledDimension4 && measured.HostHeight == scaledDimension5 && measured.Title == base.Title && measured.Provider == Provider && measured.Description == base.Desc && measured.Status == base.StatusText && measured.Lock == base.LockText && object.ReferenceEquals(measured.TitleFont, font) && object.ReferenceEquals(measured.ProviderFont, ui) && object.ReferenceEquals(measured.BodyFont, currentUi) && object.ReferenceEquals(measured.StatusFont, candidateUi))
             {
                 return measured;
             }
-            int statusTextWidth = TextRenderer.MeasureText(base.StatusText, font4, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+            int statusTextWidth = TextRenderer.MeasureText(base.StatusText, candidateUi, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
             int minLimit = Math.Max(Theme.S(110), Math.Min(Theme.S(160), statusTextWidth));
             int scaledDimension4Offset = minLimit + Theme.S(18) + scaledDimension4;
             bool hostedFitsInline = base.Hosted != null && width >= Theme.S(500) && lowerBound - scaledDimension4Offset - Theme.S(24) >= Theme.S(200);
@@ -306,10 +306,10 @@ namespace PaviseApp
             Rectangle providerLine = Rectangle.Empty;
             if (!string.IsNullOrEmpty(Provider))
             {
-                providerLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(3), lowerBound2, TextHeight(Provider, font2, lowerBound2, Theme.S(16)));
+                providerLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(3), lowerBound2, TextHeight(Provider, ui, lowerBound2, Theme.S(16)));
                 scaledDimension3Limit = providerLine.Bottom;
             }
-            Rectangle descriptionLine = new Rectangle(sOffset, scaledDimension3Limit + ((base.Desc.Length != 0) ? Theme.S(7) : 0), lowerBound2, TextHeight(base.Desc, font3, lowerBound2, Theme.S(18)));
+            Rectangle descriptionLine = new Rectangle(sOffset, scaledDimension3Limit + ((base.Desc.Length != 0) ? Theme.S(7) : 0), lowerBound2, TextHeight(base.Desc, currentUi, lowerBound2, Theme.S(18)));
             scaledDimension3Limit = descriptionLine.Bottom;
             Rectangle hostBounds = Rectangle.Empty;
             Rectangle statusLine = Rectangle.Empty;
@@ -319,20 +319,20 @@ namespace PaviseApp
             {
                 int remainingScaledDimension4 = width - scaledDimension - scaledDimension4;
                 int remainingMinLimit = remainingScaledDimension4 - Theme.S(18) - minLimit;
-                int measureValue = 0;
+                int statusBlockHeight = 0;
                 if (base.StatusText.Length > 0)
                 {
-                    statusLine = new Rectangle(remainingMinLimit, 0, minLimit, TextHeight(base.StatusText, font4, minLimit, Theme.S(18)));
-                    measureValue = statusLine.Bottom;
+                    statusLine = new Rectangle(remainingMinLimit, 0, minLimit, TextHeight(base.StatusText, candidateUi, minLimit, Theme.S(18)));
+                    statusBlockHeight = statusLine.Bottom;
                 }
                 if (base.LockText.Length > 0)
                 {
-                    locked = new Rectangle(remainingMinLimit, measureValue + Theme.S(5), minLimit, TextHeight(base.LockText, font4, minLimit, Theme.S(18)));
-                    measureValue = locked.Bottom;
+                    locked = new Rectangle(remainingMinLimit, statusBlockHeight + Theme.S(5), minLimit, TextHeight(base.LockText, candidateUi, minLimit, Theme.S(18)));
+                    statusBlockHeight = locked.Bottom;
                 }
-                int measureValueLimit = Math.Max(scaledDimension5, measureValue);
+                int measureValueLimit = Math.Max(scaledDimension5, statusBlockHeight);
                 hostBounds = new Rectangle(remainingScaledDimension4, (measureValueLimit - scaledDimension5) / 2, scaledDimension4, scaledDimension5);
-                int lowerBound3 = Math.Max(0, (measureValueLimit - measureValue) / 2);
+                int lowerBound3 = Math.Max(0, (measureValueLimit - statusBlockHeight) / 2);
                 if (!statusLine.IsEmpty)
                 {
                     statusLine.Offset(0, lowerBound3);
@@ -361,7 +361,7 @@ namespace PaviseApp
                     scaledDimension3Limit = hostBounds.Bottom;
                 }
                 int remainingS = lowerBound - scaledDimension4 - Theme.S(14);
-                int textHeightResult = TextHeight(base.StatusText, font4, remainingS, Theme.S(18));
+                int textHeightResult = TextHeight(base.StatusText, candidateUi, remainingS, Theme.S(18));
                 if (base.StatusText.Length > 0)
                 {
                     if (base.Hosted != null && remainingS >= Theme.S(90) && textHeightResult <= scaledDimension5)
@@ -370,13 +370,13 @@ namespace PaviseApp
                     }
                     else
                     {
-                        statusLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(7), lowerBound, TextHeight(base.StatusText, font4, lowerBound, Theme.S(18)));
+                        statusLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(7), lowerBound, TextHeight(base.StatusText, candidateUi, lowerBound, Theme.S(18)));
                         scaledDimension3Limit = statusLine.Bottom;
                     }
                 }
                 if (base.LockText.Length > 0)
                 {
-                    locked = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(5), lowerBound, TextHeight(base.LockText, font4, lowerBound, Theme.S(18)));
+                    locked = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(5), lowerBound, TextHeight(base.LockText, candidateUi, lowerBound, Theme.S(18)));
                     scaledDimension3Limit = locked.Bottom;
                 }
                 minimumControlWidth = scaledDimension3Limit;
@@ -411,9 +411,9 @@ namespace PaviseApp
                 HostWidth = scaledDimension4,
                 HostHeight = scaledDimension5,
                 TitleFont = font,
-                ProviderFont = font2,
-                BodyFont = font3,
-                StatusFont = font4,
+                ProviderFont = ui,
+                BodyFont = currentUi,
+                StatusFont = candidateUi,
                 Title = base.Title,
                 Provider = Provider,
                 Description = base.Desc,

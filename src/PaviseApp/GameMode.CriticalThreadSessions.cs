@@ -56,7 +56,7 @@ namespace PaviseApp
                     criticalReassertions = 0;
                     criticalObservationMisses = 0;
                 }
-                CriticalRuntimeSource criticalRuntimeSource2 = criticalSource;
+                CriticalRuntimeSource currentCriticalSource = criticalSource;
                 if (criticalStability.IsBlocked(criticalSource.Profile, criticalSource.Pid, criticalSource.Birth, criticalSource.Serial, criticalSource.RuleText))
                 {
                     if (WithdrawCriticalThreadsLocked("repeated thread placement conflict"))
@@ -65,15 +65,15 @@ namespace PaviseApp
                 }
                 if (criticalSession == null && CriticalThreadHasRecoveryDebt(false))
                 {
-                    PublishCriticalThreadState(criticalRuntimeSource2, "recovery-pending", PerformancePolicy.Text("旧线程恢复记录尚未结清；未新增绑定", "Previous thread recovery is unresolved; no new binding is applied"), false, true, 0, 0L);
+                    PublishCriticalThreadState(currentCriticalSource, "recovery-pending", PerformancePolicy.Text("旧线程恢复记录尚未结清；未新增绑定", "Previous thread recovery is unresolved; no new binding is applied"), false, true, 0, 0L);
                     return;
                 }
-                if (ProtectedGameRoster.Contains(criticalRuntimeSource2.Name))
+                if (ProtectedGameRoster.Contains(currentCriticalSource.Name))
                 {
                     if (WithdrawCriticalThreadsLocked("the game is on the protected roster"))
                     {
                         criticalObservation.Reset();
-                        PublishCriticalThreadState(criticalRuntimeSource2, "unsupported", PerformancePolicy.Text("该游戏此前拒绝或剥夺过写入权限；未施加线程硬绑定", "This game previously denied or stripped write access; no hard thread binding is applied"), false, false, 0, 0L);
+                        PublishCriticalThreadState(currentCriticalSource, "unsupported", PerformancePolicy.Text("该游戏此前拒绝或剥夺过写入权限；未施加线程硬绑定", "This game previously denied or stripped write access; no hard thread binding is applied"), false, false, 0, 0L);
                     }
                     return;
                 }
@@ -83,26 +83,26 @@ namespace PaviseApp
                     {
                         criticalObservation.Reset();
                         ResetCriticalAuto();
-                        PublishCriticalThreadState(criticalRuntimeSource2, "unsupported", CriticalGuardianLaunchBlockedDetail(), false, false, 0, 0L);
+                        PublishCriticalThreadState(currentCriticalSource, "unsupported", CriticalGuardianLaunchBlockedDetail(), false, false, 0, 0L);
                     }
                     return;
                 }
-                if (smartSwitchedOut || RendererForegroundPid() != criticalRuntimeSource2.Pid)
+                if (smartSwitchedOut || RendererForegroundPid() != currentCriticalSource.Pid)
                 {
                     // 最小化可能使采样无效；保留现有租约和观测历史，等待游戏返回。
                     if (criticalSession == null)
                     {
-                        PublishCriticalThreadState(criticalRuntimeSource2, "observing", PerformancePolicy.Text("等待游戏回到前台后重新观察", "Observations restart when the game returns to the foreground"), false, false, 0, 0L);
+                        PublishCriticalThreadState(currentCriticalSource, "observing", PerformancePolicy.Text("等待游戏回到前台后重新观察", "Observations restart when the game returns to the foreground"), false, false, 0, 0L);
                     }
                     return;
                 }
                 bool observerRequested = false;
-                if (criticalRuntimeSource2.Rule.Automatic && criticalSession == null && criticalObservation.Hotspots.Length > 0)
+                if (currentCriticalSource.Rule.Automatic && criticalSession == null && criticalObservation.Hotspots.Length > 0)
                 {
                     criticalRolesTouched = true;
-                    if (!FrameCoordination.HasCriticalPresenterCandidate(criticalRuntimeSource2.Pid, criticalRuntimeSource2.Birth, AutoCores.NowTicks))
+                    if (!FrameCoordination.HasCriticalPresenterCandidate(currentCriticalSource.Pid, currentCriticalSource.Birth, AutoCores.NowTicks))
                     {
-                        WantCriticalRoles(criticalRuntimeSource2, null);
+                        WantCriticalRoles(currentCriticalSource, null);
                         observerRequested = true;
                     }
                 }
@@ -112,41 +112,41 @@ namespace PaviseApp
                     return;
                 }
                 criticalNextSample = nowTicks + 50000000;
-                if (criticalRuntimeSource2.Rule.Automatic && criticalSession != null && criticalPlan != null
+                if (currentCriticalSource.Rule.Automatic && criticalSession != null && criticalPlan != null
                     && criticalPlan.WorkerMode == HardThreadWorkerMode.CandidatesOnly)
                 {
-                    AuditAutomaticCriticalThread(criticalRuntimeSource2);
+                    AuditAutomaticCriticalThread(currentCriticalSource);
                     return;
                 }
                 long sampleStarted = Stopwatch.GetTimestamp();
-                ThreadTimes threadTimes = ProcessSnapshotSource.SampleThreads(criticalRuntimeSource2.Pid, criticalRuntimeSource2.Birth, 1500);
-                bool observed = criticalObservation.Observe(threadTimes, criticalRuntimeSource2.Birth, AutoCores.NowTicks);
-                TraceCriticalRuntime("sample", observed ? "ok" : "unavailable", criticalRuntimeSource2.Pid, sampleStarted);
+                ThreadTimes threadTimes = ProcessSnapshotSource.SampleThreads(currentCriticalSource.Pid, currentCriticalSource.Birth, 1500);
+                bool observed = criticalObservation.Observe(threadTimes, currentCriticalSource.Birth, AutoCores.NowTicks);
+                TraceCriticalRuntime("sample", observed ? "ok" : "unavailable", currentCriticalSource.Pid, sampleStarted);
                 if (!observed)
                 {
                     if (criticalSession != null && ++criticalObservationMisses < 3)
                     {
-                        PublishCriticalThreadState(criticalRuntimeSource2, "coverage-pending", PerformancePolicy.Text("线程观测暂不可用，暂停新增与纠偏，等待重新核验", "Thread observations are temporarily unavailable; new bindings and corrections are paused until verification resumes"), false, false, 0, 0L);
+                        PublishCriticalThreadState(currentCriticalSource, "coverage-pending", PerformancePolicy.Text("线程观测暂不可用，暂停新增与纠偏，等待重新核验", "Thread observations are temporarily unavailable; new bindings and corrections are paused until verification resumes"), false, false, 0, 0L);
                         return;
                     }
                     if (criticalSession != null) criticalStability.Block(criticalSource.Profile, criticalSource.Pid, criticalSource.Birth, criticalSource.Serial, criticalSource.RuleText);
                     if (WithdrawCriticalThreadsLocked("thread observation unavailable"))
                     {
-                        PublishCriticalThreadState(criticalRuntimeSource2, "observing", PerformancePolicy.Text("线程观测暂不可用；未继续新增绑定", "Thread observations are unavailable; further bindings are stopped"), false, false, 0, 0L);
+                        PublishCriticalThreadState(currentCriticalSource, "observing", PerformancePolicy.Text("线程观测暂不可用；未继续新增绑定", "Thread observations are unavailable; further bindings are stopped"), false, false, 0, 0L);
                     }
                 }
                 else if (criticalSession != null)
                 {
-                    AuditCriticalThreadSession(criticalRuntimeSource2, threadTimes);
+                    AuditCriticalThreadSession(currentCriticalSource, threadTimes);
                 }
-                else if (criticalRuntimeSource2.Rule.Automatic)
+                else if (currentCriticalSource.Rule.Automatic)
                 {
-                    if (!observerRequested && criticalObservation.Hotspots.Length > 0) WantCriticalRoles(criticalRuntimeSource2, threadTimes);
-                    BeginAutomaticCriticalThreadSession(criticalRuntimeSource2, threadTimes);
+                    if (!observerRequested && criticalObservation.Hotspots.Length > 0) WantCriticalRoles(currentCriticalSource, threadTimes);
+                    BeginAutomaticCriticalThreadSession(currentCriticalSource, threadTimes);
                 }
                 else
                 {
-                    BeginCriticalThreadSession(criticalRuntimeSource2, threadTimes);
+                    BeginCriticalThreadSession(currentCriticalSource, threadTimes);
                 }
             }
             catch (OperationCanceledException ex)
@@ -237,8 +237,8 @@ namespace PaviseApp
                 PublishCriticalThreadState(source, "conflict", ActionFailureStore.FailureReason("game-critical-thread-hard-affinity", criticalFailureTarget), false, false, 0, 0L);
                 return;
             }
-            IntPtr intPtr = Native.OpenProcess(4096, false, source.Pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, source.Pid);
+            if (processHandle == IntPtr.Zero)
             {
                 RecordAutomaticWorkFailure(launchKey, "process-open-failed");
                 PublishCriticalThreadState(source, "unsupported", PerformancePolicy.Text("无法核验该游戏的进程权限与身份", "The game's process identity and permissions cannot be verified"), false, false, 0, 0L);
@@ -248,18 +248,17 @@ namespace PaviseApp
             try
             {
                 ulong mask;
-                if (!Native.TryQueryAffinity(intPtr, out mask))
+                if (!Native.TryQueryAffinity(processHandle, out mask))
                 {
                     RecordAutomaticWorkFailure(launchKey, "affinity-read-failed");
                     PublishCriticalThreadState(source, "unsupported", PerformancePolicy.Text("无法读取游戏进程的处理器亲和性；未施加线程硬绑定", "The game's processor affinity cannot be read; no hard thread binding is applied"), false, false, 0, 0L);
                     return;
                 }
-                BoostPass boostPass = new BoostPass();
-                boostPass.RendererPid = source.Pid;
-                boostPass.RendererCreation = source.Birth;
-                boostPass.RendererName = source.Name;
-                BoostPass pass = boostPass;
-                CriticalThreadTargetLease criticalThreadTargetLease = CreateCriticalThreadTarget(pass, intPtr, rule, source.Profile, source.RuleText, mask, source.Epoch, source.Serial);
+                BoostPass pass = new BoostPass();
+                pass.RendererPid = source.Pid;
+                pass.RendererCreation = source.Birth;
+                pass.RendererName = source.Name;
+                CriticalThreadTargetLease criticalThreadTargetLease = CreateCriticalThreadTarget(pass, processHandle, rule, source.Profile, source.RuleText, mask, source.Epoch, source.Serial);
                 if (criticalThreadTargetLease == null)
                 {
                     PublishCriticalThreadState(source, "observing", PerformancePolicy.Text("绑定前核对游戏身份与规则未通过；本次未绑定，稍后重新核对", "Game identity and rule checks before binding did not pass; nothing was bound and they will be checked again"), false, false, 0, 0L);
@@ -310,7 +309,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
         private void AuditCriticalThreadSession(CriticalRuntimeSource source, ThreadTimes snapshot)
@@ -600,8 +599,8 @@ namespace PaviseApp
                 {
                     criticalStateLogged = new Dictionary<string, long>(StringComparer.Ordinal);
                 }
-                long value;
-                if (detailOffset == criticalStateLast || (criticalStateLogged.TryGetValue(detailOffset, out value) && nowTicks - value < 1200000000))
+                long currentCriticalStateLogged;
+                if (detailOffset == criticalStateLast || (criticalStateLogged.TryGetValue(detailOffset, out currentCriticalStateLogged) && nowTicks - currentCriticalStateLogged < 1200000000))
                 {
                     return;
                 }

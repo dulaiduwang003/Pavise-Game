@@ -87,10 +87,10 @@ namespace PaviseApp
             if (conflict != null) return conflict;
             if (ManualCorePlan.Raw(next) == expectedPlan && CriticalThreadRule.Raw(next) == expectedRule
                 && (enabled ? "1" : "0") == expectedEnabled) return null;
-            List<GameProfile> list = new List<GameProfile>(profiles);
-            int index = list.IndexOf(current);
-            list[index] = next;
-            if (!SaveProfileSnapshotLocked(list)) return "schedule.manual.savefailed";
+            List<GameProfile> profilesSnapshot = new List<GameProfile>(profiles);
+            int index = profilesSnapshot.IndexOf(current);
+            profilesSnapshot[index] = next;
+            if (!SaveProfileSnapshotLocked(profilesSnapshot)) return "schedule.manual.savefailed";
             profiles[index] = next;
             if (activeDetection != null && activeDetection.Profile != null && activeDetection.Profile.Id == profileId)
                 activeDetection.Profile = next.Clone();

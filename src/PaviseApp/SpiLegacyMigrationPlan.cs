@@ -27,13 +27,13 @@ namespace PaviseApp
             Nonce = nonce;
             Members = members;
             StringBuilder stringBuilder = new StringBuilder("pavise-spi-legacy-migration-1\nuser_sid\t" + sid + "\nnonce\t" + nonce + "\n");
-            foreach (SpiLegacyMigrationMember value in members.Values)
+            foreach (SpiLegacyMigrationMember migrationItem in members.Values)
             {
-                stringBuilder.Append(value.Slot).Append('\t').Append(value.Target)
+                stringBuilder.Append(migrationItem.Slot).Append('\t').Append(migrationItem.Target)
                     .Append('\t')
-                    .Append(value.SourceHash)
+                    .Append(migrationItem.SourceHash)
                     .Append('\t')
-                    .Append(value.TerminalHash)
+                    .Append(migrationItem.TerminalHash)
                     .Append('\n');
             }
             Manifest = new UTF8Encoding(false, true).GetBytes(stringBuilder.ToString());
@@ -46,8 +46,7 @@ namespace PaviseApp
 
         private static void ValidateTarget(string target)
         {
-            MatchVisualEffects.Effect[] effects = MatchVisualEffects.Effects;
-            foreach (MatchVisualEffects.Effect effect in effects)
+            foreach (MatchVisualEffects.Effect effect in MatchVisualEffects.Effects)
             {
                 if (effect.Name == target)
                 {
@@ -74,14 +73,13 @@ namespace PaviseApp
                     {
                         throw new InvalidDataException("Unowned legacy SPI receipt is not the exact former reduced-effects shape");
                     }
-                    PerformanceActionStore.Receipt receipt = new PerformanceActionStore.Receipt();
-                    receipt.Id = row.Id;
-                    receipt.Target = row.Target;
-                    receipt.Original = row.Original;
-                    receipt.Expected = row.Original;
-                    receipt.Committed = true;
-                    receipt.VisualRestored = true;
-                    PerformanceActionStore.Receipt r = receipt;
+                    PerformanceActionStore.Receipt r = new PerformanceActionStore.Receipt();
+                    r.Id = row.Id;
+                    r.Target = row.Target;
+                    r.Original = row.Original;
+                    r.Expected = row.Original;
+                    r.Committed = true;
+                    r.VisualRestored = true;
                     SpiLegacyMigrationMember spiLegacyMigrationMember = new SpiLegacyMigrationMember(row.Target, ReceiptHash(row), SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r))));
                     if (sortedDictionary.ContainsKey(spiLegacyMigrationMember.Slot))
                     {
@@ -133,50 +131,47 @@ namespace PaviseApp
         internal PerformanceActionStore.Receipt Current(string target)
         {
             string key = PerformanceActionStore.Slot("MatchVisualEffectsV1", target);
-            SpiLegacyMigrationMember value;
-            if (!Members.TryGetValue(key, out value) || value.Target != target)
+            SpiLegacyMigrationMember Member;
+            if (!Members.TryGetValue(key, out Member) || Member.Target != target)
             {
                 throw new InvalidDataException("Target is not in this exact legacy restore set");
             }
-            foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+            foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
             {
-                if (item.Id != "MatchVisualEffectsV1" || item.Target != target)
+                if (all.Id != "MatchVisualEffectsV1" || all.Target != target)
                 {
                     continue;
                 }
-                if (!string.IsNullOrEmpty(item.VisualOwner) || (item.Original != "0" && item.Original != "1") || (!item.VisualRestored && item.Expected != "0") || (item.VisualRestored && item.Expected != item.Original))
+                if (!string.IsNullOrEmpty(all.VisualOwner) || (all.Original != "0" && all.Original != "1") || (!all.VisualRestored && all.Expected != "0") || (all.VisualRestored && all.Expected != all.Original))
                 {
                     throw new InvalidDataException("Legacy SPI receipt domain is invalid");
                 }
-                string receiptHashResult = ReceiptHash(item);
-                if (item.VisualRestored ? (receiptHashResult != value.TerminalHash) : (receiptHashResult != value.SourceHash))
+                string receiptHashResult = ReceiptHash(all);
+                if (all.VisualRestored ? (receiptHashResult != Member.TerminalHash) : (receiptHashResult != Member.SourceHash))
                 {
                     throw new InvalidDataException("Legacy SPI receipt changed or was reassigned");
                 }
-                PerformanceActionStore.Receipt receipt = new PerformanceActionStore.Receipt();
-                receipt.Id = item.Id;
-                receipt.Target = item.Target;
-                receipt.Original = item.Original;
-                receipt.Expected = item.Original;
-                receipt.Committed = true;
-                receipt.VisualRestored = true;
-                PerformanceActionStore.Receipt r = receipt;
-                if (SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r))) != value.TerminalHash)
+                PerformanceActionStore.Receipt r = new PerformanceActionStore.Receipt();
+                r.Id = all.Id;
+                r.Target = all.Target;
+                r.Original = all.Original;
+                r.Expected = all.Original;
+                r.Committed = true;
+                r.VisualRestored = true;
+                if (SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r))) != Member.TerminalHash)
                 {
                     throw new InvalidDataException("Legacy terminal digest cannot bind these originals");
                 }
                 bool sourceDigestMatched = false;
-                bool[] conditionMetItems = new bool[2] { false, true };
-                foreach (bool committed in conditionMetItems)
+                foreach (bool committed in new bool[2] { false, true })
                 {
-                    PerformanceActionStore.Receipt receipt2 = new PerformanceActionStore.Receipt();
-                    receipt2.Id = item.Id;
-                    receipt2.Target = item.Target;
-                    receipt2.Original = item.Original;
-                    receipt2.Expected = "0";
-                    receipt2.Committed = committed;
-                    PerformanceActionStore.Receipt r2 = receipt2;
-                    if (SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r2))) == value.SourceHash)
+                    PerformanceActionStore.Receipt r2 = new PerformanceActionStore.Receipt();
+                    r2.Id = all.Id;
+                    r2.Target = all.Target;
+                    r2.Original = all.Original;
+                    r2.Expected = "0";
+                    r2.Committed = committed;
+                    if (SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(r2))) == Member.SourceHash)
                     {
                         sourceDigestMatched = true;
                     }
@@ -185,7 +180,7 @@ namespace PaviseApp
                 {
                     throw new InvalidDataException("Legacy source digest is not the exact former receipt shape");
                 }
-                return item;
+                return all;
             }
             throw new InvalidDataException("Registered legacy SPI original is missing before closure");
         }
@@ -224,22 +219,22 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Legacy SPI closure does not bind the migration members");
             }
-            List<PerformanceActionStore.Receipt> list = new List<PerformanceActionStore.Receipt>();
-            foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+            List<PerformanceActionStore.Receipt> receipts = new List<PerformanceActionStore.Receipt>();
+            foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
             {
-                if (item.Id == "MatchVisualEffectsV1")
+                if (all.Id == "MatchVisualEffectsV1")
                 {
-                    SpiLegacyMigrationMember value;
-                    if (!string.IsNullOrEmpty(item.VisualOwner) || !item.VisualRestored || !Members.TryGetValue(PerformanceActionStore.Slot(item.Id, item.Target), out value) || ReceiptHash(item) != value.TerminalHash)
+                    SpiLegacyMigrationMember Member;
+                    if (!string.IsNullOrEmpty(all.VisualOwner) || !all.VisualRestored || !Members.TryGetValue(PerformanceActionStore.Slot(all.Id, all.Target), out Member) || ReceiptHash(all) != Member.TerminalHash)
                     {
                         throw new InvalidDataException("Closed legacy metadata is not an exact terminal member");
                     }
-                    list.Add(item);
+                    receipts.Add(all);
                 }
             }
-            foreach (PerformanceActionStore.Receipt item2 in list)
+            foreach (PerformanceActionStore.Receipt receipt in receipts)
             {
-                if (!PerformanceActionStore.ClearLegacyVisualTerminal(item2))
+                if (!PerformanceActionStore.ClearLegacyVisualTerminal(receipt))
                 {
                     throw new IOException("Legacy SPI terminal metadata cleanup is incomplete");
                 }

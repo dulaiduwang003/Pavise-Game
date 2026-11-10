@@ -45,11 +45,11 @@ namespace PaviseApp
             RoundPanel roundPanel = (aboutIdentityPanel = MakeConsolePanel(pageAbout, 30, aboutPageValue2, aboutPageValue3, aboutPageValue5, false));
             Label label = CardLabel(roundPanel, "PROJECT // IDENTITY", 20, 15, aboutPageValue3 - 126, 20, 7.6f, true, Theme.Faint);
             label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Label label2 = CardLabel(roundPanel, "NODE 01", aboutPageValue3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
-            label2.TextAlign = ContentAlignment.MiddleRight;
-            label2.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            string[] textEntries = new string[4] { "about.author", "about.douyin", "about.repo", "about.lic" };
-            string[] textEntries2 = new string[4]
+            Label cardLabel = CardLabel(roundPanel, "NODE 01", aboutPageValue3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
+            cardLabel.TextAlign = ContentAlignment.MiddleRight;
+            cardLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            string[] aboutLabelKeys = new string[4] { "about.author", "about.douyin", "about.repo", "about.lic" };
+            string[] aboutValues = new string[4]
             {
                 "bdth 2074055628@qq.com",
                 "44601770838",
@@ -59,12 +59,12 @@ namespace PaviseApp
             for (int i = 0; i < 4; i++)
             {
                 int aboutPageValue6 = 47 + i * 44;
-                Label label3 = AddAboutRow(roundPanel, Lang.T(textEntries[i]).ToUpperInvariant(), textEntries2[i], aboutPageValue6, aboutPageValue3, i == 2 || i == 3);
+                Label addAboutRow = AddAboutRow(roundPanel, Lang.T(aboutLabelKeys[i]).ToUpperInvariant(), aboutValues[i], aboutPageValue6, aboutPageValue3, i == 2 || i == 3);
                 if (i == 2 || i == 3)
                 {
                     string targetUrl = ((i == 2) ? App.RepoUrl : App.RepoUrl + "/blob/dev/LICENSE");
-                    label3.Cursor = Cursors.Hand;
-                    label3.Click += delegate
+                    addAboutRow.Cursor = Cursors.Hand;
+                    addAboutRow.Click += delegate
                     {
                         OpenExternal(targetUrl);
                     };
@@ -74,68 +74,66 @@ namespace PaviseApp
             freeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Label refundHint = CardLabel(roundPanel, Lang.T("about.refund.hint"), 20, 258, aboutPageValue3 - 40, 44, 7.8f, false, Theme.Fg);
             refundHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, aboutPageValue3 - 40, 40, 7.8f, false, Theme.Dim);
-            label4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + aboutPageValue3 + aboutPageValue4, aboutPageValue2, remainingAboutPageValue4, aboutPageValue5, true));
-            Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
-            label5.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Label currentCardLabel = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, aboutPageValue3 - 40, 40, 7.8f, false, Theme.Dim);
+            currentCardLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            RoundPanel currentRoundPanel = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + aboutPageValue3 + aboutPageValue4, aboutPageValue2, remainingAboutPageValue4, aboutPageValue5, true));
+            Label candidateCardLabel = CardLabel(currentRoundPanel, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
+            candidateCardLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             StatusDot statusDot = new StatusDot();
             statusDot.SetBounds(Theme.S(remainingAboutPageValue4 - 126), Theme.S(12), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card;
             statusDot.Color = Theme.Green;
             statusDot.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            roundPanel2.Controls.Add(statusDot);
-            Label label6 = CardLabel(roundPanel2, Lang.T("v20.about.online"), remainingAboutPageValue4 - 102, 12, 82, 24, 6.7f, true, Theme.Green);
-            label6.TextAlign = ContentAlignment.MiddleRight;
-            label6.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            AccentLabel(roundPanel2, App.VersionTag, 20, 45, 254, 43, 23f, true);
-            Label label7 = CardLabel(roundPanel2, Lang.T("v15.about.identity"), 22, 87, remainingAboutPageValue4 - 44, 22, 8.2f, false, Theme.Dim);
-            label7.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            currentRoundPanel.Controls.Add(statusDot);
+            Label resolvedCardLabel = CardLabel(currentRoundPanel, Lang.T("v20.about.online"), remainingAboutPageValue4 - 102, 12, 82, 24, 6.7f, true, Theme.Green);
+            resolvedCardLabel.TextAlign = ContentAlignment.MiddleRight;
+            resolvedCardLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            AccentLabel(currentRoundPanel, App.VersionTag, 20, 45, 254, 43, 23f, true);
+            Label selectedCardLabel = CardLabel(currentRoundPanel, Lang.T("v15.about.identity"), 22, 87, remainingAboutPageValue4 - 44, 22, 8.2f, false, Theme.Dim);
+            selectedCardLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Panel panel = new Panel();
             panel.BackColor = Theme.StrokeHi;
             panel.SetBounds(Theme.S(20), Theme.S(119), Theme.S(remainingAboutPageValue4 - 40), 1);
             panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            roundPanel2.Controls.Add(panel);
-            CardLabel(roundPanel2, Lang.T("site.about.source"), 20, 132, remainingAboutPageValue4 - 40, 18, 7f, true, Theme.Faint);
-            RoundPanel roundPanel3 = MakeConsolePanel(roundPanel2, 20, 153, remainingAboutPageValue4 - 40, 54, false);
-            roundPanel3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            CardLabel(roundPanel3, "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            AccentLabel(roundPanel3, "pavise.club", 14, 25, remainingAboutPageValue4 - 68, 25, 10f, true).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            RoundPanel roundPanel4 = MakeConsolePanel(roundPanel2, 20, 218, remainingAboutPageValue4 - 40, 60, false);
-            roundPanel4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            StatusDot statusDot2 = new StatusDot();
-            statusDot2.SetBounds(Theme.S(14), Theme.S(18), Theme.S(22), Theme.S(22));
-            statusDot2.Bg = Theme.Card;
-            statusDot2.FollowAccent = true;
-            roundPanel4.Controls.Add(statusDot2);
-            CardLabel(roundPanel4, Lang.T("v20.about.privacy"), 44, 8, remainingAboutPageValue4 - 116, 19, 7f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            CardLabel(roundPanel4, Lang.T("v20.about.privacy.value"), 44, 27, remainingAboutPageValue4 - 116, 25, 9.4f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            lblAboutUpdate = CardLabel(roundPanel2, "", 20, aboutPageValue5 - 76, remainingAboutPageValue4 - 40, 18, 7.7f, false, Theme.Faint);
+            currentRoundPanel.Controls.Add(panel);
+            CardLabel(currentRoundPanel, Lang.T("site.about.source"), 20, 132, remainingAboutPageValue4 - 40, 18, 7f, true, Theme.Faint);
+            RoundPanel makeConsolePanel = MakeConsolePanel(currentRoundPanel, 20, 153, remainingAboutPageValue4 - 40, 54, false);
+            makeConsolePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            CardLabel(makeConsolePanel, "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            AccentLabel(makeConsolePanel, "pavise.club", 14, 25, remainingAboutPageValue4 - 68, 25, 10f, true).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            RoundPanel currentMakeConsolePanel = MakeConsolePanel(currentRoundPanel, 20, 218, remainingAboutPageValue4 - 40, 60, false);
+            currentMakeConsolePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            StatusDot currentStatusDot = new StatusDot();
+            currentStatusDot.SetBounds(Theme.S(14), Theme.S(18), Theme.S(22), Theme.S(22));
+            currentStatusDot.Bg = Theme.Card;
+            currentStatusDot.FollowAccent = true;
+            currentMakeConsolePanel.Controls.Add(currentStatusDot);
+            CardLabel(currentMakeConsolePanel, Lang.T("v20.about.privacy"), 44, 8, remainingAboutPageValue4 - 116, 19, 7f, true, Theme.Faint).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            CardLabel(currentMakeConsolePanel, Lang.T("v20.about.privacy.value"), 44, 27, remainingAboutPageValue4 - 116, 25, 9.4f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblAboutUpdate = CardLabel(currentRoundPanel, "", 20, aboutPageValue5 - 76, remainingAboutPageValue4 - 40, 18, 7.7f, false, Theme.Faint);
             lblAboutUpdate.Name = "aboutUpdateStatus";
             lblAboutUpdate.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             int ratio = (remainingAboutPageValue4 - 52) / 2;
-            PillButton pillButton = new PillButton(Lang.T("notes.open"), BtnKind.Primary);
-            pillButton.Name = "aboutReleaseNotes";
-            pillButton.Bg = Theme.Card;
-            PillButton pillButton2 = pillButton;
-            pillButton2.SetBounds(Theme.S(20), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
-            pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            pillButton2.Click += delegate
+            PillButton currentPillButton = new PillButton(Lang.T("notes.open"), BtnKind.Primary);
+            currentPillButton.Name = "aboutReleaseNotes";
+            currentPillButton.Bg = Theme.Card;
+            currentPillButton.SetBounds(Theme.S(20), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
+            currentPillButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            currentPillButton.Click += delegate
             {
                 ShowReleaseNotes();
             };
-            roundPanel2.Controls.Add(pillButton2);
-            PillButton pillButton3 = new PillButton(PerformancePolicy.Text("检查与更新", "Check for updates"));
-            pillButton3.Name = "aboutWebsiteDownload";
-            pillButton3.Bg = Theme.Card;
-            PillButton pillButton4 = pillButton3;
-            pillButton4.SetBounds(Theme.S(32 + ratio), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
-            pillButton4.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            pillButton4.Click += delegate
+            currentRoundPanel.Controls.Add(currentPillButton);
+            PillButton resolvedPillButton = new PillButton(PerformancePolicy.Text("检查与更新", "Check for updates"));
+            resolvedPillButton.Name = "aboutWebsiteDownload";
+            resolvedPillButton.Bg = Theme.Card;
+            resolvedPillButton.SetBounds(Theme.S(32 + ratio), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
+            resolvedPillButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            resolvedPillButton.Click += delegate
             {
                 OpenSoftwareUpdate();
             };
-            roundPanel2.Controls.Add(pillButton4);
+            currentRoundPanel.Controls.Add(resolvedPillButton);
             RefreshAboutUpdate();
             pageAbout.SizeChanged += delegate
             {
@@ -330,7 +328,7 @@ namespace PaviseApp
             performancePrivacyPanels.Clear();
             environmentPrivacy = null;
             int automationPageValue = 16;
-            string[] textEntries = new string[5]
+            string[] sectionNames = new string[5]
             {
                 AutoText("游戏性能", "Game"),
                 AutoText("后台管理", "Background"),
@@ -344,7 +342,7 @@ namespace PaviseApp
                 Visible = false,
                 TabStop = false
             };
-            performanceTabs.SetTabs(textEntries, new string[5]
+            performanceTabs.SetTabs(sectionNames, new string[5]
             {
                 AutoText("调度与加载", "Scheduling and loading"),
                 AutoText("管理竞争游戏资源的后台任务", "Manage competing background tasks"),
@@ -353,7 +351,7 @@ namespace PaviseApp
                 AutoText("手动选择实验策略，按条件执行", "Explicit experimental strategies")
             });
             pagePolicy.Controls.Add(performanceTabs);
-            performanceCategories = new PerformanceCategoryBar(textEntries)
+            performanceCategories = new PerformanceCategoryBar(sectionNames)
             {
                 Name = "PerformanceCategories"
             };
@@ -365,13 +363,12 @@ namespace PaviseApp
             performanceTabPanels = new DBPanel[5];
             for (int i = 0; i < performanceTabPanels.Length; i++)
             {
-                PerformanceFeatureGrid performanceFeatureGrid = new PerformanceFeatureGrid();
-                performanceFeatureGrid.Name = "PerformanceCategory" + i;
-                performanceFeatureGrid.Visible = i == 0;
-                PerformanceFeatureGrid performanceFeatureGrid2 = performanceFeatureGrid;
-                performanceFeatureGrid2.SetBounds(Theme.S(20), performanceViewportTop, Theme.S(PageW - 40), Theme.S(PageH - automationPageValue - 8));
-                pagePolicy.Controls.Add(performanceFeatureGrid2);
-                performanceTabPanels[i] = performanceFeatureGrid2;
+                PerformanceFeatureGrid currentPerformanceFeatureGrid = new PerformanceFeatureGrid();
+                currentPerformanceFeatureGrid.Name = "PerformanceCategory" + i;
+                currentPerformanceFeatureGrid.Visible = i == 0;
+                currentPerformanceFeatureGrid.SetBounds(Theme.S(20), performanceViewportTop, Theme.S(PageW - 40), Theme.S(PageH - automationPageValue - 8));
+                pagePolicy.Controls.Add(currentPerformanceFeatureGrid);
+                performanceTabPanels[i] = currentPerformanceFeatureGrid;
             }
             pageTabPanels[pagePolicy] = performanceTabPanels;
             performanceCategories.SelectionChanged = delegate(int index)
@@ -390,10 +387,10 @@ namespace PaviseApp
                     dBPanel2.Visible = n == index;
                 }
                 performanceCategories.Select(index, false);
-                Point value;
-                if (tabScrollPositions.TryGetValue(performanceTabPanels[index], out value))
+                Point tabScrollPosition;
+                if (tabScrollPositions.TryGetValue(performanceTabPanels[index], out tabScrollPosition))
                 {
-                    performanceTabPanels[index].AutoScrollPosition = value;
+                    performanceTabPanels[index].AutoScrollPosition = tabScrollPosition;
                 }
                 ((PerformanceFeatureGrid)performanceTabPanels[index]).Reflow();
                 if (index == 2 || index == 3)
@@ -405,41 +402,40 @@ namespace PaviseApp
             {
                 int sy = 2;
                 Control scroll = performanceTabPanels[j];
-                List<PolicyItem> list = new List<PolicyItem>();
-                foreach (PolicyItem item in PolicyCatalog.All)
+                List<PolicyItem> indices = new List<PolicyItem>();
+                foreach (PolicyItem all in PolicyCatalog.All)
                 {
-                    if (!PerformancePolicy.IsIntent(item.Key) && !PerformancePolicy.IsRetired(item.Key) && !PerformancePolicy.IsGamePriorityOption(item.Key) && item.Key != "PowerPlanOn" && item.Key != "GmEnglishInputV1" && item.Key != "NvLowLat" && item.Key != "AutoTimerTick" && item.Key != "AutoGlobalTimer" && item.Key != "GmCacheWarmV2" && item.Key != "GmStandbyCleanerV2" && ManualPolicyCategory(item) == j)
+                    if (!PerformancePolicy.IsIntent(all.Key) && !PerformancePolicy.IsRetired(all.Key) && !PerformancePolicy.IsGamePriorityOption(all.Key) && all.Key != "PowerPlanOn" && all.Key != "GmEnglishInputV1" && all.Key != "NvLowLat" && all.Key != "AutoTimerTick" && all.Key != "AutoGlobalTimer" && all.Key != "GmCacheWarmV2" && all.Key != "GmStandbyCleanerV2" && ManualPolicyCategory(all) == j)
                     {
-                        list.Add(item);
+                        indices.Add(all);
                     }
                 }
-                PerformanceRestartScope[] performanceRestartScopeItems = new PerformanceRestartScope[3]
+                foreach (PerformanceRestartScope scope in new PerformanceRestartScope[3]
                 {
                     PerformanceRestartScope.None,
                     PerformanceRestartScope.ProcessRestart,
                     PerformanceRestartScope.SystemRestart
-                };
-                foreach (PerformanceRestartScope scope in performanceRestartScopeItems)
+                })
                 {
                     Predicate<PolicyItem> match = (PolicyItem item) => PerformanceRestartFor(item.Key) == scope;
-                    List<PolicyItem> list2 = list.FindAll(match);
+                    List<PolicyItem> policyItems = indices.FindAll(match);
                     bool hasSection = HasAutomationInventory(j, scope) || (j == 0 && scope == PerformanceRestartScope.None) || (j == 2 && HasPerformanceEnvironmentGraphics(scope));
-                    if (list2.Count == 0 && !hasSection)
+                    if (policyItems.Count == 0 && !hasSection)
                     {
                         continue;
                     }
-                    foreach (PolicyItem item2 in list2)
+                    foreach (PolicyItem policyItem in policyItems)
                     {
-                        if (PrimaryPerformancePolicy(item2.Key))
+                        if (PrimaryPerformancePolicy(policyItem.Key))
                         {
-                            AddManualPolicyControl(scroll, ref sy, item2);
+                            AddManualPolicyControl(scroll, ref sy, policyItem);
                         }
                     }
-                    foreach (PolicyItem item3 in list2)
+                    foreach (PolicyItem currentPolicyItem in policyItems)
                     {
-                        if (!PrimaryPerformancePolicy(item3.Key))
+                        if (!PrimaryPerformancePolicy(currentPolicyItem.Key))
                         {
-                            AddManualPolicyControl(scroll, ref sy, item3);
+                            AddManualPolicyControl(scroll, ref sy, currentPolicyItem);
                         }
                     }
                     AddAutomationInventory(scroll, ref sy, j, scope);
@@ -459,8 +455,7 @@ namespace PaviseApp
             backgroundPrivacy.Top = Theme.S(2);
             int labY = 2;
             BuildLaboratoryOptions(performanceTabPanels[4], ref labY);
-            DBPanel[] performanceTabPanelsSnapshot = performanceTabPanels;
-            foreach (DBPanel dBPanel in performanceTabPanelsSnapshot)
+            foreach (DBPanel dBPanel in performanceTabPanels)
             {
                 ConfigurePerformanceCards(dBPanel);
             }
@@ -477,8 +472,8 @@ namespace PaviseApp
             DBPanel[] performanceTabPanelsSnapshot2 = performanceTabPanels;
             for (int m = 0; m < performanceTabPanelsSnapshot2.Length; m++)
             {
-                PerformanceFeatureGrid performanceFeatureGrid3 = (PerformanceFeatureGrid)performanceTabPanelsSnapshot2[m];
-                performanceFeatureGrid3.Complete();
+                PerformanceFeatureGrid candidatePerformanceFeatureGrid = (PerformanceFeatureGrid)performanceTabPanelsSnapshot2[m];
+                candidatePerformanceFeatureGrid.Complete();
             }
             RefreshAutomationPage();
         }
@@ -516,11 +511,11 @@ namespace PaviseApp
             criticalThreadRuntime.Name = "CriticalThreadRuntime";
             criticalThreadRuntime.AutoEllipsis = false;
             Label label = criticalThreadTitle;
-            Label label2 = criticalThreadHelp;
-            Label label3 = criticalThreadCompanion;
+            Label currentCriticalThreadHelp = criticalThreadHelp;
+            Label currentCriticalThreadCompanion = criticalThreadCompanion;
             bool visibleValue = (criticalThreadRuntime.Visible = false);
-            bool visibleValue2 = (label3.Visible = visibleValue);
-            bool visible = (label2.Visible = visibleValue2);
+            bool visibleValue2 = (currentCriticalThreadCompanion.Visible = visibleValue);
+            bool visible = (currentCriticalThreadHelp.Visible = visibleValue2);
             label.Visible = visible;
             criticalThreadInfo = new PerformanceInfoButton
             {
@@ -591,12 +586,11 @@ namespace PaviseApp
             logStream.Dock = DockStyle.Fill;
             Native.Dark(logStream);
             logWrap.Controls.Add(logStream);
-            PillButton pillButton = new PillButton(Lang.T("v20.log.refresh"));
-            pillButton.Name = "refreshSessionLog";
-            PillButton pillButton2 = pillButton;
-            pillButton2.SetBounds(Theme.S(30), Theme.S(lowerBound), Theme.S(96), Theme.S(36));
-            pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            pillButton2.Click += delegate
+            PillButton currentPillButton = new PillButton(Lang.T("v20.log.refresh"));
+            currentPillButton.Name = "refreshSessionLog";
+            currentPillButton.SetBounds(Theme.S(30), Theme.S(lowerBound), Theme.S(96), Theme.S(36));
+            currentPillButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            currentPillButton.Click += delegate
             {
                 RefreshLog(true);
             };
@@ -607,11 +601,11 @@ namespace PaviseApp
             exportLog.SetBounds(Theme.S(136), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
             exportLog.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             exportLog.Click += ExportLogFile;
-            PillButton pillButton3 = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
-            pillButton3.SetBounds(Theme.S(258), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
-            pillButton3.Name = "clearSessionLog";
-            pillButton3.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            pillButton3.Click += delegate
+            PillButton candidatePillButton = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
+            candidatePillButton.SetBounds(Theme.S(258), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
+            candidatePillButton.Name = "clearSessionLog";
+            candidatePillButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            candidatePillButton.Click += delegate
             {
                 if (PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("rep.clear.ask"), DlgKind.Warn))
                 {
@@ -624,16 +618,15 @@ namespace PaviseApp
             swLogWrites = MakeSwitch(Settings.Load("LogWritesEnabled", true), OnLogWritesToggle);
             swLogWrites.Location = new Point(Theme.S(30 + contentWOffset) - swLogWrites.Width, Theme.S(lowerBound + 6));
             swLogWrites.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            Label label = new Label();
-            label.Text = Lang.T("set.logwrites");
-            label.ForeColor = Theme.Dim;
-            label.BackColor = Theme.Bg;
-            label.Font = Theme.UI(8.6f, false);
-            label.TextAlign = ContentAlignment.MiddleRight;
-            Label label2 = label;
-            label2.SetBounds(Theme.S(30 + contentWOffset - 162) - swLogWrites.Width, Theme.S(lowerBound), Theme.S(152), Theme.S(36));
-            label2.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton2, exportLog, pillButton3, label2, swLogWrites });
+            Label currentLabel = new Label();
+            currentLabel.Text = Lang.T("set.logwrites");
+            currentLabel.ForeColor = Theme.Dim;
+            currentLabel.BackColor = Theme.Bg;
+            currentLabel.Font = Theme.UI(8.6f, false);
+            currentLabel.TextAlign = ContentAlignment.MiddleRight;
+            currentLabel.SetBounds(Theme.S(30 + contentWOffset - 162) - swLogWrites.Width, Theme.S(lowerBound), Theme.S(152), Theme.S(36));
+            currentLabel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            pageLog.Controls.AddRange(new Control[6] { logWrap, currentPillButton, exportLog, candidatePillButton, currentLabel, swLogWrites });
             RefreshLog(true);
         }
         private void BuildManualMemoryCleaner(OverviewUsageItem memory)
@@ -672,20 +665,19 @@ namespace PaviseApp
         }
         private void BuildAppearanceSection(Control scroll, ref int sy)
         {
-            SettingsAppearanceEditorPanel settingsAppearanceEditorPanel = new SettingsAppearanceEditorPanel();
-            settingsAppearanceEditorPanel.Name = "SettingsAppearanceEditor";
-            settingsAppearanceEditorPanel.BackColor = Theme.Card;
-            settingsAppearanceEditorPanel.AccessibleRole = AccessibleRole.Grouping;
-            settingsAppearanceEditorPanel.AccessibleName = Lang.T("sec.appearance");
-            SettingsAppearanceEditorPanel settingsAppearanceEditorPanel2 = settingsAppearanceEditorPanel;
-            settingsAppearanceEditorPanel2.SetBounds(0, Theme.S(sy), Theme.S(ScrollContentW), Theme.S(200));
-            scroll.Controls.Add(settingsAppearanceEditorPanel2);
+            SettingsAppearanceEditorPanel currentSettingsAppearanceEditorPanel = new SettingsAppearanceEditorPanel();
+            currentSettingsAppearanceEditorPanel.Name = "SettingsAppearanceEditor";
+            currentSettingsAppearanceEditorPanel.BackColor = Theme.Card;
+            currentSettingsAppearanceEditorPanel.AccessibleRole = AccessibleRole.Grouping;
+            currentSettingsAppearanceEditorPanel.AccessibleName = Lang.T("sec.appearance");
+            currentSettingsAppearanceEditorPanel.SetBounds(0, Theme.S(sy), Theme.S(ScrollContentW), Theme.S(200));
+            scroll.Controls.Add(currentSettingsAppearanceEditorPanel);
             backdropPreview = new BackdropPreview();
             backdropPreview.Name = "SettingsBackdropPreview";
             backdropPreview.EmptyText = Lang.T("backdrop.preview.empty");
-            settingsAppearanceEditorPanel2.Controls.Add(backdropPreview);
-            CardLabel(settingsAppearanceEditorPanel2, Lang.T("backdrop.title"), 0, 0, 280, 24, 10.5f, true, Theme.Fg).Name = "SettingsBackdropTitle";
-            lblBackdropState = CardLabel(settingsAppearanceEditorPanel2, "", 0, 0, 280, 40, 8.5f, false, Theme.Dim);
+            currentSettingsAppearanceEditorPanel.Controls.Add(backdropPreview);
+            CardLabel(currentSettingsAppearanceEditorPanel, Lang.T("backdrop.title"), 0, 0, 280, 24, 10.5f, true, Theme.Fg).Name = "SettingsBackdropTitle";
+            lblBackdropState = CardLabel(currentSettingsAppearanceEditorPanel, "", 0, 0, 280, 40, 8.5f, false, Theme.Dim);
             lblBackdropState.Name = "SettingsBackdropState";
             btnBackdrop = new PillButton(Lang.T(Backdrop.Active ? "btn.backdrop.change" : "btn.backdrop.set"));
             btnBackdrop.Name = "SettingsBackdropChoose";
@@ -694,7 +686,7 @@ namespace PaviseApp
             {
                 OnBackdropPick();
             };
-            settingsAppearanceEditorPanel2.Controls.Add(btnBackdrop);
+            currentSettingsAppearanceEditorPanel.Controls.Add(btnBackdrop);
             btnBackdropReset = new PillButton(Lang.T("btn.backdrop.reset"));
             btnBackdropReset.Name = "SettingsBackdropReset";
             btnBackdropReset.Size = new Size(Theme.S(104), Theme.S(30));
@@ -702,8 +694,8 @@ namespace PaviseApp
             {
                 OnBackdropReset();
             };
-            settingsAppearanceEditorPanel2.Controls.Add(btnBackdropReset);
-            CardLabel(settingsAppearanceEditorPanel2, Lang.T("backdrop.dim"), 0, 0, 160, 24, 8.6f, true, Theme.Fg).Name = "SettingsBackdropDimTitle";
+            currentSettingsAppearanceEditorPanel.Controls.Add(btnBackdropReset);
+            CardLabel(currentSettingsAppearanceEditorPanel, Lang.T("backdrop.dim"), 0, 0, 160, 24, 8.6f, true, Theme.Fg).Name = "SettingsBackdropDimTitle";
             pickBackdropDim = new TierPicker
             {
                 Name = "SettingsBackdropDimPicker"
@@ -718,14 +710,14 @@ namespace PaviseApp
             pickBackdropDim.Index = (Backdrop.Active ? (Backdrop.Dim + 1) : 0);
             pickBackdropDim.Size = new Size(Theme.S(276), Theme.S(30));
             pickBackdropDim.IndexChanged = OnBackdropDim;
-            settingsAppearanceEditorPanel2.Controls.Add(pickBackdropDim);
+            currentSettingsAppearanceEditorPanel.Controls.Add(pickBackdropDim);
             Panel panel = new Panel();
             panel.Name = "SettingsAppearanceSeparator";
             panel.BackColor = Theme.Stroke;
-            settingsAppearanceEditorPanel2.Controls.Add(panel);
-            CardLabel(settingsAppearanceEditorPanel2, Lang.T("sec.theme"), 0, 0, 280, 24, 10.5f, true, Theme.Fg).Name = "SettingsAccentTitle";
-            CardLabel(settingsAppearanceEditorPanel2, Lang.T("theme.hint"), 0, 0, 280, 18, 8f, false, Theme.Dim).Name = "SettingsAccentHint";
-            BuildThemeColorRows(settingsAppearanceEditorPanel2, 0);
+            currentSettingsAppearanceEditorPanel.Controls.Add(panel);
+            CardLabel(currentSettingsAppearanceEditorPanel, Lang.T("sec.theme"), 0, 0, 280, 24, 10.5f, true, Theme.Fg).Name = "SettingsAccentTitle";
+            CardLabel(currentSettingsAppearanceEditorPanel, Lang.T("theme.hint"), 0, 0, 280, 18, 8f, false, Theme.Dim).Name = "SettingsAccentHint";
+            BuildThemeColorRows(currentSettingsAppearanceEditorPanel, 0);
             SyncBackdropAppearance();
             BuildMotionAppearance(scroll);
             sy += 208;
@@ -734,8 +726,7 @@ namespace PaviseApp
         {
             PerformancePreset[] visibleOrderResult = PresetValue.VisibleOrder();
             int processedCount = 0;
-            PerformancePreset[] performancePresetItems = visibleOrderResult;
-            foreach (PerformancePreset performancePreset in performancePresetItems)
+            foreach (PerformancePreset performancePreset in visibleOrderResult)
             {
                 PerformancePreset capMode = performancePreset;
                 modeSwatches[(int)performancePreset].Clear();
@@ -764,19 +755,18 @@ namespace PaviseApp
                 modeSwatches[(int)performancePreset].Add(colorSwatch);
                 themeColorRowsValue += 32;
                 Color a = Theme.ModeColor(performancePreset);
-                Color[] accentPalette = AccentPalette;
-                foreach (Color color in accentPalette)
+                foreach (Color color in AccentPalette)
                 {
                     Color cc = color;
-                    ColorSwatch colorSwatch2 = new ColorSwatch(cc);
-                    colorSwatch2.Selected = hasModeColorOverride && SameRgb(a, cc);
-                    colorSwatch2.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
-                    colorSwatch2.Picked = delegate
+                    ColorSwatch currentColorSwatch = new ColorSwatch(cc);
+                    currentColorSwatch.Selected = hasModeColorOverride && SameRgb(a, cc);
+                    currentColorSwatch.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
+                    currentColorSwatch.Picked = delegate
                     {
                         OnModeColorPick(capMode, cc);
                     };
-                    parent.Controls.Add(colorSwatch2);
-                    modeSwatches[(int)performancePreset].Add(colorSwatch2);
+                    parent.Controls.Add(currentColorSwatch);
+                    modeSwatches[(int)performancePreset].Add(currentColorSwatch);
                     themeColorRowsValue += 32;
                 }
                 processedCount++;
@@ -834,12 +824,11 @@ namespace PaviseApp
             {
                 Glyphs.Draw(e.Graphics, "shield", new Rectangle(0, Theme.S(4), Theme.S(16), Theme.S(16)), lblSub.ForeColor);
             };
-            WorkspaceBrand workspaceBrand = new WorkspaceBrand();
-            workspaceBrand.Name = "WorkspaceBrand";
-            WorkspaceBrand workspaceBrand2 = workspaceBrand;
-            workspaceBrand2.SetState(gameMode.ActivePreset, gameMode.Enabled);
-            workspaceBrand2.SetBounds(Theme.S(24), Theme.S(4), Theme.S(270), Theme.S(52));
-            workspaceBrand2.MouseDown += DragMove;
+            WorkspaceBrand currentWorkspaceBrand = new WorkspaceBrand();
+            currentWorkspaceBrand.Name = "WorkspaceBrand";
+            currentWorkspaceBrand.SetState(gameMode.ActivePreset, gameMode.Enabled);
+            currentWorkspaceBrand.SetBounds(Theme.S(24), Theme.S(4), Theme.S(270), Theme.S(52));
+            currentWorkspaceBrand.MouseDown += DragMove;
             modeButton = new ModeButton();
             modeButton.Compact = true;
             modeButton.Name = "StrategyButton";
@@ -863,15 +852,15 @@ namespace PaviseApp
             {
                 base.WindowState = FormWindowState.Minimized;
             };
-            CaptionButton captionButton4 = new CaptionButton(true);
-            captionButton4.Name = "WindowClose";
-            captionButton4.AccessibleName = AutoText("关闭窗口", "Close window");
-            captionButton4.SetBounds(scaledDimension - Theme.S(48), 0, Theme.S(44), Theme.S(64));
-            captionButton4.Click += delegate
+            CaptionButton currentCaptionButton = new CaptionButton(true);
+            currentCaptionButton.Name = "WindowClose";
+            currentCaptionButton.AccessibleName = AutoText("关闭窗口", "Close window");
+            currentCaptionButton.SetBounds(scaledDimension - Theme.S(48), 0, Theme.S(44), Theme.S(64));
+            currentCaptionButton.Click += delegate
             {
                 BeginOutro();
             };
-            topBar.Controls.AddRange(new Control[8] { workspaceBrand2, lblSub, headerWebsite, btnDonate, themeSwitch, modeButton, captionButton, captionButton4 });
+            topBar.Controls.AddRange(new Control[8] { currentWorkspaceBrand, lblSub, headerWebsite, btnDonate, themeSwitch, modeButton, captionButton, currentCaptionButton });
             pages = new DBPanel[(int)PageId.Count];
             pages[0] = (pageOverview = MakePage());
             pages[1] = (pageLibrary = MakePage());
@@ -901,10 +890,9 @@ namespace PaviseApp
             root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
             root.BackColor = Theme.Bg;
             root.Controls.Add(topBar);
-            DBPanel[] pagesSnapshot = pages;
-            foreach (DBPanel value in pagesSnapshot)
+            foreach (DBPanel currentPagesSnapshot in pages)
             {
-                root.Controls.Add(value);
+                root.Controls.Add(currentPagesSnapshot);
             }
             root.Controls.Add(nav);
             coreBackBar = new AdvancedBackBar(Lang.T("cfg.back"), "RETURN // LIBRARY");
@@ -1003,7 +991,7 @@ namespace PaviseApp
         private void BuildNavigation()
         {
             navigationScale = Dpi.Scale;
-            string[] textEntries = new string[(int)PageId.Count]
+            string[] navigationLabels = new string[(int)PageId.Count]
             {
                 Lang.T("nav.overview"),
                 Lang.T("nav.library"),
@@ -1024,7 +1012,7 @@ namespace PaviseApp
                 "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info",
                 "white", "chip", "chip"
             };
-            string[] cloneResult = (string[])textEntries.Clone();
+            string[] cloneResult = (string[])navigationLabels.Clone();
             cloneResult[1] = PerformancePolicy.Text("游戏库", "Library");
             cloneResult[2] = PerformancePolicy.Text("性能", "Performance");
             cloneResult[10] = Lang.T("nav.white");
@@ -1036,7 +1024,7 @@ namespace PaviseApp
             {
                 nav.Select(page);
             };
-            tuningNav = new NavRail(textEntries, icons, new int[4] { 2, 4, 5, 11 }, null, null, 0);
+            tuningNav = new NavRail(navigationLabels, icons, new int[4] { 2, 4, 5, 11 }, null, null, 0);
             tuningNav.Name = "TuningNavigation";
             tuningNav.ShowBranding = false;
             tuningNav.SectionTitle = Lang.T("v20.advanced.title");
@@ -1047,8 +1035,7 @@ namespace PaviseApp
                     nav.Select(page);
                 }
             };
-            NavRail[] navRailItems = new NavRail[2] { nav, tuningNav };
-            foreach (NavRail navRail in navRailItems)
+            foreach (NavRail navRail in new NavRail[2] { nav, tuningNav })
             {
                 AssertNavMatchesPageIds(navRail);
                 navRail.SetBounds(Theme.S((WinW - 920) / 2), Theme.S(WinH - 88), Theme.S(920), Theme.S(72));

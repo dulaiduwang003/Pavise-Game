@@ -30,58 +30,58 @@ namespace PaviseApp
         internal List<CoreThreadCandidate> Observe(ThreadTimes before, ThreadTimes after, int keep, double minimumShare)
         {
             keep = Math.Max(1, keep);
-            List<CoreThreadCandidate> list = new List<CoreThreadCandidate>();
+            List<CoreThreadCandidate> stableCandidates = new List<CoreThreadCandidate>();
             if (!ValidShape(before) || !ValidShape(after) || !AutoCores.WindowUsable(before, after))
             {
                 tracked.Clear();
-                return list;
+                return stableCandidates;
             }
-            Dictionary<long, int> dictionary = new Dictionary<long, int>();
+            Dictionary<long, int> beforeIndexByTid = new Dictionary<long, int>();
             for (int i = 0; i < before.Ids.Length; i++)
             {
-                dictionary[before.Ids[i]] = i;
+                beforeIndexByTid[before.Ids[i]] = i;
             }
-            Dictionary<long, CoreThreadCandidate> dictionary2 = new Dictionary<long, CoreThreadCandidate>();
+            Dictionary<long, CoreThreadCandidate> currentCandidatesByTid = new Dictionary<long, CoreThreadCandidate>();
             for (int j = 0; j < after.Ids.Length; j++)
             {
-                long numericValue = after.Ids[j];
-                int value;
-                if (numericValue <= 0 || numericValue > int.MaxValue || after.Created[j] <= 0 || !dictionary.TryGetValue(numericValue, out value) || before.Created[value] != after.Created[j])
+                long threadId = after.Ids[j];
+                int beforeIndex;
+                if (threadId <= 0 || threadId > int.MaxValue || after.Created[j] <= 0 || !beforeIndexByTid.TryGetValue(threadId, out beforeIndex) || before.Created[beforeIndex] != after.Created[j])
                 {
                     continue;
                 }
-                double lastValue = (double)(after.Cpu[j] - before.Cpu[value]) / (double)(after.Ticks - before.Ticks);
-                if (!(lastValue < minimumShare) && !(lastValue > 1.1))
+                double cpuShare = (double)(after.Cpu[j] - before.Cpu[beforeIndex]) / (double)(after.Ticks - before.Ticks);
+                if (!(cpuShare < minimumShare) && !(cpuShare > 1.1))
                 {
-                    CoreThreadCandidate value2;
-                    if (!tracked.TryGetValue(numericValue, out value2) || value2.Creation != after.Created[j] || Math.Abs(value2.Last - lastValue) > 0.25)
+                    CoreThreadCandidate trackedCandidate;
+                    if (!tracked.TryGetValue(threadId, out trackedCandidate) || trackedCandidate.Creation != after.Created[j] || Math.Abs(trackedCandidate.Last - cpuShare) > 0.25)
                     {
                         CoreThreadCandidate coreThreadCandidate = new CoreThreadCandidate();
-                        coreThreadCandidate.Tid = (int)numericValue;
+                        coreThreadCandidate.Tid = (int)threadId;
                         coreThreadCandidate.Creation = after.Created[j];
-                        value2 = coreThreadCandidate;
+                        trackedCandidate = coreThreadCandidate;
                     }
-                    value2.Mean = (value2.Mean * (double)Math.Min(7, value2.Windows) + lastValue) / (double)(Math.Min(7, value2.Windows) + 1);
-                    value2.Windows++;
-                    value2.Last = lastValue;
-                    dictionary2[numericValue] = value2;
-                    if (value2.Windows >= 3)
+                    trackedCandidate.Mean = (trackedCandidate.Mean * (double)Math.Min(7, trackedCandidate.Windows) + cpuShare) / (double)(Math.Min(7, trackedCandidate.Windows) + 1);
+                    trackedCandidate.Windows++;
+                    trackedCandidate.Last = cpuShare;
+                    currentCandidatesByTid[threadId] = trackedCandidate;
+                    if (trackedCandidate.Windows >= 3)
                     {
-                        list.Add(value2);
+                        stableCandidates.Add(trackedCandidate);
                     }
                 }
             }
             tracked.Clear();
-            foreach (KeyValuePair<long, CoreThreadCandidate> item in dictionary2)
+            foreach (KeyValuePair<long, CoreThreadCandidate> candidateEntry in currentCandidatesByTid)
             {
-                tracked[item.Key] = item.Value;
+                tracked[candidateEntry.Key] = candidateEntry.Value;
             }
-            list.Sort((CoreThreadCandidate a, CoreThreadCandidate b) => b.Mean.CompareTo(a.Mean));
-            if (list.Count > keep)
+            stableCandidates.Sort((CoreThreadCandidate a, CoreThreadCandidate b) => b.Mean.CompareTo(a.Mean));
+            if (stableCandidates.Count > keep)
             {
-                list.RemoveRange(keep, list.Count - keep);
+                stableCandidates.RemoveRange(keep, stableCandidates.Count - keep);
             }
-            return list;
+            return stableCandidates;
         }
     }
 }

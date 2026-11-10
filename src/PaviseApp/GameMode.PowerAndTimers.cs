@@ -324,10 +324,6 @@ namespace PaviseApp
                 }
             }
         }
-        private void OnPowerPlanApplied(bool planOk)
-        {
-            OnPowerPlanAppliedWithReason(planOk, PerformancePolicy.Text("电源计划执行返回失败", "The power-plan action returned failure"), Volatile.Read(ref powerSessionGen));
-        }
         private void OnPowerPlanAppliedWithReason(bool planOk, string reason, int generation)
         {
             if (planOk)

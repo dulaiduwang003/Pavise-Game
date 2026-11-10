@@ -115,9 +115,9 @@ namespace PaviseApp
             {
                 if (handle != IntPtr.Zero)
                 {
-                    IntPtr intPtr = handle;
+                    IntPtr handleHandle = handle;
                     handle = IntPtr.Zero;
-                    if (!CloseHandle(intPtr))
+                    if (!CloseHandle(handleHandle))
                     {
                         throw new IOException("historical query handle closure is unconfirmed");
                     }
@@ -166,26 +166,26 @@ namespace PaviseApp
                 }
                 historicalRegistration.RequireOriginal(false);
                 HistoricalProcessPin historicalProcessPin = null;
-                HistoricalProcessPin historicalProcessPin2 = null;
+                HistoricalProcessPin currentHistoricalProcessPin = null;
                 try
                 {
                     historicalProcessPin = new HistoricalProcessPin(historicalRegistration.Scope.Target.ProcessId);
                     if (!historicalProcessPin.Fact.Opened && historicalProcessPin.Fact.Error == 87)
                     {
-                        historicalProcessPin2 = new HistoricalProcessPin(historicalRegistration.Scope.Target.ProcessId);
+                        currentHistoricalProcessPin = new HistoricalProcessPin(historicalRegistration.Scope.Target.ProcessId);
                     }
-                    HardThreadGoneReason hardThreadGoneReason = HardThreadHistoricalPolicy.Gone(historicalRegistration.Scope.Target, historicalProcessPin.Fact, (historicalProcessPin2 == null) ? null : historicalProcessPin2.Fact);
+                    HardThreadGoneReason hardThreadGoneReason = HardThreadHistoricalPolicy.Gone(historicalRegistration.Scope.Target, historicalProcessPin.Fact, (currentHistoricalProcessPin == null) ? null : currentHistoricalProcessPin.Fact);
                     if (hardThreadGoneReason == HardThreadGoneReason.None)
                     {
                         historicalProcessPin.Dispose();
-                        if (historicalProcessPin2 != null)
+                        if (currentHistoricalProcessPin != null)
                         {
-                            historicalProcessPin2.Dispose();
+                            currentHistoricalProcessPin.Dispose();
                         }
                         return null;
                     }
                     historicalRegistration.RequireOriginal();
-                    return new NativeGoneProof(historicalRegistration, historicalProcessPin, historicalProcessPin2, hardThreadGoneReason);
+                    return new NativeGoneProof(historicalRegistration, historicalProcessPin, currentHistoricalProcessPin, hardThreadGoneReason);
                 }
                 catch
                 {
@@ -198,9 +198,9 @@ namespace PaviseApp
                     }
                     finally
                     {
-                        if (historicalProcessPin2 != null)
+                        if (currentHistoricalProcessPin != null)
                         {
-                            historicalProcessPin2.Dispose();
+                            currentHistoricalProcessPin.Dispose();
                         }
                     }
                     throw;
@@ -314,7 +314,7 @@ namespace PaviseApp
             {
                 throw new ArgumentNullException("original recovery operation");
             }
-            int retainRecoveryUntilSettledValue = 250;
+            int waitIntervalMs = 250;
             for (int attempt = 1; attempt <= 3; attempt++)
             {
                 bool restored = false;
@@ -332,8 +332,8 @@ namespace PaviseApp
                 Logger.Warn("关键线程守护恢复：尝试=" + attempt + "/3；保留原恢复权限");
                 if (attempt < 3)
                 {
-                    try { wait(retainRecoveryUntilSettledValue); } catch { Thread.Sleep(retainRecoveryUntilSettledValue); }
-                    retainRecoveryUntilSettledValue *= 2;
+                    try { wait(waitIntervalMs); } catch { Thread.Sleep(waitIntervalMs); }
+                    waitIntervalMs *= 2;
                 }
             }
             return false;
@@ -417,16 +417,14 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] fileSystemEntries = Directory.GetFileSystemEntries(directory);
-            foreach (string path in fileSystemEntries)
+            foreach (string path in Directory.GetFileSystemEntries(directory))
             {
                 if (Array.IndexOf(SettledLeftoverNames, Path.GetFileName(path)) < 0)
                 {
                     return false;
                 }
             }
-            string[] settledLeftoverNames = SettledLeftoverNames;
-            foreach (string path2 in settledLeftoverNames)
+            foreach (string path2 in SettledLeftoverNames)
             {
                 string path3 = Path.Combine(directory, path2);
                 if (File.Exists(path3) && !DeleteSettledEntry(path3, false))
@@ -439,26 +437,25 @@ namespace PaviseApp
 
         private static bool DeleteSettledEntry(string path, bool directory)
         {
-            IntPtr intPtr = CreateFile(path, 65664u, 7u, IntPtr.Zero, 3u, directory ? 35651584u : 2097152u, IntPtr.Zero);
-            if (intPtr == IntPtr.Zero || intPtr == new IntPtr(-1))
+            IntPtr fileHandle = CreateFile(path, 65664u, 7u, IntPtr.Zero, 3u, directory ? 35651584u : 2097152u, IntPtr.Zero);
+            if (fileHandle == IntPtr.Zero || fileHandle == new IntPtr(-1))
             {
                 return false;
             }
             try
             {
                 FileIdentity info;
-                if (!GetFileInformationByHandle(intPtr, out info) || (info.Attributes & 0x400u) != 0 || (info.Attributes & 0x10) != 0 != directory)
+                if (!GetFileInformationByHandle(fileHandle, out info) || (info.Attributes & 0x400u) != 0 || (info.Attributes & 0x10) != 0 != directory)
                 {
                     return false;
                 }
-                DeleteDisposition deleteDisposition = default(DeleteDisposition);
-                deleteDisposition.Delete = 1;
-                DeleteDisposition information = deleteDisposition;
-                return SetFileInformationByHandle(intPtr, 4, ref information, 1u);
+                DeleteDisposition information = default(DeleteDisposition);
+                information.Delete = 1;
+                return SetFileInformationByHandle(fileHandle, 4, ref information, 1u);
             }
             finally
             {
-                CloseHandle(intPtr);
+                CloseHandle(fileHandle);
             }
         }
 
@@ -469,11 +466,11 @@ namespace PaviseApp
                 throw new InvalidDataException("bounded original historical scope required");
             }
             byte[] rawBytes = new byte[(int)source.Length];
-            int scopeBytesValue;
-            for (int i = 0; i < rawBytes.Length; i += scopeBytesValue)
+            int bytesRead;
+            for (int i = 0; i < rawBytes.Length; i += bytesRead)
             {
-                scopeBytesValue = source.Read(rawBytes, i, rawBytes.Length - i);
-                if (scopeBytesValue <= 0)
+                bytesRead = source.Read(rawBytes, i, rawBytes.Length - i);
+                if (bytesRead <= 0)
                 {
                     throw new EndOfStreamException();
                 }
@@ -517,8 +514,7 @@ namespace PaviseApp
                     }
                     HistoricalAttemptEnded(enumerationKey, true);
                     bool recoveryPending = false;
-                    HardThreadJournal[] hardThreadJournalItems = historicalJournalsResult;
-                    foreach (HardThreadJournal hardThreadJournal in hardThreadJournalItems)
+                    foreach (HardThreadJournal hardThreadJournal in historicalJournalsResult)
                     {
                         bool hasPendingReceipt = false;
                         foreach (HardThreadReceipt row in hardThreadJournal.Rows)
@@ -545,14 +541,14 @@ namespace PaviseApp
                         if (!BeginHistoricalAttempt(retryKey)) { recoveryPending = true; continue; }
                         try
                         {
-                            using (HardThreadFileStore hardThreadFileStore2 = new HardThreadFileStore(canonicalResult))
+                            using (HardThreadFileStore currentHardThreadFileStore = new HardThreadFileStore(canonicalResult))
                             {
                                 using (HistoricalRegistration historicalRegistration = new HistoricalRegistration())
                                 {
-                                    historicalRegistration.Store = hardThreadFileStore2;
+                                    historicalRegistration.Store = currentHardThreadFileStore;
                                     historicalRegistration.Root = root;
                                     historicalRegistration.Budget = hardThreadHistoricalBudget;
-                                    historicalRegistration.Journal = hardThreadFileStore2.ReadHistorical(hardThreadJournal.Target);
+                                    historicalRegistration.Journal = currentHardThreadFileStore.ReadHistorical(hardThreadJournal.Target);
                                     if (string.IsNullOrEmpty(historicalRegistration.Journal.SourceNonce) || string.IsNullOrEmpty(historicalRegistration.Journal.SourceScopeHash))
                                     {
                                         throw new InvalidDataException("legacy historical source has no original host binding");
@@ -573,7 +569,7 @@ namespace PaviseApp
                                         throw new InvalidDataException("original guardian image reparse source refused");
                                     }
                                     historicalRegistration.Image = new FileStream(historicalRegistration.Scope.Child.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
-                                    historicalRegistration.JournalHash = hardThreadFileStore2.HistoricalHash(hardThreadJournal.Target);
+                                    historicalRegistration.JournalHash = currentHardThreadFileStore.HistoricalHash(hardThreadJournal.Target);
                                     historicalRegistration.RequireOriginal(false);
                                     NativeGoneProof nativeGoneProof;
                                     lock (historicalGate)
@@ -596,7 +592,7 @@ namespace PaviseApp
                                     }
                                     using (nativeGoneProof)
                                     {
-                                        hardThreadFileStore2.CommitHistoricalGone(nativeGoneProof);
+                                        currentHardThreadFileStore.CommitHistoricalGone(nativeGoneProof);
                                         completed = true;
                                     }
                                 }

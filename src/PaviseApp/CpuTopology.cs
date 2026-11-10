@@ -144,15 +144,15 @@ namespace PaviseApp
         {
             try
             {
-                uint numericValue = 0u;
+                uint largestCacheSize = 0u;
                 foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
                 {
-                    if (cacheDomain.Key > numericValue)
+                    if (cacheDomain.Key > largestCacheSize)
                     {
-                        numericValue = cacheDomain.Key;
+                        largestCacheSize = cacheDomain.Key;
                     }
                 }
-                return (int)(numericValue / 1048576);
+                return (int)(largestCacheSize / 1048576);
             }
             catch
             {
@@ -162,16 +162,16 @@ namespace PaviseApp
 
         public static ulong[] L3Masks()
         {
-            List<ulong> list = new List<ulong>();
+            List<ulong> coreMasks = new List<ulong>();
             foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
             {
                 ulong valueMask = cacheDomain.Value & AllMask;
                 if (valueMask != 0)
                 {
-                    list.Add(valueMask);
+                    coreMasks.Add(valueMask);
                 }
             }
-            return list.ToArray();
+            return coreMasks.ToArray();
         }
 
         public static uint[] BackgroundYieldCpuSetIds()
@@ -211,20 +211,20 @@ namespace PaviseApp
 
         private static ulong ComputeFavoredMask(List<CpuSetRec> rows)
         {
-            List<int> list = new List<int>(rows.Count);
-            List<byte> list2 = new List<byte>(rows.Count);
-            List<byte> list3 = new List<byte>(rows.Count);
+            List<int> logicals = new List<int>(rows.Count);
+            List<byte> efficiencies = new List<byte>(rows.Count);
+            List<byte> schedulings = new List<byte>(rows.Count);
             foreach (CpuSetRec row in rows)
             {
                 if (row.Group == 0 && row.Logical < 64)
                 {
-                    list.Add(row.Logical);
-                    list2.Add(row.Efficiency);
-                    list3.Add(row.Scheduling);
+                    logicals.Add(row.Logical);
+                    efficiencies.Add(row.Efficiency);
+                    schedulings.Add(row.Scheduling);
                 }
             }
-            FavoredDetail = DescribeCoreClasses(list.ToArray(), list2.ToArray(), list3.ToArray());
-            return FavoredMaskOf(list.ToArray(), list2.ToArray(), list3.ToArray());
+            FavoredDetail = DescribeCoreClasses(logicals.ToArray(), efficiencies.ToArray(), schedulings.ToArray());
+            return FavoredMaskOf(logicals.ToArray(), efficiencies.ToArray(), schedulings.ToArray());
         }
 
         internal static string DescribeCoreClasses(int[] logical, byte[] efficiency, byte[] scheduling)
@@ -239,19 +239,19 @@ namespace PaviseApp
                 integerValues[i] = i;
             }
             Array.Sort(integerValues, (int a, int b) => logical[a].CompareTo(logical[b]));
-            List<string> list = new List<string>();
-            int describeCoreClassesValue = 0;
+            List<string> classDescriptions = new List<string>();
+            int rangeStartIndex = 0;
             for (int j = 1; j <= integerValues.Length; j++)
             {
-                if (j == integerValues.Length || efficiency[integerValues[j]] != efficiency[integerValues[describeCoreClassesValue]] || scheduling[integerValues[j]] != scheduling[integerValues[describeCoreClassesValue]] || logical[integerValues[j]] != logical[integerValues[j - 1]] + 1)
+                if (j == integerValues.Length || efficiency[integerValues[j]] != efficiency[integerValues[rangeStartIndex]] || scheduling[integerValues[j]] != scheduling[integerValues[rangeStartIndex]] || logical[integerValues[j]] != logical[integerValues[j - 1]] + 1)
                 {
-                    int describeCoreClassesValue2 = logical[integerValues[describeCoreClassesValue]];
-                    int describeCoreClassesValue3 = logical[integerValues[j - 1]];
-                    list.Add(((describeCoreClassesValue2 == describeCoreClassesValue3) ? describeCoreClassesValue2.ToString() : (describeCoreClassesValue2 + "-" + describeCoreClassesValue3)) + ":" + efficiency[integerValues[describeCoreClassesValue]] + "/" + scheduling[integerValues[describeCoreClassesValue]]);
-                    describeCoreClassesValue = j;
+                    int firstLogicalCpu = logical[integerValues[rangeStartIndex]];
+                    int lastLogicalCpu = logical[integerValues[j - 1]];
+                    classDescriptions.Add(((firstLogicalCpu == lastLogicalCpu) ? firstLogicalCpu.ToString() : (firstLogicalCpu + "-" + lastLogicalCpu)) + ":" + efficiency[integerValues[rangeStartIndex]] + "/" + scheduling[integerValues[rangeStartIndex]]);
+                    rangeStartIndex = j;
                 }
             }
-            return string.Join(" ", list.ToArray());
+            return string.Join(" ", classDescriptions.ToArray());
         }
 
         internal static ulong FavoredMaskOf(int[] logical, byte[] efficiency, byte[] scheduling)
@@ -316,104 +316,104 @@ namespace PaviseApp
                 return;
             }
             int returnedSnapshot = returned;
-            IntPtr intPtr = Marshal.AllocHGlobal(returnedSnapshot);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(returnedSnapshot);
             try
             {
-                if (!GetSystemCpuSetInformation(intPtr, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
+                if (!GetSystemCpuSetInformation(nativeBuffer, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
                 {
                     return;
                 }
                 byte[] cpuSetBytes = new byte[returned];
-                Marshal.Copy(intPtr, cpuSetBytes, 0, returned);
+                Marshal.Copy(nativeBuffer, cpuSetBytes, 0, returned);
                 CpuTopologyEvidence evidence = CpuTopologyEvidence.FromCpuSets(cpuSetBytes);
                 MultiGroup |= evidence.MultiGroup;
                 if (!evidence.Valid) { CoreTypeDetail = evidence.Reason; return; }
-                List<CpuSetRec> list = new List<CpuSetRec>();
-                int cpuSetPoliciesValue;
-                for (long iterationIndex = 0L; iterationIndex + 20 <= returned; iterationIndex += cpuSetPoliciesValue)
+                List<CpuSetRec> cpuSetRecs = new List<CpuSetRec>();
+                int recordSize;
+                for (long iterationIndex = 0L; iterationIndex + 20 <= returned; iterationIndex += recordSize)
                 {
-                    IntPtr ptr = (IntPtr)((long)intPtr + iterationIndex);
-                    cpuSetPoliciesValue = Marshal.ReadInt32(ptr, 0);
-                    int int32 = Marshal.ReadInt32(ptr, 4);
-                    if (cpuSetPoliciesValue <= 0 || iterationIndex + cpuSetPoliciesValue > returned)
+                    IntPtr ptr = (IntPtr)((long)nativeBuffer + iterationIndex);
+                    recordSize = Marshal.ReadInt32(ptr, 0);
+                    int entryType = Marshal.ReadInt32(ptr, 4);
+                    if (recordSize <= 0 || iterationIndex + recordSize > returned)
                     {
                         break;
                     }
-                    if (int32 == 0 && cpuSetPoliciesValue >= 20)
+                    if (entryType == 0 && recordSize >= 20)
                     {
-                        list.Add(new CpuSetRec
+                        cpuSetRecs.Add(new CpuSetRec
                         {
                             Id = (uint)Marshal.ReadInt32(ptr, 8),
                             Group = Marshal.ReadInt16(ptr, 12),
                             Logical = Marshal.ReadByte(ptr, 14),
                             Core = Marshal.ReadByte(ptr, 15),
                             Efficiency = Marshal.ReadByte(ptr, 18),
-                            Scheduling = (byte)((cpuSetPoliciesValue >= 21) ? Marshal.ReadByte(ptr, 20) : 0)
+                            Scheduling = (byte)((recordSize >= 21) ? Marshal.ReadByte(ptr, 20) : 0)
                         });
                     }
                 }
-                if (list.Count == 0)
+                if (cpuSetRecs.Count == 0)
                 {
                     return;
                 }
-                List<uint> list2 = new List<uint>();
-                foreach (CpuSetRec item2 in list)
+                List<uint> ids = new List<uint>();
+                foreach (CpuSetRec cpuSetRec in cpuSetRecs)
                 {
-                    list2.Add(item2.Id);
+                    ids.Add(cpuSetRec.Id);
                 }
-                allIds = list2.ToArray();
-                FavoredMask = ComputeFavoredMask(list);
-                Dictionary<string, CpuSetRec> dictionary = new Dictionary<string, CpuSetRec>();
-                Dictionary<string, ulong> dictionary2 = new Dictionary<string, ulong>();
-                foreach (CpuSetRec item3 in list)
+                allIds = ids.ToArray();
+                FavoredMask = ComputeFavoredMask(cpuSetRecs);
+                Dictionary<string, CpuSetRec> cpuSetRecsByKey = new Dictionary<string, CpuSetRec>();
+                Dictionary<string, ulong> siblingMasksByCore = new Dictionary<string, ulong>();
+                foreach (CpuSetRec currentCpuSetRec in cpuSetRecs)
                 {
-                    string key = item3.Group + ":" + item3.Core;
-                    CpuSetRec value;
-                    if (!dictionary.TryGetValue(key, out value) || item3.Logical < value.Logical)
+                    string key = currentCpuSetRec.Group + ":" + currentCpuSetRec.Core;
+                    CpuSetRec candidateCpuSetRec;
+                    if (!cpuSetRecsByKey.TryGetValue(key, out candidateCpuSetRec) || currentCpuSetRec.Logical < candidateCpuSetRec.Logical)
                     {
-                        dictionary[key] = item3;
+                        cpuSetRecsByKey[key] = currentCpuSetRec;
                     }
-                    if (item3.Group == 0 && item3.Logical < 64)
+                    if (currentCpuSetRec.Group == 0 && currentCpuSetRec.Logical < 64)
                     {
-                        ulong value2;
-                        dictionary2.TryGetValue(key, out value2);
-                        dictionary2[key] = value2 | (ulong)(1L << (int)item3.Logical);
+                        ulong siblingMask;
+                        siblingMasksByCore.TryGetValue(key, out siblingMask);
+                        siblingMasksByCore[key] = siblingMask | (ulong)(1L << (int)currentCpuSetRec.Logical);
                     }
                 }
-                foreach (ulong value3 in dictionary2.Values)
+                foreach (ulong siblingMask in siblingMasksByCore.Values)
                 {
-                    if (value3 != 0)
+                    if (siblingMask != 0)
                     {
-                        physicalCoreMasks.Add(value3);
+                        physicalCoreMasks.Add(siblingMask);
                     }
                 }
                 ResolveCoreTypes(evidence.Classes);
                 // 类别校正后重新计算默认值，再推导 CPU Set 池。
                 DeriveMasks();
                 if (MultiGroup || AllMaskReconciled || !TopologySourcesAgree) return;
-                List<uint> list3 = new List<uint>();
-                List<uint> list4 = new List<uint>();
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+                List<uint> currentIds = new List<uint>();
+                List<uint> candidateIds = new List<uint>();
+                HashSet<string> seenCoreKeys = new HashSet<string>(StringComparer.Ordinal);
                 if (Hybrid)
                 {
                     if (CountSetBits(PerfMask) >= 8)
                     {
-                        foreach (CpuSetRec row in dictionary.Values)
+                        foreach (CpuSetRec row in cpuSetRecsByKey.Values)
                             if (row.Group == 0 && row.Logical < 64 && (EffMask & (1UL << row.Logical)) != 0)
-                                hashSet.Add(row.Group + ":" + row.Core);
+                                seenCoreKeys.Add(row.Group + ":" + row.Core);
                     }
                 }
                 else if (!AsymCache && !MultiGroup)
                 {
-                    List<CpuPartitionPolicy.CoreDesc> list5 = new List<CpuPartitionPolicy.CoreDesc>();
-                    foreach (ulong value5 in dictionary2.Values)
+                    List<CpuPartitionPolicy.CoreDesc> cores = new List<CpuPartitionPolicy.CoreDesc>();
+                    foreach (ulong physicalCoreMask in siblingMasksByCore.Values)
                     {
                         int l = -1;
                         int die = -1;
                         uint l3Size = 0u;
                         for (int i = 0; i < cacheDomains.Count; i++)
                         {
-                            if ((cacheDomains[i].Value & value5) != 0)
+                            if ((cacheDomains[i].Value & physicalCoreMask) != 0)
                             {
                                 l = i;
                                 l3Size = cacheDomains[i].Key;
@@ -422,22 +422,22 @@ namespace PaviseApp
                         }
                         for (int j = 0; j < processorDieDomains.Count; j++)
                         {
-                            if ((processorDieDomains[j] & value5) != 0)
+                            if ((processorDieDomains[j] & physicalCoreMask) != 0)
                             {
                                 die = j;
                                 break;
                             }
                         }
-                        list5.Add(new CpuPartitionPolicy.CoreDesc
+                        cores.Add(new CpuPartitionPolicy.CoreDesc
                         {
-                            Mask = value5,
+                            Mask = physicalCoreMask,
                             L3 = l,
                             Die = die,
                             Eff = 0,
                             L3Size = l3Size
                         });
                     }
-                    CpuPartitionPolicy.CorePlan corePlan = CpuPartitionPolicy.Decide(list5.ToArray(), AllMask);
+                    CpuPartitionPolicy.CorePlan corePlan = CpuPartitionPolicy.Decide(cores.ToArray(), AllMask);
                     if (corePlan.Partitioned)
                     {
                         uint[] cpuSetIdsForResult = CpuSetIdsFor(corePlan.Background);
@@ -463,41 +463,41 @@ namespace PaviseApp
                 }
                 else if (!AsymCache)
                 {
-                    List<CpuSetRec> list6 = new List<CpuSetRec>(dictionary.Values);
-                    list6.Sort(delegate(CpuSetRec a, CpuSetRec b)
+                    List<CpuSetRec> valuesSnapshot = new List<CpuSetRec>(cpuSetRecsByKey.Values);
+                    valuesSnapshot.Sort(delegate(CpuSetRec a, CpuSetRec b)
                     {
                         int compareToResult = a.Group.CompareTo(b.Group);
                         return (compareToResult == 0) ? a.Core.CompareTo(b.Core) : compareToResult;
                     });
-                    int backgroundCoreCountResult = CpuPartitionPolicy.BackgroundCoreCount(list6.Count);
-                    for (int k = Math.Max(0, list6.Count - backgroundCoreCountResult); k < list6.Count; k++)
+                    int backgroundCoreCountResult = CpuPartitionPolicy.BackgroundCoreCount(valuesSnapshot.Count);
+                    for (int k = Math.Max(0, valuesSnapshot.Count - backgroundCoreCountResult); k < valuesSnapshot.Count; k++)
                     {
-                        hashSet.Add(list6[k].Group + ":" + list6[k].Core);
+                        seenCoreKeys.Add(valuesSnapshot[k].Group + ":" + valuesSnapshot[k].Core);
                     }
                 }
-                ulong numericValue = 0uL;
-                ulong numericValue2 = 0uL;
-                foreach (CpuSetRec item5 in list)
+                ulong performanceCoreMask = 0uL;
+                ulong efficiencyCoreMask = 0uL;
+                foreach (CpuSetRec resolvedCpuSetRec in cpuSetRecs)
                 {
-                    string item = item5.Group + ":" + item5.Core;
-                    bool isInHashSet = hashSet.Contains(item);
+                    string coreKey = resolvedCpuSetRec.Group + ":" + resolvedCpuSetRec.Core;
+                    bool isInHashSet = seenCoreKeys.Contains(coreKey);
                     if (isInHashSet)
                     {
-                        list3.Add(item5.Id);
+                        currentIds.Add(resolvedCpuSetRec.Id);
                     }
-                    else if (hashSet.Count > 0 && (!Hybrid || (item5.Group == 0 && item5.Logical < 64 && (PerfMask & (1UL << item5.Logical)) != 0)))
+                    else if (seenCoreKeys.Count > 0 && (!Hybrid || (resolvedCpuSetRec.Group == 0 && resolvedCpuSetRec.Logical < 64 && (PerfMask & (1UL << resolvedCpuSetRec.Logical)) != 0)))
                     {
-                        list4.Add(item5.Id);
+                        candidateIds.Add(resolvedCpuSetRec.Id);
                     }
-                    if (item5.Group == 0 && item5.Logical < 64)
+                    if (resolvedCpuSetRec.Group == 0 && resolvedCpuSetRec.Logical < 64)
                     {
                         if (isInHashSet)
                         {
-                            numericValue |= (ulong)(1L << (int)item5.Logical);
+                            performanceCoreMask |= (ulong)(1L << (int)resolvedCpuSetRec.Logical);
                         }
-                        else if (hashSet.Count > 0 && (!Hybrid || (item5.Group == 0 && item5.Logical < 64 && (PerfMask & (1UL << item5.Logical)) != 0)))
+                        else if (seenCoreKeys.Count > 0 && (!Hybrid || (resolvedCpuSetRec.Group == 0 && resolvedCpuSetRec.Logical < 64 && (PerfMask & (1UL << resolvedCpuSetRec.Logical)) != 0)))
                         {
-                            numericValue2 |= (ulong)(1L << (int)item5.Logical);
+                            efficiencyCoreMask |= (ulong)(1L << (int)resolvedCpuSetRec.Logical);
                         }
                     }
                 }
@@ -520,17 +520,17 @@ namespace PaviseApp
                         AltThrottleMask = BigL3Mask;
                     }
                 }
-                else if (list3.Count > 0 && list4.Count > 0)
+                else if (currentIds.Count > 0 && candidateIds.Count > 0)
                 {
-                    backgroundIds = list3.ToArray();
-                    partitionGameIds = list4.ToArray();
+                    backgroundIds = currentIds.ToArray();
+                    partitionGameIds = candidateIds.ToArray();
                 }
-                if (!MultiGroup && !AsymCache && numericValue != 0 && numericValue2 != 0)
+                if (!MultiGroup && !AsymCache && performanceCoreMask != 0 && efficiencyCoreMask != 0)
                 {
-                    if (PartitionAgreesWithEfficiency(numericValue2, numericValue))
+                    if (PartitionAgreesWithEfficiency(efficiencyCoreMask, performanceCoreMask))
                     {
-                        ThrottleMask = numericValue;
-                        StrictBoostMask = numericValue2;
+                        ThrottleMask = performanceCoreMask;
+                        StrictBoostMask = efficiencyCoreMask;
                     }
                     else
                     {
@@ -542,7 +542,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 
@@ -559,250 +559,250 @@ namespace PaviseApp
                 return;
             }
             int lengthSnapshot = length;
-            IntPtr intPtr = Marshal.AllocHGlobal(lengthSnapshot);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(lengthSnapshot);
             try
             {
-                if (!GetLogicalProcessorInformationEx(65535, intPtr, ref length) || length <= 0 || length > lengthSnapshot)
+                if (!GetLogicalProcessorInformationEx(65535, nativeBuffer, ref length) || length <= 0 || length > lengthSnapshot)
                 {
                     return;
                 }
                 byte[] topologyBytes = new byte[length];
-                Marshal.Copy(intPtr, topologyBytes, 0, length);
+                Marshal.Copy(nativeBuffer, topologyBytes, 0, length);
                 CpuTopologyEvidence evidence = CpuTopologyEvidence.FromTopology(topologyBytes);
                 MultiGroup |= evidence.MultiGroup;
                 if (!evidence.Valid) { CoreTypeDetail = evidence.Reason; return; }
                 topologyClasses = evidence.Classes;
-                Dictionary<int, ulong> dictionary = new Dictionary<int, ulong>();
-                List<ulong> list = new List<ulong>();
-                List<KeyValuePair<uint, ulong>> list2 = new List<KeyValuePair<uint, ulong>>();
-                List<ulong> list3 = new List<ulong>();
+                Dictionary<int, ulong> coreMasksByEfficiencyClass = new Dictionary<int, ulong>();
+                List<ulong> currentPhysicalCoreMasks = new List<ulong>();
+                List<KeyValuePair<uint, ulong>> l3CacheEntries = new List<KeyValuePair<uint, ulong>>();
+                List<ulong> numaMasks = new List<ulong>();
                 bool ready = false;
-                long numericValue = 0L;
-                while (numericValue + 8 <= length)
+                long recordOffset = 0L;
+                while (recordOffset + 8 <= length)
                 {
-                    IntPtr intPtr2 = (IntPtr)((long)intPtr + numericValue);
-                    int int32 = Marshal.ReadInt32(intPtr2, 0);
-                    int int322 = Marshal.ReadInt32(intPtr2, 4);
-                    if (int322 <= 0 || numericValue + int322 > length)
+                    IntPtr recordPointer = (IntPtr)((long)nativeBuffer + recordOffset);
+                    int relationship = Marshal.ReadInt32(recordPointer, 0);
+                    int recordSize = Marshal.ReadInt32(recordPointer, 4);
+                    if (recordSize <= 0 || recordOffset + recordSize > length)
                     {
                         break;
                     }
-                    IntPtr intPtr3 = (IntPtr)((long)intPtr2 + 8);
-                    switch (int32)
+                    IntPtr relationshipPointer = (IntPtr)((long)recordPointer + 8);
+                    switch (relationship)
                     {
                     case 0:
                     {
-                        if (!RecordFits(int322, 30, 2))
+                        if (!RecordFits(recordSize, 30, 2))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        int key2 = Marshal.ReadByte(intPtr3, 1);
-                        int int16 = Marshal.ReadInt16(intPtr3, 22);
-                        if (!RecordArrayFits(int322, 32, int16, 16))
+                        int efficiencyClass = Marshal.ReadByte(relationshipPointer, 1);
+                        int groupCount = Marshal.ReadInt16(relationshipPointer, 22);
+                        if (!RecordArrayFits(recordSize, 32, groupCount, 16))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        ulong numericValue2 = 0uL;
-                        for (int k = 0; k < int16; k++)
+                        ulong processorMask = 0uL;
+                        for (int k = 0; k < groupCount; k++)
                         {
-                            IntPtr ptr4 = (IntPtr)((long)intPtr3 + 24 + k * 16);
+                            IntPtr ptr4 = (IntPtr)((long)relationshipPointer + 24 + k * 16);
                             if (Marshal.ReadInt16(ptr4, 8) != 0)
                             {
                                 ready = true;
                                 continue;
                             }
-                            ulong int64 = (ulong)Marshal.ReadInt64(ptr4, 0);
-                            ulong value;
-                            dictionary.TryGetValue(key2, out value);
-                            dictionary[key2] = value | int64;
-                            numericValue2 |= int64;
+                            ulong groupMask = (ulong)Marshal.ReadInt64(ptr4, 0);
+                            ulong coreMask;
+                            coreMasksByEfficiencyClass.TryGetValue(efficiencyClass, out coreMask);
+                            coreMasksByEfficiencyClass[efficiencyClass] = coreMask | groupMask;
+                            processorMask |= groupMask;
                         }
-                        if (numericValue2 != 0)
+                        if (processorMask != 0)
                         {
-                            list.Add(numericValue2);
+                            currentPhysicalCoreMasks.Add(processorMask);
                         }
                         break;
                     }
                     case 5:
                     {
-                        if (!RecordFits(int322, 30, 2))
+                        if (!RecordFits(recordSize, 30, 2))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        int int162 = Marshal.ReadInt16(intPtr3, 22);
-                        if (!RecordArrayFits(int322, 32, int162, 16))
+                        int cacheGroupCount = Marshal.ReadInt16(relationshipPointer, 22);
+                        if (!RecordArrayFits(recordSize, 32, cacheGroupCount, 16))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        ulong numericValue3 = 0uL;
-                        for (int j = 0; j < int162; j++)
+                        ulong cacheMask = 0uL;
+                        for (int j = 0; j < cacheGroupCount; j++)
                         {
-                            IntPtr ptr3 = (IntPtr)((long)intPtr3 + 24 + j * 16);
+                            IntPtr ptr3 = (IntPtr)((long)relationshipPointer + 24 + j * 16);
                             if (Marshal.ReadInt16(ptr3, 8) != 0)
                             {
                                 ready = true;
                             }
                             else
                             {
-                                numericValue3 |= (ulong)Marshal.ReadInt64(ptr3, 0);
+                                cacheMask |= (ulong)Marshal.ReadInt64(ptr3, 0);
                             }
                         }
-                        if (numericValue3 != 0)
+                        if (cacheMask != 0)
                         {
-                            list3.Add(numericValue3);
+                            numaMasks.Add(cacheMask);
                         }
                         break;
                     }
                     case 2:
                     {
-                        if (!RecordFits(int322, 8, 1))
+                        if (!RecordFits(recordSize, 8, 1))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        if (Marshal.ReadByte(intPtr3, 0) != 3)
+                        if (Marshal.ReadByte(relationshipPointer, 0) != 3)
                         {
                             break;
                         }
-                        if (!RecordFits(int322, 38, 2))
+                        if (!RecordFits(recordSize, 38, 2))
                         {
-                            numericValue += int322;
+                            recordOffset += recordSize;
                             continue;
                         }
-                        uint key = (uint)Marshal.ReadInt32(intPtr3, 4);
-                        int int163 = Marshal.ReadInt16(intPtr3, 30);
-                        ulong numericValue4 = 0uL;
-                        if (int163 == 0)
+                        uint key = (uint)Marshal.ReadInt32(relationshipPointer, 4);
+                        int numaGroupCount = Marshal.ReadInt16(relationshipPointer, 30);
+                        ulong numaMask = 0uL;
+                        if (numaGroupCount == 0)
                         {
-                            if (!RecordFits(int322, 40, 16))
+                            if (!RecordFits(recordSize, 40, 16))
                             {
-                                numericValue += int322;
+                                recordOffset += recordSize;
                                 continue;
                             }
-                            IntPtr ptr = (IntPtr)((long)intPtr3 + 32);
+                            IntPtr ptr = (IntPtr)((long)relationshipPointer + 32);
                             if (Marshal.ReadInt16(ptr, 8) != 0)
                             {
                                 ready = true;
                             }
                             else
                             {
-                                numericValue4 = (ulong)Marshal.ReadInt64(ptr, 0);
+                                numaMask = (ulong)Marshal.ReadInt64(ptr, 0);
                             }
                         }
                         else
                         {
-                            if (!RecordArrayFits(int322, 40, int163, 16))
+                            if (!RecordArrayFits(recordSize, 40, numaGroupCount, 16))
                             {
-                                numericValue += int322;
+                                recordOffset += recordSize;
                                 continue;
                             }
-                            for (int i = 0; i < int163; i++)
+                            for (int i = 0; i < numaGroupCount; i++)
                             {
-                                IntPtr ptr2 = (IntPtr)((long)intPtr3 + 32 + i * 16);
+                                IntPtr ptr2 = (IntPtr)((long)relationshipPointer + 32 + i * 16);
                                 if (Marshal.ReadInt16(ptr2, 8) != 0)
                                 {
                                     ready = true;
                                 }
                                 else
                                 {
-                                    numericValue4 |= (ulong)Marshal.ReadInt64(ptr2, 0);
+                                    numaMask |= (ulong)Marshal.ReadInt64(ptr2, 0);
                                 }
                             }
                         }
-                        if (numericValue4 != 0)
+                        if (numaMask != 0)
                         {
-                            list2.Add(new KeyValuePair<uint, ulong>(key, numericValue4));
+                            l3CacheEntries.Add(new KeyValuePair<uint, ulong>(key, numaMask));
                         }
                         break;
                     }
                     }
-                    numericValue += int322;
+                    recordOffset += recordSize;
                 }
                 if (ready)
                 {
                     return;
                 }
-                parsedCoreMasks = list;
-                cacheDomains = list2;
-                processorDieDomains = list3;
-                if (dictionary.Count >= 2)
+                parsedCoreMasks = currentPhysicalCoreMasks;
+                cacheDomains = l3CacheEntries;
+                processorDieDomains = numaMasks;
+                if (coreMasksByEfficiencyClass.Count >= 2)
                 {
                     int minValue = int.MinValue;
-                    foreach (KeyValuePair<int, ulong> item in dictionary)
+                    foreach (KeyValuePair<int, ulong> coreMaskEntry in coreMasksByEfficiencyClass)
                     {
-                        if (item.Key > minValue)
+                        if (coreMaskEntry.Key > minValue)
                         {
-                            minValue = item.Key;
+                            minValue = coreMaskEntry.Key;
                         }
                     }
-                    ulong numericValue5 = 0uL;
-                    ulong numericValue6 = 0uL;
-                    foreach (KeyValuePair<int, ulong> item2 in dictionary)
+                    ulong performanceCoreMask = 0uL;
+                    ulong efficiencyCoreMask = 0uL;
+                    foreach (KeyValuePair<int, ulong> currentCoreMaskEntry in coreMasksByEfficiencyClass)
                     {
-                        if (item2.Key == minValue)
+                        if (currentCoreMaskEntry.Key == minValue)
                         {
-                            numericValue5 |= item2.Value;
+                            performanceCoreMask |= currentCoreMaskEntry.Value;
                         }
                         else
                         {
-                            numericValue6 |= item2.Value;
+                            efficiencyCoreMask |= currentCoreMaskEntry.Value;
                         }
                     }
-                    if (numericValue5 != 0 && numericValue6 != 0)
+                    if (performanceCoreMask != 0 && efficiencyCoreMask != 0)
                     {
-                        PerfMask = numericValue5;
-                        EffMask = numericValue6;
+                        PerfMask = performanceCoreMask;
+                        EffMask = efficiencyCoreMask;
                         Hybrid = true;
                     }
                 }
-                if (Hybrid || list2.Count < 2)
+                if (Hybrid || l3CacheEntries.Count < 2)
                 {
                     return;
                 }
-                uint numericValue7 = 0u;
+                uint largestCacheSize = 0u;
                 uint maxValue = uint.MaxValue;
-                foreach (KeyValuePair<uint, ulong> item3 in list2)
+                foreach (KeyValuePair<uint, ulong> l3CacheEntryEntry in l3CacheEntries)
                 {
-                    if (item3.Key > numericValue7)
+                    if (l3CacheEntryEntry.Key > largestCacheSize)
                     {
-                        numericValue7 = item3.Key;
+                        largestCacheSize = l3CacheEntryEntry.Key;
                     }
-                    if (item3.Key < maxValue)
+                    if (l3CacheEntryEntry.Key < maxValue)
                     {
-                        maxValue = item3.Key;
+                        maxValue = l3CacheEntryEntry.Key;
                     }
                 }
-                if (numericValue7 <= maxValue)
+                if (largestCacheSize <= maxValue)
                 {
                     return;
                 }
-                ulong numericValue8 = 0uL;
-                ulong numericValue9 = 0uL;
-                foreach (KeyValuePair<uint, ulong> item4 in list2)
+                ulong performanceL3Mask = 0uL;
+                ulong efficiencyL3Mask = 0uL;
+                foreach (KeyValuePair<uint, ulong> currentL3CacheEntryEntry in l3CacheEntries)
                 {
-                    if (item4.Key == numericValue7)
+                    if (currentL3CacheEntryEntry.Key == largestCacheSize)
                     {
-                        numericValue8 |= item4.Value;
+                        performanceL3Mask |= currentL3CacheEntryEntry.Value;
                     }
                     else
                     {
-                        numericValue9 |= item4.Value;
+                        efficiencyL3Mask |= currentL3CacheEntryEntry.Value;
                     }
                 }
-                if (numericValue8 != 0 && numericValue9 != 0)
+                if (performanceL3Mask != 0 && efficiencyL3Mask != 0)
                 {
-                    BigL3Mask = numericValue8;
-                    SmallL3Mask = numericValue9;
+                    BigL3Mask = performanceL3Mask;
+                    SmallL3Mask = efficiencyL3Mask;
                     AsymCache = true;
                 }
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 
@@ -832,16 +832,6 @@ namespace PaviseApp
         internal static void SetParsedCoreMasksForTest(ulong[] cores)
         {
             parsedCoreMasks = new List<ulong>(cores ?? new ulong[0]);
-        }
-
-        private static ulong UnionOf(List<ulong> masks)
-        {
-            ulong unionOfResult = 0uL;
-            foreach (ulong mask in masks)
-            {
-                unionOfResult |= mask;
-            }
-            return unionOfResult;
         }
 
         public static uint[] BackgroundCpuSetIds()
@@ -1017,40 +1007,40 @@ namespace PaviseApp
                 return null;
             }
             int returnedSnapshot = returned;
-            IntPtr intPtr = Marshal.AllocHGlobal(returnedSnapshot);
+            IntPtr nativeBuffer = Marshal.AllocHGlobal(returnedSnapshot);
             try
             {
-                if (!GetSystemCpuSetInformation(intPtr, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
+                if (!GetSystemCpuSetInformation(nativeBuffer, returnedSnapshot, out returned, IntPtr.Zero, 0u) || returned <= 0 || returned > returnedSnapshot)
                 {
                     return null;
                 }
-                List<uint> list = new List<uint>();
-                int cpuSetIdsForValue;
-                for (long iterationIndex = 0L; iterationIndex + 8 <= returned; iterationIndex += cpuSetIdsForValue)
+                List<uint> unsignedValues = new List<uint>();
+                int recordSize;
+                for (long iterationIndex = 0L; iterationIndex + 8 <= returned; iterationIndex += recordSize)
                 {
-                    IntPtr ptr = (IntPtr)((long)intPtr + iterationIndex);
-                    cpuSetIdsForValue = Marshal.ReadInt32(ptr, 0);
-                    int int32 = Marshal.ReadInt32(ptr, 4);
-                    if (cpuSetIdsForValue <= 0 || iterationIndex + cpuSetIdsForValue > returned)
+                    IntPtr ptr = (IntPtr)((long)nativeBuffer + iterationIndex);
+                    recordSize = Marshal.ReadInt32(ptr, 0);
+                    int entryType = Marshal.ReadInt32(ptr, 4);
+                    if (recordSize <= 0 || iterationIndex + recordSize > returned)
                     {
                         break;
                     }
-                    if (int32 == 0 && cpuSetIdsForValue >= 16)
+                    if (entryType == 0 && recordSize >= 16)
                     {
-                        uint item = (uint)Marshal.ReadInt32(ptr, 8);
-                        short int16 = Marshal.ReadInt16(ptr, 12);
+                        uint cpuSetId = (uint)Marshal.ReadInt32(ptr, 8);
+                        short processorGroup = Marshal.ReadInt16(ptr, 12);
                         byte b = Marshal.ReadByte(ptr, 14);
-                        if (int16 == 0 && b < 64 && ((mask >> (int)b) & 1) != 0)
+                        if (processorGroup == 0 && b < 64 && ((mask >> (int)b) & 1) != 0)
                         {
-                            list.Add(item);
+                            unsignedValues.Add(cpuSetId);
                         }
                     }
                 }
-                return (list.Count > 0) ? list.ToArray() : null;
+                return (unsignedValues.Count > 0) ? unsignedValues.ToArray() : null;
             }
             finally
             {
-                Marshal.FreeHGlobal(intPtr);
+                Marshal.FreeHGlobal(nativeBuffer);
             }
         }
 
@@ -1061,31 +1051,31 @@ namespace PaviseApp
             {
                 return domainMasksResult;
             }
-            List<ulong> list = new List<ulong>();
+            List<ulong> cacheMasks = new List<ulong>();
             foreach (KeyValuePair<uint, ulong> cacheDomain in cacheDomains)
             {
-                list.Add(cacheDomain.Value);
+                cacheMasks.Add(cacheDomain.Value);
             }
-            return DomainMasks(list);
+            return DomainMasks(cacheMasks);
         }
 
         private static ulong[] DomainMasks(List<ulong> domains)
         {
-            List<ulong> list = new List<ulong>();
+            List<ulong> domainMasks = new List<ulong>();
             foreach (ulong domain in domains)
             {
                 ulong domainMask = domain & AllMask;
-                if (domainMask != 0 && !list.Contains(domainMask))
+                if (domainMask != 0 && !domainMasks.Contains(domainMask))
                 {
-                    list.Add(domainMask);
+                    domainMasks.Add(domainMask);
                 }
             }
-            if (list.Count < 2)
+            if (domainMasks.Count < 2)
             {
                 return new ulong[0];
             }
-            list.Sort();
-            return list.ToArray();
+            domainMasks.Sort();
+            return domainMasks.ToArray();
         }
 
         public static ulong CacheHeavyMask()
@@ -1114,7 +1104,7 @@ namespace PaviseApp
             {
                 return Lang.T("t.cputopology.1");
             }
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             int i = 0;
             while (i < 64)
             {
@@ -1127,10 +1117,10 @@ namespace PaviseApp
                 for (; i + 1 < 64 && (mask & (ulong)(1L << i + 1)) != 0; i++)
                 {
                 }
-                list.Add((i > iSnapshot + 1) ? (iSnapshot + "-" + i) : ((i == iSnapshot + 1) ? (iSnapshot + "," + i) : iSnapshot.ToString()));
+                texts.Add((i > iSnapshot + 1) ? (iSnapshot + "-" + i) : ((i == iSnapshot + 1) ? (iSnapshot + "," + i) : iSnapshot.ToString()));
                 i++;
             }
-            return CountSetBits(mask) + Lang.T("t.cputopology.2") + string.Join(",", list.ToArray());
+            return CountSetBits(mask) + Lang.T("t.cputopology.2") + string.Join(",", texts.ToArray());
         }
     }
 }

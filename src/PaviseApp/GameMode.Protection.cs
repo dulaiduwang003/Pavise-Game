@@ -11,18 +11,17 @@ namespace PaviseApp
         {
             try
             {
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                string[] allLines = (File.Exists(autoIgnorePath) ? File.ReadAllLines(autoIgnorePath) : new string[0]);
-                foreach (string entryText in allLines)
+                HashSet<string> normalizedGameNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string entryText in (File.Exists(autoIgnorePath) ? File.ReadAllLines(autoIgnorePath) : new string[0]))
                 {
                     string entryTextTrimmed = entryText.Trim();
                     if (entryTextTrimmed.Length != 0 && !entryTextTrimmed.StartsWith("#"))
                     {
-                        hashSet.Add(entryTextTrimmed);
+                        normalizedGameNames.Add(entryTextTrimmed);
                     }
                 }
                 autoAddIgnore.Clear();
-                autoAddIgnore.UnionWith(hashSet);
+                autoAddIgnore.UnionWith(normalizedGameNames);
                 autoIgnoreLoadFailed = false;
                 return true;
             }
@@ -97,30 +96,30 @@ namespace PaviseApp
                     {
                         return true;
                     }
-                    GameProfile gameProfile2 = gameProfile.Clone();
+                    GameProfile profile = gameProfile.Clone();
                     if (on)
                     {
-                        gameProfile2.Overrides["GameFamilyBackground"] = "1";
+                        profile.Overrides["GameFamilyBackground"] = "1";
                     }
                     else
                     {
-                        gameProfile2.Overrides.Remove("GameFamilyBackground");
+                        profile.Overrides.Remove("GameFamilyBackground");
                     }
-                    List<GameProfile> list = new List<GameProfile>(profiles);
+                    List<GameProfile> profilesSnapshot = new List<GameProfile>(profiles);
                     int index = profiles.IndexOf(gameProfile);
-                    list[index] = gameProfile2;
-                    if (!SaveProfileSnapshotLocked(list))
+                    profilesSnapshot[index] = profile;
+                    if (!SaveProfileSnapshotLocked(profilesSnapshot))
                     {
                         return false;
                     }
-                    profiles[index] = gameProfile2;
+                    profiles[index] = profile;
                     if (activeDetection != null && activeDetection.Profile != null && activeDetection.Profile.Id == profileId)
                     {
-                        activeDetection.Profile = gameProfile2.Clone();
+                        activeDetection.Profile = profile.Clone();
                     }
                     if (stickyDetection != null && stickyDetection.Profile != null && stickyDetection.Profile.Id == profileId)
                     {
-                        stickyDetection.Profile = gameProfile2.Clone();
+                        stickyDetection.Profile = profile.Clone();
                     }
                     Interlocked.Increment(ref familyPolicyEpoch);
                     firstSweep = true;
@@ -148,31 +147,31 @@ namespace PaviseApp
         }
         public List<WhitelistRuleView> GetWhitelistRules()
         {
-            List<WhitelistRuleView> list = SnapshotWhitelistRuleViews();
-            list.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
+            List<WhitelistRuleView> whitelistRuleViews = SnapshotWhitelistRuleViews();
+            whitelistRuleViews.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
             {
                 int kindOrder = a.Rule.Kind.CompareTo(b.Rule.Kind);
                 return (kindOrder == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : kindOrder;
             });
-            return list;
+            return whitelistRuleViews;
         }
         public List<WhitelistRuleView> GetWhitelistRulesFast()
         {
-            List<WhitelistRuleView> list = new List<WhitelistRuleView>();
-            AppendPlatformRuleViews(list, null);
+            List<WhitelistRuleView> whitelistRuleViews = new List<WhitelistRuleView>();
+            AppendPlatformRuleViews(whitelistRuleViews, null);
             lock (sync)
             {
                 foreach (WhitelistRule whiteRule in whiteRules)
                 {
-                    list.Add(new WhitelistRuleView(whiteRule, -1, whiteRule.Kind == WhitelistRuleKind.LegacyName && IsPresetWhitelistName(whiteRule.Value)));
+                    whitelistRuleViews.Add(new WhitelistRuleView(whiteRule, -1, whiteRule.Kind == WhitelistRuleKind.LegacyName && IsPresetWhitelistName(whiteRule.Value)));
                 }
             }
-            list.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
+            whitelistRuleViews.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
             {
                 int kindOrder = a.Rule.Kind.CompareTo(b.Rule.Kind);
                 return (kindOrder == 0) ? string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase) : kindOrder;
             });
-            return list;
+            return whitelistRuleViews;
         }
         public bool AddWhitelistPath(string executablePath)
         {
@@ -270,9 +269,9 @@ namespace PaviseApp
                         whitelistLastError = Lang.T("white.duplicate");
                         return false;
                     }
-                    List<WhitelistRule> list = new List<WhitelistRule>(whiteRules);
-                    list.Add(rule);
-                    List<WhitelistRule> rules = list;
+                    List<WhitelistRule> whiteRulesSnapshot = new List<WhitelistRule>(whiteRules);
+                    whiteRulesSnapshot.Add(rule);
+                    List<WhitelistRule> rules = whiteRulesSnapshot;
                     if (!SaveWhite(rules))
                     {
                         whitelistLastError = Lang.T("white.save.failed");
@@ -315,9 +314,9 @@ namespace PaviseApp
                         whitelistLastError = Lang.T("white.required");
                         return false;
                     }
-                    List<WhitelistRule> list = new List<WhitelistRule>(whiteRules);
-                    list.Remove(whitelistRule);
-                    if (!SaveWhite(list))
+                    List<WhitelistRule> whiteRulesSnapshot = new List<WhitelistRule>(whiteRules);
+                    whiteRulesSnapshot.Remove(whitelistRule);
+                    if (!SaveWhite(whiteRulesSnapshot))
                     {
                         whitelistLastError = Lang.T("white.save.failed");
                         return false;
@@ -336,15 +335,14 @@ namespace PaviseApp
         }
         public bool ResetWhitelist()
         {
-            List<WhitelistRule> list = new List<WhitelistRule>();
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string[] presetWhitelist = SystemProcessCatalog.PresetWhitelist;
-            foreach (string value in presetWhitelist)
+            List<WhitelistRule> rules = new List<WhitelistRule>();
+            HashSet<string> ruleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string currentPresetWhitelist in SystemProcessCatalog.PresetWhitelist)
             {
                 WhitelistRule rule;
-                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, value, out rule) && hashSet.Add(rule.Key))
+                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, currentPresetWhitelist, out rule) && ruleKeys.Add(rule.Key))
                 {
-                    list.Add(rule);
+                    rules.Add(rule);
                 }
             }
             int releasedCount;
@@ -357,7 +355,7 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    if (!SaveWhite(list))
+                    if (!SaveWhite(rules))
                     {
                         whitelistLastError = Lang.T("white.save.failed");
                         return false;
@@ -368,9 +366,9 @@ namespace PaviseApp
                     whiteFamilyMembersVersion++;
                     whiteRevision++;
                     RefreshWhitelistFamilyFlagLocked();
-                    foreach (WhitelistRule item in list)
+                    foreach (WhitelistRule currentRule in rules)
                     {
-                        AddWhiteRuleNoSave(item);
+                        AddWhiteRuleNoSave(currentRule);
                     }
                     whitelistLastError = "";
                 }
@@ -382,7 +380,7 @@ namespace PaviseApp
         }
         internal static string BuildWhitelistFooter(IList<WhitelistRule> rules)
         {
-            ulong numericValue = 1469598103934665603uL;
+            ulong rulesDigest = 1469598103934665603uL;
             int processedCount = 0;
             if (rules != null)
             {
@@ -394,15 +392,15 @@ namespace PaviseApp
                         processedCount++;
                         for (int i = 0; i < serializedRule.Length; i++)
                         {
-                            numericValue ^= (byte)serializedRule[i];
-                            numericValue *= 1099511628211L;
+                            rulesDigest ^= (byte)serializedRule[i];
+                            rulesDigest *= 1099511628211L;
                         }
-                        numericValue ^= 0xA;
-                        numericValue *= 1099511628211L;
+                        rulesDigest ^= 0xA;
+                        rulesDigest *= 1099511628211L;
                     }
                 }
             }
-            return "PAVISE_WHITELIST_END|" + processedCount + "|" + numericValue.ToString("X16");
+            return "PAVISE_WHITELIST_END|" + processedCount + "|" + rulesDigest.ToString("X16");
         }
         internal static bool IsActiveFamilyChildStart(GameDetection detection, ProcessChange change, int ownerSession)
         {
@@ -414,42 +412,41 @@ namespace PaviseApp
         }
         private GameDetection CloneWithAnchoredFamily(GameDetection src)
         {
-            GameDetection gameDetection = new GameDetection();
-            gameDetection.Profile = src.Profile;
-            gameDetection.RendererPid = src.RendererPid;
-            gameDetection.RendererCreation = src.RendererCreation;
-            gameDetection.RendererName = src.RendererName;
-            gameDetection.RendererPath = src.RendererPath;
-            gameDetection.RendererForeground = src.RendererForeground;
-            gameDetection.RendererCandidateSelected = src.RendererCandidateSelected;
-            gameDetection.RendererUserSelected = src.RendererUserSelected;
-            gameDetection.RendererLearnable = src.RendererLearnable;
-            gameDetection.Evidence = src.Evidence;
-            GameDetection gameDetection2 = gameDetection;
+            GameDetection currentGameDetection = new GameDetection();
+            currentGameDetection.Profile = src.Profile;
+            currentGameDetection.RendererPid = src.RendererPid;
+            currentGameDetection.RendererCreation = src.RendererCreation;
+            currentGameDetection.RendererName = src.RendererName;
+            currentGameDetection.RendererPath = src.RendererPath;
+            currentGameDetection.RendererForeground = src.RendererForeground;
+            currentGameDetection.RendererCandidateSelected = src.RendererCandidateSelected;
+            currentGameDetection.RendererUserSelected = src.RendererUserSelected;
+            currentGameDetection.RendererLearnable = src.RendererLearnable;
+            currentGameDetection.Evidence = src.Evidence;
             foreach (int familyPid in src.FamilyPids)
             {
                 if (stickyIds.ContainsKey(familyPid))
                 {
-                    gameDetection2.FamilyPids.Add(familyPid);
+                    currentGameDetection.FamilyPids.Add(familyPid);
                 }
             }
             foreach (string familyName in src.FamilyNames)
             {
-                gameDetection2.FamilyNames.Add(familyName);
+                currentGameDetection.FamilyNames.Add(familyName);
             }
-            return gameDetection2;
+            return currentGameDetection;
         }
         private List<int> LiveStickyFamily()
         {
-            List<int> list = new List<int>();
+            List<int> liveFamilyPids = new List<int>();
             foreach (KeyValuePair<int, GameId> stickyId in stickyIds)
             {
                 if (AliveWithIdentity(stickyId.Key))
                 {
-                    list.Add(stickyId.Key);
+                    liveFamilyPids.Add(stickyId.Key);
                 }
             }
-            return list;
+            return liveFamilyPids;
         }
         public bool NeedsWhitelistParentIdentity(int session)
         {
@@ -518,7 +515,7 @@ namespace PaviseApp
                 rendererCreation = ((activeDetection == null) ? 0 : activeDetection.RendererCreation);
             }
             whitelistEvaluation.PlatformProcesses = CollectPlatformMembers(all);
-            Dictionary<int, long> dictionary = new Dictionary<int, long>(runtimeFamilyMembers);
+            Dictionary<int, long> runtimeFamilyMembersSnapshot = new Dictionary<int, long>(runtimeFamilyMembers);
             foreach (KeyValuePair<int, PlatformProcessOwner> platformProcess in whitelistEvaluation.PlatformProcesses)
             {
                 if (PlatformRuleEnabled(platformProcess.Value))
@@ -527,33 +524,33 @@ namespace PaviseApp
                 }
                 else
                 {
-                    dictionary.Remove(platformProcess.Key);
+                    runtimeFamilyMembersSnapshot.Remove(platformProcess.Key);
                 }
             }
             whitelistEvaluation.RuntimeProtected.UnionWith(WeGameRuntimeProtection.Collect(all, selfPid, selfSession));
-            whitelistEvaluation.RuntimeProtected.UnionWith(ExpandApplicationFamily(whitelistEvaluation.Parents, whitelistEvaluation.RuntimeProtected, dictionary, whitelistEvaluation.Creations));
+            whitelistEvaluation.RuntimeProtected.UnionWith(ExpandApplicationFamily(whitelistEvaluation.Parents, whitelistEvaluation.RuntimeProtected, runtimeFamilyMembersSnapshot, whitelistEvaluation.Creations));
             runtimeFamilyMembers = new Dictionary<int, long>();
-            foreach (int item in whitelistEvaluation.RuntimeProtected)
+            foreach (int runtimeProtected in whitelistEvaluation.RuntimeProtected)
             {
-                long value;
-                if (whitelistEvaluation.Creations.TryGetValue(item, out value) && value > 0)
+                long creation;
+                if (whitelistEvaluation.Creations.TryGetValue(runtimeProtected, out creation) && creation > 0)
                 {
-                    runtimeFamilyMembers[item] = value;
+                    runtimeFamilyMembers[runtimeProtected] = creation;
                 }
             }
             whitelistEvaluation.Protected.UnionWith(whitelistEvaluation.RuntimeProtected);
-            Dictionary<string, Dictionary<int, long>> dictionary2 = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, Dictionary<int, long>> previousFamiliesByRule = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
             int whiteRevisionSnapshot;
             int whiteFamilyMembersVersionSnapshot;
-            List<WhitelistRule> list;
+            List<WhitelistRule> rulesSnapshot;
             lock (sync)
             {
                 whiteRevisionSnapshot = whiteRevision;
                 whiteFamilyMembersVersionSnapshot = whiteFamilyMembersVersion;
-                list = new List<WhitelistRule>(whiteRules);
+                rulesSnapshot = new List<WhitelistRule>(whiteRules);
                 foreach (KeyValuePair<string, Dictionary<int, long>> whiteFamilyMember in whiteFamilyMembers)
                 {
-                    dictionary2[whiteFamilyMember.Key] = new Dictionary<int, long>(whiteFamilyMember.Value);
+                    previousFamiliesByRule[whiteFamilyMember.Key] = new Dictionary<int, long>(whiteFamilyMember.Value);
                 }
             }
             Dictionary<int, long> creations = whitelistEvaluation.Creations;
@@ -564,66 +561,66 @@ namespace PaviseApp
                     creations[process.Key] = process.Value.Creation;
                 }
             }
-            Dictionary<string, Dictionary<int, long>> dictionary3 = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
-            WhitelistMatchIndex matchIndex = (list.Count >= 32 && whitelistEvaluation.Processes.Count >= 32)
-                || (list.Count >= 16 && whitelistEvaluation.Processes.Count >= 256)
-                ? new WhitelistMatchIndex(whitelistEvaluation.Processes, list) : null;
-            foreach (WhitelistRule item2 in list)
+            Dictionary<string, Dictionary<int, long>> updatedFamiliesByRule = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
+            WhitelistMatchIndex matchIndex = (rulesSnapshot.Count >= 32 && whitelistEvaluation.Processes.Count >= 32)
+                || (rulesSnapshot.Count >= 16 && whitelistEvaluation.Processes.Count >= 256)
+                ? new WhitelistMatchIndex(whitelistEvaluation.Processes, rulesSnapshot) : null;
+            foreach (WhitelistRule currentRulesSnapshot in rulesSnapshot)
             {
-                HashSet<int> hashSet = new HashSet<int>();
-                if (matchIndex == null || item2 == null || item2.Value == null)
+                HashSet<int> matchedPids = new HashSet<int>();
+                if (matchIndex == null || currentRulesSnapshot == null || currentRulesSnapshot.Value == null)
                 {
                     foreach (KeyValuePair<int, WhitelistProcessInfo> process2 in whitelistEvaluation.Processes)
                     {
-                        WhitelistProcessInfo value2 = process2.Value;
-                        if ((value2.Session == selfSession || (value2.Session == 0 && BackgroundServicePolicy.CandidateName(value2.Name))) && item2.MatchesNormalized(value2.Name, value2.Path) && (item2.Kind != 0 || !IsPresetWhitelistName(item2.Value) || IsTrustedPresetProcessPath(item2.Value, value2.Path)))
+                        WhitelistProcessInfo matchedProcess = process2.Value;
+                        if ((matchedProcess.Session == selfSession || (matchedProcess.Session == 0 && BackgroundServicePolicy.CandidateName(matchedProcess.Name))) && currentRulesSnapshot.MatchesNormalized(matchedProcess.Name, matchedProcess.Path) && (currentRulesSnapshot.Kind != 0 || !IsPresetWhitelistName(currentRulesSnapshot.Value) || IsTrustedPresetProcessPath(currentRulesSnapshot.Value, matchedProcess.Path)))
                         {
-                            hashSet.Add(value2.Pid);
+                            matchedPids.Add(matchedProcess.Pid);
                         }
                     }
                 }
                 else
                 {
-                    foreach (WhitelistProcessInfo value2 in matchIndex.Candidates(item2))
+                    foreach (WhitelistProcessInfo indexedProcess in matchIndex.Candidates(currentRulesSnapshot))
                     {
-                        if ((value2.Session == selfSession || (value2.Session == 0 && BackgroundServicePolicy.CandidateName(value2.Name))) && item2.MatchesNormalized(value2.Name, value2.Path) && (item2.Kind != 0 || !IsPresetWhitelistName(item2.Value) || IsTrustedPresetProcessPath(item2.Value, value2.Path)))
+                        if ((indexedProcess.Session == selfSession || (indexedProcess.Session == 0 && BackgroundServicePolicy.CandidateName(indexedProcess.Name))) && currentRulesSnapshot.MatchesNormalized(indexedProcess.Name, indexedProcess.Path) && (currentRulesSnapshot.Kind != 0 || !IsPresetWhitelistName(currentRulesSnapshot.Value) || IsTrustedPresetProcessPath(currentRulesSnapshot.Value, indexedProcess.Path)))
                         {
-                            hashSet.Add(value2.Pid);
+                            matchedPids.Add(indexedProcess.Pid);
                         }
                     }
                 }
-                HashSet<int> hashSet2 = hashSet;
-                if (RuleProtectsFamily(item2))
+                HashSet<int> protectedFamilyPids = matchedPids;
+                if (RuleProtectsFamily(currentRulesSnapshot))
                 {
-                    HashSet<int> hashSet3 = new HashSet<int>();
-                    foreach (int item3 in hashSet)
+                    HashSet<int> safeFamilyAnchors = new HashSet<int>();
+                    foreach (int matchedPid in matchedPids)
                     {
-                        WhitelistProcessInfo whitelistProcessInfo = whitelistEvaluation.Processes[item3];
+                        WhitelistProcessInfo whitelistProcessInfo = whitelistEvaluation.Processes[matchedPid];
                         if (!string.IsNullOrEmpty(whitelistProcessInfo.Path) && !WhitelistRule.IsUnsafeFamilyAnchor(whitelistProcessInfo.Path))
                         {
-                            hashSet3.Add(item3);
+                            safeFamilyAnchors.Add(matchedPid);
                         }
                     }
-                    Dictionary<int, long> value3;
-                    if (!dictionary2.TryGetValue(item2.Key, out value3))
+                    Dictionary<int, long> retainedCreationsByPid;
+                    if (!previousFamiliesByRule.TryGetValue(currentRulesSnapshot.Key, out retainedCreationsByPid))
                     {
-                        value3 = new Dictionary<int, long>();
+                        retainedCreationsByPid = new Dictionary<int, long>();
                     }
-                    hashSet2 = ExpandApplicationFamily(whitelistEvaluation.Parents, hashSet3, value3, creations);
-                    hashSet2.UnionWith(hashSet);
-                    Dictionary<int, long> dictionary4 = new Dictionary<int, long>();
-                    foreach (int item4 in hashSet2)
+                    protectedFamilyPids = ExpandApplicationFamily(whitelistEvaluation.Parents, safeFamilyAnchors, retainedCreationsByPid, creations);
+                    protectedFamilyPids.UnionWith(matchedPids);
+                    Dictionary<int, long> familyCreationsByPid = new Dictionary<int, long>();
+                    foreach (int protectedFamilyPid in protectedFamilyPids)
                     {
-                        long value4;
-                        if (creations.TryGetValue(item4, out value4) && value4 > 0)
+                        long memberCreation;
+                        if (creations.TryGetValue(protectedFamilyPid, out memberCreation) && memberCreation > 0)
                         {
-                            dictionary4[item4] = value4;
+                            familyCreationsByPid[protectedFamilyPid] = memberCreation;
                         }
                     }
-                    dictionary3[item2.Key] = dictionary4;
+                    updatedFamiliesByRule[currentRulesSnapshot.Key] = familyCreationsByPid;
                 }
-                whitelistEvaluation.ByRule[item2.Key] = hashSet2;
-                whitelistEvaluation.Protected.UnionWith(hashSet2);
+                whitelistEvaluation.ByRule[currentRulesSnapshot.Key] = protectedFamilyPids;
+                whitelistEvaluation.Protected.UnionWith(protectedFamilyPids);
             }
             lock (sync)
             {
@@ -631,9 +628,9 @@ namespace PaviseApp
                 if (revisionsCurrent)
                 {
                     whiteFamilyMembers.Clear();
-                    foreach (KeyValuePair<string, Dictionary<int, long>> item5 in dictionary3)
+                    foreach (KeyValuePair<string, Dictionary<int, long>> familyEntry in updatedFamiliesByRule)
                     {
-                        whiteFamilyMembers[item5.Key] = item5.Value;
+                        whiteFamilyMembers[familyEntry.Key] = familyEntry.Value;
                     }
                     whiteFamilyMembersVersion++;
                 }
@@ -652,30 +649,28 @@ namespace PaviseApp
             {
                 return whitelistEvaluation;
             }
-            ProcEntry[] entries = all.Entries;
-            foreach (ProcEntry procEntry in entries)
+            foreach (ProcEntry procEntry in all.Entries)
             {
                 try
                 {
                     int pid = procEntry.Pid;
-                    WhitelistProcessInfo whitelistProcessInfo = new WhitelistProcessInfo();
-                    whitelistProcessInfo.Pid = pid;
-                    WhitelistProcessInfo whitelistProcessInfo2 = whitelistProcessInfo;
-                    whitelistProcessInfo2.Name = WhitelistRule.NormalizeName(procEntry.Name);
-                    whitelistProcessInfo2.Session = procEntry.Session;
-                    whitelistEvaluation.Processes[pid] = whitelistProcessInfo2;
-                    whitelistEvaluation.Names[pid] = whitelistProcessInfo2.Name;
-                    if (pid > 4 && selfSession >= 0 && (whitelistProcessInfo2.Session == selfSession || (whitelistProcessInfo2.Session == 0 && BackgroundServicePolicy.CandidateName(whitelistProcessInfo2.Name))) && procEntry.Path != null)
+                    WhitelistProcessInfo currentWhitelistProcessInfo = new WhitelistProcessInfo();
+                    currentWhitelistProcessInfo.Pid = pid;
+                    currentWhitelistProcessInfo.Name = WhitelistRule.NormalizeName(procEntry.Name);
+                    currentWhitelistProcessInfo.Session = procEntry.Session;
+                    whitelistEvaluation.Processes[pid] = currentWhitelistProcessInfo;
+                    whitelistEvaluation.Names[pid] = currentWhitelistProcessInfo.Name;
+                    if (pid > 4 && selfSession >= 0 && (currentWhitelistProcessInfo.Session == selfSession || (currentWhitelistProcessInfo.Session == 0 && BackgroundServicePolicy.CandidateName(currentWhitelistProcessInfo.Name))) && procEntry.Path != null)
                     {
-                        whitelistProcessInfo2.Path = WhitelistRule.NormalizeImagePath(procEntry.Path);
-                        whitelistProcessInfo2.Parent = procEntry.ParentPid;
-                        whitelistProcessInfo2.Creation = procEntry.Creation;
-                        whitelistEvaluation.Creations[pid] = whitelistProcessInfo2.Creation;
-                        whitelistProcessInfo2.Cpu = procEntry.Cpu;
-                        whitelistProcessInfo2.Io = procEntry.Io;
-                        if (whitelistProcessInfo2.Session == selfSession)
+                        currentWhitelistProcessInfo.Path = WhitelistRule.NormalizeImagePath(procEntry.Path);
+                        currentWhitelistProcessInfo.Parent = procEntry.ParentPid;
+                        currentWhitelistProcessInfo.Creation = procEntry.Creation;
+                        whitelistEvaluation.Creations[pid] = currentWhitelistProcessInfo.Creation;
+                        currentWhitelistProcessInfo.Cpu = procEntry.Cpu;
+                        currentWhitelistProcessInfo.Io = procEntry.Io;
+                        if (currentWhitelistProcessInfo.Session == selfSession)
                         {
-                            whitelistEvaluation.Parents[pid] = whitelistProcessInfo2.Parent;
+                            whitelistEvaluation.Parents[pid] = currentWhitelistProcessInfo.Parent;
                         }
                     }
                 }
@@ -687,15 +682,15 @@ namespace PaviseApp
         }
         internal static HashSet<int> ExpandApplicationFamily(Dictionary<int, int> parents, HashSet<int> anchors, Dictionary<int, long> retained, Dictionary<int, long> currentCreation)
         {
-            HashSet<int> hashSet = ((anchors == null) ? new HashSet<int>() : new HashSet<int>(anchors));
+            HashSet<int> familyPids = ((anchors == null) ? new HashSet<int>() : new HashSet<int>(anchors));
             if (retained != null && currentCreation != null)
             {
-                foreach (KeyValuePair<int, long> item in retained)
+                foreach (KeyValuePair<int, long> retainedEntry in retained)
                 {
-                    long value;
-                    if (item.Value > 0 && currentCreation.TryGetValue(item.Key, out value) && value == item.Value)
+                    long candidateCreation;
+                    if (retainedEntry.Value > 0 && currentCreation.TryGetValue(retainedEntry.Key, out candidateCreation) && candidateCreation == retainedEntry.Value)
                     {
-                        hashSet.Add(item.Key);
+                        familyPids.Add(retainedEntry.Key);
                     }
                 }
             }
@@ -709,17 +704,17 @@ namespace PaviseApp
                 }
                 foreach (KeyValuePair<int, int> parent in parents)
                 {
-                    long value2;
-                    long value3;
-                    if (!hashSet.Contains(parent.Key) && hashSet.Contains(parent.Value) && currentCreation != null && currentCreation.TryGetValue(parent.Key, out value2) && currentCreation.TryGetValue(parent.Value, out value3) && value2 > 0 && value3 > 0 && value2 > value3)
+                    long childCreation;
+                    long parentCreation;
+                    if (!familyPids.Contains(parent.Key) && familyPids.Contains(parent.Value) && currentCreation != null && currentCreation.TryGetValue(parent.Key, out childCreation) && currentCreation.TryGetValue(parent.Value, out parentCreation) && childCreation > 0 && parentCreation > 0 && childCreation > parentCreation)
                     {
-                        hashSet.Add(parent.Key);
+                        familyPids.Add(parent.Key);
                         membersAdded = true;
                     }
                 }
             }
             while (membersAdded);
-            return hashSet;
+            return familyPids;
         }
         private bool ServiceWhitelisted(string name, string imagePath)
         {
@@ -732,8 +727,7 @@ namespace PaviseApp
         }
         private static bool IsPresetWhitelistName(string name)
         {
-            string[] presetWhitelist = SystemProcessCatalog.PresetWhitelist;
-            foreach (string a in presetWhitelist)
+            foreach (string a in SystemProcessCatalog.PresetWhitelist)
             {
                 if (string.Equals(a, name, StringComparison.OrdinalIgnoreCase))
                 {
@@ -746,17 +740,17 @@ namespace PaviseApp
         {
             ProcessSnapshot all = ProcessSnapshotSource.Capture(selfSession);
             WhitelistEvaluation whitelistEvaluation = EvaluateWhitelist(all);
-            List<WhitelistRuleView> list = new List<WhitelistRuleView>();
-            AppendPlatformRuleViews(list, whitelistEvaluation.PlatformProcesses);
+            List<WhitelistRuleView> whitelistRuleViews = new List<WhitelistRuleView>();
+            AppendPlatformRuleViews(whitelistRuleViews, whitelistEvaluation.PlatformProcesses);
             lock (sync)
             {
                 foreach (WhitelistRule whiteRule in whiteRules)
                 {
                     HashSet<int> value;
                     int currentMatches = (whitelistEvaluation.ByRule.TryGetValue(whiteRule.Key, out value) ? value.Count : 0);
-                    list.Add(new WhitelistRuleView(whiteRule, currentMatches, whiteRule.Kind == WhitelistRuleKind.LegacyName && IsPresetWhitelistName(whiteRule.Value)));
+                    whitelistRuleViews.Add(new WhitelistRuleView(whiteRule, currentMatches, whiteRule.Kind == WhitelistRuleKind.LegacyName && IsPresetWhitelistName(whiteRule.Value)));
                 }
-                return list;
+                return whitelistRuleViews;
             }
         }
         private int ReleaseCurrentWhitelistMatches(out int matched)
@@ -768,14 +762,14 @@ namespace PaviseApp
                 WhitelistEvaluation whitelistEvaluation = EvaluateWhitelist(all);
                 matched = whitelistEvaluation.Protected.Count;
                 int processedCount = 0;
-                foreach (int item in whitelistEvaluation.Protected)
+                foreach (int integerValueEntry in whitelistEvaluation.Protected)
                 {
-                    WhitelistProcessInfo value;
-                    if (whitelistEvaluation.Processes.TryGetValue(item, out value) && value.Creation > 0)
+                    WhitelistProcessInfo processInfo;
+                    if (whitelistEvaluation.Processes.TryGetValue(integerValueEntry, out processInfo) && processInfo.Creation > 0)
                     {
-                        if (core.ReleaseIfCreation(item, SuppressReason.Background, value.Creation))
+                        if (core.ReleaseIfCreation(integerValueEntry, SuppressReason.Background, processInfo.Creation))
                         {
-                            ReportUntrack(item);
+                            ReportUntrack(integerValueEntry);
                             processedCount++;
                         }
                     }
@@ -791,9 +785,9 @@ namespace PaviseApp
             }
             lock (whiteEvalSync)
             {
-                List<WhitelistRule> list = new List<WhitelistRule>();
-                Dictionary<int, long> dictionary = new Dictionary<int, long>();
-                HashSet<int> hashSet = new HashSet<int>();
+                List<WhitelistRule> rulesSnapshot = new List<WhitelistRule>();
+                Dictionary<int, long> protectedCreationsByPid = new Dictionary<int, long>();
+                HashSet<int> excludedPlatformPids = new HashSet<int>();
                 int whiteRevisionSnapshot;
                 lock (sync)
                 {
@@ -802,58 +796,57 @@ namespace PaviseApp
                     {
                         if (RuleProtectsFamily(whiteRule))
                         {
-                            list.Add(whiteRule);
+                            rulesSnapshot.Add(whiteRule);
                         }
                     }
-                    ProcessChange[] changes = batch.Changes;
-                    foreach (ProcessChange processChange in changes)
+                    foreach (ProcessChange processChange in batch.Changes)
                     {
                         if (processChange == null || processChange.Kind != ProcessChangeKind.Stopped)
                         {
                             continue;
                         }
-                        foreach (WhitelistRule item in list)
+                        foreach (WhitelistRule currentRulesSnapshot in rulesSnapshot)
                         {
-                            Dictionary<int, long> value;
-                            if (whiteFamilyMembers.TryGetValue(item.Key, out value) && value.ContainsKey(processChange.Pid))
+                            Dictionary<int, long> whiteFamilyMember;
+                            if (whiteFamilyMembers.TryGetValue(currentRulesSnapshot.Key, out whiteFamilyMember) && whiteFamilyMember.ContainsKey(processChange.Pid))
                             {
-                                hashSet.Add(processChange.Pid);
+                                excludedPlatformPids.Add(processChange.Pid);
                                 break;
                             }
                         }
                     }
                 }
-                if (list.Count == 0)
+                if (rulesSnapshot.Count == 0)
                 {
                     return;
                 }
-                Dictionary<int, long> stopIdentity = CaptureStoppedProcessIdentity(hashSet);
+                Dictionary<int, long> stopIdentity = CaptureStoppedProcessIdentity(excludedPlatformPids);
                 lock (sync)
                 {
                     if (whiteRevisionSnapshot != whiteRevision)
                     {
                         return;
                     }
-                    foreach (WhitelistRule item2 in list)
+                    foreach (WhitelistRule candidateRulesSnapshot in rulesSnapshot)
                     {
-                        Dictionary<int, long> value2;
-                        if (!whiteFamilyMembers.TryGetValue(item2.Key, out value2))
+                        Dictionary<int, long> trackedFamily;
+                        if (!whiteFamilyMembers.TryGetValue(candidateRulesSnapshot.Key, out trackedFamily))
                         {
-                            value2 = new Dictionary<int, long>();
-                            whiteFamilyMembers[item2.Key] = value2;
+                            trackedFamily = new Dictionary<int, long>();
+                            whiteFamilyMembers[candidateRulesSnapshot.Key] = trackedFamily;
                         }
-                        foreach (KeyValuePair<int, long> item3 in ApplyApplicationFamilyEvents(item2, value2, batch.Changes, selfSession, stopIdentity))
+                        foreach (KeyValuePair<int, long> applyApplicationFamilyEventEntry in ApplyApplicationFamilyEvents(candidateRulesSnapshot, trackedFamily, batch.Changes, selfSession, stopIdentity))
                         {
-                            dictionary[item3.Key] = item3.Value;
+                            protectedCreationsByPid[applyApplicationFamilyEventEntry.Key] = applyApplicationFamilyEventEntry.Value;
                         }
                     }
                     whiteFamilyMembersVersion++;
                 }
-                foreach (KeyValuePair<int, long> item4 in dictionary)
+                foreach (KeyValuePair<int, long> protectedProcessEntry in protectedCreationsByPid)
                 {
-                    if (core.ReleaseIfCreation(item4.Key, SuppressReason.Background, item4.Value))
+                    if (core.ReleaseIfCreation(protectedProcessEntry.Key, SuppressReason.Background, protectedProcessEntry.Value))
                     {
-                        ReportUntrack(item4.Key);
+                        ReportUntrack(protectedProcessEntry.Key);
                     }
                 }
             }
@@ -864,56 +857,56 @@ namespace PaviseApp
         }
         internal static Dictionary<int, long> ApplyApplicationFamilyEvents(WhitelistRule rule, Dictionary<int, long> members, IList<ProcessChange> changes, int ownerSession, IDictionary<int, long> stopIdentity)
         {
-            Dictionary<int, long> dictionary = new Dictionary<int, long>();
+            Dictionary<int, long> creationsByPid = new Dictionary<int, long>();
             if (rule == null || members == null || changes == null)
             {
-                return dictionary;
+                return creationsByPid;
             }
-            List<ProcessChange> list = new List<ProcessChange>();
+            List<ProcessChange> currentChanges = new List<ProcessChange>();
             foreach (ProcessChange change in changes)
             {
                 if (change != null && change.Pid > 0)
                 {
-                    list.Add(change);
+                    currentChanges.Add(change);
                 }
             }
-            list.Sort((ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
-            Dictionary<int, ProcessChange> dictionary2 = new Dictionary<int, ProcessChange>();
-            foreach (ProcessChange item in list)
+            currentChanges.Sort((ProcessChange left, ProcessChange right) => left.Sequence.CompareTo(right.Sequence));
+            Dictionary<int, ProcessChange> processChangesByPid = new Dictionary<int, ProcessChange>();
+            foreach (ProcessChange currentChange in currentChanges)
             {
-                if (item.Kind == ProcessChangeKind.Stopped)
+                if (currentChange.Kind == ProcessChangeKind.Stopped)
                 {
-                    long value;
-                    long value2;
-                    if (stopIdentity != null && stopIdentity.TryGetValue(item.Pid, out value) && members.TryGetValue(item.Pid, out value2) && (value <= 0 || value != value2))
+                    long currentStopIdentity;
+                    long member;
+                    if (stopIdentity != null && stopIdentity.TryGetValue(currentChange.Pid, out currentStopIdentity) && members.TryGetValue(currentChange.Pid, out member) && (currentStopIdentity <= 0 || currentStopIdentity != member))
                     {
-                        members.Remove(item.Pid);
-                        dictionary.Remove(item.Pid);
-                        dictionary2.Remove(item.Pid);
+                        members.Remove(currentChange.Pid);
+                        creationsByPid.Remove(currentChange.Pid);
+                        processChangesByPid.Remove(currentChange.Pid);
                     }
                 }
                 else
                 {
-                    if (item.Creation <= 0 || item.Session != ownerSession)
+                    if (currentChange.Creation <= 0 || currentChange.Session != ownerSession)
                     {
                         continue;
                     }
-                    long value3;
-                    if (members.TryGetValue(item.Pid, out value3) && value3 != item.Creation)
+                    long currentMember;
+                    if (members.TryGetValue(currentChange.Pid, out currentMember) && currentMember != currentChange.Creation)
                     {
-                        members.Remove(item.Pid);
-                        dictionary.Remove(item.Pid);
+                        members.Remove(currentChange.Pid);
+                        creationsByPid.Remove(currentChange.Pid);
                     }
-                    dictionary2[item.Pid] = item;
-                    string normalizedName = WhitelistRule.NormalizeName(item.Name);
-                    string imagePath = WhitelistRule.NormalizeImagePath(item.Path);
-                    if ((rule.MatchesNormalized(normalizedName, imagePath) && !WhitelistRule.IsUnsafeFamilyAnchor(imagePath)) || HasVerifiedFamilyParent(item, members, dictionary2))
+                    processChangesByPid[currentChange.Pid] = currentChange;
+                    string normalizedName = WhitelistRule.NormalizeName(currentChange.Name);
+                    string imagePath = WhitelistRule.NormalizeImagePath(currentChange.Path);
+                    if ((rule.MatchesNormalized(normalizedName, imagePath) && !WhitelistRule.IsUnsafeFamilyAnchor(imagePath)) || HasVerifiedFamilyParent(currentChange, members, processChangesByPid))
                     {
-                        bool identityChanged = !members.TryGetValue(item.Pid, out value3) || value3 != item.Creation;
-                        members[item.Pid] = item.Creation;
+                        bool identityChanged = !members.TryGetValue(currentChange.Pid, out currentMember) || currentMember != currentChange.Creation;
+                        members[currentChange.Pid] = currentChange.Creation;
                         if (identityChanged)
                         {
-                            dictionary[item.Pid] = item.Creation;
+                            creationsByPid[currentChange.Pid] = currentChange.Creation;
                         }
                     }
                 }
@@ -922,18 +915,18 @@ namespace PaviseApp
             do
             {
                 membersAdded = false;
-                foreach (ProcessChange value4 in dictionary2.Values)
+                foreach (ProcessChange knownCreation in processChangesByPid.Values)
                 {
-                    if (!members.ContainsKey(value4.Pid) && HasVerifiedFamilyParent(value4, members, dictionary2))
+                    if (!members.ContainsKey(knownCreation.Pid) && HasVerifiedFamilyParent(knownCreation, members, processChangesByPid))
                     {
-                        members[value4.Pid] = value4.Creation;
-                        dictionary[value4.Pid] = value4.Creation;
+                        members[knownCreation.Pid] = knownCreation.Creation;
+                        creationsByPid[knownCreation.Pid] = knownCreation.Creation;
                         membersAdded = true;
                     }
                 }
             }
             while (membersAdded);
-            return dictionary;
+            return creationsByPid;
         }
         private void PruneWhitelistFamilyMembersIfDue(ProcessSnapshot all)
         {
@@ -949,54 +942,53 @@ namespace PaviseApp
             }
             lock (whiteEvalSync)
             {
-                HashSet<int> hashSet = new HashSet<int>();
+                HashSet<int> retainedPids = new HashSet<int>();
                 lock (sync)
                 {
-                    foreach (Dictionary<int, long> value2 in whiteFamilyMembers.Values)
+                    foreach (Dictionary<int, long> familyCreationsByPid in whiteFamilyMembers.Values)
                     {
-                        hashSet.UnionWith(value2.Keys);
+                        retainedPids.UnionWith(familyCreationsByPid.Keys);
                     }
                 }
-                if (hashSet.Count == 0)
+                if (retainedPids.Count == 0)
                 {
                     return;
                 }
-                HashSet<int> hashSet2 = new HashSet<int>();
-                Dictionary<int, long> dictionary = new Dictionary<int, long>();
-                ProcEntry[] entries = all.Entries;
-                foreach (ProcEntry procEntry in entries)
+                HashSet<int> pids = new HashSet<int>();
+                Dictionary<int, long> creationsByPid = new Dictionary<int, long>();
+                foreach (ProcEntry procEntry in all.Entries)
                 {
                     int pid = procEntry.Pid;
-                    if (hashSet.Contains(pid))
+                    if (retainedPids.Contains(pid))
                     {
-                        hashSet2.Add(pid);
-                        dictionary[pid] = procEntry.Creation;
+                        pids.Add(pid);
+                        creationsByPid[pid] = procEntry.Creation;
                     }
                 }
                 lock (sync)
                 {
-                    foreach (Dictionary<int, long> value3 in whiteFamilyMembers.Values)
+                    foreach (Dictionary<int, long> currentFamilyCreationsByPid in whiteFamilyMembers.Values)
                     {
-                        List<int> list = null;
-                        foreach (KeyValuePair<int, long> item in value3)
+                        List<int> expiredPids = null;
+                        foreach (KeyValuePair<int, long> currentFamilyCreationEntry in currentFamilyCreationsByPid)
                         {
-                            long value;
-                            if (!hashSet2.Contains(item.Key) || (dictionary.TryGetValue(item.Key, out value) && value != item.Value))
+                            long creation;
+                            if (!pids.Contains(currentFamilyCreationEntry.Key) || (creationsByPid.TryGetValue(currentFamilyCreationEntry.Key, out creation) && creation != currentFamilyCreationEntry.Value))
                             {
-                                if (list == null)
+                                if (expiredPids == null)
                                 {
-                                    list = new List<int>();
+                                    expiredPids = new List<int>();
                                 }
-                                list.Add(item.Key);
+                                expiredPids.Add(currentFamilyCreationEntry.Key);
                             }
                         }
-                        if (list == null)
+                        if (expiredPids == null)
                         {
                             continue;
                         }
-                        foreach (int item2 in list)
+                        foreach (int expiredPid in expiredPids)
                         {
-                            value3.Remove(item2);
+                            currentFamilyCreationsByPid.Remove(expiredPid);
                         }
                         whiteFamilyMembersVersion++;
                     }
@@ -1011,10 +1003,10 @@ namespace PaviseApp
                 return false;
             }
             long parentCreation = change.ParentCreation;
-            ProcessChange value2;
-            if (parentCreation <= 0 && liveStarts != null && liveStarts.TryGetValue(change.ParentPid, out value2))
+            ProcessChange liveStart;
+            if (parentCreation <= 0 && liveStarts != null && liveStarts.TryGetValue(change.ParentPid, out liveStart))
             {
-                parentCreation = value2.Creation;
+                parentCreation = liveStart.Creation;
             }
             return parentCreation == value;
         }

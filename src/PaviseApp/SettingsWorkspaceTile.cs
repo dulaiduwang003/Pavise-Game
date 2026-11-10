@@ -95,12 +95,12 @@ namespace PaviseApp
                 Bg = Theme.Card
             };
             PerformanceInfoButton performanceInfoButton = information;
-            EventHandler value = delegate
+            EventHandler eventHandler = delegate
             {
                 PerformanceInformationTip.Cancel(information);
                 PaviseDialog.Info(FindForm(), base.Title, DetailsText);
             };
-            performanceInfoButton.Click += value;
+            performanceInfoButton.Click += eventHandler;
             information.MouseEnter += delegate
             {
                 SyncDetails();
@@ -181,8 +181,7 @@ namespace PaviseApp
             {
                 TierPicker tierPicker = (TierPicker)base.Hosted;
                 int scaledDimension = Theme.S((tierPicker.Labels.Length > 3) ? 46 : 78);
-                string[] labels = tierPicker.Labels;
-                foreach (string entryText in labels)
+                foreach (string entryText in tierPicker.Labels)
                 {
                     scaledDimension = Math.Max(scaledDimension, TextRenderer.MeasureText(entryText, DsType.Font(DsText.Label, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(20));
                 }
@@ -198,9 +197,9 @@ namespace PaviseApp
             }
             hostWidth = Math.Min(lowerBound, hostWidth);
             int width2 = TextRenderer.MeasureText(base.Title, TitleFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-            int compactMetricsValue = lowerBound - Theme.S(28) - ((base.Hosted != null) ? (hostWidth + Theme.S(14)) : 0);
-            bool hostedFitsInline = base.Hosted != null && !(base.Hosted is Toggle) && width2 > compactMetricsValue;
-            titleWidth = Math.Max(Theme.S(48), hostedFitsInline ? (lowerBound - Theme.S(28)) : compactMetricsValue);
+            int availableTitleWidth = lowerBound - Theme.S(28) - ((base.Hosted != null) ? (hostWidth + Theme.S(14)) : 0);
+            bool hostedFitsInline = base.Hosted != null && !(base.Hosted is Toggle) && width2 > availableTitleWidth;
+            titleWidth = Math.Max(Theme.S(48), hostedFitsInline ? (lowerBound - Theme.S(28)) : availableTitleWidth);
             titleHeight = TextRenderer.MeasureText(base.Title, TitleFont, new Size(titleWidth, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height;
             return hostedFitsInline;
         }
@@ -235,11 +234,11 @@ namespace PaviseApp
                 {
                     foreach (Control control in standbyCleanerActionHost.Controls)
                     {
-                        Toggle toggle2 = control as Toggle;
-                        if (toggle2 != null)
+                        Toggle currentToggle = control as Toggle;
+                        if (currentToggle != null)
                         {
-                            toggle2.PerformanceConsole = true;
-                            toggle2.Size = new Size(Theme.S(76), Theme.S(34));
+                            currentToggle.PerformanceConsole = true;
+                            currentToggle.Size = new Size(Theme.S(76), Theme.S(34));
                         }
                         else
                         {
@@ -296,11 +295,11 @@ namespace PaviseApp
                     {
                         foreach (Control control in standbyCleanerActionHost.Controls)
                         {
-                            Toggle toggle2 = control as Toggle;
-                            if (toggle2 != null)
+                            Toggle currentToggle = control as Toggle;
+                            if (currentToggle != null)
                             {
-                                toggle2.PerformanceConsole = true;
-                                toggle2.Size = new Size(Theme.S(88), Theme.S(40));
+                                currentToggle.PerformanceConsole = true;
+                                currentToggle.Size = new Size(Theme.S(88), Theme.S(40));
                             }
                             else
                             {
@@ -358,16 +357,16 @@ namespace PaviseApp
                 {
                     using (SolidBrush brush = new SolidBrush(Theme.Inset))
                     {
-                        using (Pen pen2 = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.32f)))
+                        using (Pen currentPen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.32f)))
                         {
                             graphics.FillPath(brush, path);
-                            graphics.DrawPath(pen2, path);
+                            graphics.DrawPath(currentPen, path);
                         }
                     }
                 }
-                using (Pen pen3 = new Pen(Theme.Accent, Math.Max(1f, Dpi.Scale)))
+                using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1f, Dpi.Scale)))
                 {
-                    graphics.DrawLine(pen3, IconBounds.Left + Theme.S(10), IconBounds.Top, IconBounds.Left + Theme.S(34), IconBounds.Top);
+                    graphics.DrawLine(accentPen, IconBounds.Left + Theme.S(10), IconBounds.Top, IconBounds.Left + Theme.S(34), IconBounds.Top);
                 }
                 SettingsWorkspaceIcons.Draw(graphics, Rectangle.Inflate(IconBounds, -Theme.S(17), -Theme.S(17)), IconKey, Theme.Dim);
             }

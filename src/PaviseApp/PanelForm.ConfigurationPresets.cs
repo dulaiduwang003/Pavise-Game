@@ -148,10 +148,9 @@ namespace PaviseApp
 
         private void ShowConfigurationPresetRestartReminder(bool partial)
         {
-            string title = Lang.Cur == 2 ? "PCの再起動が必要です" : PerformancePolicy.Text("请重启电脑", "Restart your PC");
-            string body = Lang.Cur == 2 ? "適用した設定を有効にするには、PCを再起動してください。"
-                : PerformancePolicy.Text("请重启电脑，使已应用的设置生效。", "Restart your PC for the applied settings to take effect.");
-            if (partial) body = (Lang.Cur == 2 ? "一部の設定は適用できませんでした。" : PerformancePolicy.Text("部分设置未能应用。", "Some settings could not be applied. ")) + body;
+            string title = PerformancePolicy.Text("请重启电脑", "Restart your PC");
+            string body = PerformancePolicy.Text("请重启电脑，使已应用的设置生效。", "Restart your PC for the applied settings to take effect.");
+            if (partial) body = PerformancePolicy.Text("部分设置未能应用。", "Some settings could not be applied. ") + body;
 #if PAVISE_SELFTEST
             if (ConfigurationPresetRestartReminderForTest == null) throw new InvalidOperationException("Preset restart reminder must be mocked");
             ConfigurationPresetRestartReminderForTest(title, body);

@@ -77,55 +77,55 @@ namespace PaviseApp
             foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
             {
                 if (cancelled != null && cancelled()) { result.Cancelled = true; break; }
-                ConfigurationPresetItemResult item = new ConfigurationPresetItemResult { Key = entry.Key, Title = entry.Title };
-                result.Items.Add(item);
+                ConfigurationPresetItemResult configurationPresetItemResult = new ConfigurationPresetItemResult { Key = entry.Key, Title = entry.Title };
+                result.Items.Add(configurationPresetItemResult);
                 try
                 {
                     string before = backend.Read(entry), target = entry.Value(preset), detail;
-                    if (before == null) { item.Status = ConfigurationPresetItemStatus.Skipped; item.Detail = PerformancePolicy.Text("配置无法读取，未修改", "Configuration unreadable; unchanged"); expected[entry.Key] = null; continue; }
+                    if (before == null) { configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Skipped; configurationPresetItemResult.Detail = PerformancePolicy.Text("配置无法读取，未修改", "Configuration unreadable; unchanged"); expected[entry.Key] = null; continue; }
                     expected[entry.Key] = before;
                     if (target == null)
                     {
                         // 保留用户选择不等于一次应用成功。
-                        item.Status = ConfigurationPresetItemStatus.Skipped;
-                        item.Detail = PerformancePolicy.Text("保留当前选择", "Current selection preserved");
+                        configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Skipped;
+                        configurationPresetItemResult.Detail = PerformancePolicy.Text("保留当前选择", "Current selection preserved");
                         continue;
                     }
                     ConfigurationPresetAvailability availability;
                     try { availability = ConfigurationPresetEntry.IsEnabled(target) ? backend.Inspect(entry) : ConfigurationPresetAvailability.Yes(); }
                     catch (Exception ex) { availability = ConfigurationPresetAvailability.No(PerformancePolicy.Text("适用性检测失败，已跳过：", "Eligibility check failed; skipped: ") + ex.GetType().Name); }
-                    if (cancelled != null && cancelled()) { result.Cancelled = true; result.Items.Remove(item); break; }
+                    if (cancelled != null && cancelled()) { result.Cancelled = true; result.Items.Remove(configurationPresetItemResult); break; }
                     if (availability == null || !availability.Available)
                     {
-                        item.Detail = availability == null ? PerformancePolicy.Text("适用性无法核验", "Eligibility could not be verified") : availability.Detail;
+                        configurationPresetItemResult.Detail = availability == null ? PerformancePolicy.Text("适用性无法核验", "Eligibility could not be verified") : availability.Detail;
                         // 已保存的开启项不受支持时应撤回，不能仅用跳过状态掩盖。
                         string off = target == "on" ? "off" : target == "threshold" ? "default" : "0";
                         if (ConfigurationPresetEntry.IsEnabled(before) && entry.Key != "EnvQuantumProfileV1")
                         {
                             if (!backend.Write(entry, off, cancelled, out detail) || backend.Read(entry) != off)
-                            { item.Status = ConfigurationPresetItemStatus.Failed; item.Detail += PerformancePolicy.Text("；原启用配置恢复未完成：", "; prior enabled preference not restored: ") + detail; continue; }
+                            { configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Failed; configurationPresetItemResult.Detail += PerformancePolicy.Text("；原启用配置恢复未完成：", "; prior enabled preference not restored: ") + detail; continue; }
                             expected[entry.Key] = off;
-                            item.Detail += PerformancePolicy.Text("；已撤回原启用配置", "; prior enabled preference withdrawn");
+                            configurationPresetItemResult.Detail += PerformancePolicy.Text("；已撤回原启用配置", "; prior enabled preference withdrawn");
                         }
-                        item.Status = ConfigurationPresetItemStatus.Skipped; continue;
+                        configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Skipped; continue;
                     }
-                    if (cancelled != null && cancelled()) { result.Cancelled = true; result.Items.Remove(item); break; }
+                    if (cancelled != null && cancelled()) { result.Cancelled = true; result.Items.Remove(configurationPresetItemResult); break; }
                     if (!backend.Write(entry, target, cancelled, out detail))
-                    { item.Status = ConfigurationPresetItemStatus.Failed; item.Detail = detail; continue; }
+                    { configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Failed; configurationPresetItemResult.Detail = detail; continue; }
                     if (backend.Read(entry) != target)
-                    { item.Status = ConfigurationPresetItemStatus.Failed; item.Detail = PerformancePolicy.Text("配置回读不一致", "Configuration readback differs"); continue; }
+                    { configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Failed; configurationPresetItemResult.Detail = PerformancePolicy.Text("配置回读不一致", "Configuration readback differs"); continue; }
                     expected[entry.Key] = target;
-                    item.Status = before == target ? ConfigurationPresetItemStatus.Unchanged : ConfigurationPresetItemStatus.Applied;
-                    item.Detail = detail;
-                    item.RestartRequired = entry.RestartRequired && item.Status == ConfigurationPresetItemStatus.Applied;
+                    configurationPresetItemResult.Status = before == target ? ConfigurationPresetItemStatus.Unchanged : ConfigurationPresetItemStatus.Applied;
+                    configurationPresetItemResult.Detail = detail;
+                    configurationPresetItemResult.RestartRequired = entry.RestartRequired && configurationPresetItemResult.Status == ConfigurationPresetItemStatus.Applied;
                 }
-                catch (Exception ex) { item.Status = ConfigurationPresetItemStatus.Failed; item.Detail = ex.Message; }
+                catch (Exception ex) { configurationPresetItemResult.Status = ConfigurationPresetItemStatus.Failed; configurationPresetItemResult.Detail = ex.Message; }
             }
-            foreach (ConfigurationPresetItemResult item in result.Items)
+            foreach (ConfigurationPresetItemResult currentItem in result.Items)
             {
-                if (item.Status == ConfigurationPresetItemStatus.Applied) result.Applied++;
-                else if (item.Status == ConfigurationPresetItemStatus.Unchanged) result.Unchanged++;
-                else if (item.Status == ConfigurationPresetItemStatus.Skipped) result.Skipped++;
+                if (currentItem.Status == ConfigurationPresetItemStatus.Applied) result.Applied++;
+                else if (currentItem.Status == ConfigurationPresetItemStatus.Unchanged) result.Unchanged++;
+                else if (currentItem.Status == ConfigurationPresetItemStatus.Skipped) result.Skipped++;
                 else result.Failed++;
             }
             if (cancelled != null && cancelled()) result.Cancelled = true;
@@ -134,9 +134,9 @@ namespace PaviseApp
                 bool known = true;
                 foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
                 {
-                    string value;
-                    if (!expected.TryGetValue(entry.Key, out value) || value == null) { known = false; continue; }
-                    if (backend.Read(entry) != value)
+                    string currentExpected;
+                    if (!expected.TryGetValue(entry.Key, out currentExpected) || currentExpected == null) { known = false; continue; }
+                    if (backend.Read(entry) != currentExpected)
                     { result.Failed++; break; }
                 }
                 if (known && result.Failed == 0)

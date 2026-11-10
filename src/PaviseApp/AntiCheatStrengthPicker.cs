@@ -372,7 +372,7 @@ namespace PaviseApp
             measuredScale = Dpi.Scale;
             measuredFont = font;
             measuredLabels = new string[3];
-            int ensureRowsValue = 0;
+            int rowTop = 0;
             int scaledDimension = Theme.S(12);
             int lowerBound = Math.Max(1, (width - scaledDimension * 2) / 3);
             int lowerBound2 = Math.Max(1, (Horizontal ? lowerBound : width) - Theme.S(64));
@@ -387,8 +387,8 @@ namespace PaviseApp
                     rowHeight = Math.Max(rowHeight, sLimit);
                     continue;
                 }
-                rows[j] = new Rectangle(0, ensureRowsValue, Math.Max(1, width), sLimit);
-                ensureRowsValue += sLimit + scaledDimension;
+                rows[j] = new Rectangle(0, rowTop, Math.Max(1, width), sLimit);
+                rowTop += sLimit + scaledDimension;
             }
             if (Horizontal)
             {
@@ -401,7 +401,7 @@ namespace PaviseApp
             }
             else
             {
-                contentHeight = ensureRowsValue - scaledDimension;
+                contentHeight = rowTop - scaledDimension;
             }
         }
 
@@ -532,22 +532,22 @@ namespace PaviseApp
             {
                 return;
             }
-            int value;
+            int nextStrengthIndex;
             if (e.KeyCode == (Keys)(Horizontal ? 37 : 38))
             {
-                value = Math.Max(0, index - 1);
+                nextStrengthIndex = Math.Max(0, index - 1);
             }
             else if (e.KeyCode == (Keys)(Horizontal ? 39 : 40))
             {
-                value = Math.Min(2, index + 1);
+                nextStrengthIndex = Math.Min(2, index + 1);
             }
             else if (e.KeyCode == Keys.Home)
             {
-                value = 0;
+                nextStrengthIndex = 0;
             }
             else if (e.KeyCode == Keys.End)
             {
-                value = 2;
+                nextStrengthIndex = 2;
             }
             else
             {
@@ -555,11 +555,11 @@ namespace PaviseApp
                 {
                     return;
                 }
-                value = index;
+                nextStrengthIndex = index;
             }
             e.Handled = true;
             e.SuppressKeyPress = true;
-            Activate(value, DsKeys.IsActivation(e.KeyCode));
+            Activate(nextStrengthIndex, DsKeys.IsActivation(e.KeyCode));
         }
 
         protected override AccessibleObject CreateAccessibilityInstance()
@@ -582,10 +582,10 @@ namespace PaviseApp
                 Color color = (isSelected ? Col.Lerp(Theme.Card, Theme.Accent, Theme.LightMode ? 0.08f : 0.12f) : Col.Lerp(Theme.Card, Theme.CardHover, glows[i].Value * 0.65f));
                 Color stroke = (isSelected ? Col.Lerp(Theme.Stroke, Theme.Accent, 0.82f) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, glows[i].Value));
                 DsPaint.TechFrame(graphics, rectangle, Theme.S(7), color, stroke);
-                Color color2 = ((!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Accent : Theme.Dim));
+                Color currentColor = ((!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Accent : Theme.Dim));
                 int iOffset = i + 1;
                 int topOffset = rectangle.Top + (rectangle.Height - (iOffset - 1) * Theme.S(5)) / 2;
-                using (Pen pen = new Pen(color2, Math.Max(1f, Dpi.Scale * 1.5f)))
+                using (Pen pen = new Pen(currentColor, Math.Max(1f, Dpi.Scale * 1.5f)))
                 {
                     for (int j = 0; j < iOffset; j++)
                     {

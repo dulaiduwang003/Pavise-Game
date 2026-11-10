@@ -189,27 +189,25 @@ namespace PaviseApp
                 }
                 try
                 {
-                    XmlReaderSettings xmlReaderSettings = new XmlReaderSettings();
-                    xmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit;
-                    xmlReaderSettings.XmlResolver = null;
-                    XmlReaderSettings settings = xmlReaderSettings;
-                    XmlDocument xmlDocument = new XmlDocument();
-                    xmlDocument.XmlResolver = null;
-                    XmlDocument xmlDocument2 = xmlDocument;
+                    XmlReaderSettings settings = new XmlReaderSettings();
+                    settings.DtdProcessing = DtdProcessing.Prohibit;
+                    settings.XmlResolver = null;
+                    XmlDocument currentXmlDocument = new XmlDocument();
+                    currentXmlDocument.XmlResolver = null;
                     using (StringReader input = new StringReader(text.Substring(matchIndex, matchIndex2 + 7 - matchIndex)))
                     {
                         using (XmlReader reader = XmlReader.Create(input, settings))
                         {
-                            xmlDocument2.Load(reader);
+                            currentXmlDocument.Load(reader);
                         }
                     }
                     StringBuilder stringBuilder = new StringBuilder(text.Substring(0, matchIndex));
-                    foreach (XmlNode item in xmlDocument2.GetElementsByTagName("S"))
+                    foreach (XmlNode element in currentXmlDocument.GetElementsByTagName("S"))
                     {
-                        XmlAttribute xmlAttribute = ((item.Attributes == null) ? null : item.Attributes["S"]);
+                        XmlAttribute xmlAttribute = ((element.Attributes == null) ? null : element.Attributes["S"]);
                         if (xmlAttribute != null && (xmlAttribute.Value == "Error" || xmlAttribute.Value == "Warning"))
                         {
-                            stringBuilder.Append(' ').Append(Regex.Replace(item.InnerText, "_x([0-9a-fA-F]{4})_", (Match match) => ((char)Convert.ToInt32(match.Groups[1].Value, 16)).ToString()));
+                            stringBuilder.Append(' ').Append(Regex.Replace(element.InnerText, "_x([0-9a-fA-F]{4})_", (Match match) => ((char)Convert.ToInt32(match.Groups[1].Value, 16)).ToString()));
                         }
                     }
                     stringBuilder.Append(' ').Append(text.Substring(matchIndex2 + 7));

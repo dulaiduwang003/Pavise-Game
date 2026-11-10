@@ -98,17 +98,16 @@ namespace PaviseApp
                     {
                         return new EnglishInputOutcome(EnglishInputResult.Unavailable);
                     }
-                    IntPtr intPtr = IntPtr.Zero;
-                    IntPtr[] keyboardLayoutsSnapshot = keyboardLayouts;
-                    foreach (IntPtr intPtr2 in keyboardLayoutsSnapshot)
+                    IntPtr nativePointer = IntPtr.Zero;
+                    foreach (IntPtr currentNativePointer in keyboardLayouts)
                     {
-                        if (IsIndependentEnglish(intPtr2))
+                        if (IsIndependentEnglish(currentNativePointer))
                         {
-                            intPtr = intPtr2;
+                            nativePointer = currentNativePointer;
                             break;
                         }
                     }
-                    if (intPtr == IntPtr.Zero)
+                    if (nativePointer == IntPtr.Zero)
                     {
                         return new EnglishInputOutcome(EnglishInputResult.NoEnglishLayout);
                     }
@@ -124,7 +123,7 @@ namespace PaviseApp
                     Func<bool> mayContinue2 = () => SameTarget(process, lease, window, mayContinue) && api.GetKeyboardLayout(window.ThreadId) == initial;
                     attempted = true;
                     int error;
-                    switch (api.SendRequest(window, intPtr, 500u, mayContinue2, out error))
+                    switch (api.SendRequest(window, nativePointer, 500u, mayContinue2, out error))
                     {
                     case GameInputSendResult.NotIssued:
                         return new EnglishInputOutcome(EnglishInputResult.Canceled);
@@ -135,7 +134,7 @@ namespace PaviseApp
                         {
                             return new EnglishInputOutcome(EnglishInputResult.Unconfirmed, true, 0);
                         }
-                        return new EnglishInputOutcome((api.GetKeyboardLayout(window.ThreadId) == intPtr) ? EnglishInputResult.Changed : EnglishInputResult.Unconfirmed, true, 0);
+                        return new EnglishInputOutcome((api.GetKeyboardLayout(window.ThreadId) == nativePointer) ? EnglishInputResult.Changed : EnglishInputResult.Unconfirmed, true, 0);
                     }
                 }
                 finally

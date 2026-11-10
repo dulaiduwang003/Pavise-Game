@@ -69,8 +69,7 @@ namespace PaviseApp
                 performanceGrid.ContentSizeChanged = Relayout;
                 base.Controls.Add(performanceGrid);
             }
-            PrivacyAction[] all = PrivacyActionCatalog.All;
-            foreach (PrivacyAction privacyAction in all)
+            foreach (PrivacyAction privacyAction in PrivacyActionCatalog.All)
             {
                 if (include == null || include(privacyAction))
                 {
@@ -522,23 +521,23 @@ namespace PaviseApp
                 int width = (widthLimit - (columnCountResult - 1) * scaledDimension) / columnCountResult;
                 int top = 0;
                 int processedCount = 0;
-                int relayoutValue = 0;
+                int rowHeight = 0;
                 foreach (Row row in rows)
                 {
                     if (processedCount == columnCountResult)
                     {
-                        top += relayoutValue + scaledDimension;
+                        top += rowHeight + scaledDimension;
                         processedCount = 0;
-                        relayoutValue = 0;
+                        rowHeight = 0;
                     }
                     PerformanceFeatureCard performanceFeatureCard = (PerformanceFeatureCard)row.Card;
                     int cardHeight = performanceFeatureCard.PresentationHeight(width);
                     performanceFeatureCard.SetBounds(processedCount * (width + scaledDimension), top, width, cardHeight);
                     performanceFeatureCard.ArrangePresentation();
-                    relayoutValue = Math.Max(relayoutValue, cardHeight);
+                    rowHeight = Math.Max(rowHeight, cardHeight);
                     processedCount++;
                 }
-                base.Height = Math.Max(Theme.S(4), top + relayoutValue + Theme.S(4));
+                base.Height = Math.Max(Theme.S(4), top + rowHeight + Theme.S(4));
             }
             finally
             {

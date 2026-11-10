@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -186,8 +185,7 @@ namespace PaviseApp
         private static bool SetGroup(bool storage, bool on, Func<bool> cancelled, out string detail, string onlyMember = null)
         {
             bool ok = true; List<string> descriptions = new List<string>();
-            string[] members = onlyMember != null ? new[] { onlyMember } : storage ? PerformanceTuning.StorageMembers().ToArray() : bundle;
-            foreach (string key in members)
+            foreach (string key in onlyMember != null ? new[] { onlyMember } : storage ? PerformanceTuning.StorageMembers().ToArray() : bundle)
             {
                 if (cancelled != null && cancelled()) { detail = PerformancePolicy.Text("后续设置已停止", "Further settings cancelled"); return false; }
                 bool applicable = !on || key == "EnvVbsDisabledV1" || PerformanceActionBackend.EnvironmentTargets(key).Length > 0;

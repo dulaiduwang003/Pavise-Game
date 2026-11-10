@@ -505,10 +505,10 @@ namespace PaviseApp
                     if (Init() != 0) return false;
                     opened = true; IntPtr gpu; string id;
                     if (!Handle(wanted, out gpu, out id)) return false;
-                    uint value;
-                    if (key == PowerKey) return PowerMode(gpu, out value) == 0 && value == 1;
+                    uint mode;
+                    if (key == PowerKey) return PowerMode(gpu, out mode) == 0 && mode == 1;
                     // 仅通过只读证据确认支持情况，不能临时写频率试探能力。
-                    if (Architecture(gpu, out value) != 0 || value < 5 || value == uint.MaxValue) return false;
+                    if (Architecture(gpu, out mode) != 0 || mode < 5 || mode == uint.MaxValue) return false;
                     uint memory;
                     if (Clock(gpu, 2, out memory) != 0) return false;
                     uint count = 0; int rc = SupportedClocks(gpu, memory, ref count, null);

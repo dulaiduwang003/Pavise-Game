@@ -41,18 +41,18 @@ namespace PaviseApp
             token = null;
             string input = ((start == 0 && length == value.Length) ? value : value.Substring(start, length));
             MatchCollection matchCollection = PortPattern.Matches(input);
-            MatchCollection matchCollection2 = TokenPattern.Matches(input);
-            if (matchCollection.Count == 0 || matchCollection2.Count == 0)
+            MatchCollection matches = TokenPattern.Matches(input);
+            if (matchCollection.Count == 0 || matches.Count == 0)
             {
                 return false;
             }
             Match match = matchCollection[matchCollection.Count - 1];
-            Match match2 = matchCollection2[matchCollection2.Count - 1];
+            Match matche = matches[matches.Count - 1];
             if (!int.TryParse(match.Groups[1].Value, out port) || !ValidPort(port))
             {
                 return false;
             }
-            token = (match2.Groups[1].Success ? match2.Groups[1].Value : match2.Groups[2].Value);
+            token = (matche.Groups[1].Success ? matche.Groups[1].Value : matche.Groups[2].Value);
             if (!ValidToken(token))
             {
                 port = 0;

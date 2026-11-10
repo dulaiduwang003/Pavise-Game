@@ -4,11 +4,6 @@ namespace PaviseApp
 {
     internal static class IfeoBoost
     {
-        private const string Sub = "PerfOptions";
-
-        private const string ListKey = "IfeoList";
-
-        private const string ArmKey = "IfeoArm";
 
         private static readonly object lk = new object();
 
@@ -47,8 +42,7 @@ namespace PaviseApp
             {
                 bool gmIfeoBoostEnabled = Settings.Save("GmIfeoBoost", false);
                 gmIfeoBoostEnabled &= Settings.SaveStr("IfeoArm", "");
-                string[] list = ParseList(Settings.LoadStr("IfeoList", ""));
-                foreach (string entryText in list)
+                foreach (string entryText in ParseList(Settings.LoadStr("IfeoList", "")))
                 {
                     bool restoreSucceeded = RegOf(entryText).Restore();
                     restoreSucceeded &= IoRegOf(entryText).Restore();
@@ -57,9 +51,9 @@ namespace PaviseApp
                         gmIfeoBoostEnabled = false;
                         continue;
                     }
-                    string value = Settings.LoadStr("IfeoMk_" + entryText, "11");
-                    bool ourSub = value.Length < 2 || value[1] == '0';
-                    bool ourExe = value.Length < 1 || value[0] == '0';
+                    string str = Settings.LoadStr("IfeoMk_" + entryText, "11");
+                    bool ourSub = str.Length < 2 || str[1] == '0';
+                    bool ourExe = str.Length < 1 || str[0] == '0';
                     IfeoStore.CleanupEmpty(entryText, "PerfOptions", ourSub, ourExe);
                     Settings.SaveStr("IfeoMk_" + entryText, "");
                     IfeoStore.RemoveFromList("IfeoList", entryText);

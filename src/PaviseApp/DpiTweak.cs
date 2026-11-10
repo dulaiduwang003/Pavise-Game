@@ -7,15 +7,6 @@ namespace PaviseApp
 {
     internal static class DpiTweak
     {
-        private const string LayersKey = "Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers";
-
-        private const string Token = "HIGHDPIAWARE";
-
-        private const string Marker = "~";
-
-        private const string ListKey = "DpiExeList";
-
-        private const char ListSep = '\u001f';
 
         private static readonly object sync = new object();
 
@@ -51,8 +42,7 @@ namespace PaviseApp
                 try
                 {
                     bool allRestored = true;
-                    string[] trackedExesResult = TrackedExes();
-                    foreach (string exePath in trackedExesResult)
+                    foreach (string exePath in TrackedExes())
                     {
                         if (!SetForExe(exePath, false))
                         {
@@ -85,32 +75,30 @@ namespace PaviseApp
 
         private static bool Track(string exePath, bool aware)
         {
-            List<string> list = new List<string>();
-            string[] trackedExesResult = TrackedExes();
-            foreach (string entryText in trackedExesResult)
+            List<string> entryTexts = new List<string>();
+            foreach (string entryText in TrackedExes())
             {
                 if (!string.Equals(entryText, exePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    list.Add(entryText);
+                    entryTexts.Add(entryText);
                 }
             }
             if (aware)
             {
-                list.Add(exePath);
+                entryTexts.Add(exePath);
             }
-            string joinResult = string.Join('\u001f'.ToString(), list.ToArray());
-            string value;
-            if (Settings.SaveStr("DpiExeList", joinResult) && Settings.TryLoadStr("DpiExeList", out value))
+            string joinResult = string.Join('\u001f'.ToString(), entryTexts.ToArray());
+            string text;
+            if (Settings.SaveStr("DpiExeList", joinResult) && Settings.TryLoadStr("DpiExeList", out text))
             {
-                return value == joinResult;
+                return text == joinResult;
             }
             return false;
         }
 
         private static bool IsTracked(string exePath)
         {
-            string[] trackedExesResult = TrackedExes();
-            foreach (string a in trackedExesResult)
+            foreach (string a in TrackedExes())
             {
                 if (string.Equals(a, exePath, StringComparison.OrdinalIgnoreCase))
                 {
@@ -252,8 +240,7 @@ namespace PaviseApp
 
         internal static bool HasToken(string s)
         {
-            string[] textParts = Split(s);
-            foreach (string a in textParts)
+            foreach (string a in Split(s))
             {
                 if (string.Equals(a, "HIGHDPIAWARE", StringComparison.OrdinalIgnoreCase))
                 {
@@ -265,40 +252,39 @@ namespace PaviseApp
 
         private static List<string> OtherTokens(string cur)
         {
-            List<string> list = new List<string>();
-            string[] textParts = Split(cur);
-            foreach (string entryText in textParts)
+            List<string> entryTexts = new List<string>();
+            foreach (string entryText in Split(cur))
             {
                 if (entryText != "~" && !string.Equals(entryText, "HIGHDPIAWARE", StringComparison.OrdinalIgnoreCase))
                 {
-                    list.Add(entryText);
+                    entryTexts.Add(entryText);
                 }
             }
-            return list;
+            return entryTexts;
         }
 
         internal static string AddToken(string cur)
         {
-            List<string> list = new List<string>();
-            list.Add("~");
-            List<string> list2 = list;
-            list2.AddRange(OtherTokens(cur));
-            list2.Add("HIGHDPIAWARE");
-            return string.Join(" ", list2.ToArray());
+            List<string> texts = new List<string>();
+            texts.Add("~");
+            List<string> currentTexts = texts;
+            currentTexts.AddRange(OtherTokens(cur));
+            currentTexts.Add("HIGHDPIAWARE");
+            return string.Join(" ", currentTexts.ToArray());
         }
 
         internal static string RemoveToken(string cur)
         {
-            List<string> list = OtherTokens(cur);
-            if (list.Count == 0)
+            List<string> texts = OtherTokens(cur);
+            if (texts.Count == 0)
             {
                 return "";
             }
-            List<string> list2 = new List<string>();
-            list2.Add("~");
-            List<string> list3 = list2;
-            list3.AddRange(list);
-            return string.Join(" ", list3.ToArray());
+            List<string> currentTexts = new List<string>();
+            currentTexts.Add("~");
+            List<string> candidateTexts = currentTexts;
+            candidateTexts.AddRange(texts);
+            return string.Join(" ", candidateTexts.ToArray());
         }
     }
 }

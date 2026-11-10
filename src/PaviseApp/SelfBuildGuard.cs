@@ -8,7 +8,6 @@ namespace PaviseApp
 {
     internal static class SelfBuildGuard
     {
-        private const int MaxCached = 512;
 
         private static readonly object sync = new object();
 
@@ -116,15 +115,15 @@ namespace PaviseApp
             }
             lock (sync)
             {
-                bool value;
-                if (cache.TryGetValue(imagePath, out value))
+                bool currentCache;
+                if (cache.TryGetValue(imagePath, out currentCache))
                 {
-                    return value;
+                    return currentCache;
                 }
-                value = false;
+                currentCache = false;
                 try
                 {
-                    value = ProductMatches(FileVersionInfo.GetVersionInfo(imagePath).ProductName);
+                    currentCache = ProductMatches(FileVersionInfo.GetVersionInfo(imagePath).ProductName);
                 }
                 catch (IOException)
                 {
@@ -139,8 +138,8 @@ namespace PaviseApp
                 {
                     cache.Clear();
                 }
-                cache[imagePath] = value;
-                return value;
+                cache[imagePath] = currentCache;
+                return currentCache;
             }
         }
     }

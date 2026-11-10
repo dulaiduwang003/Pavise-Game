@@ -11,8 +11,6 @@ namespace PaviseApp
 
         internal const string StoreDirectory = "CriticalThreadHardAffinityV1";
 
-        private const string GuardianConfiguration = "<configuration><startup><supportedRuntime version=\"v4.0\" sku=\".NETFramework,Version=v4.7.2\"/></startup></configuration>";
-
         private static readonly object controllersGate = new object();
 
         private static readonly List<ParentGuardian> controllers = new List<ParentGuardian>();

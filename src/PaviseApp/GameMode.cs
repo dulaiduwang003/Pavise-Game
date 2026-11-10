@@ -12,16 +12,6 @@ namespace PaviseApp
         private readonly ProcessActionFailureBudget autoAddFailureBudget = new ProcessActionFailureBudget();
         private readonly ProcessActionFailureBudget rendererProbeFailureBudget = new ProcessActionFailureBudget();
 
-        private const double AutoAddMinUtilization = 20.0;
-
-        private const int AutoAddGateMs = 30000;
-
-        private const int AutoAddRejectCacheLimit = 64;
-
-        private const int AutoAddEvidenceAgeMs = 120000;
-
-        private const uint DuplicateSameAccess = 2u;
-
         internal const string GamePriorityAction = "GamePriority";
 
         internal const string GameIoAction = "GameIoPriority";
@@ -32,41 +22,15 @@ namespace PaviseApp
 
         internal const string GameEcoAction = "GameEcoQoS";
 
-        private const int VanishGiveUpTries = 20;
-
-        private const string CriticalThreadAction = "game-critical-thread-hard-affinity";
-
-        private const int BoostRetryMax = 3;
-
-        private const int PlacementRetryMax = 3;
-
-        private const int StateRetryMax = 8;
-
         internal const int SlowEnvDelaySeconds = 20;
-
-        private const int StickyGraceMisses = 1;
 
         internal const string ExitGraceSettingKey = "GameExitGraceSeconds";
 
         internal const int DefaultExitGraceSeconds = 8;
 
-        private const int EnvRetryBaseSeconds = 4;
-
-        private const int EnvRetryCapSeconds = 60;
-
-        private const int EnvRetryMaxSteps = 8;
-
-        private const string PowerFailStreakKey = "PowerPlanFailStreak";
-
         internal const int SwitchOutDebounceMs = 5000;
 
         internal const string AutomaticFsoKey = "AutoDisableFullscreenOptimizations";
-
-        private const string WhitelistFooterPrefix = "PAVISE_WHITELIST_END|";
-
-        private const int PollingSweepIntervalMs = 4000;
-
-        private const int EventBackedSweepIntervalMs = 20000;
 
         internal const int ActiveGameSweepIntervalMs = 500;
 
@@ -74,25 +38,15 @@ namespace PaviseApp
 
         internal const int DirtyScanFloorMs = 500;
 
-        private const int FullGameDetectionIntervalMs = 20000;
-
         internal const int GameTransitionScanIntervalMs = 5000;
 
         internal const int FailedProcessScanRetryMs = 1000;
-
-        private const int RendererActivityMaxAttempts = 5;
 
         internal const string LastSessionKey = "LastSessionBrief";
 
         internal const string StandbyCleanerOptionsKey = "GmStandbyCleanerOptionsV1";
 
-        private const int MaxOverlayAttempts = 2;
-
         internal const int OlderRendererTakeoverForegroundMs = 10000;
-
-        private const long TransientProcessTicks = 20000000L;
-
-        private const int WhiteFamilyPruneIntervalMs = 20000;
 
         private readonly AdaptiveGuard adaptiveGuard = new AdaptiveGuard();
 
@@ -506,8 +460,6 @@ namespace PaviseApp
         private bool wuActive;
 
         private bool optionalServicesActive;
-
-        private bool optionalServicesWanted;
 
         private int optionalServiceGeneration;
 

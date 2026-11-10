@@ -28,11 +28,10 @@ namespace PaviseApp
                 return;
             }
             // 异常快照包含重复 PID 时，仍保留条目的原顺序。
-            HashSet<int> hashSet = new HashSet<int>();
-            ProcEntry[] entries = all.Entries;
-            foreach (ProcEntry procEntry in entries)
-                BoostEntry(procEntry, boostPass, hashSet);
-            PruneDeadBoosts(hashSet);
+            HashSet<int> liveBoostPids = new HashSet<int>();
+            foreach (ProcEntry procEntry in all.Entries)
+                BoostEntry(procEntry, boostPass, liveBoostPids);
+            PruneDeadBoosts(liveBoostPids);
         }
         private void BoostEntry(ProcEntry procEntry, BoostPass boostPass, HashSet<int> live)
         {
@@ -47,34 +46,34 @@ namespace PaviseApp
                 {
                     return;
                 }
-                IntPtr intPtr = OpenBoostHandle(pid, boostPass);
-                if (intPtr == IntPtr.Zero)
+                IntPtr processHandle = OpenBoostHandle(pid, boostPass);
+                if (processHandle == IntPtr.Zero)
                 {
                     return;
                 }
                 try
                 {
                     long currentCreation;
-                    if (VerifyRendererIdentity(intPtr, pid, boostPass, out currentCreation) && RefreshBoostPriority(boostPass))
+                    if (VerifyRendererIdentity(processHandle, pid, boostPass, out currentCreation) && RefreshBoostPriority(boostPass))
                     {
                         HandlePidReuse(pid, currentCreation, ref known, ref needPlacement);
                         bool newlyTracked;
                         bool gpuOk;
                         bool stateOk;
                         bool firstVerified;
-                        if (CaptureAndTrack(intPtr, pid, currentCreation, boostPass, known, out newlyTracked, out gpuOk) && ApplyBoostStateStage(intPtr, pid, boostPass, needTweak, out stateOk, out firstVerified))
+                        if (CaptureAndTrack(processHandle, pid, currentCreation, boostPass, known, out newlyTracked, out gpuOk) && ApplyBoostStateStage(processHandle, pid, boostPass, needTweak, out stateOk, out firstVerified))
                         {
                             bool isolationVerified = boostPass.Exclusive && coreEngaged && coreAffinityVerified;
                             string placementText = (isolationVerified ? (Lang.T("t.gamemodeboost.18") + CpuTopology.CountSetBits(boostPass.DesiredMask) + Lang.T("t.gamemodeboost.16")) : Lang.T("t.gamemodeboost.17"));
-                            bool ecoCleared = ClearEfficiencyMode(intPtr, pid, boostPass);
-                            EngageLaneAndReport(intPtr, pid, currentCreation, boostPass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, isolationVerified);
-                            ApplyGameTweaks(intPtr, pid, boostPass, needTweak);
+                            bool ecoCleared = ClearEfficiencyMode(processHandle, pid, boostPass);
+                            EngageLaneAndReport(processHandle, pid, currentCreation, boostPass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, isolationVerified);
+                            ApplyGameTweaks(processHandle, pid, boostPass, needTweak);
                         }
                     }
                 }
                 finally
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
             }
             catch
@@ -176,9 +175,9 @@ namespace PaviseApp
             bool boostsRemoved = false;
             lock (sync)
             {
-                foreach (KeyValuePair<int, Snap> item in gameBoost)
+                foreach (KeyValuePair<int, Snap> gameBoostEntry in gameBoost)
                 {
-                    if (item.Key != pass.RendererPid || item.Value.Creation != pass.RendererCreation || !string.Equals(item.Value.Name, pass.RendererName, StringComparison.OrdinalIgnoreCase))
+                    if (gameBoostEntry.Key != pass.RendererPid || gameBoostEntry.Value.Creation != pass.RendererCreation || !string.Equals(gameBoostEntry.Value.Name, pass.RendererName, StringComparison.OrdinalIgnoreCase))
                     {
                         boostsRemoved = true;
                         break;
@@ -192,8 +191,8 @@ namespace PaviseApp
         }
         private IntPtr OpenBoostHandle(int pid, BoostPass pass)
         {
-            IntPtr intPtr = Native.OpenProcess(12800, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(12800, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 bool lastOpenProcessFailureWasNoSuchProcessSucceeded = Native.LastOpenProcessFailureWasNoSuchProcess();
                 bool wasAdded;
@@ -210,7 +209,7 @@ namespace PaviseApp
                     ProtectedGameRoster.Remember(pass.RendererName);
                 }
             }
-            return intPtr;
+            return processHandle;
         }
         private bool ApplyBoostStateStage(IntPtr h, int pid, BoostPass pass, bool needTweak, out bool stateOk, out bool firstVerified)
         {
@@ -267,30 +266,30 @@ namespace PaviseApp
             bool restoreHardPinsExceptSucceeded = RestoreHardPinsExcept(placementOwned ? keepPid : 0, placementOwned ? keepCreation : 0);
             corePinPending = !restoreHardPinsExceptSucceeded;
             isolationSettled = isolationSettled && refinementSettled && releaseExceptSucceeded && restoreHardPinsExceptSucceeded;
-            List<KeyValuePair<int, Snap>> list;
+            List<KeyValuePair<int, Snap>> keyValuePairs;
             lock (sync)
             {
                 if (gameBoost.Count == 0 && gameGpu.Count == 0)
                 {
                     return isolationSettled;
                 }
-                list = new List<KeyValuePair<int, Snap>>();
-                foreach (KeyValuePair<int, Snap> item in gameBoost)
+                keyValuePairs = new List<KeyValuePair<int, Snap>>();
+                foreach (KeyValuePair<int, Snap> gameBoostEntry in gameBoost)
                 {
-                    if (!IsKeptBoost(item, keepPid, keepCreation, keepName))
+                    if (!IsKeptBoost(gameBoostEntry, keepPid, keepCreation, keepName))
                     {
-                        list.Add(item);
+                        keyValuePairs.Add(gameBoostEntry);
                     }
                 }
-                Dictionary<int, int> dictionary = new Dictionary<int, int>();
-                foreach (KeyValuePair<int, int> item2 in gameGpu)
+                Dictionary<int, int> gpuPrioritiesToRestore = new Dictionary<int, int>();
+                foreach (KeyValuePair<int, int> gameGpuEntry in gameGpu)
                 {
-                    if (keepPid <= 0 || item2.Key != keepPid)
+                    if (keepPid <= 0 || gameGpuEntry.Key != keepPid)
                     {
-                        dictionary[item2.Key] = item2.Value;
+                        gpuPrioritiesToRestore[gameGpuEntry.Key] = gameGpuEntry.Value;
                     }
                 }
-                if (list.Count == 0 && dictionary.Count == 0)
+                if (keyValuePairs.Count == 0 && gpuPrioritiesToRestore.Count == 0)
                 {
                     return isolationSettled;
                 }
@@ -310,40 +309,40 @@ namespace PaviseApp
                 }
                 else
                 {
-                    foreach (KeyValuePair<int, Snap> item3 in list)
+                    foreach (KeyValuePair<int, Snap> keyValuePairEntry in keyValuePairs)
                     {
-                        boostFail.Remove(item3.Key);
-                        boostDenied.Remove(item3.Key);
-                        boostStateWarned.Remove(item3.Key);
-                        boostStateVerified.Remove(item3.Key);
-                        gameBoostNextAudit.Remove(item3.Key);
-                        ForgetNvTweakLocked(item3.Key);
-                        boostHandleStripped.Remove(item3.Key);
-                        boostEcoGaveUp.Remove(item3.Key);
-                        placementFail.Remove(item3.Key);
-                        placementGaveUp.Remove(item3.Key);
-                        boostStateFail.Remove(item3.Key);
+                        boostFail.Remove(keyValuePairEntry.Key);
+                        boostDenied.Remove(keyValuePairEntry.Key);
+                        boostStateWarned.Remove(keyValuePairEntry.Key);
+                        boostStateVerified.Remove(keyValuePairEntry.Key);
+                        gameBoostNextAudit.Remove(keyValuePairEntry.Key);
+                        ForgetNvTweakLocked(keyValuePairEntry.Key);
+                        boostHandleStripped.Remove(keyValuePairEntry.Key);
+                        boostEcoGaveUp.Remove(keyValuePairEntry.Key);
+                        placementFail.Remove(keyValuePairEntry.Key);
+                        placementGaveUp.Remove(keyValuePairEntry.Key);
+                        boostStateFail.Remove(keyValuePairEntry.Key);
                     }
                 }
             }
-            foreach (KeyValuePair<int, Snap> item4 in list)
+            foreach (KeyValuePair<int, Snap> currentKeyValuePairEntry in keyValuePairs)
             {
-                RestoreHardPin(item4.Key);
+                RestoreHardPin(currentKeyValuePairEntry.Key);
             }
-            foreach (KeyValuePair<int, Snap> item5 in list)
+            foreach (KeyValuePair<int, Snap> candidateKeyValuePairEntry in keyValuePairs)
             {
-                int key = item5.Key;
-                bool runBoostRecoverySucceeded = RunBoostRecovery(key, item5.Value.Creation, "snapshot", () => RestoreBoostProcess(key, item5.Value));
+                int key = candidateKeyValuePairEntry.Key;
+                bool runBoostRecoverySucceeded = RunBoostRecovery(key, candidateKeyValuePairEntry.Value.Creation, "snapshot", () => RestoreBoostProcess(key, candidateKeyValuePairEntry.Value));
                 if (runBoostRecoverySucceeded)
                 {
                     lock (coreIsolationGate)
-                    if ((criticalBorrowsCoreIsolation && criticalCoreIsolationPid == key && criticalCoreIsolationBirth == item5.Value.Creation)
-                        || (!criticalOwnsCoreIsolation && coreIsolation != null && !coreIsolation.Drop(key, item5.Value.Creation)))
+                    if ((criticalBorrowsCoreIsolation && criticalCoreIsolationPid == key && criticalCoreIsolationBirth == candidateKeyValuePairEntry.Value.Creation)
+                        || (!criticalOwnsCoreIsolation && coreIsolation != null && !coreIsolation.Drop(key, candidateKeyValuePairEntry.Value.Creation)))
                     {
                         isolationSettled = false;
                     }
                     ForgetHardPin(key);
-                    CrashGuard.ReleaseBoostProcess(key, item5.Value.Creation);
+                    CrashGuard.ReleaseBoostProcess(key, candidateKeyValuePairEntry.Value.Creation);
                     lock (sync)
                     {
                         gameBoost.Remove(key);
@@ -374,8 +373,8 @@ namespace PaviseApp
         }
         private static BoostTarget ProbeBoostTarget(int pid, long creation)
         {
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 if (Marshal.GetLastWin32Error() != 87)
                 {
@@ -388,7 +387,7 @@ namespace PaviseApp
                 long creation2;
                 long cpu;
                 ulong io;
-                if (!Native.QueryProcessSample(intPtr, out creation2, out cpu, out io))
+                if (!Native.QueryProcessSample(processHandle, out creation2, out cpu, out io))
                 {
                     return BoostTarget.Unopenable;
                 }
@@ -396,80 +395,80 @@ namespace PaviseApp
                 {
                     return BoostTarget.Gone;
                 }
-                return (!Native.StillActive(intPtr)) ? BoostTarget.Gone : BoostTarget.Alive;
+                return (!Native.StillActive(processHandle)) ? BoostTarget.Gone : BoostTarget.Alive;
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
         internal int DropVanishedBoosts()
         {
-            List<KeyValuePair<int, Snap>> list = new List<KeyValuePair<int, Snap>>();
+            List<KeyValuePair<int, Snap>> keyValuePairs = new List<KeyValuePair<int, Snap>>();
             lock (sync)
             {
-                foreach (KeyValuePair<int, Snap> item in gameBoost)
+                foreach (KeyValuePair<int, Snap> gameBoostEntry in gameBoost)
                 {
-                    list.Add(item);
+                    keyValuePairs.Add(gameBoostEntry);
                 }
             }
-            if (list.Count == 0)
+            if (keyValuePairs.Count == 0)
             {
                 return 0;
             }
             int processedCount = 0;
             int processedCount2 = 0;
-            foreach (KeyValuePair<int, Snap> item2 in list)
+            foreach (KeyValuePair<int, Snap> keyValuePairEntry in keyValuePairs)
             {
-                BoostTarget boostTarget = ProbeBoostTarget(item2.Key, item2.Value.Creation);
+                BoostTarget boostTarget = ProbeBoostTarget(keyValuePairEntry.Key, keyValuePairEntry.Value.Creation);
                 if (boostTarget == BoostTarget.Alive)
                 {
                     lock (sync)
                     {
-                        boostVanishTries.Remove(item2.Key);
+                        boostVanishTries.Remove(keyValuePairEntry.Key);
                     }
                     continue;
                 }
                 bool unopenable = boostTarget == BoostTarget.Unopenable;
                 if (unopenable)
                 {
-                    int value;
+                    int boostVanishTry;
                     lock (sync)
                     {
-                        boostVanishTries.TryGetValue(item2.Key, out value);
-                        value++;
-                        boostVanishTries[item2.Key] = value;
+                        boostVanishTries.TryGetValue(keyValuePairEntry.Key, out boostVanishTry);
+                        boostVanishTry++;
+                        boostVanishTries[keyValuePairEntry.Key] = boostVanishTry;
                     }
-                    if (value < 20)
+                    if (boostVanishTry < 20)
                     {
                         continue;
                     }
                     processedCount2++;
                 }
-                if (RestoreHardPin(item2.Key))
+                if (RestoreHardPin(keyValuePairEntry.Key))
                 {
                     if (!unopenable)
                     {
-                        CrashGuard.ReleaseBoostProcess(item2.Key, item2.Value.Creation);
+                        CrashGuard.ReleaseBoostProcess(keyValuePairEntry.Key, keyValuePairEntry.Value.Creation);
                     }
                     lock (sync)
                     {
-                        boostVanishTries.Remove(item2.Key);
-                        gameBoost.Remove(item2.Key);
-                        gameGpu.Remove(item2.Key);
-                        gamePlacement.Remove(item2.Key);
-                        boostFail.Remove(item2.Key);
-                        boostStateWarned.Remove(item2.Key);
-                        boostStateVerified.Remove(item2.Key);
-                        boostHandleStripped.Remove(item2.Key);
-                        boostEcoGaveUp.Remove(item2.Key);
-                        placementGaveUp.Remove(item2.Key);
-                        placementFail.Remove(item2.Key);
-                        boostStateFail.Remove(item2.Key);
-                        gameBoostNextAudit.Remove(item2.Key);
-                        boostDenied.Remove(item2.Key);
-                        ForgetNvTweakLocked(item2.Key);
-                        ForgetBoostActionTarget(item2.Key);
+                        boostVanishTries.Remove(keyValuePairEntry.Key);
+                        gameBoost.Remove(keyValuePairEntry.Key);
+                        gameGpu.Remove(keyValuePairEntry.Key);
+                        gamePlacement.Remove(keyValuePairEntry.Key);
+                        boostFail.Remove(keyValuePairEntry.Key);
+                        boostStateWarned.Remove(keyValuePairEntry.Key);
+                        boostStateVerified.Remove(keyValuePairEntry.Key);
+                        boostHandleStripped.Remove(keyValuePairEntry.Key);
+                        boostEcoGaveUp.Remove(keyValuePairEntry.Key);
+                        placementGaveUp.Remove(keyValuePairEntry.Key);
+                        placementFail.Remove(keyValuePairEntry.Key);
+                        boostStateFail.Remove(keyValuePairEntry.Key);
+                        gameBoostNextAudit.Remove(keyValuePairEntry.Key);
+                        boostDenied.Remove(keyValuePairEntry.Key);
+                        ForgetNvTweakLocked(keyValuePairEntry.Key);
+                        ForgetBoostActionTarget(keyValuePairEntry.Key);
                     }
                     processedCount++;
                 }
@@ -495,39 +494,39 @@ namespace PaviseApp
                 boostEcoGaveUp.RemoveWhere((int x) => !live.Contains(x));
                 placementGaveUp.RemoveWhere((int x) => !live.Contains(x));
                 tweakApplied.RemoveWhere((int x) => !live.Contains(x));
-                List<int> list = null;
+                List<int> keys = null;
                 foreach (int key in gameBoost.Keys)
                 {
                     if (!live.Contains(key))
                     {
-                        if (list == null)
+                        if (keys == null)
                         {
-                            list = new List<int>();
+                            keys = new List<int>();
                         }
-                        list.Add(key);
+                        keys.Add(key);
                     }
                 }
-                if (list == null)
+                if (keys == null)
                 {
                     return;
                 }
-                foreach (int item in list)
+                foreach (int currentKey in keys)
                 {
                     // 复用或不完整的进程快照不能证明目标已退出。
-                    if (ProbeBoostTarget(item, gameBoost[item].Creation) != BoostTarget.Gone) continue;
-                    if (RestoreHardPin(item))
+                    if (ProbeBoostTarget(currentKey, gameBoost[currentKey].Creation) != BoostTarget.Gone) continue;
+                    if (RestoreHardPin(currentKey))
                     {
-                        CrashGuard.ReleaseBoostProcess(item, gameBoost[item].Creation);
-                        gameBoost.Remove(item);
-                        gameGpu.Remove(item);
-                        gamePlacement.Remove(item);
-                        boostFail.Remove(item);
-                        boostStateWarned.Remove(item);
-                        boostStateVerified.Remove(item);
-                        gameBoostNextAudit.Remove(item);
-                        placementFail.Remove(item);
-                        boostStateFail.Remove(item);
-                        ForgetBoostActionTarget(item);
+                        CrashGuard.ReleaseBoostProcess(currentKey, gameBoost[currentKey].Creation);
+                        gameBoost.Remove(currentKey);
+                        gameGpu.Remove(currentKey);
+                        gamePlacement.Remove(currentKey);
+                        boostFail.Remove(currentKey);
+                        boostStateWarned.Remove(currentKey);
+                        boostStateVerified.Remove(currentKey);
+                        gameBoostNextAudit.Remove(currentKey);
+                        placementFail.Remove(currentKey);
+                        boostStateFail.Remove(currentKey);
+                        ForgetBoostActionTarget(currentKey);
                     }
                 }
             }
@@ -560,8 +559,8 @@ namespace PaviseApp
         {
             ticks = 0L;
             creation = 0L;
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -570,7 +569,7 @@ namespace PaviseApp
                 long exit;
                 long kernel;
                 long user;
-                if (!GetProcessTimes(intPtr, out creation, out exit, out kernel, out user))
+                if (!GetProcessTimes(processHandle, out creation, out exit, out kernel, out user))
                 {
                     return false;
                 }
@@ -579,7 +578,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
         private static long CurrentProcessCpuTicks()

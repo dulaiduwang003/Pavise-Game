@@ -144,18 +144,18 @@ namespace PaviseApp
                 return false;
             }
             Logger.Log(Lang.T("log.program.11", 0) + osBuildResult);
-            int blockIfOsTooOldValue = 0;
+            int startupInspectionState = 0;
             try
             {
-                List<string> list = LegacyPurge.RestorePersistent(dataDir);
-                blockIfOsTooOldValue = ((list == null) ? 1 : ((list.Count == 0) ? 1 : 2));
+                List<string> texts = LegacyPurge.RestorePersistent(dataDir);
+                startupInspectionState = ((texts == null) ? 1 : ((texts.Count == 0) ? 1 : 2));
             }
             catch
             {
-                blockIfOsTooOldValue = 2;
+                startupInspectionState = 2;
             }
             string osOldBodyText = Lang.F("os.old.body", osBuildResult, 19041, 26100);
-            if (blockIfOsTooOldValue == 2)
+            if (startupInspectionState == 2)
             {
                 osOldBodyText += Lang.T("os.old.restorefail");
             }

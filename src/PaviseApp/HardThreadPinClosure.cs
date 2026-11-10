@@ -11,14 +11,14 @@ namespace PaviseApp
             {
                 throw new ArgumentNullException("closeImage");
             }
-            List<Exception> list = new List<Exception>();
+            List<Exception> exceptions = new List<Exception>();
             try
             {
                 closeImage();
             }
             catch (Exception inner)
             {
-                list.Add(new HardThreadClosureFailure("Original image source closure is unconfirmed", inner));
+                exceptions.Add(new HardThreadClosureFailure("Original image source closure is unconfirmed", inner));
             }
             try
             {
@@ -26,11 +26,11 @@ namespace PaviseApp
             }
             catch (Exception item)
             {
-                list.Add(item);
+                exceptions.Add(item);
             }
-            if (list.Count != 0)
+            if (exceptions.Count != 0)
             {
-                throw new AggregateException("Original actor source cleanup remains unconfirmed", list);
+                throw new AggregateException("Original actor source cleanup remains unconfirmed", exceptions);
             }
         }
     }

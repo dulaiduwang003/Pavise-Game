@@ -64,12 +64,12 @@ namespace PaviseApp
                 Guid g = saved;
                 if (g == Guid.Empty)
                 {
-                    string value;
-                    if (!Settings.TryLoadStr("PrevPowerPlan", out value) || value == null)
+                    string text;
+                    if (!Settings.TryLoadStr("PrevPowerPlan", out text) || text == null)
                     {
                         return false;
                     }
-                    if (value.Length > 0 && (!TryGuid(value, out g) || g == Guid.Empty))
+                    if (text.Length > 0 && (!TryGuid(text, out g) || g == Guid.Empty))
                     {
                         return ClearRestoredPlan(g);
                     }

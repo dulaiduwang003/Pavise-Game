@@ -93,7 +93,7 @@ namespace PaviseApp
         {
             private readonly SecurityCompatibilityWarningIcon icon;
             internal WarningAccessibleObject(SecurityCompatibilityWarningIcon owner) : base(owner) { icon = owner; }
-            public override string DefaultAction { get { return SecurityCompatibilityPresentation.T("查看处理方法", "View guidance", "対処方法を表示"); } }
+            public override string DefaultAction { get { return SecurityCompatibilityPresentation.T("查看处理方法", "View guidance"); } }
             public override void DoDefaultAction() { if (DsInteraction.CanActivate(icon)) icon.OnClick(EventArgs.Empty); }
         }
         protected override void Dispose(bool disposing) { if (disposing) tip.Dispose(); base.Dispose(disposing); }

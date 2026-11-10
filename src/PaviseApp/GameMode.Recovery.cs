@@ -39,39 +39,39 @@ namespace PaviseApp
             }
             try
             {
-                HardPin value;
+                HardPin hardPin;
                 lock (sync)
                 {
-                    if (!hardPins.TryGetValue(pid, out value))
+                    if (!hardPins.TryGetValue(pid, out hardPin))
                     {
                         return true;
                     }
-                    if (expected != null && !object.ReferenceEquals(value, expected)) return true;
-                    RequestHardPinRestoreLocked(value, false);
-                    bool targetGone = Native.WaitForSingleObject(value.RestoreHandle, 0) == 0;
-                    if (targetGone && !value.RestoreExitPhase)
+                    if (expected != null && !object.ReferenceEquals(hardPin, expected)) return true;
+                    RequestHardPinRestoreLocked(hardPin, false);
+                    bool targetGone = Native.WaitForSingleObject(hardPin.RestoreHandle, 0) == 0;
+                    if (targetGone && !hardPin.RestoreExitPhase)
                     {
-                        value.RestoreExitPhase = true;
-                        value.RestoreAttempts = 0;
-                        value.NextRestore = 0;
+                        hardPin.RestoreExitPhase = true;
+                        hardPin.RestoreAttempts = 0;
+                        hardPin.NextRestore = 0;
                     }
-                    if (value.RestoreAttempts >= 3)
+                    if (hardPin.RestoreAttempts >= 3)
                     {
-                        RecoveryAttemptTrace.Exhausted(value.RestoreExitPhase ? (Func<bool>)null : () => Native.WaitForSingleObject(value.RestoreHandle, 0) == 0);
+                        RecoveryAttemptTrace.Exhausted(hardPin.RestoreExitPhase ? (Func<bool>)null : () => Native.WaitForSingleObject(hardPin.RestoreHandle, 0) == 0);
                         return false;
                     }
-                    if (AutoCores.NowTicks < value.NextRestore)
+                    if (AutoCores.NowTicks < hardPin.NextRestore)
                     {
-                        RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(value.NextRestore - AutoCores.NowTicks));
+                        RecoveryAttemptTrace.DeferredFor(TimeSpan.FromTicks(hardPin.NextRestore - AutoCores.NowTicks));
                         return false;
                     }
-                    value.RestoreAttempts++;
-                    value.RestoreInFlight = true;
+                    hardPin.RestoreAttempts++;
+                    hardPin.RestoreInFlight = true;
                 }
                 bool restored = false;
                 try
                 {
-                    if (!PrepareCriticalThreadProcessMaskMutation(pid, value.Creation)) return false;
+                    if (!PrepareCriticalThreadProcessMaskMutation(pid, hardPin.Creation)) return false;
                     restored = RestoreHardPinLocked(pid);
                     return restored;
                 }
@@ -80,7 +80,7 @@ namespace PaviseApp
                     lock (sync)
                     {
                         HardPin current;
-                        if (hardPins.TryGetValue(pid, out current) && object.ReferenceEquals(value, current))
+                        if (hardPins.TryGetValue(pid, out current) && object.ReferenceEquals(hardPin, current))
                         {
                             current.RestoreInFlight = false;
                             if (!restored)
@@ -107,35 +107,35 @@ namespace PaviseApp
         private bool RestoreHardPinLocked(int pid)
         {
             if (!Monitor.IsEntered(criticalProcessGate) || Monitor.IsEntered(sync)) return false;
-            HardPin value;
+            HardPin hardPin;
             lock (sync)
             {
-                if (!hardPins.TryGetValue(pid, out value))
+                if (!hardPins.TryGetValue(pid, out hardPin))
                 {
                     return true;
                 }
-                if (!value.RestoreInFlight) return false;
+                if (!hardPin.RestoreInFlight) return false;
             }
             string jobReason;
-            if (!coreAffinityJobs.Release(pid, value.Creation, out jobReason))
+            if (!coreAffinityJobs.Release(pid, hardPin.Creation, out jobReason))
             {
                 lock (sync) corePlacementEvidence = "pid=" + pid + " stage=job-release reason=" + jobReason;
                 return false;
             }
-            HardPinHandleState state = HardPinHandleStateOf(value);
+            HardPinHandleState state = HardPinHandleStateOf(hardPin);
             if (state == HardPinHandleState.Match)
             {
-                if (!value.JobRecoveryOnly && !CrashGuard.RestoreOwnedAffinity(value.RestoreHandle, value.OriginalAffinity, value.AppliedAffinity)) return false;
-                if (!CrashGuard.TrackBoostAffinity(pid, value.Creation, 0uL)) return false;
+                if (!hardPin.JobRecoveryOnly && !CrashGuard.RestoreOwnedAffinity(hardPin.RestoreHandle, hardPin.OriginalAffinity, hardPin.AppliedAffinity)) return false;
+                if (!CrashGuard.TrackBoostAffinity(pid, hardPin.Creation, 0uL)) return false;
             }
             else if (state != HardPinHandleState.Gone && state != HardPinHandleState.Mismatch) return false;
             lock (sync)
             {
                 HardPin current;
-                if (!hardPins.TryGetValue(pid, out current) || !object.ReferenceEquals(value, current)) return false;
+                if (!hardPins.TryGetValue(pid, out current) || !object.ReferenceEquals(hardPin, current)) return false;
                 hardPins.Remove(pid);
                 gamePlacement.Remove(pid);
-                if (value.RestoreHandle != IntPtr.Zero) Native.CloseHandle(value.RestoreHandle);
+                if (hardPin.RestoreHandle != IntPtr.Zero) Native.CloseHandle(hardPin.RestoreHandle);
             }
             return true;
         }
@@ -145,21 +145,21 @@ namespace PaviseApp
         }
         private bool RestoreHardPinsExcept(int keepPid, long keepCreation)
         {
-            List<int> list = new List<int>();
+            List<int> pinsToRestore = new List<int>();
             lock (sync)
             {
                 foreach (KeyValuePair<int, HardPin> hardPin in hardPins)
                 {
                     if (keepPid <= 0 || hardPin.Key != keepPid || hardPin.Value.Creation != keepCreation)
                     {
-                        list.Add(hardPin.Key);
+                        pinsToRestore.Add(hardPin.Key);
                     }
                 }
             }
             bool result = true;
-            foreach (int item in list)
+            foreach (int restorePid in pinsToRestore)
             {
-                if (!RestoreHardPin(item))
+                if (!RestoreHardPin(restorePid))
                 {
                     result = false;
                 }
@@ -173,22 +173,22 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                HashSet<string> value;
-                if (!boostActionRestorePending.TryGetValue(pid, out value))
+                HashSet<string> currentBoostActionRestorePending;
+                if (!boostActionRestorePending.TryGetValue(pid, out currentBoostActionRestorePending))
                 {
                     if (!pending)
                     {
                         return;
                     }
-                    value = (boostActionRestorePending[pid] = new HashSet<string>(StringComparer.Ordinal));
+                    currentBoostActionRestorePending = (boostActionRestorePending[pid] = new HashSet<string>(StringComparer.Ordinal));
                 }
                 if (pending)
                 {
-                    value.Add(action);
+                    currentBoostActionRestorePending.Add(action);
                     return;
                 }
-                value.Remove(action);
-                if (value.Count == 0)
+                currentBoostActionRestorePending.Remove(action);
+                if (currentBoostActionRestorePending.Count == 0)
                 {
                     boostActionRestorePending.Remove(pid);
                 }
@@ -246,26 +246,26 @@ namespace PaviseApp
         }
         private bool RestoreBoostActionTarget(IntPtr currentHandle, int currentPid, string target, string action)
         {
-            List<KeyValuePair<int, Snap>> list = new List<KeyValuePair<int, Snap>>();
+            List<KeyValuePair<int, Snap>> keyValuePairs = new List<KeyValuePair<int, Snap>>();
             lock (sync)
             {
-                foreach (KeyValuePair<int, Snap> item in gameBoost)
+                foreach (KeyValuePair<int, Snap> gameBoostEntry in gameBoost)
                 {
-                    string value;
-                    if (boostActionTargets.TryGetValue(item.Key, out value) && string.Equals(value, target, StringComparison.OrdinalIgnoreCase))
+                    string boostActionTarget;
+                    if (boostActionTargets.TryGetValue(gameBoostEntry.Key, out boostActionTarget) && string.Equals(boostActionTarget, target, StringComparison.OrdinalIgnoreCase))
                     {
-                        list.Add(item);
+                        keyValuePairs.Add(gameBoostEntry);
                     }
                 }
             }
-            foreach (KeyValuePair<int, Snap> item2 in list)
+            foreach (KeyValuePair<int, Snap> keyValuePairEntry in keyValuePairs)
             {
-                bool restored = RunBoostRecovery(item2.Key, item2.Value.Creation, "target:" + action, delegate
+                bool restored = RunBoostRecovery(keyValuePairEntry.Key, keyValuePairEntry.Value.Creation, "target:" + action, delegate
                 {
-                IntPtr intPtr = ((item2.Key == currentPid) ? currentHandle : Native.OpenProcess(12800, false, item2.Key));
-                if (intPtr == IntPtr.Zero)
+                IntPtr processHandle = ((keyValuePairEntry.Key == currentPid) ? currentHandle : Native.OpenProcess(12800, false, keyValuePairEntry.Key));
+                if (processHandle == IntPtr.Zero)
                 {
-                    if (ProbeBoostTarget(item2.Key, item2.Value.Creation) != BoostTarget.Gone)
+                    if (ProbeBoostTarget(keyValuePairEntry.Key, keyValuePairEntry.Value.Creation) != BoostTarget.Gone)
                     {
                         return false;
                     }
@@ -273,20 +273,20 @@ namespace PaviseApp
                 }
                 try
                 {
-                    if (BoostActionIdentity(intPtr, item2.Value.Creation) == 0 && !string.Equals(BoostActionTarget(intPtr), target, StringComparison.OrdinalIgnoreCase))
+                    if (BoostActionIdentity(processHandle, keyValuePairEntry.Value.Creation) == 0 && !string.Equals(BoostActionTarget(processHandle), target, StringComparison.OrdinalIgnoreCase))
                     {
                         return false;
                     }
-                    if (!RestoreBoostAction(intPtr, item2.Key, item2.Value.Creation, action))
+                    if (!RestoreBoostAction(processHandle, keyValuePairEntry.Key, keyValuePairEntry.Value.Creation, action))
                     {
                         return false;
                     }
                 }
                 finally
                 {
-                    if (item2.Key != currentPid)
+                    if (keyValuePairEntry.Key != currentPid)
                     {
-                        Native.CloseHandle(intPtr);
+                        Native.CloseHandle(processHandle);
                     }
                 }
                 return true;
@@ -298,8 +298,7 @@ namespace PaviseApp
         private bool RestoreBoostSnapshot(IntPtr handle, int pid, Snap snapshot)
         {
             bool snapshotValid = snapshot.Pri != 0 && snapshot.Pri != uint.MaxValue && snapshot.Io >= 0 && (!Native.PowerThrottlingSupported || (snapshot.QoSControl >= 0 && snapshot.QoSState >= 0));
-            string[] boostActions = BoostActions;
-            foreach (string entryText in boostActions)
+            foreach (string entryText in BoostActions)
             {
                 long original;
                 if (TryOriginalBoostAction(pid, entryText, out original))
@@ -310,14 +309,14 @@ namespace PaviseApp
                     {
                         RecordAutomation(ResourcePriorityKey(entryText), restoreBoostActionSucceeded ? "restored" : "restore-failed");
                     }
-                    string value;
+                    string boostActionTarget;
                     lock (sync)
                     {
-                        boostActionTargets.TryGetValue(pid, out value);
+                        boostActionTargets.TryGetValue(pid, out boostActionTarget);
                     }
-                    if (restoreBoostActionSucceeded && !string.IsNullOrEmpty(value))
+                    if (restoreBoostActionSucceeded && !string.IsNullOrEmpty(boostActionTarget))
                     {
-                        ActionFailureStore.CancelApply(entryText, value);
+                        ActionFailureStore.CancelApply(entryText, boostActionTarget);
                     }
                 }
             }
@@ -594,8 +593,7 @@ namespace PaviseApp
             RenderLane.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), retryDetection == null ? 0 : retryDetection.RendererPid,
                 retryDetection == null ? 0 : retryDetection.RendererCreation, "lane:" + EffLane);
             PerformanceTuning.BeginRecoveryCycle(Interlocked.Read(ref gameSessionStarts));
-            string[] envKeys = EnvKeys;
-            foreach (string key in envKeys)
+            foreach (string key in EnvKeys)
             {
                 ActionFailureStore.BeginAutomaticCycle(EnvFailureAction(key), "system", AutomaticPhaseKey(key));
                 SyncEnvFailureIsolation(key);
@@ -625,8 +623,8 @@ namespace PaviseApp
             lock (sync)
             {
                 isInEnvRestorePending = envRestorePending.Contains("powerplan");
-                long value;
-                if (isInEnvRestorePending && envNextAttempt.TryGetValue("powerplan", out value) && now < value)
+                long currentEnvNextAttempt;
+                if (isInEnvRestorePending && envNextAttempt.TryGetValue("powerplan", out currentEnvNextAttempt) && now < currentEnvNextAttempt)
                 {
                     return false;
                 }
@@ -663,48 +661,30 @@ namespace PaviseApp
         }
         private bool RestoreDisplayAwake()
         {
-            bool valuesMatch;
+            bool needsSessionRestore;
             lock (sync)
             {
-                int restoreDisplayAwakeValue;
-                if (!awakeActive)
+                needsSessionRestore = awakeActive;
+                if (!needsSessionRestore)
                 {
-                    string value;
-                    if (automationEvidence.TryGetValue("awake", out value))
+                    string evidence;
+                    if (automationEvidence.TryGetValue("awake", out evidence))
                     {
-                        switch (value)
-                        {
-                        default:
-                            restoreDisplayAwakeValue = ((value == "restore-failed") ? 1 : 0);
-                            break;
-                        case "applied":
-                        case "restored":
-                        case "failed":
-                            restoreDisplayAwakeValue = 1;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        restoreDisplayAwakeValue = 0;
+                        needsSessionRestore = evidence == "applied" || evidence == "restored"
+                            || evidence == "failed" || evidence == "restore-failed";
                     }
                 }
-                else
-                {
-                    restoreDisplayAwakeValue = 1;
-                }
-                valuesMatch = (byte)restoreDisplayAwakeValue != 0;
             }
-            bool runAutomaticRestoreSucceeded = RunAutomaticRestore("awake", valuesMatch ? (Func<bool>)DisplayAwake.RestoreForSession : DisplayAwake.Restore);
-            if (runAutomaticRestoreSucceeded)
+            bool restored = RunAutomaticRestore("awake", needsSessionRestore ? (Func<bool>)DisplayAwake.RestoreForSession : DisplayAwake.Restore);
+            if (restored)
             {
                 awakeActive = false;
             }
-            if (valuesMatch)
+            if (needsSessionRestore)
             {
-                RecordAutomation("awake", runAutomaticRestoreSucceeded ? "restored" : "restore-failed");
+                RecordAutomation("awake", restored ? "restored" : "restore-failed");
             }
-            return runAutomaticRestoreSucceeded;
+            return restored;
         }
         private bool RestoreEnv()
         {
@@ -902,16 +882,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] textEntries = new string[16]
+            string[] recoveryKeys = new string[16]
             {
                 "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos", "GpuPowerSnap", "AmdSnap", "NvDrsList", "GpuPrefStage", "PrevPowerPlan", "PowerOverlaySnap",
                 "CpuIdleStateV1", "PrevOptionalServicesPausedV1", "LaptopPerfSnap", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "FrameCoordinationTraceV1"
             };
-            string[] textEntries2 = textEntries;
-            foreach (string name in textEntries2)
+            foreach (string name in recoveryKeys)
             {
-                string value;
-                if (!Settings.TryLoadStr(name, out value) || !string.IsNullOrEmpty(value))
+                string text;
+                if (!Settings.TryLoadStr(name, out text) || !string.IsNullOrEmpty(text))
                 {
                     return false;
                 }
@@ -922,10 +901,6 @@ namespace PaviseApp
                 return envRestorePending.Count == 0;
             }
         }
-        private void ReleaseBackground()
-        {
-            ReleaseBackground(Lang.T("t.gamemodeenv.41"));
-        }
         private int ReleaseBackground(string reasonPrefix)
         {
             if (!core.AnyWith(SuppressReason.Background))
@@ -933,11 +908,11 @@ namespace PaviseApp
                 return 0;
             }
             int processedCount = 0;
-            foreach (int item in core.PidsWith(SuppressReason.Background))
+            foreach (int pidsWith in core.PidsWith(SuppressReason.Background))
             {
-                if (core.Release(item, SuppressReason.Background))
+                if (core.Release(pidsWith, SuppressReason.Background))
                 {
-                    ReportSeal(item);
+                    ReportSeal(pidsWith);
                     processedCount++;
                 }
             }

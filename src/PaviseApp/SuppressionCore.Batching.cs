@@ -118,7 +118,7 @@ namespace PaviseApp
                 }
                 if (pendingApplies != null)
                 {
-                    foreach (KeyValuePair<int, string> item in pendingApplies)
+                    foreach (KeyValuePair<int, string> pendingApplyEntry in pendingApplies)
                     {
                         string error = null;
                         bool applyQueuedSucceeded;
@@ -126,7 +126,7 @@ namespace PaviseApp
                         {
                             if (journalSaved)
                             {
-                                applyQueuedSucceeded = ApplyQueued(item.Key, item.Value, out error);
+                                applyQueuedSucceeded = ApplyQueued(pendingApplyEntry.Key, pendingApplyEntry.Value, out error);
                             }
                             else
                             {
@@ -141,14 +141,14 @@ namespace PaviseApp
                         }
                         lock (sync)
                         {
-                            batchApplyResults[item.Key] = applyQueuedSucceeded;
+                            batchApplyResults[pendingApplyEntry.Key] = applyQueuedSucceeded;
                             if (applyQueuedSucceeded)
                             {
-                                batchApplyErrors.Remove(item.Key);
+                                batchApplyErrors.Remove(pendingApplyEntry.Key);
                             }
                             else
                             {
-                                batchApplyErrors[item.Key] = error ?? "unknown";
+                                batchApplyErrors[pendingApplyEntry.Key] = error ?? "unknown";
                             }
                         }
                     }

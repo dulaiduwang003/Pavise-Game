@@ -15,33 +15,6 @@ namespace PaviseApp
         private sealed class LaunchOwner { internal Process Process; internal EventWaitHandle Ready; }
         private static readonly object launchGate = new object();
         private static readonly Dictionary<string, LaunchOwner> launchOwners = new Dictionary<string, LaunchOwner>(StringComparer.OrdinalIgnoreCase);
-        private const int Synchronize = 1048576;
-
-        private const int ReconnectBindWindowSeconds = 20;
-
-        private const int UnknownPhaseExitGraceSeconds = 12;
-
-        private const int CredentialGenerationCheckSeconds = 3;
-
-        private const int SameMatchSlowPollSeconds = 120;
-
-        private const int SameMatchWatchLimitMinutes = 30;
-
-        private const uint WaitObject0 = 0u;
-
-        private const uint WaitTimeout = 258u;
-
-        private const uint HandlePollMs = 5000u;
-
-        private const int ReadyTimeoutMs = 5000;
-
-        private const int ReadyTokenBytes = 32;
-
-        private const string ReadyEventPrefix = "Pavise_LolWatchdogReady_";
-
-        private const string GuardMutexPrefix = "Pavise_LolWatchdog_";
-
-        private const string AliveEventPrefix = "Pavise_LolWatchdogAlive_";
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
@@ -299,15 +272,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr intPtr = IntPtr.Zero;
+            IntPtr processHandle = IntPtr.Zero;
             try
             {
-                intPtr = Native.OpenProcess(1052672, false, pid);
-                if (intPtr == IntPtr.Zero)
+                processHandle = Native.OpenProcess(1052672, false, pid);
+                if (processHandle == IntPtr.Zero)
                 {
                     return false;
                 }
-                string path = Native.ImagePath(intPtr);
+                string path = Native.ImagePath(processHandle);
                 if (!LolRuntimeProcesses.IsGameProcess(path, Path.GetFileName(path), lolRoot))
                 {
                     return false;
@@ -315,12 +288,12 @@ namespace PaviseApp
                 long creation2;
                 long cpu;
                 ulong io;
-                if (!Native.QueryProcessSample(intPtr, out creation2, out cpu, out io) || creation2 != creation)
+                if (!Native.QueryProcessSample(processHandle, out creation2, out cpu, out io) || creation2 != creation)
                 {
                     return false;
                 }
-                handle = intPtr;
-                intPtr = IntPtr.Zero;
+                handle = processHandle;
+                processHandle = IntPtr.Zero;
                 return true;
             }
             catch
@@ -329,9 +302,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr != IntPtr.Zero)
+                if (processHandle != IntPtr.Zero)
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
             }
         }
@@ -340,11 +313,11 @@ namespace PaviseApp
         {
             DateTime dateTime = DateTime.MinValue;
             LolLcuCredentials lolLcuCredentials = null;
-            int waitForGameExitValue = 0;
-            int waitForGameExitValue2 = 0;
+            int gameExitObservations = 0;
+            int missingPhaseObservations = 0;
             int failures = 0;
             long credentialGenerationStampResult = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
-            DateTime dateTime2 = DateTime.MinValue;
+            DateTime minValue = DateTime.MinValue;
             IntPtr handle = preparedGameHandle;
             if (initialPid <= 0 || initialCreation <= 0)
             {
@@ -377,9 +350,9 @@ namespace PaviseApp
                     originalExitConfirmed = true;
                 }
                 DateTime utcNow = DateTime.UtcNow;
-                DateTime dateTime3 = DateTime.MinValue;
-                DateTime dateTime4 = DateTime.MinValue;
-                DateTime dateTime5 = utcNow.AddSeconds(20.0);
+                DateTime currentMinValue = DateTime.MinValue;
+                DateTime candidateMinValue = DateTime.MinValue;
+                DateTime addSeconds = utcNow.AddSeconds(20.0);
                 bool handoffAttempted = false;
                 while (true)
                 {
@@ -389,30 +362,30 @@ namespace PaviseApp
                     }
                     if (!LolRuntimeProcesses.IsClientRunning(lolRoot))
                     {
-                        if (dateTime3 == DateTime.MinValue)
+                        if (currentMinValue == DateTime.MinValue)
                         {
-                            dateTime3 = DateTime.UtcNow;
+                            currentMinValue = DateTime.UtcNow;
                         }
-                        if ((DateTime.UtcNow - dateTime3).TotalMinutes >= 2.0)
+                        if ((DateTime.UtcNow - currentMinValue).TotalMinutes >= 2.0)
                         {
                             return false;
                         }
                         Thread.Sleep(1500);
                         continue;
                     }
-                    dateTime3 = DateTime.MinValue;
-                    if (DateTime.UtcNow >= dateTime2)
+                    currentMinValue = DateTime.MinValue;
+                    if (DateTime.UtcNow >= minValue)
                     {
                         long credentialGenerationStampResult2 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
                         if (credentialGenerationStampResult2 != credentialGenerationStampResult)
                         {
                             credentialGenerationStampResult = credentialGenerationStampResult2;
                             lolLcuCredentials = null;
-                            waitForGameExitValue2 = 0;
+                            missingPhaseObservations = 0;
                             failures = 0;
                             dateTime = DateTime.MinValue;
                         }
-                        dateTime2 = DateTime.UtcNow.AddSeconds(3.0);
+                        minValue = DateTime.UtcNow.AddSeconds(3.0);
                     }
                     if (lolLcuCredentials == null && DateTime.UtcNow >= dateTime)
                     {
@@ -424,7 +397,7 @@ namespace PaviseApp
                         else
                         {
                             failures = 0;
-                            waitForGameExitValue2 = 0;
+                            missingPhaseObservations = 0;
                         }
                     }
                     string gameflowPhase = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
@@ -432,23 +405,23 @@ namespace PaviseApp
                     {
                         if (gameflowPhase == null)
                         {
-                            if (++waitForGameExitValue2 >= 3)
+                            if (++missingPhaseObservations >= 3)
                             {
                                 lolLcuCredentials = null;
-                                waitForGameExitValue2 = 0;
+                                missingPhaseObservations = 0;
                                 dateTime = NextCredentialLookup(ref failures);
                             }
                         }
                         else
                         {
-                            waitForGameExitValue2 = 0;
+                            missingPhaseObservations = 0;
                         }
                     }
                     bool phaseKnown = !string.IsNullOrEmpty(gameflowPhase);
                     bool isSameMatchPhase = LolOptimizationService.IsSameMatchPhase(gameflowPhase);
                     int pid;
                     long creation;
-                    if (originalExitConfirmed && !handoffAttempted && isSameMatchPhase && DateTime.UtcNow < dateTime5 && LolRuntimeProcesses.TryGetGameIdentity(lolRoot, 0, out pid, out creation) && creation > initialCreation && TryOpenGameWaitHandle(lolRoot, pid, creation, out handle))
+                    if (originalExitConfirmed && !handoffAttempted && isSameMatchPhase && DateTime.UtcNow < addSeconds && LolRuntimeProcesses.TryGetGameIdentity(lolRoot, 0, out pid, out creation) && creation > initialCreation && TryOpenGameWaitHandle(lolRoot, pid, creation, out handle))
                     {
                         handoffAttempted = true;
                         uint waitForOwnedGameExitResult2 = WaitForOwnedGameExit(handle, lolRoot, initialPid, initialCreation);
@@ -459,41 +432,41 @@ namespace PaviseApp
                             return false;
                         }
                         utcNow = DateTime.UtcNow;
-                        waitForGameExitValue = 0;
+                        gameExitObservations = 0;
                         continue;
                     }
                     bool isGameRunning = LolRuntimeProcesses.IsGameRunning(lolRoot);
                     if (isSameMatchPhase && !isGameRunning)
                     {
-                        if (dateTime4 == DateTime.MinValue)
+                        if (candidateMinValue == DateTime.MinValue)
                         {
-                            dateTime4 = DateTime.UtcNow;
+                            candidateMinValue = DateTime.UtcNow;
                         }
-                        if ((DateTime.UtcNow - dateTime4).TotalMinutes >= 30.0)
+                        if ((DateTime.UtcNow - candidateMinValue).TotalMinutes >= 30.0)
                         {
                             return false;
                         }
                     }
                     else
                     {
-                        dateTime4 = DateTime.MinValue;
+                        candidateMinValue = DateTime.MinValue;
                     }
                     if (!isGameRunning && phaseKnown && LolOptimizationService.IsConfirmedMatchExitPhase(gameflowPhase))
                     {
-                        if (++waitForGameExitValue >= 2)
+                        if (++gameExitObservations >= 2)
                         {
                             return true;
                         }
                     }
                     else
                     {
-                        waitForGameExitValue = 0;
+                        gameExitObservations = 0;
                     }
                     if (!isGameRunning && (DateTime.UtcNow - utcNow).TotalSeconds >= 12.0 && !phaseKnown)
                     {
                         break;
                     }
-                    int millisecondsTimeout = ((DateTime.UtcNow < dateTime5) ? 1500 : ((dateTime4 != DateTime.MinValue && (DateTime.UtcNow - dateTime4).TotalSeconds >= 120.0) ? 30000 : 6000));
+                    int millisecondsTimeout = ((DateTime.UtcNow < addSeconds) ? 1500 : ((candidateMinValue != DateTime.MinValue && (DateTime.UtcNow - candidateMinValue).TotalSeconds >= 120.0) ? 30000 : 6000));
                     Thread.Sleep(millisecondsTimeout);
                 }
                 return true;
@@ -528,18 +501,18 @@ namespace PaviseApp
 
         internal static bool OriginalGameIdentityGone(string lolRoot, int pid, long creation)
         {
-            IntPtr intPtr = IntPtr.Zero;
+            IntPtr processHandle = IntPtr.Zero;
             try
             {
-                intPtr = Native.OpenProcess(4096, false, pid);
-                if (intPtr == IntPtr.Zero)
+                processHandle = Native.OpenProcess(4096, false, pid);
+                if (processHandle == IntPtr.Zero)
                 {
                     return Marshal.GetLastWin32Error() == 87;
                 }
                 long creation2;
                 long cpu;
                 ulong io;
-                if (!Native.QueryProcessSample(intPtr, out creation2, out cpu, out io))
+                if (!Native.QueryProcessSample(processHandle, out creation2, out cpu, out io))
                 {
                     return false;
                 }
@@ -547,7 +520,7 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                string path = Native.ImagePath(intPtr);
+                string path = Native.ImagePath(processHandle);
                 return !LolRuntimeProcesses.IsGameProcess(path, Path.GetFileName(path), lolRoot);
             }
             catch
@@ -556,9 +529,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (intPtr != IntPtr.Zero)
+                if (processHandle != IntPtr.Zero)
                 {
-                    Native.CloseHandle(intPtr);
+                    Native.CloseHandle(processHandle);
                 }
             }
         }
@@ -567,16 +540,16 @@ namespace PaviseApp
         {
             int restoreAttempts = 0, clearAttempts = 0;
             DateTime dateTime = DateTime.UtcNow.AddMinutes(2.0);
-            DateTime dateTime2 = DateTime.UtcNow.AddMinutes(30.0);
-            DateTime dateTime3 = DateTime.MinValue;
-            DateTime dateTime4 = DateTime.MinValue;
+            DateTime addMinutes = DateTime.UtcNow.AddMinutes(30.0);
+            DateTime minValue = DateTime.MinValue;
+            DateTime currentMinValue = DateTime.MinValue;
             LolLcuCredentials lolLcuCredentials = null;
             int failures = 0;
             int processedCount = 0;
             bool uxRestored = false;
             long credentialGenerationStampResult = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
-            DateTime dateTime5 = DateTime.MinValue;
-            while (DateTime.UtcNow < dateTime && DateTime.UtcNow < dateTime2)
+            DateTime candidateMinValue = DateTime.MinValue;
+            while (DateTime.UtcNow < dateTime && DateTime.UtcNow < addMinutes)
             {
                 if (!LeaseStillOwned(lolRoot, leasePid, leaseCreation))
                 {
@@ -588,7 +561,7 @@ namespace PaviseApp
                     Thread.Sleep(1500);
                     continue;
                 }
-                if (DateTime.UtcNow >= dateTime5)
+                if (DateTime.UtcNow >= candidateMinValue)
                 {
                     long credentialGenerationStampResult2 = LolLcuCredentialSource.CredentialGenerationStamp(lolRoot);
                     if (credentialGenerationStampResult2 != credentialGenerationStampResult)
@@ -597,22 +570,22 @@ namespace PaviseApp
                         lolLcuCredentials = null;
                         failures = 0;
                         processedCount = 0;
-                        dateTime3 = DateTime.MinValue;
-                        dateTime4 = DateTime.MinValue;
+                        minValue = DateTime.MinValue;
+                        currentMinValue = DateTime.MinValue;
                     }
-                    dateTime5 = DateTime.UtcNow.AddSeconds(3.0);
+                    candidateMinValue = DateTime.UtcNow.AddSeconds(3.0);
                 }
-                if (lolLcuCredentials == null && DateTime.UtcNow >= dateTime3)
+                if (lolLcuCredentials == null && DateTime.UtcNow >= minValue)
                 {
                     lolLcuCredentials = LolLcuCredentialSource.Find(lolRoot);
                     if (lolLcuCredentials == null)
                     {
-                        dateTime3 = NextCredentialLookup(ref failures);
+                        minValue = NextCredentialLookup(ref failures);
                     }
                     else
                     {
                         failures = 0;
-                        dateTime3 = DateTime.MaxValue;
+                        minValue = DateTime.MaxValue;
                     }
                 }
                 string gameflowPhase = ((lolLcuCredentials == null) ? null : LolLcuClient.GetGameflowPhase(lolLcuCredentials));
@@ -625,7 +598,7 @@ namespace PaviseApp
                 if (lolLcuCredentials != null && gameflowPhase == null)
                 {
                     lolLcuCredentials = null;
-                    dateTime3 = NextCredentialLookup(ref failures);
+                    minValue = NextCredentialLookup(ref failures);
                     dateTime = DateTime.UtcNow.AddMinutes(2.0);
                     Thread.Sleep(1500);
                     continue;
@@ -636,7 +609,7 @@ namespace PaviseApp
                     Thread.Sleep(6000);
                     continue;
                 }
-                bool uxRestoreDue = !uxRestored && lolLcuCredentials != null && DateTime.UtcNow >= dateTime4;
+                bool uxRestoreDue = !uxRestored && lolLcuCredentials != null && DateTime.UtcNow >= currentMinValue;
                 if (uxRestoreDue && ++restoreAttempts <= 3 && LolLcuClient.RestoreUx(lolLcuCredentials, lolRoot))
                 {
                     uxRestored = true;
@@ -658,7 +631,7 @@ namespace PaviseApp
                     {
                         processedCount++;
                     }
-                    dateTime4 = DateTime.UtcNow.AddSeconds(LolOptimizationService.RestoreCredentialRetrySeconds(processedCount));
+                    currentMinValue = DateTime.UtcNow.AddSeconds(LolOptimizationService.RestoreCredentialRetrySeconds(processedCount));
                 }
                 if (lolLcuCredentials == null)
                 {
@@ -716,23 +689,22 @@ namespace PaviseApp
             }
             try
             {
-                Process[] processesByNameSnapshot = processesByName;
-                foreach (Process process2 in processesByNameSnapshot)
+                foreach (Process processe in processesByName)
                 {
                     try
                     {
-                        if (process2.Id == id)
+                        if (processe.Id == id)
                         {
                             continue;
                         }
-                        IntPtr intPtr = Native.OpenProcess(4096, false, process2.Id);
-                        if (intPtr == IntPtr.Zero)
+                        IntPtr processHandle = Native.OpenProcess(4096, false, processe.Id);
+                        if (processHandle == IntPtr.Zero)
                         {
                             continue;
                         }
                         try
                         {
-                            string imagePathResult = Native.ImagePath(intPtr);
+                            string imagePathResult = Native.ImagePath(processHandle);
                             if (imagePathResult != null && string.Equals(Path.GetFullPath(imagePathResult), fullPath, StringComparison.OrdinalIgnoreCase))
                             {
                                 return true;
@@ -740,7 +712,7 @@ namespace PaviseApp
                         }
                         finally
                         {
-                            Native.CloseHandle(intPtr);
+                            Native.CloseHandle(processHandle);
                         }
                     }
                     catch
@@ -750,12 +722,11 @@ namespace PaviseApp
             }
             finally
             {
-                Process[] processesByNameSnapshot2 = processesByName;
-                foreach (Process process3 in processesByNameSnapshot2)
+                foreach (Process currentProcess in processesByName)
                 {
                     try
                     {
-                        process3.Dispose();
+                        currentProcess.Dispose();
                     }
                     catch
                     {

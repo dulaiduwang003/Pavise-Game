@@ -33,10 +33,9 @@ namespace PaviseApp
             {
                 return true;
             }
-            string[] prefixesSnapshot = prefixes;
-            foreach (string value in prefixesSnapshot)
+            foreach (string currentPrefixesSnapshot in prefixes)
             {
-                if (name.StartsWith(value, StringComparison.OrdinalIgnoreCase))
+                if (name.StartsWith(currentPrefixesSnapshot, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

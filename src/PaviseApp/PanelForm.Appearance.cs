@@ -1,19 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Globalization;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -76,12 +63,12 @@ namespace PaviseApp
                 return;
             }
             Icon icon = (Icon)value.Clone();
-            Icon icon2 = appIcon;
+            Icon currentAppIcon = appIcon;
             appIcon = icon;
             base.Icon = icon;
-            if (icon2 != null)
+            if (currentAppIcon != null)
             {
-                icon2.Dispose();
+                currentAppIcon.Dispose();
             }
         }
         private void ApplyPendingDpiRebuild()
@@ -105,30 +92,30 @@ namespace PaviseApp
         private void ApplyUiPalette(UiPalette previous)
         {
             UiPalette next = new UiPalette();
-            List<Control> list = new List<Control>();
-            CollectThemeControls(this, list);
+            List<Control> controls = new List<Control>();
+            CollectThemeControls(this, controls);
             if (libraryConfigurationDialog != null && !libraryConfigurationDialog.IsDisposed)
             {
-                CollectThemeControls(libraryConfigurationDialog, list);
+                CollectThemeControls(libraryConfigurationDialog, controls);
             }
-            foreach (Control item in list)
+            foreach (Control currentControl in controls)
             {
-                item.SuspendLayout();
+                currentControl.SuspendLayout();
             }
             try
             {
-                for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
+                for (int listIndex = controls.Count - 1; listIndex >= 0; listIndex--)
                 {
-                    Control control = list[listIndex];
+                    Control control = controls[listIndex];
                     Color color = previous.Remap(control.BackColor, next);
-                    Color color2 = previous.Remap(control.ForeColor, next);
+                    Color remap = previous.Remap(control.ForeColor, next);
                     if (control.BackColor != color)
                     {
                         control.BackColor = color;
                     }
-                    if (control.ForeColor != color2)
+                    if (control.ForeColor != remap)
                     {
-                        control.ForeColor = color2;
+                        control.ForeColor = remap;
                     }
                     FxControl fxControl = control as FxControl;
                     if (fxControl != null)
@@ -194,12 +181,12 @@ namespace PaviseApp
                 }
                 for (int i = 0; i < modeSwatches.Length; i++)
                 {
-                    foreach (ColorSwatch item2 in modeSwatches[i])
+                    foreach (ColorSwatch modeSwatche in modeSwatches[i])
                     {
-                        if (item2.IsDefault)
+                        if (modeSwatche.IsDefault)
                         {
-                            item2.Swatch = Theme.ModeColorBuiltin((PerformancePreset)i);
-                            item2.Invalidate();
+                            modeSwatche.Swatch = Theme.ModeColorBuiltin((PerformancePreset)i);
+                            modeSwatche.Invalidate();
                         }
                     }
                 }
@@ -212,9 +199,9 @@ namespace PaviseApp
             }
             finally
             {
-                for (int listIndex2 = list.Count - 1; listIndex2 >= 0; listIndex2--)
+                for (int listIndex2 = controls.Count - 1; listIndex2 >= 0; listIndex2--)
                 {
-                    list[listIndex2].ResumeLayout(false);
+                    controls[listIndex2].ResumeLayout(false);
                 }
             }
             InvalidateVisibleTheme();

@@ -467,33 +467,33 @@ namespace PaviseApp
                 DrawChevron(graphics, scaledDimension + remainingScaledDimension2 + Theme.S(4));
             }
             bool descriptionVisible = desc.Length > 0 && ShowDesc;
-            int onPaintValue = 0;
-            Font font2 = DsType.Font(DsText.Body);
+            int valueBadgeWidth = 0;
+            Font currentFont = DsType.Font(DsText.Body);
             if (valueText.Length > 0)
             {
-                onPaintValue = TextRenderer.MeasureText(graphics, valueText, font2).Width + Theme.S(16);
+                valueBadgeWidth = TextRenderer.MeasureText(graphics, valueText, currentFont).Width + Theme.S(16);
             }
             if (!descriptionVisible && !HasStatus)
             {
-                if (onPaintValue > 0)
+                if (valueBadgeWidth > 0)
                 {
-                    TextRenderer.DrawText(bounds: new Rectangle(base.Width / 3, 0, base.Width - base.Width / 3 - scaledDimensionOffset - scaledDimension2, base.Height), dc: graphics, text: valueText, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+                    TextRenderer.DrawText(bounds: new Rectangle(base.Width / 3, 0, base.Width - base.Width / 3 - scaledDimensionOffset - scaledDimension2, base.Height), dc: graphics, text: valueText, font: currentFont, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
                 }
-                Rectangle rectangle = new Rectangle(scaledDimension, 0, remainingScaledDimension2 - badgeWidthOffset - onPaintValue, base.Height);
+                Rectangle rectangle = new Rectangle(scaledDimension, 0, remainingScaledDimension2 - badgeWidthOffset - valueBadgeWidth, base.Height);
                 TextRenderer.DrawText(graphics, title, font, rectangle, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
                 DrawLockBadge(graphics, scaledDimension, rectangle, base.Height / 2);
                 return;
             }
             int scaledDimension3 = Theme.S((HasStatus && !descriptionVisible) ? 9 : 11);
             int scaledDimension4 = Theme.S(22);
-            if (onPaintValue > 0)
+            if (valueBadgeWidth > 0)
             {
-                TextRenderer.DrawText(bounds: new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2, scaledDimension4), dc: graphics, text: valueText, font: font2, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(bounds: new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2, scaledDimension4), dc: graphics, text: valueText, font: currentFont, foreColor: ValueColor, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
             }
-            Rectangle rectangle2 = new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2 - badgeWidthOffset - onPaintValue, scaledDimension4);
-            TextRenderer.DrawText(graphics, title, font, rectangle2, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-            DrawLockBadge(graphics, scaledDimension, rectangle2, scaledDimension3 + Theme.S(11));
-            int bottomOffset = rectangle2.Bottom + Theme.S(1);
+            Rectangle currentRectangle = new Rectangle(scaledDimension, scaledDimension3, remainingScaledDimension2 - badgeWidthOffset - valueBadgeWidth, scaledDimension4);
+            TextRenderer.DrawText(graphics, title, font, currentRectangle, Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+            DrawLockBadge(graphics, scaledDimension, currentRectangle, scaledDimension3 + Theme.S(11));
+            int bottomOffset = currentRectangle.Bottom + Theme.S(1);
             if (HasStatus)
             {
                 int scaledDimension5 = Theme.S(6);
@@ -506,26 +506,26 @@ namespace PaviseApp
                 TextRenderer.DrawText(graphics, status, DsType.Font(DsText.Status), new Rectangle(rect.Right + Theme.S(7), bottomOffset, remainingScaledDimension2 - Theme.S(14), Theme.S(17)), statusInk, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
                 bottomOffset += Theme.S(17);
             }
-            int onPaintValue2 = 0;
+            int metaHeight = 0;
             if (meta.Length > 0)
             {
-                onPaintValue2 = Theme.S(20);
+                metaHeight = Theme.S(20);
                 TextRenderer.DrawText(bounds: new Rectangle(scaledDimension, base.Height - Theme.S(26), Math.Max(0, base.Width - scaledDimension - Theme.S(18)), Theme.S(16)), dc: graphics, text: meta, font: DsType.Mono(DsMono.Meta), foreColor: Theme.Faint, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             if (descriptionVisible)
             {
-                Font font3 = DsType.Font(DsText.Description);
-                Rectangle bounds4 = new Rectangle(scaledDimension, bottomOffset + Theme.S(2), remainingScaledDimension2, base.Height - bottomOffset - Theme.S(9) - onPaintValue2);
+                Font candidateFont = DsType.Font(DsText.Description);
+                Rectangle bounds4 = new Rectangle(scaledDimension, bottomOffset + Theme.S(2), remainingScaledDimension2, base.Height - bottomOffset - Theme.S(9) - metaHeight);
                 TextFormatFlags flags = TextFormatFlags.EndEllipsis | TextFormatFlags.WordBreak;
                 int lineHeightResult = DsType.LineHeight(DsText.Description);
                 if (lineHeightResult > 0 && bounds4.Height >= lineHeightResult)
                 {
                     bounds4.Height = bounds4.Height / lineHeightResult * lineHeightResult;
                 }
-                int height = TextRenderer.MeasureText(graphics, desc, font3, new Size(bounds4.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
+                int height = TextRenderer.MeasureText(graphics, desc, candidateFont, new Size(bounds4.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
                 DescLinesWanted = ((lineHeightResult > 0) ? ((height + lineHeightResult - 1) / lineHeightResult) : 0);
                 DescLinesShown = ((lineHeightResult > 0) ? (bounds4.Height / lineHeightResult) : 0);
-                TextRenderer.DrawText(graphics, desc, font3, bounds4, Theme.DimTint, flags);
+                TextRenderer.DrawText(graphics, desc, candidateFont, bounds4, Theme.DimTint, flags);
             }
         }
 
@@ -537,9 +537,9 @@ namespace PaviseApp
             {
                 g.DrawLine(pen, left, Theme.S(11), left, base.Height - Theme.S(11));
             }
-            using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, 118 + (int)(cardHover.Value * 90f))))
+            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 118 + (int)(cardHover.Value * 90f))))
             {
-                g.DrawLine(pen2, left, Theme.S(17), left, Math.Min(base.Height - Theme.S(12), Theme.S(37)));
+                g.DrawLine(currentPen, left, Theme.S(17), left, Math.Min(base.Height - Theme.S(12), Theme.S(37)));
             }
             string channelText = ((Channel > 0) ? Channel.ToString("00") : "--");
             TextRenderer.DrawText(g, channelText, DsType.Mono(DsMono.Channel), new Rectangle(Theme.S(7), Theme.S(9), Theme.S(18), Theme.S(15)), Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value * 0.75f), TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -556,9 +556,9 @@ namespace PaviseApp
             {
                 g.FillPolygon(brush, points);
             }
-            using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 74 + (int)(cardHover.Value * 82f))))
+            using (Pen candidatePen = new Pen(Col.Alpha(Theme.Accent, 74 + (int)(cardHover.Value * 82f))))
             {
-                g.DrawLine(pen3, Theme.S(1), Theme.S(1), Theme.S(58), Theme.S(1));
+                g.DrawLine(candidatePen, Theme.S(1), Theme.S(1), Theme.S(58), Theme.S(1));
             }
         }
 

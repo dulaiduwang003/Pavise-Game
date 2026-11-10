@@ -272,18 +272,18 @@ namespace PaviseApp
         private static bool ReadCriticalProcessMask(int pid, long birth, out ulong mask)
         {
             mask = 0uL;
-            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
+            if (processHandle == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                return Native.QueryProcessIdentityState(intPtr, birth) == 0 && Native.TryQueryAffinity(intPtr, out mask) && mask != 0;
+                return Native.QueryProcessIdentityState(processHandle, birth) == 0 && Native.TryQueryAffinity(processHandle, out mask) && mask != 0;
             }
             finally
             {
-                Native.CloseHandle(intPtr);
+                Native.CloseHandle(processHandle);
             }
         }
         private bool DrainHistoricalCriticalThreads(int timeoutMs)
@@ -374,30 +374,30 @@ namespace PaviseApp
                         return validationError;
                     }
                 }
-                GameProfile gameProfile2 = gameProfile.Clone();
+                GameProfile profile = gameProfile.Clone();
                 if (rule == null)
                 {
-                    gameProfile2.Overrides.Remove("GameCriticalThreadHardRuleV1");
+                    profile.Overrides.Remove("GameCriticalThreadHardRuleV1");
                 }
                 else
                 {
-                    gameProfile2.Overrides["GameCriticalThreadHardRuleV1"] = rule.Encode();
+                    profile.Overrides["GameCriticalThreadHardRuleV1"] = rule.Encode();
                 }
-                if (CriticalThreadRule.Raw(gameProfile2) == CriticalThreadRule.Raw(gameProfile)) return null;
-                List<GameProfile> list = new List<GameProfile>(profiles);
-                list[list.IndexOf(gameProfile)] = gameProfile2;
-                if (!SaveProfileSnapshotLocked(list))
+                if (CriticalThreadRule.Raw(profile) == CriticalThreadRule.Raw(gameProfile)) return null;
+                List<GameProfile> profilesSnapshot = new List<GameProfile>(profiles);
+                profilesSnapshot[profilesSnapshot.IndexOf(gameProfile)] = profile;
+                if (!SaveProfileSnapshotLocked(profilesSnapshot))
                 {
                     return PerformancePolicy.Text("保存失败，原规则保留", "Save failed; the original rule was retained");
                 }
-                profiles[profiles.IndexOf(gameProfile)] = gameProfile2;
+                profiles[profiles.IndexOf(gameProfile)] = profile;
                 if (activeDetection != null && activeDetection.Profile != null && activeDetection.Profile.Id == profileId)
                 {
-                    activeDetection.Profile = gameProfile2.Clone();
+                    activeDetection.Profile = profile.Clone();
                 }
                 if (stickyDetection != null && stickyDetection.Profile != null && stickyDetection.Profile.Id == profileId)
                 {
-                    stickyDetection.Profile = gameProfile2.Clone();
+                    stickyDetection.Profile = profile.Clone();
                 }
                 CriticalRuntimeSource source = Volatile.Read(ref criticalSource);
                 affectsSession = rule == null && ((source != null && source.Profile == profileId)

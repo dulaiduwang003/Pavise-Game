@@ -6,8 +6,6 @@ namespace PaviseApp
     {
         internal const string SnapKey = "IntelEnduranceSnap";
 
-        private const int ControlOff = 0;
-
         private static readonly object lk = new object();
 
         private static readonly IntelGraphicsApi api = new IntelGraphicsApi();
@@ -93,16 +91,16 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                string value;
-                if (!Settings.TryLoadStr("IntelEnduranceSnap", out value))
+                string text;
+                if (!Settings.TryLoadStr("IntelEnduranceSnap", out text))
                 {
                     return false;
                 }
-                if (value.Length == 0)
+                if (text.Length == 0)
                 {
                     return true;
                 }
-                string[] valueParts = value.Split('|');
+                string[] valueParts = text.Split('|');
                 int result;
                 int result2;
                 if (valueParts.Length != 2 || !int.TryParse(valueParts[0], out result) || !int.TryParse(valueParts[1], out result2) || !Wanted(result))

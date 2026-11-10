@@ -56,8 +56,8 @@ namespace PaviseApp
                 stream.Dispose();
                 throw new TimeoutException("guardian write timed out");
             }
-            Task task2 = stream.WriteAsync(bytes, 0, bytes.Length);
-            if (!task2.Wait(5000))
+            Task writeAsync = stream.WriteAsync(bytes, 0, bytes.Length);
+            if (!writeAsync.Wait(5000))
             {
                 stream.Dispose();
                 throw new TimeoutException("guardian write timed out");

@@ -115,30 +115,30 @@ namespace PaviseApp
                 Publish(id, value, detail);
                 return;
             }
-            string value2;
-            if (batchStates.TryGetValue(id, out value2))
+            string batchState;
+            if (batchStates.TryGetValue(id, out batchState))
             {
-                if (value2 == "restore-failed" || (value != "restore-failed" && (value2 == "stopped" || (value2 == "failed" && value != "stopped"))))
+                if (batchState == "restore-failed" || (value != "restore-failed" && (batchState == "stopped" || (batchState == "failed" && value != "stopped"))))
                 {
-                    value = value2;
+                    value = batchState;
                 }
-                else if (value == "unsupported" && (value2 == "configured" || value2 == "applied"))
+                else if (value == "unsupported" && (batchState == "configured" || batchState == "applied"))
                 {
-                    value = value2;
+                    value = batchState;
                 }
             }
             batchStates[id] = value;
             if (!string.IsNullOrEmpty(detail))
             {
                 detail = PsRunner.NormalizeError(detail);
-                List<string> value3;
-                if (!batchDetails.TryGetValue(id, out value3))
+                List<string> batchDetail;
+                if (!batchDetails.TryGetValue(id, out batchDetail))
                 {
-                    value3 = (batchDetails[id] = new List<string>());
+                    batchDetail = (batchDetails[id] = new List<string>());
                 }
-                if (!value3.Contains(detail))
+                if (!batchDetail.Contains(detail))
                 {
-                    value3.Add(detail);
+                    batchDetail.Add(detail);
                 }
             }
         }
@@ -157,9 +157,9 @@ namespace PaviseApp
             detail = (string.IsNullOrEmpty(detail) ? "" : PsRunner.NormalizeError(detail));
             lock (gate)
             {
-                string value2;
-                string value3;
-                if (states.TryGetValue(id, out value2) && value2 == value && publishedDetails.TryGetValue(id, out value3) && value3 == detail)
+                string state;
+                string publishedDetail;
+                if (states.TryGetValue(id, out state) && state == value && publishedDetails.TryGetValue(id, out publishedDetail) && publishedDetail == detail)
                 {
                     return;
                 }
@@ -351,7 +351,7 @@ namespace PaviseApp
             }
             ActionFailureStore.BeginAutomaticCycle(id, target, request.SessionSerial + "\n" + wanted);
             string key = request.SessionSerial + "\n" + id + "\napply:" + target + "\n" + wanted;
-            Attempt value;
+            Attempt attempt;
             if (ActionFailureStore.IsIsolated(id, target))
             {
                 if (!RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false))
@@ -368,11 +368,11 @@ namespace PaviseApp
             }
             else
             {
-                if (!Due(id, key, out value))
+                if (!Due(id, key, out attempt))
                 {
                     return;
                 }
-                value.Target = target;
+                attempt.Target = target;
                 string reason;
                 if (ActionFailureStore.TryBeginApply(id, target, out reason))
                 {
@@ -384,18 +384,18 @@ namespace PaviseApp
                         }
                         else if (!PerformanceActionBackend.Apply(id, target, wanted))
                         {
-                            Failure(id, value, PerformanceActionBackend.ApplyFailureHint(id, target));
+                            Failure(id, attempt, PerformanceActionBackend.ApplyFailureHint(id, target));
                         }
                         else if (!ActionFailureStore.CompleteApply(id, target))
                         {
-                            Failure(id, value, "Isolation record persistence failed");
+                            Failure(id, attempt, "Isolation record persistence failed");
                         }
                         else
                         {
-                            value.Next = Now() + TimeSpan.FromMinutes(30.0).Ticks;
-                            value.Failures = 0;
-                            value.State = success;
-                            value.Detail = null;
+                            attempt.Next = Now() + TimeSpan.FromMinutes(30.0).Ticks;
+                            attempt.Failures = 0;
+                            attempt.State = success;
+                            attempt.Detail = null;
                             Record(id, success);
                         }
                         return;
@@ -410,7 +410,7 @@ namespace PaviseApp
                     catch (NotSupportedException)
                     {
                         CancelAfterRestore(id, target);
-                        Unsupported(id, value, "unsupported");
+                        Unsupported(id, attempt, "unsupported");
                         return;
                     }
                     catch (OperationCanceledException)
@@ -421,7 +421,7 @@ namespace PaviseApp
                     }
                     catch (Exception ex4)
                     {
-                        Failure(id, value, ex4.Message);
+                        Failure(id, attempt, ex4.Message);
                         return;
                     }
                 }
@@ -451,48 +451,48 @@ namespace PaviseApp
         {
             bool result = true;
             count = 0;
-            List<PerformanceActionStore.Receipt> list;
+            List<PerformanceActionStore.Receipt> receipts;
             try
             {
-                if (!PerformanceTuning.ReadRecoveryReceipts(out list)) return false;
+                if (!PerformanceTuning.ReadRecoveryReceipts(out receipts)) return false;
             }
             catch (Exception ex)
             {
                 RestoreFailure(id, "journal:" + id, ex.Message);
                 return false;
             }
-            foreach (PerformanceActionStore.Receipt item in list)
+            foreach (PerformanceActionStore.Receipt receipt in receipts)
             {
-                if (item.Id != id || (selected != null && !selected(item)))
+                if (receipt.Id != id || (selected != null && !selected(receipt)))
                 {
                     continue;
                 }
-                string key = PerformanceTuning.RecoveryCycleSerial + "\n" + PerformanceActionStore.Slot(item.Id, item.Target) + "\n" + item.Original + "\n" + item.Expected;
-                Attempt value;
-                if (!restoreAttempts.TryGetValue(key, out value))
+                string key = PerformanceTuning.RecoveryCycleSerial + "\n" + PerformanceActionStore.Slot(receipt.Id, receipt.Target) + "\n" + receipt.Original + "\n" + receipt.Expected;
+                Attempt restoreAttempt;
+                if (!restoreAttempts.TryGetValue(key, out restoreAttempt))
                 {
-                    value = new Attempt();
-                    restoreAttempts[key] = value;
+                    restoreAttempt = new Attempt();
+                    restoreAttempts[key] = restoreAttempt;
                 }
-                if (!force && Now() < value.Next)
+                if (!force && Now() < restoreAttempt.Next)
                 {
-                    ReportRestoreSchedule(value);
+                    ReportRestoreSchedule(restoreAttempt);
                     result = false;
-                    string value2;
-                    restoreDetails.TryGetValue(key, out value2);
-                    Record(id, "restore-failed", value2);
+                    string restoreDetail;
+                    restoreDetails.TryGetValue(key, out restoreDetail);
+                    Record(id, "restore-failed", restoreDetail);
                     continue;
                 }
                 bool restored = false;
                 string message = null;
                 using (var attemptTrace = new RecoveryAttemptTrace())
                 {
-                    try { restored = PerformanceTuning.RestorePerformanceReceipt(item); }
+                    try { restored = PerformanceTuning.RestorePerformanceReceipt(receipt); }
                     catch (Exception ex2) { message = ex2.Message; }
                     if (!restored && attemptTrace.Reported && attemptTrace.Next == long.MaxValue)
                     {
-                        value.Failures = 5;
-                        value.RecoveryObservers = attemptTrace.PhaseObservers.ToArray();
+                        restoreAttempt.Failures = 5;
+                        restoreAttempt.RecoveryObservers = attemptTrace.PhaseObservers.ToArray();
                     }
                 }
                 if (restored)
@@ -503,13 +503,13 @@ namespace PaviseApp
                     continue;
                 }
                 result = false;
-                if (value.Failures < 5)
+                if (restoreAttempt.Failures < 5)
                 {
-                    value.Failures++;
+                    restoreAttempt.Failures++;
                 }
-                value.Next = Now() + TimeSpan.FromSeconds(Math.Min(300, 30 << value.Failures - 1)).Ticks;
-                ReportRestoreSchedule(value);
-                RestoreFailure(id, key, item.Target + " | " + (message ?? PerformancePolicy.Text("配置恢复未完成", "Configuration restore incomplete")));
+                restoreAttempt.Next = Now() + TimeSpan.FromSeconds(Math.Min(300, 30 << restoreAttempt.Failures - 1)).Ticks;
+                ReportRestoreSchedule(restoreAttempt);
+                RestoreFailure(id, key, receipt.Target + " | " + (message ?? PerformancePolicy.Text("配置恢复未完成", "Configuration restore incomplete")));
             }
             return result;
         }
@@ -529,9 +529,9 @@ namespace PaviseApp
             {
                 List<PerformanceActionStore.Receipt> receipts;
                 if (!PerformanceTuning.ReadRecoveryReceipts(out receipts)) return true;
-                foreach (PerformanceActionStore.Receipt item in receipts)
+                foreach (PerformanceActionStore.Receipt receipt in receipts)
                 {
-                    if (item.Id == "AutoDefenderSessionV1" || item.Id == "AutoDefenderResourcesV1")
+                    if (receipt.Id == "AutoDefenderSessionV1" || receipt.Id == "AutoDefenderResourcesV1")
                     {
                         return true;
                     }
@@ -547,8 +547,7 @@ namespace PaviseApp
         private bool RestoreRetired(bool force)
         {
             bool restoreRetiredSucceeded = true;
-            string[] textEntries = new string[3] { "AutoDefenderSessionV1", "AutoDefenderResourcesV1", "AutoBackgroundFpsV1" };
-            foreach (string id in textEntries)
+            foreach (string id in new string[3] { "AutoDefenderSessionV1", "AutoDefenderResourcesV1", "AutoBackgroundFpsV1" })
             {
                 int count;
                 restoreRetiredSucceeded &= RestoreSelected(id, null, force, out count);
@@ -623,8 +622,7 @@ namespace PaviseApp
             {
                 return;
             }
-            string[] textEntries = new string[3] { "AutoGameMitigationsV1", "AutoOpenGlThreadsV1", "AutoNtfsShortNamesV1" };
-            foreach (string id in textEntries)
+            foreach (string id in new string[3] { "AutoGameMitigationsV1", "AutoOpenGlThreadsV1", "AutoNtfsShortNamesV1" })
             {
                 if (!PerformanceTuning.LegacyActionSelected(id))
                 {
@@ -655,8 +653,7 @@ namespace PaviseApp
             {
                 return;
             }
-            string[] filterGameTargetsResult = GamePerformanceTargetPolicy.FilterGameTargets(request.Games, request.RequireExistingGames);
-            foreach (string path in filterGameTargetsResult)
+            foreach (string path in GamePerformanceTargetPolicy.FilterGameTargets(request.Games, request.RequireExistingGames))
             {
                 if (!Current(request))
                 {

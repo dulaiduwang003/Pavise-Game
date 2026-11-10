@@ -47,11 +47,11 @@ namespace PaviseApp
 
             public void Dispose()
             {
-                IntPtr intPtr = handle;
+                IntPtr handleHandle = handle;
                 handle = IntPtr.Zero;
-                if (intPtr != IntPtr.Zero)
+                if (handleHandle != IntPtr.Zero)
                 {
-                    CloseHandle(intPtr);
+                    CloseHandle(handleHandle);
                 }
             }
         }
@@ -94,14 +94,6 @@ namespace PaviseApp
 
             internal NativeRect CaretRect;
         }
-
-        private const uint QueryLimited = 4096u;
-
-        private const uint Synchronize = 1048576u;
-
-        private const uint WmInputLanguageChangeRequest = 80u;
-
-        private const uint SendFlags = 35u;
 
         public int CurrentProcessId
         {
@@ -147,8 +139,8 @@ namespace PaviseApp
         {
             RefuseNativeInTests();
             knownGone = false;
-            IntPtr intPtr = OpenProcessNative(1052672u, false, (uint)pid);
-            if (intPtr == IntPtr.Zero)
+            IntPtr processHandle = OpenProcessNative(1052672u, false, (uint)pid);
+            if (processHandle == IntPtr.Zero)
             {
                 knownGone = Marshal.GetLastWin32Error() == 87;
                 return null;
@@ -159,7 +151,7 @@ namespace PaviseApp
                 NativeFileTime exit;
                 NativeFileTime kernel;
                 NativeFileTime user;
-                if (!GetProcessTimes(intPtr, out creation, out exit, out kernel, out user))
+                if (!GetProcessTimes(processHandle, out creation, out exit, out kernel, out user))
                 {
                     return null;
                 }
@@ -168,15 +160,15 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                ProcessLease result = new ProcessLease(intPtr, lowMask);
-                intPtr = IntPtr.Zero;
+                ProcessLease result = new ProcessLease(processHandle, lowMask);
+                processHandle = IntPtr.Zero;
                 return result;
             }
             finally
             {
-                if (intPtr != IntPtr.Zero)
+                if (processHandle != IntPtr.Zero)
                 {
-                    CloseHandle(intPtr);
+                    CloseHandle(processHandle);
                 }
             }
         }
@@ -232,8 +224,8 @@ namespace PaviseApp
             }
             SetLastError(0u);
             UIntPtr result;
-            IntPtr intPtr = SendMessageTimeout(window.Focus, 80u, UIntPtr.Zero, layout, 35u, timeoutMs, out result);
-            if (intPtr != IntPtr.Zero)
+            IntPtr sendMessageTimeoutHandle = SendMessageTimeout(window.Focus, 80u, UIntPtr.Zero, layout, 35u, timeoutMs, out result);
+            if (sendMessageTimeoutHandle != IntPtr.Zero)
             {
                 return GameInputSendResult.Processed;
             }

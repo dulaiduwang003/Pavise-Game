@@ -66,16 +66,16 @@ namespace PaviseApp
 
         private static List<string> OwnedByOtherTweaks()
         {
-            List<string> list = new List<string>();
+            List<string> texts = new List<string>();
             try
             {
                 if (NetworkAffinityTweak.EnabledByPavise)
                 {
-                    foreach (string item in NetworkAffinityTweak.EnumerateNicDeviceIds())
+                    foreach (string enumerateNicDeviceId in NetworkAffinityTweak.EnumerateNicDeviceIds())
                     {
-                        if (!Has(list, item))
+                        if (!Has(texts, enumerateNicDeviceId))
                         {
-                            list.Add(item);
+                            texts.Add(enumerateNicDeviceId);
                         }
                     }
                 }
@@ -85,11 +85,11 @@ namespace PaviseApp
             }
             try
             {
-                foreach (string item2 in IrqAutoPilot.TouchedDevices())
+                foreach (string touchedDevice in IrqAutoPilot.TouchedDevices())
                 {
-                    if (!Has(list, item2))
+                    if (!Has(texts, touchedDevice))
                     {
-                        list.Add(item2);
+                        texts.Add(touchedDevice);
                     }
                 }
             }
@@ -98,18 +98,18 @@ namespace PaviseApp
             }
             try
             {
-                foreach (string item3 in GpuIrqCheck.TouchedDevices())
+                foreach (string currentTouchedDevice in GpuIrqCheck.TouchedDevices())
                 {
-                    if (!Has(list, item3))
+                    if (!Has(texts, currentTouchedDevice))
                     {
-                        list.Add(item3);
+                        texts.Add(currentTouchedDevice);
                     }
                 }
             }
             catch
             {
             }
-            return list;
+            return texts;
         }
 
         private static bool Has(List<string> list, string id)
@@ -135,29 +135,29 @@ namespace PaviseApp
                 return "?";
             }
             StringBuilder stringBuilder = new StringBuilder();
-            int maskTextValue = -1;
+            int rangeStart = -1;
             for (int i = 0; i <= 64; i++)
             {
                 bool selected = i < 64 && (mask & (ulong)(1L << i)) != 0;
-                if (selected && maskTextValue < 0)
+                if (selected && rangeStart < 0)
                 {
-                    maskTextValue = i;
+                    rangeStart = i;
                 }
-                else if (!selected && maskTextValue >= 0)
+                else if (!selected && rangeStart >= 0)
                 {
                     if (stringBuilder.Length > 0)
                     {
                         stringBuilder.Append(',');
                     }
-                    if (i - 1 == maskTextValue)
+                    if (i - 1 == rangeStart)
                     {
-                        stringBuilder.Append(maskTextValue);
+                        stringBuilder.Append(rangeStart);
                     }
                     else
                     {
-                        stringBuilder.Append(maskTextValue).Append('-').Append(i - 1);
+                        stringBuilder.Append(rangeStart).Append('-').Append(i - 1);
                     }
-                    maskTextValue = -1;
+                    rangeStart = -1;
                 }
             }
             return stringBuilder.ToString();

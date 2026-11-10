@@ -95,7 +95,7 @@ namespace PaviseApp
                         manualMemoryReport.Cancelled = true;
                         break;
                     }
-                    Stopwatch stopwatch2 = Stopwatch.StartNew();
+                    Stopwatch startNew = Stopwatch.StartNew();
                     // 进度回调和权限取得过程可能让出执行，执行每个全局动作前重新核对。
                     if (!manualMemoryReport.GameProtected && ProtectGame(gamePresent))
                     {
@@ -120,7 +120,7 @@ namespace PaviseApp
                         Step = manualMemoryStep,
                         NativeStatus = executeResult,
                         State = Classify(executeResult),
-                        ElapsedMilliseconds = stopwatch2.ElapsedMilliseconds
+                        ElapsedMilliseconds = startNew.ElapsedMilliseconds
                     });
                     if (!manualMemoryReport.GameProtected && (executeResult == StatusGameProtected || ProtectGame(gamePresent)))
                     {
@@ -160,7 +160,7 @@ namespace PaviseApp
 
         private ManualMemorySnapshot Sample(Func<bool> mayContinue)
         {
-            List<ManualMemorySnapshot> list = new List<ManualMemorySnapshot>();
+            List<ManualMemorySnapshot> snapshots = new List<ManualMemorySnapshot>();
             for (int i = 0; i < 3; i++)
             {
                 if (!MayContinue(mayContinue))
@@ -172,7 +172,7 @@ namespace PaviseApp
                     ManualMemorySnapshot snapshot;
                     if (native.TryQuery(out snapshot) && snapshot != null && snapshot.IsValid)
                     {
-                        list.Add(snapshot);
+                        snapshots.Add(snapshot);
                     }
                 }
                 catch
@@ -183,20 +183,20 @@ namespace PaviseApp
                     break;
                 }
             }
-            if (list.Count < 2)
+            if (snapshots.Count < 2)
             {
                 return null;
             }
-            ulong totalBytes = list[0].TotalBytes;
-            foreach (ManualMemorySnapshot item in list)
+            ulong totalBytes = snapshots[0].TotalBytes;
+            foreach (ManualMemorySnapshot currentSnapshot in snapshots)
             {
-                if (item.TotalBytes != totalBytes)
+                if (currentSnapshot.TotalBytes != totalBytes)
                 {
                     return null;
                 }
             }
-            list.Sort((ManualMemorySnapshot a, ManualMemorySnapshot b) => a.AvailableBytes.CompareTo(b.AvailableBytes));
-            return list[list.Count / 2];
+            snapshots.Sort((ManualMemorySnapshot a, ManualMemorySnapshot b) => a.AvailableBytes.CompareTo(b.AvailableBytes));
+            return snapshots[snapshots.Count / 2];
         }
 
         private bool Pause(int milliseconds, Func<bool> mayContinue)

@@ -239,10 +239,10 @@ namespace PaviseApp
                     }
                     dBPanel2.Visible = l == index;
                 }
-                Point value;
-                if (tabScrollPositions.TryGetValue(settingsTabPanels[index], out value))
+                Point tabScrollPosition;
+                if (tabScrollPositions.TryGetValue(settingsTabPanels[index], out tabScrollPosition))
                 {
-                    settingsTabPanels[index].AutoScrollPosition = new Point(0, value.Y);
+                    settingsTabPanels[index].AutoScrollPosition = new Point(0, tabScrollPosition.Y);
                 }
                 SyncMotionAppearanceActivity();
             };
@@ -255,17 +255,16 @@ namespace PaviseApp
                 dBPanel.AutoScroll = true;
                 Native.Dark(dBPanel);
                 int index2 = j;
-                SettingsWorkspaceTab settingsWorkspaceTab = new SettingsWorkspaceTab(labels[j]);
-                settingsWorkspaceTab.Name = "SettingsCategory" + j;
-                settingsWorkspaceTab.Selected = j == 0;
-                settingsWorkspaceTab.TabIndex = j;
-                SettingsWorkspaceTab settingsWorkspaceTab2 = settingsWorkspaceTab;
-                settingsWorkspaceTab2.AccessibleName = labels[j];
-                settingsWorkspaceTab2.Click += delegate
+                SettingsWorkspaceTab currentSettingsWorkspaceTab = new SettingsWorkspaceTab(labels[j]);
+                currentSettingsWorkspaceTab.Name = "SettingsCategory" + j;
+                currentSettingsWorkspaceTab.Selected = j == 0;
+                currentSettingsWorkspaceTab.TabIndex = j;
+                currentSettingsWorkspaceTab.AccessibleName = labels[j];
+                currentSettingsWorkspaceTab.Click += delegate
                 {
                     settingsTabs.Index = index2;
                 };
-                settingsWorkspaceTab2.NavigationRequested = delegate(Keys key)
+                currentSettingsWorkspaceTab.NavigationRequested = delegate(Keys key)
                 {
                     int indexValue = DsKeys.NavigateHorizontal(key, index2, labels.Length);
                     if (indexValue >= 0)
@@ -274,8 +273,8 @@ namespace PaviseApp
                         settingsWorkspaceTabs[indexValue].Focus();
                     }
                 };
-                settingsWorkspaceSurface.Controls.Add(settingsWorkspaceTab2);
-                settingsWorkspaceTabs.Add(settingsWorkspaceTab2);
+                settingsWorkspaceSurface.Controls.Add(currentSettingsWorkspaceTab);
+                settingsWorkspaceTabs.Add(currentSettingsWorkspaceTab);
             }
             TechTabs techTabs = settingsTabs;
             techTabs.IndexChanged = (Action<int>)Delegate.Combine(techTabs.IndexChanged, (Action<int>)delegate(int index)
@@ -299,21 +298,20 @@ namespace PaviseApp
         }
         private SettingsWorkspaceTile AddSettingsTile(Control parent, string name, string title, string detail, string icon, Control host)
         {
-            SettingsWorkspaceTile settingsWorkspaceTile = new SettingsWorkspaceTile();
-            settingsWorkspaceTile.Name = name;
-            settingsWorkspaceTile.Title = title;
-            settingsWorkspaceTile.Desc = detail;
-            settingsWorkspaceTile.IconKey = icon;
-            settingsWorkspaceTile.CompactRow = true;
-            SettingsWorkspaceTile settingsWorkspaceTile2 = settingsWorkspaceTile;
+            SettingsWorkspaceTile currentSettingsWorkspaceTile = new SettingsWorkspaceTile();
+            currentSettingsWorkspaceTile.Name = name;
+            currentSettingsWorkspaceTile.Title = title;
+            currentSettingsWorkspaceTile.Desc = detail;
+            currentSettingsWorkspaceTile.IconKey = icon;
+            currentSettingsWorkspaceTile.CompactRow = true;
             if (host != null)
             {
-                settingsWorkspaceTile2.Host(host);
+                currentSettingsWorkspaceTile.Host(host);
                 host.TabIndex = 0;
                 host.AccessibleName = host.AccessibleName ?? title;
             }
-            parent.Controls.Add(settingsWorkspaceTile2);
-            return settingsWorkspaceTile2;
+            parent.Controls.Add(currentSettingsWorkspaceTile);
+            return currentSettingsWorkspaceTile;
         }
         private static SettingsWorkspaceTile SettingsTile(Control panel, string name)
         {
@@ -326,12 +324,6 @@ namespace PaviseApp
         private static string SettingsStandbyCleanerDetail()
         {
             return AutoText("仅对局中达双阈值、间隔约一分钟才清理待机缓存。可能卡顿和重新读盘，不联动计时器或内存压缩。", "Purges standby cache during matches only at both thresholds, at least about a minute apart. May hitch and re-read disk; does not change timers or memory compression.");
-        }
-        private int StandbyCleanerCardHeight(int width, Control host, int minimum, bool perGame)
-        {
-            int cardHeight = FullTextCardHeight(perGame ? Lang.T("gm.standbycleaner.cfgsub") : SettingsStandbyCleanerDetail(), width, host, minimum);
-            cardHeight = Math.Max(cardHeight, FullTextCardHeight(Lang.T("gm.standbycleaner.needadmin"), width, host, minimum));
-            return Math.Max(cardHeight, FullTextCardHeight(Lang.T("standbycleaner.config.invalid"), width, host, minimum));
         }
         private bool ConfirmStandbyCleanerEnable()
         {

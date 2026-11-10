@@ -54,11 +54,11 @@ namespace PaviseApp
                 DialogResult = DialogResult.Cancel
             };
             LibraryDialogButton libraryDialogButton = dismiss;
-            EventHandler value = delegate
+            EventHandler eventHandler = delegate
             {
                 Close();
             };
-            libraryDialogButton.Click += value;
+            libraryDialogButton.Click += eventHandler;
             close = new LibraryDialogButton(PerformancePolicy.Text("关闭", "Close"), false)
             {
                 Name = "LibraryConfigurationClose",
@@ -204,11 +204,11 @@ namespace PaviseApp
                     graphics.DrawPath(pen, path);
                 }
             }
-            using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
+            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
             {
-                graphics.DrawLine(pen2, Theme.S(13), 1, Theme.S(126), 1);
-                graphics.DrawLine(pen2, base.Width - Theme.S(13), 1, base.Width - 1, Theme.S(13));
-                graphics.DrawLine(pen2, base.Width - Theme.S(94), base.Height - 1, base.Width - Theme.S(13), base.Height - 1);
+                graphics.DrawLine(accentPen, Theme.S(13), 1, Theme.S(126), 1);
+                graphics.DrawLine(accentPen, base.Width - Theme.S(13), 1, base.Width - 1, Theme.S(13));
+                graphics.DrawLine(accentPen, base.Width - Theme.S(94), base.Height - 1, base.Width - Theme.S(13), base.Height - 1);
             }
             Rectangle rectangle = new Rectangle(Theme.S(24), Theme.S(66), Theme.S(38), Theme.S(38));
             DsPaint.TechFrame(graphics, rectangle, Theme.S(6), Theme.Inset, Theme.Stroke);
@@ -222,10 +222,10 @@ namespace PaviseApp
             }
             if (viewport != null)
             {
-                using (Pen pen3 = new Pen(Theme.Stroke))
+                using (Pen strokePen = new Pen(Theme.Stroke))
                 {
-                    graphics.DrawLine(pen3, viewport.Left, viewport.Top - Theme.S(9), viewport.Right, viewport.Top - Theme.S(9));
-                    graphics.DrawLine(pen3, viewport.Left, close.Top - Theme.S(14), viewport.Right, close.Top - Theme.S(14));
+                    graphics.DrawLine(strokePen, viewport.Left, viewport.Top - Theme.S(9), viewport.Right, viewport.Top - Theme.S(9));
+                    graphics.DrawLine(strokePen, viewport.Left, close.Top - Theme.S(14), viewport.Right, close.Top - Theme.S(14));
                 }
             }
         }

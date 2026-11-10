@@ -6,7 +6,6 @@ namespace PaviseApp
 {
     internal static class IfeoStore
     {
-        private const string Root = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options";
 
         internal static readonly RegistryKey Hive = Registry.LocalMachine;
 
@@ -27,16 +26,15 @@ namespace PaviseApp
 
         public static void RemoveFromList(string listKey, string exe)
         {
-            List<string> list = new List<string>();
-            string[] list2 = ParseList(Settings.LoadStr(listKey, ""));
-            foreach (string entryText in list2)
+            List<string> entryTexts = new List<string>();
+            foreach (string entryText in ParseList(Settings.LoadStr(listKey, "")))
             {
                 if (!string.Equals(entryText, exe, StringComparison.OrdinalIgnoreCase))
                 {
-                    list.Add(entryText);
+                    entryTexts.Add(entryText);
                 }
             }
-            Settings.SaveStr(listKey, string.Join(";", list.ToArray()));
+            Settings.SaveStr(listKey, string.Join(";", entryTexts.ToArray()));
         }
 
         public static void CleanupEmpty(string exe, string subKey, bool ourSub, bool ourExe)
@@ -51,15 +49,15 @@ namespace PaviseApp
                     }
                     if (subKey != null && ourSub)
                     {
-                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(exe, true))
+                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(exe, true))
                         {
-                            if (registryKey2 != null)
+                            if (currentRegistryKey != null)
                             {
-                                using (RegistryKey registryKey3 = registryKey2.OpenSubKey(subKey))
+                                using (RegistryKey candidateRegistryKey = currentRegistryKey.OpenSubKey(subKey))
                                 {
-                                    if (registryKey3 != null && registryKey3.ValueCount == 0 && registryKey3.SubKeyCount == 0)
+                                    if (candidateRegistryKey != null && candidateRegistryKey.ValueCount == 0 && candidateRegistryKey.SubKeyCount == 0)
                                     {
-                                        registryKey2.DeleteSubKey(subKey, false);
+                                        currentRegistryKey.DeleteSubKey(subKey, false);
                                     }
                                 }
                             }
@@ -69,9 +67,9 @@ namespace PaviseApp
                     {
                         return;
                     }
-                    using (RegistryKey registryKey4 = registryKey.OpenSubKey(exe))
+                    using (RegistryKey resolvedRegistryKey = registryKey.OpenSubKey(exe))
                     {
-                        if (registryKey4 == null || registryKey4.ValueCount != 0 || registryKey4.SubKeyCount != 0)
+                        if (resolvedRegistryKey == null || resolvedRegistryKey.ValueCount != 0 || resolvedRegistryKey.SubKeyCount != 0)
                         {
                             return;
                         }

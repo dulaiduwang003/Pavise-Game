@@ -60,8 +60,7 @@ namespace PaviseApp
                         binaryWriter.Write(RootIdentity);
                         binaryWriter.Write(Sid);
                         binaryWriter.Write(Nonce);
-                        HardThreadGuardianActor[] hardThreadGuardianActorItems = new HardThreadGuardianActor[2] { Parent, Child };
-                        foreach (HardThreadGuardianActor hardThreadGuardianActor in hardThreadGuardianActorItems)
+                        foreach (HardThreadGuardianActor hardThreadGuardianActor in new HardThreadGuardianActor[2] { Parent, Child })
                         {
                             binaryWriter.Write(hardThreadGuardianActor.Pid);
                             binaryWriter.Write(hardThreadGuardianActor.Creation);
@@ -144,9 +143,8 @@ namespace PaviseApp
                 {
                     throw new InvalidDataException("guardian scope size");
                 }
-                XmlDocument xmlDocument = new XmlDocument();
-                xmlDocument.XmlResolver = null;
-                XmlDocument xmlDocument2 = xmlDocument;
+                XmlDocument currentXmlDocument = new XmlDocument();
+                currentXmlDocument.XmlResolver = null;
                 using (XmlReader reader = XmlReader.Create(new MemoryStream(bytes), new XmlReaderSettings
                 {
                     XmlResolver = null,
@@ -154,40 +152,39 @@ namespace PaviseApp
                     MaxCharactersInDocument = 65536L
                 }))
                 {
-                    xmlDocument2.Load(reader);
+                    currentXmlDocument.Load(reader);
                 }
-                XmlElement documentElement = xmlDocument2.DocumentElement;
+                XmlElement documentElement = currentXmlDocument.DocumentElement;
                 if (documentElement == null || documentElement.Name != "originalHardThreadScope" || documentElement.GetAttribute("version") != "2" || documentElement.HasChildNodes)
                 {
                     throw new InvalidDataException("guardian scope format or original machine domain is unavailable");
                 }
-                Scope scope = new Scope();
-                scope.Target = new HardThreadTarget(Guid.Parse(documentElement.GetAttribute("session")), int.Parse(documentElement.GetAttribute("pid")), long.Parse(documentElement.GetAttribute("birth")), documentElement.GetAttribute("path"), ulong.Parse(documentElement.GetAttribute("allowed")));
-                scope.Parent = ReadActor(documentElement, "parent");
-                scope.Child = ReadActor(documentElement, "child");
-                scope.Root = Canonical(documentElement.GetAttribute("root"));
-                scope.RootIdentity = documentElement.GetAttribute("rootId");
-                scope.Sid = documentElement.GetAttribute("sid");
-                scope.Nonce = documentElement.GetAttribute("nonce");
-                scope.Bytes = (byte[])bytes.Clone();
-                scope.Origin = new HardThreadOriginContext(documentElement.GetAttribute("machine"), documentElement.GetAttribute("machineName"), documentElement.GetAttribute("kernel"));
-                scope.OriginSeal = Convert.FromBase64String(documentElement.GetAttribute("originSeal"));
-                Scope scope2 = scope;
-                if (scope2.Target.SessionId != session || scope2.Nonce != nonce || !IsHash(nonce) || !string.Equals(scope2.Root, Canonical(root), StringComparison.OrdinalIgnoreCase) || scope2.Sid != actualSid || scope2.Parent.ImageHash != scope2.Child.ImageHash || !IsHash(scope2.Parent.ImageHash))
+                Scope currentScope = new Scope();
+                currentScope.Target = new HardThreadTarget(Guid.Parse(documentElement.GetAttribute("session")), int.Parse(documentElement.GetAttribute("pid")), long.Parse(documentElement.GetAttribute("birth")), documentElement.GetAttribute("path"), ulong.Parse(documentElement.GetAttribute("allowed")));
+                currentScope.Parent = ReadActor(documentElement, "parent");
+                currentScope.Child = ReadActor(documentElement, "child");
+                currentScope.Root = Canonical(documentElement.GetAttribute("root"));
+                currentScope.RootIdentity = documentElement.GetAttribute("rootId");
+                currentScope.Sid = documentElement.GetAttribute("sid");
+                currentScope.Nonce = documentElement.GetAttribute("nonce");
+                currentScope.Bytes = (byte[])bytes.Clone();
+                currentScope.Origin = new HardThreadOriginContext(documentElement.GetAttribute("machine"), documentElement.GetAttribute("machineName"), documentElement.GetAttribute("kernel"));
+                currentScope.OriginSeal = Convert.FromBase64String(documentElement.GetAttribute("originSeal"));
+                if (currentScope.Target.SessionId != session || currentScope.Nonce != nonce || !IsHash(nonce) || !string.Equals(currentScope.Root, Canonical(root), StringComparison.OrdinalIgnoreCase) || currentScope.Sid != actualSid || currentScope.Parent.ImageHash != currentScope.Child.ImageHash || !IsHash(currentScope.Parent.ImageHash))
                 {
                     throw new InvalidDataException("original guardian scope mismatch");
                 }
                 HardThreadOriginContext hardThreadOriginContext = platform.Current();
-                if (!scope2.Origin.SameMachine(hardThreadOriginContext) || (currentKernel && scope2.Origin.Boot != hardThreadOriginContext.Boot) || scope2.OriginSeal.Length < 1 || scope2.OriginSeal.Length > 16384 || Hash(platform.Unseal(scope2.OriginSeal)) != Hash(scope2.Binding()))
+                if (!currentScope.Origin.SameMachine(hardThreadOriginContext) || (currentKernel && currentScope.Origin.Boot != hardThreadOriginContext.Boot) || currentScope.OriginSeal.Length < 1 || currentScope.OriginSeal.Length > 16384 || Hash(platform.Unseal(currentScope.OriginSeal)) != Hash(currentScope.Binding()))
                 {
                     throw new InvalidDataException("original Windows protection or kernel domain differs");
                 }
-                string path = Path.Combine(scope2.Root, "guards", session.ToString("N"), "Pavise.HardThreadGuardian.exe");
-                if (!string.Equals(Canonical(path), scope2.Child.Path, StringComparison.OrdinalIgnoreCase))
+                string path = Path.Combine(currentScope.Root, "guards", session.ToString("N"), "Pavise.HardThreadGuardian.exe");
+                if (!string.Equals(Canonical(path), currentScope.Child.Path, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException("guardian is outside the original runtime");
                 }
-                return scope2;
+                return currentScope;
             }
         }
 
@@ -409,9 +406,9 @@ namespace PaviseApp
                 string input;
                 using (RegistryKey registryKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
                 {
-                    using (RegistryKey registryKey2 = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography", false))
+                    using (RegistryKey currentRegistryKey = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Cryptography", false))
                     {
-                        input = ((registryKey2 == null) ? null : (registryKey2.GetValue("MachineGuid") as string));
+                        input = ((currentRegistryKey == null) ? null : (currentRegistryKey.GetValue("MachineGuid") as string));
                     }
                 }
                 Guid result;

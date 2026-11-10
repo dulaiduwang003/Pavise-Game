@@ -48,8 +48,7 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                string[] textEntries = new string[1] { "PgPlanGuid" };
-                foreach (string name in textEntries)
+                foreach (string name in new string[1] { "PgPlanGuid" })
                 {
                     Guid result;
                     if (Guid.TryParse(Settings.LoadStr(name, ""), out result) && result == scheme)
@@ -121,7 +120,7 @@ namespace PaviseApp
             {
                 Guid[] stored = ReadPresetStoredSettings(scheme, processor);
                 if (stored == null) return null;
-                List<Guid> list = new List<Guid>(stored);
+                List<Guid> storedSnapshot = new List<Guid>(stored);
                 var enumerated = new HashSet<Guid>();
                 uint processedCount = 0u;
                 while (processedCount < 2048)
@@ -131,7 +130,7 @@ namespace PaviseApp
                     switch (EnumerateProcessorSetting(IntPtr.Zero, ref scheme, ref processor, 18u, processedCount, rawBytes, ref size))
                     {
                     case 2u: case 3u: case 259u:
-                        return list.ToArray();
+                        return storedSnapshot.ToArray();
                     case 0u:
                         if (size == 16)
                         {
@@ -140,7 +139,7 @@ namespace PaviseApp
                             {
                                 return null;
                             }
-                            if (!list.Contains(guid)) list.Add(guid);
+                            if (!storedSnapshot.Contains(guid)) storedSnapshot.Add(guid);
                             processedCount++;
                             break;
                         }
@@ -178,16 +177,16 @@ namespace PaviseApp
         private static bool ReadManagedPolicy(out ManagedPolicyRecord record)
         {
             record = null;
-            string value;
-            if (!Settings.TryLoadStr("ManagedPlanPolicyV3", out value) || value == null)
+            string text;
+            if (!Settings.TryLoadStr("ManagedPlanPolicyV3", out text) || text == null)
             {
                 return false;
             }
-            if (value.Length == 0)
+            if (text.Length == 0)
             {
                 return true;
             }
-            string[] valueParts = value.Split('|');
+            string[] valueParts = text.Split('|');
             Guid result;
             Guid result2;
             Guid result3;
@@ -338,14 +337,14 @@ namespace PaviseApp
             {
                 return false;
             }
-            string value;
-            string value2;
-            if (!Settings.TryLoadStr("PrevPowerPlan", out value) || !Settings.TryLoadStr("ExtremePowerKnobSnap", out value2))
+            string text;
+            string currentText;
+            if (!Settings.TryLoadStr("PrevPowerPlan", out text) || !Settings.TryLoadStr("ExtremePowerKnobSnap", out currentText))
             {
                 return false;
             }
             Guid result;
-            if ((Guid.TryParse(value, out result) && result == plan) || !string.IsNullOrEmpty(value2))
+            if ((Guid.TryParse(text, out result) && result == plan) || !string.IsNullOrEmpty(currentText))
             {
                 return false;
             }
@@ -461,8 +460,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] textEntries = new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" };
-            foreach (string value in textEntries)
+            foreach (string value in new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" })
             {
                 if (name.StartsWith(value, StringComparison.Ordinal))
                 {
@@ -518,22 +516,22 @@ namespace PaviseApp
                 if (HandheldBypass) return 0;
                 if (!RestoreLaboratoryBeforeCoreChange()) return 0;
                 Guid? guid = Current();
-                foreach (Guid item in EnumerateSchemes())
+                foreach (Guid enumerateScheme in EnumerateSchemes())
                 {
-                    if (!IsManagedPlanName(ReadName(item)))
+                    if (!IsManagedPlanName(ReadName(enumerateScheme)))
                     {
                         continue;
                     }
-                    if (guid.HasValue && guid.Value == item)
+                    if (guid.HasValue && guid.Value == enumerateScheme)
                     {
-                        if (!SwitchAwayFrom(item))
+                        if (!SwitchAwayFrom(enumerateScheme))
                         {
                             continue;
                         }
                         guid = Current();
                     }
-                    Guid guid2 = item;
-                    if (PowerDeleteScheme(IntPtr.Zero, ref guid2) == 0)
+                    Guid currentEnumerateScheme = enumerateScheme;
+                    if (PowerDeleteScheme(IntPtr.Zero, ref currentEnumerateScheme) == 0)
                     {
                         processedCount++;
                     }

@@ -29,11 +29,11 @@ namespace PaviseApp
                 return;
             }
             Point empty = Point.Empty;
-            Control control2 = control;
-            while (control2 != null && !(control2 is Form))
+            Control currentControl = control;
+            while (currentControl != null && !(currentControl is Form))
             {
-                empty.Offset(control2.Left, control2.Top);
-                control2 = control2.Parent;
+                empty.Offset(currentControl.Left, currentControl.Top);
+                currentControl = currentControl.Parent;
             }
             GraphicsState gstate = graphics.Save();
             try
@@ -141,12 +141,12 @@ namespace PaviseApp
                     new PointF(1358f, 867f)
                 });
             }
-            using (Pen pen2 = new Pen(Col.Alpha(accent, Theme.LightMode ? 150 : 185), 1.2f))
+            using (Pen currentPen = new Pen(Col.Alpha(accent, Theme.LightMode ? 150 : 185), 1.2f))
             {
-                graphics.DrawLine(pen2, 258, 257, 310, 205);
-                graphics.DrawLine(pen2, 1284, 162, 1327, 205);
-                graphics.DrawLine(pen2, 1353, 531, 1384, 500);
-                graphics.DrawLine(pen2, 207, 680, 259, 732);
+                graphics.DrawLine(currentPen, 258, 257, 310, 205);
+                graphics.DrawLine(currentPen, 1284, 162, 1327, 205);
+                graphics.DrawLine(currentPen, 1353, 531, 1384, 500);
+                graphics.DrawLine(currentPen, 207, 680, 259, 732);
             }
         }
 

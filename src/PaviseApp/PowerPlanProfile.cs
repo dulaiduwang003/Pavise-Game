@@ -1,5 +1,4 @@
 // 作者：bdth，2074055628@qq.com。
-using System;
 
 namespace PaviseApp
 {

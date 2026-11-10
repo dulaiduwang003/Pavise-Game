@@ -5,8 +5,7 @@ namespace PaviseApp
         internal static void RequireClear(GameNvCanonicalStore store)
         {
             bool recoveryPending = false;
-            string[] pendingJournalsResult = store.PendingJournals();
-            foreach (string entryText in pendingJournalsResult)
+            foreach (string entryText in store.PendingJournals())
             {
                 try
                 {

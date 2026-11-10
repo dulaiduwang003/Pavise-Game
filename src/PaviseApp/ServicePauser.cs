@@ -56,8 +56,8 @@ namespace PaviseApp
                     {
                         return true;
                     }
-                    string value;
-                    return !Read(out value) || value == null || value.Length != 0;
+                    string text;
+                    return !Read(out text) || text == null || text.Length != 0;
                 }
             }
         }
@@ -121,29 +121,27 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    string[] namesSnapshot = names;
-                    foreach (string entryText in namesSnapshot)
+                    foreach (string entryText in names)
                     {
                         if (Query(entryText) != 4)
                         {
                             continue;
                         }
                         string lastReadSnapshot = lastRead;
-                        Receipt receipt = new Receipt();
-                        receipt.Name = entryText;
-                        receipt.State = Phase.Prepared;
-                        Receipt receipt2 = receipt;
-                        receipts.Add(entryText, receipt2);
+                        Receipt currentReceipt = new Receipt();
+                        currentReceipt.Name = entryText;
+                        currentReceipt.State = Phase.Prepared;
+                        receipts.Add(entryText, currentReceipt);
                         if (!Save())
                         {
-                            string value;
-                            if (Read(out value) && value == lastReadSnapshot)
+                            string text;
+                            if (Read(out text) && text == lastReadSnapshot)
                             {
                                 receipts.Remove(entryText);
                             }
                             else
                             {
-                                receipt2.State = Phase.Settled;
+                                currentReceipt.State = Phase.Settled;
                             }
                             ledgerLost = true;
                             RestoreCore(out remain);
@@ -152,7 +150,7 @@ namespace PaviseApp
                         bool confirmed;
                         if (Query(entryText) != 4)
                         {
-                            Settle(receipt2);
+                            Settle(currentReceipt);
                             if (!FlushSettled())
                             {
                                 ledgerLost = true;
@@ -162,11 +160,11 @@ namespace PaviseApp
                         }
                         else if (Stop(entryText, out confirmed))
                         {
-                            receipt2.State = Phase.Owned;
-                            receipt2.CanStart = true;
-                            receipt2.StopObserved = confirmed || Query(entryText) == 1;
+                            currentReceipt.State = Phase.Owned;
+                            currentReceipt.CanStart = true;
+                            currentReceipt.StopObserved = confirmed || Query(entryText) == 1;
                             justStopped.Add(entryText);
-                            if (receipt2.StopObserved)
+                            if (currentReceipt.StopObserved)
                             {
                                 confirmedStopped.Add(entryText);
                             }
@@ -181,7 +179,7 @@ namespace PaviseApp
                         {
                             if (Query(entryText) == 4)
                             {
-                                receipt2.State = Phase.Settled;
+                                currentReceipt.State = Phase.Settled;
                             }
                             if (!FlushSettled())
                             {
@@ -240,11 +238,10 @@ namespace PaviseApp
                 return false;
             }
             bool allRestored = true;
-            string[] namesSnapshot = names;
-            foreach (string entryText in namesSnapshot)
+            foreach (string entryText in names)
             {
-                Receipt value;
-                if (!receipts.TryGetValue(entryText, out value) || value.State == Phase.Settled)
+                Receipt receipt;
+                if (!receipts.TryGetValue(entryText, out receipt) || receipt.State == Phase.Settled)
                 {
                     continue;
                 }
@@ -255,7 +252,7 @@ namespace PaviseApp
                     allRestored = false;
                     continue;
                 default:
-                    value.RunningSeen = 0;
+                    receipt.RunningSeen = 0;
                     break;
                 case 4:
                     break;
@@ -263,33 +260,33 @@ namespace PaviseApp
                 switch (queryResult)
                 {
                 case 4:
-                    if (value.State == Phase.Owned && !value.StopObserved && ++value.RunningSeen < 2)
+                    if (receipt.State == Phase.Owned && !receipt.StopObserved && ++receipt.RunningSeen < 2)
                     {
                         allRestored = false;
                     }
                     else
                     {
-                        Settle(value);
+                        Settle(receipt);
                     }
                     break;
                 default:
-                    if ((value.State == Phase.Owned && !value.StopObserved && queryResult == 3) || (value.State == Phase.Prepared && (queryResult == 2 || queryResult == 3)) || (value.State == Phase.Restoring && (queryResult == 2 || queryResult == 3)))
+                    if ((receipt.State == Phase.Owned && !receipt.StopObserved && queryResult == 3) || (receipt.State == Phase.Prepared && (queryResult == 2 || queryResult == 3)) || (receipt.State == Phase.Restoring && (queryResult == 2 || queryResult == 3)))
                     {
                         allRestored = false;
                     }
                     else
                     {
-                        Settle(value);
+                        Settle(receipt);
                     }
                     break;
                 case 1:
-                    if (!value.CanStart)
+                    if (!receipt.CanStart)
                     {
                         allRestored = false;
                         break;
                     }
-                    value.StopObserved = true;
-                    value.State = Phase.Restoring;
+                    receipt.StopObserved = true;
+                    receipt.State = Phase.Restoring;
                     if (!Save())
                     {
                         allRestored = false;
@@ -301,16 +298,16 @@ namespace PaviseApp
                         allRestored = false;
                         break;
                     default:
-                        Settle(value);
+                        Settle(receipt);
                         break;
                     case 1:
                     {
-                        value.CanStart = false;
+                        receipt.CanStart = false;
                         Start(entryText);
                         int queryResult2 = Query(entryText);
                         if (queryResult2 == 4 || queryResult2 == 7)
                         {
-                            Settle(value);
+                            Settle(receipt);
                         }
                         else
                         {
@@ -359,54 +356,53 @@ namespace PaviseApp
 
         private List<string> PendingNames()
         {
-            List<string> list = new List<string>();
-            string[] namesSnapshot = names;
-            foreach (string entryText in namesSnapshot)
+            List<string> entryTexts = new List<string>();
+            foreach (string entryText in names)
             {
                 if (receipts.ContainsKey(entryText))
                 {
-                    list.Add(entryText);
+                    entryTexts.Add(entryText);
                 }
             }
-            return list;
+            return entryTexts;
         }
 
         private bool Load()
         {
-            string value;
-            if (!Read(out value) || value == null)
+            string text;
+            if (!Read(out text) || text == null)
             {
                 return false;
             }
             Dictionary<string, Receipt> result;
-            if (!Parse(value, out result))
+            if (!Parse(text, out result))
             {
                 return false;
             }
             if (!loaded)
             {
-                foreach (KeyValuePair<string, Receipt> item in result)
+                foreach (KeyValuePair<string, Receipt> resultEntry in result)
                 {
-                    receipts.Add(item.Key, item.Value);
+                    receipts.Add(resultEntry.Key, resultEntry.Value);
                 }
                 loaded = true;
             }
             else
             {
-                foreach (KeyValuePair<string, Receipt> item2 in result)
+                foreach (KeyValuePair<string, Receipt> currentResultEntry in result)
                 {
-                    Receipt value2;
-                    if (!receipts.TryGetValue(item2.Key, out value2))
+                    Receipt receipt;
+                    if (!receipts.TryGetValue(currentResultEntry.Key, out receipt))
                     {
-                        receipts.Add(item2.Key, item2.Value);
+                        receipts.Add(currentResultEntry.Key, currentResultEntry.Value);
                     }
-                    else if (item2.Value.State == Phase.Settled)
+                    else if (currentResultEntry.Value.State == Phase.Settled)
                     {
-                        Settle(value2);
+                        Settle(receipt);
                     }
                 }
             }
-            lastRead = value;
+            lastRead = text;
             return true;
         }
 
@@ -423,9 +419,8 @@ namespace PaviseApp
             }
             if (!raw.StartsWith("2\n", StringComparison.Ordinal))
             {
-                string[] textEntries = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
-                string[] textEntries2 = textEntries;
-                foreach (string entryText in textEntries2)
+                string[] serializedServices = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
+                foreach (string entryText in serializedServices)
                 {
                     if (!allowed.Contains(entryText) || result.ContainsKey(entryText))
                     {
@@ -494,20 +489,19 @@ namespace PaviseApp
             {
                 return "";
             }
-            List<string> list = new List<string>();
-            list.Add("2");
-            List<string> list2 = list;
-            string[] namesSnapshot = names;
-            foreach (string entryText in namesSnapshot)
+            List<string> texts = new List<string>();
+            texts.Add("2");
+            List<string> currentTexts = texts;
+            foreach (string entryText in names)
             {
-                Receipt value;
-                if (receipts.TryGetValue(entryText, out value))
+                Receipt receipt;
+                if (receipts.TryGetValue(entryText, out receipt))
                 {
-                    string message = ((value.State == Phase.Prepared) ? "P" : ((value.State == Phase.Owned) ? "O" : ((value.State == Phase.Restoring) ? "R" : "S")));
-                    list2.Add(message + "\t" + entryText + "\t" + (value.StopObserved ? "1" : "0"));
+                    string message = ((receipt.State == Phase.Prepared) ? "P" : ((receipt.State == Phase.Owned) ? "O" : ((receipt.State == Phase.Restoring) ? "R" : "S")));
+                    currentTexts.Add(message + "\t" + entryText + "\t" + (receipt.StopObserved ? "1" : "0"));
                 }
             }
-            return string.Join("\n", list2.ToArray());
+            return string.Join("\n", currentTexts.ToArray());
         }
 
         private bool Save()
@@ -533,29 +527,29 @@ namespace PaviseApp
             {
                 return false;
             }
-            List<Receipt> list = new List<Receipt>();
-            foreach (Receipt value in receipts.Values)
+            List<Receipt> currentReceipts = new List<Receipt>();
+            foreach (Receipt receipt in receipts.Values)
             {
-                if (value.State == Phase.Settled)
+                if (receipt.State == Phase.Settled)
                 {
-                    list.Add(value);
+                    currentReceipts.Add(receipt);
                 }
             }
-            if (list.Count == 0)
+            if (currentReceipts.Count == 0)
             {
                 return true;
             }
-            foreach (Receipt item in list)
+            foreach (Receipt currentReceipt in currentReceipts)
             {
-                receipts.Remove(item.Name);
+                receipts.Remove(currentReceipt.Name);
             }
             if (Save())
             {
                 return true;
             }
-            foreach (Receipt item2 in list)
+            foreach (Receipt candidateReceipt in currentReceipts)
             {
-                receipts.Add(item2.Name, item2);
+                receipts.Add(candidateReceipt.Name, candidateReceipt);
             }
             return false;
         }

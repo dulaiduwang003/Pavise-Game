@@ -6,19 +6,7 @@ namespace PaviseApp
     internal static partial class PowerPlan
     {
 
-        private const string ParkSnapKey = "CoreParkSnap";
-
-        private const string ParkTriesKey = "CoreParkTries";
-
-        private const string ParkAbsent = "-";
-
-        private const int MaxRestoreTries = 3;
-
         internal const string PlanJournalKey = "PrevPowerPlan";
-
-        private const string ChoiceKey = "PowerPlanChoice";
-
-        private const string ChoicePrefix = "v2:";
 
         private const string DefaultPlanKey = "DefaultPlanGuid";
 
@@ -30,17 +18,11 @@ namespace PaviseApp
 
         private const string PlanNote = "Pavise动态计划";
 
-        private const string IdleDisableClearedKey = "IdleDisableCleared";
-
         internal const string ExtremeSnapKey = "ExtremePowerKnobSnap";
 
         internal const string LegacyCpuIdleLedgerKey = "CpuIdleStateV1";
 
         private const string ManagedPolicyKey = "ManagedPlanPolicyV3";
-
-        private const uint AccessScheme = 16u;
-
-        private const uint ErrorInvalidParameter = 87u;
 
         private static readonly Guid Ultimate = new Guid("e9a42b02-d5df-448d-aa00-03f14749eb61");
 
@@ -49,8 +31,6 @@ namespace PaviseApp
         private static readonly Guid Balanced = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
 
         private static readonly Guid PowerSaver = new Guid("a1841308-3541-4fab-bc81-f71556f20b4a");
-
-        private static readonly string[] UltimateNames = new string[2] { "卓越性能", "Ultimate Performance" };
 
         private static string machineSig;
 
@@ -81,8 +61,6 @@ namespace PaviseApp
         private static string intactMismatch = "";
 
         // 这里只管理退役版本遗留回执的恢复状态，不能重新启用旧调节策略。
-        private static bool extremeTunePending;
-
         private static readonly Guid IdlePromote = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
 
         private static readonly Guid IdleDemote = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
@@ -229,30 +207,30 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (!Settings.TryLoadStr("PowerPlanChoice", out value))
+                string text;
+                if (!Settings.TryLoadStr("PowerPlanChoice", out text))
                 {
                     return "off";
                 }
-                bool value2;
-                if (value.StartsWith("v2:", StringComparison.Ordinal))
+                bool planEnabled;
+                if (text.StartsWith("v2:", StringComparison.Ordinal))
                 {
-                    value = value.Substring("v2:".Length);
-                    if (value.Length == 0)
+                    text = text.Substring("v2:".Length);
+                    if (text.Length == 0)
                     {
                         return "off";
                     }
                 }
-                else if (!Settings.TryLoadBool("PowerPlanOn", true, out value2) || !value2)
+                else if (!Settings.TryLoadBool("PowerPlanOn", true, out planEnabled) || !planEnabled)
                 {
                     return "off";
                 }
                 Guid g;
-                if (value.Length != 0 && value != "managed" && value != "off" && (!TryGuid(value, out g) || g == Guid.Empty))
+                if (text.Length != 0 && text != "managed" && text != "off" && (!TryGuid(text, out g) || g == Guid.Empty))
                 {
                     return "off";
                 }
-                return value;
+                return text;
             }
         }
 
@@ -383,24 +361,24 @@ namespace PaviseApp
             {
                 return Lang.T("t.systemaudithardware.3");
             }
-            Guid value = guid.Value;
-            if (value == Ultimate)
+            Guid currentGuid = guid.Value;
+            if (currentGuid == Ultimate)
             {
                 return Lang.T("t.powerplan.1");
             }
-            if (value == HighPerf)
+            if (currentGuid == HighPerf)
             {
                 return Lang.T("t.powerplan.3");
             }
-            if (value == Balanced)
+            if (currentGuid == Balanced)
             {
                 return Lang.T("t.powerplan.4");
             }
-            if (value == PowerSaver)
+            if (currentGuid == PowerSaver)
             {
                 return Lang.T("t.powerplan.5");
             }
-            string name = ReadName(value);
+            string name = ReadName(currentGuid);
             if (name.Length <= 0)
             {
                 return Lang.T("t.powerplan.6");
@@ -429,7 +407,7 @@ namespace PaviseApp
         public static List<PowerPlanEntry> ListUserPlans()
         {
             Guid guid = ManagedPlanGuid();
-            List<PowerPlanEntry> list = new List<PowerPlanEntry>();
+            List<PowerPlanEntry> powerPlanEntries = new List<PowerPlanEntry>();
             foreach (Guid item in EnumerateSchemes())
             {
                 if (!ManagedPolicyOwns(item) && (guid == Guid.Empty || item != guid))
@@ -437,11 +415,11 @@ namespace PaviseApp
                     string name = ReadName(item);
                     if (!string.Equals(name, "由软件调度 " + MachineSignature(), StringComparison.OrdinalIgnoreCase) && !string.Equals(name, "Scheduled by Pavise " + MachineSignature(), StringComparison.OrdinalIgnoreCase))
                     {
-                        list.Add(new PowerPlanEntry(item, (name.Length > 0) ? name : item.ToString()));
+                        powerPlanEntries.Add(new PowerPlanEntry(item, (name.Length > 0) ? name : item.ToString()));
                     }
                 }
             }
-            return list;
+            return powerPlanEntries;
         }
 
         public static bool SelectPlan(string id)
@@ -453,17 +431,17 @@ namespace PaviseApp
             {
                 return false;
             }
-            string value;
-            if (!Settings.TryLoadStr("PowerPlanChoice", out value))
+            string text;
+            if (!Settings.TryLoadStr("PowerPlanChoice", out text))
             {
                 return false;
             }
             string message = "v2:" + ((idOffset.Length == 0) ? "managed" : idOffset);
-            if (value != message && !Settings.SaveStr("PowerPlanChoice", message))
+            if (text != message && !Settings.SaveStr("PowerPlanChoice", message))
             {
                 return false;
             }
-            if (value == message) return true;
+            if (text == message) return true;
             lock (lk)
             {
                 managedCreationBlocked = false;
@@ -546,8 +524,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            Guid guid2 = g;
-            uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref guid2);
+            Guid currentG = g;
+            uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref currentG);
             if (powerDeleteSchemeResult != 0 && powerDeleteSchemeResult != 2)
             {
                 return false;
@@ -582,9 +560,9 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (Guid item in EnumerateSchemes())
+            foreach (Guid enumerateScheme in EnumerateSchemes())
             {
-                if (item != avoid && Set(item))
+                if (enumerateScheme != avoid && Set(enumerateScheme))
                 {
                     return true;
                 }
@@ -634,8 +612,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            Guid guid2 = g;
-            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref guid2) != 0)
+            Guid currentG = g;
+            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref currentG) != 0)
             {
                 return false;
             }
@@ -738,8 +716,8 @@ namespace PaviseApp
             }
             if (!RestoreLaboratoryBeforeCoreChange())
                 return PowerApplyFailed("laboratory-recovery", "Laboratory power recovery pending");
-            string value;
-            if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out value) || value == null || value.Length != 0) && !RestorePlanCore(false))
+            string text;
+            if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out text) || text == null || text.Length != 0) && !RestorePlanCore(false))
             {
                 return PowerApplyFailed("previous-plan-recovery", "Previous power-plan recovery pending");
             }
@@ -942,28 +920,27 @@ namespace PaviseApp
             }
             ManagedPolicyRecord record;
             bool policyUnconfirmed = !ReadManagedPolicy(out record);
-            string[] textEntries = new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" };
-            foreach (string entryText in textEntries)
+            foreach (string entryText in new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" })
             {
-                string value;
-                if (!Settings.TryLoadStr(entryText, out value) || value == null)
+                string text;
+                if (!Settings.TryLoadStr(entryText, out text) || text == null)
                 {
                     policyUnconfirmed = true;
                     continue;
                 }
-                if (entryText == "PowerPlanChoice" && value.StartsWith("v2:", StringComparison.Ordinal))
+                if (entryText == "PowerPlanChoice" && text.StartsWith("v2:", StringComparison.Ordinal))
                 {
-                    value = value.Substring("v2:".Length);
-                    if (value.Length == 0)
+                    text = text.Substring("v2:".Length);
+                    if (text.Length == 0)
                     {
                         policyUnconfirmed = true;
                         continue;
                     }
                 }
-                if (value.Length != 0 && (entryText != "PowerPlanChoice" || (value != "managed" && value != "off")))
+                if (text.Length != 0 && (entryText != "PowerPlanChoice" || (text != "managed" && text != "off")))
                 {
                     Guid g2;
-                    if (!TryGuid(value, out g2) || g2 == Guid.Empty)
+                    if (!TryGuid(text, out g2) || g2 == Guid.Empty)
                     {
                         policyUnconfirmed = true;
                     }

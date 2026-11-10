@@ -497,9 +497,9 @@ namespace PaviseApp
             {
                 g.DrawLine(pen, 0, rect.Bottom, base.Width, rect.Bottom);
             }
-            using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent2, 120), 1f))
+            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent2, 120), 1f))
             {
-                g.DrawLine(pen2, 0, rect.Bottom - 1, base.Width, rect.Bottom - 1);
+                g.DrawLine(currentPen, 0, rect.Bottom - 1, base.Width, rect.Bottom - 1);
             }
         }
 
@@ -641,9 +641,9 @@ namespace PaviseApp
                 {
                     g.Restore(gstate);
                 }
-                using (Pen pen2 = new Pen(Col.Alpha(Theme.StrokeHi, 210), 1f))
+                using (Pen currentPen = new Pen(Col.Alpha(Theme.StrokeHi, 210), 1f))
                 {
-                    g.DrawPath(pen2, path);
+                    g.DrawPath(currentPen, path);
                 }
             }
         }
@@ -686,17 +686,17 @@ namespace PaviseApp
             {
                 return;
             }
-            Rectangle rectangle2 = new Rectangle(Theme.S(24), ringBottomOffset + Theme.S(24), base.Width - Theme.S(48), Theme.S(24));
-            Font font2 = Theme.UI(8.6f, false);
+            Rectangle currentRectangle = new Rectangle(Theme.S(24), ringBottomOffset + Theme.S(24), base.Width - Theme.S(48), Theme.S(24));
+            Font ui = Theme.UI(8.6f, false);
             using (SolidBrush brush2 = new SolidBrush(Col.Alpha(Theme.Dim, (int)(255f * Math.Max(0.25f, shown.Value)))))
             {
-                StringFormat stringFormat2 = new StringFormat();
-                stringFormat2.Alignment = StringAlignment.Center;
-                stringFormat2.LineAlignment = StringAlignment.Center;
-                stringFormat2.Trimming = StringTrimming.EllipsisCharacter;
-                using (StringFormat format2 = stringFormat2)
+                StringFormat currentStringFormat = new StringFormat();
+                currentStringFormat.Alignment = StringAlignment.Center;
+                currentStringFormat.LineAlignment = StringAlignment.Center;
+                currentStringFormat.Trimming = StringTrimming.EllipsisCharacter;
+                using (StringFormat format2 = currentStringFormat)
                 {
-                    g.DrawString(hint, font2, brush2, rectangle2, format2);
+                    g.DrawString(hint, ui, brush2, currentRectangle, format2);
                 }
             }
         }

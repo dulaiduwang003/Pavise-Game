@@ -137,10 +137,6 @@ namespace PaviseApp
             }
         }
 
-        private const float NormalDockPointSize = 9.5f;
-
-        private const float CompactDockPointSize = 9.5f;
-
         private readonly string[] labels;
 
         private readonly string[] glyphs;
@@ -497,15 +493,13 @@ namespace PaviseApp
             }
             DropDockTypography();
             bool useCjkFont = false;
-            string[] labelsSnapshot = labels;
-            foreach (string entryText in labelsSnapshot)
+            foreach (string entryText in labels)
             {
                 if (entryText == null)
                 {
                     continue;
                 }
-                string message = entryText;
-                foreach (char c in message)
+                foreach (char c in entryText)
                 {
                     if (c >= '㐀' && c <= '\u9fff')
                     {
@@ -518,9 +512,8 @@ namespace PaviseApp
                     break;
                 }
             }
-            string[] textEntries = (useCjkFont ? new string[3] { "DengXian", "Microsoft YaHei UI", "Segoe UI" } : new string[3] { "Bahnschrift SemiBold", "Segoe UI Semibold", "Segoe UI" });
-            string[] textEntries2 = textEntries;
-            foreach (string name in textEntries2)
+            string[] fontCandidates = (useCjkFont ? new string[3] { "DengXian", "Microsoft YaHei UI", "Segoe UI" } : new string[3] { "Bahnschrift SemiBold", "Segoe UI Semibold", "Segoe UI" });
+            foreach (string name in fontCandidates)
             {
                 try
                 {
@@ -693,20 +686,20 @@ namespace PaviseApp
             int remainingGroupsAbove2 = GroupsAbove(slot) - groupsAboveResult;
             int availableDockWidth = Math.Max(dockColumnsLimit, dockBounds.Width - sResult * 2 - sResult2 * (dockColumnsLimit - 1) - remainingGroupsAbove * sResult3);
             int[] normalDockCellsSnapshot = ((base.Width >= preferredDockWidth) ? normalDockCells : compactDockCells);
-            int itemBoundsValue = 0;
-            int itemBoundsValue2 = 0;
+            int totalCellWeight = 0;
+            int precedingCellWeight = 0;
             for (int i = 0; i < dockColumnsLimit; i++)
             {
-                int itemBoundsValue3 = normalDockCellsSnapshot[scaledSlotRatio + i];
-                itemBoundsValue += itemBoundsValue3;
+                int cellWeight = normalDockCellsSnapshot[scaledSlotRatio + i];
+                totalCellWeight += cellWeight;
                 if (i < slotOffset)
                 {
-                    itemBoundsValue2 += itemBoundsValue3;
+                    precedingCellWeight += cellWeight;
                 }
             }
-            int itemBoundsValue4 = dockBounds.Left + sResult + (int)Math.Round((double)availableDockWidth * (double)itemBoundsValue2 / (double)Math.Max(1, itemBoundsValue)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
-            int itemBoundsValue5 = dockBounds.Left + sResult + (int)Math.Round((double)availableDockWidth * (double)(itemBoundsValue2 + normalDockCellsSnapshot[slot]) / (double)Math.Max(1, itemBoundsValue)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
-            return new Rectangle(itemBoundsValue4, dockBounds.Top + Dpi.S(4) + slotRatio * (ItemH + Dpi.S(4)), Math.Max(1, itemBoundsValue5 - itemBoundsValue4), ItemH);
+            int itemLeft = dockBounds.Left + sResult + (int)Math.Round((double)availableDockWidth * (double)precedingCellWeight / (double)Math.Max(1, totalCellWeight)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
+            int itemRight = dockBounds.Left + sResult + (int)Math.Round((double)availableDockWidth * (double)(precedingCellWeight + normalDockCellsSnapshot[slot]) / (double)Math.Max(1, totalCellWeight)) + sResult2 * slotOffset + remainingGroupsAbove2 * sResult3;
+            return new Rectangle(itemLeft, dockBounds.Top + Dpi.S(4) + slotRatio * (ItemH + Dpi.S(4)), Math.Max(1, itemRight - itemLeft), ItemH);
         }
 
         internal Rectangle DockIconBounds(int slot)
@@ -1157,9 +1150,9 @@ namespace PaviseApp
             {
                 TextRenderer.DrawText(graphics, SectionTitle, Theme.UI(10f, true), new Rectangle(Pad + Dpi.S(12), TopPad - Dpi.S(34), Math.Max(1, base.Width - Pad * 2 - Dpi.S(24)), Dpi.S(24)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
             }
-            using (Pen pen2 = new Pen(Theme.Stroke))
+            using (Pen strokePen = new Pen(Theme.Stroke))
             {
-                graphics.DrawLine(pen2, base.Width - 1, 0, base.Width - 1, base.Height);
+                graphics.DrawLine(strokePen, base.Width - 1, 0, base.Width - 1, base.Height);
             }
             GraphicsState gstate = graphics.Save();
             graphics.SetClip(new Rectangle(0, TopPad, base.Width, Math.Max(0, base.Height - TopPad - BottomPad)));
@@ -1179,9 +1172,9 @@ namespace PaviseApp
                     {
                         graphics.FillPath(brush4, path);
                     }
-                    using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 124 : 76)))
+                    using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 124 : 76)))
                     {
-                        graphics.DrawPath(pen3, path);
+                        graphics.DrawPath(currentPen, path);
                     }
                 }
                 Rectangle r2 = new Rectangle(Pad, roundedValue + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
@@ -1199,39 +1192,39 @@ namespace PaviseApp
                 {
                     break;
                 }
-                int onPaintValue = groupSlots[i];
-                if (onPaintValue < 0 || onPaintValue >= order.Length)
+                int groupSlot = groupSlots[i];
+                if (groupSlot < 0 || groupSlot >= order.Length)
                 {
                     continue;
                 }
                 string message = groupTexts[i] ?? "";
-                int remainingSlotY = SlotY(onPaintValue) - GroupH;
+                int remainingSlotY = SlotY(groupSlot) - GroupH;
                 Font font = Theme.MonoFor(message, 6.5f);
                 int width = TextRenderer.MeasureText(graphics, message, font).Width;
                 int top = remainingSlotY + GroupH / 2;
-                using (Pen pen4 = new Pen(Theme.Stroke))
+                using (Pen currentStrokePen = new Pen(Theme.Stroke))
                 {
                     if (message.Length > 0)
                     {
                         TextRenderer.DrawText(graphics, message, font, new Rectangle(Pad + Dpi.S(13), remainingSlotY, base.Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                        graphics.DrawLine(pen4, Pad + Dpi.S(17) + width + Dpi.S(8), top, base.Width - Pad - Dpi.S(2), top);
+                        graphics.DrawLine(currentStrokePen, Pad + Dpi.S(17) + width + Dpi.S(8), top, base.Width - Pad - Dpi.S(2), top);
                     }
                     else
                     {
-                        graphics.DrawLine(pen4, Pad + Dpi.S(6), top, base.Width - Pad - Dpi.S(6), top);
+                        graphics.DrawLine(currentStrokePen, Pad + Dpi.S(6), top, base.Width - Pad - Dpi.S(6), top);
                     }
                 }
             }
             for (int j = 0; j < order.Length; j++)
             {
-                int onPaintValue2 = order[j];
+                int itemIndex = order[j];
                 int slotYResult2 = SlotY(j);
                 if (slotYResult2 + ItemH <= TopPad || slotYResult2 >= base.Height - BottomPad)
                 {
                     continue;
                 }
-                bool isSelected = onPaintValue2 == sel;
-                if (!isSelected && onPaintValue2 == hoverIdx)
+                bool isSelected = itemIndex == sel;
+                if (!isSelected && itemIndex == hoverIdx)
                 {
                     Rectangle r3 = new Rectangle(Pad, slotYResult2, base.Width - Pad * 2, ItemH);
                     using (SolidBrush brush6 = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 16 : 9)))
@@ -1242,15 +1235,15 @@ namespace PaviseApp
                         }
                     }
                 }
-                Color color = ((!isSelected) ? ((onPaintValue2 == hoverIdx) ? Theme.Fg : Theme.Dim) : (Theme.LightMode ? Theme.Accent : Color.White));
+                Color color = ((!isSelected) ? ((itemIndex == hoverIdx) ? Theme.Fg : Theme.Dim) : (Theme.LightMode ? Theme.Accent : Color.White));
                 Rectangle b = new Rectangle(IconOnly ? ((base.Width - Dpi.S(20)) / 2) : (Pad + Dpi.S(CompactRail ? 12 : 20)), slotYResult2 + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
-                Glyphs.Draw(graphics, glyphs[onPaintValue2], b, isSelected ? Theme.Accent : color);
+                Glyphs.Draw(graphics, glyphs[itemIndex], b, isSelected ? Theme.Accent : color);
                 if (!IconOnly)
                 {
                     int rightOffset = b.Right + Dpi.S(CompactRail ? 10 : 16);
                     Rectangle bounds = new Rectangle(rightOffset, slotYResult2, base.Width - Pad - Dpi.S(10) - rightOffset, ItemH);
-                    Font font2 = Theme.UI(11f, isSelected);
-                    TextRenderer.DrawText(graphics, labels[onPaintValue2], font2, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+                    Font ui = Theme.UI(11f, isSelected);
+                    TextRenderer.DrawText(graphics, labels[itemIndex], ui, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
                 }
             }
             graphics.Restore(gstate);
@@ -1322,66 +1315,66 @@ namespace PaviseApp
             {
                 g.DrawLines(pen, points);
             }
-            using (Pen pen2 = new Pen(Col.Alpha(accent, Theme.LightMode ? 9 : 17), Dpi.S(3)))
+            using (Pen currentPen = new Pen(Col.Alpha(accent, Theme.LightMode ? 9 : 17), Dpi.S(3)))
             {
-                g.DrawLines(pen2, points);
+                g.DrawLines(currentPen, points);
             }
             Rectangle bounds2 = dockBounds;
             bounds2.Inflate(Dpi.S(2), Dpi.S(2));
             using (GraphicsPath path2 = DockPath(bounds2, Dpi.S(15)))
             {
-                using (Pen pen3 = new Pen(Col.Alpha(accent, Theme.LightMode ? 24 : 30)))
+                using (Pen candidatePen = new Pen(Col.Alpha(accent, Theme.LightMode ? 24 : 30)))
                 {
-                    g.DrawPath(pen3, path2);
+                    g.DrawPath(candidatePen, path2);
                 }
             }
             using (GraphicsPath path3 = DockPath(dockBounds, sResult))
             {
                 Color color = (Theme.LightMode ? Color.FromArgb(246, 248, 251) : Color.FromArgb(21, 23, 28));
-                Color color2 = (Theme.LightMode ? Color.FromArgb(224, 230, 237) : Color.FromArgb(11, 13, 17));
-                using (LinearGradientBrush brush2 = new LinearGradientBrush(dockBounds, color, color2, LinearGradientMode.Vertical))
+                Color currentColor = (Theme.LightMode ? Color.FromArgb(224, 230, 237) : Color.FromArgb(11, 13, 17));
+                using (LinearGradientBrush brush2 = new LinearGradientBrush(dockBounds, color, currentColor, LinearGradientMode.Vertical))
                 {
                     g.FillPath(brush2, path3);
                 }
-                using (Pen pen4 = new Pen(Col.Alpha(accent, Theme.LightMode ? 130 : 180)))
+                using (Pen resolvedPen = new Pen(Col.Alpha(accent, Theme.LightMode ? 130 : 180)))
                 {
-                    g.DrawPath(pen4, path3);
+                    g.DrawPath(resolvedPen, path3);
                 }
             }
             Rectangle bounds3 = dockBounds;
             bounds3.Inflate(-Dpi.S(2), -Dpi.S(2));
             using (GraphicsPath path4 = DockPath(bounds3, Dpi.S(11)))
             {
-                using (Pen pen5 = new Pen(Col.Alpha(Theme.StrokeHi, Theme.LightMode ? 75 : 44)))
+                using (Pen selectedPen = new Pen(Col.Alpha(Theme.StrokeHi, Theme.LightMode ? 75 : 44)))
                 {
-                    g.DrawPath(pen5, path4);
+                    g.DrawPath(selectedPen, path4);
                 }
             }
-            using (Pen pen6 = new Pen(Col.Alpha(accent, Theme.LightMode ? 78 : 116)))
+            using (Pen workingPen = new Pen(Col.Alpha(accent, Theme.LightMode ? 78 : 116)))
             {
-                g.DrawLines(pen6, points);
+                g.DrawLines(workingPen, points);
             }
-            using (Pen pen7 = new Pen(Col.Alpha(accent, 170), Math.Max(1, Dpi.S(1))))
+            using (Pen pendingPen = new Pen(Col.Alpha(accent, 170), Math.Max(1, Dpi.S(1))))
             {
                 int sLimit = Math.Min(Dpi.S(30), dockBounds.Width / 6);
-                g.DrawLine(pen7, dockBounds.Left + sResult, dockBounds.Top, dockBounds.Left + sResult + sLimit, dockBounds.Top);
-                g.DrawLine(pen7, dockBounds.Right - sResult - sLimit, dockBounds.Bottom, dockBounds.Right - sResult, dockBounds.Bottom);
+                g.DrawLine(pendingPen, dockBounds.Left + sResult, dockBounds.Top, dockBounds.Left + sResult + sLimit, dockBounds.Top);
+                g.DrawLine(pendingPen, dockBounds.Right - sResult - sLimit, dockBounds.Bottom, dockBounds.Right - sResult, dockBounds.Bottom);
             }
             for (int i = 0; i < groupSlots.Length; i++)
             {
-                int paintDockValue = groupSlots[i];
-                if (paintDockValue <= 0 || paintDockValue >= order.Length)
+                int groupSlot = groupSlots[i];
+                if (groupSlot <= 0 || groupSlot >= order.Length)
                 {
                     continue;
                 }
-                Rectangle rectangle = ItemBounds(paintDockValue - 1);
-                Rectangle rectangle2 = ItemBounds(paintDockValue);
-                if (rectangle.Top == rectangle2.Top)
+                Rectangle rectangle = ItemBounds(groupSlot - 1);
+                Rectangle itemBounds = ItemBounds(groupSlot);
+                if (rectangle.Top == itemBounds.Top)
                 {
-                    int left = (rectangle.Right + rectangle2.Left) / 2;
-                    using (Pen pen8 = new Pen(Theme.LightMode ? Theme.Stroke : Color.FromArgb(50, 53, 63)))
+                    int left = (rectangle.Right + itemBounds.Left) / 2;
+                    using (Pen sourcePen = new Pen(Theme.LightMode ? Theme.Stroke : Color.FromArgb(50, 53, 63)))
                     {
-                        g.DrawLine(pen8, left, rectangle2.Top + Dpi.S(10), left, rectangle2.Bottom - Dpi.S(10));
+                        g.DrawLine(sourcePen, left, itemBounds.Top + Dpi.S(10), left, itemBounds.Bottom - Dpi.S(10));
                     }
                 }
             }
@@ -1393,39 +1386,39 @@ namespace PaviseApp
             }
             if (slotOfItemResult >= 0)
             {
-                Rectangle rectangle3 = ItemBounds(slotOfItemResult);
-                rectangle3.X = (int)Math.Round(indicator.Value);
-                rectangle3.Y = (int)Math.Round(indicatorCross.Value);
-                using (GraphicsPath path5 = DockPath(rectangle3, Dpi.S(7)))
+                Rectangle currentItemBounds = ItemBounds(slotOfItemResult);
+                currentItemBounds.X = (int)Math.Round(indicator.Value);
+                currentItemBounds.Y = (int)Math.Round(indicatorCross.Value);
+                using (GraphicsPath path5 = DockPath(currentItemBounds, Dpi.S(7)))
                 {
-                    using (LinearGradientBrush brush3 = new LinearGradientBrush(rectangle3, Col.Alpha(accent, Theme.LightMode ? 38 : 62), Col.Alpha(accent, Theme.LightMode ? 19 : 28), LinearGradientMode.Vertical))
+                    using (LinearGradientBrush brush3 = new LinearGradientBrush(currentItemBounds, Col.Alpha(accent, Theme.LightMode ? 38 : 62), Col.Alpha(accent, Theme.LightMode ? 19 : 28), LinearGradientMode.Vertical))
                     {
                         g.FillPath(brush3, path5);
                     }
-                    using (Pen pen9 = new Pen(Col.Alpha(accent, Theme.LightMode ? 54 : 78)))
+                    using (Pen targetPen = new Pen(Col.Alpha(accent, Theme.LightMode ? 54 : 78)))
                     {
-                        g.DrawPath(pen9, path5);
+                        g.DrawPath(targetPen, path5);
                     }
                 }
-                int sLimit2 = Math.Min(Dpi.S(54), rectangle3.Width - Dpi.S(20));
-                using (Pen pen10 = new Pen(Col.Alpha(accent, 28), Dpi.S(5)))
+                int sLimit2 = Math.Min(Dpi.S(54), currentItemBounds.Width - Dpi.S(20));
+                using (Pen nextPen = new Pen(Col.Alpha(accent, 28), Dpi.S(5)))
                 {
-                    g.DrawLine(pen10, rectangle3.Left + (rectangle3.Width - sLimit2) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + sLimit2) / 2, rectangle3.Bottom - 1);
+                    g.DrawLine(nextPen, currentItemBounds.Left + (currentItemBounds.Width - sLimit2) / 2, currentItemBounds.Bottom - 1, currentItemBounds.Left + (currentItemBounds.Width + sLimit2) / 2, currentItemBounds.Bottom - 1);
                 }
-                using (Pen pen11 = new Pen(accent, Math.Max(1, Dpi.S(2))))
+                using (Pen accentPen = new Pen(accent, Math.Max(1, Dpi.S(2))))
                 {
-                    g.DrawLine(pen11, rectangle3.Left + (rectangle3.Width - sLimit2) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + sLimit2) / 2, rectangle3.Bottom - 1);
+                    g.DrawLine(accentPen, currentItemBounds.Left + (currentItemBounds.Width - sLimit2) / 2, currentItemBounds.Bottom - 1, currentItemBounds.Left + (currentItemBounds.Width + sLimit2) / 2, currentItemBounds.Bottom - 1);
                 }
             }
             for (int j = 0; j < order.Length; j++)
             {
-                int paintDockValue2 = order[j];
-                Rectangle rectangle4 = ItemBounds(j);
-                bool isSelected = paintDockValue2 == sel;
-                bool isHovered = paintDockValue2 == hoverIdx;
+                int itemIndex = order[j];
+                Rectangle candidateItemBounds = ItemBounds(j);
+                bool isSelected = itemIndex == sel;
+                bool isHovered = itemIndex == hoverIdx;
                 if (!isSelected && isHovered)
                 {
-                    using (GraphicsPath path6 = DockPath(rectangle4, Dpi.S(7)))
+                    using (GraphicsPath path6 = DockPath(candidateItemBounds, Dpi.S(7)))
                     {
                         using (SolidBrush brush4 = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 13 : 9)))
                         {
@@ -1433,23 +1426,23 @@ namespace PaviseApp
                         }
                     }
                 }
-                Color color3 = ((isSelected || isHovered) ? Theme.Fg : Theme.Dim);
+                Color candidateColor = ((isSelected || isHovered) ? Theme.Fg : Theme.Dim);
                 Font dockLabelFont = DockLabelFont;
-                Glyphs.Draw(g, glyphs[paintDockValue2], DockIconBounds(j), isSelected ? accent : color3);
-                TextRenderer.DrawText(g, labels[paintDockValue2], dockLabelFont, DockLabelBounds(j), color3, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                if (!base.WantsFocusCue || paintDockValue2 != ((hoverIdx >= 0) ? hoverIdx : sel))
+                Glyphs.Draw(g, glyphs[itemIndex], DockIconBounds(j), isSelected ? accent : candidateColor);
+                TextRenderer.DrawText(g, labels[itemIndex], dockLabelFont, DockLabelBounds(j), candidateColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                if (!base.WantsFocusCue || itemIndex != ((hoverIdx >= 0) ? hoverIdx : sel))
                 {
                     continue;
                 }
-                Rectangle bounds4 = rectangle4;
+                Rectangle bounds4 = candidateItemBounds;
                 bounds4.Inflate(-Dpi.S(3), -Dpi.S(3));
                 using (GraphicsPath path7 = DockPath(bounds4, Dpi.S(5)))
                 {
-                    Pen pen12 = new Pen(Col.Alpha(accent, 175));
-                    pen12.DashStyle = DashStyle.Dot;
-                    using (Pen pen13 = pen12)
+                    Pen previousPen = new Pen(Col.Alpha(accent, 175));
+                    previousPen.DashStyle = DashStyle.Dot;
+                    using (Pen cachedPen = previousPen)
                     {
-                        g.DrawPath(pen13, path7);
+                        g.DrawPath(cachedPen, path7);
                     }
                 }
             }

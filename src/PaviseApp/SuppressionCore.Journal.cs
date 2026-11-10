@@ -76,16 +76,16 @@ namespace PaviseApp
             {
                 List<string> lines = new List<string>();
                 lines.Add("PAVISE_SUPPRESSION_V1");
-                foreach (KeyValuePair<int, Entry> item in map)
+                foreach (KeyValuePair<int, Entry> mapEntry in map)
                 {
-                    Entry entry = item.Value;
+                    Entry entry = mapEntry.Value;
                     if (entry.OrigPri != uint.MaxValue)
                     {
                         if (entry.BackgroundJobPlacement || entry.AntiCheatPlacementExternal || entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded)
                         {
                             durable = true;
                         }
-                        lines.Add(item.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : ""))));
+                        lines.Add(mapEntry.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : ""))));
                     }
                 }
                 if (lines.Count == 1)
@@ -440,12 +440,12 @@ namespace PaviseApp
             {
                 return "";
             }
-            string[] textEntries = new string[ids.Length];
+            string[] formattedCpuSetIds = new string[ids.Length];
             for (int i = 0; i < ids.Length; i++)
             {
-                textEntries[i] = ids[i].ToString();
+                formattedCpuSetIds[i] = ids[i].ToString();
             }
-            return string.Join(",", textEntries);
+            return string.Join(",", formattedCpuSetIds);
         }
 
         private static uint[] ParseCpuSets(string text)
@@ -455,15 +455,15 @@ namespace PaviseApp
                 return new uint[0];
             }
             string[] parts = text.Split(',');
-            uint[] numericValueItems = new uint[parts.Length];
+            uint[] cpuSetIds = new uint[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {
-                if (!uint.TryParse(parts[i], out numericValueItems[i]))
+                if (!uint.TryParse(parts[i], out cpuSetIds[i]))
                 {
                     return null;
                 }
             }
-            return numericValueItems;
+            return cpuSetIds;
         }
 
     }

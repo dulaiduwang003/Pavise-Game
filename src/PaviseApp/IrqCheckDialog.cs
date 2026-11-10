@@ -9,17 +9,6 @@ namespace PaviseApp
 {
     internal sealed class IrqCheckDialog : Form
     {
-        private const int DlgW = 540;
-
-        private const int PadX = 26;
-
-        private const int ScanTop = 78;
-
-        private const int ScanH = 320;
-
-        private const int BtnH = 34;
-
-        private const int BottomPad = 22;
 
         private readonly ScanView scan;
 
@@ -75,11 +64,11 @@ namespace PaviseApp
             cancel.Size = new Size(Theme.S(108), Theme.S(34));
             cancel.Location = new Point(scaledDimension - Theme.S(26) - cancel.Width, scaledDimension2 - Theme.S(22) - cancel.Height);
             PillButton pillButton = cancel;
-            EventHandler value = delegate
+            EventHandler eventHandler = delegate
             {
                 RequestCancel();
             };
-            pillButton.Click += value;
+            pillButton.Click += eventHandler;
             base.Controls.Add(cancel);
             base.KeyDown += delegate(object s, KeyEventArgs e)
             {
@@ -234,13 +223,13 @@ namespace PaviseApp
                 graphics.DrawString(Lang.T("irqcheck.dialog.title"), Theme.UI(12.5f, true), brush5, left - Theme.S(2), Theme.S(43));
             }
             int top = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
-            using (Pen pen2 = new Pen(Theme.Stroke))
+            using (Pen strokePen = new Pen(Theme.Stroke))
             {
-                graphics.DrawLine(pen2, left, top, base.Width - left, top);
+                graphics.DrawLine(strokePen, left, top, base.Width - left, top);
             }
-            using (Pen pen3 = new Pen(Theme.StrokeHi))
+            using (Pen strokeHiPen = new Pen(Theme.StrokeHi))
             {
-                graphics.DrawRectangle(pen3, 0, 0, base.Width - 1, base.Height - 1);
+                graphics.DrawRectangle(strokeHiPen, 0, 0, base.Width - 1, base.Height - 1);
             }
         }
     }

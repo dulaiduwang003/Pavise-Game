@@ -238,11 +238,11 @@ namespace PaviseApp
             }
             private string String()
             {
-                Need('"'); StringBuilder value = new StringBuilder();
+                Need('"'); StringBuilder stringBuilder = new StringBuilder();
                 while (position < text.Length)
                 {
                     char c = text[position++];
-                    if (c == '"') return value.ToString();
+                    if (c == '"') return stringBuilder.ToString();
                     if (c < 32) throw Invalid("更新清单字符串含控制字符。");
                     if (c == '\\')
                     {
@@ -250,21 +250,21 @@ namespace PaviseApp
                         c = text[position++];
                         switch (c)
                         {
-                            case '"': case '\\': case '/': value.Append(c); break;
-                            case 'b': value.Append('\b'); break;
-                            case 'f': value.Append('\f'); break;
-                            case 'n': value.Append('\n'); break;
-                            case 'r': value.Append('\r'); break;
-                            case 't': value.Append('\t'); break;
+                            case '"': case '\\': case '/': stringBuilder.Append(c); break;
+                            case 'b': stringBuilder.Append('\b'); break;
+                            case 'f': stringBuilder.Append('\f'); break;
+                            case 'n': stringBuilder.Append('\n'); break;
+                            case 'r': stringBuilder.Append('\r'); break;
+                            case 't': stringBuilder.Append('\t'); break;
                             case 'u':
                                 int code;
                                 if (position + 4 > text.Length || !int.TryParse(text.Substring(position, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out code))
                                     throw Invalid("更新清单 Unicode 转义无效。");
-                                value.Append((char)code); position += 4; break;
+                                stringBuilder.Append((char)code); position += 4; break;
                             default: throw Invalid("更新清单转义无效。");
                         }
                     }
-                    else value.Append(c);
+                    else stringBuilder.Append(c);
                 }
                 throw Invalid("更新清单字符串未结束。");
             }

@@ -12,8 +12,6 @@ namespace PaviseApp
     {
         internal const string SubKey = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\Maintenance";
 
-        private const string ValueName = "MaintenanceDisabled";
-
         public bool TryRead(out MaintenanceValue value)
         {
             RefuseNativeInTests();
@@ -22,12 +20,12 @@ namespace PaviseApp
             {
                 using (RegistryKey registryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\Maintenance"))
                 {
-                    object value2 = ((registryKey == null) ? null : registryKey.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                    object instance = ((registryKey == null) ? null : registryKey.GetValue("MaintenanceDisabled", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
                     value = new MaintenanceValue
                     {
-                        Exists = (value2 != null),
-                        Value = value2,
-                        Kind = ((value2 != null) ? registryKey.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
+                        Exists = (instance != null),
+                        Value = instance,
+                        Kind = ((instance != null) ? registryKey.GetValueKind("MaintenanceDisabled") : RegistryValueKind.Unknown)
                     };
                     return true;
                 }
@@ -43,8 +41,8 @@ namespace PaviseApp
             RefuseNativeInTests();
             try
             {
-                MaintenanceValue value2;
-                if (expected == null || !TryRead(out value2) || !expected.SameAs(value2))
+                MaintenanceValue maintenanceValue;
+                if (expected == null || !TryRead(out maintenanceValue) || !expected.SameAs(maintenanceValue))
                 {
                     return false;
                 }
@@ -116,7 +114,7 @@ namespace PaviseApp
             }
             object instance = null;
             object invokeResult = null;
-            List<object> list = new List<object>();
+            List<object> instances = new List<object>();
             try
             {
                 instance = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", true));
@@ -131,7 +129,7 @@ namespace PaviseApp
                 for (int i = 1; i <= toInt32Result; i++)
                 {
                     object invokeResult2 = Invoke(invokeResult, "Item", BindingFlags.GetProperty, new object[1] { i });
-                    list.Add(invokeResult2);
+                    instances.Add(invokeResult2);
                     string convertText = Convert.ToString(Invoke(invokeResult2, "Path", BindingFlags.GetProperty, new object[0]));
                     int matchIndex = convertText.LastIndexOf('\\');
                     if (matchIndex < 0 || matchIndex == convertText.Length - 1)
@@ -139,33 +137,33 @@ namespace PaviseApp
                         throw new InvalidOperationException("Invalid task path");
                     }
                     object invokeResult3 = Invoke(instance, "GetFolder", BindingFlags.InvokeMethod, new object[1] { (matchIndex == 0) ? "\\" : convertText.Substring(0, matchIndex) });
-                    list.Add(invokeResult3);
+                    instances.Add(invokeResult3);
                     object invokeResult4 = Invoke(invokeResult3, "GetTask", BindingFlags.InvokeMethod, new object[1] { convertText.Substring(matchIndex + 1) });
-                    list.Add(invokeResult4);
+                    instances.Add(invokeResult4);
                     string xml = Convert.ToString(Invoke(invokeResult4, "Xml", BindingFlags.GetProperty, new object[0]));
                     if (IsMaintenanceTaskXml(xml))
                     {
                         runningTaskCountValue++;
                     }
                 }
-                MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot2 = new MaintenanceRuntimeSnapshot();
-                maintenanceRuntimeSnapshot2.State = ((runningTaskCountValue == 0) ? MaintenanceRuntimeState.NotObservedRunning : MaintenanceRuntimeState.Running);
-                maintenanceRuntimeSnapshot2.RunningTaskCount = runningTaskCountValue;
-                maintenanceRuntimeSnapshot2.Detail = "Read-only observation of visible maintenance-tagged tasks; other servicing activity may still run";
-                return maintenanceRuntimeSnapshot2;
+                MaintenanceRuntimeSnapshot currentMaintenanceRuntimeSnapshot = new MaintenanceRuntimeSnapshot();
+                currentMaintenanceRuntimeSnapshot.State = ((runningTaskCountValue == 0) ? MaintenanceRuntimeState.NotObservedRunning : MaintenanceRuntimeState.Running);
+                currentMaintenanceRuntimeSnapshot.RunningTaskCount = runningTaskCountValue;
+                currentMaintenanceRuntimeSnapshot.Detail = "Read-only observation of visible maintenance-tagged tasks; other servicing activity may still run";
+                return currentMaintenanceRuntimeSnapshot;
             }
             catch
             {
-                MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot3 = new MaintenanceRuntimeSnapshot();
-                maintenanceRuntimeSnapshot3.State = MaintenanceRuntimeState.Unknown;
-                maintenanceRuntimeSnapshot3.Detail = "Task runtime status is unavailable; existing maintenance may still run";
-                return maintenanceRuntimeSnapshot3;
+                MaintenanceRuntimeSnapshot candidateMaintenanceRuntimeSnapshot = new MaintenanceRuntimeSnapshot();
+                candidateMaintenanceRuntimeSnapshot.State = MaintenanceRuntimeState.Unknown;
+                candidateMaintenanceRuntimeSnapshot.Detail = "Task runtime status is unavailable; existing maintenance may still run";
+                return candidateMaintenanceRuntimeSnapshot;
             }
             finally
             {
-                for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
+                for (int listIndex = instances.Count - 1; listIndex >= 0; listIndex--)
                 {
-                    Release(list[listIndex]);
+                    Release(instances[listIndex]);
                 }
                 Release(invokeResult);
                 Release(instance);
@@ -178,21 +176,19 @@ namespace PaviseApp
             {
                 throw new FormatException("Invalid task XML");
             }
-            XmlReaderSettings xmlReaderSettings = new XmlReaderSettings();
-            xmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit;
-            xmlReaderSettings.XmlResolver = null;
-            xmlReaderSettings.MaxCharactersInDocument = 1048576L;
-            XmlReaderSettings settings = xmlReaderSettings;
-            XmlDocument xmlDocument = new XmlDocument();
-            xmlDocument.XmlResolver = null;
-            XmlDocument xmlDocument2 = xmlDocument;
+            XmlReaderSettings settings = new XmlReaderSettings();
+            settings.DtdProcessing = DtdProcessing.Prohibit;
+            settings.XmlResolver = null;
+            settings.MaxCharactersInDocument = 1048576L;
+            XmlDocument currentXmlDocument = new XmlDocument();
+            currentXmlDocument.XmlResolver = null;
             using (XmlReader reader = XmlReader.Create(new StringReader(xml), settings))
             {
-                xmlDocument2.Load(reader);
+                currentXmlDocument.Load(reader);
             }
-            XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(xmlDocument2.NameTable);
+            XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(currentXmlDocument.NameTable);
             xmlNamespaceManager.AddNamespace("t", "http://schemas.microsoft.com/windows/2004/02/mit/task");
-            XmlNode xmlNode = xmlDocument2.SelectSingleNode("/t:Task/t:Settings/t:MaintenanceSettings/t:Period", xmlNamespaceManager);
+            XmlNode xmlNode = currentXmlDocument.SelectSingleNode("/t:Task/t:Settings/t:MaintenanceSettings/t:Period", xmlNamespaceManager);
             if (xmlNode != null)
             {
                 return !string.IsNullOrWhiteSpace(xmlNode.InnerText);

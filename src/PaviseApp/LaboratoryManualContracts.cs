@@ -29,7 +29,7 @@ namespace PaviseApp
 
     internal static class LaboratoryActionText
     {
-        internal static string Pick(string zh, string en, string ja)
-        { return Lang.Cur == 0 ? zh : Lang.Cur == 2 ? ja : en; }
+        internal static string Pick(string zh, string en)
+        { return Lang.Cur == 1 ? en : zh; }
     }
 }

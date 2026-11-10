@@ -82,10 +82,9 @@ namespace PaviseApp
 
         private static MemorySnapshot Sample()
         {
-            MemoryStatus memoryStatus = default(MemoryStatus);
-            memoryStatus.Length = (uint)Marshal.SizeOf(typeof(MemoryStatus));
-            MemoryStatus value = memoryStatus;
-            if (!GlobalMemoryStatusEx(ref value))
+            MemoryStatus currentMemoryStatus = default(MemoryStatus);
+            currentMemoryStatus.Length = (uint)Marshal.SizeOf(typeof(MemoryStatus));
+            if (!GlobalMemoryStatusEx(ref currentMemoryStatus))
             {
                 return null;
             }
@@ -103,8 +102,8 @@ namespace PaviseApp
             }
             MemorySnapshot memorySnapshot = new MemorySnapshot();
             memorySnapshot.Installed = installed;
-            memorySnapshot.Total = value.Total;
-            memorySnapshot.Available = value.Available;
+            memorySnapshot.Total = currentMemoryStatus.Total;
+            memorySnapshot.Available = currentMemoryStatus.Available;
             return memorySnapshot;
         }
     }

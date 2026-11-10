@@ -27,8 +27,6 @@ namespace PaviseApp
 
         internal const string RetiredModeKey = "QuantumMode";
 
-        private const char AppliedSeparator = '\u001f';
-
         internal static readonly string Target = PerformanceActionBackend.RegistryTarget("SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation");
 
         private static readonly object gate = new object();
@@ -135,46 +133,45 @@ namespace PaviseApp
             {
                 lastFailure = null;
                 lastWrote = false;
-                List<Layer> list = new List<Layer>();
+                List<Layer> layers = new List<Layer>();
                 bool result = true;
                 bool wholeLedger = through == null;
                 try
                 {
-                    foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
+                    foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
                     {
-                        if (item.Id != "EnvQuantumProfileV1")
+                        if (all.Id != "EnvQuantumProfileV1")
                         {
                             continue;
                         }
-                        bool requestedSlot = through != null && SameSlot(item, through);
-                        if (requestedSlot && PerformanceActionStore.Pack(item) != PerformanceActionStore.Pack(through))
+                        bool requestedSlot = through != null && SameSlot(all, through);
+                        if (requestedSlot && PerformanceActionStore.Pack(all) != PerformanceActionStore.Pack(through))
                         {
                             return Fail("Time-slice recovery record changed; newer record retained");
                         }
-                        if (!Canonical(item))
+                        if (!Canonical(all))
                         {
-                            if ((through == null || requestedSlot) && !RestoreProfile(item))
+                            if ((through == null || requestedSlot) && !RestoreProfile(all))
                             {
                                 result = false;
                             }
                             continue;
                         }
-                        string normalizeResult = Normalize(item.Original);
-                        string normalizeResult2 = Normalize(item.Expected);
+                        string normalizeResult = Normalize(all.Original);
+                        string normalizeResult2 = Normalize(all.Expected);
                         if (normalizeResult == null || normalizeResult2 == null)
                         {
                             return Fail("Time-slice profile record has an unknown value; records retained");
                         }
-                        list.Add(new Layer
+                        layers.Add(new Layer
                         {
-                            Receipt = item,
+                            Receipt = all,
                             Original = normalizeResult,
                             Applied = normalizeResult2
                         });
                         wholeLedger = wholeLedger || requestedSlot;
                     }
-                    string[] textEntries = new string[2] { "PrevPrioritySep", "PrevWin32PriSep" };
-                    foreach (string slot in textEntries)
+                    foreach (string slot in new string[2] { "PrevPrioritySep", "PrevWin32PriSep" })
                     {
                         string storedResult = Stored(slot);
                         if (storedResult.Length != 0)
@@ -184,7 +181,7 @@ namespace PaviseApp
                             {
                                 return Fail("Legacy time-slice record is unreadable; records retained");
                             }
-                            list.Add(layer);
+                            layers.Add(layer);
                         }
                     }
                 }
@@ -192,46 +189,46 @@ namespace PaviseApp
                 {
                     return Fail("Time-slice recovery records could not be read | " + ex.Message);
                 }
-                if (list.Count == 0 || !wholeLedger)
+                if (layers.Count == 0 || !wholeLedger)
                 {
                     return result;
                 }
-                string value;
-                if (!ReadCurrent(out value))
+                string text;
+                if (!ReadCurrent(out text))
                 {
                     return Fail("Current time-slice value could not be read; records retained");
                 }
-                while (list.Count > 0)
+                while (layers.Count > 0)
                 {
-                    Layer layer2 = null;
-                    foreach (Layer item2 in list)
+                    Layer currentLayer = null;
+                    foreach (Layer candidateLayer in layers)
                     {
-                        if (item2.Applied != null && item2.Applied == item2.Original && item2.Applied == value)
+                        if (candidateLayer.Applied != null && candidateLayer.Applied == candidateLayer.Original && candidateLayer.Applied == text)
                         {
-                            layer2 = item2;
+                            currentLayer = candidateLayer;
                             break;
                         }
                     }
-                    if (layer2 != null)
+                    if (currentLayer != null)
                     {
-                        if (!Release(layer2))
+                        if (!Release(currentLayer))
                         {
                             return false;
                         }
-                        list.Remove(layer2);
-                        if (IsThrough(layer2, through))
+                        layers.Remove(currentLayer);
+                        if (IsThrough(currentLayer, through))
                         {
                             return result;
                         }
                         continue;
                     }
-                    Layer layer3 = null;
+                    Layer resolvedLayer = null;
                     int processedCount = 0;
-                    foreach (Layer item3 in list)
+                    foreach (Layer selectedLayer in layers)
                     {
-                        if (item3.Applied != null && item3.Applied == value)
+                        if (selectedLayer.Applied != null && selectedLayer.Applied == text)
                         {
-                            layer3 = item3;
+                            resolvedLayer = selectedLayer;
                             processedCount++;
                         }
                     }
@@ -239,53 +236,53 @@ namespace PaviseApp
                     {
                         return Fail("Several time-slice records claim the current value; records retained");
                     }
-                    if (layer3 == null)
+                    if (resolvedLayer == null)
                     {
-                        foreach (Layer item4 in new List<Layer>(list))
+                        foreach (Layer workingLayer in new List<Layer>(layers))
                         {
-                            if (item4.Applied == null && item4.Original == value)
+                            if (workingLayer.Applied == null && workingLayer.Original == text)
                             {
-                                if (!ClearLegacy(item4))
+                                if (!ClearLegacy(workingLayer))
                                 {
                                     return false;
                                 }
-                                list.Remove(item4);
+                                layers.Remove(workingLayer);
                             }
                         }
-                        foreach (Layer item5 in list)
+                        foreach (Layer pendingLayer in layers)
                         {
-                            if (item5.Applied == null)
+                            if (pendingLayer.Applied == null)
                             {
                                 return Fail("Legacy time-slice record has no recorded value to compare; records retained");
                             }
                         }
-                        foreach (Layer item6 in new List<Layer>(list))
+                        foreach (Layer sourceLayer in new List<Layer>(layers))
                         {
-                            if (through == null || IsThrough(item6, through))
+                            if (through == null || IsThrough(sourceLayer, through))
                             {
-                                if (!Release(item6))
+                                if (!Release(sourceLayer))
                                 {
                                     return false;
                                 }
-                                list.Remove(item6);
+                                layers.Remove(sourceLayer);
                             }
                         }
                         return result;
                     }
-                    if (!RestoreLayer(layer3, value))
+                    if (!RestoreLayer(resolvedLayer, text))
                     {
                         return false;
                     }
-                    list.Remove(layer3);
-                    if (IsThrough(layer3, through))
+                    layers.Remove(resolvedLayer);
+                    if (IsThrough(resolvedLayer, through))
                     {
                         return result;
                     }
-                    if (list.Count == 0)
+                    if (layers.Count == 0)
                     {
                         return result;
                     }
-                    if (!ReadCurrent(out value))
+                    if (!ReadCurrent(out text))
                     {
                         return Fail("Current time-slice value could not be read; records retained");
                     }
@@ -302,8 +299,8 @@ namespace PaviseApp
             }
             if (current != layer.Original)
             {
-                string value;
-                if (!ReadCurrent(out value) || value != current)
+                string text;
+                if (!ReadCurrent(out text) || text != current)
                 {
                     return Fail("Time-slice value changed before restore; records retained");
                 }
@@ -328,8 +325,8 @@ namespace PaviseApp
                 {
                     writeSucceeded = false;
                 }
-                string value2;
-                if (!writeSucceeded || !ReadCurrent(out value2) || value2 != layer.Original)
+                string currentText;
+                if (!writeSucceeded || !ReadCurrent(out currentText) || currentText != layer.Original)
                 {
                     return Fail("Legacy time-slice value could not be restored; record retained");
                 }

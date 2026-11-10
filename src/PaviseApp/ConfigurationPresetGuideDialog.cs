@@ -115,16 +115,16 @@ namespace PaviseApp
 
         private void UpdateStatus()
         {
-            string textValue = Busy ? Lang.T("configpreset.guide.working") : issue ?? "";
-            if (status.Text != textValue)
+            string text = Busy ? Lang.T("configpreset.guide.working") : issue ?? "";
+            if (status.Text != text)
             {
-                status.Text = textValue;
+                status.Text = text;
                 status.SelectionStart = 0;
                 status.SelectionLength = 0;
             }
             status.ForeColor = issue != null && !Busy ? Theme.Warning : Theme.Dim;
             status.TabStop = issue != null && !Busy;
-            status.AccessibleDescription = textValue;
+            status.AccessibleDescription = text;
             Arrange();
         }
 

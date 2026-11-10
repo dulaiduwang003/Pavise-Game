@@ -4,11 +4,6 @@ namespace PaviseApp
 {
     internal static class DisplayAwake
     {
-        private const uint EsContinuous = 2147483648u;
-
-        private const uint EsDisplayRequired = 2u;
-
-        private const uint EsSystemRequired = 1u;
 
         private static readonly object lk = new object();
 

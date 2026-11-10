@@ -36,16 +36,16 @@ namespace PaviseApp
             }
             lock (Gate)
             {
-                Bitmap value;
-                if (Cache.TryGetValue(coverPathResult, out value))
+                Bitmap currentCache;
+                if (Cache.TryGetValue(coverPathResult, out currentCache))
                 {
-                    return value;
+                    return currentCache;
                 }
                 try
                 {
                     if (File.Exists(coverPathResult))
                     {
-                        value = ReadCover(coverPathResult);
+                        currentCache = ReadCover(coverPathResult);
                     }
                 }
                 catch (Exception error)
@@ -54,10 +54,10 @@ namespace PaviseApp
                     {
                         throw;
                     }
-                    value = null;
+                    currentCache = null;
                 }
-                Cache[coverPathResult] = value;
-                return value;
+                Cache[coverPathResult] = currentCache;
+                return currentCache;
             }
         }
 
@@ -231,8 +231,7 @@ namespace PaviseApp
                 hash = sHA.ComputeHash(Encoding.UTF8.GetBytes(profile.Id));
             }
             StringBuilder stringBuilder = new StringBuilder(64);
-            byte[] rawBytes = hash;
-            foreach (byte b in rawBytes)
+            foreach (byte b in hash)
             {
                 stringBuilder.Append(b.ToString("x2"));
             }

@@ -33,10 +33,10 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (Overrides.TryGetValue("GameFamilyBackground", out value))
+                string Override;
+                if (Overrides.TryGetValue("GameFamilyBackground", out Override))
                 {
-                    return value == "1";
+                    return Override == "1";
                 }
                 return false;
             }
@@ -58,10 +58,10 @@ namespace PaviseApp
         {
             get
             {
-                string value;
-                if (Overrides.TryGetValue("GameDisableFullscreenOptimizationsV1", out value))
+                string Override;
+                if (Overrides.TryGetValue("GameDisableFullscreenOptimizationsV1", out Override))
                 {
-                    return value == "1";
+                    return Override == "1";
                 }
                 return false;
             }
@@ -69,23 +69,22 @@ namespace PaviseApp
 
         public GameProfile Clone()
         {
-            GameProfile gameProfile = new GameProfile();
-            gameProfile.Id = Id;
-            gameProfile.Name = Name;
-            gameProfile.Root = Root;
-            gameProfile.ExecutablePath = ExecutablePath;
-            gameProfile.LearnedExecutablePath = LearnedExecutablePath;
-            gameProfile.ForceTrigger = ForceTrigger;
-            GameProfile gameProfile2 = gameProfile;
+            GameProfile currentGameProfile = new GameProfile();
+            currentGameProfile.Id = Id;
+            currentGameProfile.Name = Name;
+            currentGameProfile.Root = Root;
+            currentGameProfile.ExecutablePath = ExecutablePath;
+            currentGameProfile.LearnedExecutablePath = LearnedExecutablePath;
+            currentGameProfile.ForceTrigger = ForceTrigger;
             foreach (string entry in Entries)
             {
-                gameProfile2.Entries.Add(entry);
+                currentGameProfile.Entries.Add(entry);
             }
             foreach (KeyValuePair<string, string> @override in Overrides)
             {
-                gameProfile2.Overrides[@override.Key] = @override.Value;
+                currentGameProfile.Overrides[@override.Key] = @override.Value;
             }
-            return gameProfile2;
+            return currentGameProfile;
         }
 
         internal static bool IsRetiredOverrideKey(string key)
@@ -99,8 +98,7 @@ namespace PaviseApp
                 return true;
             default:
             {
-                string[] retiredOverrideKeys = RetiredOverrideKeys;
-                foreach (string a in retiredOverrideKeys)
+                foreach (string a in RetiredOverrideKeys)
                 {
                     if (string.Equals(a, key, StringComparison.Ordinal))
                     {

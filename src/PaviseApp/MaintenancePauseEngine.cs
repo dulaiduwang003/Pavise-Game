@@ -6,7 +6,6 @@ namespace PaviseApp
 {
     internal sealed class MaintenancePauseEngine
     {
-        private const char Separator = '\u001f';
 
         private readonly IMaintenanceControl control;
 
@@ -55,10 +54,10 @@ namespace PaviseApp
             {
                 try
                 {
-                    MaintenanceValue value;
+                    MaintenanceValue currentMaintenanceValue;
                     if (active)
                     {
-                        return control.TryRead(out value) && value != null && value.IsDisabled;
+                        return control.TryRead(out currentMaintenanceValue) && currentMaintenanceValue != null && currentMaintenanceValue.IsDisabled;
                     }
                     string raw;
                     if (!ReadLedger(out raw))
@@ -69,30 +68,30 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    if (!control.TryRead(out value) || value == null)
+                    if (!control.TryRead(out currentMaintenanceValue) || currentMaintenanceValue == null)
                     {
                         return false;
                     }
-                    if (value.Exists && (value.Kind != RegistryValueKind.DWord || !(value.Value is int)))
+                    if (currentMaintenanceValue.Exists && (currentMaintenanceValue.Kind != RegistryValueKind.DWord || !(currentMaintenanceValue.Value is int)))
                     {
                         return false;
                     }
-                    if (value.IsDisabled)
+                    if (currentMaintenanceValue.IsDisabled)
                     {
                         active = true;
                         return true;
                     }
-                    MaintenanceValue maintenanceValue = value;
-                    string toStringOffset = (value.Exists ? ("=" + ((int)value.Value).ToString(CultureInfo.InvariantCulture)) : "__pavise_absent__");
+                    MaintenanceValue maintenanceValue = currentMaintenanceValue;
+                    string toStringOffset = (currentMaintenanceValue.Exists ? ("=" + ((int)currentMaintenanceValue.Value).ToString(CultureInfo.InvariantCulture)) : "__pavise_absent__");
                     if (!SaveLedger(toStringOffset + '\u001f' + "=1"))
                     {
                         return false;
                     }
-                    if (!control.TryRead(out value) || !maintenanceValue.SameAs(value))
+                    if (!control.TryRead(out currentMaintenanceValue) || !maintenanceValue.SameAs(currentMaintenanceValue))
                     {
                         return false;
                     }
-                    if (!control.TryWrite(1, maintenanceValue) || !control.TryRead(out value) || value == null || !value.IsDisabled)
+                    if (!control.TryWrite(1, maintenanceValue) || !control.TryRead(out currentMaintenanceValue) || currentMaintenanceValue == null || !currentMaintenanceValue.IsDisabled)
                     {
                         return false;
                     }
@@ -128,21 +127,21 @@ namespace PaviseApp
                 }
                 try
                 {
-                    MaintenanceValue value;
-                    if (!control.TryRead(out value) || value == null)
+                    MaintenanceValue maintenanceValue;
+                    if (!control.TryRead(out maintenanceValue) || maintenanceValue == null)
                     {
                         return false;
                     }
-                    if (!value.IsDisabled)
+                    if (!maintenanceValue.IsDisabled)
                     {
                         return SaveLedger("");
                     }
-                    if (!(absent ? control.TryDelete(value) : control.TryWrite(original, value)) || !control.TryRead(out value) || value == null)
+                    if (!(absent ? control.TryDelete(maintenanceValue) : control.TryWrite(original, maintenanceValue)) || !control.TryRead(out maintenanceValue) || maintenanceValue == null)
                     {
                         return false;
                     }
-                    bool originalRestored = absent ? !value.Exists
-                        : value.Exists && value.Kind == RegistryValueKind.DWord && value.Value is int && (int)value.Value == original;
+                    bool originalRestored = absent ? !maintenanceValue.Exists
+                        : maintenanceValue.Exists && maintenanceValue.Kind == RegistryValueKind.DWord && maintenanceValue.Value is int && (int)maintenanceValue.Value == original;
                     return originalRestored && SaveLedger("");
                 }
                 catch
@@ -159,18 +158,18 @@ namespace PaviseApp
                 MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot = control.QueryRuntime();
                 if (maintenanceRuntimeSnapshot == null)
                 {
-                    MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot2 = new MaintenanceRuntimeSnapshot();
-                    maintenanceRuntimeSnapshot2.State = MaintenanceRuntimeState.Unknown;
-                    maintenanceRuntimeSnapshot = maintenanceRuntimeSnapshot2;
+                    MaintenanceRuntimeSnapshot currentMaintenanceRuntimeSnapshot = new MaintenanceRuntimeSnapshot();
+                    currentMaintenanceRuntimeSnapshot.State = MaintenanceRuntimeState.Unknown;
+                    maintenanceRuntimeSnapshot = currentMaintenanceRuntimeSnapshot;
                 }
                 return maintenanceRuntimeSnapshot;
             }
             catch
             {
-                MaintenanceRuntimeSnapshot maintenanceRuntimeSnapshot3 = new MaintenanceRuntimeSnapshot();
-                maintenanceRuntimeSnapshot3.State = MaintenanceRuntimeState.Unknown;
-                maintenanceRuntimeSnapshot3.Detail = "Runtime status could not be read";
-                return maintenanceRuntimeSnapshot3;
+                MaintenanceRuntimeSnapshot candidateMaintenanceRuntimeSnapshot = new MaintenanceRuntimeSnapshot();
+                candidateMaintenanceRuntimeSnapshot.State = MaintenanceRuntimeState.Unknown;
+                candidateMaintenanceRuntimeSnapshot.Detail = "Runtime status could not be read";
+                return candidateMaintenanceRuntimeSnapshot;
             }
         }
 

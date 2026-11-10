@@ -80,7 +80,7 @@ namespace PaviseApp
                 writesSuspendedForReset = true;
                 try
                 {
-                    List<string> list = new List<string>();
+                    List<string> names = new List<string>();
                     try
                     {
 #if PAVISE_SELFTEST
@@ -121,7 +121,7 @@ namespace PaviseApp
                                     }
                                     if (valueStillPresent)
                                     {
-                                        list.Add(entryText + " (still present)");
+                                        names.Add(entryText + " (still present)");
                                     }
                                     else
                                     {
@@ -130,7 +130,7 @@ namespace PaviseApp
                                 }
                                 catch (Exception ex)
                                 {
-                                    list.Add(entryText + " (" + ex.GetType().Name + ")");
+                                    names.Add(entryText + " (" + ex.GetType().Name + ")");
                                 }
                             }
                             registryKey.Flush();
@@ -138,10 +138,10 @@ namespace PaviseApp
                     }
                     catch (Exception ex2)
                     {
-                        list.Add(ex2.GetType().Name);
+                        names.Add(ex2.GetType().Name);
                     }
-                    failure = ((list.Count == 0) ? null : string.Join("; ", list.ToArray()));
-                    return list.Count == 0;
+                    failure = ((names.Count == 0) ? null : string.Join("; ", names.ToArray()));
+                    return names.Count == 0;
                 }
                 finally
                 {
@@ -174,10 +174,10 @@ namespace PaviseApp
                     readCache.Clear();
                     readCacheGeneration = mutationGenerationSnapshot;
                 }
-                bool value;
-                if (readCache.TryGetValue(name, out value))
+                bool currentReadCache;
+                if (readCache.TryGetValue(name, out currentReadCache))
                 {
-                    return value;
+                    return currentReadCache;
                 }
             }
             bool loadSucceeded = Load(name, def);
@@ -196,12 +196,12 @@ namespace PaviseApp
             value = false;
             try
             {
-                object value2 = ReadValue(name);
-                if (value2 == null)
+                object instance = ReadValue(name);
+                if (instance == null)
                 {
                     return false;
                 }
-                value = Convert.ToInt32(value2) != 0;
+                value = Convert.ToInt32(instance) != 0;
                 return true;
             }
             catch
@@ -215,12 +215,12 @@ namespace PaviseApp
             value = fallback;
             try
             {
-                object value2 = ReadValue(name);
-                if (value2 != null)
+                object instance = ReadValue(name);
+                if (instance != null)
                 {
                     try
                     {
-                        value = Convert.ToInt32(value2) != 0;
+                        value = Convert.ToInt32(instance) != 0;
                     }
                     catch
                     {
@@ -467,7 +467,7 @@ namespace PaviseApp
 #endif
             try
             {
-                List<string> list = new List<string>();
+                List<string> entryTexts = new List<string>();
                 using (RegistryKey registryKey = ProfiledOpen())
                 {
                     if (registryKey != null)
@@ -477,13 +477,13 @@ namespace PaviseApp
                         {
                             if (entryText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                             {
-                                list.Add(entryText);
+                                entryTexts.Add(entryText);
                             }
                         }
                     }
                 }
-                list.Sort(StringComparer.OrdinalIgnoreCase);
-                names = list.ToArray();
+                entryTexts.Sort(StringComparer.OrdinalIgnoreCase);
+                names = entryTexts.ToArray();
                 return true;
             }
             catch
@@ -514,16 +514,16 @@ namespace PaviseApp
             present = false;
             try
             {
-                object value2 = ReadValue(name);
-                if (value2 == null)
+                object instance = ReadValue(name);
+                if (instance == null)
                 {
                     return true;
                 }
-                if (!(value2 is string))
+                if (!(instance is string))
                 {
                     return false;
                 }
-                value = (string)value2;
+                value = (string)instance;
                 present = true;
                 return true;
             }
@@ -542,9 +542,9 @@ namespace PaviseApp
         {
             if (RecoveryRecordKeys.Contains(name))
             {
-                string value;
+                string text;
                 bool present;
-                if (!TryLoadRawStr(name, out value, out present))
+                if (!TryLoadRawStr(name, out text, out present))
                 {
                     return "!unreadable-recovery-record!";
                 }
@@ -552,12 +552,12 @@ namespace PaviseApp
                 {
                     return def;
                 }
-                return value;
+                return text;
             }
             try
             {
-                object value2 = ReadValue(name);
-                return (value2 == null) ? def : value2.ToString();
+                object instance = ReadValue(name);
+                return (instance == null) ? def : instance.ToString();
             }
             catch
             {
@@ -632,8 +632,8 @@ namespace PaviseApp
                     {
                         try
                         {
-                            string value2;
-                            if (!TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value2))
+                            string text;
+                            if (!TryLoadRawStr("MonitoringGpuIdentityTraceV1", out text))
                             {
                                 return false;
                             }
@@ -652,8 +652,8 @@ namespace PaviseApp
                                 }
                                 registryKey.SetValue("MonitoringGpuIdentityTraceV1", valueOffset, RegistryValueKind.String);
                             }
-                            string value3;
-                            return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value3) && value3 == valueOffset;
+                            string currentText;
+                            return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out currentText) && currentText == valueOffset;
                         }
                         catch (Exception error)
                         {
@@ -682,18 +682,18 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    string value = val ?? "";
+                    string text = val ?? "";
                     try
                     {
-                        string value2;
-                        if (RecoveryRecordKeys.Contains(name) && !TryLoadRawStr(name, out value2))
+                        string currentText;
+                        if (RecoveryRecordKeys.Contains(name) && !TryLoadRawStr(name, out currentText))
                         {
                             return false;
                         }
 #if PAVISE_SELFTEST
                         if (transientValues != null)
                         {
-                            transientValues[name] = value;
+                            transientValues[name] = text;
                             return true;
                         }
 #endif
@@ -703,7 +703,7 @@ namespace PaviseApp
                             {
                                 throw new InvalidOperationException(Lang.T("t.settings.1"));
                             }
-                            registryKey.SetValue(name, value, RegistryValueKind.String);
+                            registryKey.SetValue(name, text, RegistryValueKind.String);
                             if (durable || RecoveryRecordKeys.Contains(name))
                             {
                                 registryKey.Flush();

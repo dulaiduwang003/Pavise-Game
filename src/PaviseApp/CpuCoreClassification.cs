@@ -33,10 +33,10 @@ namespace PaviseApp
             Evidence topology = Read(allMask, physicalCores, topologyClasses, false, "windows-topology");
             Evidence sets = Read(allMask, physicalCores, cpuSetClasses, false, "cpu-sets");
             Evidence cpuid = Read(allMask, physicalCores, cpuidTypes, true, "cpuid");
-            foreach (Evidence item in new[] { topology, sets, cpuid })
+            foreach (Evidence evidence in new[] { topology, sets, cpuid })
             {
-                if (item.SiblingConflict) return Unknown(allMask, "sibling-core-class-conflict", true);
-                if (item.Invalid) return Unknown(allMask, "core-class-data-invalid", false);
+                if (evidence.SiblingConflict) return Unknown(allMask, "sibling-core-class-conflict", true);
+                if (evidence.Invalid) return Unknown(allMask, "core-class-data-invalid", false);
             }
             // Windows 映射不完整时，不能据此确认整个物理分区。
             if ((topology.Present && !topology.Complete) || (sets.Present && !sets.Complete))
@@ -51,8 +51,8 @@ namespace PaviseApp
                 if (!CpuidAgrees(allMask, selected, cpuid))
                     return Unknown(allMask, "cpuid-core-type-conflict", true);
                 List<string> sources = new List<string>();
-                foreach (Evidence item in new[] { topology, sets, cpuid })
-                    if (item.Split && SameSplit(selected, item)) sources.Add(item.Name);
+                foreach (Evidence currentEvidence in new[] { topology, sets, cpuid })
+                    if (currentEvidence.Split && SameSplit(selected, currentEvidence)) sources.Add(currentEvidence.Name);
                 return new CpuCoreClassificationResult {
                     State = CpuCoreClassificationState.Hybrid,
                     PerformanceMask = selected.Performance, EfficiencyMask = selected.Efficiency,
@@ -101,12 +101,12 @@ namespace PaviseApp
             for (int cpu = 0; cpu < 64; cpu++)
             {
                 if ((allMask & (1UL << cpu)) == 0) continue;
-                int value = values[cpu];
-                if (value == -1) { missing++; continue; }
+                int coreTypeId = values[cpu];
+                if (coreTypeId == -1) { missing++; continue; }
                 result.Present = true;
-                if (value < 0 || value > 255 || (cpuid && value != 0x20 && value != 0x40))
+                if (coreTypeId < 0 || coreTypeId > 255 || (cpuid && coreTypeId != 0x20 && coreTypeId != 0x40))
                 { result.Invalid = true; return result; }
-                minimum = Math.Min(minimum, value); maximum = Math.Max(maximum, value);
+                minimum = Math.Min(minimum, coreTypeId); maximum = Math.Max(maximum, coreTypeId);
             }
             foreach (ulong core in cores)
             {

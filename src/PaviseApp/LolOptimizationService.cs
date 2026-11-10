@@ -13,64 +13,6 @@ namespace PaviseApp
         internal Func<string, string, bool, Func<bool>, string> FindWeGameRootForTest;
 #endif
 
-        private const string EnabledKey = "LolColumnEnabled";
-
-        private const string CleanupEnabledKey = "LolColumnCleanupEnabled";
-
-        private const string HeadlessEnabledKey = "LolColumnHeadlessEnabled";
-
-        private const string LolRootKey = "LolInstallPath";
-
-        private const string WeGameRootKey = "LolWeGamePath";
-
-        private const int DiscoveryBaseSeconds = 15;
-
-        private const int DiscoveryMaxSeconds = 600;
-
-        private const int DiscoverySettledSeconds = 120;
-
-        private const int DisabledCycleMs = 30000;
-
-        private const int DormantCycleMs = 15000;
-
-        private const int TransitionCycleMs = 5000;
-
-        private const int HeadlessStableCycleMs = 20000;
-
-        private const int ClientCycleMs = 6000;
-
-        private const int CleanupOnlyCycleMs = 10000;
-
-        private const int SessionVerifyRetrySeconds = 5;
-
-        private const int SessionVerifiedLobbySeconds = 15;
-
-        private const int SessionVerifiedGameSeconds = 60;
-
-        private const int CleanupFollowUpSeconds = 10;
-
-        private const int CleanupFallbackSeconds = 120;
-
-        private const int CleanupKillWindowSeconds = 60;
-
-        private const int CleanupKillLimit = 3;
-
-        private const int CleanupFollowUpLimit = 2;
-
-        private const int ProcessWakeThrottleMs = 5000;
-
-        private const int RecoveryMinIntervalSeconds = 120;
-
-        private const int UxRespawnBackoffSeconds = 10;
-
-        private const int UxRespawnWindowSeconds = 60;
-
-        private const int UxRespawnLimit = 3;
-
-        private const int FullProcessScanSeconds = 60;
-
-        private const int ClientExitConfirmSamples = 4;
-
         private readonly object stateLock = new object();
 
         private readonly object actionLock = new object();

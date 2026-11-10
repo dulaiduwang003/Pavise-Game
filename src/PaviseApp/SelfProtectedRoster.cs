@@ -5,9 +5,6 @@ namespace PaviseApp
 {
     internal static class SelfProtectedRoster
     {
-        private const string Key = "SelfProtectedProcs";
-
-        private const int MaxNames = 64;
 
         private static readonly object sync = new object();
 
@@ -23,8 +20,7 @@ namespace PaviseApp
             }
             names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             order = new List<string>();
-            string[] loadStrParts = Settings.LoadStr("SelfProtectedProcs", "").Split(';');
-            foreach (string entryText in loadStrParts)
+            foreach (string entryText in Settings.LoadStr("SelfProtectedProcs", "").Split(';'))
             {
                 string entryTextTrimmed = entryText.Trim();
                 if (entryTextTrimmed.Length > 0 && names.Add(entryTextTrimmed))

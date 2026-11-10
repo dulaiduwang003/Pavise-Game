@@ -66,8 +66,8 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                string value;
-                automationEvidence.TryGetValue(key, out value);
+                string currentAutomationEvidence;
+                automationEvidence.TryGetValue(key, out currentAutomationEvidence);
                 bool finalAwakeRestore = key == "awake" && state == "restored" && automationSessionEnding && !awakeFinalRestoreLogged;
                 string powerDetail = key == "PowerPlanOn" ? PowerPlanFailureDetail(state) : "";
                 string powerSignature = powerDetail.Length == 0 ? "" : state + "|" + powerDetail;
@@ -75,14 +75,14 @@ namespace PaviseApp
                 string timerDetail = key == "AutoGlobalTimer" ? GlobalTimerFailureDetail(state) : "";
                 string timerSignature = timerDetail.Length == 0 ? "" : state + "|" + timerDetail;
                 bool timerFailureChanged = timerSignature.Length > 0 && timerFailureLogSignature != timerSignature;
-                if (value == state && !finalAwakeRestore && !powerFailureChanged && !timerFailureChanged)
+                if (currentAutomationEvidence == state && !finalAwakeRestore && !powerFailureChanged && !timerFailureChanged)
                 {
                     return;
                 }
                 if (key == "PowerPlanOn") powerFailureLogSignature = powerSignature;
                 if (key == "AutoGlobalTimer") timerFailureLogSignature = timerSignature;
                 automationEvidence[key] = state;
-                if ((key == "awake" && !ShouldLogAwakeTransition(state, value)) || string.IsNullOrEmpty(state) || state == "unchanged")
+                if ((key == "awake" && !ShouldLogAwakeTransition(state, currentAutomationEvidence)) || string.IsNullOrEmpty(state) || state == "unchanged")
                 {
                     return;
                 }
@@ -205,8 +205,7 @@ namespace PaviseApp
                 default:
                 {
                     string message = null;
-                    string[] envKeys = EnvKeys;
-                    foreach (string entryKey in envKeys)
+                    foreach (string entryKey in EnvKeys)
                     {
                         if (EnvPolicyKey(entryKey) == key)
                         {
@@ -226,10 +225,10 @@ namespace PaviseApp
                     {
                         return (pendingStopCount > 0) ? "unverified" : "applied";
                     }
-                    string value;
-                    if (automationEvidence.TryGetValue(message ?? key, out value))
+                    string currentAutomationEvidence;
+                    if (automationEvidence.TryGetValue(message ?? key, out currentAutomationEvidence))
                     {
-                        return value;
+                        return currentAutomationEvidence;
                     }
                     return "";
                 }
@@ -251,14 +250,14 @@ namespace PaviseApp
             }
             RecordAutomation("session", "started");
             PolicySnapshot automationPolicySnapshot = AutomationPolicySnapshot;
-            foreach (PolicyItem item in PolicyCatalog.All)
+            foreach (PolicyItem all in PolicyCatalog.All)
             {
-                if (!PerformancePolicy.IsIntent(item.Key) && !PerformancePolicy.IsRetired(item.Key))
+                if (!PerformancePolicy.IsIntent(all.Key) && !PerformancePolicy.IsRetired(all.Key))
                 {
-                    string valueOfResult = automationPolicySnapshot.ValueOf(item.Key);
+                    string valueOfResult = automationPolicySnapshot.ValueOf(all.Key);
                     if (valueOfResult == "0" || valueOfResult == "off")
                     {
-                        RecordAutomation(item.Key, "unchanged");
+                        RecordAutomation(all.Key, "unchanged");
                     }
                 }
             }
@@ -276,9 +275,8 @@ namespace PaviseApp
         }
         private static bool AutomaticQuietDesktop()
         {
-            AutomationLastInput automationLastInput = default(AutomationLastInput);
-            automationLastInput.Size = (uint)Marshal.SizeOf(typeof(AutomationLastInput));
-            AutomationLastInput input = automationLastInput;
+            AutomationLastInput input = default(AutomationLastInput);
+            input.Size = (uint)Marshal.SizeOf(typeof(AutomationLastInput));
             if (GetLastInputInfo(ref input))
             {
                 return (uint)(Environment.TickCount - (int)input.Time) >= 30000u;
@@ -366,28 +364,27 @@ namespace PaviseApp
                 {
                     return;
                 }
-                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (GameProfile profile in profiles)
                 {
                     if (profile.DisableFullscreenOptimizations)
                     {
-                        AddAutomaticFsoPath(hashSet, profile.ExecutablePath);
-                        AddAutomaticFsoPath(hashSet, profile.LearnedExecutablePath);
+                        AddAutomaticFsoPath(textsSet, profile.ExecutablePath);
+                        AddAutomaticFsoPath(textsSet, profile.LearnedExecutablePath);
                     }
                 }
                 if (canDiscoverActiveRenderer)
                 {
-                    AddAutomaticFsoPath(hashSet, gameDetection.RendererPath);
+                    AddAutomaticFsoPath(textsSet, gameDetection.RendererPath);
                 }
-                HashSet<string> hashSet2 = new HashSet<string>(hashSet, StringComparer.OrdinalIgnoreCase);
+                HashSet<string> textsSetSnapshot = new HashSet<string>(textsSet, StringComparer.OrdinalIgnoreCase);
                 bool restoredAny = false;
                 try
                 {
-                    string[] trackedExesResult = FsoTweak.TrackedExes();
-                    foreach (string item in trackedExesResult)
+                    foreach (string currentTrackedExesResult in FsoTweak.TrackedExes())
                     {
-                        hashSet2.Add(item);
-                        if (!hashSet.Contains(item))
+                        textsSetSnapshot.Add(currentTrackedExesResult);
+                        if (!textsSet.Contains(currentTrackedExesResult))
                         {
                             restoredAny = true;
                         }
@@ -400,48 +397,48 @@ namespace PaviseApp
                     RecordAutomation("AutoDisableFullscreenOptimizations", automaticFsoState);
                     return;
                 }
-                foreach (string item2 in new List<string>(automaticFsoEntries.Keys))
+                foreach (string text in new List<string>(automaticFsoEntries.Keys))
                 {
-                    if (!hashSet2.Contains(item2))
+                    if (!textsSetSnapshot.Contains(text))
                     {
-                        automaticFsoEntries.Remove(item2);
+                        automaticFsoEntries.Remove(text);
                     }
                 }
                 bool allConfigured = true;
                 automaticFsoCheckAt = nowTicks + 600000000;
-                foreach (string item3 in hashSet2)
+                foreach (string currentTextsSetSnapshot in textsSetSnapshot)
                 {
                     if (stopping || ProfileStoreSaveFailed)
                     {
                         return;
                     }
-                    bool disableValue = hashSet.Contains(item3);
-                    AutomaticFsoEntry value;
-                    if (!automaticFsoEntries.TryGetValue(item3, out value))
+                    bool disableValue = textsSet.Contains(currentTextsSetSnapshot);
+                    AutomaticFsoEntry currentAutomaticFsoEntry;
+                    if (!automaticFsoEntries.TryGetValue(currentTextsSetSnapshot, out currentAutomaticFsoEntry))
                     {
                         AutomaticFsoEntry automaticFsoEntry = new AutomaticFsoEntry();
                         automaticFsoEntry.Disable = disableValue;
-                        value = automaticFsoEntry;
-                        automaticFsoEntries[item3] = value;
+                        currentAutomaticFsoEntry = automaticFsoEntry;
+                        automaticFsoEntries[currentTextsSetSnapshot] = currentAutomaticFsoEntry;
                     }
-                    if (value.Disable != disableValue)
+                    if (currentAutomaticFsoEntry.Disable != disableValue)
                     {
-                        value.Disable = disableValue;
-                        value.Configured = false;
-                        value.Failures = 0;
-                        value.CheckAt = 0L;
+                        currentAutomaticFsoEntry.Disable = disableValue;
+                        currentAutomaticFsoEntry.Configured = false;
+                        currentAutomaticFsoEntry.Failures = 0;
+                        currentAutomaticFsoEntry.CheckAt = 0L;
                     }
-                    if (nowTicks >= value.CheckAt)
+                    if (nowTicks >= currentAutomaticFsoEntry.CheckAt)
                     {
-                        value.Configured = FsoTweak.SetForExe(item3, disableValue);
-                        value.Failures = ((!value.Configured) ? Math.Min(value.Failures + 1, 5) : 0);
-                        int upperBound = (value.Configured ? 60 : Math.Min(300, 30 << value.Failures - 1));
-                        value.CheckAt = nowTicks + (long)upperBound * 10000000L;
+                        currentAutomaticFsoEntry.Configured = FsoTweak.SetForExe(currentTextsSetSnapshot, disableValue);
+                        currentAutomaticFsoEntry.Failures = ((!currentAutomaticFsoEntry.Configured) ? Math.Min(currentAutomaticFsoEntry.Failures + 1, 5) : 0);
+                        int upperBound = (currentAutomaticFsoEntry.Configured ? 60 : Math.Min(300, 30 << currentAutomaticFsoEntry.Failures - 1));
+                        currentAutomaticFsoEntry.CheckAt = nowTicks + (long)upperBound * 10000000L;
                     }
-                    allConfigured &= value.Configured;
-                    automaticFsoCheckAt = Math.Min(automaticFsoCheckAt, value.CheckAt);
+                    allConfigured &= currentAutomaticFsoEntry.Configured;
+                    automaticFsoCheckAt = Math.Min(automaticFsoCheckAt, currentAutomaticFsoEntry.CheckAt);
                 }
-                automaticFsoState = ((!allConfigured) ? "failed" : ((hashSet.Count > 0) ? "fso-configured" : (restoredAny ? "restored" : "")));
+                automaticFsoState = ((!allConfigured) ? "failed" : ((textsSet.Count > 0) ? "fso-configured" : (restoredAny ? "restored" : "")));
                 RecordAutomation("AutoDisableFullscreenOptimizations", automaticFsoState);
             }
         }
@@ -466,18 +463,18 @@ namespace PaviseApp
                 visualMatch = false; // 桌面视觉简化功能已退役，只恢复旧记录。
                 if (automationAllowed && !gameActive && (PerformanceTuning.ActionSelected("AutoGameMitigationsV1") || PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1") || PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1")))
                 {
-                    HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (GameProfile profile in profiles)
                     {
-                        AddGamePerformancePath(hashSet, profile.ExecutablePath);
-                        AddGamePerformancePath(hashSet, profile.LearnedExecutablePath);
+                        AddGamePerformancePath(textsSet, profile.ExecutablePath);
+                        AddGamePerformancePath(textsSet, profile.LearnedExecutablePath);
                     }
                     GameDetection gameDetection = activeDetection;
                     if (gameDetection != null && gameDetection.Profile != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && RendererHandoffTracker.SameProfile(gameDetection.Profile, FindProfileLocked(gameDetection.Profile.Id)))
                     {
-                        AddGamePerformancePath(hashSet, gameDetection.RendererPath);
+                        AddGamePerformancePath(textsSet, gameDetection.RendererPath);
                     }
-                    games = new List<string>(hashSet).ToArray();
+                    games = new List<string>(textsSet).ToArray();
                 }
             }
             performanceActions.Queue(automationAllowed, gameActive, games, visualMatch, true);

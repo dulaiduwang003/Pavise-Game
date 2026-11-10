@@ -27,32 +27,32 @@ namespace PaviseApp
 
         internal string Encode()
         {
-            string[] textEntries = new string[20]
+            string[] encodedFields = new string[20]
             {
                 "1|", null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
             };
             int phase = (int)Phase;
-            textEntries[1] = phase.ToString(CultureInfo.InvariantCulture);
-            textEntries[2] = "|";
-            textEntries[3] = Uri.EscapeDataString(DeviceId ?? "");
-            textEntries[4] = "|";
-            textEntries[5] = Uri.EscapeDataString(DeviceName ?? "");
-            textEntries[6] = "|";
-            textEntries[7] = Uri.EscapeDataString(DriverVersion ?? "");
-            textEntries[8] = "|";
-            textEntries[9] = Uri.EscapeDataString(Reason ?? "");
-            textEntries[10] = "|";
-            textEntries[11] = Target.ToString("X");
-            textEntries[12] = "|";
-            textEntries[13] = Region.ToString("X");
-            textEntries[14] = "|";
-            textEntries[15] = Seen.ToString("X");
-            textEntries[16] = "|";
-            textEntries[17] = BaselineP99.ToString("R", CultureInfo.InvariantCulture);
-            textEntries[18] = "|";
-            textEntries[19] = CheckedTicks.ToString(CultureInfo.InvariantCulture);
-            return string.Concat(textEntries);
+            encodedFields[1] = phase.ToString(CultureInfo.InvariantCulture);
+            encodedFields[2] = "|";
+            encodedFields[3] = Uri.EscapeDataString(DeviceId ?? "");
+            encodedFields[4] = "|";
+            encodedFields[5] = Uri.EscapeDataString(DeviceName ?? "");
+            encodedFields[6] = "|";
+            encodedFields[7] = Uri.EscapeDataString(DriverVersion ?? "");
+            encodedFields[8] = "|";
+            encodedFields[9] = Uri.EscapeDataString(Reason ?? "");
+            encodedFields[10] = "|";
+            encodedFields[11] = Target.ToString("X");
+            encodedFields[12] = "|";
+            encodedFields[13] = Region.ToString("X");
+            encodedFields[14] = "|";
+            encodedFields[15] = Seen.ToString("X");
+            encodedFields[16] = "|";
+            encodedFields[17] = BaselineP99.ToString("R", CultureInfo.InvariantCulture);
+            encodedFields[18] = "|";
+            encodedFields[19] = CheckedTicks.ToString(CultureInfo.InvariantCulture);
+            return string.Concat(encodedFields);
         }
 
         internal static GpuIrqState Parse(string raw)

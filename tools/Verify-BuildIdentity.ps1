@@ -55,10 +55,6 @@ foreach ($identityType in @(
     'GameAffinityJobGuard',
     'BackgroundGovernancePolicy',
     'StreamingToolCatalog',
-    'AiTuningPrompt',
-    'AiTuningPromptDialog',
-    'AiTuningHardwareReport',
-    'AiTuningFeatureCatalog',
     'SecurityProductSnapshot',
     'SecurityStartupProbe',
     'SecurityCompatibilityPresentation',
@@ -187,6 +183,9 @@ if ($null -eq $identityLegacySource -or $identityLegacySource.GetRawConstantValu
 }
 foreach ($identityType in @('ManagedPowerPreset', 'ManagedPowerPresetSelection', 'ManagedPowerHardwareFacts', 'IManagedPowerPresetPlans')) {
     if ($null -eq $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "Managed power implementation is missing: $identityType" }
+}
+foreach ($removedType in @('AiTuningPrompt', 'AiTuningPromptDialog', 'AiTuningHardwareReport', 'AiTuningFeatureCatalog')) {
+    if ($null -ne $identityAssembly.GetType('PaviseApp.' + $removedType)) { throw ('Removed module remains in the build: ' + $removedType) }
 }
 $identityPowerAssets = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'src/Assets/PowerPlans') -File -Filter '*.pow')
 if ($identityPowerAssets.Count -ne 7) { throw 'Expected exactly seven embedded power-plan assets.' }

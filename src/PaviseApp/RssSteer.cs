@@ -5,7 +5,6 @@ namespace PaviseApp
 {
     internal static class RssSteer
     {
-        private const string ReceiptKey = "RssSteerReceipt";
 
         private static readonly object lk = new object();
 
@@ -49,9 +48,9 @@ namespace PaviseApp
 
         private static bool RestoreWithReceipt(string receipt)
         {
-            Dictionary<string, string> dictionary = new Dictionary<string, string>();
-            dictionary.Add("PAVISE_RSS_RECEIPT", receipt);
-            Dictionary<string, string> args = dictionary;
+            Dictionary<string, string> textsByName = new Dictionary<string, string>();
+            textsByName.Add("PAVISE_RSS_RECEIPT", receipt);
+            Dictionary<string, string> args = textsByName;
             string stdout;
             if (!PsRunner.Run(RestoreScript, "rss-steer-restore", 30000, args, out stdout))
             {
@@ -66,8 +65,7 @@ namespace PaviseApp
             {
                 return null;
             }
-            string[] outputParts = output.Split('\n');
-            foreach (string entryText in outputParts)
+            foreach (string entryText in output.Split('\n'))
             {
                 string entryTextTrimmed = entryText.Trim();
                 if (entryTextTrimmed == "NONE")
