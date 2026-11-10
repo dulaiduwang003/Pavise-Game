@@ -803,6 +803,7 @@ namespace PaviseApp
         }
         private bool EnvActive()
         {
+            if (windowsBackground.HasRecovery) return true;
             if (SessionRecoveryPending) return true;
             if (SelfYield.HasResidue) return true;
             if (laboratory != null && !laboratory.IsRestored) return true;

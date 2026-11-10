@@ -371,7 +371,7 @@ namespace PaviseApp
                 return false;
             }
             bool recovered = FinishShutdownRecovery(core.RestoreAutomaticLayouts,
-                () => { bool isolationClean = StopCoreIsolation(); bool backgroundClean = core.StopBackgroundAffinityJobs(); return coreAffinityJobs.Stop() && backgroundClean && isolationClean; }, RestoreAllHardPins, RestoreGuardScheduling);
+                () => { bool isolationClean = StopCoreIsolation(); bool backgroundClean = core.StopBackgroundAffinityJobs(); bool windowsClean = windowsBackground.Stop(); return coreAffinityJobs.Stop() && backgroundClean && isolationClean && windowsClean; }, RestoreAllHardPins, RestoreGuardScheduling);
             SelfYield.Release();
             return recovered && manualRestored && !SelfYield.HasResidue;
         }
@@ -626,6 +626,7 @@ namespace PaviseApp
                 ApplyStandbyCleanerPolicy();
                 ApplyCacheWarmPolicy();
                 RefreshAutoCoreMode();
+                StepWindowsBackground(processSnapshot, gamePids, smartSceneSwitchedOut);
                 if (EffSuppress && !smartSceneSwitchedOut)
                 {
                     Sweep(processSnapshot, gamePids);
@@ -658,6 +659,7 @@ namespace PaviseApp
                     InvalidateEnglishInputWork();
                     Logger.Log(Lang.T("log.gamemode.47", 0) + ExitGraceSeconds + Lang.T("log.gamemode.48", 0));
                     gracePreReleased += ReleaseBackground(Lang.T("t.gamemode.49"));
+                    windowsBackground.Restore();
                 }
                 if (ExitGraceElapsed(gameGoneSinceTicks, ticks, ExitGraceSeconds))
                 {

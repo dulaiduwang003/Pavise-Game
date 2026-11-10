@@ -32,7 +32,12 @@ namespace PaviseApp
             if (fresh == null) fresh = SecurityProductSnapshot.Unknown(true, "Empty startup result");
             lock (sync) { snapshot = fresh; roots = fresh.ProtectedRoots; generation = 1; }
             if (fresh.FailureSummary.Length != 0)
-                Logger.Warn("启动安全检查次数已耗尽，尝试=1/1；运行期间不重试： " + fresh.FailureSummary);
+            {
+                if (!fresh.ScanCompleted || fresh.HasUnknownState)
+                    Logger.Warn("启动安全检查次数已耗尽，尝试=1/1；运行期间不重试： " + fresh.FailureSummary);
+                else
+                    Logger.Log("启动安全检查部分来源失败，尝试=1/1；备用来源已确认状态： " + fresh.FailureSummary);
+            }
             int active = 0, inactive = 0, uncertain = 0;
             foreach (SecurityProductInfo product in fresh.Products)
             {

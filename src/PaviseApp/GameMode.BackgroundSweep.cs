@@ -146,6 +146,12 @@ namespace PaviseApp
                         continue;
                     }
                     bool sameSession = processInfo != null && selfSession >= 0 && processInfo.Session == selfSession;
+                    if (DelegateWindowsBackground(procEntry))
+                    {
+                        // 内置名单交给同一后台治理下的资源租约，避免两套策略相互覆盖恢复基线。
+                        if (core.HasReason(pid, SuppressReason.Background) && core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
+                        continue;
+                    }
                     if (processInfo == null)
                     {
                         sameSession = selfSession >= 0 && procEntry.Session == selfSession;

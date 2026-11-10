@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 
 namespace PaviseApp
@@ -29,11 +30,11 @@ namespace PaviseApp
                 if (!Find(args[7], ownerPid, ownerBirth, pid, birth, out record)
                     || record.Original != original || record.Desired != desired) return true;
                 parent = GameAffinityJobNative.OpenIdentity(ownerPid, ownerBirth);
-                target = GameAffinityJobNative.OpenTarget(pid, birth);
+                target = WindowsBackgroundJobNative.OpenTarget(record);
                 job = GameAffinityJobNative.Open(record.Name);
-                string reason; uint flags; ulong mask;
+                string reason;
                 if (parent == IntPtr.Zero || target == IntPtr.Zero || job == IntPtr.Zero
-                    || !GameAffinityJobNative.Inspect(job, out flags, out mask, out reason)) return true;
+                    || !WindowsBackgroundJobNative.Inspect(record, job, out reason)) return true;
                 Environment.ExitCode = Run(parent, target, job, record) ? 0 : 1;
             }
             catch { Environment.ExitCode = 1; }
@@ -71,8 +72,8 @@ namespace PaviseApp
             GameAffinityJobRecord current;
             if (!GameAffinityJobReceiptStore.Find(record.Name, out current)) { reason = "receipt-unreadable"; return false; }
             if (current == null)
-                return Native.WaitForSingleObject(target, 0) == 0 ? GameAffinityJobNative.ClearForGoneTarget(job, out reason)
-                    : GameAffinityJobNative.VerifyNeutral(job, out reason);
+                return Native.WaitForSingleObject(target, 0) == 0 ? WindowsBackgroundJobNative.ClearGone(record, job, out reason)
+                    : WindowsBackgroundJobNative.Neutral(record, job, out reason);
             if (!record.SameScope(current)) { reason = "receipt-scope-changed"; return false; }
             record = current;
             uint targetState = Native.WaitForSingleObject(target, 0);
@@ -83,8 +84,8 @@ namespace PaviseApp
                 if (!record.TryThreadRecoveryPending(out debt)) { reason = "thread-recovery-unconfirmed"; return false; }
                 if (debt) { reason = "thread-recovery-pending"; return false; }
             }
-            bool restored = record.Phase != "armed" ? GameAffinityJobNative.VerifyNeutral(job, out reason)
-                : GameAffinityJobNative.Restore(job, target, record.Birth, record.Original, record.Desired, out reason);
+            bool restored = record.Phase != "armed" ? WindowsBackgroundJobNative.Neutral(record, job, out reason)
+                : WindowsBackgroundJobNative.Restore(record, job, target, out reason);
             if (!restored) return false;
             record.Phase = "neutral";
             if (!GameAffinityJobReceiptStore.Save(record)) { reason = "receipt-neutral"; return false; }
@@ -181,6 +182,8 @@ namespace PaviseApp
 
         private static bool Run(IntPtr parent, IntPtr target, IntPtr job, GameAffinityJobRecord record)
         {
+            Console.InputEncoding = new UTF8Encoding(false);
+            Console.OutputEncoding = new UTF8Encoding(false);
             var commands = new BlockingCollection<string>(8);
             var reader = new Thread(delegate()
             {
@@ -230,7 +233,7 @@ namespace PaviseApp
                         // 在启动恢复锁内再次核对写入权限，拒绝 EOF 后仍滞留缓冲区的 APPLY。
                         if (!GameAffinityJobNative.Alive(parent) || commands.IsAddingCompleted)
                         { applyFailure = "forward-owner-lost"; return false; }
-                        return GameAffinityJobNative.Apply(job, target, record.Birth, desired, out applyFailure);
+                        return WindowsBackgroundJobNative.Apply(record, job, target, out applyFailure);
                     });
                     reason = applyFailure ?? (applied ? null : "apply-operation-pending");
                     if (applied) Reply("OK");

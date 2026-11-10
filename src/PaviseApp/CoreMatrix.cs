@@ -80,6 +80,8 @@ namespace PaviseApp
 
         public bool MarkExclusive = true;
 
+        public bool ShowCoreTypeStatus = true;
+
         private bool editable;
 
         private int focusCpu;
@@ -251,6 +253,7 @@ namespace PaviseApp
         internal void ShowSelectionImmediately(ulong mask)
         {
             selected = mask & allMask;
+            if (SingleSelection && selected != 0) focusCpu = LowestIndex(selected);
             SnapCells();
             Invalidate();
         }
@@ -462,8 +465,9 @@ namespace PaviseApp
             get { return CpuTopology.PhysicalCoreMasks().Length > 0 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled; }
         }
 
-        private static string UnknownCoreTitle()
+        private string UnknownCoreTitle()
         {
+            if (!ShowCoreTypeStatus) return Lang.T("core.band.all");
             return PerformancePolicy.Text("处理器核心 · 类型未确认", "CPU cores · type unconfirmed");
         }
 

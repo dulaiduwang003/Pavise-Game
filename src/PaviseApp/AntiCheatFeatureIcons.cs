@@ -36,6 +36,10 @@ namespace PaviseApp
             {
                 return;
             }
+            if (AntiCheatBrandLogos.TryDraw(g, bounds, Normalize(key), Theme.Fg))
+            {
+                return;
+            }
             GraphicsState gstate = g.Save();
             try
             {
@@ -57,33 +61,11 @@ namespace PaviseApp
                         pen2.LineJoin = lineJoin2;
                         switch (Normalize(key))
                         {
-                        case "ace":
                         case "master":
                             Lines(g, pen2, 16f, 3f, 27f, 7f, 25f, 21f, 21f, 26f, 16f, 29f, 11f, 26f, 7f, 21f, 5f, 7f, 16f, 3f);
                             g.DrawLine(pen2, 11, 21, 16, 10);
                             g.DrawLine(pen2, 18, 21, 23, 10);
                             break;
-                        case "eac":
-                            Eye(g, pen2, 3f, 9f, 26f, 14f);
-                            g.DrawEllipse(pen2, 11.5f, 11.5f, 9f, 9f);
-                            g.DrawLine(pen2, 4, 16, 28, 16);
-                            Lines(g, pen, 5f, 9f, 5f, 5f, 11f, 5f);
-                            Lines(g, pen, 21f, 27f, 27f, 27f, 27f, 23f);
-                            break;
-                        case "battleye":
-                        {
-                            for (int i = 0; i < 4; i++)
-                            {
-                                g.DrawArc(pen2, 6, 6, 20, 20, 25 + i * 90, 40);
-                            }
-                            g.DrawLine(pen2, 2, 16, 7, 16);
-                            g.DrawLine(pen2, 25, 16, 30, 16);
-                            g.DrawLine(pen2, 16, 2, 16, 7);
-                            g.DrawLine(pen2, 16, 25, 16, 30);
-                            Eye(g, pen2, 8f, 11.5f, 16f, 9f);
-                            g.DrawEllipse(pen2, 14, 14, 4, 4);
-                            break;
-                        }
                         case "roster":
                             Cut(g, pen2, 4f, 4f, 24f, 24f, 3f);
                             Lines(g, pen2, 8f, 11f, 10f, 13f, 13f, 9f);
@@ -128,18 +110,6 @@ namespace PaviseApp
                 return toLowerInvariantResult;
             }
             return "battleye";
-        }
-
-        private static void Eye(Graphics g, Pen pen, float x, float y, float width, float height)
-        {
-            float yOffset = y + height / 2f;
-            using (GraphicsPath graphicsPath = new GraphicsPath())
-            {
-                graphicsPath.AddBezier(x, yOffset, x + width * 0.27f, y - height * 0.15f, x + width * 0.73f, y - height * 0.15f, x + width, yOffset);
-                graphicsPath.AddBezier(x + width, yOffset, x + width * 0.73f, y + height * 1.15f, x + width * 0.27f, y + height * 1.15f, x, yOffset);
-                graphicsPath.CloseFigure();
-                g.DrawPath(pen, graphicsPath);
-            }
         }
 
         private static void Cut(Graphics g, Pen pen, float x, float y, float width, float height, float cut)

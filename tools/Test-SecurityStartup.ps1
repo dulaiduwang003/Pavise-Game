@@ -31,7 +31,7 @@ $exe = Join-Path $output 'SecurityStartupChecks.exe'
 $sources = @(Get-ChildItem -LiteralPath $frozen -File -Filter '*.cs' | ForEach-Object { $_.FullName })
 & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /main:PaviseApp.SecurityStartupChecks ('/out:' + $exe) /reference:System.dll /reference:System.Core.dll /reference:System.Management.dll /reference:System.Windows.Forms.dll $sources *> (Join-Path $output 'compile.log')
 if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath (Join-Path $output 'compile.log'); throw 'Security startup fixture compile failed.' }
-foreach ($mode in @('success', 'failure', 'timeout', 'termination', 'exitquery')) {
+foreach ($mode in @('success', 'fallback', 'failure', 'timeout', 'termination', 'exitquery')) {
     $startInfo = New-Object Diagnostics.ProcessStartInfo
     $startInfo.FileName = $exe
     $startInfo.UseShellExecute = $false

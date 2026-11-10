@@ -16,13 +16,15 @@ namespace PaviseApp
         internal int Pid, OwnerPid;
         internal long Birth, OwnerBirth;
         internal ulong Original, Desired;
+        internal WindowsBackgroundLimits Resources;
 
         internal string Encode()
         {
-            return string.Join("|", new[] { Name, Pid.ToString(CultureInfo.InvariantCulture), Birth.ToString(CultureInfo.InvariantCulture),
+            string row = string.Join("|", new[] { Name, Pid.ToString(CultureInfo.InvariantCulture), Birth.ToString(CultureInfo.InvariantCulture),
                 Original.ToString(CultureInfo.InvariantCulture), Desired.ToString(CultureInfo.InvariantCulture), Phase,
                 OwnerPid.ToString(CultureInfo.InvariantCulture), OwnerBirth.ToString(CultureInfo.InvariantCulture),
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(ThreadRecoveryRoot ?? "")) });
+            return Resources == null ? row : row + "|" + Resources.Encode();
         }
 
         internal static bool ValidName(string name, int pid, long birth)
@@ -39,7 +41,7 @@ namespace PaviseApp
         {
             string[] fields = line.Split('|');
             var value = new GameAffinityJobRecord();
-            if ((fields.Length != 8 && fields.Length != 9) || !int.TryParse(fields[1], out value.Pid) || value.Pid <= 4
+            if ((fields.Length != 8 && fields.Length != 9 && fields.Length != 10) || !int.TryParse(fields[1], out value.Pid) || value.Pid <= 4
                 || !long.TryParse(fields[2], out value.Birth) || value.Birth <= 0
                 || !ulong.TryParse(fields[3], out value.Original) || value.Original == 0
                 || !ulong.TryParse(fields[4], out value.Desired) || value.Desired == 0
@@ -48,9 +50,14 @@ namespace PaviseApp
                 || !ValidName(fields[0], value.Pid, value.Birth)
                 || (fields[5] != "prepared" && fields[5] != "armed" && fields[5] != "neutral")) return null;
             value.Name = fields[0]; value.Phase = fields[5];
+            if (fields.Length == 10)
+            {
+                value.Resources = WindowsBackgroundLimits.Parse(fields[9]);
+                if (value.Resources == null) return null;
+            }
             try
             {
-                value.ThreadRecoveryRoot = fields.Length == 9 ? Encoding.UTF8.GetString(Convert.FromBase64String(fields[8])) : "";
+                value.ThreadRecoveryRoot = fields.Length >= 9 ? Encoding.UTF8.GetString(Convert.FromBase64String(fields[8])) : "";
                 if (value.ThreadRecoveryRoot.Length > 0 && (!Path.IsPathRooted(value.ThreadRecoveryRoot)
                     || Path.GetFullPath(value.ThreadRecoveryRoot) != value.ThreadRecoveryRoot)) return null;
             }
@@ -74,7 +81,8 @@ namespace PaviseApp
         internal bool SameScope(GameAffinityJobRecord other)
         {
             return other != null && Name == other.Name && Pid == other.Pid && Birth == other.Birth
-                && OwnerPid == other.OwnerPid && OwnerBirth == other.OwnerBirth;
+                && OwnerPid == other.OwnerPid && OwnerBirth == other.OwnerBirth
+                && (Resources == null) == (other.Resources == null);
         }
     }
 
@@ -396,6 +404,7 @@ namespace PaviseApp
                     + " " + entry.Pid + " " + entry.Birth + " " + entry.Original + " " + entry.Desired + " " + entry.Name);
                 start.UseShellExecute = false; start.CreateNoWindow = true; start.WindowStyle = ProcessWindowStyle.Hidden;
                 start.RedirectStandardInput = true; start.RedirectStandardOutput = true;
+                start.StandardOutputEncoding = new UTF8Encoding(false);
                 entry.Guard = System.Diagnostics.Process.Start(start);
                 entry.Protocol = new GameAffinityJobProtocol(entry.Guard);
                 long guardBirth, cpu; ulong io;
@@ -433,6 +442,12 @@ namespace PaviseApp
         }
 
         internal bool Ensure(int pid, long birth, string name, ulong originalMask, ulong desiredMask, out string reason)
+        { return EnsureCore(pid, birth, name, originalMask, desiredMask, null, out reason); }
+
+        internal bool EnsureWindowsBackground(int pid, long birth, string name, ulong originalMask, ulong desiredMask, int mode, out string reason)
+        { return EnsureCore(pid, birth, name, originalMask, desiredMask, BackgroundGovernancePolicy.Normalize(mode), out reason); }
+
+        private bool EnsureCore(int pid, long birth, string name, ulong originalMask, ulong desiredMask, int? windowsMode, out string reason)
         {
             using (BeginOperation())
             {
@@ -461,8 +476,11 @@ namespace PaviseApp
                 {
                     if (!Recover(out reason)) { recoveryPending = true; return false; }
                     recoveryPending = false;
-                    IntPtr process = GameAffinityJobNative.OpenTarget(pid, birth);
+                    if (windowsMode.HasValue) Native.TryEnableDebugPrivilege();
+                    IntPtr process = windowsMode.HasValue ? Native.OpenProcess(0x101701, false, pid) : GameAffinityJobNative.OpenTarget(pid, birth);
                     if (process == IntPtr.Zero) { reason = "process-access"; return false; }
+                    if (!GameAffinityJobNative.Matches(process, birth))
+                    { Native.CloseHandle(process); reason = "target-identity"; return false; }
                     // Windows 在分配时核验已有 Job 层级的嵌套关系，不能直接拒绝启动器持有的 Job。
 
                     if (!string.IsNullOrEmpty(name) && !string.Equals(Native.ImageName(process), name, StringComparison.OrdinalIgnoreCase))
@@ -470,6 +488,9 @@ namespace PaviseApp
                     ulong current;
                     if (!Native.TryQueryAffinity(process, out current) || current != originalMask)
                     { Native.CloseHandle(process); reason = "original-affinity-changed"; return false; }
+                    WindowsBackgroundLimits resources = null;
+                    if (windowsMode.HasValue && !WindowsBackgroundJobNative.Capture(process, windowsMode.Value, out resources, out reason))
+                    { Native.CloseHandle(process); return false; }
                     string jobName = GameAffinityJobNative.Prefix + Guid.NewGuid().ToString("N") + "." + pid + "." + birth;
                     IntPtr job = GameAffinityJobNative.Create(jobName, out reason);
                     if (job == IntPtr.Zero) { Native.CloseHandle(process); return false; }
@@ -481,7 +502,7 @@ namespace PaviseApp
                         Name = jobName, Process = process, Job = job };
                     entry.Record = new GameAffinityJobRecord { Name = jobName, Pid = pid, Birth = birth, Original = originalMask,
                         Desired = desiredMask, OwnerPid = ownerPid, OwnerBirth = ownerBirth, Phase = "prepared",
-                        ThreadRecoveryRoot = threadRoot };
+                        ThreadRecoveryRoot = threadRoot, Resources = resources };
                     leases.Add(pid, entry);
                     if (!GameAffinityJobReceiptStore.Save(entry.Record))
                     { entry.Pending = true; reason = "receipt-write"; return false; }
@@ -493,7 +514,11 @@ namespace PaviseApp
                     }
                 }
                 if (entry.Pending) { reason = "recovery-pending"; return false; }
-                if (entry.Active && entry.Desired == desiredMask) return VerifyLocked(entry, desiredMask, out reason);
+                if ((entry.Record.Resources != null) != windowsMode.HasValue)
+                { reason = "job-resource-owner-conflict"; return false; }
+                if (entry.Active && entry.Desired == desiredMask
+                    && (!windowsMode.HasValue || entry.Record.Resources.MatchesMode(windowsMode.Value)))
+                    return VerifyLocked(entry, desiredMask, out reason);
                 // 改变活动范围或记录前，先拒绝游戏自行设置的线程放置；原生写入前再次核对。
                 ulong currentRange;
                 if (!Native.TryQueryAffinity(entry.Process, out currentRange)
@@ -517,13 +542,19 @@ namespace PaviseApp
                 { reason = "original-affinity-changed"; return false; }
                 entry.Original = originalMask;
                 entry.Desired = desiredMask;
+                if (windowsMode.HasValue)
+                {
+                    WindowsBackgroundLimits resources;
+                    if (!WindowsBackgroundJobNative.Capture(entry.Process, windowsMode.Value, out resources, out reason)) return false;
+                    entry.Record.Resources = resources;
+                }
                 entry.Record.Original = entry.Original; entry.Record.Desired = desiredMask; entry.Record.Phase = "armed";
                 entry.Record.ThreadRecoveryRoot = threadRoot;
                 if (!GameAffinityJobReceiptStore.Save(entry.Record)) { entry.Pending = true; reason = "receipt-arm"; return false; }
                 // 守护已持有 Job 和目标句柄，且是唯一写入方；父进程退出不会使迟到的应用失去恢复所有者。
 
                 if (!Command(entry, "APPLY " + desiredMask + " " + entry.Original, out reason)
-                    || !GameAffinityJobNative.Verify(entry.Job, entry.Process, birth, desiredMask, out reason))
+                    || !WindowsBackgroundJobNative.Verify(entry.Record, entry.Job, entry.Process, out reason))
                 {
                     string failure = reason, cleanup;
                     if (!ReleaseLocked(entry, out cleanup)) failure += "; recovery=" + cleanup;
@@ -538,9 +569,10 @@ namespace PaviseApp
         private bool VerifyLocked(Entry entry, ulong desiredMask, out string reason)
         {
             reason = null;
+            if (entry.Desired != desiredMask) { reason = "job-requested-mask-changed"; return false; }
             if (!entry.Active || entry.Pending) { reason = "job-not-active"; return false; }
             if (!GuardAlive(entry)) { entry.Pending = true; reason = "guardian-lost"; return false; }
-            return GameAffinityJobNative.Verify(entry.Job, entry.Process, entry.Birth, desiredMask, out reason);
+            return WindowsBackgroundJobNative.Verify(entry.Record, entry.Job, entry.Process, out reason);
         }
 
         internal bool Verify(int pid, long birth, ulong desiredMask, out string reason)
@@ -640,8 +672,8 @@ namespace PaviseApp
                 if (!GameAffinityJobReceiptStore.Find(entry.Name, out current)) { failure = "receipt-unreadable"; return false; }
                 bool gone = Native.WaitForSingleObject(entry.Process, 0) == 0;
                 if (current == null)
-                    return gone ? GameAffinityJobNative.ClearForGoneTarget(entry.Job, out failure)
-                        : GameAffinityJobNative.VerifyNeutral(entry.Job, out failure);
+                    return gone ? WindowsBackgroundJobNative.ClearGone(entry.Record, entry.Job, out failure)
+                        : WindowsBackgroundJobNative.Neutral(entry.Record, entry.Job, out failure);
                 if (!entry.Record.SameScope(current)) { failure = "receipt-scope-changed"; return false; }
                 if (!gone)
                 {
@@ -649,8 +681,8 @@ namespace PaviseApp
                     if (!current.TryThreadRecoveryPending(out threadPending)) { failure = "thread-recovery-unconfirmed"; return false; }
                     if (threadPending) { failure = "thread-recovery-pending"; return false; }
                 }
-                bool clean = current.Phase != "armed" ? GameAffinityJobNative.VerifyNeutral(entry.Job, out failure)
-                    : GameAffinityJobNative.Restore(entry.Job, entry.Process, current.Birth, current.Original, current.Desired, out failure);
+                bool clean = current.Phase != "armed" ? WindowsBackgroundJobNative.Neutral(current, entry.Job, out failure)
+                    : WindowsBackgroundJobNative.Restore(current, entry.Job, entry.Process, out failure);
                 if (!clean) return false;
                 current.Phase = "neutral";
                 if (!GameAffinityJobReceiptStore.Save(current)) { failure = "receipt-neutral"; return false; }
@@ -875,7 +907,7 @@ namespace PaviseApp
             {
                 if (target != 1)
                 {
-                    if (process == IntPtr.Zero) process = budget.Process = GameAffinityJobNative.OpenRestore(record.Pid, record.Birth);
+                    if (process == IntPtr.Zero) process = budget.Process = WindowsBackgroundJobNative.OpenRestore(record);
                     if (process == IntPtr.Zero) { reason = "recovery-process-access"; return false; }
                 }
                 string failure = null;
@@ -885,8 +917,8 @@ namespace PaviseApp
                     GameAffinityJobRecord current;
                     if (!GameAffinityJobReceiptStore.Find(record.Name, out current)) { failure = "receipt-unreadable"; return false; }
                     if (current == null)
-                        return target == 1 ? GameAffinityJobNative.ClearForGoneTarget(job, out failure)
-                            : GameAffinityJobNative.VerifyNeutral(job, out failure);
+                        return target == 1 ? WindowsBackgroundJobNative.ClearGone(record, job, out failure)
+                            : WindowsBackgroundJobNative.Neutral(record, job, out failure);
                     if (!record.SameScope(current)) { failure = "receipt-scope-changed"; return false; }
                     if (target != 1)
                     {
@@ -894,9 +926,9 @@ namespace PaviseApp
                         if (!current.TryThreadRecoveryPending(out threadPending)) { failure = "thread-recovery-unconfirmed"; return false; }
                         if (threadPending) { failure = "thread-recovery-pending"; return false; }
                     }
-                    bool cleared = current.Phase != "armed" ? GameAffinityJobNative.VerifyNeutral(job, out failure)
-                        : (target == 1 ? GameAffinityJobNative.ClearForGoneTarget(job, out failure)
-                        : GameAffinityJobNative.Restore(job, process, current.Birth, current.Original, current.Desired, out failure));
+                    bool cleared = current.Phase != "armed" ? WindowsBackgroundJobNative.Neutral(current, job, out failure)
+                        : (target == 1 ? WindowsBackgroundJobNative.ClearGone(current, job, out failure)
+                        : WindowsBackgroundJobNative.Restore(current, job, process, out failure));
                     if (!cleared) return false;
                     current.Phase = "neutral";
                     if (!GameAffinityJobReceiptStore.Save(current)) { failure = "receipt-neutral"; return false; }

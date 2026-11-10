@@ -9,9 +9,18 @@ namespace PaviseApp
         public static readonly ReleaseNote[] All = new ReleaseNote[1]
         {
             new ReleaseNote("3.3.0.8", "2026-11-08", new string[][] {
+                new[] { "后台治理内置诊断服务、搜索索引和小组件家族名单，正常与激进档联动 CPU 配额、核心及优先级限制，退局自动恢复。",
+                    "Background governance now includes diagnostics, search indexing and the Widgets family, with CPU quotas, core placement and priority limits tied to Normal/Aggressive modes and automatic restoration after play.",
+                    "診断サービス、検索インデックス、小ウィジェットのプロセス群をバックグラウンド制御に組み込みました。通常・積極モードに応じてCPU割り当て、コア配置、優先度を制限し、ゲーム終了後に復元します。" },
+                new[] { "专项压制改用 ACE、Easy Anti-Cheat 和 BattlEye 的单色品牌 SVG 标志。",
+                    "Replaced the dedicated suppression icons with monochrome ACE, Easy Anti-Cheat and BattlEye brand SVG symbols.",
+                    "専用抑制のアイコンを、ACE、Easy Anti-Cheat、BattlEyeの単色ブランドSVGに変更しました。" },
                 new[] { "渲染亲和性支持自动/手动选核与整核隔离，联动游戏核心范围；调整下局生效，关闭立即撤回。",
                     "Added automatic/manual render CPU selection with whole-core isolation. Choices follow the game CPU range; edits apply next session and disabling withdraws the binding immediately.",
                     "描画スレッドの自動・手動コア選択と物理コア単位の分離に対応。候補はゲームのCPU範囲に従い、変更は次のセッションから適用、無効化時は直ちに固定を撤回します。" },
+                new[] { "精简渲染选核窗口，多核列表独立滚动，保存与取消按钮始终可见。",
+                    "Simplified the render CPU selector with a scrolling core grid that keeps Save and Cancel visible.",
+                    "描画CPUの選択画面を簡素化。コア一覧だけをスクロールし、保存・キャンセルボタンを常に表示します。" },
                 new[] { "减少线程采样、核心隔离和后台治理开销，移除自动后台节能显卡登记。",
                     "Reduced thread-sampling, core-isolation and background-governance overhead; removed automatic background power-saving GPU enrollment.",
                     "スレッド採取、コア分離、バックグラウンド制御の負荷を軽減。バックグラウンド向け省電力GPUの自動登録を削除しました。" },

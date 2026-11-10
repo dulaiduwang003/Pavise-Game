@@ -14,10 +14,9 @@ namespace PaviseApp
         private readonly string scopeError, topology;
         private readonly CoreMatrix matrix;
         private readonly PillButton[] modes;
-        private readonly Label preview, error, sessionHint;
+        private readonly Label title, game, scope, conflictHint, preview, error, sessionHint;
         private readonly LibraryDialogButton apply, cancel;
         private readonly DBPanel body;
-        private readonly int bodyHeightLimit;
         private int mode;
         private int layoutMode = -1;
 
@@ -42,71 +41,49 @@ namespace PaviseApp
             topology = ManualCorePlan.Stamp(all, physical);
             reserved = AutoCores.WholeCores(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, physical);
             trusted = IntPtr.Size == 8 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled;
-            CriticalThreadAllowedRange scope = CriticalThreadAllowedRange.For(profile);
-            allowed = scope.Mask;
-            scopeError = scope.Error;
+            CriticalThreadAllowedRange range = CriticalThreadAllowedRange.For(profile);
+            allowed = range.Mask;
+            scopeError = range.Error;
             mode = initial == null ? 0 : (initial.ManualTarget || !initial.Automatic ? 2 : 1);
 
-            Rectangle screen = Screen.FromPoint(Cursor.Position).WorkingArea;
-            int width = Math.Min(Theme.S(680), Math.Max(Theme.S(300), screen.Width - Theme.S(40)));
-            int pad = Theme.S(24), inner = width - pad * 2;
-            Label title = LabelOf(Text, Theme.UI(15f, true), Theme.Fg);
-            title.SetBounds(pad, Theme.S(20), inner, Measure(title, inner));
-            Label game = LabelOf(profile.Name, Theme.UI(9f, true), Theme.Dim);
-            game.SetBounds(pad, title.Bottom + Theme.S(8), inner, Measure(game, inner));
-            body = new DBPanel { Name = "RenderAffinityBody", BackColor = Theme.Bg, AutoScroll = true };
+            title = LabelOf(Text, Theme.UI(15f, true), Theme.Fg);
+            game = LabelOf(profile.Name, Theme.UI(9f, true), Theme.Dim);
+            game.AutoEllipsis = true;
+            conflictHint = LabelOf(string.IsNullOrEmpty(conflict) ? "" : Lang.T(conflict), Theme.UI(9f, false), Theme.Warning);
+            scope = LabelOf(allowed == all
+                ? T("可选核心：全部", "Available CPUs: all")
+                : T("可选核心：", "Available CPUs: ") + CpuTopology.DescribeMask(allowed), Theme.UI(9f, false), Theme.Dim);
+            body = new DBPanel { Name = "RenderAffinityBody", BackColor = Theme.Bg, AutoScroll = true, TabIndex = 3 };
             Native.Dark(body);
-            int contentWidth = inner - SystemInformation.VerticalScrollBarWidth - Theme.S(4), y = 0;
-            if (!string.IsNullOrEmpty(conflict)) AddText(Lang.T(conflict), Theme.Warning, contentWidth, ref y);
-            AddText(T("自动识别关键线程；手动只指定落核。其他游戏线程避让整颗物理核，含超线程同胞。", "The critical thread is identified automatically; Manual chooses its destination only. Other game workers avoid the entire physical core, including its SMT sibling."), Theme.Dim, contentWidth, ref y);
-            AddText(PolicyResolver.For(profile).ValueOf("GmAutoCoresV2") == "1"
-                ? T("候选范围跟随核心调度：", "Candidates follow the game CPU range: ") + CpuTopology.DescribeMask(allowed)
-                : T("候选范围：全部核心（核心调度未开启）。", "Candidate range: all CPUs (core scheduling is off)."), Theme.Fg, contentWidth, ref y);
             modes = new PillButton[3];
             string[] captions = { T("关闭", "Off"), T("自动", "Automatic"), T("手动", "Manual") };
-            int gap = Theme.S(8), buttonWidth = (contentWidth - gap * 2) / 3;
             for (int i = 0; i < modes.Length; i++)
             {
                 int selectedMode = i;
                 modes[i] = new PillButton(captions[i]) { Name = "RenderAffinityMode" + i, TabIndex = i };
-                modes[i].SetBounds(i * (buttonWidth + gap), y, buttonWidth, Theme.S(34));
                 modes[i].Click += delegate { mode = selectedMode; RefreshChoice(); };
-                body.Controls.Add(modes[i]);
+                Controls.Add(modes[i]);
             }
-            y += Theme.S(48);
             matrix = new CoreMatrix { Name = "RenderAffinityMatrix", Editable = true, SingleSelection = true,
-                MarkExclusive = false, BackColor = Theme.Bg, PrimaryTag = T("渲染", "Render"), TabIndex = 3,
+                MarkExclusive = false, ShowCoreTypeStatus = false, BackColor = Theme.Bg, PrimaryTag = T("渲染", "Render"), TabIndex = 0,
                 AccessibleName = T("选择一个渲染逻辑 CPU", "Choose one logical CPU for the render thread") };
-            matrix.SetBounds(0, y, contentWidth, 1);
-            matrix.Height = matrix.LayoutFor(contentWidth);
             matrix.DisabledMask = trusted && scopeError == null ? all & (~allowed | reserved) : all;
             matrix.ShowSelectionImmediately(initial != null && initial.CandidateCount > 0 ? initial.Targets[0] : 0);
             matrix.SelectionChanged += delegate { RefreshChoice(); };
-            matrix.FocusedCellChanged += delegate { body.ScrollControlIntoView(matrix); };
+            matrix.FocusedCellChanged += RevealCoreCell;
+            matrix.GotFocus += delegate { RevealCoreCell(matrix.FocusedCellBounds); };
             body.Controls.Add(matrix);
-            y = matrix.Bottom + Theme.S(12);
             preview = LabelOf("", Theme.UI(9f, false), Theme.Dim);
             preview.Name = "RenderAffinityPreview";
-            preview.SetBounds(0, y, contentWidth, Theme.S(86));
-            body.Controls.Add(preview);
-            y = preview.Bottom + Theme.S(12);
-            sessionHint = AddText(T("开启、换核和范围调整下局生效；关闭会立即撤回当前绑定。退局自动恢复。", "Enabling, changing CPUs and range edits apply next session. Turning this off withdraws the current binding immediately. Original settings are restored on exit."), Theme.Dim, contentWidth, ref y);
-            body.AutoScrollMinSize = new Size(0, y);
+            sessionHint = LabelOf(T("更改下局生效，关闭立即撤回。", "Changes apply next session; Off withdraws immediately."), Theme.UI(9f, false), Theme.Dim);
             error = LabelOf("", Theme.UI(9f, false), Theme.Warning);
             error.Name = "RenderAffinityError";
-            int errorHeight = Theme.S(54);
-            bodyHeightLimit = Math.Max(Theme.S(40), screen.Height - game.Bottom - Theme.S(188));
-            body.SetBounds(pad, game.Bottom + Theme.S(16), inner, Math.Min(y, bodyHeightLimit));
-            error.SetBounds(pad, body.Bottom + Theme.S(8), inner, errorHeight);
             cancel = new LibraryDialogButton(T("取消", "Cancel"), false) { Name = "RenderAffinityCancel", DialogResult = DialogResult.Cancel, TabIndex = 4 };
-            cancel.SetBounds(width - pad - Theme.S(228), error.Bottom + Theme.S(10), Theme.S(108), Theme.S(36));
             apply = new LibraryDialogButton(T("保存", "Save"), true) { Name = "RenderAffinitySave", TabIndex = 5 };
-            apply.SetBounds(width - pad - Theme.S(108), cancel.Top, Theme.S(108), Theme.S(36));
             apply.Click += delegate { SaveChoice(); };
-            Controls.AddRange(new Control[] { title, game, body, error, cancel, apply });
+            Controls.AddRange(new Control[] { title, game, conflictHint, scope, body, preview, sessionHint, error, cancel, apply });
             AcceptButton = apply;
             CancelButton = cancel;
-            ClientSize = new Size(width, apply.Bottom + pad);
             RefreshChoice();
         }
 
@@ -118,14 +95,6 @@ namespace PaviseApp
         private static int Measure(Label label, int width)
         {
             return TextRenderer.MeasureText(label.Text, label.Font, new Size(Math.Max(1, width), int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height + Theme.S(4);
-        }
-        private Label AddText(string text, Color ink, int width, ref int y)
-        {
-            Label label = LabelOf(text, Theme.UI(9f, false), ink);
-            label.SetBounds(0, y, width, Measure(label, width));
-            body.Controls.Add(label);
-            y = label.Bottom + Theme.S(12);
-            return label;
         }
         private CriticalThreadRule Draft(out string failure)
         {
@@ -142,51 +111,110 @@ namespace PaviseApp
             for (int i = 0; i < modes.Length; i++) { modes[i].Kind = i == mode ? BtnKind.Primary : BtnKind.Normal; modes[i].Invalidate(); }
             matrix.Editable = mode == 2;
             string failure;
-            CriticalThreadRule rule = Draft(out failure);
+            Draft(out failure);
             error.Text = failure == null ? "" : Lang.T(failure);
             apply.Enabled = failure == null;
-            if (mode == 0) preview.Text = T("关闭渲染线程亲和性。", "Render thread affinity is off.");
-            else if (mode == 1) preview.Text = T("自动选择范围内的合适核心；优先性能核、优选核与大缓存核心。至少保留两个物理核给其他工作线程。", "Automatically chooses a suitable CPU within the allowed range, preferring performance, favored and large-cache cores. At least two physical cores remain for other workers.");
-            else
+            preview.Text = "";
+            if (mode == 2 && matrix.Selected != 0)
             {
                 ulong whole = AutoCores.WholeCores(matrix.Selected, physical);
                 preview.Text = T("渲染线程目标：", "Render destination: ") + CriticalThreadRule.ProcessorName(matrix.Selected)
-                    + "\n" + T("整核避让：", "Whole-core avoidance: ") + CpuTopology.DescribeMask(whole)
-                    + "\n" + T("其他游戏线程：", "Other game workers: ") + CpuTopology.DescribeMask(allowed & ~(whole | reserved));
+                    + "\n" + T("整核避让：", "Whole-core avoidance: ") + CpuTopology.DescribeMask(whole);
             }
-            AccessibleDescription = preview.Text + " " + error.Text;
+            AccessibleDescription = modes[mode].Text + " " + scope.Text + " " + preview.Text + " " + sessionHint.Text + " " + error.Text;
             LayoutChoice();
         }
         private void LayoutChoice()
         {
-            if (layoutMode == mode) return;
+            bool manual = mode == 2;
+            int scroll = layoutMode == mode ? Math.Max(0, -body.AutoScrollPosition.Y) : 0;
             layoutMode = mode;
             Rectangle previousBounds = Bounds;
+            Rectangle screen = Screen.FromControl(Owner ?? this).WorkingArea;
+            int pad = Theme.S(24), gap = Theme.S(8);
+            int width = Math.Min(Theme.S(600), Math.Max(1, screen.Width - pad * 2));
+            int inner = Math.Max(1, width - pad * 2);
+            int maximumHeight = Math.Max(1, screen.Height - pad * 2);
+            int y = Theme.S(20);
+            title.SetBounds(pad, y, inner, Measure(title, inner));
+            game.SetBounds(pad, title.Bottom + Theme.S(4), inner, Theme.S(20));
+            y = game.Bottom + Theme.S(16);
+            conflictHint.Visible = conflictHint.Text.Length > 0;
+            if (conflictHint.Text.Length > 0)
+            {
+                conflictHint.SetBounds(pad, y, inner, Measure(conflictHint, inner));
+                y = conflictHint.Bottom + gap;
+            }
+            int buttonWidth = (inner - gap * 2) / 3;
+            for (int i = 0; i < modes.Length; i++) modes[i].SetBounds(pad + i * (buttonWidth + gap), y, buttonWidth, Theme.S(34));
+            y = modes[0].Bottom + Theme.S(12);
+            scope.Visible = mode != 0;
+            if (mode != 0)
+            {
+                scope.SetBounds(pad, y, inner, Measure(scope, inner));
+                y = scope.Bottom + gap;
+            }
+            int previewHeight = Theme.S(40);
+            int hintHeight = Measure(sessionHint, inner);
+            int errorHeight = Math.Max(Theme.S(28), Measure(error, inner));
+            int footerHeight = hintHeight + gap + errorHeight + Theme.S(12) + Theme.S(36) + pad;
             body.SuspendLayout();
             try
             {
                 body.AutoScrollPosition = Point.Empty;
-                bool manual = mode == 2;
-                matrix.Visible = preview.Visible = manual;
-                sessionHint.Top = manual ? preview.Bottom + Theme.S(12) : modes[0].Bottom + Theme.S(14);
-                int contentHeight = sessionHint.Bottom + Theme.S(12);
-                body.AutoScrollMinSize = new Size(0, contentHeight);
-                body.Height = Math.Min(contentHeight, bodyHeightLimit);
-                error.Top = body.Bottom + Theme.S(8);
-                cancel.Top = apply.Top = error.Bottom + Theme.S(10);
-                ClientSize = new Size(ClientSize.Width, apply.Bottom + Theme.S(24));
+                body.Visible = matrix.Visible = preview.Visible = manual;
+                if (manual)
+                {
+                    int gridLimit = Math.Min(Theme.S(220), Math.Max(1, maximumHeight - y - footerHeight - previewHeight - Theme.S(18)));
+                    int matrixWidth = inner;
+                    int matrixHeight = matrix.LayoutFor(matrixWidth);
+                    if (matrixHeight > gridLimit)
+                    {
+                        matrixWidth = Math.Max(1, inner - SystemInformation.VerticalScrollBarWidth - Theme.S(4));
+                        matrixHeight = matrix.LayoutFor(matrixWidth);
+                    }
+                    body.SetBounds(pad, y, inner, Math.Min(matrixHeight, gridLimit));
+                    matrix.SetBounds(0, 0, matrixWidth, matrixHeight);
+                    body.AutoScrollMinSize = new Size(0, matrixHeight);
+                    body.AutoScrollPosition = new Point(0, Math.Min(scroll, Math.Max(0, matrixHeight - body.ClientSize.Height)));
+                    preview.SetBounds(pad, body.Bottom + Theme.S(10), inner, previewHeight);
+                    y = preview.Bottom + gap;
+                }
+                sessionHint.SetBounds(pad, y, inner, hintHeight);
+                error.SetBounds(pad, sessionHint.Bottom + gap, inner, errorHeight);
+                cancel.SetBounds(width - pad - Theme.S(228), error.Bottom + Theme.S(12), Theme.S(108), Theme.S(36));
+                apply.SetBounds(width - pad - Theme.S(108), cancel.Top, Theme.S(108), Theme.S(36));
+                ClientSize = new Size(width, apply.Bottom + pad);
             }
             finally { body.ResumeLayout(); }
-            Rectangle screen = Screen.FromControl(Owner ?? this).WorkingArea;
             if (Visible && previousBounds.IntersectsWith(screen))
+            {
+                Left = Math.Max(screen.Left, Math.Min(Left, screen.Right - Width));
                 Top = Math.Max(screen.Top, Math.Min(Top, screen.Bottom - Height));
+            }
+        }
+        private void RevealCoreCell(Rectangle cell)
+        {
+            if (cell.IsEmpty || !body.Visible) return;
+            int scroll = Math.Max(0, -body.AutoScrollPosition.Y);
+            int desired = scroll;
+            if (cell.Top < scroll) desired = Math.Max(0, cell.Top - Theme.S(4));
+            else if (cell.Bottom > scroll + body.ClientSize.Height) desired = cell.Bottom - body.ClientSize.Height + Theme.S(4);
+            int limit = Math.Max(0, matrix.Height - body.ClientSize.Height);
+            body.AutoScrollPosition = new Point(0, Math.Min(desired, limit));
+        }
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            LayoutChoice();
+            if (mode == 2) RevealCoreCell(matrix.FocusedCellBounds);
         }
         private void SaveChoice()
         {
             string failure;
             CriticalThreadRule rule = Draft(out failure);
             if (failure == null) failure = save(rule);
-            if (failure != null) { error.Text = Lang.T(failure); return; }
+            if (failure != null) { error.Text = Lang.T(failure); LayoutChoice(); return; }
             DialogResult = DialogResult.OK;
             Close();
         }

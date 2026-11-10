@@ -712,6 +712,7 @@ namespace PaviseApp
             RunSessionRecoveryRoute("selfyield", delegate { SelfYield.Release(); return !SelfYield.HasResidue; });
             bool labClean = RunSessionRecoveryRoute("laboratory", () => RestoreLaboratory());
             bool operationsSucceeded = labClean && !SelfYield.HasResidue;
+            if (!RunSessionRecoveryRoute("windows-background", () => windowsBackground.Restore())) operationsSucceeded = false;
             if (!RunSessionRecoveryRoute("critical", () => StopCriticalThreads(0, "RestoreEnv")))
             {
                 operationsSucceeded = false;
@@ -894,6 +895,7 @@ namespace PaviseApp
         }
         private bool EnvRestoreCompleted(bool operationsSucceeded)
         {
+            if (windowsBackground.HasRecovery) return false;
             if (Volatile.Read(ref laptopPerfWorker) != 0) return false;
             if (LaboratoryPower.HasResidue || LaboratoryGpu.HasResidue || (laboratory != null && !laboratory.IsRestored)) return false;
             if (!operationsSucceeded || PowerPlan.HasResidue || PowerPlan.HasParkResidue() || PowerOverlay.HasResidue || OptionalServicePause.HasResidue)

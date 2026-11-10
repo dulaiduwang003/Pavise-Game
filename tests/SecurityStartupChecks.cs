@@ -7,7 +7,13 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    internal static class Logger { internal static void Warn(string text) { } internal static void Log(string text) { } }
+    internal static class Logger
+    {
+        internal static readonly List<string> Warnings = new List<string>();
+        internal static readonly List<string> Records = new List<string>();
+        internal static void Warn(string text) { Warnings.Add(text); }
+        internal static void Log(string text) { Records.Add(text); }
+    }
     internal static class FamilyBoundary
     { internal static bool UnderRoot(string path, string root) { return path.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase); } }
     internal static class WhitelistRule
@@ -27,7 +33,7 @@ namespace PaviseApp
             return new SecurityProductSnapshot(true, false, new[] {
                 new SecurityProductInfo("Microsoft Defender Antivirus", "defender", SecurityProductState.Active, false, true, true),
                 new SecurityProductInfo("Fixture AV", "fixture", SecurityProductState.Inactive, true, true, false)
-            }, new[] { @"C:\FixtureSecurity" }, "");
+            }, new[] { @"C:\FixtureSecurity" }, mode == "fallback" ? "WSC:COMException" : "");
         }
         private static void PureChecks()
         {
@@ -124,9 +130,14 @@ namespace PaviseApp
                 SecurityProductCatalog.StartupScanOnce(); watch.Stop();
                 var snapshot = SecurityProductCatalog.StartupSnapshot;
                 Check(snapshot.ScanCompleted, "Startup did not seal result");
-                if (mode == "success") Check(snapshot.Products.Length == 2 && !snapshot.HasUnknownState && SecurityProductCatalog.IsSecurityProduct(@"C:\FixtureSecurity\av.exe"), "Successful startup facts lost");
+                if (mode == "success" || mode == "fallback") Check(snapshot.Products.Length == 2 && !snapshot.HasUnknownState && SecurityProductCatalog.IsSecurityProduct(@"C:\FixtureSecurity\av.exe"), "Successful startup facts lost");
                 else Check(snapshot.HasUnknownState, "Failed provider became healthy absence");
+                int expectedWarnings = mode == "success" || mode == "fallback" ? 0 : 1;
+                Check(Logger.Warnings.Count == expectedWarnings, "Resolved fallback became a warning or unknown inspection lost its warning");
+                if (mode == "fallback")
+                    Check(Logger.Records.Exists(text => text.Contains("备用来源已确认状态") && text.Contains("WSC:COMException")), "Fallback diagnostic was discarded");
                 for (int i = 0; i < 1000; i++) { SecurityProductCatalog.StartupScanOnce(); SecurityProductCatalog.Roots(); SecurityProductCatalog.CurrentGeneration(); }
+                Check(Logger.Warnings.Count == expectedWarnings, "Repeated reads duplicated startup warnings");
                 string[] launches = File.ReadAllLines(log); Check(launches.Length == 1, "Repeated calls refilled startup scan budget");
                 if (mode == "timeout")
                 {
