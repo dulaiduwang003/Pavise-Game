@@ -14,6 +14,7 @@ Pavise 使用 .NET Framework 和 Windows Forms，`build.cmd -b prod` 从 `src/` 
 | `GameMode.Automation.cs`、`GameMode.Policies.cs` | 自动动作状态与功能策略编排 |
 | `SuppressionCore.cs`、`Tamer.cs` | 后台进程的应用、核验、扫描与恢复 |
 | `CriticalThread*`、`GameAffinityJob*` | 关键线程、核心范围及 Job 生命周期 |
+| `GameMode.WindowsBackground.cs`、`WindowsBackground*` | 微软后台名单识别、资源限额、独立守护与恢复 |
 | `PowerPlan*`、`ManagedPowerPreset*`、`Timer*` | 对局电源、模板、计时器请求与恢复 |
 | `PanelForm.cs` 及 `PanelForm.*.cs` | 窗口状态、页面组合、布局、操作与状态刷新 |
 | `PaviseCore.cs` 及 `PaviseCore.Motion.cs` | 核心图形、缓存图层与动画 |
