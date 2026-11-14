@@ -133,7 +133,7 @@ The following lists the features and sub-capabilities in the current 3.3.1.0 sou
 | **Checkup: repair and restoration** | Memory compression; network throttling; wired-network preference; Fault Tolerant Heap (FTH); separate repair and restore actions. |
 | **General and maintenance** | Startup at sign-in; automatic hiding when a game begins; exit grace period (0, 2, 5, 8, 15, or 30 seconds); shader-cache cleanup; settings reset; restoration-record protection; independent recovery guard after an abnormal exit. |
 | **Window and appearance** | Language selection; light and dark themes; separate Smart and Competitive colors; background intensity; visual customization; separate mode effects; immediate effect application or defaults; window dragging and minimizing; tray open, hide, and exit. |
-| **16 interface effects** | Original Smart; Seraph Wings; Plasma Storm; Spacetime Shock; Starfire Phoenix; Void Dragon; Gravity Engine; Demon Ascendant; Reactor Array; Void Pulse; Photon Weave; Event Horizon; Supernova; Orbital Megastructure; Gravitational Tide; Original Esports. |
+| **17 interface animations** | Original Smart, Solar Eclipse, Plasma Heart, Warp Gate, Firebird, Abyssal Jellyfish, Quantum Binary, Astral Whale, Starship Engine, Singularity Bloom, Photon Cube, Event Horizon, Supernova, Celestial Orrery, Chronoglass, Original Esports, and Original Extreme. |
 | **Logs** | Log-writing switch; runtime logs; action and diagnostic views; refresh and clear; copying selections; separate action and diagnostic exports; output folder and filename selection; scheduling role identification, actual CPU placement, priority verification, and restoration results. |
 | **Updates, about, and support** | Version information and release notes; website and source links; voluntary donations; in-app update checks; signature verification; download, verification, and installation progress; cancelling checks or downloads; rollback on failure; manual updates; GitHub and Quark alternatives; preserving personal data during upgrades; restore and uninstall. |
 
@@ -197,45 +197,62 @@ While a game session owns a power plan, the guard keeps verifying the active pla
 
 ## 3.3.1.0 full release notes
 
+These notes cover the complete update from the published 3.3.0.8 release to 3.3.1.0.
+
 I never expected so many players to take an interest in Pavise and use it. Pavise is a game runtime resource orchestrator. Its core job is to coordinate resource use between games and background tasks during play; it isn't a traditional one-click optimizer. I started this project because I didn't want players who had already paid for their hardware to have to buy performance optimization software just to make better use of their own PCs. Those who can contribute code or share their experience can help improve it, and everyone else can use those contributions for free. Thank you for using Pavise, sharing it and sending feedback. I'll keep maintaining Pavise, keep it open source and free, and work on compatibility, stability and the gaming experience.
 
-1. Thread-read failures back off; correction resumes when reads recover. Fields not yet acquired keep bounded retries.
-2. Group candidate-thread diagnostics to reduce repeated logs while retaining state changes, field evidence and restoration results.
-3. Skip service enumeration without anti-cheat targets. Failed overview GPU queries back off and retain failure records across pages.
-4. Protect verified AMD Noise Suppression components and restore earlier background limits.
-5. Reduce thread-query access and release unowned handles promptly. Keep acquired handles until restoration completes.
-6. Improve browser, chat and creative-app recognition to reduce false library entries. Entry source is diagnostic only.
-7. Keep background work off verified game critical-thread cores. Release affinity limits when spare cores run out, while retaining resource governance.
-8. Updated ACE suppression rules and improved ongoing correction and restoration for ACE, EAC and BattlEye.
-9. Render scheduling now offers six strategies, including Game priority, Dependency coordination and Enhanced dedicated rendering, with improved clear-core maintenance.
-10. Game CPU selection now requires Save; selecting all CPUs without isolation avoids extra constraints and audits.
-11. Resource priority moves into scheduling settings, retaining GPU and disk adjustments and removing game memory priority.
-12. Improved Microsoft background governance, corrected suppression counts and refined restoration status.
-13. Combined performance and background settings, grouped features by PC restart requirements and simplified descriptions.
-14. Improved game detection, power compatibility, action and diagnostic logs, and status messages.
-15. Check process, thread and GPU permissions separately. Process access restrictions no longer block thread sampling or scheduling.
-16. Select orchestration candidates using total thread load and observed capacity by core type. High-priority processes support thread boosts; settings are verified separately.
-17. Keep the original capture error when cleanup also fails, and retain recovery records until cleanup completes.
-18. Recheck changed Multicore roles and acquire confirmed placement and boost roles separately, reducing prolonged observation.
-19. Improve recovery guardian startup under Job constraints. Retries stay bounded; later sessions can acquire targets again.
-20. Support original NTFS QWORD values, preserving type, full value and later external changes during restoration.
-21. Improve recovery guardians on Modern Standby devices by verifying WMI origin and cross-session identity without requiring the desktop shell in the same Job.
-22. Fix false timer failures in presets and truncated paths or CPU ranges in action logs. Defer busy anti-cheat checks and log successful correction as information.
-23. Fix game and background GPU priority restoration. Keep records after readback failures and preserve later external writes.
-24. Use less access to query background cores. Distinguish exits, identity changes and API failures; expand thread-restoration, anti-cheat and NVIDIA logs.
-25. Fix ACE SGuard64 placement when Job assignment is refused: use direct affinity, record original ranges and restore them at game exit.
-26. Remove high-performance GPU pre-selection and its settings. Existing preferences remain editable in Windows graphics settings.
-27. Fix 0% GPU readings in some DX12 games by including Graphics/Compute rendering load in game detection.
-28. Stop continuous redraws when the main window lacks focus in the background. Back off renderer probes of confirmed launchers to 30, 60 and 120 seconds.
-29. Add a power-plan guard that keeps correcting external changes during play. Reselect the plan if an older version changed it to No switching.
-30. When orchestration reserves no cores, one boosted thread exiting leaves the others active. Only a main or secondary candidate exiting withdraws the plan.
-31. Show and log pre-placement queueing, CPU use and migration readings from the latest match. For comparison only; kept until app exit.
-32. When independent recovery guardian cleanup does not finish, the log now states the step it stopped at and the error code.
-33. Prefer anti-cheat cores outside the game range, including parked cores. Render placement leaves nonconflicting anti-cheat ranges unchanged.
-34. Render thread scheduling is off by default for each game. Enabling it shows a notice that results need your own comparison and performance may drop.
-35. Add the Game priority strategy: raises game process priority, and pins and prioritizes the render thread. It is the default when render thread scheduling is turned on.
+### New game-thread scheduling
 
-These 35 entries match the [current built-in release notes](src/PaviseApp/ReleaseNotes.cs). This section describes the current source; available downloads are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+- Introduced a complete per-game render-thread scheduling system with six strategies: Game priority, Render priority, Dedicated rendering, Multicore coordination, Dependency coordination, and Enhanced dedicated rendering. It is off by default for each game, with a notice that performance may drop or stutter and results need your own comparison. Game priority is the default without a saved valid strategy; existing selections are kept.
+- Game priority raises game-process CPU priority and pins and prioritizes the identified render thread. Whole-process boosting is specific to this strategy and independent of the GPU/disk resource switch; an existing Realtime process class is preserved.
+- Clear core can be enabled separately for the five strategies other than Dependency coordination, moving covered game threads away from critical physical cores. Placement respects the game's valid CPU range; incomplete coverage is not reported as exclusivity.
+- Multicore coordination uses total thread load, observed capacity by core type, and task relationships to place critical roles and workers. Eligible threads in High-priority processes can be boosted, with each setting verified separately.
+- Acquired thread settings are continually verified and corrected. Temporary read failures back off, while unknown identity or ranges pause writes. Critical-role exits restore the old plan before bounded re-evaluation using the remaining budget. Without reserved main/secondary cores, one ordinary boosted member exiting leaves the others active.
+
+### Per-game settings and CPU ranges
+
+- Game CPU ranges now require Save after selecting cores and isolation, with an option to restore the saved selection. Deep tuning retains a separate enable switch. Selecting all CPUs without isolation avoids extra constraints and audits while retaining existing ranges and restoration ownership.
+- GPU and disk I/O resource priority move into the render-scheduling dialog and are saved with the strategy for the next session. Saving does not change the enable switch; disabling immediately restores owned changes. Game memory-page priority and high-performance GPU preselection are removed; existing Windows GPU preferences remain editable in system Graphics settings.
+- Deep tuning is reorganized into Scheduling and priority / Other, with inline CPU-range, isolation, and strategy summaries. Help buttons are no longer covered by the row-wide toggle.
+- Author and Extreme presets no longer change scheduling, core selection, or resource priority in game cards. Bulk presets and per-game choices are maintained separately.
+
+### Background governance and anti-cheat
+
+- Added built-in governance for verified Microsoft diagnostic services, search indexing, Widgets, and their WebView2 processes. Normal gives each built-in target a 0.01% Job CPU quota and at most two background physical cores. Aggressive uses the same quota, at most one core, and lower CPU/I/O priority. Manual allowlists and family protection remain effective.
+- Simplified ordinary background CPU-range handling to reduce per-process guardian overhead. Background placement avoids verified critical game cores; when spare cores run out, owned affinity limits are released while resource governance remains. Suppression counts and restoration status are corrected.
+- Protected verified AMD Noise Suppression components and restored earlier background restrictions from their records.
+- Updated ACE suppression and ongoing correction of acquired settings for ACE, EAC, and BattlEye. Failures back off and logs are rate-limited; initial acquisition, new threads, and restoration retain bounded budgets.
+- Fixed SGuard64 placement when Job assignment is refused by using direct affinity with recorded restoration ownership. Anti-cheat placement prefers cores outside the game range, including parked cores when needed; render placement leaves nonconflicting anti-cheat ranges unchanged.
+
+### Game detection and capture
+
+- Automatic session entry now requires stable rendering evidence. Adding a game to the library or bringing its window forward no longer starts a session by itself; per-game forced triggering remains available.
+- Improved launcher-to-game handover so confirmed games are not replaced by launchers. Better browser, chat, and creative-app recognition reduces false library entries; entry source is diagnostic only.
+- Fixed 0% GPU readings in some DX12 games by including Graphics/Compute rendering load in game detection.
+- Improved channel coordination and event handling between render detection and thread-relationship capture. Original capture errors and unfinished-cleanup recovery records are retained.
+- Bounded repeated League of Legends client credential lookups while preserving established sessions and restoration records when further lookup is unavailable.
+
+### Session power and original-value restoration
+
+- Added a session power-plan guard that continually verifies the active plan and managed parameters and corrects external changes. Persistent conflicts slow responses to at most a 15-second interval instead of switching the preference to No switching. Reselect a plan if an older version changed that preference.
+- Improved independent recovery guardian startup under Job constraints and on Modern Standby devices by verifying WMI origin and cross-session identity without requiring the desktop shell in the same Job. Startup-failure retries remain bounded.
+- Fixed game and background GPU priority restoration. Readback failures keep recovery records, and later external writes are preserved during restoration.
+- Supported original NTFS QWORD values, preserving their type, full value, and later external changes during restoration.
+- Fixed service-restoration waits, transitional start/stop states, and failure-budget handling. Unfinished restoration retains its records and ownership, and unverified states are not reported as successful.
+
+### Interface and feature changes
+
+- Combined performance and background settings, grouped controls by whether a PC restart is required, and simplified descriptions and status messages.
+- Removed AI tuning suggestions and prompt generation. Removed the Steam/WeGame platform filter from the game library while retaining game search and platform scanning.
+- Reworked several interface animations and added Original Extreme, bringing the selection to 17 while preserving saved choices.
+- Updated the anti-cheat page with monochrome brand marks for ACE, Easy Anti-Cheat, and BattlEye.
+
+### Logging and runtime overhead
+
+- Consolidated repeated thread diagnostics while retaining state changes, field evidence, and restoration results. Fixed truncated paths/CPU ranges, false pending-timer failures, and successful corrections logged as warnings. Added failure stages and error codes for thread restoration, anti-cheat, NVIDIA, and independent recovery guardians.
+- The scheduling dialog now shows and logs pre-placement queueing, CPU use, and migration readings from the latest session. These are for comparison only and remain until the app exits.
+- Stopped continuous main-window redraws while unfocused in the background. Failed overview GPU queries retain backoff across pages, and confirmed launchers reduce repeated probes to 30, 60, and 120-second intervals.
+- Reduced thread and background-range query access and verified process, thread, and GPU permissions separately. Service enumeration is skipped without anti-cheat targets. Unowned handles are released promptly, while acquired objects retain handles and ownership until restoration completes.
 
 ## Software architecture
 
@@ -248,6 +265,8 @@ Detect the game → establish a session and configuration snapshot → apply eli
 Initial discovery, acquisition, write failures, and restoration retries have execution limits. Acquired fields and the in-game power-plan guard follow their ongoing verification rules; uncertain identity or legal ranges pause the affected writes. Once a recovery budget is exhausted, active attempts stop while restoration records and held resources are retained. Logs report the actual restoration state.
 
 ## Feedback and support
+
+The chat groups are currently full. You can also find me on Douyin by searching for ID **44601770838** to report problems or share your experience.
 
 Include **the Pavise version, Windows version, CPU and GPU, game name, relevant settings, and reproduction steps** in a report. Action logs show what the session did; diagnostic logs provide technical details.
 
