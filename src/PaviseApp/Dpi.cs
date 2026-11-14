@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -10,6 +11,12 @@ namespace PaviseApp
 
         public const float FitEpsilon = 0.02f;
 
+        private const string ScalePreferenceKey = "UiScalePercent";
+
+        private static int scalePreferencePercent;
+
+        private static int currentDpi = 96;
+
         public static float Scale = 1f;
 
         public static bool NoFit;
@@ -17,6 +24,11 @@ namespace PaviseApp
         private static int fitW;
 
         private static int fitH;
+
+        public static int ScalePreferencePercent
+        {
+            get { return scalePreferencePercent; }
+        }
 
         public static void Init()
         {
@@ -27,19 +39,44 @@ namespace PaviseApp
             catch
             {
             }
+            currentDpi = 96;
             try
             {
-                Scale = (float)Native.GetDpiForSystem() / 96f;
+                currentDpi = (int)Native.GetDpiForSystem();
+                if (currentDpi <= 0) currentDpi = 96;
             }
             catch
             {
-                Scale = 1f;
+                currentDpi = 96;
             }
-            if (Scale < 1f)
+            int storedScale;
+            scalePreferencePercent = int.TryParse(Settings.LoadStr(ScalePreferenceKey, "0"), NumberStyles.Integer, CultureInfo.InvariantCulture, out storedScale) && IsScalePreferencePercent(storedScale) ? storedScale : 0;
+            Scale = Fit(RequestedScaleFor(currentDpi));
+        }
+
+        internal static bool IsScalePreferencePercent(int percent)
+        {
+            return percent == 0 || (percent >= 100 && percent <= 300 && percent % 25 == 0);
+        }
+
+        private static float RequestedScaleFor(int dpi)
+        {
+            if (scalePreferencePercent > 0)
             {
-                Scale = 1f;
+                return (float)scalePreferencePercent / 100f;
             }
-            Scale = Fit(Scale);
+            float dpiScale = (float)dpi / 96f;
+            return Math.Max(1f, dpiScale);
+        }
+
+        public static bool SetScalePreference(int percent)
+        {
+            if (!IsScalePreferencePercent(percent)) return false;
+            scalePreferencePercent = percent;
+            float nextScale = Fit(RequestedScaleFor(currentDpi));
+            if (Math.Abs(nextScale - Scale) < 0.001f) return false;
+            Scale = nextScale;
+            return true;
         }
 
         public static bool SetDesignSize(int width, int height)
@@ -71,12 +108,7 @@ namespace PaviseApp
 
         public static float ScaleFor(int dpi)
         {
-            float dpiRatio = (float)dpi / 96f;
-            if (dpiRatio < 1f)
-            {
-                dpiRatio = 1f;
-            }
-            return Fit(dpiRatio);
+            return Fit(RequestedScaleFor(dpi > 0 ? dpi : 96));
         }
 
         public static float FitScale(int clientW, int clientH)
@@ -90,9 +122,13 @@ namespace PaviseApp
             {
                 upperBound = 1f;
             }
-            if (upperBound > 3f)
+            if (upperBound > MaxScale)
             {
-                upperBound = 3f;
+                upperBound = MaxScale;
+            }
+            if (scalePreferencePercent > 0)
+            {
+                upperBound = Math.Min(upperBound, ScaleFor(currentDpi));
             }
             return upperBound;
         }
@@ -113,6 +149,11 @@ namespace PaviseApp
 
         public static bool Update(int dpi)
         {
+            if (dpi <= 0)
+            {
+                return false;
+            }
+            currentDpi = dpi;
             if (!WouldChange(dpi))
             {
                 return false;

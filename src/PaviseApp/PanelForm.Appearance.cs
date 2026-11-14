@@ -88,8 +88,7 @@ namespace PaviseApp
         {
             if (base.IsDisposed) return;
             int dpi = Dpi.WindowDpi(base.Handle);
-            if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
-            Dpi.Update(dpi);
+            if (dpi <= 0 || !Dpi.Update(dpi)) return;
             Theme.DropFontCache();
             Logger.Log(Lang.T("log.panelform.11", 0) + dpi);
             RebuildUi();

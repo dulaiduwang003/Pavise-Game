@@ -482,8 +482,48 @@ namespace PaviseApp
             scroll = settingsTabPanels[2];
             sy = 2;
             BuildAppearanceSection(scroll, ref sy);
+            BuildUiScaleSetting(scroll);
             LayoutSettingsWorkspace();
         }
+        private void BuildUiScaleSetting(Control parent)
+        {
+            TechSelect picker = new TechSelect
+            {
+                Name = "SettingsUiScalePicker",
+                Size = new Size(Theme.S(220), Theme.S(34)),
+                AccessibleName = Lang.T("set.scale")
+            };
+            string[] choices = new string[10];
+            choices[0] = Lang.T("set.scale.windows");
+            for (int i = 1; i < choices.Length; i++)
+            {
+                choices[i] = ((75 + i * 25).ToString(System.Globalization.CultureInfo.InvariantCulture)) + "%";
+            }
+            picker.SetItems(choices);
+            int currentPercent = Dpi.ScalePreferencePercent;
+            picker.SetSilently(currentPercent == 0 ? 0 : 1 + (currentPercent - 100) / 25);
+            picker.SelectionChanged += delegate(int index)
+            {
+                int percent = index == 0 ? 0 : 100 + (index - 1) * 25;
+                string storedValue = percent.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (!Settings.SaveStr("UiScalePercent", storedValue))
+                {
+                    picker.SetSilently(Dpi.ScalePreferencePercent == 0 ? 0 : 1 + (Dpi.ScalePreferencePercent - 100) / 25);
+                    PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("set.scale.fail"));
+                    return;
+                }
+                if (Dpi.SetScalePreference(percent))
+                {
+                    BeginInvoke(new MethodInvoker(delegate
+                    {
+                        Theme.DropFontCache();
+                        RebuildUi();
+                    }));
+                }
+            };
+            AddSettingsTile(parent, "SettingsUiScale", Lang.T("set.scale"), Lang.T("set.scale.n"), "appearance", picker);
+        }
+
         private void BuildStandbyCleanerSettingsCard(Control parent, ref int y)
         {
             StandbyCleanerActionHost standbyCleanerActionHost = new StandbyCleanerActionHost();
