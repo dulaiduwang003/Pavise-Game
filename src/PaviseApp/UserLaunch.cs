@@ -59,6 +59,20 @@ namespace PaviseApp
             public int dwThreadId;
         }
 
+        private const uint TokenDuplicate = 2u;
+
+        private const uint TokenQuery = 8u;
+
+        private const uint TokenAllAccess = 983551u;
+
+        private const uint LogonWithProfile = 1u;
+
+        private const uint CreateUnicodeEnvironment = 1024u;
+
+        private const int TokenPrimary = 1;
+
+        private const int SecurityImpersonation = 2;
+
         [DllImport("user32.dll")]
         private static extern IntPtr GetShellWindow();
 
@@ -104,7 +118,7 @@ namespace PaviseApp
 
         private static bool StartWithShellToken(string executable, string workingDirectory)
         {
-            IntPtr processHandle = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             IntPtr token = IntPtr.Zero;
             IntPtr newToken = IntPtr.Zero;
             IntPtr environment = IntPtr.Zero;
@@ -122,12 +136,12 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                processHandle = Native.OpenProcess(4096, false, processId);
-                if (processHandle == IntPtr.Zero)
+                intPtr = Native.OpenProcess(4096, false, processId);
+                if (intPtr == IntPtr.Zero)
                 {
                     return false;
                 }
-                if (!OpenProcessToken(processHandle, 10u, out token))
+                if (!OpenProcessToken(intPtr, 10u, out token))
                 {
                     return false;
                 }
@@ -175,9 +189,9 @@ namespace PaviseApp
                 {
                     Native.CloseHandle(token);
                 }
-                if (processHandle != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
         }

@@ -79,6 +79,10 @@ namespace PaviseApp
                 RenderAudit(report);
             }
         }
+        private void ReportAuditProgress(float ratio, string caption)
+        {
+            ReportAuditProgressForRun(Volatile.Read(ref auditRunVersion), ratio, caption);
+        }
         private void ReportAuditProgressForRun(int version, float ratio, string caption)
         {
             try
@@ -122,7 +126,8 @@ namespace PaviseApp
             Control[] controlItems = new Control[auditScroll.Controls.Count];
             auditScroll.Controls.CopyTo(controlItems, 0);
             auditScroll.Controls.Clear();
-            foreach (Control control in controlItems)
+            Control[] controlItems2 = controlItems;
+            foreach (Control control in controlItems2)
             {
                 control.Dispose();
             }
@@ -142,32 +147,32 @@ namespace PaviseApp
         {
             Section(auditScroll, title, 6, sy);
             sy += 26;
-            Dictionary<string, AuditFix> auditFixsByName = BuildAuditFixes();
+            Dictionary<string, AuditFix> dictionary = BuildAuditFixes();
             foreach (AuditRow row in rows)
             {
-                AuditFix auditFix = null;
+                AuditFix value = null;
                 bool canFix = false;
                 bool canRevert = false;
                 bool canOpen = false;
-                if (row.FixKey != null && auditFixsByName.TryGetValue(row.FixKey, out auditFix))
+                if (row.FixKey != null && dictionary.TryGetValue(row.FixKey, out value))
                 {
                     try
                     {
-                        canFix = auditFix.CanFix();
-                        canRevert = !canFix && auditFix.CanRevert();
-                        canOpen = !canFix && !canRevert && auditFix.Open != null;
+                        canFix = value.CanFix();
+                        canRevert = !canFix && value.CanRevert();
+                        canOpen = !canFix && !canRevert && value.Open != null;
                     }
                     catch
                     {
                     }
                 }
                 bool hasAction = canFix || canRevert || canOpen;
-                AuditFix boundFix = auditFix;
+                AuditFix boundFix = value;
                 Action onClick = (hasAction ? ((Action)delegate
                 {
                     OnAuditFixClick(boundFix);
                 }) : null);
-                string btnText = (canOpen ? ((auditFix.OpenText == null) ? "" : auditFix.OpenText()) : Lang.T(canFix ? (auditFix.FixLabel ?? "audit.fix") : "audit.fix.revert"));
+                string btnText = (canOpen ? ((value.OpenText == null) ? "" : value.OpenText()) : Lang.T(canFix ? (value.FixLabel ?? "audit.fix") : "audit.fix.revert"));
                 AuditRowCard auditRowCard = new AuditRowCard(row.Name, row.Value, row.Note ?? "", Lang.F("audit.evidence.format", SystemAudit.EvidenceText(row.Evidence)), row.Warn, hasAction, btnText, canFix, onClick, AuditContentWidth);
                 auditRowCard.SetBounds(Theme.S(6), Theme.S(sy), Theme.S(AuditContentWidth), Theme.S(auditRowCard.LogicalHeight));
                 auditRowCard.Name = "auditRow_" + (row.FixKey ?? "info");
@@ -342,10 +347,10 @@ namespace PaviseApp
             }
             StringBuilder stringBuilder = new StringBuilder(irqcheckOutFailedText);
             stringBuilder.Append("\r\n\r\n").Append(Lang.T("irqcheck.out.slow"));
-            foreach (SlowDriver slow in r.Slow)
+            foreach (SlowDriver item in r.Slow)
             {
-                stringBuilder.Append("\r\n· ").Append((slow.Device.Length > 0) ? (slow.Device + " (" + slow.Driver + ")") : slow.Driver).Append("  ")
-                    .Append(Lang.F("irqcheck.slow.row", slow.MaxUs.ToString("F0"), slow.P99Us.ToString("F0")));
+                stringBuilder.Append("\r\n· ").Append((item.Device.Length > 0) ? (item.Device + " (" + item.Driver + ")") : item.Driver).Append("  ")
+                    .Append(Lang.F("irqcheck.slow.row", item.MaxUs.ToString("F0"), item.P99Us.ToString("F0")));
             }
             return stringBuilder.ToString();
         }

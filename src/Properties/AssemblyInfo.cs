@@ -1,5 +1,9 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Security;
+using System.Security.Permissions;
 
 [assembly: AssemblyCompany("bdth")]
 [assembly: AssemblyCopyright("Copyright 2026 bdth")]

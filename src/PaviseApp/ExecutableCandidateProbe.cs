@@ -48,11 +48,11 @@ namespace PaviseApp
                 Remaining -= length;
                 byte[] rawBytes = new byte[length];
                 Stream.Position = offset;
-                int bytesRead;
-                for (int i = 0; i < length; i += bytesRead)
+                int value;
+                for (int i = 0; i < length; i += value)
                 {
-                    bytesRead = Stream.Read(rawBytes, i, length - i);
-                    if (bytesRead <= 0)
+                    value = Stream.Read(rawBytes, i, length - i);
+                    if (value <= 0)
                     {
                         return null;
                     }
@@ -122,7 +122,8 @@ namespace PaviseApp
                     {
                         return null;
                     }
-                    foreach (byte b in readResult)
+                    byte[] rawBytes = readResult;
+                    foreach (byte b in rawBytes)
                     {
                         switch (b)
                         {
@@ -284,10 +285,11 @@ namespace PaviseApp
                 {
                     return executableCandidateFacts;
                 }
-                PeReader currentPeReader = new PeReader();
-                currentPeReader.Stream = stream;
-                currentPeReader.Length = stream.Length;
-                byte[] readResult = currentPeReader.Read(0L, 64);
+                PeReader peReader = new PeReader();
+                peReader.Stream = stream;
+                peReader.Length = stream.Length;
+                PeReader peReader2 = peReader;
+                byte[] readResult = peReader2.Read(0L, 64);
                 if (readResult == null || U16(readResult, 0) != 23117)
                 {
                     return executableCandidateFacts;
@@ -297,7 +299,7 @@ namespace PaviseApp
                 {
                     return executableCandidateFacts;
                 }
-                byte[] readResult2 = currentPeReader.Read(u32Result, 24);
+                byte[] readResult2 = peReader2.Read(u32Result, 24);
                 if (readResult2 == null || U32(readResult2, 0) != 17744)
                 {
                     return executableCandidateFacts;
@@ -309,7 +311,7 @@ namespace PaviseApp
                 {
                     return executableCandidateFacts;
                 }
-                byte[] readResult3 = currentPeReader.Read((long)u32Result + 24L, u16Result2);
+                byte[] readResult3 = peReader2.Read((long)u32Result + 24L, u16Result2);
                 if (readResult3 == null || readResult3.Length < 96)
                 {
                     return executableCandidateFacts;
@@ -336,17 +338,17 @@ namespace PaviseApp
                 {
                     return executableCandidateFacts;
                 }
-                currentPeReader.HeaderSize = U32(readResult3, 60);
-                currentPeReader.ImageBase = ((u16Result4 == 267) ? U32(readResult3, 28) : U64(readResult3, 24));
+                peReader2.HeaderSize = U32(readResult3, 60);
+                peReader2.ImageBase = ((u16Result4 == 267) ? U32(readResult3, 28) : U64(readResult3, 24));
                 long u16Result2Offset = (long)u32Result + 24L + u16Result2;
                 for (int i = 0; i < u16Result; i++)
                 {
-                    byte[] readResult4 = currentPeReader.Read(u16Result2Offset + i * 40, 40);
+                    byte[] readResult4 = peReader2.Read(u16Result2Offset + i * 40, 40);
                     if (readResult4 == null)
                     {
                         return executableCandidateFacts;
                     }
-                    currentPeReader.Sections.Add(new Section
+                    peReader2.Sections.Add(new Section
                     {
                         VirtualSize = U32(readResult4, 8),
                         Address = U32(readResult4, 12),
@@ -355,11 +357,11 @@ namespace PaviseApp
                     });
                 }
                 bool graphics = false;
-                if (u32Result2 > 1 && !ReadImports(currentPeReader, U32(readResult3, factsValue + 8), U32(readResult3, factsValue + 12), false, ref graphics))
+                if (u32Result2 > 1 && !ReadImports(peReader2, U32(readResult3, factsValue + 8), U32(readResult3, factsValue + 12), false, ref graphics))
                 {
                     return executableCandidateFacts;
                 }
-                if (u32Result2 > 13 && !ReadImports(currentPeReader, U32(readResult3, factsValue + 104), U32(readResult3, factsValue + 104 + 4), true, ref graphics))
+                if (u32Result2 > 13 && !ReadImports(peReader2, U32(readResult3, factsValue + 104), U32(readResult3, factsValue + 104 + 4), true, ref graphics))
                 {
                     return executableCandidateFacts;
                 }
@@ -466,41 +468,41 @@ namespace PaviseApp
                 return null;
             }
             ExecutableCandidateFacts executableCandidateFacts = null;
-            int bestScore = 0;
+            int pickUniqueValue = 0;
             bool hasTiedCandidate = false;
-            Dictionary<string, ExecutableCandidateFacts> executableCandidateFactsByName = new Dictionary<string, ExecutableCandidateFacts>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, ExecutableCandidateFacts> dictionary = new Dictionary<string, ExecutableCandidateFacts>(StringComparer.OrdinalIgnoreCase);
             foreach (ExecutableCandidateFacts candidate in candidates)
             {
                 if (candidate == null || !candidate.Executable || string.IsNullOrEmpty(candidate.Path))
                 {
                     continue;
                 }
-                ExecutableCandidateFacts executableCandidateFact;
-                if (executableCandidateFactsByName.TryGetValue(candidate.Path, out executableCandidateFact))
+                ExecutableCandidateFacts value;
+                if (dictionary.TryGetValue(candidate.Path, out value))
                 {
-                    if (executableCandidateFact.Gui != candidate.Gui || executableCandidateFact.GraphicsImports != candidate.GraphicsImports || executableCandidateFact.EngineDataPair != candidate.EngineDataPair)
+                    if (value.Gui != candidate.Gui || value.GraphicsImports != candidate.GraphicsImports || value.EngineDataPair != candidate.EngineDataPair)
                     {
                         return null;
                     }
                     continue;
                 }
-                executableCandidateFactsByName.Add(candidate.Path, candidate);
-                int candidateScore = ((candidate.GraphicsImports || candidate.EngineDataPair) ? 2 : (candidate.Gui ? 1 : 0));
-                if (candidateScore != 0)
+                dictionary.Add(candidate.Path, candidate);
+                int pickUniqueValue2 = ((candidate.GraphicsImports || candidate.EngineDataPair) ? 2 : (candidate.Gui ? 1 : 0));
+                if (pickUniqueValue2 != 0)
                 {
-                    if (candidateScore > bestScore)
+                    if (pickUniqueValue2 > pickUniqueValue)
                     {
                         executableCandidateFacts = candidate;
-                        bestScore = candidateScore;
+                        pickUniqueValue = pickUniqueValue2;
                         hasTiedCandidate = false;
                     }
-                    else if (candidateScore == bestScore)
+                    else if (pickUniqueValue2 == pickUniqueValue)
                     {
                         hasTiedCandidate = true;
                     }
                 }
             }
-            if (executableCandidateFacts != null && !hasTiedCandidate && (bestScore >= 2 || (complete && executableCandidateFactsByName.Count <= 1)))
+            if (executableCandidateFacts != null && !hasTiedCandidate && (pickUniqueValue >= 2 || (complete && dictionary.Count <= 1)))
             {
                 return executableCandidateFacts.Path;
             }
@@ -510,10 +512,10 @@ namespace PaviseApp
         internal static string PickMainExecutable(string root)
         {
             bool complete;
-            List<ExecutableCandidateFacts> executableCandidateFacts = CollectFacts(root, out complete);
-            if (executableCandidateFacts != null)
+            List<ExecutableCandidateFacts> list = CollectFacts(root, out complete);
+            if (list != null)
             {
-                return PickUnique(executableCandidateFacts, complete);
+                return PickUnique(list, complete);
             }
             return null;
         }
@@ -545,31 +547,31 @@ namespace PaviseApp
         {
             bool complete;
             bool valid;
-            List<ExecutableCandidateFacts> executableCandidateFacts = CollectFacts(root, true, out complete, out valid);
-            recommended = ((valid && executableCandidateFacts != null) ? PickUnique(executableCandidateFacts, complete) : null);
-            List<ExecutableCandidateFacts> currentExecutableCandidateFacts = new List<ExecutableCandidateFacts>();
-            if (executableCandidateFacts == null)
+            List<ExecutableCandidateFacts> list = CollectFacts(root, true, out complete, out valid);
+            recommended = ((valid && list != null) ? PickUnique(list, complete) : null);
+            List<ExecutableCandidateFacts> list2 = new List<ExecutableCandidateFacts>();
+            if (list == null)
             {
-                return currentExecutableCandidateFacts;
+                return list2;
             }
-            foreach (ExecutableCandidateFacts executableCandidateFact in executableCandidateFacts)
+            foreach (ExecutableCandidateFacts item in list)
             {
-                if (executableCandidateFact != null && executableCandidateFact.Executable && !string.IsNullOrEmpty(executableCandidateFact.Path))
+                if (item != null && item.Executable && !string.IsNullOrEmpty(item.Path))
                 {
-                    currentExecutableCandidateFacts.Add(executableCandidateFact);
+                    list2.Add(item);
                 }
             }
-            currentExecutableCandidateFacts.Sort(delegate(ExecutableCandidateFacts a, ExecutableCandidateFacts b)
+            list2.Sort(delegate(ExecutableCandidateFacts a, ExecutableCandidateFacts b)
             {
                 int rankResult = Rank(a);
                 int rankResult2 = Rank(b);
                 return (rankResult != rankResult2) ? (rankResult2 - rankResult) : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
             });
-            if (max > 0 && currentExecutableCandidateFacts.Count > max)
+            if (max > 0 && list2.Count > max)
             {
-                currentExecutableCandidateFacts.RemoveRange(max, currentExecutableCandidateFacts.Count - max);
+                list2.RemoveRange(max, list2.Count - max);
             }
-            return currentExecutableCandidateFacts;
+            return list2;
         }
 
         internal static List<ExecutableCandidateFacts> CollectFacts(string root, out bool complete)
@@ -595,27 +597,27 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                List<ExecutableCandidateFacts> currentExecutableCandidateFacts = new List<ExecutableCandidateFacts>();
-                foreach (string path in paths)
+                List<ExecutableCandidateFacts> list = new List<ExecutableCandidateFacts>();
+                foreach (string item in paths)
                 {
                     try
                     {
-                        string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
-                        if (GameSessionDetector.ElectionVetoed(fileNameWithoutExtension, path))
+                        string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(item);
+                        if (GameSessionDetector.ElectionVetoed(fileNameWithoutExtension, item))
                         {
                             continue;
                         }
-                        FileInfo fileInfo = new FileInfo(path);
+                        FileInfo fileInfo = new FileInfo(item);
                         long length = fileInfo.Length;
                         DateTime lastWriteTimeUtc = fileInfo.LastWriteTimeUtc;
                         ExecutableCandidateFacts executableCandidateFacts;
                         bool readFailed;
-                        using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        using (FileStream stream = new FileStream(item, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                         {
                             executableCandidateFacts = ReadFacts(stream, out readFailed);
                         }
-                        FileInfo currentFileInfo = new FileInfo(path);
-                        if (readFailed || currentFileInfo.Length != length || currentFileInfo.LastWriteTimeUtc != lastWriteTimeUtc)
+                        FileInfo fileInfo2 = new FileInfo(item);
+                        if (readFailed || fileInfo2.Length != length || fileInfo2.LastWriteTimeUtc != lastWriteTimeUtc)
                         {
                             valid = false;
                             complete = false;
@@ -626,10 +628,10 @@ namespace PaviseApp
                         }
                         else
                         {
-                            executableCandidateFacts.Path = path;
-                            string directoryName = Path.GetDirectoryName(path);
+                            executableCandidateFacts.Path = item;
+                            string directoryName = Path.GetDirectoryName(item);
                             executableCandidateFacts.EngineDataPair = executableCandidateFacts.Executable && File.Exists(Path.Combine(directoryName, "UnityPlayer.dll")) && Directory.Exists(Path.Combine(directoryName, fileNameWithoutExtension + "_Data"));
-                            currentExecutableCandidateFacts.Add(executableCandidateFacts);
+                            list.Add(executableCandidateFacts);
                         }
                     }
                     catch
@@ -642,7 +644,7 @@ namespace PaviseApp
                         }
                     }
                 }
-                return currentExecutableCandidateFacts;
+                return list;
             }
             catch
             {
@@ -665,10 +667,10 @@ namespace PaviseApp
             try
             {
                 Queue<DirectoryWork> queue = new Queue<DirectoryWork>();
-                HashSet<string> roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int processedCount = 0;
                 int processedCount2 = 1;
-                roots.Add(root);
+                hashSet.Add(root);
                 queue.Enqueue(new DirectoryWork
                 {
                     Path = root,
@@ -694,7 +696,7 @@ namespace PaviseApp
                     }
                     try
                     {
-                        foreach (string file in files(directoryWork.Path))
+                        foreach (string item in files(directoryWork.Path))
                         {
                             if (processedCount >= 400)
                             {
@@ -704,14 +706,14 @@ namespace PaviseApp
                             processedCount++;
                             try
                             {
-                                if ((attributes(file) & FileAttributes.ReparsePoint) != 0)
+                                if ((attributes(item) & FileAttributes.ReparsePoint) != 0)
                                 {
                                     complete = false;
                                     result = false;
                                 }
                                 else
                                 {
-                                    paths.Add(file);
+                                    paths.Add(item);
                                 }
                             }
                             catch
@@ -728,7 +730,7 @@ namespace PaviseApp
                     }
                     try
                     {
-                        foreach (string directory in directories(directoryWork.Path))
+                        foreach (string item2 in directories(directoryWork.Path))
                         {
                             if (directoryWork.Depth >= 8 || processedCount2 >= 512)
                             {
@@ -736,11 +738,11 @@ namespace PaviseApp
                                 break;
                             }
                             processedCount2++;
-                            if (roots.Add(directory))
+                            if (hashSet.Add(item2))
                             {
                                 queue.Enqueue(new DirectoryWork
                                 {
-                                    Path = directory,
+                                    Path = item2,
                                     Depth = directoryWork.Depth + 1
                                 });
                             }

@@ -51,13 +51,13 @@ namespace PaviseApp
             }
             else
             {
-                List<string> ts = new List<string>();
-                ts.Add(Lang.T("t.autoadd.1"));
-                List<string> texts = ts;
-                List<string> nextIgnoreSnapshot = new List<string>(nextIgnore);
-                nextIgnoreSnapshot.Sort(StringComparer.OrdinalIgnoreCase);
-                texts.AddRange(nextIgnoreSnapshot);
-                byte[] bytes = new UTF8Encoding(false).GetBytes(string.Join(Environment.NewLine, texts.ToArray()) + Environment.NewLine);
+                List<string> list = new List<string>();
+                list.Add(Lang.T("t.autoadd.1"));
+                List<string> list2 = list;
+                List<string> list3 = new List<string>(nextIgnore);
+                list3.Sort(StringComparer.OrdinalIgnoreCase);
+                list2.AddRange(list3);
+                byte[] bytes = new UTF8Encoding(false).GetBytes(string.Join(Environment.NewLine, list2.ToArray()) + Environment.NewLine);
                 saveProfileSnapshotLockedSucceeded = libraryIgnoreTransaction.Commit(next, bytes, () => !stopping && (canCommit == null || canCommit()));
                 if (!saveProfileSnapshotLockedSucceeded && profileStore.SaveFailed)
                 {
@@ -67,6 +67,14 @@ namespace PaviseApp
             if (!saveProfileSnapshotLockedSucceeded)
             {
                 return false;
+            }
+            foreach (GameProfile item in next)
+            {
+                GameProfile previous = profiles.Find(value => string.Equals(value.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+                if (previous == null || previous.DiscoverySource != item.DiscoverySource
+                    || !string.Equals(previous.DiscoverySourcePath, item.DiscoverySourcePath, StringComparison.OrdinalIgnoreCase))
+                    Logger.Info("游戏库来源：" + item.Name + "；来源=" + item.SourceDescription(item.PreferredExecutablePath)
+                        + "；路径=" + item.PreferredExecutablePath);
             }
             profiles.Clear();
             profiles.AddRange(next);
@@ -104,20 +112,20 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (GameProfile currentLibrary in library)
+            foreach (GameProfile item in library)
             {
-                if (currentLibrary != null && !string.IsNullOrEmpty(currentLibrary.ExecutablePath))
+                if (item != null && !string.IsNullOrEmpty(item.ExecutablePath))
                 {
-                    string restrictFallbackResult = GameInstallScope.RestrictFallback(currentLibrary.ExecutablePath, NormalizeGameRoot(currentLibrary.Root));
-                    bool rootUnavailable = !string.IsNullOrEmpty(currentLibrary.Root) && restrictFallbackResult == null;
-                    string rootValue = NormalizeGameRoot(GameInstallScope.Resolve(currentLibrary.ExecutablePath, restrictFallbackResult));
-                    if (rootValue != null && !FamilyBoundary.UnderRoot(currentLibrary.ExecutablePath, rootValue))
+                    string restrictFallbackResult = GameInstallScope.RestrictFallback(item.ExecutablePath, NormalizeGameRoot(item.Root));
+                    bool rootUnavailable = !string.IsNullOrEmpty(item.Root) && restrictFallbackResult == null;
+                    string rootValue = NormalizeGameRoot(GameInstallScope.Resolve(item.ExecutablePath, restrictFallbackResult));
+                    if (rootValue != null && !FamilyBoundary.UnderRoot(item.ExecutablePath, rootValue))
                     {
                         rootValue = restrictFallbackResult;
                     }
-                    if (!string.Equals(rootValue, currentLibrary.Root, StringComparison.OrdinalIgnoreCase) && (rootUnavailable || (rootValue != null && (string.IsNullOrEmpty(currentLibrary.Root) || FamilyBoundary.UnderRoot(currentLibrary.Root, rootValue)) && (string.IsNullOrEmpty(currentLibrary.LearnedExecutablePath) || FamilyBoundary.UnderRoot(currentLibrary.LearnedExecutablePath, rootValue)))))
+                    if (!string.Equals(rootValue, item.Root, StringComparison.OrdinalIgnoreCase) && (rootUnavailable || (rootValue != null && (string.IsNullOrEmpty(item.Root) || FamilyBoundary.UnderRoot(item.Root, rootValue)) && (string.IsNullOrEmpty(item.LearnedExecutablePath) || FamilyBoundary.UnderRoot(item.LearnedExecutablePath, rootValue)))))
                     {
-                        currentLibrary.Root = rootValue;
+                        item.Root = rootValue;
                         result = true;
                     }
                 }
@@ -133,7 +141,7 @@ namespace PaviseApp
             string error;
             return AddGameExecutableCore(name, executablePath, null, out error);
         }
-        private bool StageGameExecutable(string name, string executablePath, string preferredRoot, List<GameProfile> next, HashSet<string> nextIgnore, out string error)
+        private bool StageGameExecutable(string name, string executablePath, string preferredRoot, List<GameProfile> next, HashSet<string> nextIgnore, out string error, bool manuallySelected = false)
         {
             string executablePath2;
             string suggestedName;
@@ -141,7 +149,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string stripExe = StripExe(Path.GetFileName(executablePath2));
+            string item = StripExe(Path.GetFileName(executablePath2));
             string name2 = DisplayName(executablePath2, string.IsNullOrWhiteSpace(name) ? suggestedName : name);
             string rootValue = null;
             if (!string.IsNullOrEmpty(preferredRoot))
@@ -157,29 +165,31 @@ namespace PaviseApp
                 rootValue = NormalizeGameRoot(GameScan.InferGameRoot(executablePath2));
             }
             rootValue = ResolveLibraryInstallRoot(executablePath2, rootValue);
-            foreach (GameProfile currentNext in next)
+            foreach (GameProfile item2 in next)
             {
-                if (string.Equals(currentNext.ExecutablePath, executablePath2, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(item2.ExecutablePath, executablePath2, StringComparison.OrdinalIgnoreCase))
                 {
-                    return false;
+                    return manuallySelected && item2.RecordSource(executablePath2, true);
                 }
-                if (string.Equals(currentNext.LearnedExecutablePath, executablePath2, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(item2.LearnedExecutablePath, executablePath2, StringComparison.OrdinalIgnoreCase))
                 {
-                    return false;
+                    return manuallySelected && item2.RecordSource(executablePath2, true);
                 }
-                if (string.IsNullOrEmpty(currentNext.ExecutablePath) && currentNext.Entries.Contains(stripExe))
+                if (string.IsNullOrEmpty(item2.ExecutablePath) && item2.Entries.Contains(item))
                 {
-                    currentNext.ExecutablePath = executablePath2;
-                    currentNext.Root = rootValue;
-                    currentNext.Name = name2;
-                    currentNext.LearnedExecutablePath = null;
+                    item2.ExecutablePath = executablePath2;
+                    item2.Root = rootValue;
+                    item2.Name = name2;
+                    item2.LearnedExecutablePath = null;
+                    item2.RecordSource(executablePath2, manuallySelected);
                     nextIgnore.Remove(executablePath2);
                     return true;
                 }
             }
             GameProfile gameProfile = GameProfileStore.NewProfile(name2, rootValue, executablePath2);
+            gameProfile.RecordSource(executablePath2, manuallySelected);
             gameProfile.Entries.Clear();
-            gameProfile.Entries.Add(stripExe);
+            gameProfile.Entries.Add(item);
             next.Add(gameProfile);
             nextIgnore.Remove(executablePath2);
             return true;
@@ -323,21 +333,28 @@ namespace PaviseApp
                         GameProfile draft = gameProfile.Clone();
                         if (!PolicyResolver.SetOverride(draft, key, value) || ValidateCriticalPreference(draft) != null) return false;
                     }
-                    string overrideValue = null;
-                    bool hasOverride = key != null && gameProfile.Overrides.TryGetValue(key, out overrideValue);
+                    string value2 = null;
+                    bool hasOverride = key != null && gameProfile.Overrides.TryGetValue(key, out value2);
                     InvalidateOverrideWorkLocked(key);
                     setProfileOverrideSucceeded = PolicyResolver.SetOverride(gameProfile, key, value);
                     if (setProfileOverrideSucceeded && !SaveProfilesLocked())
                     {
                         if (hasOverride)
                         {
-                            gameProfile.Overrides[key] = overrideValue;
+                            gameProfile.Overrides[key] = value2;
                         }
                         else
                         {
                             gameProfile.Overrides.Remove(key);
                         }
                         setProfileOverrideSucceeded = false;
+                    }
+                    if (setProfileOverrideSucceeded && key == PolicyCatalog.KeyGameScheduling
+                        && PolicyCatalog.Canonical(key, value) == "0" && activeDetection != null
+                        && activeDetection.Profile != null && activeDetection.Profile.Id == profileId)
+                    {
+                        DisableSessionCriticalPreferenceLocked(profileId);
+                        RevokeCriticalThreadIntent("当前游戏调度关闭");
                     }
                 }
             }
@@ -363,13 +380,13 @@ namespace PaviseApp
                 GameProfile gameProfile = FindProfileLocked(profileId);
                 if (gameProfile != null && gameProfile.Overrides.ContainsKey(key))
                 {
-                    string overrideValue = gameProfile.Overrides[key];
+                    string value = gameProfile.Overrides[key];
                     InvalidateOverrideWorkLocked(key);
                     gameProfile.Overrides.Remove(key);
                     clearProfileOverrideSucceeded = (key != "GmAutoCoresV2" || ValidateCriticalPreference(gameProfile) == null) && SaveProfilesLocked();
                     if (!clearProfileOverrideSucceeded)
                     {
-                        gameProfile.Overrides[key] = overrideValue;
+                        gameProfile.Overrides[key] = value;
                     }
                 }
             }
@@ -401,16 +418,16 @@ namespace PaviseApp
                         {
                             InvalidateOverrideWorkLocked(key);
                         }
-                        GameProfile profile = gameProfile.Clone();
-                        clearProfileOverridesResult = PolicyResolver.ClearAllOverrides(profile);
-                        List<GameProfile> profilesSnapshot = new List<GameProfile>(profiles);
+                        GameProfile gameProfile2 = gameProfile.Clone();
+                        clearProfileOverridesResult = PolicyResolver.ClearAllOverrides(gameProfile2);
+                        List<GameProfile> list = new List<GameProfile>(profiles);
                         int index = profiles.IndexOf(gameProfile);
-                        profilesSnapshot[index] = profile;
-                        if (!SaveProfileSnapshotLocked(profilesSnapshot))
+                        list[index] = gameProfile2;
+                        if (!SaveProfileSnapshotLocked(list))
                         {
                             return 0;
                         }
-                        profiles[index] = profile;
+                        profiles[index] = gameProfile2;
                         DisableSessionCriticalPreferenceLocked(profileId);
                         hadServiceOverride = gameProfile.Overrides.ContainsKey("GmPauseServices");
                         name = gameProfile.Name;
@@ -498,23 +515,23 @@ namespace PaviseApp
                 {
                     return;
                 }
-                HashSet<string> autoAddIgnoreSnapshot = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
                 foreach (GameProfile profile in profiles)
                 {
                     if (string.Equals(profile.Id, profileId, StringComparison.OrdinalIgnoreCase))
                     {
                         if (!string.IsNullOrEmpty(profile.ExecutablePath))
                         {
-                            autoAddIgnoreSnapshot.Add(profile.ExecutablePath);
+                            hashSet.Add(profile.ExecutablePath);
                         }
                         if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                         {
-                            autoAddIgnoreSnapshot.Add(profile.LearnedExecutablePath);
+                            hashSet.Add(profile.LearnedExecutablePath);
                         }
                     }
                 }
-                List<GameProfile> currentProfiles = GetProfiles();
-                if (currentProfiles.RemoveAll((GameProfile p) => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) == 0 || !CommitLibraryLocked(currentProfiles, autoAddIgnoreSnapshot))
+                List<GameProfile> list = GetProfiles();
+                if (list.RemoveAll((GameProfile p) => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) == 0 || !CommitLibraryLocked(list, hashSet))
                 {
                     return;
                 }
@@ -546,20 +563,20 @@ namespace PaviseApp
                 }
                 try
                 {
-                    List<string> ts = new List<string>();
-                    ts.Add(Lang.T("t.gamemodelibrary.23"));
-                    ts.Add(Lang.T("t.gamemodelibrary.24"));
-                    ts.Add(Lang.T("t.gamemodelibrary.25"));
-                    ts.Add("PAVISE_WHITELIST_V4");
+                    List<string> list = new List<string>();
+                    list.Add(Lang.T("t.gamemodelibrary.23"));
+                    list.Add(Lang.T("t.gamemodelibrary.24"));
+                    list.Add(Lang.T("t.gamemodelibrary.25"));
+                    list.Add("PAVISE_WHITELIST_V4");
                     if (rules != null)
                     {
                         foreach (WhitelistRule rule in rules)
                         {
-                            ts.Add(rule.Serialize());
+                            list.Add(rule.Serialize());
                         }
                     }
-                    ts.Add(BuildWhitelistFooter(rules));
-                    return AtomicFile.WriteLines(whitePath, ts.ToArray(), Lang.T("nav.white"));
+                    list.Add(BuildWhitelistFooter(rules));
+                    return AtomicFile.WriteLines(whitePath, list.ToArray(), Lang.T("nav.white"));
                 }
                 catch (Exception error)
                 {
@@ -572,12 +589,12 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                List<GameProfile> currentProfiles = new List<GameProfile>();
+                List<GameProfile> list = new List<GameProfile>();
                 foreach (GameProfile profile in profiles)
                 {
-                    currentProfiles.Add(profile.Clone());
+                    list.Add(profile.Clone());
                 }
-                return currentProfiles;
+                return list;
             }
         }
         private bool SaveProfilesLocked()
@@ -628,7 +645,7 @@ namespace PaviseApp
         }
         public List<string> LibraryExecutablePaths()
         {
-            List<string> preferredExecutablePaths = new List<string>();
+            List<string> list = new List<string>();
             lock (sync)
             {
                 foreach (GameProfile profile in profiles)
@@ -636,10 +653,10 @@ namespace PaviseApp
                     string preferredExecutablePath = profile.PreferredExecutablePath;
                     if (!string.IsNullOrEmpty(preferredExecutablePath))
                     {
-                        preferredExecutablePaths.Add(preferredExecutablePath);
+                        list.Add(preferredExecutablePath);
                     }
                 }
-                return preferredExecutablePaths;
+                return list;
             }
         }
         internal static bool SameReportedProfile(string sessionProfileId, string detectedProfileId)

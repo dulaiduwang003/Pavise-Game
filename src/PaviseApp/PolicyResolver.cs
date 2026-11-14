@@ -27,17 +27,17 @@ namespace PaviseApp
                     values.Clear();
                     generation = mutationGeneration;
                 }
-                string cachedValue;
-                if (values.TryGetValue(key, out cachedValue))
+                string value;
+                if (values.TryGetValue(key, out value))
                 {
-                    return cachedValue;
+                    return value;
                 }
-                cachedValue = ReadRawGlobalValue(key);
+                value = ReadRawGlobalValue(key);
                 if (generation == Settings.MutationGeneration)
                 {
-                    values[key] = cachedValue;
+                    values[key] = value;
                 }
-                return cachedValue;
+                return value;
             }
 
             public void Dispose()
@@ -56,7 +56,9 @@ namespace PaviseApp
 
         public static bool SetOverride(GameProfile profile, string key, string value)
         {
-            if (profile == null || key == "GmStandbyCleanerV2" || PerformancePolicy.IsRetired(key) || !PerformancePolicy.IsIntent(key) || key == "PerformancePreset")
+            // 资源优先级在深度调优里逐游戏开关；没有单独保存过的游戏沿用全局值。
+            bool perGame = PerformancePolicy.IsIntent(key) || key == PolicyCatalog.KeyBoost;
+            if (profile == null || key == "GmStandbyCleanerV2" || PerformancePolicy.IsRetired(key) || !perGame || key == "PerformancePreset")
             {
                 return false;
             }
@@ -113,43 +115,44 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (string currentKeysSnapshot in new List<string>(profile.Overrides.Keys))
+            List<string> list = new List<string>(profile.Overrides.Keys);
+            foreach (string item in list)
             {
-                string canonicalResult = (GameProfile.IsRetiredOverrideKey(currentKeysSnapshot) ? null : PolicyCatalog.Canonical(currentKeysSnapshot, profile.Overrides[currentKeysSnapshot]));
+                string canonicalResult = (GameProfile.IsRetiredOverrideKey(item) ? null : PolicyCatalog.Canonical(item, profile.Overrides[item]));
                 if (canonicalResult == null)
                 {
-                    profile.Overrides.Remove(currentKeysSnapshot);
+                    profile.Overrides.Remove(item);
                 }
                 else
                 {
-                    profile.Overrides[currentKeysSnapshot] = canonicalResult;
+                    profile.Overrides[item] = canonicalResult;
                 }
             }
         }
 
         public static List<PolicyDiff> Diff(GameProfile profile)
         {
-            List<PolicyDiff> policyDiffs = new List<PolicyDiff>();
+            List<PolicyDiff> list = new List<PolicyDiff>();
             if (profile == null)
             {
-                return policyDiffs;
+                return list;
             }
-            foreach (PolicyItem all in PolicyCatalog.All)
+            foreach (PolicyItem item in PolicyCatalog.All)
             {
-                string overrideValue;
-                if (profile.Overrides.TryGetValue(all.Key, out overrideValue))
+                string value;
+                if (profile.Overrides.TryGetValue(item.Key, out value))
                 {
-                    string globalValueResult = GlobalValue(all.Key);
-                    policyDiffs.Add(new PolicyDiff
+                    string globalValueResult = GlobalValue(item.Key);
+                    list.Add(new PolicyDiff
                     {
-                        Key = all.Key,
-                        Value = overrideValue,
+                        Key = item.Key,
+                        Value = value,
                         GlobalValue = globalValueResult,
-                        SameAsGlobal = string.Equals(overrideValue, globalValueResult, StringComparison.Ordinal)
+                        SameAsGlobal = string.Equals(value, globalValueResult, StringComparison.Ordinal)
                     });
                 }
             }
-            return policyDiffs;
+            return list;
         }
 
         public static PolicySnapshot For(GameProfile profile)
@@ -160,6 +163,17 @@ namespace PaviseApp
         public static PolicySnapshot Global()
         {
             return new PolicySnapshot(null);
+        }
+
+        internal static CriticalThreadRule GameSchedulingRule(GameProfile profile)
+        {
+            // 逐游戏默认关闭；没有游戏档案时也不按全局值放行。
+            if (profile == null) return CriticalThreadRule.UnifiedOff();
+            if (!For(profile).GameSchedulingOn) return CriticalThreadRule.UnifiedOff();
+            string raw = CriticalThreadRule.Raw(profile);
+            // 旧布局的运行配置不再延用；已退役对照由解析器明确停用，不能按缺省规则重新启用。
+            return raw == null || !raw.StartsWith("7|", StringComparison.Ordinal)
+                ? CriticalThreadRule.UnifiedDefault() : CriticalThreadRule.ParseForRuntime(raw);
         }
 
         internal static string GlobalValue(string key)
@@ -239,15 +253,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            bool storedEnabled;
+            bool value;
             if (policyItem.Kind == PolicyValueKind.Bool)
             {
-                return Settings.TryLoadStoredBool(key, out storedEnabled);
+                return Settings.TryLoadStoredBool(key, out value);
             }
-            string text;
-            if (Settings.TryLoadStr(key, out text))
+            string value2;
+            if (Settings.TryLoadStr(key, out value2))
             {
-                return !string.IsNullOrEmpty(text);
+                return !string.IsNullOrEmpty(value2);
             }
             return false;
         }

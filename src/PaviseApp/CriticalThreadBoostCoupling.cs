@@ -12,6 +12,7 @@ namespace PaviseApp
         SameThread,
         OtherThread,
         FrameAssociated,
-        FrameOther
+        FrameOther,
+        Unified
     }
 }

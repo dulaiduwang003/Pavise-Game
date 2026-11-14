@@ -58,14 +58,14 @@ namespace PaviseApp
                 ClearSticky();
                 return false;
             }
-            Dictionary<int, GameId> gameIdsByRendererPid = new Dictionary<int, GameId>();
+            Dictionary<int, GameId> dictionary = new Dictionary<int, GameId>();
             foreach (int familyPid in hit.FamilyPids)
             {
                 string name;
                 long creation;
                 if (TryStickyIdentity(familyPid, out name, out creation) && (familyPid != hit.RendererPid || StickyIdentityMatches(hit, name, creation)))
                 {
-                    gameIdsByRendererPid[familyPid] = new GameId
+                    dictionary[familyPid] = new GameId
                     {
                         Name = name,
                         Creation = creation
@@ -74,27 +74,27 @@ namespace PaviseApp
             }
             string name2;
             long creation2;
-            if (hit.RendererPid > 0 && !gameIdsByRendererPid.ContainsKey(hit.RendererPid) && TryStickyIdentity(hit.RendererPid, out name2, out creation2) && StickyIdentityMatches(hit, name2, creation2))
+            if (hit.RendererPid > 0 && !dictionary.ContainsKey(hit.RendererPid) && TryStickyIdentity(hit.RendererPid, out name2, out creation2) && StickyIdentityMatches(hit, name2, creation2))
             {
-                gameIdsByRendererPid[hit.RendererPid] = new GameId
+                dictionary[hit.RendererPid] = new GameId
                 {
                     Name = name2,
                     Creation = creation2
                 };
             }
-            GameId gameId;
-            if (hit.RendererCreation <= 0 && gameIdsByRendererPid.TryGetValue(hit.RendererPid, out gameId))
+            GameId value;
+            if (hit.RendererCreation <= 0 && dictionary.TryGetValue(hit.RendererPid, out value))
             {
-                hit.RendererCreation = gameId.Creation;
+                hit.RendererCreation = value.Creation;
             }
-            if (hit.RendererPid <= 0 || !gameIdsByRendererPid.ContainsKey(hit.RendererPid))
+            if (hit.RendererPid <= 0 || !dictionary.ContainsKey(hit.RendererPid))
             {
                 return false;
             }
             stickyIds.Clear();
-            foreach (KeyValuePair<int, GameId> gameIdEntry in gameIdsByRendererPid)
+            foreach (KeyValuePair<int, GameId> item in dictionary)
             {
-                stickyIds[gameIdEntry.Key] = gameIdEntry.Value;
+                stickyIds[item.Key] = item.Value;
             }
             stickyDetection = hit;
             return true;

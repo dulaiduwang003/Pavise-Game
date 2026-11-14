@@ -71,7 +71,7 @@ namespace PaviseApp
                     Glyphs.Draw(graphics, "game", Rectangle.Inflate(rectangle, -Theme.S(8), -Theme.S(8)), Theme.Dim);
                 }
                 int scaledDimension2 = Theme.S(compact ? 72 : 84);
-                int lowerBound = Math.Max(0, base.Width - scaledDimension2 - Theme.S(220));
+                int lowerBound = Math.Max(0, base.Width - scaledDimension2 - Theme.S(20));
                 int sLimit = Math.Max(Theme.S(4), (base.Height - Theme.S(compact ? 44 : 52)) / 2);
                 TextFormatFlags flags = TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
                 TextRenderer.DrawText(graphics, gameName, Theme.UI(compact ? 10.5f : 12f, true), new Rectangle(scaledDimension2, sLimit, lowerBound, Theme.S(compact ? 24 : 28)), Theme.Fg, flags);

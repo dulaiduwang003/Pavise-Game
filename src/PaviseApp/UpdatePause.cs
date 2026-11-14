@@ -10,6 +10,11 @@ namespace PaviseApp
 
         private static readonly ServicePauser pauser = new ServicePauser(Names, "PrevUpdatePaused");
 
+        // 恢复说明未变化时只做周期性记录。
+        private static string lastPendingLine = "";
+
+        private static long nextPendingRepeat;
+
         public static bool HasResidue
         {
             get
@@ -47,13 +52,25 @@ namespace PaviseApp
             {
                 if (restoreSucceeded)
                 {
+                    lastPendingLine = "";
                     Logger.Log(Lang.T("log.updatepause.3", 0));
                 }
                 else
                 {
-                    Logger.Log(Lang.T("log.updatepause.4", 0) + ((remain.Count == 0) ? Lang.T("t.versionmigrations.2", 0) : string.Join(",", remain.ToArray())) + Lang.T("log.svcpause.6", 0));
+                    string detail = pauser.DescribePending();
+                    string line = Lang.T("log.updatepause.4", 0) + ((remain.Count == 0) ? Lang.T("t.versionmigrations.2", 0) : string.Join(",", remain.ToArray()))
+                        + (detail.Length == 0 ? "" : "（" + detail + "）") + Lang.T("log.svcpause.6", 0);
+                    long now = System.DateTime.UtcNow.Ticks;
+                    if (line != lastPendingLine || now >= nextPendingRepeat)
+                    {
+                        lastPendingLine = line;
+                        nextPendingRepeat = now + System.TimeSpan.FromMinutes(10).Ticks;
+                        Logger.Log(line);
+                    }
                 }
             }
+                    // 服务启停中的等待交还调度方，不计为恢复失败。
+            if (!restoreSucceeded) pauser.ReportWait();
             return restoreSucceeded;
         }
 

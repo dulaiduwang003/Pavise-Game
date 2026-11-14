@@ -23,7 +23,8 @@ namespace PaviseApp
             }
             bool identityUnknown = false;
             bool targetRunning = false;
-            foreach (Process process in processesByName)
+            Process[] processesByNameSnapshot = processesByName;
+            foreach (Process process in processesByNameSnapshot)
             {
                 using (process)
                 {

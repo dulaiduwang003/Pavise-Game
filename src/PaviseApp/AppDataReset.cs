@@ -19,116 +19,120 @@ namespace PaviseApp
 
         private static HashSet<string> BuildPreferences()
         {
-            HashSet<string> preferenceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            preferenceKeys.Add("Lang");
-            preferenceKeys.Add("UiLight");
-            preferenceKeys.Add("SecurityCompatibilityWarningHidden");
-            preferenceKeys.Add("AutoHideOnGame");
-            preferenceKeys.Add("DeepTuningLastPage");
-            preferenceKeys.Add("BackdropDim");
-            preferenceKeys.Add("LogWritesEnabled");
-            preferenceKeys.Add("GameModeOn");
-            preferenceKeys.Add("GameExitGraceSeconds");
-            preferenceKeys.Add("TameOn");
-            preferenceKeys.Add("AcModeV1");
-            preferenceKeys.Add("GameDvrOff");
-            preferenceKeys.Add("GmMmcss");
-            preferenceKeys.Add("GmAutoAdd");
-            preferenceKeys.Add("GmAudioLowLatV1");
-            preferenceKeys.Add("GmRsr");
-            preferenceKeys.Add("GmGpuPowerMax");
-            preferenceKeys.Add("GpuPrefStageOn");
-            preferenceKeys.Add("AppGpuAutoV1");
-            preferenceKeys.Add("AppGpuAutoHandledV1");
-            preferenceKeys.Add("GmEnglishInputV1");
-            preferenceKeys.Add("GmLaptopPerfV1");
-            preferenceKeys.Add("AutoLaptopPerformanceV1");
-            preferenceKeys.Add(LaptopPerfMode.PreferenceKey);
-            preferenceKeys.Add("AutoBackgroundCoreLayoutV1");
-            preferenceKeys.Add("AutoDisableFullscreenOptimizations");
-            preferenceKeys.Add("GmAggressive");
-            preferenceKeys.Add("GmAdaptiveEscalateV1");
-            preferenceKeys.Add("GmRenderLane");
-            preferenceKeys.Add("FrameCoordination");
-            preferenceKeys.Add("GmStandbyCleanerOptionsV1");
-            preferenceKeys.Add("GmCacheWarm");
-            preferenceKeys.Add("GameLowLatencyOn");
-            preferenceKeys.Add("GmWsTrimV1");
-            preferenceKeys.Add("GmIdlePolicyV1");
-            preferenceKeys.Add("GmPauseServices");
-            preferenceKeys.Add("NvVrrWindowed");
-            preferenceKeys.Add("NvSmoothMotion");
-            preferenceKeys.Add("NvRebar");
-            preferenceKeys.Add("NvDlss");
-            preferenceKeys.Add("AmdAfmf");
-            preferenceKeys.Add("AmdAntiLag");
-            preferenceKeys.Add("PowerPlanChoice");
-            preferenceKeys.Add("PowerPlanSourceV1");
-            preferenceKeys.Add("PowerPlanFailStreak");
-            preferenceKeys.Add("CoreLearnIndex");
-            preferenceKeys.Add("LastSessionBrief");
-            preferenceKeys.Add("EvidenceMode");
-            preferenceKeys.Add("IrqSessionProbe");
-            preferenceKeys.Add("IrqObserveSkipsV1");
-            preferenceKeys.Add("IrqLastCaptureResultV1");
-            preferenceKeys.Add("AcProtectedGames");
-            preferenceKeys.Add("SelfProtectedProcs");
-            preferenceKeys.Add("LolColumnEnabled");
-            preferenceKeys.Add("LolColumnCleanupEnabled");
-            preferenceKeys.Add("LolColumnHeadlessEnabled");
-            preferenceKeys.Add("LolInstallPath");
-            preferenceKeys.Add("LolWeGamePath");
-            preferenceKeys.Add("WgWeGamePath");
-            preferenceKeys.Add("DonateImageId");
-            preferenceKeys.Add("AutoFrameCoordinationV1");
-            preferenceKeys.Add("FrameCoordinationCaptureSessionsV1");
-            preferenceKeys.Add("PerfMonitorEnabledV1");
-            preferenceKeys.Add("PerfMonitorEnabledV2");
-            preferenceKeys.Add("GameRunReportsEnabledV1");
-            preferenceKeys.Add("PerfMonitorDisplayIntervalMsV2");
-            preferenceKeys.Add("PerfMonitorTextStyleV2");
-            preferenceKeys.Add("PerfMonitorColorsV1");
-            preferenceKeys.Add("PerfMonitorLayoutV1");
-            preferenceKeys.Add("PerfMonitorMetricsV1");
-            preferenceKeys.Add("PerfMonitorIntervalMsV1");
-            preferenceKeys.Add("PerfMonitorAppearanceV1");
-            preferenceKeys.Add("PerfMonitorHotkeyV1");
-            preferenceKeys.Add("PlatformRuntimeRemovedV1");
-            preferenceKeys.Add("AutomaticPolicyV1");
-            preferenceKeys.Add(CpuMitigationPolicy.ExpandedPreferenceKey);
-            HashSet<string> textsSet = preferenceKeys;
-            foreach (PolicyItem currentAll in PolicyCatalog.All)
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            hashSet.Add("Lang");
+            hashSet.Add("UiLight");
+            hashSet.Add("SecurityCompatibilityWarningHidden");
+            hashSet.Add("AutoHideOnGame");
+            hashSet.Add("DeepTuningLastPage");
+            hashSet.Add("BackdropDim");
+            hashSet.Add("LogWritesEnabled");
+            hashSet.Add("GameModeOn");
+            hashSet.Add("GameExitGraceSeconds");
+            hashSet.Add("TameOn");
+            hashSet.Add("AcModeV1");
+            hashSet.Add("GameDvrOff");
+            hashSet.Add("GmMmcss");
+            hashSet.Add("GmAutoAdd");
+            hashSet.Add("GmAudioLowLatV1");
+            hashSet.Add("GmRsr");
+            hashSet.Add("GmGpuPowerMax");
+            hashSet.Add("GpuPrefStageOn");
+            hashSet.Add("AppGpuAutoV1");
+            hashSet.Add("AppGpuAutoHandledV1");
+            hashSet.Add("GmEnglishInputV1");
+            hashSet.Add("GmLaptopPerfV1");
+            hashSet.Add("AutoLaptopPerformanceV1");
+            hashSet.Add(LaptopPerfMode.PreferenceKey);
+            hashSet.Add("AutoBackgroundCoreLayoutV1");
+            hashSet.Add("AutoDisableFullscreenOptimizations");
+            hashSet.Add("GmAggressive");
+            hashSet.Add("GmAdaptiveEscalateV1");
+            hashSet.Add("GmRenderLane");
+            hashSet.Add("FrameCoordination");
+            hashSet.Add("GmStandbyCleanerOptionsV1");
+            hashSet.Add("GmCacheWarm");
+            hashSet.Add("GameLowLatencyOn");
+            hashSet.Add("GmWsTrimV1");
+            hashSet.Add("GmIdlePolicyV1");
+            hashSet.Add("GmPauseServices");
+            hashSet.Add("NvVrrWindowed");
+            hashSet.Add("NvSmoothMotion");
+            hashSet.Add("NvRebar");
+            hashSet.Add("NvDlss");
+            hashSet.Add("AmdAfmf");
+            hashSet.Add("AmdAntiLag");
+            hashSet.Add("PowerPlanChoice");
+            hashSet.Add("PowerPlanSourceV1");
+            hashSet.Add("PowerPlanFailStreak");
+            hashSet.Add("CoreLearnIndex");
+            hashSet.Add("LastSessionBrief");
+            hashSet.Add("EvidenceMode");
+            hashSet.Add("IrqSessionProbe");
+            hashSet.Add("IrqObserveSkipsV1");
+            hashSet.Add("IrqLastCaptureResultV1");
+            hashSet.Add("AcProtectedGames");
+            hashSet.Add("SelfProtectedProcs");
+            hashSet.Add("LolColumnEnabled");
+            hashSet.Add("LolColumnCleanupEnabled");
+            hashSet.Add("LolColumnHeadlessEnabled");
+            hashSet.Add("LolInstallPath");
+            hashSet.Add("LolWeGamePath");
+            hashSet.Add("WgWeGamePath");
+            hashSet.Add("DonateImageId");
+            hashSet.Add("AutoFrameCoordinationV1");
+            hashSet.Add("FrameCoordinationCaptureSessionsV1");
+            hashSet.Add("PerfMonitorEnabledV1");
+            hashSet.Add("PerfMonitorEnabledV2");
+            hashSet.Add("GameRunReportsEnabledV1");
+            hashSet.Add("PerfMonitorDisplayIntervalMsV2");
+            hashSet.Add("PerfMonitorTextStyleV2");
+            hashSet.Add("PerfMonitorColorsV1");
+            hashSet.Add("PerfMonitorLayoutV1");
+            hashSet.Add("PerfMonitorMetricsV1");
+            hashSet.Add("PerfMonitorIntervalMsV1");
+            hashSet.Add("PerfMonitorAppearanceV1");
+            hashSet.Add("PerfMonitorHotkeyV1");
+            hashSet.Add("PlatformRuntimeRemovedV1");
+            hashSet.Add("AutomaticPolicyV1");
+            hashSet.Add(CpuMitigationPolicy.ExpandedPreferenceKey);
+            HashSet<string> hashSet2 = hashSet;
+            foreach (PolicyItem item2 in PolicyCatalog.All)
             {
-                if (currentAll.Key != "AutoTimerTick" && currentAll.Key != "AutoGlobalTimer")
+                if (item2.Key != "AutoTimerTick" && item2.Key != "AutoGlobalTimer")
                 {
-                    textsSet.Add(currentAll.Key);
+                    hashSet2.Add(item2.Key);
                 }
             }
-            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
+            PerformanceAction[] all = PerformanceActionCatalog.All;
+            foreach (PerformanceAction performanceAction in all)
             {
                 if (!performanceAction.Environment)
                 {
-                    textsSet.Add(performanceAction.Key);
+                    hashSet2.Add(performanceAction.Key);
                 }
             }
-            foreach (PerformanceAction currentRetired in PerformanceActionCatalog.Retired)
+            PerformanceAction[] retired = PerformanceActionCatalog.Retired;
+            foreach (PerformanceAction performanceAction2 in retired)
             {
-                textsSet.Add(currentRetired.Key);
+                hashSet2.Add(performanceAction2.Key);
             }
-            foreach (string retiredSetting in AutoCores.RetiredSettings)
+            string[] retiredSettings = AutoCores.RetiredSettings;
+            foreach (string item in retiredSettings)
             {
-                textsSet.Add(retiredSetting);
+                hashSet2.Add(item);
             }
             for (int l = 0; l < 7; l++)
             {
-                textsSet.Add("ModeAccent" + l);
-                textsSet.Add(CoreMotionPreferences.KeyPrefix + l);
+                hashSet2.Add("ModeAccent" + l);
+                hashSet2.Add(CoreMotionPreferences.KeyPrefix + l);
             }
-            foreach (string entryKey in GameMode.EnvKeys)
+            string[] envKeys = GameMode.EnvKeys;
+            foreach (string entryKey in envKeys)
             {
-                textsSet.Add("EnvFuse_" + entryKey);
+                hashSet2.Add("EnvFuse_" + entryKey);
             }
-            return textsSet;
+            return hashSet2;
         }
 
         internal static bool IsUserPreference(string name)
@@ -153,7 +157,8 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string entryText in new string[6] { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_" })
+            string[] textEntries = new string[6] { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_" };
+            foreach (string entryText in textEntries)
             {
                 if (name.Length > entryText.Length && name.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
                 {
@@ -173,7 +178,8 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string filePath in AtomicFiles)
+            string[] atomicFiles = AtomicFiles;
+            foreach (string filePath in atomicFiles)
             {
                 if (string.Equals(name, filePath + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, filePath + ".stale.bak", StringComparison.OrdinalIgnoreCase))
                 {
@@ -285,7 +291,7 @@ namespace PaviseApp
         internal static ResetDataReport ClearStoppedData(string dataDir, Action<string> progress = null)
         {
             ResetDataReport resetDataReport = new ResetDataReport();
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             string validateDataDirectoryResult;
             try
             {
@@ -313,12 +319,12 @@ namespace PaviseApp
                 string failure;
                 if (!Settings.ClearUserPreferencesForReset(IsUserPreference, out removed, out failure))
                 {
-                    Warning(resetDataReport, texts, PerformancePolicy.Text("部分软件设置未能删除", "Some preferences could not be removed") + " | " + failure);
+                    Warning(resetDataReport, list, PerformancePolicy.Text("部分软件设置未能删除", "Some preferences could not be removed") + " | " + failure);
                 }
             }
             catch (Exception ex2)
             {
-                Warning(resetDataReport, texts, "Preference cleanup | " + ex2.GetType().Name);
+                Warning(resetDataReport, list, "Preference cleanup | " + ex2.GetType().Name);
             }
             Progress(progress, PerformancePolicy.Text("正在清理游戏库和记录", "Clearing game library and records"));
             try
@@ -326,7 +332,8 @@ namespace PaviseApp
                 ValidateDataDirectory(validateDataDirectoryResult);
                 if (Directory.Exists(validateDataDirectoryResult))
                 {
-                    foreach (string path in Directory.GetFileSystemEntries(validateDataDirectoryResult, "*", SearchOption.TopDirectoryOnly))
+                    string[] fileSystemEntries = Directory.GetFileSystemEntries(validateDataDirectoryResult, "*", SearchOption.TopDirectoryOnly);
+                    foreach (string path in fileSystemEntries)
                     {
                         if (IsUserDataFile(Path.GetFileName(path)))
                         {
@@ -338,7 +345,7 @@ namespace PaviseApp
                             }
                             catch (Exception ex3)
                             {
-                                Warning(resetDataReport, texts, Path.GetFileName(path) + " (" + ex3.GetType().Name + ")");
+                                Warning(resetDataReport, list, Path.GetFileName(path) + " (" + ex3.GetType().Name + ")");
                             }
                         }
                     }
@@ -346,10 +353,10 @@ namespace PaviseApp
             }
             catch (Exception ex4)
             {
-                Warning(resetDataReport, texts, "User data cleanup | " + ex4.GetType().Name);
+                Warning(resetDataReport, list, "User data cleanup | " + ex4.GetType().Name);
             }
             resetDataReport.Completed = resetDataReport.Warnings == 0;
-            resetDataReport.Failure = ((texts.Count == 0) ? null : string.Join("; ", texts.ToArray()));
+            resetDataReport.Failure = ((list.Count == 0) ? null : string.Join("; ", list.ToArray()));
             Progress(progress, PerformancePolicy.Text("软件数据清理完成", "Application data cleanup finished"));
             return resetDataReport;
         }

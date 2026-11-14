@@ -38,24 +38,25 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Invalid game NVIDIA journal size");
             }
-            Dictionary<string, string> textsByName = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (string entryText in new UTF8Encoding(false, true).GetString(bytes).Split('\n'))
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
+            string[] getStringParts = new UTF8Encoding(false, true).GetString(bytes).Split('\n');
+            foreach (string entryText in getStringParts)
             {
                 if (entryText.Length != 0)
                 {
                     string[] entryTextParts = entryText.Split('\t');
-                    if (entryTextParts.Length != 2 || entryTextParts[0].Length == 0 || textsByName.ContainsKey(entryTextParts[0]))
+                    if (entryTextParts.Length != 2 || entryTextParts[0].Length == 0 || dictionary.ContainsKey(entryTextParts[0]))
                     {
                         throw new InvalidDataException("Invalid game NVIDIA journal fields");
                     }
-                    textsByName.Add(entryTextParts[0], new UTF8Encoding(false, true).GetString(Convert.FromBase64String(entryTextParts[1])));
+                    dictionary.Add(entryTextParts[0], new UTF8Encoding(false, true).GetString(Convert.FromBase64String(entryTextParts[1])));
                 }
             }
-            if (!bytes.SequenceEqual(Encode(textsByName)))
+            if (!bytes.SequenceEqual(Encode(dictionary)))
             {
                 throw new InvalidDataException("Noncanonical game NVIDIA journal");
             }
-            return textsByName;
+            return dictionary;
         }
 
         internal static void Create(string path, byte[] bytes)

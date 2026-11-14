@@ -11,6 +11,9 @@ namespace PaviseApp
             internal int Attempts, Failures;
             internal long Next;
             internal bool InFlight, Stopped;
+            // 只用于连续成功记录的限频，不参与任何准入判断。
+            internal int VerifiedLogs;
+            internal long VerifiedLogTicks;
         }
 
         private readonly Dictionary<string, AutomaticFailurePhase> automaticRestores = new Dictionary<string, AutomaticFailurePhase>(StringComparer.Ordinal);
@@ -121,10 +124,18 @@ namespace PaviseApp
                     phase.Failures = 0;
                     phase.Next = 0;
                 }
-                Logger.Log("电源计划：签名=" + powerAttemptSignature + " 尝试=" + completedAttempt + "/3"
-                    + " 结果=" + (success ? "verified" : "failed") + " 原因=" + reason
-                    + " 恢复=" + (envRestorePending.Contains("powerplan") ? "pending" : "verified-or-not-required")
-                    + (phase.Stopped ? "；已停止该游戏及配置签名的自动应用" : ""));
+                // 守护写回每次都以一次已核验的应用结束。成功只记前三条，之后每分钟最多一条并带累计；失败照常逐条记录。
+                long logNow = DateTime.UtcNow.Ticks;
+                if (success) phase.VerifiedLogs++;
+                if (!success || phase.VerifiedLogs <= 3 || logNow < phase.VerifiedLogTicks || logNow - phase.VerifiedLogTicks >= TimeSpan.TicksPerMinute)
+                {
+                    if (success) phase.VerifiedLogTicks = logNow;
+                    Logger.Log("电源计划：签名=" + powerAttemptSignature + " 尝试=" + completedAttempt + "/3"
+                        + " 结果=" + (success ? "verified" : "failed") + " 原因=" + reason
+                        + " 恢复=" + (envRestorePending.Contains("powerplan") ? "pending" : "verified-or-not-required")
+                        + (success && phase.VerifiedLogs > 3 ? " 本阶段累计核验=" + phase.VerifiedLogs : "")
+                        + (phase.Stopped ? "；已停止该游戏及配置签名的自动应用" : ""));
+                }
                 powerAttemptInProgress = null;
             }
         }

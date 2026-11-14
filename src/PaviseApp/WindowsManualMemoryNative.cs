@@ -88,6 +88,8 @@ namespace PaviseApp
             private static extern bool SetSystemFileCacheSize(UIntPtr minimum, UIntPtr maximum, uint flags);
         }
 
+        private const int StatusPrivilegeNotHeld = -1073741727;
+
         private readonly IManualMemoryApi api;
         private readonly Func<bool> gamePresent;
 
@@ -144,9 +146,10 @@ namespace PaviseApp
                         if (api.QueryLists(out information2, out returnedBytes) >= 0 && returnedBytes >= unchecked(13 * IntPtr.Size) && returnedBytes <= Marshal.SizeOf(typeof(StandbyMemoryListInformation)) && information2.PageCountByPriority != null && information2.PageCountByPriority.Length == 8)
                         {
                             ulong standbyBytesValue = 0uL;
-                            foreach (UIntPtr pageCount in information2.PageCountByPriority)
+                            UIntPtr[] pageCountByPriority = information2.PageCountByPriority;
+                            foreach (UIntPtr uIntPtr in pageCountByPriority)
                             {
-                                standbyBytesValue += pageCount.ToUInt64();
+                                standbyBytesValue += uIntPtr.ToUInt64();
                             }
                             standbyBytesValue *= toUInt64Result;
                             if (standbyBytesValue <= snapshot.TotalBytes)
@@ -213,9 +216,9 @@ namespace PaviseApp
                     break;
                 case ManualMemoryStep.FileCache:
                 {
-                    UIntPtr currentUIntPtr = ((UIntPtr.Size == 8) ? new UIntPtr(ulong.MaxValue) : new UIntPtr(uint.MaxValue));
+                    UIntPtr uIntPtr = ((UIntPtr.Size == 8) ? new UIntPtr(ulong.MaxValue) : new UIntPtr(uint.MaxValue));
                     int error;
-                    if (api.FileCache(currentUIntPtr, currentUIntPtr, 0u, out error))
+                    if (api.FileCache(uIntPtr, uIntPtr, 0u, out error))
                     {
                         return 0;
                     }

@@ -9,6 +9,8 @@ namespace PaviseApp
 
         internal const string StopFlag = "PrevDoSvcStopped";
 
+        private const string SvcName = "DoSvc";
+
         private static readonly ReversibleReg BgBw = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization", "DOMaxBackgroundDownloadBandwidth", RegistryValueKind.DWord, "PrevDoBgBw");
 
         private static readonly ServicePauser pauser = new ServicePauser(new string[1] { "DoSvc" }, "PrevDoSvcStopped");

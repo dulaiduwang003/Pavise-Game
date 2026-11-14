@@ -28,6 +28,8 @@ namespace PaviseApp
             {
                 if (journal == null || journal.Target == null || journal.Revision <= 0 || journal.Target.ProcessId <= 0
                     || journal.Target.ProcessCreation <= 0 || journal.Rows.Count > 512) return Unknown;
+                // 统一属性账本由同一守护承载；空亲和性记录不表示旧提优器可以重新接管。
+                if (journal.ControlDeclared) targets.Add(Identity(journal.Target.ProcessId, journal.Target.ProcessCreation));
                 foreach (HardThreadReceipt row in journal.Rows)
                 {
                     if (row == null || row.Thread == null || row.Thread.Tid <= 0 || row.Thread.Creation <= 0

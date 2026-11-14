@@ -38,10 +38,10 @@ namespace PaviseApp
                 return false;
             }
             Dictionary<int, Member> value;
-            Member member;
-            if (profiles.TryGetValue(new GameFamilyProfileKey(profile), out value) && value.TryGetValue(pid, out member) && member.Creation == creation)
+            Member value2;
+            if (profiles.TryGetValue(new GameFamilyProfileKey(profile), out value) && value.TryGetValue(pid, out value2) && value2.Creation == creation)
             {
-                return string.Equals(member.Path, path, StringComparison.OrdinalIgnoreCase);
+                return string.Equals(value2.Path, path, StringComparison.OrdinalIgnoreCase);
             }
             return false;
         }

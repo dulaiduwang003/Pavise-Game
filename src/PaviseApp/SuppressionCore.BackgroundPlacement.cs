@@ -110,10 +110,12 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                squeezeAffValue = ((squeezeMask == 0) ? 0 : SuppressionAffinityPolicy.SqueezeTarget(squeezeMask, entry.OrigAff, entry.OrigCpuSets, allMask, CpuTopology.MultiGroup));
+                // 协调目标只能收紧该进程的原范围；没有合法交集时撤回旧收核，其他后台字段保持原策略。
+                ulong requested = reason == SuppressReason.Background ? squeezeMask & (entry.OrigAff == 0 ? allMask : entry.OrigAff) : squeezeMask;
+                squeezeAffValue = ((requested == 0) ? 0 : SuppressionAffinityPolicy.SqueezeTarget(requested, entry.OrigAff, entry.OrigCpuSets, allMask, CpuTopology.MultiGroup));
                 if (squeezeMask != 0 && squeezeAffValue == 0)
                 {
-                    return false;
+                    if (reason != SuppressReason.Background || entry.SqueezeAff == 0) return false;
                 }
                 if (squeezeAffValue != 0 && entry.AutomaticLayoutSets != null && !RestoreAutomaticLayoutLocked(pid, entry))
                 {
@@ -201,13 +203,13 @@ namespace PaviseApp
                         bool backgroundPlacementOwned = currentEntry.BackgroundPlacementOwned;
                         bool priorJobPlacement = currentEntry.BackgroundJobPlacement;
                         // 将恢复回执移交 Job 前，先恢复旧亲和性所有权。
-                        bool keepProcessBackend = !priorJobPlacement && squeezeAff != 0;
+                        bool keepProcessBackend = !priorJobPlacement && (squeezeAff != 0 || !BackgroundJobBackend);
                         if (squeezeAffValue != 0 && (!keepProcessBackend || mask != backgroundAppliedValue))
                         {
                             string admissionReason;
                             if (!GameThreadAffinityAdmission.Check(processHandle, pid, creation, mask, out admissionReason))
                             {
-                                SetBackgroundBackend(currentEntry, "Forward affinity refused pid=" + pid + ": " + admissionReason);
+                                SetBackgroundBackend(currentEntry, pid, "Forward affinity refused pid=" + pid + ": " + admissionReason);
                                 return false;
                             }
                         }
@@ -235,11 +237,14 @@ namespace PaviseApp
                         {
                             string jobReason;
                             backgroundJobsStopCompleted = false;
+                            // 外部守护调用可能在产生副作用后抛异常；未知证据必须先于调用保留。
+                            AccountBackgroundUnknownWrite(currentEntry);
                             affinitySet = backgroundAffinityJobs.Ensure(pid, creation, name, currentEntry.OrigAff, backgroundAppliedValue, out jobReason);
+                            AccountBackgroundWrite(currentEntry, affinitySet || backgroundAffinityJobs.IsActive(pid, creation));
                             if (affinitySet)
                             {
                                 currentEntry.BackgroundJobActive = true;
-                                SetBackgroundBackend(currentEntry, "Job affinity verified", true);
+                                SetBackgroundBackend(currentEntry, pid, "Job affinity verified", true);
                             }
                             else if (GameThreadAffinityAdmission.IsRefusal(jobReason))
                             {
@@ -247,13 +252,13 @@ namespace PaviseApp
                                 currentEntry.BackgroundJobActive = backgroundAffinityJobs.IsActive(pid, creation);
                                 currentEntry.BackgroundRestorePending = backgroundAffinityJobs.HasPending;
                                 currentEntry.BackgroundPlacementVerified = false;
-                                SetBackgroundBackend(currentEntry, "Job affinity refused: " + jobReason);
+                                SetBackgroundBackend(currentEntry, pid, "Job affinity refused: " + jobReason);
                                 return false;
                             }
                             else if (backgroundAffinityJobs.HasPending || backgroundAffinityJobs.IsActive(pid, creation))
                             {
                                 currentEntry.BackgroundRestorePending = true; currentEntry.BackgroundPlacementVerified = false;
-                                SetBackgroundBackend(currentEntry, "Job recovery pending: " + jobReason);
+                                SetBackgroundBackend(currentEntry, pid, "Job recovery pending: " + jobReason);
                                 return false;
                             }
                             else
@@ -265,13 +270,13 @@ namespace PaviseApp
                                 string admissionReason;
                                 if (!AdmitBackgroundProcessWrite(processHandle, pid, currentEntry, mask, backgroundAppliedValue, out currentMask, out admissionReason))
                                 {
-                                    SetBackgroundBackend(currentEntry, "Process affinity refused: " + admissionReason);
+                                    SetBackgroundBackend(currentEntry, pid, "Process affinity refused: " + admissionReason);
                                     return false;
                                 }
                                 currentEntry.BackgroundJobPlacement = currentEntry.BackgroundJobActive = false;
                                 if (!SaveJournalLocked(true)) { currentEntry.BackgroundJobPlacement = true; currentEntry.BackgroundRestorePending = true; return false; }
-                                SetBackgroundBackend(currentEntry, "Job unavailable (" + jobReason + "); process affinity fallback");
-                                affinitySet = currentMask == backgroundAppliedValue || Native.SetProcessAffinityMask(processHandle, (UIntPtr)backgroundAppliedValue);
+                                SetBackgroundBackend(currentEntry, pid, "Job unavailable (" + jobReason + "); process affinity fallback");
+                                affinitySet = currentMask == backgroundAppliedValue || AccountBackgroundWrite(currentEntry, Native.SetProcessAffinityMask(processHandle, (UIntPtr)backgroundAppliedValue));
                             }
                         }
                         else if (squeezeAffValue != 0)
@@ -279,10 +284,15 @@ namespace PaviseApp
                             ulong currentMask; string admissionReason;
                             if (!AdmitBackgroundProcessWrite(processHandle, pid, currentEntry, mask, backgroundAppliedValue, out currentMask, out admissionReason))
                             {
-                                SetBackgroundBackend(currentEntry, "Process affinity refused: " + admissionReason);
+                                SetBackgroundBackend(currentEntry, pid, "Process affinity refused: " + admissionReason);
                                 return false;
                             }
-                            affinitySet = currentMask == backgroundAppliedValue || Native.SetProcessAffinityMask(processHandle, (UIntPtr)backgroundAppliedValue);
+                            affinitySet = currentMask == backgroundAppliedValue || AccountBackgroundWrite(currentEntry, Native.SetProcessAffinityMask(processHandle, (UIntPtr)backgroundAppliedValue));
+                            if (affinitySet && squeezeAff == 0)
+                            {
+                                currentEntry.BackgroundPid = pid;
+                                SetBackgroundBackend(currentEntry, pid, "Process affinity verified", true);
+                            }
                         }
                         else affinitySet = Native.SetProcessAffinityMask(processHandle, (UIntPtr)backgroundAppliedValue);
                         bool tryQueryAffinity = Native.TryQueryAffinity(processHandle, out mask);
@@ -322,7 +332,7 @@ namespace PaviseApp
                         currentEntry.BackgroundRestorePending = false;
                     }
                     currentEntry.SqueezeAff = squeezeAffValue;
-                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, DesiredGpu(currentEntry), currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry));
+                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, DesiredGpu(currentEntry), currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry), false, currentEntry);
                     if (!applyThrottleSucceeded && squeezeAffValue != 0)
                     {
                         currentEntry.SqueezeAff = 0uL;
@@ -363,7 +373,7 @@ namespace PaviseApp
                 }
                 if (ok)
                 {
-                    trackedEntry.SqueezeFailures = 0;
+                    // 成功读回或更换避让掩码不补回本身份已经消耗的失败次数。
                     trackedEntry.SqueezeRetryAt = 0L;
                     return;
                 }
@@ -405,7 +415,7 @@ namespace PaviseApp
             string reason = "job-owner-unavailable";
             if (entry.BackgroundJobs != null && entry.BackgroundJobs.Verify(entry.BackgroundPid, entry.Creation, entry.SqueezeAff, out reason)) return true;
             entry.BackgroundPlacementVerified = false; entry.BackgroundRestorePending = true;
-            SetBackgroundBackend(entry, "Job recovery pending: " + reason);
+            SetBackgroundBackend(entry, entry.BackgroundPid, "Job recovery pending: " + reason);
             return false;
         }
 
@@ -419,7 +429,7 @@ namespace PaviseApp
             if (!released)
             {
                 entry.BackgroundRestorePending = true; entry.BackgroundPlacementVerified = false;
-                SetBackgroundBackend(entry, "Job recovery pending: " + reason);
+                SetBackgroundBackend(entry, entry.BackgroundPid, "Job recovery pending: " + reason);
                 return false;
             }
             entry.BackgroundJobActive = false; entry.BackgroundRestorePending = false; entry.BackgroundPlacementVerified = false;
@@ -434,17 +444,18 @@ namespace PaviseApp
             return current == target || GameThreadAffinityAdmission.Check(process, pid, entry.Creation, current, out reason);
         }
 
-        private static void SetBackgroundBackend(Entry entry, string detail, bool verifiedSuccess = false)
+        private static void SetBackgroundBackend(Entry entry, int pid, string detail, bool verifiedSuccess = false)
         {
             if (entry.BackgroundAffinityDetail == detail) return;
             entry.BackgroundAffinityDetail = detail;
             if (verifiedSuccess)
             {
-                SuccessLogBatch.Record("background-affinity-verified", entry.Name, entry.BackgroundPid, entry.Creation, detail);
+                SuccessLogBatch.Record("background-affinity-verified", entry.Name, pid, entry.Creation, detail);
                 return;
             }
             SuccessLogBatch.FlushPending();
-            Logger.Info("后台亲和性 " + entry.Name + " 进程编号=" + entry.BackgroundPid + " " + detail);
+            // 准入拒绝时尚未建立 Job 回执，目标身份直接取本次调用，不能依赖 BackgroundPid。
+            Logger.Info("后台亲和性 " + entry.Name + " 进程编号=" + pid + " " + detail);
         }
 
         internal bool ReleaseAllBackgroundAffinityJobs()
@@ -501,11 +512,11 @@ namespace PaviseApp
             List<KeyValuePair<int, Entry>> entriesToClear = new List<KeyValuePair<int, Entry>>();
             lock (sync)
             {
-                foreach (KeyValuePair<int, Entry> mapEntry in map)
+                foreach (KeyValuePair<int, Entry> item in map)
                 {
-                    if ((mapEntry.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && mapEntry.Value.BackgroundRestorePending)) && SqueezeOwnedBy(mapEntry.Value, reason))
+                    if ((item.Value.SqueezeAff != 0 || (reason == SuppressReason.Background && item.Value.BackgroundRestorePending)) && SqueezeOwnedBy(item.Value, reason))
                     {
-                        entriesToClear.Add(mapEntry);
+                        entriesToClear.Add(item);
                     }
                 }
             }

@@ -448,23 +448,6 @@ namespace PaviseApp
             }
         }
 
-        public bool GpuPrefStageOn
-        {
-            get
-            {
-                return gpuPrefStageOn;
-            }
-            set
-            {
-                gpuPrefStageOn = value;
-                Settings.Save("GpuPrefStageOn", value);
-                if (!value)
-                {
-                    GpuPrefStage.Restore();
-                }
-            }
-        }
-
         public bool KillGameDvr
         {
             get

@@ -45,8 +45,8 @@ namespace PaviseApp
                 }
                 foreach (string original in new[] { messageParts[1], messageParts[2], messageParts[3], messageParts[4] })
                 {
-                    uint parsedValue;
-                    if (original != "-" && (!uint.TryParse(original, out parsedValue) || parsedValue > 100))
+                    uint value;
+                    if (original != "-" && (!uint.TryParse(original, out value) || value > 100))
                     {
                         return ParkRestoreFailed();
                     }
@@ -181,13 +181,14 @@ namespace PaviseApp
                     message = "PAVISE";
                 }
             }
-            uint signatureHash = 2166136261u;
-            foreach (char c in message)
+            uint numericValue = 2166136261u;
+            string message2 = message;
+            foreach (char c in message2)
             {
-                signatureHash ^= c;
-                signatureHash *= 16777619;
+                numericValue ^= c;
+                numericValue *= 16777619;
             }
-            machineSig = (signatureHash & 0xFFFFu).ToString("X4");
+            machineSig = (numericValue & 0xFFFFu).ToString("X4");
             return machineSig;
         }
 

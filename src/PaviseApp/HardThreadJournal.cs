@@ -11,21 +11,24 @@ namespace PaviseApp
         internal string SourceNonce;
 
         internal string SourceScopeHash;
+        internal bool ControlDeclared;
 
         internal readonly List<HardThreadReceipt> Rows = new List<HardThreadReceipt>();
 
         internal HardThreadJournal Clone()
         {
-            HardThreadJournal currentHardThreadJournal = new HardThreadJournal();
-            currentHardThreadJournal.Target = Target;
-            currentHardThreadJournal.Revision = Revision;
-            currentHardThreadJournal.SourceNonce = SourceNonce;
-            currentHardThreadJournal.SourceScopeHash = SourceScopeHash;
+            HardThreadJournal hardThreadJournal = new HardThreadJournal();
+            hardThreadJournal.Target = Target;
+            hardThreadJournal.Revision = Revision;
+            hardThreadJournal.SourceNonce = SourceNonce;
+            hardThreadJournal.SourceScopeHash = SourceScopeHash;
+            hardThreadJournal.ControlDeclared = ControlDeclared;
+            HardThreadJournal hardThreadJournal2 = hardThreadJournal;
             foreach (HardThreadReceipt row in Rows)
             {
-                currentHardThreadJournal.Rows.Add(row.Clone());
+                hardThreadJournal2.Rows.Add(row.Clone());
             }
-            return currentHardThreadJournal;
+            return hardThreadJournal2;
         }
     }
 }

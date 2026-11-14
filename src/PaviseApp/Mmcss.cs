@@ -4,6 +4,9 @@ namespace PaviseApp
 {
     internal static class Mmcss
     {
+        private const string Prof = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile";
+
+        private const string Games = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games";
 
         internal const int Responsiveness = 10;
 
@@ -52,7 +55,8 @@ namespace PaviseApp
                 }
                 if (!(values[0].Apply(10) & values[2].Apply("High") & values[4].Apply(1)))
                 {
-                    foreach (ReversibleReg reversibleReg in values)
+                    ReversibleReg[] valuesSnapshot = values;
+                    foreach (ReversibleReg reversibleReg in valuesSnapshot)
                     {
                         reversibleReg.Restore();
                     }
@@ -81,7 +85,8 @@ namespace PaviseApp
                     return !hasResidue;
                 }
                 bool restoreSucceeded = true;
-                foreach (ReversibleReg reversibleReg in values)
+                ReversibleReg[] valuesSnapshot = values;
+                foreach (ReversibleReg reversibleReg in valuesSnapshot)
                 {
                     restoreSucceeded &= reversibleReg.Restore();
                 }
@@ -96,7 +101,8 @@ namespace PaviseApp
 
         public static bool HasResidue()
         {
-            foreach (ReversibleReg reversibleReg in All)
+            ReversibleReg[] all = All;
+            foreach (ReversibleReg reversibleReg in all)
             {
                 if (reversibleReg.HasBackup)
                 {

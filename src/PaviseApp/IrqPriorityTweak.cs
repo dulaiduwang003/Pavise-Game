@@ -7,6 +7,13 @@ namespace PaviseApp
 {
     internal static class IrqPriorityTweak
     {
+        private const string EnumRoot = "SYSTEM\\CurrentControlSet\\Enum\\";
+
+        private const string PolicySub = "\\Device Parameters\\Interrupt Management\\Affinity Policy";
+
+        private const string ValueName = "DevicePriority";
+
+        private const string JournalKey = "IrqPrio";
 
         private static readonly object lk = new object();
 
@@ -73,11 +80,11 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<string, string> entry in entries)
             {
                 int result;
-                if (!textsSet.Add(entry.Key) || (entry.Value != "-" && !int.TryParse(entry.Value, out result)))
+                if (!hashSet.Add(entry.Key) || (entry.Value != "-" && !int.TryParse(entry.Value, out result)))
                 {
                     return false;
                 }
@@ -154,22 +161,23 @@ namespace PaviseApp
 
         internal static string EncodeJournal(List<KeyValuePair<string, string>> entries)
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (KeyValuePair<string, string> entry in entries)
             {
-                texts.Add(Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Key)) + "|" + entry.Value);
+                list.Add(Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Key)) + "|" + entry.Value);
             }
-            return string.Join(";", texts.ToArray());
+            return string.Join(";", list.ToArray());
         }
 
         internal static List<KeyValuePair<string, string>> DecodeJournal(string raw)
         {
-            List<KeyValuePair<string, string>> keyValuePairs = new List<KeyValuePair<string, string>>();
+            List<KeyValuePair<string, string>> list = new List<KeyValuePair<string, string>>();
             if (string.IsNullOrEmpty(raw))
             {
-                return keyValuePairs;
+                return list;
             }
-            foreach (string entryText in raw.Split(';'))
+            string[] rawParts = raw.Split(';');
+            foreach (string entryText in rawParts)
             {
                 string[] entryTextParts = entryText.Split('|');
                 if (entryTextParts.Length != 2)
@@ -181,14 +189,14 @@ namespace PaviseApp
                     string @string = Encoding.UTF8.GetString(Convert.FromBase64String(entryTextParts[0]));
                     if (@string.Length > 0)
                     {
-                        keyValuePairs.Add(new KeyValuePair<string, string>(@string, entryTextParts[1]));
+                        list.Add(new KeyValuePair<string, string>(@string, entryTextParts[1]));
                     }
                 }
                 catch
                 {
                 }
             }
-            return keyValuePairs;
+            return list;
         }
     }
 }

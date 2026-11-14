@@ -9,6 +9,8 @@ namespace PaviseApp
     {
         private bool showAdjustLabel;
 
+        internal FamilySuppressionSwitch OwnerRow;
+
         internal bool ShowAdjustLabel
         {
             get { return showAdjustLabel; }
@@ -29,8 +31,9 @@ namespace PaviseApp
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            FamilySuppressionSwitch familySuppressionSwitch = base.Parent as FamilySuppressionSwitch;
-            Color color = Col.Lerp(Theme.Inset, Theme.Accent, (familySuppressionSwitch != null && familySuppressionSwitch.Checked) ? 0.065f : 0.015f);
+            FamilySuppressionSwitch familySuppressionSwitch = OwnerRow ?? base.Parent as FamilySuppressionSwitch;
+            Color color = familySuppressionSwitch != null ? familySuppressionSwitch.RowSurfaceColor
+                : Col.Lerp(Theme.Inset, Theme.Accent, 0.015f);
             using (SolidBrush brush = new SolidBrush(Col.Lerp(color, Theme.Accent, hover.Value * 0.12f)))
             {
                 e.Graphics.FillRectangle(brush, base.ClientRectangle);
@@ -47,9 +50,9 @@ namespace PaviseApp
             int remainingWidth = showAdjustLabel ? base.Width - Theme.S(10) : base.Width / 2;
             int heightRatio = base.Height / 2;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (Pen currentPen = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
+            using (Pen pen2 = new Pen((hover.Value > 0.1f) ? Theme.Accent : Theme.Dim, Math.Max(1f, Theme.S(1))))
             {
-                e.Graphics.DrawLines(currentPen, new Point[3]
+                e.Graphics.DrawLines(pen2, new Point[3]
                 {
                     new Point(remainingWidth - Theme.S(2), heightRatio - Theme.S(4)),
                     new Point(remainingWidth + Theme.S(2), heightRatio),

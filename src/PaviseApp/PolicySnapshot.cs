@@ -8,6 +8,9 @@ namespace PaviseApp
         private readonly Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.Ordinal);
 
         private readonly HashSet<string> overridden = new HashSet<string>(StringComparer.Ordinal);
+        private readonly bool gameSchedulingRuleOff;
+        // 逐游戏快照；全局快照不套用逐游戏的默认值。
+        private readonly bool gameScoped;
 
         public readonly string ProfileId;
 
@@ -61,6 +64,15 @@ namespace PaviseApp
             get
             {
                 return On("GmBoost");
+            }
+        }
+
+        public bool GameSchedulingOn
+        {
+            get
+            {
+                // 总开关关闭时，导入的逐游戏开启值也不能重新放行运行期控制。
+                return !gameSchedulingRuleOff && PolicyResolver.GlobalValue(PolicyCatalog.KeyGameScheduling) == "1" && On(PolicyCatalog.KeyGameScheduling);
             }
         }
 
@@ -356,24 +368,27 @@ namespace PaviseApp
             {
                 return;
             }
+            gameScoped = true;
+            CriticalThreadRule savedSchedulingRule = CriticalThreadRule.ParseForRuntime(CriticalThreadRule.Raw(profile));
+            gameSchedulingRuleOff = savedSchedulingRule != null && savedSchedulingRule.IsOff;
             ManualCores = ManualCorePlan.Parse(ManualCorePlan.Raw(profile));
             if (ManualCores != null)
             {
                 overridden.Add("GmManualCorePlanV2");
             }
-            Dictionary<string, string> overridesSnapshot = new Dictionary<string, string>(profile.Overrides, StringComparer.Ordinal);
-            if (!ThreadBoostSelection.MigrateOverrides(overridesSnapshot))
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(profile.Overrides, StringComparer.Ordinal);
+            if (!ThreadBoostSelection.MigrateOverrides(dictionary))
             {
-                overridesSnapshot["GmThreadBoostStrategyV1"] = "off";
+                dictionary["GmThreadBoostStrategyV1"] = "off";
             }
-            foreach (PolicyItem all in PolicyCatalog.All)
+            foreach (PolicyItem item in PolicyCatalog.All)
             {
-                string currentOverridesSnapshot;
-                if (all.Key != "PerformancePreset" && all.Key != "PowerPlanOn" && overridesSnapshot.TryGetValue(all.Key, out currentOverridesSnapshot))
+                string value;
+                if (item.Key != "PerformancePreset" && item.Key != "PowerPlanOn" && dictionary.TryGetValue(item.Key, out value))
                 {
-                    string canonicalResult = PolicyCatalog.Canonical(all.Key, currentOverridesSnapshot);
-                    values[all.Key] = canonicalResult ?? all.Fallback;
-                    overridden.Add(all.Key);
+                    string canonicalResult = PolicyCatalog.Canonical(item.Key, value);
+                    values[item.Key] = canonicalResult ?? item.Fallback;
+                    overridden.Add(item.Key);
                 }
             }
             ProfileId = profile.Id;
@@ -425,6 +440,9 @@ namespace PaviseApp
             string value;
             if (!values.TryGetValue(key, out value))
             {
+                // 渲染线程调度逐游戏默认关闭：没有显式开启的游戏不继承全局开启值，
+                // 全局值只保留为总开关，由 GameSchedulingOn 另行核对。
+                if (gameScoped && key == PolicyCatalog.KeyGameScheduling) return "0";
                 return PolicyResolver.RawGlobalValue(key);
             }
             return value;

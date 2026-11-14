@@ -39,7 +39,8 @@ namespace PaviseApp
             internal PreviewPane()
             {
                 BackColor = Theme.Card;
-                foreach (Label label in new Label[3] { Caption, Value, Detail })
+                Label[] labelItems = new Label[3] { Caption, Value, Detail };
+                foreach (Label label in labelItems)
                 {
                     label.BackColor = Color.Transparent;
                     label.AutoSize = false;

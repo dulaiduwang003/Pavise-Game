@@ -28,6 +28,24 @@ namespace PaviseApp
             }
         }
 
+        private const string Pf = "pf";
+
+        private const string Pf86 = "pf86";
+
+        private const string Common = "common";
+
+        private const string Common86 = "common86";
+
+        private const string Data = "data";
+
+        private const string Local = "local";
+
+        private const string Roaming = "roaming";
+
+        private const string Drive = "drive";
+
+        private const int RootRefreshMs = 600000;
+
         private static readonly Platform[] Platforms = new Platform[18]
         {
             new Platform("Steam", new string[3] { "U|Software\\Valve\\Steam|SteamPath", "M|SOFTWARE\\WOW6432Node\\Valve\\Steam|InstallPath", "M|SOFTWARE\\Valve\\Steam|InstallPath" }, new string[4] { "common86|Steam", "common|Steam", "pf86|Steam", "pf|Steam" }, null),
@@ -71,34 +89,36 @@ namespace PaviseApp
         internal static List<string> ResolvedRoots(string platformId)
         {
             EnsureRoots();
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             lock (sync)
             {
-                foreach (Platform platform in Platforms)
+                Platform[] platforms = Platforms;
+                foreach (Platform platform in platforms)
                 {
                     if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase) && platform.Roots != null)
                     {
-                        texts.AddRange(platform.Roots);
+                        list.AddRange(platform.Roots);
                     }
                 }
-                return texts;
+                return list;
             }
         }
 
         internal static List<string> DetectedPlatforms()
         {
             EnsureRoots();
-            List<string> ids = new List<string>();
+            List<string> list = new List<string>();
             lock (sync)
             {
-                foreach (Platform platform in Platforms)
+                Platform[] platforms = Platforms;
+                foreach (Platform platform in platforms)
                 {
                     if (platform.Roots != null && platform.Roots.Count > 0)
                     {
-                        ids.Add(platform.Id);
+                        list.Add(platform.Id);
                     }
                 }
-                return ids;
+                return list;
             }
         }
 
@@ -116,31 +136,35 @@ namespace PaviseApp
 
         private static void ResolveRootsLocked()
         {
-            Dictionary<string, List<string>> listsByName = ScanUninstallLocations();
-            foreach (Platform platform in Platforms)
+            Dictionary<string, List<string>> dictionary = ScanUninstallLocations();
+            Platform[] platforms = Platforms;
+            foreach (Platform platform in platforms)
             {
-                List<string> texts = new List<string>();
-                foreach (string spec in platform.RegistryRoots)
+                List<string> list = new List<string>();
+                string[] registryRoots = platform.RegistryRoots;
+                foreach (string spec in registryRoots)
                 {
-                    AddRegistryRoot(texts, spec);
+                    AddRegistryRoot(list, spec);
                 }
-                foreach (string spec2 in platform.FolderRoots)
+                string[] folderRoots = platform.FolderRoots;
+                foreach (string spec2 in folderRoots)
                 {
-                    AddFolderRoot(texts, spec2);
+                    AddFolderRoot(list, spec2);
                 }
-                foreach (string key in platform.UninstallTags)
+                string[] uninstallTags = platform.UninstallTags;
+                foreach (string key in uninstallTags)
                 {
-                    List<string> currentList;
-                    if (!listsByName.TryGetValue(key, out currentList))
+                    List<string> value;
+                    if (!dictionary.TryGetValue(key, out value))
                     {
                         continue;
                     }
-                    foreach (string candidateList in currentList)
+                    foreach (string item in value)
                     {
-                        AddRoot(texts, candidateList);
+                        AddRoot(list, item);
                     }
                 }
-                platform.Roots = texts;
+                platform.Roots = list;
             }
             rootsResolved = true;
             lastResolveTicks = DateTime.UtcNow.Ticks;
@@ -156,11 +180,11 @@ namespace PaviseApp
                     return;
                 }
                 RegistryKey registryKey = ((specParts[0] == "U") ? Registry.CurrentUser : Registry.LocalMachine);
-                using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(specParts[1]))
+                using (RegistryKey registryKey2 = registryKey.OpenSubKey(specParts[1]))
                 {
-                    if (currentRegistryKey != null)
+                    if (registryKey2 != null)
                     {
-                        AddRoot(into, currentRegistryKey.GetValue(specParts[2]) as string);
+                        AddRoot(into, registryKey2.GetValue(specParts[2]) as string);
                     }
                 }
             }
@@ -275,9 +299,9 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (string currentInto in into)
+            foreach (string item in into)
             {
-                if (string.Equals(currentInto, getFullPathTrimmed, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(item, getFullPathTrimmed, StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }
@@ -287,7 +311,8 @@ namespace PaviseApp
 
         private static bool IsTooBroad(string dir)
         {
-            foreach (Environment.SpecialFolder folder in BroadFolders)
+            Environment.SpecialFolder[] broadFolders = BroadFolders;
+            foreach (Environment.SpecialFolder folder in broadFolders)
             {
                 string folderPath;
                 try
@@ -326,26 +351,28 @@ namespace PaviseApp
 
         private static Dictionary<string, List<string>> ScanUninstallLocations()
         {
-            Dictionary<string, List<string>> listsByName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            List<string> texts = new List<string>();
-            foreach (Platform platform in Platforms)
+            Dictionary<string, List<string>> dictionary = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            List<string> list = new List<string>();
+            Platform[] platforms = Platforms;
+            foreach (Platform platform in platforms)
             {
-                foreach (string uninstallTag in platform.UninstallTags)
+                string[] uninstallTags = platform.UninstallTags;
+                foreach (string item in uninstallTags)
                 {
-                    if (!texts.Contains(uninstallTag))
+                    if (!list.Contains(item))
                     {
-                        texts.Add(uninstallTag);
+                        list.Add(item);
                     }
                 }
             }
-            if (texts.Count == 0)
+            if (list.Count == 0)
             {
-                return listsByName;
+                return dictionary;
             }
-            ScanUninstallHive(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", texts, listsByName);
-            ScanUninstallHive(Registry.LocalMachine, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", texts, listsByName);
-            ScanUninstallHive(Registry.CurrentUser, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", texts, listsByName);
-            return listsByName;
+            ScanUninstallHive(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", list, dictionary);
+            ScanUninstallHive(Registry.LocalMachine, "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", list, dictionary);
+            ScanUninstallHive(Registry.CurrentUser, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", list, dictionary);
+            return dictionary;
         }
 
         private static void ScanUninstallHive(RegistryKey hive, string path, List<string> tags, Dictionary<string, List<string>> into)
@@ -358,29 +385,30 @@ namespace PaviseApp
                     {
                         return;
                     }
-                    foreach (string name in registryKey.GetSubKeyNames())
+                    string[] subKeyNames = registryKey.GetSubKeyNames();
+                    foreach (string name in subKeyNames)
                     {
                         try
                         {
-                            using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(name))
+                            using (RegistryKey registryKey2 = registryKey.OpenSubKey(name))
                             {
-                                if (currentRegistryKey == null)
+                                if (registryKey2 == null)
                                 {
                                     continue;
                                 }
-                                string getValueOffset = currentRegistryKey.GetValue("DisplayName") as string;
+                                string getValueOffset = registryKey2.GetValue("DisplayName") as string;
                                 if (string.IsNullOrEmpty(getValueOffset))
                                 {
                                     continue;
                                 }
-                                string getValueOffset2 = currentRegistryKey.GetValue("InstallLocation") as string;
+                                string getValueOffset2 = registryKey2.GetValue("InstallLocation") as string;
                                 if (string.IsNullOrEmpty(getValueOffset2))
                                 {
-                                    getValueOffset2 = DirFromCommand(currentRegistryKey.GetValue("UninstallString") as string);
+                                    getValueOffset2 = DirFromCommand(registryKey2.GetValue("UninstallString") as string);
                                 }
                                 if (string.IsNullOrEmpty(getValueOffset2))
                                 {
-                                    getValueOffset2 = DirFromCommand(currentRegistryKey.GetValue("DisplayIcon") as string);
+                                    getValueOffset2 = DirFromCommand(registryKey2.GetValue("DisplayIcon") as string);
                                 }
                                 if (string.IsNullOrEmpty(getValueOffset2))
                                 {
@@ -390,12 +418,12 @@ namespace PaviseApp
                                 {
                                     if (getValueOffset.IndexOf(tag, StringComparison.OrdinalIgnoreCase) >= 0)
                                     {
-                                        List<string> currentInto;
-                                        if (!into.TryGetValue(tag, out currentInto))
+                                        List<string> value;
+                                        if (!into.TryGetValue(tag, out value))
                                         {
-                                            currentInto = (into[tag] = new List<string>());
+                                            value = (into[tag] = new List<string>());
                                         }
-                                        currentInto.Add(getValueOffset2);
+                                        value.Add(getValueOffset2);
                                     }
                                 }
                             }

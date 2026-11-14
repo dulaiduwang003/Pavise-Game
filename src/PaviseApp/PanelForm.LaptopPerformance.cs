@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace PaviseApp
 {
@@ -10,8 +11,8 @@ namespace PaviseApp
         private void ConfigureLaptopPerformanceToggle()
         {
             Toggle toggle = modeFlyout.LaptopPerformance;
-            toggle.AccessibleDescription = AutoText("联想使用 SmartFan；ASUS 需保持 G-Helper 运行，支持其前五个配置档。插电对局切性能档，退局恢复完整原配置；已有自定义 Turbo/全速档不覆盖，途中改档则让出。电源选“不切换”时不接管。可能增加发热和风扇噪声。",
-                "Lenovo uses SmartFan. ASUS requires running G-Helper and supports its first five profiles. On AC, switches to performance and restores the complete original profile after matches. Preserves custom Turbo/Full Speed and yields to external changes. Skips Don't switch. Heat and fan noise may increase.");
+            toggle.AccessibleDescription = AutoText("插电对局切换性能档，退局恢复；联想使用 SmartFan，ASUS 需运行 G-Helper（前五档）。保留自定义 Turbo/全速档和手动改档；电源选“不切换”时停用。可能增加发热与风扇噪声。",
+                "Uses performance mode during AC-powered matches and restores afterwards. Lenovo uses SmartFan; ASUS needs G-Helper running (first five profiles). Preserves custom Turbo/Full Speed and manual changes. Disabled with Don't switch. Heat and fan noise may increase.");
             toggle.CheckedChanged += delegate
             {
                 bool supported = gameMode.LaptopPerformanceSupportKnown && gameMode.LaptopPerformanceSupported;

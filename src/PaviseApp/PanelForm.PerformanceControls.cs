@@ -21,11 +21,12 @@ namespace PaviseApp
         }
         private static bool HasAutomationInventory(int category, PerformanceRestartScope scope)
         {
-            if ((category == 0 && PerformanceRestartFor("GmMmcss") == scope) || (category == 2 && (PerformanceRestartFor("GmEnglishInputV1") == scope || PerformanceRestartFor("GpuPrefStageOn") == scope)))
+            if ((category == 0 && PerformanceRestartFor("GmMmcss") == scope) || (category == 2 && PerformanceRestartFor("GmEnglishInputV1") == scope))
             {
                 return true;
             }
-            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
+            PerformanceAction[] all = PerformanceActionCatalog.All;
+            foreach (PerformanceAction performanceAction in all)
             {
                 if (!performanceAction.Environment && performanceAction.Key != "MatchVisualEffectsV1" && PerformanceActionCategory(performanceAction) == category && PerformanceRestartFor(performanceAction.Key) == scope)
                 {
@@ -38,23 +39,40 @@ namespace PaviseApp
         {
             if (category == 0 && PerformanceRestartFor("GmMmcss") == scope)
             {
-                AddManualPerformanceToggle(parent, ref y, "GmMmcss", AutoText("多媒体调度", "Multimedia scheduling"), AutoText("调整已注册的游戏多媒体线程，目标需重新读取配置。", "Adjusts registered game multimedia threads; the target must reload the configuration."), () => Settings.LoadCached("GmMmcss", true), (bool value) => SaveManualPerformancePreference("GmMmcss", value));
+                AddManualPerformanceToggle(parent, ref y, "GmMmcss", AutoText("多媒体调度", "Multimedia scheduling"), AutoText("保护开启期间调整 MMCSS 配置，关闭保护或退出时恢复。现有程序需重新读取配置。", "Adjusts MMCSS configuration while protection is on; restores it when protection stops or Pavise exits. Existing programs must reload the configuration."), () => Settings.LoadCached("GmMmcss", true), (bool value) => SaveManualPerformancePreference("GmMmcss", value));
             }
             if (category == 2 && PerformanceRestartFor("GmEnglishInputV1") == scope)
             {
-                AddManualPerformanceToggle(parent, ref y, "GmEnglishInputV1", AutoText("游戏窗口切换英文输入", "Switch the game window to English input"), AutoText("入局时尝试一次，仅作用于确认的游戏窗口。", "Attempts once on session entry, only for the confirmed game window."), () => Settings.LoadCached("GmEnglishInputV1", false), (bool value) => SaveManualPerformancePreference("GmEnglishInputV1", value));
+                AddManualPerformanceToggle(parent, ref y, "GmEnglishInputV1", AutoText("游戏窗口切换英文输入", "Switch the game window to English input"), AutoText("入局时最多尝试一次，仅作用于确认的游戏窗口；退局不会自动切回原输入法。", "At most one attempt on match entry for the confirmed game window; does not switch back to the original input language on exit."), () => Settings.LoadCached("GmEnglishInputV1", false), (bool value) => SaveManualPerformancePreference("GmEnglishInputV1", value));
             }
-            if (category == 2 && PerformanceRestartFor("GpuPrefStageOn") == scope)
-            {
-                AddManualPerformanceToggle(parent, ref y, "GpuPrefStageOn", AutoText("游戏高性能显卡预选", "Prefer the high-performance GPU for games"), AutoText("为游戏登记显卡偏好，下次启动生效。", "Registers the game GPU preference for the next launch."), () => Settings.LoadCached("GpuPrefStageOn", true), (bool value) => SaveManualPerformancePreference("GpuPrefStageOn", value), () => Native.OsBuild() >= 17134);
-            }
-            foreach (PerformanceAction performanceAction in PerformanceActionCatalog.All)
+            PerformanceAction[] all = PerformanceActionCatalog.All;
+            foreach (PerformanceAction performanceAction in all)
             {
                 if (!performanceAction.Environment && performanceAction.Key != "MatchVisualEffectsV1" && PerformanceActionCategory(performanceAction) == category && PerformanceRestartFor(performanceAction.Key) == scope)
                 {
                     PerformanceAction captured = performanceAction;
                     AddManualPerformanceToggle(parent, ref y, performanceAction.Key, performanceAction.Title, ManualPerformanceActionDetail(performanceAction), () => Settings.LoadCached(captured.Key, false), (bool value) => SaveManualPerformanceAction(captured, value), () => ManualPerformanceActionSupported(captured.Key), null, () => gameMode.PerformanceExecutionState(captured.Key));
                 }
+            }
+        }
+        private void AddPerformanceRelatedSettings(Control parent, ref int y, int category)
+        {
+            if (category != 2)
+            {
+                AddAutomationSection(parent, ref y, AutoText("相关设置", "Related settings"));
+            }
+            if (category == 0)
+            {
+                AddAutomationDestination(parent, ref y, "GameSettings", "逐游戏设置", "Per-game settings", "核心范围、家族后台、ReBAR、禁用全屏优化与入库设置。", "Core selection, game-family control, ReBAR, fullscreen optimization and auto-add.", PageId.Library);
+            }
+            if (category == 1)
+            {
+                AddAutomationDestination(parent, ref y, "WhitelistSettings", "白名单", "Whitelist", "为需要保持正常运行的后台程序添加保护。", "Protect background applications that need to keep running normally.", PageId.Whitelist);
+                AddAutomationDestination(parent, ref y, "AntiCheatSettings", "反作弊进程", "Anti-cheat processes", "兼容性专项，按明确的手动选择设置。", "Compatibility-specific options controlled by your explicit choices.", PageId.AntiCheat);
+            }
+            if (category == 0)
+            {
+                AddAutomationDestination(parent, ref y, "ProtectionSettings", "故障与恢复", "Faults & recovery", "查看动作故障与恢复记录，未完成的恢复不会因关闭功能丢失。", "Review action faults and recovery records; disabling a feature keeps unfinished recovery records.", PageId.Settings);
             }
         }
         private bool SaveManualPerformanceAction(PerformanceAction action, bool value)
@@ -102,9 +120,48 @@ namespace PaviseApp
             }
             return action.Detail;
         }
+        private void AddAutomationDestination(Control parent, ref int y, string id, string zh, string en, string detailZh, string detailEn, PageId target)
+        {
+            PillButton pillButton = new PillButton(AutoText("前往设置", "Configure"));
+            pillButton.Name = "manualDestination_" + id;
+            pillButton.Size = new Size(Theme.S(124), Theme.S(32));
+            PillButton pillButton2 = pillButton;
+            pillButton2.Click += delegate
+            {
+                nav.Select((int)target);
+            };
+            string desc = AutoText(detailZh, detailEn);
+            int used;
+            MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(desc, ScrollContentW, pillButton2, 82), AutoText(zh, en), desc, pillButton2, out used);
+            y += used + 8;
+        }
+        private string AutomationPreferenceStatus(string key)
+        {
+            string value = gameMode.AutomaticExecutionState(key);
+            if (!string.IsNullOrEmpty(value))
+            {
+                return GameMode.AutomationStateLabel(value);
+            }
+            if (!PerformancePolicy.EnvironmentPreference(key))
+            {
+                return AutoText("已关闭", "Off");
+            }
+            return AutoText("已开启", "Enabled");
+        }
         private static string AutoText(string zh, string en)
         {
             return PerformancePolicy.Text(zh, en);
+        }
+        private PillButton AddAutomationLink(Control parent, string zh, string en, PageId target, int x, int y, int width)
+        {
+            PillButton pillButton = new PillButton(AutoText(zh, en));
+            pillButton.SetBounds(Theme.S(x), Theme.S(y), Theme.S(width), Theme.S(34));
+            pillButton.Click += delegate
+            {
+                nav.Select((int)target);
+            };
+            parent.Controls.Add(pillButton);
+            return pillButton;
         }
         private static int ManualPolicyCategory(PolicyItem item)
         {
@@ -126,7 +183,7 @@ namespace PaviseApp
         }
         private static bool PrimaryPerformancePolicy(string key)
         {
-            return key == "GmBoost";
+            return key == PolicyCatalog.KeyGameScheduling;
         }
         internal static PerformanceRestartScope PerformanceRestartFor(string key)
         {
@@ -145,7 +202,6 @@ namespace PaviseApp
             case "NvLowLat":
             case "AutoOpenGlThreadsV1":
             case "AutoGameMitigationsV1":
-            case "GpuPrefStageOn":
             case "WindowedOptimizations":
             case "VariableRefreshRate":
             case "NvVrrWindowed":
@@ -162,6 +218,14 @@ namespace PaviseApp
         {
             switch (key)
             {
+            case "GmCacheWarmV2":
+                return PerformanceLifetime.Preparation;
+            case "GmEnglishInputV1":
+                return PerformanceLifetime.Entry;
+            case "GmMmcss":
+            case "GameDvrOff":
+                return PerformanceLifetime.Protection;
+            case PolicyCatalog.KeyGameScheduling:
             case "GmBoost":
             case "GmThreadBoostStrategyV1":
             case "GmPauseUpdate":
@@ -170,12 +234,10 @@ namespace PaviseApp
             case "GmAwake":
             case "GmDwmBoost":
             case "GmIntelEnduranceV1":
-            case "GmEnglishInputV1":
             case "NvMaxPerf":
             case "NvShaderCache":
             case "NvLowLat":
             case "NvVrrWindowed":
-            case "GpuPrefStageOn":
             case "LabEppYieldV1":
             case "LabGpuClockMaxV1":
             case "LabGpuPowerMaxV1":
@@ -184,83 +246,6 @@ namespace PaviseApp
                 return PerformanceLifetime.Session;
             default:
                 return PerformanceLifetime.Persistent;
-            }
-        }
-        private static bool PerformanceControlLifetime(Control control, out PerformanceLifetime lifetime)
-        {
-            lifetime = PerformanceLifetime.Session;
-            bool found = false;
-            PerformanceFeatureCard card = control as PerformanceFeatureCard;
-            if (card != null)
-            {
-                lifetime = card.Lifetime;
-                return true;
-            }
-            foreach (Control child in control.Controls)
-            {
-                PerformanceLifetime nested;
-                if (PerformanceControlLifetime(child, out nested))
-                {
-                    found = true;
-                    if (nested == PerformanceLifetime.Persistent)
-                    {
-                        lifetime = PerformanceLifetime.Persistent;
-                    }
-                }
-            }
-            if (!found)
-            {
-                lifetime = PerformanceLifetime.Persistent;
-            }
-            return found;
-        }
-        private static void GroupPerformanceLifetimes(Control grid)
-        {
-            List<Control> session = new List<Control>();
-            List<Control> persistent = new List<Control>();
-            List<Control> headings = new List<Control>();
-            foreach (Control control in grid.Controls)
-            {
-                if (control is PerformanceSectionHeading)
-                {
-                    headings.Add(control);
-                    continue;
-                }
-                PerformanceLifetime lifetime;
-                PerformanceControlLifetime(control, out lifetime);
-                (lifetime == PerformanceLifetime.Session ? session : persistent).Add(control);
-            }
-            grid.SuspendLayout();
-            try
-            {
-                foreach (Control heading in headings)
-                {
-                    grid.Controls.Remove(heading);
-                    heading.Dispose();
-                }
-                int index = 0;
-                foreach (PerformanceLifetime lifetime in new PerformanceLifetime[2] { PerformanceLifetime.Session, PerformanceLifetime.Persistent })
-                {
-                    if (((lifetime == PerformanceLifetime.Session) ? session : persistent).Count > 0)
-                    {
-                        PerformanceSectionHeading heading = new PerformanceSectionHeading
-                        {
-                            Name = "performanceLifetime" + lifetime,
-                            Text = PerformanceSectionHeading.LifetimeTitle(lifetime),
-                            Lifetime = lifetime
-                        };
-                        grid.Controls.Add(heading);
-                        grid.Controls.SetChildIndex(heading, index++);
-                    }
-                    foreach (Control control in (lifetime == PerformanceLifetime.Session) ? session : persistent)
-                    {
-                        grid.Controls.SetChildIndex(control, index++);
-                    }
-                }
-            }
-            finally
-            {
-                grid.ResumeLayout(false);
             }
         }
         private static void ConfigurePerformanceCards(Control parent)
@@ -274,6 +259,8 @@ namespace PaviseApp
                     performanceFeatureCard.RestartScope = ((performanceFeatureKeyResult == "EnvPerformanceBundleV1" || performanceFeatureKeyResult == "EnvStoragePowerGroupV1") ? PerformanceRestartScope.SystemRestart : PerformanceRestartFor(performanceFeatureKeyResult));
                     performanceFeatureCard.Lifetime = PerformanceLifetimeFor(performanceFeatureKeyResult);
                     performanceFeatureCard.RestartText = ((performanceFeatureKeyResult == PrivacyActionCatalog.BackgroundGlobal) ? AutoText("重启相关应用", "Restart affected apps") : ((performanceFeatureKeyResult == "NvLowLat") ? AutoText("部分游戏需重启", "Game restart may apply") : ""));
+                    if (performanceFeatureKeyResult == "GmMmcss")
+                        performanceFeatureCard.RestartText = AutoText("需重新读取配置", "Configuration reload needed");
                     performanceFeatureCard.Title = performanceFeatureCard.Title.Replace(" · 需重启", "").Replace(" · restart required", "");
                     if (performanceFeatureKeyResult == "EnvQuantumProfileV1")
                     {
@@ -293,7 +280,9 @@ namespace PaviseApp
         {
             string key = item.Key;
             if (key == BackgroundGovernancePolicy.SettingKey || key == "GmSuppress") return;
-            string autoTextResult = ((key == "GmSuppress") ? AutoText("后台治理", "Background protection") : ((key == "GmDwmBoost") ? AutoText("桌面合成调度", "Desktop compositor scheduling") : ((key == "GmThreadBoostStrategyV1") ? AutoText("游戏线程提优", "Game thread boost") : Lang.T(item.LangKey))));
+            // 游戏调度与资源优先级由游戏库中的逐游戏配置管理。
+            if (key == PolicyCatalog.KeyGameScheduling || key == PolicyCatalog.KeyBoost) return;
+            string autoTextResult = key == "GmBoost" ? Lang.T("gm.scheduling.resources.title") : ((key == "GmSuppress") ? AutoText("后台治理", "Background protection") : ((key == "GmDwmBoost") ? AutoText("桌面合成调度", "Desktop compositor scheduling") : ((key == "GmThreadBoostStrategyV1") ? AutoText("游戏线程提优", "Game thread boost") : Lang.T(item.LangKey))));
             string manualPolicyDescriptionResult = ManualPolicyDescription(key);
             if (item.Kind == PolicyValueKind.Bool)
             {
@@ -306,15 +295,15 @@ namespace PaviseApp
                 return;
             }
             string[] choices = (string[])item.Choices.Clone();
-            string[] choiceLabels = new string[choices.Length];
+            string[] textEntries = new string[choices.Length];
             for (int i = 0; i < choices.Length; i++)
             {
-                choiceLabels[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
+                textEntries[i] = ((choices[i] == "off") ? AutoText("关闭", "Off") : ((choices[i] == "on") ? AutoText("开启", "On") : choices[i]));
             }
             TierPicker picker = new TierPicker
             {
                 Name = "manualPerformance_" + key,
-                Labels = choiceLabels,
+                Labels = textEntries,
                 AccessibleName = autoTextResult,
                 AccessibleDescription = manualPolicyDescriptionResult,
                 Size = new Size(Theme.S(180), Theme.S(30))
@@ -439,22 +428,22 @@ namespace PaviseApp
         {
             switch (key)
             {
+            case PolicyCatalog.KeyGameScheduling:
+                return Lang.T("gm.scheduling.detail");
             case "GmSuppress":
                 return Lang.T("background.governance.detail");
             case "GmBoost":
-                return AutoText("统一调整游戏的 CPU、内存、磁盘 I/O 与 GPU 优先级，切出游戏保持，退局恢复。", "Adjusts game CPU, memory, disk I/O and GPU priorities together. Kept when you switch away; restored when the session ends.");
+                return Lang.T("gm.scheduling.resources.detail");
             case "GmBoostCpuV1":
                 return AutoText("对局期间保持游戏 CPU 高优先级，持续满载或无线程提优也不降档。由资源优先级总开关控制，退局恢复原值。", "Keeps game CPU priority High during the session, including sustained full load or inactive thread boosting. Requires game resource priorities; restores the original priority on exit.");
-            case "GmBoostMemoryV1":
-                return AutoText("保持游戏内存优先级为标准 5，通常已是默认值。不增加内存，也不锁定页面。", "Keeps game memory priority at Normal 5, usually the default. Adds no RAM and does not lock pages.");
             case "GmBoostIoV1":
                 return AutoText("请求游戏磁盘 I/O 高优先级，需权限及读回确认。失败不影响其他优先级。", "Requests High game disk I/O priority after privilege and readback checks. Failure leaves other priorities unchanged.");
             case "GmBoostGpuV1":
                 return AutoText("提高游戏 GPU 调度优先级，需驱动支持及读回确认。退局恢复原值。", "Raises game GPU scheduling priority with driver support and readback checks. Restores on exit.");
             case "GmThreadBoostStrategyV1":
-                return AutoText("开启后按游戏自动选择：认得出画面提交线程就提优渲染关键线程，认不出（如 Vulkan、OpenGL）改提最忙线程。仅手动执行，退局恢复。可与逐游戏关键线程硬绑定同时生效，组合效果未测。", "Picks per game: boosts the render-critical threads when the frame-submission thread is recognized, otherwise (e.g. Vulkan, OpenGL) the busiest thread. Manual only; restores on exit. Can run alongside per-game candidate thread affinity; the combination is untested.");
+                return AutoText("手动开启后优先照顾渲染关键线程，无法识别时改选最忙线程，退局恢复。可叠加逐游戏绑核，组合效果待实测。", "When manually enabled, prioritizes render-critical threads or the busiest thread if unrecognized. Restores on game exit. Can combine with per-game affinity; combined effects are untested.");
             case "PowerPlanOn":
-                return AutoText("对局使用所选电源计划，“不切换”时停用。托管在智能／竞技中共用参数，仍按交流／电池、CPU 拓扑及设备特征适配，场景、自动升档和切出不改变参数；掌机不接管。指定已有计划只切换，退局恢复原计划；实验室覆盖独立恢复。", "Uses the selected match power plan unless Don't switch is chosen. Smart and Competitive share managed parameters, adapted to AC/battery power, CPU topology and device characteristics. Scene changes, automatic escalation and switching away do not change those parameters. Handhelds bypass power management. Existing plans are only activated and restored after the session; laboratory overrides retain separate recovery.");
+                return AutoText("对局使用所选电源计划，退局恢复；“不切换”和掌机停用。托管参数按供电与硬件适配，智能／竞技共用；已有计划只切换，实验室设置单独恢复。", "Uses the selected plan during matches and restores afterwards. Disabled on handhelds or with Don't switch. Smart and Competitive share managed parameters adapted to power source and hardware. Existing plans are only activated; laboratory settings restore separately.");
             case "GmPauseDl":
                 return AutoText("对局暂停 Windows 传递优化下载，结束恢复。", "Pauses Windows Delivery Optimization downloads during a match, then restores.");
             case "GmPauseUpdate":
@@ -486,9 +475,9 @@ namespace PaviseApp
             case "AmdSam":
                 return AutoText("启用 AMD SAM，需主板和显卡支持。重启生效，关闭即关闭。", "Enables AMD SAM with motherboard/GPU support. Takes effect after restart; Off disables it.");
             case "WindowedOptimizations":
-                return AutoText("面向 Win11 22H2+ 的兼容 DX10/11 窗口或无边框游戏，更改后重启游戏。开关直接设置开启或关闭；系统还原入口可恢复接管前值。", "For compatible DX10/11 windowed or borderless games on Windows 11 22H2+; restart the game after changes. The switch explicitly enables or disables it; system restoration restores the original value.");
+                return AutoText("适用于 Win11 22H2+ 的 DX10/11 窗口与无边框游戏，更改后重启游戏。原值可在系统还原中恢复。", "For compatible DX10/11 windowed or borderless games on Windows 11 22H2+. Restart the game after changes; use system restoration to recover the original value.");
             case "VariableRefreshRate":
-                return AutoText("补充部分 DX11 全屏游戏的 VRR，需兼容显示器/驱动；不替代 FreeSync/G-SYNC 开关。更改后重启游戏，开关直接设置开启或关闭；系统还原入口保留原值恢复。", "Adds VRR for some DX11 fullscreen games with compatible displays/drivers; does not replace FreeSync/G-SYNC. Restart the game after changes; the switch explicitly enables or disables it and system restoration preserves the original value.");
+                return AutoText("为部分 DX11 全屏游戏补充 VRR，需兼容显示器与驱动。保留 FreeSync/G-SYNC 设置，更改后重启游戏；系统还原可恢复原值。", "Adds VRR for some DX11 fullscreen games with compatible displays and drivers. Keep FreeSync/G-SYNC configured separately. Restart the game after changes; system restoration recovers the original value.");
             case "NvVrrWindowed":
                 return AutoText("对局中为已开启全屏 G-SYNC 的机器补充窗口 VRR，所有模式共用。退局还原，部分面板可能闪烁。", "Adds windowed VRR during matches when fullscreen G-SYNC is enabled, shared by all game modes. Restores on exit; some panels may flicker.");
             default:
@@ -581,7 +570,8 @@ namespace PaviseApp
         private static string PerformanceFeatureKey(string name)
         {
             string nameOffset = name ?? "";
-            foreach (string entryText in new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" })
+            string[] textEntries = new string[4] { "manualPerformance_", "privacyToggle", "environment", "laboratory_" };
+            foreach (string entryText in textEntries)
             {
                 if (nameOffset.StartsWith(entryText, StringComparison.Ordinal))
                 {
@@ -612,9 +602,6 @@ namespace PaviseApp
             card.IconKey = key;
             switch (key)
             {
-            case "GmBoost":
-                card.Summary = AutoText("优先分配 CPU、GPU 与 I/O 资源", "Prioritize CPU, GPU and I/O resources");
-                break;
             case "GmAwake":
                 card.DisplayTitle = AutoText("对局保持唤醒", "Keep the match awake");
                 card.Summary = AutoText("游戏前台时阻止息屏与睡眠", "Prevent display sleep while the game is foreground");
@@ -626,13 +613,13 @@ namespace PaviseApp
                 card.Summary = AutoText("停止生成新的 8.3 短文件名", "Stop creating new 8.3 short file names");
                 break;
             case "GmCacheWarmV2":
-                card.Summary = AutoText("空闲时预读，入局即取消", "Pre-read while idle; cancel on match entry");
+                card.Summary = AutoText("待命且空闲时预读，入局即停止", "Pre-read while armed and idle; stop on match entry");
                 break;
             case "AutoGameMitigationsV1":
                 card.Summary = AutoText("降低部分游戏防护，减少额外开销", "Reduce selected game protections and their overhead");
                 break;
             case "GmMmcss":
-                card.Summary = AutoText("调整游戏多媒体线程调度", "Adjust game multimedia thread scheduling");
+                card.Summary = AutoText("保护开启期间调整，关闭保护后恢复", "Adjust while protection is on; restore when it stops");
                 break;
             case LaptopPerfMode.PreferenceKey:
                 card.Summary = AutoText("插电对局切换厂商性能档，退局恢复原档", "Use the vendor performance profile on AC; restore after matches");
@@ -656,19 +643,16 @@ namespace PaviseApp
                 card.Summary = AutoText("调整对局期间的桌面合成调度", "Adjust desktop compositor scheduling during matches");
                 break;
             case "NvMaxPerf":
-                card.Summary = AutoText("为游戏配置 NVIDIA 电源管理偏好", "Set NVIDIA power-management preferences for games");
+                card.Summary = AutoText("可在启动前预设电源偏好，退局恢复", "May preset power preferences before launch; restore after matches");
                 break;
             case "NvShaderCache":
-                card.Summary = AutoText("为游戏配置 NVIDIA 着色器缓存", "Configure NVIDIA shader caching for games");
+                card.Summary = AutoText("可在启动前预设着色器缓存，退局恢复", "May preset shader caching before launch; restore after matches");
                 break;
             case "GmIntelEnduranceV1":
                 card.Summary = AutoText("关闭 Intel 图形续航限制，可能增加功耗", "Disable Intel graphics endurance limits; power use may rise");
                 break;
             case "GmEnglishInputV1":
-                card.Summary = AutoText("入局时为确认的游戏窗口切换英文", "Switch the confirmed game window to English on entry");
-                break;
-            case "GpuPrefStageOn":
-                card.Summary = AutoText("为游戏登记高性能显卡偏好", "Prefer the high-performance GPU for games");
+                card.Summary = AutoText("入局尝试切换英文，不自动切回", "Try English on entry; does not switch back automatically");
                 break;
             case "AutoOpenGlThreadsV1":
                 card.Summary = AutoText("为 NVIDIA OpenGL 游戏配置线程优化", "Configure threading for NVIDIA OpenGL games");
@@ -683,16 +667,16 @@ namespace PaviseApp
                 card.Summary = AutoText("为兼容的 DX11 全屏游戏补充 VRR", "Add VRR for compatible DX11 fullscreen games");
                 break;
             case "NvVrrWindowed":
-                card.Summary = AutoText("对局中补充窗口 VRR，退局还原", "Add windowed VRR during matches; restore on exit");
+                card.Summary = AutoText("可在启动前预设窗口 VRR，退局恢复", "May preset windowed VRR before launch; restore after matches");
                 break;
             case "AmdSam":
                 card.Summary = AutoText("为受支持的设备启用 AMD SAM", "Enable AMD SAM on supported hardware");
                 break;
             case "GameDvrOff":
-                card.Summary = AutoText("守护期间关闭录制，停守护后还原", "Disable capture while guarding; restore when guarding stops");
+                card.Summary = AutoText("保护期间关闭录制，关闭保护后恢复", "Disable capture while protection is on; restore when it stops");
                 break;
             case "NvLowLat":
-                card.Summary = AutoText("对局启用驱动低延迟，退局还原", "Use driver low latency during matches; restore on exit");
+                card.Summary = AutoText("可在启动前预设低延迟，退局恢复", "May preset low latency before launch; restore after matches");
                 break;
             case "EnvPerformanceBundleV1":
                 card.Summary = AutoText("关闭 VBS 与 CPU 缓解，降低相应防护", "Disable VBS and CPU mitigations, reducing those protections");
@@ -710,7 +694,7 @@ namespace PaviseApp
                 card.Summary = AutoText("调整启动时钟与节拍参数", "Adjust boot clock and tick parameters");
                 break;
             case "AutoGlobalTimer":
-                card.Summary = AutoText("仅对局请求 0.5 ms，实际精度由系统决定", "Request 0.5 ms in matches; Windows determines the result");
+                card.Summary = AutoText("系统配置退局保留；0.5 ms 请求仅限对局", "Keep system configuration after matches; request 0.5 ms only in matches");
                 break;
             case "LabEppYieldV1":
                 card.Summary = AutoText("插电笔记本按功耗与瓶颈验证，失败即恢复", "Verify laptop power and bottlenecks on AC; revert on failure");
@@ -737,26 +721,26 @@ namespace PaviseApp
         }
         private void OrderPerformanceConsole()
         {
-            string[] preferredFeatureOrder = new string[6] { "GmBoost", "GmThreadBoostStrategyV1", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
+            string[] textEntries = new string[6] { PolicyCatalog.KeyGameScheduling, "GmBoost", "AutoNtfsShortNamesV1", "GmCacheWarmV2", "AutoGameMitigationsV1", "GmMmcss" };
             Control control = performanceTabPanels[0];
-            List<PerformanceFeatureCard> performanceFeatureCards = new List<PerformanceFeatureCard>();
-            foreach (Control currentControl in control.Controls)
+            List<PerformanceFeatureCard> list = new List<PerformanceFeatureCard>();
+            foreach (Control control2 in control.Controls)
             {
-                if (currentControl is PerformanceFeatureCard)
+                if (control2 is PerformanceFeatureCard)
                 {
-                    performanceFeatureCards.Add((PerformanceFeatureCard)currentControl);
+                    list.Add((PerformanceFeatureCard)control2);
                 }
             }
             control.SuspendLayout();
             try
             {
-                for (int featureOrderIndex = preferredFeatureOrder.Length - 1; featureOrderIndex >= 0; featureOrderIndex--)
+                for (int textEntriesIndex = textEntries.Length - 1; textEntriesIndex >= 0; textEntriesIndex--)
                 {
-                    foreach (PerformanceFeatureCard performanceFeatureCard in performanceFeatureCards)
+                    foreach (PerformanceFeatureCard item in list)
                     {
-                        if (performanceFeatureCard.IconKey == preferredFeatureOrder[featureOrderIndex])
+                        if (item.IconKey == textEntries[textEntriesIndex])
                         {
-                            control.Controls.SetChildIndex(performanceFeatureCard, 0);
+                            control.Controls.SetChildIndex(item, 0);
                         }
                     }
                 }

@@ -49,6 +49,14 @@ namespace PaviseApp
             int GetProperty(uint property, UIntPtr bufferSize, IntPtr propertyData);
         }
 
+        private const uint HardwareId = 3u;
+
+        private const uint IsIntegrated = 12u;
+
+        private const uint HardwareIdParts = 14u;
+
+        private const int ProbeTimeoutMs = 3000;
+
         private static readonly Guid AdapterFactoryId = new Guid("78ee5945-c36e-4b13-a669-005dd11c0f06");
 
         private static readonly Guid AdapterListId = new Guid("526c7776-40e9-459b-b711-f32ad76dfc28");
@@ -132,13 +140,13 @@ namespace PaviseApp
         private static void CollectAttribute(IDXCoreAdapterFactory factory, Guid attribute, Dictionary<string, bool> result)
         {
             IDXCoreAdapterList adapterList = null;
-            IntPtr nativeBuffer = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
-                nativeBuffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Guid)));
-                Marshal.StructureToPtr(attribute, nativeBuffer, false);
+                intPtr = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Guid)));
+                Marshal.StructureToPtr(attribute, intPtr, false);
                 Guid riid = AdapterListId;
-                if (factory.CreateAdapterList(1u, nativeBuffer, ref riid, out adapterList) < 0 || adapterList == null)
+                if (factory.CreateAdapterList(1u, intPtr, ref riid, out adapterList) < 0 || adapterList == null)
                 {
                     return;
                 }
@@ -154,18 +162,18 @@ namespace PaviseApp
                         {
                             continue;
                         }
-                        IntPtr currentNativeBuffer = Marshal.AllocHGlobal(1);
+                        IntPtr intPtr2 = Marshal.AllocHGlobal(1);
                         try
                         {
-                            Marshal.WriteByte(currentNativeBuffer, 0);
-                            if (adapter.GetProperty(12u, new UIntPtr(1u), currentNativeBuffer) >= 0)
+                            Marshal.WriteByte(intPtr2, 0);
+                            if (adapter.GetProperty(12u, new UIntPtr(1u), intPtr2) >= 0)
                             {
-                                result[key] = Marshal.ReadByte(currentNativeBuffer) != 0;
+                                result[key] = Marshal.ReadByte(intPtr2) != 0;
                             }
                         }
                         finally
                         {
-                            Marshal.FreeHGlobal(currentNativeBuffer);
+                            Marshal.FreeHGlobal(intPtr2);
                         }
                     }
                     finally
@@ -185,9 +193,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (nativeBuffer != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(nativeBuffer);
+                    Marshal.FreeHGlobal(intPtr);
                 }
                 if (adapterList != null)
                 {
@@ -221,25 +229,25 @@ namespace PaviseApp
                 property = 3u;
                 hardwareKeyValue = 16;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(hardwareKeyValue);
+            IntPtr intPtr = Marshal.AllocHGlobal(hardwareKeyValue);
             try
             {
-                if (adapter.GetProperty(property, new UIntPtr((uint)hardwareKeyValue), nativeBuffer) < 0)
+                if (adapter.GetProperty(property, new UIntPtr((uint)hardwareKeyValue), intPtr) < 0)
                 {
                     return false;
                 }
-                uint vendorId = (uint)Marshal.ReadInt32(nativeBuffer, 0);
-                uint deviceId = (uint)Marshal.ReadInt32(nativeBuffer, 4);
-                if (vendorId == 0 || deviceId == 0)
+                uint int32 = (uint)Marshal.ReadInt32(intPtr, 0);
+                uint int322 = (uint)Marshal.ReadInt32(intPtr, 4);
+                if (int32 == 0 || int322 == 0)
                 {
                     return false;
                 }
-                key = "VEN_" + vendorId.ToString("X4") + "&DEV_" + deviceId.ToString("X4");
+                key = "VEN_" + int32.ToString("X4") + "&DEV_" + int322.ToString("X4");
                 return true;
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 

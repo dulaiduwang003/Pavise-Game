@@ -12,6 +12,8 @@ namespace PaviseApp
         internal long Next = long.MaxValue;
         internal readonly List<Func<bool>> PhaseObservers = new List<Func<bool>>();
         internal RecoveryAttemptTrace() { previous = current; current = this; }
+        // 只有调度方接管的恢复尝试才消耗子所有者的等待观察次数。
+        internal static bool Active { get { return current != null; } }
         internal static void DeferredUntil(long utcTicks)
         { if (current != null) { current.Reported = true; current.Next = Math.Min(current.Next, utcTicks); } }
         internal static void DeferredFor(TimeSpan delay) { DeferredUntil(DateTime.UtcNow.Ticks + Math.Max(1, delay.Ticks)); }

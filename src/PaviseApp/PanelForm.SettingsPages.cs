@@ -68,8 +68,8 @@ namespace PaviseApp
         }
         private Dictionary<string, AuditFix> BuildAuditFixes()
         {
-            Dictionary<string, AuditFix> auditFixsByName = new Dictionary<string, AuditFix>(StringComparer.Ordinal);
-            auditFixsByName.Add("memcompress", new AuditFix
+            Dictionary<string, AuditFix> dictionary = new Dictionary<string, AuditFix>(StringComparer.Ordinal);
+            dictionary.Add("memcompress", new AuditFix
             {
                 CanFix = () => auditReport != null && auditReport.MemoryCompressionCanEnable,
                 CanRevert = () => MemCompressTweak.OwnsState,
@@ -83,7 +83,7 @@ namespace PaviseApp
                 },
                 FixLabel = "audit.mem.enable"
             });
-            auditFixsByName.Add("gpuirq", new AuditFix
+            dictionary.Add("gpuirq", new AuditFix
             {
                 CanFix = () => auditReport != null && auditReport.GpuIrq != null && (auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsPlacement || auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsVerification) && !GpuIrqCheck.AwaitingReboot(GpuIrqCheck.LoadState()) && !gameMode.IsActive,
                 CanRevert = () => false,
@@ -93,7 +93,7 @@ namespace PaviseApp
                 },
                 FixLabel = ((auditReport != null && auditReport.GpuIrq != null && auditReport.GpuIrq.Outcome == GpuIrqOutcome.NeedsVerification) ? "irqcheck.btn.verify" : "audit.irq.apply")
             });
-            auditFixsByName.Add("gpuirqrestore", new AuditFix
+            dictionary.Add("gpuirqrestore", new AuditFix
             {
                 CanFix = () => false,
                 CanRevert = () => GpuIrqCheck.HasResidue || IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue,
@@ -102,7 +102,7 @@ namespace PaviseApp
                     OnIrqRestore(null, EventArgs.Empty);
                 }
             });
-            auditFixsByName.Add("msi", new AuditFix
+            dictionary.Add("msi", new AuditFix
             {
                 CanFix = () => MsiModeTweak.Disabled().Count > 0,
                 CanRevert = () => MsiModeTweak.EnabledByPavise,
@@ -116,7 +116,7 @@ namespace PaviseApp
                 },
                 ConfirmKey = "audit.msi.confirm"
             });
-            auditFixsByName.Add("quantum", new AuditFix
+            dictionary.Add("quantum", new AuditFix
             {
                 CanFix = () => false,
                 CanRevert = () => false,
@@ -126,7 +126,7 @@ namespace PaviseApp
                 },
                 OpenText = () => PerformancePolicy.Text("前往时间片设置", "Open setting")
             });
-            auditFixsByName.Add("net", new AuditFix
+            dictionary.Add("net", new AuditFix
             {
                 CanFix = () => NetTweak.NeedsRepair(),
                 CanRevert = () => NetTweak.RepairedByPavise,
@@ -139,7 +139,7 @@ namespace PaviseApp
                     NetTweak.Restore();
                 }
             });
-            auditFixsByName.Add("linkmetric", new AuditFix
+            dictionary.Add("linkmetric", new AuditFix
             {
                 CanFix = () => LinkMetricTweak.NeedsRepair(),
                 CanRevert = () => LinkMetricTweak.RepairedByPavise,
@@ -152,7 +152,7 @@ namespace PaviseApp
                     LinkMetricTweak.Restore();
                 }
             });
-            auditFixsByName.Add("fth", new AuditFix
+            dictionary.Add("fth", new AuditFix
             {
                 CanFix = () => FthTweak.NeedsRepair(),
                 CanRevert = () => FthTweak.RepairedByPavise,
@@ -166,19 +166,21 @@ namespace PaviseApp
                 },
                 ConfirmKey = "audit.fth.confirm"
             });
-            return auditFixsByName;
+            return dictionary;
         }
         private void BuildPerformanceSystemOptions(Control scroll, ref int sy)
         {
-            foreach (PerformanceRestartScope performanceRestartScope in new PerformanceRestartScope[3]
+            PerformanceRestartScope[] performanceRestartScopeItems = new PerformanceRestartScope[3]
             {
                 PerformanceRestartScope.None,
                 PerformanceRestartScope.ProcessRestart,
                 PerformanceRestartScope.SystemRestart
-            })
+            };
+            foreach (PerformanceRestartScope performanceRestartScope in performanceRestartScopeItems)
             {
                 bool hasPrivacyOptions = false;
-                foreach (PrivacyAction privacyAction in PrivacyActionCatalog.All)
+                PrivacyAction[] all = PrivacyActionCatalog.All;
+                foreach (PrivacyAction privacyAction in all)
                 {
                     if (privacyAction.Key != PrivacyActionCatalog.BackgroundGlobal && PerformanceRestartFor(privacyAction.Key) == performanceRestartScope)
                     {
@@ -223,12 +225,12 @@ namespace PaviseApp
             {
                 return;
             }
-            Dictionary<Control, int> topsByControl = new Dictionary<Control, int>();
+            Dictionary<Control, int> dictionary = new Dictionary<Control, int>();
             foreach (Control control in scroll.Controls)
             {
-                topsByControl[control] = control.Top;
+                dictionary[control] = control.Top;
             }
-            stackBase[scroll] = topsByControl;
+            stackBase[scroll] = dictionary;
         }
         private void BuildPerformanceEnvironmentGraphics(Control scroll, ref int sy, PerformanceRestartScope scope)
         {
@@ -359,7 +361,7 @@ namespace PaviseApp
         {
             PerformanceAction performanceAction = PerformanceActionCatalog.Find("EnvQuantumProfileV1");
             string accessibleNameValue = performanceAction.Title;
-            string accessibleDescriptionValue = AutoText("游戏/日常选短可变 3:1，后台计算选长固定 1:1；比例不是帧率倍数。优先在线应用和恢复，系统拒绝或原值无法在线还原时提示重启电脑。“恢复原配置”也撤销旧版校正。", "Use short variable 3:1 for games/daily use or long fixed 1:1 for background work; these are turn ratios, not FPS multipliers. Apply and restore online where supported; a PC restart is shown if Windows rejects the update or the original cannot be restored online. Restore original also undoes legacy corrections.");
+            string accessibleDescriptionValue = AutoText("游戏与日常选短可变 3:1，后台计算选长固定 1:1。通常即时生效，需要重启时会提示；恢复原配置也会撤销旧版校正。", "Use short variable 3:1 for games and daily use, or long fixed 1:1 for background work. Usually applies immediately; a restart prompt appears when needed. Restore original also undoes legacy corrections.");
             int used;
             swPerformanceEnvironmentQuantum = new QuantumProfilePicker();
             swPerformanceEnvironmentQuantum.SetSilently(0);
@@ -390,9 +392,9 @@ namespace PaviseApp
             InitializeSettingsWorkspace();
             Control scroll = settingsTabPanels[0];
             swAuto = MakeSwitch(TaskHelper.IsStartupTaskEnabledCached(), OnAutoToggle);
-            AddSettingsTile(scroll, "SettingsStartup", Lang.T("set.autostart"), Lang.T("set.autostart.n"), "startup", swAuto);
+            AddSettingsTile(scroll, "SettingsStartup", Lang.T("set.autostart"), Lang.T("set.autostart.n"), "startup", swAuto).Summary = AutoText("登录后在托盘启动", "Start in the tray after sign-in");
             swAutoHide = MakeSwitch(Settings.Load("AutoHideOnGame", true), OnAutoHideToggle);
-            AddSettingsTile(scroll, "SettingsAutoHide", Lang.T("set.autohide"), Lang.T("set.autohide.n"), "hide", swAutoHide);
+            AddSettingsTile(scroll, "SettingsAutoHide", Lang.T("set.autohide"), Lang.T("set.autohide.n"), "hide", swAutoHide).Summary = Lang.T("set.autohide.n");
             int[] exitGraceChoices = new int[6] { 0, 2, 5, 8, 15, 30 };
             TierPicker pickExitGrace = new TierPicker
             {
@@ -414,35 +416,37 @@ namespace PaviseApp
                     PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("set.exitgrace.fail"));
                 }
             };
-            AddSettingsTile(scroll, "SettingsExitGrace", Lang.T("set.exitgrace"), Lang.T("set.exitgrace.n"), "clock", pickExitGrace).StackHost = true;
-            TierPicker currentTierPicker = new TierPicker();
-            currentTierPicker.Name = "SettingsLanguagePicker";
-            currentTierPicker.Labels = new string[2]
+            AddSettingsTile(scroll, "SettingsExitGrace", Lang.T("set.exitgrace"), Lang.T("set.exitgrace.n"), "clock", pickExitGrace).Summary = AutoText("默认 8 秒 · 修改后立即生效", "Default: 8 s · Changes apply immediately");
+            TierPicker tierPicker = new TierPicker();
+            tierPicker.Name = "SettingsLanguagePicker";
+            TierPicker tierPicker2 = tierPicker;
+            tierPicker2.Labels = new string[2]
             {
                 Lang.T("lang.zh"),
                 Lang.T("lang.en")
             };
-            currentTierPicker.Index = Lang.Cur;
-            currentTierPicker.Size = new Size(Theme.S(232), Theme.S(40));
-            currentTierPicker.IndexChanged = delegate(int index)
+            tierPicker2.Index = Lang.Cur;
+            tierPicker2.Size = new Size(Theme.S(232), Theme.S(40));
+            tierPicker2.IndexChanged = delegate(int index)
             {
                 Lang.Set(index);
                 BeginInvoke(new MethodInvoker(RebuildUi));
             };
-            AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", currentTierPicker);
+            AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", tierPicker2).Summary = AutoText("界面与新日志一并切换", "Switch the UI and new log messages together");
             int sy = 0;
             BuildStandbyCleanerSettingsCard(scroll, ref sy);
             RefreshStandbyCleanerPresentation();
             scroll = settingsTabPanels[1];
-            PillButton currentPillButton = new PillButton(Lang.T("workflow.attention.action.logs"));
-            currentPillButton.Name = "settingsOpenLogs";
-            currentPillButton.Bg = Theme.Card;
-            currentPillButton.Size = new Size(Theme.S(136), Theme.S(40));
-            currentPillButton.Click += delegate
+            PillButton pillButton = new PillButton(Lang.T("workflow.attention.action.logs"));
+            pillButton.Name = "settingsOpenLogs";
+            pillButton.Bg = Theme.Card;
+            pillButton.Size = new Size(Theme.S(136), Theme.S(40));
+            PillButton pillButton2 = pillButton;
+            pillButton2.Click += delegate
             {
                 nav.Select(7);
             };
-            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.T("v20.log.sub"), "logs", currentPillButton);
+            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.T("v20.log.sub"), "logs", pillButton2).Summary = AutoText("查看运行记录与故障详情", "View activity and failure details");
             btnWipeAll = new PillButton(Lang.T("btn.wipe"), BtnKind.Normal)
             {
                 Bg = Theme.Card,
@@ -452,7 +456,7 @@ namespace PaviseApp
             {
                 OnWipeAll();
             };
-            AddSettingsTile(scroll, "SettingsReset", Lang.T("btn.wipe"), Lang.T("set.reset.desc"), "reset", btnWipeAll);
+            AddSettingsTile(scroll, "SettingsReset", Lang.T("btn.wipe"), Lang.T("set.reset.desc"), "reset", btnWipeAll).Summary = AutoText("恢复本软件修改并清除配置", "Restore Pavise changes and clear its settings");
             btnUninstall = new PillButton(Lang.T("btn.uninstall"), BtnKind.Danger)
             {
                 Bg = Theme.Card,
@@ -462,7 +466,7 @@ namespace PaviseApp
             {
                 OnUninstall();
             };
-            AddSettingsTile(scroll, "SettingsUninstall", Lang.T("btn.uninstall"), Lang.T("set.uninstall.desc"), "uninstall", btnUninstall);
+            AddSettingsTile(scroll, "SettingsUninstall", Lang.T("btn.uninstall"), Lang.T("set.uninstall.desc"), "uninstall", btnUninstall).Summary = AutoText("恢复修改后移除 Pavise", "Restore changes, then remove Pavise");
             btnShaderGo = new PillButton(Lang.T("btn.clean"))
             {
                 Size = new Size(Theme.S(112), Theme.S(40))
@@ -472,6 +476,7 @@ namespace PaviseApp
                 OnShaderClean((PillButton)s);
             };
             cardShader = AddSettingsTile(scroll, "SettingsShader", Lang.T("btn.shader"), Lang.T("set.shader.n"), "shader", btnShaderGo);
+            ((SettingsWorkspaceTile)cardShader).Summary = AutoText("清理后首次启动游戏需重新编译", "Games recompile shaders on their next launch");
             cardShader.Value = " ";
             SyncShaderCleanupPresentation();
             scroll = settingsTabPanels[2];

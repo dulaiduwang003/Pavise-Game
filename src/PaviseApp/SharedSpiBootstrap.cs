@@ -119,19 +119,19 @@ namespace PaviseApp
                 hasLegacyMigration = true;
             }
             NoReparse.CheckPath(directoryName);
-            List<PerformanceActionStore.Receipt> receipts = new List<PerformanceActionStore.Receipt>();
-            foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
+            List<PerformanceActionStore.Receipt> list = new List<PerformanceActionStore.Receipt>();
+            foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
             {
-                if (all.Id == "MatchVisualEffectsV1")
+                if (item.Id == "MatchVisualEffectsV1")
                 {
-                    if (!string.IsNullOrEmpty(all.VisualOwner))
+                    if (!string.IsNullOrEmpty(item.VisualOwner))
                     {
                         return new SpiBootstrapResult(false, false, "Owned visual receipts witness a missing protocol owner; no bootstrap repair");
                     }
-                    receipts.Add(all);
+                    list.Add(item);
                 }
             }
-            SpiLegacyMigrationPlan spiLegacyMigrationPlan = ((receipts.Count == 0 && !hasLegacyMigration) ? null : SpiLegacyMigrationPlan.Prepare(sid, store, receipts, hasLegacyMigration));
+            SpiLegacyMigrationPlan spiLegacyMigrationPlan = ((list.Count == 0 && !hasLegacyMigration) ? null : SpiLegacyMigrationPlan.Prepare(sid, store, list, hasLegacyMigration));
             originalMain.RequireCurrent();
             byte[] bytes = new UTF8Encoding(false, true).GetBytes("pavise-spi-initialization-3\nuser_sid\t" + sid + "\nnonce\t" + Guid.NewGuid().ToString("N") + "\nlegacy_closure\tnone\nmain\toriginal-single-instance-lease-v1\n");
             BootstrapProof proof = new BootstrapProof(mintWitness, originalMain, sid, store.PathName, bytes, spiLegacyMigrationPlan);

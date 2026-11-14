@@ -55,8 +55,9 @@ namespace PaviseApp
             {
                 Admit();
                 major = (minor = (build = 0u));
-                OsVersion version = default(OsVersion);
-                version.Size = (uint)Marshal.SizeOf(typeof(OsVersion));
+                OsVersion osVersion = default(OsVersion);
+                osVersion.Size = (uint)Marshal.SizeOf(typeof(OsVersion));
+                OsVersion version = osVersion;
                 if (version.Size != 276 || RtlGetVersion(ref version) != 0)
                 {
                     return false;
@@ -123,9 +124,9 @@ namespace PaviseApp
                 disposed = true;
                 if (module != IntPtr.Zero)
                 {
-                    IntPtr moduleHandle = module;
+                    IntPtr intPtr = module;
                     module = IntPtr.Zero;
-                    if (!FreeLibrary(moduleHandle))
+                    if (!FreeLibrary(intPtr))
                     {
                         throw new InvalidOperationException("FreeLibrary did not release the owned module");
                     }
@@ -191,8 +192,9 @@ namespace PaviseApp
                 {
                     try
                     {
-                        HwsCloseAdapter args = default(HwsCloseAdapter);
-                        args.Adapter = ownedAdapter;
+                        HwsCloseAdapter hwsCloseAdapter = default(HwsCloseAdapter);
+                        hwsCloseAdapter.Adapter = ownedAdapter;
+                        HwsCloseAdapter args = hwsCloseAdapter;
                         int closeAdapterResult = bridge.CloseAdapter(ref args);
                         if (closeAdapterResult != 0 || args.Adapter != ownedAdapter)
                         {
@@ -242,9 +244,10 @@ namespace PaviseApp
             {
                 return Unavailable(luid, HardwareSchedulingProbeReason.EntryPointsUnavailable, "The complete formal KMT entry point set is unavailable", null, null, null);
             }
-            HwsOpenAdapter args = default(HwsOpenAdapter);
-            args.AdapterLuid = luid2;
-            args.Adapter = 0u;
+            HwsOpenAdapter hwsOpenAdapter = default(HwsOpenAdapter);
+            hwsOpenAdapter.AdapterLuid = luid2;
+            hwsOpenAdapter.Adapter = 0u;
+            HwsOpenAdapter args = hwsOpenAdapter;
             int adapter;
             try
             {
@@ -266,9 +269,10 @@ namespace PaviseApp
             {
                 return Unavailable(luid, HardwareSchedulingProbeReason.RendererLuidChanged, "The open did not retain the requested renderer LUID", null, null, null);
             }
-            HwsFeatureQuery args2 = default(HwsFeatureQuery);
-            args2.Adapter = ownedAdapter;
-            args2.FeatureId = 0u;
+            HwsFeatureQuery hwsFeatureQuery = default(HwsFeatureQuery);
+            hwsFeatureQuery.Adapter = ownedAdapter;
+            hwsFeatureQuery.FeatureId = 0u;
+            HwsFeatureQuery args2 = hwsFeatureQuery;
             int feature = bridge.QueryFeature(ref args2);
             if (feature != 0)
             {
@@ -307,7 +311,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            ulong parsedLuid = 0uL;
+            ulong numericValue = 0uL;
             foreach (char c in value)
             {
                 int remainingC = ((c >= '0' && c <= '9') ? (c - 48) : ((c >= 'a' && c <= 'f') ? (c - 97 + 10) : (-1)));
@@ -315,14 +319,14 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                parsedLuid = (parsedLuid << 4) | (uint)remainingC;
+                numericValue = (numericValue << 4) | (uint)remainingC;
             }
-            if (parsedLuid == 0)
+            if (numericValue == 0)
             {
                 return false;
             }
-            luid.LowPart = (uint)parsedLuid;
-            luid.HighPart = (int)(parsedLuid >> 32);
+            luid.LowPart = (uint)numericValue;
+            luid.HighPart = (int)(numericValue >> 32);
             return true;
         }
 

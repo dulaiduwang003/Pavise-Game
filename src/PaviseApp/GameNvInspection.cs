@@ -69,11 +69,12 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Product policy vector is outside the two-key contract");
             }
-            foreach (uint settingId in new uint[2] { 274197361u, 549528094u })
+            uint[] numericValueItems = new uint[2] { 274197361u, 549528094u };
+            foreach (uint numericValueEntry in numericValueItems)
             {
-                uint target;
-                GameNvProfileDecision gameNvProfileDecision = (originalPlan.Targets.TryGetValue(settingId, out target) ? GameNvProfilePolicy.Evaluate(settingId, target, Originals[settingId]) : new GameNvProfileDecision(originalPlan.Members[(settingId != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(Originals[settingId])));
-                if (Decisions[settingId].State != gameNvProfileDecision.State || Decisions[settingId].Source != gameNvProfileDecision.Source || EligibleTargets.ContainsKey(settingId) != (gameNvProfileDecision.State == GameNvPending.Ready) || (EligibleTargets.ContainsKey(settingId) && EligibleTargets[settingId] != target))
+                uint value;
+                GameNvProfileDecision gameNvProfileDecision = (originalPlan.Targets.TryGetValue(numericValueEntry, out value) ? GameNvProfilePolicy.Evaluate(numericValueEntry, value, Originals[numericValueEntry]) : new GameNvProfileDecision(originalPlan.Members[(numericValueEntry != 274197361) ? GameNvMember.OpenGl : GameNvMember.PState], GameNvProfilePolicy.Source(Originals[numericValueEntry])));
+                if (Decisions[numericValueEntry].State != gameNvProfileDecision.State || Decisions[numericValueEntry].Source != gameNvProfileDecision.Source || EligibleTargets.ContainsKey(numericValueEntry) != (gameNvProfileDecision.State == GameNvPending.Ready) || (EligibleTargets.ContainsKey(numericValueEntry) && EligibleTargets[numericValueEntry] != value))
                 {
                     throw new InvalidDataException("Product game NVIDIA policy result changed");
                 }

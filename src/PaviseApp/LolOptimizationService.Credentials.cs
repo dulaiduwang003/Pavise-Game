@@ -38,7 +38,7 @@ namespace PaviseApp
             {
                 return null;
             }
-            lolLcuCredentials = LolLcuCredentialSource.Find(root);
+            if (!LolLcuCredentialSource.TryFind(root, out lolLcuCredentials)) return cachedCredentials;
             if (lolLcuCredentials == null)
             {
                 ScheduleCredentialRetry(root);
@@ -79,7 +79,7 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                lolLcuCredentials = LolLcuCredentialSource.Find(root);
+                if (!LolLcuCredentialSource.TryFind(root, out lolLcuCredentials)) return null;
                 if (lolLcuCredentials == null)
                 {
                     ScheduleCredentialRetry(root);
@@ -142,7 +142,9 @@ namespace PaviseApp
             {
                 return null;
             }
-            cachedCredentials = LolLcuCredentialSource.Find(root);
+            LolLcuCredentials found;
+            if (!LolLcuCredentialSource.TryFind(root, out found)) return cachedCredentials;
+            cachedCredentials = found;
             if (cachedCredentials == null)
             {
                 ScheduleCredentialRetry(root);

@@ -15,6 +15,8 @@ namespace PaviseApp
 
         public const long StaleTicks = 100000000L;
 
+        private const long NotTiming = -1L;
+
         private readonly double enterUtilization;
 
         private readonly double exitUtilization;

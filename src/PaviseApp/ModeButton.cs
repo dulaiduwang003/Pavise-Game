@@ -135,13 +135,13 @@ namespace PaviseApp
                 }
                 PaintBusy(graphics, rectangle, graphicsPath);
             }
-            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
+            using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
             {
-                graphics.DrawLine(accentPen, 0, Theme.S(13), 0, base.Height - Theme.S(14));
+                graphics.DrawLine(pen2, 0, Theme.S(13), 0, base.Height - Theme.S(14));
             }
-            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, (int)(110f + 110f * hover.Value)), Math.Max(1f, Theme.S(1))))
+            using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, (int)(110f + 110f * hover.Value)), Math.Max(1f, Theme.S(1))))
             {
-                graphics.DrawLine(currentPen, rectangle.Right - Theme.S(9), rectangle.Top, rectangle.Right, rectangle.Top + Theme.S(9));
+                graphics.DrawLine(pen3, rectangle.Right - Theme.S(9), rectangle.Top, rectangle.Right, rectangle.Top + Theme.S(9));
             }
             Glyphs.Draw(graphics, "game", new Rectangle(Theme.S(12), (base.Height - Theme.S(18)) / 2, Theme.S(18), Theme.S(18)), base.Enabled ? Theme.Accent : Theme.Faint);
             TextRenderer.DrawText(graphics, SummaryText, Theme.UI(9.25f, true), new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(68)), base.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
@@ -151,9 +151,9 @@ namespace PaviseApp
                 new PointF(base.Width - Theme.S(17), Theme.S(23)),
                 new PointF(base.Width - Theme.S(12), Theme.S(18))
             };
-            using (Pen dimPen = new Pen(Theme.Dim, Math.Max(1f, Theme.S(1))))
+            using (Pen pen4 = new Pen(Theme.Dim, Math.Max(1f, Theme.S(1))))
             {
-                graphics.DrawLines(dimPen, points);
+                graphics.DrawLines(pen4, points);
             }
             if (base.WantsFocusCue)
             {
@@ -189,7 +189,7 @@ namespace PaviseApp
             int remainingRight = bounds.Right - scaledDimension2;
             Color color = (base.Enabled ? Theme.Accent : Theme.Faint);
             Color a = Col.Lerp(Theme.Card, Theme.CardHover, 0.35f + hover.Value * 0.65f);
-            Color lerp = Col.Lerp(Theme.Nav, Theme.Card, 0.32f + hover.Value * 0.22f);
+            Color color2 = Col.Lerp(Theme.Nav, Theme.Card, 0.32f + hover.Value * 0.22f);
             a = Col.Lerp(a, Theme.Nav, press.Value * 0.24f);
             using (GraphicsPath graphicsPath = CompactFrame(bounds, Theme.S(9)))
             {
@@ -197,7 +197,7 @@ namespace PaviseApp
                 try
                 {
                     g.SetClip(graphicsPath, CombineMode.Intersect);
-                    using (LinearGradientBrush brush = new LinearGradientBrush(bounds, a, lerp, LinearGradientMode.Vertical))
+                    using (LinearGradientBrush brush = new LinearGradientBrush(bounds, a, color2, LinearGradientMode.Vertical))
                     {
                         g.FillPath(brush, graphicsPath);
                     }
@@ -208,7 +208,7 @@ namespace PaviseApp
                         new Point(scaledDimension - scaledDimension3, bounds.Bottom),
                         new Point(bounds.Left, bounds.Bottom)
                     };
-                    using (LinearGradientBrush brush2 = new LinearGradientBrush(bounds, Col.Lerp(a, color, 0.22f + hover.Value * 0.12f), Col.Lerp(lerp, color, 0.07f + hover.Value * 0.08f), LinearGradientMode.Vertical))
+                    using (LinearGradientBrush brush2 = new LinearGradientBrush(bounds, Col.Lerp(a, color, 0.22f + hover.Value * 0.12f), Col.Lerp(color2, color, 0.07f + hover.Value * 0.08f), LinearGradientMode.Vertical))
                     {
                         g.FillPolygon(brush2, points);
                     }
@@ -227,13 +227,13 @@ namespace PaviseApp
                     {
                         g.DrawLine(pen, scaledDimension + scaledDimension3, bounds.Top, scaledDimension - scaledDimension3, bounds.Bottom);
                     }
-                    using (Pen currentPen = new Pen(Col.Alpha(Theme.Bg, 180)))
+                    using (Pen pen2 = new Pen(Col.Alpha(Theme.Bg, 180)))
                     {
-                        g.DrawLine(currentPen, scaledDimension + scaledDimension3 + Theme.S(2), bounds.Top, scaledDimension - scaledDimension3 + Theme.S(2), bounds.Bottom);
+                        g.DrawLine(pen2, scaledDimension + scaledDimension3 + Theme.S(2), bounds.Top, scaledDimension - scaledDimension3 + Theme.S(2), bounds.Bottom);
                     }
-                    using (Pen candidatePen = new Pen(Col.Lerp(Theme.StrokeHi, color, hover.Value * 0.36f)))
+                    using (Pen pen3 = new Pen(Col.Lerp(Theme.StrokeHi, color, hover.Value * 0.36f)))
                     {
-                        g.DrawLine(candidatePen, remainingRight + scaledDimension3, bounds.Top, remainingRight - scaledDimension3, bounds.Bottom);
+                        g.DrawLine(pen3, remainingRight + scaledDimension3, bounds.Top, remainingRight - scaledDimension3, bounds.Bottom);
                     }
                     int roundedValue = (int)Math.Round(press.Value * (float)Theme.S(1));
                     int roundedValueOffset = bounds.Top + bounds.Height / 2 + roundedValue;
@@ -244,9 +244,9 @@ namespace PaviseApp
                     int descriptionWidth = remainingRight - Theme.S(10);
                     TextRenderer.DrawText(g, SummaryText, Theme.UI(10.5f, true), new Rectangle(scaledDimensionOffset, bounds.Top + roundedValue, Math.Max(1, descriptionWidth - scaledDimensionOffset), bounds.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                     int sOffset = remainingRight + scaledDimension2 / 2 + Theme.S(1);
-                    using (Pen resolvedPen = new Pen(base.Enabled ? Col.Lerp(Theme.Dim, Theme.Fg, hover.Value) : Theme.Faint, Math.Max(1f, Theme.S(1))))
+                    using (Pen pen4 = new Pen(base.Enabled ? Col.Lerp(Theme.Dim, Theme.Fg, hover.Value) : Theme.Faint, Math.Max(1f, Theme.S(1))))
                     {
-                        g.DrawLines(resolvedPen, new Point[3]
+                        g.DrawLines(pen4, new Point[3]
                         {
                             new Point(sOffset - Theme.S(4), roundedValueOffset - Theme.S(2)),
                             new Point(sOffset, roundedValueOffset + Theme.S(2)),
@@ -259,19 +259,19 @@ namespace PaviseApp
                     {
                         using (GraphicsPath path = CompactFrame(bounds2, Theme.S(7)))
                         {
-                            using (Pen selectedPen = new Pen(Col.Alpha(Theme.StrokeHi, Theme.LightMode ? 62 : 55)))
+                            using (Pen pen5 = new Pen(Col.Alpha(Theme.StrokeHi, Theme.LightMode ? 62 : 55)))
                             {
-                                g.DrawPath(selectedPen, path);
+                                g.DrawPath(pen5, path);
                             }
                         }
                     }
-                    using (Pen colorPen = new Pen(color, Math.Max(1f, Theme.S(2))))
+                    using (Pen pen6 = new Pen(color, Math.Max(1f, Theme.S(2))))
                     {
-                        g.DrawLine(colorPen, bounds.Left + Theme.S(12), bounds.Top, scaledDimension - Theme.S(3), bounds.Top);
+                        g.DrawLine(pen6, bounds.Left + Theme.S(12), bounds.Top, scaledDimension - Theme.S(3), bounds.Top);
                     }
-                    using (Pen workingPen = new Pen(Col.Alpha(color, (int)(110f + hover.Value * 105f))))
+                    using (Pen pen7 = new Pen(Col.Alpha(color, (int)(110f + hover.Value * 105f))))
                     {
-                        g.DrawLine(workingPen, bounds.Right - Theme.S(9), bounds.Bottom, bounds.Right, bounds.Bottom - Theme.S(9));
+                        g.DrawLine(pen7, bounds.Right - Theme.S(9), bounds.Bottom, bounds.Right, bounds.Bottom - Theme.S(9));
                     }
                     PaintBusy(g, bounds, graphicsPath);
                 }
@@ -279,9 +279,9 @@ namespace PaviseApp
                 {
                     g.Restore(gstate);
                 }
-                using (Pen pendingPen = new Pen(Col.Lerp(Theme.StrokeHi, color, 0.34f + hover.Value * 0.4f + press.Value * 0.2f)))
+                using (Pen pen8 = new Pen(Col.Lerp(Theme.StrokeHi, color, 0.34f + hover.Value * 0.4f + press.Value * 0.2f)))
                 {
-                    g.DrawPath(pendingPen, graphicsPath);
+                    g.DrawPath(pen8, graphicsPath);
                 }
             }
             if (base.WantsFocusCue)

@@ -49,44 +49,44 @@ namespace PaviseApp
                 g.ScaleTransform(minRatio, minRatio);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                using (Pen inkPen = new Pen(ink, 1.65f))
+                using (Pen pen2 = new Pen(ink, 1.65f))
                 {
                     using (Pen pen = new Pen(Color.FromArgb(ink.A * 3 / 5, ink), 1.15f))
                     {
-                        LineCap lineCap = (pen.EndCap = LineCap.Round);
-                        LineCap currentLineCap = (pen.StartCap = lineCap);
-                        LineCap startCap = (inkPen.EndCap = currentLineCap);
-                        inkPen.StartCap = startCap;
-                        LineJoin lineJoin = (pen.LineJoin = LineJoin.Round);
-                        inkPen.LineJoin = lineJoin;
+                        LineCap lineCap2 = (pen.EndCap = LineCap.Round);
+                        LineCap lineCap4 = (pen.StartCap = lineCap2);
+                        LineCap startCap = (pen2.EndCap = lineCap4);
+                        pen2.StartCap = startCap;
+                        LineJoin lineJoin2 = (pen.LineJoin = LineJoin.Round);
+                        pen2.LineJoin = lineJoin2;
                         switch (Normalize(key))
                         {
                         case "master":
-                            Lines(g, inkPen, 16f, 3f, 27f, 7f, 25f, 21f, 21f, 26f, 16f, 29f, 11f, 26f, 7f, 21f, 5f, 7f, 16f, 3f);
-                            g.DrawLine(inkPen, 11, 21, 16, 10);
-                            g.DrawLine(inkPen, 18, 21, 23, 10);
+                            Lines(g, pen2, 16f, 3f, 27f, 7f, 25f, 21f, 21f, 26f, 16f, 29f, 11f, 26f, 7f, 21f, 5f, 7f, 16f, 3f);
+                            g.DrawLine(pen2, 11, 21, 16, 10);
+                            g.DrawLine(pen2, 18, 21, 23, 10);
                             break;
                         case "roster":
-                            Cut(g, inkPen, 4f, 4f, 24f, 24f, 3f);
-                            Lines(g, inkPen, 8f, 11f, 10f, 13f, 13f, 9f);
-                            Lines(g, inkPen, 8f, 21f, 10f, 23f, 13f, 19f);
-                            g.DrawLine(inkPen, 17, 11, 23, 11);
+                            Cut(g, pen2, 4f, 4f, 24f, 24f, 3f);
+                            Lines(g, pen2, 8f, 11f, 10f, 13f, 13f, 9f);
+                            Lines(g, pen2, 8f, 21f, 10f, 23f, 13f, 19f);
+                            g.DrawLine(pen2, 17, 11, 23, 11);
                             g.DrawLine(pen, 17, 14, 21, 14);
-                            g.DrawLine(inkPen, 17, 21, 23, 21);
+                            g.DrawLine(pen2, 17, 21, 23, 21);
                             g.DrawLine(pen, 17, 24, 21, 24);
                             break;
                         case "records":
                             Lines(g, pen, 9f, 3f, 24f, 3f, 28f, 7f, 28f, 23f);
-                            Lines(g, inkPen, 6f, 7f, 21f, 7f, 25f, 11f, 25f, 26f);
-                            Cut(g, inkPen, 3f, 11f, 18f, 18f, 2f);
-                            g.DrawLine(inkPen, 7, 17, 17, 17);
-                            g.DrawLine(inkPen, 7, 22, 17, 22);
+                            Lines(g, pen2, 6f, 7f, 21f, 7f, 25f, 11f, 25f, 26f);
+                            Cut(g, pen2, 3f, 11f, 18f, 18f, 2f);
+                            g.DrawLine(pen2, 7, 17, 17, 17);
+                            g.DrawLine(pen2, 7, 22, 17, 22);
                             g.DrawLine(pen, 7, 26, 13, 26);
                             break;
                         default:
-                            Lines(g, inkPen, 10f, 4f, 22f, 4f, 29f, 16f, 22f, 28f, 10f, 28f, 3f, 16f, 10f, 4f);
-                            g.DrawLine(inkPen, 16, 10, 16, 18);
-                            g.DrawEllipse(inkPen, 15.4f, 22f, 1.2f, 1.2f);
+                            Lines(g, pen2, 10f, 4f, 22f, 4f, 29f, 16f, 22f, 28f, 10f, 28f, 3f, 16f, 10f, 4f);
+                            g.DrawLine(pen2, 16, 10, 16, 18);
+                            g.DrawEllipse(pen2, 15.4f, 22f, 1.2f, 1.2f);
                             break;
                         }
                     }

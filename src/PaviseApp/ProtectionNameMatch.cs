@@ -10,10 +10,10 @@ namespace PaviseApp
             {
                 return false;
             }
-            int searchOffset = 0;
-            while (searchOffset <= value.Length - word.Length)
+            int wordValue = 0;
+            while (wordValue <= value.Length - word.Length)
             {
-                int matchIndex = value.IndexOf(word, searchOffset, StringComparison.OrdinalIgnoreCase);
+                int matchIndex = value.IndexOf(word, wordValue, StringComparison.OrdinalIgnoreCase);
                 if (matchIndex < 0)
                 {
                     return false;
@@ -23,7 +23,7 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                searchOffset = matchIndex + 1;
+                wordValue = matchIndex + 1;
             }
             return false;
         }
@@ -67,7 +67,8 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string entryText in new string[4] { "service", "svc", "engine", "daemon" })
+            string[] textEntries = new string[4] { "service", "svc", "engine", "daemon" };
+            foreach (string entryText in textEntries)
             {
                 if (substringTrimmed.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
                 {
@@ -83,7 +84,8 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (char c in substringTrimmed)
+            string message = substringTrimmed;
+            foreach (char c in message)
             {
                 if (!char.IsDigit(c) && c != '.')
                 {
@@ -99,7 +101,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (string value in new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" })
+            string[] textEntries = new string[10] { "update", "upgrade", "install", "setup", "crash", "telemetry", "diagnos", "analytics", "webhelper", "reporter" };
+            foreach (string value in textEntries)
             {
                 if (name.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                 {

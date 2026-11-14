@@ -1,8 +1,9 @@
+using System.Collections.Generic;
 using System.Linq;
 
 namespace PaviseApp
 {
-    // 仅主要线程设置硬亲和性，次要线程使用理想处理器提示；容量计算为游戏工作线程和系统预留物理核。
+    // 布局只决定候选及落点；硬绑定强度由会话按规则执行，容量始终为其余线程保留物理核。
 
     internal static class CriticalThreadAutoPolicy
     {
@@ -49,6 +50,11 @@ namespace PaviseApp
 
         internal static HardThreadIdentity SelectPrimary(CriticalThreadHotspot[] hotspots, CriticalThreadRoleFact[] roles, out bool pooled)
         {
+            return SelectPrimary(hotspots, roles, CriticalThreadLayout.Compatible, out pooled);
+        }
+
+        internal static HardThreadIdentity SelectPrimary(CriticalThreadHotspot[] hotspots, CriticalThreadRoleFact[] roles, CriticalThreadLayout layout, out bool pooled)
+        {
             pooled = false;
             CriticalThreadHotspot[] busy = Eligible(hotspots, MinimumShare);
             if (busy.Length == 0)
@@ -65,7 +71,8 @@ namespace PaviseApp
                 }
             }
             CriticalThreadHotspot top = busy
-                .Where((CriticalThreadHotspot x) => presenters.Length != 0 || x.Windows >= EvidenceFreeWindows)
+                // 未与当前线程身份匹配的呈现证据，不能缩短这个线程自己的观察期。
+                .Where((CriticalThreadHotspot x) => x.Windows >= EvidenceFreeWindows)
                 .OrderByDescending((CriticalThreadHotspot x) => x.CpuShare)
                 .ThenBy((CriticalThreadHotspot x) => x.Tid)
                 .FirstOrDefault();
@@ -73,12 +80,24 @@ namespace PaviseApp
             {
                 return null;
             }
-            if (busy.Count((CriticalThreadHotspot x) => System.Math.Abs(x.CpuShare - top.CpuShare) <= PoolBand) >= PoolSize)
+            if (layout == CriticalThreadLayout.Compatible
+                && busy.Count((CriticalThreadHotspot x) => System.Math.Abs(x.CpuShare - top.CpuShare) <= PoolBand) >= PoolSize)
             {
                 pooled = true;
                 return null;
             }
             return Identity(top);
+        }
+
+        // 主线程由唯一的画面提交证据指认时，一次选择即可提交；否则需要连续两次一致。
+        internal static int RequiredStableSelections(HardThreadIdentity primary, CriticalThreadRoleFact[] roles)
+        {
+            if (primary == null || roles == null)
+            {
+                return 2;
+            }
+            CriticalThreadRoleFact[] presenters = roles.Where((CriticalThreadRoleFact x) => x != null && x.Role == Presenter).ToArray();
+            return presenters.Length == 1 && presenters[0].Tid == primary.Tid && presenters[0].Creation == primary.Creation ? 1 : 2;
         }
 
         internal static HardThreadIdentity[] SelectSecondary(CriticalThreadHotspot[] hotspots, HardThreadIdentity primary, int count)
@@ -154,25 +173,25 @@ namespace PaviseApp
             {
                 return null;
             }
-            ulong[] availableCpuSetIds = whereItems;
-            if (performance != 0 && availableCpuSetIds.Count((ulong x) => (x & performance) == x) >= count)
+            ulong[] numericValueItems = whereItems;
+            if (performance != 0 && numericValueItems.Count((ulong x) => (x & performance) == x) >= count)
             {
-                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & performance) == x).ToArray();
+                numericValueItems = numericValueItems.Where((ulong x) => (x & performance) == x).ToArray();
             }
-            if (availableCpuSetIds.Count((ulong x) => (x & 1) == 0) >= count)
+            if (numericValueItems.Count((ulong x) => (x & 1) == 0) >= count)
             {
-                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & 1) == 0).ToArray();
+                numericValueItems = numericValueItems.Where((ulong x) => (x & 1) == 0).ToArray();
             }
-            if (crowded != 0 && availableCpuSetIds.Count((ulong x) => (x & crowded) == 0) >= count)
+            if (crowded != 0 && numericValueItems.Count((ulong x) => (x & crowded) == 0) >= count)
             {
-                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & crowded) == 0).ToArray();
+                numericValueItems = numericValueItems.Where((ulong x) => (x & crowded) == 0).ToArray();
             }
-            ulong domain = Domain(availableCpuSetIds, count, favored, domains, preferredDomain);
+            ulong domain = Domain(numericValueItems, count, favored, domains, preferredDomain);
             if (domain != 0)
             {
-                availableCpuSetIds = availableCpuSetIds.Where((ulong x) => (x & domain) == x).ToArray();
+                numericValueItems = numericValueItems.Where((ulong x) => (x & domain) == x).ToArray();
             }
-            ulong[] items = (from x in availableCpuSetIds
+            ulong[] items = (from x in numericValueItems
                 orderby (x & favored) != 0 descending, x descending
                 select x).ToArray();
             if (items.Length < count)
@@ -186,6 +205,8 @@ namespace PaviseApp
         internal static ulong[] Destinations(CriticalThreadRule preference, int count, ulong[] physical, ulong allowed, ulong reserved, ulong favored, ulong performance, ulong[] domains, ulong preferredDomain, ulong crowded)
         {
             if (preference == null || !preference.Automatic) return null;
+            if (preference.Layout != CriticalThreadLayout.Compatible)
+                return LocalDestinations(preference, count, physical, allowed, reserved, favored, performance, domains, preferredDomain, crowded);
             if (!preference.ManualTarget)
                 return Targets(count, physical, allowed, reserved, favored, performance, domains, preferredDomain, crowded);
             if (count < 1 || count > MaximumIsolated || physical == null) return null;
@@ -196,6 +217,51 @@ namespace PaviseApp
             if (count == 1) return new ulong[] { target };
             ulong[] secondary = Targets(count - 1, physical, allowed, reserved | whole, favored, performance, domains, preferredDomain, crowded);
             return secondary == null ? null : new ulong[] { target }.Concat(secondary).ToArray();
+        }
+
+        private static ulong[] LocalDestinations(CriticalThreadRule preference, int count, ulong[] physical, ulong allowed, ulong reserved, ulong favored, ulong performance, ulong[] domains, ulong preferredDomain, ulong crowded)
+        {
+            if (count < 1 || count > MaximumIsolated || physical == null || allowed == 0) return null;
+            int capacity = Capacity(physical, allowed, reserved, performance);
+            if (capacity == 0) return null;
+            count = System.Math.Min(count, capacity);
+            ulong primary;
+            if (preference.ManualTarget) primary = preference.Targets[0];
+            else
+            {
+                ulong[] selected = Targets(1, physical, allowed, reserved, favored, performance, domains, preferredDomain, crowded);
+                if (selected == null) return null;
+                primary = selected[0];
+            }
+            ulong whole = physical.FirstOrDefault((ulong core) => (core & primary) != 0);
+            if (whole == 0 || (primary & allowed) != primary || (whole & reserved) != 0
+                || physical.Count((ulong core) => (core & allowed) != 0 && (core & (whole | reserved)) == 0) < 2) return null;
+            if (count == 1) return new ulong[] { primary };
+
+            // 缓存域不明或互相重叠时仅保留主候选，不能把未知拓扑当成同域。
+            ulong[] knownDomains = (domains ?? new ulong[0]).Where((ulong domain) => domain != 0).Distinct().ToArray();
+            ulong seen = 0, allPhysical = 0;
+            foreach (ulong core in physical) allPhysical |= core;
+            foreach (ulong domain in knownDomains)
+            {
+                if ((seen & domain) != 0 || (domain & ~allPhysical) != 0) return new ulong[] { primary };
+                seen |= domain;
+            }
+            ulong[] matchingDomains = knownDomains.Where((ulong domain) => (whole & domain) == whole).ToArray();
+            if (matchingDomains.Length != 1) return new ulong[] { primary };
+            ulong anchor = matchingDomains[0];
+            ulong[] pool = physical.Where((ulong core) => core != 0 && (core & allowed) != 0
+                && (core & (whole | reserved)) == 0 && (core & anchor) == core
+                && (performance == 0 || (core & performance) == core)).ToArray();
+            ulong[] secondary = pool
+                .OrderByDescending((ulong core) => (core & 1UL) == 0)
+                .ThenByDescending((ulong core) => crowded == 0 || (core & crowded) == 0)
+                .ThenByDescending((ulong core) => (core & favored) != 0)
+                .ThenByDescending((ulong core) => core)
+                .Take(count - 1)
+                .Select((ulong core) => core & allowed)
+                .Select((ulong core) => core & (~core + 1)).ToArray();
+            return new ulong[] { primary }.Concat(secondary).ToArray();
         }
 
         private static ulong Domain(ulong[] pool, int count, ulong favored, ulong[] domains, ulong preferred)
@@ -209,8 +275,8 @@ namespace PaviseApp
                 return 0uL;
             }
             ulong result = 0uL;
-            int bestSelectedCount = -1;
-            int bestAvailableCount = -1;
+            int domainValue = -1;
+            int domainValue2 = -1;
             foreach (ulong domain in domains)
             {
                 if (domain == 0)
@@ -221,11 +287,11 @@ namespace PaviseApp
                 if (whereItems.Length >= count)
                 {
                     int countResult = whereItems.Count((ulong x) => (x & favored) != 0);
-                    if (countResult > bestSelectedCount || (countResult == bestSelectedCount && whereItems.Length > bestAvailableCount))
+                    if (countResult > domainValue || (countResult == domainValue && whereItems.Length > domainValue2))
                     {
                         result = domain;
-                        bestSelectedCount = countResult;
-                        bestAvailableCount = whereItems.Length;
+                        domainValue = countResult;
+                        domainValue2 = whereItems.Length;
                     }
                 }
             }

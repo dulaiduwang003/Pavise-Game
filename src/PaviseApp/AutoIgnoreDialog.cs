@@ -47,9 +47,9 @@ namespace PaviseApp
                 }
                 int widthRatio = base.Width / 2;
                 int remainingS = base.Height / 2 - Theme.S(47);
-                using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
+                using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
                 {
-                    e.Graphics.DrawLines(accentPen, new Point[6]
+                    e.Graphics.DrawLines(pen2, new Point[6]
                     {
                         new Point(widthRatio - Theme.S(15), remainingS),
                         new Point(widthRatio + Theme.S(9), remainingS),
@@ -58,7 +58,7 @@ namespace PaviseApp
                         new Point(widthRatio - Theme.S(15), remainingS + Theme.S(29)),
                         new Point(widthRatio - Theme.S(15), remainingS)
                     });
-                    e.Graphics.DrawLines(accentPen, new Point[3]
+                    e.Graphics.DrawLines(pen2, new Point[3]
                     {
                         new Point(widthRatio - Theme.S(8), remainingS + Theme.S(15)),
                         new Point(widthRatio - Theme.S(2), remainingS + Theme.S(21)),
@@ -271,11 +271,11 @@ namespace PaviseApp
             list.TabIndex = 0;
             list.DrawItem += DrawEntry;
             TechListBox techListBox = list;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 UpdateSelection();
             };
-            techListBox.SelectedIndexChanged += eventHandler;
+            techListBox.SelectedIndexChanged += value;
             listWrap.Name = "autoIgnoreListWrap";
             listWrap.Fill = Theme.Card;
             listWrap.Border = Theme.Stroke;
@@ -489,9 +489,9 @@ namespace PaviseApp
             try
             {
                 list.Items.Clear();
-                foreach (string autoAddIgnoredPath in autoAddIgnoredPaths)
+                foreach (string item in autoAddIgnoredPaths)
                 {
-                    list.Items.Add(autoAddIgnoredPath);
+                    list.Items.Add(item);
                 }
                 if (keep != null)
                 {
@@ -525,10 +525,10 @@ namespace PaviseApp
 
         private void UpdateSelection()
         {
-            string text = (list.SelectedItem as string) ?? "";
-            if (path.Text != text)
+            string textValue = (list.SelectedItem as string) ?? "";
+            if (path.Text != textValue)
             {
-                path.Text = text;
+                path.Text = textValue;
                 path.Select(0, 0);
                 path.ScrollToCaret();
             }
@@ -624,15 +624,15 @@ namespace PaviseApp
             {
                 e.Graphics.DrawRectangle(pen, 0, 0, base.Width - 1, base.Height - 1);
             }
-            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
+            using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1, Theme.S(2))))
             {
-                e.Graphics.DrawLine(accentPen, Theme.S(1), Theme.S(1), Theme.S(130), Theme.S(1));
-                e.Graphics.DrawLine(accentPen, base.Width - Theme.S(16), Theme.S(1), base.Width - Theme.S(1), Theme.S(16));
-                e.Graphics.DrawLine(accentPen, Theme.S(1), base.Height - Theme.S(16), Theme.S(16), base.Height - Theme.S(1));
+                e.Graphics.DrawLine(pen2, Theme.S(1), Theme.S(1), Theme.S(130), Theme.S(1));
+                e.Graphics.DrawLine(pen2, base.Width - Theme.S(16), Theme.S(1), base.Width - Theme.S(1), Theme.S(16));
+                e.Graphics.DrawLine(pen2, Theme.S(1), base.Height - Theme.S(16), Theme.S(16), base.Height - Theme.S(1));
             }
-            using (Pen strokeHiPen = new Pen(Theme.StrokeHi))
+            using (Pen pen3 = new Pen(Theme.StrokeHi))
             {
-                e.Graphics.DrawLine(strokeHiPen, Theme.S(24), status.Top - Theme.S(7), base.Width - Theme.S(24), status.Top - Theme.S(7));
+                e.Graphics.DrawLine(pen3, Theme.S(24), status.Top - Theme.S(7), base.Width - Theme.S(24), status.Top - Theme.S(7));
             }
         }
 

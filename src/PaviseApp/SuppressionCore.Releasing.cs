@@ -111,6 +111,7 @@ namespace PaviseApp
                 {
                     return false;
                 }
+                if (processReused) ObserveBackgroundAccountingExit(currentEntry);
                 RemoveEntryLocked(pid);
                 batchApply.Remove(pid);
                 batchApplyResults.Remove(pid);
@@ -149,15 +150,16 @@ namespace PaviseApp
 
         public int ReleaseReason(SuppressReason reason)
         {
+            if ((reason & SuppressReason.AntiCheat) != 0) RevokeAntiCheatAdmission();
             int releasedCount = 0;
             List<int> pids = PidsWith(reason);
             BeginJournalDefer();
             try
             {
-                foreach (int pid in pids)
+                foreach (int item in pids)
                 {
                     bool had;
-                    releasedCount += ReleaseOne(pid, reason, out had);
+                    releasedCount += ReleaseOne(item, reason, out had);
                 }
                 return releasedCount;
             }
@@ -180,6 +182,7 @@ namespace PaviseApp
 
         private int ReleaseOne(int pid, SuppressReason reason, long expectedCreation, bool requireCreation, string expectedName, out bool had, out RestoreResult? restoreResult)
         {
+            if ((reason & SuppressReason.AntiCheat) != 0) RevokeAntiCheatTarget(pid);
             restoreResult = null;
             bool needsReapply = false;
             bool hasRemainingReasons = false;
@@ -228,12 +231,14 @@ namespace PaviseApp
                 {
                     if (entry.OrigPri == uint.MaxValue)
                     {
+                        RecordBackgroundOutcome(entry.BackgroundRecoveryTicket, BackgroundRecoveryLedger.State.NotRequired);
                         RemoveEntryLocked(pid);
                         PersistJournalLocked();
                         return 0;
                     }
                     if (!entry.Journaled && !entry.Applied)
                     {
+                        RecordBackgroundOutcome(entry.BackgroundRecoveryTicket, BackgroundRecoveryLedger.State.NotRequired);
                         RemoveEntryLocked(pid);
                         batchApply.Remove(pid);
                         PersistJournalLocked();

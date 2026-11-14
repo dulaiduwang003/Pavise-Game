@@ -17,6 +17,8 @@ namespace PaviseApp
             internal int Suppressed;
         }
 
+        private const long RotateBytes = 524288L;
+
         public const string WritesEnabledKey = "LogWritesEnabled";
 
         public const string WarnTag = "警告 ";
@@ -117,18 +119,18 @@ namespace PaviseApp
                     repeated.Remove(source);
                     return;
                 }
-                RepeatedFailure currentRepeated;
-                if (repeated.TryGetValue(source, out currentRepeated))
+                RepeatedFailure value;
+                if (repeated.TryGetValue(source, out value))
                 {
-                    if (currentRepeated.Message == message && now < currentRepeated.Next)
+                    if (value.Message == message && now < value.Next)
                     {
-                        if (currentRepeated.Suppressed < int.MaxValue)
+                        if (value.Suppressed < int.MaxValue)
                         {
-                            currentRepeated.Suppressed++;
+                            value.Suppressed++;
                         }
                         return;
                     }
-                    FlushRepeated(source, currentRepeated);
+                    FlushRepeated(source, value);
                 }
                 else
                 {
@@ -136,11 +138,11 @@ namespace PaviseApp
                     {
                         repeated.Clear();
                     }
-                    currentRepeated = new RepeatedFailure();
-                    repeated[source] = currentRepeated;
+                    value = new RepeatedFailure();
+                    repeated[source] = value;
                 }
-                currentRepeated.Message = message;
-                currentRepeated.Next = now + TimeSpan.FromMinutes(1.0).Ticks;
+                value.Message = message;
+                value.Next = now + TimeSpan.FromMinutes(1.0).Ticks;
                 Error(message);
             }
         }
@@ -192,8 +194,8 @@ namespace PaviseApp
                     }
                     if (knownLength > 524288)
                     {
-                        FileInfo currentFileInfo = new FileInfo(LogPath);
-                        if (currentFileInfo.Exists && currentFileInfo.Length > 524288)
+                        FileInfo fileInfo2 = new FileInfo(LogPath);
+                        if (fileInfo2.Exists && fileInfo2.Length > 524288)
                         {
                             string logPathOffset = LogPath + ".old";
                             try
@@ -202,13 +204,13 @@ namespace PaviseApp
                                 {
                                     File.Delete(logPathOffset);
                                 }
-                                currentFileInfo.MoveTo(logPathOffset);
+                                fileInfo2.MoveTo(logPathOffset);
                             }
                             catch
                             {
                                 try
                                 {
-                                    currentFileInfo.Delete();
+                                    fileInfo2.Delete();
                                 }
                                 catch
                                 {
@@ -373,9 +375,9 @@ namespace PaviseApp
                         if (positionValue > positionValue2 && readToEndTrimmed.TrimStart().StartsWith("<Objs", StringComparison.Ordinal))
                         {
                             fileStream.Position = positionValue2;
-                            using (StreamReader currentStreamReader = new StreamReader(fileStream, Encoding.UTF8, true, 4096, true))
+                            using (StreamReader streamReader2 = new StreamReader(fileStream, Encoding.UTF8, true, 4096, true))
                             {
-                                string line = currentStreamReader.ReadLine();
+                                string line = streamReader2.ReadLine();
                                 if (line != null && line.IndexOf("#< CLIXML", StringComparison.Ordinal) >= 0)
                                 {
                                     readToEndTrimmed = line + Environment.NewLine + readToEndTrimmed;

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // 这些记录来自 Windows 拓扑，不根据型号猜测。L3 域不直接称作 CCD，因为共享缓存不能证明芯片边界。
+    // 拓扑取自 Windows；L3 共享域不能证明 CCD 边界。
 
     internal sealed class AntiCheatAffinityCore
     {
@@ -289,7 +289,7 @@ namespace PaviseApp
 
         private static int CompareCaches(CacheDomain a, CacheDomain b)
         {
-            // 接口不提供持久缓存编号；按固定顺序排列，使 Windows 改变枚举顺序时快照仍保持稳定。
+            // 接口无持久缓存编号，按固定顺序排列以稳定快照。
 
             IEnumerator<KeyValuePair<ushort, ulong>> x = a.Masks.GetEnumerator();
             IEnumerator<KeyValuePair<ushort, ulong>> y = b.Masks.GetEnumerator();
@@ -315,8 +315,31 @@ namespace PaviseApp
             return new AntiCheatAffinityChoice { Reason = reason };
         }
 
+        // 同一缓存域内的停泊只反映负载高低；多缓存域机器的停泊可能来自厂商的游戏策略，不能据此唤醒。
+        private static bool SingleCacheDomain(List<AntiCheatAffinityCore> cores)
+        {
+            int domain = -1;
+            foreach (AntiCheatAffinityCore core in cores)
+            {
+                if (core.L3Id < 0) continue;
+                if (domain >= 0 && domain != core.L3Id) return false;
+                domain = core.L3Id;
+            }
+            return true;
+        }
+
+        private static int CompareAuxiliary(AntiCheatAffinityCore a, AntiCheatAffinityCore b)
+        {
+            // 未停泊的核排在前面；只有按游戏核心范围放宽时列表里才会出现停泊核。
+            int order = a.Parked.CompareTo(b.Parked);
+            if (order == 0) order = a.Scheduling.CompareTo(b.Scheduling);
+            return order != 0 ? order : b.Mask.CompareTo(a.Mask);
+        }
+
+        // avoidMask 为游戏核心范围偏好；范围外容量不足时沿用原候选。
         internal static AntiCheatAffinityChoice Select(AntiCheatAffinitySnapshot snapshot, ushort group,
-            ulong originalAllowedMask, ulong protectedMask, ulong gameDomainMask, int maximumPhysicalCores = int.MaxValue)
+            ulong originalAllowedMask, ulong protectedMask, ulong gameDomainMask, int maximumPhysicalCores = int.MaxValue,
+            ulong avoidMask = 0)
         {
             if (maximumPhysicalCores < 1) return Skip("invalid-core-limit");
             if (snapshot == null || !snapshot.Valid || snapshot.Cores == null)
@@ -337,16 +360,37 @@ namespace PaviseApp
             }
             if (local.Count == 0 || (originalAllowedMask & ~full) != 0 || ((protectedMask | gameDomainMask) & ~full) != 0)
                 return Skip("affinity-outside-group");
+            avoidMask &= full;
             List<AntiCheatAffinityCore> candidates = new List<AntiCheatAffinityCore>();
+            List<AntiCheatAffinityCore> parkedOutside = new List<AntiCheatAffinityCore>();
             foreach (AntiCheatAffinityCore core in local)
             {
-                // 允许或受保护掩码只覆盖部分 SMT 线程时，不代表可以使用其同核线程；仅接纳完整且未受保护的物理核。
+                // 仅接纳原范围完整覆盖、且所有 SMT 线程均未受保护的物理核。
 
                 if ((core.Mask & originalAllowedMask) != core.Mask || (core.Mask & protectedMask) != 0
-                    || core.Parked || core.Allocated || core.Favored) continue;
-                candidates.Add(core);
+                    || core.Allocated || core.Favored) continue;
+                if (!core.Parked) candidates.Add(core);
+                else if (avoidMask != 0 && (core.Mask & avoidMask) == 0) parkedOutside.Add(core);
             }
             int minimumCores = maximumPhysicalCores == 1 ? 1 : 2;
+            if (avoidMask != 0)
+            {
+                // 优先游戏范围外的未停泊核；单缓存域容量不足时可补入范围外停泊核，减少反复迁移。
+                // 硬亲和性允许线程运行于停泊核；仍选不出合法池时沿用原候选。
+                List<AntiCheatAffinityCore> outside = candidates.FindAll(core => (core.Mask & avoidMask) == 0);
+                if (outside.Count < minimumCores && SingleCacheDomain(local)) outside.AddRange(parkedOutside);
+                if (outside.Count >= minimumCores)
+                {
+                    AntiCheatAffinityChoice preferred = Choose(local, outside, tiers, gameDomainMask, maximumPhysicalCores, minimumCores);
+                    if (preferred.Applicable) return preferred;
+                }
+            }
+            return Choose(local, candidates, tiers, gameDomainMask, maximumPhysicalCores, minimumCores);
+        }
+
+        private static AntiCheatAffinityChoice Choose(List<AntiCheatAffinityCore> local, List<AntiCheatAffinityCore> candidates,
+            SortedSet<byte> tiers, ulong gameDomainMask, int maximumPhysicalCores, int minimumCores)
+        {
             if (candidates.Count < minimumCores) return Skip("insufficient-unreserved-cores");
             if (tiers.Count > 1)
             {
@@ -378,7 +422,7 @@ namespace PaviseApp
                 }
                 return Skip("insufficient-efficiency-core-capacity");
             }
-            // 候选核心必须未停泊；已停泊的游戏核心仍计入游戏容量。
+            // 候选核心通常未停泊，只有按游戏核心范围放宽时才含范围外的停泊核；已停泊的游戏核心仍计入游戏容量。
             if (local.Count < 4 + minimumCores) return Skip("insufficient-game-core-capacity");
             int domain = -1;
             bool validDomain = gameDomainMask != 0;
@@ -410,10 +454,7 @@ namespace PaviseApp
                 if (alternateExists) return Skip("alternate-cache-domain-unavailable");
             }
             // 依据缓存域证据选择，并为游戏和系统保留四个物理核。
-            candidates.Sort(delegate(AntiCheatAffinityCore a, AntiCheatAffinityCore b) {
-                int order = a.Scheduling.CompareTo(b.Scheduling);
-                return order != 0 ? order : b.Mask.CompareTo(a.Mask);
-            });
+            candidates.Sort(CompareAuxiliary);
             List<AntiCheatAffinityCore> auxiliary = new List<AntiCheatAffinityCore>();
             for (int i = 0; i < minimumCores; i++) auxiliary.Add(candidates[i]);
             return Pick(auxiliary, "auxiliary", minimumCores == 1 ? "one-complete-auxiliary-core" : "two-complete-auxiliary-cores", maximumPhysicalCores);
@@ -421,10 +462,7 @@ namespace PaviseApp
 
         private static AntiCheatAffinityChoice Pick(List<AntiCheatAffinityCore> cores, string kind, string reason, int maximumPhysicalCores)
         {
-            cores.Sort(delegate(AntiCheatAffinityCore a, AntiCheatAffinityCore b) {
-                int order = a.Scheduling.CompareTo(b.Scheduling);
-                return order != 0 ? order : b.Mask.CompareTo(a.Mask);
-            });
+            cores.Sort(CompareAuxiliary);
             int count = Math.Min(cores.Count, maximumPhysicalCores);
             ulong mask = 0;
             for (int i = 0; i < count; i++) mask |= cores[i].Mask;

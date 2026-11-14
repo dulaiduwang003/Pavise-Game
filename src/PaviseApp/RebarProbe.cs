@@ -17,6 +17,20 @@ namespace PaviseApp
             public IntPtr Reserved;
         }
 
+        private const uint DigcfPresent = 2u;
+
+        private const uint AllocLogConf = 2u;
+
+        private const uint ResTypeMem = 1u;
+
+        private const uint ResTypeMemLarge = 7u;
+
+        private const uint SpdrpDeviceDesc = 0u;
+
+        private const int CrSuccess = 0;
+
+        private const ulong EnabledThreshold = 536870912uL;
+
         private static Guid DisplayClass = new Guid("4d36e968-e325-11ce-bfc1-08002be10318");
 
         [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -107,21 +121,21 @@ namespace PaviseApp
             windowBytes = 0uL;
             gpuName = null;
             nvidia = false;
-            IntPtr deviceInfoSet = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
-                deviceInfoSet = SetupDiGetClassDevsW(ref DisplayClass, null, IntPtr.Zero, 2u);
-                if (deviceInfoSet == IntPtr.Zero || deviceInfoSet == new IntPtr(-1))
+                intPtr = SetupDiGetClassDevsW(ref DisplayClass, null, IntPtr.Zero, 2u);
+                if (intPtr == IntPtr.Zero || intPtr == new IntPtr(-1))
                 {
                     return false;
                 }
                 SpDevinfoData data = default(SpDevinfoData);
                 data.Size = (uint)Marshal.SizeOf(typeof(SpDevinfoData));
-                for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(deviceInfoSet, iterationIndex, ref data); iterationIndex++)
+                for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data); iterationIndex++)
                 {
                     StringBuilder stringBuilder = new StringBuilder(512);
                     uint required;
-                    if (!SetupDiGetDeviceInstanceIdW(deviceInfoSet, ref data, stringBuilder, 512u, out required))
+                    if (!SetupDiGetDeviceInstanceIdW(intPtr, ref data, stringBuilder, 512u, out required))
                     {
                         continue;
                     }
@@ -133,9 +147,9 @@ namespace PaviseApp
                         {
                             windowBytes = largestMemoryWindowResult;
                             nvidia = stringBuilderText.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0;
-                            StringBuilder currentStringBuilder = new StringBuilder(256);
+                            StringBuilder stringBuilder2 = new StringBuilder(256);
                             uint dataType;
-                            gpuName = (SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, ref data, 0u, out dataType, currentStringBuilder, 256u, out required) ? currentStringBuilder.ToString() : null);
+                            gpuName = (SetupDiGetDeviceRegistryPropertyW(intPtr, ref data, 0u, out dataType, stringBuilder2, 256u, out required) ? stringBuilder2.ToString() : null);
                         }
                     }
                 }
@@ -148,11 +162,11 @@ namespace PaviseApp
             }
             finally
             {
-                if (deviceInfoSet != IntPtr.Zero && deviceInfoSet != new IntPtr(-1))
+                if (intPtr != IntPtr.Zero && intPtr != new IntPtr(-1))
                 {
                     try
                     {
-                        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                        SetupDiDestroyDeviceInfoList(intPtr);
                     }
                     catch
                     {
@@ -206,19 +220,20 @@ namespace PaviseApp
             try
             {
                 ulong largestMemoryWindowResult = 0uL;
-                foreach (uint forResource in new uint[2] { 1u, 7u })
+                uint[] numericValueItems = new uint[2] { 1u, 7u };
+                foreach (uint forResource in numericValueItems)
                 {
-                    IntPtr logConfHandle = logConf;
+                    IntPtr intPtr = logConf;
                     bool firstWindow = true;
                     while (true)
                     {
                         IntPtr next;
-                        int cMGetNextResDesResult = CM_Get_Next_Res_Des(out next, logConfHandle, forResource, IntPtr.Zero, 0u);
+                        int cMGetNextResDesResult = CM_Get_Next_Res_Des(out next, intPtr, forResource, IntPtr.Zero, 0u);
                         if (!firstWindow)
                         {
                             try
                             {
-                                CM_Free_Res_Des_Handle(logConfHandle);
+                                CM_Free_Res_Des_Handle(intPtr);
                             }
                             catch
                             {
@@ -228,7 +243,7 @@ namespace PaviseApp
                         {
                             break;
                         }
-                        logConfHandle = next;
+                        intPtr = next;
                         firstWindow = false;
                         ulong rangeSize = ReadRangeSize(next);
                         if (rangeSize > largestMemoryWindowResult)

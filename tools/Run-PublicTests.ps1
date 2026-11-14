@@ -42,7 +42,7 @@ foreach ($suite in $suites) {
         if (-not $passed) { throw ('Public test failed; results retained without a retry: ' + $suite.Name) }
     } finally {
         $watch.Stop(); $child.Dispose()
-        [pscustomobject]@{Version='3.3.0.8';Passed=$results.Count -eq $suites.Count -and @($results | Where-Object { -not $_.Passed }).Count -eq 0;Suites=$results.ToArray();ProductStarted=$false;ResultsAreGameBenchmarks=$false} |
+        [pscustomobject]@{Version='3.3.1.0';Passed=$results.Count -eq $suites.Count -and @($results | Where-Object { -not $_.Passed }).Count -eq 0;Suites=$results.ToArray();ProductStarted=$false;ResultsAreGameBenchmarks=$false} |
             ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'summary.json') -Encoding UTF8
     }
 }

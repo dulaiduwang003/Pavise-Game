@@ -42,6 +42,10 @@ namespace PaviseApp
             }
         }
 
+        private const int MaxRecords = 8192;
+
+        private const long CacheTicks = 1200000000L;
+
         private static readonly object sync = new object();
 
         private static Snapshot cached;
@@ -198,10 +202,10 @@ namespace PaviseApp
             }
             else
             {
-                int commandOffset = 0;
-                while (commandOffset < commandTrimmed.Length)
+                int uninstallDirectoryValue = 0;
+                while (uninstallDirectoryValue < commandTrimmed.Length)
                 {
-                    int matchIndex2 = commandTrimmed.IndexOf(".exe", commandOffset, StringComparison.OrdinalIgnoreCase);
+                    int matchIndex2 = commandTrimmed.IndexOf(".exe", uninstallDirectoryValue, StringComparison.OrdinalIgnoreCase);
                     if (matchIndex2 < 0)
                     {
                         break;
@@ -212,7 +216,7 @@ namespace PaviseApp
                         raw = commandTrimmed.Substring(0, matchIndex2);
                         break;
                     }
-                    commandOffset = matchIndex2;
+                    uninstallDirectoryValue = matchIndex2;
                 }
             }
             raw = Normalize(raw);
@@ -281,13 +285,14 @@ namespace PaviseApp
 
         private static HashSet<string> BuildBroadRoots()
         {
-            HashSet<string> knownFolderResults = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (Environment.SpecialFolder folder in BroadFolders)
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Environment.SpecialFolder[] broadFolders = BroadFolders;
+            foreach (Environment.SpecialFolder folder in broadFolders)
             {
                 string knownFolderResult = KnownFolder(folder);
                 if (knownFolderResult != null)
                 {
-                    knownFolderResults.Add(knownFolderResult);
+                    hashSet.Add(knownFolderResult);
                 }
             }
             try
@@ -295,7 +300,7 @@ namespace PaviseApp
                 string normalizeResult = Normalize(Environment.GetEnvironmentVariable("PUBLIC"));
                 if (normalizeResult != null)
                 {
-                    knownFolderResults.Add(normalizeResult);
+                    hashSet.Add(normalizeResult);
                 }
             }
             catch
@@ -306,13 +311,13 @@ namespace PaviseApp
                 string normalizeResult2 = Normalize(Path.GetTempPath());
                 if (normalizeResult2 != null)
                 {
-                    knownFolderResults.Add(normalizeResult2);
+                    hashSet.Add(normalizeResult2);
                 }
             }
             catch
             {
             }
-            return knownFolderResults;
+            return hashSet;
         }
 
         private static bool UnsafeRoot(string root)
@@ -404,35 +409,36 @@ namespace PaviseApp
                 {
                     return cached;
                 }
-                List<GameInstallRecord> gameInstallRecords = new List<GameInstallRecord>();
+                List<GameInstallRecord> list = new List<GameInstallRecord>();
                 RegistryView[] registryViewItems = (Environment.Is64BitOperatingSystem ? new RegistryView[2]
                 {
                     RegistryView.Registry64,
                     RegistryView.Registry32
                 } : new RegistryView[1] { RegistryView.Registry32 });
-                foreach (RegistryView view in registryViewItems)
+                RegistryView[] registryViewItems2 = registryViewItems;
+                foreach (RegistryView view in registryViewItems2)
                 {
-                    ReadUninstallHive(RegistryHive.LocalMachine, view, gameInstallRecords);
-                    ReadUninstallHive(RegistryHive.CurrentUser, view, gameInstallRecords);
-                    if (gameInstallRecords.Count > 8192)
+                    ReadUninstallHive(RegistryHive.LocalMachine, view, list);
+                    ReadUninstallHive(RegistryHive.CurrentUser, view, list);
+                    if (list.Count > 8192)
                     {
                         break;
                     }
                 }
-                List<string> texts = new List<string>();
-                bool complete = gameInstallRecords.Count <= 8192;
+                List<string> list2 = new List<string>();
+                bool complete = list.Count <= 8192;
                 try
                 {
-                    foreach (string detectedPlatform in GamePlatformCatalog.DetectedPlatforms())
+                    foreach (string item in GamePlatformCatalog.DetectedPlatforms())
                     {
-                        texts.AddRange(GamePlatformCatalog.ResolvedRoots(detectedPlatform));
+                        list2.AddRange(GamePlatformCatalog.ResolvedRoots(item));
                     }
                 }
                 catch
                 {
                     complete = false;
                 }
-                cached = new Snapshot(gameInstallRecords, texts, complete);
+                cached = new Snapshot(list, list2, complete);
                 cachedAt = ticks;
                 return cached;
             }
@@ -448,13 +454,14 @@ namespace PaviseApp
             {
                 using (RegistryKey registryKey = RegistryKey.OpenBaseKey(hive, view))
                 {
-                    using (RegistryKey currentRegistryKey = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"))
+                    using (RegistryKey registryKey2 = registryKey.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"))
                     {
-                        if (currentRegistryKey == null)
+                        if (registryKey2 == null)
                         {
                             return;
                         }
-                        foreach (string name in currentRegistryKey.GetSubKeyNames())
+                        string[] subKeyNames = registryKey2.GetSubKeyNames();
+                        foreach (string name in subKeyNames)
                         {
                             if (records.Count >= 8192)
                             {
@@ -463,18 +470,18 @@ namespace PaviseApp
                             }
                             try
                             {
-                                using (RegistryKey candidateRegistryKey = currentRegistryKey.OpenSubKey(name))
+                                using (RegistryKey registryKey3 = registryKey2.OpenSubKey(name))
                                 {
-                                    if (candidateRegistryKey != null && candidateRegistryKey.GetValue("ParentKeyName") == null)
+                                    if (registryKey3 != null && registryKey3.GetValue("ParentKeyName") == null)
                                     {
-                                        object instance = candidateRegistryKey.GetValue("SystemComponent");
-                                        if (!(instance is int) || (int)instance == 0)
+                                        object value = registryKey3.GetValue("SystemComponent");
+                                        if (!(value is int) || (int)value == 0)
                                         {
                                             records.Add(new GameInstallRecord
                                             {
-                                                InstallLocation = (candidateRegistryKey.GetValue("InstallLocation") as string),
-                                                InstallSource = (candidateRegistryKey.GetValue("InstallSource") as string),
-                                                UninstallString = (candidateRegistryKey.GetValue("UninstallString") as string)
+                                                InstallLocation = (registryKey3.GetValue("InstallLocation") as string),
+                                                InstallSource = (registryKey3.GetValue("InstallSource") as string),
+                                                UninstallString = (registryKey3.GetValue("UninstallString") as string)
                                             });
                                         }
                                     }

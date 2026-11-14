@@ -42,16 +42,16 @@ namespace PaviseApp
                     }
                 }
                 protectedProfiles = new List<GameProfile>();
-                foreach (GameProfile profile in profiles)
+                foreach (GameProfile profile2 in profiles)
                 {
-                    GameProfile snapshotProfile = profile.Clone();
+                    GameProfile snapshotProfile = profile2.Clone();
                     exactGameProfiles.Add(snapshotProfile);
-                    if (FamilyBoundary.FamilyExemptFor(profile))
+                    if (FamilyBoundary.FamilyExemptFor(profile2))
                     {
                         protectedProfiles.Add(snapshotProfile);
-                        if (FamilyBoundary.SafeFamilyDir(profile.Root))
+                        if (FamilyBoundary.SafeFamilyDir(profile2.Root))
                         {
-                            protectedRoots.Add(profile.Root);
+                            protectedRoots.Add(profile2.Root);
                         }
                     }
                 }
@@ -91,7 +91,8 @@ namespace PaviseApp
             HashSet<int> observedPids = new HashSet<int>();
             List<BackgroundRequest> pending = new List<BackgroundRequest>();
             long scanTime = DateTime.UtcNow.ToFileTimeUtc();
-            foreach (ProcEntry procEntry in all.Entries)
+            ProcEntry[] entries = all.Entries;
+            foreach (ProcEntry procEntry in entries)
             {
                 try
                 {
@@ -166,8 +167,8 @@ namespace PaviseApp
                     string observedPath = ((processInfo != null) ? processInfo.Path : procEntry.Path);
                     if (IsRendererHandoffProtected(pid, observedCreation, observedPath))
                     {
-                        BackgroundReleaseState releaseBackgroundForRenderer = core.ReleaseBackgroundForRenderer(pid, observedCreation, nm);
-                        if (releaseBackgroundForRenderer == BackgroundReleaseState.Ready || releaseBackgroundForRenderer == BackgroundReleaseState.Gone)
+                        BackgroundReleaseState backgroundReleaseState2 = core.ReleaseBackgroundForRenderer(pid, observedCreation, nm);
+                        if (backgroundReleaseState2 == BackgroundReleaseState.Ready || backgroundReleaseState2 == BackgroundReleaseState.Gone)
                         {
                             ReportUntrack(pid);
                         }
@@ -205,19 +206,23 @@ namespace PaviseApp
                     ulong io = ((processInfo != null) ? processInfo.Io : 0);
                     if (processInfo == null)
                     {
-                        IntPtr processHandle = Native.OpenProcess(4096, false, pid);
-                        if (processHandle != IntPtr.Zero)
+                        IntPtr intPtr = Native.OpenProcess(4096, false, pid);
+                        if (intPtr != IntPtr.Zero)
                         {
                             try
                             {
-                                imagePath = Native.ImagePath(processHandle);
-                                Native.QueryProcessSample(processHandle, out creation, out cpu, out io);
+                                imagePath = Native.ImagePath(intPtr);
+                                Native.QueryProcessSample(intPtr, out creation, out cpu, out io);
                             }
                             finally
                             {
-                                Native.CloseHandle(processHandle);
+                                Native.CloseHandle(intPtr);
                             }
                         }
+                    }
+                    if (TryProtectAmdNoiseSuppression(pid, creation, nm, imagePath))
+                    {
+                        continue;
                     }
                     if (SelfBuildGuard.IsOwnBuild(nm, imagePath))
                     {
@@ -308,15 +313,15 @@ namespace PaviseApp
                 core.BeginBatch();
                 try
                 {
-                    foreach (BackgroundRequest currentPending in pending)
+                    foreach (BackgroundRequest item in pending)
                     {
                         try
                         {
-                            currentPending.Result = core.Acquire(currentPending.Pid, currentPending.Name, SuppressReason.Background, null, currentPending.Desired, currentPending.Creation);
+                            item.Result = core.Acquire(item.Pid, item.Name, SuppressReason.Background, null, item.Desired, item.Creation);
                         }
                         catch
                         {
-                            currentPending.Result = AcquireResult.AlreadyProtected;
+                            item.Result = AcquireResult.AlreadyProtected;
                         }
                     }
                 }
@@ -417,13 +422,23 @@ namespace PaviseApp
                 firstSweep = false;
             }
         }
+        private bool TryProtectAmdNoiseSuppression(int pid, long creation, string name, string path)
+        {
+            if (!PeripheralCatalog.IsAmdNoiseSuppressionProcess(name, path)) return false;
+            // 撤销整条普通后台资格，优先级、QoS、GPU、计时器与收核仍沿既有原值及恢复预算结清。
+            // Pending 只表示恢复债尚在，不能把不再接管误报成已经恢复。
+            BackgroundReleaseState state = core.ReleaseBackgroundForRenderer(pid, creation, name);
+            if (state == BackgroundReleaseState.Ready || state == BackgroundReleaseState.Gone) ReportUntrack(pid);
+            return true;
+        }
+
         private HashSet<int> CollectUserFacingFamily(int foregroundPid, WhitelistEvaluation whitelist, int excludeRootPid)
         {
             return CollectUserFacingFamily(foregroundPid, GameSessionDetector.VisibleWindowPids(true), whitelist, excludeRootPid);
         }
         private HashSet<int> CollectUserFacingFamily(int foregroundPid, HashSet<int> visible, WhitelistEvaluation whitelist, int excludeRootPid)
         {
-            HashSet<int> keys = new HashSet<int>();
+            HashSet<int> hashSet = new HashSet<int>();
             foreach (KeyValuePair<int, WhitelistProcessInfo> process in whitelist.Processes)
             {
                 try
@@ -431,10 +446,10 @@ namespace PaviseApp
                     int key = process.Key;
                     if (excludeRootPid <= 0 || key != excludeRootPid)
                     {
-                        WhitelistProcessInfo processInfo = process.Value;
-                        if (selfSession >= 0 && processInfo.Session == selfSession && (key == foregroundPid || visible.Contains(key)))
+                        WhitelistProcessInfo value = process.Value;
+                        if (selfSession >= 0 && value.Session == selfSession && (key == foregroundPid || visible.Contains(key)))
                         {
-                            keys.Add(key);
+                            hashSet.Add(key);
                         }
                     }
                 }
@@ -442,7 +457,7 @@ namespace PaviseApp
                 {
                 }
             }
-            return FamilyBoundary.ExpandUserFacingFamily(whitelist.Parents, whitelist.Names, keys);
+            return FamilyBoundary.ExpandUserFacingFamily(whitelist.Parents, whitelist.Names, hashSet);
         }
 
     }

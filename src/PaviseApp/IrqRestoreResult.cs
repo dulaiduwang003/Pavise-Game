@@ -83,15 +83,15 @@ namespace PaviseApp
                 AddScope(irqRestoreResult, devices2, selected, false);
                 if (selected != null)
                 {
-                    List<string> texts = ((otherOwners == null) ? null : otherOwners());
-                    if (texts == null)
+                    List<string> list = ((otherOwners == null) ? null : otherOwners());
+                    if (list == null)
                     {
                         irqRestoreResult.Devices.Clear();
                         return irqRestoreResult;
                     }
-                    foreach (string text in texts)
+                    foreach (string item in list)
                     {
-                        if (string.Equals(text, selected, StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(item, selected, StringComparison.OrdinalIgnoreCase))
                         {
                             irqRestoreResult.ScopeReadSucceeded = true;
                             return irqRestoreResult;
@@ -133,20 +133,20 @@ namespace PaviseApp
 
         private static void AddScope(IrqRestoreResult result, List<string> scope, string selected, bool affinity)
         {
-            foreach (string currentScope in scope)
+            foreach (string item in scope)
             {
-                if (string.IsNullOrEmpty(currentScope))
+                if (string.IsNullOrEmpty(item))
                 {
                     throw new ArgumentException("Invalid IRQ receipt device");
                 }
-                if (selected == null || string.Equals(currentScope, selected, StringComparison.OrdinalIgnoreCase))
+                if (selected == null || string.Equals(item, selected, StringComparison.OrdinalIgnoreCase))
                 {
-                    IrqDeviceRestoreResult irqDeviceRestoreResult = result.ForDevice(currentScope);
+                    IrqDeviceRestoreResult irqDeviceRestoreResult = result.ForDevice(item);
                     if (irqDeviceRestoreResult == null)
                     {
-                        IrqDeviceRestoreResult currentIrqDeviceRestoreResult = new IrqDeviceRestoreResult();
-                        currentIrqDeviceRestoreResult.DeviceId = currentScope;
-                        irqDeviceRestoreResult = currentIrqDeviceRestoreResult;
+                        IrqDeviceRestoreResult irqDeviceRestoreResult2 = new IrqDeviceRestoreResult();
+                        irqDeviceRestoreResult2.DeviceId = item;
+                        irqDeviceRestoreResult = irqDeviceRestoreResult2;
                         result.Devices.Add(irqDeviceRestoreResult);
                     }
                     if (affinity)

@@ -12,19 +12,21 @@ namespace PaviseApp
         private Control[] AddAboutMetric(Control parent, string title, string value, int x, int y, int width, bool good)
         {
             Label label = CardLabel(parent, title.ToUpperInvariant(), x, y, width, 18, 6.7f, true, Theme.Faint);
-            Label cardLabel = CardLabel(parent, value, x, y + 24, width, 27, 9.2f, true, good ? Theme.Green : Theme.Fg);
-            cardLabel.TextAlign = ContentAlignment.MiddleLeft;
+            Label label2 = CardLabel(parent, value, x, y + 24, width, 27, 9.2f, true, good ? Theme.Green : Theme.Fg);
+            label2.TextAlign = ContentAlignment.MiddleLeft;
             AccentLine accentLine = new AccentLine();
             accentLine.SetBounds(Theme.S(x), Theme.S(y + 60), Theme.S(width - 14), Theme.S(1));
             parent.Controls.Add(accentLine);
-            return new Control[3] { label, cardLabel, accentLine };
+            return new Control[3] { label, label2, accentLine };
         }
-        private Label AddAboutRow(Control parent, string title, string value, int y, int width, bool accent)
+        private Label AddAboutRow(Control parent, int index, string title, string value, int y, int width, bool accent)
         {
-            CardLabel(parent, title, 20, y, 112, 20, 7.2f, true, Theme.Faint);
+            CardLabel(parent, title, 20, y, 112, 20, 7.2f, true, Theme.Faint).Name = "aboutIdentityLabel" + index;
             Label label = (accent ? AccentLabel(parent, value, 136, y - 2, width - 156, 25, 8.8f, true) : CardLabel(parent, value, 136, y - 2, width - 156, 25, 8.8f, false, Theme.Fg));
+            label.Name = "aboutIdentityValue" + index;
             label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Panel panel = new Panel();
+            panel.Name = "aboutIdentityDivider" + index;
             panel.BackColor = Theme.Stroke;
             panel.SetBounds(Theme.S(20), Theme.S(y + 31), Theme.S(width - 40), 1);
             panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -97,16 +99,17 @@ namespace PaviseApp
             {
                 tag = AutoText("仅记录", "Record only");
             }
-            AcReadOnlyButton currentAcReadOnlyButton = new AcReadOnlyButton(name, tag, recordOnly);
-            currentAcReadOnlyButton.Name = "AntiCheatReadOnly";
-            currentAcReadOnlyButton.Visible = false;
-            currentAcReadOnlyButton.AccessibleName = name + " · " + tag;
-            currentAcReadOnlyButton.Click += delegate
+            AcReadOnlyButton acReadOnlyButton = new AcReadOnlyButton(name, tag, recordOnly);
+            acReadOnlyButton.Name = "AntiCheatReadOnly";
+            acReadOnlyButton.Visible = false;
+            acReadOnlyButton.AccessibleName = name + " · " + tag;
+            AcReadOnlyButton acReadOnlyButton2 = acReadOnlyButton;
+            acReadOnlyButton2.Click += delegate
             {
                 ShowAcInformation(name, tag + "\r\n\r\n" + description + "\r\n\r\n" + string.Join(" · ", processes));
             };
-            acDrawerBody.Controls.Add(currentAcReadOnlyButton);
-            acReadOnlyCards.Add(currentAcReadOnlyButton);
+            acDrawerBody.Controls.Add(acReadOnlyButton2);
+            acReadOnlyCards.Add(acReadOnlyButton2);
         }
         private static Color StatusInk(bool needsAction, bool doneByPavise)
         {
@@ -173,6 +176,16 @@ namespace PaviseApp
             }
             return PerformanceEnvironmentExplanation("AutoGlobalTimer", "env.gtimer.manual") + "\n" + Lang.T("env.gtimer.state." + message) + ((!on && !string.IsNullOrEmpty(readback)) ? ("\n" + Lang.T("env.gtimer.state.release-pending")) : "") + (string.IsNullOrEmpty(readback) ? "" : ("\n" + readback));
         }
+        private void MonoLabel(Control parent, string text, int x, int y, int w)
+        {
+            Label label = new Label();
+            label.Text = text;
+            label.ForeColor = Theme.Faint;
+            label.BackColor = Color.Transparent;
+            label.Font = Theme.Mono(6.2f);
+            label.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(14));
+            parent.Controls.Add(label);
+        }
         private void ToggleForceTrigger(string keepId)
         {
             GameProfile gameProfile = FindLibraryProfile(keepId);
@@ -208,11 +221,11 @@ namespace PaviseApp
             bool running = false;
             if (lstGames != null)
             {
-                foreach (GameLibraryItem currentItem in lstGames.Items)
+                foreach (GameLibraryItem item in lstGames.Items)
                 {
-                    if (currentItem.Profile != null && currentItem.Profile.Id == id)
+                    if (item.Profile != null && item.Profile.Id == id)
                     {
-                        running = currentItem.Running;
+                        running = item.Running;
                         break;
                     }
                 }
@@ -377,28 +390,28 @@ namespace PaviseApp
         }
         private void EnableCardCollapse(Control panel, params SettingCard[] keepOpen)
         {
-            List<Control> keys = new List<Control>();
+            List<Control> list = new List<Control>();
             foreach (Control key in stackBase.Keys)
             {
                 if (key.IsDisposed)
                 {
-                    keys.Add(key);
+                    list.Add(key);
                 }
             }
-            foreach (Control currentKey in keys)
+            foreach (Control item in list)
             {
-                stackBase.Remove(currentKey);
+                stackBase.Remove(item);
             }
-            Dictionary<Control, int> topsById = new Dictionary<Control, int>();
-            foreach (Control control in panel.Controls)
+            Dictionary<Control, int> dictionary = new Dictionary<Control, int>();
+            foreach (Control control3 in panel.Controls)
             {
-                topsById[control] = control.Top;
+                dictionary[control3] = control3.Top;
             }
-            stackBase[panel] = topsById;
-            List<SettingCard> settingCards = new List<SettingCard>(keepOpen ?? new SettingCard[0]);
-            foreach (Control currentControl in panel.Controls)
+            stackBase[panel] = dictionary;
+            List<SettingCard> list2 = new List<SettingCard>(keepOpen ?? new SettingCard[0]);
+            foreach (Control control4 in panel.Controls)
             {
-                SettingCard settingCard = currentControl as SettingCard;
+                SettingCard settingCard = control4 as SettingCard;
                 if (settingCard == null || settingCard.Desc.Length == 0)
                 {
                     continue;
@@ -408,7 +421,7 @@ namespace PaviseApp
                 if (settingCard.CollapsedHeight < settingCard.ExpandedHeight)
                 {
                     settingCard.Collapsible = true;
-                    settingCard.SnapExpanded(settingCards.Contains(settingCard));
+                    settingCard.SnapExpanded(list2.Contains(settingCard));
                     Control owner = panel;
                     settingCard.ExpandedChanged = delegate
                     {
@@ -484,15 +497,15 @@ namespace PaviseApp
         }
         private void UnregisterPowerSchemeNotifications()
         {
-            IntPtr powerSchemeNotificationHandle = powerSchemeNotification;
+            IntPtr intPtr = powerSchemeNotification;
             powerSchemeNotification = IntPtr.Zero;
-            if (powerSchemeNotificationHandle == IntPtr.Zero)
+            if (intPtr == IntPtr.Zero)
             {
                 return;
             }
             try
             {
-                UnregisterPowerSettingNotification(powerSchemeNotificationHandle);
+                UnregisterPowerSettingNotification(intPtr);
             }
             catch
             {
@@ -535,7 +548,7 @@ namespace PaviseApp
                 paviseCore.SetAnimationEnabled(false);
             }
             DetachFormFrame();
-            List<Control> controls = new List<Control>();
+            List<Control> list = new List<Control>();
             int matchIndex = ((pages != null && curPage != null) ? Array.IndexOf(pages, curPage) : ((nav != null) ? nav.Selected : 0));
             if (matchIndex < 0)
             {
@@ -544,15 +557,16 @@ namespace PaviseApp
             int mainReturnPageSnapshot = mainReturnPage;
             AcViewState acViewState = CaptureAcViewState();
             CoreViewState coreViewState = CaptureCoreViewState();
+            CoreEditorDraftSnapshot coreDraftSnapshot = CaptureCoreDraft();
             SavePagePosition(curPage);
             foreach (Control control in base.Controls)
             {
-                controls.Add(control);
+                list.Add(control);
             }
             base.Controls.Clear();
-            foreach (Control currentControl in controls)
+            foreach (Control item in list)
             {
-                currentControl.Dispose();
+                item.Dispose();
             }
             acGroups.Clear();
             acCards.Clear();
@@ -568,6 +582,12 @@ namespace PaviseApp
             BuildUi(appIcon);
             mainReturnPage = mainReturnPageSnapshot;
             nav.Select(matchIndex);
+            // 导航恢复后再还原草案，避免重建中的离页处理将其清空。
+            if (coreDraftSnapshot != null && curPage == pageCoreScheduling)
+            {
+                coreRebuildDraft = coreDraftSnapshot;
+                SyncCoreEditor(CorePageProfile());
+            }
             RestoreAcViewState(acViewState);
             RestoreCoreViewState(coreViewState);
             if (UiActive)
@@ -681,12 +701,12 @@ namespace PaviseApp
             if (lstGames != null)
             {
                 bool demoPathReplaced = false;
-                foreach (GameLibraryItem currentItem in lstGames.Items)
+                foreach (GameLibraryItem item in lstGames.Items)
                 {
-                    if (currentItem.Profile != null && currentItem.Profile.ExecutablePath != null && currentItem.Profile.ExecutablePath.IndexOf("PaviseShot_", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (item.Profile != null && item.Profile.ExecutablePath != null && item.Profile.ExecutablePath.IndexOf("PaviseShot_", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        gameIconCache["D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe"] = GameIcon(currentItem.Profile.ExecutablePath);
-                        currentItem.Profile.ExecutablePath = "D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe";
+                        gameIconCache["D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe"] = GameIcon(item.Profile.ExecutablePath);
+                        item.Profile.ExecutablePath = "D:\\Games\\NebulaStrike\\Binaries\\Win64\\NebulaStrike-Win64-Shipping.exe";
                         demoPathReplaced = true;
                     }
                 }
@@ -701,12 +721,12 @@ namespace PaviseApp
                 DrawToBitmap(bitmap, new Rectangle(0, 0, base.ClientSize.Width, base.ClientSize.Height));
                 if (showModePicker && modeFlyout != null && modeFlyout.Visible)
                 {
-                    using (Bitmap currentBitmap = new Bitmap(modeFlyout.Width, modeFlyout.Height))
+                    using (Bitmap bitmap2 = new Bitmap(modeFlyout.Width, modeFlyout.Height))
                     {
                         using (Graphics graphics = Graphics.FromImage(bitmap))
                         {
-                            modeFlyout.DrawToBitmap(currentBitmap, new Rectangle(0, 0, currentBitmap.Width, currentBitmap.Height));
-                            graphics.DrawImageUnscaled(currentBitmap, modeFlyout.Left, modeFlyout.Top);
+                            modeFlyout.DrawToBitmap(bitmap2, new Rectangle(0, 0, bitmap2.Width, bitmap2.Height));
+                            graphics.DrawImageUnscaled(bitmap2, modeFlyout.Left, modeFlyout.Top);
                         }
                     }
                 }
@@ -799,6 +819,43 @@ namespace PaviseApp
             Label label = CardLabel(parent, text, x, y, w, h, size, bold, Theme.Accent);
             accentLabels.Add(label);
             return label;
+        }
+        private DBPanel[] MakeTabPanels(Control page, TechTabs tabs, int count, int y)
+        {
+            DBPanel[] panels = new DBPanel[count];
+            for (int i = 0; i < panels.Length; i++)
+            {
+                WorkspacePanel workspacePanel = new WorkspacePanel();
+                workspacePanel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
+                workspacePanel.BackColor = Theme.Bg;
+                workspacePanel.AutoScroll = true;
+                Native.Dark(workspacePanel);
+                workspacePanel.Visible = i == 0;
+                page.Controls.Add(workspacePanel);
+                panels[i] = workspacePanel;
+            }
+            pageTabPanels[page] = panels;
+            tabs.IndexChanged = delegate(int index)
+            {
+                for (int j = 0; j < panels.Length; j++)
+                {
+                    if (j != index)
+                    {
+                        if (panels[j].Visible)
+                        {
+                            tabScrollPositions[panels[j]] = new Point(-panels[j].AutoScrollPosition.X, -panels[j].AutoScrollPosition.Y);
+                        }
+                        panels[j].Visible = false;
+                    }
+                }
+                panels[index].Visible = true;
+                Point value;
+                if (tabScrollPositions.TryGetValue(panels[index], out value))
+                {
+                    panels[index].AutoScrollPosition = value;
+                }
+            };
+            return panels;
         }
         internal static bool ShouldRunUi(bool visible, FormWindowState windowState)
         {

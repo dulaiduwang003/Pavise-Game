@@ -94,7 +94,7 @@ namespace PaviseApp
         internal static void BuildMemoryCompression(AuditReport report, bool memoryKnown, ulong installedKb, bool stateKnown, bool compression, bool combining, bool owned)
         {
             report.MemoryCompressionCanEnable = stateKnown && !compression;
-            string text = ((!stateKnown) ? Lang.T("t.systemaudithardware.3") : Lang.T(compression ? "audit.mem.healthy" : "audit.mem.todo"));
+            string value = ((!stateKnown) ? Lang.T("t.systemaudithardware.3") : Lang.T(compression ? "audit.mem.healthy" : "audit.mem.todo"));
             string auditMemUnknownText = ((!stateKnown) ? Lang.T("audit.mem.unknown") : Lang.T(compression ? "audit.mem.keep" : "audit.mem.policy"));
             if (owned)
             {
@@ -111,7 +111,7 @@ namespace PaviseApp
             report.Persistent.Add(new AuditRow
             {
                 Name = Lang.T("audit.mem.title"),
-                Value = text,
+                Value = value,
                 Note = auditMemUnknownText,
                 Warn = report.MemoryCompressionCanEnable,
                 FixKey = "memcompress",
@@ -128,51 +128,51 @@ namespace PaviseApp
             }
             report.Machine.RemoveAll((AuditRow row) => row.FixKey == "gpuirq" || row.FixKey == "gpuirqdriver");
             bool warn = false;
-            string text;
+            string value;
             string auditIrqProposalText;
             switch (gpuIrq.Outcome)
             {
             case GpuIrqOutcome.NeedsPlacement:
-                text = Lang.T("audit.irq.overlap");
+                value = Lang.T("audit.irq.overlap");
                 auditIrqProposalText = Lang.F("audit.irq.proposal", IrqRelocate.MaskText(gpuIrq.Target));
                 warn = true;
                 break;
             case GpuIrqOutcome.NeedsVerification:
-                text = Lang.T("irqcheck.state.verify");
+                value = Lang.T("irqcheck.state.verify");
                 auditIrqProposalText = Lang.T("irqcheck.hint.verify");
                 warn = true;
                 break;
             case GpuIrqOutcome.AwaitingReboot:
-                text = Lang.T("irqcheck.state.pending");
+                value = Lang.T("irqcheck.state.pending");
                 auditIrqProposalText = Lang.T("irqcheck.hint.pending");
                 warn = true;
                 break;
             case GpuIrqOutcome.Clear:
-                text = Lang.T("irqcheck.state.clear");
+                value = Lang.T("irqcheck.state.clear");
                 auditIrqProposalText = Lang.T("irqcheck.hint.clear");
                 break;
             case GpuIrqOutcome.NoRegion:
-                text = Lang.T("irqcheck.state.noregion");
+                value = Lang.T("irqcheck.state.noregion");
                 auditIrqProposalText = Lang.T("irqcheck.out.noregion");
                 break;
             case GpuIrqOutcome.NoTarget:
-                text = Lang.T("irqcheck.reason.notarget");
+                value = Lang.T("irqcheck.reason.notarget");
                 auditIrqProposalText = Lang.T("irqcheck.reason.notarget");
                 break;
             case GpuIrqOutcome.Skipped:
-                text = Lang.T("audit.irq.skipped");
+                value = Lang.T("audit.irq.skipped");
                 auditIrqProposalText = gpuIrq.Detail;
                 break;
             case GpuIrqOutcome.NoEvidence:
-                text = Lang.T("audit.irq.insufficient");
+                value = Lang.T("audit.irq.insufficient");
                 auditIrqProposalText = Lang.F("audit.irq.check.hint", (report.MeasureWindowMs > 0) ? ((int)Math.Ceiling((double)report.MeasureWindowMs / 1000.0)) : 120);
                 break;
             case GpuIrqOutcome.Cancelled:
-                text = Lang.T("audit.irq.skipped");
+                value = Lang.T("audit.irq.skipped");
                 auditIrqProposalText = Lang.T("irqcheck.out.cancelled");
                 break;
             default:
-                text = Lang.T("audit.irq.unavailable");
+                value = Lang.T("audit.irq.unavailable");
                 auditIrqProposalText = gpuIrq.Detail;
                 break;
             }
@@ -183,19 +183,19 @@ namespace PaviseApp
             report.Machine.Add(new AuditRow
             {
                 Name = Lang.T("irqcheck.gpu.title"),
-                Value = text,
+                Value = value,
                 Note = auditIrqProposalText,
                 Warn = warn,
                 FixKey = "gpuirq",
                 Evidence = ((gpuIrq.Gpu != null && gpuIrq.Gpu.Events >= 300 && gpuIrq.Gpu.Seen != 0) ? "本机实测" : "未验证")
             });
-            foreach (SlowDriver slow in gpuIrq.Slow)
+            foreach (SlowDriver item in gpuIrq.Slow)
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = Lang.T("irqcheck.slow.title") + " · " + slow.Driver,
-                    Value = Lang.F("irqcheck.slow.row", slow.MaxUs.ToString("F0"), slow.P99Us.ToString("F0")),
-                    Note = slow.Device + " " + Lang.T("irqcheck.slow.hint"),
+                    Name = Lang.T("irqcheck.slow.title") + " · " + item.Driver,
+                    Value = Lang.F("irqcheck.slow.row", item.MaxUs.ToString("F0"), item.P99Us.ToString("F0")),
+                    Note = item.Device + " " + Lang.T("irqcheck.slow.hint"),
                     Warn = true,
                     Evidence = "本机实测",
                     FixKey = "gpuirqdriver"
@@ -209,12 +209,12 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (BypassIoVerdict bypassIo in facts.BypassIo)
+            foreach (BypassIoVerdict item in facts.BypassIo)
             {
                 string message = "";
                 try
                 {
-                    message = Path.GetPathRoot(bypassIo.Path) ?? "";
+                    message = Path.GetPathRoot(item.Path) ?? "";
                 }
                 catch
                 {
@@ -222,10 +222,10 @@ namespace PaviseApp
                 report.Machine.Add(new AuditRow
                 {
                     Name = Lang.T("t.bypassio.1") + " " + message.TrimEnd('\\'),
-                    Value = (bypassIo.Enabled ? Lang.T("t.bypassio.2") : Lang.F("t.bypassio.3", (bypassIo.Blocker.Length > 0) ? bypassIo.Blocker : "?")),
-                    Note = (bypassIo.Enabled ? Lang.T("t.bypassio.4") : (Lang.T("t.bypassio.5") + ((bypassIo.Reason.Length > 0) ? (" " + bypassIo.Reason) : ""))),
+                    Value = (item.Enabled ? Lang.T("t.bypassio.2") : Lang.F("t.bypassio.3", (item.Blocker.Length > 0) ? item.Blocker : "?")),
+                    Note = (item.Enabled ? Lang.T("t.bypassio.4") : (Lang.T("t.bypassio.5") + ((item.Reason.Length > 0) ? (" " + item.Reason) : ""))),
                     Evidence = "机制明确",
-                    Warn = !bypassIo.Enabled
+                    Warn = !item.Enabled
                 });
             }
         }

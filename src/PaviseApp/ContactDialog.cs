@@ -63,9 +63,9 @@ namespace PaviseApp
                         graphics.DrawPath(pen, path);
                     }
                 }
-                using (Pen accentPen = new Pen(Theme.Accent, Math.Max(2, Theme.S(2))))
+                using (Pen pen2 = new Pen(Theme.Accent, Math.Max(2, Theme.S(2))))
                 {
-                    graphics.DrawLine(accentPen, 0, Theme.S(12), 0, base.Height - Theme.S(12));
+                    graphics.DrawLine(pen2, 0, Theme.S(12), 0, base.Height - Theme.S(12));
                 }
                 TextRenderer.DrawText(graphics, label, Theme.UI(7.3f, true), new Rectangle(Theme.S(14), Theme.S(7), base.Width - Theme.S(28), Theme.S(15)), Theme.Faint, TextFormatFlags.EndEllipsis);
                 TextRenderer.DrawText(graphics, value, Theme.UI(11.5f, true), new Rectangle(Theme.S(14), Theme.S(22), base.Width - Theme.S(74), Theme.S(26)), Theme.Fg, TextFormatFlags.EndEllipsis);
@@ -73,6 +73,18 @@ namespace PaviseApp
                 TextRenderer.DrawText(graphics, hint, Theme.UI(7.4f, hintAccent), new Rectangle(base.Width - Theme.S(66), Theme.S(24), Theme.S(54), Theme.S(20)), foreColor, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
             }
         }
+
+        private const int DlgW = 640;
+
+        private const int DlgH = 578;
+
+        private const int RailW = 190;
+
+        private const int RailSlant = 32;
+
+        private const int BodyX = 216;
+
+        private const int BodyW = 394;
 
         private Bitmap logo;
 
@@ -134,11 +146,11 @@ namespace PaviseApp
                 close.ForeColor = Theme.Faint;
             };
             Label label = close;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 Finish();
             };
-            label.Click += eventHandler;
+            label.Click += value;
             base.Controls.Add(close);
             int ctorValue = 192;
             int ctorValue2 = 216 + ctorValue + 10;
@@ -156,14 +168,14 @@ namespace PaviseApp
             AddRow(216, ctorValue3, 394, Lang.T("site.entry"), "pavise.club", OpenAction("https://pavise.club/"), Lang.T("contact.open"));
             ctorValue3 += 70;
             BuildUpdateArea(216, ctorValue3, 394);
-            Label currentLabel = new Label();
-            currentLabel.Text = Lang.T("contact.free.n");
-            currentLabel.ForeColor = Theme.Dim;
-            currentLabel.BackColor = Theme.Bg;
-            currentLabel.Font = Theme.UI(7.5f, false);
-            currentLabel.UseCompatibleTextRendering = false;
-            currentLabel.SetBounds(Theme.S(218), Theme.S(468), Theme.S(390), Theme.S(44));
-            base.Controls.Add(currentLabel);
+            Label label2 = new Label();
+            label2.Text = Lang.T("contact.free.n");
+            label2.ForeColor = Theme.Dim;
+            label2.BackColor = Theme.Bg;
+            label2.Font = Theme.UI(7.5f, false);
+            label2.UseCompatibleTextRendering = false;
+            label2.SetBounds(Theme.S(218), Theme.S(468), Theme.S(390), Theme.S(44));
+            base.Controls.Add(label2);
             PillButton pillButton = new PillButton(Lang.T("contact.close"), BtnKind.Primary);
             pillButton.SetBounds(Theme.S(464), Theme.S(520), Theme.S(146), Theme.S(38));
             pillButton.Click += delegate
@@ -315,32 +327,32 @@ namespace PaviseApp
             }
             int left = Theme.S(190);
             int scaledDimension2 = Theme.S(32);
-            using (GraphicsPath currentGraphicsPath = new GraphicsPath())
+            using (GraphicsPath graphicsPath2 = new GraphicsPath())
             {
-                currentGraphicsPath.AddLine(scaledDimension, 0, left, 0);
-                currentGraphicsPath.AddLine(left, 0, left - scaledDimension2, height);
-                currentGraphicsPath.AddLine(left - scaledDimension2, height, 0, height);
-                currentGraphicsPath.AddLine(0, height, 0, scaledDimension);
-                currentGraphicsPath.CloseFigure();
+                graphicsPath2.AddLine(scaledDimension, 0, left, 0);
+                graphicsPath2.AddLine(left, 0, left - scaledDimension2, height);
+                graphicsPath2.AddLine(left - scaledDimension2, height, 0, height);
+                graphicsPath2.AddLine(0, height, 0, scaledDimension);
+                graphicsPath2.CloseFigure();
                 using (SolidBrush brush2 = new SolidBrush(Theme.Nav))
                 {
-                    graphics.FillPath(brush2, currentGraphicsPath);
+                    graphics.FillPath(brush2, graphicsPath2);
                 }
             }
-            using (Pen accentPen = new Pen(Theme.Accent, Theme.S(2)))
+            using (Pen pen2 = new Pen(Theme.Accent, Theme.S(2)))
             {
-                graphics.DrawLine(accentPen, left, 0, left - scaledDimension2, height);
+                graphics.DrawLine(pen2, left, 0, left - scaledDimension2, height);
             }
-            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 60), Theme.S(1)))
+            using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 60), Theme.S(1)))
             {
-                graphics.DrawLine(currentPen, left + Theme.S(5), 0, left - scaledDimension2 + Theme.S(5), height);
+                graphics.DrawLine(pen3, left + Theme.S(5), 0, left - scaledDimension2 + Theme.S(5), height);
             }
-            using (Pen candidatePen = new Pen(Col.Alpha(Theme.Accent, 30), Theme.S(1)))
+            using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, 30), Theme.S(1)))
             {
                 for (int i = 0; i < 5; i++)
                 {
                     int left2 = Theme.S(24 + i * 10);
-                    graphics.DrawLine(candidatePen, left2, height - Theme.S(60), left2 - Theme.S(12), height - Theme.S(16));
+                    graphics.DrawLine(pen4, left2, height - Theme.S(60), left2 - Theme.S(12), height - Theme.S(16));
                 }
             }
             int scaledDimension3 = Theme.S(24);
@@ -356,9 +368,9 @@ namespace PaviseApp
             {
                 graphics.DrawString("C O R E   C O N T R O L", Theme.Mono(6.4f), brush4, Theme.S(38), Theme.S(142));
             }
-            using (Pen currentAccentPen = new Pen(Theme.Accent, Theme.S(2)))
+            using (Pen pen5 = new Pen(Theme.Accent, Theme.S(2)))
             {
-                graphics.DrawLine(currentAccentPen, Theme.S(44), Theme.S(164), Theme.S(122), Theme.S(164));
+                graphics.DrawLine(pen5, Theme.S(44), Theme.S(164), Theme.S(122), Theme.S(164));
             }
             using (SolidBrush brush5 = new SolidBrush(Theme.Accent))
             {

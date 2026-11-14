@@ -47,7 +47,7 @@ namespace PaviseApp
             messages.Add("irqcheck.out.noregion", new string[2] { "未获取到生效的游戏核心范围，本次仅展示显卡中断数据，暂不判断是否需要避让。", "No active game core range was obtained. This check only shows GPU interrupt data; whether avoidance is needed remains undetermined." });
             messages.Add("irqcheck.out.restored", new string[2] { "游戏已不再使用专用核心，之前的显卡中断调整已撤销，重启后生效。", "The game no longer uses dedicated cores, so the earlier GPU interrupt adjustment was undone; takes effect after a restart." });
             messages.Add("irqcheck.out.clear", new string[2] { "显卡中断落在 CPU {0}，没有碰到游戏核心 CPU {1}，无需调整。", "The GPU interrupt lands on CPU {0}, clear of the game cores CPU {1}; nothing to change." });
-            messages.Add("irqcheck.out.scheduled", new string[2] { "显卡中断落在 CPU {0}，和游戏核心 CPU {1} 重叠。\r\n\r\n已安排挪到 CPU {2}，重启电脑后生效。重启后在系统体检中完成验收；验收不通过会自动恢复。", "The GPU interrupt lands on CPU {0}, overlapping the game cores CPU {1}.\r\n\r\nIt is scheduled to move to CPU {2} and takes effect after a restart. Run System Checkup afterwards to verify; a failed verification is reverted automatically." });
+            messages.Add("irqcheck.out.scheduled", new string[2] { "显卡中断 CPU {0} 与游戏核心 CPU {1} 重叠，已安排移到 CPU {2}。重启后请运行系统体检验收，失败会自动恢复。", "GPU interrupt CPU {0} overlaps game cores CPU {1}; scheduled to move to CPU {2}. Restart, then verify in System Checkup. Failed verification reverts the change." });
             messages.Add("irqcheck.out.verified", new string[2] { "验收通过：显卡中断已落在 CPU {0}，驱动没有异常。", "Verified: the GPU interrupt now lands on CPU {0} and the driver shows no problems." });
             messages.Add("irqcheck.out.rolledback", new string[2] { "验收没有通过（{0}），已恢复原设置，重启后生效。这块显卡在当前驱动版本上不再尝试。", "Verification failed ({0}); the original setting was restored and applies after a restart. This GPU will not be tried again on the current driver version." });
             messages.Add("irqcheck.out.skipped", new string[2] { "不做调整：{0}", "No adjustment: {0}" });
@@ -80,7 +80,7 @@ namespace PaviseApp
             messages.Add("audit.fix.revert", new string[2] { "还原修复", "Revert fix" });
             messages.Add("irqauto.logprefix", new string[2] { "自动中断编排 ", "IRQ autopilot: " });
             messages.Add("rep.log.none", new string[2] { "日志为空", "Log is empty" });
-            messages.Add("rep.clear.log", new string[2] { "清除日志", "Clear log" });
+            messages.Add("rep.clear.log", new string[3] { "清除日志", "Clear log", "ログを消去" });
             messages.Add("rep.clear.ask", new string[2] { "清空 Pavise.log？归档日志不受影响。", "Clear Pavise.log? Archived logs are unaffected." });
             messages.Add("audit.fth.confirm", new string[2] { "解除 FTH 垫片？\r\n\r\n可能减少开销，也可能恢复崩溃；文件保留，可还原。", "Remove the FTH shim?\r\n\r\nIt may reduce overhead or restore crashes. The file remains; reversible." });
             messages.Add("audit.input.devices", new string[2] { "输入设备", "Input devices" });
@@ -142,7 +142,7 @@ namespace PaviseApp
             messages.Add("rep.top", new string[2] { " · 最高 {0} {1}", " · top {0} {1}" });
             messages.Add("rep.brief", new string[2] { "{0} · {1} · 压制 {2} 个后台", "{0} · {1} · {2} background processes" });
             messages.Add("rep.pavise.cpu", new string[2] { " · Pavise 自身平均 CPU {0}%", " · Pavise itself averaged {0}% CPU" });
-            messages.Add("os.old.body", new string[2] { "当前系统内部版本 {0}，低于运行所需的 Windows 10 2004（{1}），Pavise 无法启动。\r\n\r\n后台压制依赖的能效模式、逐进程计时器精度隔离在更早的系统上不存在，调度不会生效。推荐 Windows 11 24H2（{2}）。\r\n\r\n此前版本留下的系统改动已经还原。", "This system is build {0}, below the Windows 10 2004 ({1}) required to run, so Pavise cannot start.\r\n\r\nThe efficiency mode and per-process timer isolation that background suppression relies on do not exist on earlier builds, so scheduling would have no effect. Windows 11 24H2 ({2}) is preferred.\r\n\r\nSystem changes left by earlier versions have been restored." });
+            messages.Add("os.old.body", new string[2] { "当前系统版本 {0}，需 Windows 10 2004（{1}）或更高版本才能运行，推荐 Windows 11 24H2（{2}）。\r\n\r\n此前版本的系统改动已还原，程序将退出。", "Current system build: {0}. Requires Windows 10 2004 ({1}) or later; Windows 11 24H2 ({2}) is recommended.\r\n\r\nEarlier system changes were restored. The app will exit." });
             messages.Add("os.old.restorefail", new string[2] { "\r\n\r\n部分改动还原失败，详见日志。", "\r\n\r\nSome changes could not be restored; see the log." });
             messages.Add("t.peripheralcatalog.9", new string[2] { "蓝牙", "Bluetooth" });
             messages.Add("log.interruptattribution.9", new string[2] { "中断观测 已有别的会话在用 本次让开", "Interrupt observation: another session already owns the probe; standing down" });
@@ -274,9 +274,9 @@ namespace PaviseApp
             messages.Add("t.systemaudit.59", new string[2] { "Hz，该显示器在相同分辨率下支持 ", "Hz; at the same resolution this display supports " });
             messages.Add("t.systemaudit.60", new string[2] { "Hz。差值会直接损失帧率。请在设置 → 显示 → 高级显示中改为 ", "Hz. The difference directly costs FPS. In Settings → Display → Advanced display, change it to " });
             messages.Add("t.systemaudit.61", new string[2] { "Hz。该项为持久设置，修改一次后长期生效。", "Hz. This is a persistent setting: change it once and it stays." });
-            messages.Add("t.systemaudit.62", new string[2] { "NVIDIA 驱动降频标记", "NVIDIA performance-decrease flags" });
-            messages.Add("t.systemaudit.63", new string[2] { "驱动报告了上述标记；可能来自读取到的任一 NVIDIA 显卡。仅凭标记不能确认游戏瓶颈或实际电池供电，需结合游戏显卡的负载、频率及供电状态判断。", "The driver reported these flags on a queried NVIDIA GPU. Flags alone do not establish a game bottleneck or battery operation; correlate the game GPU's load, clocks and power source." });
-            messages.Add("t.systemaudit.64", new string[2] { "当前未报告降频标记。对局中采样命中的标记会在退局时汇总到运行日志；比例不代表帧率损失。", "No performance-decrease flag is currently reported. Match sample hits are summarized in the log at match end; percentages are not FPS loss." });
+            messages.Add("t.systemaudit.62", new string[3] { "NVIDIA 驱动降频标记", "NVIDIA performance-decrease flags", "NVIDIA 性能低下フラグ" });
+            messages.Add("t.systemaudit.63", new string[3] { "NVIDIA 驱动报告了这些标记，可能来自任一显卡。请结合游戏显卡负载、频率和供电判断，标记本身不能确认瓶颈或电池供电。", "NVIDIA reported these flags on a queried GPU. Check the game GPU load, clocks and power source; flags alone do not identify a bottleneck or battery operation.", "照会した NVIDIA GPU のドライバーが上記フラグを報告しました。これだけではゲームのボトルネックやバッテリー駆動を判断できません。ゲーム用 GPU の負荷、クロック、電源状態と合わせて確認してください。" });
+            messages.Add("t.systemaudit.64", new string[3] { "当前无降频标记。对局采样结果在退局时写入日志，比例不等于帧率损失。", "No performance-decrease flags now. Match samples are logged at game exit; percentages are not FPS loss.", "現在、性能低下フラグの報告はありません。対局中に検出したフラグは終了時にログへ集計されます。割合は FPS の損失率ではありません。" });
             messages.Add("t.systemaudit.65", new string[2] { "节能模式", "Energy saver mode" });
             messages.Add("t.systemaudit.66", new string[2] { "开着", "On" });
             messages.Add("t.systemaudit.67", new string[2] { "关着", "Off" });

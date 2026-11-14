@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace PaviseApp
 {
@@ -6,32 +6,43 @@ namespace PaviseApp
     {
         private static void AddPowerMessages(Dictionary<string, string[]> messages)
         {
+            messages.Add("gm.scheduling.title", new string[3] { "游戏调度", "Game scheduling", "ゲームスケジュール" });
+            messages.Add("gm.scheduling.detail", new string[2] { "选择游戏优先、渲染或多核调度方案，可另开清核和 GPU／磁盘资源优先级。游戏优先会提高整个游戏进程的优先级；依赖协同不使用清核；专核强化须通过运行条件核验。保存后下局生效，关闭或退局时恢复本方修改。", "Choose Game priority, a rendering or a multicore strategy, with optional clear core and GPU/disk priority. Game priority raises the whole game process priority; Dependency coordination has no clear core; enhanced rendering requires verified operating conditions. Applies next session; owned changes are restored when disabled or the game ends." });
+            messages.Add("gm.scheduling.masteroff", new string[2] { "全局渲染线程调度已关闭，仍可保存配置。请在深度调优中开启。", "Global render thread scheduling is off. You can save settings; enable it in Advanced tuning." });
+            messages.Add("gm.scheduling.gameoff", new string[2] { "此游戏的渲染线程调度已关闭，仍可保存配置。请在深度调优中开启。", "Render thread scheduling is off for this game. You can save settings; enable it in Advanced tuning." });
+            messages.Add("lib.threads.title", new string[2] { "渲染线程调度", "Render thread scheduling" });
+            messages.Add("lib.threads.enable.warn", new string[2] { "为本游戏开启渲染线程调度？\n\n效果因游戏和硬件而异，可能降低帧率或造成卡顿。请在相同游戏场景下对照开启前后的表现，变差时关闭。", "Enable render thread scheduling for this game?\n\nResults vary by game and hardware, and it may lower frame rate or cause stutter. Compare the same game scene with it on and off, and turn it off if performance gets worse." });
+            messages.Add("lib.cores.range", new string[2] { "游戏核心范围", "Game core range" });
+            messages.Add("gm.scheduling.resources.title", new string[2] { "资源优先级", "Resource priority" });
+            messages.Add("gm.scheduling.resources.detail", new string[2] { "提高游戏的 GPU 和磁盘 I/O 优先级。需开启渲染线程调度，下局生效，退局恢复。", "Raises game GPU and disk I/O priority. Requires render thread scheduling; applies next session and restores at game end." });
+            messages.Add("gm.scheduling.resources.summary", new string[2] { "GPU／磁盘", "GPU / disk" });
+            messages.Add("gm.scheduling.resources.masteroff", new string[2] { "需开启渲染线程调度", "Needs render thread scheduling" });
             messages.Add("log.powerplanschemes.47", new string[2] { "已清除托管方案里旧版遗留的处理器空闲禁用设置", "Cleared the legacy processor idle disable setting from the managed plan." });
             messages.Add("plan.pick.title", new string[2] { "对局电源计划", "Match Power Plan" });
             messages.Add("plan.pick.auto", new string[2] { "由软件调度", "Automatic" });
-            messages.Add("plan.pick.pgcontrolled", new string[2] { "由 PG 控制", "PG controlled" });
+            messages.Add("plan.pick.pgcontrolled", new string[3] { "由 PG 控制", "PG controlled", "PG が制御" });
             messages.Add("plan.button.hint", new string[2] { "对局电源计划", "Match power plan" });
             messages.Add("power.name", new string[2] { "对局电源计划", "Match power plan" });
-            messages.Add("plan.fly.cur", new string[2] { "当前系统计划 {0}，对局中切换至所选计划，退出后自动切回。", "Current system plan {0}. Switches to the selected plan during matches and switches back automatically on exit." });
-            messages.Add("plan.pick.off", new string[2] { "不切换", "Don't switch" });
-            messages.Add("plan.fly.off", new string[2] { "当前系统计划 {0}。保留当前电源设置，进出对局不切换。", "Current system plan {0}. Power settings are retained when entering or leaving matches." });
-            messages.Add("log.powerplan.off", new string[2] { "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off" });
+            messages.Add("plan.fly.cur", new string[2] { "当前计划 {0}。对局中保持所选计划，退局恢复本方修改，保留外部后续改动。", "Current plan: {0}. Keeps the selected plan during play; restores owned changes at game end while preserving later external edits." });
+            messages.Add("plan.pick.off", new string[3] { "不切换", "Don't switch", "切り替えない" });
+            messages.Add("plan.fly.off", new string[3] { "当前系统计划 {0}。保留当前电源设置，进出对局不切换。", "Current system plan {0}. Power settings are retained when entering or leaving matches.", "現在のシステムプラン {0}。対局の開始・終了時も電源設定を維持します。" });
+            messages.Add("log.powerplan.off", new string[3] { "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off" });
             messages.Add("plan.pick.managed", new string[2] { "托管", "Managed" });
             messages.Add("plan.pick.local", new string[2] { "本机", "Local" });
             messages.Add("extreme.dwm", new string[2] { "DWM 合成调度保护", "DWM scheduling protection" });
-            messages.Add("st.power.verified", new[] { "对局电源已验证", "Match power verified" });
-            messages.Add("st.power.pending", new[] { "对局电源待验证", "Match power pending verification" });
-            messages.Add("st.power.stopped", new[] { "对局电源故障·已停用", "Match power failed; stopped" });
-            messages.Add("st.power.restore.failed", new[] { "电源恢复未完成", "Power restoration incomplete" });
-            messages.Add("st.power.unchanged", new[] { "沿用系统电源", "Keeping system power plan" });
-            messages.Add("st.power.waiting", new[] { "对局电源待命", "Match power standing by" });
+            messages.Add("st.power.verified", new[] { "对局电源已验证", "Match power verified", "ゲーム用電源を確認済み" });
+            messages.Add("st.power.pending", new[] { "对局电源待验证", "Match power pending verification", "ゲーム用電源を確認中" });
+            messages.Add("st.power.stopped", new[] { "对局电源故障·已停用", "Match power failed; stopped", "ゲーム用電源でエラー・停止中" });
+            messages.Add("st.power.restore.failed", new[] { "电源恢复未完成", "Power restoration incomplete", "電源の復元が未完了" });
+            messages.Add("st.power.unchanged", new[] { "沿用系统电源", "Keeping system power plan", "システムの電源プランを維持" });
+            messages.Add("st.power.waiting", new[] { "对局电源待命", "Match power standing by", "ゲーム用電源は待機中" });
             messages.Add("log.power.retry.stopped", new string[2] { "POWER event=apply-failed execution=stopped retry=manual", "POWER event=apply-failed execution=stopped retry=manual" });
             messages.Add("gm.laptopperf", new string[2] { "对局切换厂商性能档", "Switch to the vendor performance mode during play" });
             messages.Add("log.laptopperf.4", new string[2] { "厂商性能档切回失败 记录保留待重试", "Vendor performance mode switch-back failed; the record is kept for retry" });
             messages.Add("log.laptopperf.5", new string[2] { "厂商性能档已被外部改动 不切回 只清账", "Vendor performance mode was changed externally; not switched back, record cleared" });
             messages.Add("log.laptopperf.6", new string[2] { "厂商性能档已切回", "Vendor performance mode switched back" });
             messages.Add("log.laptopperf.7", new string[2] { "检测到上次未切回的厂商性能档 已切回", "Detected a vendor performance mode left from last time; switched back" });
-            messages.Add("bal.update", new string[2] { "发现新版本 {0}，请打开面板的关于页查看", "New version {0} available; see the About page in the panel" });
+            messages.Add("bal.update", new string[2] { "发现新版本 {0}，请打开设置中的关于页面查看", "New version {0} available; see Settings > About" });
             messages.Add("bal.noelev", new string[2] { "当前非管理员运行，压制类功能不会生效", "Not running as administrator; suppression features will not take effect" });
             messages.Add("log.poweroverlay.2", new string[2] { "电源滑块 快照无法持久化 本轮未切换", "Power slider: snapshot could not be persisted, not switched this round" });
             messages.Add("log.poweroverlay.3", new string[2] { "电源滑块 切最佳性能失败 状态 ", "Power slider: switch to Best Performance failed, status " });
@@ -78,8 +89,8 @@ namespace PaviseApp
             messages.Add("t.powerplanschemes.35", new string[2] { "NVMe 主盘电源态延迟容忍", "Primary NVMe latency tolerance" });
             messages.Add("t.powerplanschemes.36", new string[2] { "NVMe 从盘电源态延迟容忍", "Secondary NVMe latency tolerance" });
             messages.Add("t.powerplanschemes.37", new string[2] { "AHCI 链路电源管理", "AHCI link power management" });
-            messages.Add("log.powerplanschemes.extremeOrphan", new string[2] { "空闲策略收据认的方案已不在本机 收据作废", "The plan named by the idle-policy receipt no longer exists on this machine; the receipt is dropped." });
-            messages.Add("log.powerplanschemes.extremePending", new string[2] { "空闲策略原值尚未全部写回 保留恢复记录 其余参数照常配置 下次配置时重试", "Some idle-policy values have not been written back yet. The recovery record is retained; other parameters proceed, and the write-back is retried on the next configuration." });
+            messages.Add("log.powerplanschemes.extremeOrphan", new string[3] { "空闲策略收据认的方案已不在本机 收据作废", "The plan named by the idle-policy receipt no longer exists on this machine; the receipt is dropped.", "アイドルポリシーの記録が指すプランが本機に存在しません。記録を破棄しました。" });
+            messages.Add("log.powerplanschemes.extremePending", new string[3] { "空闲策略原值尚未全部写回 保留恢复记录 其余参数照常配置 下次配置时重试", "Some idle-policy values have not been written back yet. The recovery record is retained; other parameters proceed, and the write-back is retried on the next configuration.", "アイドルポリシーの元の値の一部がまだ書き戻されていません。復元記録を保持し、他のパラメーターは設定を続け、次回の設定時に再試行します。" });
             messages.Add("t.powerplanschemes.43", new string[2] { "USB 3 链路电源管理", "USB 3 link power management" });
             messages.Add("t.powerplanschemes.44", new string[2] { "Intel 核显电源计划", "Intel graphics power plan" });
             messages.Add("t.powerplanschemes.45", new string[2] { "E核睿频策略", "E-core turbo boost policy" });

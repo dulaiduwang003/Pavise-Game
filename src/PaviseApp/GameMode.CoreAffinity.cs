@@ -52,22 +52,22 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                HardPin hardPin = null;
-                bool affinityReadable;
-                switch ((gamePlacement.ContainsKey(pid) && hardPins.TryGetValue(pid, out hardPin) && hardPin.Pid == pid && hardPin.Creation == pass.RendererCreation) ? HardPinHandleStateOf(hardPin) : HardPinHandleState.Unknown)
+                HardPin value = null;
+                int exclusiveDriftedValue;
+                switch ((gamePlacement.ContainsKey(pid) && hardPins.TryGetValue(pid, out value) && value.Pid == pid && value.Creation == pass.RendererCreation) ? HardPinHandleStateOf(value) : HardPinHandleState.Unknown)
                 {
                 case HardPinHandleState.Gone:
                     return false;
                 case HardPinHandleState.Match:
                     string jobReason;
-                    if (hardPin.JobBound && !coreAffinityJobs.Verify(pid, hardPin.Creation, pass.DesiredMask, out jobReason))
+                    if (value.JobBound && !coreAffinityJobs.Verify(pid, value.Creation, pass.DesiredMask, out jobReason))
                     {
                         corePlacementEvidence = "pid=" + pid + " stage=job-audit reason=" + jobReason;
-                        affinityReadable = false;
+                        exclusiveDriftedValue = 0;
                         break;
                     }
-                    affinityReadable = ReadCoreAffinity(hardPin.RestoreHandle, out observed);
-                    if (!affinityReadable)
+                    exclusiveDriftedValue = (ReadCoreAffinity(value.RestoreHandle, out observed) ? 1 : 0);
+                    if (exclusiveDriftedValue == 0)
                     {
                         int error = Marshal.GetLastWin32Error();
                         exclusiveAuditDeferred = DeferExclusiveAuditFailure(pass, "audit-read", error);
@@ -75,9 +75,10 @@ namespace PaviseApp
                     break;
                 default:
                     corePlacementEvidence = "pid=" + pid + " creation=" + pass.RendererCreation + " stage=audit-identity-or-ownership-unavailable";
-                    affinityReadable = false;
+                    exclusiveDriftedValue = 0;
                     break;
                 }
+                bool affinityReadable = (byte)exclusiveDriftedValue != 0;
                 RecordCoreAffinity(pass.DesiredMask, observed, affinityReadable);
                 if (coreAffinityVerified) exclusiveAuditRetry.Reset();
                 unreadable = !affinityReadable;
@@ -177,39 +178,39 @@ namespace PaviseApp
             {
                 lock (sync)
                 {
-                    HardPin hardPin;
-                    if (CorePending || placementGaveUp.Contains(pid) || !hardPins.TryGetValue(pid, out hardPin)
-                        || hardPin.RestoreRequested || hardPin.RestoreInFlight || hardPin.Creation != pass.RendererCreation
-                        || hardPin.AppliedAffinity != pass.DesiredMask || HardPinHandleStateOf(hardPin) != 0)
+                    HardPin value;
+                    if (CorePending || placementGaveUp.Contains(pid) || !hardPins.TryGetValue(pid, out value)
+                        || value.RestoreRequested || value.RestoreInFlight || value.Creation != pass.RendererCreation
+                        || value.AppliedAffinity != pass.DesiredMask || HardPinHandleStateOf(value) != 0)
                     {
                         return ExclusiveWriteBack.Failed;
                     }
-                    if (hardPin.JobBound)
+                    if (value.JobBound)
                     {
                         string jobReason;
-                        bool verified = coreAffinityJobs.Verify(pid, hardPin.Creation, pass.DesiredMask, out jobReason);
+                        bool verified = coreAffinityJobs.Verify(pid, value.Creation, pass.DesiredMask, out jobReason);
                         RecordCoreAffinity(pass.DesiredMask, verified ? pass.DesiredMask : 0, verified);
                         if (!verified) corePlacementEvidence = "pid=" + pid + " stage=job-audit reason=" + jobReason;
                         return verified ? ExclusiveWriteBack.Written : ExclusiveWriteBack.Failed;
                     }
                     ulong currentMask;
-                    if (!Native.TryQueryAffinity(hardPin.RestoreHandle, out currentMask)) return ExclusiveWriteBack.Failed;
+                    if (!Native.TryQueryAffinity(value.RestoreHandle, out currentMask)) return ExclusiveWriteBack.Failed;
                     if (currentMask == pass.DesiredMask)
                     {
                         RecordCoreAffinity(pass.DesiredMask, currentMask, true);
                         return ExclusiveWriteBack.Written;
                     }
                     string threadReason;
-                    if (!GameThreadAffinityAdmission.Check(hardPin.RestoreHandle, pid, hardPin.Creation, currentMask, out threadReason))
+                    if (!GameThreadAffinityAdmission.CheckProcessOnly(value.RestoreHandle, pid, value.Creation, currentMask, out threadReason))
                     {
                         corePlacementEvidence = "pid=" + pid + " stage=thread-affinity-refused reason=" + threadReason;
                         return ExclusiveWriteBack.Failed;
                     }
-                    bool setProcessAffinityMaskSucceeded = Native.SetProcessAffinityMask(hardPin.RestoreHandle, (UIntPtr)pass.DesiredMask);
+                    bool setProcessAffinityMaskSucceeded = Native.SetProcessAffinityMask(value.RestoreHandle, (UIntPtr)pass.DesiredMask);
                     int writeError = setProcessAffinityMaskSucceeded ? 0 : Marshal.GetLastWin32Error();
                     if (setProcessAffinityMaskSucceeded) criticalNextSample = 0L;
                     ulong mask;
-                    bool tryQueryAffinity = Native.TryQueryAffinity(hardPin.RestoreHandle, out mask);
+                    bool tryQueryAffinity = Native.TryQueryAffinity(value.RestoreHandle, out mask);
                     int readError = tryQueryAffinity ? 0 : Marshal.GetLastWin32Error();
                     RecordCoreAffinity(pass.DesiredMask, mask, tryQueryAffinity);
                     if (!setProcessAffinityMaskSucceeded || !tryQueryAffinity || mask != pass.DesiredMask)
@@ -230,7 +231,7 @@ namespace PaviseApp
         }
         private void YieldExclusive(int pid, ulong observed)
         {
-            long processCreation = 0L;
+            long numericValue = 0L;
             bool jobOwned = false;
             lock (sync)
             {
@@ -247,17 +248,17 @@ namespace PaviseApp
             {
                 placementGaveUp.Add(pid);
                 gamePlacement.Remove(pid);
-                Snap currentGameBoost;
-                if (gameBoost.TryGetValue(pid, out currentGameBoost))
+                Snap value;
+                if (gameBoost.TryGetValue(pid, out value))
                 {
-                    currentGameBoost.PlacementYielded = true;
-                    gameBoost[pid] = currentGameBoost;
-                    processCreation = currentGameBoost.Creation;
+                    value.PlacementYielded = true;
+                    gameBoost[pid] = value;
+                    numericValue = value.Creation;
                 }
             }
-            if (processCreation > 0)
+            if (numericValue > 0)
             {
-                CrashGuard.YieldBoostPlacement(pid, processCreation);
+                CrashGuard.YieldBoostPlacement(pid, numericValue);
             }
             ForgetHardPin(pid);
             coreAffinityVerified = false;
@@ -279,14 +280,18 @@ namespace PaviseApp
         }
         private bool PinExclusive(IntPtr h, int pid, BoostPass pass, Snap original)
         {
+            pass.PlacementUntouched = false;
             if (!Monitor.TryEnter(criticalProcessGate, 0))
             {
+                LogCorePlacement(pass, "placement-gate-busy", 0, h);
+                pass.PlacementUntouched = true;
                 return false;
             }
             try
             {
                 if (!PrepareCriticalThreadProcessMaskMutation(pid, original.Creation))
                 {
+                    LogCorePlacement(pass, "thread-recovery", 0, h);
                     return false;
                 }
                 return PinExclusiveLocked(h, pid, pass, original);
@@ -304,13 +309,15 @@ namespace PaviseApp
                 return false;
             }
             string threadAdmissionReason;
-            if (!GameThreadAffinityAdmission.Check(h, pid, original.Creation, original.Aff, out threadAdmissionReason))
+            // 手动范围按进程身份和原始范围准入，不要求线程清点完整。
+            if (!GameThreadAffinityAdmission.CheckProcessOnly(h, pid, original.Creation, original.Aff, out threadAdmissionReason))
             {
                 LogCorePlacement(pass, threadAdmissionReason, 0, h);
                 return false;
             }
-            IntPtr processHandle = DuplicateRestoreHandle(h);
-            if (processHandle == IntPtr.Zero)
+            NoteOverriddenThreadPlacement(pass, pid, original);
+            IntPtr intPtr = DuplicateRestoreHandle(h);
+            if (intPtr == IntPtr.Zero)
             {
                 LogCorePlacement(pass, "restore-handle", Marshal.GetLastWin32Error(), h);
                 return false;
@@ -340,7 +347,7 @@ namespace PaviseApp
                         return false;
                     }
                     // Job 后端可能改变目标前，先保留句柄。
-                    if (!RememberHardPin(pid, original.Creation, original.Aff, pass.DesiredMask, processHandle)) return false;
+                    if (!RememberHardPin(pid, original.Creation, original.Aff, pass.DesiredMask, intPtr)) return false;
                     hardPins[pid].JobRecoveryOnly = true;
                     retained = true;
                 }
@@ -359,7 +366,7 @@ namespace PaviseApp
                 }
                 if (stopping || coreAffinityJobs.HasPending || (!jobBound && coreAffinityJobs.IsActive(pid, original.Creation)))
                 {
-                    LogCorePlacement(pass, "job-recovery", 0, h);
+                    LogCorePlacement(pass, "job-recovery", 0, h, jobReason);
                     return false;
                 }
                 if (!jobBound)
@@ -372,7 +379,7 @@ namespace PaviseApp
                     }
                     ulong fallbackMask;
                     if (!Native.TryQueryAffinity(h, out fallbackMask)
-                        || !GameThreadAffinityAdmission.Check(h, pid, original.Creation, fallbackMask, out threadAdmissionReason))
+                        || !GameThreadAffinityAdmission.CheckProcessOnly(h, pid, original.Creation, fallbackMask, out threadAdmissionReason))
                     {
                         LogCorePlacement(pass, threadAdmissionReason ?? GameThreadAffinityAdmission.RefusalPrefix + "process-mask-unreadable", 0, h);
                         return false;
@@ -405,12 +412,12 @@ namespace PaviseApp
                 if (verified && jobBound) verified = coreAffinityJobs.Verify(pid, original.Creation, pass.DesiredMask, out jobReason);
                 RecordCoreAffinity(pass.DesiredMask, mask, readable);
                 coreAffinityVerified = verified;
-                if (!verified) LogCorePlacement(pass, readable ? "readback-mismatch" : "readback", readError, h);
+                if (!verified) LogCorePlacement(pass, readable ? "readback-mismatch" : "readback", readError, h, jobBound ? jobReason : null);
                 return verified;
             }
             finally
             {
-                if (!retained) Native.CloseHandle(processHandle);
+                if (!retained) Native.CloseHandle(intPtr);
                 else if (!verified) RestoreHardPin(pid);
             }
         }
@@ -530,23 +537,23 @@ namespace PaviseApp
             }
             lock (sync)
             {
-                HardPin hardPin;
-                if (hardPins.TryGetValue(pid, out hardPin))
+                HardPin value;
+                if (hardPins.TryGetValue(pid, out value))
                 {
-                    if (hardPin.RestoreRequested || hardPin.RestoreInFlight || (hardPin.Creation != creation && coreAffinityJobs.HasLease(pid, hardPin.Creation)))
+                    if (value.RestoreRequested || value.RestoreInFlight || (value.Creation != creation && coreAffinityJobs.HasLease(pid, value.Creation)))
                     {
-                        RequestHardPinRestoreLocked(hardPin);
+                        RequestHardPinRestoreLocked(value);
                         return false;
                     }
-                    if (hardPin.Creation == creation && hardPin.RestoreHandle != IntPtr.Zero)
+                    if (value.Creation == creation && value.RestoreHandle != IntPtr.Zero)
                     {
                         Native.CloseHandle(restoreHandle);
                         return true;
                     }
                     hardPins.Remove(pid);
-                    if (hardPin.RestoreHandle != IntPtr.Zero)
+                    if (value.RestoreHandle != IntPtr.Zero)
                     {
-                        Native.CloseHandle(hardPin.RestoreHandle);
+                        Native.CloseHandle(value.RestoreHandle);
                     }
                 }
                 hardPins[pid] = new HardPin
@@ -565,18 +572,18 @@ namespace PaviseApp
             bool restore = false;
             lock (sync)
             {
-                HardPin hardPin;
-                if (hardPins.TryGetValue(pid, out hardPin))
+                HardPin value;
+                if (hardPins.TryGetValue(pid, out value))
                 {
-                    if (hardPin.RestoreInFlight || hardPin.RestoreRequested || coreAffinityJobs.HasLease(pid, hardPin.Creation))
+                    if (value.RestoreInFlight || value.RestoreRequested || coreAffinityJobs.HasLease(pid, value.Creation))
                     {
-                        RequestHardPinRestoreLocked(hardPin);
+                        RequestHardPinRestoreLocked(value);
                         restore = true;
                     }
                     else
                     {
                         hardPins.Remove(pid);
-                        if (hardPin.RestoreHandle != IntPtr.Zero) Native.CloseHandle(hardPin.RestoreHandle);
+                        if (value.RestoreHandle != IntPtr.Zero) Native.CloseHandle(value.RestoreHandle);
                     }
                 }
             }
@@ -596,11 +603,11 @@ namespace PaviseApp
         }
         private void RunIndependentCorePlacementImpl(BoostPass pass)
         {
-            if (coreManual == null || pass == null || !pass.Exclusive || CorePending || stopping)
+            if (coreRangeUnrestricted || coreManual == null || pass == null || !pass.Exclusive || CorePending || stopping)
             {
                 return;
             }
-            IntPtr openAffinityProcessHandle = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
                 ulong observed;
@@ -634,26 +641,30 @@ namespace PaviseApp
                         }
                         return;
                     }
-                    openAffinityProcessHandle = Native.OpenAffinityProcess(pass.RendererPid);
-                    int error = ((openAffinityProcessHandle == IntPtr.Zero) ? Marshal.GetLastWin32Error() : 0);
-                    if (openAffinityProcessHandle == IntPtr.Zero)
+                    if (PlacementRetryWaiting(pass.RendererPid, AutoCores.NowTicks))
                     {
-                        LogCorePlacement(pass, "open", error, openAffinityProcessHandle);
-                        BlockAutoCores("schedule.auto.placementunavailable");
+                        return;
+                    }
+                    intPtr = Native.OpenAffinityProcess(pass.RendererPid);
+                    int error = ((intPtr == IntPtr.Zero) ? Marshal.GetLastWin32Error() : 0);
+                    if (intPtr == IntPtr.Zero)
+                    {
+                        LogCorePlacement(pass, "open", error, intPtr);
+                        BlockAutoCores(PlacementFailureReason(pass));
                         return;
                     }
                     long currentCreation;
-                    if (!VerifyRendererIdentity(openAffinityProcessHandle, pass.RendererPid, pass, out currentCreation))
+                    if (!VerifyRendererIdentity(intPtr, pass.RendererPid, pass, out currentCreation))
                     {
-                        LogCorePlacement(pass, "identity", 0, openAffinityProcessHandle);
+                        LogCorePlacement(pass, "identity", 0, intPtr);
                         BlockAutoCores("schedule.auto.identity");
                         return;
                     }
                     uint granted;
-                    if (Native.TryQueryGrantedAccess(openAffinityProcessHandle, out granted) && (granted & 0x200) == 0)
+                    if (Native.TryQueryGrantedAccess(intPtr, out granted) && (granted & 0x200) == 0)
                     {
-                        LogCorePlacement(pass, "access", 5, openAffinityProcessHandle);
-                        BlockAutoCores("schedule.auto.placementunavailable");
+                        LogCorePlacement(pass, "access-grant", 0, intPtr, "required=PROCESS_SET_INFORMATION(0x200)");
+                        BlockAutoCores(PlacementFailureReason(pass));
                         return;
                     }
                     bool needPlacement = true;
@@ -665,34 +676,35 @@ namespace PaviseApp
                     HandlePidReuse(pass.RendererPid, currentCreation, ref known, ref needPlacement);
                     bool newlyTracked;
                     bool gpuOk;
-                    if (!CaptureAndTrack(openAffinityProcessHandle, pass.RendererPid, currentCreation, pass, known, out newlyTracked, out gpuOk, false))
+                    if (!CaptureAndTrack(intPtr, pass.RendererPid, currentCreation, pass, known, out newlyTracked, out gpuOk, false))
                     {
-                        LogCorePlacement(pass, "snapshot", 0, openAffinityProcessHandle);
+                        LogCorePlacement(pass, "snapshot", 0, intPtr);
                         BlockAutoCores("schedule.auto.capture");
                         return;
                     }
                     string placementText;
                     bool placementVerified;
-                    if (!ApplyPlacementStage(openAffinityProcessHandle, pass.RendererPid, pass, true, newlyTracked, out placementText, out placementVerified))
+                    if (!ApplyPlacementStage(intPtr, pass.RendererPid, pass, true, newlyTracked, out placementText, out placementVerified))
                     {
                         BlockAutoCores("schedule.auto.capture");
                     }
                     if (placementVerified)
                     {
-                        LogCorePlacement(pass, "verified", 0, openAffinityProcessHandle);
+                        LogCorePlacement(pass, "verified", 0, intPtr);
                     }
                 }
             }
             catch (Exception ex)
             {
+                LogCorePlacement(pass, "exception", 0, intPtr, ex.GetType().Name);
                 Logger.Warn("自动选核放置异常，进程编号=" + pass.RendererPid + " 类型=" + ex.GetType().Name);
-                BlockAutoCores("schedule.auto.placement");
+                BlockAutoCores(PlacementFailureReason(pass));
             }
             finally
             {
-                if (openAffinityProcessHandle != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Native.CloseHandle(openAffinityProcessHandle);
+                    Native.CloseHandle(intPtr);
                 }
                 pass.Exclusive = coreGovernor != null && coreGovernor.Exclusive && !CorePending;
                 if (!pass.Exclusive)
@@ -702,7 +714,60 @@ namespace PaviseApp
                 PublishAutoCores(pass.RendererName);
             }
         }
+        private int overriddenThreadNotePid;
+        private long overriddenThreadNoteCreation;
+        // 每个进程仅记录一次写前清点，不包含之后新增的线程分配。
+        private void NoteOverriddenThreadPlacement(BoostPass pass, int pid, Snap original)
+        {
+            if (overriddenThreadNotePid == pid && overriddenThreadNoteCreation == original.Creation)
+            {
+                return;
+            }
+            overriddenThreadNotePid = pid;
+            overriddenThreadNoteCreation = original.Creation;
+            int custom, unreadable;
+            if (GameThreadAffinityAdmission.Survey(pid, original.Aff, out custom, out unreadable) && (custom > 0 || unreadable > 0))
+            {
+                Logger.Log(string.Format(Lang.T("log.autocore.threadoverride", 0), pass.RendererName, custom, unreadable));
+            }
+        }
+        internal const int PlacementAttemptLimit = 3;
+        private readonly ProcessActionFailureBudget corePlacementTransientBudget = new ProcessActionFailureBudget();
+        private int corePlacementRetryPid;
+        private long corePlacementRetryTicks;
+        // 锁占用和线程变动属于写前失败。每个进程身份最多尝试三次，间隔 5、15 秒，配置或会话切换不补次数。
+        private bool DeferTransientPlacement(BoostPass pass, long creation, long nowTicks)
+        {
+            if (pass == null || !pass.PlacementUntouched || creation <= 0)
+            {
+                return false;
+            }
+            int attempts = corePlacementTransientBudget.Failed(pass.RendererPid, creation, "", "placement-transient");
+            if (attempts >= PlacementAttemptLimit)
+            {
+                return false;
+            }
+            int delaySeconds = attempts == 1 ? 5 : 15;
+            lock (sync)
+            {
+                corePlacementRetryPid = pass.RendererPid;
+                corePlacementRetryTicks = nowTicks + delaySeconds * TimeSpan.TicksPerSecond;
+            }
+            Logger.Log(string.Format(Lang.T("log.autocore.deferred", 0), attempts, PlacementAttemptLimit, pass.PlacementStage, delaySeconds));
+            return true;
+        }
+        private bool PlacementRetryWaiting(int pid, long nowTicks)
+        {
+            lock (sync)
+            {
+                return corePlacementRetryPid == pid && nowTicks < corePlacementRetryTicks;
+            }
+        }
         private void LogCorePlacement(BoostPass pass, string stage, int error, IntPtr handle)
+        {
+            LogCorePlacement(pass, stage, error, handle, null);
+        }
+        private void LogCorePlacement(BoostPass pass, string stage, int error, IntPtr handle, string detail)
         {
             pass.PlacementStage = stage;
             pass.PlacementError = error;
@@ -710,20 +775,63 @@ namespace PaviseApp
             string toStringOffset = (Native.TryQueryGrantedAccess(handle, out granted) ? ("0x" + granted.ToString("X")) : "unknown");
             ulong mask;
             string toStringOffset2 = ((handle != IntPtr.Zero && Native.TryQueryAffinity(handle, out mask)) ? ("0x" + mask.ToString("X")) : "unknown");
-            ulong originalAffinityMask = 0uL;
+            ulong numericValue = 0uL;
             lock (sync)
             {
-                Snap currentGameBoost;
-                if (gameBoost.TryGetValue(pass.RendererPid, out currentGameBoost))
+                Snap value;
+                if (gameBoost.TryGetValue(pass.RendererPid, out value))
                 {
-                    originalAffinityMask = currentGameBoost.Aff;
+                    numericValue = value.Aff;
                 }
             }
-            corePlacementEvidence = "pid=" + pass.RendererPid + " creation=" + pass.RendererCreation + " 步骤=" + stage + " win32=" + error + " granted=" + toStringOffset + " original=0x" + originalAffinityMask.ToString("X") + " actual=" + toStringOffset2 + " target=0x" + pass.DesiredMask.ToString("X") + " cachedBoostRestriction=" + pass.WriteDenied;
+            corePlacementEvidence = "pid=" + pass.RendererPid + " creation=" + pass.RendererCreation + " 步骤=" + stage + " win32=" + error + " granted=" + toStringOffset + " original=0x" + numericValue.ToString("X") + " actual=" + toStringOffset2 + " target=0x" + pass.DesiredMask.ToString("X") + " cachedBoostRestriction=" + pass.WriteDenied
+                + (string.IsNullOrEmpty(detail) ? "" : " detail=" + detail)
+                + (stage == "verified" ? "" : " 说明=" + Lang.T(CorePlacementFailureReason(stage, error), 0))
+                + (stage != "verified" && error == 0 ? "；win32=0 表示此步骤未记录原生错误码，不代表成功" : "");
         }
         private static string PlacementFailureReason(BoostPass pass)
         {
-            switch (pass.PlacementStage)
+            return CorePlacementFailureReason(pass.PlacementStage, pass.PlacementError);
+        }
+        // 分类只解释已得到的证据，不把访问失败推断成反作弊拦截，也不改变准入或恢复决策。
+        internal static string CorePlacementFailureReason(string stage, int error)
+        {
+            string reason = stage ?? "";
+            const string prefix = GameThreadAffinityAdmission.RefusalPrefix;
+            if (reason.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                string code = reason.Substring(prefix.Length).Split(':')[0];
+                switch (code)
+                {
+                case "custom-mask": return "schedule.auto.threadmask";
+                case "custom-cpu-sets": return "schedule.auto.threadcpusets";
+                case "thread-set-unstable": return "schedule.auto.threadunstable";
+                case "thread-access": return "schedule.auto.threadaccess";
+                case "group-unsupported": return "schedule.auto.unsupported";
+                case "process-unconfirmed":
+                case "process-changed": return "schedule.auto.identity";
+                case "process-mask-unreadable": return "schedule.auto.affinityread";
+                default: return "schedule.auto.threadunconfirmed";
+                }
+            }
+            if ((reason == "open" || reason == "access" || reason == "set-affinity") && error == 5)
+                return "schedule.auto.accessdenied";
+            switch (reason)
+            {
+            case "access-grant": return "schedule.auto.processrights";
+            case "open":
+            case "access": return "schedule.auto.placementunavailable";
+            case "placement-gate-busy": return "schedule.auto.placementbusy";
+            case "thread-recovery":
+            case "job-recovery": return "schedule.auto.placementrecovery";
+            case "original-changed": return "schedule.auto.originalchanged";
+            case "readback-mismatch": return "schedule.auto.placementmismatch";
+            case "exception": return "schedule.auto.placementexception";
+            case "identity": return "schedule.auto.identity";
+            case "fallback-journal":
+            case "snapshot": return "schedule.auto.capture";
+            }
+            switch (stage)
             {
             case "affinity-range":
                 return "schedule.auto.affinityrange";
@@ -773,10 +881,10 @@ namespace PaviseApp
                 PublishAutoCores(pass.RendererName);
                 return true;
             }
-            Snap currentGameBoost;
+            Snap value;
             lock (sync)
             {
-                if (!gameBoost.TryGetValue(pid, out currentGameBoost))
+                if (!gameBoost.TryGetValue(pid, out value))
                 {
                     return false;
                 }
@@ -784,7 +892,7 @@ namespace PaviseApp
             if (pass.Exclusive)
             {
                 bool unreadable2;
-                bool placementChangedOutsideSucceeded = PlacementChangedOutside(h, currentGameBoost, out observed, out unreadable2);
+                bool placementChangedOutsideSucceeded = PlacementChangedOutside(h, value, out observed, out unreadable2);
                 if (unreadable2)
                 {
                     LogCorePlacement(pass, "read-placement", 0, h);
@@ -800,20 +908,24 @@ namespace PaviseApp
             bool mayApplyPlacement = true;
             if (pass.Exclusive)
             {
-                bool affinitySet = mayApplyPlacement && PinExclusive(h, pid, pass, currentGameBoost);
+                bool affinitySet = mayApplyPlacement && PinExclusive(h, pid, pass, value);
+                if (!affinitySet && DeferTransientPlacement(pass, value.Creation, AutoCores.NowTicks))
+                {
+                    return true;
+                }
                 if (!affinitySet && pass.PlacementStage == "set-affinity" && pass.PlacementError == 5)
                 {
-                    if (!Native.TryQueryAffinity(h, out observed) || observed != currentGameBoost.Aff)
+                    if (!Native.TryQueryAffinity(h, out observed) || observed != value.Aff)
                     {
                         BlockAutoCores("schedule.auto.affinityread");
                     }
-                    else if (!CrashGuard.TrackBoostAffinity(pid, currentGameBoost.Creation, 0uL))
+                    else if (!CrashGuard.TrackBoostAffinity(pid, value.Creation, 0uL))
                     {
                         BlockAutoCores("schedule.auto.capture");
                     }
                     else
                     {
-                        BlockAutoCores("schedule.auto.placementunavailable");
+                        BlockAutoCores(PlacementFailureReason(pass));
                     }
                     return true;
                 }

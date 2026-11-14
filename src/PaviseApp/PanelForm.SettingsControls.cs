@@ -211,18 +211,19 @@ namespace PaviseApp
                 Visible = false,
                 TabStop = false
             };
-            string[] labels = new string[3]
+            string[] labels = new string[4]
             {
                 Lang.T("sec.app"),
                 Lang.T("sec.maint"),
-                Lang.T("sec.appearance")
+                Lang.T("sec.appearance"),
+                Lang.T("nav.about")
             };
             settingsTabs.SetTabs(labels, null);
             pageSettings.Controls.Add(settingsTabs);
-            settingsTabPanels = new DBPanel[3];
+            settingsTabPanels = new DBPanel[labels.Length];
             for (int i = 0; i < settingsTabPanels.Length; i++)
             {
-                settingsTabPanels[i] = new SettingsWorkspaceCategoryPanel
+                settingsTabPanels[i] = i == 3 ? pageAbout : new SettingsWorkspaceCategoryPanel
                 {
                     Visible = (i == 0)
                 };
@@ -239,10 +240,10 @@ namespace PaviseApp
                     }
                     dBPanel2.Visible = l == index;
                 }
-                Point tabScrollPosition;
-                if (tabScrollPositions.TryGetValue(settingsTabPanels[index], out tabScrollPosition))
+                Point value;
+                if (tabScrollPositions.TryGetValue(settingsTabPanels[index], out value))
                 {
-                    settingsTabPanels[index].AutoScrollPosition = new Point(0, tabScrollPosition.Y);
+                    settingsTabPanels[index].AutoScrollPosition = new Point(0, value.Y);
                 }
                 SyncMotionAppearanceActivity();
             };
@@ -255,16 +256,17 @@ namespace PaviseApp
                 dBPanel.AutoScroll = true;
                 Native.Dark(dBPanel);
                 int index2 = j;
-                SettingsWorkspaceTab currentSettingsWorkspaceTab = new SettingsWorkspaceTab(labels[j]);
-                currentSettingsWorkspaceTab.Name = "SettingsCategory" + j;
-                currentSettingsWorkspaceTab.Selected = j == 0;
-                currentSettingsWorkspaceTab.TabIndex = j;
-                currentSettingsWorkspaceTab.AccessibleName = labels[j];
-                currentSettingsWorkspaceTab.Click += delegate
+                SettingsWorkspaceTab settingsWorkspaceTab = new SettingsWorkspaceTab(labels[j]);
+                settingsWorkspaceTab.Name = "SettingsCategory" + j;
+                settingsWorkspaceTab.Selected = j == 0;
+                settingsWorkspaceTab.TabIndex = j;
+                SettingsWorkspaceTab settingsWorkspaceTab2 = settingsWorkspaceTab;
+                settingsWorkspaceTab2.AccessibleName = labels[j];
+                settingsWorkspaceTab2.Click += delegate
                 {
                     settingsTabs.Index = index2;
                 };
-                currentSettingsWorkspaceTab.NavigationRequested = delegate(Keys key)
+                settingsWorkspaceTab2.NavigationRequested = delegate(Keys key)
                 {
                     int indexValue = DsKeys.NavigateHorizontal(key, index2, labels.Length);
                     if (indexValue >= 0)
@@ -273,8 +275,8 @@ namespace PaviseApp
                         settingsWorkspaceTabs[indexValue].Focus();
                     }
                 };
-                settingsWorkspaceSurface.Controls.Add(currentSettingsWorkspaceTab);
-                settingsWorkspaceTabs.Add(currentSettingsWorkspaceTab);
+                settingsWorkspaceSurface.Controls.Add(settingsWorkspaceTab2);
+                settingsWorkspaceTabs.Add(settingsWorkspaceTab2);
             }
             TechTabs techTabs = settingsTabs;
             techTabs.IndexChanged = (Action<int>)Delegate.Combine(techTabs.IndexChanged, (Action<int>)delegate(int index)
@@ -289,6 +291,11 @@ namespace PaviseApp
                 {
                     RefreshStandbyCleanerPresentation();
                 }
+                else if (index == 3)
+                {
+                    RefreshAboutIcon();
+                    RefreshAboutUpdate();
+                }
                 LayoutSettingsWorkspace();
             });
             pageSettings.SizeChanged += delegate
@@ -298,20 +305,22 @@ namespace PaviseApp
         }
         private SettingsWorkspaceTile AddSettingsTile(Control parent, string name, string title, string detail, string icon, Control host)
         {
-            SettingsWorkspaceTile currentSettingsWorkspaceTile = new SettingsWorkspaceTile();
-            currentSettingsWorkspaceTile.Name = name;
-            currentSettingsWorkspaceTile.Title = title;
-            currentSettingsWorkspaceTile.Desc = detail;
-            currentSettingsWorkspaceTile.IconKey = icon;
-            currentSettingsWorkspaceTile.CompactRow = true;
+            SettingsWorkspaceTile settingsWorkspaceTile = new SettingsWorkspaceTile();
+            settingsWorkspaceTile.Name = name;
+            settingsWorkspaceTile.Title = title;
+            settingsWorkspaceTile.Desc = detail;
+            settingsWorkspaceTile.IconKey = icon;
+            settingsWorkspaceTile.CompactRow = true;
+            SettingsWorkspaceTile settingsWorkspaceTile2 = settingsWorkspaceTile;
             if (host != null)
             {
-                currentSettingsWorkspaceTile.Host(host);
+                settingsWorkspaceTile2.Host(host);
                 host.TabIndex = 0;
                 host.AccessibleName = host.AccessibleName ?? title;
             }
-            parent.Controls.Add(currentSettingsWorkspaceTile);
-            return currentSettingsWorkspaceTile;
+            parent.Controls.Add(settingsWorkspaceTile2);
+            settingsWorkspaceTile2.PresentationChanged = LayoutSettingsWorkspace;
+            return settingsWorkspaceTile2;
         }
         private static SettingsWorkspaceTile SettingsTile(Control panel, string name)
         {
@@ -319,11 +328,24 @@ namespace PaviseApp
         }
         private static int SettingsContentWidth(Control panel)
         {
-            return Math.Max(1, panel.Width - SystemInformation.VerticalScrollBarWidth);
+            int width = panel.ClientSize.Width;
+            ScrollableControl scroll = panel as ScrollableControl;
+            // 纵向滚动条可能在高度收紧后才出现，先预留其宽度，避免正文再次挤出横向滚动。
+            if (scroll != null && scroll.AutoScroll && !scroll.VerticalScroll.Visible)
+            {
+                width -= SystemInformation.VerticalScrollBarWidth;
+            }
+            return Math.Max(1, width);
         }
         private static string SettingsStandbyCleanerDetail()
         {
             return AutoText("仅对局中达双阈值、间隔约一分钟才清理待机缓存。可能卡顿和重新读盘，不联动计时器或内存压缩。", "Purges standby cache during matches only at both thresholds, at least about a minute apart. May hitch and re-read disk; does not change timers or memory compression.");
+        }
+        private int StandbyCleanerCardHeight(int width, Control host, int minimum, bool perGame)
+        {
+            int cardHeight = FullTextCardHeight(perGame ? Lang.T("gm.standbycleaner.cfgsub") : SettingsStandbyCleanerDetail(), width, host, minimum);
+            cardHeight = Math.Max(cardHeight, FullTextCardHeight(Lang.T("gm.standbycleaner.needadmin"), width, host, minimum));
+            return Math.Max(cardHeight, FullTextCardHeight(Lang.T("standbycleaner.config.invalid"), width, host, minimum));
         }
         private bool ConfirmStandbyCleanerEnable()
         {

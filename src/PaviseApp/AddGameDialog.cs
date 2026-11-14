@@ -78,6 +78,8 @@ namespace PaviseApp
             public Rectangle Details;
         }
 
+        private const int FolderCandidateCap = 24;
+
         public readonly List<ScanHit> Selected = new List<ScanHit>();
 
         private readonly bool allowGpuProbe;
@@ -175,11 +177,11 @@ namespace PaviseApp
             existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (alreadyInLibrary != null)
             {
-                foreach (string currentAlreadyInLibrary in alreadyInLibrary)
+                foreach (string item in alreadyInLibrary)
                 {
-                    if (!string.IsNullOrEmpty(currentAlreadyInLibrary))
+                    if (!string.IsNullOrEmpty(item))
                     {
-                        existing.Add(currentAlreadyInLibrary);
+                        existing.Add(item);
                     }
                 }
             }
@@ -195,19 +197,19 @@ namespace PaviseApp
             label.Font = Theme.UI(10.5f, true);
             label.SetBounds(Theme.S(16), Theme.S(12), Theme.S(300), Theme.S(24));
             label.MouseDown += DragMove;
-            Label currentLabel = new Label();
-            currentLabel.Text = Lang.T("scan.hint");
-            currentLabel.ForeColor = Theme.Dim;
-            currentLabel.BackColor = Theme.Bg;
-            currentLabel.Font = Theme.UI(8.25f, false);
-            currentLabel.SetBounds(Theme.S(16), Theme.S(42), Theme.S(588), Theme.S(40));
-            Label candidateLabel = new Label();
-            candidateLabel.Text = "✕";
-            candidateLabel.ForeColor = Theme.Dim;
-            candidateLabel.SetBounds(Theme.S(584), Theme.S(10), Theme.S(26), Theme.S(26));
-            candidateLabel.TextAlign = ContentAlignment.MiddleCenter;
-            candidateLabel.Cursor = Cursors.Hand;
-            candidateLabel.Click += delegate
+            Label label2 = new Label();
+            label2.Text = Lang.T("scan.hint");
+            label2.ForeColor = Theme.Dim;
+            label2.BackColor = Theme.Bg;
+            label2.Font = Theme.UI(8.25f, false);
+            label2.SetBounds(Theme.S(16), Theme.S(42), Theme.S(588), Theme.S(40));
+            Label label3 = new Label();
+            label3.Text = "✕";
+            label3.ForeColor = Theme.Dim;
+            label3.SetBounds(Theme.S(584), Theme.S(10), Theme.S(26), Theme.S(26));
+            label3.TextAlign = ContentAlignment.MiddleCenter;
+            label3.Cursor = Cursors.Hand;
+            label3.Click += delegate
             {
                 base.DialogResult = DialogResult.Cancel;
             };
@@ -323,7 +325,7 @@ namespace PaviseApp
             };
             base.Controls.AddRange(new Control[11]
             {
-                label, currentLabel, candidateLabel, tbFilter, btnAll, roundPanel, lblInfo, btnBrowse, btnFolder, btnAdd,
+                label, label2, label3, tbFilter, btnAll, roundPanel, lblInfo, btnBrowse, btnFolder, btnAdd,
                 pillButton
             });
             base.Load += delegate
@@ -510,26 +512,26 @@ namespace PaviseApp
             Thread thread = new Thread((ThreadStart)delegate
             {
                 List<Candidate> hits = null;
-                Dictionary<string, List<int>> processIdsByPath = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, List<int>> dictionary = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
                 try
                 {
-                    List<RunningProgram> runningPrograms = RunningProgramDiscovery.Scan(IsClosed);
-                    if (runningPrograms != null)
+                    List<RunningProgram> list = RunningProgramDiscovery.Scan(IsClosed);
+                    if (list != null)
                     {
                         hits = new List<Candidate>();
-                        foreach (RunningProgram runningProgram in runningPrograms)
+                        foreach (RunningProgram item in list)
                         {
                             if (closed)
                             {
                                 return;
                             }
-                            Candidate candidate = ResolveCandidate(runningProgram.Path, runningProgram.Title, null);
+                            Candidate candidate = ResolveCandidate(item.Path, item.Title, null);
                             if (candidate != null)
                             {
-                                candidate.Memory = runningProgram.Memory;
-                                candidate.Count = runningProgram.ProcessIds.Count;
+                                candidate.Memory = item.Memory;
+                                candidate.Count = item.ProcessIds.Count;
                                 hits.Add(candidate);
-                                processIdsByPath[candidate.Path] = runningProgram.ProcessIds;
+                                dictionary[candidate.Path] = item.ProcessIds;
                             }
                         }
                     }
@@ -540,7 +542,7 @@ namespace PaviseApp
                 }
                 if (!closed)
                 {
-                    bool sampling = probe && hits != null && processIdsByPath.Count > 0;
+                    bool sampling = probe && hits != null && dictionary.Count > 0;
                     Post(delegate
                     {
                         collectingRunning = false;
@@ -553,31 +555,31 @@ namespace PaviseApp
                     });
                     if (sampling)
                     {
-                        Dictionary<int, double> gpuLoadByPid = null;
+                        Dictionary<int, double> dictionary2 = null;
                         try
                         {
-                            gpuLoadByPid = GpuEvidence.Sample3D(2, 700, IsClosed);
+                            dictionary2 = GpuEvidence.Sample3D(2, 700, IsClosed);
                         }
                         catch
                         {
                         }
                         Dictionary<string, double> utilByPath = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-                        if (gpuLoadByPid != null)
+                        if (dictionary2 != null)
                         {
-                            foreach (KeyValuePair<string, List<int>> processIdEntry in processIdsByPath)
+                            foreach (KeyValuePair<string, List<int>> item2 in dictionary)
                             {
                                 double measuredValue = 0.0;
-                                foreach (int relatedPid in processIdEntry.Value)
+                                foreach (int item3 in item2.Value)
                                 {
-                                    double gpuLoad;
-                                    if (gpuLoadByPid.TryGetValue(relatedPid, out gpuLoad))
+                                    double value;
+                                    if (dictionary2.TryGetValue(item3, out value))
                                     {
-                                        measuredValue = Math.Max(measuredValue, gpuLoad);
+                                        measuredValue = Math.Max(measuredValue, value);
                                     }
                                 }
                                 if (measuredValue > 0.0)
                                 {
-                                    utilByPath[processIdEntry.Key] = measuredValue;
+                                    utilByPath[item2.Key] = measuredValue;
                                 }
                             }
                         }
@@ -637,16 +639,16 @@ namespace PaviseApp
         private void ApplyGpuTags(Dictionary<string, double> utilByPath)
         {
             Row row = null;
-            foreach (Row currentRow in rows)
+            foreach (Row row2 in rows)
             {
-                currentRow.RendererLike = false;
-                double util;
-                if (currentRow.Running && utilByPath.TryGetValue(currentRow.Path, out util))
+                row2.RendererLike = false;
+                double value;
+                if (row2.Running && utilByPath.TryGetValue(row2.Path, out value))
                 {
-                    currentRow.Gpu = util;
-                    if (row == null || util > row.Gpu)
+                    row2.Gpu = value;
+                    if (row == null || value > row.Gpu)
                     {
-                        row = currentRow;
+                        row = row2;
                     }
                 }
             }
@@ -681,18 +683,18 @@ namespace PaviseApp
                 List<Candidate> hits = new List<Candidate>();
                 try
                 {
-                    foreach (ScanHit runManifest in GameScan.RunManifests(IsClosed))
+                    foreach (ScanHit item in GameScan.RunManifests(IsClosed))
                     {
                         if (closed)
                         {
                             return;
                         }
-                        if (runManifest != null && !string.IsNullOrEmpty(runManifest.Root))
+                        if (item != null && !string.IsNullOrEmpty(item.Root))
                         {
-                            Candidate candidate = ResolveCandidate(runManifest.Exe, runManifest.Name, runManifest.Root);
+                            Candidate candidate = ResolveCandidate(item.Exe, item.Name, item.Root);
                             if (candidate != null)
                             {
-                                candidate.NeedsChoice = runManifest.NeedsChoice;
+                                candidate.NeedsChoice = item.NeedsChoice;
                                 hits.Add(candidate);
                             }
                         }
@@ -791,7 +793,7 @@ namespace PaviseApp
                 string firstError = null;
                 try
                 {
-                    foreach (string file in files)
+                    foreach (string item in files)
                     {
                         if (closed)
                         {
@@ -799,7 +801,7 @@ namespace PaviseApp
                         }
                         string executablePath;
                         string error;
-                        if (!GameExecutableResolver.TryResolve(file, out executablePath, out error))
+                        if (!GameExecutableResolver.TryResolve(item, out executablePath, out error))
                         {
                             if (firstError == null && !string.IsNullOrEmpty(error))
                             {
@@ -817,38 +819,38 @@ namespace PaviseApp
                             });
                         }
                     }
-                    foreach (string folder in folders)
+                    foreach (string item2 in folders)
                     {
                         if (closed)
                         {
                             return;
                         }
-                        string fileName = Path.GetFileName(folder.TrimEnd('\\', '/'));
+                        string fileName = Path.GetFileName(item2.TrimEnd('\\', '/'));
                         string recommended;
-                        List<ExecutableCandidateFacts> executableCandidateFacts = ExecutableCandidateProbe.ListCandidates(folder, 24, out recommended);
+                        List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(item2, 24, out recommended);
                         if (recommended != null)
                         {
                             hits.Add(new Candidate
                             {
                                 Name = fileName,
                                 Path = recommended,
-                                Root = folder,
+                                Root = item2,
                                 Pick = true
                             });
                         }
-                        else if (executableCandidateFacts.Count == 0)
+                        else if (list.Count == 0)
                         {
-                            emptyFolders.Add(folder);
+                            emptyFolders.Add(item2);
                         }
                         else
                         {
-                            foreach (ExecutableCandidateFacts executableCandidateFact in executableCandidateFacts)
+                            foreach (ExecutableCandidateFacts item3 in list)
                             {
                                 hits.Add(new Candidate
                                 {
-                                    Name = Path.GetFileNameWithoutExtension(executableCandidateFact.Path),
-                                    Path = executableCandidateFact.Path,
-                                    Root = folder,
+                                    Name = Path.GetFileNameWithoutExtension(item3.Path),
+                                    Path = item3.Path,
+                                    Root = item2,
                                     NeedsChoice = true,
                                     Pick = false
                                 });
@@ -893,12 +895,12 @@ namespace PaviseApp
                 }
                 return;
             }
-            Dictionary<string, Row> rowsByPath = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
-            foreach (Row currentRow in rows)
+            Dictionary<string, Row> dictionary = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
+            foreach (Row row3 in rows)
             {
-                rowsByPath[currentRow.Path] = currentRow;
+                dictionary[row3.Path] = row3;
             }
-            HashSet<string> paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool candidatesChanged = false;
             foreach (Candidate hit in hits)
             {
@@ -906,50 +908,50 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                Row candidateRow;
-                if (!rowsByPath.TryGetValue(hit.Path, out candidateRow))
+                Row value;
+                if (!dictionary.TryGetValue(hit.Path, out value))
                 {
                     Row row = new Row();
                     row.Path = hit.Path;
                     row.Already = existing.Contains(hit.Path);
-                    candidateRow = row;
-                    rows.Add(candidateRow);
-                    rowsByPath[candidateRow.Path] = candidateRow;
+                    value = row;
+                    rows.Add(value);
+                    dictionary[value.Path] = value;
                     candidatesChanged = true;
                 }
-                int rowGroupResult = RowGroup(candidateRow);
-                string name = candidateRow.Name;
-                if (kind == RowKind.Installed || !candidateRow.Installed)
+                int rowGroupResult = RowGroup(value);
+                string name = value.Name;
+                if (kind == RowKind.Installed || !value.Installed)
                 {
-                    candidateRow.Name = (string.IsNullOrEmpty(hit.Name) ? Path.GetFileNameWithoutExtension(hit.Path) : hit.Name);
-                    candidateRow.Root = hit.Root;
-                    if (candidateRow.NeedsChoice != hit.NeedsChoice)
+                    value.Name = (string.IsNullOrEmpty(hit.Name) ? Path.GetFileNameWithoutExtension(hit.Path) : hit.Name);
+                    value.Root = hit.Root;
+                    if (value.NeedsChoice != hit.NeedsChoice)
                     {
                         candidatesChanged = true;
                     }
-                    candidateRow.NeedsChoice = hit.NeedsChoice;
+                    value.NeedsChoice = hit.NeedsChoice;
                 }
                 switch (kind)
                 {
                 case RowKind.Installed:
-                    candidateRow.Installed = true;
+                    value.Installed = true;
                     break;
                 case RowKind.Picked:
-                    candidateRow.Pinned = true;
-                    if (hit.Pick && !candidateRow.Already && !candidateRow.Checked)
+                    value.Pinned = true;
+                    if (hit.Pick && !value.Already && !value.Checked)
                     {
-                        candidateRow.Checked = true;
+                        value.Checked = true;
                         selectionEdited = true;
                     }
                     break;
                 default:
-                    candidateRow.Running = true;
-                    candidateRow.Memory = hit.Memory;
-                    candidateRow.Count = hit.Count;
-                    paths.Add(candidateRow.Path);
+                    value.Running = true;
+                    value.Memory = hit.Memory;
+                    value.Count = hit.Count;
+                    hashSet.Add(value.Path);
                     break;
                 }
-                if (rowGroupResult != RowGroup(candidateRow) || name != candidateRow.Name)
+                if (rowGroupResult != RowGroup(value) || name != value.Name)
                 {
                     candidatesChanged = true;
                 }
@@ -958,19 +960,19 @@ namespace PaviseApp
             {
                 for (int rowsIndex = rows.Count - 1; rowsIndex >= 0; rowsIndex--)
                 {
-                    Row resolvedRow = rows[rowsIndex];
-                    if (!paths.Contains(resolvedRow.Path))
+                    Row row2 = rows[rowsIndex];
+                    if (!hashSet.Contains(row2.Path))
                     {
-                        if (resolvedRow.Running)
+                        if (row2.Running)
                         {
-                            resolvedRow.Running = false;
-                            resolvedRow.Memory = 0L;
-                            resolvedRow.Count = 0;
-                            resolvedRow.Gpu = 0.0;
-                            resolvedRow.RendererLike = false;
+                            row2.Running = false;
+                            row2.Memory = 0L;
+                            row2.Count = 0;
+                            row2.Gpu = 0.0;
+                            row2.RendererLike = false;
                             candidatesChanged = true;
                         }
-                        if (!resolvedRow.Installed && !resolvedRow.Checked && !resolvedRow.Pinned)
+                        if (!row2.Installed && !row2.Checked && !row2.Pinned)
                         {
                             rows.RemoveAt(rowsIndex);
                             candidatesChanged = true;
@@ -1048,25 +1050,25 @@ namespace PaviseApp
             int selectedIndex = lst.SelectedIndex;
             Row row = ((selectedIndex >= 0 && selectedIndex < shown.Count) ? shown[selectedIndex] : null);
             int topIndex = lst.TopIndex;
-            Row currentRow = ((topIndex >= 0 && topIndex < shown.Count) ? shown[topIndex] : null);
+            Row row2 = ((topIndex >= 0 && topIndex < shown.Count) ? shown[topIndex] : null);
             lst.BeginUpdate();
             try
             {
                 lst.Items.Clear();
                 shown.Clear();
-                foreach (Row candidateRow in rows)
+                foreach (Row row3 in rows)
                 {
-                    if (GameSearchMatcher.Matches(query, candidateRow.Name, candidateRow.Path))
+                    if (GameSearchMatcher.Matches(query, row3.Name, row3.Path))
                     {
-                        shown.Add(candidateRow);
-                        lst.Items.Add(DisplayRowName(candidateRow));
+                        shown.Add(row3);
+                        lst.Items.Add(DisplayRowName(row3));
                     }
                 }
                 if (row != null)
                 {
                     lst.SelectedIndex = shown.IndexOf(row);
                 }
-                int matchIndex = ((currentRow == null) ? (-1) : shown.IndexOf(currentRow));
+                int matchIndex = ((row2 == null) ? (-1) : shown.IndexOf(row2));
                 if (shown.Count > 0)
                 {
                     lst.TopIndex = ((matchIndex >= 0) ? matchIndex : Math.Min(Math.Max(0, topIndex), shown.Count - 1));
@@ -1113,19 +1115,19 @@ namespace PaviseApp
         {
             selectionEdited = true;
             bool checkedValue = false;
-            foreach (Row currentShown in shown)
+            foreach (Row item in shown)
             {
-                if (!currentShown.Already && !currentShown.NeedsChoice && !currentShown.Checked)
+                if (!item.Already && !item.NeedsChoice && !item.Checked)
                 {
                     checkedValue = true;
                     break;
                 }
             }
-            foreach (Row candidateShown in shown)
+            foreach (Row item2 in shown)
             {
-                if (!candidateShown.Already && (!checkedValue || !candidateShown.NeedsChoice))
+                if (!item2.Already && (!checkedValue || !item2.NeedsChoice))
                 {
-                    candidateShown.Checked = checkedValue;
+                    item2.Checked = checkedValue;
                 }
             }
             lst.Invalidate();
@@ -1178,7 +1180,7 @@ namespace PaviseApp
             }
             ThreadPool.QueueUserWorkItem(delegate
             {
-                foreach (string path in paths)
+                foreach (string item in paths)
                 {
                     if (closed)
                     {
@@ -1187,7 +1189,7 @@ namespace PaviseApp
                     Bitmap bitmap = null;
                     try
                     {
-                        using (Icon icon = Icon.ExtractAssociatedIcon(path))
+                        using (Icon icon = Icon.ExtractAssociatedIcon(item))
                         {
                             if (icon != null)
                             {
@@ -1198,7 +1200,7 @@ namespace PaviseApp
                     catch
                     {
                     }
-                    CacheIcon(path, bitmap);
+                    CacheIcon(item, bitmap);
                 }
             });
         }
@@ -1216,10 +1218,10 @@ namespace PaviseApp
                     }
                     return;
                 }
-                Bitmap currentIconCache;
-                if (iconCache.TryGetValue(path, out currentIconCache) && currentIconCache != null)
+                Bitmap value;
+                if (iconCache.TryGetValue(path, out value) && value != null)
                 {
-                    currentIconCache.Dispose();
+                    value.Dispose();
                 }
                 iconCache[path] = bitmap;
             }
@@ -1298,9 +1300,9 @@ namespace PaviseApp
             }
             if (row.Checked)
             {
-                using (Pen onAccentPen = new Pen(Theme.OnAccent, Math.Max(1.4f, Theme.S(2))))
+                using (Pen pen2 = new Pen(Theme.OnAccent, Math.Max(1.4f, Theme.S(2))))
                 {
-                    graphics.DrawLines(onAccentPen, new Point[3]
+                    graphics.DrawLines(pen2, new Point[3]
                     {
                         new Point(check.Left + Theme.S(4), check.Top + Theme.S(8)),
                         new Point(check.Left + Theme.S(7), check.Top + Theme.S(11)),
@@ -1310,10 +1312,10 @@ namespace PaviseApp
             }
             lock (iconGate)
             {
-                Bitmap currentIconCache;
-                if (iconCache.TryGetValue(row.Path, out currentIconCache) && currentIconCache != null)
+                Bitmap value;
+                if (iconCache.TryGetValue(row.Path, out value) && value != null)
                 {
-                    graphics.DrawImage(currentIconCache, rowLayout.Icon);
+                    graphics.DrawImage(value, rowLayout.Icon);
                 }
                 else
                 {

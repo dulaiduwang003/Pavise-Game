@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -13,6 +14,147 @@ namespace PaviseApp
 {
     internal static partial class CriticalThreadGuardian
     {
+        private sealed class NativeGuardianLaunchAttempt : IHardThreadGuardianLaunchAttempt
+        {
+            private readonly ParentGuardian owner;
+            private readonly string executable, command, directory;
+            internal long BrokerStartedFileTime;
+            internal bool BrokerUsed;
+            private int brokerReceiptPid;
+            internal int BrokerReceiptPid { get { return brokerReceiptPid; } }
+
+            internal NativeGuardianLaunchAttempt(ParentGuardian owner, string executable, string command, string directory)
+            { this.owner = owner; this.executable = executable; this.command = command; this.directory = directory; }
+
+            public bool StartNative(out int error)
+            {
+                var startup = new StartupInfo { Size = Marshal.SizeOf(typeof(StartupInfo)), Flags = 1, Show = 0 };
+                ProcessInfo child;
+                // 先挂起以核验归属；此时尚无 Scope、恢复授权或游戏线程写入。
+                bool created = CreateProcess(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, false,
+                    0x09000004u, IntPtr.Zero, directory, ref startup, out child);
+                error = created ? 0 : Marshal.GetLastWin32Error();
+                if (!created) return false;
+                owner.SpawnSucceeded = true;
+                owner.SpawnThread = child.Thread;
+                owner.UnverifiedSpawn = child.Process;
+                return true;
+            }
+
+            public bool CallerInJob()
+            {
+                bool inJob;
+                if (!IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out inJob))
+                    throw new IOException("独立守护调用方作业归属不可读，win32=" + Marshal.GetLastWin32Error());
+                return inJob;
+            }
+
+            public bool ChildInJob()
+            {
+                bool inJob;
+                if (!IsProcessInJob(owner.UnverifiedSpawn, IntPtr.Zero, out inJob))
+                    throw new IOException("独立守护挂起子进程作业归属不可读，win32=" + Marshal.GetLastWin32Error());
+                return inJob;
+            }
+
+            public bool CallerJobTrusted()
+            {
+                string reason;
+                HardThreadGuardianJobFacts facts = HardThreadGuardianJobProbe.ReadOwn();
+                return HardThreadGuardianLaunchPolicy.SystemSessionJob(facts, out reason)
+                    && HardThreadGuardianJobAnchors.VerifyReported(facts, HardThreadGuardianJobAnchors.CurrentCreation()) == null;
+            }
+
+            public void StopNativeAndConfirm()
+            {
+                // 只能终止本次 CreateProcess 返回的自有挂起子进程，不按 PID 重开其他进程。
+                if (owner.UnverifiedSpawn == IntPtr.Zero) throw new IOException("独立守护挂起子进程句柄已丢失");
+                if (WaitForSingleObject(owner.UnverifiedSpawn, 0) != 0)
+                {
+                    if (!TerminateProcess(owner.UnverifiedSpawn, 13))
+                        throw new IOException("独立守护挂起子进程终止未完成，win32=" + Marshal.GetLastWin32Error());
+                    if (WaitForSingleObject(owner.UnverifiedSpawn, 5000) != 0)
+                        throw new IOException("独立守护挂起子进程退出未核验");
+                }
+            }
+
+            public void CloseNative() { owner.ReleaseSpawnHandles(true); }
+
+            public void ResumeNative()
+            {
+                if (ResumeThread(owner.SpawnThread) != 1)
+                    throw new IOException("独立守护主线程恢复未完成，win32=" + Marshal.GetLastWin32Error());
+            }
+
+            public void StartBroker()
+            {
+                BrokerUsed = true;
+                BrokerStartedFileTime = DateTime.UtcNow.ToFileTimeUtc();
+                Logger.Info("独立恢复守护 原生路径未取得独立性，改用一次 WMI 显式脱离作业创建；最终仍核验作业归属与握手");
+                owner.BeginBrokerSpawn();
+                Task pending;
+                try
+                {
+                    pending = Task.Factory.StartNew(CreateBrokerProcess, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }
+                catch
+                {
+                    owner.CompleteBrokerSpawn(IntPtr.Zero, true, "代理创建工作线程未启动");
+                    throw;
+                }
+                if (!pending.Wait(8000))
+                    throw new IOException("独立守护 WMI 创建等待超时，是否已创建仍未知；保留同一所有者，结果结清前不再派生");
+                if (!string.IsNullOrEmpty(owner.BrokerSpawnFailure) || owner.UnverifiedSpawn == IntPtr.Zero)
+                    throw new IOException("独立守护 WMI 创建未完成：" + (owner.BrokerSpawnFailure ?? "创建结果未知"));
+            }
+
+            private void CreateBrokerProcess()
+            {
+                bool enteredCreate = false, absenceConfirmed = false;
+                IntPtr process = IntPtr.Zero;
+                string failure = null;
+                try
+                {
+                    using (var processClass = new ManagementClass(@"root\cimv2", "Win32_Process", null))
+                    using (var startupClass = new ManagementClass(@"root\cimv2", "Win32_ProcessStartup", null))
+                    using (ManagementObject startup = startupClass.CreateInstance())
+                    using (ManagementBaseObject input = processClass.GetMethodParameters("Create"))
+                    {
+                        startup["CreateFlags"] = (uint)0x09000000;
+                        startup["ShowWindow"] = (ushort)0;
+                        input["CommandLine"] = command;
+                        input["CurrentDirectory"] = directory;
+                        input["ProcessStartupInformation"] = startup;
+                        enteredCreate = true;
+                        using (ManagementBaseObject output = processClass.InvokeMethod("Create", input,
+                            new InvokeMethodOptions { Timeout = TimeSpan.FromSeconds(8) }))
+                        {
+                            uint code = Convert.ToUInt32(output["ReturnValue"]);
+                            if (code != 0) { absenceConfirmed = true; failure = "WMI ReturnValue=" + code; }
+                            else
+                            {
+                                int pid = Convert.ToInt32(output["ProcessId"]);
+                                if (pid <= 0) failure = "WMI 返回成功但进程编号未知";
+                                else
+                                {
+                                    // PID 只用于取得一次固定句柄；后续沿原 ActorPin 再核验创建时间、路径、镜像和管道身份。
+                                    process = OpenProcess(1053696u, false, pid);
+                                    if (process == IntPtr.Zero) failure = "WMI 已返回进程编号但句柄未取得，win32=" + Marshal.GetLastWin32Error();
+                                    else brokerReceiptPid = pid;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception error)
+                {
+                    failure = error.GetType().Name + " " + error.Message;
+                    // 进入 Create 后的异常不能证明没有创建进程，尤其不能将超时重新包装成可立即重试。
+                    absenceConfirmed = !enteredCreate;
+                }
+                owner.CompleteBrokerSpawn(process, absenceConfirmed, failure);
+            }
+        }
 
         internal static IHardThreadGuardian Arm(GameMode.CriticalThreadTargetLease original, out HardThreadFileStore originalStore)
         {
@@ -92,31 +234,19 @@ namespace PaviseApp
                 result.ConfigurationCreated = true;
                 PipeSecurity pipeSecurity = new PipeSecurity();
                 pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-5-2"), PipeAccessRights.FullControl, AccessControlType.Deny));
-                foreach (string sddlForm in new string[3] { userSidResult, "S-1-5-18", "S-1-5-32-544" })
+                string[] textEntries = new string[3] { userSidResult, "S-1-5-18", "S-1-5-32-544" };
+                foreach (string sddlForm in textEntries)
                 {
                     pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(sddlForm), PipeAccessRights.FullControl, AccessControlType.Allow));
                 }
                 result.Pipe = new NamedPipeServerStream(PipeName(original.SessionId, nonceResult), PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, pipeSecurity);
-                StartupInfo startup = default(StartupInfo);
-                startup.Size = Marshal.SizeOf(typeof(StartupInfo));
-                startup.Flags = 1u;
-                startup.Show = 0;
                 string directoryName = Path.GetDirectoryName(canonicalResult);
-                string text = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + nonceResult + " --autostart-data \"" + directoryName + "\"";
-                ProcessInfo child;
-                if (!CreateProcess(executable, new StringBuilder(text), IntPtr.Zero, IntPtr.Zero, false, 150994944u, IntPtr.Zero, guardsPath, ref startup, out child))
-                {
-                    int lastWin32Error = Marshal.GetLastWin32Error();
-                    bool inJob = false;
-                    bool membershipKnown = lastWin32Error == 5 && IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out inJob);
-                    throw HardThreadGuardianLaunchPolicy.Failed(lastWin32Error, membershipKnown, inJob);
-                }
-                result.SpawnSucceeded = true;
-                result.SpawnThread = child.Thread;
-                result.UnverifiedSpawn = child.Process;
+                string value = "\"" + executable + "\" --hard-thread-guardian " + original.SessionId.ToString("N") + " " + nonceResult + " --autostart-data \"" + directoryName + "\"";
+                var launch = new NativeGuardianLaunchAttempt(result, executable, value, guardsPath);
+                HardThreadGuardianLaunchRoute.Start(launch);
                 HardThreadConstructionCleanup.AcquireAndRelease(delegate
                 {
-                    result.Child = new ActorPin((int)child.Pid, null, child.Process);
+                    result.Child = new ActorPin((int)GetProcessId(result.UnverifiedSpawn), null, result.UnverifiedSpawn);
                 }, delegate
                 {
                     result.ReleaseSpawnHandles(result.Child != null);
@@ -125,9 +255,12 @@ namespace PaviseApp
                 {
                     throw new IOException("spawned guardian bytes differ");
                 }
+                if (launch.BrokerUsed && result.Child.Actor.Creation < launch.BrokerStartedFileTime)
+                    throw new IOException("独立守护代理返回的进程创建时间早于本次请求");
                 bool inJob2;
                 bool membershipKnown2 = IsProcessInJob(result.Child.Handle, IntPtr.Zero, out inJob2);
-                HardThreadGuardianLaunchPolicy.RequireIndependent(membershipKnown2, inJob2);
+                // 作业限制只能由守护自身读取，须随握手应答核验。
+                HardThreadGuardianLaunchPolicy.RequireMembershipKnown(membershipKnown2);
                 result.Scope = new Scope
                 {
                     Target = new HardThreadTarget(original.SessionId, original.ProcessId, original.ProcessCreation, original.ExecutablePath, original.AllowedMask),
@@ -162,13 +295,32 @@ namespace PaviseApp
                     throw new IOException("pipe client is not the original spawned guardian");
                 }
                 WritePacket(result.Pipe, bytes);
-                if (Text(ReadPacket(result.Pipe)) != "ready:" + result.Scope.Digest)
-                {
-                    throw new IOException("guardian did not retain the original scope");
-                }
+                // WMI 子进程可能看不到交互桌面；提示只给候选身份，双方仍分别核验。
+                WritePacket(result.Pipe, Text(HardThreadGuardianJobAnchors.CaptureDesktop(result.Scope.Parent.Creation).EncodeHint()));
+                Func<string> verifyBroker = null;
+                if (launch.BrokerUsed && launch.BrokerReceiptPid > 0)
+                    verifyBroker = delegate
+                    {
+                        var proof = new HardThreadGuardianBrokerPin(parent.Handle, result.Child.Handle, parent.Actor,
+                            result.Child.Actor, launch.BrokerReceiptPid, launch.BrokerStartedFileTime);
+                        string failure = result.VerifyBrokerProof(proof);
+                        return failure == null ? null : failure + "；" + proof.Describe();
+                    };
+                HardThreadGuardianJobFacts jobFacts = HardThreadGuardianLaunchPolicy.RequireIndependent(inJob2, Text(ReadPacket(result.Pipe)), result.Scope.Digest,
+                    delegate(HardThreadGuardianJobFacts facts) { return HardThreadGuardianJobAnchors.VerifyReported(facts, result.Scope.Parent.Creation); }, verifyBroker);
+                HardThreadGuardianBrokerPin usedBrokerProof = result.BrokerProof;
                 original.RequireActive();
+                string brokerFailure = result.RecheckBrokerProof();
+                if (brokerFailure != null) throw new IOException("独立守护 armed 前 WMI 证明复核失败：" + brokerFailure + "；" + usedBrokerProof.Describe());
                 WritePacket(result.Pipe, Text("armed:" + result.Scope.Digest));
                 result.Watch();
+                if (usedBrokerProof != null)
+                    Logger.Info("独立恢复守护已通过本地 WMI 跨会话创建证明，排除调用方及提供程序的隐式作业继承；" + usedBrokerProof.Describe()
+                        + "；" + jobFacts.Describe());
+                else if (jobFacts != null)
+                    Logger.Info("独立恢复守护已核验与可信会话进程共享作业，限制满足独立恢复条件；" + jobFacts.Describe());
+                else if (launch.BrokerUsed)
+                    Logger.Info("独立恢复守护 WMI 备用创建已通过身份、管道握手与无作业归属核验");
                 return result;
             }
             catch (Exception ex3)
@@ -240,9 +392,9 @@ namespace PaviseApp
                 string canonicalResult = Canonical(Path.Combine(originalStartupData, "CriticalThreadHardAffinityV1"));
                 RequireAcl(canonicalResult, UserSid());
                 NamedPipeClientStream namedPipeClientStream = new NamedPipeClientStream(".", PipeName(result, args[2]), PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
-                NativeRegistration currentNativeRegistration = new NativeRegistration();
-                currentNativeRegistration.Pipe = namedPipeClientStream;
-                nativeRegistration = currentNativeRegistration;
+                NativeRegistration nativeRegistration2 = new NativeRegistration();
+                nativeRegistration2.Pipe = namedPipeClientStream;
+                nativeRegistration = nativeRegistration2;
                 namedPipeClientStream.Connect(5000);
                 uint pid;
                 if (!GetNamedPipeServerProcessId(namedPipeClientStream.SafePipeHandle.DangerousGetHandle(), out pid))
@@ -276,7 +428,10 @@ namespace PaviseApp
                     }
                     nativeRegistration.Handshake = new HardThreadGuardianHandshake(nativeRegistration.Parent.Actor, actorPin.Actor, args[2], nativeRegistration.Scope.Digest);
                     nativeRegistration.Handshake.Accept((int)pid, actorPin.Actor.Pid, nativeRegistration.Parent.Actor, actorPin.Actor, args[2], nativeRegistration.Scope.Digest);
-                    WritePacket(namedPipeClientStream, Text("ready:" + nativeRegistration.Scope.Digest));
+                    // 与历史 Scope 分开传递，不改变旧恢复回执；候选身份不能替代本进程的作业成员读取。
+                    HardThreadGuardianJobAnchor hint = HardThreadGuardianJobAnchor.ParseHint(Text(ReadPacket(namedPipeClientStream)));
+                    WritePacket(namedPipeClientStream, Text(HardThreadGuardianLaunchPolicy.ReadyReply(nativeRegistration.Scope.Digest,
+                        HardThreadGuardianJobProbe.ReadOwn(nativeRegistration.Scope.Parent.Creation, hint))));
                     if (Text(ReadPacket(namedPipeClientStream)) != "armed:" + nativeRegistration.Scope.Digest)
                     {
                         throw new IOException("original parent did not acknowledge registration");
@@ -284,7 +439,7 @@ namespace PaviseApp
                 }
                 Task<byte[]> task = ReadStop(namedPipeClientStream);
                 bool stopRequested = false;
-                long nextTerminalReadTicks = 0L;
+                long numericValue = 0L;
                 int terminalReadFailures = 0;
                 while (true)
                 {
@@ -304,24 +459,27 @@ namespace PaviseApp
                                 stopRequested = true;
                             }
                         }
-                        if (!stopRequested || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < nextTerminalReadTicks)
+                        if (!stopRequested || terminalReadFailures >= 3 || DateTime.UtcNow.Ticks < numericValue)
                         {
                             break;
                         }
-                        nextTerminalReadTicks = DateTime.UtcNow.AddSeconds(1.0).Ticks;
+                        numericValue = DateTime.UtcNow.AddSeconds(1.0).Ticks;
                         bool allReceiptsTerminal = false;
                         try
                         {
                             using (HardThreadFileStore hardThreadFileStore = new HardThreadFileStore(canonicalResult))
                             {
                                 allReceiptsTerminal = true;
-                                foreach (HardThreadReceipt row in hardThreadFileStore.Load(nativeRegistration.Scope.Target).Rows)
+                                HardThreadJournal guardianJournal = hardThreadFileStore.Load(nativeRegistration.Scope.Target);
+                                foreach (HardThreadReceipt row in guardianJournal.Rows)
                                 {
                                     if (!row.Terminal)
                                     {
                                         allReceiptsTerminal = false;
                                     }
                                 }
+                                if (GameThreadControlStore.HasDebt(canonicalResult, nativeRegistration.Scope.Target,
+                                    nativeRegistration.Scope.Nonce, nativeRegistration.Scope.Digest, guardianJournal.ControlDeclared)) allReceiptsTerminal = false;
                             }
                         }
                         catch
@@ -347,7 +505,9 @@ namespace PaviseApp
                             {
                                 using (CriticalThreadHardAffinitySession criticalThreadHardAffinitySession = CriticalThreadHardAffinitySession.OpenRecovery(proof))
                                 {
-                                    return criticalThreadHardAffinitySession.Restore();
+                                    bool controlRestored = RestoreGameThreadControl(proof, criticalThreadHardAffinitySession.HasDeclaredGameThreadControl);
+                                    bool affinityRestored = criticalThreadHardAffinitySession.Restore();
+                                    return controlRestored && affinityRestored;
                                 }
                             };
                             if (!RetainRecoveryAcrossTargetExit(restore, Thread.Sleep, proof.TargetExited, proof.WaitForTargetExit, 250))

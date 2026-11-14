@@ -17,9 +17,10 @@ namespace PaviseApp
             string compactResult = Compact(compatibleTextResult);
             string compactResult2 = Compact(compatibleTextResult2);
             bool allTokensMatched = false;
-            foreach (string compatibleTextTrimmedPart in compatibleTextTrimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+            string[] compatibleTextTrimmedParts = compatibleTextTrimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string value in compatibleTextTrimmedParts)
             {
-                string compactResult3 = Compact(compatibleTextTrimmedPart);
+                string compactResult3 = Compact(value);
                 if (compactResult3.Length != 0)
                 {
                     allTokensMatched = true;

@@ -114,56 +114,56 @@ namespace PaviseApp
                 return;
             }
             float measuredValue = (lightOn ? 1f : 0f);
-            float hoverProgress = hover.Value;
-            float flashProgress = flash.Value;
+            float value = hover.Value;
+            float value2 = flash.Value;
             if (Compact)
             {
                 Rectangle rectangle = new Rectangle(0, Theme.S(2), base.Width - 1, base.Height - Theme.S(5));
                 using (GraphicsPath graphicsPath = Theme.TechPath(rectangle, Theme.S(5)))
                 {
-                    using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, hoverProgress)))
+                    using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, value)))
                     {
                         graphics.FillPath(brush, graphicsPath);
                     }
-                    using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, hoverProgress * 0.7f + flashProgress * 0.3f)))
+                    using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, value * 0.7f + value2 * 0.3f)))
                     {
                         graphics.DrawPath(pen, graphicsPath);
                     }
                     PaintBusy(graphics, rectangle, graphicsPath);
                 }
                 int scaledDimension = Theme.S(21);
-                Glyphs.Draw(graphics, lightOn ? "moon" : "sun", new Rectangle((base.Width - scaledDimension) / 2, (base.Height - scaledDimension) / 2 - Theme.S(1), scaledDimension, scaledDimension), Col.Lerp(Theme.Dim, Theme.Fg, 0.35f + hoverProgress * 0.65f));
+                Glyphs.Draw(graphics, lightOn ? "moon" : "sun", new Rectangle((base.Width - scaledDimension) / 2, (base.Height - scaledDimension) / 2 - Theme.S(1), scaledDimension, scaledDimension), Col.Lerp(Theme.Dim, Theme.Fg, 0.35f + value * 0.65f));
                 if (base.WantsFocusCue)
                 {
                     DsFocus.Draw(graphics, DsFocus.Inset(rectangle, 3), Theme.Fg, Theme.Card);
                 }
                 return;
             }
-            Rectangle currentRectangle = new Rectangle(0, Theme.S(2), base.Width - 1, base.Height - Theme.S(5));
+            Rectangle rectangle2 = new Rectangle(0, Theme.S(2), base.Width - 1, base.Height - Theme.S(5));
             int scaledDimension2 = Theme.S(9);
-            using (GraphicsPath techPath = Theme.TechPath(currentRectangle, scaledDimension2))
+            using (GraphicsPath graphicsPath2 = Theme.TechPath(rectangle2, scaledDimension2))
             {
-                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, hoverProgress)))
+                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, value)))
                 {
-                    graphics.FillPath(brush2, techPath);
+                    graphics.FillPath(brush2, graphicsPath2);
                 }
-                using (Pen currentPen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.3f + hoverProgress * 0.5f)))
+                using (Pen pen2 = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.3f + value * 0.5f)))
                 {
-                    graphics.DrawPath(currentPen, techPath);
+                    graphics.DrawPath(pen2, graphicsPath2);
                 }
-                PaintBusy(graphics, currentRectangle, techPath);
+                PaintBusy(graphics, rectangle2, graphicsPath2);
             }
-            using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
+            using (Pen pen3 = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
             {
-                graphics.DrawLine(accentPen, 0, Theme.S(13), 0, base.Height - Theme.S(14));
+                graphics.DrawLine(pen3, 0, Theme.S(13), 0, base.Height - Theme.S(14));
             }
-            using (Pen candidatePen = new Pen(Col.Alpha(Theme.Accent, (int)(110f + 110f * hoverProgress)), Math.Max(1f, Theme.S(1))))
+            using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, (int)(110f + 110f * value)), Math.Max(1f, Theme.S(1))))
             {
-                graphics.DrawLine(candidatePen, currentRectangle.Right - scaledDimension2, currentRectangle.Top, currentRectangle.Right, currentRectangle.Top + scaledDimension2);
+                graphics.DrawLine(pen4, rectangle2.Right - scaledDimension2, rectangle2.Top, rectangle2.Right, rectangle2.Top + scaledDimension2);
             }
             int scaledDimension3 = Theme.S(7);
             int scaledDimension4 = Theme.S(7);
-            RectangleF bounds = new RectangleF(currentRectangle.X + scaledDimension3, currentRectangle.Y + scaledDimension3, currentRectangle.Width - scaledDimension3 * 2, currentRectangle.Height - scaledDimension3 * 2);
+            RectangleF bounds = new RectangleF(rectangle2.X + scaledDimension3, rectangle2.Y + scaledDimension3, rectangle2.Width - scaledDimension3 * 2, rectangle2.Height - scaledDimension3 * 2);
             if (bounds.Width < (float)Theme.S(12) || bounds.Height < (float)Theme.S(8))
             {
                 return;
@@ -176,17 +176,17 @@ namespace PaviseApp
                 }
                 GraphicsState gstate = graphics.Save();
                 graphics.SetClip(path, CombineMode.Intersect);
-                using (Pen resolvedPen = new Pen(Col.Alpha(Theme.Accent, (int)(13f + 15f * hoverProgress)), Math.Max(1f, Theme.S(1))))
+                using (Pen pen5 = new Pen(Col.Alpha(Theme.Accent, (int)(13f + 15f * value)), Math.Max(1f, Theme.S(1))))
                 {
                     for (float left = bounds.Left - bounds.Height; left < bounds.Right; left += (float)Theme.S(6))
                     {
-                        graphics.DrawLine(resolvedPen, left, bounds.Bottom, left + bounds.Height, bounds.Top);
+                        graphics.DrawLine(pen5, left, bounds.Bottom, left + bounds.Height, bounds.Top);
                     }
                 }
                 graphics.Restore(gstate);
-                using (Pen selectedPen = new Pen(Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.45f)))
+                using (Pen pen6 = new Pen(Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.45f)))
                 {
-                    graphics.DrawPath(selectedPen, path);
+                    graphics.DrawPath(pen6, path);
                 }
             }
             float widthRatio = bounds.Width / 2f;
@@ -195,35 +195,35 @@ namespace PaviseApp
             {
                 for (int iterationIndex = 3; iterationIndex >= 1; iterationIndex--)
                 {
-                    using (Pen workingPen = new Pen(Col.Alpha(Theme.Accent, (int)((24f + 30f * hoverProgress + 55f * flashProgress) / (float)iterationIndex)), Theme.S(2) * iterationIndex))
+                    using (Pen pen7 = new Pen(Col.Alpha(Theme.Accent, (int)((24f + 30f * value + 55f * value2) / (float)iterationIndex)), Theme.S(2) * iterationIndex))
                     {
-                        graphics.DrawPath(workingPen, path2);
+                        graphics.DrawPath(pen7, path2);
                     }
                 }
-                using (LinearGradientBrush brush4 = new LinearGradientBrush(new PointF(bounds2.Left, bounds2.Top - 1f), new PointF(bounds2.Right, bounds2.Bottom + 1f), Col.Lerp(Theme.Accent, Color.White, 0.12f + flashProgress * 0.32f), Theme.Accent2))
+                using (LinearGradientBrush brush4 = new LinearGradientBrush(new PointF(bounds2.Left, bounds2.Top - 1f), new PointF(bounds2.Right, bounds2.Bottom + 1f), Col.Lerp(Theme.Accent, Color.White, 0.12f + value2 * 0.32f), Theme.Accent2))
                 {
                     graphics.FillPath(brush4, path2);
                 }
-                using (Pen pendingPen = new Pen(Col.Alpha(Color.White, (int)(64f + 90f * flashProgress)), Math.Max(1f, Theme.S(1))))
+                using (Pen pen8 = new Pen(Col.Alpha(Color.White, (int)(64f + 90f * value2)), Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawLine(pendingPen, bounds2.Left + (float)Theme.S(2), bounds2.Top + 0.5f, bounds2.Right - (float)scaledDimension4 - (float)Theme.S(1), bounds2.Top + 0.5f);
+                    graphics.DrawLine(pen8, bounds2.Left + (float)Theme.S(2), bounds2.Top + 0.5f, bounds2.Right - (float)scaledDimension4 - (float)Theme.S(1), bounds2.Top + 0.5f);
                 }
-                using (Pen sourcePen = new Pen(Col.Alpha(Theme.Accent, 235), Math.Max(1f, Theme.S(1))))
+                using (Pen pen9 = new Pen(Col.Alpha(Theme.Accent, 235), Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawPath(sourcePen, path2);
+                    graphics.DrawPath(pen9, path2);
                 }
             }
             int size = Theme.S(17);
-            Color a = Col.Lerp(Theme.Faint, Theme.Fg, 0.25f + hoverProgress * 0.45f);
+            Color a = Col.Lerp(Theme.Faint, Theme.Fg, 0.25f + value * 0.45f);
             Glyphs.Draw(graphics, "moon", IconBox(bounds.X, bounds.Y, widthRatio, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, 1f - measuredValue));
             Glyphs.Draw(graphics, "sun", IconBox(bounds.X + widthRatio, bounds.Y, widthRatio, bounds.Height, size), Col.Lerp(a, Theme.OnAccent, measuredValue));
             if (!base.Enabled)
             {
-                DsPaint.Veil(graphics, currentRectangle, Col.Alpha(Theme.Card, DsAlpha.VeilTier));
+                DsPaint.Veil(graphics, rectangle2, Col.Alpha(Theme.Card, DsAlpha.VeilTier));
             }
             if (base.WantsFocusCue)
             {
-                DsFocus.Draw(graphics, DsFocus.Inset(currentRectangle, 4), Theme.Fg, Theme.Card);
+                DsFocus.Draw(graphics, DsFocus.Inset(rectangle2, 4), Theme.Fg, Theme.Card);
             }
         }
 

@@ -48,7 +48,10 @@ internal partial class GameMode {
         Check(PowerPlan.Session==11,"new game serial did not reach the power drift owner");
         Check(!m.BeginPowerAttempt(2,out reason),"permanent error retried");
         m.gameSessionStarts=12;
-        for(int i=0;i<10;i++) {Check(m.BeginPowerAttempt(2,out reason),"successful independent maintenance capped");m.CompletePowerAttempt(true,"verified");}
+        // 守护写回每次都是一次成功的应用事务，连续多少次都不能被攒成失败预算。
+        int verifiedLogs=Logger.Logs;
+        for(int i=0;i<200;i++) {Check(m.BeginPowerAttempt(2,out reason),"successful independent maintenance capped");m.CompletePowerAttempt(true,"verified");}
+        Check(Logger.Logs-verifiedLogs==3,"repeated verified power applies flooded the log or were not recorded: "+(Logger.Logs-verifiedLogs));
         Console.WriteLine("PASS power 3 total/5s/30s, 1000 polls, A-B-A, new session, permanent stop");
     }
     private static void RecoveryBudget() {

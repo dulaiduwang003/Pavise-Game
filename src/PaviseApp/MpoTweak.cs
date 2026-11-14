@@ -4,6 +4,11 @@ namespace PaviseApp
 {
     internal static class MpoTweak
     {
+        private const string DwmKey = "SOFTWARE\\Microsoft\\Windows\\Dwm";
+
+        private const string Val = "OverlayTestMode";
+
+        private const int DisableValue = 5;
 
         private static readonly ReversibleReg Overlay = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows\\Dwm", "OverlayTestMode", RegistryValueKind.DWord, "PrevMpoOverlay");
 
@@ -25,8 +30,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object instance = registryKey.GetValue("OverlayTestMode");
-                    return instance is int && (int)instance == 5;
+                    object value = registryKey.GetValue("OverlayTestMode");
+                    return value is int && (int)value == 5;
                 }
             }
             catch

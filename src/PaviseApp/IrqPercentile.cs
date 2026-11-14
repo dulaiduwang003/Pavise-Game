@@ -10,21 +10,21 @@ namespace PaviseApp
             {
                 return maxUs;
             }
-            long sampleCount = 0L;
-            foreach (long bucket in buckets)
+            long numericValue = 0L;
+            foreach (long numericValueEntry in buckets)
             {
-                sampleCount += bucket;
+                numericValue += numericValueEntry;
             }
-            if (sampleCount <= 0)
+            if (numericValue <= 0)
             {
                 return maxUs;
             }
-            long roundedValue = (long)Math.Ceiling((double)sampleCount * q);
-            long cumulativeSamples = 0L;
+            long roundedValue = (long)Math.Ceiling((double)numericValue * q);
+            long numericValue2 = 0L;
             for (int j = 0; j < buckets.Length; j++)
             {
-                cumulativeSamples += buckets[j];
-                if (cumulativeSamples >= roundedValue)
+                numericValue2 += buckets[j];
+                if (numericValue2 >= roundedValue)
                 {
                     double maxValue = ((j < InterruptAttribution.BucketUpperUs.Length) ? InterruptAttribution.BucketUpperUs[j] : double.MaxValue);
                     if (!double.IsInfinity(maxValue) && maxValue != double.MaxValue)

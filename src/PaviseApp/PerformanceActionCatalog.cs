@@ -35,9 +35,9 @@ namespace PaviseApp
             new PerformanceAction("AutoGameMitigationsV1", "游戏保护开销减负 · CFG", "Game mitigation overhead · CFG", "自动为游戏库中的程序配置 CFG、EAF/EAF+、IAF、CallerCheck 关闭；32 位程序另含 SimExec。下次启动游戏生效，无需重启电脑。", "Preconfigures CFG, EAF/EAF+, IAF and CallerCheck off for library games; includes SimExec for 32-bit games. Effective at the next game launch; no PC restart.", false),
             new PerformanceAction("AutoNtfsShortNamesV1", "游戏盘短文件名减负", "Game-volume short-name reduction", "对支持逐卷设置的 NTFS 游戏盘停止创建 8.3 短文件名；不删除已有短名称，不更改全机策略。无需重启。", "Stops new 8.3 names on NTFS game volumes with per-volume policy. Keeps existing names and global policy. No restart.", false),
             new PerformanceAction("AutoOpenGlThreadsV1", "游戏 OpenGL 驱动多线程", "Game OpenGL driver threading", "为 NVIDIA 游戏配置 OpenGL 线程优化；下次启动程序生效，不改变纹理过滤、分辨率或特效。", "Preconfigures NVIDIA OpenGL threaded optimization for games. Effective on next launch; preserves texture filtering, resolution and effects.", false),
-            new PerformanceAction("EnvCpuMitigationsV1", "关闭可配置 CPU 软件缓解", "Disable configurable CPU software mitigations", "为 Windows 10 2004 及更新版本的 Intel/AMD 设置扩展关闭策略：Spectre V2/Meltdown，并取消 SSBD 与 AMD 用户态到内核 BTI 的显式启用。适用系统还涉及 MDS/TAA/L1TF 组合策略，实际范围由处理器和系统决定。降低相应漏洞防护，保留其他配置位；无法关闭全部硬件或编译器保护。应用或恢复后需重启电脑，关闭时恢复原值。旧版已开启的基础范围需先关闭再重新开启，才选择扩展范围。", "Selects an expanded disable policy on Intel/AMD with Windows 10 version 2004 or later: Spectre V2/Meltdown and removal of explicit SSBD and AMD user-to-kernel BTI enable controls. Applicable systems also use the MDS/TAA/L1TF combined policy; effective scope depends on the CPU and OS. Reduces the corresponding protections while preserving other configuration bits; does not remove all hardware or compiler protections. Restart after applying or restoring; Off restores original values. If the legacy basic scope is already on, switch off and on to select the expanded scope.", true),
+            new PerformanceAction("EnvCpuMitigationsV1", "关闭可配置 CPU 软件缓解", "Disable configurable CPU software mitigations", "降低 Intel/AMD 可配置的 CPU 漏洞防护，需 Win10 2004+，范围由处理器与系统决定。应用或恢复后重启电脑；关闭恢复原值。旧版已开启时，先关再开以使用扩展策略。", "Reduces configurable CPU vulnerability protections on Intel/AMD with Windows 10 2004+. Scope depends on the CPU and OS. Restart after applying or restoring; Off restores originals. If enabled in an older version, switch off and on for the expanded policy.", true),
             new PerformanceAction("EnvNtfsLastAccessV1", "关闭 NTFS 最后访问时间更新", "Disable NTFS last-access updates", "减少文件访问时间元数据维护。应用或恢复后需要重启电脑；原本已关闭时无新增收益。", "Reduces last-access metadata maintenance. Applying or restoring requires a PC restart; no additional benefit if already disabled.", true),
-            new PerformanceAction("EnvQuantumProfileV1", "前台时间片", "Foreground quantum", "游戏、浏览网页和日常操作推荐「短可变 3:1」，优先照顾当前窗口；后台渲染和批量计算推荐「长固定 1:1」。其他档位用于对比调试，比例不是帧率倍数。\n优先在线应用和恢复；系统拒绝更新或原值无法在线还原时提示重启电脑。选择「恢复原配置」也会撤销旧版校正。", "Choose short variable 3:1 for games, browsing and everyday use, or long fixed 1:1 for background rendering and batch work. Other profiles are for comparison; the ratios are not FPS multipliers.\nApply and restore online where supported. A PC restart is shown if Windows rejects the update or the original cannot be restored online. Restore original also undoes legacy corrections.", true),
+            new PerformanceAction("EnvQuantumProfileV1", "前台时间片", "Foreground quantum", "游戏与日常选「短可变 3:1」，后台计算选「长固定 1:1」；比例指时间片分配。通常即时生效，需要重启时会提示。恢复原配置也会撤销旧版校正。", "Use short variable 3:1 for games and daily use, or long fixed 1:1 for background work. Ratios describe CPU time allocation. Usually applies immediately; a restart prompt appears when needed. Restore original also undoes legacy corrections.", true),
             new PerformanceAction("EnvStorageIdleV1", "存储设备保持唤醒", "Keep storage devices awake", "仅配置已登记 StorPort 的磁盘设备，关闭空闲电源管理。驱动需重新读取，保守按重启电脑生效处理。", "Disables idle power management only for disks with registered StorPort configuration. Requires driver reload; conservatively treat as requiring PC restart.", true),
             new PerformanceAction("EnvStorageRuntimeV1", "关闭存储控制器运行时电源管理", "Disable storage controller runtime power management", "为已登记 StorPort 的存储控制器关闭运行时电源管理。驱动需重新读取，保守按重启电脑生效处理。", "Disables runtime power management for registered StorPort controllers. Requires driver reload; conservatively treat as requiring PC restart.", true),
             new PerformanceAction("EnvStorageD3ColdV1", "存储控制器禁用 D3Cold", "Disable storage-controller D3Cold", "为已登记 StorPort 的存储控制器禁止 D3Cold。取决于驱动与硬件，按重启电脑后生效处理。", "Disables D3Cold for registered StorPort controllers. Hardware and driver dependent; treat as effective after PC restart.", true),
@@ -54,18 +54,20 @@ namespace PaviseApp
 
         internal static PerformanceAction Find(string key)
         {
-            foreach (PerformanceAction performanceAction in All)
+            PerformanceAction[] all = All;
+            foreach (PerformanceAction performanceAction in all)
             {
                 if (performanceAction.Key == key)
                 {
                     return performanceAction;
                 }
             }
-            foreach (PerformanceAction currentRetired in Retired)
+            PerformanceAction[] retired = Retired;
+            foreach (PerformanceAction performanceAction2 in retired)
             {
-                if (currentRetired.Key == key)
+                if (performanceAction2.Key == key)
                 {
-                    return currentRetired;
+                    return performanceAction2;
                 }
             }
             return null;

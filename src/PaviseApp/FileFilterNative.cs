@@ -162,23 +162,23 @@ namespace PaviseApp
                 }
             }
             if(found.Count!=1)return new DriverInfo {Error="No unique registered driver instance owner"};
-            DriverInfo driverInfo=found[0];
-            if(driverInfo.Path.Length==0||!File.Exists(driverInfo.Path)) {driverInfo.Error="Driver image unavailable";return driverInfo;}
+            DriverInfo value=found[0];
+            if(value.Path.Length==0||!File.Exists(value.Path)) {value.Error="Driver image unavailable";return value;}
             // 信任验证失败时，文件元数据仍可供只读诊断；没有下方签名映像身份，不授予操作资格。
 
-            var version=FileVersionInfo.GetVersionInfo(driverInfo.Path);
-            driverInfo.Publisher=version.CompanyName??"";
-            driverInfo.Description=version.FileDescription??"";
+            var version=FileVersionInfo.GetVersionInfo(value.Path);
+            value.Publisher=version.CompanyName??"";
+            value.Description=version.FileDescription??"";
             string publisher,thumb;
-            if(!Signature(driverInfo.Path,out publisher,out thumb)){driverInfo.Error="Driver signature or owner could not be verified";return driverInfo;}
+            if(!Signature(value.Path,out publisher,out thumb)){value.Error="Driver signature or owner could not be verified";return value;}
             // 现代第三方内核映像可能使用微软硬件发布者签名。组件归属由签名映像的厂商元数据确认，签名证书仍保存在 Identity 中。
 
 
-            driverInfo.Publisher=string.IsNullOrWhiteSpace(version.CompanyName)?publisher:version.CompanyName;
-            driverInfo.Description=version.FileDescription??"";
-            using(var stream=new FileStream(driverInfo.Path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))
-            using(var sha=SHA256.Create())driverInfo.Identity=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","")+":"+thumb;
-            return driverInfo;
+            value.Publisher=string.IsNullOrWhiteSpace(version.CompanyName)?publisher:version.CompanyName;
+            value.Description=version.FileDescription??"";
+            using(var stream=new FileStream(value.Path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))
+            using(var sha=SHA256.Create())value.Identity=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","")+":"+thumb;
+            return value;
         }
         private static void Identify(FileFilterCandidate target, DriverInfo info)
         {

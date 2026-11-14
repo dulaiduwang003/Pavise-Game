@@ -35,9 +35,9 @@ namespace PaviseApp
             string allText = all.ToString("X", CultureInfo.InvariantCulture);
             if (physical != null)
             {
-                foreach (ulong currentPhysical in physical)
+                foreach (ulong numericValueEntry in physical)
                 {
-                    allText = allText + "," + currentPhysical.ToString("X", CultureInfo.InvariantCulture);
+                    allText = allText + "," + numericValueEntry.ToString("X", CultureInfo.InvariantCulture);
                 }
             }
             return allText;
@@ -60,8 +60,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            ulong selectedMask;
-            if ((parts[3] != "0" && parts[3] != "1") || !Hex(parts[2], out selectedMask) || selectedMask == 0)
+            ulong value;
+            if ((parts[3] != "0" && parts[3] != "1") || !Hex(parts[2], out value) || value == 0)
             {
                 return null;
             }
@@ -70,15 +70,16 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (string entryText in parts2)
+            string[] textEntries = parts2;
+            foreach (string entryText in textEntries)
             {
-                ulong physicalCoreMask;
-                if (!Hex(entryText, out physicalCoreMask) || physicalCoreMask == 0)
+                ulong value2;
+                if (!Hex(entryText, out value2) || value2 == 0)
                 {
                     return null;
                 }
             }
-            return new ManualCorePlan(selectedMask, parts[3] == "1", parts[1].ToUpperInvariant(), isolationEnabled);
+            return new ManualCorePlan(value, parts[3] == "1", parts[1].ToUpperInvariant(), isolationEnabled);
         }
 
         private static bool Hex(string text, out ulong value)
@@ -107,20 +108,20 @@ namespace PaviseApp
             {
                 return "schedule.manual.topology";
             }
-            ulong coveredCoreMask = 0uL;
+            ulong numericValue = 0uL;
             if (physical == null || physical.Length == 0)
             {
                 return "schedule.manual.topology";
             }
-            foreach (ulong currentPhysical in physical)
+            foreach (ulong numericValueEntry in physical)
             {
-                if (currentPhysical == 0 || (currentPhysical & ~all) != 0 || (coveredCoreMask & currentPhysical) != 0)
+                if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
                 {
                     return "schedule.manual.topology";
                 }
-                coveredCoreMask |= currentPhysical;
+                numericValue |= numericValueEntry;
             }
-            if (coveredCoreMask != all)
+            if (numericValue != all)
             {
                 return "schedule.manual.topology";
             }
@@ -155,6 +156,12 @@ namespace PaviseApp
         internal string ValidateCurrent(ulong allocated)
         {
             return Validate(CpuTopology.AllMask, CpuTopology.PhysicalCoreMasks(), allocated, AutoCores.Supported, IntPtr.Size == 8 && !CpuTopology.MultiGroup && CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled);
+        }
+
+        // 仅表示没有新增范围限制；调用方须先完成拓扑和预留冲突校验，不能据此宣称目标实际使用全机核心。
+        internal bool IsUnrestricted(ulong all)
+        {
+            return all != 0 && GameMask == all && !Isolation;
         }
 
         internal AutoCorePlan RuntimePlan()

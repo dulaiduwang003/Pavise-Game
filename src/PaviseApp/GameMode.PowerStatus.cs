@@ -7,24 +7,45 @@ namespace PaviseApp
     {
         private string powerFailureLogSignature;
 
+        internal struct PowerPlanStatusSnapshot
+        {
+            internal readonly string State, Detail;
+            internal PowerPlanStatusSnapshot(string state, string detail)
+            { State = state; Detail = detail; }
+        }
+
         internal string PowerPlanExecutionState
         {
-            get
+            get { return ReadPowerPlanStatus().State; }
+        }
+
+        internal PowerPlanStatusSnapshot ReadPowerPlanStatus()
+        {
+            lock (sync)
             {
-                lock (sync)
-                {
-                    if (envRestorePending.Contains("powerplan")) return "restore-failed";
-                    // 掌机跳过策略可清除历史应用失败，但不能清除未完成的恢复债务。
-                    if (PowerPlan.HandheldBypass) return "unchanged";
-                    // 正在执行的应用属于待完成，不属于已停用。
-                    if (ActionFailureStore.IsBlocked("PowerPlanOn", "system") && !ActionFailureStore.IsRunning("PowerPlanOn", "system")) return "stopped";
-                    if (!planSwitch || PowerPlan.NoSwitchSelected) return "unchanged";
-                    if (!enabled || !active || stopping || panicReq || powerSessionEnding || gameGoneSinceTicks != 0) return "";
-                    return planActive && Volatile.Read(ref powerApplyInFlight) == 0
+                // 掌机绕过时不读取应用状态；未完成的恢复仍须保留。
+                if (!envRestorePending.Contains("powerplan") && PowerPlan.HandheldBypass)
+                    return new PowerPlanStatusSnapshot("unchanged", "");
+                ActionFailureStore.ExecutionSnapshot execution = ActionFailureStore.ReadExecutionSnapshot("PowerPlanOn", "system");
+                string state;
+                if (envRestorePending.Contains("powerplan")) state = "restore-failed";
+                else if (execution.Stopped) state = "stopped";
+                else if (!planSwitch || PowerPlan.NoSwitchSelected) state = "unchanged";
+                else if (!enabled || !active || stopping || panicReq || powerSessionEnding || gameGoneSinceTicks != 0) state = "";
+                else state = !execution.Running && planActive && Volatile.Read(ref powerApplyInFlight) == 0
                         && Volatile.Read(ref powerPlanNotificationPending) == 0
                         && Volatile.Read(ref laptopPerfPowerGeneration) == Volatile.Read(ref powerSessionGen)
                         ? "applied" : "unverified";
-                }
+                return new PowerPlanStatusSnapshot(state, PowerPlanFailureDetail(state, execution));
+            }
+        }
+
+        private void RecordPowerPlanStatus()
+        {
+            lock (sync)
+            {
+                PowerPlanStatusSnapshot snapshot = ReadPowerPlanStatus();
+                RecordAutomationSnapshot("PowerPlanOn", snapshot.State, snapshot.Detail);
             }
         }
 
@@ -44,10 +65,11 @@ namespace PaviseApp
             }
         }
 
-        internal static string PowerPlanFailureDetail(string state)
+        private static string PowerPlanFailureDetail(string state, ActionFailureStore.ExecutionSnapshot execution)
         {
             if (state != "stopped" && state != "restore-failed") return "";
-            string reason = ActionFailureStore.FailureReason("PowerPlanOn", "system");
+            string reason = execution.FailureReason;
+            if (string.IsNullOrEmpty(reason)) reason = "电源计划恢复尚未确认";
             return "reason=" + reason + " automatic-attempts=bounded recovery=retained";
         }
 

@@ -101,8 +101,13 @@ namespace PaviseApp
                 if (predecessor != null && !predecessor.WaitForExit(PredecessorExitWaitMs)) return false;
                 bool inJob;
                 bool known = IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out inJob);
-                Record(known && inJob, "result=adopted predecessor=" + incoming.PredecessorPid
-                    + " inJob=" + (known ? inJob.ToString() : "unknown"));
+                // 现代待机的系统会话 Job 复用守护准入规则核验；其他 Job 仍告警并记录限制。
+                HardThreadGuardianJobFacts facts = known && inJob ? HardThreadGuardianJobProbe.ReadOwn() : null;
+                string reason = "";
+                bool sessionJob = facts != null && HardThreadGuardianLaunchPolicy.SystemSessionJob(facts, out reason);
+                Record(known && inJob && !sessionJob, "result=adopted predecessor=" + incoming.PredecessorPid
+                    + " inJob=" + (known ? inJob.ToString() : "unknown")
+                    + (facts == null ? "" : " job=" + (sessionJob ? "system-session" : "other") + " " + facts.Describe() + (sessionJob ? "" : " 原因=" + reason)));
                 return true;
             }
             finally

@@ -45,6 +45,8 @@ namespace PaviseApp
 
         internal const string UllUnsupKey = "NvUllUnsupDrv";
 
+        private const char AppliedSep = '~';
+
         internal const string DriverFailureAction = "NvDriverProfile";
 
         private const string InvalidJournalReason = "NVIDIA recovery journal is unreadable or invalid";
@@ -231,7 +233,8 @@ namespace PaviseApp
         {
             try
             {
-                foreach (GpuAdapter gpuAdapter in GpuInventory.Adapters())
+                GpuAdapter[] adapters = GpuInventory.Adapters();
+                foreach (GpuAdapter gpuAdapter in adapters)
                 {
                     if (gpuAdapter.Vendor == GpuVendor.Nvidia && IsDlssCapableName(gpuAdapter.Name))
                     {
@@ -295,7 +298,8 @@ namespace PaviseApp
             uint minimumDriver = 0u;
             try
             {
-                foreach (GpuAdapter gpuAdapter in GpuInventory.Adapters())
+                GpuAdapter[] adapters = GpuInventory.Adapters();
+                foreach (GpuAdapter gpuAdapter in adapters)
                 {
                     if (gpuAdapter.Vendor == GpuVendor.Nvidia && !string.IsNullOrEmpty(gpuAdapter.Name))
                     {
@@ -341,34 +345,34 @@ namespace PaviseApp
 
         internal static List<KeyValuePair<string, uint>> BuildDesired(NvGamePlan plan)
         {
-            List<KeyValuePair<string, uint>> keyValuePairs = new List<KeyValuePair<string, uint>>();
+            List<KeyValuePair<string, uint>> list = new List<KeyValuePair<string, uint>>();
             if (plan == null)
             {
-                return keyValuePairs;
+                return list;
             }
             if (plan.MaxPerf)
             {
-                keyValuePairs.Add(new KeyValuePair<string, uint>("pstate", 1u));
+                list.Add(new KeyValuePair<string, uint>("pstate", 1u));
                 if (!plan.Automatic)
                 {
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("forcep2", 0u));
+                    list.Add(new KeyValuePair<string, uint>("forcep2", 0u));
                 }
             }
             string lowLatMode = plan.LowLatMode;
             if (lowLatMode == "on" || lowLatMode == "ultra")
             {
-                keyValuePairs.Add(new KeyValuePair<string, uint>("prerender", 1u));
+                list.Add(new KeyValuePair<string, uint>("prerender", 1u));
                 if (lowLatMode == "ultra" && !UltraDriverGone())
                 {
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("ullenable", 1u));
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("lowlatcpl", 2u));
+                    list.Add(new KeyValuePair<string, uint>("ullenable", 1u));
+                    list.Add(new KeyValuePair<string, uint>("lowlatcpl", 2u));
                 }
             }
             if (plan.SmoothMotion)
             {
                 if (SmoothMotionSupported())
                 {
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("smooth", 1u));
+                    list.Add(new KeyValuePair<string, uint>("smooth", 1u));
                 }
                 else if (!smoothGateLogged)
                 {
@@ -378,18 +382,18 @@ namespace PaviseApp
             }
             if (plan.ShaderCacheMax)
             {
-                keyValuePairs.Add(new KeyValuePair<string, uint>("shaderon", 1u));
-                keyValuePairs.Add(new KeyValuePair<string, uint>("shadercache", uint.MaxValue));
+                list.Add(new KeyValuePair<string, uint>("shaderon", 1u));
+                list.Add(new KeyValuePair<string, uint>("shadercache", uint.MaxValue));
             }
             if (plan.WindowedVrr)
             {
-                keyValuePairs.Add(new KeyValuePair<string, uint>("vrrapp", 0u));
+                list.Add(new KeyValuePair<string, uint>("vrrapp", 0u));
             }
             if (plan.Rebar)
             {
-                keyValuePairs.Add(new KeyValuePair<string, uint>("rebarfeat", 1u));
-                keyValuePairs.Add(new KeyValuePair<string, uint>("rebaropt", 1u));
-                keyValuePairs.Add(new KeyValuePair<string, uint>("rebarsize", 1073741824u));
+                list.Add(new KeyValuePair<string, uint>("rebarfeat", 1u));
+                list.Add(new KeyValuePair<string, uint>("rebaropt", 1u));
+                list.Add(new KeyValuePair<string, uint>("rebarsize", 1073741824u));
             }
             string dlssMode = plan.DlssMode;
             switch (dlssMode)
@@ -399,8 +403,8 @@ namespace PaviseApp
             case "k":
                 if (DlssOverrideSupported())
                 {
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("dlssovr", 1u));
-                    keyValuePairs.Add(new KeyValuePair<string, uint>("dlsspreset", (dlssMode == "j") ? 10u : ((dlssMode == "k") ? 11u : 16777215u)));
+                    list.Add(new KeyValuePair<string, uint>("dlssovr", 1u));
+                    list.Add(new KeyValuePair<string, uint>("dlsspreset", (dlssMode == "j") ? 10u : ((dlssMode == "k") ? 11u : 16777215u)));
                 }
                 else if (!dlssGateLogged)
                 {
@@ -409,7 +413,7 @@ namespace PaviseApp
                 }
                 break;
             }
-            return keyValuePairs;
+            return list;
         }
 
         internal static string FormatDriver(uint version)
@@ -471,7 +475,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (string s in stored.Substring(matchIndex + 1).Split(','))
+            string[] substringParts = stored.Substring(matchIndex + 1).Split(',');
+            foreach (string s in substringParts)
             {
                 uint result;
                 if (uint.TryParse(s, out result) && result == current)
@@ -495,13 +500,13 @@ namespace PaviseApp
 
         private static string SatSignature(List<KeyValuePair<string, uint>> desired)
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (KeyValuePair<string, uint> item in desired)
             {
-                texts.Add(item.Key + "=" + item.Value);
+                list.Add(item.Key + "=" + item.Value);
             }
-            texts.Sort(StringComparer.Ordinal);
-            return "d" + CurrentDriverVersion() + "|" + string.Join(",", texts.ToArray());
+            list.Sort(StringComparer.Ordinal);
+            return "d" + CurrentDriverVersion() + "|" + string.Join(",", list.ToArray());
         }
 
         public static List<string> ApplyForGame(string exePath, NvGamePlan plan)
@@ -604,9 +609,9 @@ namespace PaviseApp
             {
                 return AddToList(exeName);
             }
-            List<string> splitSnapshot = new List<string>(Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
-            splitSnapshot.RemoveAll((string game) => string.Equals(game, exeName, StringComparison.OrdinalIgnoreCase));
-            return Settings.SaveStrDurable("NvDrsList", string.Join(";", splitSnapshot.ToArray()));
+            List<string> list = new List<string>(Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            list.RemoveAll((string game) => string.Equals(game, exeName, StringComparison.OrdinalIgnoreCase));
+            return Settings.SaveStrDurable("NvDrsList", string.Join(";", list.ToArray()));
         }
 
         private static bool RestoreGameKeys(IntPtr session, IntPtr profile, string exeName, Dictionary<string, string> snapshot, List<string> keys, string action, bool force)
@@ -620,42 +625,42 @@ namespace PaviseApp
                 ReportRestoreSchedule(exeName, action);
                 return false;
             }
-            List<string> currentKeys = new List<string>();
-            HashSet<string> candidateKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<string> list = new List<string>();
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool sessionChanged = false;
             bool restoreGameKeysSucceeded = true;
             try
             {
                 foreach (string key in keys)
                 {
-                    string currentSnapshot;
-                    if (!snapshot.TryGetValue(key, out currentSnapshot))
+                    string value;
+                    if (!snapshot.TryGetValue(key, out value))
                     {
                         continue;
                     }
-                    uint originalSettingValue;
-                    int dwordOf = TryGetDwordOf(session, profile, key, out originalSettingValue);
+                    uint value2;
+                    int dwordOf = TryGetDwordOf(session, profile, key, out value2);
                     if (dwordOf < 0)
                     {
                         restoreGameKeysSucceeded = false;
                         continue;
                     }
                     uint applied;
-                    if (!force && TrySnapApplied(currentSnapshot, out applied) && (dwordOf == 0 || (dwordOf == 1 && !MatchesApplied(currentSnapshot, originalSettingValue))))
+                    if (!force && TrySnapApplied(value, out applied) && (dwordOf == 0 || (dwordOf == 1 && !MatchesApplied(value, value2))))
                     {
-                        currentKeys.Add(key);
-                        candidateKeys.Add(key);
+                        list.Add(key);
+                        hashSet.Add(key);
                         continue;
                     }
-                    string originalSetting = SnapOrig(currentSnapshot);
+                    string originalSetting = SnapOrig(value);
                     bool alreadyRestored = originalSetting == "absent" ? dwordOf == 0
-                        : dwordOf == 1 && originalSettingValue == ParseUInt(originalSetting);
+                        : dwordOf == 1 && value2 == ParseUInt(originalSetting);
                     if (alreadyRestored)
                     {
-                        currentKeys.Add(key);
+                        list.Add(key);
                         continue;
                     }
-                    if (!force && (key == "pstate" || key == "forcep2") && !TrySnapApplied(currentSnapshot, out applied))
+                    if (!force && (key == "pstate" || key == "forcep2") && !TrySnapApplied(value, out applied))
                     {
                         restoreGameKeysSucceeded = false;
                         continue;
@@ -668,7 +673,7 @@ namespace PaviseApp
                         restoreGameKeysSucceeded = false;
                         continue;
                     }
-                    currentKeys.Add(key);
+                    list.Add(key);
                     sessionChanged = true;
                 }
                 if (sessionChanged && !Driver.SaveSession(session))
@@ -676,38 +681,38 @@ namespace PaviseApp
                     ScheduleRestore(exeName, action);
                     return false;
                 }
-                List<string> texts = new List<string>();
-                foreach (string currentKey in currentKeys)
+                List<string> list2 = new List<string>();
+                foreach (string item in list)
                 {
-                    string stored = snapshot[currentKey];
-                    uint readbackValue;
-                    int dwordOf2 = TryGetDwordOf(session, profile, currentKey, out readbackValue);
+                    string stored = snapshot[item];
+                    uint value3;
+                    int dwordOf2 = TryGetDwordOf(session, profile, item, out value3);
                     string originalSetting = SnapOrig(stored);
-                    if (!candidateKeys.Contains(currentKey))
+                    if (!hashSet.Contains(item))
                     {
                         bool restoreConfirmed = originalSetting == "absent" ? dwordOf2 == 0
-                            : dwordOf2 == 1 && readbackValue == ParseUInt(originalSetting);
+                            : dwordOf2 == 1 && value3 == ParseUInt(originalSetting);
                         if (!restoreConfirmed)
                         {
                             restoreGameKeysSucceeded = false;
                             continue;
                         }
                     }
-                    texts.Add(currentKey);
+                    list2.Add(item);
                 }
-                Dictionary<string, string> snapshotSnapshot = new Dictionary<string, string>(snapshot, StringComparer.OrdinalIgnoreCase);
-                foreach (string text in texts)
+                Dictionary<string, string> dictionary = new Dictionary<string, string>(snapshot, StringComparer.OrdinalIgnoreCase);
+                foreach (string item2 in list2)
                 {
-                    snapshotSnapshot.Remove(text);
+                    dictionary.Remove(item2);
                 }
-                if (!SaveGameSnapshot(exeName, snapshotSnapshot))
+                if (!SaveGameSnapshot(exeName, dictionary))
                 {
                     ScheduleRestore(exeName, action);
                     return false;
                 }
-                foreach (string currentText in texts)
+                foreach (string item3 in list2)
                 {
-                    snapshot.Remove(currentText);
+                    snapshot.Remove(item3);
                 }
                 Settings.SaveStr(SatKey(exeName), "");
                 if (restoreGameKeysSucceeded)
@@ -733,26 +738,27 @@ namespace PaviseApp
 
         private static List<string> SnapshotKeysFor(Dictionary<string, string> snapshot, string action)
         {
-            List<string> keys = new List<string>();
+            List<string> list = new List<string>();
             foreach (string key in snapshot.Keys)
             {
                 if (FailureActionFor(key) == action)
                 {
-                    keys.Add(key);
+                    list.Add(key);
                 }
             }
-            return keys;
+            return list;
         }
 
         private static bool TryReadGameSnapshot(string exeName, out Dictionary<string, string> snapshot)
         {
             snapshot = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            string text;
-            if (!Settings.TryLoadStr("NvDrs_" + exeName, out text) || text == null || text.Length > 262144)
+            string value;
+            if (!Settings.TryLoadStr("NvDrs_" + exeName, out value) || value == null || value.Length > 262144)
             {
                 return false;
             }
-            foreach (string entryText in text.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            string[] valueParts = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string entryText in valueParts)
             {
                 int matchIndex = entryText.IndexOf('=');
                 if (matchIndex <= 0 || matchIndex == entryText.Length - 1)
@@ -773,7 +779,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    foreach (string s in substringParts)
+                    string[] textEntries = substringParts;
+                    foreach (string s in textEntries)
                     {
                         if (!uint.TryParse(s, out result))
                         {
@@ -818,7 +825,7 @@ namespace PaviseApp
                     if (!Settings.TryLoadStr(SnapPrefix + fileName, out raw) || raw.Length > 0) ScheduleRestore(fileName, DriverFailureAction);
                     throw;
                 }
-                List<KeyValuePair<string, uint>> keyValuePairs = ((plan == null || plan.Empty) ? new List<KeyValuePair<string, uint>>() : BuildDesired(plan));
+                List<KeyValuePair<string, uint>> list = ((plan == null || plan.Empty) ? new List<KeyValuePair<string, uint>>() : BuildDesired(plan));
                 Dictionary<string, string> snapshot;
                 if (!TryReadGameSnapshot(fileName, out snapshot))
                 {
@@ -827,36 +834,36 @@ namespace PaviseApp
                     retryLater = true;
                     return null;
                 }
-                if (keyValuePairs.Count == 0 && snapshot.Count == 0)
+                if (list.Count == 0 && snapshot.Count == 0)
                 {
                     return null;
                 }
-                Dictionary<string, List<KeyValuePair<string, uint>>> listsByKey = new Dictionary<string, List<KeyValuePair<string, uint>>>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, uint> keyValuePairEntry in keyValuePairs)
+                Dictionary<string, List<KeyValuePair<string, uint>>> dictionary = new Dictionary<string, List<KeyValuePair<string, uint>>>(StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, uint> item in list)
                 {
-                    string key = FailureActionFor(keyValuePairEntry.Key);
-                    List<KeyValuePair<string, uint>> currentList;
-                    if (!listsByKey.TryGetValue(key, out currentList))
+                    string key = FailureActionFor(item.Key);
+                    List<KeyValuePair<string, uint>> value;
+                    if (!dictionary.TryGetValue(key, out value))
                     {
-                        currentList = (listsByKey[key] = new List<KeyValuePair<string, uint>>());
+                        value = (dictionary[key] = new List<KeyValuePair<string, uint>>());
                     }
-                    currentList.Add(keyValuePairEntry);
+                    value.Add(item);
                 }
                 uint driverVersion = CurrentDriverVersion();
                 string environmentContext = "NVIDIA DRS | " + ((driverVersion == 0) ? "GPU/driver context unavailable" : ("driver " + FormatDriver(driverVersion)));
                 bool driverAllowed = !ActionFailureStore.IsBlocked("NvDriverProfile", fileName);
                 bool hasEligibleSetting = false;
-                foreach (string key4 in listsByKey.Keys)
+                foreach (string key4 in dictionary.Keys)
                 {
                     hasEligibleSetting |= !ActionFailureStore.IsBlocked(key4, fileName);
                 }
-                string configurationSignature = SatSignature(keyValuePairs);
+                string configurationSignature = SatSignature(list);
                 bool allSettingsEligible = driverAllowed;
-                foreach (string key5 in listsByKey.Keys)
+                foreach (string key5 in dictionary.Keys)
                 {
                     allSettingsEligible &= !ActionFailureStore.IsBlocked(key5, fileName);
                 }
-                if (keyValuePairs.Count > 0 && allSettingsEligible && Settings.LoadStr(SatKey(fileName), "") == configurationSignature)
+                if (list.Count > 0 && allSettingsEligible && Settings.LoadStr(SatKey(fileName), "") == configurationSignature)
                 {
                     return new List<string>();
                 }
@@ -911,18 +918,18 @@ namespace PaviseApp
                         return null;
                     }
                     List<string> failedSettings = new List<string>();
-                    HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (KeyValuePair<string, uint> currentKeyValuePairEntry in keyValuePairs)
+                    HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (KeyValuePair<string, uint> item2 in list)
                     {
-                        if (canApply && !ActionFailureStore.IsBlocked(FailureActionFor(currentKeyValuePairEntry.Key), fileName))
+                        if (canApply && !ActionFailureStore.IsBlocked(FailureActionFor(item2.Key), fileName))
                         {
-                            textsSet.Add(currentKeyValuePairEntry.Key);
+                            hashSet.Add(item2.Key);
                         }
                     }
                     Dictionary<string, List<string>> storedSettingGroups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
                     foreach (string key6 in snapshot.Keys)
                     {
-                        if (!textsSet.Contains(key6))
+                        if (!hashSet.Contains(key6))
                         {
                             string key2 = FailureActionFor(key6);
                             List<string> storedGroup;
@@ -933,44 +940,44 @@ namespace PaviseApp
                             storedGroup.Add(key6);
                         }
                     }
-                    foreach (KeyValuePair<string, List<string>> storedSettingGroupEntry in storedSettingGroups)
+                    foreach (KeyValuePair<string, List<string>> item3 in storedSettingGroups)
                     {
-                        bool restoreDueSucceeded = RestoreDue(fileName, storedSettingGroupEntry.Key);
-                        if (!RestoreGameKeys(session, profile, fileName, snapshot, storedSettingGroupEntry.Value, storedSettingGroupEntry.Key, false))
+                        bool restoreDueSucceeded = RestoreDue(fileName, item3.Key);
+                        if (!RestoreGameKeys(session, profile, fileName, snapshot, item3.Value, item3.Key, false))
                         {
                             if (restoreDueSucceeded)
                             {
-                                ActionFailureStore.Trip(storedSettingGroupEntry.Key, fileName, "NVIDIA stale setting recovery remains incomplete", environmentContext);
+                                ActionFailureStore.Trip(item3.Key, fileName, "NVIDIA stale setting recovery remains incomplete", environmentContext);
                             }
-                            failedSettings.AddRange(storedSettingGroupEntry.Value);
+                            failedSettings.AddRange(item3.Value);
                             retryLater = true;
                         }
                         else
                         {
-                            ActionFailureStore.CancelApply(storedSettingGroupEntry.Key, fileName);
+                            ActionFailureStore.CancelApply(item3.Key, fileName);
                         }
                     }
-                    foreach (KeyValuePair<string, List<KeyValuePair<string, uint>>> listEntry in listsByKey)
+                    foreach (KeyValuePair<string, List<KeyValuePair<string, uint>>> item4 in dictionary)
                     {
-                        string key3 = listEntry.Key;
+                        string key3 = item4.Key;
                         if (!canApply || ActionFailureStore.IsBlocked(key3, fileName))
                         {
-                            foreach (KeyValuePair<string, uint> collectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item5 in item4.Value)
                             {
-                                if (!failedSettings.Contains(collectionEntry.Key))
+                                if (!failedSettings.Contains(item5.Key))
                                 {
-                                    failedSettings.Add(collectionEntry.Key);
+                                    failedSettings.Add(item5.Key);
                                 }
                             }
                             continue;
                         }
                         if (!ActionFailureStore.TryBeginApply(key3, fileName, out reason))
                         {
-                            foreach (KeyValuePair<string, uint> currentCollectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item7 in item4.Value)
                             {
-                                if (!failedSettings.Contains(currentCollectionEntry.Key))
+                                if (!failedSettings.Contains(item7.Key))
                                 {
-                                    failedSettings.Add(currentCollectionEntry.Key);
+                                    failedSettings.Add(item7.Key);
                                 }
                             }
                             continue;
@@ -983,19 +990,19 @@ namespace PaviseApp
                         HashSet<string> confirmedSettings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         try
                         {
-                            foreach (KeyValuePair<string, uint> candidateCollectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item8 in item4.Value)
                             {
-                                if (!snapshot.ContainsKey(candidateCollectionEntry.Key))
+                                if (!snapshot.ContainsKey(item8.Key))
                                 {
-                                    uint previousSettingValue;
-                                    int dwordOf = TryGetDwordOf(session, profile, candidateCollectionEntry.Key, out previousSettingValue);
+                                    uint value3;
+                                    int dwordOf = TryGetDwordOf(session, profile, item8.Key, out value3);
                                     if (dwordOf < 0)
                                     {
                                         settingFailed = true;
-                                        message = "NVIDIA original setting could not be read: " + candidateCollectionEntry.Key;
+                                        message = "NVIDIA original setting could not be read: " + item8.Key;
                                         break;
                                     }
-                                    snapshot[candidateCollectionEntry.Key] = ((dwordOf == 1) ? previousSettingValue.ToString() : "absent");
+                                    snapshot[item8.Key] = ((dwordOf == 1) ? value3.ToString() : "absent");
                                 }
                             }
                             if (!settingFailed && !SaveGameSnapshot(fileName, snapshot))
@@ -1005,54 +1012,54 @@ namespace PaviseApp
                                 RestoreGameKeys(session, profile, fileName, snapshot, SnapshotKeysFor(snapshot, key3), key3, false);
                                 canApply = false;
                                 retryLater = true;
-                                foreach (KeyValuePair<string, uint> resolvedCollectionEntry in listEntry.Value)
+                                foreach (KeyValuePair<string, uint> item9 in item4.Value)
                                 {
-                                    if (!failedSettings.Contains(resolvedCollectionEntry.Key))
+                                    if (!failedSettings.Contains(item9.Key))
                                     {
-                                        failedSettings.Add(resolvedCollectionEntry.Key);
+                                        failedSettings.Add(item9.Key);
                                     }
                                 }
                                 continue;
                             }
                             if (!settingFailed)
                             {
-                                foreach (KeyValuePair<string, uint> selectedCollectionEntry in listEntry.Value)
+                                foreach (KeyValuePair<string, uint> item10 in item4.Value)
                                 {
-                                    uint readbackValue;
-                                    int dwordOf2 = TryGetDwordOf(session, profile, selectedCollectionEntry.Key, out readbackValue);
+                                    uint value4;
+                                    int dwordOf2 = TryGetDwordOf(session, profile, item10.Key, out value4);
                                     if (dwordOf2 < 0)
                                     {
                                         settingFailed = true;
-                                        message = "NVIDIA current setting became unreadable: " + selectedCollectionEntry.Key;
+                                        message = "NVIDIA current setting became unreadable: " + item10.Key;
                                         break;
                                     }
-                                    if (dwordOf2 == 1 && readbackValue == selectedCollectionEntry.Value)
+                                    if (dwordOf2 == 1 && value4 == item10.Value)
                                     {
                                         continue;
                                     }
-                                    snapshot[selectedCollectionEntry.Key] = PrepareWriteReceipt(snapshot[selectedCollectionEntry.Key], selectedCollectionEntry.Value);
+                                    snapshot[item10.Key] = PrepareWriteReceipt(snapshot[item10.Key], item10.Value);
                                     if (!SaveGameSnapshot(fileName, snapshot))
                                     {
-                                        throw new IOException("NVIDIA write-ahead receipt could not be saved: " + selectedCollectionEntry.Key);
+                                        throw new IOException("NVIDIA write-ahead receipt could not be saved: " + item10.Key);
                                     }
                                     force = true;
                                     int status;
-                                    if (SetDwordOf(session, profile, selectedCollectionEntry.Key, selectedCollectionEntry.Value, out status))
+                                    if (SetDwordOf(session, profile, item10.Key, item10.Value, out status))
                                     {
                                         settingChanged = true;
                                         continue;
                                     }
                                     if (status == -160)
                                     {
-                                        confirmedSettings.Add(selectedCollectionEntry.Key);
-                                        if (selectedCollectionEntry.Key == "ullenable" || selectedCollectionEntry.Key == "lowlatcpl")
+                                        confirmedSettings.Add(item10.Key);
+                                        if (item10.Key == "ullenable" || item10.Key == "lowlatcpl")
                                         {
                                             MarkUltraGone();
                                         }
                                         continue;
                                     }
                                     settingFailed = true;
-                                    message = "NVIDIA setting write failed: " + selectedCollectionEntry.Key + " (" + status + ")";
+                                    message = "NVIDIA setting write failed: " + item10.Key + " (" + status + ")";
                                     break;
                                 }
                             }
@@ -1070,39 +1077,39 @@ namespace PaviseApp
                                 }
                                 canApply = false;
                                 retryLater = true;
-                                foreach (KeyValuePair<string, uint> workingCollectionEntry in listEntry.Value)
+                                foreach (KeyValuePair<string, uint> item11 in item4.Value)
                                 {
-                                    if (!failedSettings.Contains(workingCollectionEntry.Key))
+                                    if (!failedSettings.Contains(item11.Key))
                                     {
-                                        failedSettings.Add(workingCollectionEntry.Key);
+                                        failedSettings.Add(item11.Key);
                                     }
                                 }
                                 continue;
                             }
                             if (!settingFailed)
                             {
-                                foreach (KeyValuePair<string, uint> pendingCollectionEntry in listEntry.Value)
+                                foreach (KeyValuePair<string, uint> item12 in item4.Value)
                                 {
-                                    uint readbackValue;
-                                    if (!confirmedSettings.Contains(pendingCollectionEntry.Key) && (TryGetDwordOf(session, profile, pendingCollectionEntry.Key, out readbackValue) != 1 || readbackValue != pendingCollectionEntry.Value))
+                                    uint value5;
+                                    if (!confirmedSettings.Contains(item12.Key) && (TryGetDwordOf(session, profile, item12.Key, out value5) != 1 || value5 != item12.Value))
                                     {
                                         settingFailed = true;
-                                        message = "NVIDIA setting verification failed: " + pendingCollectionEntry.Key;
+                                        message = "NVIDIA setting verification failed: " + item12.Key;
                                     }
                                 }
                             }
-                            if (!settingFailed && confirmedSettings.Count == listEntry.Value.Count)
+                            if (!settingFailed && confirmedSettings.Count == item4.Value.Count)
                             {
                                 settingApplied = true;
                             }
                             if (!settingFailed && !settingApplied)
                             {
-                                foreach (KeyValuePair<string, uint> sourceCollectionEntry in listEntry.Value)
+                                foreach (KeyValuePair<string, uint> item13 in item4.Value)
                                 {
-                                    string currentSnapshot;
-                                    if (!confirmedSettings.Contains(sourceCollectionEntry.Key) && snapshot.TryGetValue(sourceCollectionEntry.Key, out currentSnapshot))
+                                    string value6;
+                                    if (!confirmedSettings.Contains(item13.Key) && snapshot.TryGetValue(item13.Key, out value6))
                                     {
-                                        snapshot[sourceCollectionEntry.Key] = SnapOrig(currentSnapshot) + '~' + sourceCollectionEntry.Value;
+                                        snapshot[item13.Key] = SnapOrig(value6) + '~' + item13.Value;
                                     }
                                 }
                                 if (!SaveGameSnapshot(fileName, snapshot))
@@ -1136,11 +1143,11 @@ namespace PaviseApp
                             {
                                 ActionFailureStore.Trip(key3, fileName, message + "; rollback remains incomplete", environmentContext);
                             }
-                            foreach (KeyValuePair<string, uint> targetCollectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item14 in item4.Value)
                             {
-                                if (!failedSettings.Contains(targetCollectionEntry.Key))
+                                if (!failedSettings.Contains(item14.Key))
                                 {
-                                    failedSettings.Add(targetCollectionEntry.Key);
+                                    failedSettings.Add(item14.Key);
                                 }
                             }
                             Logger.Warn(key3 + " | " + fileName + " | " + message);
@@ -1156,11 +1163,11 @@ namespace PaviseApp
                             {
                                 ActionFailureStore.Trip(key3, fileName, "NVIDIA recovery after skip or cancellation remains incomplete", environmentContext);
                             }
-                            foreach (KeyValuePair<string, uint> nextCollectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item15 in item4.Value)
                             {
-                                if (!failedSettings.Contains(nextCollectionEntry.Key))
+                                if (!failedSettings.Contains(item15.Key))
                                 {
-                                    failedSettings.Add(nextCollectionEntry.Key);
+                                    failedSettings.Add(item15.Key);
                                 }
                             }
                         }
@@ -1174,20 +1181,20 @@ namespace PaviseApp
                             {
                                 ActionFailureStore.Trip(key3, fileName, "NVIDIA completion could not be persisted and rollback remains incomplete", environmentContext);
                             }
-                            foreach (KeyValuePair<string, uint> previousCollectionEntry in listEntry.Value)
+                            foreach (KeyValuePair<string, uint> item16 in item4.Value)
                             {
-                                if (!failedSettings.Contains(previousCollectionEntry.Key))
+                                if (!failedSettings.Contains(item16.Key))
                                 {
-                                    failedSettings.Add(previousCollectionEntry.Key);
+                                    failedSettings.Add(item16.Key);
                                 }
                             }
                             retryLater = true;
                         }
-                        foreach (string confirmedSetting in confirmedSettings)
+                        foreach (string item17 in confirmedSettings)
                         {
-                            if (!failedSettings.Contains(confirmedSetting))
+                            if (!failedSettings.Contains(item17))
                             {
-                                failedSettings.Add(confirmedSetting);
+                                failedSettings.Add(item17);
                             }
                         }
                     }
@@ -1201,7 +1208,7 @@ namespace PaviseApp
                             ActionFailureStore.Trip("NvDriverProfile", fileName, "NVIDIA session completion could not be persisted and rollback remains incomplete", environmentContext);
                         }
                     }
-                    bool configurationSatisfied = failedSettings.Count == 0 && keyValuePairs.Count > 0 && canApply;
+                    bool configurationSatisfied = failedSettings.Count == 0 && list.Count > 0 && canApply;
                     Settings.SaveStr(SatKey(fileName), configurationSatisfied ? configurationSignature : "");
                     return failedSettings;
                 }
@@ -1251,6 +1258,18 @@ namespace PaviseApp
                     }
                 }
             }
+        }
+
+        private static bool DesiredHasDlss(List<KeyValuePair<string, uint>> desired)
+        {
+            foreach (KeyValuePair<string, uint> item in desired)
+            {
+                if (item.Key == "dlssovr")
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         internal static string DlssText(string mode)
@@ -1380,7 +1399,8 @@ namespace PaviseApp
             lock (sync)
             {
                 string[] loadStrParts = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string entryText in loadStrParts)
+                string[] textEntries = loadStrParts;
+                foreach (string entryText in textEntries)
                 {
                     if (ParseSnapshot(Settings.LoadStr("NvDrs_" + entryText, "")).ContainsKey(key))
                     {
@@ -1402,9 +1422,9 @@ namespace PaviseApp
                 if (indexed.Length != all.Count || all.Count > 4096 || names.Length > 4096) return false;
                 foreach (string name in names)
                 {
-                    string text;
-                    if (!Settings.TryLoadStr(name, out text)) return false;
-                    if (!string.IsNullOrEmpty(text)) all.Add(name.Substring("NvDrs_".Length));
+                    string value;
+                    if (!Settings.TryLoadStr(name, out value)) return false;
+                    if (!string.IsNullOrEmpty(value)) all.Add(name.Substring("NvDrs_".Length));
                 }
                 foreach (string executable in all)
                 {
@@ -1434,7 +1454,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (GpuAdapter gpuAdapter in adapters)
+            GpuAdapter[] gpuAdapterItems = adapters;
+            foreach (GpuAdapter gpuAdapter in gpuAdapterItems)
             {
                 if (gpuAdapter.Vendor == GpuVendor.Nvidia)
                 {
@@ -1442,6 +1463,27 @@ namespace PaviseApp
                 }
             }
             return true;
+        }
+
+        private static int DropAllSnapshots()
+        {
+            lock (sync)
+            {
+                string[] loadStrParts = Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                int processedCount = 0;
+                string[] textEntries = loadStrParts;
+                foreach (string entryText in textEntries)
+                {
+                    if (Settings.LoadStr("NvDrs_" + entryText, "").Length > 0)
+                    {
+                        processedCount++;
+                    }
+                    Settings.SaveStr("NvDrs_" + entryText, "");
+                    Settings.SaveStr(SatKey(entryText), "");
+                }
+                Settings.SaveStr("NvDrsList", "");
+                return processedCount;
+            }
         }
 
         private static bool RestoreDword(IntPtr session, IntPtr profile, string key, string orig)
@@ -1466,45 +1508,53 @@ namespace PaviseApp
 
         internal static Dictionary<string, string> ParseSnapshot(string raw)
         {
-            Dictionary<string, string> substringsBySubstring = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrEmpty(raw))
             {
-                return substringsBySubstring;
+                return dictionary;
             }
-            foreach (string entryText in raw.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            string[] rawParts = raw.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string entryText in rawParts)
             {
                 int matchIndex = entryText.IndexOf('=');
                 if (matchIndex > 0)
                 {
-                    substringsBySubstring[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
+                    dictionary[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
                 }
             }
-            return substringsBySubstring;
+            return dictionary;
         }
 
         internal static string SerializeSnapshot(Dictionary<string, string> map)
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (KeyValuePair<string, string> item in map)
             {
-                texts.Add(item.Key + "=" + item.Value);
+                list.Add(item.Key + "=" + item.Value);
             }
-            texts.Sort(StringComparer.OrdinalIgnoreCase);
-            return string.Join(";", texts.ToArray());
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join(";", list.ToArray());
         }
 
         private static bool AddToList(string exeName)
         {
-            List<string> splitSnapshot = new List<string>(Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
-            foreach (string item in splitSnapshot)
+            List<string> list = new List<string>(Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            foreach (string item in list)
             {
                 if (string.Equals(item, exeName, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
             }
-            splitSnapshot.Add(exeName);
-            return Settings.SaveStrDurable("NvDrsList", string.Join(";", splitSnapshot.ToArray()));
+            list.Add(exeName);
+            return Settings.SaveStrDurable("NvDrsList", string.Join(";", list.ToArray()));
+        }
+
+        private static void RemoveFromList(string exeName)
+        {
+            List<string> list = new List<string>(Settings.LoadStr("NvDrsList", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            list.RemoveAll((string g) => string.Equals(g, exeName, StringComparison.OrdinalIgnoreCase));
+            Settings.SaveStr("NvDrsList", string.Join(";", list.ToArray()));
         }
 
         internal static bool TryGameNvDebt(out string[] debt)
@@ -1513,44 +1563,45 @@ namespace PaviseApp
             {
                 debt = new string[0];
                 string[] names;
-                string text;
-                if (!Settings.TryLoadStoredNames("NvDrs_", out names) || !Settings.TryLoadStr("NvDrsList", out text))
+                string value;
+                if (!Settings.TryLoadStoredNames("NvDrs_", out names) || !Settings.TryLoadStr("NvDrsList", out value))
                 {
                     return false;
                 }
-                string[] valueParts = text.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                HashSet<string> valuePartsSnapshot = new HashSet<string>(valueParts, StringComparer.OrdinalIgnoreCase);
-                if (valuePartsSnapshot.Count != valueParts.Length || valuePartsSnapshot.Count > 4096 || names.Length > 4096)
+                string[] valueParts = value.Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                HashSet<string> hashSet = new HashSet<string>(valueParts, StringComparer.OrdinalIgnoreCase);
+                if (hashSet.Count != valueParts.Length || hashSet.Count > 4096 || names.Length > 4096)
                 {
                     return false;
                 }
-                foreach (string entryText in names)
+                string[] namesSnapshot = names;
+                foreach (string entryText in namesSnapshot)
                 {
-                    string substring = entryText.Substring("NvDrs_".Length);
-                    string currentText;
-                    if (!valuePartsSnapshot.Contains(substring) && (!Settings.TryLoadStr(entryText, out currentText) || currentText.Length != 0))
+                    string item = entryText.Substring("NvDrs_".Length);
+                    string value2;
+                    if (!hashSet.Contains(item) && (!Settings.TryLoadStr(entryText, out value2) || value2.Length != 0))
                     {
                         return false;
                     }
                 }
-                List<string> texts = new List<string>();
-                foreach (string currentValuePartsSnapshot in valuePartsSnapshot)
+                List<string> list = new List<string>();
+                foreach (string item2 in hashSet)
                 {
-                    if (Path.GetFileName(currentValuePartsSnapshot) != currentValuePartsSnapshot || !currentValuePartsSnapshot.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    if (Path.GetFileName(item2) != item2 || !item2.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                     {
                         return false;
                     }
                     Dictionary<string, string> snapshot;
-                    if (!TryReadGameSnapshot(currentValuePartsSnapshot, out snapshot))
+                    if (!TryReadGameSnapshot(item2, out snapshot))
                     {
                         return false;
                     }
                     if (snapshot.ContainsKey("pstate") || snapshot.ContainsKey("forcep2"))
                     {
-                        texts.Add(currentValuePartsSnapshot);
+                        list.Add(item2);
                     }
                 }
-                debt = texts.ToArray();
+                debt = list.ToArray();
                 return true;
             }
         }

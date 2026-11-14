@@ -11,9 +11,17 @@ namespace PaviseApp
 
         internal const long MaximumSampleAge = 15000000L;
 
+        // 暂停超时后旧窗口计数失效。
+        internal const long MaximumPause = 600000000L;
+
         private CoreThreadTracker tracker = new CoreThreadTracker();
 
         private ThreadTimes previous;
+
+        private bool pauseSeen;
+
+        // 仅重置基线，不产生可用于选核的观察窗口。
+        internal bool Rebased { get; private set; }
 
         private CriticalThreadHotspot[] candidates = new CriticalThreadHotspot[0];
 
@@ -43,10 +51,10 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<long> threadIds = new HashSet<long>();
+            HashSet<long> hashSet = new HashSet<long>();
             for (int i = 0; i < sample.Ids.Length; i++)
             {
-                if (sample.Ids[i] <= 0 || sample.Ids[i] > int.MaxValue || sample.Created[i] <= 0 || sample.Cpu[i] < 0 || !threadIds.Add(sample.Ids[i]))
+                if (sample.Ids[i] <= 0 || sample.Ids[i] > int.MaxValue || sample.Created[i] <= 0 || sample.Cpu[i] < 0 || !hashSet.Add(sample.Ids[i]))
                 {
                     return false;
                 }
@@ -54,44 +62,68 @@ namespace PaviseApp
             return true;
         }
 
+        // 回到前台的首窗混入了后台时段，不参与负载判定。
+        internal void MarkPaused()
+        {
+            pauseSeen = true;
+        }
+
         internal bool Observe(ThreadTimes sample, long processBirth, long now)
         {
+            Rebased = false;
             if (!Valid(sample, processBirth, now))
             {
                 Reset();
                 Detail = "unknown or over-budget thread snapshot";
                 return false;
             }
-            ThreadTimes currentThreadTimes = new ThreadTimes();
-            currentThreadTimes.Creation = sample.Creation;
-            currentThreadTimes.Ticks = sample.Ticks;
-            currentThreadTimes.ProcessCpu = sample.ProcessCpu;
-            currentThreadTimes.Ids = (long[])sample.Ids.Clone();
-            currentThreadTimes.Created = (long[])sample.Created.Clone();
-            currentThreadTimes.Cpu = (long[])sample.Cpu.Clone();
-            if (previous == null || previous.Creation != currentThreadTimes.Creation)
+            ThreadTimes threadTimes = new ThreadTimes();
+            threadTimes.Creation = sample.Creation;
+            threadTimes.Ticks = sample.Ticks;
+            threadTimes.ProcessCpu = sample.ProcessCpu;
+            threadTimes.Ids = (long[])sample.Ids.Clone();
+            threadTimes.Created = (long[])sample.Created.Clone();
+            threadTimes.Cpu = (long[])sample.Cpu.Clone();
+            ThreadTimes threadTimes2 = threadTimes;
+            if (previous == null || previous.Creation != threadTimes2.Creation)
             {
                 Reset();
-                previous = currentThreadTimes;
+                previous = threadTimes2;
                 Detail = "first original thread snapshot";
                 return true;
             }
-            if (currentThreadTimes.Ticks < previous.Ticks || currentThreadTimes.ProcessCpu < previous.ProcessCpu)
+            if (threadTimes2.Ticks < previous.Ticks || threadTimes2.ProcessCpu < previous.ProcessCpu)
             {
                 Reset();
                 Detail = "thread snapshot clock or process counter moved backwards";
                 return false;
             }
-            if (currentThreadTimes.Ticks == previous.Ticks)
+            if (threadTimes2.Ticks == previous.Ticks)
             {
                 Detail = "shared snapshot has not advanced";
                 return true;
             }
-            hotspots = (from x in tracker.Observe(previous, currentThreadTimes, 8, CriticalThreadAutoPolicy.MinimumShare)
+            if (pauseSeen)
+            {
+                pauseSeen = false;
+                if (threadTimes2.Ticks - previous.Ticks > MaximumPause)
+                {
+                    Reset();
+                    previous = threadTimes2;
+                    Detail = "paused too long; observations restarted";
+                    return true;
+                }
+                // 只换基线，保留已有窗口计数；线程是否仍然存在由绑定前的快照核对。
+                previous = threadTimes2;
+                Rebased = true;
+                Detail = "window across a pause discarded; hotspot history kept";
+                return true;
+            }
+            hotspots =(from x in tracker.Observe(previous, threadTimes2, 8, CriticalThreadAutoPolicy.MinimumShare)
                 select new CriticalThreadHotspot(x)).ToArray();
             // 手动规则在 CriticalThreadRuntimePolicy.Select 中保留独立的 35% 准入条件。
             candidates = hotspots.Take(2).ToArray();
-            previous = currentThreadTimes;
+            previous = threadTimes2;
             Detail = ((candidates.Length == 0) ? "waiting for sustained CPU hotspot windows" : "CPU hotspot candidates; roles unverified");
             return true;
         }
@@ -102,6 +134,8 @@ namespace PaviseApp
             previous = null;
             candidates = new CriticalThreadHotspot[0];
             hotspots = new CriticalThreadHotspot[0];
+            pauseSeen = false;
+            Rebased = false;
             Detail = "";
         }
     }

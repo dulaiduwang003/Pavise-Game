@@ -87,10 +87,10 @@ namespace PaviseApp
                 string key = path + "|" + fileInfo.Length + "|" + fileInfo.LastWriteTimeUtc.Ticks;
                 lock (gate)
                 {
-                    bool identity;
-                    if (identities.TryGetValue(key, out identity))
+                    bool value;
+                    if (identities.TryGetValue(key, out value))
                     {
-                        return identity;
+                        return value;
                     }
                 }
                 FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(path);

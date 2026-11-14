@@ -82,6 +82,7 @@ namespace PaviseApp
 
         private bool DeactivateCore(string reason, bool quiet)
         {
+            BackgroundRecoveryLedger recoveryAccounting = CaptureBackgroundRecoveryAccounting();
             // 较慢的会话恢复开始前，先撤销排队的电源操作。
             powerSessionEnding = true;
             InvalidatePowerPlanSession();
@@ -128,12 +129,12 @@ namespace PaviseApp
             bool runSessionRecoveryRouteSucceeded3 = RunSessionRecoveryRoute("unboost", () => UnboostGames());
             EndAutoCores();
             slowEnvAtTicks = 0L;
-            int releasedBackgroundCount = 0;
+            int deactivateCoreValue = 0;
             bool runSessionRecoveryRouteSucceeded4 = RunSessionRecoveryRoute("background", delegate
             {
-                List<int> backgroundPids = core.PidsWith(SuppressReason.Background);
-                releasedBackgroundCount += core.ReleaseReason(SuppressReason.Background);
-                foreach (int backgroundPid in backgroundPids) if (core.IsThrottled(backgroundPid)) return false;
+                List<int> list = core.PidsWith(SuppressReason.Background);
+                deactivateCoreValue += core.ReleaseReason(SuppressReason.Background);
+                foreach (int item in list) if (core.IsThrottled(item)) return false;
                 return true;
             });
             bool restoreEnvSucceeded = RestoreEnv();
@@ -142,11 +143,11 @@ namespace PaviseApp
             {
                 CrashGuard.ClearBoost();
             }
-            int deactivateCoreValueOffset = releasedBackgroundCount + gracePreReleased;
+            int deactivateCoreValueOffset = deactivateCoreValue + gracePreReleased;
             gracePreReleased = 0;
             if (!quiet || deactivateCoreValueOffset > 0)
             {
-                Logger.Log(Lang.T("log.gamemodeboost.52", 0) + reason + Lang.T("log.gamemodeboost.53", 0) + deactivateCoreValueOffset + Lang.T("log.gamemodeboost.54", 0));
+                LogBackgroundRecoveryAccounting(reason, recoveryAccounting);
             }
             lock (sync)
             {

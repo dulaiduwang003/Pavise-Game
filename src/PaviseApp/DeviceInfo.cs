@@ -53,17 +53,17 @@ namespace PaviseApp
                 gpuForDisplayResult = GpuFromWmi();
             }
             string memoryTextResult = MemoryText();
-            string[] deviceNames = new string[3]
+            string[] textEntries = new string[3]
             {
                 string.IsNullOrEmpty(cpuNameResult) ? " " : cpuNameResult,
                 string.IsNullOrEmpty(gpuForDisplayResult) ? " " : gpuForDisplayResult,
                 string.IsNullOrEmpty(memoryTextResult) ? " " : memoryTextResult
             };
-            if (deviceNames[1] != " ")
+            if (textEntries[1] != " ")
             {
-                cached = deviceNames;
+                cached = textEntries;
             }
-            return deviceNames;
+            return textEntries;
         }
 
         private static string CpuName()
@@ -101,16 +101,16 @@ namespace PaviseApp
                 {
                     using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
                     {
-                        foreach (ManagementObject currentManagementObjectCollection in managementObjectCollection)
+                        foreach (ManagementObject item in managementObjectCollection)
                         {
-                            using (currentManagementObjectCollection)
+                            using (item)
                             {
-                                string hardwareId = currentManagementObjectCollection["PNPDeviceID"] as string;
+                                string hardwareId = item["PNPDeviceID"] as string;
                                 if (!GpuInventory.IsPciAdapter(hardwareId))
                                 {
                                     continue;
                                 }
-                                string compactResult = Compact(currentManagementObjectCollection["Name"] as string);
+                                string compactResult = Compact(item["Name"] as string);
                                 if (compactResult.Length != 0)
                                 {
                                     if (GpuInventory.VendorOf(hardwareId) == GpuVendor.Nvidia)

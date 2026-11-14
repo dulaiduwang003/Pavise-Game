@@ -291,7 +291,7 @@ namespace PaviseApp
         }
 
         private static bool ApplyOrVerifyLegacy3110(Guid scheme, bool aggressive, bool write,
-            HashSet<Guid> laboratory)
+            HashSet<Guid> laboratory, IManagedPowerActiveRepair repair = null)
         {
             Legacy3110Context context = Legacy3110ContextFor(scheme, true);
             IManagedPowerPlans plans = context.Plans;
@@ -303,6 +303,7 @@ namespace PaviseApp
                 if (!current.HasValue || current.Value == scheme) return false;
             }
             int applied = 0, skipped = 0;
+            bool intact = true;
             foreach (Knob knob in Legacy3110Knobs(context))
             {
                 if (laboratory != null && knob.Sub == SubProcessor && laboratory.Contains(knob.Setting)) continue;
@@ -322,9 +323,18 @@ namespace PaviseApp
                         : NoteIntactMismatch(Legacy3110KnobName(knob) + " resolution failed");
                 if (!write)
                 {
-                    if (actualAc != ac || actualDc != dc)
-                        return NoteIntactMismatch(Legacy3110KnobName(knob) + " expected ac/dc=" + ac + "/" + dc
-                            + " actual ac/dc=" + actualAc + "/" + actualDc);
+                    if (actualAc == ac && actualDc == dc) continue;
+                    if (repair != null)
+                    {
+                        // 守护写回只改被外部动过的一侧；写入被拒时交回调用方改走重建。
+                        uint code = actualAc == ac ? 0 : repair.WriteActiveOwned(scheme, knob.Sub, knob.Setting, true, ac);
+                        if (code == 0 && actualDc != dc) code = repair.WriteActiveOwned(scheme, knob.Sub, knob.Setting, false, dc);
+                        if (code != 0) return NoteIntactMismatch(Legacy3110KnobName(knob) + " repair code=" + code);
+                        continue;
+                    }
+                    // 数值差异继续核对其余设置，一次列出外部改动的全貌。
+                    intact = NoteIntactMismatch(Legacy3110KnobName(knob) + " expected ac/dc=" + ac + "/" + dc
+                        + " actual ac/dc=" + actualAc + "/" + actualDc);
                 }
                 else
                 {
@@ -336,7 +346,7 @@ namespace PaviseApp
             }
             if (write) Logger.Info("电源 来源=" + Legacy3110Source + " 模式=" + (aggressive ? "arena" : "calm")
                 + " 配置=" + context.Profile.Tag + " 设置=" + applied + " 已跳过=" + skipped);
-            return true;
+            return intact;
         }
 
         private static string Legacy3110KnobName(Knob knob)
@@ -363,6 +373,17 @@ namespace PaviseApp
             catch (Exception error) { return NoteIntactMismatch("legacy-verify " + error.GetType().Name); }
         }
 
+        private static bool Legacy3110ManagedRepair(Guid scheme, bool aggressive, IManagedPowerActiveRepair repair)
+        {
+            try
+            {
+                HashSet<Guid> laboratory = LaboratoryPower.OwnedSettings(scheme);
+                if (laboratory == null) return NoteIntactMismatch("laboratory-ownership-unreadable");
+                return ApplyOrVerifyLegacy3110(scheme, aggressive, false, laboratory, repair);
+            }
+            catch (Exception error) { return NoteIntactMismatch("legacy-repair " + error.GetType().Name); }
+        }
+
         internal static bool SyncLegacy3110DisplayFeel(Guid source, Guid destination)
         {
             try
@@ -374,11 +395,11 @@ namespace PaviseApp
                 foreach (Guid setting in new[] { VideoBrightness, VideoDimBrightness, VideoAdaptive })
                     foreach (bool ac in new[] { true, false })
                     {
-                        uint originalValue;
-                        ManagedPowerReadState state = ReadLegacy3110Value(plans, source, SubVideo, setting, ac, out originalValue, true);
+                        uint value;
+                        ManagedPowerReadState state = ReadLegacy3110Value(plans, source, SubVideo, setting, ac, out value, true);
                         if (state == ManagedPowerReadState.ConfirmedUnregistered) continue;
                         if (state != ManagedPowerReadState.Value
-                            || !WriteLegacy3110Verified(plans, destination, SubVideo, setting, ac, originalValue))
+                            || !WriteLegacy3110Verified(plans, destination, SubVideo, setting, ac, value))
                             return PresetPreparationFailed("legacy3110 display preference read/write failed " + setting.ToString("D"));
                     }
                 return true;

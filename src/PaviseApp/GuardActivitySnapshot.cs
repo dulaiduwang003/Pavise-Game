@@ -13,25 +13,27 @@ namespace PaviseApp
         internal readonly long ForegroundVersion;
         internal readonly bool SmartSwitchedOut;
         internal readonly bool BackgroundReleasePending;
+        internal readonly bool ActivityPending;
 
         internal GuardActivitySnapshot(long session, KeyValuePair<int, long>[] processes, string[] services, bool pending = false,
-            long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false)
+            long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false, bool activityPending = false)
         {
             Session = session; Processes = processes ?? new KeyValuePair<int, long>[0];
-            Services = services ?? new string[0]; Pending = pending; CapturedTicks = DateTime.UtcNow.Ticks;
+            Services = services ?? new string[0]; Pending = pending || activityPending; CapturedTicks = DateTime.UtcNow.Ticks;
             ForegroundVersion = foregroundVersion; SmartSwitchedOut = smartSwitchedOut; BackgroundReleasePending = backgroundReleasePending;
+            ActivityPending = activityPending;
         }
 
         // 成功状态来自执行器回执；身份与存活检查复用已有扫描，界面不另行扫描。
         internal static GuardActivitySnapshot Create(long session, ProcessSnapshot scan,
             IEnumerable<KeyValuePair<int, long>> receipts, IEnumerable<string> stoppedServices,
-            long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false)
+            long foregroundVersion = 0, bool smartSwitchedOut = false, bool backgroundReleasePending = false, bool activityPending = false)
         {
             var services = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string service in stoppedServices) if (!string.IsNullOrWhiteSpace(service)) services.Add(service);
             var serviceNames = new string[services.Count]; services.CopyTo(serviceNames);
             if (scan == null || DateTime.UtcNow.Ticks - scan.TakenTicks > TimeSpan.FromSeconds(15).Ticks)
-                return new GuardActivitySnapshot(session, null, serviceNames, true, foregroundVersion, smartSwitchedOut, backgroundReleasePending);
+                return new GuardActivitySnapshot(session, null, serviceNames, true, foregroundVersion, smartSwitchedOut, backgroundReleasePending, activityPending);
             var byPid = new Dictionary<int, KeyValuePair<int, long>>();
             foreach (KeyValuePair<int, long> receipt in receipts)
             {
@@ -41,8 +43,8 @@ namespace PaviseApp
             }
             var processes = new List<KeyValuePair<int, long>>(byPid.Values);
             processes.Sort((a, b) => a.Key.CompareTo(b.Key));
-            return new GuardActivitySnapshot(session, processes.ToArray(), serviceNames, false,
-                foregroundVersion, smartSwitchedOut, backgroundReleasePending);
+            return new GuardActivitySnapshot(session, processes.ToArray(), serviceNames, activityPending,
+                foregroundVersion, smartSwitchedOut, backgroundReleasePending, activityPending);
         }
 
         internal string Summary
@@ -55,7 +57,9 @@ namespace PaviseApp
                         : PerformancePolicy.Text("检测到切出游戏，已释放后台压制", "Game switched out; background suppression released"))
                         + PerformancePolicy.Text(" · 已暂停 ", " · paused ") + Services.Length
                         + PerformancePolicy.Text(" 项服务", " services");
-                if (Pending) return PerformancePolicy.Text("正在读取本局执行结果…", "Reading this session's actions…");
+                if (Pending) return ActivityPending
+                    ? PerformancePolicy.Text("后台压制状态待核验…", "Background suppression verification pending…")
+                    : PerformancePolicy.Text("正在读取本局执行结果…", "Reading this session's actions…");
                 return PerformancePolicy.Text("已压制 ", "Suppressed ") + Processes.Length
                     + PerformancePolicy.Text(" 个进程 · 已暂停 ", " processes · paused ") + Services.Length
                     + PerformancePolicy.Text(" 项服务", " services");

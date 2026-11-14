@@ -20,6 +20,7 @@ namespace PaviseApp
         private bool RestoreCriticalThreadsLocked()
         {
             if (!Monitor.IsEntered(criticalProcessGate)) throw new InvalidOperationException("Original placement gate required");
+            if (criticalOriginalTarget != null) criticalOriginalTarget.Revoke();
             // 软提示没有恢复债务，无论硬绑定状态如何，都先处理软提示。
             string hints = criticalIdealHints.Release();
             if (hints.Length != 0) Logger.Info("线程软放置已释放： " + hints);

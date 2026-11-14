@@ -63,7 +63,7 @@ namespace PaviseApp
                     case 5: VoidDragon(seconds); break; case 7: Demon(seconds); break;
                     case 2: PlasmaStorm(seconds); break;
                     case 3: SpacetimeShock(seconds); break;
-                    case 6: Gravity(seconds, false); break;
+                    case 6: BinaryStars(seconds); break;
                     case 8: ReactorArray(seconds); break;
                     case 9: VoidPulse(seconds); break; case 10: PhotonWeave(seconds); break;
                     case 11: Gravity(seconds, true); break; case 12: NovaShock(seconds); break;
@@ -84,7 +84,9 @@ namespace PaviseApp
         private void Line(Color c, float w, params PointF[] p) { if(p.Length<2)return; pen.Color=c;pen.Width=w;g.DrawLines(pen,p); }
         private void Polygon(Color c, float w, PointF[] p) { pen.Color=c;pen.Width=w;g.DrawPolygon(pen,p); }
         private void Dot(double x,double y,double r,Color c) { brush.Color=c;g.FillEllipse(brush,(float)(x-r),(float)(y-r),(float)(r*2),(float)(r*2)); }
+        private void Box(double x,double y,double w,double h,Color c) { brush.Color=c;g.FillRectangle(brush,(float)x,(float)y,(float)w,(float)h); }
         private void Arc(double r,double a,double length,Color c,float width) { pen.Color=c;pen.Width=width;g.DrawArc(pen,(float)-r,(float)-r,(float)r*2,(float)r*2,(float)(a*180/Math.PI),(float)(length*180/Math.PI)); }
+        private void Beam(Color c,float width,params PointF[] p) { Line(A(c,28),width+9,p);Line(A(c,65),width+3,p);Line(c,width,p); }
         private void Halo(double x,double y,double radius,Color c,double alpha)
         {
 #if PAVISE_SELFTEST
@@ -93,6 +95,14 @@ namespace PaviseApp
             tint.Matrix00=c.R/255f;tint.Matrix11=c.G/255f;tint.Matrix22=c.B/255f;tint.Matrix33=(float)Math.Max(0,Math.Min(1,alpha));
             glowInk.SetColorMatrix(tint);
             g.DrawImage(glow,new Rectangle((int)(x-radius),(int)(y-radius),(int)(radius*2),(int)(radius*2)),0,0,96,96,GraphicsUnit.Pixel,glowInk);
+        }
+        private static PointF[] Regular(int n,double r,double rotation)
+        {
+            PointF[] p=new PointF[n];for(int i=0;i<n;i++)p[i]=Polar(r,rotation+i*Tau/n);return p;
+        }
+        private void Sparks(double t,int count,double radius,double speed)
+        {
+            for(int i=0;i<count;i++){double a=i*2.399963+t*speed,r=radius+(i*19%39),s=.6+(i%4)*.22;PointF p=Polar(r,a);Dot(p.X,p.Y,s,A(second,30+65*(.5+.5*Math.Sin(t+i))));}
         }
 
 private static PointF DiskPoint(double a,double r,double tilt,double turn)
@@ -160,6 +170,6 @@ private static PointF DiskPoint(double a,double r,double tilt,double turn)
             }
         }
 
-        public void Dispose() { ReleaseArmor();if(armorInverseBasis!=null){armorInverseBasis.Dispose();armorInverseBasis=null;}pen.Dispose();brush.Dispose();glow.Dispose();glowInk.Dispose(); }
+        public void Dispose() { pen.Dispose();brush.Dispose();glow.Dispose();glowInk.Dispose(); }
     }
 }

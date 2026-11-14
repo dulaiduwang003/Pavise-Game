@@ -204,10 +204,10 @@ namespace PaviseApp
             }
         }
 
-        private void QueuePreStagedNvPlan(GameProfile armed, string path, NvGamePlan plan, bool stageGpuPref)
+        private void QueuePreStagedNvPlan(GameProfile armed, string path, NvGamePlan plan)
         {
-            if (plan.Empty && !stageGpuPref) return;
-            int planKey = plan.AutomaticKey | (stageGpuPref ? 32 : 0);
+            if (plan.Empty) return;
+            int planKey = plan.AutomaticKey;
             SyncNvAutomaticPhase(path, plan);
             long session = Interlocked.Read(ref gameSessionStarts);
             string budgetKey = NvPreStageBudgetKey(path, planKey);
@@ -237,17 +237,10 @@ namespace PaviseApp
                             }
                             if (!string.IsNullOrEmpty(previous) && !string.Equals(previous, path, StringComparison.OrdinalIgnoreCase))
                                 NvDrsTweaks.RestoreAllGames();
-                            bool preferenceFailed = stageGpuPref && !GpuPrefStage.Stage(path);
-                            verified = plan.Empty && stageGpuPref && !preferenceFailed;
-                            if (!plan.Empty)
-                            {
-                                List<string> failed = ApplyNvGamePlan(path, plan, out retry, -1L, true);
-                                HandleNvTweakOutcome(failed, plan, true);
-                                retry |= failed != null && failed.Count > 0;
-                                verified = !retry && failed != null && failed.Count == 0 && NvDrsTweaks.PlanSatisfied(path, plan);
-                            }
-                            retry |= preferenceFailed;
-                            verified &= !retry;
+                            List<string> failed = ApplyNvGamePlan(path, plan, out retry, -1L, true);
+                            HandleNvTweakOutcome(failed, plan, true);
+                            retry |= failed != null && failed.Count > 0;
+                            verified = !retry && failed != null && failed.Count == 0 && NvDrsTweaks.PlanSatisfied(path, plan);
                             completed = true;
                         });
                     }

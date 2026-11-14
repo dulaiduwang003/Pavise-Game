@@ -17,6 +17,14 @@ namespace PaviseApp
             public int? Value;
         }
 
+        private const string EnumRoot = "SYSTEM\\CurrentControlSet\\Enum";
+
+        private const string MsiLeaf = "Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties";
+
+        private const string ListKey = "MsiList";
+
+        private const string FlagKey = "MsiOnByPavise";
+
         private static readonly object lk = new object();
 
         public static bool EnabledByPavise
@@ -29,26 +37,26 @@ namespace PaviseApp
 
         public static List<Candidate> Scan()
         {
-            List<Candidate> candidates = new List<Candidate>();
-            HashSet<string> textsSet;
+            List<Candidate> list = new List<Candidate>();
+            HashSet<string> hashSet;
             try
             {
-                textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string byClas in PresentDevices.ByClass(new Guid("4d36e968-e325-11ce-bfc1-08002be10318")))
+                hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string item2 in PresentDevices.ByClass(new Guid("4d36e968-e325-11ce-bfc1-08002be10318")))
                 {
-                    if (!string.IsNullOrEmpty(byClas))
+                    if (!string.IsNullOrEmpty(item2))
                     {
-                        textsSet.Add(byClas);
+                        hashSet.Add(item2);
                     }
                 }
             }
             catch
             {
-                return candidates;
+                return list;
             }
-            if (textsSet.Count == 0)
+            if (hashSet.Count == 0)
             {
-                return candidates;
+                return list;
             }
             try
             {
@@ -56,47 +64,50 @@ namespace PaviseApp
                 {
                     if (registryKey == null)
                     {
-                        return candidates;
+                        return list;
                     }
-                    foreach (string entryKey in registryKey.GetSubKeyNames())
+                    string[] subKeyNames = registryKey.GetSubKeyNames();
+                    foreach (string entryKey in subKeyNames)
                     {
-                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(entryKey))
+                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
                         {
-                            if (currentRegistryKey == null)
+                            if (registryKey2 == null)
                             {
                                 continue;
                             }
-                            foreach (string entryKey2 in currentRegistryKey.GetSubKeyNames())
+                            string[] subKeyNames2 = registryKey2.GetSubKeyNames();
+                            foreach (string entryKey2 in subKeyNames2)
                             {
-                                using (RegistryKey candidateRegistryKey = currentRegistryKey.OpenSubKey(entryKey2))
+                                using (RegistryKey registryKey3 = registryKey2.OpenSubKey(entryKey2))
                                 {
-                                    if (candidateRegistryKey == null)
+                                    if (registryKey3 == null)
                                     {
                                         continue;
                                     }
-                                    string a = candidateRegistryKey.GetValue("Class") as string;
+                                    string a = registryKey3.GetValue("Class") as string;
                                     if (!string.Equals(a, "Display", StringComparison.OrdinalIgnoreCase))
                                     {
                                         continue;
                                     }
                                     string instanceIdValue = "PCI\\" + entryKey + "\\" + entryKey2;
-                                    if (textsSet.Contains(instanceIdValue))
+                                    if (hashSet.Contains(instanceIdValue))
                                     {
-                                        Candidate currentCandidate = default(Candidate);
-                                        currentCandidate.InstanceId = instanceIdValue;
-                                        currentCandidate.Description = (candidateRegistryKey.GetValue("DeviceDesc") as string) ?? instanceIdValue;
-                                        int matchIndex = currentCandidate.Description.LastIndexOf(';');
+                                        Candidate candidate = default(Candidate);
+                                        candidate.InstanceId = instanceIdValue;
+                                        candidate.Description = (registryKey3.GetValue("DeviceDesc") as string) ?? instanceIdValue;
+                                        Candidate item = candidate;
+                                        int matchIndex = item.Description.LastIndexOf(';');
                                         if (matchIndex >= 0)
                                         {
-                                            currentCandidate.Description = currentCandidate.Description.Substring(matchIndex + 1);
+                                            item.Description = item.Description.Substring(matchIndex + 1);
                                         }
-                                        using (RegistryKey resolvedRegistryKey = candidateRegistryKey.OpenSubKey("Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties"))
+                                        using (RegistryKey registryKey4 = registryKey3.OpenSubKey("Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties"))
                                         {
-                                            currentCandidate.HasKey = resolvedRegistryKey != null;
-                                            object instance = ((resolvedRegistryKey == null) ? null : resolvedRegistryKey.GetValue("MSISupported"));
-                                            currentCandidate.Value = ((instance is int) ? new int?((int)instance) : null);
+                                            item.HasKey = registryKey4 != null;
+                                            object value = ((registryKey4 == null) ? null : registryKey4.GetValue("MSISupported"));
+                                            item.Value = ((value is int) ? new int?((int)value) : null);
                                         }
-                                        candidates.Add(currentCandidate);
+                                        list.Add(item);
                                     }
                                 }
                             }
@@ -107,68 +118,68 @@ namespace PaviseApp
             catch
             {
             }
-            return candidates;
+            return list;
         }
 
         public static List<Candidate> Disabled()
         {
-            List<Candidate> candidates = new List<Candidate>();
-            foreach (Candidate scan in Scan())
+            List<Candidate> list = new List<Candidate>();
+            foreach (Candidate item in Scan())
             {
-                if (!scan.HasKey)
+                if (!item.HasKey)
                 {
                     continue;
                 }
-                int? nullable = scan.Value;
-                if (nullable.HasValue)
+                int? value = item.Value;
+                if (value.HasValue)
                 {
-                    int? currentNullable = scan.Value;
-                    if (currentNullable.Value == 0)
+                    int? value2 = item.Value;
+                    if (value2.Value == 0)
                     {
-                        candidates.Add(scan);
+                        list.Add(item);
                     }
                 }
             }
-            return candidates;
+            return list;
         }
 
         public static bool Enable()
         {
             lock (lk)
             {
-                List<Candidate> candidates = Disabled();
-                if (candidates.Count == 0)
+                List<Candidate> list = Disabled();
+                if (list.Count == 0)
                 {
                     Logger.Log(Lang.T("log.msimodetweak.1", 0));
                     return true;
                 }
-                List<string> instanceIds = new List<string>();
-                foreach (Candidate candidate in candidates)
+                List<string> list2 = new List<string>();
+                foreach (Candidate item in list)
                 {
-                    if (Reg(candidate.InstanceId).Apply(1) || Reg(candidate.InstanceId).HasBackup)
+                    if (Reg(item.InstanceId).Apply(1) || Reg(item.InstanceId).HasBackup)
                     {
-                        instanceIds.Add(candidate.InstanceId);
+                        list2.Add(item.InstanceId);
                     }
                     else
                     {
-                        Logger.Log(Lang.T("log.msimodetweak.2", 0) + candidate.Description);
+                        Logger.Log(Lang.T("log.msimodetweak.2", 0) + item.Description);
                     }
                 }
-                if (instanceIds.Count == 0)
+                if (list2.Count == 0)
                 {
                     return false;
                 }
-                if (!Settings.SaveStr("MsiList", string.Join(";", instanceIds.ToArray())))
+                if (!Settings.SaveStr("MsiList", string.Join(";", list2.ToArray())))
                 {
-                    foreach (string instanceId in instanceIds)
+                    foreach (string item2 in list2)
                     {
-                        Reg(instanceId).Restore();
+                        Reg(item2).Restore();
                     }
                     Logger.Log(Lang.T("log.msimodetweak.3", 0));
                     return false;
                 }
                 Settings.Save("MsiOnByPavise", true);
-                Logger.Log(Lang.T("log.msimodetweak.4", 0) + instanceIds.Count + Lang.T("log.msimodetweak.5", 0));
+                Logger.Log(Lang.T("log.msimodetweak.4", 0) + list2.Count + Lang.T("log.msimodetweak.5", 0));
                 return true;
             }
         }
@@ -187,7 +198,8 @@ namespace PaviseApp
             lock (lk)
             {
                 bool restoreSucceeded = true;
-                foreach (string instanceId in ParseList(Settings.LoadStr("MsiList", "")))
+                string[] list = ParseList(Settings.LoadStr("MsiList", ""));
+                foreach (string instanceId in list)
                 {
                     restoreSucceeded &= Reg(instanceId).Restore();
                 }

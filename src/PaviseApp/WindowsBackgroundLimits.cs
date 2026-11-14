@@ -6,11 +6,16 @@ namespace PaviseApp
     // 原始优先级只在首次接管时记录，切换治理档位不会覆盖恢复基线。
     internal sealed class WindowsBackgroundLimits
     {
+        internal const uint MinimumCpuRate = 1;
         internal uint CpuRate, OriginalPriority, DesiredPriority;
         internal int OriginalIo, DesiredIo;
 
         internal static uint RateFor(int mode)
-        { return mode == BackgroundGovernancePolicy.Aggressive ? 200u : 500u; }
+        { return MinimumCpuRate; }
+
+        // Job 配额以万分之一为单位；使用小数显示，不能把最低非零值截断成 0%。
+        internal static string FormatCpuPercent(uint rate)
+        { return (rate / 100m).ToString("0.##", CultureInfo.InvariantCulture); }
 
         internal static uint PriorityFor(uint original, int mode)
         {

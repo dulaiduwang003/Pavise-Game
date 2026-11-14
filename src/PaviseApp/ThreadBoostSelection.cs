@@ -72,27 +72,27 @@ namespace PaviseApp
         internal static bool TryReadGlobal(out string selected)
         {
             selected = "off";
-            string text;
-            if (!Settings.TryLoadStr("GmThreadBoostStrategyV1", out text))
+            string value;
+            if (!Settings.TryLoadStr("GmThreadBoostStrategyV1", out value))
             {
                 return false;
             }
-            if (!string.IsNullOrEmpty(text))
+            if (!string.IsNullOrEmpty(value))
             {
-                if (!Valid(text))
+                if (!Valid(value))
                 {
                     return false;
                 }
-                selected = Normalize(text);
+                selected = Normalize(value);
                 return true;
             }
-            bool renderLaneEnabled;
-            bool frameCoordinationEnabled;
-            if (!TryLegacyFlag("GmRenderLane", true, out renderLaneEnabled) || !TryLegacyFlag("FrameCoordination", false, out frameCoordinationEnabled))
+            bool value2;
+            bool value3;
+            if (!TryLegacyFlag("GmRenderLane", true, out value2) || !TryLegacyFlag("FrameCoordination", false, out value3))
             {
                 return false;
             }
-            selected = LegacyValue(renderLaneEnabled, frameCoordinationEnabled);
+            selected = LegacyValue(value2, value3);
             return true;
         }
 
@@ -121,28 +121,28 @@ namespace PaviseApp
 
         internal static bool MigrateOverrides(IDictionary<string, string> values)
         {
-            string renderLaneOverride;
-            bool hasRenderLaneOverride = values.TryGetValue("GmRenderLane", out renderLaneOverride);
-            string frameCoordinationOverride;
-            bool hasFrameCoordinationOverride = values.TryGetValue("FrameCoordination", out frameCoordinationOverride);
-            if (!hasRenderLaneOverride && !hasFrameCoordinationOverride)
+            string value;
+            bool value6 = values.TryGetValue("GmRenderLane", out value);
+            string value2;
+            bool value7 = values.TryGetValue("FrameCoordination", out value2);
+            if (!value6 && !value7)
             {
                 return true;
             }
-            string currentStrategy;
-            if (!values.TryGetValue("GmThreadBoostStrategyV1", out currentStrategy))
+            string value3;
+            if (!values.TryGetValue("GmThreadBoostStrategyV1", out value3))
             {
-                bool renderLaneEnabled = renderLaneOverride == "1";
-                bool frameCoordinationEnabled = frameCoordinationOverride == "1";
-                if (!hasRenderLaneOverride && !TryLegacyFlag("GmRenderLane", true, out renderLaneEnabled))
+                bool value4 = value == "1";
+                bool value5 = value2 == "1";
+                if (!value6 && !TryLegacyFlag("GmRenderLane", true, out value4))
                 {
                     return false;
                 }
-                if (!hasFrameCoordinationOverride && !TryLegacyFlag("FrameCoordination", false, out frameCoordinationEnabled))
+                if (!value7 && !TryLegacyFlag("FrameCoordination", false, out value5))
                 {
                     return false;
                 }
-                values["GmThreadBoostStrategyV1"] = LegacyValue(renderLaneEnabled, frameCoordinationEnabled);
+                values["GmThreadBoostStrategyV1"] = LegacyValue(value4, value5);
             }
             values.Remove("GmRenderLane");
             values.Remove("FrameCoordination");

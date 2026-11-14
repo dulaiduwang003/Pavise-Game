@@ -250,32 +250,35 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<uint> seenCpuSetIds = new HashSet<uint>();
-            foreach (ulong physicalCoreMask in CpuTopology.PhysicalCoreMasks())
+            HashSet<uint> hashSet = new HashSet<uint>();
+            ulong[] physicalCoreMasksResult = CpuTopology.PhysicalCoreMasks();
+            foreach (ulong numericValueEntry in physicalCoreMasksResult)
             {
-                uint[] cpuSetIdsForResult = CpuTopology.CpuSetIdsFor(physicalCoreMask);
+                uint[] cpuSetIdsForResult = CpuTopology.CpuSetIdsFor(numericValueEntry);
                 if (cpuSetIdsForResult == null)
                 {
                     return false;
                 }
-                foreach (uint cpuSetId in cpuSetIdsForResult)
+                uint[] numericValueItems = cpuSetIdsForResult;
+                foreach (uint numericValueEntry2 in numericValueItems)
                 {
-                    foreach (uint helperCpuSetId in helperCpuSets)
+                    uint[] helperCpuSetsSnapshot = helperCpuSets;
+                    foreach (uint numericValueEntry3 in helperCpuSetsSnapshot)
                     {
-                        if (cpuSetId == helperCpuSetId)
+                        if (numericValueEntry2 == numericValueEntry3)
                         {
-                            background |= physicalCoreMask;
-                            seenCpuSetIds.Add(cpuSetId);
+                            background |= numericValueEntry;
+                            hashSet.Add(numericValueEntry2);
                         }
                     }
                 }
             }
-            if (seenCpuSetIds.Count != helperCpuSets.Length)
+            if (hashSet.Count != helperCpuSets.Length)
             {
                 return false;
             }
-            IntPtr processHandle = Native.OpenProcess(1052672, false, helperRendererPid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(1052672, false, helperRendererPid);
+            if (intPtr == IntPtr.Zero)
             {
                 return false;
             }
@@ -285,11 +288,11 @@ namespace PaviseApp
                 long cpu;
                 ulong io;
                 ulong mask;
-                return Native.WaitForSingleObject(processHandle, 0u) == 258 && Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation == helperRendererBirth && Native.TryQueryAffinity(processHandle, out mask) && HelperMasksSeparate(mask, background, CpuTopology.AllMask);
+                return Native.WaitForSingleObject(intPtr, 0u) == 258 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == helperRendererBirth && Native.TryQueryAffinity(intPtr, out mask) && HelperMasksSeparate(mask, background, CpuTopology.AllMask);
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 
@@ -344,20 +347,21 @@ namespace PaviseApp
                 child.Dispose();
                 return emptyHelper;
             }
-            HelperScope currentHelperScope = new HelperScope();
-            currentHelperScope.Child = child;
-            currentHelperScope.Original = ids;
-            currentHelperScope.Desired = (uint[])desired.Clone();
-            helpers.Add(currentHelperScope);
-            if (!child.Write(ids, currentHelperScope.Desired))
+            HelperScope helperScope = new HelperScope();
+            helperScope.Child = child;
+            helperScope.Original = ids;
+            helperScope.Desired = (uint[])desired.Clone();
+            HelperScope helperScope2 = helperScope;
+            helpers.Add(helperScope2);
+            if (!child.Write(ids, helperScope2.Desired))
             {
-                currentHelperScope.EndRequested = true;
-                if (currentHelperScope.Restore())
+                helperScope2.EndRequested = true;
+                if (helperScope2.Restore())
                 {
-                    helpers.Remove(currentHelperScope);
+                    helpers.Remove(helperScope2);
                 }
             }
-            return currentHelperScope;
+            return helperScope2;
         }
 
         internal static IDisposable OwnHelperScope(IntPtr launchedChild)

@@ -50,6 +50,10 @@ namespace PaviseApp
             public IntPtr InheritedFromUniqueProcessId;
         }
 
+        private const uint QosSealMask = 5u;
+
+        private const uint TimerExemptBit = 4u;
+
         public const int PROCESS_SET_QUOTA = 256;
 
         public const int PROCESS_SET_INFORMATION = 512;
@@ -86,7 +90,25 @@ namespace PaviseApp
 
         public const uint HIGH_PRIORITY_CLASS = 128u;
 
+        private const int ProcessIoPriorityNt = 33;
+
+        private const int ProcessPagePriorityNt = 39;
+
+        private const int ProcessProtectionNt = 61;
+
+        private const int ProcessPowerThrottling = 4;
+
+        private const int ProcessPowerThrottlingNt = 77;
+
+        private const uint WaitTimeout = 258u;
+
+        private const int ObjectBasicInformation = 0;
+
+        private const int PublicObjectBasicInformationSize = 56;
+
         public const int WM_DROPFILES = 563;
+
+        private const uint MSGFLT_ALLOW = 1u;
 
         public const int WM_NCLBUTTONDOWN = 161;
 
@@ -250,19 +272,19 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(56);
+            IntPtr intPtr = Marshal.AllocHGlobal(56);
             try
             {
                 for (int i = 0; i < 56; i += 4)
                 {
-                    Marshal.WriteInt32(nativeBuffer, i, 0);
+                    Marshal.WriteInt32(intPtr, i, 0);
                 }
                 int returned;
-                if (NtQueryObject(handle, 0, nativeBuffer, 56, out returned) != 0)
+                if (NtQueryObject(handle, 0, intPtr, 56, out returned) != 0)
                 {
                     return false;
                 }
-                granted = ((PublicObjectBasicInformation)Marshal.PtrToStructure(nativeBuffer, typeof(PublicObjectBasicInformation))).GrantedAccess;
+                granted = ((PublicObjectBasicInformation)Marshal.PtrToStructure(intPtr, typeof(PublicObjectBasicInformation))).GrantedAccess;
                 return true;
             }
             catch
@@ -271,7 +293,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 

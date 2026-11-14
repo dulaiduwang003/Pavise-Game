@@ -23,11 +23,12 @@ namespace PaviseApp
             PaintCoreFrame(e.Graphics, base.ClientRectangle, this);
             using (Pen pen = new Pen(Theme.Stroke))
             {
-                foreach (int gridX in new int[2] { Divider1, Divider2 })
+                int[] integerValues = new int[2] { Divider1, Divider2 };
+                foreach (int numericValueEntry in integerValues)
                 {
-                    if (gridX > 0)
+                    if (numericValueEntry > 0)
                     {
-                        e.Graphics.DrawLine(pen, Theme.S(22), gridX + base.AutoScrollPosition.Y, Math.Max(Theme.S(22), base.Width - Theme.S(22)), gridX + base.AutoScrollPosition.Y);
+                        e.Graphics.DrawLine(pen, Theme.S(22), numericValueEntry + base.AutoScrollPosition.Y, Math.Max(Theme.S(22), base.Width - Theme.S(22)), numericValueEntry + base.AutoScrollPosition.Y);
                     }
                 }
             }
@@ -60,10 +61,10 @@ namespace PaviseApp
                         graphics.DrawPath(pen, path);
                     }
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, 155), Math.Max(1, Theme.S(1))))
+                using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, 155), Math.Max(1, Theme.S(1))))
                 {
-                    graphics.DrawLine(currentPen, r.Left + Theme.S(1), r.Top, Math.Min(r.Right, r.Left + Theme.S(54)), r.Top);
-                    graphics.DrawLine(currentPen, Math.Max(r.Left, r.Right - Theme.S(10)), r.Top, r.Right, Math.Min(r.Bottom, r.Top + Theme.S(10)));
+                    graphics.DrawLine(pen2, r.Left + Theme.S(1), r.Top, Math.Min(r.Right, r.Left + Theme.S(54)), r.Top);
+                    graphics.DrawLine(pen2, Math.Max(r.Left, r.Right - Theme.S(10)), r.Top, r.Right, Math.Min(r.Bottom, r.Top + Theme.S(10)));
                 }
             }
             finally

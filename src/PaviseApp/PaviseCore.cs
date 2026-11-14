@@ -82,6 +82,8 @@ namespace PaviseApp
             }
         }
 
+        private const double CompetitiveEyePeriod = 9.8;
+
         internal const int FrameMs = 15;
 
         private static readonly PointF[] CompetitiveCrown = new PointF[5]
@@ -240,8 +242,8 @@ namespace PaviseApp
                 {
                     float gazeProgress = CompetitiveEase((cycleTime - CompetitiveGazeTimes[i - 1]) / (CompetitiveGazeTimes[i] - CompetitiveGazeTimes[i - 1]));
                     PointF pointF = CompetitiveGazeTargets[i - 1];
-                    PointF CompetitiveGazeTarget = CompetitiveGazeTargets[i];
-                    return new PointF(pointF.X + (CompetitiveGazeTarget.X - pointF.X) * gazeProgress, pointF.Y + (CompetitiveGazeTarget.Y - pointF.Y) * gazeProgress);
+                    PointF pointF2 = CompetitiveGazeTargets[i];
+                    return new PointF(pointF.X + (pointF2.X - pointF.X) * gazeProgress, pointF.Y + (pointF2.Y - pointF.Y) * gazeProgress);
                 }
             }
             return PointF.Empty;
@@ -296,24 +298,24 @@ namespace PaviseApp
                         new PointF(-73f, 78f)
                     });
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(c, 145), 1.4f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, 145), 1.4f))
                 {
                     for (int j = 0; j < 3; j++)
                     {
-                        g.DrawLine(currentPen, 47 + j * 5, -83, 52 + j * 5, -91);
+                        g.DrawLine(pen2, 47 + j * 5, -83, 52 + j * 5, -91);
                     }
                 }
                 g.Restore(gstate);
             }
-            using (Pen candidatePen = new Pen(Col.Alpha(c, 70), 0.7f))
+            using (Pen pen3 = new Pen(Col.Alpha(c, 70), 0.7f))
             {
-                g.DrawLines(candidatePen, new PointF[3]
+                g.DrawLines(pen3, new PointF[3]
                 {
                     new PointF(-38f, -97f),
                     new PointF(-27f, -105f),
                     new PointF(32f, -105f)
                 });
-                g.DrawLines(candidatePen, new PointF[3]
+                g.DrawLines(pen3, new PointF[3]
                 {
                     new PointF(38f, 89f),
                     new PointF(27f, 97f),
@@ -389,9 +391,9 @@ namespace PaviseApp
                 g.DrawLine(pen, -32, -49, 18, -54);
             }
             float haloPulse = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 2.5);
-            using (Pen currentPen = new Pen(Col.Alpha(c, (int)((70f + 90f * haloPulse) * power)), 0.85f))
+            using (Pen pen2 = new Pen(Col.Alpha(c, (int)((70f + 90f * haloPulse) * power)), 0.85f))
             {
-                g.DrawLines(currentPen, new PointF[3]
+                g.DrawLines(pen2, new PointF[3]
                 {
                     new PointF(-61f, 11f),
                     new PointF(-25f, 32f),
@@ -399,11 +401,11 @@ namespace PaviseApp
                 });
             }
             GraphicsState gstate3 = g.Save();
-            using (GraphicsPath currentGraphicsPath = new GraphicsPath())
+            using (GraphicsPath graphicsPath2 = new GraphicsPath())
             {
-                currentGraphicsPath.AddPolygon(CompetitiveCrown);
-                currentGraphicsPath.AddPolygon(CompetitiveBlade);
-                g.SetClip(currentGraphicsPath, CombineMode.Intersect);
+                graphicsPath2.AddPolygon(CompetitiveCrown);
+                graphicsPath2.AddPolygon(CompetitiveBlade);
+                g.SetClip(graphicsPath2, CombineMode.Intersect);
                 double scanProgress = seconds / 3.6 % 1.0;
                 float scanPosition = -105f + (float)scanProgress * 210f;
                 RectangleF rect = new RectangleF(scanPosition - 20f, -65f, 40f, 130f);
@@ -433,8 +435,8 @@ namespace PaviseApp
             int segmentIndex = (int)trackPosition;
             float segmentProgress = (float)(trackPosition - (double)segmentIndex);
             PointF pointF = Polar(92f, -90 + segmentIndex * 60);
-            PointF polar = Polar(92f, -90 + (segmentIndex + 1) * 60);
-            return new PointF(pointF.X + (polar.X - pointF.X) * segmentProgress, pointF.Y + (polar.Y - pointF.Y) * segmentProgress);
+            PointF pointF2 = Polar(92f, -90 + (segmentIndex + 1) * 60);
+            return new PointF(pointF.X + (pointF2.X - pointF.X) * segmentProgress, pointF.Y + (pointF2.Y - pointF.Y) * segmentProgress);
         }
 
         private void DrawCompetitiveMotion(Graphics g, double seconds, Color c, float power, bool front)
@@ -459,17 +461,17 @@ namespace PaviseApp
                         g.DrawLine(pen, pointFItems[0], pointFItems[1]);
                     }
                 }
-                using (Pen cPen = new Pen(c, 1.5f))
+                using (Pen pen2 = new Pen(c, 1.5f))
                 {
-                    LineCap startCap = (cPen.EndCap = LineCap.Round);
-                    cPen.StartCap = startCap;
+                    LineCap startCap = (pen2.EndCap = LineCap.Round);
+                    pen2.StartCap = startCap;
                     for (int j = 0; j < 2; j++)
                     {
                         for (int k = 0; k < 28; k++)
                         {
                             double trailPhase = seconds / 10.0 + (double)j * 0.5 - (double)k * 0.003;
-                            cPen.Color = Col.Alpha(c, (int)(210.0 * Math.Pow(1f - (float)k / 28f, 2.0) * (double)power));
-                            g.DrawLine(cPen, CompetitiveTrack(trailPhase), CompetitiveTrack(trailPhase - 0.003));
+                            pen2.Color = Col.Alpha(c, (int)(210.0 * Math.Pow(1f - (float)k / 28f, 2.0) * (double)power));
+                            g.DrawLine(pen2, CompetitiveTrack(trailPhase), CompetitiveTrack(trailPhase - 0.003));
                         }
                     }
                 }
@@ -489,7 +491,7 @@ namespace PaviseApp
             timer = new Timer();
             timer.Interval = 15;
             Timer timerSnapshot = timer;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 if (!CanAnimate())
                 {
@@ -501,7 +503,7 @@ namespace PaviseApp
                     Invalidate();
                 }
             };
-            timerSnapshot.Tick += eventHandler;
+            timerSnapshot.Tick += value;
         }
 
         public void SetState(PerformancePreset value, bool enabled, bool active)
@@ -631,7 +633,8 @@ namespace PaviseApp
             }
             int motion = motionPreview >= 0 ? motionPreview : CoreMotionPreferences.Get(mode);
             if (!CoreMotionCatalog.IsNative(motion)) { RenderCustomMotion(g, seconds, motion); return; }
-            artworkMode = motion == CoreMotionCatalog.CompetitiveNative ? PerformancePreset.Competitive : PerformancePreset.Standard;
+            artworkMode = motion == CoreMotionCatalog.CompetitiveNative ? PerformancePreset.Competitive
+                : motion == CoreMotionCatalog.ExtremeNative ? PerformancePreset.Extreme : PerformancePreset.Standard;
             Color baseAccent = previewAppearance ? Theme.ModeColor(mode) : Theme.Accent;
             Color primaryAccent = (guardEnabled ? baseAccent : Col.Lerp(Theme.Faint, baseAccent, 0.55f));
             Color accent = (guardEnabled ? (previewAppearance ? Theme.ModeColor2(mode) : Theme.Accent2) : Theme.Faint);
@@ -750,15 +753,16 @@ namespace PaviseApp
 
         private CoreLayers BuildLayers(Color accent, Color accent2, Color canvasAccent, bool backdrop, Size sceneSize, Point sceneOffset)
         {
-            CoreLayers layers = new CoreLayers();
-            layers.Accent = accent;
-            layers.Accent2 = accent2;
-            layers.CanvasAccent = canvasAccent;
-            layers.Backdrop = backdrop;
-            layers.Light = Theme.LightMode;
-            layers.SceneSize = sceneSize;
-            layers.SceneOffset = sceneOffset;
-            layers.Artwork = artworkMode;
+            CoreLayers layerConfiguration = new CoreLayers();
+            layerConfiguration.Accent = accent;
+            layerConfiguration.Accent2 = accent2;
+            layerConfiguration.CanvasAccent = canvasAccent;
+            layerConfiguration.Backdrop = backdrop;
+            layerConfiguration.Light = Theme.LightMode;
+            layerConfiguration.SceneSize = sceneSize;
+            layerConfiguration.SceneOffset = sceneOffset;
+            layerConfiguration.Artwork = artworkMode;
+            CoreLayers layers = layerConfiguration;
             try
             {
                 layers.StaticLayer = new Bitmap(base.Width, base.Height, PixelFormat.Format32bppPArgb);
@@ -964,10 +968,10 @@ namespace PaviseApp
                     g.DrawLine(pen, 0, j, base.Width, j);
                 }
             }
-            using (Pen currentPen = new Pen(Color.FromArgb(10, 150, 160, 178)))
+            using (Pen pen2 = new Pen(Color.FromArgb(10, 150, 160, 178)))
             {
-                g.DrawLine(currentPen, base.Width / 2, Theme.S(20), base.Width / 2, base.Height - Theme.S(20));
-                g.DrawLine(currentPen, Theme.S(20), base.Height / 2, base.Width - Theme.S(20), base.Height / 2);
+                g.DrawLine(pen2, base.Width / 2, Theme.S(20), base.Width / 2, base.Height - Theme.S(20));
+                g.DrawLine(pen2, Theme.S(20), base.Height / 2, base.Width - Theme.S(20), base.Height / 2);
             }
         }
 
@@ -1007,10 +1011,10 @@ namespace PaviseApp
                 g.DrawLine(pen, Theme.S(1), Theme.S(1), Theme.S(72), Theme.S(1));
                 g.DrawLine(pen, base.Width - Theme.S(18), Theme.S(2), base.Width - Theme.S(2), Theme.S(18));
             }
-            using (Pen currentPen = new Pen(Col.Alpha(accent, 65), 1f))
+            using (Pen pen2 = new Pen(Col.Alpha(accent, 65), 1f))
             {
-                g.DrawLine(currentPen, Theme.S(16), base.Height - Theme.S(22), Theme.S(57), base.Height - Theme.S(22));
-                g.DrawLine(currentPen, base.Width - Theme.S(57), base.Height - Theme.S(22), base.Width - Theme.S(16), base.Height - Theme.S(22));
+                g.DrawLine(pen2, Theme.S(16), base.Height - Theme.S(22), Theme.S(57), base.Height - Theme.S(22));
+                g.DrawLine(pen2, base.Width - Theme.S(57), base.Height - Theme.S(22), base.Width - Theme.S(16), base.Height - Theme.S(22));
             }
         }
 
@@ -1094,9 +1098,9 @@ namespace PaviseApp
                 {
                     g.DrawPath(pen, graphicsPath);
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(Col.Lerp(color, Theme.Fg, 0.55f), 155), 0.6f))
+                using (Pen pen2 = new Pen(Col.Alpha(Col.Lerp(color, Theme.Fg, 0.55f), 155), 0.6f))
                 {
-                    g.DrawLines(currentPen, new PointF[3]
+                    g.DrawLines(pen2, new PointF[3]
                     {
                         points[points.Length - 1],
                         points[0],
@@ -1112,9 +1116,9 @@ namespace PaviseApp
             {
                 g.DrawLine(pen, a, b);
             }
-            using (Pen currentPen = new Pen(Col.Alpha(color, (int)(230f * strength)), 1.25f))
+            using (Pen pen2 = new Pen(Col.Alpha(color, (int)(230f * strength)), 1.25f))
             {
-                g.DrawLine(currentPen, a, b);
+                g.DrawLine(pen2, a, b);
             }
         }
 
@@ -1133,18 +1137,18 @@ namespace PaviseApp
                 {
                     g.DrawEllipse(pen, -117, -70, 234, 140);
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(c, 120), 2f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, 120), 2f))
                 {
-                    g.DrawArc(currentPen, -122, -75, 244, 150, 203, 44);
-                    g.DrawArc(currentPen, -122, -75, 244, 150, 23, 44);
+                    g.DrawArc(pen2, -122, -75, 244, 150, 203, 44);
+                    g.DrawArc(pen2, -122, -75, 244, 150, 23, 44);
                 }
                 g.Restore(gstate);
                 Halo(g, new RectangleF(-88f, 53f, 176f, 39f), c, 65);
                 for (int i = 0; i < 3; i++)
                 {
-                    using (Pen candidatePen = new Pen(Col.Alpha(c, 70 - i * 18), 0.8f))
+                    using (Pen pen3 = new Pen(Col.Alpha(c, 70 - i * 18), 0.8f))
                     {
-                        g.DrawEllipse(candidatePen, -77 - i * 7, 67 - i * 5, 154 + i * 14, 20 + i * 10);
+                        g.DrawEllipse(pen3, -77 - i * 7, 67 - i * 5, 154 + i * 14, 20 + i * 10);
                     }
                 }
                 for (int j = -1; j <= 1; j += 2)
@@ -1196,9 +1200,9 @@ namespace PaviseApp
                     }
                 }
                 float pulseStrength = 0.5f + 0.5f * (float)Math.Sin(seconds * Math.PI / 3.0);
-                using (Pen currentPen = new Pen(Col.Alpha(c, (int)((80f + 90f * pulseStrength) * motionStrength)), 1.6f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, (int)((80f + 90f * pulseStrength) * motionStrength)), 1.6f))
                 {
-                    g.DrawArc(currentPen, -79, 64, 158, 25, 15, 145);
+                    g.DrawArc(pen2, -79, 64, 158, 25, 15, 145);
                     return;
                 }
             }
@@ -1257,10 +1261,10 @@ namespace PaviseApp
                     g.FillEllipse(brush2, 57, 3, 4, 4);
                     g.FillEllipse(brush2, 48, -6, 4, 4);
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(a, 110), 1.2f))
+                using (Pen pen2 = new Pen(Col.Alpha(a, 110), 1.2f))
                 {
-                    g.DrawEllipse(currentPen, -62, 12, 10, 10);
-                    g.DrawEllipse(currentPen, 53, 15, 8, 8);
+                    g.DrawEllipse(pen2, -62, 12, 10, 10);
+                    g.DrawEllipse(pen2, 53, 15, 8, 8);
                 }
                 PointF[] points = new PointF[6]
                 {
@@ -1290,11 +1294,11 @@ namespace PaviseApp
                 {
                     g.DrawEllipse(pen, -112, -52, 224, 104);
                 }
-                using (Pen currentPen = new Pen(Col.Alpha(c, 105), 0.8f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, 105), 0.8f))
                 {
-                    g.DrawArc(currentPen, -117, -57, 234, 114, 190, 65);
-                    g.DrawArc(currentPen, -117, -57, 234, 114, 10, 65);
-                    g.DrawLines(currentPen, new PointF[3]
+                    g.DrawArc(pen2, -117, -57, 234, 114, 190, 65);
+                    g.DrawArc(pen2, -117, -57, 234, 114, 10, 65);
+                    g.DrawLines(pen2, new PointF[3]
                     {
                         new PointF(-13f, -119f),
                         new PointF(13f, -119f),
@@ -1304,18 +1308,18 @@ namespace PaviseApp
                 GlowLine(g, new PointF(-13f, -119f), new PointF(8f, -119f), c, 0.8f);
                 for (int j = 0; j < 5; j++)
                 {
-                    using (Pen candidatePen = new Pen(Col.Alpha(c, 100 - j * 14), 0.8f))
+                    using (Pen pen3 = new Pen(Col.Alpha(c, 100 - j * 14), 0.8f))
                     {
-                        g.DrawLine(candidatePen, -27 + j * 3, -106, -24 + j * 3, -110);
+                        g.DrawLine(pen3, -27 + j * 3, -106, -24 + j * 3, -110);
                     }
                 }
                 g.Restore(gstate);
             }
-            using (Pen resolvedPen = new Pen(Col.Alpha(c, 50), 0.6f))
+            using (Pen pen4 = new Pen(Col.Alpha(c, 50), 0.6f))
             {
-                g.DrawLine(resolvedPen, -130, 0, -102, 0);
-                g.DrawLine(resolvedPen, 102, 0, 130, 0);
-                g.DrawLine(resolvedPen, 0, -130, 0, -113);
+                g.DrawLine(pen4, -130, 0, -102, 0);
+                g.DrawLine(pen4, 102, 0, 130, 0);
+                g.DrawLine(pen4, 0, -130, 0, -113);
             }
         }
 
@@ -1350,22 +1354,22 @@ namespace PaviseApp
         {
             Halo(g, new RectangleF(-54f, -63f, 108f, 126f), c, 110);
             PointF pointF = new PointF(0f, -39f);
-            PointF currentPointF = new PointF(-25f, -7f);
-            PointF candidatePointF = new PointF(25f, -7f);
-            PointF resolvedPointF = new PointF(0f, 34f);
-            PointF selectedPointF = new PointF(0f, 3f);
+            PointF pointF2 = new PointF(-25f, -7f);
+            PointF pointF3 = new PointF(25f, -7f);
+            PointF pointF4 = new PointF(0f, 34f);
+            PointF pointF5 = new PointF(0f, 3f);
             Color highlight = Col.Lerp(c, Theme.LightMode ? Theme.Fg : Color.White, 0.68f);
-            Plate(g, new PointF[3] { pointF, currentPointF, selectedPointF }, c, 95);
-            Plate(g, new PointF[3] { pointF, candidatePointF, selectedPointF }, highlight, 65);
-            Plate(g, new PointF[3] { currentPointF, resolvedPointF, selectedPointF }, c, 45);
-            Plate(g, new PointF[3] { candidatePointF, resolvedPointF, selectedPointF }, c, 110);
-            Edge(g, new PointF[4] { pointF, candidatePointF, resolvedPointF, currentPointF }, highlight, 225, 1f);
-            GlowLine(g, pointF, selectedPointF, highlight, 0.9f);
+            Plate(g, new PointF[3] { pointF, pointF2, pointF5 }, c, 95);
+            Plate(g, new PointF[3] { pointF, pointF3, pointF5 }, highlight, 65);
+            Plate(g, new PointF[3] { pointF2, pointF4, pointF5 }, c, 45);
+            Plate(g, new PointF[3] { pointF3, pointF4, pointF5 }, c, 110);
+            Edge(g, new PointF[4] { pointF, pointF3, pointF4, pointF2 }, highlight, 225, 1f);
+            GlowLine(g, pointF, pointF5, highlight, 0.9f);
             using (Pen pen = new Pen(Col.Alpha(c, 190), 0.8f))
             {
-                g.DrawLine(pen, currentPointF, selectedPointF);
-                g.DrawLine(pen, candidatePointF, selectedPointF);
-                g.DrawLine(pen, selectedPointF, resolvedPointF);
+                g.DrawLine(pen, pointF2, pointF5);
+                g.DrawLine(pen, pointF3, pointF5);
+                g.DrawLine(pen, pointF5, pointF4);
             }
             for (int i = -1; i <= 1; i += 2)
             {
@@ -1376,9 +1380,9 @@ namespace PaviseApp
                     new PointF(i * 35, 10f),
                     new PointF(i * 19, 31f)
                 };
-                using (Pen currentPen = new Pen(Col.Alpha(c, 130), 0.8f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, 130), 0.8f))
                 {
-                    g.DrawLines(currentPen, points);
+                    g.DrawLines(pen2, points);
                 }
             }
         }
@@ -1424,26 +1428,26 @@ namespace PaviseApp
                 };
                 Armor(g, points, c);
                 GlowLine(g, new PointF(110f, -31f), new PointF(117f, -7f), c, 1.2f);
-                using (Pen currentPen = new Pen(Col.Alpha(c, 100), 0.7f))
+                using (Pen pen2 = new Pen(Col.Alpha(c, 100), 0.7f))
                 {
-                    g.DrawLines(currentPen, new PointF[3]
+                    g.DrawLines(pen2, new PointF[3]
                     {
                         new PointF(73f, -77f),
                         new PointF(101f, -57f),
                         new PointF(111f, -32f)
                     });
-                    g.DrawLine(currentPen, 101, 51, 84, 65);
+                    g.DrawLine(pen2, 101, 51, 84, 65);
                     for (int k = 0; k < 5; k++)
                     {
-                        g.DrawLine(currentPen, 125, -18 + k * 8, 128 + ((k == 2) ? 4 : 0), -18 + k * 8);
+                        g.DrawLine(pen2, 125, -18 + k * 8, 128 + ((k == 2) ? 4 : 0), -18 + k * 8);
                     }
                 }
                 g.Restore(gstate);
             }
-            using (Pen candidatePen = new Pen(Col.Alpha(c, 36), 0.6f))
+            using (Pen pen3 = new Pen(Col.Alpha(c, 36), 0.6f))
             {
-                g.DrawLine(candidatePen, 0, -107, 0, -83);
-                g.DrawLine(candidatePen, -8, -97, 8, -97);
+                g.DrawLine(pen3, 0, -107, 0, -83);
+                g.DrawLine(pen3, -8, -97, 8, -97);
             }
         }
 
@@ -1489,27 +1493,27 @@ namespace PaviseApp
                 for (int i = 1; i <= 96; i++)
                 {
                     double segmentAngle = (double)i * Math.PI * 2.0 / 96.0;
-                    SmartPoint smartOrbitPoint = SmartOrbitPoint(segmentAngle, time, orbit);
-                    if (smartOrbitPoint.Z + smartPoint.Z >= 0f == front)
+                    SmartPoint smartPoint2 = SmartOrbitPoint(segmentAngle, time, orbit);
+                    if (smartPoint2.Z + smartPoint.Z >= 0f == front)
                     {
                         double segmentBrightness = 0.5 + 0.5 * Math.Cos(segmentAngle - rotationPhase);
                         int a = (int)((double)((float)(front ? 65 : 24) * power) + Math.Pow(segmentBrightness, 18.0) * (double)(front ? 145 : 60) * (double)power);
                         pen.Color = Col.Alpha(orbitColor, a);
-                        g.DrawLine(pen, smartPoint.Screen, smartOrbitPoint.Screen);
+                        g.DrawLine(pen, smartPoint.Screen, smartPoint2.Screen);
                     }
-                    smartPoint = smartOrbitPoint;
+                    smartPoint = smartPoint2;
                 }
             }
             for (int j = 0; j < 3; j++)
             {
-                SmartPoint currentSmartOrbitPoint = SmartOrbitPoint(rotationPhase + (double)j * Math.PI * 2.0 / 3.0, time, orbit);
-                float depthBlend = Math.Max(0f, Math.Min(1f, (currentSmartOrbitPoint.Z + 9f) / 18f));
+                SmartPoint smartPoint3 = SmartOrbitPoint(rotationPhase + (double)j * Math.PI * 2.0 / 3.0, time, orbit);
+                float depthBlend = Math.Max(0f, Math.Min(1f, (smartPoint3.Z + 9f) / 18f));
                 float segmentStrength = power * (front ? depthBlend : (1f - depthBlend));
-                PointF screen = currentSmartOrbitPoint.Screen;
+                PointF screen = smartPoint3.Screen;
                 Halo(g, new RectangleF(screen.X - 7f, screen.Y - 7f, 14f, 14f), orbitColor, (int)(90f * segmentStrength));
-                using (Pen currentPen = new Pen(Col.Alpha(orbitColor, (int)(210f * segmentStrength)), 0.8f))
+                using (Pen pen2 = new Pen(Col.Alpha(orbitColor, (int)(210f * segmentStrength)), 0.8f))
                 {
-                    g.DrawPolygon(currentPen, new PointF[4]
+                    g.DrawPolygon(pen2, new PointF[4]
                     {
                         new PointF(screen.X, screen.Y - 3f),
                         new PointF(screen.X + 3f, screen.Y),
@@ -1545,7 +1549,8 @@ namespace PaviseApp
                 depth[i] = (smartPointItems[i / 4].Z + smartPointItems[2 + i % 4].Z + smartPointItems[2 + (i + 1) % 4].Z) / 3f;
             }
             Array.Sort(integerValues, (int a, int b) => depth[a].CompareTo(depth[b]));
-            foreach (int faceIndex in integerValues)
+            int[] integerValues2 = integerValues;
+            foreach (int faceIndex in integerValues2)
             {
                 PointF[] points = new PointF[3]
                 {
@@ -1582,9 +1587,9 @@ namespace PaviseApp
                 {
                     PointF screen = smartPointItems[l].Screen;
                     PointF screen2 = smartPoint.Screen;
-                    using (Pen currentPen = new Pen(Col.Alpha(c, (int)(65f * power * highlightDepth)), 0.55f))
+                    using (Pen pen2 = new Pen(Col.Alpha(c, (int)(65f * power * highlightDepth)), 0.55f))
                     {
-                        g.DrawLine(currentPen, screen.X * 0.76f, screen.Y * 0.76f, screen2.X * 0.76f, screen2.Y * 0.76f);
+                        g.DrawLine(pen2, screen.X * 0.76f, screen.Y * 0.76f, screen2.X * 0.76f, screen2.Y * 0.76f);
                     }
                     double sparkPhase = time * 0.25 + (double)k * 0.25 + (double)l * 0.5;
                     sparkPhase -= Math.Floor(sparkPhase);

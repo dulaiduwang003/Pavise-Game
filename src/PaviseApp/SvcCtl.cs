@@ -32,22 +32,22 @@ namespace PaviseApp
         public static bool StopIfRunning(string name, out bool confirmedStopped)
         {
             confirmedStopped = false;
-            IntPtr openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
-            if (openSCManagerWHandle == IntPtr.Zero)
+            IntPtr intPtr = OpenSCManagerW(null, null, 1u);
+            if (intPtr == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                IntPtr openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 36u);
-                if (openServiceWHandle == IntPtr.Zero)
+                IntPtr intPtr2 = OpenServiceW(intPtr, name, 36u);
+                if (intPtr2 == IntPtr.Zero)
                 {
                     return false;
                 }
                 try
                 {
                     SERVICE_STATUS status;
-                    if (!QueryServiceStatus(openServiceWHandle, out status))
+                    if (!QueryServiceStatus(intPtr2, out status))
                     {
                         return false;
                     }
@@ -55,13 +55,13 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    if (!ControlService(openServiceWHandle, 1, ref status))
+                    if (!ControlService(intPtr2, 1, ref status))
                     {
                         return false;
                     }
                     for (int i = 0; i < 25; i++)
                     {
-                        if (!QueryServiceStatus(openServiceWHandle, out status))
+                        if (!QueryServiceStatus(intPtr2, out status))
                         {
                             break;
                         }
@@ -76,27 +76,41 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    CloseServiceHandle(openServiceWHandle);
+                    CloseServiceHandle(intPtr2);
                 }
             }
             finally
             {
-                CloseServiceHandle(openSCManagerWHandle);
+                CloseServiceHandle(intPtr);
             }
         }
 
         public static bool EnsureStarted(string name)
         {
-            IntPtr openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
-            if (openSCManagerWHandle == IntPtr.Zero)
+            string step;
+            int win32;
+            return EnsureStarted(name, out step, out win32);
+        }
+
+        // step 与 win32 仅供失败诊断；启动成功时 step 为空串。
+        public static bool EnsureStarted(string name, out string step, out int win32)
+        {
+            step = "";
+            win32 = 0;
+            IntPtr intPtr = OpenSCManagerW(null, null, 1u);
+            if (intPtr == IntPtr.Zero)
             {
+                win32 = Marshal.GetLastWin32Error();
+                step = "open-scm";
                 return false;
             }
             try
             {
-                IntPtr openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 20u);
-                if (openServiceWHandle == IntPtr.Zero)
+                IntPtr intPtr2 = OpenServiceW(intPtr, name, 20u);
+                if (intPtr2 == IntPtr.Zero)
                 {
+                    win32 = Marshal.GetLastWin32Error();
+                    step = "open-service";
                     return false;
                 }
                 try
@@ -104,8 +118,10 @@ namespace PaviseApp
                     for (int i = 0; i < 10; i++)
                     {
                         SERVICE_STATUS status;
-                        if (!QueryServiceStatus(openServiceWHandle, out status))
+                        if (!QueryServiceStatus(intPtr2, out status))
                         {
+                            win32 = Marshal.GetLastWin32Error();
+                            step = "query";
                             return false;
                         }
                         if (status.State == 4)
@@ -114,15 +130,19 @@ namespace PaviseApp
                         }
                         if (status.State == 1)
                         {
-                            if (!StartServiceW(openServiceWHandle, 0, IntPtr.Zero))
+                            if (!StartServiceW(intPtr2, 0, IntPtr.Zero))
                             {
+                                win32 = Marshal.GetLastWin32Error();
+                                step = "start-refused";
                                 return false;
                             }
                             for (int j = 0; j < 10; j++)
                             {
                                 Thread.Sleep(500);
-                                if (!QueryServiceStatus(openServiceWHandle, out status))
+                                if (!QueryServiceStatus(intPtr2, out status))
                                 {
+                                    win32 = Marshal.GetLastWin32Error();
+                                    step = "query";
                                     return false;
                                 }
                                 if (status.State == 4)
@@ -130,20 +150,22 @@ namespace PaviseApp
                                     return true;
                                 }
                             }
+                            step = "start-timeout";
                             return false;
                         }
                         Thread.Sleep(500);
                     }
+                    step = "pending-timeout";
                     return false;
                 }
                 finally
                 {
-                    CloseServiceHandle(openServiceWHandle);
+                    CloseServiceHandle(intPtr2);
                 }
             }
             finally
             {
-                CloseServiceHandle(openSCManagerWHandle);
+                CloseServiceHandle(intPtr);
             }
         }
 

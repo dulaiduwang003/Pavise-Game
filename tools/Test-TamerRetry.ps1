@@ -35,6 +35,9 @@ function Run-Variant([string]$label,[string]$path,[bool]$expectFailure){
  $constant=[regex]::Match($sourceText,'internal const int FailedSweepRetryMs = \d+;').Value
  if(-not $constant){throw 'Missing production failed sweep interval'}
  $methods=@($signatures | ForEach-Object {Extract-Method $sourceText $_})
+ if($sourceText.Contains('private void RevokeRuntimeWrites(string group = null)')){
+  $methods+=Extract-Method $sourceText 'private void RevokeRuntimeWrites(string group = null)'
+ }
  if($sourceText.Contains('private sealed class SweepRetryPhase')){
   $methods+=Extract-Method $sourceText 'private sealed class SweepRetryPhase'
   $methods+=Extract-Method $sourceText 'private SweepRetryPhase SelectSweepRetryPhase(List<ProcessChange> changes, out bool changed)'

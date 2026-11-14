@@ -35,6 +35,8 @@ namespace PaviseApp
 
             internal string Description;
 
+            internal string Badge;
+
             internal string Status;
 
             internal string Lock;
@@ -46,6 +48,8 @@ namespace PaviseApp
             internal Rectangle ProviderLine;
 
             internal Rectangle DescriptionLine;
+
+            internal Rectangle BadgeBounds;
 
             internal Rectangle StatusLine;
 
@@ -59,6 +63,10 @@ namespace PaviseApp
         internal string Provider = "";
 
         internal string IconKey = "";
+
+        internal string Summary = "";
+
+        internal string DescriptionBadge = "";
 
         internal string AdditionalDetails = "";
 
@@ -117,6 +125,8 @@ namespace PaviseApp
 
         internal Rectangle DescriptionBounds { get; private set; }
 
+        internal Rectangle BadgeBounds { get; private set; }
+
         internal Rectangle StatusBounds { get; private set; }
 
         internal Rectangle LockBounds { get; private set; }
@@ -151,11 +161,11 @@ namespace PaviseApp
                 Bg = Theme.Card
             };
             PerformanceInfoButton performanceInfoButton = information;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 ShowDetails();
             };
-            performanceInfoButton.Click += eventHandler;
+            performanceInfoButton.Click += value;
             information.MouseEnter += delegate
             {
                 SyncDetails();
@@ -219,7 +229,7 @@ namespace PaviseApp
         {
             base.OnInvalidated(e);
             SyncDetails();
-            if (measured != null && (measured.Title != base.Title || measured.Provider != Provider || measured.Description != base.Desc || measured.Status != base.StatusText || measured.Lock != base.LockText))
+            if (measured != null && (measured.Title != base.Title || measured.Provider != Provider || measured.Description != DisplayDescription || measured.Badge != DescriptionBadge || measured.Status != base.StatusText || measured.Lock != base.LockText))
             {
                 measured = null;
                 if (ContentSizeChanged != null)
@@ -240,7 +250,7 @@ namespace PaviseApp
             Toggle toggle = e.Control as Toggle;
             if (toggle != null)
             {
-                toggle.PerformanceConsole = true;
+                toggle.PerformanceConsole = false;
             }
             e.Control.SizeChanged += delegate
             {
@@ -270,6 +280,11 @@ namespace PaviseApp
             return MeasureHeight(width);
         }
 
+        internal string DisplayDescription
+        {
+            get { return string.IsNullOrEmpty(Summary) ? base.Desc : Summary; }
+        }
+
         internal int MeasureHeight(int width)
         {
             return Measure(width).Height;
@@ -277,156 +292,137 @@ namespace PaviseApp
 
         private Measurement Measure(int width)
         {
-            int scaledDimension = Theme.S((width < Theme.S(500)) ? 18 : 24);
-            int scaledDimension2 = Theme.S(44);
-            int sOffset = scaledDimension + scaledDimension2 + Theme.S(18);
-            int lowerBound = Math.Max(1, width - scaledDimension - sOffset);
-            int scaledDimension3 = Theme.S(28);
-            int scaledDimension4 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(94) : Math.Min(base.Hosted.Width, lowerBound)) : 0);
-            int scaledDimension5 = ((base.Hosted != null) ? ((base.Hosted is Toggle) ? Theme.S(40) : Math.Max(Theme.S(28), base.Hosted.Height)) : 0);
-            Font font = Theme.UI(12f, true);
-            Font ui = Theme.UI(8.5f, false);
-            Font currentUi = Theme.UI(9f, false);
-            Font candidateUi = Theme.UI(8.5f, false);
-            if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale && measured.Host == base.Hosted && measured.HostWidth == scaledDimension4 && measured.HostHeight == scaledDimension5 && measured.Title == base.Title && measured.Provider == Provider && measured.Description == base.Desc && measured.Status == base.StatusText && measured.Lock == base.LockText && object.ReferenceEquals(measured.TitleFont, font) && object.ReferenceEquals(measured.ProviderFont, ui) && object.ReferenceEquals(measured.BodyFont, currentUi) && object.ReferenceEquals(measured.StatusFont, candidateUi))
+            int padding = Theme.S(width < Theme.S(500) ? 18 : 24);
+            int iconSize = Theme.S(40);
+            int textLeft = padding + iconSize + Theme.S(22);
+            int availableWidth = Math.Max(1, width - padding - textLeft);
+            int infoSize = Theme.S(24);
+            int hostWidth = base.Hosted == null ? 0 : base.Hosted is Toggle ? Theme.S(48) : Math.Min(base.Hosted.Width, availableWidth);
+            int hostHeight = base.Hosted == null ? 0 : base.Hosted is Toggle ? Theme.S(28) : Math.Max(Theme.S(28), base.Hosted.Height);
+            Font titleFont = Theme.UI(13f, true);
+            Font providerFont = Theme.UI(9f, false);
+            Font bodyFont = Theme.UI(9.5f, false);
+            Font statusFont = Theme.UI(9f, false);
+            string description = DisplayDescription;
+            if (measured != null && measured.Width == width && measured.Scale == Dpi.Scale
+                && measured.Host == base.Hosted && measured.HostWidth == hostWidth && measured.HostHeight == hostHeight
+                && measured.Title == base.Title && measured.Provider == Provider && measured.Description == description
+                && measured.Badge == DescriptionBadge && measured.Status == base.StatusText && measured.Lock == base.LockText
+                && object.ReferenceEquals(measured.TitleFont, titleFont) && object.ReferenceEquals(measured.ProviderFont, providerFont)
+                && object.ReferenceEquals(measured.BodyFont, bodyFont) && object.ReferenceEquals(measured.StatusFont, statusFont))
             {
                 return measured;
             }
-            int statusTextWidth = TextRenderer.MeasureText(base.StatusText, candidateUi, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-            int minLimit = Math.Max(Theme.S(110), Math.Min(Theme.S(160), statusTextWidth));
-            int scaledDimension4Offset = minLimit + Theme.S(18) + scaledDimension4;
-            bool hostedFitsInline = base.Hosted != null && width >= Theme.S(500) && lowerBound - scaledDimension4Offset - Theme.S(24) >= Theme.S(200);
-            int lowerBound2 = Math.Max(1, lowerBound - (hostedFitsInline ? (scaledDimension4Offset + Theme.S(24)) : 0));
-            int titleAvailableWidth = Math.Max(1, lowerBound2 - scaledDimension3 - Theme.S(6));
-            int titleHeight = TextHeight(base.Title, font, titleAvailableWidth, Theme.S(24));
-            int titleNaturalWidth = TextRenderer.MeasureText(base.Title, font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
-            Rectangle heading = new Rectangle(sOffset, 0, Math.Max(1, Math.Min(titleAvailableWidth, titleNaturalWidth)), titleHeight);
-            Rectangle info = new Rectangle(sOffset + Math.Min(titleAvailableWidth, titleNaturalWidth) + Theme.S(6), 0, scaledDimension3, scaledDimension3);
-            int scaledDimension3Limit = Math.Max(titleHeight, scaledDimension3);
-            Rectangle providerLine = Rectangle.Empty;
+            TextFormatFlags singleLine = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+            int statusNaturalWidth = TextRenderer.MeasureText(base.StatusText, statusFont, Size.Empty, singleLine).Width;
+            int statusWidth = Math.Max(Theme.S(36), Math.Min(Theme.S(180), statusNaturalWidth));
+            int controlWidth = hostWidth + Theme.S(20) + statusWidth;
+            bool inline = base.Hosted != null && availableWidth - controlWidth - Theme.S(28) >= Theme.S(250);
+            int textWidth = Math.Max(1, availableWidth - (inline ? controlWidth + Theme.S(28) : 0));
+            int titleNaturalWidth = TextRenderer.MeasureText(base.Title, titleFont, Size.Empty, singleLine).Width;
+            int titleWidth = Math.Max(1, Math.Min(titleNaturalWidth, textWidth - infoSize - Theme.S(6)));
+            int titleHeight = TextHeight(base.Title, titleFont, titleWidth, Theme.S(24));
+            Rectangle heading = new Rectangle(textLeft, 0, titleWidth, titleHeight);
+            Rectangle info = new Rectangle(heading.Right + Theme.S(6), 0, infoSize, infoSize);
+            int textHeight = Math.Max(titleHeight, infoSize);
+            Rectangle provider = Rectangle.Empty;
             if (!string.IsNullOrEmpty(Provider))
             {
-                providerLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(3), lowerBound2, TextHeight(Provider, ui, lowerBound2, Theme.S(16)));
-                scaledDimension3Limit = providerLine.Bottom;
+                int providerWidth = TextRenderer.MeasureText(Provider, providerFont, Size.Empty, singleLine).Width;
+                int providerLeft = info.Right + Theme.S(20);
+                if (providerLeft + providerWidth <= textLeft + textWidth)
+                {
+                    provider = new Rectangle(providerLeft, 0, providerWidth, textHeight);
+                }
+                else
+                {
+                    provider = new Rectangle(textLeft, textHeight + Theme.S(3), textWidth, TextHeight(Provider, providerFont, textWidth, Theme.S(16)));
+                    textHeight = provider.Bottom;
+                }
             }
-            Rectangle descriptionLine = new Rectangle(sOffset, scaledDimension3Limit + ((base.Desc.Length != 0) ? Theme.S(7) : 0), lowerBound2, TextHeight(base.Desc, currentUi, lowerBound2, Theme.S(18)));
-            scaledDimension3Limit = descriptionLine.Bottom;
-            Rectangle hostBounds = Rectangle.Empty;
-            Rectangle statusLine = Rectangle.Empty;
-            Rectangle locked = Rectangle.Empty;
-            int minimumControlWidth = scaledDimension3Limit;
-            if (hostedFitsInline)
+            int descriptionNaturalWidth = TextRenderer.MeasureText(description, bodyFont, Size.Empty, singleLine).Width;
+            int badgeWidth = string.IsNullOrEmpty(DescriptionBadge) ? 0 : TextRenderer.MeasureText(DescriptionBadge, Theme.UI(8f, false), Size.Empty, singleLine).Width + Theme.S(14);
+            bool inlineBadge = badgeWidth > 0 && descriptionNaturalWidth + badgeWidth + Theme.S(10) <= textWidth;
+            Rectangle descriptionLine = new Rectangle(textLeft, textHeight + Theme.S(6), inlineBadge ? descriptionNaturalWidth : textWidth,
+                TextHeight(description, bodyFont, inlineBadge ? descriptionNaturalWidth : textWidth, Theme.S(18)));
+            textHeight = descriptionLine.Bottom;
+            Rectangle badge = Rectangle.Empty;
+            if (badgeWidth > 0)
             {
-                int remainingScaledDimension4 = width - scaledDimension - scaledDimension4;
-                int remainingMinLimit = remainingScaledDimension4 - Theme.S(18) - minLimit;
-                int statusBlockHeight = 0;
+                badgeWidth = Math.Min(badgeWidth, textWidth);
+                badge = new Rectangle(inlineBadge ? descriptionLine.Right + Theme.S(10) : textLeft,
+                    inlineBadge ? descriptionLine.Top : textHeight + Theme.S(5), badgeWidth, Theme.S(20));
+                textHeight = Math.Max(textHeight, badge.Bottom);
+            }
+            Rectangle host = Rectangle.Empty;
+            Rectangle status = Rectangle.Empty;
+            Rectangle locked = Rectangle.Empty;
+            int contentHeight = textHeight;
+            if (base.Hosted != null)
+            {
+                int stateLeft = inline ? width - padding - controlWidth : textLeft;
+                int stateWidth = inline ? statusWidth : Math.Max(1, availableWidth - hostWidth - Theme.S(28));
+                int stateHeight = TextHeight(base.StatusText, statusFont, stateWidth, Theme.S(18));
                 if (base.StatusText.Length > 0)
                 {
-                    statusLine = new Rectangle(remainingMinLimit, 0, minLimit, TextHeight(base.StatusText, candidateUi, minLimit, Theme.S(18)));
-                    statusBlockHeight = statusLine.Bottom;
+                    status = new Rectangle(stateLeft, 0, stateWidth, stateHeight);
                 }
+                int lockHeight = TextHeight(base.LockText, statusFont, stateWidth, Theme.S(18));
                 if (base.LockText.Length > 0)
                 {
-                    locked = new Rectangle(remainingMinLimit, statusBlockHeight + Theme.S(5), minLimit, TextHeight(base.LockText, candidateUi, minLimit, Theme.S(18)));
-                    statusBlockHeight = locked.Bottom;
+                    locked = new Rectangle(stateLeft, stateHeight + Theme.S(4), stateWidth, lockHeight);
+                    stateHeight = locked.Bottom;
                 }
-                int measureValueLimit = Math.Max(scaledDimension5, statusBlockHeight);
-                hostBounds = new Rectangle(remainingScaledDimension4, (measureValueLimit - scaledDimension5) / 2, scaledDimension4, scaledDimension5);
-                int lowerBound3 = Math.Max(0, (measureValueLimit - statusBlockHeight) / 2);
-                if (!statusLine.IsEmpty)
-                {
-                    statusLine.Offset(0, lowerBound3);
-                }
-                if (!locked.IsEmpty)
-                {
-                    locked.Offset(0, lowerBound3);
-                }
-                minimumControlWidth = Math.Max(minimumControlWidth, measureValueLimit);
-                int lowerBound4 = Math.Max(0, (minimumControlWidth - measureValueLimit) / 2);
-                hostBounds.Offset(0, lowerBound4);
-                if (!statusLine.IsEmpty)
-                {
-                    statusLine.Offset(0, lowerBound4);
-                }
-                if (!locked.IsEmpty)
-                {
-                    locked.Offset(0, lowerBound4);
-                }
+                int controlsHeight = Math.Max(hostHeight, stateHeight);
+                int controlsTop = inline ? Math.Max(0, (textHeight - controlsHeight) / 2) : textHeight + Theme.S(12);
+                host = new Rectangle(width - padding - hostWidth, controlsTop + (controlsHeight - hostHeight) / 2, hostWidth, hostHeight);
+                int stateTop = controlsTop + (controlsHeight - stateHeight) / 2;
+                status = Offset(status, stateTop);
+                locked = Offset(locked, stateTop);
+                contentHeight = Math.Max(textHeight, controlsTop + controlsHeight);
             }
             else
             {
-                if (base.Hosted != null)
-                {
-                    hostBounds = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(12), scaledDimension4, scaledDimension5);
-                    scaledDimension3Limit = hostBounds.Bottom;
-                }
-                int remainingS = lowerBound - scaledDimension4 - Theme.S(14);
-                int textHeightResult = TextHeight(base.StatusText, candidateUi, remainingS, Theme.S(18));
                 if (base.StatusText.Length > 0)
                 {
-                    if (base.Hosted != null && remainingS >= Theme.S(90) && textHeightResult <= scaledDimension5)
-                    {
-                        statusLine = new Rectangle(hostBounds.Right + Theme.S(14), hostBounds.Top + (scaledDimension5 - textHeightResult) / 2, remainingS, textHeightResult);
-                    }
-                    else
-                    {
-                        statusLine = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(7), lowerBound, TextHeight(base.StatusText, candidateUi, lowerBound, Theme.S(18)));
-                        scaledDimension3Limit = statusLine.Bottom;
-                    }
+                    status = new Rectangle(textLeft, contentHeight + Theme.S(8), textWidth, TextHeight(base.StatusText, statusFont, textWidth, Theme.S(18)));
+                    contentHeight = status.Bottom;
                 }
                 if (base.LockText.Length > 0)
                 {
-                    locked = new Rectangle(sOffset, scaledDimension3Limit + Theme.S(5), lowerBound, TextHeight(base.LockText, candidateUi, lowerBound, Theme.S(18)));
-                    scaledDimension3Limit = locked.Bottom;
+                    locked = new Rectangle(textLeft, contentHeight + Theme.S(4), textWidth, TextHeight(base.LockText, statusFont, textWidth, Theme.S(18)));
+                    contentHeight = locked.Bottom;
                 }
-                minimumControlWidth = scaledDimension3Limit;
             }
-            int sLimit = Math.Max(Theme.S(132), minimumControlWidth + Theme.S(36));
-            int ratio = (sLimit - minimumControlWidth) / 2;
-            heading.Offset(0, ratio);
-            info.Offset(0, ratio);
-            descriptionLine.Offset(0, ratio);
-            if (!providerLine.IsEmpty)
-            {
-                providerLine.Offset(0, ratio);
-            }
-            if (!hostBounds.IsEmpty)
-            {
-                hostBounds.Offset(0, ratio);
-            }
-            if (!statusLine.IsEmpty)
-            {
-                statusLine.Offset(0, ratio);
-            }
-            if (!locked.IsEmpty)
-            {
-                locked.Offset(0, ratio);
-            }
+            int height = Math.Max(Theme.S(80), contentHeight + Theme.S(28));
+            int contentTop = (height - contentHeight) / 2;
             measured = new Measurement
             {
                 Width = width,
-                Height = sLimit,
+                Height = height,
                 Scale = Dpi.Scale,
                 Host = base.Hosted,
-                HostWidth = scaledDimension4,
-                HostHeight = scaledDimension5,
-                TitleFont = font,
-                ProviderFont = ui,
-                BodyFont = currentUi,
-                StatusFont = candidateUi,
+                HostWidth = hostWidth,
+                HostHeight = hostHeight,
+                TitleFont = titleFont,
+                ProviderFont = providerFont,
+                BodyFont = bodyFont,
+                StatusFont = statusFont,
                 Title = base.Title,
                 Provider = Provider,
-                Description = base.Desc,
+                Description = description,
+                Badge = DescriptionBadge,
                 Status = base.StatusText,
                 Lock = base.LockText,
-                Icon = new Rectangle(scaledDimension, (sLimit - scaledDimension2) / 2, scaledDimension2, scaledDimension2),
-                Heading = heading,
-                ProviderLine = providerLine,
-                DescriptionLine = descriptionLine,
-                StatusLine = statusLine,
-                Locked = locked,
-                HostBounds = hostBounds,
-                Info = info
+                Icon = new Rectangle(padding, (height - iconSize) / 2, iconSize, iconSize),
+                Heading = Offset(heading, contentTop),
+                Info = Offset(info, contentTop),
+                ProviderLine = Offset(provider, contentTop),
+                DescriptionLine = Offset(descriptionLine, contentTop),
+                BadgeBounds = Offset(badge, contentTop),
+                StatusLine = Offset(status, contentTop),
+                Locked = Offset(locked, contentTop),
+                HostBounds = Offset(host, contentTop)
             };
             SyncDetails();
             return measured;
@@ -447,6 +443,7 @@ namespace PaviseApp
                 TitleBounds = Offset(measurement.Heading, distance);
                 ProviderBounds = Offset(measurement.ProviderLine, distance);
                 DescriptionBounds = Offset(measurement.DescriptionLine, distance);
+                BadgeBounds = Offset(measurement.BadgeBounds, distance);
                 StatusBounds = Offset(measurement.StatusLine, distance);
                 HostBounds = Offset(measurement.HostBounds, distance);
                 InfoBounds = Offset(measurement.Info, distance);
@@ -509,7 +506,7 @@ namespace PaviseApp
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            DsPaint.CardBackground(e.Graphics, this, Theme.Card);
+            DsPaint.CardBackground(e.Graphics, this, Theme.Bg);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -521,6 +518,7 @@ namespace PaviseApp
             ArrangeContent();
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            DsPaint.TechFrame(graphics, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8), Backdrop.CardFill(this, Theme.Card), Col.Lerp(Theme.Card, Theme.Stroke, 0.65f));
             Rectangle r = Rectangle.Inflate(IconBounds, Theme.S(8), Theme.S(8));
             DsPaint.TechFrame(graphics, r, Theme.S(8), Theme.Inset, Active ? Col.Lerp(Theme.Stroke, Theme.Accent, 0.65f) : Theme.Stroke);
             if (Active)
@@ -531,22 +529,40 @@ namespace PaviseApp
                 }
             }
             AntiCheatFeatureIcons.Draw(graphics, IconBounds, IconKey, Active ? Theme.Accent : Theme.Dim);
-            TextRenderer.DrawText(graphics, base.Title, Theme.UI(12f, true), TitleBounds, Theme.Fg, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(graphics, base.Title, Theme.UI(13f, true), TitleBounds, Theme.Fg, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
             if (!ProviderBounds.IsEmpty)
             {
-                TextRenderer.DrawText(graphics, Provider, Theme.UI(8.5f, false), ProviderBounds, Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                if (ProviderBounds.Top == TitleBounds.Top)
+                {
+                    using (Pen divider = new Pen(Theme.Stroke))
+                    {
+                        int x = ProviderBounds.Left - Theme.S(10);
+                        graphics.DrawLine(divider, x, ProviderBounds.Top + Theme.S(5), x, ProviderBounds.Bottom - Theme.S(5));
+                    }
+                }
+                TextRenderer.DrawText(graphics, Provider, Theme.UI(9f, false), ProviderBounds, Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             if (DescriptionBounds.Height > 0)
             {
-                TextRenderer.DrawText(graphics, base.Desc, Theme.UI(9f, false), DescriptionBounds, Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, DisplayDescription, Theme.UI(9.5f, false), DescriptionBounds, Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+            }
+            if (!BadgeBounds.IsEmpty)
+            {
+                DsPaint.TechFrame(graphics, BadgeBounds, Theme.S(3), Theme.Card, Theme.Stroke);
+                TextRenderer.DrawText(graphics, DescriptionBadge, Theme.UI(8f, false), BadgeBounds, Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
             }
             if (!StatusBounds.IsEmpty)
             {
-                TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(8.5f, false), StatusBounds, base.StatusColor, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                using (SolidBrush dot = new SolidBrush(base.StatusColor))
+                {
+                    int diameter = Theme.S(5);
+                    graphics.FillEllipse(dot, StatusBounds.Left - Theme.S(12), StatusBounds.Top + (Theme.S(18) - diameter) / 2, diameter, diameter);
+                }
+                TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(9f, false), StatusBounds, base.StatusColor, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
             }
             if (!LockBounds.IsEmpty)
             {
-                TextRenderer.DrawText(graphics, base.LockText, Theme.UI(8.5f, false), LockBounds, base.IsLocked ? Theme.Warning : Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, base.LockText, Theme.UI(9f, false), LockBounds, base.IsLocked ? Theme.Warning : Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
             }
         }
 

@@ -143,10 +143,10 @@ namespace PaviseApp
                 if (bytes.Length > 12000 || encoded != Convert.ToBase64String(bytes)) return false;
                 string script = Encoding.Unicode.GetString(bytes);
                 Match numbers = Regex.Match(script, @"if\(\[DateTime\]::UtcNow\.Ticks -gt ([0-9]+)L\)\{exit 1460\};\$s=\[PaviseQuantumOnce\]::Apply\(\[uint32\]([0-9]+)\);exit \$s");
-                uint parsedValue; long deadline;
-                return numbers.Success && uint.TryParse(numbers.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out parsedValue)
-                    && parsedValue <= 63 && long.TryParse(numbers.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out deadline)
-                    && deadline > 0 && string.Equals(script, BuildHelperScript(parsedValue, deadline), StringComparison.Ordinal);
+                uint value; long deadline;
+                return numbers.Success && uint.TryParse(numbers.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out value)
+                    && value <= 63 && long.TryParse(numbers.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out deadline)
+                    && deadline > 0 && string.Equals(script, BuildHelperScript(value, deadline), StringComparison.Ordinal);
             }
             catch { return false; }
         }

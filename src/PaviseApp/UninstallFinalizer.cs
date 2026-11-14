@@ -26,6 +26,14 @@ namespace PaviseApp
             internal List<string> Managed = new List<string>();
         }
 
+        private const string Prefix = "Pavise-Uninstall-";
+
+        private const string HelperName = "Pavise.Uninstall.exe";
+
+        private const string ManifestName = "cleanup.dat";
+
+        private const string Signature = "Pavise uninstall 1";
+
         internal static bool Launch(string executable, out string failure)
         {
             failure = null;
@@ -55,10 +63,10 @@ namespace PaviseApp
                 {
                     plan.Hash = Hash(fileStream);
                     fileStream.Position = 0L;
-                    using (FileStream currentFileStream = new FileStream(paviseUninstallPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    using (FileStream fileStream2 = new FileStream(paviseUninstallPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     {
-                        fileStream.CopyTo(currentFileStream);
-                        currentFileStream.Flush(true);
+                        fileStream.CopyTo(fileStream2);
+                        fileStream2.Flush(true);
                     }
                 }
                 if (!string.Equals(HashFile(paviseUninstallPath), plan.Hash, StringComparison.OrdinalIgnoreCase))
@@ -72,9 +80,9 @@ namespace PaviseApp
                 processStartInfo.CreateNoWindow = true;
                 processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                 processStartInfo.WorkingDirectory = workingDirectoryValue;
-                using (Process start = Process.Start(processStartInfo))
+                using (Process process2 = Process.Start(processStartInfo))
                 {
-                    if (start == null)
+                    if (process2 == null)
                     {
                         throw new IOException("Helper did not start");
                     }
@@ -113,14 +121,14 @@ namespace PaviseApp
                     return false;
                 }
                 runSucceeded = DeleteVerified(plan.Executable, plan.Hash, 40, 100);
-                foreach (string managed in plan.Managed)
+                foreach (string item in plan.Managed)
                 {
-                    string fileName2 = Path.GetFileName(Path.GetDirectoryName(managed));
-                    if (!DeleteVerified(managed, fileName2, 2, 100))
+                    string fileName2 = Path.GetFileName(Path.GetDirectoryName(item));
+                    if (!DeleteVerified(item, fileName2, 2, 100))
                     {
                         runSucceeded = false;
                     }
-                    TryRemoveEmpty(Path.GetDirectoryName(managed));
+                    TryRemoveEmpty(Path.GetDirectoryName(item));
                 }
                 if (plan.Managed.Count != 0)
                 {
@@ -159,9 +167,9 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (string managed in plan.Managed)
+            foreach (string item in plan.Managed)
             {
-                if (!StartupPayload.IsManagedExecutable(managed, paviseAutoPath))
+                if (!StartupPayload.IsManagedExecutable(item, paviseAutoPath))
                 {
                     return false;
                 }
@@ -204,27 +212,28 @@ namespace PaviseApp
 
         private static List<string> SnapshotManaged(string root)
         {
-            List<string> paviseAutoPaths = new List<string>();
+            List<string> list = new List<string>();
             try
             {
                 RejectRedirects(root);
                 if (!Directory.Exists(root))
                 {
-                    return paviseAutoPaths;
+                    return list;
                 }
-                foreach (string path in Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly))
+                string[] directories = Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly);
+                foreach (string path in directories)
                 {
                     string paviseAutoPath = Path.Combine(path, "PaviseAuto.exe");
                     if (StartupPayload.IsVerifiedExecutable(paviseAutoPath, root))
                     {
-                        paviseAutoPaths.Add(paviseAutoPath);
+                        list.Add(paviseAutoPath);
                     }
                 }
             }
             catch
             {
             }
-            return paviseAutoPaths;
+            return list;
         }
 
         private static bool DeleteVerified(string target, string expectedHash, int attempts, int delay)
@@ -321,9 +330,9 @@ namespace PaviseApp
                     binaryWriter.Write(plan.Hash);
                     binaryWriter.Write(plan.ManagedRoot);
                     binaryWriter.Write(plan.Managed.Count);
-                    foreach (string managed in plan.Managed)
+                    foreach (string item in plan.Managed)
                     {
-                        binaryWriter.Write(managed);
+                        binaryWriter.Write(item);
                     }
                 }
             }
@@ -345,12 +354,12 @@ namespace PaviseApp
                     plan.Executable = binaryReader.ReadString();
                     plan.Hash = binaryReader.ReadString();
                     plan.ManagedRoot = binaryReader.ReadString();
-                    int managedFileCount = binaryReader.ReadInt32();
-                    if (managedFileCount < 0 || managedFileCount > 64)
+                    int int32 = binaryReader.ReadInt32();
+                    if (int32 < 0 || int32 > 64)
                     {
                         throw new IOException("Invalid managed payload count");
                     }
-                    for (int i = 0; i < managedFileCount; i++)
+                    for (int i = 0; i < int32; i++)
                     {
                         plan.Managed.Add(binaryReader.ReadString());
                     }
@@ -377,7 +386,8 @@ namespace PaviseApp
             {
                 byte[] hash = sHA.ComputeHash(input);
                 StringBuilder stringBuilder = new StringBuilder(hash.Length * 2);
-                foreach (byte b in hash)
+                byte[] rawBytes = hash;
+                foreach (byte b in rawBytes)
                 {
                     stringBuilder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
                 }
@@ -413,6 +423,18 @@ namespace PaviseApp
             }
         }
 
+        private static bool IsUnder(string path, string root)
+        {
+            try
+            {
+                return Path.GetFullPath(path).StartsWith(Path.GetFullPath(root).TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
@@ -439,7 +461,8 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (string path in new string[2] { "cleanup.dat", "Pavise.Uninstall.exe" })
+            string[] textEntries = new string[2] { "cleanup.dat", "Pavise.Uninstall.exe" };
+            foreach (string path in textEntries)
             {
                 try
                 {

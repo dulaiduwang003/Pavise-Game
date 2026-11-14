@@ -13,22 +13,22 @@ namespace PaviseApp
 
         internal static PageViewPosition Capture(Control root, float scale)
         {
-            PageViewPosition pageViewPosition = new PageViewPosition();
+            PageViewPosition value = new PageViewPosition();
             scale = Math.Max(0.1f, scale);
             Visit(root, "", delegate(Control control, string path)
             {
                 TechTabs techTabs = control as TechTabs;
                 if (techTabs != null)
                 {
-                    pageViewPosition.tabs[path] = techTabs.Index;
+                    value.tabs[path] = techTabs.Index;
                 }
                 ScrollableControl scrollableControl = control as ScrollableControl;
                 if (scrollableControl != null && scrollableControl.AutoScroll)
                 {
-                    pageViewPosition.scrolls[path] = new PointF((float)(-scrollableControl.AutoScrollPosition.X) / scale, (float)(-scrollableControl.AutoScrollPosition.Y) / scale);
+                    value.scrolls[path] = new PointF((float)(-scrollableControl.AutoScrollPosition.X) / scale, (float)(-scrollableControl.AutoScrollPosition.Y) / scale);
                 }
             });
-            return pageViewPosition;
+            return value;
         }
 
         internal void Restore(Control root, float scale)
@@ -36,10 +36,10 @@ namespace PaviseApp
             Visit(root, "", delegate(Control control, string path)
             {
                 TechTabs techTabs = control as TechTabs;
-                int tab;
-                if (techTabs != null && tabs.TryGetValue(path, out tab))
+                int value2;
+                if (techTabs != null && tabs.TryGetValue(path, out value2))
                 {
-                    techTabs.Index = tab;
+                    techTabs.Index = value2;
                     techTabs.SnapToSelection();
                 }
             });
@@ -47,10 +47,10 @@ namespace PaviseApp
             Visit(root, "", delegate(Control control, string path)
             {
                 ScrollableControl scrollableControl = control as ScrollableControl;
-                PointF scroll;
-                if (scrollableControl != null && scrollableControl.AutoScroll && scrolls.TryGetValue(path, out scroll))
+                PointF value;
+                if (scrollableControl != null && scrollableControl.AutoScroll && scrolls.TryGetValue(path, out value))
                 {
-                    scrollableControl.AutoScrollPosition = new Point((int)Math.Round(scroll.X * scale), (int)Math.Round(scroll.Y * scale));
+                    scrollableControl.AutoScrollPosition = new Point((int)Math.Round(value.X * scale), (int)Math.Round(value.Y * scale));
                 }
             });
         }

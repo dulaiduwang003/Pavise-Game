@@ -4,6 +4,9 @@ namespace PaviseApp
 {
     internal static class GlobalTimerResTweak
     {
+        private const string KernelKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel";
+
+        private const string OnKey = "GlobalTimerResByPavise";
 
         private static readonly ReversibleReg Global = new ReversibleReg(Registry.LocalMachine, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel", "GlobalTimerResolutionRequests", RegistryValueKind.DWord, "PrevGlobalTimerRes");
 

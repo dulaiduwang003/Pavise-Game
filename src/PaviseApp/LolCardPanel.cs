@@ -230,20 +230,22 @@ namespace PaviseApp
                 btnDelete.SetBounds(0, Theme.S(160), width, Theme.S(30));
                 return;
             }
-            foreach (PillButton pillButton in new PillButton[3] { btnClean, btnRestore, btnDelete })
+            PillButton[] pillButtonItems = new PillButton[3] { btnClean, btnRestore, btnDelete };
+            foreach (PillButton pillButton in pillButtonItems)
             {
                 pillButton.Width = TextRenderer.MeasureText(pillButton.Text, pillButton.Font, Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(30);
             }
             int scaledDimension2 = Theme.S(10);
             int scaledDimension3 = Theme.S(58);
-            int buttonRight = width;
-            foreach (PillButton currentPillButton in new PillButton[2] { btnRestore, btnClean })
+            int onLayoutValue = width;
+            PillButton[] pillButtonItems2 = new PillButton[2] { btnRestore, btnClean };
+            foreach (PillButton pillButton2 in pillButtonItems2)
             {
-                if (currentPillButton.Visible)
+                if (pillButton2.Visible)
                 {
-                    buttonRight -= currentPillButton.Width;
-                    currentPillButton.Location = new Point(buttonRight, scaledDimension2);
-                    buttonRight -= scaledDimension;
+                    onLayoutValue -= pillButton2.Width;
+                    pillButton2.Location = new Point(onLayoutValue, scaledDimension2);
+                    onLayoutValue -= scaledDimension;
                 }
             }
             btnDelete.Location = new Point(width - btnDelete.Width, scaledDimension3);
@@ -283,7 +285,8 @@ namespace PaviseApp
             int left = base.Width;
             if (!CompactLayout)
             {
-                foreach (PillButton pillButton in new PillButton[2] { btnClean, btnRestore })
+                PillButton[] pillButtonItems = new PillButton[2] { btnClean, btnRestore };
+                foreach (PillButton pillButton in pillButtonItems)
                 {
                     if (pillButton.Visible && pillButton.Left < left)
                     {
@@ -319,22 +322,22 @@ namespace PaviseApp
                 DrawCell(graphics, rightOffset, scaledDimension, left, capFont, valFont, Lang.T("col.cell.ux"), lolOptimizationSnapshot.HeadlessActive ? Lang.T("col.ux.closed") : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Lang.T("col.ux.visible") : Lang.T("col.proc.none")), lolOptimizationSnapshot.HeadlessActive ? Theme.Green : ((lolOptimizationSnapshot.UxProcessCount > 0) ? Theme.Dim : Theme.Faint));
             }
             int scaledDimension2 = Theme.S(69);
-            Font ui = Theme.UI(8.2f, true);
+            Font font2 = Theme.UI(8.2f, true);
             if (CompactLayout)
             {
                 if (swCleanup.Visible)
                 {
-                    TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), ui, new Rectangle(Theme.S(4), swCleanup.Top, Math.Max(1, swCleanup.Left - Theme.S(12)), swCleanup.Height), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), font2, new Rectangle(Theme.S(4), swCleanup.Top, Math.Max(1, swCleanup.Left - Theme.S(12)), swCleanup.Height), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 }
-                TextRenderer.DrawText(graphics, Lang.T("col.headless"), ui, new Rectangle(Theme.S(4), swHeadless.Top, Math.Max(1, swHeadless.Left - Theme.S(12)), swHeadless.Height), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, Lang.T("col.headless"), font2, new Rectangle(Theme.S(4), swHeadless.Top, Math.Max(1, swHeadless.Left - Theme.S(12)), swHeadless.Height), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 return;
             }
             if (swCleanup.Visible)
             {
-                TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), ui, new Rectangle(Theme.S(4), scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.cleanup")) + 2, Theme.S(20)), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, Lang.T("col.cleanup"), font2, new Rectangle(Theme.S(4), scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.cleanup")) + 2, Theme.S(20)), swCleanup.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             int rightOffset2 = (swCleanup.Visible ? (swCleanup.Right + Theme.S(22)) : Theme.S(4));
-            TextRenderer.DrawText(graphics, Lang.T("col.headless"), ui, new Rectangle(rightOffset2, scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.headless")) + 2, Theme.S(20)), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(graphics, Lang.T("col.headless"), font2, new Rectangle(rightOffset2, scaledDimension2 - Theme.S(10), LabelWidth(Lang.T("col.headless")) + 2, Theme.S(20)), swHeadless.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
 
         private static int DrawCell(Graphics g, int x, int cy, int limit, Font capFont, Font valFont, string cap, string val, Color valColor)

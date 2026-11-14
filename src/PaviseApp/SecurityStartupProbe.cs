@@ -43,7 +43,7 @@ namespace PaviseApp
                 Task<string> error = child.StandardError.ReadToEndAsync();
                 if (!child.WaitForExit(TimeoutMs))
                 {
-                    // 这是本方只读检查子进程，绝不是安全软件进程。
+                    // 仅终止本方持有的只读检查子进程。
                     StopHelper(child);
                     confirmedExit = true;
                     return SecurityProductSnapshot.Unknown(true, "Helper deadline exhausted");
@@ -105,7 +105,8 @@ namespace PaviseApp
                     if (source.StartsWith("WSC", StringComparison.Ordinal)) WscUnknown = true;
                     else Unknown = true;
                 }
-                if (Failures.Count < 12) Failures.Add(source + ":" + error.GetType().Name);
+                if (Failures.Count < 12) Failures.Add(source + ":" + error.GetType().Name
+                    + " 错误码=0x" + error.HResult.ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
             }
             internal void Root(string path)
             {
@@ -234,19 +235,24 @@ namespace PaviseApp
 
         private static void ReadWsc(Facts facts)
         {
-            object instance = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("17072F7B-9ABE-4A74-A261-1EB76B55107A"), true));
+            object instance = null;
+            string stage = "创建清单";
             try
             {
-                var currentInstance = (IWscProductList)instance;
-                currentInstance.Initialize(4);
-                int count = currentInstance.Count;
+                instance = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("17072F7B-9ABE-4A74-A261-1EB76B55107A"), true));
+                stage = "取得清单接口";
+                var list = (IWscProductList)instance;
+                stage = "初始化提供程序";
+                list.Initialize(4);
+                stage = "读取产品数量";
+                int count = list.Count;
                 if (count < 0 || count > MaxProducts) facts.Unknown = true;
                 for (uint index = 0; index < Math.Min(Math.Max(count, 0), MaxProducts); index++)
                 {
                     IWscProduct product = null;
                     try
                     {
-                        product = currentInstance.GetItem(index);
+                        product = list.GetItem(index);
                         string name = CleanName(product.ProductName);
                         if (name.Length == 0) throw new InvalidDataException("Empty security product name");
                         SecurityProductState state = SecurityProductState.Unknown;
@@ -260,7 +266,8 @@ namespace PaviseApp
                     finally { if (product != null && Marshal.IsComObject(product)) Marshal.FinalReleaseComObject(product); }
                 }
             }
-            finally { if (Marshal.IsComObject(instance)) Marshal.FinalReleaseComObject(instance); }
+            catch (Exception error) { facts.Failed("WSC-" + stage, error, true); }
+            finally { if (instance != null && Marshal.IsComObject(instance)) Marshal.FinalReleaseComObject(instance); }
         }
 
         internal static SecurityProductState MapWscState(int state)

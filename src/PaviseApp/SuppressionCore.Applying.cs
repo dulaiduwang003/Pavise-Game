@@ -14,15 +14,26 @@ namespace PaviseApp
 
         public AcquireResult Acquire(int pid, string name, SuppressReason reason, string group, SuppressionLevel level, long expectedCreation = 0L)
         {
+            CaptureAntiCheatAdmission();
             if (level == SuppressionLevel.None)
             {
                 level = SuppressionLevel.Eco;
             }
+            if ((reason & SuppressReason.AntiCheat) != 0 && !RegisterAntiCheatRequest(pid, expectedCreation, name, group, level)) return AcquireResult.AlreadyProtected;
+            AntiCheatSnapshotAttempt snapshot = null;
+            if ((reason & SuppressReason.AntiCheat) != 0 && !BeginAntiCheatSnapshot(pid, expectedCreation, name, level, out snapshot)) return AcquireResult.AlreadyProtected;
+            try { return AcquireCore(pid, name, reason, group, level, expectedCreation, snapshot); }
+            finally { CompleteAntiCheatSnapshot(snapshot); }
+        }
+
+        private AcquireResult AcquireCore(int pid, string name, SuppressReason reason, string group, SuppressionLevel level, long expectedCreation, AntiCheatSnapshotAttempt snapshot)
+        {
             IntPtr processHandle = Native.OpenProcess(12800, false, pid);
             if (processHandle == IntPtr.Zero)
             {
                 lock (sync)
                 {
+                    if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                     Entry protectedEntry;
                     if (map.TryGetValue(pid, out protectedEntry) && SameName(protectedEntry.Name, name))
                     {
@@ -62,13 +73,21 @@ namespace PaviseApp
                 bool processSample = Native.QueryProcessSample(processHandle, out creation, out cpu, out io);
                 if (processSample && creation > 0 && (expectedCreation <= 0 || expectedCreation == creation))
                 {
+                    if (reason == SuppressReason.Background
+                        && PeripheralCatalog.IsAmdNoiseSuppressionName(processName)
+                        && PeripheralCatalog.IsAmdNoiseSuppressionProcess(processName, Native.ImagePath(processHandle)))
+                    {
+                        ReleaseBackgroundForRenderer(pid, creation, processName);
+                        return AcquireResult.AlreadyProtected;
+                    }
+                    if ((reason & SuppressReason.AntiCheat) != 0 && !BindAntiCheatRequest(pid, creation, name, group, level)) return AcquireResult.AlreadyProtected;
                     lock (sync)
                     {
+                        if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                         Entry trackedEntry;
                         bool alreadyTracked = map.TryGetValue(pid, out trackedEntry);
-                        if (alreadyTracked && !SameName(trackedEntry.Name, name))
+                        if (alreadyTracked && DiscardChangedTrackedNameLocked(pid, name, creation, trackedEntry))
                         {
-                            RemoveEntryLocked(pid);
                             alreadyTracked = false;
                             trackedEntry = null;
                         }
@@ -87,10 +106,19 @@ namespace PaviseApp
                             }
                             if (trackedEntry.Creation != creation)
                             {
+                                ObserveBackgroundAccountingExit(trackedEntry);
                                 RemoveEntryLocked(pid);
                                 alreadyTracked = false;
                                 trackedEntry = null;
                             }
+                        }
+                        if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue && (reason & SuppressReason.AntiCheat) != 0
+                            && !HasAntiCheatResources(trackedEntry) && !trackedEntry.GaveUpRestored
+                            && (trackedEntry.LegacyPlacementDebt || ((trackedEntry.Reasons & SuppressReason.Background) != 0 && (trackedEntry.Journaled || trackedEntry.Applied))))
+                        {
+                            // 整档失败也可能已经写入部分字段，旧日志债务先沿稳定恢复预算结清。
+                            if (!AttachAntiCheatResourceHistory(pid, trackedEntry)) return AcquireResult.AlreadyProtected;
+                            trackedEntry.AntiCheatResources.Active = false;
                         }
                         if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue && trackedEntry.GaveUp)
                         {
@@ -110,6 +138,8 @@ namespace PaviseApp
                         }
                         if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue)
                         {
+                            if (snapshot != null) snapshot.Completed = true;
+                            if (trackedEntry.AntiCheatResourceRemovalPending) return AcquireResult.AlreadyProtected;
                             SuppressionLevel level2 = trackedEntry.Level;
                             SuppressReason reasons = trackedEntry.Reasons;
                             string group2 = trackedEntry.Group;
@@ -119,6 +149,10 @@ namespace PaviseApp
                                 trackedEntry.SetGroup(group);
                             }
                             SetReasonLevel(trackedEntry, reason, level);
+                            if ((reason & SuppressReason.AntiCheat) != 0)
+                            {
+                                if (!AttachAntiCheatResourceHistory(pid, trackedEntry)) return AcquireResult.AlreadyProtected;
+                            }
                             bool requestChanged = reasons != trackedEntry.Reasons || level2 != trackedEntry.Level || !SameName(group2, trackedEntry.Group);
                             long ticks = DateTime.UtcNow.Ticks;
                             bool levelChanged = level2 != trackedEntry.Level;
@@ -155,7 +189,7 @@ namespace PaviseApp
                                 RecordBatchApplyResultLocked(pid, true, null);
                                 return AcquireResult.AlreadyThrottled;
                             }
-                            if (VerifyBackgroundJob(trackedEntry) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, DesiredGpu(trackedEntry), AntiCheatThrottled(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry), trackedEntry.OrigBoost))
+                            if (!(HasAntiCheatResources(trackedEntry) && AntiCheatThrottled(trackedEntry)) && !GpuPolicyNeedsRelease(trackedEntry) && VerifyBackgroundJob(trackedEntry) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, DesiredGpu(trackedEntry), AntiCheatThrottled(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry), trackedEntry.OrigBoost))
                             {
                                 ScheduleAfterMatch(trackedEntry, pid);
                                 RecordBatchApplyResultLocked(pid, true, null);
@@ -199,6 +233,7 @@ namespace PaviseApp
                         {
                             return AcquireResult.ApplyFailed;
                         }
+                        if (snapshot != null) snapshot.Completed = true;
                         uint[] yieldCpuSets = CpuTopology.BackgroundYieldCpuSetIds();
                         bool inheritedCpuSets = SameCpuSets(origCpuSetsValue, CpuTopology.BackgroundCpuSetIds()) || SameCpuSets(origCpuSetsValue, CpuTopology.InactiveBackgroundCpuSetIds()) || (yieldCpuSets != null && yieldCpuSets.Length > 0 && SameCpuSets(origCpuSetsValue, yieldCpuSets));
                         ulong squeezeMask = (CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask());
@@ -242,6 +277,8 @@ namespace PaviseApp
                         if (Native.D3DKMTGetProcessSchedulingPriorityClass(processHandle, out cls) != 0)
                         {
                             cls = -1;
+                            if (GpuDemoteEnabled && (reason & SuppressReason.Background) != 0)
+                                Logger.Log("后台 GPU 优先级：未取得原值，保持未接管；目标=" + pid + "/" + creation);
                         }
                         else if (staleThrottle && cls == 0)
                         {
@@ -292,12 +329,15 @@ namespace PaviseApp
                             SetEntryLocked(pid, newTrackedEntry);
                             e = newTrackedEntry;
                         }
+                        if (AntiCheatThrottled(e) && !AttachAntiCheatResourceHistory(pid, e)) return AcquireResult.ApplyFailed;
                         if (!PersistJournalLocked())
                         {
+                            if (HasAntiCheatResources(e)) e.AntiCheatResourceJournalPending = true;
                             return AcquireResult.ApplyFailed;
                         }
                         bool queueApplyLockedSucceeded = QueueApplyLocked(pid, name);
-                        bool applied = queueApplyLockedSucceeded || ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, DesiredGpu(e), origBoostValue, (reason & SuppressReason.AntiCheat) != 0, DesiredAffinityOf(e), PlacementIsProtected(e));
+                        bool applied = queueApplyLockedSucceeded || (AntiCheatThrottled(e) ? ApplyAntiCheatResources(processHandle, e)
+                            : ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, DesiredGpu(e), origBoostValue, false, DesiredAffinityOf(e), PlacementIsProtected(e), e));
                         Entry appliedEntry;
                         if (map.TryGetValue(pid, out appliedEntry) && !queueApplyLockedSucceeded)
                         {
@@ -341,14 +381,17 @@ namespace PaviseApp
         private static bool EntrySnapshotMatches(IntPtr handle, Entry entry)
         {
             if (entry.BackgroundJobPlacement && (entry.BackgroundJobActive || entry.BackgroundRestorePending)) return false;
-            return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, !entry.AntiCheatPlacementExternal && !entry.BackgroundJobPlacement);
+            if (entry.GpuLease.PendingCheckpoint || entry.GpuLease.Phase == 'P' || entry.GpuLease.Phase == 'A') return false;
+            int gpu = entry.GpuLease.Phase == 'L' ? entry.OrigGpu : -1;
+            return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, gpu, entry.OrigBoost, !entry.AntiCheatPlacementExternal && !entry.BackgroundJobPlacement);
         }
 
         private bool ApplyEntryValues(IntPtr handle, Entry entry)
         {
+            if (AntiCheatThrottled(entry)) return ApplyAntiCheatResources(handle, entry);
             if (!VerifyBackgroundJob(entry)) return false;
             DetectBackgroundPlacementChange(handle, entry);
-            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, DesiredGpu(entry), entry.OrigBoost, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry));
+            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, DesiredGpu(entry), entry.OrigBoost, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry), entry);
         }
 
         private bool BeginSuppressionCycle(IntPtr handle, Entry entry, int pid)
@@ -360,13 +403,14 @@ namespace PaviseApp
 
         private bool ApplyEntryLocked(IntPtr h, Entry e, int pid)
         {
+            if (AntiCheatThrottled(e)) return ApplyAntiCheatResources(h, e);
             if (FailureBudgetFor(e, "reconcile").Failures >= 8) return false;
             string target = FailureTargetOf(h, e);
             BeginSuppressionCycle(h, e, pid);
             int identityState = EntryIdentity(h, e);
             if (identityState != 0)
             {
-                StopEntry(e, identityState == 1);
+                StopEntry(e, identityState == 1, identityState == 1);
                 return false;
             }
             if (ActionFailureStore.IsIsolated("BackgroundSuppression", target))
@@ -375,7 +419,7 @@ namespace PaviseApp
                 {
                     if (EntryIdentity(h, e) == 1)
                     {
-                        StopEntry(e, true);
+                        StopEntry(e, true, true);
                         return false;
                     }
                     ActionFailureStore.Trip("BackgroundSuppression", target, "Background recovery incomplete before apply");
@@ -400,7 +444,7 @@ namespace PaviseApp
                 if (identityState != 0)
                 {
                     ActionFailureStore.CancelApply("BackgroundSuppression", target);
-                    StopEntry(e, identityState == 1);
+                    StopEntry(e, identityState == 1, identityState == 1);
                     return false;
                 }
                 applyEntryValuesSucceeded = ApplyEntryValues(h, e);
@@ -422,7 +466,7 @@ namespace PaviseApp
             {
             case 1:
                 ActionFailureStore.CancelApply("BackgroundSuppression", target);
-                StopEntry(e, true);
+                StopEntry(e, true, true);
                 return false;
             case 2:
                 LastApplyError = "Background identity unreadable after apply; recovery retained";
@@ -446,7 +490,8 @@ namespace PaviseApp
 
         private bool CancelSkippedEntry(IntPtr handle, Entry entry, string target)
         {
-            bool restoredOrGone = EntryIdentity(handle, entry) == 1 || RestoreEntryValues(handle, entry);
+            bool gone = EntryIdentity(handle, entry) == 1;
+            bool restoredOrGone = gone || RestoreEntryValues(handle, entry);
             if (restoredOrGone)
             {
                 ActionFailureStore.CancelApply("BackgroundSuppression", target);
@@ -455,7 +500,7 @@ namespace PaviseApp
             {
                 ActionFailureStore.Trip("BackgroundSuppression", target, "Background recovery incomplete after skipped apply");
             }
-            StopEntry(entry, restoredOrGone);
+            StopEntry(entry, restoredOrGone, gone);
             return false;
         }
 
@@ -470,6 +515,7 @@ namespace PaviseApp
 
         private bool GiveUpAntiCheatLocked(IntPtr h, int pid, Entry e)
         {
+            if (HasAntiCheatResources(e) && AntiCheatThrottled(e)) return false;
             if (e == null || e.GaveUp || e.OrigPri == uint.MaxValue)
             {
                 return false;
@@ -479,7 +525,7 @@ namespace PaviseApp
                 return false;
             }
             string lastApplyErrorSnapshot = LastApplyError;
-            bool gaveUpRestoredValue = RestoreBackgroundPlacement(h, e) && RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost, RestorePlacement(e));
+            bool gaveUpRestoredValue = RestoreBackgroundPlacement(h, e) && RestoreOrdinaryEntryValues(h, e);
             e.GaveUp = true;
             e.GaveUpRestored = gaveUpRestoredValue;
             e.SetApplied(false);
@@ -491,6 +537,7 @@ namespace PaviseApp
 
         private bool AllowAntiCheatCorrection(IntPtr handle, int pid, Entry entry)
         {
+            if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) return true;
             if (!entry.Applied || !AntiCheatThrottled(entry)
                 || (entry.Reasons & SuppressReason.Background) != 0) return true;
             long now = DateTime.UtcNow.Ticks;
@@ -511,7 +558,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (string entryText in detail.Split(','))
+            string[] detailParts = detail.Split(',');
+            foreach (string entryText in detailParts)
             {
                 if (entryText != "affinity-write" && entryText != "affinity-readback")
                 {
@@ -523,6 +571,12 @@ namespace PaviseApp
 
         private static void ScheduleAfterMatch(Entry e, int pid)
         {
+            if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
+            {
+                e.AntiCheatResources.MaintenanceFailures = 0;
+                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+                return;
+            }
             RecordFailureBudget(e, "reconcile", true, 0);
             e.BackgroundReleaseDebt = false;
             e.ReconcileFailures = 0;
@@ -544,6 +598,12 @@ namespace PaviseApp
 
         private static void ScheduleAfterApply(Entry e, bool applied, int pid)
         {
+            if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
+            {
+                e.SetApplied(applied);
+                if (applied) e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+                return;
+            }
             FailureBudgetFor(e, "reconcile");
             if (!applied) e.SetApplied(false);
             if (applied)
@@ -559,21 +619,21 @@ namespace PaviseApp
             {
                 e.ReconcileFailures++;
             }
-            int reconcileDelaySeconds = 4;
+            int scheduleAfterApplyValue = 4;
             for (int i = 1; i < e.ReconcileFailures; i++)
             {
-                if (reconcileDelaySeconds >= 60)
+                if (scheduleAfterApplyValue >= 60)
                 {
                     break;
                 }
-                reconcileDelaySeconds = Math.Min(60, reconcileDelaySeconds * 2);
+                scheduleAfterApplyValue = Math.Min(60, scheduleAfterApplyValue * 2);
             }
-            e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(reconcileDelaySeconds).Ticks;
+            e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(scheduleAfterApplyValue).Ticks;
             RecordFailureBudget(e, "reconcile", false, e.NextReconcileTicks);
             if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
         }
 
-        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false)
+        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false, Entry accountingEntry = null)
         {
             affinityOwned |= antiCheat;
             Interlocked.Increment(ref applyOperations);
@@ -584,7 +644,7 @@ namespace PaviseApp
                 return StopFailedApply(failures);
             }
             uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
-            if (Native.GetPriorityClass(h) != desiredPriority && !Native.SetPriorityClass(h, desiredPriority))
+            if (Native.GetPriorityClass(h) != desiredPriority && !AccountBackgroundWrite(accountingEntry, Native.SetPriorityClass(h, desiredPriority)))
             {
                 failures.Add("priority-write");
             }
@@ -592,23 +652,31 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            int cls;
-            if (desiredGpu >= 0 && Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls != desiredGpu)
+            if (desiredGpu >= 0)
             {
-                if (Native.D3DKMTSetProcessSchedulingPriorityClass(h, desiredGpu) != 0)
+                bool gpuWrote;
+                if (accountingEntry == null)
                 {
-                    failures.Add("gpu-write");
+                    failures.Add("gpu-owner-missing");
                 }
-                else if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) != 0 || cls != desiredGpu)
+                else
                 {
-                    failures.Add("gpu-readback");
+                    bool gpuApplied = accountingEntry.GpuLease.Apply(h, desiredGpu,
+                        () => EntryIdentity(h, accountingEntry), () => SaveGpuJournal(), out gpuWrote);
+                    AccountBackgroundWrite(accountingEntry, gpuWrote);
+                    if (!gpuApplied) failures.Add("gpu-ownership-or-readback");
                 }
+            }
+            else if (accountingEntry != null && GpuPolicyNeedsRelease(accountingEntry)
+                && !accountingEntry.GpuLease.Restore(h, () => EntryIdentity(h, accountingEntry), () => SaveGpuJournal()))
+            {
+                failures.Add("gpu-restore-pending");
             }
             if (failures.Count != 0)
             {
                 return StopFailedApply(failures);
             }
-            if (!affinityOwned && !Native.CpuSetsMatch(h, originalCpuSets) && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
+            if (!affinityOwned && !Native.CpuSetsMatch(h, originalCpuSets) && !RestoreCpuSetsDuringApply(h, originalCpuSets, accountingEntry))
             {
                 failures.Add("cpu-sets-restore");
             }
@@ -631,7 +699,7 @@ namespace PaviseApp
                         return StopFailedApply(failures);
                     }
                 }
-                if (currentAffinity != desiredAffinity && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
+                if (currentAffinity != desiredAffinity && !AccountBackgroundWrite(accountingEntry, Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity)))
                 {
                     failures.Add(affinityChanged ? "affinity-write" : "affinity-restore");
                 }
@@ -645,7 +713,7 @@ namespace PaviseApp
                 return StopFailedApply(failures);
             }
             int desiredIoPriority = DesiredIoPriority(level, antiCheat);
-            if (Native.QueryIoPriority(h) != desiredIoPriority && !Native.TrySetIoPriority(h, desiredIoPriority))
+            if (Native.QueryIoPriority(h) != desiredIoPriority && !AccountBackgroundWrite(accountingEntry, Native.TrySetIoPriority(h, desiredIoPriority)))
             {
                 failures.Add("io-write");
             }
@@ -654,7 +722,7 @@ namespace PaviseApp
                 return StopFailedApply(failures);
             }
             int desiredPagePriority = DesiredPagePriority(level, antiCheat);
-            if (Native.QueryPagePriority(h) != desiredPagePriority && !Native.TrySetPagePriority(h, desiredPagePriority))
+            if (Native.QueryPagePriority(h) != desiredPagePriority && !AccountBackgroundWrite(accountingEntry, Native.TrySetPagePriority(h, desiredPagePriority)))
             {
                 failures.Add("page-write");
             }
@@ -670,7 +738,7 @@ namespace PaviseApp
                 int stateMask;
                 bool tryQueryPowerThrottling = Native.TryQueryPowerThrottling(h, out controlMask, out stateMask);
                 bool preserveTimerSeal = tryQueryPowerThrottling && !desiredTimerSealSucceeded && (controlMask & 4) != 0;
-                if ((!tryQueryPowerThrottling || ((uint)controlMask & requiredQosMask) != requiredQosMask || ((uint)stateMask & requiredQosMask) != requiredQosMask || preserveTimerSeal) && !Native.ApplyEcoQoS(h, desiredTimerSealSucceeded))
+                if ((!tryQueryPowerThrottling || ((uint)controlMask & requiredQosMask) != requiredQosMask || ((uint)stateMask & requiredQosMask) != requiredQosMask || preserveTimerSeal) && !AccountBackgroundWrite(accountingEntry, Native.ApplyEcoQoS(h, desiredTimerSealSucceeded)))
                 {
                     failures.Add("eco-write");
                 }
@@ -679,7 +747,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            string boostFailure = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => Native.TrySetBoostDisabled(h, disabled));
+            string boostFailure = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => AccountBackgroundWrite(accountingEntry, Native.TrySetBoostDisabled(h, disabled)));
             if (boostFailure.Length > 0)
             {
                 failures.Add(boostFailure);
@@ -747,6 +815,7 @@ namespace PaviseApp
 
         internal bool Reconcile(int pid, string expectedName, SuppressReason reason, bool forceAudit)
         {
+            CaptureAntiCheatAdmission();
             long ticks = DateTime.UtcNow.Ticks;
             Entry entry;
             uint origPri;
@@ -763,8 +832,8 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                if (FailureBudgetFor(entry, "reconcile").Failures >= 8) return true;
-                if (!forceAudit && ticks < entry.NextReconcileTicks)
+                if (!(HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) && FailureBudgetFor(entry, "reconcile").Failures >= 8) return true;
+                if ((!forceAudit || HasAntiCheatResources(entry) && AntiCheatThrottled(entry) && entry.AntiCheatResources.MaintenanceFailures > 0) && ticks < entry.NextReconcileTicks)
                 {
                     return true;
                 }
@@ -781,7 +850,8 @@ namespace PaviseApp
                     Entry currentEntry;
                     if (map.TryGetValue(pid, out currentEntry) && currentEntry == entry)
                     {
-                        ScheduleAfterApply(currentEntry, false, pid);
+                        if (HasAntiCheatResources(currentEntry) && AntiCheatThrottled(currentEntry)) PauseAntiCheatResources(currentEntry, "OpenProcess:" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                        else ScheduleAfterApply(currentEntry, false, pid);
                     }
                 }
                 return true;
@@ -791,7 +861,7 @@ namespace PaviseApp
                 string processName = Native.ImageName(processHandle);
                 if (processName == null || !SameName(processName, expectedName))
                 {
-                    if (processName == null) { lock (sync) ScheduleAfterApply(entry, false, pid); }
+                    if (processName == null) { lock (sync) { if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) PauseAntiCheatResources(entry, "process-image-unknown"); else ScheduleAfterApply(entry, false, pid); } }
                     return false;
                 }
                 long creation;
@@ -799,7 +869,7 @@ namespace PaviseApp
                 ulong io;
                 if (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io))
                 {
-                    lock (sync) ScheduleAfterApply(entry, false, pid);
+                    lock (sync) { if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) PauseAntiCheatResources(entry, "process-creation-unknown"); else ScheduleAfterApply(entry, false, pid); }
                     return false;
                 }
                 lock (sync)
@@ -827,7 +897,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(appliedEntry);
-                    if (VerifyBackgroundJob(appliedEntry) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, desiredGpu, AntiCheatThrottled(appliedEntry), DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry), appliedEntry.OrigBoost))
+                    if (!(HasAntiCheatResources(appliedEntry) && AntiCheatThrottled(appliedEntry)) && !GpuPolicyNeedsRelease(appliedEntry) && VerifyBackgroundJob(appliedEntry) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, desiredGpu, AntiCheatThrottled(appliedEntry), DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry), appliedEntry.OrigBoost))
                     {
                         if (!appliedEntry.Applied && appliedEntry.ReconcileFailures > 0)
                         {

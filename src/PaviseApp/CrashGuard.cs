@@ -28,8 +28,6 @@ namespace PaviseApp
 
             public int Io;
 
-            public int Page;
-
             public int Gpu;
 
             public uint[] CpuSets;
@@ -59,9 +57,9 @@ namespace PaviseApp
 
             public int Io;
 
-            public int Page;
-
             public int Gpu;
+
+            public GpuPriorityLease GpuLease = new GpuPriorityLease();
 
             public uint[] CpuSets;
 
@@ -77,6 +75,12 @@ namespace PaviseApp
 
             public ulong PreviousAffinity;
         }
+
+        private const string KThrottle = "Crash_ThrottleMasks";
+
+        private const string KBoost = "Crash_BoostMask";
+
+        private const string KBoostNames = "Crash_BoostNames";
 
         private const string KBoostEntries = "Crash_BoostEntriesV2";
 
@@ -102,6 +106,49 @@ namespace PaviseApp
 
         private static readonly Dictionary<int, PrioritySettlement> prioritySettlements = new Dictionary<int, PrioritySettlement>();
 
+        private static readonly Dictionary<string, GpuPriorityLease> gpuLeases = new Dictionary<string, GpuPriorityLease>();
+
+        private static string GpuLeaseKey(BoostEntry entry) { return entry.Pid + ":" + entry.Creation; }
+
+        internal static bool BoostGpuCheckpointPending(int pid, long creation)
+        {
+            lock (sync)
+            {
+                GpuPriorityLease lease;
+                return gpuLeases.TryGetValue(pid + ":" + creation, out lease) && lease.PendingCheckpoint;
+            }
+        }
+
+        internal static bool ApplyBoostGpu(IntPtr handle, int pid, long creation)
+        {
+            lock (sync)
+            {
+                long ownerBirth;
+                if (!owned.TryGetValue(pid, out ownerBirth) || ownerBirth != creation || GetProcessId(handle) != (uint)pid) return false;
+                List<BoostEntry> entries = LoadEntries();
+                if (entries == null) return false;
+                BoostEntry entry = FindEntry(entries, pid, creation);
+                if (entry == null || entry.Gpu < 0) return false;
+                gpuLeases[GpuLeaseKey(entry)] = entry.GpuLease;
+                bool wrote;
+                return entry.GpuLease.Apply(handle, 4, () => Native.QueryProcessIdentityState(handle, creation), () => SaveEntries(entries), out wrote);
+            }
+        }
+
+        internal static bool RestoreBoostGpu(IntPtr handle, int pid, long creation)
+        {
+            lock (sync)
+            {
+                if (GetProcessId(handle) != (uint)pid) return false;
+                List<BoostEntry> entries = LoadEntries();
+                if (entries == null) return false;
+                BoostEntry entry = FindEntry(entries, pid, creation);
+                if (entry == null) return true;
+                gpuLeases[GpuLeaseKey(entry)] = entry.GpuLease;
+                return entry.GpuLease.Restore(handle, () => Native.QueryProcessIdentityState(handle, creation), () => SaveEntries(entries));
+            }
+        }
+
         public static bool UncleanThrottleAtLaunch { get; private set; }
 
         public static void MarkThrottle(ulong mask)
@@ -117,18 +164,18 @@ namespace PaviseApp
             Settings.SaveStr("Crash_ThrottleMasks", "");
         }
 
-        public static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets)
+        public static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int gpu, uint[] cpuSets)
         {
-            return MarkBoostProcess(pid, creation, name, priority, affinity, io, page, gpu, cpuSets, -1, -1);
+            return MarkBoostProcess(pid, creation, name, priority, affinity, io, gpu, cpuSets, -1, -1);
         }
 
-        public static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets, int qosControl, int qosState)
+        public static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int gpu, uint[] cpuSets, int qosControl, int qosState)
         {
             OriginalBoostState recovered;
-            return MarkBoostProcess(pid, creation, name, priority, affinity, io, page, gpu, cpuSets, qosControl, qosState, out recovered);
+            return MarkBoostProcess(pid, creation, name, priority, affinity, io, gpu, cpuSets, qosControl, qosState, out recovered);
         }
 
-        internal static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets, int qosControl, int qosState, out OriginalBoostState recovered)
+        internal static bool MarkBoostProcess(int pid, long creation, string name, uint priority, ulong affinity, int io, int gpu, uint[] cpuSets, int qosControl, int qosState, out OriginalBoostState recovered)
         {
             recovered = null;
             if (pid <= 0 || creation <= 0 || string.IsNullOrEmpty(name) || !ValidPriority(priority))
@@ -137,35 +184,34 @@ namespace PaviseApp
             }
             lock (sync)
             {
-                List<BoostEntry> freshs = LoadEntries();
-                if (freshs == null) return false;
-                foreach (BoostEntry currentFresh in freshs)
+                List<BoostEntry> list = LoadEntries();
+                if (list == null) return false;
+                foreach (BoostEntry item in list)
                 {
-                    if (currentFresh.Pid == pid && currentFresh.Creation == creation)
+                    if (item.Pid == pid && item.Creation == creation)
                     {
-                        if (!string.Equals(currentFresh.Name, name, StringComparison.OrdinalIgnoreCase))
+                        if (!string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
                         {
                             return false;
                         }
                         owned[pid] = creation;
                         recovered = new OriginalBoostState
                         {
-                            Priority = currentFresh.Priority,
-                            PriorityPhase = currentFresh.PriorityPhase,
-                            LastAppliedPriority = currentFresh.LastAppliedPriority,
-                            PreviousPriorityForRestore = currentFresh.PreviousPriorityForRestore,
-                            Affinity = currentFresh.Affinity,
-                            Io = currentFresh.Io,
-                            Page = currentFresh.Page,
-                            Gpu = currentFresh.Gpu,
-                            CpuSets = ((currentFresh.CpuSets == null) ? new uint[0] : ((uint[])currentFresh.CpuSets.Clone())),
-                            QoSControl = currentFresh.QoSControl,
-                            QoSState = currentFresh.QoSState
+                            Priority = item.Priority,
+                            PriorityPhase = item.PriorityPhase,
+                            LastAppliedPriority = item.LastAppliedPriority,
+                            PreviousPriorityForRestore = item.PreviousPriorityForRestore,
+                            Affinity = item.Affinity,
+                            Io = item.Io,
+                            Gpu = item.Gpu,
+                            CpuSets = ((item.CpuSets == null) ? new uint[0] : ((uint[])item.CpuSets.Clone())),
+                            QoSControl = item.QoSControl,
+                            QoSState = item.QoSState
                         };
                         return true;
                     }
                 }
-                freshs.RemoveAll((BoostEntry e) => e.Pid == pid);
+                list.RemoveAll((BoostEntry e) => e.Pid == pid);
                 List<BoostEntry> priorityEntries = LoadPriorityEntries();
                 if (priorityEntries == null) return false;
                 BoostEntry orphan = FindEntry(priorityEntries, pid, creation);
@@ -180,7 +226,6 @@ namespace PaviseApp
                     PriorityPhase = BoostPriorityPhase.None,
                     Affinity = affinity,
                     Io = io,
-                    Page = page,
                     Gpu = gpu,
                     CpuSets = cpuSets,
                     QoSControl = qosControl,
@@ -190,8 +235,8 @@ namespace PaviseApp
                 // 恢复能看到旧格式基准前，先写入 None 附属记录。第二次写入失败时只留下无害的失效标记。
 
                 if (!SavePriorityEntry(fresh)) return false;
-                freshs.Add(fresh);
-                bool saveEntriesSucceeded = SaveEntries(freshs);
+                list.Add(fresh);
+                bool saveEntriesSucceeded = SaveEntries(list);
                 if (saveEntriesSucceeded)
                 {
                     owned[pid] = creation;
@@ -209,21 +254,22 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                long currentOwned;
-                if (owned.TryGetValue(pid, out currentOwned) && (creation <= 0 || currentOwned == creation))
+                long value;
+                if (owned.TryGetValue(pid, out value) && (creation <= 0 || value == creation))
                 {
-                    List<BoostEntry> boostEntries = LoadEntries();
-                    if (boostEntries == null) return;
+                    List<BoostEntry> list = LoadEntries();
+                    if (list == null) return;
                     List<BoostEntry> priorities = LoadPriorityEntries();
                     if (priorities == null) return;
-                    BoostEntry entry = FindEntry(boostEntries, pid, currentOwned) ?? FindEntry(priorities, pid, currentOwned);
+                    BoostEntry entry = FindEntry(list, pid, value) ?? FindEntry(priorities, pid, value);
                     if (entry != null && !SettleBoostPriority(entry)) return;
-                    int removed = boostEntries.RemoveAll((BoostEntry e) => e.Pid == pid && (creation <= 0 || e.Creation == creation));
-                    if (removed == 0 || SaveEntries(boostEntries))
+                    int removed = list.RemoveAll((BoostEntry e) => e.Pid == pid && (creation <= 0 || e.Creation == creation));
+                    if (removed == 0 || SaveEntries(list))
                     {
                         owned.Remove(pid);
-                        ForgetPrioritySettlement(pid, currentOwned);
-                        PrunePriorityTombstones(boostEntries);
+                        gpuLeases.Remove(pid + ":" + value);
+                        ForgetPrioritySettlement(pid, value);
+                        PrunePriorityTombstones(list);
                     }
                 }
             }
@@ -330,7 +376,18 @@ namespace PaviseApp
             current = Native.GetPriorityClass(handle);
             if (!ValidPriority(current)) return false;
             if (current != entry.LastAppliedPriority) return SettleBoostPriority(entry);
-            Native.SetPriorityClass(handle, entry.PreviousPriorityForRestore);
+            // 新调度只持有查询句柄；确有本方旧写入待恢复时，单独取得写权限并重新核对同一对象。
+            IntPtr priorityWriter = Native.OpenProcess(0x1200, false, entry.Pid);
+            if (priorityWriter == IntPtr.Zero) return false;
+            try
+            {
+                if (GetProcessId(priorityWriter) != (uint)entry.Pid || Identify(priorityWriter, entry) != BoostIdentity.Match) return false;
+                current = Native.GetPriorityClass(priorityWriter);
+                if (!ValidPriority(current)) return false;
+                if (current != entry.LastAppliedPriority) return SettleBoostPriority(entry);
+                Native.SetPriorityClass(priorityWriter, entry.PreviousPriorityForRestore);
+            }
+            finally { Native.CloseHandle(priorityWriter); }
             current = Native.GetPriorityClass(handle);
             identity = Identify(handle, entry);
             if (identity == BoostIdentity.Unknown) return false;
@@ -413,20 +470,20 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                List<BoostEntry> boostEntries = LoadEntries();
-                if (boostEntries == null) return false;
-                foreach (BoostEntry boostEntry in boostEntries)
+                List<BoostEntry> list = LoadEntries();
+                if (list == null) return false;
+                foreach (BoostEntry item in list)
                 {
-                    if (boostEntry.Pid == pid && boostEntry.Creation == creation)
+                    if (item.Pid == pid && item.Creation == creation)
                     {
-                        if (boostEntry.PlacementYielded && applied != 0)
+                        if (item.PlacementYielded && applied != 0)
                         {
                             return false;
                         }
-                        boostEntry.PlacementTracked = true;
-                        boostEntry.AppliedAffinity = applied;
-                        boostEntry.PreviousAffinity = previous;
-                        return SaveEntries(boostEntries);
+                        item.PlacementTracked = true;
+                        item.AppliedAffinity = applied;
+                        item.PreviousAffinity = previous;
+                        return SaveEntries(list);
                     }
                 }
                 return false;
@@ -461,20 +518,20 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                List<BoostEntry> boostEntries = LoadEntries();
-                if (boostEntries == null) return;
+                List<BoostEntry> list = LoadEntries();
+                if (list == null) return;
                 bool placementChanged = false;
-                foreach (BoostEntry boostEntry in boostEntries)
+                foreach (BoostEntry item in list)
                 {
-                    if (boostEntry.Pid == pid && boostEntry.Creation == creation && !boostEntry.PlacementYielded)
+                    if (item.Pid == pid && item.Creation == creation && !item.PlacementYielded)
                     {
-                        boostEntry.PlacementYielded = true;
+                        item.PlacementYielded = true;
                         placementChanged = true;
                     }
                 }
                 if (placementChanged)
                 {
-                    SaveEntries(boostEntries);
+                    SaveEntries(list);
                 }
             }
         }
@@ -512,80 +569,80 @@ namespace PaviseApp
 
         private static void HealBoostEntries()
         {
-            List<BoostEntry> boostEntries = LoadEntries();
-            if (boostEntries == null) return;
-            List<BoostEntry> currentBoostEntries = new List<BoostEntry>();
+            List<BoostEntry> list = LoadEntries();
+            if (list == null) return;
+            List<BoostEntry> list2 = new List<BoostEntry>();
             int processedCount = 0;
-            foreach (BoostEntry boostEntry in boostEntries)
+            foreach (BoostEntry item in list)
             {
-                IntPtr processHandle = Native.OpenProcess(12800, false, boostEntry.Pid);
-                if (processHandle == IntPtr.Zero)
+                IntPtr intPtr = Native.OpenProcess(12800, false, item.Pid);
+                if (intPtr == IntPtr.Zero)
                 {
-                    IntPtr currentProcessHandle = Native.OpenProcess(4096, false, boostEntry.Pid);
-                    if (currentProcessHandle != IntPtr.Zero)
+                    IntPtr intPtr2 = Native.OpenProcess(4096, false, item.Pid);
+                    if (intPtr2 != IntPtr.Zero)
                     {
                         try
                         {
-                            if (Identify(currentProcessHandle, boostEntry) != BoostIdentity.Mismatch)
+                            if (Identify(intPtr2, item) != BoostIdentity.Mismatch)
                             {
-                                currentBoostEntries.Add(boostEntry);
+                                list2.Add(item);
                             }
                         }
                         finally
                         {
-                            Native.CloseHandle(currentProcessHandle);
+                            Native.CloseHandle(intPtr2);
                         }
                     }
                     else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
                     {
-                        currentBoostEntries.Add(boostEntry);
+                        list2.Add(item);
                     }
                     continue;
                 }
                 try
                 {
-                    switch (Identify(processHandle, boostEntry))
+                    switch (Identify(intPtr, item))
                     {
                     case BoostIdentity.Mismatch:
                         continue;
                     case BoostIdentity.Unknown:
-                        currentBoostEntries.Add(boostEntry);
+                        list2.Add(item);
                         continue;
                     }
-                    ulong affinity = boostEntry.Affinity;
-                    uint[] cpuSets = boostEntry.CpuSets;
-                    if (!RestoreBoostPriorityEntry(processHandle, boostEntry))
+                    ulong affinity = item.Affinity;
+                    uint[] cpuSets = item.CpuSets;
+                    if (!RestoreBoostPriorityEntry(intPtr, item))
                     {
-                        currentBoostEntries.Add(boostEntry);
+                        list2.Add(item);
                         continue;
                     }
-                    bool placementRestored = !boostEntry.PlacementTracked || boostEntry.PlacementYielded || (RestoreOwnedAffinity(processHandle, affinity, boostEntry.AppliedAffinity) && RestoreOwnedAffinity(processHandle, affinity, boostEntry.PreviousAffinity));
-                    bool restored = SuppressionCore.RestoreValues(processHandle, boostEntry.Priority, affinity, boostEntry.Io, boostEntry.Page, CpuTopology.AllMask, cpuSets, boostEntry.QoSControl, boostEntry.QoSState, -1, -1, !boostEntry.PlacementTracked && !boostEntry.PlacementYielded, false) && placementRestored;
-                    if (restored && boostEntry.Gpu >= 0)
-                    {
-                        restored = Native.D3DKMTSetProcessSchedulingPriorityClass(processHandle, boostEntry.Gpu) == 0;
-                    }
+                    bool placementRestored = !item.PlacementTracked || item.PlacementYielded || (RestoreOwnedAffinity(intPtr, affinity, item.AppliedAffinity) && RestoreOwnedAffinity(intPtr, affinity, item.PreviousAffinity));
+                    // 游戏页优先级已退出治理；旧记录也只恢复仍受管的字段。
+                    bool restored = SuppressionCore.RestoreValues(intPtr, item.Priority, affinity, item.Io, -1, CpuTopology.AllMask, cpuSets, item.QoSControl, item.QoSState, -1, -1, !item.PlacementTracked && !item.PlacementYielded, false, false) && placementRestored;
+                    gpuLeases[GpuLeaseKey(item)] = item.GpuLease;
+                    bool gpuRestored = item.GpuLease.Restore(intPtr, () => Native.QueryProcessIdentityState(intPtr, item.Creation), () => SaveEntries(list));
+                    restored &= gpuRestored;
                     if (restored)
                     {
                         processedCount++;
                     }
                     else
                     {
-                        currentBoostEntries.Add(boostEntry);
+                        list2.Add(item);
                     }
                 }
                 catch
                 {
-                    currentBoostEntries.Add(boostEntry);
+                    list2.Add(item);
                 }
                 finally
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
-            if (!SaveEntries(currentBoostEntries)) return;
-            HealPriorityOrphans(currentBoostEntries);
-            PrunePriorityTombstones(currentBoostEntries);
+            if (!SaveEntries(list2)) return;
+            HealPriorityOrphans(list2);
+            PrunePriorityTombstones(list2);
             Settings.SaveStr("Crash_ThrottleMasks", "");
             Settings.SaveStr("Crash_BoostMask", "");
             Settings.SaveStr("Crash_BoostNames", "");
@@ -593,9 +650,9 @@ namespace PaviseApp
             {
                 Logger.Warn(Lang.T("log.crashguard.1", 0) + processedCount + Lang.T("log.crashguard.2", 0));
             }
-            if (currentBoostEntries.Count > 0)
+            if (list2.Count > 0)
             {
-                Logger.Warn(Lang.T("log.crashguard.3", 0) + currentBoostEntries.Count + Lang.T("log.crashguard.4", 0));
+                Logger.Warn(Lang.T("log.crashguard.3", 0) + list2.Count + Lang.T("log.crashguard.4", 0));
             }
         }
 
@@ -663,6 +720,8 @@ namespace PaviseApp
             if (baseline == null || priorities == null) return null;
             foreach (BoostEntry entry in baseline)
             {
+                GpuPriorityLease memoryLease;
+                if (gpuLeases.TryGetValue(GpuLeaseKey(entry), out memoryLease)) entry.GpuLease = memoryLease;
                 BoostEntry priority = FindEntry(priorities, entry.Pid, entry.Creation);
                 if (priority == null) continue;
                 if (!string.Equals(priority.Name, entry.Name, StringComparison.OrdinalIgnoreCase)) return null;
@@ -679,21 +738,31 @@ namespace PaviseApp
             {
                 string message;
                 if (!Settings.TryLoadStr(KBoostEntries, out message) || message == null) return null;
-                List<BoostEntry> entries = new List<BoostEntry>();
+                List<BoostEntry> list = new List<BoostEntry>();
                 HashSet<string> identities = new HashSet<string>(StringComparer.Ordinal);
                 foreach (string line in message.Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
                 {
                     string[] fields = line.TrimEnd('\r').Split('|');
+                    GpuPriorityLease gpuLease = null;
+                    if (fields.Length >= 11 && fields[fields.Length - 2] == "gpu-v1")
+                    {
+                        gpuLease = GpuPriorityLease.Parse(fields[fields.Length - 1]);
+                        if (gpuLease == null) return null;
+                        Array.Resize(ref fields, fields.Length - 2);
+                    }
                     int oldCount = fields.Length;
                     if (oldCount != 9 && oldCount != 11 && oldCount != 12 && oldCount != 14 && oldCount != 15) return null;
                     BoostEntry entry = new BoostEntry();
+                    // 保留旧字段位置，避免后面的 GPU、CPU Sets 与恢复归属错位；页值不再参与恢复。
+                    int retiredPage;
                     if (!int.TryParse(fields[0], out entry.Pid) || entry.Pid <= 0
                         || !long.TryParse(fields[1], out entry.Creation) || entry.Creation <= 0
                         || !uint.TryParse(fields[3], out entry.Priority) || !ValidPriority(entry.Priority)
                         || !ulong.TryParse(fields[4], out entry.Affinity)
                         || !int.TryParse(fields[5], out entry.Io)
-                        || !int.TryParse(fields[6], out entry.Page)
+                        || !int.TryParse(fields[6], out retiredPage)
                         || !int.TryParse(fields[7], out entry.Gpu)) return null;
+                    entry.GpuLease = gpuLease ?? GpuPriorityLease.Legacy(entry.Gpu);
                     entry.Name = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(fields[2]));
                     if (string.IsNullOrEmpty(entry.Name) || !identities.Add(entry.Pid + ":" + entry.Creation)) return null;
                     entry.CpuSets = ParseCpuSets(fields[8]);
@@ -714,9 +783,9 @@ namespace PaviseApp
                     entry.PriorityPhase = BoostPriorityPhase.Legacy;
                     entry.LastAppliedPriority = Native.HIGH_PRIORITY_CLASS;
                     entry.PreviousPriorityForRestore = entry.Priority;
-                    entries.Add(entry);
+                    list.Add(entry);
                 }
-                return entries;
+                return list;
             }
             catch { return null; }
         }
@@ -725,12 +794,12 @@ namespace PaviseApp
         {
             // 不能把不可读或损坏的日志解析成部分有效记录。
             if (entries == null || LoadEntries() == null) return false;
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (BoostEntry entry in entries)
             {
-                texts.Add(entry.Pid + "|" + entry.Creation + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Name ?? "")) + "|" + entry.Priority + "|" + entry.Affinity + "|" + entry.Io + "|" + entry.Page + "|" + entry.Gpu + "|" + CpuSetsText(entry.CpuSets) + "|" + entry.QoSControl + "|" + entry.QoSState + (entry.PlacementTracked ? ("|" + (entry.PlacementYielded ? "1" : "0") + "|" + entry.AppliedAffinity + "|owned|" + entry.PreviousAffinity) : (entry.PlacementYielded ? "|1" : "")));
+                list.Add(entry.Pid + "|" + entry.Creation + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Name ?? "")) + "|" + entry.Priority + "|" + entry.Affinity + "|" + entry.Io + "|-1|" + entry.Gpu + "|" + CpuSetsText(entry.CpuSets) + "|" + entry.QoSControl + "|" + entry.QoSState + (entry.PlacementTracked ? ("|" + (entry.PlacementYielded ? "1" : "0") + "|" + entry.AppliedAffinity + "|owned|" + entry.PreviousAffinity) : (entry.PlacementYielded ? "|1" : "")) + "|gpu-v1|" + entry.GpuLease.Encode());
             }
-            string joinResult = string.Join("\n", texts.ToArray());
+            string joinResult = string.Join("\n", list.ToArray());
             string value;
             if (Settings.SaveStrDurable("Crash_BoostEntriesV2", joinResult) && Settings.TryLoadStr("Crash_BoostEntriesV2", out value))
             {
@@ -820,12 +889,12 @@ namespace PaviseApp
             {
                 return "";
             }
-            string[] formattedCpuSetIds = new string[ids.Length];
+            string[] textEntries = new string[ids.Length];
             for (int i = 0; i < ids.Length; i++)
             {
-                formattedCpuSetIds[i] = ids[i].ToString();
+                textEntries[i] = ids[i].ToString();
             }
-            return string.Join(",", formattedCpuSetIds);
+            return string.Join(",", textEntries);
         }
 
         private static uint[] ParseCpuSets(string text)
@@ -835,15 +904,15 @@ namespace PaviseApp
                 return new uint[0];
             }
             string[] parts = text.Split(',');
-            uint[] cpuSetIds = new uint[parts.Length];
+            uint[] numericValueItems = new uint[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {
-                if (!uint.TryParse(parts[i], out cpuSetIds[i]))
+                if (!uint.TryParse(parts[i], out numericValueItems[i]))
                 {
                     return null;
                 }
             }
-            return cpuSetIds;
+            return numericValueItems;
         }
     }
 }

@@ -10,6 +10,19 @@ namespace PaviseApp
 {
     internal static class Backdrop
     {
+        private const string DimKey = "BackdropDim";
+
+        private const string StoreName = "backdrop.img";
+
+        private const int CardAlphaDark = 208;
+
+        private const int CardAlphaLight = 100;
+
+        private const int NavAlphaLight = 80;
+
+        private const int LightSoftenDivisor = 2;
+
+        private const int SourceMaxEdge = 2560;
 
         private static readonly int[] DimDark = new int[3] { 120, 170, 214 };
 
@@ -67,16 +80,16 @@ namespace PaviseApp
             {
                 return false;
             }
-            for (Control currentControl = control; currentControl != null; currentControl = currentControl.Parent)
+            for (Control control2 = control; control2 != null; control2 = control2.Parent)
             {
-                RoundPanel roundPanel = currentControl as RoundPanel;
+                RoundPanel roundPanel = control2 as RoundPanel;
                 if (roundPanel != null && !roundPanel.UseBackdrop)
                 {
                     return false;
                 }
-                if (currentControl is Form)
+                if (control2 is Form)
                 {
-                    return currentControl is PanelForm;
+                    return control2 is PanelForm;
                 }
             }
             return false;
@@ -170,16 +183,16 @@ namespace PaviseApp
             {
                 return;
             }
-            int ancestorLeft = 0;
-            int ancestorTop = 0;
+            int paintValue = 0;
+            int paintValue2 = 0;
             Control control = c;
             while (control != null && !(control is Form))
             {
-                ancestorLeft += control.Left;
-                ancestorTop += control.Top;
+                paintValue += control.Left;
+                paintValue2 += control.Top;
                 control = control.Parent;
             }
-            Rectangle srcRect = new Rectangle(client.X + ancestorLeft, client.Y + ancestorTop, client.Width, client.Height);
+            Rectangle srcRect = new Rectangle(client.X + paintValue, client.Y + paintValue2, client.Width, client.Height);
             if (srcRect.X < bitmap.Width && srcRect.Y < bitmap.Height)
             {
                 if (srcRect.X < 0)
@@ -322,27 +335,27 @@ namespace PaviseApp
                     int height = Math.Max(1, size.Height / 2);
                     using (Bitmap image = new Bitmap(width, height))
                     {
-                        using (Graphics fromImage = Graphics.FromImage(image))
+                        using (Graphics graphics2 = Graphics.FromImage(image))
                         {
-                            fromImage.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                            fromImage.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                            fromImage.DrawImage(bitmap, new Rectangle(0, 0, width, height), new Rectangle(0, 0, bitmap.Width, bitmap.Height), GraphicsUnit.Pixel);
+                            graphics2.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                            graphics2.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                            graphics2.DrawImage(bitmap, new Rectangle(0, 0, width, height), new Rectangle(0, 0, bitmap.Width, bitmap.Height), GraphicsUnit.Pixel);
                         }
-                        using (Graphics currentFromImage = Graphics.FromImage(bitmap))
+                        using (Graphics graphics3 = Graphics.FromImage(bitmap))
                         {
-                            currentFromImage.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                            currentFromImage.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                            currentFromImage.DrawImage(image, new Rectangle(0, 0, size.Width, size.Height), new Rectangle(0, 0, width, height), GraphicsUnit.Pixel);
+                            graphics3.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                            graphics3.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                            graphics3.DrawImage(image, new Rectangle(0, 0, size.Width, size.Height), new Rectangle(0, 0, width, height), GraphicsUnit.Pixel);
                         }
                     }
                 }
                 if (!Theme.LightMode)
                 {
-                    using (Graphics candidateFromImage = Graphics.FromImage(bitmap))
+                    using (Graphics graphics4 = Graphics.FromImage(bitmap))
                     {
                         using (SolidBrush brush = new SolidBrush(Col.Alpha(Theme.Bg, DimDark[dim])))
                         {
-                            candidateFromImage.FillRectangle(brush, 0, 0, size.Width, size.Height);
+                            graphics4.FillRectangle(brush, 0, 0, size.Width, size.Height);
                         }
                     }
                 }

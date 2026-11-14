@@ -25,15 +25,15 @@ namespace PaviseApp
         {
             get
             {
-                Dictionary<string, string> textsByName = new Dictionary<string, string>();
-                textsByName.Add("name", Name);
-                textsByName.Add("friendly", Friendly);
-                textsByName.Add("launcher", Launcher);
-                textsByName.Add("folder", FileInFolder);
-                textsByName.Add("command", CommandLine);
-                textsByName.Add("flags", Flags.ToString(CultureInfo.InvariantCulture));
-                textsByName.Add("predefined", Predefined.ToString(CultureInfo.InvariantCulture));
-                return Convert.ToBase64String(GameNvText.Encode(textsByName));
+                Dictionary<string, string> dictionary = new Dictionary<string, string>();
+                dictionary.Add("name", Name);
+                dictionary.Add("friendly", Friendly);
+                dictionary.Add("launcher", Launcher);
+                dictionary.Add("folder", FileInFolder);
+                dictionary.Add("command", CommandLine);
+                dictionary.Add("flags", Flags.ToString(CultureInfo.InvariantCulture));
+                dictionary.Add("predefined", Predefined.ToString(CultureInfo.InvariantCulture));
+                return Convert.ToBase64String(GameNvText.Encode(dictionary));
             }
         }
 

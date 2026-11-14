@@ -183,7 +183,8 @@ namespace PaviseApp
             try
             {
                 facts.Gpus = GpuInventory.Adapters();
-                foreach (GpuAdapter gpuAdapter in facts.Gpus)
+                GpuAdapter[] gpus = facts.Gpus;
+                foreach (GpuAdapter gpuAdapter in gpus)
                 {
                     if (gpuAdapter.Vendor == GpuVendor.Nvidia)
                     {
@@ -283,8 +284,8 @@ namespace PaviseApp
             {
                 using (RegistryKey key = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel"))
                 {
-                    object instance = key == null ? null : key.GetValue("ThreadDpcEnable");
-                    facts.ThreadDpc = instance is int ? (int?)instance : null;
+                    object value = key == null ? null : key.GetValue("ThreadDpcEnable");
+                    facts.ThreadDpc = value is int ? (int?)value : null;
                 }
             }
             catch
@@ -323,13 +324,13 @@ namespace PaviseApp
                 f.MemModuleGb = new List<double>();
                 using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
                 {
-                    foreach (ManagementBaseObject currentManagementObjectCollection in managementObjectCollection)
+                    foreach (ManagementBaseObject item in managementObjectCollection)
                     {
-                        using (currentManagementObjectCollection)
+                        using (item)
                         {
                             f.MemModules++;
-                            int memRatedMhzValue = ToMhz(currentManagementObjectCollection["Speed"]);
-                            int memConfiguredMhzValue = ToMhz(currentManagementObjectCollection["ConfiguredClockSpeed"]);
+                            int memRatedMhzValue = ToMhz(item["Speed"]);
+                            int memConfiguredMhzValue = ToMhz(item["ConfiguredClockSpeed"]);
                             if (memRatedMhzValue > f.MemRatedMhz)
                             {
                                 f.MemRatedMhz = memRatedMhzValue;
@@ -340,7 +341,7 @@ namespace PaviseApp
                             }
                             try
                             {
-                                object instance = currentManagementObjectCollection["Capacity"];
+                                object instance = item["Capacity"];
                                 if (instance != null)
                                 {
                                     f.MemModuleGb.Add((double)Convert.ToUInt64(instance) / 1073741824.0);
@@ -357,8 +358,9 @@ namespace PaviseApp
 
         private static List<string> ScanRgbSuites()
         {
-            List<string> messages = new List<string>();
-            foreach (Process process in Process.GetProcesses())
+            List<string> list = new List<string>();
+            Process[] processes = Process.GetProcesses();
+            foreach (Process process in processes)
             {
                 try
                 {
@@ -388,9 +390,9 @@ namespace PaviseApp
                     {
                         message = "SignalRGB";
                     }
-                    if (message != null && !messages.Contains(message))
+                    if (message != null && !list.Contains(message))
                     {
-                        messages.Add(message);
+                        list.Add(message);
                     }
                 }
                 catch
@@ -407,7 +409,7 @@ namespace PaviseApp
                     }
                 }
             }
-            return messages;
+            return list;
         }
 
         private static int CountCpuThrottleEvents()
@@ -432,19 +434,19 @@ namespace PaviseApp
 
         private static List<BypassIoVerdict> GatherBypassIo()
         {
-            List<BypassIoVerdict> bypassIoVerdicts = new List<BypassIoVerdict>();
+            List<BypassIoVerdict> list = new List<BypassIoVerdict>();
             if (Native.OsBuild() > 0 && Native.OsBuild() < 22000)
             {
-                return bypassIoVerdicts;
+                return list;
             }
-            List<string> fileNames = new List<string>();
+            List<string> list2 = new List<string>();
             try
             {
                 Func<List<string>> libraryPaths = LibraryPaths;
-                List<string> texts = ((libraryPaths != null) ? libraryPaths() : null);
-                if (texts != null)
+                List<string> list3 = ((libraryPaths != null) ? libraryPaths() : null);
+                if (list3 != null)
                 {
-                    fileNames.AddRange(texts);
+                    list2.AddRange(list3);
                 }
             }
             catch
@@ -454,35 +456,35 @@ namespace PaviseApp
             {
                 using (Process process = Process.GetCurrentProcess())
                 {
-                    fileNames.Add(process.MainModule.FileName);
+                    list2.Add(process.MainModule.FileName);
                 }
             }
             catch
             {
             }
-            HashSet<string> pathRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string fileName in fileNames)
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string item in list2)
             {
-                if (string.IsNullOrEmpty(fileName))
+                if (string.IsNullOrEmpty(item))
                 {
                     continue;
                 }
                 string pathRoot;
                 try
                 {
-                    pathRoot = Path.GetPathRoot(fileName);
+                    pathRoot = Path.GetPathRoot(item);
                 }
                 catch
                 {
                     continue;
                 }
-                if (string.IsNullOrEmpty(pathRoot) || !pathRoots.Add(pathRoot))
+                if (string.IsNullOrEmpty(pathRoot) || !hashSet.Add(pathRoot))
                 {
                     continue;
                 }
                 try
                 {
-                    if (!File.Exists(fileName))
+                    if (!File.Exists(item))
                     {
                         continue;
                     }
@@ -491,26 +493,27 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                BypassIoVerdict bypassIoVerdict = BypassIoProbe.Query(fileName);
+                BypassIoVerdict bypassIoVerdict = BypassIoProbe.Query(item);
                 if (bypassIoVerdict.Supported)
                 {
-                    bypassIoVerdicts.Add(bypassIoVerdict);
+                    list.Add(bypassIoVerdict);
                 }
-                if (bypassIoVerdicts.Count >= 4)
+                if (list.Count >= 4)
                 {
                     break;
                 }
             }
-            return bypassIoVerdicts;
+            return list;
         }
 
         public static List<LoadEntry> TopConsumers(int windowMs, int take)
         {
-            List<LoadEntry> loadEntries = new List<LoadEntry>();
+            List<LoadEntry> list = new List<LoadEntry>();
             try
             {
-                Dictionary<int, Sample> samplesById = new Dictionary<int, Sample>();
-                foreach (Process process in Process.GetProcesses())
+                Dictionary<int, Sample> dictionary = new Dictionary<int, Sample>();
+                Process[] processes = Process.GetProcesses();
+                foreach (Process process in processes)
                 {
                     using (process)
                     {
@@ -518,7 +521,7 @@ namespace PaviseApp
                         {
                             if (process.Id > 4)
                             {
-                                samplesById[process.Id] = new Sample
+                                dictionary[process.Id] = new Sample
                                 {
                                     Name = process.ProcessName,
                                     Started = process.StartTime.Ticks,
@@ -531,31 +534,32 @@ namespace PaviseApp
                         }
                     }
                 }
-                if (samplesById.Count == 0)
+                if (dictionary.Count == 0)
                 {
-                    return loadEntries;
+                    return list;
                 }
                 Thread.Sleep(windowMs);
                 double scaledProcessorCount = (double)windowMs / 1000.0 * (double)Environment.ProcessorCount;
                 if (scaledProcessorCount <= 0.0)
                 {
-                    return loadEntries;
+                    return list;
                 }
-                foreach (Process currentProcess in Process.GetProcesses())
+                Process[] processes2 = Process.GetProcesses();
+                foreach (Process process3 in processes2)
                 {
-                    using (currentProcess)
+                    using (process3)
                     {
                         try
                         {
-                            Sample sample;
-                            if (samplesById.TryGetValue(currentProcess.Id, out sample) && currentProcess.StartTime.Ticks == sample.Started)
+                            Sample value;
+                            if (dictionary.TryGetValue(process3.Id, out value) && process3.StartTime.Ticks == value.Started)
                             {
-                                double totalSeconds = (currentProcess.TotalProcessorTime - sample.Cpu).TotalSeconds;
+                                double totalSeconds = (process3.TotalProcessorTime - value.Cpu).TotalSeconds;
                                 if (!(totalSeconds <= 0.0))
                                 {
-                                    loadEntries.Add(new LoadEntry
+                                    list.Add(new LoadEntry
                                     {
-                                        Name = sample.Name,
+                                        Name = value.Name,
                                         Ratio = totalSeconds / scaledProcessorCount
                                     });
                                 }
@@ -569,14 +573,14 @@ namespace PaviseApp
             }
             catch
             {
-                return loadEntries;
+                return list;
             }
-            loadEntries.Sort((LoadEntry a, LoadEntry b) => b.Ratio.CompareTo(a.Ratio));
-            if (loadEntries.Count > take)
+            list.Sort((LoadEntry a, LoadEntry b) => b.Ratio.CompareTo(a.Ratio));
+            if (list.Count > take)
             {
-                loadEntries.RemoveRange(take, loadEntries.Count - take);
+                list.RemoveRange(take, list.Count - take);
             }
-            return loadEntries;
+            return list;
         }
 
     }

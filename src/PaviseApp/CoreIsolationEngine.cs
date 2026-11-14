@@ -152,16 +152,16 @@ namespace PaviseApp
         private bool RecoverCore()
         {
             if (Pending) return RestoreCore();
-            string text;
-            if (!store.Read(out text))
+            string value;
+            if (!store.Read(out value))
             {
                 return Fail("journal-read");
             }
-            if (string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(value))
             {
                 return true;
             }
-            if (!Decode(text))
+            if (!Decode(value))
             {
                 return Fail("journal-corrupt");
             }
@@ -193,28 +193,28 @@ namespace PaviseApp
             string[] rawParts = raw.Split('|');
             ulong v = 0uL;
             bool currentFormat = rawParts.Length > 0 && rawParts[0] == "3";
-            int headerFieldCount = ((rawParts.Length > 0 && (rawParts[0] == "2" || currentFormat)) ? 6 : 5);
+            int decodeValue = ((rawParts.Length > 0 && (rawParts[0] == "2" || currentFormat)) ? 6 : 5);
             Guid result;
             ulong v2;
             ulong v3;
-            if (rawParts.Length < headerFieldCount || rawParts.Length > headerFieldCount + 256 || (rawParts[0] != "1" && rawParts[0] != "2" && !currentFormat) || rawParts[1].Length != 32 || !Guid.TryParseExact(rawParts[1], "N", out result) || result == Guid.Empty || !ParseHex(rawParts[2], out v2) || !ParseHex(rawParts[3], out v3) || (headerFieldCount == 6 && !ParseHex(rawParts[4], out v)) || (rawParts[headerFieldCount - 1] != "0" && rawParts[headerFieldCount - 1] != "1") || v2 == 0 || v3 == 0 || (v3 & ~v2) != 0 || (!currentFormat && (v3 & 1) != 0) || (currentFormat && v != 0) || (v & ~v2) != 0 || (v & v3) != 0)
+            if (rawParts.Length < decodeValue || rawParts.Length > decodeValue + 256 || (rawParts[0] != "1" && rawParts[0] != "2" && !currentFormat) || rawParts[1].Length != 32 || !Guid.TryParseExact(rawParts[1], "N", out result) || result == Guid.Empty || !ParseHex(rawParts[2], out v2) || !ParseHex(rawParts[3], out v3) || (decodeValue == 6 && !ParseHex(rawParts[4], out v)) || (rawParts[decodeValue - 1] != "0" && rawParts[decodeValue - 1] != "1") || v2 == 0 || v3 == 0 || (v3 & ~v2) != 0 || (!currentFormat && (v3 & 1) != 0) || (currentFormat && v != 0) || (v & ~v2) != 0 || (v & v3) != 0)
             {
                 return false;
             }
-            List<Entry> currentEntries = new List<Entry>();
-            HashSet<int> seenPids = new HashSet<int>();
-            for (int i = headerFieldCount; i < rawParts.Length; i++)
+            List<Entry> list = new List<Entry>();
+            HashSet<int> hashSet = new HashSet<int>();
+            for (int i = decodeValue; i < rawParts.Length; i++)
             {
                 string[] parts = rawParts[i].Split(',');
                 int result2;
                 long result3;
                 ulong v4;
                 ulong v5;
-                if (parts.Length != 4 || !int.TryParse(parts[0], out result2) || result2 <= 0 || !seenPids.Add(result2) || !long.TryParse(parts[1], out result3) || result3 <= 0 || !ParseHex(parts[2], out v4) || !ParseHex(parts[3], out v5) || (v4 & ~v2) != 0 || (v5 & ~v2) != 0 || (v4 & ~v5) != 0 || (v5 & ~v4 & ~v3) != 0)
+                if (parts.Length != 4 || !int.TryParse(parts[0], out result2) || result2 <= 0 || !hashSet.Add(result2) || !long.TryParse(parts[1], out result3) || result3 <= 0 || !ParseHex(parts[2], out v4) || !ParseHex(parts[3], out v5) || (v4 & ~v2) != 0 || (v5 & ~v2) != 0 || (v4 & ~v5) != 0 || (v5 & ~v4 & ~v3) != 0)
                 {
                     return false;
                 }
-                currentEntries.Add(new Entry
+                list.Add(new Entry
                 {
                     Pid = result2,
                     Creation = result3,
@@ -227,9 +227,9 @@ namespace PaviseApp
             isolated = v3;
             pre = v;
             manual = currentFormat;
-            systemPrepared = rawParts[headerFieldCount - 1] == "1";
-            entries.AddRange(currentEntries);
-            recoveryOwners.AddRange(currentEntries); ownedReceipt = raw;
+            systemPrepared = rawParts[decodeValue - 1] == "1";
+            entries.AddRange(list);
+            recoveryOwners.AddRange(list); ownedReceipt = raw;
             return true;
         }
 
@@ -323,44 +323,45 @@ namespace PaviseApp
             {
                 return Fail("invalid-process");
             }
-            foreach (Entry currentEntry in entries)
+            foreach (Entry entry3 in entries)
             {
-                if (currentEntry.Pid == pid)
+                if (entry3.Pid == pid)
                 {
-                    return (currentEntry.Creation == creation && (gameMask & isolated & ~currentEntry.Applied) == 0 && Verify(currentEntry)) || Fail("process-changed");
+                    return (entry3.Creation == creation && (gameMask & isolated & ~entry3.Applied) == 0 && Verify(entry3)) || Fail("process-changed");
                 }
             }
             if (entries.Count >= 256)
             {
                 return Fail("process-limit");
             }
-            IntPtr openHandle = os.Open(pid, creation);
-            if (openHandle == IntPtr.Zero)
+            IntPtr intPtr = os.Open(pid, creation);
+            if (intPtr == IntPtr.Zero)
             {
                 return Fail("process-access");
             }
             ulong mask;
-            if (!os.ReadAllowed(openHandle, out mask) || (mask & ~all) != 0)
+            if (!os.ReadAllowed(intPtr, out mask) || (mask & ~all) != 0)
             {
-                os.Close(openHandle);
+                os.Close(intPtr);
                 return Fail("process-read");
             }
-            Entry candidateEntry = new Entry();
-            candidateEntry.Pid = pid;
-            candidateEntry.Creation = creation;
-            candidateEntry.Handle = openHandle;
-            candidateEntry.Original = mask;
-            candidateEntry.Applied = mask | (gameMask & isolated);
-            entries.Add(candidateEntry);
-            recoveryOwners.Add(candidateEntry);
+            Entry entry = new Entry();
+            entry.Pid = pid;
+            entry.Creation = creation;
+            entry.Handle = intPtr;
+            entry.Original = mask;
+            entry.Applied = mask | (gameMask & isolated);
+            Entry entry2 = entry;
+            entries.Add(entry2);
+            recoveryOwners.Add(entry2);
             if (!Persist())
             {
-                entries.Remove(candidateEntry);
-                recoveryOwners.Remove(candidateEntry);
-                os.Close(openHandle);
+                entries.Remove(entry2);
+                recoveryOwners.Remove(entry2);
+                os.Close(intPtr);
                 return Fail("journal-write");
             }
-            if (!os.SetAllowed(openHandle, candidateEntry.Applied) || !Verify(candidateEntry))
+            if (!os.SetAllowed(intPtr, entry2.Applied) || !Verify(entry2))
             {
                 return Fail("admission-write-readback");
             }
@@ -532,9 +533,9 @@ namespace PaviseApp
                 return Fail("restore-pending");
             }
             bool entriesRestored = true;
-            foreach (Entry currentEntry in entries)
+            foreach (Entry entry2 in entries)
             {
-                if (!RestoreEntry(currentEntry))
+                if (!RestoreEntry(entry2))
                 {
                     entriesRestored = false;
                 }

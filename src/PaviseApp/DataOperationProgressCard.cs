@@ -30,7 +30,7 @@ namespace PaviseApp
                 AutoEllipsis = true
             };
             Status.SetBounds(Theme.S(24), Theme.S(64), Theme.S(510), Theme.S(52));
-            Label currentLabel = new Label
+            Label label2 = new Label
             {
                 Name = "note",
                 Text = Lang.T("data.operation.note"),
@@ -38,10 +38,10 @@ namespace PaviseApp
                 BackColor = Color.Transparent,
                 Font = Theme.UI(9f, false)
             };
-            currentLabel.SetBounds(Theme.S(24), Theme.S(127), Theme.S(510), Theme.S(30));
+            label2.SetBounds(Theme.S(24), Theme.S(127), Theme.S(510), Theme.S(30));
             base.Controls.Add(label);
             base.Controls.Add(Status);
-            base.Controls.Add(currentLabel);
+            base.Controls.Add(label2);
         }
     }
 }

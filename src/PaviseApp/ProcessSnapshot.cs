@@ -27,7 +27,8 @@ namespace PaviseApp
             TakenTicks = DateTime.UtcNow.Ticks;
             MonotonicTicks = AutoCores.NowTicks;
             ByPid = new Dictionary<int, ProcEntry>(Entries.Length);
-            foreach (ProcEntry procEntry in Entries)
+            ProcEntry[] entries2 = Entries;
+            foreach (ProcEntry procEntry in entries2)
             {
                 ByPid[procEntry.Pid] = procEntry;
             }

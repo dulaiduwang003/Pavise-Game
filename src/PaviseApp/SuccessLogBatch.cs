@@ -103,9 +103,9 @@ namespace PaviseApp
                 int end = offset, bytes = 0;
                 while (end < message.Length)
                 {
-                    char character = message[end];
-                    bool pair = char.IsHighSurrogate(character) && end + 1 < message.Length && char.IsLowSurrogate(message[end + 1]);
-                    int size = pair ? 4 : character < 128 ? 1 : character < 2048 ? 2 : 3;
+                    char value = message[end];
+                    bool pair = char.IsHighSurrogate(value) && end + 1 < message.Length && char.IsLowSurrogate(message[end + 1]);
+                    int size = pair ? 4 : value < 128 ? 1 : value < 2048 ? 2 : 3;
                     if (bytes + size > MaximumMessageBytes - 80) break;
                     bytes += size; end += pair ? 2 : 1;
                 }

@@ -26,6 +26,10 @@ namespace PaviseApp
 
         internal const string FileName = "Pavise.renderer-observations.dat";
 
+        private const string Header = "PAVISE_RENDER_ACTIVITY_V1";
+
+        private const int MaxRecords = 2048;
+
         private readonly object gate = new object();
 
         private bool closed;
@@ -66,6 +70,16 @@ namespace PaviseApp
             }
         }
 
+        // 文件更新仅使核验标记失效，保留其历史渲染身份；文件消失后移除记录。
+        internal bool Knows(string profileId, string executablePath)
+        {
+            lock (gate)
+            {
+                Record value;
+                return profileId != null && records.TryGetValue(profileId, out value) && SamePath(value.Exe, executablePath);
+            }
+        }
+
         internal bool NeedsValidation(string profileId, string executablePath, long nowTicks)
         {
             lock (gate)
@@ -77,10 +91,10 @@ namespace PaviseApp
 
         internal bool Validate(string profileId, string executablePath)
         {
-            Record record;
+            Record value;
             lock (gate)
             {
-                if (closed || profileId == null || !records.TryGetValue(profileId, out record) || !SamePath(record.Exe, executablePath))
+                if (closed || profileId == null || !records.TryGetValue(profileId, out value) || !SamePath(value.Exe, executablePath))
                 {
                     return false;
                 }
@@ -88,20 +102,22 @@ namespace PaviseApp
             RendererFileStamp rendererFileStamp = RendererFileStamp.Read(executablePath);
             lock (gate)
             {
-                Record currentRecord;
-                if (closed || !records.TryGetValue(profileId, out currentRecord) || !object.ReferenceEquals(record, currentRecord))
+                Record value2;
+                if (closed || !records.TryGetValue(profileId, out value2) || !object.ReferenceEquals(value, value2))
                 {
                     return false;
                 }
-                bool validatedValue = rendererFileStamp != null && record.Stamp.Same(rendererFileStamp);
-                bool validationChanged = record.Validated != validatedValue;
-                record.Validated = validatedValue;
-                record.CheckedTicks = DateTime.UtcNow.Ticks;
-                if (!validatedValue)
+                bool validatedValue = rendererFileStamp != null && value.Stamp.Same(rendererFileStamp);
+                bool validationChanged = value.Validated != validatedValue;
+                value.Validated = validatedValue;
+                value.CheckedTicks = DateTime.UtcNow.Ticks;
+                // 文件仍在但内容已更新时保留记录，只是不再显示为已核验；文件消失才移除。
+                bool removed = rendererFileStamp == null;
+                if (removed)
                 {
                     records.Remove(profileId);
                 }
-                return validationChanged || !validatedValue;
+                return validationChanged || removed;
             }
         }
 
@@ -134,45 +150,46 @@ namespace PaviseApp
                 {
                     return RendererObservationWriteResult.Closed;
                 }
-                Record currentRecord;
-                if (records.TryGetValue(profileId, out currentRecord) && SamePath(currentRecord.Exe, executablePath) && currentRecord.Stamp.Same(rendererFileStamp))
+                Record value;
+                if (records.TryGetValue(profileId, out value) && SamePath(value.Exe, executablePath) && value.Stamp.Same(rendererFileStamp))
                 {
-                    currentRecord.Validated = true;
-                    currentRecord.CheckedTicks = DateTime.UtcNow.Ticks;
+                    value.Validated = true;
+                    value.CheckedTicks = DateTime.UtcNow.Ticks;
                     return RendererObservationWriteResult.Recorded;
                 }
-                Record candidateRecord = new Record();
-                candidateRecord.Id = profileId;
-                candidateRecord.Exe = Path.GetFullPath(executablePath);
-                candidateRecord.Stamp = rendererFileStamp;
-                candidateRecord.ObservedTicks = DateTime.UtcNow.Ticks;
-                candidateRecord.Validated = true;
-                candidateRecord.CheckedTicks = DateTime.UtcNow.Ticks;
-                Dictionary<string, Record> recordsSnapshot = new Dictionary<string, Record>(records, StringComparer.OrdinalIgnoreCase);
-                recordsSnapshot[profileId] = candidateRecord;
-                if (recordsSnapshot.Count > 2048)
+                Record record = new Record();
+                record.Id = profileId;
+                record.Exe = Path.GetFullPath(executablePath);
+                record.Stamp = rendererFileStamp;
+                record.ObservedTicks = DateTime.UtcNow.Ticks;
+                record.Validated = true;
+                record.CheckedTicks = DateTime.UtcNow.Ticks;
+                Record value2 = record;
+                Dictionary<string, Record> dictionary = new Dictionary<string, Record>(records, StringComparer.OrdinalIgnoreCase);
+                dictionary[profileId] = value2;
+                if (dictionary.Count > 2048)
                 {
-                    Record resolvedRecord = null;
-                    foreach (Record retainedRecord in recordsSnapshot.Values)
+                    Record record2 = null;
+                    foreach (Record value3 in dictionary.Values)
                     {
-                        if (resolvedRecord == null || retainedRecord.ObservedTicks < resolvedRecord.ObservedTicks)
+                        if (record2 == null || value3.ObservedTicks < record2.ObservedTicks)
                         {
-                            resolvedRecord = retainedRecord;
+                            record2 = value3;
                         }
                     }
-                    if (resolvedRecord != null)
+                    if (record2 != null)
                     {
-                        recordsSnapshot.Remove(resolvedRecord.Id);
+                        dictionary.Remove(record2.Id);
                     }
                 }
-                if (!Save(recordsSnapshot))
+                if (!Save(dictionary))
                 {
                     return RendererObservationWriteResult.SaveFailed;
                 }
                 records.Clear();
-                foreach (KeyValuePair<string, Record> recordsSnapshotEntry in recordsSnapshot)
+                foreach (KeyValuePair<string, Record> item in dictionary)
                 {
-                    records.Add(recordsSnapshotEntry.Key, recordsSnapshotEntry.Value);
+                    records.Add(item.Key, item.Value);
                 }
                 return RendererObservationWriteResult.Recorded;
             }
@@ -211,9 +228,9 @@ namespace PaviseApp
                     using (StreamWriter streamWriter = new StreamWriter(fileStream, new UTF8Encoding(false)))
                     {
                         streamWriter.WriteLine("PAVISE_RENDER_ACTIVITY_V1");
-                        foreach (Record record in values.Values)
+                        foreach (Record value in values.Values)
                         {
-                            streamWriter.WriteLine(B64(record.Id) + "|" + B64(record.Exe) + "|" + record.Stamp.Length.ToString(CultureInfo.InvariantCulture) + "|" + record.Stamp.WriteTicks.ToString(CultureInfo.InvariantCulture) + "|" + record.ObservedTicks.ToString(CultureInfo.InvariantCulture) + "|gpu3d");
+                            streamWriter.WriteLine(B64(value.Id) + "|" + B64(value.Exe) + "|" + value.Stamp.Length.ToString(CultureInfo.InvariantCulture) + "|" + value.Stamp.WriteTicks.ToString(CultureInfo.InvariantCulture) + "|" + value.ObservedTicks.ToString(CultureInfo.InvariantCulture) + "|gpu3d");
                         }
                         streamWriter.Flush();
                         fileStream.Flush(true);

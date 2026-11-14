@@ -22,6 +22,7 @@ namespace PaviseApp
 
         private sealed class WindowsAppGpuPreferenceControl : IAppGpuPreferenceControl
         {
+            private const string GpuKey = "SOFTWARE\\Microsoft\\DirectX\\UserGpuPreferences";
 
             public bool Supported
             {
@@ -36,18 +37,6 @@ namespace PaviseApp
             {
                 RefuseNativeInTests();
                 return File.Exists(path);
-            }
-
-            public bool TryGetStagedOriginal(string path, out bool staged, out string original)
-            {
-                RefuseNativeInTests();
-                return GpuPrefStage.TryGetStagedOriginal(path, out staged, out original);
-            }
-
-            public bool TryReleaseStage(string path)
-            {
-                RefuseNativeInTests();
-                return GpuPrefStage.TryReleaseForManualPreference(path);
             }
 
             public bool TryRead(string path, out string value)
@@ -74,16 +63,16 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                object instance = key.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                if (instance == null)
+                object value2 = key.GetValue(path, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                if (value2 == null)
                 {
                     return true;
                 }
-                if (!(instance is string) || key.GetValueKind(path) != RegistryValueKind.String)
+                if (!(value2 is string) || key.GetValueKind(path) != RegistryValueKind.String)
                 {
                     return false;
                 }
-                value = (string)instance;
+                value = (string)value2;
                 return true;
             }
 
@@ -99,12 +88,12 @@ namespace PaviseApp
                         {
                             return AppGpuPreferenceWriteResult.NotIssued;
                         }
-                        string text;
-                        if (!Read(registryKey, path, out text))
+                        string value;
+                        if (!Read(registryKey, path, out value))
                         {
                             return AppGpuPreferenceWriteResult.NotIssued;
                         }
-                        if (!string.Equals(text, expected, StringComparison.Ordinal))
+                        if (!string.Equals(value, expected, StringComparison.Ordinal))
                         {
                             return AppGpuPreferenceWriteResult.Changed;
                         }
@@ -177,20 +166,20 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> currentTextsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (GpuAdapter adapter in adapters)
             {
                 if (adapter != null && adapter.IntegratedKnown && !string.IsNullOrEmpty(adapter.HardwareId))
                 {
-                    (adapter.Integrated ? textsSet : currentTextsSet).Add(adapter.HardwareId);
+                    (adapter.Integrated ? hashSet : hashSet2).Add(adapter.HardwareId);
                 }
             }
-            foreach (string candidateTextsSet in textsSet)
+            foreach (string item in hashSet)
             {
-                foreach (string resolvedTextsSet in currentTextsSet)
+                foreach (string item2 in hashSet2)
                 {
-                    if (!string.Equals(candidateTextsSet, resolvedTextsSet, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(item, item2, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }

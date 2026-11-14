@@ -251,7 +251,7 @@ namespace PaviseApp
             GameLibraryItem selectedItem = SelectedItem;
             int selectedIndexSnapshot = selectedIndex;
             string id = ((selectedItem == null || selectedItem.Profile == null) ? null : selectedItem.Profile.Id);
-            int scrollTop = -base.AutoScrollPosition.Y;
+            int setItemsValue = -base.AutoScrollPosition.Y;
             bool itemsChanged = fresh.Count != items.Count;
             if (!itemsChanged)
             {
@@ -277,10 +277,10 @@ namespace PaviseApp
                     }
                     cards.Clear();
                     items.Clear();
-                    foreach (GameLibraryItem currentFresh in fresh)
+                    foreach (GameLibraryItem item in fresh)
                     {
-                        items.Add(currentFresh);
-                        GameLibraryTile gameLibraryTile = CreateCard(currentFresh, cards.Count);
+                        items.Add(item);
+                        GameLibraryTile gameLibraryTile = CreateCard(item, cards.Count);
                         cards.Add(gameLibraryTile);
                         base.Controls.Add(gameLibraryTile);
                     }
@@ -293,19 +293,19 @@ namespace PaviseApp
                         cards[j].SetItem(fresh[j]);
                     }
                 }
-                int restoredSelectedIndex = -1;
+                int setItemsValue2 = -1;
                 if (selectedItem != null)
                 {
                     for (int k = 0; k < items.Count; k++)
                     {
                         if ((!string.IsNullOrEmpty(id) && items[k] != null && items[k].Profile != null && string.Equals(items[k].Profile.Id, id, StringComparison.OrdinalIgnoreCase)) || (id == null && object.ReferenceEquals(selectedItem, items[k])))
                         {
-                            restoredSelectedIndex = k;
+                            setItemsValue2 = k;
                             break;
                         }
                     }
                 }
-                selectedIndex = restoredSelectedIndex;
+                selectedIndex = setItemsValue2;
                 ApplyFilter(true);
                 RefreshRows();
             }
@@ -314,7 +314,7 @@ namespace PaviseApp
                 updatingItems = false;
                 ResumeLayout(true);
             }
-            base.AutoScrollPosition = new Point(0, scrollTop);
+            base.AutoScrollPosition = new Point(0, setItemsValue);
             if ((selectedIndexSnapshot != selectedIndex || !SameIdentity(selectedItem, SelectedItem)) && this.SelectedIndexChanged != null)
             {
                 this.SelectedIndexChanged(this, EventArgs.Empty);
@@ -512,7 +512,7 @@ namespace PaviseApp
 
         private void ApplyFilter(bool preserveScroll)
         {
-            int scrollTop = (preserveScroll ? (-base.AutoScrollPosition.Y) : 0);
+            int applyFilterValue = (preserveScroll ? (-base.AutoScrollPosition.Y) : 0);
             bool selectionHidden = false;
             SuspendLayout();
             applyingFilter = true;
@@ -547,7 +547,7 @@ namespace PaviseApp
                 applyingFilter = false;
                 ResumeLayout(true);
             }
-            base.AutoScrollPosition = new Point(0, scrollTop);
+            base.AutoScrollPosition = new Point(0, applyFilterValue);
             Invalidate();
         }
 
@@ -704,17 +704,18 @@ namespace PaviseApp
                     int[] integerValues2 = new int[visibleIndices.Count];
                     for (int j = 0; j < visibleIndices.Count; j++)
                     {
-                        int cardHeight = (integerValues2[j] = cards[visibleIndices[j]].HeightForWidth(width, baseHeight));
+                        int onLayoutValue = (integerValues2[j] = cards[visibleIndices[j]].HeightForWidth(width, baseHeight));
                         int jRatio = j / columns;
-                        if (cardHeight > integerValues[jRatio])
+                        if (onLayoutValue > integerValues[jRatio])
                         {
-                            integerValues[jRatio] = cardHeight;
+                            integerValues[jRatio] = onLayoutValue;
                         }
                     }
                     int verticalOffset = ((columnsRatio != 0) ? (base.Padding.Vertical + (columnsRatio - 1) * scaledDimension) : 0);
-                    foreach (int currentCardHeight in integerValues)
+                    int[] integerValues3 = integerValues;
+                    foreach (int numericValueEntry in integerValues3)
                     {
-                        verticalOffset += currentCardHeight;
+                        verticalOffset += numericValueEntry;
                     }
                     if (base.AutoScrollMinSize.Height != verticalOffset)
                     {

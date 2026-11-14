@@ -174,8 +174,8 @@ namespace PaviseApp
             min = 0uL;
             max = 0uL;
             flags = 0u;
-            IntPtr processHandle = Native.OpenProcess(4352, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(4352, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 gone = Native.LastOpenProcessFailureWasNoSuchProcess();
                 return false;
@@ -184,23 +184,24 @@ namespace PaviseApp
             {
                 long cpu;
                 ulong io;
-                if (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io))
+                if (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io))
                 {
                     return false;
                 }
                 IntPtr minimum;
                 IntPtr maximum;
                 uint flags2;
-                if (!GetProcessWorkingSetSizeEx(processHandle, out minimum, out maximum, out flags2))
+                if (!GetProcessWorkingSetSizeEx(intPtr, out minimum, out maximum, out flags2))
                 {
                     return false;
                 }
                 min = (ulong)minimum.ToInt64();
                 max = (ulong)maximum.ToInt64();
                 flags = flags2;
-                ProcessMemoryCounters counters = default(ProcessMemoryCounters);
-                counters.Size = (uint)Marshal.SizeOf(typeof(ProcessMemoryCounters));
-                if (!GetProcessMemoryInfo(processHandle, out counters, counters.Size))
+                ProcessMemoryCounters processMemoryCounters = default(ProcessMemoryCounters);
+                processMemoryCounters.Size = (uint)Marshal.SizeOf(typeof(ProcessMemoryCounters));
+                ProcessMemoryCounters counters = processMemoryCounters;
+                if (!GetProcessMemoryInfo(intPtr, out counters, counters.Size))
                 {
                     return false;
                 }
@@ -213,14 +214,14 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 
         private static void TrySetTarget(int pid, long creation, ulong min, ulong max, uint flags)
         {
-            IntPtr processHandle = Native.OpenProcess(4352, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(4352, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 return;
             }
@@ -229,9 +230,9 @@ namespace PaviseApp
                 long creation2;
                 long cpu;
                 ulong io;
-                if (Native.QueryProcessSample(processHandle, out creation2, out cpu, out io) && creation2 == creation)
+                if (Native.QueryProcessSample(intPtr, out creation2, out cpu, out io) && creation2 == creation)
                 {
-                    SetProcessWorkingSetSizeEx(processHandle, new IntPtr((long)min), new IntPtr((long)max), flags);
+                    SetProcessWorkingSetSizeEx(intPtr, new IntPtr((long)min), new IntPtr((long)max), flags);
                 }
             }
             catch
@@ -239,7 +240,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 

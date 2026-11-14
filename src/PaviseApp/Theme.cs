@@ -42,6 +42,8 @@ namespace PaviseApp
             public string lfFaceName = "";
         }
 
+        private const byte ClearTypeQuality = 5;
+
         private static bool light;
 
         private static Color accent = Color.FromArgb(52, 208, 148);
@@ -470,19 +472,19 @@ namespace PaviseApp
         private static void ReapplyAccent()
         {
             Color color = ModeColor(currentMode);
-            Color currentColor = ModeColor2(currentMode);
-            if (!(toAccent == color) || !(toAccent2 == currentColor))
+            Color color2 = ModeColor2(currentMode);
+            if (!(toAccent == color) || !(toAccent2 == color2))
             {
                 fromAccent = accent;
                 fromAccent2 = accent2;
                 toAccent = color;
-                toAccent2 = currentColor;
+                toAccent2 = color2;
                 if (!UiClock.HasFrameListeners)
                 {
                     accent = color;
-                    accent2 = currentColor;
+                    accent2 = color2;
                     fromAccent = color;
-                    fromAccent2 = currentColor;
+                    fromAccent2 = color2;
                     themeT = 1f;
                 }
                 else
@@ -509,19 +511,19 @@ namespace PaviseApp
         public static void SetMode(PerformancePreset mode, bool animate)
         {
             Color color = ModeColor(mode);
-            Color currentColor = ModeColor2(mode);
-            if (currentMode != mode || !(toAccent == color) || !(toAccent2 == currentColor))
+            Color color2 = ModeColor2(mode);
+            if (currentMode != mode || !(toAccent == color) || !(toAccent2 == color2))
             {
                 currentMode = mode;
                 fromAccent = accent;
                 fromAccent2 = accent2;
                 toAccent = color;
-                toAccent2 = currentColor;
+                toAccent2 = color2;
                 themeT = (animate ? 0f : 1f);
                 if (!animate)
                 {
                     accent = color;
-                    accent2 = currentColor;
+                    accent2 = color2;
                 }
                 else
                 {
@@ -710,19 +712,19 @@ namespace PaviseApp
             }
             lb.MouseMove += delegate(object s, MouseEventArgs e)
             {
-                ListBox currentS = (ListBox)s;
-                int tagValue = currentS.IndexFromPoint(e.Location);
-                int tag = ((currentS.Tag is int) ? ((int)currentS.Tag) : (-1));
+                ListBox listBox2 = (ListBox)s;
+                int tagValue = listBox2.IndexFromPoint(e.Location);
+                int tag = ((listBox2.Tag is int) ? ((int)listBox2.Tag) : (-1));
                 if (tag != tagValue)
                 {
-                    currentS.Tag = tagValue;
-                    if (tag >= 0 && tag < currentS.Items.Count)
+                    listBox2.Tag = tagValue;
+                    if (tag >= 0 && tag < listBox2.Items.Count)
                     {
-                        currentS.Invalidate(currentS.GetItemRectangle(tag));
+                        listBox2.Invalidate(listBox2.GetItemRectangle(tag));
                     }
-                    if (tagValue >= 0 && tagValue < currentS.Items.Count)
+                    if (tagValue >= 0 && tagValue < listBox2.Items.Count)
                     {
-                        currentS.Invalidate(currentS.GetItemRectangle(tagValue));
+                        listBox2.Invalidate(listBox2.GetItemRectangle(tagValue));
                     }
                 }
             };

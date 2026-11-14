@@ -19,9 +19,11 @@ namespace PaviseApp
                     return null;
                 }
                 if (!AntiCheatContextStable(detection, AutoCores.NowTicks)) return null;
-                ulong reserved = 0, domain = 0;
+                ulong reserved = 0, domain = 0, avoid = 0;
                 if (!CpuTopology.MultiGroup)
                 {
+                    // 反作弊优先避让用户配置的游戏范围，不依赖本局是否强制执行该范围。
+                    if (coreManual != null) avoid = coreManual.GameMask & allMask;
                     if (corePlan != null) reserved |= corePlan.Allocated;
                     HardPin pin;
                     if (coreEngaged && hardPins.TryGetValue(detection.RendererPid, out pin) && pin.Creation == detection.RendererCreation)
@@ -33,15 +35,16 @@ namespace PaviseApp
                     if (threads.TargetPid == detection.RendererPid && threads.TargetBirth == detection.RendererCreation && (threads.Applied || threads.Pending))
                         foreach (ulong mask in threads.CandidateMasks) reserved |= mask;
                 }
-                HashSet<int> ancestors = VerifiedAntiCheatAncestors(antiCheatProcessSnapshot, detection);
+                ProcessSnapshot processes = antiCheatProcessSnapshot;
+                HashSet<int> ancestors = VerifiedAntiCheatAncestors(processes, detection);
                 if (ancestors == null) return null;
                 return new AntiCheatAffinityGameContext(detection.RendererPid, detection.RendererCreation, gameSessionStarts,
-                    CpuTopology.MultiGroup ? -1 : 0, reserved, domain, ancestors);
+                    CpuTopology.MultiGroup ? -1 : 0, reserved, domain, ancestors, processes, avoid);
             }
         }
         private AutoCoreGovernor NewCoreGovernor()
         {
-            if (corePlan == null || !corePlan.Available)
+            if (coreRangeUnrestricted || corePlan == null || !corePlan.Available)
             {
                 return null;
             }
@@ -77,6 +80,8 @@ namespace PaviseApp
             coreAllowed = snap != null && snap.AutoCoresAllowed;
             corePolicyCheckTicks = AutoCores.NowTicks;
             coreObservationOnly = coreManual == null || snap == null || !snap.AutoCoresAllowed || !PresetValue.SupportsCoreScheduling(snap.Preset);
+            // 全选且不隔离不新增范围限制；旧归属仍须恢复结清，未完成时保持 Pending。
+            coreRangeUnrestricted = !coreObservationOnly && corePlan.Available && coreManual.IsUnrestricted(allMask);
             coreGovernor = NewCoreGovernor();
             coreGameMask = ((coreManual != null) ? coreManual.GameMask : corePlan.Exclusive);
             if (coreGovernor != null && (!isolationClean || !restoreAllHardPinsSucceeded))
@@ -103,6 +108,7 @@ namespace PaviseApp
             coreGovernor = null;
             corePlan = null;
             coreManual = null;
+            coreRangeUnrestricted = false;
             corePlacementStopReason = null;
             corePlacementOnly = false;
             ResetCoreWatch();
@@ -168,6 +174,13 @@ namespace PaviseApp
             AutoCoreGovernor autoCoreGovernor = coreGovernor;
             if (coreManual == null)
             {
+                PublishAutoCores(pass.RendererName);
+                return;
+            }
+            if (coreRangeUnrestricted)
+            {
+                // 无新增限制时，旧恢复待办仍沿原预算处理。
+                if (corePinPending) corePinPending = !RestoreAllHardPins();
                 PublishAutoCores(pass.RendererName);
                 return;
             }
@@ -241,6 +254,8 @@ namespace PaviseApp
         }
         private void SyncCoreBackground(HashSet<int> protectedPids, int foreground)
         {
+            backgroundCoreProtected = new HashSet<int>(protectedPids);
+            backgroundCoreProtectionEpoch = FamilyPolicyEpoch;
             long nowTicks = AutoCores.NowTicks;
             try
             {
@@ -252,6 +267,15 @@ namespace PaviseApp
             }
         }
         private ulong CoreBackgroundTarget()
+        {
+            ulong manual = ManualCoreBackgroundTarget();
+            ulong reserved = GameBackgroundReservedCores();
+            if (manual == 0 && reserved == 0) return 0;
+            ulong allowed = CpuTopology.BackgroundAllowedMask();
+            if (manual != 0) allowed &= manual;
+            return allowed & ~reserved;
+        }
+        private ulong ManualCoreBackgroundTarget()
         {
             if (coreManual == null || stopping || !coreEngaged || coreObservationOnly || corePlan == null || !corePlan.Available || CorePending)
             {
@@ -276,6 +300,7 @@ namespace PaviseApp
                 ClearBackgroundSqueezes();
                 return;
             }
+            ulong reserved = GameBackgroundReservedCores();
             ulong backgroundMask = CoreBackgroundTarget();
             if (backgroundMask == 0)
             {
@@ -283,28 +308,29 @@ namespace PaviseApp
                 return;
             }
             core.EnforceBackgroundAffinity = true;
-            foreach (int pidsWith in core.PidsWith(SuppressReason.Background))
+            foreach (int item in core.PidsWith(SuppressReason.Background))
             {
-                long creation = core.CreationOf(pidsWith);
-                string processName = core.NameOf(pidsWith);
+                if (GameBackgroundReservedCores() != reserved) break;
+                long creation = core.CreationOf(item);
+                string processName = core.NameOf(item);
                 if (creation > 0 && !string.IsNullOrEmpty(processName))
                 {
                     bool changed;
-                    if (IsCriticalThreadGuardian(pidsWith, creation))
+                    if (IsCriticalThreadGuardian(item, creation))
                     {
                         ReleaseCriticalGuardianBackground();
                     }
-                    else if (GameAffinityJobLease.IsGuardian(pidsWith, creation))
+                    else if (GameAffinityJobLease.IsGuardian(item, creation))
                     {
-                        ReleaseJobGuardianBackground(pidsWith, creation, processName);
+                        ReleaseJobGuardianBackground(item, creation, processName);
                     }
-                    else if (pidsWith == foreground || pidsWith == coreWatchPid || protectedPids.Contains(pidsWith) || WeGameRuntimeProtection.IsProtectedRuntimeName(processName) || PeripheralCatalog.IsInputAudioLike(processName))
+                    else if (item == foreground || item == coreWatchPid || protectedPids.Contains(item) || WeGameRuntimeProtection.IsProtectedRuntimeName(processName) || PeripheralCatalog.IsInputAudioLike(processName))
                     {
-                        core.SetSqueeze(pidsWith, creation, processName, 0uL, SuppressReason.Background, out changed);
+                        core.SetSqueeze(item, creation, processName, 0uL, SuppressReason.Background, out changed);
                     }
-                    else if (!core.IsSqueezed(pidsWith))
+                    else
                     {
-                        core.SetSqueeze(pidsWith, creation, processName, backgroundMask, SuppressReason.Background, out changed);
+                        core.SetSqueeze(item, creation, processName, backgroundMask, SuppressReason.Background, out changed);
                     }
                 }
             }
@@ -328,10 +354,13 @@ namespace PaviseApp
             if (autoCoreGovernor != null)
             {
                 bool allowed = autoCoreGovernor.Blocked == null;
+                // 撤回可能更新现场，先保留阻止落核时的证据；沿用本局首次停止的日志门，避免轮询刷屏。
+                string evidence = corePlacementEvidence;
                 ApplyAutoCoreStep(autoCoreGovernor.Block(reason));
                 if (allowed)
                 {
-                    Logger.Log(string.Format(Lang.T("log.autocore.blocked", 0), Lang.T(reason, 0)));
+                    Logger.Log(string.Format(Lang.T("log.autocore.blocked", 0), Lang.T(reason, 0))
+                        + (string.IsNullOrEmpty(evidence) ? "" : " | 绑定证据：" + evidence));
                 }
             }
         }
@@ -343,12 +372,12 @@ namespace PaviseApp
             string jobFallback = null;
             lock (sync)
             {
-                HardPin hardPin;
-                if (coreEngaged && hardPins.TryGetValue(coreWatchPid, out hardPin))
+                HardPin value;
+                if (coreEngaged && hardPins.TryGetValue(coreWatchPid, out value))
                 {
-                    appliedAffinity = hardPin.AppliedAffinity;
-                    jobBound = hardPin.JobBound;
-                    jobFallback = hardPin.JobFallbackReason;
+                    appliedAffinity = value.AppliedAffinity;
+                    jobBound = value.JobBound;
+                    jobFallback = value.JobFallbackReason;
                 }
             }
             AutoCoreStatus autoCoreStatus = new AutoCoreStatus();
@@ -375,6 +404,7 @@ namespace PaviseApp
             autoCoreStatus.PlacementEvidence = corePlacementEvidence;
             autoCoreStatus.Blocked = ((autoCoreGovernor != null) ? autoCoreGovernor.Blocked : ((coreManual != null && coreAllowed && corePlan != null) ? corePlan.Blocked : null));
             autoCoreStatus.ObservationOnly = coreObservationOnly;
+            autoCoreStatus.Unrestricted = coreRangeUnrestricted;
             AutoCores.Publish(autoCoreStatus);
         }
         private void EngageLaneAndReport(IntPtr h, int pid, long currentCreation, BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText, bool placementVerified)
@@ -391,7 +421,7 @@ namespace PaviseApp
                 {
                     Logger.Log(Lang.T("log.gamemodeboost.60", 0) + (DateTime.UtcNow.Ticks - firstBoostStamp) / 10000 + Lang.T("log.gamemodeboost.61", 0));
                 }
-                Logger.Log(BoostSuccessLine(pass.RendererName, pid, (!pass.CpuBoost) ? "" : ((pass.PriorityTarget == 128) ? Lang.T("log.gamemodeboost.28", 0) : Lang.T("log.gamemodeboost.29", 0)), placementText, placementVerified, (pass.IoBoost ? Lang.T("log.gamemodeboost.30", 0) : "") + (pass.MemoryBoost ? (" " + Lang.T("gm.boost.memory", 0)) : "") + ((gpuOk && pass.GpuBoost) ? Lang.T("log.gamemodeboost.31", 0) : "") + ((!Native.PowerThrottlingSupported) ? "" : (ecoCleared ? Lang.T("t.gamemodeboost.32", 0) : EcoStateText(h)))));
+                Logger.Log(BoostSuccessLine(pass.RendererName, pid, (!pass.CpuBoost) ? "" : ((pass.PriorityTarget == 128) ? Lang.T("log.gamemodeboost.28", 0) : Lang.T("log.gamemodeboost.29", 0)), placementText, placementVerified, (pass.IoBoost ? Lang.T("log.gamemodeboost.30", 0) : "") + ((gpuOk && pass.GpuBoost) ? Lang.T("log.gamemodeboost.31", 0) : "") + ((!Native.PowerThrottlingSupported) ? "" : (ecoCleared ? Lang.T("t.gamemodeboost.32", 0) : EcoStateText(h)))));
             }
         }
         internal static string BoostSuccessLine(string renderer, int pid, string priority, string placement, bool placementVerified, string otherStates)
@@ -452,7 +482,8 @@ namespace PaviseApp
         {
             string renderLaneState = AutomaticExecutionState("GmRenderLane");
             string frameCoordinationState = AutomaticExecutionState("FrameCoordination");
-            foreach (string entryText in new string[2] { renderLaneState, frameCoordinationState })
+            string[] textEntries = new string[2] { renderLaneState, frameCoordinationState };
+            foreach (string entryText in textEntries)
             {
                 switch (entryText)
                 {
@@ -484,7 +515,7 @@ namespace PaviseApp
                 }
                 List<GameProfile> next = GetProfiles();
                 HashSet<string> nextIgnore = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
-                if (!StageGameExecutable(name, executablePath, preferredRoot, next, nextIgnore, out error) || !CommitLibraryLocked(next, nextIgnore))
+                if (!StageGameExecutable(name, executablePath, preferredRoot, next, nextIgnore, out error, true) || !CommitLibraryLocked(next, nextIgnore))
                 {
                     return false;
                 }

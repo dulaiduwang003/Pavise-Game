@@ -40,6 +40,24 @@ namespace PaviseApp
             }
         }
 
+        private const uint DigcfPresent = 2u;
+
+        private const uint DigcfDeviceInterface = 16u;
+
+        private const uint GenericRead = 2147483648u;
+
+        private const uint ShareReadWrite = 3u;
+
+        private const uint OpenExisting = 3u;
+
+        private const uint IoctlVersion = 2244608u;
+
+        private const uint IoctlMetadataSize = 2244612u;
+
+        private const uint IoctlMetadata = 2244616u;
+
+        private const uint IoctlMeasurement = 2244620u;
+
         internal const int ChannelStride = 16;
 
         internal const double PicoWattHoursPerHundredNsToWatts = 0.036;
@@ -177,19 +195,19 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                IntPtr fileHandle = CreateFileW(devicePath, 2147483648u, 3u, IntPtr.Zero, 3u, 0u, IntPtr.Zero);
-                if (fileHandle == new IntPtr(-1))
+                IntPtr intPtr = CreateFileW(devicePath, 2147483648u, 3u, IntPtr.Zero, 3u, 0u, IntPtr.Zero);
+                if (intPtr == new IntPtr(-1))
                 {
                     return null;
                 }
                 try
                 {
-                    byte[] ioctlResult = Ioctl(fileHandle, 2244620u, 4096);
+                    byte[] ioctlResult = Ioctl(intPtr, 2244620u, 4096);
                     return (ioctlResult == null || ioctlResult.Length < 16) ? null : new Sample(ioctlResult);
                 }
                 finally
                 {
-                    CloseHandle(fileHandle);
+                    CloseHandle(intPtr);
                 }
             }
         }
@@ -200,17 +218,17 @@ namespace PaviseApp
             {
                 return -1.0;
             }
-            int railSlot;
+            int wattsValue;
             lock (sync)
             {
                 EnsureProbedLocked();
-                railSlot = railIndex[(int)rail];
+                wattsValue = railIndex[(int)rail];
             }
-            if (railSlot < 0)
+            if (wattsValue < 0)
             {
                 return -1.0;
             }
-            int scaledWattsValue = railSlot * 16;
+            int scaledWattsValue = wattsValue * 16;
             if (scaledWattsValue + 16 > before.Raw.Length || scaledWattsValue + 16 > after.Raw.Length)
             {
                 return -1.0;
@@ -263,42 +281,42 @@ namespace PaviseApp
         private static void ProbeLocked()
         {
             Guid guid = DeviceEnergyMeter;
-            IntPtr deviceInfoSet = SetupDiGetClassDevsW(ref guid, IntPtr.Zero, IntPtr.Zero, 18u);
-            if (deviceInfoSet == IntPtr.Zero || deviceInfoSet == new IntPtr(-1))
+            IntPtr intPtr = SetupDiGetClassDevsW(ref guid, IntPtr.Zero, IntPtr.Zero, 18u);
+            if (intPtr == IntPtr.Zero || intPtr == new IntPtr(-1))
             {
                 return;
             }
-            List<string> indices = new List<string>();
+            List<string> list = new List<string>();
             try
             {
                 for (uint iterationIndex = 0u; iterationIndex < 256; iterationIndex++)
                 {
                     DeviceInterfaceData data = default(DeviceInterfaceData);
                     data.Size = Marshal.SizeOf(typeof(DeviceInterfaceData));
-                    if (!SetupDiEnumDeviceInterfaces(deviceInfoSet, IntPtr.Zero, ref guid, iterationIndex, ref data))
+                    if (!SetupDiEnumDeviceInterfaces(intPtr, IntPtr.Zero, ref guid, iterationIndex, ref data))
                     {
                         break;
                     }
                     int required;
-                    SetupDiGetDeviceInterfaceDetailW(deviceInfoSet, ref data, IntPtr.Zero, 0, out required, IntPtr.Zero);
+                    SetupDiGetDeviceInterfaceDetailW(intPtr, ref data, IntPtr.Zero, 0, out required, IntPtr.Zero);
                     if (required <= 0)
                     {
                         continue;
                     }
-                    IntPtr nativeBuffer = Marshal.AllocHGlobal(required);
+                    IntPtr intPtr2 = Marshal.AllocHGlobal(required);
                     string ptrToStringUniResult = null;
                     try
                     {
-                        Marshal.WriteInt32(nativeBuffer, (IntPtr.Size == 8) ? 8 : 6);
+                        Marshal.WriteInt32(intPtr2, (IntPtr.Size == 8) ? 8 : 6);
                         int required2;
-                        if (SetupDiGetDeviceInterfaceDetailW(deviceInfoSet, ref data, nativeBuffer, required, out required2, IntPtr.Zero))
+                        if (SetupDiGetDeviceInterfaceDetailW(intPtr, ref data, intPtr2, required, out required2, IntPtr.Zero))
                         {
-                            ptrToStringUniResult = Marshal.PtrToStringUni(new IntPtr(nativeBuffer.ToInt64() + 4));
+                            ptrToStringUniResult = Marshal.PtrToStringUni(new IntPtr(intPtr2.ToInt64() + 4));
                         }
                     }
                     finally
                     {
-                        Marshal.FreeHGlobal(nativeBuffer);
+                        Marshal.FreeHGlobal(intPtr2);
                     }
                     if (ptrToStringUniResult == null)
                     {
@@ -307,11 +325,12 @@ namespace PaviseApp
                     devicePath = ptrToStringUniResult;
                     unreadable = false;
                     ReadChannelsLocked();
-                    foreach (string currentRawChannelNamesSnapshot in rawChannelNames)
+                    string[] rawChannelNamesSnapshot = rawChannelNames;
+                    foreach (string item in rawChannelNamesSnapshot)
                     {
-                        if (!indices.Contains(currentRawChannelNamesSnapshot))
+                        if (!list.Contains(item))
                         {
-                            indices.Add(currentRawChannelNamesSnapshot);
+                            list.Add(item);
                         }
                     }
                     if (!unreadable && railIndex[0] >= 0)
@@ -322,11 +341,11 @@ namespace PaviseApp
             }
             finally
             {
-                SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                SetupDiDestroyDeviceInfoList(intPtr);
             }
             devicePath = null;
             channelNames = new string[0];
-            rawChannelNames = indices.ToArray();
+            rawChannelNames = list.ToArray();
             for (int j = 0; j < railIndex.Length; j++)
             {
                 railIndex[j] = -1;
@@ -335,21 +354,21 @@ namespace PaviseApp
 
         private static void ReadChannelsLocked()
         {
-            IntPtr fileHandle = CreateFileW(devicePath, 2147483648u, 3u, IntPtr.Zero, 3u, 0u, IntPtr.Zero);
-            if (fileHandle == new IntPtr(-1))
+            IntPtr intPtr = CreateFileW(devicePath, 2147483648u, 3u, IntPtr.Zero, 3u, 0u, IntPtr.Zero);
+            if (intPtr == new IntPtr(-1))
             {
                 unreadable = true;
                 return;
             }
             try
             {
-                byte[] ioctlResult = Ioctl(fileHandle, 2244608u, 2);
+                byte[] ioctlResult = Ioctl(intPtr, 2244608u, 2);
                 if (ioctlResult == null || ioctlResult.Length < 2)
                 {
                     unreadable = true;
                     return;
                 }
-                byte[] ioctlResult2 = Ioctl(fileHandle, 2244612u, 8);
+                byte[] ioctlResult2 = Ioctl(intPtr, 2244612u, 8);
                 if (ioctlResult2 == null || ioctlResult2.Length < 4)
                 {
                     unreadable = true;
@@ -361,24 +380,24 @@ namespace PaviseApp
                     unreadable = true;
                     return;
                 }
-                byte[] ioctlResult3 = Ioctl(fileHandle, 2244616u, (int)toInt64Result);
+                byte[] ioctlResult3 = Ioctl(intPtr, 2244616u, (int)toInt64Result);
                 if (ioctlResult3 == null)
                 {
                     unreadable = true;
                     return;
                 }
-                List<string> texts = new List<string>();
-                List<string> currentTexts = new List<string>();
-                foreach (string utf16String in Utf16Strings(ioctlResult3, 3))
+                List<string> list = new List<string>();
+                List<string> list2 = new List<string>();
+                foreach (string item in Utf16Strings(ioctlResult3, 3))
                 {
-                    texts.Add(utf16String);
-                    if (ClassifyRail(utf16String) >= 0)
+                    list.Add(item);
+                    if (ClassifyRail(item) >= 0)
                     {
-                        currentTexts.Add(utf16String);
+                        list2.Add(item);
                     }
                 }
-                rawChannelNames = texts.ToArray();
-                channelNames = currentTexts.ToArray();
+                rawChannelNames = list.ToArray();
+                channelNames = list2.ToArray();
                 for (int i = 0; i < railIndex.Length; i++)
                 {
                     railIndex[i] = -1;
@@ -394,7 +413,7 @@ namespace PaviseApp
             }
             finally
             {
-                CloseHandle(fileHandle);
+                CloseHandle(intPtr);
             }
         }
 
@@ -404,15 +423,15 @@ namespace PaviseApp
             {
                 return null;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(outSize);
+            IntPtr intPtr = Marshal.AllocHGlobal(outSize);
             try
             {
                 for (int i = 0; i < outSize; i++)
                 {
-                    Marshal.WriteByte(nativeBuffer, i, 0);
+                    Marshal.WriteByte(intPtr, i, 0);
                 }
                 int returned;
-                if (!DeviceIoControl(handle, code, IntPtr.Zero, 0, nativeBuffer, outSize, out returned, IntPtr.Zero))
+                if (!DeviceIoControl(handle, code, IntPtr.Zero, 0, intPtr, outSize, out returned, IntPtr.Zero))
                 {
                     return null;
                 }
@@ -421,21 +440,21 @@ namespace PaviseApp
                     returned = outSize;
                 }
                 byte[] rawBytes = new byte[returned];
-                Marshal.Copy(nativeBuffer, rawBytes, 0, returned);
+                Marshal.Copy(intPtr, rawBytes, 0, returned);
                 return rawBytes;
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 
         internal static List<string> Utf16Strings(byte[] blob, int minLength)
         {
-            List<string> stringBuilders = new List<string>();
+            List<string> list = new List<string>();
             if (blob == null)
             {
-                return stringBuilders;
+                return list;
             }
             StringBuilder stringBuilder = new StringBuilder();
             for (int i = 0; i + 1 < blob.Length; i += 2)
@@ -448,15 +467,15 @@ namespace PaviseApp
                 }
                 if (stringBuilder.Length >= minLength)
                 {
-                    stringBuilders.Add(stringBuilder.ToString());
+                    list.Add(stringBuilder.ToString());
                 }
                 stringBuilder.Length = 0;
             }
             if (stringBuilder.Length >= minLength)
             {
-                stringBuilders.Add(stringBuilder.ToString());
+                list.Add(stringBuilder.ToString());
             }
-            return stringBuilders;
+            return list;
         }
     }
 }

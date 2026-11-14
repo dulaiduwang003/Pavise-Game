@@ -8,6 +8,25 @@ namespace PaviseApp
 
         private readonly string[][] items;
 
+        private readonly string[] introduction;
+
+        public string Introduction
+        {
+            get
+            {
+                if (introduction == null || introduction.Length == 0)
+                {
+                    return "";
+                }
+                int language = Lang.Cur;
+                if (language < 0 || language >= introduction.Length || string.IsNullOrEmpty(introduction[language]))
+                {
+                    return introduction[0];
+                }
+                return introduction[language];
+            }
+        }
+
         public string Tag
         {
             get
@@ -29,9 +48,15 @@ namespace PaviseApp
         }
 
         public ReleaseNote(string version, string date, string[][] entries)
+            : this(version, date, null, entries)
+        {
+        }
+
+        public ReleaseNote(string version, string date, string[] opening, string[][] entries)
         {
             Version = version;
             Date = date;
+            introduction = opening;
             items = entries;
         }
 
@@ -41,17 +66,17 @@ namespace PaviseApp
             {
                 return "";
             }
-            string[] releaseItem = items[index];
-            if (releaseItem == null || releaseItem.Length == 0)
+            string[] textEntries = items[index];
+            if (textEntries == null || textEntries.Length == 0)
             {
                 return "";
             }
             int cur = Lang.Cur;
-            if (cur < 0 || cur >= releaseItem.Length || string.IsNullOrEmpty(releaseItem[cur]))
+            if (cur < 0 || cur >= textEntries.Length || string.IsNullOrEmpty(textEntries[cur]))
             {
-                return releaseItem[0];
+                return textEntries[0];
             }
-            return releaseItem[cur];
+            return textEntries[cur];
         }
     }
 }

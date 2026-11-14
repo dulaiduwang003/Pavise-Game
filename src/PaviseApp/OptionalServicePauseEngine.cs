@@ -37,6 +37,12 @@ namespace PaviseApp
 
         internal const string PcaPreferenceKey = "MatchPausePcaV1";
 
+        private const long StopVerificationSeconds = 30L;
+
+        private const int StartSettleWaitMs = 1500;
+
+        private const int StartSettleStepMs = 100;
+
         internal static readonly string[] Names = new string[7] { "PrintNotify", "Spooler", "WSearch", "WMPNetworkSvc", "MapsBroker", "DiagTrack", "RetailDemo" };
 
         private static readonly long SettledAuditTicks = TimeSpan.FromSeconds(30.0).Ticks;
@@ -100,9 +106,9 @@ namespace PaviseApp
                 lock (gate)
                 {
                     int processedCount = 0;
-                    foreach (Entry receipt in receipts.Values)
+                    foreach (Entry value in receipts.Values)
                     {
-                        if (!receipt.StopObserved)
+                        if (!value.StopObserved)
                         {
                             processedCount++;
                         }
@@ -225,47 +231,47 @@ namespace PaviseApp
                     return true;
                 }
                 long nowTicksResult = nowTicks();
-                foreach (Entry receipt in receipts.Values)
+                foreach (Entry value in receipts.Values)
                 {
                     if (!MayContinue(mayContinue))
                     {
                         return true;
                     }
-                    if (receipt.Restoring || settled.Contains(receipt.Name) || (receipt.StopObserved && nowTicksResult < receipt.NextAuditAt && nowTicksResult >= receipt.NextAuditAt - SettledAuditTicks))
+                    if (value.Restoring || settled.Contains(value.Name) || (value.StopObserved && nowTicksResult < value.NextAuditAt && nowTicksResult >= value.NextAuditAt - SettledAuditTicks))
                     {
                         continue;
                     }
                     OptionalServiceSnapshot snapshot;
-                    if (!Query(receipt.Name, out snapshot))
+                    if (!Query(value.Name, out snapshot))
                     {
-                        lastFailure = receipt.Name + ": paused state could not be verified";
+                        lastFailure = value.Name + ": paused state could not be verified";
                         return false;
                     }
-                    if (!snapshot.Exists || snapshot.StartType == 4 || snapshot.Configuration != receipt.Configuration)
+                    if (!snapshot.Exists || snapshot.StartType == 4 || snapshot.Configuration != value.Configuration)
                     {
-                        lastFailure = receipt.Name + ": service ownership changed during the match";
+                        lastFailure = value.Name + ": service ownership changed during the match";
                         return false;
                     }
                     if (snapshot.State == 1)
                     {
-                        if (!receipt.StopObserved)
+                        if (!value.StopObserved)
                         {
-                            receipt.StopObserved = true;
+                            value.StopObserved = true;
                             stopObservationDirty = true;
                         }
-                        receipt.NextAuditAt = nowTicksResult + SettledAuditTicks;
+                        value.NextAuditAt = nowTicksResult + SettledAuditTicks;
                         continue;
                     }
-                    if (receipt.StopObserved)
+                    if (value.StopObserved)
                     {
-                        lastFailure = receipt.Name + ": service resumed after its confirmed stop";
+                        lastFailure = value.Name + ": service resumed after its confirmed stop";
                         return false;
                     }
-                    if (nowTicksResult - receipt.AcceptedAt < TimeSpan.FromSeconds(30.0).Ticks)
+                    if (nowTicksResult - value.AcceptedAt < TimeSpan.FromSeconds(30.0).Ticks)
                     {
                         continue;
                     }
-                    lastFailure = receipt.Name + ": stop confirmation timed out";
+                    lastFailure = value.Name + ": stop confirmation timed out";
                     return false;
                 }
                 bool saveStopObservationsSucceeded = SaveStopObservations();
@@ -285,13 +291,13 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                foreach (Entry receipt in receipts.Values)
+                foreach (Entry value in receipts.Values)
                 {
                     OptionalServiceSnapshot snapshot;
-                    if (!receipt.StopObserved && !receipt.Restoring && !settled.Contains(receipt.Name) && Query(receipt.Name, out snapshot) && snapshot.Exists && snapshot.State == 1)
+                    if (!value.StopObserved && !value.Restoring && !settled.Contains(value.Name) && Query(value.Name, out snapshot) && snapshot.Exists && snapshot.State == 1)
                     {
-                        receipt.StopObserved = true;
-                        receipt.NextAuditAt = nowTicks() + SettledAuditTicks;
+                        value.StopObserved = true;
+                        value.NextAuditAt = nowTicks() + SettledAuditTicks;
                         stopObservationDirty = true;
                     }
                 }
@@ -313,12 +319,12 @@ namespace PaviseApp
                 Warn("log.pausesvc.ledger", null);
                 return false;
             }
-            foreach (Entry entry in entries)
+            foreach (Entry item in entries)
             {
-                Entry receipt;
-                if (receipts.TryGetValue(entry.Name, out receipt) && entry.Configuration == receipt.Configuration)
+                Entry value;
+                if (receipts.TryGetValue(item.Name, out value) && item.Configuration == value.Configuration)
                 {
-                    entry.StopObserved |= receipt.StopObserved;
+                    item.StopObserved |= value.StopObserved;
                 }
             }
             bool saveSucceeded = Save(entries, boot);
@@ -333,11 +339,18 @@ namespace PaviseApp
             return saveSucceeded;
         }
 
+        private bool AbortAfterLedgerFailure()
+        {
+            Warn("log.pausesvc.ledger", null);
+            RestoreCore();
+            return false;
+        }
+
         private bool RestoreCore()
         {
             active = false;
             activeSelection = 0;
-            Dictionary<string, RunningWindow> unobservedRunningSnapshot = new Dictionary<string, RunningWindow>(unobservedRunning, StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, RunningWindow> dictionary = new Dictionary<string, RunningWindow>(unobservedRunning, StringComparer.OrdinalIgnoreCase);
             unobservedRunning.Clear();
             string raw;
             string boot;
@@ -376,7 +389,7 @@ namespace PaviseApp
                 settled.Clear();
                 startNotIssued.Clear();
                 stopObservationDirty = false;
-                unobservedRunningSnapshot.Clear();
+                dictionary.Clear();
                 Logger.Log(Lang.T("log.pausesvc.boot", 0));
             }
             if (receiptBoot != boot2)
@@ -386,15 +399,15 @@ namespace PaviseApp
                 if (receiptBoot != null)
                 {
                     settled.Clear();
-                    unobservedRunningSnapshot.Clear();
+                    dictionary.Clear();
                 }
             }
             receiptBoot = boot2;
             foreach (Entry receipt in receipts.Values)
             {
-                List<Entry> currentEntries = entries;
+                List<Entry> list = entries;
                 Predicate<Entry> match = (Entry e) => string.Equals(e.Name, receipt.Name, StringComparison.OrdinalIgnoreCase);
-                Entry entry = currentEntries.Find(match);
+                Entry entry = list.Find(match);
                 if (entry == null)
                 {
                     entries.Add(receipt);
@@ -417,76 +430,76 @@ namespace PaviseApp
                 Warn("log.pausesvc.ledger", null);
                 return false;
             }
-            List<string> names = new List<string>();
-            List<string> currentNames = new List<string>();
-            List<string> candidateNames = new List<string>();
+            List<string> list2 = new List<string>();
+            List<string> list3 = new List<string>();
+            List<string> list4 = new List<string>();
             for (int entriesIndex = entries.Count - 1; entriesIndex >= 0; entriesIndex--)
             {
-                Entry currentEntry = entries[entriesIndex];
-                if (settled.Contains(currentEntry.Name))
+                Entry entry2 = entries[entriesIndex];
+                if (settled.Contains(entry2.Name))
                 {
                     entries.RemoveAt(entriesIndex);
                     continue;
                 }
                 OptionalServiceSnapshot snapshot;
-                if (!Query(currentEntry.Name, out snapshot))
+                if (!Query(entry2.Name, out snapshot))
                 {
-                    names.Add(currentEntry.Name);
+                    list2.Add(entry2.Name);
                     continue;
                 }
                 bool recoveryPending = false;
-                if (!snapshot.Exists || snapshot.StartType == 4 || !string.Equals(snapshot.Configuration, currentEntry.Configuration, StringComparison.Ordinal))
+                if (!snapshot.Exists || snapshot.StartType == 4 || !string.Equals(snapshot.Configuration, entry2.Configuration, StringComparison.Ordinal))
                 {
-                    Logger.Log(string.Format(Lang.T("log.pausesvc.changed", 0), currentEntry.Name));
+                    Logger.Log(string.Format(Lang.T("log.pausesvc.changed", 0), entry2.Name));
                     recoveryPending = true;
                 }
-                else if (currentEntry.Owned && !currentEntry.Restoring && ((currentEntry.StopObserved && snapshot.State >= 2 && snapshot.State <= 7) || snapshot.State == 2 || snapshot.State == 5 || snapshot.State == 6 || snapshot.State == 7))
+                else if (entry2.Owned && !entry2.Restoring && ((entry2.StopObserved && snapshot.State >= 2 && snapshot.State <= 7) || snapshot.State == 2 || snapshot.State == 5 || snapshot.State == 6 || snapshot.State == 7))
                 {
                     recoveryPending = true;
                 }
-                else if (currentEntry.Owned && !currentEntry.StopObserved && !currentEntry.Restoring && snapshot.State != 1)
+                else if (entry2.Owned && !entry2.StopObserved && !entry2.Restoring && snapshot.State != 1)
                 {
-                    RunningWindow currentUnobservedRunningSnapshot;
-                    unobservedRunningSnapshot.TryGetValue(currentEntry.Name, out currentUnobservedRunningSnapshot);
-                    if (snapshot.State == 4 && StableRunning(currentEntry, currentUnobservedRunningSnapshot))
+                    RunningWindow value;
+                    dictionary.TryGetValue(entry2.Name, out value);
+                    if (snapshot.State == 4 && StableRunning(entry2, value))
                     {
-                        Logger.Log(string.Format(Lang.T("log.pausesvc.running", 0), currentEntry.Name));
+                        Logger.Log(string.Format(Lang.T("log.pausesvc.running", 0), entry2.Name));
                         recoveryPending = true;
                     }
                     else
                     {
-                        names.Add(currentEntry.Name);
+                        list2.Add(entry2.Name);
                     }
                 }
                 else if (snapshot.State == 4 || snapshot.State == 7)
                 {
                     recoveryPending = true;
                 }
-                else if (bootIdentityChanged || !currentEntry.Owned || (currentEntry.Restoring && snapshot.State == 1))
+                else if (bootIdentityChanged || !entry2.Owned || (entry2.Restoring && snapshot.State == 1))
                 {
-                    currentNames.Add(currentEntry.Name);
+                    list3.Add(entry2.Name);
                 }
                 else if (snapshot.State == 1)
                 {
-                    currentEntry.StopObserved = true;
-                    currentEntry.Restoring = true;
-                    receipts[currentEntry.Name] = currentEntry;
-                    startNotIssued.Remove(currentEntry.Name);
+                    entry2.StopObserved = true;
+                    entry2.Restoring = true;
+                    receipts[entry2.Name] = entry2;
+                    startNotIssued.Remove(entry2.Name);
                     if (!Save(entries, boot3))
                     {
-                        currentEntry.Restoring = false;
-                        startNotIssued.Add(currentEntry.Name);
+                        entry2.Restoring = false;
+                        startNotIssued.Add(entry2.Name);
                         Warn("log.pausesvc.ledger", null);
                         return false;
                     }
                     OptionalServiceStartResult optionalServiceStartResult;
                     try
                     {
-                        optionalServiceStartResult = control.TryStart(currentEntry.Name, currentEntry.Configuration);
+                        optionalServiceStartResult = control.TryStart(entry2.Name, entry2.Configuration);
                     }
                     catch
                     {
-                        currentNames.Add(currentEntry.Name);
+                        list3.Add(entry2.Name);
                         continue;
                     }
                     switch (optionalServiceStartResult)
@@ -495,56 +508,56 @@ namespace PaviseApp
                         recoveryPending = true;
                         break;
                     case OptionalServiceStartResult.NotIssued:
-                        currentEntry.Restoring = false;
-                        startNotIssued.Add(currentEntry.Name);
+                        entry2.Restoring = false;
+                        startNotIssued.Add(entry2.Name);
                         break;
                     }
                     if (!recoveryPending)
                     {
                         OptionalServiceSnapshot snapshot2;
-                        bool querySucceeded = Query(currentEntry.Name, out snapshot2);
+                        bool querySucceeded = Query(entry2.Name, out snapshot2);
                         if (querySucceeded && optionalServiceStartResult == OptionalServiceStartResult.Accepted && snapshot2.State == 2)
                         {
-                            querySucceeded = WaitStartSettled(currentEntry.Name, out snapshot2);
+                            querySucceeded = WaitStartSettled(entry2.Name, out snapshot2);
                         }
                         if (querySucceeded)
                         {
-                            bool configurationChanged = !snapshot2.Exists || snapshot2.StartType == 4 || !string.Equals(snapshot2.Configuration, currentEntry.Configuration, StringComparison.Ordinal);
+                            bool configurationChanged = !snapshot2.Exists || snapshot2.StartType == 4 || !string.Equals(snapshot2.Configuration, entry2.Configuration, StringComparison.Ordinal);
                             bool startAlreadyPending = optionalServiceStartResult == OptionalServiceStartResult.NotIssued && snapshot2.State >= 2 && snapshot2.State <= 7;
                             if (configurationChanged || startAlreadyPending || snapshot2.State == 4 || snapshot2.State == 7)
                             {
                                 if (configurationChanged)
                                 {
-                                    Logger.Log(string.Format(Lang.T("log.pausesvc.changed", 0), currentEntry.Name));
+                                    Logger.Log(string.Format(Lang.T("log.pausesvc.changed", 0), entry2.Name));
                                 }
                                 else if (snapshot2.State == 4 && optionalServiceStartResult == OptionalServiceStartResult.Accepted)
                                 {
-                                    candidateNames.Add(currentEntry.Name);
+                                    list4.Add(entry2.Name);
                                 }
                                 recoveryPending = true;
                             }
                         }
                         if (!recoveryPending)
                         {
-                            names.Add(currentEntry.Name);
+                            list2.Add(entry2.Name);
                         }
                     }
                 }
                 else
                 {
-                    names.Add(currentEntry.Name);
+                    list2.Add(entry2.Name);
                 }
                 if (recoveryPending)
                 {
-                    settled.Add(currentEntry.Name);
-                    startNotIssued.Remove(currentEntry.Name);
-                    receipts.Remove(currentEntry.Name);
+                    settled.Add(entry2.Name);
+                    startNotIssued.Remove(entry2.Name);
+                    receipts.Remove(entry2.Name);
                     entries.RemoveAt(entriesIndex);
                 }
             }
-            if (candidateNames.Count != 0)
+            if (list4.Count != 0)
             {
-                Logger.Log(string.Format(Lang.T("log.pausesvc.restore", 0), string.Join(", ", candidateNames.ToArray())));
+                Logger.Log(string.Format(Lang.T("log.pausesvc.restore", 0), string.Join(", ", list4.ToArray())));
             }
             bool saveSucceeded = Save(entries, boot3);
             if (saveSucceeded)
@@ -556,13 +569,13 @@ namespace PaviseApp
             {
                 Warn("log.pausesvc.ledger", null);
             }
-            else if (currentNames.Count != 0)
+            else if (list3.Count != 0)
             {
-                Warn(bootIdentityChanged ? "log.pausesvc.unknownboot" : "log.pausesvc.unowned", string.Join(", ", currentNames.ToArray()));
+                Warn(bootIdentityChanged ? "log.pausesvc.unknownboot" : "log.pausesvc.unowned", string.Join(", ", list3.ToArray()));
             }
-            else if (names.Count != 0)
+            else if (list2.Count != 0)
             {
-                Warn("log.pausesvc.pending", string.Join(", ", names.ToArray()));
+                Warn("log.pausesvc.pending", string.Join(", ", list2.ToArray()));
             }
             else
             {
@@ -621,6 +634,27 @@ namespace PaviseApp
             {
                 return false;
             }
+        }
+
+        private bool PrintingIdle()
+        {
+            try
+            {
+                return control.IsPrintingIdle();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsPrinting(string name)
+        {
+            if (!string.Equals(name, "PrintNotify", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Equals(name, "Spooler", StringComparison.OrdinalIgnoreCase);
+            }
+            return true;
         }
 
         private static bool MayContinue(Func<bool> mayContinue)
@@ -730,11 +764,11 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 1; i < rawParts.Length; i++)
                 {
                     string[] parts2 = rawParts[i].Split('\t');
-                    if (parts2.Length != 3 || (parts2[0] != "O" && parts2[0] != "P" && parts2[0] != "A" && parts2[0] != "R") || !IsAllowed(parts2[1]) || !textsSet.Add(parts2[1]))
+                    if (parts2.Length != 3 || (parts2[0] != "O" && parts2[0] != "P" && parts2[0] != "A" && parts2[0] != "R") || !IsAllowed(parts2[1]) || !hashSet.Add(parts2[1]))
                     {
                         return false;
                     }

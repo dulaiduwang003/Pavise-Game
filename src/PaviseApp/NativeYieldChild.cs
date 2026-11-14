@@ -80,19 +80,19 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<uint> firstSnapshot = new HashSet<uint>(first);
-            if (firstSnapshot.Count != first.Length)
+            HashSet<uint> hashSet = new HashSet<uint>(first);
+            if (hashSet.Count != first.Length)
             {
                 return false;
             }
-            foreach (uint currentSecond in second)
+            foreach (uint item in second)
             {
-                if (!firstSnapshot.Remove(currentSecond))
+                if (!hashSet.Remove(item))
                 {
                     return false;
                 }
             }
-            return firstSnapshot.Count == 0;
+            return hashSet.Count == 0;
         }
 
         public void Dispose()

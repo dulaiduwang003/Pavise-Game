@@ -52,6 +52,19 @@ namespace PaviseApp
 
         internal bool OverviewGuard;
 
+        private bool compact;
+
+        internal bool Compact
+        {
+            get { return compact; }
+            set
+            {
+                if (compact == value) return;
+                compact = value;
+                Invalidate();
+            }
+        }
+
         public bool Checked
         {
             get
@@ -85,6 +98,11 @@ namespace PaviseApp
             colorBlend.Speed = 0.32f;
             base.TabStop = true;
             base.AccessibleRole = AccessibleRole.CheckButton;
+        }
+
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            return Compact ? new Size(Theme.S(44), Theme.S(24)) : base.GetPreferredSize(proposedSize);
         }
 
         public void SetSilently(bool v)
@@ -180,6 +198,11 @@ namespace PaviseApp
                 }
                 return;
             }
+            if (Compact)
+            {
+                PaintCompact(e.Graphics);
+                return;
+            }
             if (PerformanceConsole)
             {
                 PerformanceConsoleToggle.Paint(e.Graphics, this, colorBlend.Value, hover.Value);
@@ -207,16 +230,16 @@ namespace PaviseApp
             int sLimit = (string.IsNullOrEmpty(Text) ? Math.Max(Theme.S(20), base.Width - 1) : Theme.S(44));
             int width = scaledDimension - scaledDimension2 * 2;
             Rectangle rectangle = new Rectangle(0, (base.Height - scaledDimension) / 2, sLimit, scaledDimension);
-            float colorProgress = colorBlend.Value;
+            float value = colorBlend.Value;
             using (GraphicsPath path = Theme.Rounded(rectangle, scaledDimension / 2))
             {
                 using (SolidBrush brush = new SolidBrush(Theme.TrackOff))
                 {
                     graphics.FillPath(brush, path);
                 }
-                if (colorProgress > 0.01f)
+                if (value > 0.01f)
                 {
-                    using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(rectangle), Col.Alpha(Theme.Accent, (int)(255f * colorProgress)), Col.Alpha(Theme.Accent2, (int)(255f * colorProgress)), LinearGradientMode.Horizontal))
+                    using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(rectangle), Col.Alpha(Theme.Accent, (int)(255f * value)), Col.Alpha(Theme.Accent2, (int)(255f * value)), LinearGradientMode.Horizontal))
                     {
                         graphics.FillPath(brush2, path);
                     }
@@ -264,6 +287,38 @@ namespace PaviseApp
                 int scaledDimension3 = Theme.S(2);
                 DsFocus.Draw(graphics, Rectangle.Intersect(Rectangle.Inflate(rectangle, scaledDimension3, scaledDimension3), base.ClientRectangle), Theme.Fg, base.EffBg);
             }
+        }
+
+        private void PaintCompact(Graphics graphics)
+        {
+            FillBg(graphics);
+            if (Width < 2 || Height < 2) return;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            int trackWidth = Math.Min(Theme.S(44), Width - 2);
+            int trackHeight = Math.Min(Theme.S(22), Height - 2);
+            Rectangle track = new Rectangle((Width - trackWidth) / 2, (Height - trackHeight) / 2, trackWidth, trackHeight);
+            float blend = colorBlend.Value;
+            Color fill = Col.Lerp(Theme.TrackOff, Theme.Accent, blend * (Enabled ? 0.92f : 0.45f));
+            fill = Col.Lerp(fill, Theme.CardHover, hover.Value * 0.1f);
+            using (GraphicsPath path = Theme.TechPath(track, Theme.S(6)))
+            {
+                using (var brush = new SolidBrush(fill)) graphics.FillPath(brush, path);
+                using (var pen = new Pen(Enabled ? Col.Lerp(Theme.StrokeHi, Theme.Accent, blend) : Theme.Stroke))
+                    graphics.DrawPath(pen, path);
+                int inset = Theme.S(3), knobSize = trackHeight - inset * 2;
+                if (knobSize > 0)
+                {
+                    int travel = Math.Max(0, trackWidth - inset * 2 - knobSize);
+                    Rectangle knob = new Rectangle(track.Left + inset + (int)Math.Round(travel * blend), track.Top + inset, knobSize, knobSize);
+                    using (GraphicsPath knobPath = Theme.TechPath(knob, Theme.S(3)))
+                    using (var brush = new SolidBrush(!Enabled ? Theme.Faint : isOn ? DsPalette.KnobOn : DsPalette.KnobOff))
+                        graphics.FillPath(brush, knobPath);
+                }
+                PaintBusy(graphics, track, path);
+            }
+            if (!Enabled) DsPaint.Veil(graphics, ClientRectangle, Col.Alpha(Theme.Card, 80));
+            if (WantsFocusCue)
+                DsFocus.Draw(graphics, Rectangle.Intersect(Rectangle.Inflate(track, Theme.S(1), Theme.S(1)), ClientRectangle), Theme.Fg, EffBg);
         }
     }
 }

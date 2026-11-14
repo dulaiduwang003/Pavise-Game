@@ -37,7 +37,7 @@ namespace PaviseApp
 
         public void Dispose()
         {
-            List<Exception> exceptions = new List<Exception>();
+            List<Exception> list = new List<Exception>();
             for (int i = 0; i < original.Length; i++)
             {
                 if (closed[i])
@@ -54,12 +54,12 @@ namespace PaviseApp
                 }
                 catch (Exception item)
                 {
-                    exceptions.Add(item);
+                    list.Add(item);
                 }
             }
-            if (exceptions.Count != 0)
+            if (list.Count != 0)
             {
-                throw new AggregateException("Original guardian resources remain unconfirmed", exceptions);
+                throw new AggregateException("Original guardian resources remain unconfirmed", list);
             }
         }
     }

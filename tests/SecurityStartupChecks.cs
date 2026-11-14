@@ -90,6 +90,15 @@ namespace PaviseApp
             disabledProducts["defender"] = new SecurityProductInfo("Windows Defender", "defender", SecurityProductState.Inactive, false, true, false);
             factsType.GetField("WscUnknown", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(disabled, true);
             var complete = typeof(SecurityStartupProbe).GetMethod("CompleteSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
+            object failedFacts = Activator.CreateInstance(factsType, true);
+            factsType.GetMethod("Failed", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(failedFacts,
+                new object[] { "WSC-初始化提供程序", new System.Runtime.InteropServices.COMException("不应写入日志的原始内容", unchecked((int)0x80070005)), true });
+            var failedSnapshot = (SecurityProductSnapshot)complete.Invoke(null, new[] { failedFacts });
+            Check(failedSnapshot.HasUnknownState && failedSnapshot.FailureSummary.Contains("WSC-初始化提供程序:COMException")
+                && failedSnapshot.FailureSummary.Contains("0x80070005") && !failedSnapshot.FailureSummary.Contains("原始内容"),
+                "安全检查失败未保留阶段与HRESULT，或错误地改变未知状态");
+            Check(SecurityStartupProbe.Decode(SecurityStartupProbe.Encode(failedSnapshot)).FailureSummary == failedSnapshot.FailureSummary,
+                "安全检查回执丢失失败阶段与错误码");
             Check(((SecurityProductSnapshot)complete.Invoke(null, new[] { disabled })).HasUnknownState, "Incomplete inventory suppressed warning");
             factsType.GetField("AntivirusInventoryComplete", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(disabled, true);
             Check(!((SecurityProductSnapshot)complete.Invoke(null, new[] { disabled })).HasUnknownState, "Resolved Defender retained WSC-only uncertainty");

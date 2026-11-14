@@ -150,18 +150,18 @@ namespace PaviseApp
                 }
             }
             bool hasOpenGlEvidence = gameNvApiEvidence != null && gameNvApiEvidence.Api == GameNvApi.OpenGl && (gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ObservedContext || gameNvApiEvidence.Kind == GameNvApiEvidenceKind.ValidatedLaunchMode) && gameNvApiEvidence.ExecutableHash == currentImageHash && !string.IsNullOrWhiteSpace(gameNvApiEvidence.SourceVersion) && gameNvApiEvidence.Nvidia && gameNvApiEvidence.PhysicalToken == approval.PhysicalToken;
-            Dictionary<GameNvMember, GameNvPending> gameNvPendingsById = new Dictionary<GameNvMember, GameNvPending>();
-            Dictionary<uint, uint> readySettingsById = new Dictionary<uint, uint>();
-            foreach (GameNvMember member in Enum.GetValues(typeof(GameNvMember)))
+            Dictionary<GameNvMember, GameNvPending> dictionary = new Dictionary<GameNvMember, GameNvPending>();
+            Dictionary<uint, uint> dictionary2 = new Dictionary<uint, uint>();
+            foreach (GameNvMember value in Enum.GetValues(typeof(GameNvMember)))
             {
-                GameNvPending gameNvPending = (((member == GameNvMember.PState) ? approval.PStateSelected : approval.OpenGlSelected) ? ((!validApproval) ? GameNvPending.Approval : ((!validIdentity) ? GameNvPending.Target : ((phase != GameNvTargetPhase.Closed) ? GameNvPending.NextLaunch : ((member == GameNvMember.PState && !approval.OnAc) ? GameNvPending.AcPower : ((member != GameNvMember.OpenGl || hasOpenGlEvidence) ? GameNvPending.Ready : GameNvPending.ApiEvidence))))) : GameNvPending.Off);
-                gameNvPendingsById.Add(member, gameNvPending);
+                GameNvPending gameNvPending = (((value == GameNvMember.PState) ? approval.PStateSelected : approval.OpenGlSelected) ? ((!validApproval) ? GameNvPending.Approval : ((!validIdentity) ? GameNvPending.Target : ((phase != GameNvTargetPhase.Closed) ? GameNvPending.NextLaunch : ((value == GameNvMember.PState && !approval.OnAc) ? GameNvPending.AcPower : ((value != GameNvMember.OpenGl || hasOpenGlEvidence) ? GameNvPending.Ready : GameNvPending.ApiEvidence))))) : GameNvPending.Off);
+                dictionary.Add(value, gameNvPending);
                 if (gameNvPending == GameNvPending.Ready)
                 {
-                    readySettingsById.Add(Id(member), 1u);
+                    dictionary2.Add(Id(value), 1u);
                 }
             }
-            return new GameNvPrelaunchPlan(libraryId ?? "", message, currentImageHash ?? "", approval, gameNvPendingsById, readySettingsById, gameNvApiEvidence);
+            return new GameNvPrelaunchPlan(libraryId ?? "", message, currentImageHash ?? "", approval, dictionary, dictionary2, gameNvApiEvidence);
         }
 
         internal static uint Id(GameNvMember member)

@@ -168,7 +168,8 @@ namespace PaviseApp
                 inspection.IsBlocked = HasBlockingProcesses(root2, out names);
                 inspection.BlockingProcesses.AddRange(names);
             }
-            foreach (string relativePath in CandidatePaths)
+            string[] candidatePaths = CandidatePaths;
+            foreach (string relativePath in candidatePaths)
             {
                 CandidateInfo candidateInfo = ScanCandidate(root2, relativePath, fullInspection);
                 inspection.Candidates.Add(candidateInfo);
@@ -208,10 +209,11 @@ namespace PaviseApp
             }
             try
             {
-                foreach (Process process in processes)
+                Process[] processesSnapshot = processes;
+                foreach (Process process in processesSnapshot)
                 {
                     string processName = null;
-                    int candidatePid = 0;
+                    int hasBlockingProcessesValue = 0;
                     string path = null;
                     try
                     {
@@ -222,7 +224,7 @@ namespace PaviseApp
                     }
                     try
                     {
-                        candidatePid = process.Id;
+                        hasBlockingProcessesValue = process.Id;
                     }
                     catch
                     {
@@ -236,17 +238,18 @@ namespace PaviseApp
                     }
                     if (IsBlockingProcess(processName, path, rootPrefix))
                     {
-                        names.Add((string.IsNullOrEmpty(processName) ? Lang.T("lolq.proc.unknown") : processName) + " PID " + candidatePid);
+                        names.Add((string.IsNullOrEmpty(processName) ? Lang.T("lolq.proc.unknown") : processName) + " PID " + hasBlockingProcessesValue);
                     }
                 }
             }
             finally
             {
-                foreach (Process currentProcess in processes)
+                Process[] processesSnapshot2 = processes;
+                foreach (Process process2 in processesSnapshot2)
                 {
                     try
                     {
-                        currentProcess.Dispose();
+                        process2.Dispose();
                     }
                     catch
                     {
@@ -266,7 +269,7 @@ namespace PaviseApp
                 {
                     return operationResult;
                 }
-                OperationResult currentOperationResult = new OperationResult();
+                OperationResult operationResult2 = new OperationResult();
                 foreach (CandidateInfo candidate in inspection.Candidates)
                 {
                     if (!candidate.Exists)
@@ -277,24 +280,24 @@ namespace PaviseApp
                     operationItem.RelativePath = candidate.RelativePath;
                     operationItem.SourcePath = candidate.FullPath;
                     operationItem.Bytes = candidate.Bytes;
-                    currentOperationResult.Items.Add(operationItem);
+                    operationResult2.Items.Add(operationItem);
                     List<string> names;
                     if (HasBlockingProcesses(inspection.RootPath, out names))
                     {
                         operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join(" ", names.ToArray()));
-                        currentOperationResult.FailedCount++;
+                        operationResult2.FailedCount++;
                         continue;
                     }
                     if (File.Exists(operationItem.SourcePath))
                     {
                         operationItem.Message = Lang.T("lolq.item.notdir");
-                        currentOperationResult.FailedCount++;
+                        operationResult2.FailedCount++;
                         continue;
                     }
                     if (!Directory.Exists(operationItem.SourcePath))
                     {
                         operationItem.Message = Lang.T("lolq.item.vanished");
-                        currentOperationResult.FailedCount++;
+                        operationResult2.FailedCount++;
                         continue;
                     }
                     try
@@ -311,19 +314,19 @@ namespace PaviseApp
                         }
                         operationItem.Success = true;
                         operationItem.Message = Lang.T("lolq.item.deleted");
-                        currentOperationResult.DeletedCount++;
-                        currentOperationResult.Bytes = AddSaturated(currentOperationResult.Bytes, candidate.Bytes);
-                        currentOperationResult.Changed = true;
+                        operationResult2.DeletedCount++;
+                        operationResult2.Bytes = AddSaturated(operationResult2.Bytes, candidate.Bytes);
+                        operationResult2.Changed = true;
                     }
                     catch (Exception ex)
                     {
                         operationItem.Message = Lang.F("lolq.item.deletefail", ex.Message);
-                        currentOperationResult.FailedCount++;
+                        operationResult2.FailedCount++;
                     }
                 }
-                currentOperationResult.Success = currentOperationResult.Changed && currentOperationResult.FailedCount == 0;
-                currentOperationResult.Message = (currentOperationResult.Success ? Lang.T("lolq.msg.deldone") : (currentOperationResult.Changed ? Lang.T("lolq.msg.delpartial") : Lang.T("lolq.msg.delnone")));
-                return currentOperationResult;
+                operationResult2.Success = operationResult2.Changed && operationResult2.FailedCount == 0;
+                operationResult2.Message = (operationResult2.Success ? Lang.T("lolq.msg.deldone") : (operationResult2.Changed ? Lang.T("lolq.msg.delpartial") : Lang.T("lolq.msg.delnone")));
+                return operationResult2;
             }
         }
 
@@ -464,7 +467,8 @@ namespace PaviseApp
                     error = Lang.F("lolq.err.scanfail", ex.Message);
                     return false;
                 }
-                foreach (FileInfo fileInfo in files)
+                FileInfo[] filesSnapshot = files;
+                foreach (FileInfo fileInfo in filesSnapshot)
                 {
                     try
                     {
@@ -486,17 +490,18 @@ namespace PaviseApp
                         return false;
                     }
                 }
-                foreach (DirectoryInfo currentDirectoriesSnapshot in directories)
+                DirectoryInfo[] directoriesSnapshot = directories;
+                foreach (DirectoryInfo directoryInfo2 in directoriesSnapshot)
                 {
                     try
                     {
-                        currentDirectoriesSnapshot.Refresh();
-                        if (IsReparse(currentDirectoriesSnapshot))
+                        directoryInfo2.Refresh();
+                        if (IsReparse(directoryInfo2))
                         {
-                            error = Lang.F("lolq.err.dirreparse", currentDirectoriesSnapshot.Name);
+                            error = Lang.F("lolq.err.dirreparse", directoryInfo2.Name);
                             return false;
                         }
-                        stack.Push(currentDirectoriesSnapshot);
+                        stack.Push(directoryInfo2);
                     }
                     catch (Exception ex3)
                     {
@@ -532,7 +537,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (FileInfo fileInfo in files)
+            FileInfo[] filesSnapshot = files;
+            foreach (FileInfo fileInfo in filesSnapshot)
             {
                 try
                 {
@@ -548,7 +554,8 @@ namespace PaviseApp
                     result = false;
                 }
             }
-            foreach (DirectoryInfo directory2 in directories)
+            DirectoryInfo[] directoriesSnapshot = directories;
+            foreach (DirectoryInfo directory2 in directoriesSnapshot)
             {
                 if (!DeleteTree(directory2))
                 {
@@ -626,13 +633,13 @@ namespace PaviseApp
 
         private static string ProcessPath(Process process)
         {
-            IntPtr processHandle = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
-                processHandle = Native.OpenProcess(4096, false, process.Id);
-                if (processHandle != IntPtr.Zero)
+                intPtr = Native.OpenProcess(4096, false, process.Id);
+                if (intPtr != IntPtr.Zero)
                 {
-                    string imagePathResult = Native.ImagePath(processHandle);
+                    string imagePathResult = Native.ImagePath(intPtr);
                     if (!string.IsNullOrEmpty(imagePathResult))
                     {
                         return imagePathResult;
@@ -644,9 +651,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (processHandle != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
             try

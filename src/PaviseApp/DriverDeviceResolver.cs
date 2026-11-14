@@ -12,7 +12,8 @@ namespace PaviseApp
 
         internal static bool IsFramework(string driver)
         {
-            foreach (string a in NeverTouch)
+            string[] neverTouch = NeverTouch;
+            foreach (string a in neverTouch)
             {
                 if (string.Equals(a, driver, StringComparison.OrdinalIgnoreCase))
                 {

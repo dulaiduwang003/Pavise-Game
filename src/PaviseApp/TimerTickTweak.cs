@@ -5,6 +5,9 @@ namespace PaviseApp
 {
     internal static class TimerTickTweak
     {
+        private const string OnKey = "TimerTickByPavise";
+
+        private const string SnapKey = "PrevTimerTick";
 
         internal static readonly string[] Names = new string[3] { "useplatformclock", "useplatformtick", "disabledynamictick" };
 
@@ -16,13 +19,13 @@ namespace PaviseApp
 
         private static readonly HashSet<string> YesTokens = new HashSet<string>(StringComparer.Ordinal)
         {
-            "yes", "true", "1", "是", "예", "да", "oui", "ja", "sí",
+            "yes", "true", "1", "是", "はい", "예", "да", "oui", "ja", "sí",
             "sì", "si", "sim", "evet", "tak", "ano", "igen", "kyllä", "ναι", "כן"
         };
 
         private static readonly HashSet<string> NoTokens = new HashSet<string>(StringComparer.Ordinal)
         {
-            "no", "false", "0", "否", "아니요", "아니오", "нет", "non", "nein",
+            "no", "false", "0", "否", "いいえ", "아니요", "아니오", "нет", "non", "nein",
             "não", "nao", "hayır", "hayir", "nie", "ne", "nem", "ei", "nej", "nei",
             "όχι", "לא"
         };
@@ -68,12 +71,13 @@ namespace PaviseApp
 
         internal static string[] ParseValues(string enumText)
         {
-            string[] previousTimerValues = new string[3] { "__pavise_absent__", "__pavise_absent__", "__pavise_absent__" };
+            string[] textEntries = new string[3] { "__pavise_absent__", "__pavise_absent__", "__pavise_absent__" };
             if (string.IsNullOrEmpty(enumText))
             {
-                return previousTimerValues;
+                return textEntries;
             }
-            foreach (string entryText in enumText.Split('\n'))
+            string[] enumTextParts = enumText.Split('\n');
+            foreach (string entryText in enumTextParts)
             {
                 string entryTextTrimmed = entryText.Trim();
                 for (int j = 0; j < Names.Length; j++)
@@ -81,14 +85,14 @@ namespace PaviseApp
                     if (entryTextTrimmed.StartsWith(Names[j], StringComparison.OrdinalIgnoreCase))
                     {
                         string substringTrimmed = entryTextTrimmed.Substring(Names[j].Length).Trim();
-                        if (substringTrimmed.Length != 0 && previousTimerValues[j] == "__pavise_absent__")
+                        if (substringTrimmed.Length != 0 && textEntries[j] == "__pavise_absent__")
                         {
-                            previousTimerValues[j] = Normalize(substringTrimmed);
+                            textEntries[j] = Normalize(substringTrimmed);
                         }
                     }
                 }
             }
-            return previousTimerValues;
+            return textEntries;
         }
 
         internal static string Normalize(string s)

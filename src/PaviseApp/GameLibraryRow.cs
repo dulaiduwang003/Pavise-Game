@@ -114,14 +114,14 @@ namespace PaviseApp
             CoreSwitch.Name = "gameCoreSwitch";
             CoreSwitch.TabIndex = 0;
             FamilySuppressionSwitch coreSwitch = CoreSwitch;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 if (this.CoreToggleRequested != null)
                 {
                     this.CoreToggleRequested(this, EventArgs.Empty);
                 }
             };
-            coreSwitch.Click += eventHandler;
+            coreSwitch.Click += value;
             CoreSwitch.Enter += delegate
             {
                 if (this.SelectionRequested != null)
@@ -436,9 +436,9 @@ namespace PaviseApp
                     graphics.DrawPath(pen, path);
                 }
             }
-            using (Pen currentPen = new Pen(Col.Alpha(Theme.Accent, selected ? 220 : 80), Math.Max(1, Theme.S(1))))
+            using (Pen pen2 = new Pen(Col.Alpha(Theme.Accent, selected ? 220 : 80), Math.Max(1, Theme.S(1))))
             {
-                graphics.DrawLine(currentPen, Theme.S(1), Theme.S(1), Theme.S(selected ? 62 : 32), Theme.S(1));
+                graphics.DrawLine(pen2, Theme.S(1), Theme.S(1), Theme.S(selected ? 62 : 32), Theme.S(1));
             }
             if (selected)
             {
@@ -453,9 +453,9 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush3, path2);
                 }
-                using (Pen strokePen = new Pen(Theme.Stroke))
+                using (Pen pen3 = new Pen(Theme.Stroke))
                 {
-                    graphics.DrawPath(strokePen, path2);
+                    graphics.DrawPath(pen3, path2);
                 }
             }
             Bitmap bitmap = null;
@@ -491,9 +491,9 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush4, path3);
                 }
-                using (Pen candidatePen = new Pen(Item.Running ? Col.Alpha(Theme.Green, 100) : Theme.Stroke))
+                using (Pen pen4 = new Pen(Item.Running ? Col.Alpha(Theme.Green, 100) : Theme.Stroke))
                 {
-                    graphics.DrawPath(candidatePen, path3);
+                    graphics.DrawPath(pen4, path3);
                 }
             }
             TextRenderer.DrawText(graphics, Lang.T(Item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.1f, true), gameLibraryRowLayout.Running, Item.Running ? Theme.Green : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -501,15 +501,15 @@ namespace PaviseApp
             Color color = (Item.RendererObserved ? Theme.Green : Theme.Dim);
             int width = TextRenderer.MeasureText(tResult, Theme.UI(7.2f, false), Size.Empty, TextFormatFlags.NoPadding).Width;
             int badgeWidth = Math.Min(gameLibraryRowLayout.Metadata.Width, width + Theme.S(12));
-            Rectangle currentRectangle = new Rectangle(gameLibraryRowLayout.Metadata.X, gameLibraryRowLayout.Metadata.Y, Math.Max(1, badgeWidth), gameLibraryRowLayout.Metadata.Height);
+            Rectangle rectangle2 = new Rectangle(gameLibraryRowLayout.Metadata.X, gameLibraryRowLayout.Metadata.Y, Math.Max(1, badgeWidth), gameLibraryRowLayout.Metadata.Height);
             int width2 = Math.Max(2, Theme.S(3));
             using (SolidBrush brush5 = new SolidBrush(color))
             {
-                graphics.FillEllipse(brush5, currentRectangle.Left, currentRectangle.Top + (currentRectangle.Height - width2) / 2, width2, width2);
+                graphics.FillEllipse(brush5, rectangle2.Left, rectangle2.Top + (rectangle2.Height - width2) / 2, width2, width2);
             }
-            TextRenderer.DrawText(graphics, tResult, Theme.UI(7.2f, false), new Rectangle(currentRectangle.Left + Theme.S(10), currentRectangle.Top, Math.Max(1, currentRectangle.Width - Theme.S(10)), currentRectangle.Height), color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(graphics, tResult, Theme.UI(7.2f, false), new Rectangle(rectangle2.Left + Theme.S(10), rectangle2.Top, Math.Max(1, rectangle2.Width - Theme.S(10)), rectangle2.Height), color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             string metadataText = MetadataText;
-            int rightOffset = currentRectangle.Right + Theme.S(10);
+            int rightOffset = rectangle2.Right + Theme.S(10);
             if (gameLibraryRowLayout.Metadata.Right > rightOffset)
             {
                 TextRenderer.DrawText(graphics, metadataText, Theme.UI(7.4f, false), new Rectangle(rightOffset, gameLibraryRowLayout.Metadata.Top, gameLibraryRowLayout.Metadata.Right - rightOffset, gameLibraryRowLayout.Metadata.Height), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);

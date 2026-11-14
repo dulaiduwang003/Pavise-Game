@@ -9,6 +9,15 @@ namespace PaviseApp
 {
     internal sealed class PageReveal : Form
     {
+        private const int DurationMs = 160;
+
+        private const int Layered = 524288;
+
+        private const int Transparent = 32;
+
+        private const int ToolWindow = 128;
+
+        private const int NoActivate = 134217728;
 
         private readonly Form host;
 

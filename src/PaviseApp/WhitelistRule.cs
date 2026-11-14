@@ -239,14 +239,16 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string b in UnsafeFamilyHosts)
+            string[] unsafeFamilyHosts = UnsafeFamilyHosts;
+            foreach (string b in unsafeFamilyHosts)
             {
                 if (string.Equals(fileNameWithoutExtension, b, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
             }
-            foreach (string prefix in VersionedRuntimeHostPrefixes)
+            string[] versionedRuntimeHostPrefixes = VersionedRuntimeHostPrefixes;
+            foreach (string prefix in versionedRuntimeHostPrefixes)
             {
                 if (HasVersionSuffix(fileNameWithoutExtension, prefix))
                 {

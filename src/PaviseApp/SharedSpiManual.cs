@@ -99,15 +99,15 @@ namespace PaviseApp
                         return false;
                     }
                     bool allVisualsRestored = true;
-                    foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
+                    foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
                     {
-                        if (all.Id == "MatchVisualEffectsV1")
+                        if (item.Id == "MatchVisualEffectsV1")
                         {
-                            if (all.VisualOwner != spiOwnerStamp.ManualReceiptOwner)
+                            if (item.VisualOwner != spiOwnerStamp.ManualReceiptOwner)
                             {
                                 return false;
                             }
-                            if (!all.VisualRestored)
+                            if (!item.VisualRestored)
                             {
                                 allVisualsRestored = false;
                             }

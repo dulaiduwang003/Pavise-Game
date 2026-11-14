@@ -59,11 +59,11 @@ namespace PaviseApp
             {
                 return 0uL;
             }
-            foreach (ulong core in cores)
+            foreach (ulong numericValueEntry in cores)
             {
-                if ((core & mask) != 0)
+                if ((numericValueEntry & mask) != 0)
                 {
-                    wholeCoresResult |= core;
+                    wholeCoresResult |= numericValueEntry;
                 }
             }
             return wholeCoresResult;
@@ -85,9 +85,9 @@ namespace PaviseApp
             int processedCount = 0;
             if (cores != null)
             {
-                foreach (ulong core in cores)
+                foreach (ulong numericValueEntry in cores)
                 {
-                    if (core != 0 && (mask & core) == core)
+                    if (numericValueEntry != 0 && (mask & numericValueEntry) == numericValueEntry)
                     {
                         processedCount++;
                     }
@@ -119,11 +119,15 @@ namespace PaviseApp
                 blockedOffset = blockedOffset + " · allocated 0x" + plan.Allocated.ToString("X");
             }
             string message = (autoCoreStatus.Pending ? "recovery pending" : (autoCoreStatus.ObservationOnly ? "disabled" : ((!autoCoreStatus.Watching) ? "no match" : (autoCoreStatus.Engaged ? "exclusive" : (autoCoreStatus.Exclusive ? "exclusive requested" : ((autoCoreStatus.Blocked != null) ? ("shared (" + autoCoreStatus.Blocked + ")") : "shared"))))));
+            if (autoCoreStatus.Unrestricted && !autoCoreStatus.Pending)
+                return blockedOffset + " · 全选不额外限制，保留系统原范围 · 未接管范围，未核验为全机范围";
             return blockedOffset + " · " + message + " · game 0x" + autoCoreStatus.GameMask.ToString("X") + " · hard target 0x" + autoCoreStatus.ExpectedMask.ToString("X") + " · observed " + (autoCoreStatus.AffinityRead ? ("0x" + autoCoreStatus.ObservedMask.ToString("X")) : "unreadable") + " · verified " + autoCoreStatus.AffinityVerified + " · job protected " + autoCoreStatus.JobAffinity + (string.IsNullOrEmpty(autoCoreStatus.JobFallbackReason) ? "" : " · job unavailable " + autoCoreStatus.JobFallbackReason) + " · background " + autoCoreStatus.BackgroundMoved + (string.IsNullOrEmpty(autoCoreStatus.BackgroundAffinityDetail) ? "" : " · " + autoCoreStatus.BackgroundAffinityDetail) + " · work wall " + autoCoreStatus.WorkMs.ToString("F1") + "ms" + (string.IsNullOrEmpty(autoCoreStatus.PlacementEvidence) ? "" : (" · placement {" + autoCoreStatus.PlacementEvidence + "}"));
         }
 
         internal static string AffinityProtectionText(AutoCoreStatus status)
         {
+            if (status != null && status.Unrestricted)
+                return PerformancePolicy.Text("全选不额外限制，保留系统原范围", "All selected; keep the system's existing range");
             return PerformancePolicy.Text("核心绑定已生效", "Core affinity active");
         }
 
@@ -133,16 +137,16 @@ namespace PaviseApp
             {
                 return "topology";
             }
-            ulong coveredCoreMask = 0uL;
-            foreach (ulong core in cores)
+            ulong numericValue = 0uL;
+            foreach (ulong numericValueEntry in cores)
             {
-                if (core == 0 || (core & ~all) != 0 || (coveredCoreMask & core) != 0)
+                if (numericValueEntry == 0 || (numericValueEntry & ~all) != 0 || (numericValue & numericValueEntry) != 0)
                 {
                     return "topology";
                 }
-                coveredCoreMask |= core;
+                numericValue |= numericValueEntry;
             }
-            if (coveredCoreMask != all)
+            if (numericValue != all)
             {
                 return "topology";
             }
@@ -155,9 +159,9 @@ namespace PaviseApp
                 return "whole";
             }
             int processedCount = 0;
-            foreach (ulong currentCore in cores)
+            foreach (ulong numericValueEntry2 in cores)
             {
-                if ((currentCore & isolation) == 0 && (currentCore & ~allocated) != 0)
+                if ((numericValueEntry2 & isolation) == 0 && (numericValueEntry2 & ~allocated) != 0)
                 {
                     processedCount++;
                 }

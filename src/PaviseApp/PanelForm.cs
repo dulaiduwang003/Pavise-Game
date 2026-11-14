@@ -1,11 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -26,9 +34,7 @@ namespace PaviseApp
 
         private sealed class AcConsoleSurface : DBPanel
         {
-            internal int SplitX;
-
-            internal Rectangle UtilityBounds;
+            internal Rectangle SectionBounds;
 
             internal AcConsoleSurface()
             {
@@ -44,7 +50,7 @@ namespace PaviseApp
                     return;
                 }
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(14), Theme.Card, Theme.StrokeHi);
+                DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(12), Theme.Bg, Col.Lerp(Theme.Bg, Theme.Stroke, 0.65f));
                 using (Pen pen = new Pen(Col.Alpha(Theme.Accent, 205), Math.Max(1, Theme.S(1))))
                 {
                     graphics.DrawLines(pen, new Point[4]
@@ -62,15 +68,11 @@ namespace PaviseApp
                         new Point(base.Width - 1, base.Height - Theme.S(28))
                     });
                 }
-                using (Pen currentPen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.62f)))
+                if (!SectionBounds.IsEmpty)
                 {
-                    if (SplitX > 0)
+                    using (SolidBrush brush = new SolidBrush(Theme.Accent))
                     {
-                        graphics.DrawLine(currentPen, SplitX, Theme.S(12), SplitX, base.Height - Theme.S(12));
-                    }
-                    if (!UtilityBounds.IsEmpty)
-                    {
-                        graphics.DrawLine(currentPen, UtilityBounds.Left, UtilityBounds.Top, UtilityBounds.Right, UtilityBounds.Top);
+                        graphics.FillRectangle(brush, SectionBounds.Left, SectionBounds.Top + Theme.S(4), Theme.S(3), Theme.S(18));
                     }
                 }
             }
@@ -78,18 +80,35 @@ namespace PaviseApp
 
         private sealed class AcModuleSurface : DBPanel
         {
-            internal AcModuleSurface() { Tag = "backdrop-card"; }
             protected override void OnPaintBackground(PaintEventArgs e)
             {
-                DsPaint.CardBackground(e.Graphics, this, Theme.Card);
-                using (Pen pen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.55f)))
+                DsPaint.CardBackground(e.Graphics, this, Theme.Bg);
+            }
+        }
+
+        private sealed class AcStrengthSurface : DBPanel
+        {
+            internal int PickerLeft;
+
+            internal int HelpLeft;
+
+            protected override void OnPaintBackground(PaintEventArgs e)
+            {
+                Graphics graphics = e.Graphics;
+                DsPaint.CardBackground(graphics, this, Theme.Bg);
+                if (Width < 2 || Height < 2) return;
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                DsPaint.TechFrame(graphics, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8), Backdrop.CardFill(this, Theme.Card), Col.Lerp(Theme.Card, Theme.Stroke, 0.7f));
+                using (SolidBrush brush = new SolidBrush(Theme.Accent))
                 {
-                    foreach (Control control in base.Controls)
+                    graphics.FillRectangle(brush, Theme.S(20), Theme.S(20), Theme.S(3), Theme.S(20));
+                }
+                if (PickerLeft > 0)
+                {
+                    using (Pen pen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.65f)))
                     {
-                        if (control.Bottom < base.Height)
-                        {
-                            e.Graphics.DrawLine(pen, Theme.S(8), control.Bottom, base.Width - Theme.S(8), control.Bottom);
-                        }
+                        graphics.DrawLine(pen, PickerLeft - Theme.S(14), Theme.S(18), PickerLeft - Theme.S(14), Height - Theme.S(18));
+                        graphics.DrawLine(pen, HelpLeft - Theme.S(12), Theme.S(18), HelpLeft - Theme.S(12), Height - Theme.S(18));
                     }
                 }
             }
@@ -102,13 +121,13 @@ namespace PaviseApp
             internal AcGlyph()
             {
                 SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-                BackColor = Theme.Card;
+                BackColor = Theme.Bg;
                 base.TabStop = false;
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                DsPaint.FillBackground(e.Graphics, this, Theme.Card);
+                DsPaint.FillBackground(e.Graphics, this, BackColor);
                 AntiCheatFeatureIcons.Draw(e.Graphics, base.ClientRectangle, Key, Theme.Accent);
             }
         }
@@ -165,7 +184,7 @@ namespace PaviseApp
             protected override void OnPaint(PaintEventArgs e)
             {
                 Graphics graphics = e.Graphics;
-                graphics.Clear(Theme.Card);
+                DsPaint.CardBackground(graphics, this, Theme.Bg);
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 Color fill = Col.Lerp(Theme.Card, Theme.CardHover, hover.Value);
                 DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(8), fill, Focused ? Theme.Accent : Theme.Stroke);
@@ -173,11 +192,11 @@ namespace PaviseApp
                 if (labelScale != Dpi.Scale || badgeWidth == 0)
                 {
                     labelScale = Dpi.Scale;
-                    labelWidth = TextRenderer.MeasureText(label, Theme.UI(9f, false), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
+                    labelWidth = TextRenderer.MeasureText(label, Theme.UI(9f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
                     badgeWidth = Math.Max(Theme.S(28), TextRenderer.MeasureText(countText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(16));
                 }
                 int minLimit = Math.Max(1, Math.Min(labelWidth, base.Width - Theme.S(92) - badgeWidth));
-                TextRenderer.DrawText(graphics, label, Theme.UI(9f, false), new Rectangle(Theme.S(48), 0, minLimit, base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, label, Theme.UI(9f, true), new Rectangle(Theme.S(48), 0, minLimit, base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 Rectangle rectangle = new Rectangle(Theme.S(48) + minLimit + Theme.S(9), (base.Height - Theme.S(22)) / 2, badgeWidth, Theme.S(22));
                 DsPaint.TechFrame(graphics, rectangle, Theme.S(5), Theme.Inset, Theme.Stroke);
                 TextRenderer.DrawText(graphics, countText, Theme.UI(8f, false), rectangle, Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -294,6 +313,10 @@ namespace PaviseApp
             internal ulong Mask;
 
             internal bool Isolation;
+
+            internal GameProfile Baseline;
+
+            internal string EnabledValue;
         }
 
         private sealed class CoreQuickChoice
@@ -496,6 +519,10 @@ namespace PaviseApp
 
             private readonly Label extensionTitle;
 
+            private readonly Label cpuTitle;
+
+            private readonly Label otherTitle;
+
             private readonly ToolTip tips = new ToolTip();
 
             private GameLibraryItem item;
@@ -512,7 +539,7 @@ namespace PaviseApp
                 base.Name = "LibraryCardConfiguration";
                 BackColor = Theme.Card;
                 AutoScroll = false;
-                core = MakeOption("libraryCoreToggle", Lang.T("nav.corescheduling"), true, form.ToggleGameCoreScheduling);
+                core = MakeOption("libraryCoreToggle", Lang.T("lib.cores.range"), true, form.ToggleGameCoreScheduling);
                 family = MakeOption("libraryFamilyToggle", Lang.T("lib.family.suppress"), false, form.ToggleGameFamilySuppression);
                 rebar = MakeOption("libraryRebarToggle", Lang.T("lib.rebar"), false, form.ToggleGameRebar);
                 fullscreen = MakeOption("libraryFullscreenToggle", Lang.T("lib.fso"), false, form.ToggleGameFullscreenOptimizations);
@@ -525,22 +552,54 @@ namespace PaviseApp
                 {
                     Name = "libraryCoreSettings",
                     ShowAdjustLabel = true,
-                    AccessibleName = Lang.T("nav.corescheduling")
+                    OwnerRow = core,
+                    AccessibleName = Lang.T("lib.cores.range")
                 };
                 GameCardDetailsButton gameCardDetailsButton = coreDetails;
-                EventHandler eventHandler = delegate
+                EventHandler value = delegate
                 {
                     if (item != null)
                     {
                         owner.OpenLibraryCoreScheduling(item.Profile.Id);
                     }
                 };
-                gameCardDetailsButton.Click += eventHandler;
-                core.Controls.Add(coreDetails);
-                extensionTitle = new Label
+                gameCardDetailsButton.Click += value;
+                // 原生 CheckBox 只绘制开关行，调整按钮由外层面板管理显示与点击层级。
+                base.Controls.Add(coreDetails);
+                coreDetails.BringToFront();
+                core.DetailsOverlay = coreDetails;
+                extensionTitle = SectionLabel("libraryExtensionTitle", AutoText("游戏专属", "Game options"));
+                // 渲染可选核心受游戏核心范围约束；资源优先级在渲染调度的调整窗口内统一保存。
+                cpuTitle = SectionLabel("libraryCpuTitle", AutoText("调度与优先级", "Scheduling & priority"));
+                otherTitle = SectionLabel("libraryOtherTitle", AutoText("其他", "Other"));
+                owner.BuildCriticalThreadEditor(this, form.ContentW);
+                owner.criticalThreadEditor.SizeChanged += delegate
                 {
-                    Name = "libraryExtensionTitle",
-                    Text = AutoText("游戏专属", "Game options"),
+                    Arrange();
+                };
+                core.TabIndex = 0;
+                coreDetails.TabIndex = 1;
+                owner.criticalThreadEditor.TabIndex = 2;
+                family.TabIndex = 3;
+                rebar.TabIndex = 4;
+                fullscreen.TabIndex = 5;
+                RefreshItem(initial);
+            }
+
+            internal static string CoreRangeSummary(ManualCorePlan plan)
+            {
+                int count = AutoCores.CountBits(plan.GameMask);
+                string ranges = "CPU" + CpuTopology.DescribeRanges(plan.GameMask);
+                return (count <= 1 ? ranges : count + AutoText(" 核 · ", " CPUs · ") + ranges)
+                    + (plan.Isolation ? AutoText(" · 隔离", " · isolated") : "");
+            }
+
+            private Label SectionLabel(string name, string text)
+            {
+                Label label = new Label
+                {
+                    Name = name,
+                    Text = text,
                     Font = Theme.UI(9f, true),
                     ForeColor = Theme.Dim,
                     BackColor = Theme.Card,
@@ -549,30 +608,26 @@ namespace PaviseApp
                     TabStop = false,
                     UseMnemonic = false
                 };
-                base.Controls.Add(extensionTitle);
-                owner.BuildCriticalThreadEditor(this, form.ContentW);
-                owner.criticalThreadEditor.SizeChanged += delegate
-                {
-                    Arrange();
-                };
-                RefreshItem(initial);
+                base.Controls.Add(label);
+                return label;
             }
 
             private FamilySuppressionSwitch MakeOption(string name, string text, bool isCore, Action<GameLibraryItem> action)
             {
-                FamilySuppressionSwitch currentFamilySuppressionSwitch = new FamilySuppressionSwitch(isCore);
-                currentFamilySuppressionSwitch.Name = name;
-                currentFamilySuppressionSwitch.Text = text;
-                currentFamilySuppressionSwitch.Surface = Theme.Card;
-                currentFamilySuppressionSwitch.Click += delegate
+                FamilySuppressionSwitch familySuppressionSwitch = new FamilySuppressionSwitch(isCore);
+                familySuppressionSwitch.Name = name;
+                familySuppressionSwitch.Text = text;
+                familySuppressionSwitch.Surface = Theme.Card;
+                FamilySuppressionSwitch familySuppressionSwitch2 = familySuppressionSwitch;
+                familySuppressionSwitch2.Click += delegate
                 {
                     if (item != null)
                     {
                         action(item);
                     }
                 };
-                base.Controls.Add(currentFamilySuppressionSwitch);
-                return currentFamilySuppressionSwitch;
+                base.Controls.Add(familySuppressionSwitch2);
+                return familySuppressionSwitch2;
             }
 
             internal void RefreshItem(GameLibraryItem fresh)
@@ -584,7 +639,13 @@ namespace PaviseApp
                 }
                 GameProfile profile = item.Profile;
                 owner.SyncCriticalThreadEditor(profile);
-                core.Checked = PolicyResolver.For(profile).AutoCoresAllowed;
+                PolicySnapshot corePolicy = PolicyResolver.For(profile);
+                core.Checked = corePolicy.AutoCoresAllowed;
+                ManualCorePlan corePlan = corePolicy.ManualCores;
+                core.Summary = !core.Checked ? ""
+                    : corePlan == null ? AutoText("尚未选择范围", "No range selected")
+                    : CoreRangeSummary(corePlan);
+                core.SummaryColor = core.Checked && corePlan == null ? Theme.Warning : Color.Empty;
                 family.Checked = profile.SuppressFamilyBackground;
                 family.Gated = !item.RendererObserved;
                 rebar.Checked = PolicyResolver.For(profile).NvRebar;
@@ -593,7 +654,7 @@ namespace PaviseApp
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
                 FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-                string[] tooltipKeys = new string[4]
+                string[] textEntries = new string[4]
                 {
                     "lib.cores.toggle.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
@@ -603,7 +664,7 @@ namespace PaviseApp
                 for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                 {
                     familySuppressionSwitchItems[i].AccessibleName = profile.Name + " · " + familySuppressionSwitchItems[i].Text;
-                    familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(tooltipKeys[i]);
+                    familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(textEntries[i]);
                     tips.SetToolTip(familySuppressionSwitchItems[i], familySuppressionSwitchItems[i].AccessibleDescription);
                 }
                 string learnedExecutablePathOffset = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath + "|" + profile.LearnedExecutablePath;
@@ -643,14 +704,29 @@ namespace PaviseApp
                 try
                 {
                     int width = Math.Max(1, base.Width);
-                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
+                    int labelWidth = Math.Max(1, width - Theme.S(8));
+                    cpuTitle.SetBounds(Theme.S(4), Theme.S(2), labelWidth, Theme.S(22));
+                    core.SetBounds(0, cpuTitle.Bottom + Theme.S(4), width, Theme.S(40));
+                    coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), core.Top + Theme.S(2), Theme.S(64), Theme.S(36));
+                    coreDetails.BringToFront();
+                    owner.criticalThreadEditor.SetBounds(0, core.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
+                    // 核心范围和渲染调度的行内摘要保持同列。
+                    int summaryColumn = Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft());
+                    if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn)
+                    {
+                        core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = summaryColumn;
+                        core.Invalidate();
+                        owner.criticalThreadEnabled.Invalidate();
+                    }
+                    otherTitle.SetBounds(Theme.S(4), owner.criticalThreadEditor.Bottom + Theme.S(12), labelWidth, Theme.S(22));
+                    int rowTop = otherTitle.Bottom + Theme.S(4);
+                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[3] { family, rebar, fullscreen };
                     for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                     {
-                        familySuppressionSwitchItems[i].SetBounds(0, Theme.S(4 + i * 48), width, Theme.S(40));
+                        familySuppressionSwitchItems[i].SetBounds(0, rowTop, width, Theme.S(40));
+                        rowTop = familySuppressionSwitchItems[i].Bottom + Theme.S(8);
                     }
-                    coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), Theme.S(2), Theme.S(64), Theme.S(36));
-                    owner.criticalThreadEditor.SetBounds(0, fullscreen.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
-                    int uOffset = Dpi.U(owner.criticalThreadEditor.Bottom) + 8;
+                    int uOffset = Dpi.U(fullscreen.Bottom) + 8;
                     extensionTitle.Visible = extension != null;
                     if (extension != null)
                     {
@@ -786,6 +862,22 @@ namespace PaviseApp
             }
         }
 
+        private const int AuditWindowMs = 120000;
+
+        private const int SystemPerformanceTab = 2;
+
+        private const int CollapsedCardH = 52;
+
+        private const int ContentX = 30;
+
+        private const string LastAdvancedPageKey = "DeepTuningLastPage";
+
+        private const int WmPowerBroadcast = 536;
+
+        private const int PbtPowerSettingChange = 32787;
+
+        private const uint DeviceNotifyWindowHandle = 0u;
+
         internal const int DescMaxLines = 3;
 
         internal const int CollapseChevronW = 20;
@@ -793,6 +885,14 @@ namespace PaviseApp
         internal const float StatusFontMax = 14.5f;
 
         internal const float StatusFontMin = 9.5f;
+
+        private const string AutoHideKey = "AutoHideOnGame";
+
+        private const bool AutoHideDefault = true;
+
+        private const int AutoHideDelayMs = 10000;
+
+        private const int OutroMs = 220;
 
         private Label lblAboutUpdate;
 
@@ -818,6 +918,8 @@ namespace PaviseApp
 
         private DBPanel acControlBay;
 
+        private AcStrengthSurface acStrengthSurface;
+
         private DBPanel acUtility;
 
         private DBPanel acDrawer;
@@ -830,7 +932,15 @@ namespace PaviseApp
 
         private Label acTitleLabel;
 
+        private Label acSubtitleLabel;
+
+        private Label acModuleCountLabel;
+
+        private Label acModulesLabel;
+
         private Label acStrengthLabel;
+
+        private Label acStrengthHintLabel;
 
         private Label acDrawerTitle;
 
@@ -920,8 +1030,6 @@ namespace PaviseApp
 
         private Toggle coreIsolationToggle;
 
-        private Toggle coreEnableToggle;
-
         private Label coreEditorTitle;
 
         private Label coreEditorHelp;
@@ -930,11 +1038,15 @@ namespace PaviseApp
 
         private Label coreEditorResult;
 
-        private Label coreEditorRuntime;
-
         private PlanComparison corePlanPreview;
 
-        private PillButton coreEvidenceToggle;
+        private PillButton coreSaveButton;
+
+        private PillButton coreResetButton;
+
+        private GameProfile coreDraftBaseline;
+
+        private string coreDraftEnabledValue;
 
         private string coreDraftProfile;
 
@@ -990,6 +1102,9 @@ namespace PaviseApp
 
         private FamilySuppressionSwitch criticalThreadEnabled;
 
+        // 调度行同步后的可选通知；资源优先级已随调整窗口独立读取草案。
+        private Action criticalThreadSynced;
+
         private PerformanceInfoButton criticalThreadInfo;
 
         private bool criticalThreadIssue;
@@ -1022,19 +1137,17 @@ namespace PaviseApp
 
         private DBPanel coreRightRail;
 
+        private DBPanel coreActions;
+
         private Label coreSelectedCount;
 
         private Label coreTopologyCount;
 
         private Label coreIsolationHint;
 
-        private Label coreEnableLabel;
-
         private PerformanceInfoButton coreRangeInfo;
 
         private PerformanceInfoButton coreIsolationInfo;
-
-        private PerformanceInfoButton coreEnableInfo;
 
         private Control coreIsolationGlyph;
 
@@ -1149,7 +1262,6 @@ namespace PaviseApp
 
         private TextBox librarySearch;
 
-        private TierPicker libraryPlatforms;
 
         private PillButton libraryAdd;
 
@@ -1159,7 +1271,6 @@ namespace PaviseApp
 
         private string librarySearchText = "";
 
-        private int libraryPlatformIndex;
 
         private bool libraryArranging;
 
@@ -1692,7 +1803,6 @@ namespace PaviseApp
             }
         }
 
-        // 仅会在会话结束时恢复的设置归入对局生效分组。
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
         private static extern IntPtr SendLibraryCue(IntPtr window, int message, IntPtr parameter, string text);
@@ -1722,6 +1832,9 @@ namespace PaviseApp
 
         [DllImport("user32.dll")]
         private static extern bool IsWindowEnabled(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
 
     }
 }

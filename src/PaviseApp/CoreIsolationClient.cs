@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Collections.Generic;
 
@@ -203,6 +204,16 @@ namespace PaviseApp
             {
                 lock (gate) { try { return worker == null || worker.HasExited; } catch { return false; } }
             });
+        }
+
+        private bool HasReceipt()
+        {
+            string value;
+            if (journal.Read(out value))
+            {
+                return !string.IsNullOrEmpty(value);
+            }
+            return true;
         }
 
         internal bool Stop()

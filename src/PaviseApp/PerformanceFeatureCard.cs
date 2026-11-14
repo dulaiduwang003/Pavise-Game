@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    internal sealed class PerformanceFeatureCard : SettingCard
+    internal class PerformanceFeatureCard : SettingCard
     {
         private sealed class Presentation
         {
@@ -23,6 +23,8 @@ namespace PaviseApp
 
             internal bool FullWidthPicker;
 
+            internal bool CompactRow;
+
             internal string Title;
 
             internal string Detail;
@@ -31,15 +33,11 @@ namespace PaviseApp
 
             internal string Lock;
 
-            internal string Effect;
-
             internal Font TitleFont;
 
             internal Font DetailFont;
 
             internal Font LockFont;
-
-            internal Font TagFont;
 
             internal Rectangle IconBounds;
 
@@ -50,8 +48,6 @@ namespace PaviseApp
             internal Rectangle StatusBounds;
 
             internal Rectangle LockBounds;
-
-            internal Rectangle RestartBounds;
 
             internal Rectangle HostBounds;
 
@@ -67,8 +63,6 @@ namespace PaviseApp
         private string observedStatus;
 
         private string observedLock;
-
-        private string observedEffect;
 
         private Color observedStatusColor;
 
@@ -98,6 +92,27 @@ namespace PaviseApp
                 ArrangePresentation();
                 if (PresentationChanged != null) PresentationChanged();
             }
+        }
+
+        private bool compactRow;
+
+        internal bool CompactRow
+        {
+            get { return compactRow; }
+            set
+            {
+                if (compactRow == value) return;
+                compactRow = value;
+                cachedPresentation = null;
+                ArrangePresentation();
+                if (PresentationChanged != null) PresentationChanged();
+                Invalidate();
+            }
+        }
+
+        private bool UsesCompactRow
+        {
+            get { return compactRow; }
         }
 
         private string[] measuredPickerLabels;
@@ -175,8 +190,6 @@ namespace PaviseApp
 
         internal Rectangle LockBounds { get; private set; }
 
-        internal Rectangle RestartBounds { get; private set; }
-
         internal Rectangle InfoBounds { get; private set; }
 
         internal bool StatusRequiresAttention
@@ -201,14 +214,6 @@ namespace PaviseApp
             get
             {
                 return information;
-            }
-        }
-
-        internal bool ShowsRestart
-        {
-            get
-            {
-                return RestartScope != PerformanceRestartScope.None;
             }
         }
 
@@ -242,7 +247,7 @@ namespace PaviseApp
             }
         }
 
-        private string ShownSummary
+        protected virtual string ShownSummary
         {
             get
             {
@@ -271,19 +276,7 @@ namespace PaviseApp
             }
         }
 
-        private string ShownEffect
-        {
-            get
-            {
-                if (!ShowsRestart)
-                {
-                    return "";
-                }
-                return EffectText;
-            }
-        }
-
-        internal string EffectText
+        internal virtual string EffectText
         {
             get
             {
@@ -308,6 +301,7 @@ namespace PaviseApp
         {
             get
             {
+                if (CompactRow) return Theme.S(320);
                 TierPicker tierPicker = base.Hosted as TierPicker;
                 if (tierPicker == null || Lang.Cur == 0)
                 {
@@ -344,11 +338,11 @@ namespace PaviseApp
                 TabStop = true
             };
             PerformanceInfoButton performanceInfoButton = information;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 ShowInformation();
             };
-            performanceInfoButton.Click += eventHandler;
+            performanceInfoButton.Click += value;
             information.MouseEnter += delegate
             {
                 SyncAccessibility();
@@ -419,9 +413,10 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string currentExceptionalWordsSnapshot in exceptionalWords)
+            string[] exceptionalWordsSnapshot = exceptionalWords;
+            foreach (string value in exceptionalWordsSnapshot)
             {
-                if (statusText.IndexOf(currentExceptionalWordsSnapshot, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (statusText.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     return true;
                 }
@@ -439,14 +434,12 @@ namespace PaviseApp
             string shownTitle = ShownTitle;
             string shownSummary = ShownSummary;
             string shownStatus = ShownStatus;
-            string shownEffect = ShownEffect;
-            bool presentationChanged = observedTitle != shownTitle || observedSummary != shownSummary || observedStatus != shownStatus || observedLock != base.LockText || observedEffect != shownEffect;
+            bool presentationChanged = observedTitle != shownTitle || observedSummary != shownSummary || observedStatus != shownStatus || observedLock != base.LockText;
             bool statusColorChanged = observedStatusColor != base.StatusColor;
             observedTitle = shownTitle;
             observedSummary = shownSummary;
             observedStatus = shownStatus;
             observedLock = base.LockText;
-            observedEffect = shownEffect;
             observedStatusColor = base.StatusColor;
             SyncAccessibility();
             if (presentationChanged)
@@ -533,21 +526,22 @@ namespace PaviseApp
             {
                 return measuredPickerWidth;
             }
-            int widestLabel = 0;
+            int pickerWidthValue = 0;
             for (int j = 0; j < labelsCount; j++)
             {
-                widestLabel = Math.Max(widestLabel, TextRenderer.MeasureText(labels[j] ?? "", font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
+                pickerWidthValue = Math.Max(pickerWidthValue, TextRenderer.MeasureText(labels[j] ?? "", font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width);
             }
             measuredPicker = picker;
             measuredPickerFont = font;
             measuredPickerScale = Dpi.Scale;
             measuredPickerLabels = ((labels == null) ? new string[0] : ((string[])labels.Clone()));
-            measuredPickerWidth = Math.Max(Theme.S(310), labelsCount * (widestLabel + Theme.S(18)) + Math.Max(0, labelsCount - 1) * Theme.S(4));
+            measuredPickerWidth = Math.Max(Theme.S(310), labelsCount * (pickerWidthValue + Theme.S(18)) + Math.Max(0, labelsCount - 1) * Theme.S(4));
             return measuredPickerWidth;
         }
 
         private int LayoutPresentation(int width, bool apply)
         {
+            if (UsesCompactRow) return LayoutCompactPresentation(width, apply);
             int scaledDimension = Theme.S((width < Theme.S(440)) ? 16 : 24);
             int scaledDimension2 = Theme.S(34);
             int scaledDimension3 = Theme.S(16);
@@ -555,8 +549,8 @@ namespace PaviseApp
             int lowerBound = Math.Max(scaledDimension3Offset + 1, width - scaledDimension);
             int lowerBound2 = Math.Max(1, lowerBound - scaledDimension3Offset);
             bool hostedToggle = base.Hosted is Toggle;
-            bool inlineControl = hostedToggle || base.Hosted is QuantumProfilePicker || base.Hosted is TechSelect || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
-            int scaledDimension4 = ((base.Hosted != null) ? (hostedToggle ? Theme.S(94) : ((base.Hosted is TierPicker) ? Math.Min(PickerWidth((TierPicker)base.Hosted), lowerBound2) : ((base.Hosted is QuantumProfilePicker) ? Math.Min(Theme.S(230), lowerBound2) : Math.Min((intrinsicHostWidth > 0) ? intrinsicHostWidth : base.Hosted.Width, lowerBound2)))) : 0);
+            bool inlineControl = hostedToggle || base.Hosted is PerformanceProfilePicker || base.Hosted is TechSelect || (base.Hosted is PillButton && base.Hosted.Width <= Theme.S(140));
+            int scaledDimension4 = ((base.Hosted != null) ? (hostedToggle ? Theme.S(94) : ((base.Hosted is TierPicker) ? Math.Min(PickerWidth((TierPicker)base.Hosted), lowerBound2) : ((base.Hosted is PerformanceProfilePicker) ? Math.Min(Theme.S(230), lowerBound2) : Math.Min((intrinsicHostWidth > 0) ? intrinsicHostWidth : base.Hosted.Width, lowerBound2)))) : 0);
             bool widePicker = FullWidthPicker && base.Hosted is TierPicker;
             if (widePicker) scaledDimension4 = Math.Max(1, width - 2 * scaledDimension);
             int scaledDimension5 = ((base.Hosted != null) ? (hostedToggle ? Theme.S(40) : Math.Max((intrinsicHostHeight > 0) ? intrinsicHostHeight : base.Hosted.Height, Theme.S(30))) : 0);
@@ -570,13 +564,11 @@ namespace PaviseApp
             string shownTitle = ShownTitle;
             string shownSummary = ShownSummary;
             string shownStatus = ShownStatus;
-            string shownEffect = ShownEffect;
             Font font = Theme.UI(11f, true);
-            Font ui = Theme.UI(9f, false);
-            Font currentUi = Theme.UI(8.5f, false);
-            Font candidateUi = Theme.UI(7.7f, false);
+            Font font2 = Theme.UI(9f, false);
+            Font font3 = Theme.UI(8.5f, false);
             Presentation presentation = cachedPresentation;
-            if (presentation != null && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.FullWidthPicker == FullWidthPicker && presentation.HostWidth == scaledDimension4 && presentation.HostHeight == scaledDimension5 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && presentation.Effect == shownEffect && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, ui) && object.ReferenceEquals(presentation.LockFont, currentUi) && object.ReferenceEquals(presentation.TagFont, candidateUi))
+            if (presentation != null && !presentation.CompactRow && presentation.Width == width && presentation.Scale == Dpi.Scale && presentation.Host == base.Hosted && presentation.FullWidthPicker == FullWidthPicker && presentation.HostWidth == scaledDimension4 && presentation.HostHeight == scaledDimension5 && presentation.Title == shownTitle && presentation.Detail == shownSummary && presentation.Status == shownStatus && presentation.Lock == base.LockText && object.ReferenceEquals(presentation.TitleFont, font) && object.ReferenceEquals(presentation.DetailFont, font2) && object.ReferenceEquals(presentation.LockFont, font3))
             {
                 if (apply)
                 {
@@ -586,63 +578,52 @@ namespace PaviseApp
             }
             bool compact = width < Theme.S(440);
             int titleHeight = Measure(shownTitle, font, titleAvailableWidth, Theme.S(24));
-            int measureResult = ((shownSummary.Length != 0) ? (compact ? Measure(shownSummary, ui, lowerBound3, Theme.S(18)) : Theme.S(20)) : 0);
+            int measureResult = ((shownSummary.Length != 0) ? (compact ? Measure(shownSummary, font2, lowerBound3, Theme.S(18)) : Theme.S(20)) : 0);
             int scaledDimension6Limit = Math.Max(titleHeight, scaledDimension6);
-            int contentBottom = scaledDimension6Limit;
+            int layoutPresentationValue = scaledDimension6Limit;
             Rectangle titleBounds = new Rectangle(scaledDimension3Offset, 0, titleAvailableWidth, titleHeight);
             int titleNaturalWidth = TextRenderer.MeasureText(shownTitle, font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
             titleBounds.Width = Math.Max(1, Math.Min(titleAvailableWidth, titleNaturalWidth));
             int firstLineHeight = TextRenderer.MeasureText(FirstLine(shownTitle), font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Height;
             if (firstLineHeight <= 0) firstLineHeight = font.Height;
             Rectangle infoBounds = new Rectangle(scaledDimension3Offset + Math.Min(titleAvailableWidth, titleNaturalWidth) + Theme.S(5), (firstLineHeight - scaledDimension6) / 2, scaledDimension6, scaledDimension6);
-            Rectangle detailBounds = new Rectangle(scaledDimension3Offset, contentBottom + ((measureResult != 0) ? Theme.S(3) : 0), lowerBound3, measureResult);
-            contentBottom = detailBounds.Bottom;
+            Rectangle detailBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + ((measureResult != 0) ? Theme.S(3) : 0), lowerBound3, measureResult);
+            layoutPresentationValue = detailBounds.Bottom;
             Rectangle hostBounds = Rectangle.Empty;
             if (base.Hosted != null && !inlineControl)
             {
-                hostBounds = new Rectangle(widePicker ? scaledDimension : scaledDimension3Offset, contentBottom + Theme.S(10), scaledDimension4, scaledDimension5);
-                contentBottom = hostBounds.Bottom;
+                hostBounds = new Rectangle(widePicker ? scaledDimension : scaledDimension3Offset, layoutPresentationValue + Theme.S(10), scaledDimension4, scaledDimension5);
+                layoutPresentationValue = hostBounds.Bottom;
             }
-            Rectangle restartBounds = Rectangle.Empty;
             Rectangle statusBounds = Rectangle.Empty;
             Rectangle lockBounds = Rectangle.Empty;
-            int statusWidth = (inlineControl ? lowerBound3 : lowerBound2);
+            int layoutPresentationValue2 = (inlineControl ? lowerBound3 : lowerBound2);
             bool statusFitsBesideControl = false;
             int remainingS = lowerBound2 - scaledDimension4 - Theme.S(12);
             if (base.Hosted != null && !inlineControl && shownStatus.Length > 0 && remainingS >= Theme.S(110))
             {
-                int measureResult2 = Measure(shownStatus, currentUi, remainingS, Theme.S(18));
+                int measureResult2 = Measure(shownStatus, font3, remainingS, Theme.S(18));
                 if (measureResult2 <= scaledDimension5)
                 {
                     statusBounds = new Rectangle(hostBounds.Right + Theme.S(12), hostBounds.Top + (scaledDimension5 - measureResult2) / 2, remainingS, measureResult2);
                     statusFitsBesideControl = true;
                 }
             }
-            if (shownEffect.Length > 0)
-            {
-                int lowerBound3Limit = Math.Min(lowerBound3, TextRenderer.MeasureText(shownEffect, candidateUi, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width + Theme.S(16));
-                restartBounds = new Rectangle(scaledDimension3Offset, contentBottom + Theme.S(7), lowerBound3Limit, Theme.S(20));
-                contentBottom = restartBounds.Bottom;
-            }
             if (shownStatus.Length > 0 && !statusFitsBesideControl)
             {
-                statusBounds = new Rectangle(scaledDimension3Offset, contentBottom + Theme.S(6), statusWidth, Measure(shownStatus, currentUi, statusWidth, Theme.S(18)));
-                contentBottom = statusBounds.Bottom;
+                statusBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + Theme.S(6), layoutPresentationValue2, Measure(shownStatus, font3, layoutPresentationValue2, Theme.S(18)));
+                layoutPresentationValue = statusBounds.Bottom;
             }
             if (base.LockText.Length > 0)
             {
-                lockBounds = new Rectangle(scaledDimension3Offset, contentBottom + Theme.S(5), statusWidth, Measure(base.LockText, currentUi, statusWidth, Theme.S(18)));
-                contentBottom = lockBounds.Bottom;
+                lockBounds = new Rectangle(scaledDimension3Offset, layoutPresentationValue + Theme.S(5), layoutPresentationValue2, Measure(base.LockText, font3, layoutPresentationValue2, Theme.S(18)));
+                layoutPresentationValue = lockBounds.Bottom;
             }
-            int sLimit = Math.Max(Theme.S(124), contentBottom + Theme.S(32));
-            int sLimit2 = Math.Max(Theme.S(16), (sLimit - contentBottom) / 2);
+            int sLimit = Math.Max(Theme.S(124), layoutPresentationValue + Theme.S(32));
+            int sLimit2 = Math.Max(Theme.S(16), (sLimit - layoutPresentationValue) / 2);
             titleBounds.Offset(0, sLimit2);
             infoBounds.Offset(0, sLimit2);
             detailBounds.Offset(0, sLimit2);
-            if (!restartBounds.IsEmpty)
-            {
-                restartBounds.Offset(0, sLimit2);
-            }
             if (!statusBounds.IsEmpty)
             {
                 statusBounds.Offset(0, sLimit2);
@@ -674,17 +655,14 @@ namespace PaviseApp
                 Detail = shownSummary,
                 Status = shownStatus,
                 Lock = base.LockText,
-                Effect = shownEffect,
                 TitleFont = font,
-                DetailFont = ui,
-                LockFont = currentUi,
-                TagFont = candidateUi,
+                DetailFont = font2,
+                LockFont = font3,
                 IconBounds = new Rectangle(scaledDimension, widePicker ? sLimit2 : (sLimit - scaledDimension2) / 2, scaledDimension2, scaledDimension2),
                 TitleBounds = titleBounds,
                 StatusBounds = statusBounds,
                 LockBounds = lockBounds,
                 DetailBounds = detailBounds,
-                RestartBounds = restartBounds,
                 HostBounds = hostBounds,
                 InfoBounds = infoBounds,
                 Height = sLimit
@@ -693,7 +671,6 @@ namespace PaviseApp
             observedSummary = shownSummary;
             observedStatus = shownStatus;
             observedLock = base.LockText;
-            observedEffect = shownEffect;
             observedStatusColor = base.StatusColor;
             SyncAccessibility();
             if (apply)
@@ -703,6 +680,113 @@ namespace PaviseApp
             return cachedPresentation.Height;
         }
 
+        private int LayoutCompactPresentation(int width, bool apply)
+        {
+            int pad = Theme.S(12), iconSize = Theme.S(22), infoSize = Theme.S(24);
+            int availableWidth = Math.Max(1, width - pad * 2);
+            Size hostSize = CompactHostSize(availableWidth);
+            int hostWidth = hostSize.Width, hostHeight = hostSize.Height;
+            int textLeft = pad + iconSize + Theme.S(10);
+            bool inlineHost = base.Hosted is Toggle || (base.Hosted != null && !(base.Hosted is TierPicker)
+                && width - pad - textLeft - hostWidth - Theme.S(16) >= Theme.S(220));
+            int textRight = Math.Max(textLeft + 1, width - pad - (inlineHost ? hostWidth + Theme.S(16) : 0));
+            int textWidth = Math.Max(1, textRight - textLeft);
+            int titleWidth = Math.Max(1, textWidth - infoSize - Theme.S(4));
+            string shownTitle = ShownTitle, shownSummary = ShownSummary;
+            string shownStatus = ShownStatus;
+            Font titleFont = Theme.UI(9f, true), detailFont = Theme.UI(8.5f, false);
+            Font stateFont = Theme.UI(8f, false);
+            Presentation value = cachedPresentation;
+            if (value != null && value.CompactRow && value.Width == width && value.Scale == Dpi.Scale
+                && value.Host == base.Hosted && value.FullWidthPicker == FullWidthPicker
+                && value.HostWidth == hostWidth && value.HostHeight == hostHeight && value.Title == shownTitle && value.Detail == shownSummary
+                && value.Status == shownStatus && value.Lock == base.LockText
+                && object.ReferenceEquals(value.TitleFont, titleFont) && object.ReferenceEquals(value.DetailFont, detailFont)
+                && object.ReferenceEquals(value.LockFont, stateFont))
+            {
+                if (apply) ApplyPresentation(value);
+                return value.Height;
+            }
+            int titleHeight = Measure(shownTitle, titleFont, titleWidth, Theme.S(18));
+            int titleNaturalWidth = TextRenderer.MeasureText(shownTitle, titleFont, Size.Empty,
+                TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+            int titleOffset = Math.Max(0, (infoSize - titleFont.Height) / 2);
+            Rectangle titleBounds = new Rectangle(textLeft, pad + titleOffset,
+                Math.Max(1, Math.Min(titleWidth, titleNaturalWidth)), titleHeight);
+            Rectangle infoBounds = new Rectangle(titleBounds.Right + Theme.S(4), pad, infoSize, infoSize);
+            int bottom = Math.Max(titleBounds.Bottom, infoBounds.Bottom);
+            Rectangle detailBounds = Rectangle.Empty;
+            if (shownSummary.Length > 0)
+            {
+                detailBounds = new Rectangle(textLeft, bottom + Theme.S(2), textWidth,
+                    Measure(shownSummary, detailFont, textWidth, Theme.S(16)));
+                bottom = detailBounds.Bottom;
+            }
+            Rectangle hostBounds = Rectangle.Empty;
+            if (base.Hosted != null && !inlineHost)
+            {
+                hostBounds = new Rectangle(pad, bottom + Theme.S(8), hostWidth, hostHeight);
+                bottom = hostBounds.Bottom;
+            }
+            Rectangle statusBounds = Rectangle.Empty, lockBounds = Rectangle.Empty;
+            // 异常与锁定说明按实际内容增高，紧凑列表也不隐藏失败原因。
+            if (shownStatus.Length > 0)
+            {
+                statusBounds = new Rectangle(textLeft, bottom + Theme.S(4), textWidth,
+                    Measure(shownStatus, stateFont, textWidth, Theme.S(16)));
+                bottom = statusBounds.Bottom;
+            }
+            if (base.LockText.Length > 0)
+            {
+                lockBounds = new Rectangle(textLeft, bottom + Theme.S(4), textWidth,
+                    Measure(base.LockText, stateFont, textWidth, Theme.S(16)));
+                bottom = lockBounds.Bottom;
+            }
+            int height = Math.Max(Theme.S(72), bottom + pad);
+            cachedPresentation = new Presentation
+            {
+                Width = width, Scale = Dpi.Scale, Host = base.Hosted, CompactRow = true, FullWidthPicker = FullWidthPicker,
+                HostWidth = hostWidth, HostHeight = hostHeight,
+                Title = shownTitle, Detail = shownSummary, Status = shownStatus, Lock = base.LockText,
+                TitleFont = titleFont, DetailFont = detailFont, LockFont = stateFont,
+                IconBounds = new Rectangle(pad, pad + (infoSize - iconSize) / 2, iconSize, iconSize),
+                TitleBounds = titleBounds, InfoBounds = infoBounds, DetailBounds = detailBounds,
+                StatusBounds = statusBounds, LockBounds = lockBounds,
+                HostBounds = inlineHost ? new Rectangle(Math.Max(0, width - pad - hostWidth), (height - hostHeight) / 2, hostWidth, hostHeight) : hostBounds,
+                Height = height
+            };
+            observedTitle = shownTitle; observedSummary = shownSummary; observedStatus = shownStatus;
+            observedLock = base.LockText; observedStatusColor = base.StatusColor;
+            SyncAccessibility();
+            if (apply) ApplyPresentation(cachedPresentation);
+            return height;
+        }
+
+        private Size CompactHostSize(int availableWidth)
+        {
+            Control host = base.Hosted;
+            if (host == null) return Size.Empty;
+            if (host is Toggle) return new Size(Theme.S(44), Theme.S(24));
+            TierPicker picker = host as TierPicker;
+            if (picker != null) return new Size(availableWidth, picker.WrappedHeightFor(availableWidth));
+            if (host is StandbyCleanerActionHost)
+            {
+                foreach (Control child in host.Controls)
+                    if (child is PillButton)
+                        return new Size(Math.Min(availableWidth, child.Width + Theme.S(14 + 44)), Math.Max(child.Height, Theme.S(24)));
+            }
+            int naturalWidth = intrinsicHostWidth > 0 ? intrinsicHostWidth : host.Width;
+            int naturalHeight = intrinsicHostHeight > 0 ? intrinsicHostHeight : host.Height;
+            PillButton button = host as PillButton;
+            if (button != null)
+            {
+                int textWidth = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty,
+                    TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width;
+                naturalWidth = Math.Max(naturalWidth, textWidth + Theme.S(24));
+            }
+            return new Size(Math.Min(availableWidth, Math.Max(1, naturalWidth)), Math.Max(naturalHeight, Theme.S(30)));
+        }
+
         private void ApplyPresentation(Presentation value)
         {
             IconBounds = value.IconBounds;
@@ -710,7 +794,6 @@ namespace PaviseApp
             StatusBounds = value.StatusBounds;
             LockBounds = value.LockBounds;
             DetailBounds = value.DetailBounds;
-            RestartBounds = value.RestartBounds;
             InfoBounds = value.InfoBounds;
             if (information.Bounds != value.InfoBounds)
             {
@@ -719,6 +802,8 @@ namespace PaviseApp
             information.Bg = Theme.Card;
             if (base.Hosted != null)
             {
+                Toggle toggle = base.Hosted as Toggle;
+                if (toggle != null) toggle.Compact = value.CompactRow;
                 if (base.Hosted.TabIndex != 0)
                 {
                     base.Hosted.TabIndex = 0;
@@ -732,6 +817,7 @@ namespace PaviseApp
                 if (tierPicker != null)
                 {
                     tierPicker.PlainSegments = false;
+                    tierPicker.WrapChoices = value.CompactRow;
                 }
                 FxControl fxControl = base.Hosted as FxControl;
                 if (fxControl != null)
@@ -742,7 +828,26 @@ namespace PaviseApp
                 {
                     base.Hosted.Bounds = value.HostBounds;
                 }
+                ArrangeComposite(value.CompactRow);
             }
+        }
+
+        private void ArrangeComposite(bool compact)
+        {
+            if (!(base.Hosted is StandbyCleanerActionHost)) return;
+            Toggle toggle = null;
+            PillButton button = null;
+            foreach (Control child in base.Hosted.Controls)
+            {
+                if (child is Toggle) toggle = (Toggle)child;
+                else if (child is PillButton) button = (PillButton)child;
+            }
+            if (toggle == null || button == null) return;
+            // 子控件尺寸不反写固有宽度，切换紧凑布局时不会累计扩张复合操作区。
+            toggle.Compact = compact;
+            toggle.Size = new Size(Theme.S(compact ? 44 : 94), Theme.S(compact ? 24 : 40));
+            toggle.Location = new Point(Math.Max(0, base.Hosted.Width - toggle.Width), Math.Max(0, (base.Hosted.Height - toggle.Height) / 2));
+            button.Location = new Point(0, Math.Max(0, (base.Hosted.Height - button.Height) / 2));
         }
 
         protected override void OnSizeChanged(EventArgs e)
@@ -860,26 +965,27 @@ namespace PaviseApp
                 ArrangePresentation();
                 Graphics graphics = e.Graphics;
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                PerformanceFeatureIcons.Draw(graphics, IconBounds, IconKey, Theme.Accent);
-                TextRenderer.DrawText(graphics, ShownTitle, Theme.UI(11f, true), TitleBounds, Theme.Fg, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                bool compact = UsesCompactRow;
+                DrawFeatureIcon(graphics);
+                TextRenderer.DrawText(graphics, ShownTitle, Theme.UI(compact ? 9f : 11f, true), TitleBounds, Theme.Fg, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
                 if (DetailBounds.Height > 0)
                 {
-                    TextRenderer.DrawText(graphics, ShownSummary, Theme.UI(9f, false), DetailBounds, Theme.Dim, ((base.Width < Theme.S(440)) ? TextFormatFlags.WordBreak : (TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine)) | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(graphics, ShownSummary, Theme.UI(compact ? 8.5f : 9f, false), DetailBounds, Theme.Dim, ((compact || base.Width < Theme.S(440)) ? TextFormatFlags.WordBreak : (TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine)) | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
                 if (!StatusBounds.IsEmpty)
                 {
-                    TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(8.5f, false), StatusBounds, (base.StatusColor == Theme.Warning || base.StatusColor == Theme.Danger) ? base.StatusColor : Theme.Warning, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(compact ? 8f : 8.5f, false), StatusBounds, (base.StatusColor == Theme.Warning || base.StatusColor == Theme.Danger) ? base.StatusColor : Theme.Warning, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
                 }
                 if (!LockBounds.IsEmpty)
                 {
-                    TextRenderer.DrawText(graphics, base.LockText, Theme.UI(8.5f, false), LockBounds, base.IsLocked ? Theme.Warning : Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-                }
-                if (!RestartBounds.IsEmpty)
-                {
-                    DsPaint.TechFrame(graphics, RestartBounds, Theme.S(3), Col.Lerp(Theme.Card, Theme.Warning, Theme.LightMode ? 0.06f : 0.08f), Col.Lerp(Theme.Card, Theme.Warning, 0.26f));
-                    TextRenderer.DrawText(graphics, EffectText, Theme.UI(7.7f, false), RestartBounds, Theme.Warning, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(graphics, base.LockText, Theme.UI(compact ? 8f : 8.5f, false), LockBounds, base.IsLocked ? Theme.Warning : Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
                 }
             }
+        }
+
+        protected virtual void DrawFeatureIcon(Graphics graphics)
+        {
+            PerformanceFeatureIcons.Draw(graphics, IconBounds, IconKey, Theme.Accent);
         }
 
         protected override void Dispose(bool disposing)

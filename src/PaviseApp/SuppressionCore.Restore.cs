@@ -22,7 +22,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                return RestoreBackgroundPlacement(handle, entry) && RestoreValues(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, allMask, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, RestorePlacement(entry));
+                return RestoreBackgroundPlacement(handle, entry) && (HasAntiCheatResources(entry) ? RestoreRecordedAntiCheatResources(handle, entry)
+                    : RestoreOrdinaryEntryValues(handle, entry));
             }
             catch (Exception ex)
             {
@@ -31,8 +32,9 @@ namespace PaviseApp
             }
         }
 
-        private static void StopEntry(Entry entry, bool restored)
+        private static void StopEntry(Entry entry, bool restored, bool gone = false)
         {
+            if (gone) ObserveBackgroundAccountingExit(entry);
             entry.GaveUp = true;
             entry.GaveUpRestored = restored;
             entry.SetApplied(false);
@@ -71,6 +73,11 @@ namespace PaviseApp
 
         internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority)
         {
+            return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, qosControl, qosState, gpu, boost, restorePlacement, restorePriority, true);
+        }
+
+        internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority, bool restorePage)
+        {
             bool placementRestored = !restorePlacement || Native.RestoreCpuSetsVerified(h, cpuSets);
             uint priSnapshot = ((pri == 0 || pri == uint.MaxValue) ? 32u : pri);
             if (restorePriority) placementRestored &= Native.SetPriorityClass(h, priSnapshot);
@@ -82,7 +89,10 @@ namespace PaviseApp
             int ioSnapshot = ((io >= 0) ? io : 2);
             placementRestored &= Native.TrySetIoPriority(h, ioSnapshot);
             int pgSnapshot = ((pg >= 0) ? pg : 5);
-            placementRestored &= Native.TrySetPagePriority(h, pgSnapshot);
+            if (restorePage)
+            {
+                placementRestored &= Native.TrySetPagePriority(h, pgSnapshot);
+            }
             if (Native.PowerThrottlingSupported)
             {
                 placementRestored &= Native.RestorePowerThrottling(h, qosControl, qosState);
@@ -97,18 +107,30 @@ namespace PaviseApp
             }
             if (restorePriority) placementRestored &= Native.GetPriorityClass(h) == priSnapshot;
             placementRestored &= Native.QueryIoPriority(h) == ioSnapshot;
-            placementRestored &= Native.QueryPagePriority(h) == pgSnapshot;
+            if (restorePage) placementRestored &= Native.QueryPagePriority(h) == pgSnapshot;
             if (restorePlacement && !CpuTopology.MultiGroup)
             {
                 placementRestored &= Native.QueryAffinity(h) == affSnapshot;
             }
-            int cls;
-            if (gpu >= 0 && Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls != gpu)
-            {
-                Native.D3DKMTSetProcessSchedulingPriorityClass(h, gpu);
-                placementRestored &= Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls == gpu;
-            }
+            // 旧调用只有原值，不能据此推定当前不同值的所有者。未知读数也不能算恢复完成。
+            if (gpu >= 0) placementRestored &= GpuPriorityLease.Legacy(gpu).Restore(h, () => 0, () => true);
             return placementRestored;
+        }
+
+        private bool SaveGpuJournal()
+        {
+            lock (sync) return SaveJournalLocked(true, true);
+        }
+
+        private bool RestoreOrdinaryEntryValues(IntPtr handle, Entry entry)
+        { return RestoreOrdinaryEntryValues(handle, entry, allMask, () => SaveGpuJournal()); }
+
+        private static bool RestoreOrdinaryEntryValues(IntPtr handle, Entry entry, ulong mask, Func<bool> checkpoint)
+        {
+            bool restored = RestoreValues(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, mask,
+                entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, -1, entry.OrigBoost, RestorePlacement(entry));
+            bool gpuRestored = entry.GpuLease.Restore(handle, () => Native.QueryProcessIdentityState(handle, entry.Creation), checkpoint);
+            return restored && gpuRestored;
         }
 
         private RestoreResult RestoreOne(int pid, Entry e)
@@ -187,7 +209,8 @@ namespace PaviseApp
                         return RestoreResult.Gone;
                     }
                 }
-                if (RestoreBackgroundPlacement(restoreHandle, e) && RestoreValues(restoreHandle, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost, RestorePlacement(e)))
+                if (RestoreBackgroundPlacement(restoreHandle, e) && (HasAntiCheatResources(e) ? RestoreRecordedAntiCheatResources(restoreHandle, e)
+                    : RestoreOrdinaryEntryValues(restoreHandle, e)))
                 {
                     return RestoreResult.Restored;
                 }
@@ -313,6 +336,7 @@ namespace PaviseApp
 
         private bool TryNeutralizeUnwritableLocked(IntPtr h, int pid, Entry e)
         {
+            if (HasAntiCheatResources(e) && AntiCheatThrottled(e)) return false;
             if (e == null || e.OrigPri == uint.MaxValue)
             {
                 return false;
@@ -329,15 +353,12 @@ namespace PaviseApp
             {
                 Native.TrySetBoostDisabled(h, false);
             }
-            int cls;
-            if (e.OrigGpu >= 0 && Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls != e.OrigGpu)
-            {
-                Native.D3DKMTSetProcessSchedulingPriorityClass(h, e.OrigGpu);
-            }
+            if (!e.GpuLease.Restore(h, () => EntryIdentity(h, e), () => SaveGpuJournal())) return false;
             if (!EntrySnapshotMatches(h, e))
             {
                 return false;
             }
+            CompleteBackgroundRestoration(e.BackgroundRecoveryTicket, RestoreResult.Restored);
             e.SetOriginalPriority(uint.MaxValue);
             e.SetApplied(false);
             e.NextRetryTicks = 0L;
@@ -364,6 +385,7 @@ namespace PaviseApp
         private bool TryRestore(int pid, Entry e, bool respectBackoff, out RestoreResult result)
         {
             result = RestoreResult.Protected;
+            BackgroundRecoveryLedger.Ticket recoveryTicket;
             lock (sync)
             {
                 Entry currentEntry;
@@ -379,10 +401,11 @@ namespace PaviseApp
                     return false;
                 }
                 e.RestoreInFlight = true;
+                recoveryTicket = e.BackgroundRecoveryTicket;
             }
             try
             {
-                return TryRestoreOwned(pid, e, out result);
+                return TryRestoreOwned(pid, e, recoveryTicket, out result);
             }
             finally
             {
@@ -393,7 +416,7 @@ namespace PaviseApp
             }
         }
 
-        private bool TryRestoreOwned(int pid, Entry e, out RestoreResult result)
+        private bool TryRestoreOwned(int pid, Entry e, BackgroundRecoveryLedger.Ticket recoveryTicket, out RestoreResult result)
         {
             RestoreResult restoreOutcome = (result = ((!e.GaveUpRestored) ? RestoreOne(pid, e) : RestoreResult.Restored));
             bool restored = false;
@@ -407,6 +430,11 @@ namespace PaviseApp
                         if (restoreOutcome != RestoreResult.Protected)
                         {
                             RemoveEntryLocked(pid);
+                            if (HasAntiCheatResources(e) && !SaveJournalLocked(true))
+                            {
+                                SetEntryLocked(pid, e); e.AntiCheatResourceRemovalPending = true;
+                                restoreOutcome = result = RestoreResult.Protected;
+                            }
                         }
                     }
                     else if (restoreOutcome == RestoreResult.Restored)
@@ -416,6 +444,7 @@ namespace PaviseApp
                 }
                 TryClearMarkLocked();
                 RefreshThrottledCacheLocked();
+                if (!restored) CompleteBackgroundRestoration(recoveryTicket, restoreOutcome);
             }
             if (restored)
             {
@@ -511,15 +540,15 @@ namespace PaviseApp
             long ticks = DateTime.UtcNow.Ticks;
             lock (sync)
             {
-                foreach (KeyValuePair<int, Entry> mapEntry in map)
+                foreach (KeyValuePair<int, Entry> item in map)
                 {
-                    if (mapEntry.Value.Reasons == SuppressReason.None && !RestoreBudgetBlocked(mapEntry.Value, "restore", true) && ticks >= mapEntry.Value.NextRetryTicks)
+                    if (item.Value.Reasons == SuppressReason.None && !RestoreBudgetBlocked(item.Value, "restore", true) && ticks >= item.Value.NextRetryTicks)
                     {
                         if (pendingRestores == null)
                         {
                             pendingRestores = new List<KeyValuePair<int, Entry>>();
                         }
-                        pendingRestores.Add(mapEntry);
+                        pendingRestores.Add(item);
                     }
                 }
             }

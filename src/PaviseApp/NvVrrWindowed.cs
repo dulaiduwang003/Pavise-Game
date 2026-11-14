@@ -6,6 +6,14 @@ namespace PaviseApp
     {
         internal const string SnapKey = "NvVrrModeSnap";
 
+        private const uint SettingVrrMode = 294973784u;
+
+        private const uint VrrDisabled = 0u;
+
+        private const uint VrrFullscreenOnly = 1u;
+
+        private const uint VrrFullscreenAndWindowed = 2u;
+
         private static readonly object lk = new object();
 
         private static bool DriverAvailable
@@ -44,13 +52,13 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                uint vrrMode;
-                int dword = NvApi.TryGetDword(session, profile, 294973784u, out vrrMode);
+                uint value;
+                int dword = NvApi.TryGetDword(session, profile, 294973784u, out value);
                 if (dword < 0)
                 {
                     return false;
                 }
-                mode = ((dword == 1) ? vrrMode : 0u);
+                mode = ((dword == 1) ? value : 0u);
                 return true;
             }
             finally

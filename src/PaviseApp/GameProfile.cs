@@ -15,6 +15,34 @@ namespace PaviseApp
 
         public string LearnedExecutablePath;
 
+        // 来源只用于诊断，绑定登记时的精确路径；不决定调度或已开启功能的执行资格。
+        public string DiscoverySource;
+
+        public string DiscoverySourcePath;
+
+        internal string SourceFor(string executablePath)
+        {
+            return !string.IsNullOrEmpty(executablePath)
+                && string.Equals(executablePath, DiscoverySourcePath, StringComparison.OrdinalIgnoreCase)
+                && (DiscoverySource == "manual" || DiscoverySource == "automatic") ? DiscoverySource : "unknown";
+        }
+
+        internal bool RecordSource(string executablePath, bool manuallySelected)
+        {
+            string source = manuallySelected ? "manual" : "automatic";
+            if (string.IsNullOrEmpty(executablePath)) return false;
+            if (SourceFor(executablePath) == source || (!manuallySelected && SourceFor(executablePath) == "manual")) return false;
+            DiscoverySource = source;
+            DiscoverySourcePath = executablePath;
+            return true;
+        }
+
+        internal string SourceDescription(string executablePath)
+        {
+            string source = SourceFor(executablePath);
+            return source == "manual" ? "手工选择" : source == "automatic" ? "自动识别" : "来源未记录";
+        }
+
         public bool ForceTrigger;
 
         public readonly HashSet<string> Entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -33,10 +61,10 @@ namespace PaviseApp
         {
             get
             {
-                string Override;
-                if (Overrides.TryGetValue("GameFamilyBackground", out Override))
+                string value;
+                if (Overrides.TryGetValue("GameFamilyBackground", out value))
                 {
-                    return Override == "1";
+                    return value == "1";
                 }
                 return false;
             }
@@ -58,10 +86,10 @@ namespace PaviseApp
         {
             get
             {
-                string Override;
-                if (Overrides.TryGetValue("GameDisableFullscreenOptimizationsV1", out Override))
+                string value;
+                if (Overrides.TryGetValue("GameDisableFullscreenOptimizationsV1", out value))
                 {
-                    return Override == "1";
+                    return value == "1";
                 }
                 return false;
             }
@@ -69,22 +97,25 @@ namespace PaviseApp
 
         public GameProfile Clone()
         {
-            GameProfile currentGameProfile = new GameProfile();
-            currentGameProfile.Id = Id;
-            currentGameProfile.Name = Name;
-            currentGameProfile.Root = Root;
-            currentGameProfile.ExecutablePath = ExecutablePath;
-            currentGameProfile.LearnedExecutablePath = LearnedExecutablePath;
-            currentGameProfile.ForceTrigger = ForceTrigger;
+            GameProfile gameProfile = new GameProfile();
+            gameProfile.Id = Id;
+            gameProfile.Name = Name;
+            gameProfile.Root = Root;
+            gameProfile.ExecutablePath = ExecutablePath;
+            gameProfile.LearnedExecutablePath = LearnedExecutablePath;
+            gameProfile.DiscoverySource = DiscoverySource;
+            gameProfile.DiscoverySourcePath = DiscoverySourcePath;
+            gameProfile.ForceTrigger = ForceTrigger;
+            GameProfile gameProfile2 = gameProfile;
             foreach (string entry in Entries)
             {
-                currentGameProfile.Entries.Add(entry);
+                gameProfile2.Entries.Add(entry);
             }
             foreach (KeyValuePair<string, string> @override in Overrides)
             {
-                currentGameProfile.Overrides[@override.Key] = @override.Value;
+                gameProfile2.Overrides[@override.Key] = @override.Value;
             }
-            return currentGameProfile;
+            return gameProfile2;
         }
 
         internal static bool IsRetiredOverrideKey(string key)
@@ -98,7 +129,8 @@ namespace PaviseApp
                 return true;
             default:
             {
-                foreach (string a in RetiredOverrideKeys)
+                string[] retiredOverrideKeys = RetiredOverrideKeys;
+                foreach (string a in retiredOverrideKeys)
                 {
                     if (string.Equals(a, key, StringComparison.Ordinal))
                     {

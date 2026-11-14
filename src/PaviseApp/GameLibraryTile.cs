@@ -322,14 +322,14 @@ namespace PaviseApp
                 Bg = Theme.Inset
             };
             GameCardMenuButton gameCardMenuButton = moreButton;
-            MouseEventHandler mouseEventHandler = delegate
+            MouseEventHandler value = delegate
             {
                 if (this.SelectionRequested != null)
                 {
                     this.SelectionRequested(this, EventArgs.Empty);
                 }
             };
-            gameCardMenuButton.MouseDown += mouseEventHandler;
+            gameCardMenuButton.MouseDown += value;
             moreButton.Enter += delegate
             {
                 if (this.SelectionRequested != null)
@@ -718,16 +718,16 @@ namespace PaviseApp
                     }
                 }
                 graphics.Restore(gstate);
-                using (Pen currentPen = new Pen(selected ? Theme.Accent : (hovered ? Theme.StrokeHi : Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.35f)), selected ? Math.Max(1f, Theme.S(1)) : 1f))
+                using (Pen pen2 = new Pen(selected ? Theme.Accent : (hovered ? Theme.StrokeHi : Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.35f)), selected ? Math.Max(1f, Theme.S(1)) : 1f))
                 {
-                    graphics.DrawPath(currentPen, graphicsPath);
+                    graphics.DrawPath(pen2, graphicsPath);
                 }
             }
             if (selected || hovered)
             {
-                using (Pen candidatePen = new Pen(Col.Alpha(Theme.Accent, selected ? 230 : 100), Math.Max(1f, Theme.S(1))))
+                using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, selected ? 230 : 100), Math.Max(1f, Theme.S(1))))
                 {
-                    graphics.DrawLine(candidatePen, Theme.S(9), 0, Math.Max(Theme.S(10), base.Width - Theme.S(10)), 0);
+                    graphics.DrawLine(pen3, Theme.S(9), 0, Math.Max(Theme.S(10), base.Width - Theme.S(10)), 0);
                 }
             }
             if (Focused && ShowFocusCues)
@@ -762,9 +762,10 @@ namespace PaviseApp
 
         private void DrawDefaultCover(Graphics g, Rectangle cover, Bitmap icon)
         {
-            Color color = (Theme.LightMode ? Color.FromArgb(26, 31, 38) : Color.FromArgb(11, 14, 18));
-            Color currentColor = (Theme.LightMode ? Color.FromArgb(42, 49, 59) : Color.FromArgb(23, 28, 35));
-            using (LinearGradientBrush brush = new LinearGradientBrush(cover, currentColor, color, LinearGradientMode.ForwardDiagonal))
+            bool light = Theme.LightMode;
+            Color coverStart = light ? Theme.Card : Color.FromArgb(23, 28, 35);
+            Color coverEnd = light ? Theme.Inset : Color.FromArgb(11, 14, 18);
+            using (LinearGradientBrush brush = new LinearGradientBrush(cover, coverStart, coverEnd, LinearGradientMode.ForwardDiagonal))
             {
                 g.FillRectangle(brush, cover);
             }
@@ -774,7 +775,7 @@ namespace PaviseApp
             int height = cover.Height;
             int left = cover.Left;
             int top = cover.Top;
-            using (SolidBrush brush2 = new SolidBrush(Color.FromArgb(55, 0, 0, 0)))
+            using (SolidBrush brush2 = new SolidBrush(light ? Col.Alpha(Theme.Stroke, 30) : Color.FromArgb(55, 0, 0, 0)))
             {
                 g.FillPolygon(brush2, new Point[4]
                 {
@@ -792,7 +793,7 @@ namespace PaviseApp
                 });
             }
             int sLimit = Math.Max(4, Theme.S(9));
-            using (Pen pen = new Pen(Color.FromArgb(11, 150, 164, 182)))
+            using (Pen pen = new Pen(light ? Col.Alpha(Theme.StrokeHi, 40) : Color.FromArgb(11, 150, 164, 182)))
             {
                 for (int i = left; i < cover.Right; i += sLimit)
                 {
@@ -803,24 +804,24 @@ namespace PaviseApp
                     g.DrawLine(pen, left, j, cover.Right, j);
                 }
             }
-            using (Pen currentPen = new Pen(Color.FromArgb(155, 3, 5, 8)))
+            using (Pen pen2 = new Pen(light ? Col.Alpha(Theme.StrokeHi, 70) : Color.FromArgb(155, 3, 5, 8)))
             {
-                g.DrawLine(currentPen, left + width / 5, top, left + width * 7 / 10, top + height);
-                g.DrawLine(currentPen, left + width / 2, top, left + width, top + height);
-                g.DrawLine(currentPen, left - width / 5, top, left + width / 4, top + height);
+                g.DrawLine(pen2, left + width / 5, top, left + width * 7 / 10, top + height);
+                g.DrawLine(pen2, left + width / 2, top, left + width, top + height);
+                g.DrawLine(pen2, left - width / 5, top, left + width / 4, top + height);
             }
-            using (Pen candidatePen = new Pen(Col.Alpha(Theme.Accent, 12), Theme.S(7)))
+            using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, 12), Theme.S(7)))
             {
-                using (Pen resolvedPen = new Pen(Col.Alpha(Theme.Accent, 150), Math.Max(1f, Theme.S(1))))
+                using (Pen pen4 = new Pen(Col.Alpha(Theme.Accent, 150), Math.Max(1f, Theme.S(1))))
                 {
                     Point pt = new Point(left, top + height / 3);
                     Point pt2 = new Point(left + width / 3, top + height);
                     Point pt3 = new Point(left + width * 3 / 5, top);
                     Point pt4 = new Point(left + width, top + height * 4 / 5);
-                    g.DrawLine(candidatePen, pt, pt2);
-                    g.DrawLine(candidatePen, pt3, pt4);
-                    g.DrawLine(resolvedPen, pt, pt2);
-                    g.DrawLine(resolvedPen, pt3, pt4);
+                    g.DrawLine(pen3, pt, pt2);
+                    g.DrawLine(pen3, pt3, pt4);
+                    g.DrawLine(pen4, pt, pt2);
+                    g.DrawLine(pen4, pt3, pt4);
                 }
             }
             int logoSize = Math.Min(Theme.S(66), Math.Min(width - Theme.S(34), height - Theme.S(26)));
@@ -839,19 +840,20 @@ namespace PaviseApp
             }
             if (icon == null)
             {
-                Rectangle inflate = Rectangle.Inflate(rectangle, Theme.S(4), Theme.S(4));
-                using (GraphicsPath path = Theme.TechPath(inflate, Theme.S(9)))
+                Rectangle rectangle2 = Rectangle.Inflate(rectangle, Theme.S(4), Theme.S(4));
+                using (GraphicsPath path = Theme.TechPath(rectangle2, Theme.S(9)))
                 {
-                    using (LinearGradientBrush brush3 = new LinearGradientBrush(inflate, Color.FromArgb(30, 35, 43), Color.FromArgb(9, 12, 16), LinearGradientMode.ForwardDiagonal))
+                    using (LinearGradientBrush brush3 = new LinearGradientBrush(rectangle2,
+                        light ? Theme.Card : Color.FromArgb(30, 35, 43), light ? Theme.Inset : Color.FromArgb(9, 12, 16), LinearGradientMode.ForwardDiagonal))
                     {
                         g.FillPath(brush3, path);
                     }
-                    using (Pen selectedPen = new Pen(Color.FromArgb(100, 111, 127)))
+                    using (Pen pen5 = new Pen(light ? Theme.StrokeHi : Color.FromArgb(100, 111, 127)))
                     {
-                        g.DrawPath(selectedPen, path);
+                        g.DrawPath(pen5, path);
                     }
                 }
-                Glyphs.Draw(g, "gamepad", Rectangle.Inflate(rectangle, -Theme.S(10), -Theme.S(10)), Color.FromArgb(187, 195, 208));
+                Glyphs.Draw(g, "gamepad", Rectangle.Inflate(rectangle, -Theme.S(10), -Theme.S(10)), light ? Theme.Dim : Color.FromArgb(187, 195, 208));
             }
             else
             {

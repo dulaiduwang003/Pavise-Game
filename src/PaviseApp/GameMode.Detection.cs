@@ -55,14 +55,14 @@ namespace PaviseApp
                 {
                     return;
                 }
-                AutoAddAttempt autoAddAttempt;
-                if (autoAddAttempts.TryGetValue(path, out autoAddAttempt) && (autoAddAttempt.Pid != pid || autoAddAttempt.Creation != identity.Creation))
+                AutoAddAttempt value;
+                if (autoAddAttempts.TryGetValue(path, out value) && (value.Pid != pid || value.Creation != identity.Creation))
                 {
                     autoAddAttempts.Remove(path);
                     autoAddRejectUntil.Remove(path);
                 }
-                long currentAutoAddRejectUntil;
-                if (autoAddRejectUntil.TryGetValue(path, out currentAutoAddRejectUntil) && now < currentAutoAddRejectUntil)
+                long value2;
+                if (autoAddRejectUntil.TryGetValue(path, out value2) && now < value2)
                 {
                     return;
                 }
@@ -73,10 +73,10 @@ namespace PaviseApp
                         return;
                     }
                 }
-                autoAddAttempt = AutoAddAttemptLocked(path, now);
-                autoAddAttempt.Pid = pid;
-                autoAddAttempt.Creation = identity.Creation;
-                autoAddAttempt.LastSeen = now;
+                value = AutoAddAttemptLocked(path, now);
+                value.Pid = pid;
+                value.Creation = identity.Creation;
+                value.LastSeen = now;
             }
             if (Interlocked.CompareExchange(ref rendererGpuSamplingBusy, 1, 0) != 0)
             {
@@ -146,12 +146,12 @@ namespace PaviseApp
             int pid = identity.Pid;
             string path = identity.Path;
             GpuSampleDiagnostics diagnostics = null;
-            Dictionary<int, double> gpuLoadByPid = GpuEvidence.Sample3D(2, 700, () => AutoAddCanceled(epoch), pid, out diagnostics);
+            Dictionary<int, double> dictionary = GpuEvidence.Sample3D(2, 700, () => AutoAddCanceled(epoch), pid, out diagnostics);
             if (AutoAddCanceled(epoch))
             {
                 return;
             }
-            if (gpuLoadByPid == null)
+            if (dictionary == null)
             {
                 RecordAutoAddCaptureFailure(pid, identity.Creation, path, "capture", diagnostics == null ? "GpuUnavailable" : diagnostics.ToString());
                 RememberAutoAddReject(path, now);
@@ -159,19 +159,19 @@ namespace PaviseApp
                 return;
             }
             autoAddFailureBudget.Succeeded(pid, identity.Creation, path, "capture");
-            double gpuLoadPercent;
-            if (!gpuLoadByPid.TryGetValue(pid, out gpuLoadPercent))
+            double value;
+            if (!dictionary.TryGetValue(pid, out value))
             {
-                gpuLoadPercent = 0.0;
+                value = 0.0;
             }
-            if (double.IsNaN(gpuLoadPercent) || double.IsInfinity(gpuLoadPercent) || gpuLoadPercent < 10.0)
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 10.0)
             {
                 lock (sync)
                 {
-                    AutoAddAttempt currentAutoAddAttempt;
-                    if (autoAddAttempts.TryGetValue(path, out currentAutoAddAttempt))
+                    AutoAddAttempt value2;
+                    if (autoAddAttempts.TryGetValue(path, out value2))
                     {
-                        currentAutoAddAttempt.Confirmations = 0;
+                        value2.Confirmations = 0;
                     }
                 }
                 RememberAutoAddReject(path, now);
@@ -204,7 +204,7 @@ namespace PaviseApp
                 }
                 autoAddAttempt.LastSeen = now;
                 autoAddAttempt.Misses = 0;
-                if ((!fullscreen || !window.FullscreenLike || !(gpuLoadPercent >= 20.0)) && (autoAddAttempt.Confirmations == 0 || now < autoAddAttempt.EvidenceAt || now - autoAddAttempt.EvidenceAt > 1200000000))
+                if ((!fullscreen || !window.FullscreenLike || !(value >= 20.0)) && (autoAddAttempt.Confirmations == 0 || now < autoAddAttempt.EvidenceAt || now - autoAddAttempt.EvidenceAt > 1200000000))
                 {
                     autoAddAttempt.Confirmations = 1;
                     autoAddAttempt.EvidenceAt = now;
@@ -233,14 +233,14 @@ namespace PaviseApp
                 autoAddRejectUntil.Remove(path);
                 autoAddAttempts.Remove(path);
             }
-            Logger.Log(Lang.T("log.autoadd.3", 0) + (int)gpuLoadPercent + Lang.T("log.autoadd.4", 0) + identity.Name + Lang.T("log.autoadd.5", 0) + path + Lang.T("log.autoadd.6", 0));
+            Logger.Log(Lang.T("log.autoadd.3", 0) + (int)value + Lang.T("log.autoadd.4", 0) + identity.Name + Lang.T("log.autoadd.5", 0) + path + Lang.T("log.autoadd.6", 0));
         }
         private AutoAddAttempt AutoAddAttemptLocked(string path, long now)
         {
-            AutoAddAttempt currentAutoAddAttempt;
-            if (autoAddAttempts.TryGetValue(path, out currentAutoAddAttempt))
+            AutoAddAttempt value;
+            if (autoAddAttempts.TryGetValue(path, out value))
             {
-                return currentAutoAddAttempt;
+                return value;
             }
             if (autoAddAttempts.Count >= 64)
             {
@@ -262,9 +262,9 @@ namespace PaviseApp
             }
             AutoAddAttempt autoAddAttempt = new AutoAddAttempt();
             autoAddAttempt.LastSeen = now;
-            currentAutoAddAttempt = autoAddAttempt;
-            autoAddAttempts[path] = currentAutoAddAttempt;
-            return currentAutoAddAttempt;
+            value = autoAddAttempt;
+            autoAddAttempts[path] = value;
+            return value;
         }
         private void RememberAutoAddReject(string path, long now)
         {
@@ -272,17 +272,17 @@ namespace PaviseApp
             {
                 if (autoAddRejectUntil.Count >= 64)
                 {
-                    List<string> texts = new List<string>();
-                    foreach (KeyValuePair<string, long> autoAddRejectUntilEntry in autoAddRejectUntil)
+                    List<string> list = new List<string>();
+                    foreach (KeyValuePair<string, long> item in autoAddRejectUntil)
                     {
-                        if (autoAddRejectUntilEntry.Value <= now)
+                        if (item.Value <= now)
                         {
-                            texts.Add(autoAddRejectUntilEntry.Key);
+                            list.Add(item.Key);
                         }
                     }
-                    foreach (string text in texts)
+                    foreach (string item2 in list)
                     {
-                        autoAddRejectUntil.Remove(text);
+                        autoAddRejectUntil.Remove(item2);
                     }
                     if (autoAddRejectUntil.Count >= 64)
                     {
@@ -296,8 +296,8 @@ namespace PaviseApp
                 {
                     autoAddAttempt.Misses++;
                 }
-                int retryDelaySeconds = ((autoAddAttempt.Misses == 1) ? 30 : ((autoAddAttempt.Misses == 2) ? 60 : ((autoAddAttempt.Misses == 3) ? 120 : 300)));
-                autoAddRejectUntil[path] = now + (long)retryDelaySeconds * 10000000L;
+                int rememberAutoAddRejectValue = ((autoAddAttempt.Misses == 1) ? 30 : ((autoAddAttempt.Misses == 2) ? 60 : ((autoAddAttempt.Misses == 3) ? 120 : 300)));
+                autoAddRejectUntil[path] = now + (long)rememberAutoAddRejectValue * 10000000L;
             }
         }
         private void NoteAutoAdd(string path, string reason, string detail, long now)
@@ -339,13 +339,13 @@ namespace PaviseApp
         }
         public List<string> GetAutoAddIgnoredPaths()
         {
-            List<string> texts;
+            List<string> list;
             lock (sync)
             {
-                texts = new List<string>(autoAddIgnore);
+                list = new List<string>(autoAddIgnore);
             }
-            texts.Sort(StringComparer.OrdinalIgnoreCase);
-            return texts;
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
         }
         public bool RemoveAutoAddIgnoredPath(string path)
         {
@@ -360,9 +360,9 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                HashSet<string> autoAddIgnoreSnapshot = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
-                autoAddIgnoreSnapshot.Remove(pathTrimmed);
-                if (!CommitLibraryLocked(GetProfiles(), autoAddIgnoreSnapshot))
+                HashSet<string> hashSet = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
+                hashSet.Remove(pathTrimmed);
+                if (!CommitLibraryLocked(GetProfiles(), hashSet))
                 {
                     return false;
                 }
@@ -374,6 +374,11 @@ namespace PaviseApp
             KickGameDetectionNow();
             RaiseLibraryChanged();
             return true;
+        }
+        private bool AddAutoDetectedExecutableCore(string executablePath, out string error, Func<bool> canCommit = null)
+        {
+            bool persistenceFailed;
+            return AddAutoDetectedExecutableCore(executablePath, out error, out persistenceFailed, canCommit);
         }
         private bool AddAutoDetectedExecutableCore(string executablePath, out string error, out bool persistenceFailed, Func<bool> canCommit = null)
         {
@@ -480,6 +485,7 @@ namespace PaviseApp
                 rootValue = null;
             }
             string name;
+            string sourceDescription;
             lock (sync)
             {
                 if (stopping || ProfileStoreSaveFailed || (stillCurrent != null && !stillCurrent()))
@@ -497,6 +503,10 @@ namespace PaviseApp
                     rootValue = restrictFallbackResult;
                 }
                 bool valuesEqual = string.Equals(gameProfile.ExecutablePath, executablePathValue, StringComparison.OrdinalIgnoreCase);
+                if (RegisteredRendererProtected(gameProfile, executablePathValue))
+                {
+                    return false;
+                }
                 if (!valuesEqual && observedProfile != null && (!string.Equals(gameProfile.ExecutablePath, observedProfile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || !string.Equals(gameProfile.LearnedExecutablePath, observedProfile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || !string.Equals(gameProfile.Root, observedProfile.Root, StringComparison.OrdinalIgnoreCase)))
                 {
                     return false;
@@ -505,35 +515,125 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                GameProfile profile = gameProfile.Clone();
-                profile.ExecutablePath = executablePathValue;
-                profile.LearnedExecutablePath = null;
-                profile.Root = rootValue;
-                profile.Entries.Clear();
-                profile.Entries.Add(fileNameWithoutExtension);
+                GameProfile gameProfile2 = gameProfile.Clone();
+                gameProfile2.ExecutablePath = executablePathValue;
+                gameProfile2.LearnedExecutablePath = null;
+                // 自动换路径不能沿用另一文件的人工来源；同路径确认也不猜测旧库来源。
+                if (!valuesEqual) gameProfile2.RecordSource(executablePathValue, false);
+                gameProfile2.Root = rootValue;
+                gameProfile2.Entries.Clear();
+                gameProfile2.Entries.Add(fileNameWithoutExtension);
                 int index = profiles.IndexOf(gameProfile);
-                List<GameProfile> profilesSnapshot = new List<GameProfile>(profiles);
-                profilesSnapshot[index] = profile;
+                List<GameProfile> list = new List<GameProfile>(profiles);
+                list[index] = gameProfile2;
                 if (stillCurrent != null && !stillCurrent())
                 {
                     return false;
                 }
-                if (!SaveProfileSnapshotLocked(profilesSnapshot, stillCurrent))
+                if (!SaveProfileSnapshotLocked(list, stillCurrent))
                 {
                     return false;
                 }
-                profiles[index] = profile;
+                profiles[index] = gameProfile2;
                 if (!valuesEqual)
                 {
                     ForgetRendererObservation(profileId);
                 }
-                name = profile.Name;
+                name = gameProfile2.Name;
+                sourceDescription = gameProfile2.SourceDescription(executablePathValue);
             }
-            Logger.Log(Lang.T("log.gamemodelibrary.2", 0) + name + Lang.T("log.gamemodelibrary.3", 0) + fileNameWithoutExtension + Lang.T("log.gamemodelibrary.4", 0) + executablePathValue + " ");
+            Logger.Log(Lang.T("log.gamemodelibrary.2", 0) + name + Lang.T("log.gamemodelibrary.3", 0) + fileNameWithoutExtension + Lang.T("log.gamemodelibrary.4", 0) + executablePathValue + "；来源=" + sourceDescription);
             InvalidateAutomaticFullscreenOptimizations();
             RequestFullGameDetection();
             RaiseLibraryChanged();
             return true;
+        }
+        // 已确认的渲染进程不被同目录候选替换；启动器也可能提交画面并占用 GPU。
+        private bool RegisteredRendererProtected(GameProfile profile, string candidatePath)
+        {
+            RendererObservationStore store = rendererObservations;
+            return store != null && profile != null && !string.IsNullOrEmpty(profile.ExecutablePath) && !string.IsNullOrEmpty(candidatePath)
+                && !string.Equals(profile.ExecutablePath, candidatePath, StringComparison.OrdinalIgnoreCase)
+                && store.Knows(profile.Id, profile.ExecutablePath) && File.Exists(profile.ExecutablePath);
+        }
+        // 替换已确认的渲染进程须有 GPU 3D 证据；未确认的启动器仍按普通候选处理。
+        internal bool RendererGpuProofRequired(GameDetection candidate)
+        {
+            return candidate != null && RegisteredRendererProtected(candidate.Profile, candidate.RendererPath);
+        }
+        // 普通候选须同时取得画面提交和 GPU 3D 证据，前台、全屏及入库本身不构成入场依据。
+        // 强制触发和本局已确认的渲染进程除外，避免加载或菜单低负载反复启停会话。
+        internal GameDetection RequireEntryProof(GameDetection candidate)
+        {
+            if (candidate == null || !candidate.RendererCandidateSelected || candidate.RequiresGpuConfirm || candidate.RendererSafetyOnly
+                || (candidate.Profile != null && candidate.Profile.ForceTrigger) || RendererHandoffTracker.SameIdentity(candidate, stickyDetection))
+            {
+                return candidate;
+            }
+            if (candidate.RendererLearnable)
+            {
+                candidate.RendererUserSelected = false;
+            }
+            candidate.RendererCandidateSelected = false;
+            candidate.RequiresGpuConfirm = true;
+            candidate.Evidence = Lang.T("detect.gpu.pending");
+            return candidate;
+        }
+        internal const int EntryProofWindows = 2;
+        // 入场证据须连续两窗成立；首窗失败即结束，返回最后一窗供调用方核验。
+        internal static void ObserveEntryWindows(GameDetection candidate, bool gpuRequired, Func<bool> canceled,
+            Func<KeyValuePair<IDictionary<int, double>, PresentActivitySample>> sampleWindow,
+            out IDictionary<int, double> utilization, out PresentActivitySample presents)
+        {
+            utilization = null;
+            presents = null;
+            for (int window = 1; window <= EntryProofWindows && !canceled(); window++)
+            {
+                KeyValuePair<IDictionary<int, double>, PresentActivitySample> sample = sampleWindow();
+                utilization = sample.Key;
+                presents = sample.Value;
+                double gpu, fps;
+                RendererProof proof = RendererHandoffTracker.ResolveEvidence(candidate, utilization, presents, gpuRequired, out gpu, out fps);
+                if (proof != RendererProof.Present && proof != RendererProof.Gpu)
+                {
+                    break;
+                }
+            }
+        }
+        // 只读记录游戏由谁拉起。同目录启动器是否是游戏的直接父进程，决定能否在游戏出生前安排核心范围。
+        internal static string DescribeRendererOrigin(GameDetection detection, ProcessSnapshot snapshot)
+        {
+            ProcEntry game;
+            if (detection == null || detection.Profile == null || snapshot == null || !snapshot.ByPid.TryGetValue(detection.RendererPid, out game)
+                || game.Creation != detection.RendererCreation)
+            {
+                return null;
+            }
+            string text = "游戏进程来源 " + detection.RendererName + " 进程编号=" + detection.RendererPid;
+            ProcEntry parent;
+            // 父进程退出后编号可能被复用，创建时间晚于游戏的不是真正的父进程。
+            if (game.ParentPid <= 4 || !snapshot.ByPid.TryGetValue(game.ParentPid, out parent) || parent.Creation <= 0 || parent.Creation > game.Creation)
+            {
+                return text + " 父进程=已退出或不可见";
+            }
+            return text + " 父进程=" + parent.Name + " 父进程编号=" + parent.Pid + " 同游戏目录="
+                + (string.IsNullOrEmpty(parent.Path) ? "未知" : (detection.Profile.ContainsPath(parent.Path) ? "是" : "否"));
+        }
+        private void NoteRegisteredRendererKept(GameProfile profile, GameDetection candidate)
+        {
+            string key = profile.Id + "|" + candidate.RendererPath;
+            lock (rendererKeptNoted)
+            {
+                if (rendererKeptNoted.Count >= 64)
+                {
+                    rendererKeptNoted.Clear();
+                }
+                if (!rendererKeptNoted.Add(key))
+                {
+                    return;
+                }
+            }
+            Logger.Info("游戏库保持不变：" + profile.Name + " 登记的 " + Path.GetFileName(profile.ExecutablePath) + " 已确认为渲染进程，" + candidate.RendererName + " 仅作为本次候选，不写入游戏库");
         }
         private bool RendererPathClaimedLocked(GameProfile self, string resolved)
         {
@@ -568,12 +668,12 @@ namespace PaviseApp
         {
             long ticks = DateTime.UtcNow.Ticks;
             long lastFullGameDetectionTicksSnapshot = Interlocked.Read(ref lastFullGameDetectionTicks);
-            int detectionIntervalMs = (ProcessEventsAvailable ? 20000 : 4000);
+            int shouldRunFullGameDetectionValue = (ProcessEventsAvailable ? 20000 : 4000);
             if (armedAwaitingElection)
             {
-                detectionIntervalMs = 4000;
+                shouldRunFullGameDetectionValue = 4000;
             }
-            bool detectionDue = lastFullGameDetectionTicksSnapshot <= 0 || ticks < lastFullGameDetectionTicksSnapshot || ticks - lastFullGameDetectionTicksSnapshot >= (long)detectionIntervalMs * 10000L;
+            bool detectionDue = lastFullGameDetectionTicksSnapshot <= 0 || ticks < lastFullGameDetectionTicksSnapshot || ticks - lastFullGameDetectionTicksSnapshot >= (long)shouldRunFullGameDetectionValue * 10000L;
             if (Interlocked.Exchange(ref gameDetectionDirty, 0) != 0 || detectionDue)
             {
                 Interlocked.Exchange(ref lastFullGameDetectionTicks, ticks);
@@ -671,7 +771,7 @@ namespace PaviseApp
         }
         private GameDetection CaptureRendererChallenger(ProcessSnapshot all, IList<GameProfile> library, GameDetection incumbent)
         {
-            return GameSessionDetector.CaptureForegroundCandidate(all, selfSession, library, incumbent, FamilyEvidence);
+            return RequireEntryProof(GameSessionDetector.CaptureForegroundCandidate(all, selfSession, library, incumbent, FamilyEvidence));
         }
         private BackgroundReleaseState ReleaseRendererBackground(GameDetection candidate)
         {
@@ -708,11 +808,11 @@ namespace PaviseApp
             {
                 Handoff.Clear();
             }
-            GameDetection rendererChallenger = CaptureRendererChallenger(all, library, gameDetection);
-            GameDetection currentRendererChallenger = rendererChallenger;
-            if (currentRendererChallenger == null && raw != null && !raw.RendererForeground && raw.RendererCandidateSelected && !raw.RequiresGpuConfirm && !RendererHandoffTracker.SameIdentity(raw, gameDetection))
+            GameDetection gameDetection2 = CaptureRendererChallenger(all, library, gameDetection);
+            GameDetection gameDetection3 = gameDetection2;
+            if (gameDetection3 == null && raw != null && !raw.RendererForeground && raw.RendererCandidateSelected && !raw.RequiresGpuConfirm && !RendererHandoffTracker.SameIdentity(raw, gameDetection))
             {
-                currentRendererChallenger = raw;
+                gameDetection3 = raw;
             }
             lock (sync)
             {
@@ -720,9 +820,9 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                if (currentRendererChallenger != null && currentRendererChallenger.Profile != null && RendererHandoffTracker.SameProfile(currentRendererChallenger.Profile, FindProfileLocked(currentRendererChallenger.Profile.Id)))
+                if (gameDetection3 != null && gameDetection3.Profile != null && RendererHandoffTracker.SameProfile(gameDetection3.Profile, FindProfileLocked(gameDetection3.Profile.Id)))
                 {
-                    Handoff.Offer(currentRendererChallenger, nowMs);
+                    Handoff.Offer(gameDetection3, nowMs);
                 }
             }
             current = Handoff.Current;
@@ -749,20 +849,20 @@ namespace PaviseApp
                     }
                 }
             }
-            GameDetection confirmed = Handoff.Confirmed(RendererNowMs());
-            if (confirmed != null && VerifyRendererCandidate(confirmed) && (!confirmed.RendererForeground || RendererForegroundPid() == confirmed.RendererPid) && RendererEpochCurrent(epoch))
+            GameDetection gameDetection4 = Handoff.Confirmed(RendererNowMs());
+            if (gameDetection4 != null && VerifyRendererCandidate(gameDetection4) && (!gameDetection4.RendererForeground || RendererForegroundPid() == gameDetection4.RendererPid) && RendererEpochCurrent(epoch))
             {
-                return confirmed;
+                return gameDetection4;
             }
-            GameDetection currentGameDetection = ((raw != null && raw.RendererCandidateSelected && !raw.RendererForeground && !raw.RequiresGpuConfirm && !raw.RendererSafetyOnly) ? raw : rendererDirectPending);
-            if (currentGameDetection != null && !RendererHandoffTracker.SameIdentity(currentGameDetection, gameDetection))
+            GameDetection gameDetection5 = ((raw != null && raw.RendererCandidateSelected && !raw.RendererForeground && !raw.RequiresGpuConfirm && !raw.RendererSafetyOnly) ? raw : rendererDirectPending);
+            if (gameDetection5 != null && !RendererHandoffTracker.SameIdentity(gameDetection5, gameDetection))
             {
-                if (currentGameDetection.Profile != null && RendererHandoffTracker.SameProfile(currentGameDetection.Profile, RendererProfile(library, currentGameDetection.Profile.Id)) && VerifyRendererCandidate(currentGameDetection) && (!currentGameDetection.RendererForeground || RendererForegroundPid() == currentGameDetection.RendererPid))
+                if (gameDetection5.Profile != null && RendererHandoffTracker.SameProfile(gameDetection5.Profile, RendererProfile(library, gameDetection5.Profile.Id)) && VerifyRendererCandidate(gameDetection5) && (!gameDetection5.RendererForeground || RendererForegroundPid() == gameDetection5.RendererPid))
                 {
-                    if (ReleaseRendererBackground(currentGameDetection) == BackgroundReleaseState.Ready && RendererEpochCurrent(epoch))
+                    if (ReleaseRendererBackground(gameDetection5) == BackgroundReleaseState.Ready && RendererEpochCurrent(epoch))
                     {
                         rendererDirectPending = null;
-                        return currentGameDetection;
+                        return gameDetection5;
                     }
                     lock (sync)
                     {
@@ -770,7 +870,7 @@ namespace PaviseApp
                         {
                             return null;
                         }
-                        rendererDirectPending = (VerifyRendererCandidate(currentGameDetection) ? RendererHandoffTracker.Copy(currentGameDetection) : null);
+                        rendererDirectPending = (VerifyRendererCandidate(gameDetection5) ? RendererHandoffTracker.Copy(gameDetection5) : null);
                     }
                 }
                 else
@@ -838,20 +938,26 @@ namespace PaviseApp
                         if (!func() && VerifyRendererCandidate(ticket.Detection))
                         {
                             sampled = true;
-                            // 画面提交与 GPU 使用率采用同一观测窗口。
-                            string presentFailure;
-                            PresentActivityCapture capture = TryStartRendererPresent(rendererProbeFailureBudget, ticket.Detection, out presentFailure);
-                            Stopwatch presentWindow = capture != null ? Stopwatch.StartNew() : null;
-                            try
+                            ObserveEntryWindows(ticket.Detection, RendererGpuProofRequired(ticket.Detection), func, delegate
                             {
-                                utilization = SampleRendererGpu(rendererProbeFailureBudget, ticket.Detection, func,
-                                    () => GpuEvidence.Sample3D(2, 700, func));
-                            }
-                            finally
-                            {
-                                if (presentWindow != null) WaitRendererPresentWindow(presentWindow, func);
-                                presents = FinishRendererPresent(rendererProbeFailureBudget, ticket.Detection, capture, presentFailure);
-                            }
+                                // 画面提交与 GPU 使用率采用同一观测窗口。
+                                IDictionary<int, double> windowUtilization = null;
+                                PresentActivitySample windowPresents = null;
+                                string presentFailure;
+                                PresentActivityCapture capture = TryStartRendererPresent(rendererProbeFailureBudget, ticket.Detection, out presentFailure);
+                                Stopwatch presentWindow = capture != null ? Stopwatch.StartNew() : null;
+                                try
+                                {
+                                    windowUtilization = SampleRendererGpu(rendererProbeFailureBudget, ticket.Detection, func,
+                                        () => GpuEvidence.Sample3D(2, 700, func));
+                                }
+                                finally
+                                {
+                                    if (presentWindow != null) WaitRendererPresentWindow(presentWindow, func);
+                                    windowPresents = FinishRendererPresent(rendererProbeFailureBudget, ticket.Detection, capture, presentFailure);
+                                }
+                                return new KeyValuePair<IDictionary<int, double>, PresentActivitySample>(windowUtilization, windowPresents);
+                            }, out utilization, out presents);
                             identityValid = !func() && VerifyRendererCandidate(ticket.Detection) && RendererForegroundPid() == ticket.Detection.RendererPid;
                         }
                     }
@@ -865,8 +971,9 @@ namespace PaviseApp
                             if (utilization == null && (presents == null || !presents.Valid)) RecordRendererProbeFailure(ticket, "capture");
                             else rendererProbeFailureBudget.Succeeded(ticket.Detection.RendererPid, ticket.Detection.RendererCreation, ticket.Detection.RendererPath, "probe");
                         }
-                        RendererProof verdict = Handoff.Complete(ticket, utilization, presents, identityValid, RendererNowMs());
-                        if (sampled) LogRendererProbe(ticket.Detection, verdict, utilization, presents);
+                        bool gpuRequired = RendererGpuProofRequired(ticket.Detection);
+                        RendererProof verdict = Handoff.Complete(ticket, utilization, presents, identityValid, RendererNowMs(), gpuRequired);
+                        if (sampled) LogRendererProbe(ticket.Detection, verdict, utilization, presents, gpuRequired);
                         Interlocked.Exchange(ref rendererGpuSamplingBusy, 0);
                         if (!stopping && enabled)
                         {
@@ -914,7 +1021,7 @@ namespace PaviseApp
                 Thread.Sleep((int)Math.Min(50, remaining));
             }
         }
-        private static void LogRendererProbe(GameDetection candidate, RendererProof verdict, IDictionary<int, double> utilization, PresentActivitySample presents)
+        private static void LogRendererProbe(GameDetection candidate, RendererProof verdict, IDictionary<int, double> utilization, PresentActivitySample presents, bool gpuRequired)
         {
             if (candidate == null) return;
             int bestPid = 0, bestFrames = 0;
@@ -926,9 +1033,10 @@ namespace PaviseApp
             string presentText = presents == null ? "none" : presents.Valid
                 ? "frames=" + presents.FramesOf(candidate.RendererPid) + " fps=" + ((int)Math.Round(presents.FpsOf(candidate.RendererPid))) + " windowMs=" + presents.WindowMs
                     + " familyBest=" + (bestPid > 0 ? bestPid + ":" + bestFrames : "none") + " presenters=" + presents.ProcessCount
+                    + (presents.Events < 0 ? "" : " events=" + presents.Events)
                 : "unavailable=" + presents.Failure;
             Logger.Info("渲染进程探测 " + candidate.RendererName + " 进程编号=" + candidate.RendererPid + " 结论=" + verdict.ToString().ToLowerInvariant()
-                + " GPU三维占用=" + gpuText + " " + presentText);
+                + " GPU三维占用=" + gpuText + " " + presentText + (gpuRequired ? " 需GPU证据=是" : ""));
         }
         private void RecordRendererProbeFailure(RendererProbeTicket ticket, string stage)
         {
@@ -943,21 +1051,26 @@ namespace PaviseApp
             {
                 return false;
             }
-            GameProfile profile;
+            GameProfile gameProfile2;
             lock (sync)
             {
                 GameProfile gameProfile = FindProfileLocked(selected.Profile.Id);
-                profile = ((gameProfile == null) ? null : gameProfile.Clone());
+                gameProfile2 = ((gameProfile == null) ? null : gameProfile.Clone());
             }
-            if (!RendererHandoffTracker.SameProfile(selected.Profile, profile))
+            if (!RendererHandoffTracker.SameProfile(selected.Profile, gameProfile2))
             {
                 return false;
             }
             GameDetection current = Handoff.Current;
             bool rendererChanged = current != null && !RendererHandoffTracker.SameIdentity(current, selected);
-            bool valuesEqual = string.Equals(profile.LearnedExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
-            bool valuesEqual2 = string.Equals(profile.ExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
-            if (!profile.ForceTrigger && !rendererChanged && (selected.RendererLearnable || valuesEqual || (valuesEqual2 && !string.IsNullOrEmpty(profile.LearnedExecutablePath))))
+            bool valuesEqual = string.Equals(gameProfile2.LearnedExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
+            bool valuesEqual2 = string.Equals(gameProfile2.ExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
+            bool registeredKept = RegisteredRendererProtected(gameProfile2, selected.RendererPath);
+            if (registeredKept)
+            {
+                NoteRegisteredRendererKept(gameProfile2, selected);
+            }
+            if (!registeredKept && !gameProfile2.ForceTrigger && !rendererChanged && (selected.RendererLearnable || valuesEqual || (valuesEqual2 && !string.IsNullOrEmpty(gameProfile2.LearnedExecutablePath))))
             {
                 GameDetection gameDetection = RendererHandoffTracker.Copy(selected);
                 gameDetection.RendererLearnable = true;
@@ -967,17 +1080,17 @@ namespace PaviseApp
                 }
                 lock (sync)
                 {
-                    GameProfile profileLocked = FindProfileLocked(selected.Profile.Id);
-                    profile = ((profileLocked == null) ? null : profileLocked.Clone());
+                    GameProfile gameProfile3 = FindProfileLocked(selected.Profile.Id);
+                    gameProfile2 = ((gameProfile3 == null) ? null : gameProfile3.Clone());
                 }
-                if (profile == null)
+                if (gameProfile2 == null)
                 {
                     return false;
                 }
                 selected.RendererLearnable = false;
                 selected.RendererUserSelected = true;
             }
-            selected.Profile = profile;
+            selected.Profile = gameProfile2;
             return RendererCommitEvidenceCurrent(selected, expectedEpoch);
         }
         private bool RendererCommitEvidenceCurrent(GameDetection selected, int epoch)
@@ -1051,6 +1164,7 @@ namespace PaviseApp
             }
             return false;
         }
+        private readonly HashSet<string> rendererKeptNoted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private void InitializeRendererObservations()
         {
             rendererObservations = new RendererObservationStore(dataDir);
@@ -1220,25 +1334,25 @@ namespace PaviseApp
                                             else
                                             {
                                                 GpuSampleDiagnostics diagnostics = null;
-                                                IDictionary<int, double> sample3D = GpuEvidence.Sample3D(2, 700, func, target.RendererPid, out diagnostics);
+                                                IDictionary<int, double> dictionary = GpuEvidence.Sample3D(2, 700, func, target.RendererPid, out diagnostics);
                                                 message = ((diagnostics == null) ? null : diagnostics.ToString());
                                                 if (!func())
                                                 {
-                                                    if (sample3D == null)
+                                                    if (dictionary == null)
                                                     {
                                                         reason = "GpuUnavailable";
                                                     }
                                                     else
                                                     {
-                                                        message = "pidCount=" + sample3D.Count + " " + message;
-                                                        double currentSample3D;
-                                                        if (!sample3D.TryGetValue(target.RendererPid, out currentSample3D))
+                                                        message = "pidCount=" + dictionary.Count + " " + message;
+                                                        double value;
+                                                        if (!dictionary.TryGetValue(target.RendererPid, out value))
                                                         {
                                                             reason = "PidMissing";
                                                         }
                                                         else
                                                         {
-                                                            message = "gpu3d=" + currentSample3D.ToString("R", CultureInfo.InvariantCulture) + "% " + message;
+                                                            message = "gpu3d=" + value.ToString("R", CultureInfo.InvariantCulture) + "% " + message;
                                                             int sampledForegroundPid = RendererForegroundPid();
                                                             if (sampledForegroundPid != target.RendererPid)
                                                             {
@@ -1250,11 +1364,11 @@ namespace PaviseApp
                                                                 reason = "IdentityUnavailable";
                                                                 message += " phase=after";
                                                             }
-                                                            else if (double.IsNaN(currentSample3D) || double.IsInfinity(currentSample3D))
+                                                            else if (double.IsNaN(value) || double.IsInfinity(value))
                                                             {
                                                                 reason = "InvalidEvidence";
                                                             }
-                                                            else if (currentSample3D < 10.0)
+                                                            else if (value < 10.0)
                                                             {
                                                                 reason = "BelowThreshold";
                                                                 message = message + " minimum=" + 10.0.ToString(CultureInfo.InvariantCulture) + "%";
@@ -1285,7 +1399,7 @@ namespace PaviseApp
                                                                         message += " phase=commit";
                                                                         return;
                                                                     }
-                                                                    rendererObservationWriteResult = rendererObservations.RecordActivityWithResult(gameProfile.Id, target.RendererPath, RendererObservationEvidence.Gpu3D, currentSample3D, rendererFileStamp);
+                                                                    rendererObservationWriteResult = rendererObservations.RecordActivityWithResult(gameProfile.Id, target.RendererPath, RendererObservationEvidence.Gpu3D, value, rendererFileStamp);
                                                                 }
                                                                 reason = rendererObservationWriteResult.ToString();
                                                                 if (rendererObservationWriteResult == RendererObservationWriteResult.Recorded)
@@ -1344,14 +1458,14 @@ namespace PaviseApp
         {
             try
             {
-                string text = SeverityTagFor(reason) + Lang.F("lib.render.observation.trace", target.RendererName, target.RendererPid, Lang.T("lib.render.observation." + reason)) + " [reason=" + reason + "] profile=" + target.Profile.Id + (string.IsNullOrEmpty(detail) ? "" : (" " + detail));
+                string item = SeverityTagFor(reason) + Lang.F("lib.render.observation.trace", target.RendererName, target.RendererPid, Lang.T("lib.render.observation." + reason)) + " [reason=" + reason + "] profile=" + target.Profile.Id + (string.IsNullOrEmpty(detail) ? "" : (" " + detail));
                 lock (rendererObservationTraceGate)
                 {
                     if (rendererObservationTraceLines.Count >= 8)
                     {
                         rendererObservationTraceLines.Dequeue();
                     }
-                    rendererObservationTraceLines.Enqueue(text);
+                    rendererObservationTraceLines.Enqueue(item);
                     if (rendererObservationTraceBusy != 0)
                     {
                         return;
@@ -1426,15 +1540,15 @@ namespace PaviseApp
         private string FindRunningGame(ProcessSnapshot all, out HashSet<int> gamePids)
         {
             gamePids = new HashSet<int>();
-            List<GameProfile> currentProfiles;
+            List<GameProfile> list;
             lock (sync)
             {
-                currentProfiles = new List<GameProfile>();
+                list = new List<GameProfile>();
                 foreach (GameProfile profile in profiles)
                 {
-                    currentProfiles.Add(profile.Clone());
+                    list.Add(profile.Clone());
                 }
-                CaptureGameFamily(all, currentProfiles);
+                CaptureGameFamily(all, list);
             }
             ObserveRendererForegroundChange();
             string armedProfile = null;
@@ -1443,10 +1557,10 @@ namespace PaviseApp
             bool shouldRunFullGameDetection = ShouldRunFullGameDetection();
             if (shouldRunFullGameDetection)
             {
-                raw = GameSessionDetector.Detect(all, currentProfiles, selfSession, out armedProfile, out armedVia, FamilyEvidence);
+                raw = RequireEntryProof(GameSessionDetector.Detect(all, list, selfSession, out armedProfile, out armedVia, FamilyEvidence));
             }
             int epoch;
-            GameDetection gameDetection = ResolveRendererHandoff(all, currentProfiles, raw, out epoch);
+            GameDetection gameDetection = ResolveRendererHandoff(all, list, raw, out epoch);
             if (gameDetection != null && !FinalizeRendererSelection(gameDetection, epoch))
             {
                 gameDetection = null;
@@ -1455,32 +1569,33 @@ namespace PaviseApp
             {
                 return null;
             }
-            GameDetection applyStickiness = ApplyStickiness(gameDetection);
-            if (applyStickiness != null && !stickyGraceOnly && !VerifyRendererCandidate(applyStickiness))
+            GameDetection gameDetection2 = ApplyStickiness(gameDetection);
+            if (gameDetection2 != null && !stickyGraceOnly && !VerifyRendererCandidate(gameDetection2))
             {
                 ClearSticky();
                 RequestFullGameDetection();
                 return null;
             }
-            if (gameDetection != null && RendererHandoffTracker.SameIdentity(gameDetection, applyStickiness))
+            if (gameDetection != null && RendererHandoffTracker.SameIdentity(gameDetection, gameDetection2))
             {
-                CompleteRendererSelection(applyStickiness);
+                CompleteRendererSelection(gameDetection2);
             }
             if (shouldRunFullGameDetection)
             {
-                armedAwaitingElection = armedProfile != null && applyStickiness == null;
-                UpdateArmedStatus((applyStickiness == null) ? armedProfile : null, armedVia, applyStickiness != null);
-                if (applyStickiness == null && armedProfile != null)
+                armedAwaitingElection = armedProfile != null && gameDetection2 == null;
+                UpdateArmedStatus((gameDetection2 == null) ? armedProfile : null, armedVia, gameDetection2 != null);
+                if (gameDetection2 == null && armedProfile != null)
                 {
-                    PreStageDriverTuning(currentProfiles, armedProfile);
+                    PreStageDriverTuning(list, armedProfile);
                 }
             }
-            else if (applyStickiness != null && armedAwaitingElection)
+            else if (gameDetection2 != null && armedAwaitingElection)
             {
                 armedAwaitingElection = false;
                 UpdateArmedStatus(null, null, true);
             }
-            if (applyStickiness == null)
+            NoteEntryStandby(all);
+            if (gameDetection2 == null)
             {
                 return null;
             }
@@ -1488,27 +1603,52 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (int familyPid in applyStickiness.FamilyPids)
+            foreach (int familyPid in gameDetection2.FamilyPids)
             {
                 gamePids.Add(familyPid);
             }
             lock (sync)
             {
-                if (!RendererEpochCurrent(epoch) || applyStickiness.Profile == null || !RendererHandoffTracker.SameProfile(applyStickiness.Profile, FindProfileLocked(applyStickiness.Profile.Id)))
+                if (!RendererEpochCurrent(epoch) || gameDetection2.Profile == null || !RendererHandoffTracker.SameProfile(gameDetection2.Profile, FindProfileLocked(gameDetection2.Profile.Id)))
                 {
                     return null;
                 }
-                if (ShouldRearmLauncherTransition(activeDetection, applyStickiness))
+                if (ShouldRearmLauncherTransition(activeDetection, gameDetection2))
                 {
                     transitionProbeRendererPid = 0;
                     transitionProbeRendererCreation = 0L;
                 }
-                SetActiveDetectionLocked(applyStickiness);
+                SetActiveDetectionLocked(gameDetection2);
             }
             SyncAutomaticFullscreenOptimizations(true, -1L);
             NotifyExtensionSession(true);
-            MaybeObserveRendererActivity(applyStickiness);
-            return applyStickiness.Profile.Name;
+            MaybeObserveRendererActivity(gameDetection2);
+            return gameDetection2.Profile.Name;
+        }
+        private readonly EntryStandbyNotes entryStandbyNotes = new EntryStandbyNotes();
+
+        // 待命诊断仅读取现有状态，记录次数由 EntryStandbyNotes 限制。
+        private void NoteEntryStandby(ProcessSnapshot all)
+        {
+            string standby = armedAwaitingElection ? armedGameName : null;
+            long waited, stalled;
+            long now = RendererNowMs();
+            EntryStandbyNotes.Decision decision = entryStandbyNotes.Tick(standby, now, out waited, out stalled);
+            if (decision == EntryStandbyNotes.Decision.None) return;
+            try
+            {
+                if (decision == EntryStandbyNotes.Decision.Stall)
+                {
+                    Logger.Info("游戏识别待命期间识别循环停顿 target=" + standby + " 停顿=" + stalled / 1000 + "秒 已待命=" + waited / 1000 + "秒");
+                    return;
+                }
+                int foreground = RendererForegroundPid();
+                ProcEntry entry = foreground > 0 && all != null ? all.Find(foreground) : null;
+                Logger.Info("游戏识别待命未入场 target=" + standby + " 已待命=" + waited / 1000 + "秒 前台="
+                    + (foreground <= 0 ? "无" : (entry == null ? "未知" : entry.Name) + "(" + foreground + ")")
+                    + " 候选=" + Handoff.Describe(now) + " 探测占用=" + (Volatile.Read(ref rendererGpuSamplingBusy) != 0 ? "是" : "否"));
+            }
+            catch { }
         }
         internal static bool FreshRendererMayReplaceSticky(GameDetection fresh, string verifiedName, long verifiedCreation, long stickyCreation, long foregroundHeldMs)
         {

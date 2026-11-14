@@ -5,72 +5,98 @@ namespace PaviseApp
 {
     internal static class BypassIoProbe
     {
+        private const uint FsctlManageBypassIo = 590920u;
+
+        private const int OpQuery = 3;
+
+        private const int InputSize = 24;
+
+        private const int OutputSize = 352;
+
+        private const int OffOpStatus = 24;
+
+        private const int OffDriverLen = 28;
+
+        private const int OffDriverName = 30;
+
+        private const int OffReasonLen = 94;
+
+        private const int OffReason = 96;
+
+        private const uint GenericRead = 2147483648u;
+
+        private const uint ShareAll = 7u;
+
+        private const uint OpenExisting = 3u;
+
+        private const uint FileFlagNoBuffering = 536870912u;
 
         private static readonly IntPtr InvalidHandle = new IntPtr(-1);
 
         public static BypassIoVerdict Query(string filePath)
         {
-            BypassIoVerdict currentBypassIoVerdict = new BypassIoVerdict();
-            currentBypassIoVerdict.Path = filePath ?? "";
+            BypassIoVerdict bypassIoVerdict = new BypassIoVerdict();
+            bypassIoVerdict.Path = filePath ?? "";
+            BypassIoVerdict bypassIoVerdict2 = bypassIoVerdict;
             if (string.IsNullOrEmpty(filePath))
             {
-                return currentBypassIoVerdict;
+                return bypassIoVerdict2;
             }
             if (Native.OsBuild() > 0 && Native.OsBuild() < 22000)
             {
-                return currentBypassIoVerdict;
+                return bypassIoVerdict2;
             }
-            IntPtr fileHandle = CreateFileW(filePath, 2147483648u, 7u, IntPtr.Zero, 3u, 536870912u, IntPtr.Zero);
-            if (fileHandle == InvalidHandle)
+            IntPtr intPtr = CreateFileW(filePath, 2147483648u, 7u, IntPtr.Zero, 3u, 536870912u, IntPtr.Zero);
+            if (intPtr == InvalidHandle)
             {
-                return currentBypassIoVerdict;
+                return bypassIoVerdict2;
             }
-            IntPtr nativeBuffer = IntPtr.Zero;
-            IntPtr currentNativeBuffer = IntPtr.Zero;
+            IntPtr intPtr2 = IntPtr.Zero;
+            IntPtr intPtr3 = IntPtr.Zero;
             try
             {
-                nativeBuffer = Marshal.AllocHGlobal(24);
-                currentNativeBuffer = Marshal.AllocHGlobal(352);
+                intPtr2 = Marshal.AllocHGlobal(24);
+                intPtr3 = Marshal.AllocHGlobal(352);
                 for (int i = 0; i < 24; i += 4)
                 {
-                    Marshal.WriteInt32(nativeBuffer, i, 0);
+                    Marshal.WriteInt32(intPtr2, i, 0);
                 }
                 for (int j = 0; j < 352; j += 4)
                 {
-                    Marshal.WriteInt32(currentNativeBuffer, j, 0);
+                    Marshal.WriteInt32(intPtr3, j, 0);
                 }
-                Marshal.WriteInt32(nativeBuffer, 0, 3);
+                Marshal.WriteInt32(intPtr2, 0, 3);
                 uint returned;
-                if (!DeviceIoControl(fileHandle, 590920u, nativeBuffer, 24, currentNativeBuffer, 352, out returned, IntPtr.Zero))
+                if (!DeviceIoControl(intPtr, 590920u, intPtr2, 24, intPtr3, 352, out returned, IntPtr.Zero))
                 {
-                    currentBypassIoVerdict.Status = Marshal.GetLastWin32Error();
-                    return currentBypassIoVerdict;
+                    bypassIoVerdict2.Status = Marshal.GetLastWin32Error();
+                    return bypassIoVerdict2;
                 }
-                currentBypassIoVerdict.Supported = true;
-                if ((currentBypassIoVerdict.Status = Marshal.ReadInt32(currentNativeBuffer, 24)) == 0)
+                bypassIoVerdict2.Supported = true;
+                if ((bypassIoVerdict2.Status = Marshal.ReadInt32(intPtr3, 24)) == 0)
                 {
-                    currentBypassIoVerdict.Enabled = true;
-                    return currentBypassIoVerdict;
+                    bypassIoVerdict2.Enabled = true;
+                    return bypassIoVerdict2;
                 }
-                currentBypassIoVerdict.Blocker = ReadWide(currentNativeBuffer, 30, Marshal.ReadInt16(currentNativeBuffer, 28), 32);
-                currentBypassIoVerdict.Reason = ReadWide(currentNativeBuffer, 96, Marshal.ReadInt16(currentNativeBuffer, 94), 128);
-                return currentBypassIoVerdict;
+                bypassIoVerdict2.Blocker = ReadWide(intPtr3, 30, Marshal.ReadInt16(intPtr3, 28), 32);
+                bypassIoVerdict2.Reason = ReadWide(intPtr3, 96, Marshal.ReadInt16(intPtr3, 94), 128);
+                return bypassIoVerdict2;
             }
             catch
             {
-                return currentBypassIoVerdict;
+                return bypassIoVerdict2;
             }
             finally
             {
-                if (nativeBuffer != IntPtr.Zero)
+                if (intPtr2 != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(nativeBuffer);
+                    Marshal.FreeHGlobal(intPtr2);
                 }
-                if (currentNativeBuffer != IntPtr.Zero)
+                if (intPtr3 != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(currentNativeBuffer);
+                    Marshal.FreeHGlobal(intPtr3);
                 }
-                CloseHandle(fileHandle);
+                CloseHandle(intPtr);
             }
         }
 

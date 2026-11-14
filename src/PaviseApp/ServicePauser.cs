@@ -24,7 +24,38 @@ namespace PaviseApp
             internal bool StopObserved;
 
             internal int RunningSeen;
+
+            // 诊断字段仅保存在内存，不参与恢复状态判断。
+            internal string HoldStep = "";
+
+            internal int HoldState;
+
+            internal bool HoldWait;
+
+            internal string StartStep = "";
+
+            internal int StartWin32;
         }
+
+        // 启停等待按有限间隔复核；耗尽后仅状态变化可唤醒。
+        internal const int MaximumWaitObservations = 6;
+
+        private static readonly int[] WaitSeconds = new int[MaximumWaitObservations] { 5, 10, 20, 30, 30, 30 };
+
+        private int waitObservations;
+
+        // 仅恢复完整执行并落盘、且剩余服务均在启停等待时成立。
+        private bool waitOnlyRound;
+
+#if PAVISE_SELFTEST
+        internal delegate bool StopHook(string name, out bool confirmed);
+        internal delegate bool StartHook(string name, out string step, out int win32);
+        // 测试入口注入服务查询与启停实现。
+        internal static Func<string, int> QueryForTest;
+        internal static StopHook StopForTest;
+        internal static StartHook StartForTest;
+        internal int WaitObservationsForTest { get { lock (lk) return waitObservations; } }
+#endif
 
         private readonly string[] names;
 
@@ -56,8 +87,8 @@ namespace PaviseApp
                     {
                         return true;
                     }
-                    string text;
-                    return !Read(out text) || text == null || text.Length != 0;
+                    string value;
+                    return !Read(out value) || value == null || value.Length != 0;
                 }
             }
         }
@@ -121,27 +152,29 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    foreach (string entryText in names)
+                    string[] namesSnapshot = names;
+                    foreach (string entryText in namesSnapshot)
                     {
                         if (Query(entryText) != 4)
                         {
                             continue;
                         }
                         string lastReadSnapshot = lastRead;
-                        Receipt currentReceipt = new Receipt();
-                        currentReceipt.Name = entryText;
-                        currentReceipt.State = Phase.Prepared;
-                        receipts.Add(entryText, currentReceipt);
+                        Receipt receipt = new Receipt();
+                        receipt.Name = entryText;
+                        receipt.State = Phase.Prepared;
+                        Receipt receipt2 = receipt;
+                        receipts.Add(entryText, receipt2);
                         if (!Save())
                         {
-                            string text;
-                            if (Read(out text) && text == lastReadSnapshot)
+                            string value;
+                            if (Read(out value) && value == lastReadSnapshot)
                             {
                                 receipts.Remove(entryText);
                             }
                             else
                             {
-                                currentReceipt.State = Phase.Settled;
+                                receipt2.State = Phase.Settled;
                             }
                             ledgerLost = true;
                             RestoreCore(out remain);
@@ -150,7 +183,7 @@ namespace PaviseApp
                         bool confirmed;
                         if (Query(entryText) != 4)
                         {
-                            Settle(currentReceipt);
+                            Settle(receipt2);
                             if (!FlushSettled())
                             {
                                 ledgerLost = true;
@@ -160,11 +193,11 @@ namespace PaviseApp
                         }
                         else if (Stop(entryText, out confirmed))
                         {
-                            currentReceipt.State = Phase.Owned;
-                            currentReceipt.CanStart = true;
-                            currentReceipt.StopObserved = confirmed || Query(entryText) == 1;
+                            receipt2.State = Phase.Owned;
+                            receipt2.CanStart = true;
+                            receipt2.StopObserved = confirmed || Query(entryText) == 1;
                             justStopped.Add(entryText);
-                            if (currentReceipt.StopObserved)
+                            if (receipt2.StopObserved)
                             {
                                 confirmedStopped.Add(entryText);
                             }
@@ -179,7 +212,7 @@ namespace PaviseApp
                         {
                             if (Query(entryText) == 4)
                             {
-                                currentReceipt.State = Phase.Settled;
+                                receipt2.State = Phase.Settled;
                             }
                             if (!FlushSettled())
                             {
@@ -208,6 +241,7 @@ namespace PaviseApp
             lock (lk)
             {
                 remain = PendingNames();
+                waitOnlyRound = false;
                 if (busy)
                 {
                     return false;
@@ -232,16 +266,20 @@ namespace PaviseApp
         private bool RestoreCore(out List<string> remain)
         {
             active = false;
+            waitOnlyRound = false;
+            // 预置读取失败，避免中途退出后沿用上次诊断。
+            foreach (Receipt stale in receipts.Values) Hold(stale, "ledger-read", 0, false);
             remain = PendingNames();
             if (!Load())
             {
                 return false;
             }
             bool allRestored = true;
-            foreach (string entryText in names)
+            string[] namesSnapshot = names;
+            foreach (string entryText in namesSnapshot)
             {
-                Receipt receipt;
-                if (!receipts.TryGetValue(entryText, out receipt) || receipt.State == Phase.Settled)
+                Receipt value;
+                if (!receipts.TryGetValue(entryText, out value) || value.State == Phase.Settled)
                 {
                     continue;
                 }
@@ -250,9 +288,10 @@ namespace PaviseApp
                 {
                 case 0:
                     allRestored = false;
+                    Hold(value, "query", 0, false);
                     continue;
                 default:
-                    receipt.RunningSeen = 0;
+                    value.RunningSeen = 0;
                     break;
                 case 4:
                     break;
@@ -260,58 +299,65 @@ namespace PaviseApp
                 switch (queryResult)
                 {
                 case 4:
-                    if (receipt.State == Phase.Owned && !receipt.StopObserved && ++receipt.RunningSeen < 2)
+                    if (value.State == Phase.Owned && !value.StopObserved && ++value.RunningSeen < 2)
                     {
                         allRestored = false;
+                        Hold(value, "running-unconfirmed", queryResult, true);
                     }
                     else
                     {
-                        Settle(receipt);
+                        Settle(value);
                     }
                     break;
                 default:
-                    if ((receipt.State == Phase.Owned && !receipt.StopObserved && queryResult == 3) || (receipt.State == Phase.Prepared && (queryResult == 2 || queryResult == 3)) || (receipt.State == Phase.Restoring && (queryResult == 2 || queryResult == 3)))
+                    if ((value.State == Phase.Owned && !value.StopObserved && queryResult == 3) || (value.State == Phase.Prepared && (queryResult == 2 || queryResult == 3)) || (value.State == Phase.Restoring && (queryResult == 2 || queryResult == 3)))
                     {
                         allRestored = false;
+                        Hold(value, queryResult == 3 ? "stop-pending" : "start-pending", queryResult, true);
                     }
                     else
                     {
-                        Settle(receipt);
+                        Settle(value);
                     }
                     break;
                 case 1:
-                    if (!receipt.CanStart)
+                    if (!value.CanStart)
                     {
                         allRestored = false;
+                        Hold(value, "start-used", queryResult, false);
                         break;
                     }
-                    receipt.StopObserved = true;
-                    receipt.State = Phase.Restoring;
+                    value.StopObserved = true;
+                    value.State = Phase.Restoring;
                     if (!Save())
                     {
                         allRestored = false;
+                        Hold(value, "ledger-write", queryResult, false);
                         break;
                     }
                     switch (Query(entryText))
                     {
                     case 0:
                         allRestored = false;
+                        Hold(value, "query", 0, false);
                         break;
                     default:
-                        Settle(receipt);
+                        Settle(value);
                         break;
                     case 1:
                     {
-                        receipt.CanStart = false;
-                        Start(entryText);
+                        value.CanStart = false;
+                        Start(entryText, value);
                         int queryResult2 = Query(entryText);
                         if (queryResult2 == 4 || queryResult2 == 7)
                         {
-                            Settle(receipt);
+                            Settle(value);
                         }
                         else
                         {
                             allRestored = false;
+                    // 已受理的启动请求继续等待，其他结果按启动失败处理。
+                            Hold(value, "start", queryResult2, queryResult2 == 2);
                         }
                         break;
                     }
@@ -319,16 +365,122 @@ namespace PaviseApp
                     break;
                 }
             }
-            if (!FlushSettled())
+            bool flushed = FlushSettled();
+            if (!flushed)
             {
                 allRestored = false;
             }
             remain = PendingNames();
             if (allRestored)
             {
+            // 完整结清后，下一次暂停使用新的观察阶段。
+                if (receipts.Count == 0) waitObservations = 0;
                 return receipts.Count == 0;
             }
+            if (flushed && receipts.Count != 0)
+            {
+                waitOnlyRound = true;
+                foreach (Receipt receipt in receipts.Values)
+                    if (receipt.State != Phase.Settled && !receipt.HoldWait) { waitOnlyRound = false; break; }
+            }
             return false;
+        }
+
+        private static void Hold(Receipt receipt, string step, int state, bool wait)
+        {
+            receipt.HoldStep = step;
+            receipt.HoldState = state;
+            receipt.HoldWait = wait;
+        }
+
+        // 剩余项均在启停等待时，本轮仅观察状态，不执行写入。
+        internal bool PendingIsWaitOnly
+        {
+            get { lock (lk) return waitOnlyRound; }
+        }
+
+        internal static string StateName(int state)
+        {
+            switch (state)
+            {
+            case 1: return PerformancePolicy.Text("已停止", "stopped");
+            case 2: return PerformancePolicy.Text("启动中(START_PENDING)", "start pending");
+            case 3: return PerformancePolicy.Text("停止中(STOP_PENDING)", "stop pending");
+            case 4: return PerformancePolicy.Text("运行中", "running");
+            case 5: return PerformancePolicy.Text("继续中(CONTINUE_PENDING)", "continue pending");
+            case 6: return PerformancePolicy.Text("暂停中(PAUSE_PENDING)", "pause pending");
+            case 7: return PerformancePolicy.Text("已暂停", "paused");
+            default: return PerformancePolicy.Text("读不到", "unreadable");
+            }
+        }
+
+        // 未结清服务的失败阶段，仅供日志使用。
+        internal string DescribePending()
+        {
+            lock (lk)
+            {
+                var parts = new List<string>();
+                string[] namesSnapshot = names;
+                foreach (string name in namesSnapshot)
+                {
+                    Receipt receipt;
+                    if (!receipts.TryGetValue(name, out receipt) || receipt.State == Phase.Settled || receipt.HoldStep.Length == 0) continue;
+                    string started = receipt.StartStep.Length == 0 ? "" : PerformancePolicy.Text(" 启动步骤=", " start step=") + receipt.StartStep
+                        + PerformancePolicy.Text(" 系统错误码=", " system error=") + receipt.StartWin32;
+                    switch (receipt.HoldStep)
+                    {
+                    case "stop-pending":
+                        parts.Add(name + PerformancePolicy.Text(" 仍在停止中，停完后再启动", " is still stopping; it will be started once stopped")); break;
+                    case "start-pending":
+                        parts.Add(name + PerformancePolicy.Text(" 正在启动，等待完成", " is starting; waiting for it to finish")); break;
+                    case "running-unconfirmed":
+                        parts.Add(name + PerformancePolicy.Text(" 已在运行，下一次复核后结清", " is already running; it will be settled after one more check")); break;
+                    case "query":
+                        parts.Add(name + PerformancePolicy.Text(" 状态读取失败", " state could not be read")); break;
+                    case "ledger-write":
+                        parts.Add(name + PerformancePolicy.Text(" 恢复记录写入失败，未发起启动", " recovery record could not be written; no start was issued")); break;
+                    case "start-used":
+                        parts.Add(name + PerformancePolicy.Text(" 已停止，唯一一次启动已经用过，需要手动启动", " is stopped and the single start attempt was already used; start it manually") + started); break;
+                    default:
+                        parts.Add(name + (receipt.HoldWait ? PerformancePolicy.Text(" 启动请求已受理，等待完成", " start request accepted; waiting for it to finish")
+                            : PerformancePolicy.Text(" 启动未完成", " did not start")) + PerformancePolicy.Text(" 当前状态=", " state=") + StateName(receipt.HoldState) + started); break;
+                    }
+                }
+                return string.Join(PerformancePolicy.Text("；", "; "), parts.ToArray());
+            }
+        }
+
+                // 启停等待不占恢复失败预算，交还调度方后续复核。
+                // 观察额度耗尽后，仅真实状态变化可再次唤醒。
+        internal void ReportWait()
+        {
+            string[] watchedNames;
+            int[] watchedStates;
+            lock (lk)
+            {
+                if (!waitOnlyRound || !RecoveryAttemptTrace.Active) return;
+                var pending = new List<Receipt>();
+                foreach (Receipt receipt in receipts.Values)
+                    if (receipt.State != Phase.Settled) pending.Add(receipt);
+                if (pending.Count == 0) return;
+                // 已运行服务的最终复核不占等待观察额度。
+                foreach (Receipt receipt in pending)
+                    if (receipt.HoldStep == "running-unconfirmed") { RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(WaitSeconds[0])); return; }
+                if (waitObservations < MaximumWaitObservations)
+                {
+                    RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(WaitSeconds[waitObservations++]));
+                    return;
+                }
+                watchedNames = new string[pending.Count];
+                watchedStates = new int[pending.Count];
+                for (int i = 0; i < pending.Count; i++) { watchedNames[i] = pending[i].Name; watchedStates[i] = pending[i].HoldState; }
+            }
+            RecoveryAttemptTrace.Exhausted(delegate
+            {
+                for (int i = 0; i < watchedNames.Length; i++)
+                    if (Query(watchedNames[i]) != watchedStates[i]) return true;
+                return false;
+            });
         }
 
         private bool ObserveStops()
@@ -352,57 +504,60 @@ namespace PaviseApp
         {
             receipt.State = Phase.Settled;
             receipt.CanStart = false;
+            receipt.HoldStep = "";
+            receipt.HoldWait = false;
         }
 
         private List<string> PendingNames()
         {
-            List<string> entryTexts = new List<string>();
-            foreach (string entryText in names)
+            List<string> list = new List<string>();
+            string[] namesSnapshot = names;
+            foreach (string entryText in namesSnapshot)
             {
                 if (receipts.ContainsKey(entryText))
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
-            return entryTexts;
+            return list;
         }
 
         private bool Load()
         {
-            string text;
-            if (!Read(out text) || text == null)
+            string value;
+            if (!Read(out value) || value == null)
             {
                 return false;
             }
             Dictionary<string, Receipt> result;
-            if (!Parse(text, out result))
+            if (!Parse(value, out result))
             {
                 return false;
             }
             if (!loaded)
             {
-                foreach (KeyValuePair<string, Receipt> resultEntry in result)
+                foreach (KeyValuePair<string, Receipt> item in result)
                 {
-                    receipts.Add(resultEntry.Key, resultEntry.Value);
+                    receipts.Add(item.Key, item.Value);
                 }
                 loaded = true;
             }
             else
             {
-                foreach (KeyValuePair<string, Receipt> currentResultEntry in result)
+                foreach (KeyValuePair<string, Receipt> item2 in result)
                 {
-                    Receipt receipt;
-                    if (!receipts.TryGetValue(currentResultEntry.Key, out receipt))
+                    Receipt value2;
+                    if (!receipts.TryGetValue(item2.Key, out value2))
                     {
-                        receipts.Add(currentResultEntry.Key, currentResultEntry.Value);
+                        receipts.Add(item2.Key, item2.Value);
                     }
-                    else if (currentResultEntry.Value.State == Phase.Settled)
+                    else if (item2.Value.State == Phase.Settled)
                     {
-                        Settle(receipt);
+                        Settle(value2);
                     }
                 }
             }
-            lastRead = text;
+            lastRead = value;
             return true;
         }
 
@@ -419,8 +574,9 @@ namespace PaviseApp
             }
             if (!raw.StartsWith("2\n", StringComparison.Ordinal))
             {
-                string[] serializedServices = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
-                foreach (string entryText in serializedServices)
+                string[] textEntries = ((raw == "1" && names.Length == 1) ? new string[1] { names[0] } : raw.Split('|'));
+                string[] textEntries2 = textEntries;
+                foreach (string entryText in textEntries2)
                 {
                     if (!allowed.Contains(entryText) || result.ContainsKey(entryText))
                     {
@@ -489,19 +645,20 @@ namespace PaviseApp
             {
                 return "";
             }
-            List<string> texts = new List<string>();
-            texts.Add("2");
-            List<string> currentTexts = texts;
-            foreach (string entryText in names)
+            List<string> list = new List<string>();
+            list.Add("2");
+            List<string> list2 = list;
+            string[] namesSnapshot = names;
+            foreach (string entryText in namesSnapshot)
             {
-                Receipt receipt;
-                if (receipts.TryGetValue(entryText, out receipt))
+                Receipt value;
+                if (receipts.TryGetValue(entryText, out value))
                 {
-                    string message = ((receipt.State == Phase.Prepared) ? "P" : ((receipt.State == Phase.Owned) ? "O" : ((receipt.State == Phase.Restoring) ? "R" : "S")));
-                    currentTexts.Add(message + "\t" + entryText + "\t" + (receipt.StopObserved ? "1" : "0"));
+                    string message = ((value.State == Phase.Prepared) ? "P" : ((value.State == Phase.Owned) ? "O" : ((value.State == Phase.Restoring) ? "R" : "S")));
+                    list2.Add(message + "\t" + entryText + "\t" + (value.StopObserved ? "1" : "0"));
                 }
             }
-            return string.Join("\n", currentTexts.ToArray());
+            return string.Join("\n", list2.ToArray());
         }
 
         private bool Save()
@@ -527,29 +684,29 @@ namespace PaviseApp
             {
                 return false;
             }
-            List<Receipt> currentReceipts = new List<Receipt>();
-            foreach (Receipt receipt in receipts.Values)
+            List<Receipt> list = new List<Receipt>();
+            foreach (Receipt value in receipts.Values)
             {
-                if (receipt.State == Phase.Settled)
+                if (value.State == Phase.Settled)
                 {
-                    currentReceipts.Add(receipt);
+                    list.Add(value);
                 }
             }
-            if (currentReceipts.Count == 0)
+            if (list.Count == 0)
             {
                 return true;
             }
-            foreach (Receipt currentReceipt in currentReceipts)
+            foreach (Receipt item in list)
             {
-                receipts.Remove(currentReceipt.Name);
+                receipts.Remove(item.Name);
             }
             if (Save())
             {
                 return true;
             }
-            foreach (Receipt candidateReceipt in currentReceipts)
+            foreach (Receipt item2 in list)
             {
-                receipts.Add(candidateReceipt.Name, candidateReceipt);
+                receipts.Add(item2.Name, item2);
             }
             return false;
         }
@@ -558,6 +715,9 @@ namespace PaviseApp
         {
             try
             {
+#if PAVISE_SELFTEST
+                if (QueryForTest != null) return QueryForTest(name);
+#endif
                 return SvcState.Query(name);
             }
             catch
@@ -571,6 +731,9 @@ namespace PaviseApp
             confirmed = false;
             try
             {
+#if PAVISE_SELFTEST
+                if (StopForTest != null) return StopForTest(name, out confirmed);
+#endif
                 return SvcCtl.StopIfRunning(name, out confirmed);
             }
             catch
@@ -579,15 +742,23 @@ namespace PaviseApp
             }
         }
 
-        private void Start(string name)
+                // 每次尝试只发起一次启动请求，结果写入诊断回执。
+        private void Start(string name, Receipt receipt)
         {
+            string step = "exception";
+            int win32 = 0;
             try
             {
-                SvcCtl.EnsureStarted(name);
+#if PAVISE_SELFTEST
+                if (StartForTest != null) { StartForTest(name, out step, out win32); receipt.StartStep = step ?? ""; receipt.StartWin32 = win32; return; }
+#endif
+                SvcCtl.EnsureStarted(name, out step, out win32);
             }
             catch
             {
             }
+            receipt.StartStep = step ?? "";
+            receipt.StartWin32 = win32;
         }
 
         private bool Read(out string value)

@@ -141,7 +141,7 @@ namespace PaviseApp
             int generation = 0; string configuration = "A";
             var backend = new SameValueApplyBackend { BlockThird = false }; var coordinator = new ConfigurationPresetCoordinator(backend);
             foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries) backend.Values[entry.Key] = entry.DefaultValue;
-            backend.Identity = "4|default|" + coordinator.Fingerprint();
+            backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + coordinator.Fingerprint();
             var runtime = new ConfigurationPresetRuntime(backend, () => generation, null, () => 1, null, () => configuration);
             var done = new ManualResetEvent(false);
             try
@@ -149,11 +149,11 @@ namespace PaviseApp
                 for (int i = 0; i < 3; i++) Poll(runtime);
                 Check(!runtime.CurrentPreset.HasValue && backend.Loads == 3, "Configuration A did not exhaust with unknown identity");
                 foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries) backend.Values[entry.Key] = entry.ExtremeValue;
-                backend.Identity = "2|extreme|" + coordinator.Fingerprint(); backend.FailIdentity = false;
+                backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Extreme) + coordinator.Fingerprint(); backend.FailIdentity = false;
                 configuration = "B"; generation++; Poll(runtime);
                 Check(runtime.CurrentPreset == ConfigurationPresetKind.Extreme && backend.Loads == 4, "Configuration B did not publish its verified identity");
                 foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries) backend.Values[entry.Key] = entry.DefaultValue;
-                backend.Identity = "4|default|" + coordinator.Fingerprint(); configuration = "A"; generation++;
+                backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + coordinator.Fingerprint(); configuration = "A"; generation++;
                 for (int i = 0; i < 1000; i++) Check(!runtime.CurrentPreset.HasValue, "Exhausted A displayed B's verified preset label");
                 Check(backend.Loads == 4, "Invalidating a different material label reopened exhausted A");
                 ConfigurationPresetResult result = null;
@@ -190,7 +190,7 @@ namespace PaviseApp
             for (int i = 0; i < 10; i++) Poll(runtime);
             Check(backend.Loads == before + 23, "Complete healthy observation did not end the prior failure episode");
             backend = new IdentityBackend(); var coordinator = new ConfigurationPresetCoordinator(backend);
-            backend.Identity = "4|default|" + coordinator.Fingerprint();
+            backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + coordinator.Fingerprint();
             runtime = new ConfigurationPresetRuntime(backend, () => generation, null, () => session);
             Poll(runtime); Check(runtime.CurrentPreset == ConfigurationPresetKind.Default, "Verified identity was not published");
             backend.Mismatch = true; generation++; Poll(runtime);
@@ -200,7 +200,7 @@ namespace PaviseApp
         {
             long session = 1; var entered = new ManualResetEvent(false); var release = new ManualResetEvent(false);
             var backend = new IdentityBackend(); var coordinator = new ConfigurationPresetCoordinator(backend);
-            backend.Identity = "4|default|" + coordinator.Fingerprint();
+            backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + coordinator.Fingerprint();
             backend.OnLoad = () => { entered.Set(); release.WaitOne(); };
             var runtime = new ConfigurationPresetRuntime(backend, () => 0, null, () => Interlocked.Read(ref session));
             try

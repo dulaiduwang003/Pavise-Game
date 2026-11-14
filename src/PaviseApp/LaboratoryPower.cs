@@ -458,12 +458,12 @@ namespace PaviseApp
             if (!journal.Legacy && values.Count > 0 && (current == null || !NormalizeDevice(current.DeviceIdentity, out device)
                 || journal.Device != null && journal.Device != device)) return false;
             if (!journal.Legacy && device != null) journal.Device = device;
-            var texts = new List<string>();
+            var list = new List<string>();
             foreach (Value value in values)
-                texts.Add(value.Text + (journal.Legacy ? "" : value.ManagedOnly ? ":m" : ":c"));
-            string encoded = texts.Count == 0 ? "" : journal.Legacy
-                ? "1|" + journal.Owner.ToString("N") + "|" + string.Join(";", texts.ToArray())
-                : "2|" + device + "|" + journal.Owner.ToString("N") + "|" + string.Join(";", texts.ToArray());
+                list.Add(value.Text + (journal.Legacy ? "" : value.ManagedOnly ? ":m" : ":c"));
+            string encoded = list.Count == 0 ? "" : journal.Legacy
+                ? "1|" + journal.Owner.ToString("N") + "|" + string.Join(";", list.ToArray())
+                : "2|" + device + "|" + journal.Owner.ToString("N") + "|" + string.Join(";", list.ToArray());
             if (!platform.Save(encoded)) return false;
             string read; return platform.Load(out read) && read == encoded;
         }
@@ -526,21 +526,21 @@ namespace PaviseApp
                 // 空闲策略即使无需修改也要记入日志，防止后续外部改动被静默重新接管。
                 if (original.Value == request.Value && IsEpp(request.Key)) continue;
                 foreach (Value saved in values) if (saved.Setting == request.Key) return false;
-                var newJournalValue = new Value { Setting = request.Key, Original = original.Value, Wanted = request.Value,
+                var value = new Value { Setting = request.Key, Original = original.Value, Wanted = request.Value,
                     ManagedOnly = journal.Legacy || IsEpp(request.Key) };
-                added.Add(newJournalValue); values.Add(newJournalValue);
+                added.Add(value); values.Add(value);
             }
             if (added.Count == 0) return true;
             if (!Save(journal, values)) return false;
             bool ok = true;
-            foreach (Value currentAdded in added)
+            foreach (Value value in added)
             {
                 // 不能覆盖快照与应用之间发生的修改。
                 if (ActiveIdlePlan() != plan || !platform.OnAc || !JournalAuthorized(journal)
-                    || currentAdded.ManagedOnly && (platform.ActiveManagedPlan() != plan || platform.OwnerStatus(plan) != 1)
-                    || platform.Read(plan, currentAdded.Setting) != currentAdded.Original
-                    || currentAdded.Original != currentAdded.Wanted && !platform.Write(plan, currentAdded.Setting, currentAdded.Wanted)
-                    || platform.Read(plan, currentAdded.Setting) != currentAdded.Wanted) { ok = false; break; }
+                    || value.ManagedOnly && (platform.ActiveManagedPlan() != plan || platform.OwnerStatus(plan) != 1)
+                    || platform.Read(plan, value.Setting) != value.Original
+                    || value.Original != value.Wanted && !platform.Write(plan, value.Setting, value.Wanted)
+                    || platform.Read(plan, value.Setting) != value.Wanted) { ok = false; break; }
             }
             if (ok && platform.Flush(plan)) return true;
             RestoreCore(IsEpp(added[0].Setting)); return false;
@@ -578,20 +578,20 @@ namespace PaviseApp
             if (status != 1) return false;
             var pending = new List<Value>();
             bool changed = false, ok = true, selected = false;
-            foreach (Value journalValue in values)
+            foreach (Value value in values)
             {
-                if (epp.HasValue && IsEpp(journalValue.Setting) != epp.Value) { pending.Add(journalValue); continue; }
+                if (epp.HasValue && IsEpp(value.Setting) != epp.Value) { pending.Add(value); continue; }
                 selected = true;
-                if (journalValue.ManagedOnly && platform.OwnerStatus(owner) != 1)
-                { pending.Add(journalValue); ok = false; continue; }
-                if (!JournalAuthorized(journal)) { pending.Add(journalValue); ok = false; continue; }
-                uint? current = platform.Read(owner, journalValue.Setting);
-                if (!current.HasValue) { pending.Add(journalValue); ok = false; continue; }
-                if (current.Value == journalValue.Original) continue;
-                if (current.Value != journalValue.Wanted) continue;
+                if (value.ManagedOnly && platform.OwnerStatus(owner) != 1)
+                { pending.Add(value); ok = false; continue; }
+                if (!JournalAuthorized(journal)) { pending.Add(value); ok = false; continue; }
+                uint? current = platform.Read(owner, value.Setting);
+                if (!current.HasValue) { pending.Add(value); ok = false; continue; }
+                if (current.Value == value.Original) continue;
+                if (current.Value != value.Wanted) continue;
                 changed = true;
-                if (!platform.Write(owner, journalValue.Setting, journalValue.Original)
-                    || platform.Read(owner, journalValue.Setting) != journalValue.Original) { pending.Add(journalValue); ok = false; }
+                if (!platform.Write(owner, value.Setting, value.Original)
+                    || platform.Read(owner, value.Setting) != value.Original) { pending.Add(value); ok = false; }
             }
             if (!selected) return true;
             // 激活失败时保留完整记录，即使参数索引已经恢复。

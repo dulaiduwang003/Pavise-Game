@@ -7,6 +7,13 @@ namespace PaviseApp
 {
     internal static class NetworkAffinityTweak
     {
+        private const string QosPolicyNamesKey = "NetQosPolicyNames";
+
+        private const string EnabledKey = "NetPriorityOnByPavise";
+
+        private const string PolicyPrefix = "Pavise_";
+
+        private const int GamingDscp = 46;
 
         private static readonly IrqAffinityEngine irqEngine = new IrqAffinityEngine("NicAffinityOnByPavise", "NicAff_", Lang.T("t.versionmigrations.8"));
 
@@ -20,21 +27,21 @@ namespace PaviseApp
 
         internal static List<string> EnumerateNicDeviceIds()
         {
-            List<string> messages = new List<string>();
+            List<string> list = new List<string>();
             try
             {
                 using (ManagementObjectSearcher managementObjectSearcher = new ManagementObjectSearcher("SELECT PNPDeviceID FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE"))
                 {
                     using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
                     {
-                        foreach (ManagementObject currentManagementObjectCollection in managementObjectCollection)
+                        foreach (ManagementObject item in managementObjectCollection)
                         {
-                            using (currentManagementObjectCollection)
+                            using (item)
                             {
-                                string message = currentManagementObjectCollection["PNPDeviceID"] as string;
+                                string message = item["PNPDeviceID"] as string;
                                 if (!string.IsNullOrEmpty(message) && (message.StartsWith("PCI\\", StringComparison.OrdinalIgnoreCase) || message.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase)))
                                 {
-                                    messages.Add(message);
+                                    list.Add(message);
                                 }
                             }
                         }
@@ -45,13 +52,14 @@ namespace PaviseApp
             {
                 Logger.Warn(Lang.T("log.networkaffinitytweak.1", 0) + ex.Message);
             }
-            return messages;
+            return list;
         }
 
         internal static string SanitizePolicyName(string gameName, string exePath)
         {
             StringBuilder stringBuilder = new StringBuilder("Pavise_");
-            foreach (char c in gameName ?? "")
+            string gameNameOffset = gameName ?? "";
+            foreach (char c in gameNameOffset)
             {
                 if (stringBuilder.Length - "Pavise_".Length >= 40)
                 {
@@ -63,29 +71,31 @@ namespace PaviseApp
             {
                 stringBuilder.Append("Game");
             }
-            int pathHash = 17;
-            foreach (char c2 in exePath ?? "")
+            int sanitizePolicyNameValue = 17;
+            string exePathOffset = exePath ?? "";
+            foreach (char c2 in exePathOffset)
             {
-                pathHash = pathHash * 31 + char.ToLowerInvariant(c2);
+                sanitizePolicyNameValue = sanitizePolicyNameValue * 31 + char.ToLowerInvariant(c2);
             }
-            StringBuilder append = stringBuilder.Append('_');
-            uint currentPathHash = (uint)pathHash;
-            append.Append(currentPathHash.ToString("X6").Substring(0, 6));
+            StringBuilder stringBuilder2 = stringBuilder.Append('_');
+            uint numericValue = (uint)sanitizePolicyNameValue;
+            stringBuilder2.Append(numericValue.ToString("X6").Substring(0, 6));
             return stringBuilder.ToString();
         }
 
         private static List<string> LoadPolicyNames()
         {
-            List<string> entryTexts = new List<string>();
+            List<string> list = new List<string>();
             string netQosPolicyNamesValue = Settings.LoadStr("NetQosPolicyNames", "");
-            foreach (string entryText in netQosPolicyNamesValue.Split(';'))
+            string[] netQosPolicyNamesValueParts = netQosPolicyNamesValue.Split(';');
+            foreach (string entryText in netQosPolicyNamesValueParts)
             {
                 if (entryText.Length > 0)
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
-            return entryTexts;
+            return list;
         }
 
         private static bool SavePolicyNames(List<string> names)
@@ -97,14 +107,14 @@ namespace PaviseApp
 
         private static IDictionary<string, string> QosArgs(string name, string exePath)
         {
-            Dictionary<string, string> textsByName = new Dictionary<string, string>();
-            textsByName.Add("PAVISE_QOS_NAME", name ?? "");
-            Dictionary<string, string> exePathsByName = textsByName;
+            Dictionary<string, string> dictionary = new Dictionary<string, string>();
+            dictionary.Add("PAVISE_QOS_NAME", name ?? "");
+            Dictionary<string, string> dictionary2 = dictionary;
             if (exePath != null)
             {
-                exePathsByName["PAVISE_QOS_PATH"] = exePath;
+                dictionary2["PAVISE_QOS_PATH"] = exePath;
             }
-            return exePathsByName;
+            return dictionary2;
         }
 
         private static bool ApplyQosPolicy(string policyName, string exePath)
@@ -132,7 +142,7 @@ namespace PaviseApp
         public static bool Enable(List<GameProfile> games)
         {
             bool enableSucceeded = irqEngine.Enable(EnumerateNicDeviceIds());
-            List<string> sanitizePolicyNameResults = new List<string>();
+            List<string> list = new List<string>();
             if (games != null)
             {
                 foreach (GameProfile game in games)
@@ -142,7 +152,7 @@ namespace PaviseApp
                         string sanitizePolicyNameResult = SanitizePolicyName(game.Name, game.ExecutablePath);
                         if (ApplyQosPolicy(sanitizePolicyNameResult, game.ExecutablePath))
                         {
-                            sanitizePolicyNameResults.Add(sanitizePolicyNameResult);
+                            list.Add(sanitizePolicyNameResult);
                         }
                         else
                         {
@@ -151,25 +161,25 @@ namespace PaviseApp
                     }
                 }
             }
-            List<string> texts = LoadPolicyNames();
-            List<string> sanitizePolicyNameResultsSnapshot = new List<string>(sanitizePolicyNameResults);
-            foreach (string text in texts)
+            List<string> list2 = LoadPolicyNames();
+            List<string> list3 = new List<string>(list);
+            foreach (string item in list2)
             {
-                if (!sanitizePolicyNameResultsSnapshot.Contains(text) && !RemoveQosPolicy(text))
+                if (!list3.Contains(item) && !RemoveQosPolicy(item))
                 {
-                    sanitizePolicyNameResultsSnapshot.Add(text);
+                    list3.Add(item);
                 }
             }
-            if (!SavePolicyNames(sanitizePolicyNameResultsSnapshot))
+            if (!SavePolicyNames(list3))
             {
-                foreach (string currentSanitizePolicyNameResult in sanitizePolicyNameResults)
+                foreach (string item2 in list)
                 {
-                    RemoveQosPolicy(currentSanitizePolicyNameResult);
+                    RemoveQosPolicy(item2);
                 }
                 Logger.Log(Lang.T("log.networkaffinitytweak.5", 0));
                 return enableSucceeded;
             }
-            bool hasManagedPolicy = enableSucceeded || sanitizePolicyNameResults.Count > 0;
+            bool hasManagedPolicy = enableSucceeded || list.Count > 0;
             if (hasManagedPolicy)
             {
                 Settings.Save("NetPriorityOnByPavise", true);
@@ -185,11 +195,11 @@ namespace PaviseApp
         public static bool Disable()
         {
             bool disableSucceeded = irqEngine.Disable(EnumerateNicDeviceIds());
-            List<string> texts = LoadPolicyNames();
+            List<string> list = LoadPolicyNames();
             bool policiesRemoved = true;
-            foreach (string text in texts)
+            foreach (string item in list)
             {
-                if (!RemoveQosPolicy(text))
+                if (!RemoveQosPolicy(item))
                 {
                     policiesRemoved = false;
                 }

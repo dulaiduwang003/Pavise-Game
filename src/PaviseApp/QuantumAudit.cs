@@ -31,11 +31,11 @@ namespace PaviseApp
             }
             try
             {
-                foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
+                foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
                 {
-                    if (all.Id == "EnvQuantumProfileV1" && all.Committed && string.Equals(all.Target, QuantumRecovery.Target, StringComparison.OrdinalIgnoreCase))
+                    if (item.Id == "EnvQuantumProfileV1" && item.Committed && string.Equals(item.Target, QuantumRecovery.Target, StringComparison.OrdinalIgnoreCase))
                     {
-                        owned = QuantumRecovery.Normalize(all.Expected);
+                        owned = QuantumRecovery.Normalize(item.Expected);
                     }
                 }
             }

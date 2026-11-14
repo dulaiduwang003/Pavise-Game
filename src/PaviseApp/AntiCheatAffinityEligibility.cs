@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace PaviseApp
 {
@@ -35,6 +36,31 @@ namespace PaviseApp
             return true;
         }
 
+        // ACE 客户端由独立服务派生，但不在 SCM 的服务 PID 表中；仅放行可核验的直接子进程进行资源治理。
+        internal static bool TryAceClientService(ProcessSnapshot snapshot, string name, int pid, long birth, int session,
+            HashSet<int> gameAncestors, out ProcEntry service, out string reason)
+        {
+            service = null;
+            reason = "unverified-ace-client";
+            if (gameAncestors == null || gameAncestors.Contains(pid) || snapshot == null || pid <= 4 || birth <= 0 || session <= 0)
+                return false;
+            string image = NormalizeImage(name);
+            if (!EqualsAny(image, "SGuard", "SGuard64")) return false;
+            ProcEntry client = snapshot.Find(pid);
+            if (client == null || client.Creation != birth || client.Session != session
+                || !string.Equals(NormalizeImage(client.Name), image, StringComparison.OrdinalIgnoreCase)) return false;
+            string path = (client.Path ?? "").Replace('/', '\\');
+            if (!AntiCheatCatalog.IsAntiCheatPath(path)
+                || path.IndexOf("\\AntiCheatExpert\\", StringComparison.OrdinalIgnoreCase) < 0
+                || !string.Equals(Path.GetFileName(path), image + ".exe", StringComparison.OrdinalIgnoreCase)) return false;
+            ProcEntry parent = snapshot.Find(client.ParentPid);
+            if (parent == null || parent.Pid == pid || parent.Creation <= 0 || parent.Creation > birth
+                || parent.Session != 0 || ImageGroup(parent.Name) != "ace" || gameAncestors.Contains(parent.Pid)) return false;
+            service = parent;
+            reason = "";
+            return true;
+        }
+
         private static string ImageGroup(string name)
         {
             name = NormalizeImage(name);
@@ -47,7 +73,7 @@ namespace PaviseApp
         private static string ServiceGroup(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
-            if (EqualsAny(name, "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service", "ACE-BASE", "ACE-GAME")) return "ace";
+            if (EqualsAny(name, "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service", "AntiCheatExpert Service", "ACE-BASE", "ACE-GAME")) return "ace";
             if (EqualsAny(name, "EasyAntiCheat", "EasyAntiCheat_EOS") || ProductService(name, "EasyAntiCheat_EOS_")) return "eac";
             if (EqualsAny(name, "BEService", "BEService_x64")) return "battleye";
             return null;
@@ -76,7 +102,7 @@ namespace PaviseApp
             return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name.Substring(0, name.Length - 4) : name;
         }
 
-        // 父进程缺失或 PID 被复用时结束追溯，父 PID 本身不构成身份。即使快照中已无游戏进程，也保留起始 PID。
+        // 父进程缺失或 PID 复用时停止追溯；始终保留起始 PID，包括游戏已退出的快照。
 
         internal static HashSet<int> GameAncestors(ProcessSnapshot snapshot, IEnumerable<int> gamePids)
         {

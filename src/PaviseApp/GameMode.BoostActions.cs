@@ -49,15 +49,6 @@ namespace PaviseApp
                 }
                 return null;
             }
-            case "GameMemoryPriority":
-            {
-                int pagePriority = Native.QueryPagePriority(handle);
-                if (pagePriority >= 1)
-                {
-                    return pagePriority;
-                }
-                return null;
-            }
             case "GameGpuPriority":
             {
                 int cls;
@@ -106,15 +97,6 @@ namespace PaviseApp
             }
             case "GameGpuPriority":
                 return Native.D3DKMTSetProcessSchedulingPriorityClass(handle, (int)value);
-            case "GameMemoryPriority":
-            {
-                int status;
-                if (!Native.TrySetPagePriority(handle, (int)value, out status))
-                {
-                    return status;
-                }
-                return 0;
-            }
             case "GameEcoQoS":
                 if (!Native.RestorePowerThrottling(handle, (int)(value >> 32), (int)value))
                 {
@@ -152,40 +134,41 @@ namespace PaviseApp
             original = 0L;
             lock (sync)
             {
-                Snap currentGameBoost;
-                if (!gameBoost.TryGetValue(pid, out currentGameBoost))
+                Snap value;
+                if (!gameBoost.TryGetValue(pid, out value))
                 {
                     return false;
                 }
                 switch (action)
                 {
                 case "GamePriority":
-                    original = currentGameBoost.Pri;
-                    return currentGameBoost.Pri != 0 && currentGameBoost.Pri != uint.MaxValue;
+                    original = value.Pri;
+                    return value.Pri != 0 && value.Pri != uint.MaxValue;
                 case "GameIoPriority":
-                    original = currentGameBoost.Io;
-                    return currentGameBoost.Io >= 0;
-                case "GameMemoryPriority":
-                    original = currentGameBoost.Pg;
-                    return currentGameBoost.Pg >= 1;
+                    original = value.Io;
+                    return value.Io >= 0;
                 case "GameGpuPriority":
                 {
-                    int currentGameGpu;
-                    if (!gameGpu.TryGetValue(pid, out currentGameGpu) || currentGameGpu < 0)
+                    int value2;
+                    if (!gameGpu.TryGetValue(pid, out value2) || value2 < 0)
                     {
                         return false;
                     }
-                    original = currentGameGpu;
+                    original = value2;
                     return true;
                 }
                 case "GameEcoQoS":
-                    original = QosValue(currentGameBoost.QoSControl, currentGameBoost.QoSState);
-                    return currentGameBoost.QoSControl >= 0 && currentGameBoost.QoSState >= 0;
+                    original = QosValue(value.QoSControl, value.QoSState);
+                    return value.QoSControl >= 0 && value.QoSState >= 0;
                 default:
                     return false;
                 }
             }
         }
+        // 显卡调度由 D3DKMT 独立核验，不用进程 CPU 设置权限推断其结果。
+        internal static bool BoostActionNeedsProcessSetInformation(string action)
+        { return action != "GameGpuPriority"; }
+
         private bool ApplyIsolatedBoostAction(IntPtr handle, int pid, BoostPass pass, string action, Func<long, bool> desired, Func<int> write)
         {
             if (action == "GamePriority")
@@ -193,8 +176,13 @@ namespace PaviseApp
                 Func<int> requestedWrite = write;
                 write = () => WriteOwnedGamePriority(handle, pid, pass, requestedWrite);
             }
+            else if (action == "GameGpuPriority")
+            {
+                write = () => CrashGuard.ApplyBoostGpu(handle, pid, pass.RendererCreation) ? 0 : -1;
+            }
             string actionTarget = pass.ActionTarget;
-            if (string.IsNullOrEmpty(actionTarget) || pass.WriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0 || !string.Equals(BoostActionTarget(handle), actionTarget, StringComparison.OrdinalIgnoreCase))
+            bool processWriteDenied = pass.WriteDenied && BoostActionNeedsProcessSetInformation(action);
+            if (string.IsNullOrEmpty(actionTarget) || processWriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0 || !string.Equals(BoostActionTarget(handle), actionTarget, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -216,8 +204,8 @@ namespace PaviseApp
             bool restorePending;
             lock (sync)
             {
-                HashSet<string> currentBoostActionRestorePending;
-                restorePending = boostActionRestorePending.TryGetValue(pid, out currentBoostActionRestorePending) && currentBoostActionRestorePending.Contains(action);
+                HashSet<string> value;
+                restorePending = boostActionRestorePending.TryGetValue(pid, out value) && value.Contains(action);
             }
             if (restorePending)
             {
@@ -239,7 +227,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            if (desired(boostAction.Value))
+            if (desired(boostAction.Value) && (action != "GameGpuPriority" || !CrashGuard.BoostGpuCheckpointPending(pid, pass.RendererCreation)))
             {
                 return true;
             }
@@ -252,17 +240,17 @@ namespace PaviseApp
             try
             {
                 boostAction = ReadBoostAction(action, handle);
-                if (!boostAction.HasValue || pass.WriteDenied || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0)
+                if (!boostAction.HasValue || pass.WriteDenied && BoostActionNeedsProcessSetInformation(action) || stopping || panicReq || pass.IdentityGeneration != boostIdentityGeneration || BoostActionIdentity(handle, pass.RendererCreation) != 0)
                 {
                     ActionFailureStore.CancelApply(action, actionTarget);
                     return false;
                 }
-                int writeError = 0;
-                if (!desired(boostAction.Value))
+                int applyIsolatedBoostActionValue = 0;
+                if (!desired(boostAction.Value) || action == "GameGpuPriority" && CrashGuard.BoostGpuCheckpointPending(pid, pass.RendererCreation))
                 {
                     writeAttempted = true;
                     SetBoostActionRecovery(pid, action, true);
-                    writeError = write();
+                    applyIsolatedBoostActionValue = write();
                 }
                 switch (BoostActionIdentity(handle, pass.RendererCreation))
                 {
@@ -295,7 +283,7 @@ namespace PaviseApp
                         return false;
                     }
                     long? boostAction2 = ReadBoostAction(action, handle);
-                    if (writeError == 0 && boostAction2.HasValue && desired(boostAction2.Value))
+                    if (applyIsolatedBoostActionValue == 0 && boostAction2.HasValue && desired(boostAction2.Value))
                     {
                         if (ActionFailureStore.CompleteApply(action, actionTarget))
                         {
@@ -309,7 +297,7 @@ namespace PaviseApp
                         return false;
                     }
                     bool restoreBoostActionSucceeded = RestoreBoostAction(handle, pid, pass.RendererCreation, action);
-                    if (BoostActionSkipStatus(writeError) || (action == "GamePriority" && writeError == 1237))
+                    if (BoostActionSkipStatus(applyIsolatedBoostActionValue) || (action == "GamePriority" && applyIsolatedBoostActionValue == 1237))
                     {
                         if (restoreBoostActionSucceeded)
                         {
@@ -321,7 +309,7 @@ namespace PaviseApp
                         }
                         return false;
                     }
-                    reason = "Game action apply/readback failed; native status " + writeError + (restoreBoostActionSucceeded ? "; original restored" : "；等待恢复");
+                    reason = "Game action apply/readback failed; native status " + applyIsolatedBoostActionValue + (restoreBoostActionSucceeded ? "; original restored" : "；等待恢复");
                     ActionFailureStore.Trip(action, actionTarget, reason);
                     Logger.Warn(action + " | " + actionTarget + " | " + reason);
                     return false;
@@ -382,8 +370,6 @@ namespace PaviseApp
             {
             case "GamePriority":
                 return "GmBoostCpuV1";
-            case "GameMemoryPriority":
-                return "GmBoostMemoryV1";
             case "GameIoPriority":
                 return "GmBoostIoV1";
             case "GameGpuPriority":
@@ -395,23 +381,23 @@ namespace PaviseApp
         private bool ApplySelectedBoostAction(IntPtr handle, int pid, BoostPass pass, string action, bool enabled, Func<long, bool> desired, Func<int> write)
         {
             string key = ResourcePriorityKey(action);
-            HashSet<string> currentBoostResourceSelection;
+            HashSet<string> value;
             if (!enabled)
             {
                 bool hasOwnedAction;
                 lock (sync)
                 {
-                    HashSet<string> currentBoostActionRestorePending;
-                    hasOwnedAction = (boostResourceSelections.TryGetValue(pid, out currentBoostResourceSelection) && currentBoostResourceSelection.Contains(action)) || (boostActionRestorePending.TryGetValue(pid, out currentBoostActionRestorePending) && currentBoostActionRestorePending.Contains(action));
+                    HashSet<string> value2;
+                    hasOwnedAction = (boostResourceSelections.TryGetValue(pid, out value) && value.Contains(action)) || (boostActionRestorePending.TryGetValue(pid, out value2) && value2.Contains(action));
                 }
                 bool actionRestored = !hasOwnedAction || RestoreBoostAction(handle, pid, pass.RendererCreation, action);
                 if (actionRestored)
                 {
                     lock (sync)
                     {
-                        if (boostResourceSelections.TryGetValue(pid, out currentBoostResourceSelection))
+                        if (boostResourceSelections.TryGetValue(pid, out value))
                         {
-                            currentBoostResourceSelection.Remove(action);
+                            value.Remove(action);
                         }
                     }
                     if (!string.IsNullOrEmpty(pass.ActionTarget))
@@ -427,14 +413,14 @@ namespace PaviseApp
             {
                 lock (sync)
                 {
-                    if (!boostResourceSelections.TryGetValue(pid, out currentBoostResourceSelection))
+                    if (!boostResourceSelections.TryGetValue(pid, out value))
                     {
-                        currentBoostResourceSelection = (boostResourceSelections[pid] = new HashSet<string>(StringComparer.Ordinal));
+                        value = (boostResourceSelections[pid] = new HashSet<string>(StringComparer.Ordinal));
                     }
-                    currentBoostResourceSelection.Add(action);
+                    value.Add(action);
                 }
             }
-            RecordAutomation(key, applyIsolatedBoostActionSucceeded ? "applied" : (pass.WriteDenied ? "unsupported" : "unverified"));
+            RecordAutomation(key, applyIsolatedBoostActionSucceeded ? "applied" : (pass.WriteDenied && BoostActionNeedsProcessSetInformation(action) ? "unsupported" : "unverified"));
             return applyIsolatedBoostActionSucceeded;
         }
 

@@ -40,6 +40,7 @@ namespace PaviseApp
             case "AutoLaptopPerformanceV1":
             case "AutoBackgroundCoreLayoutV1":
             case "MatchVisualEffectsV1":
+            case "GmBoostMemoryV1":
                 break;
             }
             return true;
@@ -130,7 +131,6 @@ namespace PaviseApp
             default:
                 return key == "GmBoostGpuV1";
             case "GmBoostCpuV1":
-            case "GmBoostMemoryV1":
             case "GmBoostIoV1":
                 return true;
             }

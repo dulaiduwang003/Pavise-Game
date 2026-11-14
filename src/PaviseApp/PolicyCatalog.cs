@@ -24,8 +24,6 @@ namespace PaviseApp
 
         public const string KeyBoostCpu = "GmBoostCpuV1";
 
-        public const string KeyBoostMemory = "GmBoostMemoryV1";
-
         public const string KeyBoostIo = "GmBoostIoV1";
 
         public const string KeyBoostGpu = "GmBoostGpuV1";
@@ -41,6 +39,8 @@ namespace PaviseApp
         public const string KeyRenderLane = "GmRenderLane";
 
         public const string KeyThreadBoost = "GmThreadBoostStrategyV1";
+
+        public const string KeyGameScheduling = "GmGameSchedulingV1";
 
         public const string KeyPowerPlan = "PowerPlanOn";
 
@@ -104,12 +104,13 @@ namespace PaviseApp
 
         public static readonly string[] HandheldBlocked = new string[0];
 
-        private static readonly PolicyItem[] Items = new PolicyItem[23]
+        private static readonly PolicyItem[] Items = new PolicyItem[24]
         {
             new PolicyItem("PerformancePreset", PolicyValueKind.Enum, "0", "cfg.mode", "cfg.group.mode", new string[2] { "0", "1" }),
             new PolicyItem("GmSuppress", PolicyValueKind.Bool, "1", "v14.bg.master", "cfg.group.bg", null),
             new PolicyItem("BackgroundGovernanceMode", PolicyValueKind.Enum, "0", "background.governance.mode", "cfg.group.bg", new string[2] { "0", "1" }),
             new PolicyItem("GmThreadBoostStrategyV1", PolicyValueKind.Choice, "on", "auto.threadboost", "cfg.group.bg", ThreadBoostSelection.Choices),
+            new PolicyItem(KeyGameScheduling, PolicyValueKind.Bool, "1", "gm.scheduling.title", "cfg.group.bg", null),
             new PolicyItem("GmEnglishInputV1", PolicyValueKind.Bool, "0", "gm.englishinput", "cfg.group.env", null),
             new PolicyItem("GameFamilyBackground", PolicyValueKind.Bool, "0", "lib.family.suppress", "cfg.group.bg", null),
             new PolicyItem("GameDisableFullscreenOptimizationsV1", PolicyValueKind.Bool, "0", "auto.fso", "cfg.group.gpu", null),
@@ -156,12 +157,13 @@ namespace PaviseApp
 
         private static Dictionary<string, PolicyItem> BuildIndex()
         {
-            Dictionary<string, PolicyItem> policyItemsByName = new Dictionary<string, PolicyItem>(StringComparer.Ordinal);
-            foreach (PolicyItem policyItem in Items)
+            Dictionary<string, PolicyItem> dictionary = new Dictionary<string, PolicyItem>(StringComparer.Ordinal);
+            PolicyItem[] items = Items;
+            foreach (PolicyItem policyItem in items)
             {
-                policyItemsByName[policyItem.Key] = policyItem;
+                dictionary[policyItem.Key] = policyItem;
             }
-            return policyItemsByName;
+            return dictionary;
         }
 
         public static PolicyItem ItemOf(string key)
@@ -216,7 +218,8 @@ namespace PaviseApp
                     return policyItem.Fallback;
                 }
                 string resultText = result.ToString(CultureInfo.InvariantCulture);
-                foreach (string entryText in policyItem.Choices)
+                string[] choices2 = policyItem.Choices;
+                foreach (string entryText in choices2)
                 {
                     if (entryText == resultText)
                     {
@@ -231,7 +234,8 @@ namespace PaviseApp
             }
             case PolicyValueKind.Choice:
             {
-                foreach (string entryText2 in policyItem.Choices)
+                string[] choices = policyItem.Choices;
+                foreach (string entryText2 in choices)
                 {
                     if (string.Equals(entryText2, trimmed, StringComparison.OrdinalIgnoreCase))
                     {

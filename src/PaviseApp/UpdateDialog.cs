@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -30,6 +31,7 @@ namespace PaviseApp
         internal bool IsInstalling { get { return installing; } }
 
         private static string T(string zh, string en) { return PerformancePolicy.Text(zh, en); }
+        private static string T(string zh, string en, string ja) { return Lang.Cur == 2 ? ja : T(zh, en); }
 
         internal static UpdateDialog ShowFor(IWin32Window owner, UpdateResult latest, Action<UpdateDialog, string, SelfUpdatePackage> install)
         {
@@ -340,10 +342,10 @@ namespace PaviseApp
             }
             else
             {
-                int progressPercent = p.Total > 0 ? Math.Min(100, Math.Max(0, (int)(p.Received * 100.0 / p.Total))) : 0;
+                int value = p.Total > 0 ? Math.Min(100, Math.Max(0, (int)(p.Received * 100.0 / p.Total))) : 0;
                 progress.Style = p.Total > 0 ? ProgressBarStyle.Continuous : ProgressBarStyle.Marquee;
-                progress.Value = progressPercent;
-                progressTitle.Text = T("下载更新包", "Downloading update") + (p.Total > 0 ? "  " + progressPercent.ToString(CultureInfo.InvariantCulture) + "%" : "");
+                progress.Value = value;
+                progressTitle.Text = T("下载更新包", "Downloading update") + (p.Total > 0 ? "  " + value.ToString(CultureInfo.InvariantCulture) + "%" : "");
                 progressDetail.Text = Bytes(p.Received) + (p.Total > 0 ? " / " + Bytes(p.Total) : "");
                 progress.AccessibleDescription = progressTitle.Text + " " + progressDetail.Text;
             }
@@ -361,17 +363,17 @@ namespace PaviseApp
             bool active = value == "checking" || value == "downloading" || value == "verifying" || value == "installing";
             Text = manual ? T("Pavise 手动更新", "Pavise manual update") : T("Pavise 软件更新", "Pavise software update");
             caption.Text = "PAVISE  //  " + (manual ? T("手动更新", "MANUAL UPDATE") : T("软件更新", "SOFTWARE UPDATE"));
-            title.Text = manual ? T("手动更新", "Manual update") : value == "cancelled" ? T("更新已取消", "Update cancelled") : value == "ready" ? T("发现新版本", "Update available") : value == "ahead" ? T("无需更新", "No update needed") : value == "current" ? T("已是最新版本", "You're up to date") : value == "downloading" ? T("正在下载更新", "Downloading update") : value == "verifying" ? T("正在校验更新包", "Verifying update") : value == "installing" ? T("正在准备安装", "Preparing installation") : T("正在检查更新", "Checking for updates");
+            title.Text = manual ? T("手动更新", "Manual update") : value == "cancelled" ? T("更新已取消", "Update cancelled") : value == "ready" ? T("发现新版本", "Update available") : value == "ahead" ? T("无需更新", "No update needed", "更新は不要です") : value == "current" ? T("已是最新版本", "You're up to date") : value == "downloading" ? T("正在下载更新", "Downloading update") : value == "verifying" ? T("正在校验更新包", "Verifying update") : value == "installing" ? T("正在准备安装", "Preparing installation") : T("正在检查更新", "Checking for updates");
             summary.Text = manual ? T("自动更新失败后已切换为手动更新，请选择下方下载入口。", "Automatic update failed. Choose a manual download below.")
                 : value == "cancelled" ? T("操作已取消，原程序未变更。可以重新检查更新或关闭窗口。", "Operation cancelled; the original program is unchanged. Check again or close this window.")
-                : value == "ahead" ? T("当前版本高于线上版本，无需更新。", "Your version is newer than the online release. No update is needed.")
+                : value == "ahead" ? T("当前版本高于线上版本，无需更新。", "Your version is newer than the online release. No update is needed.", "現在のバージョンは公開版より新しいため、更新は不要です。")
                 : value == "current" ? T("当前运行的是 Pavise v", "You are running Pavise v") + App.Version
                 : value == "ready" ? T("点击更新后自动下载、替换原 EXE 并启动新版；成功后删除旧版。", "Download, replace the original EXE and restart automatically; remove the old version after a successful start.")
                 : value == "installing" ? T("正在安全停止运行，更新窗口将在程序退出后继续安装。", "Safely stopping Pavise. The updater will continue after the app exits.")
                 : T("下载并校验完成后自动替换程序，然后重新启动。", "After download and verification, replace the program and restart.");
             versions.Text = T("当前 v", "Current v") + App.Version
                 + (value == "ahead" && !string.IsNullOrEmpty(latestVersion)
-                    ? "   " + T("线上 v", "Online v") + latestVersion
+                    ? "   " + T("线上 v", "Online v", "公開版 v") + latestVersion
                     : UpdateChecker.IsNewer(latestVersion, App.Version) ? "   →   v" + latestVersion : "");
             progress.Visible = progressTitle.Visible = progressDetail.Visible = stages.Visible = active;
             reason.Visible = manual;
@@ -393,7 +395,7 @@ namespace PaviseApp
             start.Text = value == "cancelled" ? T("重新检查", "Check again") : manual ? T("重试自动更新", "Retry automatic update") : T("立即更新", "Update now");
             cancel.Visible = true;
             cancel.Enabled = !installing;
-            cancel.Text = stoppedRuntime ? T("退出 Pavise", "Exit Pavise") : active ? T("取消更新", "Cancel update") : manual || value == "cancelled" ? T("关闭", "Close") : value == "current" || value == "ahead" ? T("完成", "Done") : T("稍后更新", "Later");
+            cancel.Text = stoppedRuntime ? T("退出 Pavise", "Exit Pavise") : active ? T("取消更新", "Cancel update") : manual || value == "cancelled" ? T("关闭", "Close") : value == "current" || value == "ahead" ? T("完成", "Done", "完了") : T("稍后更新", "Later");
             close.Enabled = !busy;
             footer.Text = manual ? T("更新已停止，个人数据与恢复记录保留。", "Update stopped; personal data and recovery records retained.") : T("游戏库、白名单、个人设置与恢复记录将保留", "Your library, whitelist, settings and recovery records are retained");
             Arrange();

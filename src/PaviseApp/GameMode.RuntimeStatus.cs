@@ -77,14 +77,6 @@ namespace PaviseApp
             }
         }
 
-        private bool GpuPrefStageResidueNeedsRestore
-        {
-            get
-            {
-                return GpuPrefResidueGate(GpuPrefStage.HasResidue);
-            }
-        }
-
         private GameFamilyHistory FamilyHistory
         {
             get
@@ -303,10 +295,6 @@ namespace PaviseApp
                         return Lang.T("v14.boost.no.renderer");
                     }
                     string rendererNameOffset = activeDetection.RendererName ?? activeGame ?? "Game";
-                    if (ProtectedGameRoster.Contains(activeDetection.RendererName))
-                    {
-                        return Lang.F("v14.boost.protected", rendererNameOffset);
-                    }
                     if (boostStateVerified.Contains(activeDetection.RendererPid))
                     {
                         return Lang.F("v14.boost.verified", rendererNameOffset);

@@ -18,6 +18,8 @@ namespace PaviseApp
 
         internal const string FileName = "Pavise.profiles.dat";
 
+        private const string HeaderV5 = "PAVISE_PROFILES_V5";
+
         private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         private readonly string path;
@@ -76,17 +78,17 @@ namespace PaviseApp
 
         internal List<GameProfile> LoadProfiles(bool createIfMissing)
         {
-            List<GameProfile> profiles = Load();
+            List<GameProfile> list = Load();
             if (loadFailed)
             {
-                Save(profiles);
+                Save(list);
                 return new List<GameProfile>();
             }
             if (createIfMissing && !File.Exists(path))
             {
-                Save(profiles);
+                Save(list);
             }
-            return profiles;
+            return list;
         }
 
         public bool Save(IList<GameProfile> profiles)
@@ -148,31 +150,35 @@ namespace PaviseApp
         internal static byte[] SnapshotBytes(IList<GameProfile> profiles)
         {
             ValidateProfiles(profiles);
-            List<string> texts = new List<string>();
-            List<string> currentTexts = new List<string>();
-            List<string> candidateTexts = new List<string>();
-            List<string> resolvedTexts = new List<string>();
-            texts.Add("PAVISE_PROFILES_V5");
+            List<string> list = new List<string>();
+            List<string> list2 = new List<string>();
+            List<string> list3 = new List<string>();
+            List<string> list4 = new List<string>();
+            list.Add("PAVISE_PROFILES_V5");
             foreach (GameProfile profile in profiles)
             {
-                texts.Add("P|" + B64(profile.Id) + "|" + B64(profile.Name) + "|" + B64(profile.Root) + "|" + B64(profile.ExecutablePath) + "|" + B64(Join(profile.Entries)));
+                list.Add("P|" + B64(profile.Id) + "|" + B64(profile.Name) + "|" + B64(profile.Root) + "|" + B64(profile.ExecutablePath) + "|" + B64(Join(profile.Entries)));
                 if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                 {
-                    currentTexts.Add("L|" + B64(profile.Id) + "|" + B64(profile.LearnedExecutablePath));
+                    list2.Add("L|" + B64(profile.Id) + "|" + B64(profile.LearnedExecutablePath));
                 }
                 if (profile.ForceTrigger)
                 {
-                    candidateTexts.Add("F|" + B64(profile.Id));
+                    list3.Add("F|" + B64(profile.Id));
+                }
+                if (profile.DiscoverySource != null)
+                {
+                    list3.Add("D|" + B64(profile.Id) + "|" + B64(profile.DiscoverySource) + "|" + B64(profile.DiscoverySourcePath));
                 }
                 foreach (KeyValuePair<string, string> @override in profile.Overrides)
                 {
-                    resolvedTexts.Add("O|" + B64(profile.Id) + "|" + B64(@override.Key) + "|" + B64(@override.Value));
+                    list4.Add("O|" + B64(profile.Id) + "|" + B64(@override.Key) + "|" + B64(@override.Value));
                 }
             }
-            texts.AddRange(currentTexts);
-            texts.AddRange(candidateTexts);
-            texts.AddRange(resolvedTexts);
-            return StrictUtf8.GetBytes(string.Join(Environment.NewLine, texts.ToArray()) + Environment.NewLine);
+            list.AddRange(list2);
+            list.AddRange(list3);
+            list.AddRange(list4);
+            return StrictUtf8.GetBytes(string.Join(Environment.NewLine, list.ToArray()) + Environment.NewLine);
         }
 
         private static bool CommitAllowed(Func<bool> canCommit)
@@ -283,26 +289,27 @@ namespace PaviseApp
             {
                 throw new FormatException("profiles null");
             }
-            HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (GameProfile profile in profiles)
             {
                 if (profile == null || string.IsNullOrWhiteSpace(profile.Id) || string.IsNullOrWhiteSpace(profile.Name))
                 {
                     throw new FormatException("profile identity missing");
                 }
-                if (!ids.Add(profile.Id))
+                if (!hashSet.Add(profile.Id))
                 {
                     throw new FormatException("duplicate profile id");
                 }
-                string identityKey = IdentityKey(profile.Id, profile.Root, profile.ExecutablePath);
-                if (!textsSet.Add(identityKey))
+                string item = IdentityKey(profile.Id, profile.Root, profile.ExecutablePath);
+                if (!hashSet2.Add(item))
                 {
                     throw new FormatException("duplicate profile identity");
                 }
                 ValidateRootPath(profile.Root);
                 ValidateExecutablePath(profile.ExecutablePath);
                 ValidateExecutablePath(profile.LearnedExecutablePath);
+                ValidateDiscoverySource(profile.DiscoverySource, profile.DiscoverySourcePath);
                 if (profile.ForceTrigger && string.IsNullOrEmpty(profile.PreferredExecutablePath))
                 {
                     throw new FormatException("forced profile has no executable");
@@ -341,6 +348,14 @@ namespace PaviseApp
             }
         }
 
+        private static void ValidateDiscoverySource(string source, string executablePath)
+        {
+            if (source == null && executablePath == null) return;
+            if ((source != "manual" && source != "automatic") || string.IsNullOrEmpty(executablePath))
+                throw new FormatException("invalid profile discovery source");
+            ValidateExecutablePath(executablePath);
+        }
+
         private static void ValidateExecutablePath(string value)
         {
             if (value != null)
@@ -368,23 +383,24 @@ namespace PaviseApp
 
         private List<GameProfile> Load()
         {
-            List<GameProfile> profiles = new List<GameProfile>();
+            List<GameProfile> list = new List<GameProfile>();
             try
             {
                 if (!File.Exists(path))
                 {
-                    return profiles;
+                    return list;
                 }
                 string[] allLines = File.ReadAllLines(path, StrictUtf8);
                 if (allLines.Length == 0 || allLines[0] != "PAVISE_PROFILES_V5")
                 {
                     throw new FormatException("invalid profile header");
                 }
-                Dictionary<string, GameProfile> profilesByName = new Dictionary<string, GameProfile>(StringComparer.OrdinalIgnoreCase);
-                HashSet<string> identityKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                Dictionary<string, string> textsByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                Dictionary<string, Dictionary<string, string>> overridesByProfile = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, GameProfile> dictionary = new Dictionary<string, GameProfile>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, Dictionary<string, string>> dictionary3 = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, string[]> sources = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
                 int processedCount = 0;
                 for (int i = 1; i < allLines.Length; i++)
                 {
@@ -409,22 +425,23 @@ namespace PaviseApp
                         }
                         ValidateRootPath(rootValue);
                         ValidateExecutablePath(executablePathValue);
-                        GameProfile currentGameProfile = new GameProfile();
-                        currentGameProfile.Id = idValue;
-                        currentGameProfile.Name = nameValue;
-                        currentGameProfile.Root = rootValue;
-                        currentGameProfile.ExecutablePath = executablePathValue;
-                        ParseEntries(currentGameProfile.Entries, Decode(parts[5]));
-                        if (profilesByName.ContainsKey(idValue))
+                        GameProfile gameProfile = new GameProfile();
+                        gameProfile.Id = idValue;
+                        gameProfile.Name = nameValue;
+                        gameProfile.Root = rootValue;
+                        gameProfile.ExecutablePath = executablePathValue;
+                        GameProfile gameProfile2 = gameProfile;
+                        ParseEntries(gameProfile2.Entries, Decode(parts[5]));
+                        if (dictionary.ContainsKey(idValue))
                         {
                             throw new FormatException("duplicate profile id");
                         }
-                        if (!identityKeys.Add(IdentityKey(idValue, rootValue, executablePathValue)))
+                        if (!hashSet.Add(IdentityKey(idValue, rootValue, executablePathValue)))
                         {
                             throw new FormatException("duplicate profile identity");
                         }
-                        profilesByName.Add(idValue, currentGameProfile);
-                        profiles.Add(currentGameProfile);
+                        dictionary.Add(idValue, gameProfile2);
+                        list.Add(gameProfile2);
                         continue;
                     }
                     if (parts[0] == "L")
@@ -440,11 +457,11 @@ namespace PaviseApp
                             throw new FormatException("invalid L value");
                         }
                         ValidateExecutablePath(nullIfEmptyResult);
-                        if (textsByName.ContainsKey(decodeResult))
+                        if (dictionary2.ContainsKey(decodeResult))
                         {
                             throw new FormatException("duplicate L record");
                         }
-                        textsByName.Add(decodeResult, nullIfEmptyResult);
+                        dictionary2.Add(decodeResult, nullIfEmptyResult);
                         continue;
                     }
                     if (parts[0] == "F")
@@ -454,10 +471,22 @@ namespace PaviseApp
                             throw new FormatException("invalid F record");
                         }
                         string decodeResult2 = Decode(parts[1]);
-                        if (string.IsNullOrWhiteSpace(decodeResult2) || !textsSet.Add(decodeResult2))
+                        if (string.IsNullOrWhiteSpace(decodeResult2) || !hashSet2.Add(decodeResult2))
                         {
                             throw new FormatException("invalid or duplicate F record");
                         }
+                        continue;
+                    }
+                    if (parts[0] == "D")
+                    {
+                        if (parts.Length != 4) throw new FormatException("invalid D record");
+                        string id = Decode(parts[1]);
+                        string source = Decode(parts[2]);
+                        string executablePath = Decode(parts[3]);
+                        ValidateDiscoverySource(source, executablePath);
+                        if (string.IsNullOrWhiteSpace(id) || sources.ContainsKey(id))
+                            throw new FormatException("invalid or duplicate D record");
+                        sources.Add(id, new[] { source, executablePath });
                         continue;
                     }
                     if (parts[0] == "O")
@@ -486,55 +515,63 @@ namespace PaviseApp
                         {
                             throw new FormatException("invalid O value");
                         }
-                        Dictionary<string, string> currentDictionary;
-                        if (!overridesByProfile.TryGetValue(decodeResult3, out currentDictionary))
+                        Dictionary<string, string> value;
+                        if (!dictionary3.TryGetValue(decodeResult3, out value))
                         {
-                            currentDictionary = (overridesByProfile[decodeResult3] = new Dictionary<string, string>(StringComparer.Ordinal));
+                            value = (dictionary3[decodeResult3] = new Dictionary<string, string>(StringComparer.Ordinal));
                         }
-                        if (currentDictionary.ContainsKey(decodeResult4))
+                        if (value.ContainsKey(decodeResult4))
                         {
                             throw new FormatException("duplicate O record");
                         }
-                        currentDictionary.Add(decodeResult4, decodeResult5);
+                        value.Add(decodeResult4, decodeResult5);
                         continue;
                     }
                     throw new FormatException("unknown profile record");
                 }
-                foreach (KeyValuePair<string, string> textEntry in textsByName)
+                foreach (KeyValuePair<string, string> item in dictionary2)
                 {
-                    GameProfile profile;
-                    if (!profilesByName.TryGetValue(textEntry.Key, out profile))
+                    GameProfile value2;
+                    if (!dictionary.TryGetValue(item.Key, out value2))
                     {
                         throw new FormatException("dangling L record");
                     }
-                    profile.LearnedExecutablePath = textEntry.Value;
+                    value2.LearnedExecutablePath = item.Value;
                 }
-                foreach (string currentTextsSet in textsSet)
+                foreach (string item2 in hashSet2)
                 {
-                    GameProfile currentProfile;
-                    if (!profilesByName.TryGetValue(currentTextsSet, out currentProfile))
+                    GameProfile value3;
+                    if (!dictionary.TryGetValue(item2, out value3))
                     {
                         throw new FormatException("dangling F record");
                     }
-                    currentProfile.ForceTrigger = true;
+                    value3.ForceTrigger = true;
                 }
-                foreach (KeyValuePair<string, Dictionary<string, string>> dictionaryEntry in overridesByProfile)
+                // 旧文件没有 D 记录时保持来源未知，不能根据已有库行或读取次数推断人工确认。
+                foreach (KeyValuePair<string, string[]> source in sources)
                 {
-                    GameProfile candidateProfile;
-                    if (!profilesByName.TryGetValue(dictionaryEntry.Key, out candidateProfile))
+                    GameProfile profile;
+                    if (!dictionary.TryGetValue(source.Key, out profile)) throw new FormatException("dangling D record");
+                    profile.DiscoverySource = source.Value[0];
+                    profile.DiscoverySourcePath = source.Value[1];
+                }
+                foreach (KeyValuePair<string, Dictionary<string, string>> item3 in dictionary3)
+                {
+                    GameProfile value4;
+                    if (!dictionary.TryGetValue(item3.Key, out value4))
                     {
                         throw new FormatException("dangling O record");
                     }
-                    foreach (KeyValuePair<string, string> collectionEntry in dictionaryEntry.Value)
+                    foreach (KeyValuePair<string, string> item4 in item3.Value)
                     {
-                        candidateProfile.Overrides.Add(collectionEntry.Key, collectionEntry.Value);
+                        value4.Overrides.Add(item4.Key, item4.Value);
                     }
-                    if (!ThreadBoostSelection.MigrateOverrides(candidateProfile.Overrides))
+                    if (!ThreadBoostSelection.MigrateOverrides(value4.Overrides))
                     {
                         throw new FormatException("Legacy thread preferences could not be read; original profile data retained");
                     }
                 }
-                ValidateProfiles(profiles);
+                ValidateProfiles(list);
                 if (processedCount > 0)
                 {
                     Logger.Log(PerformancePolicy.Text("游戏库：已忽略 ", "游戏库：已忽略 ") + processedCount + PerformancePolicy.Text(" 条旧的逐游戏“扩大后台范围／智能自适应升档”覆盖，已改由场景规则决定", " 个旧版逐游戏扩大范围或智能动态扩围配置；现由场景规则决定"));
@@ -543,10 +580,10 @@ namespace PaviseApp
             catch (Exception error)
             {
                 loadFailed = true;
-                profiles.Clear();
+                list.Clear();
                 Logger.LogFailure(Lang.T("log.gameprofiles.9", 0), error);
             }
-            return profiles;
+            return list;
         }
 
         public static GameProfile NewProfile(string name, string root)
@@ -556,16 +593,17 @@ namespace PaviseApp
 
         public static GameProfile NewProfile(string name, string root, string executablePath)
         {
-            GameProfile currentGameProfile = new GameProfile();
-            currentGameProfile.Id = Guid.NewGuid().ToString("N");
-            currentGameProfile.Name = (string.IsNullOrEmpty(name) ? "Game" : name);
-            currentGameProfile.Root = NormalizeRoot(root);
-            currentGameProfile.ExecutablePath = NormalizePath(executablePath);
+            GameProfile gameProfile = new GameProfile();
+            gameProfile.Id = Guid.NewGuid().ToString("N");
+            gameProfile.Name = (string.IsNullOrEmpty(name) ? "Game" : name);
+            gameProfile.Root = NormalizeRoot(root);
+            gameProfile.ExecutablePath = NormalizePath(executablePath);
+            GameProfile gameProfile2 = gameProfile;
             if (!string.IsNullOrEmpty(name))
             {
-                currentGameProfile.Entries.Add(StripExe(name));
+                gameProfile2.Entries.Add(StripExe(name));
             }
-            return currentGameProfile;
+            return gameProfile2;
         }
 
         internal static string NormalizeRoot(string value)
@@ -616,7 +654,8 @@ namespace PaviseApp
             {
                 return;
             }
-            foreach (string entryText in text.Split(new char[1] { '\n' }, StringSplitOptions.None))
+            string[] parts = text.Split(new char[1] { '\n' }, StringSplitOptions.None);
+            foreach (string entryText in parts)
             {
                 if (string.IsNullOrWhiteSpace(entryText) || entryText.IndexOf('\r') >= 0 || !set.Add(entryText))
                 {
@@ -627,9 +666,9 @@ namespace PaviseApp
 
         private static string Join(IEnumerable<string> values)
         {
-            List<string> valuesSnapshot = new List<string>(values);
-            valuesSnapshot.Sort(StringComparer.OrdinalIgnoreCase);
-            return string.Join("\n", valuesSnapshot.ToArray());
+            List<string> list = new List<string>(values);
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join("\n", list.ToArray());
         }
 
         private static string B64(string s)

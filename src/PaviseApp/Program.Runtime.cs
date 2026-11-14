@@ -107,9 +107,9 @@ namespace PaviseApp
                 Logger.WritesEnabled = Settings.Load("LogWritesEnabled", true);
                 Logger.RuntimeIdentity();
                 AutostartJobHandoff.LogOutcome();
-                        try { SecurityProductCatalog.StartupScanOnce(); }
-                        catch (SecurityProbeTerminationException error)
-                        { Logger.Warn(error.Message); Environment.ExitCode = 15; return; }
+                try { SecurityProductCatalog.StartupScanOnce(); }
+                catch (SecurityProbeTerminationException error)
+                { Logger.Warn(error.Message); Environment.ExitCode = 15; return; }
                 if (repairStartupTask)
                 {
                     Logger.Log(Lang.T("log.program.1", 0));
@@ -267,7 +267,6 @@ namespace PaviseApp
                 catch
                 {
                 }
-                GpuPrefStage.HealFromCrash();
                 try
                 {
                     AppGpuPreferences.HealFromCrash();
@@ -458,8 +457,8 @@ namespace PaviseApp
                 tamer.ProcessEventsAvailable = procNotify.IsActive;
                 PerformancePreset runtimeIconMode = gameMode.ActivePreset;
                 bool runtimeIconEnabled = gameMode.Enabled;
-                Icon makeMultiIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-                PanelForm panel = new PanelForm(tamer, gameMode, makeMultiIcon, elevated);
+                Icon icon3 = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
+                PanelForm panel = new PanelForm(tamer, gameMode, icon3, elevated);
                 GC.KeepAlive(panel.Handle);
                 if (shouldShowStartupPanel)
                 {
@@ -489,8 +488,8 @@ namespace PaviseApp
                     Native.AllowTaskbarCreatedMessage();
                 }
                 NotifyIcon icon = new NotifyIcon();
-                icon.Icon = (Icon)makeMultiIcon.Clone();
-                makeMultiIcon.Dispose();
+                icon.Icon = (Icon)icon3.Clone();
+                icon3.Dispose();
                 icon.Text = (elevated ? Lang.T("tray.idle") : Lang.T("tray.noelev"));
                 System.Windows.Forms.Timer trayTip = null;
                 System.Windows.Forms.Timer updTimer = null;
@@ -820,12 +819,12 @@ namespace PaviseApp
                             {
                                 panel.BeginRuntimeShutdown(PerformancePolicy.Text("正在停止运行并还原系统改动", "Stopping and restoring system changes"));
                             }
-                            Action currentAction = delegate
+                            Action action2 = delegate
                             {
                                 int files2;
                                 string failure2;
                                 bool cleared = TryResetUserData(dir, stopRuntime, out files2, out failure2, closeApplication ? reportResetProgress : null);
-                                Action candidateAction = delegate
+                                Action action3 = delegate
                                 {
                                     try
                                     {
@@ -853,23 +852,23 @@ namespace PaviseApp
                                 };
                                 if (closeApplication)
                                 {
-                                    if (!uiDispatcher.Post(candidateAction))
+                                    if (!uiDispatcher.Post(action3))
                                     {
                                         throw new InvalidOperationException("UI reset result could not be dispatched");
                                     }
                                 }
                                 else
                                 {
-                                    candidateAction();
+                                    action3();
                                 }
                             };
                             if (closeApplication)
                             {
-                                StartShutdownWorker(currentAction, shutdownFailed);
+                                StartShutdownWorker(action2, shutdownFailed);
                             }
                             else
                             {
-                                currentAction();
+                                action2();
                             }
                         }
                     }
@@ -958,7 +957,7 @@ namespace PaviseApp
                 };
                 if (exitEvt != null)
                 {
-                    Thread currentThread = new Thread((ThreadStart)delegate
+                    Thread thread2 = new Thread((ThreadStart)delegate
                     {
                         exitEvt.WaitOne();
                         try
@@ -969,8 +968,8 @@ namespace PaviseApp
                         {
                         }
                     });
-                    currentThread.IsBackground = true;
-                    currentThread.Start();
+                    thread2.IsBackground = true;
+                    thread2.Start();
                 }
                 icon.ContextMenuStrip = trayMenu.Strip;
                 bool notificationAreaPresentSucceeded;
@@ -1124,35 +1123,35 @@ namespace PaviseApp
                     {
                         runtimeIconMode = activePreset;
                         runtimeIconEnabled = enabled;
-                        using (Icon currentMakeMultiIcon = IconArt.MakeMultiIcon(activePreset, enabled))
+                        using (Icon icon5 = IconArt.MakeMultiIcon(activePreset, enabled))
                         {
-                            Icon currentIcon = icon.Icon;
-                            icon.Icon = (Icon)currentMakeMultiIcon.Clone();
-                            panel.SetRuntimeIcon(currentMakeMultiIcon);
-                            if (currentIcon != null)
+                            Icon icon4 = icon.Icon;
+                            icon.Icon = (Icon)icon5.Clone();
+                            panel.SetRuntimeIcon(icon5);
+                            if (icon4 != null)
                             {
-                                currentIcon.Dispose();
+                                icon4.Dispose();
                             }
                         }
                     }
-                    string text;
+                    string textValue;
                     if (!elevated)
                     {
-                        text = Lang.T("tray.noelev");
+                        textValue = Lang.T("tray.noelev");
                     }
                     else
                     {
                         string activeGame = gameMode.ActiveGame;
                         string armedGame = ((activeGame == null) ? gameMode.ArmedGame : null);
-                        text = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((armedGame != null) ? Lang.F("tray.armed", armedGame) : Lang.T("tray.idle")));
+                        textValue = ((activeGame != null) ? Lang.F("tray.active", activeGame) : ((armedGame != null) ? Lang.F("tray.armed", armedGame) : Lang.T("tray.idle")));
                     }
-                    if (text.Length > 63)
+                    if (textValue.Length > 63)
                     {
-                        text = text.Substring(0, 62) + " ";
+                        textValue = textValue.Substring(0, 62) + " ";
                     }
-                    if (icon.Text != text)
+                    if (icon.Text != textValue)
                     {
-                        icon.Text = text;
+                        icon.Text = textValue;
                     }
                 };
                 trayTip.Start();

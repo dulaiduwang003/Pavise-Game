@@ -56,6 +56,8 @@ namespace PaviseApp
 
         public const int EcoQosFullBuild = 22000;
 
+        private const string X3dServiceKey = "SYSTEM\\CurrentControlSet\\Services\\amd3dvcache";
+
         public static Func<List<string>> LibraryPaths;
 
         public static string EvidenceText(string evidence)
@@ -152,11 +154,11 @@ namespace PaviseApp
                     }
                     string getValueOffset = registryKey.GetValue("ProductName") as string;
                     string getValueOffset2 = registryKey.GetValue("DisplayVersion") as string;
-                    object currentInstance = registryKey.GetValue("CurrentBuildNumber");
-                    object candidateInstance = registryKey.GetValue("UBR");
+                    object value = registryKey.GetValue("CurrentBuildNumber");
+                    object value2 = registryKey.GetValue("UBR");
                     string windowsTextResult = (string.IsNullOrEmpty(getValueOffset) ? "Windows" : getValueOffset);
                     int result;
-                    if (currentInstance != null && int.TryParse(currentInstance.ToString(), out result) && result >= 22000)
+                    if (value != null && int.TryParse(value.ToString(), out result) && result >= 22000)
                     {
                         windowsTextResult = windowsTextResult.Replace("Windows 10", "Windows 11");
                     }
@@ -164,10 +166,10 @@ namespace PaviseApp
                     {
                         windowsTextResult = windowsTextResult + " " + getValueOffset2;
                     }
-                    if (currentInstance != null)
+                    if (value != null)
                     {
                         object instance = windowsTextResult;
-                        windowsTextResult = string.Concat(instance, " ", currentInstance, (candidateInstance != null) ? ("." + candidateInstance) : "");
+                        windowsTextResult = string.Concat(instance, " ", value, (value2 != null) ? ("." + value2) : "");
                     }
                     return windowsTextResult;
                 }
@@ -186,9 +188,9 @@ namespace PaviseApp
                 {
                     if (registryKey != null)
                     {
-                        object instance = registryKey.GetValue("CurrentBuildNumber");
+                        object value = registryKey.GetValue("CurrentBuildNumber");
                         int result;
-                        if (instance != null && int.TryParse(instance.ToString(), out result))
+                        if (value != null && int.TryParse(value.ToString(), out result))
                         {
                             return result;
                         }
@@ -218,8 +220,8 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    object instance = registryKey.GetValue("GameDVR_Enabled");
-                    return instance == null || Convert.ToInt32(instance) != 0;
+                    object value = registryKey.GetValue("GameDVR_Enabled");
+                    return value == null || Convert.ToInt32(value) != 0;
                 }
             }
             catch

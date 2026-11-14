@@ -15,7 +15,7 @@ namespace PaviseApp
                 return false;
             }
             int cls;
-            if (desiredGpu >= 0 && Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) == 0 && cls != desiredGpu)
+            if (desiredGpu >= 0 && (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out cls) != 0 || cls != desiredGpu))
             {
                 return false;
             }
@@ -153,6 +153,54 @@ namespace PaviseApp
             return false;
         }
 
+        internal bool TryReadAntiCheatEvidence(int pid, long creation, out string detail)
+        {
+            detail = "原压制记录不存在或已进入恢复";
+            Entry entry;
+            SuppressionLevel level;
+            uint originalPriority;
+            lock (sync)
+            {
+                if (!map.TryGetValue(pid, out entry) || entry.Creation != creation || creation <= 0
+                    || !AntiCheatThrottled(entry) || !entry.Applied || entry.GaveUp || entry.RestoreInFlight) return false;
+                level = entry.Level;
+                originalPriority = entry.OrigPri;
+            }
+            // 只为首次成功日志补充实际读回，不增加写入、重试或周期采样。
+            IntPtr handle = Native.OpenProcess(4096, false, pid);
+            if (handle == IntPtr.Zero) { detail = "当前进程状态不可读"; return false; }
+            try
+            {
+                if (Native.QueryProcessIdentityState(handle, creation) != 0) { detail = "进程身份已变化或不可核验"; return false; }
+                uint priority = Native.GetPriorityClass(handle);
+                bool priorityMatches = priority != 0 && priority == DesiredPriority(level, originalPriority, true);
+                string priorityName = priority == 64 ? "空闲" : (priority == 16384 ? "低于正常" : priority.ToString());
+                bool qosMatches = true;
+                string qos = "效率模式=系统不支持";
+                if (Native.PowerThrottlingSupported)
+                {
+                    int control, state;
+                    if (!Native.TryQueryPowerThrottling(handle, out control, out state))
+                    {
+                        detail = "CPU优先级=" + priorityName + "；效率模式读回失败";
+                        return false;
+                    }
+                    qosMatches = PowerStateMatches(control, state, Native.EcoQoSWantMask(DesiredTimerSeal(level, true)));
+                    qos = "效率模式=" + (qosMatches ? "已核验" : "未符合策略")
+                        + " 控制位=0x" + control.ToString("X") + " 状态位=0x" + state.ToString("X");
+                }
+                detail = "CPU优先级=" + priorityName + (priorityMatches ? "（已核验）" : "（未符合策略）") + "；" + qos;
+                lock (sync)
+                {
+                    Entry current;
+                    return map.TryGetValue(pid, out current) && object.ReferenceEquals(current, entry)
+                        && current.Applied && !current.GaveUp && !current.RestoreInFlight
+                        && AntiCheatThrottled(current) && current.Level == level && priorityMatches && qosMatches;
+                }
+            }
+            finally { Native.CloseHandle(handle); }
+        }
+
         internal static int DesiredGpuClass(bool demoteEnabled, SuppressReason reasons, SuppressionLevel backgroundLevel, int origGpu)
         {
             if (origGpu < 0)
@@ -177,8 +225,13 @@ namespace PaviseApp
 
         private static int DesiredGpu(Entry e)
         {
-            return DesiredGpuClass(GpuDemoteEnabled && HagsTweak.SchedulingAllowsGpuDemotionCached(), e.Reasons, e.BackgroundLevel, e.OrigGpu);
+            bool managed = GpuDemoteEnabled && HagsTweak.SchedulingAllowsGpuDemotionCached()
+                && (e.Reasons & SuppressReason.Background) != 0 && e.BackgroundLevel >= SuppressionLevel.Restrained;
+            return managed ? DesiredGpuClass(true, e.Reasons, e.BackgroundLevel, e.OrigGpu) : -1;
         }
+
+        private static bool GpuPolicyNeedsRelease(Entry entry)
+        { return entry.GpuLease.PendingCheckpoint || DesiredGpu(entry) < 0 && entry.GpuLease.Phase != 'N' && entry.GpuLease.Phase != 'S'; }
 
         internal static int AntiCheatAuditSeconds(SuppressionLevel level)
         {

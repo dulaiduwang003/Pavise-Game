@@ -25,6 +25,16 @@ namespace PaviseApp
             public IntPtr Reserved;
         }
 
+        private const uint DIGCF_PRESENT = 2u;
+
+        private const uint DIGCF_ALLCLASSES = 4u;
+
+        private const int ERROR_INSUFFICIENT_BUFFER = 122;
+
+        private const int CR_BUFFER_SMALL = 26;
+
+        private const uint DEVPROP_TYPE_STRING = 18u;
+
         private static readonly DEVPROPKEY BusReportedDescKey = new DEVPROPKEY
         {
             fmtid = new Guid(1410045054u, 35648, 17852, 168, 162, 106, 11, 137, 76, 189, 162),
@@ -43,17 +53,17 @@ namespace PaviseApp
 
         public static List<string> ParentChain(string instanceId)
         {
-            List<string> stringBuilderTexts = new List<string>();
+            List<string> list = new List<string>();
             if (string.IsNullOrEmpty(instanceId))
             {
-                return stringBuilderTexts;
+                return list;
             }
             try
             {
                 uint devInst;
                 if (CM_Locate_DevNodeW(out devInst, instanceId, 0u) != 0)
                 {
-                    return stringBuilderTexts;
+                    return list;
                 }
                 for (int i = 0; i < 16; i++)
                 {
@@ -68,7 +78,7 @@ namespace PaviseApp
                         string stringBuilderText = stringBuilder.ToString();
                         if (stringBuilderText.Length != 0 && !stringBuilderText.StartsWith("HTREE", StringComparison.OrdinalIgnoreCase))
                         {
-                            stringBuilderTexts.Add(stringBuilderText);
+                            list.Add(stringBuilderText);
                             devInst = parent;
                             continue;
                         }
@@ -81,7 +91,7 @@ namespace PaviseApp
             {
                 Logger.Warn(Lang.T("log.presentdevices.1", 0) + ex.Message);
             }
-            return stringBuilderTexts;
+            return list;
         }
 
         public static string BusReportedDesc(string instanceId)
@@ -123,31 +133,31 @@ namespace PaviseApp
 
         private static List<string> Enumerate(Guid classGuid, string enumerator, uint flags)
         {
-            List<string> instanceIdOfResults = new List<string>();
-            IntPtr deviceInfoSet = IntPtr.Zero;
+            List<string> list = new List<string>();
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
                 if (classGuid == Guid.Empty)
                 {
-                    deviceInfoSet = SetupDiGetClassDevsW(IntPtr.Zero, enumerator, IntPtr.Zero, flags);
+                    intPtr = SetupDiGetClassDevsW(IntPtr.Zero, enumerator, IntPtr.Zero, flags);
                 }
                 else
                 {
                     Guid classGuid2 = classGuid;
-                    deviceInfoSet = SetupDiGetClassDevsW(ref classGuid2, enumerator, IntPtr.Zero, flags);
+                    intPtr = SetupDiGetClassDevsW(ref classGuid2, enumerator, IntPtr.Zero, flags);
                 }
-                if (deviceInfoSet == IntPtr.Zero || deviceInfoSet == new IntPtr(-1))
+                if (intPtr == IntPtr.Zero || intPtr == new IntPtr(-1))
                 {
-                    return instanceIdOfResults;
+                    return list;
                 }
                 SP_DEVINFO_DATA data = default(SP_DEVINFO_DATA);
                 data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
-                for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(deviceInfoSet, iterationIndex, ref data); iterationIndex++)
+                for (uint iterationIndex = 0u; SetupDiEnumDeviceInfo(intPtr, iterationIndex, ref data); iterationIndex++)
                 {
-                    string instanceIdOfResult = InstanceIdOf(deviceInfoSet, ref data);
+                    string instanceIdOfResult = InstanceIdOf(intPtr, ref data);
                     if (!string.IsNullOrEmpty(instanceIdOfResult))
                     {
-                        instanceIdOfResults.Add(instanceIdOfResult);
+                        list.Add(instanceIdOfResult);
                     }
                     data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
                 }
@@ -158,18 +168,18 @@ namespace PaviseApp
             }
             finally
             {
-                if (deviceInfoSet != IntPtr.Zero && deviceInfoSet != new IntPtr(-1))
+                if (intPtr != IntPtr.Zero && intPtr != new IntPtr(-1))
                 {
                     try
                     {
-                        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+                        SetupDiDestroyDeviceInfoList(intPtr);
                     }
                     catch
                     {
                     }
                 }
             }
-            return instanceIdOfResults;
+            return list;
         }
 
         private static string InstanceIdOf(IntPtr set, ref SP_DEVINFO_DATA data)

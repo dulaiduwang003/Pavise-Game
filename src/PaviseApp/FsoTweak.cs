@@ -6,6 +6,15 @@ namespace PaviseApp
 {
     internal static class FsoTweak
     {
+        private const string LayersKey = "Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers";
+
+        private const string Token = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
+
+        private const string Marker = "~";
+
+        private const string ListKey = "FsoExeList";
+
+        private const char ListSep = '\u001f';
 
         private static readonly object sync = new object();
 
@@ -41,7 +50,8 @@ namespace PaviseApp
                 try
                 {
                     bool allRestored = true;
-                    foreach (string exePath in TrackedExes())
+                    string[] trackedExesResult = TrackedExes();
+                    foreach (string exePath in trackedExesResult)
                     {
                         if (!SetForExe(exePath, false))
                         {
@@ -59,30 +69,32 @@ namespace PaviseApp
 
         private static bool Track(string exePath, bool disabled)
         {
-            List<string> entryTexts = new List<string>();
-            foreach (string entryText in TrackedExes())
+            List<string> list = new List<string>();
+            string[] trackedExesResult = TrackedExes();
+            foreach (string entryText in trackedExesResult)
             {
                 if (!string.Equals(entryText, exePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
             if (disabled)
             {
-                entryTexts.Add(exePath);
+                list.Add(exePath);
             }
-            string joinResult = string.Join('\u001f'.ToString(), entryTexts.ToArray());
-            string text;
-            if (Settings.SaveStr("FsoExeList", joinResult) && Settings.TryLoadStr("FsoExeList", out text))
+            string joinResult = string.Join('\u001f'.ToString(), list.ToArray());
+            string value;
+            if (Settings.SaveStr("FsoExeList", joinResult) && Settings.TryLoadStr("FsoExeList", out value))
             {
-                return text == joinResult;
+                return value == joinResult;
             }
             return false;
         }
 
         private static bool IsTracked(string exePath)
         {
-            foreach (string a in TrackedExes())
+            string[] trackedExesResult = TrackedExes();
+            foreach (string a in trackedExesResult)
             {
                 if (string.Equals(a, exePath, StringComparison.OrdinalIgnoreCase))
                 {
@@ -224,7 +236,8 @@ namespace PaviseApp
 
         private static bool HasToken(string s)
         {
-            foreach (string a in Split(s))
+            string[] textParts = Split(s);
+            foreach (string a in textParts)
             {
                 if (string.Equals(a, "DISABLEDXMAXIMIZEDWINDOWEDMODE", StringComparison.OrdinalIgnoreCase))
                 {
@@ -236,39 +249,40 @@ namespace PaviseApp
 
         private static List<string> OtherTokens(string cur)
         {
-            List<string> entryTexts = new List<string>();
-            foreach (string entryText in Split(cur))
+            List<string> list = new List<string>();
+            string[] textParts = Split(cur);
+            foreach (string entryText in textParts)
             {
                 if (entryText != "~" && !string.Equals(entryText, "DISABLEDXMAXIMIZEDWINDOWEDMODE", StringComparison.OrdinalIgnoreCase))
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
-            return entryTexts;
+            return list;
         }
 
         private static string AddToken(string cur)
         {
-            List<string> texts = new List<string>();
-            texts.Add("~");
-            List<string> currentTexts = texts;
-            currentTexts.AddRange(OtherTokens(cur));
-            currentTexts.Add("DISABLEDXMAXIMIZEDWINDOWEDMODE");
-            return string.Join(" ", currentTexts.ToArray());
+            List<string> list = new List<string>();
+            list.Add("~");
+            List<string> list2 = list;
+            list2.AddRange(OtherTokens(cur));
+            list2.Add("DISABLEDXMAXIMIZEDWINDOWEDMODE");
+            return string.Join(" ", list2.ToArray());
         }
 
         private static string RemoveToken(string cur)
         {
-            List<string> texts = OtherTokens(cur);
-            if (texts.Count == 0)
+            List<string> list = OtherTokens(cur);
+            if (list.Count == 0)
             {
                 return "";
             }
-            List<string> currentTexts = new List<string>();
-            currentTexts.Add("~");
-            List<string> candidateTexts = currentTexts;
-            candidateTexts.AddRange(texts);
-            return string.Join(" ", candidateTexts.ToArray());
+            List<string> list2 = new List<string>();
+            list2.Add("~");
+            List<string> list3 = list2;
+            list3.AddRange(list);
+            return string.Join(" ", list3.ToArray());
         }
     }
 }

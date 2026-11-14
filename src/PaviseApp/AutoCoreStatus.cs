@@ -20,6 +20,8 @@ namespace PaviseApp
 
         public bool ObservationOnly;
 
+        public bool Unrestricted;
+
         public bool Manual;
 
         public bool ManualIsolation;

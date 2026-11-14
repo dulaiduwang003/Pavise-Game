@@ -6,23 +6,35 @@ namespace PaviseApp
 {
     internal static class IrqDeviceInventory
     {
+        private const string EnumRoot = "SYSTEM\\CurrentControlSet\\Enum\\";
+
+        private const string AffSuffix = "\\Device Parameters\\Interrupt Management\\Affinity Policy";
+
+        private const string IntrSuffix = "\\Device Parameters\\Interrupt Management";
+
+        private const string MsiSuffix = "\\Device Parameters\\Interrupt Management\\MessageSignaledInterruptProperties";
+
+        private const string NetClassGuid = "{4d36e972-e325-11ce-bfc1-08002be10318}";
+
+        private const int MaxPerBus = 512;
 
         private static readonly string[] Buses = new string[4] { "PCI", "USB", "HDAUDIO", "ACPI" };
 
         public static List<IrqDevice> Enumerate()
         {
-            List<IrqDevice> irqDevices = new List<IrqDevice>();
-            foreach (string bus in Buses)
+            List<IrqDevice> list = new List<IrqDevice>();
+            string[] buses = Buses;
+            foreach (string bus in buses)
             {
                 try
                 {
-                    Walk(bus, irqDevices);
+                    Walk(bus, list);
                 }
                 catch
                 {
                 }
             }
-            return irqDevices;
+            return list;
         }
 
         private static void Walk(string bus, List<IrqDevice> list)
@@ -33,20 +45,22 @@ namespace PaviseApp
                 {
                     return;
                 }
-                int visitedDevices = 0;
-                foreach (string entryKey in registryKey.GetSubKeyNames())
+                int walkValue = 0;
+                string[] subKeyNames = registryKey.GetSubKeyNames();
+                foreach (string entryKey in subKeyNames)
                 {
                     try
                     {
-                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey(entryKey))
+                        using (RegistryKey registryKey2 = registryKey.OpenSubKey(entryKey))
                         {
-                            if (currentRegistryKey == null)
+                            if (registryKey2 == null)
                             {
                                 continue;
                             }
-                            foreach (string entryKey2 in currentRegistryKey.GetSubKeyNames())
+                            string[] subKeyNames2 = registryKey2.GetSubKeyNames();
+                            foreach (string entryKey2 in subKeyNames2)
                             {
-                                if (++visitedDevices > 512)
+                                if (++walkValue > 512)
                                 {
                                     return;
                                 }
@@ -85,9 +99,9 @@ namespace PaviseApp
                     return null;
                 }
             }
-            using (RegistryKey currentRegistryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId + "\\Control"))
+            using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId + "\\Control"))
             {
-                if (currentRegistryKey == null)
+                if (registryKey2 == null)
                 {
                     return null;
                 }
@@ -98,17 +112,17 @@ namespace PaviseApp
             irqDevice.ClassGuid = ReadStr(instanceId, "ClassGUID");
             try
             {
-                using (RegistryKey candidateRegistryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId))
+                using (RegistryKey registryKey3 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId))
                 {
-                    if (candidateRegistryKey != null)
+                    if (registryKey3 != null)
                     {
-                        irqDevice.Name = (candidateRegistryKey.GetValue("FriendlyName") as string) ?? (candidateRegistryKey.GetValue("DeviceDesc") as string) ?? "";
+                        irqDevice.Name = (registryKey3.GetValue("FriendlyName") as string) ?? (registryKey3.GetValue("DeviceDesc") as string) ?? "";
                         int matchIndex = irqDevice.Name.LastIndexOf(';');
                         if (matchIndex >= 0 && matchIndex + 1 < irqDevice.Name.Length)
                         {
                             irqDevice.Name = irqDevice.Name.Substring(matchIndex + 1);
                         }
-                        irqDevice.Service = (candidateRegistryKey.GetValue("Service") as string) ?? "";
+                        irqDevice.Service = (registryKey3.GetValue("Service") as string) ?? "";
                     }
                 }
             }
@@ -124,11 +138,11 @@ namespace PaviseApp
                 string str = ReadStr(instanceId, "Driver");
                 if (str.Length > 0)
                 {
-                    using (RegistryKey resolvedRegistryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\" + str))
+                    using (RegistryKey registryKey4 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\Class\\" + str))
                     {
-                        if (resolvedRegistryKey != null)
+                        if (registryKey4 != null)
                         {
-                            irqDevice.DriverVersion = (resolvedRegistryKey.GetValue("DriverVersion") as string) ?? "";
+                            irqDevice.DriverVersion = (registryKey4.GetValue("DriverVersion") as string) ?? "";
                         }
                     }
                 }
@@ -140,26 +154,26 @@ namespace PaviseApp
             irqDevice.MultiMessageRisk = LooksMultiQueue(irqDevice);
             try
             {
-                using (RegistryKey selectedRegistryKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId + "\\Device Parameters\\Interrupt Management\\Affinity Policy"))
+                using (RegistryKey registryKey5 = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Enum\\" + instanceId + "\\Device Parameters\\Interrupt Management\\Affinity Policy"))
                 {
                     irqDevice.ConfigurationKnown = true;
-                    if (selectedRegistryKey != null)
+                    if (registryKey5 != null)
                     {
-                        object instance = selectedRegistryKey.GetValue("DevicePolicy");
-                        if (instance != null)
+                        object value = registryKey5.GetValue("DevicePolicy");
+                        if (value != null)
                         {
-                            if (!(instance is int))
+                            if (!(value is int))
                             {
                                 irqDevice.ConfigurationKnown = false;
                             }
                             else
                             {
-                                irqDevice.Policy = (int)instance;
+                                irqDevice.Policy = (int)value;
                             }
                         }
-                        object currentInstance = selectedRegistryKey.GetValue("AssignmentSetOverride");
-                        byte[] value2Offset = currentInstance as byte[];
-                        if (currentInstance != null && (value2Offset == null || value2Offset.Length != 8))
+                        object value2 = registryKey5.GetValue("AssignmentSetOverride");
+                        byte[] value2Offset = value2 as byte[];
+                        if (value2 != null && (value2Offset == null || value2Offset.Length != 8))
                         {
                             irqDevice.ConfigurationKnown = false;
                         }
@@ -167,8 +181,8 @@ namespace PaviseApp
                         {
                             irqDevice.Mask = IrqAffinityEngine.BytesToMask(value2Offset);
                         }
-                        object candidateInstance = selectedRegistryKey.GetValue("DevicePriority");
-                        if (candidateInstance != null && !(candidateInstance is int))
+                        object value3 = registryKey5.GetValue("DevicePriority");
+                        if (value3 != null && !(value3 is int))
                         {
                             irqDevice.ConfigurationKnown = false;
                         }
@@ -207,12 +221,12 @@ namespace PaviseApp
                     {
                         return 0;
                     }
-                    object instance = registryKey.GetValue("MessageNumberLimit");
-                    if (instance == null)
+                    object value = registryKey.GetValue("MessageNumberLimit");
+                    if (value == null)
                     {
                         return 0;
                     }
-                    return Convert.ToInt32(instance);
+                    return Convert.ToInt32(value);
                 }
             }
             catch

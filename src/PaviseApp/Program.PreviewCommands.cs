@@ -81,7 +81,7 @@ namespace PaviseApp
                 Tamer t = new Tamer(core);
                 try
                 {
-                    GameMode gameMode = new GameMode(dataValue, core);
+                    GameMode gameMode2 = new GameMode(dataValue, core);
                     if (pageIndex == 7)
                     {
                         Logger.Log("CORE 守护服务已开启，等待游戏进程");
@@ -98,9 +98,9 @@ namespace PaviseApp
                         Directory.CreateDirectory(nebulaStrikePath);
                         string nebulaStrikeWin64ShippingPath = Path.Combine(nebulaStrikePath, "NebulaStrike-Win64-Shipping.exe");
                         File.Copy(Application.ExecutablePath, nebulaStrikeWin64ShippingPath, true);
-                        gameMode.AddGameExecutable("NEBULA STRIKE", nebulaStrikeWin64ShippingPath);
+                        gameMode2.AddGameExecutable("NEBULA STRIKE", nebulaStrikeWin64ShippingPath);
                     }
-                    using (PanelForm panelForm = new PanelForm(t, gameMode, IconArt.MakeIcon(Dpi.S(24)), true))
+                    using (PanelForm panelForm = new PanelForm(t, gameMode2, IconArt.MakeIcon(Dpi.S(24)), true))
                     {
                         IntPtr handle = panelForm.Handle;
                         GC.KeepAlive(handle);
@@ -133,10 +133,10 @@ namespace PaviseApp
                     contactDialog.Location = new Point(-20000, -20000);
                     contactDialog.Show();
                     Application.DoEvents();
-                    using (Bitmap currentBitmap = new Bitmap(contactDialog.ClientSize.Width, contactDialog.ClientSize.Height))
+                    using (Bitmap bitmap2 = new Bitmap(contactDialog.ClientSize.Width, contactDialog.ClientSize.Height))
                     {
-                        contactDialog.DrawToBitmap(currentBitmap, new Rectangle(0, 0, currentBitmap.Width, currentBitmap.Height));
-                        currentBitmap.Save(args[1], ImageFormat.Png);
+                        contactDialog.DrawToBitmap(bitmap2, new Rectangle(0, 0, bitmap2.Width, bitmap2.Height));
+                        bitmap2.Save(args[1], ImageFormat.Png);
                         return true;
                     }
                 }
@@ -151,15 +151,15 @@ namespace PaviseApp
                 Logger.LogPath = Path.Combine(Paths.Data, "Pavise.preview.log");
                 SuppressionCore core2 = new SuppressionCore();
                 Tamer t2 = new Tamer(core2);
-                GameMode currentGameMode = new GameMode(Paths.Data, core2);
-                currentGameMode.Enabled = Settings.Load("GameModeOn", true);
-                using (Icon makeMultiIcon = IconArt.MakeMultiIcon(currentGameMode.ActivePreset, currentGameMode.Enabled))
+                GameMode gameMode3 = new GameMode(Paths.Data, core2);
+                gameMode3.Enabled = Settings.Load("GameModeOn", true);
+                using (Icon icon2 = IconArt.MakeMultiIcon(gameMode3.ActivePreset, gameMode3.Enabled))
                 {
-                    using (PanelForm currentPanelForm = new PanelForm(t2, currentGameMode, makeMultiIcon, true))
+                    using (PanelForm panelForm2 = new PanelForm(t2, gameMode3, icon2, true))
                     {
-                        currentPanelForm.RealExit = true;
-                        currentPanelForm.ShowPanel();
-                        Application.Run(currentPanelForm);
+                        panelForm2.RealExit = true;
+                        panelForm2.ShowPanel();
+                        Application.Run(panelForm2);
                         return true;
                     }
                 }

@@ -8,12 +8,13 @@ namespace PaviseApp
     {
         internal static bool Request()
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo();
-            startInfo.FileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
-            startInfo.Arguments = "/r /f /t 0";
-            startInfo.UseShellExecute = false;
-            startInfo.CreateNoWindow = true;
-            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            ProcessStartInfo processStartInfo = new ProcessStartInfo();
+            processStartInfo.FileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+            processStartInfo.Arguments = "/r /f /t 0";
+            processStartInfo.UseShellExecute = false;
+            processStartInfo.CreateNoWindow = true;
+            processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            ProcessStartInfo startInfo = processStartInfo;
             try
             {
                 using (Process process = Process.Start(startInfo))

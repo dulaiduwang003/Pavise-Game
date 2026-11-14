@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 
 namespace PaviseApp
 {
@@ -20,9 +22,8 @@ namespace PaviseApp
     {
         private static ConfigurationPresetEntry E(string key, string zh, string en, string normal, string extreme, bool restart = false)
         { return new ConfigurationPresetEntry(key, zh, en, normal, extreme, restart); }
+        // 游戏卡片的调度、选核及资源优先级独立保存，不纳入性能预设。
         internal static readonly ConfigurationPresetEntry[] Entries = {
-            E("GmBoost", "性能优先级", "Game resource priorities", "1", "1"),
-            E("GmThreadBoostStrategyV1", "游戏线程提优", "Game thread boost", "on", "on"),
             E("AutoNtfsShortNamesV1", "游戏盘短文件名减负", "Game-volume short names", "0", "1"),
             E("GmCacheWarmV2", "缓存预热", "Cache warm-up", "0", "0"),
             E("AutoGameMitigationsV1", "游戏保护开销减负 · CFG", "Game mitigation overhead · CFG", "0", "1", true),
@@ -38,7 +39,6 @@ namespace PaviseApp
             E("GameDvrOff", "关闭 Game DVR 与 Xbox 后台录制", "Disable Game DVR and Xbox capture", "0", "0"),
             E("NvMaxPerf", "NVIDIA 电源模式最高性能优先", "NVIDIA prefer maximum performance", "0", "1", true),
             E("NvShaderCache", "NVIDIA 着色器缓存无上限", "NVIDIA unlimited shader cache", "0", "0", true),
-            E("GpuPrefStageOn", "游戏高性能显卡预选", "High-performance GPU for games", "0", "1", true),
             E("AutoOpenGlThreadsV1", "游戏 OpenGL 驱动多线程", "Game OpenGL driver threading", "0", "0", true),
             E("NvLowLat", "游戏低延迟", "Game low latency", "off", "on", true),
             E("EnvNtfsLastAccessV1", "关闭 NTFS 最后访问时间更新", "Disable NTFS last-access updates", "0", "1", true),
@@ -56,6 +56,30 @@ namespace PaviseApp
             E("LabAudioLowBufferV1", "音频低缓冲流", "Low-buffer audio stream", "0", "0"),
             E("LabCpuIdleStrategyV1", "CPU 空闲策略", "CPU idle policy", "default", "default")
         };
+        internal static bool IsGameTuningKey(string key)
+        {
+            switch (key)
+            {
+            case "GmBoost":
+            case "GmBoostCpuV1":
+            case "GmBoostIoV1":
+            case "GmBoostGpuV1":
+            case "GmBoostMemoryV1":
+            case "GmThreadBoostStrategyV1":
+            case "GmRenderLane":
+            case "FrameCoordination":
+            case "GmGameSchedulingV1":
+            case "GameCriticalThreadHardRuleV1":
+            case "GmAutoCoresV2":
+            case "GmManualCorePlanV2":
+            case "GameFamilyBackground":
+            case "GameNvRebarV1":
+            case "GameDisableFullscreenOptimizationsV1":
+                return true;
+            default:
+                return false;
+            }
+        }
         internal static string Name(ConfigurationPresetKind preset)
         { return PerformancePolicy.Text(preset == ConfigurationPresetKind.Extreme ? "极限配置" : "作者同款", preset == ConfigurationPresetKind.Extreme ? "Extreme setup" : "Author’s setup"); }
     }

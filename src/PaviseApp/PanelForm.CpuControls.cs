@@ -20,17 +20,59 @@ namespace PaviseApp
             ManualCorePlan manualCorePlan = ManualCorePlan.Parse(coreDraftExpected);
             return new ManualCorePlan(coreEditMatrix.Selected, coreIsolationToggle.Checked, coreDraftTopology, manualCorePlan != null && manualCorePlan.HardAffinity);
         }
+        private bool CoreDraftHasChanges()
+        {
+            bool samePlan = coreDraftExpected == null && coreEditMatrix.Selected == 0 && !coreIsolationToggle.Checked
+                || CoreDraftPlan().Encode() == coreDraftExpected;
+            return !samePlan;
+        }
+        private CoreEditorDraftSnapshot CaptureCoreDraft()
+        {
+            if (coreDraftProfile == null || coreEditMatrix == null || coreEditMatrix.IsDisposed) return null;
+            return new CoreEditorDraftSnapshot { Profile = coreDraftProfile, Expected = coreDraftExpected,
+                Topology = coreDraftTopology, Error = coreSaveError, Mask = coreEditMatrix.Selected,
+                Isolation = coreIsolationToggle.Checked,
+                Baseline = coreDraftBaseline, EnabledValue = coreDraftEnabledValue };
+        }
+        private bool CoreDraftBaselineMatches(GameProfile current)
+        {
+            if (current == null || coreDraftBaseline == null || current.Id != coreDraftProfile) return false;
+            string before, now;
+            coreDraftBaseline.Overrides.TryGetValue(PolicyCatalog.KeyAutoCores, out before);
+            current.Overrides.TryGetValue(PolicyCatalog.KeyAutoCores, out now);
+            return ManualCorePlan.Raw(current) == coreDraftExpected && CriticalThreadRule.Raw(current) == CriticalThreadRule.Raw(coreDraftBaseline)
+                && before == now && PolicyResolver.For(current).ValueOf(PolicyCatalog.KeyAutoCores) == coreDraftEnabledValue;
+        }
+        private void ReloadCoreDraft(GameProfile profile)
+        {
+            coreRebuildDraft = null;
+            coreDraftProfile = profile == null ? null : profile.Id;
+            coreDraftBaseline = profile == null ? null : profile.Clone();
+            coreDraftExpected = ManualCorePlan.Raw(profile);
+            coreDraftEnabledValue = profile == null ? "0" : PolicyResolver.For(profile).ValueOf(PolicyCatalog.KeyAutoCores);
+            coreSaveError = null;
+            if (profile == null) return;
+            RestoreCoreSelection();
+        }
         private void CoreDraftChanged()
         {
+            if (coreDraftProfile == null || coreIsolationToggle == null || coreSaveButton == null) return;
             ManualCorePlan manualCorePlan = CoreDraftPlan();
-            string validateCurrentResult = manualCorePlan.ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
-            bool draftChanged = manualCorePlan.Encode() != coreDraftExpected;
-            coreEditorResult.Text = ((coreSaveError == "schedule.manual.changed") ? Lang.T(coreSaveError) : ((coreSaveError != null) ? Lang.F("schedule.manual.autofailed", Lang.T(coreSaveError)) : ((validateCurrentResult == null) ? Lang.T(coreEnableToggle.Checked ? "schedule.manual.autosaved" : "schedule.manual.savedoff") : ((coreDraftExpected == null && coreEditMatrix.Selected == 0) ? Lang.T("schedule.manual.required") : Lang.F(draftChanged ? "schedule.manual.unsaved" : "schedule.manual.invalid", Lang.T(validateCurrentResult))))));
-            coreEditorResult.ForeColor = ((coreSaveError != null || (validateCurrentResult != null && (coreEditMatrix.Selected != 0 || coreDraftExpected != null))) ? Theme.Warning : Theme.Dim);
-            coreEditorResult.Visible = coreSaveError != null || validateCurrentResult != null;
+            string validateCurrentResult = manualCorePlan.ValidateCurrent(coreEditMatrix.DisabledMask);
+            bool draftChanged = CoreDraftHasChanges();
+            bool conflict = !CoreDraftBaselineMatches(FindLibraryProfile(coreDraftProfile));
+            if (conflict) coreSaveError = "schedule.manual.changed";
+            coreEditorResult.Text = coreSaveError != null ? Lang.F("schedule.manual.autofailed", Lang.T(coreSaveError))
+                : validateCurrentResult != null ? Lang.F("schedule.manual.unsaved", Lang.T(validateCurrentResult))
+                : Lang.T(draftChanged ? "schedule.manual.draft" : coreDraftEnabledValue == "1" ? "schedule.manual.autosaved" : "schedule.manual.savedoff");
+            coreEditorResult.ForeColor = coreSaveError != null || validateCurrentResult != null ? Theme.Warning : Theme.Dim;
+            coreEditorResult.Visible = true;
+            coreSaveButton.Enabled = draftChanged && validateCurrentResult == null;
+            coreSaveButton.Kind = coreSaveButton.Enabled ? BtnKind.Primary : BtnKind.Normal;
+            coreResetButton.Enabled = draftChanged || conflict || coreSaveError != null;
             coreEditorHelp.Text = Lang.T("schedule.manual.help");
             SyncCoreRuntimePresentation();
-            coreIsolationToggle.Enabled = coreIsolationToggle.Checked || new ManualCorePlan(coreEditMatrix.Selected, true, coreDraftTopology).ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask) == null;
+            coreIsolationToggle.Enabled = coreIsolationToggle.Checked || new ManualCorePlan(coreEditMatrix.Selected, true, coreDraftTopology).ValidateCurrent(coreEditMatrix.DisabledMask) == null;
             SyncCoreShortcuts();
             LayoutCoreEditor();
             if (coreStatusPanel != null)
@@ -45,29 +87,28 @@ namespace PaviseApp
                 return;
             }
             coreSaveError = null;
+            coreEditMatrix.DisabledMask = AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask;
             ManualCorePlan manualCorePlan = CoreDraftPlan();
-            if (manualCorePlan.ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask) != null)
+            if (manualCorePlan.ValidateCurrent(coreEditMatrix.DisabledMask) != null)
             {
                 CoreDraftChanged();
                 return;
             }
-            if (manualCorePlan.Encode() == coreDraftExpected)
+            if (!CoreDraftHasChanges())
             {
                 CoreDraftChanged();
                 return;
             }
-            GameProfile profile = FindLibraryProfile(coreDraftProfile);
-            bool enabled = profile != null && ManualCorePlan.Parse(coreDraftExpected) != null && PolicyResolver.For(profile).AutoCoresAllowed;
-            string saveCoreConfigurationWithRenderResult = SaveCoreConfigurationWithRender(profile, coreDraftExpected, manualCorePlan, enabled);
+            string expectedOverride;
+            coreDraftBaseline.Overrides.TryGetValue(PolicyCatalog.KeyAutoCores, out expectedOverride);
+            // 启用状态统一由深度调优控制，保存选核时保留原有覆盖值及继承关系。
+            string saveCoreConfigurationWithRenderResult = SaveCoreConfigurationWithRender(coreDraftBaseline, coreDraftExpected, manualCorePlan, coreDraftEnabledValue == "1",
+                CriticalThreadRule.Raw(coreDraftBaseline), coreDraftEnabledValue,
+                new CoreRangeSwitchDraft(expectedOverride, true));
             if (saveCoreConfigurationWithRenderResult == null)
             {
-                coreDraftExpected = manualCorePlan.Encode();
+                ReloadCoreDraft(FindLibraryProfile(coreDraftProfile));
             }
-            else
-            {
-                RestoreCoreSelection();
-            }
-            SyncCoreEditor(CorePageProfile());
             coreSaveError = saveCoreConfigurationWithRenderResult;
             CoreDraftChanged();
         }
@@ -140,25 +181,27 @@ namespace PaviseApp
                 Mask = mask,
                 Threads = threads
             };
-            PillButton currentPillButton = new PillButton(title);
-            currentPillButton.Name = "coreQuick_" + name;
-            currentPillButton.Tag = choice;
-            currentPillButton.AccessibleName = title;
-            currentPillButton.Size = new Size(Math.Max(Theme.S(72), TextRenderer.MeasureText(title, Theme.UI(9f, true)).Width + Theme.S(28)), Theme.S(30));
-            currentPillButton.Click += delegate
+            PillButton pillButton = new PillButton(title);
+            pillButton.Name = "coreQuick_" + name;
+            pillButton.Tag = choice;
+            pillButton.AccessibleName = title;
+            PillButton pillButton2 = pillButton;
+            pillButton2.Size = new Size(Math.Max(Theme.S(72), TextRenderer.MeasureText(title, Theme.UI(9f, true)).Width + Theme.S(28)), Theme.S(30));
+            pillButton2.Click += delegate
             {
                 if (coreDraftProfile != null)
                 {
                     coreEditMatrix.Selected = CoreShortcutTarget(choice);
                     coreDraftTopology = ManualCorePlan.CurrentStamp();
-                    SaveCoreDraft();
+                    coreSaveError = null;
+                    CoreDraftChanged();
                 }
             };
-            coreQuickPanel.Controls.Add(currentPillButton);
+            coreQuickPanel.Controls.Add(pillButton2);
         }
         private ulong CoreShortcutTarget(CoreQuickChoice choice)
         {
-            ulong availableCoreMask = CpuTopology.AllMask & ~(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask);
+            ulong availableCoreMask = CpuTopology.AllMask & ~coreEditMatrix.DisabledMask;
             if (choice.Threads != 0)
             {
                 return CoreShortcutThreads(coreEditMatrix.Selected, availableCoreMask, CpuTopology.PhysicalCoreMasks(), choice.Threads == 2);
@@ -168,12 +211,12 @@ namespace PaviseApp
         internal static ulong CoreShortcutThreads(ulong selected, ulong available, ulong[] physical, bool includeSiblings)
         {
             ulong coreShortcutThreadsResult = 0uL;
-            foreach (ulong currentPhysical in physical)
+            foreach (ulong numericValueEntry in physical)
             {
-                ulong availableMask = currentPhysical & selected & available;
+                ulong availableMask = numericValueEntry & selected & available;
                 if (availableMask != 0)
                 {
-                    coreShortcutThreadsResult |= (includeSiblings ? (currentPhysical & available) : (availableMask & (~availableMask + 1)));
+                    coreShortcutThreadsResult |= (includeSiblings ? (numericValueEntry & available) : (availableMask & (~availableMask + 1)));
                 }
             }
             return coreShortcutThreadsResult;
@@ -202,21 +245,6 @@ namespace PaviseApp
             coupled = false;
             return ThreadUi("本游戏不运行线程提优，不与此规则叠加。", "Thread boost does not run for this game and does not combine with this rule.");
         }
-        private CriticalThreadRule CriticalThreadSwitchRule(out string error)
-        {
-            if (criticalThreadAllowedError != null)
-            {
-                error = criticalThreadAllowedError;
-                return null;
-            }
-            CriticalThreadRule criticalThreadRule = CriticalThreadRule.Auto(true);
-            error = criticalThreadRule.Validate(criticalThreadAll, criticalThreadPhysical, criticalThreadAllowed, criticalThreadReserved, criticalThreadTopologyTrusted);
-            if (error != null)
-            {
-                return null;
-            }
-            return criticalThreadRule;
-        }
         private string CriticalThreadRuntimeText()
         {
             CriticalThreadUiState criticalThreadUiState = criticalThreadView;
@@ -243,15 +271,17 @@ namespace PaviseApp
             }
             if (snapshotFresh && criticalThreadUiState.Applied)
             {
-                threadUiResult = threadUiResult + "\n" + ThreadUi("最近原生回读已匹配；不代表性能收益。", "Last native readback matched; this does not prove a performance gain.");
+                threadUiResult = threadUiResult + "\n" + ThreadUi("最近一次核验已通过。", "Last verification passed.");
             }
             string threadUiResultOffset = ThreadUi("运行状态（缓存快照）", "Runtime state (cached snapshot)") + "\n" + threadUiResult;
-            if (criticalThreadUiState.SessionActive && criticalThreadRule != null && criticalThreadRule.Encode() != criticalThreadUiState.RuleSignature)
+            CriticalThreadRule activeRule = CriticalThreadRule.ParseForRuntime(criticalThreadUiState.RuleSignature);
+            if (criticalThreadUiState.SessionActive && criticalThreadRule != null && activeRule != null && criticalThreadRule.Encode() != activeRule.Encode())
             {
-                threadUiResultOffset = threadUiResultOffset + "\n" + ThreadUi("本局策略与新保存规则不同；保存不等于已经应用。", "The session policy differs from the saved rule; saving does not mean it has been applied.");
+                threadUiResultOffset = threadUiResultOffset + "\n" + ThreadUi("新保存的规则下局生效。", "The saved rule applies next session.");
             }
             object instance = threadUiResultOffset;
-            threadUiResultOffset = string.Concat(instance, "\n", ThreadUi("候选数：", "Candidates: "), criticalThreadUiState.Candidates);
+            if (criticalThreadRule != null && !criticalThreadRule.IsUnified)
+                threadUiResultOffset = string.Concat(instance, "\n", ThreadUi("候选数：", "Candidates: "), criticalThreadUiState.Candidates);
             if (!string.IsNullOrEmpty(criticalThreadUiState.CoverageText))
             {
                 threadUiResultOffset = threadUiResultOffset + "\n" + (snapshotFresh ? "" : ThreadUi("上次覆盖：", "Previous coverage: ")) + criticalThreadUiState.CoverageText;
@@ -277,8 +307,8 @@ namespace PaviseApp
             ulong[] candidateMasks = criticalThreadUiState.CandidateMasks;
             for (int i = 0; i < candidateMasks.Length; i++)
             {
-                object currentThreadUiResultOffset = threadUiResultOffset;
-                threadUiResultOffset = string.Concat(currentThreadUiResultOffset, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
+                object instance2 = threadUiResultOffset;
+                threadUiResultOffset = string.Concat(instance2, "\n", ThreadUi("候选 ", "Candidate "), i + 1, ": ", (i < candidateLabels.Length) ? candidateLabels[i] : "", " → ", CpuTopology.DescribeMask(candidateMasks[i]));
             }
             if (!string.IsNullOrEmpty(criticalThreadUiState.Detail))
             {
@@ -286,37 +316,93 @@ namespace PaviseApp
             }
             return threadUiResultOffset;
         }
+        // 界面台架用它替代模态确认；产品运行时保持为空。
+        internal Func<bool> SchedulingRiskConfirmForTest;
+
+        // 渲染线程调度逐游戏默认关闭。开启前说明效果需自行对照、可能变差；取消时不写入任何配置。
+        private bool ConfirmSchedulingRisk()
+        {
+            if (SchedulingRiskConfirmForTest != null) return SchedulingRiskConfirmForTest();
+            return PaviseDialog.Confirm(LibraryDialogOwner, Lang.T("lib.threads.title"), Lang.T("lib.threads.enable.warn"), DlgKind.Warn);
+        }
+
         private void SaveCriticalThreadSwitch(bool enabled)
         {
             if (criticalThreadProfile == null || criticalThreadSyncing)
             {
                 return;
             }
-            string error = null;
-            CriticalThreadRule criticalThreadRule = (enabled ? CriticalThreadSwitchRule(out error) : null);
+            // 确认窗口关闭后界面可能已切换或销毁；规则与开关的并发变化由下方的原值校验拦截。
+            if (enabled && (!ConfirmSchedulingRisk() || IsDisposed || Disposing || criticalThreadProfile == null || criticalThreadSyncing))
+            {
+                return;
+            }
+            GameProfile profile = FindLibraryProfile(criticalThreadProfile);
+            string expectedEnabled = null;
+            string error = profile == null || CriticalThreadRule.Raw(profile) != criticalThreadExpected
+                ? ThreadUi("游戏规则已变化，请重新打开", "The game rule changed; reopen the editor") : null;
+            if (profile != null) profile.Overrides.TryGetValue(PolicyCatalog.KeyGameScheduling, out expectedEnabled);
+            CriticalThreadRule stored = profile == null ? null : CriticalThreadRule.Parse(CriticalThreadRule.Raw(profile));
+            if (error == null && enabled && stored != null && stored.IsComparison)
+                error = ThreadUi("优先级对照已移除，请先选择一种正式策略", "Priority comparison was removed; choose a scheduling strategy first");
+            bool changedMaster = false, originalMaster = false, deferred = false;
+            int writtenGeneration = 0;
+            // 仅显式打开外层开关可恢复隐藏的全局总开关。策略弹窗不改变开关。
+            if (error == null && enabled && PolicyResolver.RawGlobalValue(PolicyCatalog.KeyGameScheduling) != "1")
+            {
+                changedMaster = Settings.SaveGameSchedulingMaster(true, out originalMaster, out writtenGeneration);
+                if (!changedMaster)
+                    error = ThreadUi("未能恢复渲染线程调度，请重试。", "Could not restore render thread scheduling. Please retry.");
+                else
+                {
+                    gameMode.RefreshAutomaticPreferences();
+                    RefreshAutomationPage();
+                }
+            }
             if (error == null)
             {
-                error = gameMode.SaveCriticalThreadRule(criticalThreadProfile, criticalThreadExpected, criticalThreadRule);
+                error = gameMode.SaveCriticalThreadEnabled(criticalThreadProfile, criticalThreadExpected, expectedEnabled, enabled, out deferred);
                 if (error == null)
                 {
                     criticalThreadExpected = CriticalThreadRule.Raw(FindLibraryProfile(criticalThreadProfile));
                 }
             }
+            if (error != null && changedMaster)
+            {
+                bool superseded;
+                bool restored = Settings.RestoreGameSchedulingMasterIfUnchanged(writtenGeneration, true, originalMaster, out superseded);
+                if (restored)
+                {
+                    gameMode.RefreshAutomaticPreferences();
+                    RefreshAutomationPage();
+                }
+                else
+                {
+                    string rollback = superseded
+                        ? ThreadUi("全局设置随后已有修改，本次未覆盖；请核对当前开关。", "Global settings changed afterward and were retained; check the current switch.")
+                        : ThreadUi("全局开关回滚未确认，请核对当前开关。", "Global switch rollback could not be confirmed; check the current switch.");
+                    Logger.Warn("游戏调度 逐游戏开关保存失败；全局回滚=" + (superseded ? "保留后续设置修改" : "未确认") + "；游戏=" + criticalThreadProfile);
+                    error += "\n" + rollback;
+                }
+            }
+            if (error == null && deferred)
+                error = ThreadUi("开关已开启；本局识别阶段已关闭，保留采集预算，下局应用已选策略。", "The switch is on; this session's capture stage was closed. Its budget is retained and the selected strategy starts next session.");
             criticalThreadError = error;
             SyncCriticalThreadEditor(FindLibraryProfile(criticalThreadProfile));
         }
         private PerformanceInfoButton CoreInfo(Control parent, string name, string title, Func<string> body)
         {
-            PerformanceInfoButton currentPerformanceInfoButton = new PerformanceInfoButton();
-            currentPerformanceInfoButton.Name = name;
-            currentPerformanceInfoButton.AccessibleName = title;
-            currentPerformanceInfoButton.Bg = Theme.Card;
-            currentPerformanceInfoButton.Click += delegate
+            PerformanceInfoButton performanceInfoButton = new PerformanceInfoButton();
+            performanceInfoButton.Name = name;
+            performanceInfoButton.AccessibleName = title;
+            performanceInfoButton.Bg = Theme.Card;
+            PerformanceInfoButton performanceInfoButton2 = performanceInfoButton;
+            performanceInfoButton2.Click += delegate
             {
                 ShowCoreInformation(title, body());
             };
-            parent.Controls.Add(currentPerformanceInfoButton);
-            return currentPerformanceInfoButton;
+            parent.Controls.Add(performanceInfoButton2);
+            return performanceInfoButton2;
         }
         private string CoreWorkspaceLayoutKey()
         {

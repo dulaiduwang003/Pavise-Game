@@ -25,29 +25,31 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("Closed manual SPI evidence has another owner");
             }
-            HashSet<string> slots = new HashSet<string>(StringComparer.Ordinal);
-            foreach (MatchVisualEffects.Effect effect in MatchVisualEffects.Effects)
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
+            MatchVisualEffects.Effect[] effects = MatchVisualEffects.Effects;
+            foreach (MatchVisualEffects.Effect effect in effects)
             {
-                slots.Add(PerformanceActionStore.Slot("MatchVisualEffectsV1", effect.Name));
+                hashSet.Add(PerformanceActionStore.Slot("MatchVisualEffectsV1", effect.Name));
             }
-            Dictionary<string, string> textsByName = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.Ordinal);
             string substringResult = @string.Substring(headerResult.Length);
             string message = null;
             if (substringResult.Length != 0)
             {
-                foreach (string entryText in substringResult.TrimEnd('\n').Split('\n'))
+                string[] trimEndParts = substringResult.TrimEnd('\n').Split('\n');
+                foreach (string entryText in trimEndParts)
                 {
                     string[] entryTextParts = entryText.Split('\t');
-                    if (entryTextParts.Length != 2 || !slots.Contains(entryTextParts[0]) || textsByName.ContainsKey(entryTextParts[0]) || (message != null && string.CompareOrdinal(message, entryTextParts[0]) >= 0))
+                    if (entryTextParts.Length != 2 || !hashSet.Contains(entryTextParts[0]) || dictionary.ContainsKey(entryTextParts[0]) || (message != null && string.CompareOrdinal(message, entryTextParts[0]) >= 0))
                     {
                         throw new InvalidDataException("Invalid closed manual SPI receipt coordinate");
                     }
                     SpiOwnerIdentity.Hash(entryTextParts[1]);
-                    textsByName.Add(entryTextParts[0], entryTextParts[1]);
+                    dictionary.Add(entryTextParts[0], entryTextParts[1]);
                     message = entryTextParts[0];
                 }
             }
-            return textsByName;
+            return dictionary;
         }
     }
 }

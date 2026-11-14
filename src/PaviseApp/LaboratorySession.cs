@@ -250,19 +250,19 @@ namespace PaviseApp
         {
             while (true)
             {
-                LaboratorySelection laboratorySelection; bool end, clean; long capturedSession;
-                lock (gate) { laboratorySelection = desired; end = closing; clean = restored; capturedSession = session; }
+                LaboratorySelection value; bool end, clean; long capturedSession;
+                lock (gate) { value = desired; end = closing; clean = restored; capturedSession = session; }
                 try
                 {
-                    if (!end && laboratorySelection.Any)
+                    if (!end && value.Any)
                     {
                         bool admitted;
                         lock (gate)
                         {
-                            admitted = !closing && ReferenceEquals(desired, laboratorySelection) && session == capturedSession;
+                            admitted = !closing && ReferenceEquals(desired, value) && session == capturedSession;
                             if (admitted) restored = false;
                         }
-                        if (admitted) { Apply(laboratorySelection, capturedSession); PublishStates(); }
+                        if (admitted) { Apply(value, capturedSession); PublishStates(); }
                     }
                     else if (!clean)
                     {
@@ -275,15 +275,15 @@ namespace PaviseApp
                 {
                     lock (gate) failure = PerformancePolicy.Text("实验执行异常：", "Lab execution failed: ") + error.GetType().Name;
                     // 同一会话中关闭再开启或 A-B-A 的发布过程，不能为失败配置刷新预算。
-                    lock (gate) if (ReferenceEquals(desired, laboratorySelection) && session == capturedSession)
-                    { if (failedIntents.Add(laboratorySelection.Identity)) Logger.Warn("实验室选择失败，会话=" + capturedSession + " 选择=" + laboratorySelection.Identity + " 原因=" + error.GetType().Name + "；应用预算已耗尽"); desired = new LaboratorySelection(); }
+                    lock (gate) if (ReferenceEquals(desired, value) && session == capturedSession)
+                    { if (failedIntents.Add(value.Identity)) Logger.Warn("实验室选择失败，会话=" + capturedSession + " 选择=" + value.Identity + " 原因=" + error.GetType().Name + "；应用预算已耗尽"); desired = new LaboratorySelection(); }
                     try { bool ok = RestoreBounded(); lock (gate) { restored = ok; Monitor.PulseAll(gate); } } catch { }
                 }
                 if (end) break;
                 bool recoveryExhausted;
-                lock (gate) { clean = restored; laboratorySelection = desired; }
+                lock (gate) { clean = restored; value = desired; }
                 recoveryExhausted = RecoveryExhausted();
-                wake.WaitOne(laboratorySelection.Any ? 1000 : clean || recoveryExhausted ? Timeout.Infinite : 5000);
+                wake.WaitOne(value.Any ? 1000 : clean || recoveryExhausted ? Timeout.Infinite : 5000);
             }
         }
         internal bool WaitForRestore(int timeoutMs)

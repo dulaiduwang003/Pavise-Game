@@ -1,6 +1,6 @@
 namespace PaviseApp
 {
-    // 旧记录早于写入所有权机制。即使在原生写入与完成回执之间崩溃，恢复意图仍然有效。
+    // 兼容所有权机制引入前的记录；原生写入后、完成回执前崩溃时仍保留恢复意图。
 
     internal enum BoostPriorityPhase
     {

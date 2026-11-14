@@ -66,13 +66,14 @@ namespace PaviseApp
         { return ProductRoot(path, StandardBases(), Environment.GetFolderPath(Environment.SpecialFolder.Windows)); }
         private static string[] StandardBases()
         {
-            List<string> folderPaths = new List<string>();
-            foreach (Environment.SpecialFolder folder in new Environment.SpecialFolder[3]
+            List<string> list = new List<string>();
+            Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[3]
             {
                 Environment.SpecialFolder.ProgramFiles,
                 Environment.SpecialFolder.ProgramFilesX86,
                 Environment.SpecialFolder.CommonApplicationData
-            })
+            };
+            foreach (Environment.SpecialFolder folder in specialFolderItems)
             {
                 string folderPath;
                 try
@@ -85,10 +86,10 @@ namespace PaviseApp
                 }
                 if (!string.IsNullOrEmpty(folderPath))
                 {
-                    folderPaths.Add(folderPath.TrimEnd('\\'));
+                    list.Add(folderPath.TrimEnd('\\'));
                 }
             }
-            return folderPaths.ToArray();
+            return list.ToArray();
         }
 
         internal static string ProductRoot(string registered, string[] bases, string windowsRoot)
@@ -120,7 +121,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (string entryText in bases ?? new string[0])
+            string[] basesOffset = bases ?? new string[0];
+            foreach (string entryText in basesOffset)
             {
                 if (!string.IsNullOrEmpty(entryText))
                 {

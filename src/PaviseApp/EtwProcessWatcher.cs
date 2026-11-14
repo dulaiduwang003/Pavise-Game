@@ -6,6 +6,9 @@ namespace PaviseApp
 {
     internal sealed class EtwProcessWatcher : IDisposable
     {
+        private const ulong KeywordProcess = 16uL;
+
+        private const ushort EventIdProcessStart = 1;
 
         private static readonly Guid KernelProcessProvider = new Guid("22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716");
 
@@ -47,15 +50,15 @@ namespace PaviseApp
         public bool Start()
         {
             int sizeOfResult = Marshal.SizeOf(typeof(Native.EventTraceProperties));
-            int propertyBufferSize = sizeOfResult + (sessionName.Length + 1) * 2 + 2;
-            StopStaleSession(sizeOfResult, propertyBufferSize);
-            propsBuffer = Marshal.AllocHGlobal(propertyBufferSize);
-            for (int i = 0; i < propertyBufferSize; i++)
+            int startValue = sizeOfResult + (sessionName.Length + 1) * 2 + 2;
+            StopStaleSession(sizeOfResult, startValue);
+            propsBuffer = Marshal.AllocHGlobal(startValue);
+            for (int i = 0; i < startValue; i++)
             {
                 Marshal.WriteByte(propsBuffer, i, 0);
             }
             Native.EventTraceProperties structure = default(Native.EventTraceProperties);
-            structure.WnodeBufferSize = (uint)propertyBufferSize;
+            structure.WnodeBufferSize = (uint)startValue;
             structure.WnodeFlags = 131072u;
             structure.WnodeClientContext = 1u;
             structure.LogFileMode = 256u;
@@ -104,25 +107,25 @@ namespace PaviseApp
 
         private void StopStaleSession(int structSize, int total)
         {
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(total);
+            IntPtr intPtr = Marshal.AllocHGlobal(total);
             try
             {
                 for (int i = 0; i < total; i++)
                 {
-                    Marshal.WriteByte(nativeBuffer, i, 0);
+                    Marshal.WriteByte(intPtr, i, 0);
                 }
                 Native.EventTraceProperties structure = default(Native.EventTraceProperties);
                 structure.WnodeBufferSize = (uint)total;
                 structure.LoggerNameOffset = (uint)structSize;
-                Marshal.StructureToPtr(structure, nativeBuffer, false);
-                Native.ControlTrace(0uL, sessionName, nativeBuffer, 1u);
+                Marshal.StructureToPtr(structure, intPtr, false);
+                Native.ControlTrace(0uL, sessionName, intPtr, 1u);
             }
             catch
             {
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 

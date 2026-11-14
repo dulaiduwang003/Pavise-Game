@@ -11,7 +11,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PaviseApp
 {
-    // DSTS 只报告能力，不表示当前模式。核对 G-Helper 的选择及最新驱动回执，只向其专用接收窗口发送，不改文件、不注入全局输入。
+    // DSTS 仅报告能力；当前模式须核对 G-Helper 选择和驱动回执，控制只通过专用接收窗口。
 
     internal static class AsusPerformanceController
     {

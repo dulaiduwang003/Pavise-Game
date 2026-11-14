@@ -13,6 +13,8 @@ namespace PaviseApp
             public string[] Services;
         }
 
+        private const string ServiceRoot = "SYSTEM\\CurrentControlSet\\Services";
+
         private static readonly Sig[] Known = new Sig[11]
         {
             new Sig
@@ -109,19 +111,21 @@ namespace PaviseApp
                     return cached;
                 }
                 probed = true;
-                List<string> names = new List<string>();
-                foreach (Sig sig in Known)
+                List<string> list = new List<string>();
+                Sig[] known = Known;
+                foreach (Sig sig in known)
                 {
-                    foreach (string name in sig.Services)
+                    string[] services = sig.Services;
+                    foreach (string name in services)
                     {
                         if (ServiceExists(name))
                         {
-                            names.Add(sig.Name);
+                            list.Add(sig.Name);
                             break;
                         }
                     }
                 }
-                cached = ((names.Count == 0) ? null : string.Join(" ", names.ToArray()));
+                cached = ((list.Count == 0) ? null : string.Join(" ", list.ToArray()));
                 return cached;
             }
         }
@@ -142,14 +146,15 @@ namespace PaviseApp
             {
                 rendererNameSnapshot = rendererNameSnapshot.Substring(0, rendererNameSnapshot.Length - 4);
             }
-            foreach (string[] prefixGroup in ByExePrefix)
+            string[][] byExePrefix = ByExePrefix;
+            foreach (string[] textEntriesEntry in byExePrefix)
             {
-                for (int j = 1; j < prefixGroup.Length; j++)
+                for (int j = 1; j < textEntriesEntry.Length; j++)
                 {
-                    string message = prefixGroup[j];
+                    string message = textEntriesEntry[j];
                     if ((message.Length > 1 && message[0] == '=') ? string.Equals(rendererNameSnapshot, message.Substring(1), StringComparison.OrdinalIgnoreCase) : rendererNameSnapshot.StartsWith(message, StringComparison.OrdinalIgnoreCase))
                     {
-                        return prefixGroup[0];
+                        return textEntriesEntry[0];
                     }
                 }
             }

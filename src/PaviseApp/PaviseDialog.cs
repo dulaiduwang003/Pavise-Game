@@ -9,8 +9,23 @@ namespace PaviseApp
 {
     internal sealed class PaviseDialog : Form
     {
+        private const int DlgW = 468;
+
+        private const int PadX = 26;
+
+        private const int TagTop = 17;
+
+        private const int TagHeight = 16;
+
+        private const int TitleTop = 43;
+
+        private const int BodyTop = 75;
+
+        private const int BtnH = 34;
 
         private const int BtnGap = 10;
+
+        private const int BottomPad = 22;
 
         private readonly string title;
 
@@ -500,16 +515,16 @@ namespace PaviseApp
             Font font = DsType.Font(DsText.Tag, true);
             TextRenderer.DrawText(graphics, KindTag, font, new Rectangle(Theme.S(26), Theme.S(17), scaledDimension3, Theme.S(16)), kindColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-            Font currentFont = DsType.Font(DsText.Heading, true);
-            TextRenderer.DrawText(graphics, title, currentFont, titleRect, Theme.Fg, Theme.Bg, BodyTextFlags | TextFormatFlags.EndEllipsis);
+            Font font2 = DsType.Font(DsText.Heading, true);
+            TextRenderer.DrawText(graphics, title, font2, titleRect, Theme.Fg, Theme.Bg, BodyTextFlags | TextFormatFlags.EndEllipsis);
             int top = base.ClientSize.Height - Theme.S(22) - Theme.S(34) - Theme.S(14);
-            using (Pen strokePen = new Pen(Theme.Stroke))
+            using (Pen pen2 = new Pen(Theme.Stroke))
             {
-                graphics.DrawLine(strokePen, Theme.S(26), top, base.Width - Theme.S(26), top);
+                graphics.DrawLine(pen2, Theme.S(26), top, base.Width - Theme.S(26), top);
             }
-            using (Pen strokeHiPen = new Pen(Theme.StrokeHi))
+            using (Pen pen3 = new Pen(Theme.StrokeHi))
             {
-                graphics.DrawRectangle(strokeHiPen, 0, 0, base.Width - 1, base.Height - 1);
+                graphics.DrawRectangle(pen3, 0, 0, base.Width - 1, base.Height - 1);
             }
         }
 

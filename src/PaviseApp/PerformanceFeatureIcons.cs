@@ -54,7 +54,6 @@ namespace PaviseApp
             OpenGl,
             Visual,
             Multimedia,
-            GpuPreference,
             GpuEconomy,
             Hags,
             Windowed,
@@ -109,10 +108,10 @@ namespace PaviseApp
         {
             get
             {
-                string[] iconNames = new string[Designs.Count];
-                Designs.Keys.CopyTo(iconNames, 0);
-                Array.Sort(iconNames, StringComparer.Ordinal);
-                return iconNames;
+                string[] textEntries = new string[Designs.Count];
+                Designs.Keys.CopyTo(textEntries, 0);
+                Array.Sort(textEntries, StringComparer.Ordinal);
+                return textEntries;
             }
         }
 
@@ -127,10 +126,10 @@ namespace PaviseApp
             {
                 return;
             }
-            Kind Design;
-            if (!Designs.TryGetValue(Canonical(key), out Design))
+            Kind value;
+            if (!Designs.TryGetValue(Canonical(key), out value))
             {
-                Design = Kind.Fallback;
+                value = Kind.Fallback;
             }
             GraphicsState gstate = g.Save();
             try
@@ -143,17 +142,17 @@ namespace PaviseApp
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 using (Pen pen = new Pen(ink, 1.65f))
                 {
-                    using (Pen inkPen = new Pen(Color.FromArgb(Math.Max(1, ink.A * 3 / 5), ink), 1.15f))
+                    using (Pen pen2 = new Pen(Color.FromArgb(Math.Max(1, ink.A * 3 / 5), ink), 1.15f))
                     {
                         using (SolidBrush fill = new SolidBrush(ink))
                         {
                             LineCap startCap = (pen.EndCap = LineCap.Round);
                             pen.StartCap = startCap;
                             pen.LineJoin = LineJoin.Round;
-                            LineCap startCap2 = (inkPen.EndCap = LineCap.Round);
-                            inkPen.StartCap = startCap2;
-                            inkPen.LineJoin = LineJoin.Round;
-                            Paint(g, Design, pen, inkPen, fill);
+                            LineCap startCap2 = (pen2.EndCap = LineCap.Round);
+                            pen2.StartCap = startCap2;
+                            pen2.LineJoin = LineJoin.Round;
+                            Paint(g, value, pen, pen2, fill);
                         }
                     }
                 }
@@ -166,94 +165,92 @@ namespace PaviseApp
 
         private static Dictionary<string, Kind> BuildDesigns()
         {
-            Dictionary<string, Kind> kindsByName = new Dictionary<string, Kind>(StringComparer.OrdinalIgnoreCase);
-            Add(kindsByName, Kind.Preset, "PerformancePreset");
-            Add(kindsByName, Kind.Boost, "GmBoost");
-            Add(kindsByName, Kind.Cpu, "GmBoostCpuV1");
-            Add(kindsByName, Kind.Memory, "GmBoostMemoryV1");
-            Add(kindsByName, Kind.Io, "GmBoostIoV1");
-            Add(kindsByName, Kind.Gpu, "GmBoostGpuV1");
-            Add(kindsByName, Kind.Core, "GmAutoCoresV2");
-            Add(kindsByName, Kind.Thread, "GmThreadBoostStrategyV1");
-            Add(kindsByName, Kind.Awake, "GmAwake");
-            Add(kindsByName, Kind.Background, "GmSuppress", "EnvPrivacyBackgroundGlobalV1");
-            Add(kindsByName, Kind.Family, "GameFamilyBackground");
-            Add(kindsByName, Kind.GpuDown, "GmGpuDemote");
-            Add(kindsByName, Kind.Download, "GmPauseDl");
-            Add(kindsByName, Kind.Update, "GmPauseUpdate");
-            Add(kindsByName, Kind.Maintenance, "GmPauseMaintenanceV1");
-            Add(kindsByName, Kind.Service, "GmPauseServices", "EnvPrivacyServiceV1");
-            Add(kindsByName, Kind.Power, "PowerPlanOn");
-            Add(kindsByName, Kind.CacheWarm, "GmCacheWarmV2");
-            Add(kindsByName, Kind.CleanMemory, "GmStandbyCleanerV2");
-            Add(kindsByName, Kind.Desktop, "GmDwmBoost");
-            Add(kindsByName, Kind.English, "GmEnglishInputV1");
-            Add(kindsByName, Kind.NvPerformance, "NvMaxPerf");
-            Add(kindsByName, Kind.Shader, "NvShaderCache");
-            Add(kindsByName, Kind.LowLatency, "NvLowLat");
-            Add(kindsByName, Kind.Rebar, "NvRebar", "GameNvRebarV1");
-            Add(kindsByName, Kind.Fullscreen, "GameDisableFullscreenOptimizationsV1");
-            Add(kindsByName, Kind.Intel, "GmIntelEnduranceV1");
-            Add(kindsByName, Kind.GpuPower, "GmGpuPowerMax");
-            Add(kindsByName, Kind.Laptop, "GmLaptopPerfV1", "AutoLaptopPerformanceV2");
-            Add(kindsByName, Kind.Smooth, "NvSmoothMotion");
-            Add(kindsByName, Kind.Upscale, "NvDlss");
-            Add(kindsByName, Kind.AntiLag, "AmdAntiLag");
-            Add(kindsByName, Kind.Interpolate, "AmdAfmf");
-            Add(kindsByName, Kind.RenderLane, "GmRenderLane");
-            Add(kindsByName, Kind.FrameSync, "FrameCoordination");
-            Add(kindsByName, Kind.Escalate, "GmAggressive", "GmAdaptiveEscalateV1");
-            Add(kindsByName, Kind.Idle, "GmIdlePolicyV1");
-            Add(kindsByName, Kind.Trim, "GmWsTrimV1");
-            Add(kindsByName, Kind.Mitigations, "AutoGameMitigationsV1");
-            Add(kindsByName, Kind.ShortNames, "AutoNtfsShortNamesV1");
-            Add(kindsByName, Kind.BackgroundFps, "AutoBackgroundFpsV1");
-            Add(kindsByName, Kind.OpenGl, "AutoOpenGlThreadsV1");
-            Add(kindsByName, Kind.Visual, "MatchVisualEffectsV1");
-            Add(kindsByName, Kind.Multimedia, "GmMmcss");
-            Add(kindsByName, Kind.GpuPreference, "GpuPrefStageOn");
-            Add(kindsByName, Kind.Hags, "Hags");
-            Add(kindsByName, Kind.Windowed, "WindowedOptimizations");
-            Add(kindsByName, Kind.Vrr, "VariableRefreshRate");
-            Add(kindsByName, Kind.NvVrr, "NvVrrWindowed");
-            Add(kindsByName, Kind.Sam, "AmdSam");
-            Add(kindsByName, Kind.Recording, "GameDvrOff");
-            Add(kindsByName, Kind.TimerTick, "AutoTimerTick");
-            Add(kindsByName, Kind.GlobalTimer, "AutoGlobalTimer");
-            Add(kindsByName, Kind.CpuMitigations, "EnvCpuMitigationsV1");
-            Add(kindsByName, Kind.LastAccess, "EnvNtfsLastAccessV1");
-            Add(kindsByName, Kind.Quantum, "EnvQuantumProfileV1");
-            Add(kindsByName, Kind.StorageIdle, "EnvStorageIdleV1");
-            Add(kindsByName, Kind.StorageRuntime, "EnvStorageRuntimeV1");
-            Add(kindsByName, Kind.StorageCold, "EnvStorageD3ColdV1");
-            Add(kindsByName, Kind.Audio, "EnvAudioIdleV1");
-            Add(kindsByName, Kind.Environment, "EnvPerformanceBundleV1");
-            Add(kindsByName, Kind.Storage, "EnvStoragePowerGroupV1");
-            Add(kindsByName, Kind.NtfsMemory, "EnvPrivacyNtfsMemoryV1");
-            Add(kindsByName, Kind.Diagnostics, "EnvPrivacyDiagnosticsV1");
-            Add(kindsByName, Kind.Ceip, "EnvPrivacyCeipV1");
-            Add(kindsByName, Kind.Appraiser, "EnvPrivacyAppraiserV1");
-            Add(kindsByName, Kind.ErrorReport, "EnvPrivacyErrorReportsV1");
-            Add(kindsByName, Kind.SecurityReport, "EnvPrivacySecurityReportsV1");
-            Add(kindsByName, Kind.InputPrivacy, "EnvPrivacyInputV1");
-            Add(kindsByName, Kind.Personalization, "EnvPrivacyPersonalizedV1");
-            Add(kindsByName, Kind.Compatibility, "EnvPrivacyCompatibilityV1");
-            Add(kindsByName, Kind.Archives, "EnvPrivacyArchivesV1");
-            Add(kindsByName, Kind.LegacyDefender, "AutoDefenderResourcesV1");
-            Add(kindsByName, Kind.LegacySession, "AutoDefenderSessionV1");
-            Add(kindsByName, Kind.Games, "GameSettings");
-            Add(kindsByName, Kind.Whitelist, "WhitelistSettings");
-            Add(kindsByName, Kind.AntiCheat, "AntiCheatSettings");
-            Add(kindsByName, Kind.Recovery, "ProtectionSettings");
-            Add(kindsByName, Kind.EppYield, "LabEppYieldV1");
-            Add(kindsByName, Kind.GpuClockLock, "LabGpuClockMaxV1");
-            Add(kindsByName, Kind.GpuPowerCeiling, "LabGpuPowerMaxV1");
-            Add(kindsByName, Kind.AudioBuffer, "LabAudioLowBufferV1");
-            Add(kindsByName, Kind.CpuIdlePolicy, "LabCpuIdleStrategyV1");
-            Add(kindsByName, Kind.FileFilterReduction, "LabFileFilterV1");
-            Add(kindsByName, Kind.ClockConfigurationRepair, "LabClockRepairV1");
-            Add(kindsByName, Kind.AudioEffectsReduction, "LabAudioEffectsV1");
-            return kindsByName;
+            Dictionary<string, Kind> dictionary = new Dictionary<string, Kind>(StringComparer.OrdinalIgnoreCase);
+            Add(dictionary, Kind.Preset, "PerformancePreset");
+            Add(dictionary, Kind.Boost, "GmBoost");
+            Add(dictionary, Kind.Cpu, "GmBoostCpuV1");
+            Add(dictionary, Kind.Io, "GmBoostIoV1");
+            Add(dictionary, Kind.Gpu, "GmBoostGpuV1");
+            Add(dictionary, Kind.Core, "GmAutoCoresV2");
+            Add(dictionary, Kind.Thread, "GmThreadBoostStrategyV1");
+            Add(dictionary, Kind.Awake, "GmAwake");
+            Add(dictionary, Kind.Background, "GmSuppress", "EnvPrivacyBackgroundGlobalV1");
+            Add(dictionary, Kind.Family, "GameFamilyBackground");
+            Add(dictionary, Kind.GpuDown, "GmGpuDemote");
+            Add(dictionary, Kind.Download, "GmPauseDl");
+            Add(dictionary, Kind.Update, "GmPauseUpdate");
+            Add(dictionary, Kind.Maintenance, "GmPauseMaintenanceV1");
+            Add(dictionary, Kind.Service, "GmPauseServices", "EnvPrivacyServiceV1");
+            Add(dictionary, Kind.Power, "PowerPlanOn");
+            Add(dictionary, Kind.CacheWarm, "GmCacheWarmV2");
+            Add(dictionary, Kind.CleanMemory, "GmStandbyCleanerV2");
+            Add(dictionary, Kind.Desktop, "GmDwmBoost");
+            Add(dictionary, Kind.English, "GmEnglishInputV1");
+            Add(dictionary, Kind.NvPerformance, "NvMaxPerf");
+            Add(dictionary, Kind.Shader, "NvShaderCache");
+            Add(dictionary, Kind.LowLatency, "NvLowLat");
+            Add(dictionary, Kind.Rebar, "NvRebar", "GameNvRebarV1");
+            Add(dictionary, Kind.Fullscreen, "GameDisableFullscreenOptimizationsV1");
+            Add(dictionary, Kind.Intel, "GmIntelEnduranceV1");
+            Add(dictionary, Kind.GpuPower, "GmGpuPowerMax");
+            Add(dictionary, Kind.Laptop, "GmLaptopPerfV1", "AutoLaptopPerformanceV2");
+            Add(dictionary, Kind.Smooth, "NvSmoothMotion");
+            Add(dictionary, Kind.Upscale, "NvDlss");
+            Add(dictionary, Kind.AntiLag, "AmdAntiLag");
+            Add(dictionary, Kind.Interpolate, "AmdAfmf");
+            Add(dictionary, Kind.RenderLane, "GmRenderLane");
+            Add(dictionary, Kind.FrameSync, "FrameCoordination");
+            Add(dictionary, Kind.Escalate, "GmAggressive", "GmAdaptiveEscalateV1");
+            Add(dictionary, Kind.Idle, "GmIdlePolicyV1");
+            Add(dictionary, Kind.Trim, "GmWsTrimV1");
+            Add(dictionary, Kind.Mitigations, "AutoGameMitigationsV1");
+            Add(dictionary, Kind.ShortNames, "AutoNtfsShortNamesV1");
+            Add(dictionary, Kind.BackgroundFps, "AutoBackgroundFpsV1");
+            Add(dictionary, Kind.OpenGl, "AutoOpenGlThreadsV1");
+            Add(dictionary, Kind.Visual, "MatchVisualEffectsV1");
+            Add(dictionary, Kind.Multimedia, "GmMmcss");
+            Add(dictionary, Kind.Hags, "Hags");
+            Add(dictionary, Kind.Windowed, "WindowedOptimizations");
+            Add(dictionary, Kind.Vrr, "VariableRefreshRate");
+            Add(dictionary, Kind.NvVrr, "NvVrrWindowed");
+            Add(dictionary, Kind.Sam, "AmdSam");
+            Add(dictionary, Kind.Recording, "GameDvrOff");
+            Add(dictionary, Kind.TimerTick, "AutoTimerTick");
+            Add(dictionary, Kind.GlobalTimer, "AutoGlobalTimer");
+            Add(dictionary, Kind.CpuMitigations, "EnvCpuMitigationsV1");
+            Add(dictionary, Kind.LastAccess, "EnvNtfsLastAccessV1");
+            Add(dictionary, Kind.Quantum, "EnvQuantumProfileV1");
+            Add(dictionary, Kind.StorageIdle, "EnvStorageIdleV1");
+            Add(dictionary, Kind.StorageRuntime, "EnvStorageRuntimeV1");
+            Add(dictionary, Kind.StorageCold, "EnvStorageD3ColdV1");
+            Add(dictionary, Kind.Audio, "EnvAudioIdleV1");
+            Add(dictionary, Kind.Environment, "EnvPerformanceBundleV1");
+            Add(dictionary, Kind.Storage, "EnvStoragePowerGroupV1");
+            Add(dictionary, Kind.NtfsMemory, "EnvPrivacyNtfsMemoryV1");
+            Add(dictionary, Kind.Diagnostics, "EnvPrivacyDiagnosticsV1");
+            Add(dictionary, Kind.Ceip, "EnvPrivacyCeipV1");
+            Add(dictionary, Kind.Appraiser, "EnvPrivacyAppraiserV1");
+            Add(dictionary, Kind.ErrorReport, "EnvPrivacyErrorReportsV1");
+            Add(dictionary, Kind.SecurityReport, "EnvPrivacySecurityReportsV1");
+            Add(dictionary, Kind.InputPrivacy, "EnvPrivacyInputV1");
+            Add(dictionary, Kind.Personalization, "EnvPrivacyPersonalizedV1");
+            Add(dictionary, Kind.Compatibility, "EnvPrivacyCompatibilityV1");
+            Add(dictionary, Kind.Archives, "EnvPrivacyArchivesV1");
+            Add(dictionary, Kind.LegacyDefender, "AutoDefenderResourcesV1");
+            Add(dictionary, Kind.LegacySession, "AutoDefenderSessionV1");
+            Add(dictionary, Kind.Games, "GameSettings");
+            Add(dictionary, Kind.Whitelist, "WhitelistSettings");
+            Add(dictionary, Kind.AntiCheat, "AntiCheatSettings");
+            Add(dictionary, Kind.Recovery, "ProtectionSettings");
+            Add(dictionary, Kind.EppYield, "LabEppYieldV1");
+            Add(dictionary, Kind.GpuClockLock, "LabGpuClockMaxV1");
+            Add(dictionary, Kind.GpuPowerCeiling, "LabGpuPowerMaxV1");
+            Add(dictionary, Kind.AudioBuffer, "LabAudioLowBufferV1");
+            Add(dictionary, Kind.CpuIdlePolicy, "LabCpuIdleStrategyV1");
+            Add(dictionary, Kind.FileFilterReduction, "LabFileFilterV1");
+            Add(dictionary, Kind.ClockConfigurationRepair, "LabClockRepairV1");
+            Add(dictionary, Kind.AudioEffectsReduction, "LabAudioEffectsV1");
+            return dictionary;
         }
 
         private static void Add(Dictionary<string, Kind> map, Kind kind, params string[] keys)
@@ -266,20 +263,20 @@ namespace PaviseApp
 
         private static Dictionary<string, string> BuildAliases()
         {
-            Dictionary<string, string> textsByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            textsByName.Add("WindowedOpt", "WindowedOptimizations");
-            textsByName.Add("VrrOpt", "VariableRefreshRate");
-            textsByName.Add("NvVrr", "NvVrrWindowed");
-            textsByName.Add("GameLowLatency", "NvLowLat");
-            textsByName.Add("VisualEffects", "MatchVisualEffectsV1");
-            textsByName.Add("ThreadBoost", "GmThreadBoostStrategyV1");
-            textsByName.Add("CoreScheduling", "GmAutoCoresV2");
-            textsByName.Add("CacheWarm", "GmCacheWarmV2");
-            textsByName.Add("TimerTick", "AutoTimerTick");
-            textsByName.Add("GlobalTimer", "AutoGlobalTimer");
-            textsByName.Add("EnvironmentBundle", "EnvPerformanceBundleV1");
-            textsByName.Add("StorageGroup", "EnvStoragePowerGroupV1");
-            return textsByName;
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            dictionary.Add("WindowedOpt", "WindowedOptimizations");
+            dictionary.Add("VrrOpt", "VariableRefreshRate");
+            dictionary.Add("NvVrr", "NvVrrWindowed");
+            dictionary.Add("GameLowLatency", "NvLowLat");
+            dictionary.Add("VisualEffects", "MatchVisualEffectsV1");
+            dictionary.Add("ThreadBoost", "GmThreadBoostStrategyV1");
+            dictionary.Add("CoreScheduling", "GmAutoCoresV2");
+            dictionary.Add("CacheWarm", "GmCacheWarmV2");
+            dictionary.Add("TimerTick", "AutoTimerTick");
+            dictionary.Add("GlobalTimer", "AutoGlobalTimer");
+            dictionary.Add("EnvironmentBundle", "EnvPerformanceBundleV1");
+            dictionary.Add("StorageGroup", "EnvStoragePowerGroupV1");
+            return dictionary;
         }
 
         private static string Canonical(string key)
@@ -293,12 +290,13 @@ namespace PaviseApp
             {
                 return keyTrimmed;
             }
-            string Aliase;
-            if (Aliases.TryGetValue(keyTrimmed, out Aliase))
+            string value;
+            if (Aliases.TryGetValue(keyTrimmed, out value))
             {
-                return Aliase;
+                return value;
             }
-            foreach (string entryText in ControlPrefixes)
+            string[] controlPrefixes = ControlPrefixes;
+            foreach (string entryText in controlPrefixes)
             {
                 if (keyTrimmed.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
                 {
@@ -306,11 +304,11 @@ namespace PaviseApp
                     break;
                 }
             }
-            if (!Aliases.TryGetValue(keyTrimmed, out Aliase))
+            if (!Aliases.TryGetValue(keyTrimmed, out value))
             {
                 return keyTrimmed;
             }
-            return Aliase;
+            return value;
         }
 
         private static void Paint(Graphics g, Kind kind, Pen p, Pen d, Brush fill)
@@ -563,10 +561,6 @@ namespace PaviseApp
                 g.DrawEllipse(p, 3, 21, 6, 5);
                 g.DrawEllipse(p, 17, 18, 6, 5);
                 Line(g, d, 27f, 14f, 27f, 25f);
-                break;
-            case Kind.GpuPreference:
-                Gpu(g, p, 3f, 11f, 24f, 16f);
-                Spark(g, p, 24f, 7f, 5f);
                 break;
             case Kind.GpuEconomy:
                 Gpu(g, p, 3f, 5f, 24f, 16f);

@@ -1,7 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -126,15 +138,9 @@ namespace PaviseApp
                 {
                     RefreshSlowStateAsync();
                     RefreshStandbyCleanerPresentation();
+                    if (settingsTabs.Index == 3) RefreshAboutIcon();
                 }
             }, RefreshStandbyCleanerPresentation);
-            pageHooks[9] = new PageHook(pageAbout, delegate(bool active)
-            {
-                if (active)
-                {
-                    RefreshAboutIcon();
-                }
-            }, null);
         }
         private void NotifyPageActivation()
         {
@@ -151,6 +157,14 @@ namespace PaviseApp
                 }
             }
         }
+        private static bool WideWorkspacePage(Control page, Control core, Control whitelist, Control logs)
+        {
+            if (page != core && page != whitelist)
+            {
+                return page == logs;
+            }
+            return true;
+        }
         private void LoadStrategyPowerChoices()
         {
             powerPlanChoices.Clear();
@@ -165,22 +179,22 @@ namespace PaviseApp
             }
             powerPlanChoices.Add("managed");
             powerPlanChoices.Add("off");
-            List<string> ts = new List<string>();
-            ts.Add(Lang.T("plan.pick.auto"));
-            ts.Add(Lang.T("plan.pick.off"));
-            List<string> names = ts;
-            foreach (PowerPlanEntry listUserPlan in PowerPlan.ListUserPlans())
+            List<string> list = new List<string>();
+            list.Add(Lang.T("plan.pick.auto"));
+            list.Add(Lang.T("plan.pick.off"));
+            List<string> list2 = list;
+            foreach (PowerPlanEntry item in PowerPlan.ListUserPlans())
             {
-                powerPlanChoices.Add(listUserPlan.Id.ToString());
-                names.Add(listUserPlan.Name);
+                powerPlanChoices.Add(item.Id.ToString());
+                list2.Add(item.Name);
             }
             string selected = PowerPlan.EffectivePlanId;
             if (!powerPlanChoices.Exists(id => string.Equals(id, selected, StringComparison.OrdinalIgnoreCase)))
             {
                 powerPlanChoices.Add(selected);
-                names.Add(AutoText("不可用", "Unavailable") + " [" + selected + "]");
+                list2.Add(AutoText("不可用", "Unavailable") + " [" + selected + "]");
             }
-            powerButton.SetItems(names.ToArray());
+            powerButton.SetItems(list2.ToArray());
         }
         private void ToggleModeFlyout()
         {
@@ -189,6 +203,10 @@ namespace PaviseApp
         private static bool IsAdvancedPage(int index)
         {
             return false;
+        }
+        private void TogglePowerFlyout()
+        {
+            SetPowerFlyout(powerButton != null && !powerButton.DropDownVisible);
         }
         private void SetPowerFlyout(bool visible)
         {
@@ -287,13 +305,13 @@ namespace PaviseApp
                 timer.Stop();
                 timer.Dispose();
             }
-            System.Windows.Forms.Timer currentOutroTimer = outroTimer;
+            System.Windows.Forms.Timer timer2 = outroTimer;
             outroTimer = null;
-            if (currentOutroTimer != null)
+            if (timer2 != null)
             {
-                currentOutroTimer.Tick -= OnOutroTick;
-                currentOutroTimer.Stop();
-                currentOutroTimer.Dispose();
+                timer2.Tick -= OnOutroTick;
+                timer2.Stop();
+                timer2.Dispose();
             }
             if (uiTimer != null)
             {
@@ -358,10 +376,11 @@ namespace PaviseApp
                 return;
             }
             value.Restore(pages[index], Dpi.Scale);
-            DBPanel[] pageTabPanel;
-            if (pageTabPanels.TryGetValue(pages[index], out pageTabPanel))
+            DBPanel[] value2;
+            if (pageTabPanels.TryGetValue(pages[index], out value2))
             {
-                foreach (DBPanel dBPanel in pageTabPanel)
+                DBPanel[] value2Snapshot = value2;
+                foreach (DBPanel dBPanel in value2Snapshot)
                 {
                     tabScrollPositions[dBPanel] = new Point(-dBPanel.AutoScrollPosition.X, -dBPanel.AutoScrollPosition.Y);
                 }
@@ -459,6 +478,46 @@ namespace PaviseApp
         private int PageHeader(DBPanel page, string title, string sub, int subLines, bool showModule = true, int topOffset = 0, int contentWidth = 0)
         {
             return 16 + topOffset;
+        }
+        private string PageModuleCode(DBPanel page)
+        {
+            if (page == pagePolicy)
+            {
+                return "POLICY // MODULE 01";
+            }
+            if (page == pageCoreScheduling)
+            {
+                return "CPU SCHEDULING // MODULE 10";
+            }
+            if (page == pageAntiCheat)
+            {
+                return "DEFENSE // MODULE 02";
+            }
+            if (page == pageWhitelist)
+            {
+                return "EXCLUSION // MODULE 03";
+            }
+            if (page == pageGraphics)
+            {
+                return "GRAPHICS // MODULE 04";
+            }
+            if (page == pageEnvironment)
+            {
+                return "SYSTEM // MODULE 05";
+            }
+            if (page == pageIrq)
+            {
+                return "INTERRUPT // MODULE 06";
+            }
+            if (page == pageAudit)
+            {
+                return "REPORT // MODULE 08";
+            }
+            if (page == pageLog)
+            {
+                return "EVENT BUS // MODULE 09";
+            }
+            return "PAVISE // CONTROL SURFACE";
         }
         private void AttachFormFrame()
         {

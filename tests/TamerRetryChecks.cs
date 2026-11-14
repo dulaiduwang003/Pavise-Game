@@ -28,6 +28,7 @@ namespace PaviseApp
     internal sealed class RetryCore
     {
         internal void RetryPending() { }
+        internal void RevokeAntiCheatRuntimeWrites(string group = null) { }
         internal long CreationOf(int pid) { return pid == 99 ? 29 : 0; }
         internal string NameOf(int pid) { return pid == 99 ? "background-only" : null; }
         internal void ObserveTargetExit(int pid, long birth) { }
@@ -35,9 +36,14 @@ namespace PaviseApp
     }
     internal sealed class AntiCheatAffinityRuntime
     {
+        internal Func<AntiCheatAffinityTarget, int, bool> ForwardAdmission;
         internal AntiCheatAffinityRuntime(Func<int, long, string, bool> prepare, Func<int, string> admission) { }
         internal bool Shutdown() { return true; }
+        internal void RevokeGroup(string group = null) { }
     }
+    internal sealed class AntiCheatAffinityTarget { internal string Group; }
+    internal enum AntiCheatMode { Isolated }
+    internal static class AntiCheatModes { internal static int CoreLimitOf(AntiCheatMode mode) { return 1; } }
 
     internal sealed partial class TamerLoopFixture : IDisposable
     {
@@ -52,6 +58,7 @@ namespace PaviseApp
         private ProcessSnapshot iterationSnapshot;
         private bool iterationCaptureAttempted;
         private int mode;
+        private readonly Dictionary<string, bool> forwardEnabled = new Dictionary<string, bool>();
         internal long Birth;
         private Dictionary<string, string> BuildActive() { return new Dictionary<string, string> { { "fixture", "group" } }; }
         private bool TryBuildAcquireRequest(int pid, string name, string group, out AcquireRequest request) { request = new AcquireRequest { Birth = Birth }; return Birth > 0; }

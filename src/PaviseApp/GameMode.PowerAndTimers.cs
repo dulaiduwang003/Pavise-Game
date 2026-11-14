@@ -85,7 +85,7 @@ namespace PaviseApp
             {
                 lastPowerPolicyKey = -1;
             }
-            RecordAutomation("PowerPlanOn", PowerPlanExecutionState);
+            RecordPowerPlanStatus();
         }
         private bool PowerPlanStopped(int key)
         {
@@ -103,7 +103,7 @@ namespace PaviseApp
                     powerStoppedKeys.Remove(key);
                 }
             }
-            if (isBlocked) RecordAutomation("PowerPlanOn", PowerPlanExecutionState);
+            if (isBlocked) RecordPowerPlanStatus();
             return isBlocked;
         }
         internal void NotifyPowerSchemeChanged()
@@ -185,7 +185,8 @@ namespace PaviseApp
             lock (sync)
             {
                 return enabled && active && planActive && !stopping && !panicReq && !powerSessionEnding && !ProfileStoreSaveFailed
-                    && gameGoneSinceTicks == 0 && !PowerPlan.NoSwitchSelected && Volatile.Read(ref powerSessionGen) == genShot;
+                    && gameGoneSinceTicks == 0 && !PowerPlan.NoSwitchSelected
+                    && Volatile.Read(ref powerSessionGen) == genShot;
             }
         }
         private void RunPowerPlanNotificationAudit(int genShot, int keyShot)
@@ -271,7 +272,7 @@ namespace PaviseApp
                     string reason;
                     if (!BeginPowerAttempt(lastPowerPolicyKey, out reason))
                     {
-                        RecordAutomation("PowerPlanOn", PowerPlanExecutionState);
+                        RecordPowerPlanStatus();
                         return false;
                     }
                     bool skipped;
@@ -324,6 +325,10 @@ namespace PaviseApp
                 }
             }
         }
+        private void OnPowerPlanApplied(bool planOk)
+        {
+            OnPowerPlanAppliedWithReason(planOk, PerformancePolicy.Text("电源计划执行返回失败", "The power-plan action returned failure"), Volatile.Read(ref powerSessionGen));
+        }
         private void OnPowerPlanAppliedWithReason(bool planOk, string reason, int generation)
         {
             if (planOk)
@@ -347,7 +352,7 @@ namespace PaviseApp
                 Interlocked.Exchange(ref laptopPerfPowerGeneration, generation);
                 Interlocked.Exchange(ref laptopPerfNextWork, 0L);
                 RecordAutomation("PowerPlanOn", "applied");
-                CompletePowerAttempt(true, "stage=write-and-readback");
+                CompletePowerAttempt(true, "stage=write-and-readback" + PowerPlan.PolicyLockedApplyNote);
             }
             else
             {

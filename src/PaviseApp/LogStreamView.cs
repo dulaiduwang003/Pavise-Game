@@ -195,15 +195,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            List<LogEventEntry> logEventEntries = ParseEvents(text);
-            CarrySessionAssociations(logEventEntries);
+            List<LogEventEntry> list = ParseEvents(text);
+            CarrySessionAssociations(list);
             source = text;
             all.Clear();
             int warningCount = (ErrorCount = 0);
             WarningCount = warningCount;
-            for (int listIndex = logEventEntries.Count - 1; listIndex >= 0; listIndex--)
+            for (int listIndex = list.Count - 1; listIndex >= 0; listIndex--)
             {
-                LogEventEntry logEventEntry = logEventEntries[listIndex];
+                LogEventEntry logEventEntry = list[listIndex];
                 all.Add(logEventEntry);
                 if (logEventEntry.Severity == LogEventSeverity.Warning)
                 {
@@ -214,7 +214,7 @@ namespace PaviseApp
                     ErrorCount++;
                 }
             }
-            if (logEventEntries.Count == 0)
+            if (list.Count == 0)
             {
                 expanded.Clear();
             }
@@ -224,24 +224,24 @@ namespace PaviseApp
 
         private void CarrySessionAssociations(IList<LogEventEntry> events)
         {
-            Dictionary<string, Queue<LogEventEntry>> queuesByRaw = new Dictionary<string, Queue<LogEventEntry>>(StringComparer.Ordinal);
+            Dictionary<string, Queue<LogEventEntry>> dictionary = new Dictionary<string, Queue<LogEventEntry>>(StringComparer.Ordinal);
             for (int allIndex = all.Count - 1; allIndex >= 0; allIndex--)
             {
-                Queue<LogEventEntry> queue;
-                if (!queuesByRaw.TryGetValue(all[allIndex].Raw, out queue))
+                Queue<LogEventEntry> value;
+                if (!dictionary.TryGetValue(all[allIndex].Raw, out value))
                 {
-                    queue = new Queue<LogEventEntry>();
-                    queuesByRaw[all[allIndex].Raw] = queue;
+                    value = new Queue<LogEventEntry>();
+                    dictionary[all[allIndex].Raw] = value;
                 }
-                queue.Enqueue(all[allIndex]);
+                value.Enqueue(all[allIndex]);
             }
             string sessionTokenValue = "";
             string sessionName = "";
             string phaseValue = "";
             foreach (LogEventEntry @event in events)
             {
-                Queue<LogEventEntry> currentQueue;
-                LogEventEntry logEventEntry = ((queuesByRaw.TryGetValue(@event.Raw, out currentQueue) && currentQueue.Count > 0) ? currentQueue.Dequeue() : null);
+                Queue<LogEventEntry> value2;
+                LogEventEntry logEventEntry = ((dictionary.TryGetValue(@event.Raw, out value2) && value2.Count > 0) ? value2.Dequeue() : null);
                 if (logEventEntry != null && logEventEntry.SessionToken.Length > 0 && (@event.SessionToken.Length == 0 || (@event.Phase == "fragment" && @event.SessionToken == logEventEntry.SessionToken)))
                 {
                     @event.SessionToken = logEventEntry.SessionToken;
@@ -272,7 +272,7 @@ namespace PaviseApp
 
         internal static List<LogEventEntry> ParseEvents(string text)
         {
-            List<LogEventEntry> parses = new List<LogEventEntry>();
+            List<LogEventEntry> list = new List<LogEventEntry>();
             string[] replaceParts = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             for (int i = 0; i < replaceParts.Length; i++)
             {
@@ -289,10 +289,10 @@ namespace PaviseApp
                     }
                     while (trimmed.IndexOf("</Objs>", StringComparison.Ordinal) < 0 && i + 1 < replaceParts.Length && replaceParts[i + 1].TrimStart().StartsWith("<", StringComparison.Ordinal));
                 }
-                parses.Add(Parse(trimmed));
+                list.Add(Parse(trimmed));
             }
-            LogEventProjection.AssignSessions(parses);
-            return parses;
+            LogEventProjection.AssignSessions(list);
+            return list;
         }
 
         private ViewAnchor CaptureAnchor()
@@ -345,32 +345,32 @@ namespace PaviseApp
         private void RebuildShown(bool preserve)
         {
             ViewAnchor anchor = (preserve ? CaptureAnchor() : null);
-            List<LogEventEntry> currentGroups = new List<LogEventEntry>();
+            List<LogEventEntry> list = new List<LogEventEntry>();
             foreach (LogEventEntry group in groups)
             {
                 if (expanded.Contains(group.StableKey))
                 {
-                    currentGroups.Add(group);
+                    list.Add(group);
                 }
             }
-            List<LogEventEntry> allSnapshot = new List<LogEventEntry>(all);
-            allSnapshot.Reverse();
+            List<LogEventEntry> list2 = new List<LogEventEntry>(all);
+            list2.Reverse();
             groups.Clear();
-            groups.AddRange(actionEvents ? ActionLogProjection.Project(allSnapshot, filter, SessionToken)
-                : technicalEvents ? ProjectTechnical(allSnapshot, filter, SessionToken)
-                : LogEventProjection.Project(allSnapshot, filter, SessionToken));
-            foreach (LogEventEntry currentGroup in currentGroups)
+            groups.AddRange(actionEvents ? ActionLogProjection.Project(list2, filter, SessionToken)
+                : technicalEvents ? ProjectTechnical(list2, filter, SessionToken)
+                : LogEventProjection.Project(list2, filter, SessionToken));
+            foreach (LogEventEntry item in list)
             {
                 foreach (LogEventEntry group2 in groups)
                 {
-                    if (group2.IsSummary != currentGroup.IsSummary || group2.Severity != currentGroup.Severity)
+                    if (group2.IsSummary != item.IsSummary || group2.Severity != item.Severity)
                     {
                         continue;
                     }
                     bool detailMatched = false;
                     foreach (LogEventEntry detail in group2.Details)
                     {
-                        if (currentGroup.Raw.IndexOf(detail.Raw, StringComparison.Ordinal) >= 0)
+                        if (item.Raw.IndexOf(detail.Raw, StringComparison.Ordinal) >= 0)
                         {
                             detailMatched = true;
                             break;
@@ -379,9 +379,9 @@ namespace PaviseApp
                     if (detailMatched)
                     {
                         expanded.Add(group2.StableKey);
-                        if (group2.StableKey != currentGroup.StableKey)
+                        if (group2.StableKey != item.StableKey)
                         {
-                            expanded.Remove(currentGroup.StableKey);
+                            expanded.Remove(item.StableKey);
                         }
                         break;
                     }
@@ -502,18 +502,19 @@ namespace PaviseApp
 
         internal static LogEventEntry Parse(string line)
         {
-            LogEventEntry currentLogEventEntry = new LogEventEntry();
-            currentLogEventEntry.Raw = line;
+            LogEventEntry logEventEntry = new LogEventEntry();
+            logEventEntry.Raw = line;
+            LogEventEntry logEventEntry2 = logEventEntry;
             string body = line.Trim();
             DateTime result;
             if (line.Length >= 19 && DateTime.TryParseExact(line.Substring(0, 19), "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
             {
-                currentLogEventEntry.Date = result.ToString("MM-dd");
-                currentLogEventEntry.Time = result.ToString("HH:mm:ss");
-                currentLogEventEntry.Timestamp = result;
+                logEventEntry2.Date = result.ToString("MM-dd");
+                logEventEntry2.Time = result.ToString("HH:mm:ss");
+                logEventEntry2.Timestamp = result;
                 body = line.Substring(19).Trim();
             }
-            currentLogEventEntry.Severity = ClassifyLine(body, out body);
+            logEventEntry2.Severity = ClassifyLine(body, out body);
             int matchIndex = body.IndexOf("#< CLIXML", StringComparison.Ordinal);
             if (matchIndex >= 0)
             {
@@ -527,29 +528,29 @@ namespace PaviseApp
                 {
                     string key = body.Substring(matchIndex2 + 1, matchIndex3 - matchIndex2 - 1).Trim();
                     string substringTrimmed = body.Substring(matchIndex3 + 1).Trim();
-                    currentLogEventEntry.Module = Lang.T("auto.log.module", 0);
-                    currentLogEventEntry.Message = LogText.DisplayBody(line);
-                    return currentLogEventEntry;
+                    logEventEntry2.Module = Lang.T("auto.log.module", 0);
+                    logEventEntry2.Message = LogText.DisplayBody(line);
+                    return logEventEntry2;
                 }
             }
             int matchIndex4 = body.IndexOf(' ');
             if (matchIndex4 > 0 && matchIndex4 <= 16)
             {
-                currentLogEventEntry.Module = body.Substring(0, matchIndex4).Trim().ToUpperInvariant();
-                currentLogEventEntry.Message = body.Substring(matchIndex4 + 1).Trim();
+                logEventEntry2.Module = body.Substring(0, matchIndex4).Trim().ToUpperInvariant();
+                logEventEntry2.Message = body.Substring(matchIndex4 + 1).Trim();
             }
             else
             {
-                currentLogEventEntry.Module = Lang.T("v20.log.system");
-                currentLogEventEntry.Message = body;
+                logEventEntry2.Module = Lang.T("v20.log.system");
+                logEventEntry2.Message = body;
             }
-            if (currentLogEventEntry.Message.Length == 0)
+            if (logEventEntry2.Message.Length == 0)
             {
-                currentLogEventEntry.Message = body;
+                logEventEntry2.Message = body;
             }
-            currentLogEventEntry.Module = LogText.Module(currentLogEventEntry.Module);
-            currentLogEventEntry.Message = LogText.DisplayBody(line);
-            return currentLogEventEntry;
+            logEventEntry2.Module = LogText.Module(logEventEntry2.Module);
+            logEventEntry2.Message = LogText.DisplayBody(line);
+            return logEventEntry2;
         }
 
         internal static LogEventSeverity ClassifyLine(string text, out string body)
@@ -598,7 +599,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string replaceResult = body.Replace("；手动核心分配未确认，请查看落核失败日志", "；手动选核未确认，当前状态未知").Replace("; manual core placement unconfirmed; see placement failure log", "; manual core placement unconfirmed; current state unknown");
+            string replaceResult = body.Replace("；手动核心分配未确认，请查看落核失败日志", "；手动选核未确认，当前状态未知").Replace("; manual core placement unconfirmed; see placement failure log", "; manual core placement unconfirmed; current state unknown").Replace("；手動コア割り当て未確認。失敗ログを確認してください", "；手動コア割り当て未確認。現在の状態は不明です");
             if (replaceResult == body)
             {
                 return false;
@@ -756,8 +757,8 @@ namespace PaviseApp
             bool isInDetailRows = detailRows.Contains(entry);
             int scaledDimension2 = (isInDetailRows ? Theme.S(16) : 0);
             Rectangle r = new Rectangle(scaledDimension + scaledDimension2, y + Theme.S(3), remainingWidth - scaledDimension * 2 - scaledDimension2, remainingRowH);
-            LogEventSeverity visibleSeverity = VisibleSeverity(entry.Severity);
-            Color color = SeverityColor(visibleSeverity);
+            LogEventSeverity value = VisibleSeverity(entry.Severity);
+            Color color = SeverityColor(value);
             Color baseFill = ((index == selected) ? Col.Lerp(Theme.Card, color, 0.11f) : Col.Lerp(Theme.Card, Theme.Inset, ((index & 1) == 0) ? 0.06f : 0.16f));
             using (GraphicsPath path = Theme.TechPath(r, Theme.S(8)))
             {
@@ -770,14 +771,14 @@ namespace PaviseApp
                     g.DrawPath(pen, path);
                 }
             }
-            using (Pen colorPen = new Pen(color, Math.Max(1.5f, Theme.S(2))))
+            using (Pen pen2 = new Pen(color, Math.Max(1.5f, Theme.S(2))))
             {
-                g.DrawLine(colorPen, r.Left, r.Top + Theme.S(11), r.Left, r.Bottom - Theme.S(11));
+                g.DrawLine(pen2, r.Left, r.Top + Theme.S(11), r.Left, r.Bottom - Theme.S(11));
             }
             int left = r.Left + Theme.S(24);
-            using (Pen currentPen = new Pen(Col.Alpha(Theme.StrokeHi, 80)))
+            using (Pen pen3 = new Pen(Col.Alpha(Theme.StrokeHi, 80)))
             {
-                g.DrawLine(currentPen, left, r.Top, left, r.Bottom);
+                g.DrawLine(pen3, left, r.Top, left, r.Bottom);
             }
             using (SolidBrush brush2 = new SolidBrush(Col.Alpha(color, 36)))
             {
@@ -808,9 +809,9 @@ namespace PaviseApp
                 {
                     g.FillPath(brush4, path2);
                 }
-                using (Pen candidatePen = new Pen(Col.Alpha(color, 110)))
+                using (Pen pen4 = new Pen(Col.Alpha(color, 110)))
                 {
-                    g.DrawPath(candidatePen, path2);
+                    g.DrawPath(pen4, path2);
                 }
             }
             TextRenderer.DrawText(g, entry.Module, Theme.UI(7.5f, true), rectangle, color, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
@@ -822,7 +823,7 @@ namespace PaviseApp
                 message = (expanded.Contains(entry.StableKey) ? "▾ " : "▸ ") + message;
             }
             TextRenderer.DrawText(g, message, Theme.UI(8.4f, false), new Rectangle(leftOffset2, r.Top + Theme.S(10), Math.Max(40, r.Right - leftOffset2 - scaledDimension3 - Theme.S(18)), r.Height - Theme.S(18)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
-            TextRenderer.DrawText(g, SeverityCode(visibleSeverity), Theme.Mono(6.3f), new Rectangle(r.Right - scaledDimension3 - Theme.S(10), r.Top + Theme.S(8), scaledDimension3, Theme.S(17)), color, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, SeverityCode(value), Theme.Mono(6.3f), new Rectangle(r.Right - scaledDimension3 - Theme.S(10), r.Top + Theme.S(8), scaledDimension3, Theme.S(17)), color, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
     }
 }

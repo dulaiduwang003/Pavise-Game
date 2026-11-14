@@ -35,6 +35,7 @@ namespace PaviseApp
             new Fragment(" failed=", " 失败项="),
             new Fragment(" failure=", " 失败详情="),
             new Fragment(" gpu3d=", " GPU三维占用="),
+            new Fragment(" gpuRequired=yes", " 需GPU证据=是"),
             new Fragment(" group=", " 处理器组="),
             new Fragment(" hard ", " 硬绑定 "),
             new Fragment(" hard=", " 硬绑定="),

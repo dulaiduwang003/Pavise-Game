@@ -78,6 +78,8 @@ namespace PaviseApp
         {
             get
             {
+                if (Coupling == CriticalThreadBoostCoupling.Unified && Coverage == CriticalThreadCoverageState.CandidatesOnly)
+                    return ThreadLayoutDescriptions.Text("已接管字段已回读；其他线程维持原设置", "Managed fields read back; other threads keep their settings", "管理項目を確認しました。他のスレッドの設定は維持します");
                 switch (Coverage)
                 {
                 case CriticalThreadCoverageState.CandidatesOnly:
@@ -96,6 +98,16 @@ namespace PaviseApp
         {
             get
             {
+                if (Coupling == CriticalThreadBoostCoupling.Unified)
+                {
+                    switch (State)
+                    {
+                        case "active": return ThreadLayoutDescriptions.Text("调度字段已核验", "Scheduling fields verified", "スケジューリング項目を確認済み");
+                        case "conflict": return ThreadLayoutDescriptions.Text("字段受阻或持续争用 · 规则保留", "Fields blocked or contested; rule retained", "項目が制限または競合中です。ルールを維持します");
+                        case "coverage-pending": return ThreadLayoutDescriptions.Text("调度字段等待读回", "Scheduling fields awaiting readback", "スケジューリング項目の読み戻し待ち");
+                        case "observing": return ThreadLayoutDescriptions.Text("正在核验固定角色证据", "Verifying fixed-role evidence", "固定した役割の根拠を確認中");
+                    }
+                }
                 switch (State)
                 {
                 case "waiting-game":

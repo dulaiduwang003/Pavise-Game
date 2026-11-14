@@ -15,6 +15,27 @@ namespace PaviseApp
 
         public int DetailsWidth = 26;
 
+        public string Summary = "";
+
+        public Color SummaryColor = Color.Empty;
+
+        // 为标题旁的同级控件预留像素宽度。
+        public int TitleTrailing;
+
+        // 非零时统一摘要起点；零值表示紧跟标题。
+        public int SummaryLeft;
+
+        // 同级覆盖控件随开关状态同步底色。
+        public FxControl Overlay;
+
+        // 调整按钮与开关同级，单独同步底色，避免把原生 CheckBox 当作按钮容器。
+        internal FxControl DetailsOverlay;
+
+        internal Color RowSurfaceColor
+        {
+            get { return Col.Lerp(Theme.Inset, Theme.Accent, (base.Checked ? 0.065f : 0.015f) + hoverMotion.Value * 0.05f); }
+        }
+
         private readonly bool corePolicy;
 
         private Motion switchMotion;
@@ -153,6 +174,29 @@ namespace PaviseApp
             Invalidate();
         }
 
+        // 宽度不足时隐藏摘要，优先保留标题。
+        internal Rectangle SummaryBounds(int switchLeft)
+        {
+            if (string.IsNullOrEmpty(Summary))
+            {
+                return Rectangle.Empty;
+            }
+            int left = SummaryLeft > 0 ? SummaryLeft : NaturalSummaryLeft();
+            int room = switchLeft - Theme.S(10) - left;
+            return room < Theme.S(48) ? Rectangle.Empty : new Rectangle(left, 0, room, base.Height);
+        }
+
+        internal int NaturalSummaryLeft()
+        {
+            int titleWidth = TextRenderer.MeasureText(Text, Theme.UI(8f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+            return Theme.S(32) + titleWidth + Theme.S(12) + Math.Max(0, TitleTrailing);
+        }
+
+        internal Rectangle SummaryBounds()
+        {
+            return SummaryBounds(base.Width - (corePolicy ? Theme.S(DetailsWidth) : 0) - Theme.S(44));
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             using (SolidBrush brush = new SolidBrush(Surface))
@@ -169,9 +213,19 @@ namespace PaviseApp
             }
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            float switchProgress = switchMotion.Value;
+            float value = switchMotion.Value;
             Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
-            Color color = Col.Lerp(Theme.Inset, Theme.Accent, (base.Checked ? 0.065f : 0.015f) + hoverMotion.Value * 0.05f);
+            Color color = RowSurfaceColor;
+            if (Overlay != null && Overlay.Bg != color)
+            {
+                Overlay.Bg = color;
+                Overlay.Invalidate();
+            }
+            if (DetailsOverlay != null && DetailsOverlay.Bg != color)
+            {
+                DetailsOverlay.Bg = color;
+                DetailsOverlay.Invalidate();
+            }
             using (GraphicsPath path = Theme.TechPath(rectangle, Theme.S(6)))
             {
                 using (SolidBrush brush = new SolidBrush(color))
@@ -185,36 +239,41 @@ namespace PaviseApp
             }
             int scaledDimension = (corePolicy ? Theme.S(DetailsWidth) : 0);
             Rectangle r = new Rectangle(base.Width - scaledDimension - Theme.S(44), (base.Height - Theme.S(16)) / 2, Theme.S(32), Theme.S(16));
-            Rectangle currentRectangle = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
+            Rectangle rectangle2 = new Rectangle(Theme.S(10), (base.Height - Theme.S(14)) / 2, Theme.S(14), Theme.S(14));
             if (!string.IsNullOrEmpty(IconKey))
             {
-                GameTuningIcons.Draw(graphics, currentRectangle, IconKey, base.Checked ? Theme.Accent : Theme.Dim);
+                GameTuningIcons.Draw(graphics, rectangle2, IconKey, base.Checked ? Theme.Accent : Theme.Dim);
             }
             else
             {
-                Glyphs.Draw(graphics, corePolicy ? "chip" : "tiles", currentRectangle, base.Checked ? Theme.Accent : Theme.Dim);
+                Glyphs.Draw(graphics, corePolicy ? "chip" : "tiles", rectangle2, base.Checked ? Theme.Accent : Theme.Dim);
             }
             int scaledDimension2 = Theme.S(32);
             int lowerBound = Math.Max(1, r.Left - scaledDimension2 - Theme.S(8));
             bool locked = Locked;
             TextRenderer.DrawText(graphics, Text, Theme.UI(8f, true), new Rectangle(scaledDimension2, 0, lowerBound, base.Height), base.Enabled ? Theme.Fg : Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            Rectangle summaryBounds = SummaryBounds(r.Left);
+            if (!summaryBounds.IsEmpty)
+            {
+                TextRenderer.DrawText(graphics, Summary, Theme.UI(8f, false), summaryBounds, !base.Enabled ? Theme.Faint : (SummaryColor.IsEmpty ? Theme.Dim : SummaryColor), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
             using (GraphicsPath path2 = Theme.TechPath(r, Theme.S(4)))
             {
-                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.TrackOff, Col.Lerp(Surface, Theme.Accent, 0.24f), switchProgress)))
+                using (SolidBrush brush2 = new SolidBrush(Col.Lerp(Theme.TrackOff, Col.Lerp(Surface, Theme.Accent, 0.24f), value)))
                 {
                     graphics.FillPath(brush2, path2);
                 }
-                using (Pen currentPen = new Pen(base.Checked ? Theme.Accent : (locked ? Theme.Stroke : Theme.StrokeHi)))
+                using (Pen pen2 = new Pen(base.Checked ? Theme.Accent : (locked ? Theme.Stroke : Theme.StrokeHi)))
                 {
-                    graphics.DrawPath(currentPen, path2);
+                    graphics.DrawPath(pen2, path2);
                 }
             }
             int scaledDimension3 = Theme.S(10);
             int scaledDimension4 = Theme.S(3);
-            Rectangle r2 = new Rectangle(r.Left + scaledDimension4 + (int)((float)(r.Width - scaledDimension4 * 2 - scaledDimension3) * switchProgress), r.Top + scaledDimension4, scaledDimension3, scaledDimension3);
+            Rectangle r2 = new Rectangle(r.Left + scaledDimension4 + (int)((float)(r.Width - scaledDimension4 * 2 - scaledDimension3) * value), r.Top + scaledDimension4, scaledDimension3, scaledDimension3);
             using (GraphicsPath path3 = Theme.TechPath(r2, Theme.S(3)))
             {
-                using (SolidBrush brush3 = new SolidBrush(Col.Lerp(Theme.Dim, Theme.Accent, switchProgress)))
+                using (SolidBrush brush3 = new SolidBrush(Col.Lerp(Theme.Dim, Theme.Accent, value)))
                 {
                     graphics.FillPath(brush3, path3);
                 }

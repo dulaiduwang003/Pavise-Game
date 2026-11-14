@@ -237,10 +237,10 @@ namespace PaviseApp
         }
         private bool CachedEnvironmentPreference(string key)
         {
-            bool environmentPreferenceOverride;
-            if (environmentPreferenceOverrides.TryGetValue(key, out environmentPreferenceOverride))
+            bool value;
+            if (environmentPreferenceOverrides.TryGetValue(key, out value))
             {
-                return environmentPreferenceOverride;
+                return value;
             }
             EnvironmentGraphicsObservation snapshot = environmentObservation.Snapshot;
             if (snapshot == null)
@@ -259,7 +259,8 @@ namespace PaviseApp
         }
         private static bool HasPerformanceEnvironmentGraphics(PerformanceRestartScope scope)
         {
-            foreach (string key in new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" })
+            string[] textEntries = new string[6] { "Hags", "WindowedOptimizations", "VariableRefreshRate", "NvVrrWindowed", "AmdSam", "GameDvrOff" };
+            foreach (string key in textEntries)
             {
                 if (PerformanceRestartFor(key) == scope)
                 {
@@ -283,48 +284,49 @@ namespace PaviseApp
         {
             bool fullyConfigured = configured == 2;
             bool partlyConfigured = configured == 1;
-            HagsUiPresentation currentHagsUiPresentation = new HagsUiPresentation();
-            currentHagsUiPresentation.Checked = partlyConfigured ? false : (owned || fullyConfigured || (known && on));
-            currentHagsUiPresentation.External = !owned && (fullyConfigured || (known && on));
-            currentHagsUiPresentation.Ink = Theme.Dim;
-            currentHagsUiPresentation.Editable = known && supported;
+            HagsUiPresentation hagsUiPresentation = new HagsUiPresentation();
+            hagsUiPresentation.Checked = partlyConfigured ? false : (owned || fullyConfigured || (known && on));
+            hagsUiPresentation.External = !owned && (fullyConfigured || (known && on));
+            hagsUiPresentation.Ink = Theme.Dim;
+            HagsUiPresentation hagsUiPresentation2 = hagsUiPresentation;
+            hagsUiPresentation2.Editable = known && supported;
             if (owned && !fullyConfigured)
             {
-                currentHagsUiPresentation.Status = (partlyConfigured ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
-                currentHagsUiPresentation.Status += ((!known) ? AutoText(" · 当前未核验", " · current state unverified") : (on ? AutoText(" · 当前已开启", " · currently on") : AutoText(" · 当前已关闭", " · currently off")));
-                currentHagsUiPresentation.Ink = Theme.Warning;
-                return currentHagsUiPresentation;
+                hagsUiPresentation2.Status = (partlyConfigured ? AutoText("保存请求已改为关闭", "Saved request changed to off") : AutoText("保存请求未核验", "Saved request unverified"));
+                hagsUiPresentation2.Status += ((!known) ? AutoText(" · 当前未核验", " · current state unverified") : (on ? AutoText(" · 当前已开启", " · currently on") : AutoText(" · 当前已关闭", " · currently off")));
+                hagsUiPresentation2.Ink = Theme.Warning;
+                return hagsUiPresentation2;
             }
             if (!known)
             {
-                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (partlyConfigured ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
+                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已保存开启请求 · 当前未核验", "On request saved · current state unverified") : (partlyConfigured ? AutoText("已配置关闭 · 当前未核验", "Off configured · current state unverified") : AutoText("当前状态未核验", "Current state unverified")));
                 if (owned || fullyConfigured)
                 {
-                    currentHagsUiPresentation.Ink = Theme.Warning;
+                    hagsUiPresentation2.Ink = Theme.Warning;
                 }
             }
             else if (!supported)
             {
-                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
+                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已保存请求 · 当前设备不支持", "Request saved · current device unsupported") : AutoText("当前设备不支持", "Current device unsupported"));
                 if (owned || fullyConfigured)
                 {
-                    currentHagsUiPresentation.Ink = Theme.Warning;
+                    hagsUiPresentation2.Ink = Theme.Warning;
                 }
             }
             else if (on)
             {
-                currentHagsUiPresentation.Status = (partlyConfigured ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
-                currentHagsUiPresentation.Ink = (partlyConfigured ? Theme.Warning : Theme.Accent);
+                hagsUiPresentation2.Status = (partlyConfigured ? AutoText("当前已开启 · 已请求关闭", "Currently on · off requested") : AutoText("当前已开启", "Currently on"));
+                hagsUiPresentation2.Ink = (partlyConfigured ? Theme.Warning : Theme.Accent);
             }
             else
             {
-                currentHagsUiPresentation.Status = ((owned || fullyConfigured) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
+                hagsUiPresentation2.Status = ((owned || fullyConfigured) ? AutoText("已请求开启 · 待重启核验", "On requested · verify after restart") : AutoText("当前已关闭", "Currently off"));
                 if (owned || fullyConfigured)
                 {
-                    currentHagsUiPresentation.Ink = Theme.Warning;
+                    hagsUiPresentation2.Ink = Theme.Warning;
                 }
             }
-            return currentHagsUiPresentation;
+            return hagsUiPresentation2;
         }
         private HagsUiPresentation CachedHagsPresentation()
         {
@@ -346,11 +348,12 @@ namespace PaviseApp
             if (key == "AutoGlobalTimer")
             {
                 string readback = Lang.F("env.gtimer.readback", "0.5000", "15.6250", "0.5000");
-                foreach (string entryText in new string[14]
+                string[] textEntries = new string[14]
                 {
                     "ready", "timer-locked", "timer-limited", "timer-unverified", "pending-reboot", "restore-pending-reboot", "unverified", "failed", "stopped", "restore-failed",
                     "restored", "unsupported", "timer-requested", ""
-                })
+                };
+                foreach (string entryText in textEntries)
                 {
                     fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, true, readback), ScrollContentW, host, 88));
                     fullTextCardHeightResult = Math.Max(fullTextCardHeightResult, FullTextCardHeight(GlobalTimerDescription(entryText, false, readback), ScrollContentW, host, 88));
@@ -386,7 +389,7 @@ namespace PaviseApp
             switch (key)
             {
             case "AutoGlobalTimer":
-                return AutoText("开启或还原后需重启；仅对局请求 0.5 ms，退局释放。故障后可点重试，无需反复切换开关。实际精度由系统决定，可能增加功耗。", "Restart after enabling or restoring; requests 0.5 ms only during matches, then releases it. Use Retry after a failure. Windows decides the actual resolution; power use may rise.");
+                return AutoText("适用系统的启动配置在退局后保留，开启或还原后需重启；0.5 ms 精度请求仅限对局，退局释放。实际精度由系统决定，可能增加功耗。", "On applicable Windows versions, boot configuration persists after matches and needs a restart after enabling or restoring. The 0.5 ms request is held only during matches, then released. Windows decides the actual resolution; power use may rise.");
             case "AutoTimerTick":
                 return AutoText("手动设置时钟与节拍启动参数，开关后需重启。切换模式不改动此项，关闭恢复原配置。", "Manual clock/tick boot settings; restart after changes. Mode switches leave this choice alone; Off restores originals.");
             case "GmCacheWarmV2":

@@ -38,18 +38,18 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(size);
+            IntPtr intPtr = Marshal.AllocHGlobal(size);
             try
             {
-                if (GetExtendedTcpTable(nativeBuffer, ref size, false, 2, 3, 0) != 0)
+                if (GetExtendedTcpTable(intPtr, ref size, false, 2, 3, 0) != 0)
                 {
                     return false;
                 }
-                int rowCount = Marshal.ReadInt32(nativeBuffer);
+                int int32 = Marshal.ReadInt32(intPtr);
                 int sizeOfResult = Marshal.SizeOf(typeof(TcpRowOwnerPid));
-                long toInt64Offset = nativeBuffer.ToInt64() + 4;
+                long toInt64Offset = intPtr.ToInt64() + 4;
                 int processedCount = 0;
-                while (processedCount < rowCount)
+                while (processedCount < int32)
                 {
                     TcpRowOwnerPid tcpRowOwnerPid = (TcpRowOwnerPid)Marshal.PtrToStructure(new IntPtr(toInt64Offset), typeof(TcpRowOwnerPid));
                     int combinedMask = (int)(((tcpRowOwnerPid.LocalPort & 0xFF) << 8) | ((tcpRowOwnerPid.LocalPort >> 8) & 0xFF));
@@ -68,7 +68,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
             return false;
         }

@@ -116,7 +116,7 @@ namespace PaviseApp
             }
             bool compact = total > Width;
             float textSize = 10f;
-            string[] shortLabels = Lang.Cur == 0 ? new[] { "游戏", "后台", "图形", "系统", "实验" } : new[] { "Play", "BG", "GPU", "Sys", "Lab" };
+            string[] shortLabels = Lang.Cur == 0 ? new[] { "游戏/后台", "图形", "系统", "实验" } : new[] { "Game/BG", "GPU", "Sys", "Lab" };
             if (compact)
             {
                 // 逐个测量标签，避免高 DPI 下截断。

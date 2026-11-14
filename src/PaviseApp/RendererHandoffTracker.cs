@@ -31,6 +31,10 @@ namespace PaviseApp
 
             public int Attempts;
 
+            public int SlowAttempts;
+
+            public int Rejections;
+
             public long NextAttemptMs;
 
             public bool Verified;
@@ -50,6 +54,8 @@ namespace PaviseApp
 
         internal const int ProbeCooldownMs = 8000;
 
+        internal const int QuickProbeWindowMs = 60000;
+
         internal const int MaxProbeAttempts = 2;
 
         internal const int UnresolvedProbeCooldownMs = 30000;
@@ -60,7 +66,8 @@ namespace PaviseApp
 
         internal const int ProofLifetimeMs = 3000;
 
-        internal const int ProbeResultMaxAgeMs = 5000;
+        // 一次探测包含两个连续的观测窗口，约三秒；留出采集启停的余量，但必须短于两次探测的间隔。
+        internal const int ProbeResultMaxAgeMs = 7000;
 
         private readonly object gate = new object();
 
@@ -212,20 +219,22 @@ namespace PaviseApp
                 }
                 current.Attempts++;
                 nextProbeMs = nowMs + 8000;
-                int retryDelayMs = 8000;
-                if (current.Attempts >= 2 || nowMs - current.FirstSeenMs >= 10000)
+        // 首分钟保持 8 秒探测间隔，覆盖加载期；之后按 30、60、120 秒退避。
+                int beginProbeValue = 8000;
+                if (nowMs - current.FirstSeenMs >= QuickProbeWindowMs)
                 {
-                    retryDelayMs = 30000;
-                    for (int i = 2; i < current.Attempts; i++)
+                    current.SlowAttempts++;
+                    beginProbeValue = 30000;
+                    for (int i = 1; i < current.SlowAttempts; i++)
                     {
-                        if (retryDelayMs >= 120000)
+                        if (beginProbeValue >= 120000)
                         {
                             break;
                         }
-                        retryDelayMs = Math.Min(120000, retryDelayMs * 2);
+                        beginProbeValue = Math.Min(120000, beginProbeValue * 2);
                     }
                 }
-                current.NextAttemptMs = nowMs + retryDelayMs;
+                current.NextAttemptMs = nowMs + beginProbeValue;
                 inFlight = new RendererProbeTicket(current.Generation, nowMs, current.Detection);
                 return inFlight;
             }
@@ -238,6 +247,11 @@ namespace PaviseApp
 
         internal RendererProof Complete(RendererProbeTicket ticket, IDictionary<int, double> utilization, PresentActivitySample presents, bool identityValid, long nowMs)
         {
+            return Complete(ticket, utilization, presents, identityValid, nowMs, false);
+        }
+
+        internal RendererProof Complete(RendererProbeTicket ticket, IDictionary<int, double> utilization, PresentActivitySample presents, bool identityValid, long nowMs, bool gpuRequired)
+        {
             lock (gate)
             {
                 if (!object.ReferenceEquals(inFlight, ticket))
@@ -245,10 +259,26 @@ namespace PaviseApp
                     return RendererProof.None;
                 }
                 inFlight = null;
-                if (ticket != null && !ticket.Canceled && identityValid && current != null && current.Generation == ticket.Generation && current.Foreground && current.RecoveryReady && nowMs >= ticket.StartedMs && nowMs - ticket.StartedMs <= 5000)
+                if (ticket != null && !ticket.Canceled && identityValid && current != null && current.Generation == ticket.Generation && current.Foreground && current.RecoveryReady && nowMs >= ticket.StartedMs && nowMs - ticket.StartedMs <= ProbeResultMaxAgeMs)
                 {
                     double gpu, fps;
-                    RendererProof proof = ResolveEvidence(ticket.Detection, utilization, presents, out gpu, out fps);
+                    RendererProof proof = ResolveEvidence(ticket.Detection, utilization, presents, gpuRequired, out gpu, out fps);
+                    if (proof == RendererProof.Rejected)
+                    {
+                        // 同家族另一进程在提交画面、本进程为零（如启动器窗口与独立渲染子进程），短时间内不会改变：
+                        // 按 30、60、120 秒退避，不再沿用首分钟的 8 秒间隔反复启动画面采集。
+                        current.Rejections++;
+                        long cooldown = UnresolvedProbeCooldownMs;
+                        for (int i = 1; i < current.Rejections && cooldown < MaxUnresolvedProbeCooldownMs; i++)
+                        {
+                            cooldown = Math.Min(MaxUnresolvedProbeCooldownMs, cooldown * 2);
+                        }
+                        current.NextAttemptMs = Math.Max(current.NextAttemptMs, nowMs + cooldown);
+                    }
+                    else
+                    {
+                        current.Rejections = 0;
+                    }
                     current.Verified = proof == RendererProof.Present || proof == RendererProof.Gpu;
                     if (current.Verified)
                     {
@@ -265,8 +295,17 @@ namespace PaviseApp
 
         internal const int MinPresentFrames = 8;
 
+        // GPU 数据可用时，以 3D 负载阈值辅助区分启动器与游戏；缺少数据时仍可使用提交证据。
+        internal const double MinPresentGpu = 3.0;
+
         // 优先使用画面提交证据，帧数无法区分时才参考 GPU 使用率。
         internal static RendererProof ResolveEvidence(GameDetection candidate, IDictionary<int, double> utilization, PresentActivitySample presents, out double gpu, out double fps)
+        {
+            return ResolveEvidence(candidate, utilization, presents, false, out gpu, out fps);
+        }
+
+        // 替换已确认渲染进程时要求 GPU 3D 证据，缺失数据不能仅凭提交数量放行。
+        internal static RendererProof ResolveEvidence(GameDetection candidate, IDictionary<int, double> utilization, PresentActivitySample presents, bool gpuRequired, out double gpu, out double fps)
         {
             gpu = 0.0;
             fps = 0.0;
@@ -288,12 +327,22 @@ namespace PaviseApp
                 // 要求明确的提交帧数领先，因为网页视图也可能按屏幕刷新率提交。
                 if (own >= MinPresentFrames && (long)own * 2 >= (long)other * 3)
                 {
-                    fps = presents.FpsOf(candidate.RendererPid);
-                    double observed;
-                    if (utilization != null && utilization.TryGetValue(candidate.RendererPid, out observed) && !double.IsNaN(observed) && !double.IsInfinity(observed))
+                    if (gpuRequired && !HasGpuEvidence(candidate, utilization, out gpu))
                     {
-                        gpu = observed;
+                        return RendererProof.None;
                     }
+            // 采样失败或缺少目标均按无 GPU 证据处理。
+                    double observed;
+                    if (utilization == null || !utilization.TryGetValue(candidate.RendererPid, out observed) || double.IsNaN(observed) || double.IsInfinity(observed))
+                    {
+                        return RendererProof.None;
+                    }
+                    gpu = observed;
+                    if (observed < MinPresentGpu)
+                    {
+                        return RendererProof.None;
+                    }
+                    fps = presents.FpsOf(candidate.RendererPid);
                     return RendererProof.Present;
                 }
                 if (own == 0 && other >= MinPresentFrames)
@@ -347,6 +396,19 @@ namespace PaviseApp
             }
         }
 
+        // 当前候选的只读摘要，给待命迟迟不入场时的诊断用。
+        internal string Describe(long nowMs)
+        {
+            lock (gate)
+            {
+                if (current == null) return "无";
+                return current.Detection.RendererName + "(" + current.Detection.RendererPid + ") 在前台=" + (current.Foreground ? "是" : "否")
+                    + " 恢复就绪=" + (current.RecoveryReady ? "是" : "否") + " 需探测=" + (current.Detection.RequiresGpuConfirm ? "是" : "否")
+                    + " 已探测=" + current.Attempts + " 距下次探测毫秒=" + Math.Max(0L, Math.Max(current.NextAttemptMs, nextProbeMs) - nowMs)
+                    + " 探测在途=" + (inFlight != null ? "是" : "否");
+            }
+        }
+
         internal void Clear()
         {
             lock (gate)
@@ -387,8 +449,8 @@ namespace PaviseApp
             }
             foreach (int familyPid in candidate.FamilyPids)
             {
-                double currentUtilization;
-                if (familyPid != candidate.RendererPid && utilization.TryGetValue(familyPid, out currentUtilization) && !double.IsNaN(currentUtilization) && !double.IsInfinity(currentUtilization) && currentUtilization > value)
+                double value2;
+                if (familyPid != candidate.RendererPid && utilization.TryGetValue(familyPid, out value2) && !double.IsNaN(value2) && !double.IsInfinity(value2) && value2 > value)
                 {
                     return false;
                 }
@@ -425,24 +487,25 @@ namespace PaviseApp
             {
                 return null;
             }
-            GameDetection currentGameDetection = new GameDetection();
-            currentGameDetection.Profile = ((source.Profile == null) ? null : source.Profile.Clone());
-            currentGameDetection.RendererPid = source.RendererPid;
-            currentGameDetection.RendererCreation = source.RendererCreation;
-            currentGameDetection.RendererName = source.RendererName;
-            currentGameDetection.RendererPath = source.RendererPath;
-            currentGameDetection.RendererForeground = source.RendererForeground;
-            currentGameDetection.RendererCandidateSelected = source.RendererCandidateSelected;
-            currentGameDetection.RendererUserSelected = source.RendererUserSelected;
-            currentGameDetection.RendererLearnable = source.RendererLearnable;
-            currentGameDetection.RequiresGpuConfirm = source.RequiresGpuConfirm;
-            currentGameDetection.RendererSafetyOnly = source.RendererSafetyOnly;
-            currentGameDetection.RendererGpuProofExpiresMs = source.RendererGpuProofExpiresMs;
-            currentGameDetection.RendererMatchRank = source.RendererMatchRank;
-            currentGameDetection.Evidence = source.Evidence;
-            currentGameDetection.FamilyPids.UnionWith(source.FamilyPids);
-            currentGameDetection.FamilyNames.UnionWith(source.FamilyNames);
-            return currentGameDetection;
+            GameDetection gameDetection = new GameDetection();
+            gameDetection.Profile = ((source.Profile == null) ? null : source.Profile.Clone());
+            gameDetection.RendererPid = source.RendererPid;
+            gameDetection.RendererCreation = source.RendererCreation;
+            gameDetection.RendererName = source.RendererName;
+            gameDetection.RendererPath = source.RendererPath;
+            gameDetection.RendererForeground = source.RendererForeground;
+            gameDetection.RendererCandidateSelected = source.RendererCandidateSelected;
+            gameDetection.RendererUserSelected = source.RendererUserSelected;
+            gameDetection.RendererLearnable = source.RendererLearnable;
+            gameDetection.RequiresGpuConfirm = source.RequiresGpuConfirm;
+            gameDetection.RendererSafetyOnly = source.RendererSafetyOnly;
+            gameDetection.RendererGpuProofExpiresMs = source.RendererGpuProofExpiresMs;
+            gameDetection.RendererMatchRank = source.RendererMatchRank;
+            gameDetection.Evidence = source.Evidence;
+            GameDetection gameDetection2 = gameDetection;
+            gameDetection2.FamilyPids.UnionWith(source.FamilyPids);
+            gameDetection2.FamilyNames.UnionWith(source.FamilyNames);
+            return gameDetection2;
         }
     }
 }

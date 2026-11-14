@@ -35,31 +35,31 @@ namespace PaviseApp
         {
             try
             {
-                IntPtr openSCManagerWHandle = OpenSCManagerW(null, null, 1u);
-                if (openSCManagerWHandle == IntPtr.Zero)
+                IntPtr intPtr = OpenSCManagerW(null, null, 1u);
+                if (intPtr == IntPtr.Zero)
                 {
                     return 0;
                 }
                 try
                 {
-                    IntPtr openServiceWHandle = OpenServiceW(openSCManagerWHandle, name, 4u);
-                    if (openServiceWHandle == IntPtr.Zero)
+                    IntPtr intPtr2 = OpenServiceW(intPtr, name, 4u);
+                    if (intPtr2 == IntPtr.Zero)
                     {
                         return 0;
                     }
                     try
                     {
                         SERVICE_STATUS status;
-                        return QueryServiceStatus(openServiceWHandle, out status) ? status.State : 0;
+                        return QueryServiceStatus(intPtr2, out status) ? status.State : 0;
                     }
                     finally
                     {
-                        CloseServiceHandle(openServiceWHandle);
+                        CloseServiceHandle(intPtr2);
                     }
                 }
                 finally
                 {
-                    CloseServiceHandle(openSCManagerWHandle);
+                    CloseServiceHandle(intPtr);
                 }
             }
             catch

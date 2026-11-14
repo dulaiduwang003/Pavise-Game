@@ -51,13 +51,13 @@ namespace PaviseApp
             ac = acCandidate;
             dc = dcCandidate;
             uint? nullable = (acMode.HasValue ? new uint?(acCandidate) : readExisting(true));
-            uint? currentNullable = (dcMode.HasValue ? new uint?(dcCandidate) : readExisting(false));
-            if (!nullable.HasValue || !currentNullable.HasValue || nullable.Value > 100 || currentNullable.Value > 100)
+            uint? nullable2 = (dcMode.HasValue ? new uint?(dcCandidate) : readExisting(false));
+            if (!nullable.HasValue || !nullable2.HasValue || nullable.Value > 100 || nullable2.Value > 100)
             {
                 return false;
             }
             ac = nullable.Value;
-            dc = currentNullable.Value;
+            dc = nullable2.Value;
             return true;
         }
 
@@ -67,25 +67,26 @@ namespace PaviseApp
             implementation = 0u;
             try
             {
-                XmlDocument currentXmlDocument = new XmlDocument();
-                currentXmlDocument.XmlResolver = null;
-                currentXmlDocument.LoadXml(xml);
-                XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(currentXmlDocument.NameTable);
+                XmlDocument xmlDocument = new XmlDocument();
+                xmlDocument.XmlResolver = null;
+                XmlDocument xmlDocument2 = xmlDocument;
+                xmlDocument2.LoadXml(xml);
+                XmlNamespaceManager xmlNamespaceManager = new XmlNamespaceManager(xmlDocument2.NameTable);
                 xmlNamespaceManager.AddNamespace("e", "http://schemas.microsoft.com/win/2004/08/events/event");
-                XmlNode xmlNode = currentXmlDocument.SelectSingleNode("/e:Event/e:System/e:Provider", xmlNamespaceManager);
-                XmlNode singleNode = currentXmlDocument.SelectSingleNode("/e:Event/e:System/e:EventID", xmlNamespaceManager);
-                XmlNode currentSingleNode = currentXmlDocument.SelectSingleNode("/e:Event/e:System/e:Version", xmlNamespaceManager);
-                if (xmlNode == null || xmlNode.Attributes["Name"] == null || xmlNode.Attributes["Name"].Value != "Microsoft-Windows-Kernel-Processor-Power" || singleNode == null || singleNode.InnerText != "55" || currentSingleNode == null || currentSingleNode.InnerText != "0")
+                XmlNode xmlNode = xmlDocument2.SelectSingleNode("/e:Event/e:System/e:Provider", xmlNamespaceManager);
+                XmlNode xmlNode2 = xmlDocument2.SelectSingleNode("/e:Event/e:System/e:EventID", xmlNamespaceManager);
+                XmlNode xmlNode3 = xmlDocument2.SelectSingleNode("/e:Event/e:System/e:Version", xmlNamespaceManager);
+                if (xmlNode == null || xmlNode.Attributes["Name"] == null || xmlNode.Attributes["Name"].Value != "Microsoft-Windows-Kernel-Processor-Power" || xmlNode2 == null || xmlNode2.InnerText != "55" || xmlNode3 == null || xmlNode3.InnerText != "0")
                 {
                     return false;
                 }
-                uint processorGroup;
-                uint processorNumber;
-                if (!ReadField(currentXmlDocument, xmlNamespaceManager, "Group", out processorGroup) || processorGroup > 65535 || !ReadField(currentXmlDocument, xmlNamespaceManager, "Number", out processorNumber) || processorNumber > 63 || !ReadField(currentXmlDocument, xmlNamespaceManager, "PerformanceImplementation", out implementation))
+                uint value;
+                uint value2;
+                if (!ReadField(xmlDocument2, xmlNamespaceManager, "Group", out value) || value > 65535 || !ReadField(xmlDocument2, xmlNamespaceManager, "Number", out value2) || value2 > 63 || !ReadField(xmlDocument2, xmlNamespaceManager, "PerformanceImplementation", out implementation))
                 {
                     return false;
                 }
-                processor = processorGroup.ToString(CultureInfo.InvariantCulture) + ":" + processorNumber.ToString(CultureInfo.InvariantCulture);
+                processor = value.ToString(CultureInfo.InvariantCulture) + ":" + value2.ToString(CultureInfo.InvariantCulture);
                 return true;
             }
             catch
@@ -111,30 +112,39 @@ namespace PaviseApp
             {
                 return Interface.Unknown;
             }
-            int observedCount = 0;
-            Interface detectedInterface = Interface.Unknown;
-            foreach (uint implementation in implementations)
+            int processedCount = 0;
+            Interface @interface = Interface.Unknown;
+            using (IEnumerator<uint> enumerator = implementations.GetEnumerator())
             {
-                Interface currentInterface;
-                switch (implementation)
+                while (enumerator.MoveNext())
                 {
-                case 3u:
-                    currentInterface = Interface.Cppc;
-                    break;
-                case 1u:
-                    currentInterface = Interface.AcpiPState;
-                    break;
-                default:
-                    return Interface.Unknown;
+                    int classifyValue;
+                    switch (enumerator.Current)
+                    {
+                    default:
+                        classifyValue = 0;
+                        break;
+                    case 3u:
+                        classifyValue = 2;
+                        break;
+                    case 1u:
+                        classifyValue = 1;
+                        break;
+                    }
+                    Interface interface2 = (Interface)classifyValue;
+                    if (interface2 == Interface.Unknown || (processedCount > 0 && interface2 != @interface))
+                    {
+                        return Interface.Unknown;
+                    }
+                    @interface = interface2;
+                    processedCount++;
                 }
-                if (observedCount > 0 && currentInterface != detectedInterface)
-                {
-                    return Interface.Unknown;
-                }
-                detectedInterface = currentInterface;
-                observedCount++;
             }
-            return observedCount == expectedCount ? detectedInterface : Interface.Unknown;
+            if (processedCount != expectedCount)
+            {
+                return Interface.Unknown;
+            }
+            return @interface;
         }
 
         internal static bool BootRecordMatchesUptime(DateTime recorded, DateTime estimated, DateTime now)
@@ -148,8 +158,9 @@ namespace PaviseApp
 
         private static DateTime? ReadBootRecord()
         {
-            EventLogQuery eventQuery = new EventLogQuery("System", PathType.LogName, "*[System[Provider[@Name='Microsoft-Windows-Kernel-General'] and EventID=12]]");
-            eventQuery.ReverseDirection = true;
+            EventLogQuery eventLogQuery = new EventLogQuery("System", PathType.LogName, "*[System[Provider[@Name='Microsoft-Windows-Kernel-General'] and EventID=12]]");
+            eventLogQuery.ReverseDirection = true;
+            EventLogQuery eventQuery = eventLogQuery;
             using (EventLogReader eventLogReader = new EventLogReader(eventQuery))
             {
                 using (EventRecord eventRecord = eventLogReader.ReadEvent(TimeSpan.FromMilliseconds(250.0)))
@@ -178,9 +189,10 @@ namespace PaviseApp
                 }
                 string valueText = dateTime.Value.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
                 string query = "*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55 and TimeCreated[@SystemTime >= '" + valueText + "']]]";
-                EventLogQuery eventQuery = new EventLogQuery("System", PathType.LogName, query);
-                eventQuery.ReverseDirection = true;
-                Dictionary<string, uint> implementationByProcessor = new Dictionary<string, uint>();
+                EventLogQuery eventLogQuery = new EventLogQuery("System", PathType.LogName, query);
+                eventLogQuery.ReverseDirection = true;
+                EventLogQuery eventQuery = eventLogQuery;
+                Dictionary<string, uint> dictionary = new Dictionary<string, uint>();
                 using (EventLogReader eventLogReader = new EventLogReader(eventQuery))
                 {
                     eventLogReader.BatchSize = 32;
@@ -198,13 +210,13 @@ namespace PaviseApp
                             {
                                 return Interface.Unknown;
                             }
-                            if (!implementationByProcessor.ContainsKey(processor))
+                            if (!dictionary.ContainsKey(processor))
                             {
-                                implementationByProcessor.Add(processor, implementation);
+                                dictionary.Add(processor, implementation);
                             }
-                            if (implementationByProcessor.Count == activeProcessorCount)
+                            if (dictionary.Count == activeProcessorCount)
                             {
-                                return Classify(implementationByProcessor.Values, (int)activeProcessorCount);
+                                return Classify(dictionary.Values, (int)activeProcessorCount);
                             }
                             continue;
                         }

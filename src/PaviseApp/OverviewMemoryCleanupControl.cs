@@ -54,14 +54,14 @@ namespace PaviseApp
                 Enabled = elevated
             };
             MemoryCleanupButton cleanButton = CleanButton;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 if (this.CleanRequested != null)
                 {
                     this.CleanRequested(this, EventArgs.Empty);
                 }
             };
-            cleanButton.Click += eventHandler;
+            cleanButton.Click += value;
             base.Controls.Add(CleanButton);
             tips.SetToolTip(CleanButton, ManualMemoryText.Hint);
             SetStatus(elevated ? ManualMemoryText.Hint : ManualMemoryText.Permission);
@@ -96,7 +96,7 @@ namespace PaviseApp
         {
             CleanButton.Busy = true;
             if (step == ManualMemoryStep.PaviseMemory) SetGamePolicy(true);
-            CleanButton.Text = ManualMemoryText.T("清理中…", "Cleaning…");
+            CleanButton.Text = ManualMemoryText.T("清理中…", "Cleaning…", "解放中…");
             SetStatus(number + "/" + (step == ManualMemoryStep.PaviseMemory ? 1 : ManualMemoryCleaner.OrderedSteps.Length) + " " + ManualMemoryText.Stage(step));
         }
 

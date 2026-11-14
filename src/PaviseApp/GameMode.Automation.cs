@@ -41,7 +41,6 @@ namespace PaviseApp
             dwmBoostOn = policySnapshot.DwmBoost;
             nvVrrWindowedOn = Settings.LoadCached("NvVrrWindowed", false);
             rsrOn = false;
-            gpuPrefStageOn = Settings.LoadCached("GpuPrefStageOn", true) && Native.OnAcPower();
             lock (sync)
             {
                 if (!autoAddPreferenceUnsaved)
@@ -63,26 +62,28 @@ namespace PaviseApp
             RequestPolicyApply("RefreshAutomaticPreferences");
         }
         private void RecordAutomation(string key, string state)
+        { RecordAutomationSnapshot(key, state, ""); }
+
+        private void RecordAutomationSnapshot(string key, string state, string powerDetail)
         {
             lock (sync)
             {
-                string currentAutomationEvidence;
-                automationEvidence.TryGetValue(key, out currentAutomationEvidence);
+                string value;
+                automationEvidence.TryGetValue(key, out value);
                 bool finalAwakeRestore = key == "awake" && state == "restored" && automationSessionEnding && !awakeFinalRestoreLogged;
-                string powerDetail = key == "PowerPlanOn" ? PowerPlanFailureDetail(state) : "";
                 string powerSignature = powerDetail.Length == 0 ? "" : state + "|" + powerDetail;
                 bool powerFailureChanged = powerSignature.Length > 0 && powerFailureLogSignature != powerSignature;
                 string timerDetail = key == "AutoGlobalTimer" ? GlobalTimerFailureDetail(state) : "";
                 string timerSignature = timerDetail.Length == 0 ? "" : state + "|" + timerDetail;
                 bool timerFailureChanged = timerSignature.Length > 0 && timerFailureLogSignature != timerSignature;
-                if (currentAutomationEvidence == state && !finalAwakeRestore && !powerFailureChanged && !timerFailureChanged)
+                if (value == state && !finalAwakeRestore && !powerFailureChanged && !timerFailureChanged)
                 {
                     return;
                 }
                 if (key == "PowerPlanOn") powerFailureLogSignature = powerSignature;
                 if (key == "AutoGlobalTimer") timerFailureLogSignature = timerSignature;
                 automationEvidence[key] = state;
-                if ((key == "awake" && !ShouldLogAwakeTransition(state, currentAutomationEvidence)) || string.IsNullOrEmpty(state) || state == "unchanged")
+                if ((key == "awake" && !ShouldLogAwakeTransition(state, value)) || string.IsNullOrEmpty(state) || state == "unchanged")
                 {
                     return;
                 }
@@ -205,7 +206,8 @@ namespace PaviseApp
                 default:
                 {
                     string message = null;
-                    foreach (string entryKey in EnvKeys)
+                    string[] envKeys = EnvKeys;
+                    foreach (string entryKey in envKeys)
                     {
                         if (EnvPolicyKey(entryKey) == key)
                         {
@@ -225,10 +227,10 @@ namespace PaviseApp
                     {
                         return (pendingStopCount > 0) ? "unverified" : "applied";
                     }
-                    string currentAutomationEvidence;
-                    if (automationEvidence.TryGetValue(message ?? key, out currentAutomationEvidence))
+                    string value;
+                    if (automationEvidence.TryGetValue(message ?? key, out value))
                     {
-                        return currentAutomationEvidence;
+                        return value;
                     }
                     return "";
                 }
@@ -250,14 +252,14 @@ namespace PaviseApp
             }
             RecordAutomation("session", "started");
             PolicySnapshot automationPolicySnapshot = AutomationPolicySnapshot;
-            foreach (PolicyItem all in PolicyCatalog.All)
+            foreach (PolicyItem item in PolicyCatalog.All)
             {
-                if (!PerformancePolicy.IsIntent(all.Key) && !PerformancePolicy.IsRetired(all.Key))
+                if (!PerformancePolicy.IsIntent(item.Key) && !PerformancePolicy.IsRetired(item.Key))
                 {
-                    string valueOfResult = automationPolicySnapshot.ValueOf(all.Key);
+                    string valueOfResult = automationPolicySnapshot.ValueOf(item.Key);
                     if (valueOfResult == "0" || valueOfResult == "off")
                     {
-                        RecordAutomation(all.Key, "unchanged");
+                        RecordAutomation(item.Key, "unchanged");
                     }
                 }
             }
@@ -275,8 +277,9 @@ namespace PaviseApp
         }
         private static bool AutomaticQuietDesktop()
         {
-            AutomationLastInput input = default(AutomationLastInput);
-            input.Size = (uint)Marshal.SizeOf(typeof(AutomationLastInput));
+            AutomationLastInput automationLastInput = default(AutomationLastInput);
+            automationLastInput.Size = (uint)Marshal.SizeOf(typeof(AutomationLastInput));
+            AutomationLastInput input = automationLastInput;
             if (GetLastInputInfo(ref input))
             {
                 return (uint)(Environment.TickCount - (int)input.Time) >= 30000u;
@@ -364,27 +367,28 @@ namespace PaviseApp
                 {
                     return;
                 }
-                HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (GameProfile profile in profiles)
                 {
                     if (profile.DisableFullscreenOptimizations)
                     {
-                        AddAutomaticFsoPath(textsSet, profile.ExecutablePath);
-                        AddAutomaticFsoPath(textsSet, profile.LearnedExecutablePath);
+                        AddAutomaticFsoPath(hashSet, profile.ExecutablePath);
+                        AddAutomaticFsoPath(hashSet, profile.LearnedExecutablePath);
                     }
                 }
                 if (canDiscoverActiveRenderer)
                 {
-                    AddAutomaticFsoPath(textsSet, gameDetection.RendererPath);
+                    AddAutomaticFsoPath(hashSet, gameDetection.RendererPath);
                 }
-                HashSet<string> textsSetSnapshot = new HashSet<string>(textsSet, StringComparer.OrdinalIgnoreCase);
+                HashSet<string> hashSet2 = new HashSet<string>(hashSet, StringComparer.OrdinalIgnoreCase);
                 bool restoredAny = false;
                 try
                 {
-                    foreach (string currentTrackedExesResult in FsoTweak.TrackedExes())
+                    string[] trackedExesResult = FsoTweak.TrackedExes();
+                    foreach (string item in trackedExesResult)
                     {
-                        textsSetSnapshot.Add(currentTrackedExesResult);
-                        if (!textsSet.Contains(currentTrackedExesResult))
+                        hashSet2.Add(item);
+                        if (!hashSet.Contains(item))
                         {
                             restoredAny = true;
                         }
@@ -397,48 +401,48 @@ namespace PaviseApp
                     RecordAutomation("AutoDisableFullscreenOptimizations", automaticFsoState);
                     return;
                 }
-                foreach (string text in new List<string>(automaticFsoEntries.Keys))
+                foreach (string item2 in new List<string>(automaticFsoEntries.Keys))
                 {
-                    if (!textsSetSnapshot.Contains(text))
+                    if (!hashSet2.Contains(item2))
                     {
-                        automaticFsoEntries.Remove(text);
+                        automaticFsoEntries.Remove(item2);
                     }
                 }
                 bool allConfigured = true;
                 automaticFsoCheckAt = nowTicks + 600000000;
-                foreach (string currentTextsSetSnapshot in textsSetSnapshot)
+                foreach (string item3 in hashSet2)
                 {
                     if (stopping || ProfileStoreSaveFailed)
                     {
                         return;
                     }
-                    bool disableValue = textsSet.Contains(currentTextsSetSnapshot);
-                    AutomaticFsoEntry currentAutomaticFsoEntry;
-                    if (!automaticFsoEntries.TryGetValue(currentTextsSetSnapshot, out currentAutomaticFsoEntry))
+                    bool disableValue = hashSet.Contains(item3);
+                    AutomaticFsoEntry value;
+                    if (!automaticFsoEntries.TryGetValue(item3, out value))
                     {
                         AutomaticFsoEntry automaticFsoEntry = new AutomaticFsoEntry();
                         automaticFsoEntry.Disable = disableValue;
-                        currentAutomaticFsoEntry = automaticFsoEntry;
-                        automaticFsoEntries[currentTextsSetSnapshot] = currentAutomaticFsoEntry;
+                        value = automaticFsoEntry;
+                        automaticFsoEntries[item3] = value;
                     }
-                    if (currentAutomaticFsoEntry.Disable != disableValue)
+                    if (value.Disable != disableValue)
                     {
-                        currentAutomaticFsoEntry.Disable = disableValue;
-                        currentAutomaticFsoEntry.Configured = false;
-                        currentAutomaticFsoEntry.Failures = 0;
-                        currentAutomaticFsoEntry.CheckAt = 0L;
+                        value.Disable = disableValue;
+                        value.Configured = false;
+                        value.Failures = 0;
+                        value.CheckAt = 0L;
                     }
-                    if (nowTicks >= currentAutomaticFsoEntry.CheckAt)
+                    if (nowTicks >= value.CheckAt)
                     {
-                        currentAutomaticFsoEntry.Configured = FsoTweak.SetForExe(currentTextsSetSnapshot, disableValue);
-                        currentAutomaticFsoEntry.Failures = ((!currentAutomaticFsoEntry.Configured) ? Math.Min(currentAutomaticFsoEntry.Failures + 1, 5) : 0);
-                        int upperBound = (currentAutomaticFsoEntry.Configured ? 60 : Math.Min(300, 30 << currentAutomaticFsoEntry.Failures - 1));
-                        currentAutomaticFsoEntry.CheckAt = nowTicks + (long)upperBound * 10000000L;
+                        value.Configured = FsoTweak.SetForExe(item3, disableValue);
+                        value.Failures = ((!value.Configured) ? Math.Min(value.Failures + 1, 5) : 0);
+                        int upperBound = (value.Configured ? 60 : Math.Min(300, 30 << value.Failures - 1));
+                        value.CheckAt = nowTicks + (long)upperBound * 10000000L;
                     }
-                    allConfigured &= currentAutomaticFsoEntry.Configured;
-                    automaticFsoCheckAt = Math.Min(automaticFsoCheckAt, currentAutomaticFsoEntry.CheckAt);
+                    allConfigured &= value.Configured;
+                    automaticFsoCheckAt = Math.Min(automaticFsoCheckAt, value.CheckAt);
                 }
-                automaticFsoState = ((!allConfigured) ? "failed" : ((textsSet.Count > 0) ? "fso-configured" : (restoredAny ? "restored" : "")));
+                automaticFsoState = ((!allConfigured) ? "failed" : ((hashSet.Count > 0) ? "fso-configured" : (restoredAny ? "restored" : "")));
                 RecordAutomation("AutoDisableFullscreenOptimizations", automaticFsoState);
             }
         }
@@ -463,18 +467,18 @@ namespace PaviseApp
                 visualMatch = false; // 桌面视觉简化功能已退役，只恢复旧记录。
                 if (automationAllowed && !gameActive && (PerformanceTuning.ActionSelected("AutoGameMitigationsV1") || PerformanceTuning.LegacyActionSelected("AutoOpenGlThreadsV1") || PerformanceTuning.ActionSelected("AutoNtfsShortNamesV1")))
                 {
-                    HashSet<string> textsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (GameProfile profile in profiles)
                     {
-                        AddGamePerformancePath(textsSet, profile.ExecutablePath);
-                        AddGamePerformancePath(textsSet, profile.LearnedExecutablePath);
+                        AddGamePerformancePath(hashSet, profile.ExecutablePath);
+                        AddGamePerformancePath(hashSet, profile.LearnedExecutablePath);
                     }
                     GameDetection gameDetection = activeDetection;
                     if (gameDetection != null && gameDetection.Profile != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && RendererHandoffTracker.SameProfile(gameDetection.Profile, FindProfileLocked(gameDetection.Profile.Id)))
                     {
-                        AddGamePerformancePath(textsSet, gameDetection.RendererPath);
+                        AddGamePerformancePath(hashSet, gameDetection.RendererPath);
                     }
-                    games = new List<string>(textsSet).ToArray();
+                    games = new List<string>(hashSet).ToArray();
                 }
             }
             performanceActions.Queue(automationAllowed, gameActive, games, visualMatch, true);
@@ -527,7 +531,6 @@ namespace PaviseApp
                     RunPreStagedWork(delegate
                     {
                         NvDrsTweaks.RestoreAllGames();
-                        GpuPrefStage.Restore();
                     }, true);
                 }
                 catch

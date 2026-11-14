@@ -372,8 +372,8 @@ namespace PaviseApp
             measuredScale = Dpi.Scale;
             measuredFont = font;
             measuredLabels = new string[3];
-            int rowTop = 0;
-            int scaledDimension = Theme.S(12);
+            int ensureRowsValue = 0;
+            int scaledDimension = Theme.S(6);
             int lowerBound = Math.Max(1, (width - scaledDimension * 2) / 3);
             int lowerBound2 = Math.Max(1, (Horizontal ? lowerBound : width) - Theme.S(64));
             int rowHeight = Theme.S(52);
@@ -387,8 +387,8 @@ namespace PaviseApp
                     rowHeight = Math.Max(rowHeight, sLimit);
                     continue;
                 }
-                rows[j] = new Rectangle(0, rowTop, Math.Max(1, width), sLimit);
-                rowTop += sLimit + scaledDimension;
+                rows[j] = new Rectangle(0, ensureRowsValue, Math.Max(1, width), sLimit);
+                ensureRowsValue += sLimit + scaledDimension;
             }
             if (Horizontal)
             {
@@ -401,7 +401,7 @@ namespace PaviseApp
             }
             else
             {
-                contentHeight = rowTop - scaledDimension;
+                contentHeight = ensureRowsValue - scaledDimension;
             }
         }
 
@@ -532,22 +532,22 @@ namespace PaviseApp
             {
                 return;
             }
-            int nextStrengthIndex;
+            int value;
             if (e.KeyCode == (Keys)(Horizontal ? 37 : 38))
             {
-                nextStrengthIndex = Math.Max(0, index - 1);
+                value = Math.Max(0, index - 1);
             }
             else if (e.KeyCode == (Keys)(Horizontal ? 39 : 40))
             {
-                nextStrengthIndex = Math.Min(2, index + 1);
+                value = Math.Min(2, index + 1);
             }
             else if (e.KeyCode == Keys.Home)
             {
-                nextStrengthIndex = 0;
+                value = 0;
             }
             else if (e.KeyCode == Keys.End)
             {
-                nextStrengthIndex = 2;
+                value = 2;
             }
             else
             {
@@ -555,11 +555,11 @@ namespace PaviseApp
                 {
                     return;
                 }
-                nextStrengthIndex = index;
+                value = index;
             }
             e.Handled = true;
             e.SuppressKeyPress = true;
-            Activate(nextStrengthIndex, DsKeys.IsActivation(e.KeyCode));
+            Activate(value, DsKeys.IsActivation(e.KeyCode));
         }
 
         protected override AccessibleObject CreateAccessibilityInstance()
@@ -582,17 +582,30 @@ namespace PaviseApp
                 Color color = (isSelected ? Col.Lerp(Theme.Card, Theme.Accent, Theme.LightMode ? 0.08f : 0.12f) : Col.Lerp(Theme.Card, Theme.CardHover, glows[i].Value * 0.65f));
                 Color stroke = (isSelected ? Col.Lerp(Theme.Stroke, Theme.Accent, 0.82f) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, glows[i].Value));
                 DsPaint.TechFrame(graphics, rectangle, Theme.S(7), color, stroke);
-                Color currentColor = ((!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Accent : Theme.Dim));
+                Color color2 = ((!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Accent : Theme.Dim));
+                Font labelFont = Theme.UI(10f, isSelected);
+                int labelWidth = Math.Min(TextRenderer.MeasureText(Label(i), labelFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width, Math.Max(1, rectangle.Width - Theme.S(64)));
+                int groupWidth = Theme.S(28) + labelWidth;
+                int groupLeft = Horizontal ? rectangle.Left + (rectangle.Width - groupWidth) / 2 : rectangle.Left + Theme.S(18);
                 int iOffset = i + 1;
                 int topOffset = rectangle.Top + (rectangle.Height - (iOffset - 1) * Theme.S(5)) / 2;
-                using (Pen pen = new Pen(currentColor, Math.Max(1f, Dpi.Scale * 1.5f)))
+                using (Pen pen = new Pen(color2, Math.Max(1f, Dpi.Scale * 1.5f)))
                 {
                     for (int j = 0; j < iOffset; j++)
                     {
-                        graphics.DrawLine(pen, rectangle.Left + Theme.S(18), topOffset + j * Theme.S(5), rectangle.Left + Theme.S(34), topOffset + j * Theme.S(5));
+                        graphics.DrawLine(pen, groupLeft, topOffset + j * Theme.S(5), groupLeft + Theme.S(16), topOffset + j * Theme.S(5));
                     }
                 }
-                TextRenderer.DrawText(graphics, Label(i), Theme.UI(10f, isSelected), new Rectangle(rectangle.Left + Theme.S(48), rectangle.Top + Theme.S(10), Math.Max(1, rectangle.Width - Theme.S(64)), rectangle.Height - Theme.S(20)), (!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Fg : Theme.Dim), TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, Label(i), labelFont, new Rectangle(groupLeft + Theme.S(28), rectangle.Top + Theme.S(10), labelWidth, rectangle.Height - Theme.S(20)), (!base.Enabled) ? Theme.Faint : (isSelected ? Theme.Fg : Theme.Dim), TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                if (Horizontal && isSelected && rectangle.Width - groupWidth >= Theme.S(48))
+                {
+                    int checkLeft = rectangle.Right - Theme.S(22);
+                    int checkTop = rectangle.Top + rectangle.Height / 2;
+                    using (Pen check = new Pen(color2, Math.Max(1f, Dpi.Scale * 1.5f)))
+                    {
+                        graphics.DrawLines(check, new Point[] { new Point(checkLeft, checkTop), new Point(checkLeft + Theme.S(3), checkTop + Theme.S(3)), new Point(checkLeft + Theme.S(9), checkTop - Theme.S(3)) });
+                    }
+                }
                 if (base.WantsFocusCue && isSelected)
                 {
                     ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(rectangle, -Theme.S(4), -Theme.S(4)), Theme.Accent, color);

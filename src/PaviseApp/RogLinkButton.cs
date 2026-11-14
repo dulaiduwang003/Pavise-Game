@@ -109,16 +109,16 @@ namespace PaviseApp
                 }
                 GraphicsState gstate = graphics.Save();
                 graphics.SetClip(graphicsPath);
-                int accentLeft = base.Width - Theme.S(44) + (int)(hoverIfEnabled * (float)Theme.S(5));
+                int onPaintValue = base.Width - Theme.S(44) + (int)(hoverIfEnabled * (float)Theme.S(5));
                 int scaledDimension = Theme.S(21);
                 Point[] points = new Point[4]
                 {
-                    new Point(accentLeft, rectangle.Top),
+                    new Point(onPaintValue, rectangle.Top),
                     new Point(base.Width, rectangle.Top),
                     new Point(base.Width, rectangle.Bottom),
-                    new Point(accentLeft - scaledDimension, rectangle.Bottom)
+                    new Point(onPaintValue - scaledDimension, rectangle.Bottom)
                 };
-                using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, accentLeft - scaledDimension), rectangle.Top, Math.Max(1, base.Width - accentLeft + scaledDimension), rectangle.Height)), Col.Alpha(AccentColor, 0), Col.Alpha(AccentColor, (int)(16f + hoverIfEnabled * 38f)), LinearGradientMode.Horizontal))
+                using (LinearGradientBrush brush2 = new LinearGradientBrush(DsPaint.GradientRect(new Rectangle(Math.Max(0, onPaintValue - scaledDimension), rectangle.Top, Math.Max(1, base.Width - onPaintValue + scaledDimension), rectangle.Height)), Col.Alpha(AccentColor, 0), Col.Alpha(AccentColor, (int)(16f + hoverIfEnabled * 38f)), LinearGradientMode.Horizontal))
                 {
                     graphics.FillPolygon(brush2, points);
                 }
@@ -211,9 +211,9 @@ namespace PaviseApp
         private void DrawExternalMark(Graphics g, float hot, float down)
         {
             int scaledDimension = Theme.S(9);
-            int markLeft = base.Width - Theme.S(26) + (int)(hot * (float)Theme.S(2)) - (int)(down * (float)Theme.S(1));
-            int markTop = base.Height / 2 - scaledDimension / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
-            Rectangle rectangle = new Rectangle(markLeft, markTop, scaledDimension, scaledDimension);
+            int drawExternalMarkValue = base.Width - Theme.S(26) + (int)(hot * (float)Theme.S(2)) - (int)(down * (float)Theme.S(1));
+            int drawExternalMarkValue2 = base.Height / 2 - scaledDimension / 2 + ((base.Height >= Theme.S(48)) ? Theme.S(1) : 0);
+            Rectangle rectangle = new Rectangle(drawExternalMarkValue, drawExternalMarkValue2, scaledDimension, scaledDimension);
             using (Pen pen = new Pen(Col.Lerp(Theme.Dim, AccentColor, 0.25f + hot * 0.75f), Math.Max(1.2f, Theme.S(1))))
             {
                 int scaledDimension2 = Theme.S(3);

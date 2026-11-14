@@ -146,7 +146,7 @@ namespace PaviseApp
             bool admitted = false;
             try
             {
-                string str = Settings.LoadStr(slot, "");
+                string value = Settings.LoadStr(slot, "");
                 if (want)
                 {
                     if (ActionFailureStore.IsBlocked(action, "system"))
@@ -179,7 +179,7 @@ namespace PaviseApp
                         {
                             throw new InvalidOperationException("Timer boot journal persistence failed");
                         }
-                        str = bootOffset;
+                        value = bootOffset;
                         if (!readSucceeded && !enable())
                         {
                             throw new InvalidOperationException("Timer setting apply failed");
@@ -189,7 +189,7 @@ namespace PaviseApp
                     {
                         throw new InvalidOperationException("Timer setting readback failed");
                     }
-                    string rebootStatusResult = RebootStatus(slot, str, boot, "on", "ready", "pending-reboot");
+                    string rebootStatusResult = RebootStatus(slot, value, boot, "on", "ready", "pending-reboot");
                     if (rebootStatusResult == "failed")
                     {
                         throw new InvalidOperationException("Timer observation journal persistence failed");
@@ -223,16 +223,16 @@ namespace PaviseApp
                         if (recovery != null) recovery.Record(false);
                         return "restore-failed";
                     }
-                    str = bootOffset2;
+                    value = bootOffset2;
                     if (!RestoreOwnedTimer(owned, restore, recovery))
                     {
                         return "restore-failed";
                     }
                     ActionFailureStore.CancelApply(action, "system");
                 }
-                if (str.StartsWith("off|", StringComparison.Ordinal) || str.StartsWith("seen-off|", StringComparison.Ordinal))
+                if (value.StartsWith("off|", StringComparison.Ordinal) || value.StartsWith("seen-off|", StringComparison.Ordinal))
                 {
-                    string status = RebootStatus(slot, str, boot, "off", "restored", "restore-pending-reboot");
+                    string status = RebootStatus(slot, value, boot, "off", "restored", "restore-pending-reboot");
                     if ((status == "unverified" || status == "restore-failed") && recovery != null) recovery.Record(false);
                     return status;
                 }

@@ -7,7 +7,7 @@ namespace PaviseApp
     {
         internal const string ExpandedPreferenceKey = "EnvCpuMitigationsExpandedV1";
 
-        // 依据 KB4073119，3/3 选择文档中的组合关闭策略。0x8 显式启用 SSBD，0x40 显式启用 AMD 用户态及内核态 BTI。保留其他覆盖位和掩码位，包括新增缓解项；配置策略本身不能证明全部缓解均已停用。
+        // 按 KB4073119 设置 3/3 组合策略，清除 SSBD（0x8）和 AMD BTI（0x40）启用位，保留其余位；不据此判定所有缓解已关闭。
 
 
 

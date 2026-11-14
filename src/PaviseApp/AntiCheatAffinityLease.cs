@@ -27,11 +27,12 @@ namespace PaviseApp
         internal ulong Mask, AllowedMask;
         internal string Detail;
         internal bool CpuSetsKnown = true, CpuSetsEmpty = true;
+        internal bool PlacementVerified = true;
         internal AntiCheatAffinityObservation(AntiCheatAffinityRead read, ushort group, ulong mask, ulong allowed, string detail)
         { Read = read; Group = group; Mask = mask; AllowedMask = allowed; Detail = detail ?? ""; }
     }
 
-    // 写入前再次核对身份、处理器组及预期亲和性。Windows 没有进程亲和性的原子比较交换接口，外部程序仍可能在核对后抢先写入。
+    // 写前复核身份、处理器组和预期亲和性；Windows 无原子比较交换接口，仍可能与外部写入竞争。
 
     internal interface IAntiCheatAffinityPlatform
     {
@@ -46,7 +47,7 @@ namespace PaviseApp
         bool Load(out string receipt);
         bool Save(string receipt);
     }
-    // 恢复只处理本方持有的硬掩码。新出现的 CPU Sets 策略属于外部状态，不能阻止本方恢复，也不能由本方删除。
+    // 仅恢复本方硬掩码，保留外部 CPU Sets；外部策略不阻断本方恢复。
 
     internal interface IAntiCheatAffinityRestorePlatform
     {
@@ -61,6 +62,20 @@ namespace PaviseApp
         bool ReleaseAllConstraints(out string reason);
         bool StopConstraints(out string reason);
     }
+    internal interface IAntiCheatAffinityTargetConstraintPlatform
+    {
+        bool ConstraintPendingFor(AntiCheatAffinityIdentity identity);
+    }
+    internal interface IAntiCheatAffinityForwardPlatform
+    {
+        void RevokeForward(AntiCheatAffinityIdentity identity);
+    }
+    internal interface IAntiCheatAffinityForwardAdmissionPlatform
+    {
+        long ForwardEpoch { get; }
+        bool WriteOwned(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, long admittedEpoch,
+            out AntiCheatAffinityObservation observed, bool allowCpuSets);
+    }
     internal sealed class AntiCheatAffinityResult
     {
         internal readonly string Code, Detail;
@@ -69,7 +84,7 @@ namespace PaviseApp
         { Code = code; Detail = detail; Bound = bound; PendingRecovery = pending; }
     }
 
-    // 调用方提供已核验的组内掩码；该租约只持有进程硬亲和性。
+    // 调用方提供已核验的组内掩码；反作弊的逐线程原值由独立 Job 守护持久保存。
     internal sealed class AntiCheatAffinityLease
     {
         internal const string ReceiptKey = "AntiCheatHardAffinityV1";
@@ -85,8 +100,10 @@ namespace PaviseApp
         {
             internal AntiCheatAffinityIdentity Identity;
             internal long NextRead;
-            internal int Corrections;
-            internal bool Stopped, AllowCpuSets;
+            internal bool AllowCpuSets;
+            internal bool Owned, Revoked, EverOwned, TargetRecovery;
+            internal int MaintenanceFailures;
+            internal long NextLog;
             internal AntiCheatAffinityResult Last;
         }
         private sealed class SettingsStore : IAntiCheatAffinityStore
@@ -107,7 +124,7 @@ namespace PaviseApp
         private string device;
         private sealed class RecoveryAttempt { internal int Failures; internal long Next; }
         private readonly Dictionary<string, RecoveryAttempt> recoveryAttempts = new Dictionary<string, RecoveryAttempt>(StringComparer.Ordinal);
-        private readonly Dictionary<string, int> correctionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly Dictionary<string, RecoveryAttempt> acquisitionAttempts = new Dictionary<string, RecoveryAttempt>(StringComparer.Ordinal);
         private long recoverySession;
         private int loadFailures;
         private long loadNext;
@@ -142,12 +159,42 @@ namespace PaviseApp
         }
         internal bool HasOwnership(AntiCheatAffinityIdentity identity)
         { lock (sync) { return identity != null && rows.ContainsKey(identity.Key); } }
+        internal bool HasAppliedOwnership(AntiCheatAffinityIdentity identity)
+        { lock (sync) { Guard guard; return identity != null && rows.ContainsKey(identity.Key)
+            && guards.TryGetValue(identity.Key, out guard) && guard.Owned && !guard.Revoked; } }
+        internal void RevokeForward(AntiCheatAffinityIdentity identity = null)
+        {
+            IAntiCheatAffinityForwardPlatform forward = platform as IAntiCheatAffinityForwardPlatform;
+            if (forward != null) forward.RevokeForward(identity);
+        }
+        internal long ForwardEpoch
+        {
+            get
+            {
+                IAntiCheatAffinityForwardAdmissionPlatform admission = platform as IAntiCheatAffinityForwardAdmissionPlatform;
+                return admission == null ? 0 : admission.ForwardEpoch;
+            }
+        }
         internal ulong OriginalAffinity(AntiCheatAffinityIdentity identity)
         { lock (sync) { Receipt row; return identity != null && rows.TryGetValue(identity.Key, out row) ? row.Original : 0; } }
         private IAntiCheatAffinityConstraintPlatform Constraints { get { return platform as IAntiCheatAffinityConstraintPlatform; } }
         internal bool PendingRecovery { get { lock (sync) return recoveryPending || corrupt || (Constraints != null && Constraints.ConstraintPending); } }
+        internal bool PendingRecoveryFor(AntiCheatAffinityIdentity identity)
+        {
+            lock (sync)
+            {
+                if (!loaded || corrupt || identity == null) return PendingRecovery;
+                IAntiCheatAffinityTargetConstraintPlatform scoped = platform as IAntiCheatAffinityTargetConstraintPlatform;
+                if (scoped != null ? scoped.ConstraintPendingFor(identity) : Constraints != null && Constraints.ConstraintPending) return true;
+                Receipt row; Guard guard;
+                return rows.TryGetValue(identity.Key, out row)
+                    && (!guards.TryGetValue(identity.Key, out guard) || !guard.Owned || guard.Revoked || row.Phase == 'R');
+            }
+        }
         private static AntiCheatAffinityResult Result(string code, string detail, bool bound, bool pending)
         { return new AntiCheatAffinityResult(code, detail, bound, pending); }
+        internal static bool IsSGuard(AntiCheatAffinityIdentity identity)
+        { return identity != null && string.Equals(Path.GetFileNameWithoutExtension(identity.ImagePath), "SGuard64", StringComparison.OrdinalIgnoreCase); }
         private Guard GuardFor(AntiCheatAffinityIdentity identity)
         {
             Guard guard;
@@ -217,7 +264,27 @@ namespace PaviseApp
             if (Constraints != null && !Constraints.ReleaseConstraint(row.Identity, out reason)) return Debt(row);
             rows.Remove(row.Identity.Key);
             if (!Save()) { rows[row.Identity.Key] = row; return Debt(row); }
-            platform.Forget(row.Identity); return true;
+            RefreshRecoveryPending(); platform.Forget(row.Identity); return true;
+        }
+        private void RefreshRecoveryPending()
+        {
+            recoveryPending = false;
+            foreach (Receipt row in rows.Values)
+            {
+                Guard guard;
+                if (!guards.TryGetValue(row.Identity.Key, out guard) || !guard.Owned || guard.Revoked || row.Phase == 'R')
+                { recoveryPending = true; break; }
+            }
+        }
+        private bool HasOtherLiveOwnership(AntiCheatAffinityIdentity identity)
+        {
+            foreach (Receipt row in rows.Values)
+            {
+                Guard guard;
+                if (row.Identity.Key != identity.Key && guards.TryGetValue(row.Identity.Key, out guard)
+                    && guard.Owned && !guard.Revoked && !PendingRecoveryFor(row.Identity)) return true;
+            }
+            return false;
         }
         private bool Debt(Receipt row)
         { recoveryPending = true; return false; }
@@ -247,7 +314,10 @@ namespace PaviseApp
             try { restored = RestoreCore(row); return restored; }
             finally
             {
-                if (restored) recoveryAttempts.Remove(key);
+                if (restored)
+                {
+                    attempt.Next = 0;
+                }
                 else
                 {
                     attempt.Failures++;
@@ -263,11 +333,22 @@ namespace PaviseApp
             string reason;
             if (Constraints != null && !Constraints.ReleaseConstraint(row.Identity, out reason)) return Debt(row);
             AntiCheatAffinityObservation read = platform.Read(row.Identity);
-            if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess) return Remove(row);
+            if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess)
+            {
+                bool removed = Remove(row);
+                if (removed) Logger.Info("反作弊亲和性恢复记录已结清：原目标已退出或身份变化，未记为原值读回；目标=" + row.Identity.Key);
+                return removed;
+            }
             if (read.Read != AntiCheatAffinityRead.Known || read.Group != row.Group) return Debt(row);
             // 若进程在 Set 前崩溃，准备中的目标变更可能仍停留在上一次掩码。
             bool owned = read.Mask == row.Applied || ((row.Phase == 'P' || row.Phase == 'R') && row.Previous != 0 && read.Mask == row.Previous);
-            if (!owned || read.Mask == row.Original) return Remove(row);
+            if (!owned || read.Mask == row.Original)
+            {
+                bool removed = Remove(row);
+                if (removed) Logger.Info("反作弊亲和性恢复记录已结清：目标=" + row.Identity.Key
+                    + (read.Mask == row.Original ? " 原进程范围已读回，逐线程恢复已结清" : " 保留关闭后的外部范围，逐线程恢复已结清"));
+                return removed;
+            }
             if ((row.Original & ~read.AllowedMask) != 0) return Debt(row);
             Receipt backup = row.Copy(); row.Previous = read.Mask; row.Phase = 'R';
             if (!Save()) { rows[row.Identity.Key] = backup; return Debt(backup); }
@@ -283,112 +364,159 @@ namespace PaviseApp
             // 权限失败或写入未经核验时，保留持久恢复意图。
             return Debt(row);
         }
-        internal AntiCheatAffinityResult Ensure(AntiCheatAffinityIdentity identity, ushort group, ulong targetMask, bool allowCpuSets = false)
+        internal AntiCheatAffinityResult Ensure(AntiCheatAffinityIdentity identity, ushort group, ulong targetMask, bool allowCpuSets = false, long? expectedEpoch = null)
         {
+            // 准入代号在等锁、读值和保存日志前冻结，停用后的新代号不能被旧周期借用。
+            long admittedEpoch = expectedEpoch ?? ForwardEpoch;
             lock (sync)
             {
                 if (identity == null || identity.ProcessId <= 0 || identity.CreationTime <= 0 || targetMask == 0)
                     return Result("invalid-target", "进程身份或目标核心无效", false, false);
-                if (!Load() || (PendingRecovery && !Recover())) return Result("recovery-pending", "硬绑定恢复未完成", false, true);
-                Guard guard = GuardFor(identity);
-                if (guard.Stopped)
-                {
-                    AntiCheatAffinityResult last = guard.Last;
-                    if (last == null || last.Bound || (last.PendingRecovery && !recoveryPending))
-                        return guard.Last = Result("stopped", "硬绑定已停止，恢复记录已处理", false, recoveryPending);
-                    return last;
-                }
-                Receipt row;
-                bool acquired = rows.TryGetValue(identity.Key, out row);
-                long now = platform.NowMilliseconds;
-                if (acquired && row.Group == group && row.Applied == targetMask && guard.AllowCpuSets == allowCpuSets && now < guard.NextRead)
-                    return guard.Last ?? Result("bound", "已硬绑定辅助核", true, false);
-                guard.AllowCpuSets = allowCpuSets;
-                guard.NextRead = now + 1000;
-                AntiCheatAffinityObservation read = platform.Read(identity);
-                if (read.Read != AntiCheatAffinityRead.Known)
-                {
-                    if (acquired)
-                    {
-                        if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess) Remove(row);
-                        else recoveryPending = true;
-                    }
-                    platform.Forget(identity);
-                    guard.Stopped = true;
-                    return guard.Last = Result(read.Read == AntiCheatAffinityRead.Unsupported ? "unsupported" : "unavailable", read.Detail, false, recoveryPending);
-                }
-                if (!read.CpuSetsKnown || (!allowCpuSets && !read.CpuSetsEmpty))
-                {
-                    if (acquired && !Restore(row)) recoveryPending = true;
-                    else if (!acquired) platform.Forget(identity);
-                    guard.Stopped = true;
-                    return guard.Last = Result("unsupported", read.CpuSetsKnown ? "检测到 CPU Sets 限制，已让出硬绑定" : "无法核验进程已有核心限制，已停止硬绑定", false, recoveryPending);
-                }
-                if (read.Group != group || (targetMask & ~read.AllowedMask) != 0)
-                {
-                    if (acquired && !Restore(row)) recoveryPending = true;
-                    else if (!acquired) platform.Forget(identity);
-                    guard.Stopped = true;
-                    return guard.Last = Result("unsupported", "目标核心不属于进程当前单一处理器组", false, recoveryPending);
-                }
-                if (acquired && row.Applied == targetMask && read.Mask == row.Applied)
-                    return guard.Last = Result("bound", Constraints == null || read.Detail.Length == 0 ? "已硬绑定辅助核" : read.Detail, true, false);
-                bool drift = acquired && read.Mask != row.Applied;
-                if (drift)
-                {
-                    string correctionKey = recoverySession + "|" + identity.Key + "|" + targetMask;
-                    correctionCounts.TryGetValue(correctionKey, out guard.Corrections);
-                    if (guard.Corrections >= 3)
-                    {
-                        guard.Stopped = true;
-                        bool cleared = Remove(row);
-                        return guard.Last = Result("conflict", "亲和性持续冲突，本局停止硬绑定", false, !cleared);
-                    }
-                    guard.Corrections++;
-                    correctionCounts[correctionKey] = guard.Corrections;
-                }
-                if (!acquired && read.Mask == targetMask)
-                    return guard.Last = Result("already-matched", "进程已有相同硬亲和性，未接管", false, false);
-                Receipt prior = acquired ? row.Copy() : null;
-                if (!acquired)
-                {
-                    row = new Receipt(); row.Identity = identity; row.Group = group; row.Original = read.Mask;
-                    rows.Add(identity.Key, row);
-                }
-                if (drift) row.Original = read.Mask; // 以最新观测到的外部设置作为恢复基准。
-                row.Previous = acquired && !drift ? row.Applied : 0;
-                row.Applied = targetMask; row.Phase = 'P';
-                if (!Save())
-                {
-                    if (prior == null) rows.Remove(identity.Key); else rows[identity.Key] = prior;
-                    guard.Stopped = true;
-                    return guard.Last = Result("journal-failed", "无法持久保存硬绑定恢复记录", false, false);
-                }
-                AntiCheatAffinityObservation after;
-                bool wrote = platform.Write(identity, group, read.Mask, targetMask, out after, allowCpuSets);
-                if (wrote && after != null && after.Read == AntiCheatAffinityRead.Known && after.Group == group && after.Mask == targetMask)
-                {
-                    row.Phase = 'A';
-                    if (Save()) return guard.Last = Result(drift ? "reasserted" : "bound", Constraints != null && after.Detail.Length != 0 ? after.Detail : drift ? "检测到亲和性被修改，已重新硬绑定" : "已硬绑定辅助核", true, false);
-                }
-                guard.Stopped = true; Debt(row);
-                // 即使 Set 报错，也保留准备记录，因为写入可能已经发生。
-                return guard.Last = Result("write-unverified", after == null || after.Detail.Length == 0 ? "硬绑定未核验，等待恢复" : after.Detail, false, true);
+                return EnsureContinuous(identity, group, targetMask, allowCpuSets, admittedEpoch);
             }
         }
+        private AntiCheatAffinityResult PauseMaintenance(Guard guard, string detail)
+        {
+            guard.MaintenanceFailures = Math.Min(6, guard.MaintenanceFailures + 1);
+            long delay = Math.Min(30000, 1000L << (guard.MaintenanceFailures - 1));
+            guard.NextRead = platform.NowMilliseconds + delay;
+            if (platform.NowMilliseconds >= guard.NextLog)
+            {
+                Logger.Warn("反作弊亲和性维护暂停：目标=" + guard.Identity.Key + " 阶段=" + detail
+                    + "；保留原目标和恢复归属，退避=" + delay + "ms");
+                guard.NextLog = platform.NowMilliseconds + 30000;
+            }
+            return guard.Last = Result("maintenance-paused", detail, false, false);
+        }
+
+        // 只有已完成首次接管的反作弊字段允许持续维护；首次失败预算独立保存，不由观察成功或配置往返补充。
+        private AntiCheatAffinityResult EnsureContinuous(AntiCheatAffinityIdentity identity, ushort group, ulong targetMask, bool allowCpuSets, long admittedEpoch)
+        {
+            if (!Load()) return Result("recovery-pending", "硬绑定恢复未完成", false, true);
+            Guard guard = GuardFor(identity);
+            Receipt row;
+            bool acquired = rows.TryGetValue(identity.Key, out row);
+            bool sameScope = acquired && row.Group == group && row.Applied == targetMask && guard.AllowCpuSets == allowCpuSets;
+            if (sameScope && guard.EverOwned && (guard.TargetRecovery || PendingRecoveryFor(identity)))
+            {
+                // 守护失联仅恢复本目标；失败后保留阶段，避免全局恢复撤销其他组的归属。
+                guard.TargetRecovery = true;
+                bool restored = Release(identity);
+                return Result(restored ? "maintenance-paused" : "recovery-pending", restored
+                    ? "本目标恢复已结清；等待原计划再次核验" : "本目标恢复待核验；保留原恢复预算", false, !restored);
+            }
+            // 别组的恢复债务不能撤销仍有效的当前归属；首次接管、目标变化及来源未知的恢复记录仍先走全局恢复链。
+            bool maintainingScope = sameScope && guard.Owned && !guard.Revoked;
+            if (PendingRecovery && !maintainingScope)
+            {
+                if (HasOtherLiveOwnership(identity))
+                    return Result("recovery-pending", "已有目标继续维护；新接管等待旧恢复债务结清", false, true);
+                if (!Recover()) return Result("recovery-pending", "硬绑定恢复未完成", false, true);
+                acquired = rows.TryGetValue(identity.Key, out row);
+            }
+            if (acquired && (row.Group != group || row.Applied != targetMask || guard.AllowCpuSets != allowCpuSets))
+            {
+                guard.Revoked = true; guard.Owned = false;
+                if (!Restore(row)) return guard.Last = Result("recovery-pending", "旧目标写入资格已撤销，恢复待核验", false, true);
+                acquired = false; row = null;
+            }
+            guard.Revoked = false;
+            long now = platform.NowMilliseconds;
+            if (acquired && guard.Owned && now < guard.NextRead)
+                return guard.Last ?? Result("maintenance-paused", "等待下一次核验", false, false);
+            string key = recoverySession + "|" + identity.Key + "|" + group + "|" + targetMask + "|" + allowCpuSets;
+            RecoveryAttempt attempt;
+            if (!acquisitionAttempts.TryGetValue(key, out attempt)) acquisitionAttempts[key] = attempt = new RecoveryAttempt();
+            if (!acquired && (attempt.Failures >= 3 || now < attempt.Next))
+                return guard.Last = Result(attempt.Failures >= 3 ? "acquisition-exhausted" : "acquisition-paused",
+                    "首次接管预算=" + attempt.Failures + "/3；保留本阶段记录", false, false);
+            guard.AllowCpuSets = allowCpuSets;
+            guard.NextRead = now + 1000;
+            AntiCheatAffinityObservation read = platform.Read(identity);
+            if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess)
+            {
+                guard.Revoked = true; guard.Owned = false;
+                bool cleared = !acquired || Remove(row);
+                platform.Forget(identity);
+                return guard.Last = Result("gone", "原目标已退出或身份已变化；未记为原值读回", false, !cleared);
+            }
+            string invalid = read.Read != AntiCheatAffinityRead.Known ? read.Detail
+                : !read.CpuSetsKnown ? "进程 CPU Sets 读取未知"
+                : (!allowCpuSets && !read.CpuSetsEmpty) ? "进程已有 CPU Sets 限制"
+                : read.Group != group || (targetMask & ~read.AllowedMask) != 0 ? "目标处理器组或合法范围待核验" : null;
+            if (invalid != null)
+            {
+                if (acquired && guard.Owned) return PauseMaintenance(guard, invalid);
+                attempt.Failures++; attempt.Next = now + 30000;
+                return guard.Last = Result("acquisition-paused", "首次准入未通过：" + invalid, false, false);
+            }
+            if (acquired && guard.Owned && read.Mask == targetMask && read.PlacementVerified)
+            {
+                guard.MaintenanceFailures = 0;
+                return guard.Last = Result("bound", read.Detail.Length == 0 ? "反作弊亲和性已核验" : read.Detail, true, false);
+            }
+            if (!acquired && read.Mask == targetMask && read.PlacementVerified)
+                return guard.Last = Result("already-matched", "进程已有相同硬亲和性，未接管", false, false);
+            bool maintaining = acquired && guard.Owned;
+            Receipt prior = acquired ? row.Copy() : null;
+            if (!acquired)
+            {
+                row = new Receipt { Identity = identity, Group = group, Original = read.Mask };
+                rows.Add(identity.Key, row);
+            }
+            // 运行期漂移不改变首次原值；准备阶段的外部前值也不能被当作本方末次写入。
+            row.Previous = 0; row.Applied = targetMask; row.Phase = 'P';
+            if (!Save())
+            {
+                if (prior == null) rows.Remove(identity.Key); else rows[identity.Key] = prior;
+                if (maintaining) return PauseMaintenance(guard, "纠偏日志持久化失败，尚未写入");
+                attempt.Failures++; attempt.Next = now + 30000;
+                return guard.Last = Result("acquisition-paused", "首次恢复日志持久化失败，尚未写入", false, false);
+            }
+            AntiCheatAffinityObservation after;
+            IAntiCheatAffinityForwardAdmissionPlatform admission = platform as IAntiCheatAffinityForwardAdmissionPlatform;
+            bool wrote = admission == null ? platform.Write(identity, group, read.Mask, targetMask, out after, allowCpuSets)
+                : admission.WriteOwned(identity, group, read.Mask, targetMask, admittedEpoch, out after, allowCpuSets);
+            if (wrote && after != null && after.Read == AntiCheatAffinityRead.Known && after.Group == group
+                && after.Mask == targetMask && after.PlacementVerified)
+            {
+                row.Phase = 'A';
+                if (Save())
+                {
+                    guard.Owned = true; guard.EverOwned = true; guard.MaintenanceFailures = 0; guard.NextRead = now + 1000;
+                    if (maintaining && now >= guard.NextLog)
+                    {
+                        Logger.Info("反作弊亲和性读回漂移已纠正：目标=" + identity.Key + " 掩码=0x" + targetMask.ToString("X", CultureInfo.InvariantCulture)
+                            + " 纠正前掩码=0x" + read.Mask.ToString("X", CultureInfo.InvariantCulture) + " 核验详情=" + read.Detail);
+                        guard.NextLog = now + 30000;
+                    }
+                    return guard.Last = Result(maintaining ? "reasserted" : "bound", after.Detail.Length == 0
+                        ? maintaining ? "检测到回写，原目标已重新核验" : "反作弊亲和性接管已核验" : after.Detail, true, false);
+                }
+            }
+            string failure = after == null || after.Detail.Length == 0 ? "写入或读回未核验" : after.Detail;
+            if (maintaining) return PauseMaintenance(guard, failure);
+            attempt.Failures++; attempt.Next = now + 30000;
+            guard.Revoked = true; guard.Owned = false; Debt(row);
+            return guard.Last = Result("write-unverified", "首次接管未核验：" + failure + "；保留恢复日志", false, true);
+        }
+
         internal bool Release(AntiCheatAffinityIdentity identity)
         {
+            RevokeForward(identity);
             lock (sync)
             {
                 if (!Load()) { recoveryPending = true; return false; }
                 Receipt row;
                 if (identity == null) return true;
+                Guard revoked;
+                if (guards.TryGetValue(identity.Key, out revoked)) { revoked.Revoked = true; revoked.Owned = false; }
                 if (!rows.TryGetValue(identity.Key, out row))
                 {
                     string reason;
                     if (Constraints != null && !Constraints.ReleaseConstraint(identity, out reason)) { recoveryPending = true; return false; }
                     platform.Forget(identity); guards.Remove(identity.Key);
-                    if (rows.Count == 0) recoveryPending = false;
+                    RefreshRecoveryPending();
                     return true;
                 }
                 bool ok = Restore(row);
@@ -396,16 +524,18 @@ namespace PaviseApp
                 else
                 {
                     guards.Remove(identity.Key);
-                    if (rows.Count == 0) recoveryPending = false;
+                    RefreshRecoveryPending();
                 }
                 return ok;
             }
         }
         internal bool ReleaseAll()
         {
+            RevokeForward();
             lock (sync)
             {
                 if (!Load()) { recoveryPending = true; return false; }
+                foreach (Guard revoked in guards.Values) { revoked.Revoked = true; revoked.Owned = false; }
                 bool ok = true;
                 foreach (Receipt row in new List<Receipt>(rows.Values)) ok = Restore(row) && ok;
                 string reason;
@@ -433,7 +563,7 @@ namespace PaviseApp
             }
         }
 
-        private sealed class NativePlatform : IAntiCheatAffinityPlatform, IAntiCheatAffinityRestorePlatform, IAntiCheatAffinityConstraintPlatform
+        private sealed class NativePlatform : IAntiCheatAffinityPlatform, IAntiCheatAffinityRestorePlatform, IAntiCheatAffinityConstraintPlatform, IAntiCheatAffinityTargetConstraintPlatform, IAntiCheatAffinityForwardPlatform, IAntiCheatAffinityForwardAdmissionPlatform
         {
             private sealed class Backend
             {
@@ -446,6 +576,7 @@ namespace PaviseApp
             private readonly GameAffinityJobLease jobs = new GameAffinityJobLease();
             private readonly Stopwatch timer = Stopwatch.StartNew();
             private bool recovered;
+            private long forwardEpoch;
             private string device;
             [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
             [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
@@ -520,7 +651,7 @@ namespace PaviseApp
                     if (!GetProcessAffinityMask(handle, out affinity, out system) || affinity == UIntPtr.Zero || system == UIntPtr.Zero)
                         return Failure(AntiCheatAffinityRead.Unavailable, "无法读取单组硬亲和性");
                     AntiCheatAffinityObservation result = new AntiCheatAffinityObservation(AntiCheatAffinityRead.Known, groups[0], affinity.ToUInt64(), system.ToUInt64(), "");
-                    // 这里失败只阻止新准入，不影响恢复本方单独持有的硬掩码。
+                    // 读取失败仅阻止新准入，本方硬掩码仍按归属恢复。
                     try
                     {
                         uint required;
@@ -542,41 +673,66 @@ namespace PaviseApp
                 {
                     handle = OpenProcess(0x1400, false, identity.ProcessId);
                     if (handle == IntPtr.Zero)
-                        return Failure(Marshal.GetLastWin32Error() == 87 ? AntiCheatAffinityRead.Gone : AntiCheatAffinityRead.Unavailable, "无法读取进程；权限拒绝时停止重试");
+                    {
+                        int error = Marshal.GetLastWin32Error();
+                        return Failure(error == 87 ? AntiCheatAffinityRead.Gone : AntiCheatAffinityRead.Unavailable, "OpenProcess 读取失败：" + error);
+                    }
                     handles.Add(identity.Key, handle);
                 }
                 AntiCheatAffinityObservation read = ReadHandle(handle, identity);
                 if (read.Read == AntiCheatAffinityRead.Gone || read.Read == AntiCheatAffinityRead.DifferentProcess) Forget(identity);
                 Backend backend;
+                if (read.Read == AntiCheatAffinityRead.Known && IsSGuard(identity) && !backends.ContainsKey(identity.Key))
+                    read.PlacementVerified = false;
                 if (read.Read == AntiCheatAffinityRead.Known && backends.TryGetValue(identity.Key, out backend))
                 {
                     string reason;
                     if (backend.Job && !jobs.Verify(identity.ProcessId, identity.CreationTime, backend.Desired, out reason))
-                        return Failure(AntiCheatAffinityRead.Unavailable, "Job 硬绑定待恢复：" + reason);
+                    {
+                        // 未取得核验锁时结果保持未知，不能借后续快照补判漂移。
+                        if (reason == "job-operation-pending")
+                            return Failure(AntiCheatAffinityRead.Unavailable, "反作弊线程放置正在核验：" + reason);
+                        if (jobs.HasPendingFor(identity.ProcessId, identity.CreationTime))
+                            return Failure(AntiCheatAffinityRead.Unavailable, "Job 硬绑定待恢复：" + reason);
+                        read.PlacementVerified = false;
+                        read.Detail = "反作弊线程放置待核验：" + reason;
+                        return read;
+                    }
                     read.Detail = backend.Detail;
                 }
                 return read;
             }
             public bool Write(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, out AntiCheatAffinityObservation observed, bool allowCpuSets = false)
-            { return WriteMask(identity, group, expected, target, true, allowCpuSets, out observed); }
+            { return WriteMask(identity, group, expected, target, true, allowCpuSets, out observed, ForwardEpoch); }
+            public long ForwardEpoch { get { return System.Threading.Interlocked.Read(ref forwardEpoch); } }
+            public bool WriteOwned(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, long admittedEpoch,
+                out AntiCheatAffinityObservation observed, bool allowCpuSets)
+            { return WriteMask(identity, group, expected, target, true, allowCpuSets, out observed, admittedEpoch); }
             public bool Restore(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, out AntiCheatAffinityObservation observed)
             {
                 string reason;
                 if (!ReleaseConstraint(identity, out reason)) { observed = Failure(AntiCheatAffinityRead.Unavailable, "Job 恢复未完成：" + reason); return false; }
                 observed = Read(identity);
                 if (observed.Read == AntiCheatAffinityRead.Known && observed.Group == group && observed.Mask == target) return true;
-                return WriteMask(identity, group, expected, target, false, true, out observed);
+                return WriteMask(identity, group, expected, target, false, true, out observed, ForwardEpoch);
             }
-            private bool WriteMask(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, bool admission, bool allowCpuSets, out AntiCheatAffinityObservation observed)
+            private bool WriteMask(AntiCheatAffinityIdentity identity, ushort group, ulong expected, ulong target, bool admission, bool allowCpuSets, out AntiCheatAffinityObservation observed, long admittedEpoch)
             {
                 observed = null;
+                if (admission && admittedEpoch != ForwardEpoch)
+                { observed = Failure(AntiCheatAffinityRead.Unavailable, "反作弊旧代写入资格已撤销：阶段=pre-native-write"); return false; }
                 IntPtr handle = OpenProcess(0x1600, false, identity.ProcessId);
-                if (handle == IntPtr.Zero) { observed = Failure(Marshal.GetLastWin32Error() == 87 ? AntiCheatAffinityRead.Gone : AntiCheatAffinityRead.Unavailable, "硬绑定权限被拒绝，保留恢复记录"); return false; }
+                if (handle == IntPtr.Zero)
+                {
+                    int error = Marshal.GetLastWin32Error();
+                    observed = Failure(error == 87 ? AntiCheatAffinityRead.Gone : AntiCheatAffinityRead.Unavailable, "OpenProcess 写入权限打开失败：" + error + "；保留恢复记录"); return false;
+                }
                 try
                 {
                     observed = ReadHandle(handle, identity);
                     if (observed.Read != AntiCheatAffinityRead.Known || observed.Group != group || observed.Mask != expected || target == 0 || (target & ~observed.AllowedMask) != 0) return false;
-                    if (admission && (!observed.CpuSetsKnown || (!allowCpuSets && !observed.CpuSetsEmpty))) return false;
+                    if (admission && (!observed.CpuSetsKnown || (!allowCpuSets && !observed.CpuSetsEmpty)))
+                    { observed.Detail = "本方准入暂停：进程 CPU Sets 未通过核验"; return false; }
                     string detail = "";
                     ulong restoreOriginal = expected;
                     if (admission)
@@ -589,19 +745,29 @@ namespace PaviseApp
                         bool supported = false;
                         try { supported = group == 0 && GetActiveProcessorGroupCount() == 1; }
                         catch (EntryPointNotFoundException) { }
-                        // 已建立的进程级租约在切换目标时沿用原后端；此时改用 Job 会把本方已写入的掩码误当成原值。
+                        jobs.OwnThreadAffinity = true;
+                        jobs.StrictThreadAdmission = !IsSGuard(identity);
+                        jobs.ForwardAdmission = delegate { return admittedEpoch == System.Threading.Interlocked.Read(ref forwardEpoch); };
+                        // 已有进程租约沿用原后端，避免切换 Job 后将本方写入值当作原值。
 
                         if (supported && (!existingBackend || prior.Job) && jobs.Ensure(identity.ProcessId, identity.CreationTime, Path.GetFileNameWithoutExtension(identity.ImagePath), original, target, out reason))
                         {
-                            backends[identity.Key] = new Backend { Original = original, Desired = target, Job = true, Detail = "Job 硬亲和性已核验" };
+                            // 守护仍持有后端；Job 接管被拒时，回执仅报告进程范围限制。
+                            backends[identity.Key] = new Backend { Original = original, Desired = target, Job = true,
+                                Detail = jobs.IsDirectRange(identity.ProcessId, identity.CreationTime)
+                                    ? "进程范围已核验；目标拒绝 Job 接管，线程原值由守护日志恢复" : "Job 硬亲和性已核验" };
                             observed = Read(identity);
                             return observed.Read == AntiCheatAffinityRead.Known && observed.Group == group && observed.Mask == target;
                         }
                         if (GameThreadAffinityAdmission.IsRefusal(reason))
                         { observed = Failure(AntiCheatAffinityRead.Unavailable, "线程分配保护拒绝：" + reason); return false; }
-                        if (jobs.HasPending || jobs.IsActive(identity.ProcessId, identity.CreationTime))
+                        // SGuard 的线程原值归属只由专用守护持有；守护准入或 API 失败后不能退回无逐线程日志的进程写入。
+                        if (IsSGuard(identity))
+                        { observed = Failure(AntiCheatAffinityRead.Unavailable, "SGuard64 专用接管未核验：" + reason); return false; }
+                        if ((existingBackend ? jobs.HasPendingFor(identity.ProcessId, identity.CreationTime) : jobs.HasPending)
+                            || jobs.IsActive(identity.ProcessId, identity.CreationTime))
                         { observed = Failure(AntiCheatAffinityRead.Unavailable, "Job 硬绑定待恢复：" + reason); return false; }
-                        // 准入和清理可能耗时。退回进程级方案前，重新核对同一句柄及外部 CPU Sets，避免跨越已变化的基准写入。
+                        // 退回进程方案前复核原句柄和外部 CPU Sets，防止耗时操作期间基准变化。
 
                         observed = ReadHandle(handle, identity);
                         if (observed.Read != AntiCheatAffinityRead.Known || observed.Group != group || observed.Mask != expected
@@ -611,8 +777,18 @@ namespace PaviseApp
                         { observed = Failure(AntiCheatAffinityRead.Unavailable, "线程分配保护拒绝：" + threadReason); return false; }
                         detail = existingBackend && !prior.Job ? prior.Detail : "进程硬亲和性已核验；Job 未启用（" + reason + "）";
                     }
+                    if (!admission && observed.Mask != target)
+                    {
+                        string threadReason;
+                        if (!GameThreadAffinityAdmission.Check(handle, identity.ProcessId, identity.CreationTime, observed.Mask, out threadReason))
+                        { observed.Detail = "恢复未确认：保留之后的线程设置，阶段=" + threadReason; return false; }
+                    }
+                    if (admission && admittedEpoch != ForwardEpoch)
+                    { observed.Detail = "反作弊旧代写入资格已撤销：阶段=pre-process-write"; return false; }
                     bool ok = (admission && observed.Mask == target) || SetProcessAffinityMask(handle, new UIntPtr(target));
+                    int writeError = ok ? 0 : Marshal.GetLastWin32Error();
                     observed = ReadHandle(handle, identity);
+                    if (!ok) observed.Detail = "SetProcessAffinityMask 写入失败：" + writeError;
                     if (admission && ok && observed.Read == AntiCheatAffinityRead.Known && observed.Group == group && observed.Mask == target)
                     {
                         backends[identity.Key] = new Backend { Original = restoreOriginal, Desired = target, Job = false, Detail = detail };
@@ -629,6 +805,13 @@ namespace PaviseApp
                 if (handles.TryGetValue(identity.Key, out handle)) { handles.Remove(identity.Key); CloseHandle(handle); }
             }
             public bool ConstraintPending { get { return jobs.HasPending; } }
+            public bool ConstraintPendingFor(AntiCheatAffinityIdentity identity)
+            { return identity == null ? jobs.HasPending : jobs.HasPendingFor(identity.ProcessId, identity.CreationTime); }
+            public void RevokeForward(AntiCheatAffinityIdentity identity)
+            {
+                System.Threading.Interlocked.Increment(ref forwardEpoch);
+                jobs.RevokeForward(identity == null ? 0 : identity.ProcessId, identity == null ? 0 : identity.CreationTime);
+            }
             public bool RecoverConstraints(bool restoreOwned, out string reason)
             {
                 reason = null;

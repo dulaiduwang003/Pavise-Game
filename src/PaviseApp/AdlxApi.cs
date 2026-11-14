@@ -66,9 +66,133 @@ namespace PaviseApp
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int FnOutLuid(IntPtr self, out GpuLuid value);
 
+        private const ulong FullVersion = 281496451547260uL;
+
+        private const uint LoadSearchFlags = 7680u;
+
         public const int GpuTypeIntegrated = 1;
 
         public const int GpuTypeDiscrete = 2;
+
+        private const int SysSlotGetGpus = 1;
+
+        private const int SysSlotGet3DServices = 7;
+
+        private const int SysSlotGetPerfServices = 9;
+
+        private const int IfaceSlotRelease = 1;
+
+        private const int IfaceSlotQuery = 2;
+
+        private const int ListSlotBegin = 5;
+
+        private const int ListSlotEnd = 6;
+
+        private const int GpuListSlotAt = 11;
+
+        private const int GpuSlotVendorId = 3;
+
+        private const int GpuSlotType = 5;
+
+        private const int GpuSlotName = 7;
+
+        private const int GpuSlotPnp = 9;
+
+        private const int SysSlotGetTuningServices = 8;
+
+        private const int SvcSlotAntiLag = 3;
+
+        private const int SvcSlotChill = 4;
+
+        private const int SvcSlotImageSharpening = 6;
+
+        private const int SvcSlotEnhancedSync = 7;
+
+        private const int SvcSlotFrtc = 9;
+
+        private const int SvcSlotRsr = 14;
+
+        private const int SvcSlotResetShaderCache = 15;
+
+        private const int Svc1SlotAfmf = 17;
+
+        private const int RsrSlotSetEnabled = 5;
+
+        private const int RsrSlotGetSharpness = 7;
+
+        private const int RsrSlotSetSharpness = 8;
+
+        private const int TuneSlotIsSupportedManualPower = 11;
+
+        private const int TuneSlotGetManualPower = 17;
+
+        private const int TuneSlotIsSupportedManualGfx = 8;
+
+        private const int TuneSlotGetManualGfx = 14;
+
+        private const int Tune1SlotGetSam = 18;
+
+        private const string TuningServices1Iid = "IADLXGPUTuningServices1";
+
+        private const string ManualGfx2Iid = "IADLXManualGraphicsTuning2";
+
+        private const int Gfx2SlotGetMinRange = 3;
+
+        private const int Gfx2SlotGetMin = 4;
+
+        private const int Gfx2SlotSetMin = 5;
+
+        private const int Gfx2SlotGetMax = 7;
+
+        private const int PowerSlotGetRange = 3;
+
+        private const int PowerSlotGetLimit = 4;
+
+        private const int PowerSlotSetLimit = 5;
+
+        private const string Services1Iid = "IADLX3DSettingsServices1";
+
+        private const int FeatSlotIsSupported = 3;
+
+        private const int FeatSlotIsEnabled = 4;
+
+        private const int ToggleSlotSetEnabled = 5;
+
+        private const int ChillSlotGetFpsRange = 5;
+
+        private const int ChillSlotGetMinFps = 6;
+
+        private const int ChillSlotGetMaxFps = 7;
+
+        private const int ChillSlotSetEnabled = 8;
+
+        private const int ChillSlotSetMinFps = 9;
+
+        private const int ChillSlotSetMaxFps = 10;
+
+        private const int FrtcSlotGetFpsRange = 5;
+
+        private const int FrtcSlotGetFps = 6;
+
+        private const int FrtcSlotSetEnabled = 7;
+
+        private const int FrtcSlotSetFps = 8;
+
+        private const int RisSlotGetRange = 5;
+
+        private const int RisSlotGetSharpness = 6;
+
+        private const int RisSlotSetEnabled = 7;
+
+        private const int RisSlotSetSharpness = 8;
+
+        private const int CacheSlotReset = 4;
+
+        private const int PerfSlotCurrentGpuMetrics = 18;
+
+        private const int PerfSlotSupportedGpuMetrics = 21;
+
+        private const int Gpu2SlotLuid = 34;
 
         private static readonly object lk = new object();
 
@@ -113,27 +237,27 @@ namespace PaviseApp
         {
             try
             {
-                IntPtr libraryHandle = LoadLibraryExW("amdadlx64.dll", IntPtr.Zero, 7680u);
-                if (libraryHandle == IntPtr.Zero)
+                IntPtr intPtr = LoadLibraryExW("amdadlx64.dll", IntPtr.Zero, 7680u);
+                if (intPtr == IntPtr.Zero)
                 {
                     return false;
                 }
-                IntPtr procAddress = GetProcAddress(libraryHandle, "ADLXInitialize");
-                IntPtr procAddress2 = GetProcAddress(libraryHandle, "ADLXTerminate");
+                IntPtr procAddress = GetProcAddress(intPtr, "ADLXInitialize");
+                IntPtr procAddress2 = GetProcAddress(intPtr, "ADLXTerminate");
                 if (procAddress == IntPtr.Zero || procAddress2 == IntPtr.Zero)
                 {
                     return false;
                 }
                 FnInitialize fnInitialize = (FnInitialize)Marshal.GetDelegateForFunctionPointer(procAddress, typeof(FnInitialize));
                 terminate = (FnTerminate)Marshal.GetDelegateForFunctionPointer(procAddress2, typeof(FnTerminate));
-                IntPtr nativePointer;
-                int fnInitializeResult = fnInitialize(281496451547260uL, out nativePointer);
-                if (!Succeeded(fnInitializeResult) || nativePointer == IntPtr.Zero)
+                IntPtr intPtr2;
+                int fnInitializeResult = fnInitialize(281496451547260uL, out intPtr2);
+                if (!Succeeded(fnInitializeResult) || intPtr2 == IntPtr.Zero)
                 {
                     Logger.Warn(Lang.T("log.adlxapi.1", 0) + fnInitializeResult + Lang.T("log.adlxapi.2", 0));
                     return false;
                 }
-                system = nativePointer;
+                system = intPtr2;
                 AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
                 return true;
             }
@@ -187,34 +311,34 @@ namespace PaviseApp
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnOutPtr>(system, 1)(system, out nativePointer)) || nativePointer == IntPtr.Zero)
+                IntPtr value;
+                if (!Succeeded(VMethod<FnOutPtr>(system, 1)(system, out value)) || value == IntPtr.Zero)
                 {
                     return null;
                 }
                 try
                 {
-                    uint firstGpuIndex = VMethod<FnUIntProp>(nativePointer, 5)(nativePointer);
-                    uint gpuEndIndex = VMethod<FnUIntProp>(nativePointer, 6)(nativePointer);
-                    if (gpuEndIndex <= firstGpuIndex || gpuEndIndex - firstGpuIndex > 16)
+                    uint numericValue = VMethod<FnUIntProp>(value, 5)(value);
+                    uint numericValue2 = VMethod<FnUIntProp>(value, 6)(value);
+                    if (numericValue2 <= numericValue || numericValue2 - numericValue > 16)
                     {
                         return new IntPtr[0];
                     }
-                    FnAtList fnAtList = VMethod<FnAtList>(nativePointer, 11);
-                    List<IntPtr> nativePointers = new List<IntPtr>();
-                    for (uint iterationIndex = firstGpuIndex; iterationIndex < gpuEndIndex; iterationIndex++)
+                    FnAtList fnAtList = VMethod<FnAtList>(value, 11);
+                    List<IntPtr> list = new List<IntPtr>();
+                    for (uint iterationIndex = numericValue; iterationIndex < numericValue2; iterationIndex++)
                     {
-                        IntPtr currentNativePointer;
-                        if (Succeeded(fnAtList(nativePointer, iterationIndex, out currentNativePointer)) && currentNativePointer != IntPtr.Zero)
+                        IntPtr item;
+                        if (Succeeded(fnAtList(value, iterationIndex, out item)) && item != IntPtr.Zero)
                         {
-                            nativePointers.Add(currentNativePointer);
+                            list.Add(item);
                         }
                     }
-                    return nativePointers.ToArray();
+                    return list.ToArray();
                 }
                 finally
                 {
-                    Release(nativePointer);
+                    Release(value);
                 }
             }
             catch
@@ -321,19 +445,19 @@ namespace PaviseApp
             {
                 return IntPtr.Zero;
             }
-            IntPtr nativePointerEntry = Get3DServices();
-            if (nativePointerEntry == IntPtr.Zero)
+            IntPtr intPtr = Get3DServices();
+            if (intPtr == IntPtr.Zero)
             {
                 return IntPtr.Zero;
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnGpuOutPtr>(nativePointerEntry, serviceSlot)(nativePointerEntry, gpu, out nativePointer)))
+                IntPtr value;
+                if (!Succeeded(VMethod<FnGpuOutPtr>(intPtr, serviceSlot)(intPtr, gpu, out value)))
                 {
                     return IntPtr.Zero;
                 }
-                return nativePointer;
+                return value;
             }
             catch
             {
@@ -341,7 +465,7 @@ namespace PaviseApp
             }
             finally
             {
-                Release(nativePointerEntry);
+                Release(intPtr);
             }
         }
 
@@ -351,22 +475,22 @@ namespace PaviseApp
             enabled = false;
             try
             {
-                byte capabilityFlag;
-                if (!Succeeded(VMethod<FnOutByte>(feature, 3)(feature, out capabilityFlag)))
+                byte value;
+                if (!Succeeded(VMethod<FnOutByte>(feature, 3)(feature, out value)))
                 {
                     return false;
                 }
-                supported = capabilityFlag != 0;
+                supported = value != 0;
                 if (!supported)
                 {
                     return true;
                 }
-                byte currentCapabilityFlag;
-                if (!Succeeded(VMethod<FnOutByte>(feature, 4)(feature, out currentCapabilityFlag)))
+                byte value2;
+                if (!Succeeded(VMethod<FnOutByte>(feature, 4)(feature, out value2)))
                 {
                     return false;
                 }
-                enabled = currentCapabilityFlag != 0;
+                enabled = value2 != 0;
                 return true;
             }
             catch
@@ -606,30 +730,30 @@ namespace PaviseApp
             {
                 return IntPtr.Zero;
             }
-            IntPtr nativePointerEntry = Get3DServices();
-            if (nativePointerEntry == IntPtr.Zero)
+            IntPtr intPtr = Get3DServices();
+            if (intPtr == IntPtr.Zero)
             {
                 return IntPtr.Zero;
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnQueryIface>(nativePointerEntry, 2)(nativePointerEntry, "IADLX3DSettingsServices1", out nativePointer)) || nativePointer == IntPtr.Zero)
+                IntPtr value;
+                if (!Succeeded(VMethod<FnQueryIface>(intPtr, 2)(intPtr, "IADLX3DSettingsServices1", out value)) || value == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
                 try
                 {
-                    IntPtr currentNativePointer;
-                    if (!Succeeded(VMethod<FnOutPtr>(nativePointer, 17)(nativePointer, out currentNativePointer)))
+                    IntPtr value2;
+                    if (!Succeeded(VMethod<FnOutPtr>(value, 17)(value, out value2)))
                     {
                         return IntPtr.Zero;
                     }
-                    return currentNativePointer;
+                    return value2;
                 }
                 finally
                 {
-                    Release(nativePointer);
+                    Release(value);
                 }
             }
             catch
@@ -638,7 +762,7 @@ namespace PaviseApp
             }
             finally
             {
-                Release(nativePointerEntry);
+                Release(intPtr);
             }
         }
 
@@ -688,19 +812,19 @@ namespace PaviseApp
             {
                 return IntPtr.Zero;
             }
-            IntPtr nativePointerEntry = Get3DServices();
-            if (nativePointerEntry == IntPtr.Zero)
+            IntPtr intPtr = Get3DServices();
+            if (intPtr == IntPtr.Zero)
             {
                 return IntPtr.Zero;
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnOutPtr>(nativePointerEntry, 14)(nativePointerEntry, out nativePointer)))
+                IntPtr value;
+                if (!Succeeded(VMethod<FnOutPtr>(intPtr, 14)(intPtr, out value)))
                 {
                     return IntPtr.Zero;
                 }
-                return nativePointer;
+                return value;
             }
             catch
             {
@@ -708,7 +832,7 @@ namespace PaviseApp
             }
             finally
             {
-                Release(nativePointerEntry);
+                Release(intPtr);
             }
         }
 
@@ -732,10 +856,10 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                int rsrSharpness;
-                if (Succeeded(VMethod<FnOutInt>(rsr, 7)(rsr, out rsrSharpness)))
+                int value;
+                if (Succeeded(VMethod<FnOutInt>(rsr, 7)(rsr, out value)))
                 {
-                    sharpness = rsrSharpness;
+                    sharpness = value;
                 }
                 return true;
             }
@@ -781,10 +905,10 @@ namespace PaviseApp
             {
                 return IntPtr.Zero;
             }
-            IntPtr nativePointer;
+            IntPtr value;
             try
             {
-                if (!Succeeded(VMethod<FnOutPtr>(system, 8)(system, out nativePointer)) || nativePointer == IntPtr.Zero)
+                if (!Succeeded(VMethod<FnOutPtr>(system, 8)(system, out value)) || value == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
@@ -795,18 +919,18 @@ namespace PaviseApp
             }
             try
             {
-                byte capabilityFlag;
-                if (!Succeeded(VMethod<FnGpuOutByte>(nativePointer, 11)(nativePointer, gpu, out capabilityFlag)) || capabilityFlag == 0)
+                byte value2;
+                if (!Succeeded(VMethod<FnGpuOutByte>(value, 11)(value, gpu, out value2)) || value2 == 0)
                 {
                     return IntPtr.Zero;
                 }
                 supported = true;
-                IntPtr currentNativePointer;
-                if (!Succeeded(VMethod<FnGpuOutPtr>(nativePointer, 17)(nativePointer, gpu, out currentNativePointer)))
+                IntPtr value3;
+                if (!Succeeded(VMethod<FnGpuOutPtr>(value, 17)(value, gpu, out value3)))
                 {
                     return IntPtr.Zero;
                 }
-                return currentNativePointer;
+                return value3;
             }
             catch
             {
@@ -814,7 +938,7 @@ namespace PaviseApp
             }
             finally
             {
-                Release(nativePointer);
+                Release(value);
             }
         }
 
@@ -826,12 +950,12 @@ namespace PaviseApp
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnOutPtr>(system, 8)(system, out nativePointer)) || nativePointer == IntPtr.Zero)
+                IntPtr value;
+                if (!Succeeded(VMethod<FnOutPtr>(system, 8)(system, out value)) || value == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
-                return nativePointer;
+                return value;
             }
             catch
             {
@@ -849,29 +973,29 @@ namespace PaviseApp
             }
             try
             {
-                byte capabilityFlag;
-                if (!Succeeded(VMethod<FnGpuOutByte>(tuningServices, 8)(tuningServices, gpu, out capabilityFlag)) || capabilityFlag == 0)
+                byte value;
+                if (!Succeeded(VMethod<FnGpuOutByte>(tuningServices, 8)(tuningServices, gpu, out value)) || value == 0)
                 {
                     return IntPtr.Zero;
                 }
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnGpuOutPtr>(tuningServices, 14)(tuningServices, gpu, out nativePointer)) || nativePointer == IntPtr.Zero)
+                IntPtr value2;
+                if (!Succeeded(VMethod<FnGpuOutPtr>(tuningServices, 14)(tuningServices, gpu, out value2)) || value2 == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
                 try
                 {
-                    IntPtr currentNativePointer;
-                    if (!Succeeded(VMethod<FnQueryIface>(nativePointer, 2)(nativePointer, "IADLXManualGraphicsTuning2", out currentNativePointer)) || currentNativePointer == IntPtr.Zero)
+                    IntPtr value3;
+                    if (!Succeeded(VMethod<FnQueryIface>(value2, 2)(value2, "IADLXManualGraphicsTuning2", out value3)) || value3 == IntPtr.Zero)
                     {
                         return IntPtr.Zero;
                     }
                     supported = true;
-                    return currentNativePointer;
+                    return value3;
                 }
                 finally
                 {
-                    Release(nativePointer);
+                    Release(value2);
                 }
             }
             catch
@@ -951,23 +1075,23 @@ namespace PaviseApp
             }
             try
             {
-                IntPtr nativePointer;
-                if (!Succeeded(VMethod<FnQueryIface>(tuningServices, 2)(tuningServices, "IADLXGPUTuningServices1", out nativePointer)) || nativePointer == IntPtr.Zero)
+                IntPtr value;
+                if (!Succeeded(VMethod<FnQueryIface>(tuningServices, 2)(tuningServices, "IADLXGPUTuningServices1", out value)) || value == IntPtr.Zero)
                 {
                     return IntPtr.Zero;
                 }
                 try
                 {
-                    IntPtr currentNativePointer;
-                    if (!Succeeded(VMethod<FnGpuOutPtr>(nativePointer, 18)(nativePointer, gpu, out currentNativePointer)))
+                    IntPtr value2;
+                    if (!Succeeded(VMethod<FnGpuOutPtr>(value, 18)(value, gpu, out value2)))
                     {
                         return IntPtr.Zero;
                     }
-                    return currentNativePointer;
+                    return value2;
                 }
                 finally
                 {
-                    Release(nativePointer);
+                    Release(value);
                 }
             }
             catch
@@ -1151,8 +1275,8 @@ namespace PaviseApp
             }
             try
             {
-                byte capabilityFlag;
-                if (!Succeeded(VMethod<FnOutByte>(feature, 3)(feature, out capabilityFlag)) || capabilityFlag == 0)
+                byte value;
+                if (!Succeeded(VMethod<FnOutByte>(feature, 3)(feature, out value)) || value == 0)
                 {
                     return false;
                 }

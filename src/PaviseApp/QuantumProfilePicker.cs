@@ -5,11 +5,17 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    internal sealed class QuantumProfilePicker : FxControl
+    internal class PerformanceProfilePicker : FxControl
     {
-        private sealed class ProfileList : Control
+        protected sealed class ProfileList : Control
         {
-            private static readonly int[] order = new int[9] { 0, 1, 8, 2, 3, 4, 5, 6, 7 };
+            private readonly int[] order;
+
+            private readonly Func<int, string> title;
+
+            private readonly Func<int, string> description;
+
+            private readonly int separatorBefore;
 
             private int active;
 
@@ -81,16 +87,22 @@ namespace PaviseApp
 
             internal event Action<bool> Tabbed;
 
-            internal ProfileList(int selected)
+            internal ProfileList(int selected, int[] order, Func<int, string> title, Func<int, string> description,
+                string accessibleName, int separatorBefore)
             {
                 this.selected = selected;
+                this.order = order;
+                this.title = title;
+                this.description = description;
+                this.separatorBefore = separatorBefore;
                 active = Array.IndexOf(order, selected);
-                base.Size = new Size(Theme.S(458), header + row * order.Length + footer);
+                // 菜单最多展示四项，其余通过既有滚动和键盘导航访问。
+                base.Size = new Size(Theme.S(458), header + row * Math.Min(4, order.Length) + footer);
                 SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
                 Cursor = Cursors.Hand;
                 base.TabStop = true;
                 base.AccessibleRole = AccessibleRole.List;
-                base.AccessibleName = PerformancePolicy.Text("选择前台时间片", "Choose foreground time slice");
+                base.AccessibleName = accessibleName;
             }
 
             internal void SetSelected(int index)
@@ -136,9 +148,9 @@ namespace PaviseApp
                 graphics.SetClip(new Rectangle(0, header, base.Width, ViewHeight));
                 for (int i = 0; i < order.Length; i++)
                 {
-                    int profileIndex = order[i];
+                    int onPaintValue = order[i];
                     int top = header + i * row - offset;
-                    bool isSelected = profileIndex == selected;
+                    bool isSelected = onPaintValue == selected;
                     bool isHighlighted = (keyboard ? (i == active) : (i == hoverRow));
                     Rectangle r = new Rectangle(Theme.S(5), top + Theme.S(2), base.Width - Theme.S(16), row - Theme.S(4));
                     if (isSelected || isHighlighted)
@@ -155,15 +167,15 @@ namespace PaviseApp
                             }
                         }
                     }
-                    if (i == 3)
+                    if (i == separatorBefore)
                     {
-                        using (Pen strokePen = new Pen(Theme.Stroke))
+                        using (Pen pen2 = new Pen(Theme.Stroke))
                         {
-                            graphics.DrawLine(strokePen, Theme.S(12), top, base.Width - Theme.S(12), top);
+                            graphics.DrawLine(pen2, Theme.S(12), top, base.Width - Theme.S(12), top);
                         }
                     }
-                    TextRenderer.DrawText(graphics, QuantumProfiles.Title(profileIndex), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), isSelected ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-                    TextRenderer.DrawText(graphics, QuantumProfiles.Description(profileIndex), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(graphics, title(onPaintValue), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), isSelected ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(graphics, description(onPaintValue), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
                     if (isSelected)
                     {
                         TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), top + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent);
@@ -346,13 +358,23 @@ namespace PaviseApp
 
         private int selected;
 
-        private ToolStripDropDown popup;
+        protected ToolStripDropDown popup;
 
-        private ProfileList list;
+        protected ProfileList list;
 
         private bool open;
 
-        private readonly DropdownHost dropdown;
+        protected readonly DropdownHost dropdown;
+
+        private readonly int[] order;
+
+        private readonly Func<int, string> title;
+
+        private readonly Func<int, string> description;
+
+        private readonly Func<string> listName;
+
+        private readonly int separatorBefore;
 
         internal int SelectedIndex
         {
@@ -366,10 +388,10 @@ namespace PaviseApp
 
         internal void SetSilently(int index)
         {
-            if (!base.IsDisposed && index >= 0 && index < QuantumProfiles.Values.Length)
+            if (!base.IsDisposed && Array.IndexOf(order, index) >= 0)
             {
                 selected = index;
-                base.AccessibleDescription = QuantumProfiles.Description(index);
+                base.AccessibleDescription = description(index);
                 if (list != null && !list.IsDisposed)
                 {
                     list.SetSelected(index);
@@ -382,8 +404,19 @@ namespace PaviseApp
             }
         }
 
-        internal QuantumProfilePicker()
+        internal PerformanceProfilePicker(int[] order, Func<int, string> title, Func<int, string> description,
+            Func<string> listName, int separatorBefore = -1)
         {
+            if (order == null || order.Length == 0) throw new ArgumentException("选项顺序不能为空。", "order");
+            if (title == null) throw new ArgumentNullException("title");
+            if (description == null) throw new ArgumentNullException("description");
+            if (listName == null) throw new ArgumentNullException("listName");
+            this.order = (int[])order.Clone();
+            this.title = title;
+            this.description = description;
+            this.listName = listName;
+            this.separatorBefore = separatorBefore;
+            selected = order[0];
             base.Size = new Size(Theme.S(230), Theme.S(38));
             base.TabStop = true;
             base.AccessibleRole = AccessibleRole.ComboBox;
@@ -392,7 +425,7 @@ namespace PaviseApp
                 AlignRight = true
             };
             DropdownHost dropdownHost = dropdown;
-            EventHandler eventHandler = delegate
+            EventHandler value = delegate
             {
                 open = false;
                 if (!base.IsDisposed)
@@ -400,7 +433,7 @@ namespace PaviseApp
                     Invalidate();
                 }
             };
-            dropdownHost.Closed += eventHandler;
+            dropdownHost.Closed += value;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -419,18 +452,18 @@ namespace PaviseApp
                 }
                 PaintBusy(e.Graphics, base.ClientRectangle, graphicsPath);
             }
-            TextRenderer.DrawText(e.Graphics, QuantumProfiles.Title(selected), Theme.UI(9.5f, false), new Rectangle(Theme.S(11), 0, base.Width - Theme.S(40), base.Height), base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | ((base.Width < Theme.S(200)) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine));
+            TextRenderer.DrawText(e.Graphics, title(selected), Theme.UI(9.5f, false), new Rectangle(Theme.S(11), 0, base.Width - Theme.S(40), base.Height), base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | ((base.Width < Theme.S(200)) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine));
             int remainingWidth = base.Width - Theme.S(21);
             int heightRatio = base.Height / 2;
-            using (Pen currentPen = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
+            using (Pen pen2 = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
             {
                 int scaledDimension = Theme.S(4);
-                int arrowDirection = ((!open) ? 1 : (-1));
-                e.Graphics.DrawLines(currentPen, new Point[3]
+                int onPaintValue = ((!open) ? 1 : (-1));
+                e.Graphics.DrawLines(pen2, new Point[3]
                 {
-                    new Point(remainingWidth - scaledDimension, heightRatio - arrowDirection * scaledDimension / 2),
-                    new Point(remainingWidth, heightRatio + arrowDirection * scaledDimension / 2),
-                    new Point(remainingWidth + scaledDimension, heightRatio - arrowDirection * scaledDimension / 2)
+                    new Point(remainingWidth - scaledDimension, heightRatio - onPaintValue * scaledDimension / 2),
+                    new Point(remainingWidth, heightRatio + onPaintValue * scaledDimension / 2),
+                    new Point(remainingWidth + scaledDimension, heightRatio - onPaintValue * scaledDimension / 2)
                 });
             }
         }
@@ -505,7 +538,7 @@ namespace PaviseApp
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void Open()
+        protected void Open()
         {
             if (!base.CanInteract || !base.Visible || open)
             {
@@ -523,26 +556,26 @@ namespace PaviseApp
                 DropShadowEnabled = false
             };
             popup = next;
-            ProfileList profileList = new ProfileList(selected);
+            ProfileList profileList = new ProfileList(selected, order, title, description, listName(), separatorBefore);
             profileList.CanInteract = () => base.CanInteract && object.ReferenceEquals(dropdown.Menu, next);
-            ProfileList currentProfileList = (list = profileList);
+            ProfileList profileList2 = (list = profileList);
             Rectangle workingArea = Screen.FromControl(this).WorkingArea;
             Rectangle rectangle = RectangleToScreen(base.ClientRectangle);
             int availableBelow = Math.Max(0, workingArea.Bottom - rectangle.Bottom - Theme.S(6));
             int availableAbove = Math.Max(0, rectangle.Top - workingArea.Top - Theme.S(6));
-            Size size = DsPopup.Fit(new Size(Theme.S(460), currentProfileList.Height + 2), workingArea, Theme.S(12), 1);
-            int popupHeight = Math.Min(currentProfileList.Height, Math.Max(availableAbove, availableBelow) - 2);
-            currentProfileList.Size = new Size(Math.Max(1, size.Width - 2), Math.Max(1, Math.Min(size.Height - 2, Math.Max(Theme.S(80), popupHeight))));
-            currentProfileList.EnsureActiveVisible();
-            next.Items.Add(new ToolStripControlHost(currentProfileList)
+            Size size = DsPopup.Fit(new Size(Theme.S(460), profileList2.Height + 2), workingArea, Theme.S(12), 1);
+            int popupHeight = Math.Max(1, Math.Min(profileList2.Height, Math.Max(availableAbove, availableBelow) - 2));
+            profileList2.Size = new Size(Math.Max(1, size.Width - 2), Math.Max(1, Math.Min(size.Height - 2, popupHeight)));
+            profileList2.EnsureActiveVisible();
+            next.Items.Add(new ToolStripControlHost(profileList2)
             {
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
                 AutoSize = false,
-                Size = currentProfileList.Size
+                Size = profileList2.Size
             });
-            next.Size = new Size(currentProfileList.Width + 2, currentProfileList.Height + 2);
-            currentProfileList.Picked += delegate(int index)
+            next.Size = new Size(profileList2.Width + 2, profileList2.Height + 2);
+            profileList2.Picked += delegate(int index)
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -558,7 +591,7 @@ namespace PaviseApp
                     }
                 }
             };
-            currentProfileList.Cancelled += delegate
+            profileList2.Cancelled += delegate
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -569,7 +602,7 @@ namespace PaviseApp
                     }
                 }
             };
-            currentProfileList.Tabbed += delegate(bool forward)
+            profileList2.Tabbed += delegate(bool forward)
             {
                 if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
                 {
@@ -588,12 +621,12 @@ namespace PaviseApp
             open = object.ReferenceEquals(dropdown.Menu, next);
             if (open && base.CanInteract)
             {
-                currentProfileList.Focus();
+                profileList2.Focus();
             }
             Invalidate();
         }
 
-        private void Close()
+        protected void Close()
         {
             dropdown.Close();
             open = false;
@@ -606,6 +639,15 @@ namespace PaviseApp
                 dropdown.Dispose();
             }
             base.Dispose(disposing);
+        }
+    }
+
+    internal sealed class QuantumProfilePicker : PerformanceProfilePicker
+    {
+        internal QuantumProfilePicker()
+            : base(new[] { 0, 1, 8, 2, 3, 4, 5, 6, 7 }, QuantumProfiles.Title, QuantumProfiles.Description,
+                () => PerformancePolicy.Text("选择前台时间片", "Choose foreground time slice"), 3)
+        {
         }
     }
 }

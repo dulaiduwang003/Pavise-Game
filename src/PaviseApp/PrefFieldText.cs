@@ -7,11 +7,12 @@ namespace PaviseApp
     {
         public static string MergeField(string current, string field, string value)
         {
-            List<string> entryTextTrimmeds = new List<string>();
+            List<string> list = new List<string>();
             bool fieldReplaced = false;
             if (!string.IsNullOrEmpty(current))
             {
-                foreach (string entryText in current.Split(';'))
+                string[] currentParts = current.Split(';');
+                foreach (string entryText in currentParts)
                 {
                     string entryTextTrimmed = entryText.Trim();
                     if (entryTextTrimmed.Length == 0)
@@ -24,29 +25,30 @@ namespace PaviseApp
                     {
                         if (!fieldReplaced)
                         {
-                            entryTextTrimmeds.Add(field + "=" + value);
+                            list.Add(field + "=" + value);
                             fieldReplaced = true;
                         }
                     }
                     else
                     {
-                        entryTextTrimmeds.Add(entryTextTrimmed);
+                        list.Add(entryTextTrimmed);
                     }
                 }
             }
             if (!fieldReplaced)
             {
-                entryTextTrimmeds.Add(field + "=" + value);
+                list.Add(field + "=" + value);
             }
-            return string.Join(";", entryTextTrimmeds.ToArray()) + ";";
+            return string.Join(";", list.ToArray()) + ";";
         }
 
         public static string RemoveField(string current, string field)
         {
-            List<string> entryTextTrimmeds = new List<string>();
+            List<string> list = new List<string>();
             if (!string.IsNullOrEmpty(current))
             {
-                foreach (string entryText in current.Split(';'))
+                string[] currentParts = current.Split(';');
+                foreach (string entryText in currentParts)
                 {
                     string entryTextTrimmed = entryText.Trim();
                     if (entryTextTrimmed.Length != 0)
@@ -55,16 +57,16 @@ namespace PaviseApp
                         string a = ((matchIndex > 0) ? entryTextTrimmed.Substring(0, matchIndex).Trim() : entryTextTrimmed);
                         if (matchIndex <= 0 || !string.Equals(a, field, StringComparison.OrdinalIgnoreCase))
                         {
-                            entryTextTrimmeds.Add(entryTextTrimmed);
+                            list.Add(entryTextTrimmed);
                         }
                     }
                 }
             }
-            if (entryTextTrimmeds.Count == 0)
+            if (list.Count == 0)
             {
                 return "";
             }
-            return string.Join(";", entryTextTrimmeds.ToArray()) + ";";
+            return string.Join(";", list.ToArray()) + ";";
         }
 
         public static string ReadField(string current, string field)
@@ -73,7 +75,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (string entryText in current.Split(';'))
+            string[] currentParts = current.Split(';');
+            foreach (string entryText in currentParts)
             {
                 string entryTextTrimmed = entryText.Trim();
                 int matchIndex = entryTextTrimmed.IndexOf('=');

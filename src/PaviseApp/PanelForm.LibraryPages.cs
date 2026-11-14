@@ -12,6 +12,10 @@ namespace PaviseApp
 {
     internal partial class PanelForm : Form
     {
+        private string PerGameAutomationLabel()
+        {
+            return AutoText("按游戏方案", "Per-game plan");
+        }
         private GameProfile CorePageProfile()
         {
             if (string.IsNullOrEmpty(coreProfileId))
@@ -94,7 +98,7 @@ namespace PaviseApp
             string error = SaveCoreConfigurationWithRender(gameProfile, ManualCorePlan.Raw(gameProfile), PolicyResolver.For(gameProfile).ManualCores, schedulingUnavailable);
             if (error != null && !gameMode.ProfileStoreSaveFailed)
             {
-                PaviseDialog.Warn(LibraryDialogOwner, Lang.T("nav.corescheduling"), Lang.T(error));
+                PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.cores.range"), Lang.T(error));
             }
             RefreshGames();
             SelectProfile(id);
@@ -217,12 +221,12 @@ namespace PaviseApp
                             return;
                         }
                     }
-                    GameProfile libraryProfile = FindLibraryProfile(id);
-                    if (libraryProfile == null)
+                    GameProfile gameProfile2 = FindLibraryProfile(id);
+                    if (gameProfile2 == null)
                     {
                         return;
                     }
-                    if (!string.Equals(libraryProfile.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(gameProfile2.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase))
                     {
                         PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.family.suppress"), Lang.T("lib.family.changed"));
                         return;
@@ -254,16 +258,17 @@ namespace PaviseApp
         private ContextMenuStrip BuildLibraryMoreMenu(GameLibraryItem selected)
         {
             string id = selected.Profile.Id;
-            ContextMenuStrip currentContextMenuStrip = new ContextMenuStrip();
-            currentContextMenuStrip.Renderer = new TechMenuRenderer();
-            currentContextMenuStrip.BackColor = Theme.Card;
-            currentContextMenuStrip.ForeColor = Theme.Fg;
-            currentContextMenuStrip.Font = Theme.UI(9f, false);
-            currentContextMenuStrip.ShowImageMargin = false;
-            currentContextMenuStrip.ShowCheckMargin = false;
-            currentContextMenuStrip.AutoSize = false;
-            currentContextMenuStrip.Padding = new Padding(Theme.S(6));
-            currentContextMenuStrip.DropShadowEnabled = false;
+            ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
+            contextMenuStrip.Renderer = new TechMenuRenderer();
+            contextMenuStrip.BackColor = Theme.Card;
+            contextMenuStrip.ForeColor = Theme.Fg;
+            contextMenuStrip.Font = Theme.UI(9f, false);
+            contextMenuStrip.ShowImageMargin = false;
+            contextMenuStrip.ShowCheckMargin = false;
+            contextMenuStrip.AutoSize = false;
+            contextMenuStrip.Padding = new Padding(Theme.S(6));
+            contextMenuStrip.DropShadowEnabled = false;
+            ContextMenuStrip contextMenuStrip2 = contextMenuStrip;
             Action<Action> invoke = delegate(Action action)
             {
                 if (FindLibraryProfile(id) != null)
@@ -271,70 +276,72 @@ namespace PaviseApp
                     action();
                 }
             };
-            currentContextMenuStrip.Items.Add(Lang.T("lib.rename"), null, delegate
+            contextMenuStrip2.Items.Add(Lang.T("lib.rename"), null, delegate
             {
                 invoke(delegate
                 {
                     RenameGame(id);
                 });
             });
-            currentContextMenuStrip.Items.Add(AutoText("更换封面…", "Change cover…"), null, delegate
+            contextMenuStrip2.Items.Add(AutoText("更换封面…", "Change cover…"), null, delegate
             {
                 invoke(delegate
                 {
                     ChooseLibraryCover(id);
                 });
             });
-            ToolStripMenuItem currentToolStripMenuItem = new ToolStripMenuItem(AutoText("恢复默认封面", "Restore default cover"));
-            currentToolStripMenuItem.Enabled = GameCoverStore.HasCustom(selected.Profile);
-            currentToolStripMenuItem.Click += delegate
+            ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(AutoText("恢复默认封面", "Restore default cover"));
+            toolStripMenuItem.Enabled = GameCoverStore.HasCustom(selected.Profile);
+            ToolStripMenuItem toolStripMenuItem2 = toolStripMenuItem;
+            toolStripMenuItem2.Click += delegate
             {
                 invoke(delegate
                 {
                     ResetLibraryCover(id);
                 });
             };
-            currentContextMenuStrip.Items.Add(currentToolStripMenuItem);
-            ToolStripMenuItem candidateToolStripMenuItem = new ToolStripMenuItem(Lang.T(selected.Profile.ForceTrigger ? "v15.library.force.on" : "v15.library.force"));
-            candidateToolStripMenuItem.Checked = selected.Profile.ForceTrigger;
-            if (candidateToolStripMenuItem.Checked)
+            contextMenuStrip2.Items.Add(toolStripMenuItem2);
+            ToolStripMenuItem toolStripMenuItem3 = new ToolStripMenuItem(Lang.T(selected.Profile.ForceTrigger ? "v15.library.force.on" : "v15.library.force"));
+            toolStripMenuItem3.Checked = selected.Profile.ForceTrigger;
+            if (toolStripMenuItem3.Checked)
             {
-                candidateToolStripMenuItem.Tag = new MenuBadge(PerformancePolicy.Text("已启用", "Enabled"), true);
+                toolStripMenuItem3.Tag = new MenuBadge(PerformancePolicy.Text("已启用", "Enabled"), true);
             }
-            candidateToolStripMenuItem.Click += delegate
+            toolStripMenuItem3.Click += delegate
             {
                 invoke(delegate
                 {
                     ToggleForceTrigger(id);
                 });
             };
-            currentContextMenuStrip.Items.Add(candidateToolStripMenuItem);
-            currentContextMenuStrip.Items.Add(new ToolStripSeparator());
-            ToolStripMenuItem selectedToolStripMenuItem = new ToolStripMenuItem(Lang.T("btn.remove"));
-            selectedToolStripMenuItem.ForeColor = Theme.Danger;
-            selectedToolStripMenuItem.Click += delegate
+            contextMenuStrip2.Items.Add(toolStripMenuItem3);
+            contextMenuStrip2.Items.Add(new ToolStripSeparator());
+            ToolStripMenuItem toolStripMenuItem4 = new ToolStripMenuItem(Lang.T("btn.remove"));
+            toolStripMenuItem4.ForeColor = Theme.Danger;
+            ToolStripMenuItem toolStripMenuItem5 = toolStripMenuItem4;
+            toolStripMenuItem5.Click += delegate
             {
                 invoke(delegate
                 {
                     RemoveLibraryGame(id);
                 });
             };
-            currentContextMenuStrip.Items.Add(selectedToolStripMenuItem);
-            int vertical = currentContextMenuStrip.Padding.Vertical;
+            contextMenuStrip2.Items.Add(toolStripMenuItem5);
+            int vertical = contextMenuStrip2.Padding.Vertical;
             int scaledDimension = Theme.S(230);
-            foreach (ToolStripItem currentItem in currentContextMenuStrip.Items)
+            foreach (ToolStripItem item in contextMenuStrip2.Items)
             {
-                currentItem.AutoSize = false;
-                currentItem.Margin = Padding.Empty;
-                currentItem.Size = new Size(scaledDimension - currentContextMenuStrip.Padding.Horizontal, Theme.S((currentItem is ToolStripSeparator) ? 9 : 36));
-                vertical += currentItem.Height;
+                item.AutoSize = false;
+                item.Margin = Padding.Empty;
+                item.Size = new Size(scaledDimension - contextMenuStrip2.Padding.Horizontal, Theme.S((item is ToolStripSeparator) ? 9 : 36));
+                vertical += item.Height;
             }
-            currentContextMenuStrip.Size = new Size(scaledDimension, vertical);
-            currentContextMenuStrip.PerformLayout();
+            contextMenuStrip2.Size = new Size(scaledDimension, vertical);
+            contextMenuStrip2.PerformLayout();
             using (GraphicsPath path = Theme.TechPath(new Rectangle(0, 0, scaledDimension, vertical), Theme.S(8)))
             {
-                currentContextMenuStrip.Region = new Region(path);
-                return currentContextMenuStrip;
+                contextMenuStrip2.Region = new Region(path);
+                return contextMenuStrip2;
             }
         }
         private void RenameGame(string keepId)
@@ -383,16 +390,16 @@ namespace PaviseApp
         private void ApplyRunningStates(Dictionary<string, bool> states)
         {
             bool tilesChanged = false;
-            foreach (GameLibraryItem currentItem in lstGames.Items)
+            foreach (GameLibraryItem item in lstGames.Items)
             {
-                GameLibraryItem gameLibraryItem = currentItem as GameLibraryItem;
+                GameLibraryItem gameLibraryItem = item as GameLibraryItem;
                 if (gameLibraryItem != null && gameLibraryItem.Profile != null)
                 {
                     string executablePath = gameLibraryItem.Profile.ExecutablePath;
-                    bool state;
-                    if (!string.IsNullOrEmpty(executablePath) && states.TryGetValue(executablePath, out state) && state != gameLibraryItem.Running)
+                    bool value;
+                    if (!string.IsNullOrEmpty(executablePath) && states.TryGetValue(executablePath, out value) && value != gameLibraryItem.Running)
                     {
-                        gameLibraryItem.Running = state;
+                        gameLibraryItem.Running = value;
                         tilesChanged = true;
                     }
                 }
@@ -409,7 +416,7 @@ namespace PaviseApp
             {
                 return;
             }
-            List<string> filePaths = new List<string>();
+            List<string> list = new List<string>();
             string error = null;
             foreach (string filePath in files)
             {
@@ -417,7 +424,7 @@ namespace PaviseApp
                 {
                     if (Directory.Exists(filePath))
                     {
-                        filePaths.Add(filePath);
+                        list.Add(filePath);
                     }
                     else if (!gameMode.AddGameFile(filePath, out error) && error != Lang.T("t.gamemodelibrary.1"))
                     {
@@ -430,9 +437,9 @@ namespace PaviseApp
                 PaviseDialog.Warn(this, "PAVISE AUTO", error);
             }
             RefreshGames();
-            if (filePaths.Count > 0)
+            if (list.Count > 0)
             {
-                ShowAddGameDialog(filePaths);
+                ShowAddGameDialog(list);
             }
         }
         private static bool RunningIn(Dictionary<string, bool> states, string executablePath)
@@ -446,15 +453,15 @@ namespace PaviseApp
         }
         private static Dictionary<string, bool> ProbeRunning(List<string> paths)
         {
-            Dictionary<string, bool> conditionsByPath = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, List<string>> listsByFileNameWithoutExtension = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, bool> dictionary = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, List<string>> dictionary2 = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (string path in paths)
             {
-                if (string.IsNullOrEmpty(path) || conditionsByPath.ContainsKey(path))
+                if (string.IsNullOrEmpty(path) || dictionary.ContainsKey(path))
                 {
                     continue;
                 }
-                conditionsByPath[path] = false;
+                dictionary[path] = false;
                 string fileNameWithoutExtension;
                 try
                 {
@@ -466,62 +473,63 @@ namespace PaviseApp
                 }
                 if (!string.IsNullOrEmpty(fileNameWithoutExtension))
                 {
-                    List<string> list;
-                    if (!listsByFileNameWithoutExtension.TryGetValue(fileNameWithoutExtension, out list))
+                    List<string> value;
+                    if (!dictionary2.TryGetValue(fileNameWithoutExtension, out value))
                     {
-                        list = (listsByFileNameWithoutExtension[fileNameWithoutExtension] = new List<string>());
+                        value = (dictionary2[fileNameWithoutExtension] = new List<string>());
                     }
-                    list.Add(path);
+                    value.Add(path);
                 }
             }
-            if (listsByFileNameWithoutExtension.Count == 0)
+            if (dictionary2.Count == 0)
             {
-                return conditionsByPath;
+                return dictionary;
             }
             Process[] runningProcesses = null;
             try
             {
                 runningProcesses = Process.GetProcesses();
-                foreach (Process process in runningProcesses)
+                Process[] processItems = runningProcesses;
+                foreach (Process process in processItems)
                 {
-                    List<string> currentList = null;
-                    int candidatePid = 0;
+                    List<string> value2 = null;
+                    int probeRunningValue = 0;
                     try
                     {
-                        listsByFileNameWithoutExtension.TryGetValue(process.ProcessName, out currentList);
-                        candidatePid = process.Id;
+                        dictionary2.TryGetValue(process.ProcessName, out value2);
+                        probeRunningValue = process.Id;
                     }
                     catch
                     {
                         continue;
                     }
-                    if (currentList == null)
+                    if (value2 == null)
                     {
                         continue;
                     }
-                    IntPtr processHandle = Native.OpenProcess(4096, false, candidatePid);
-                    if (processHandle == IntPtr.Zero)
+                    IntPtr intPtr = Native.OpenProcess(4096, false, probeRunningValue);
+                    if (intPtr == IntPtr.Zero)
                     {
                         continue;
                     }
                     string imagePathResult;
                     try
                     {
-                        imagePathResult = Native.ImagePath(processHandle);
+                        imagePathResult = Native.ImagePath(intPtr);
                     }
                     finally
                     {
-                        Native.CloseHandle(processHandle);
+                        Native.CloseHandle(intPtr);
                     }
                     if (string.IsNullOrEmpty(imagePathResult))
                     {
                         continue;
                     }
-                    foreach (string candidateList in currentList)
+                    foreach (string item in value2)
                     {
-                        if (string.Equals(candidateList, imagePathResult, StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(item, imagePathResult, StringComparison.OrdinalIgnoreCase))
                         {
-                            conditionsByPath[candidateList] = true;
+                            dictionary[item] = true;
                         }
                     }
                 }
@@ -533,35 +541,36 @@ namespace PaviseApp
             {
                 if (runningProcesses != null)
                 {
-                    foreach (Process currentProcess in runningProcesses)
+                    Process[] processItems2 = runningProcesses;
+                    foreach (Process process2 in processItems2)
                     {
-                        currentProcess.Dispose();
+                        process2.Dispose();
                     }
                 }
             }
-            return conditionsByPath;
+            return dictionary;
         }
         private Bitmap GameIcon(string executablePath)
         {
             string key = executablePath ?? "";
-            Bitmap currentGameIconCache;
-            if (gameIconCache.TryGetValue(key, out currentGameIconCache))
+            Bitmap value;
+            if (gameIconCache.TryGetValue(key, out value))
             {
-                return currentGameIconCache;
+                return value;
             }
             try
             {
                 using (Icon icon = Icon.ExtractAssociatedIcon(executablePath))
                 {
-                    currentGameIconCache = icon.ToBitmap();
+                    value = icon.ToBitmap();
                 }
             }
             catch
             {
-                currentGameIconCache = null;
+                value = null;
             }
-            gameIconCache[key] = currentGameIconCache;
-            return currentGameIconCache;
+            gameIconCache[key] = value;
+            return value;
         }
         private void BuildLibraryPage()
         {
@@ -599,24 +608,6 @@ namespace PaviseApp
             };
             librarySearchPanel.Controls.Add(librarySearch);
             pageLibrary.Controls.Add(librarySearchPanel);
-            libraryPlatforms = new TierPicker
-            {
-                Name = "libraryPlatformFilter",
-                Labels = new string[3]
-                {
-                    AutoText("全部", "All"),
-                    "Steam",
-                    "WeGame"
-                },
-                StrongSelection = true,
-                Index = libraryPlatformIndex,
-                AccessibleName = AutoText("游戏平台筛选", "Filter by platform")
-            };
-            libraryPlatforms.IndexChanged = delegate(int index)
-            {
-                libraryPlatformIndex = index;
-                ApplyLibraryFilter();
-            };
             libraryAdd = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary)
             {
                 Name = "libraryAdd"
@@ -647,7 +638,7 @@ namespace PaviseApp
                 ShowAutoIgnoreDialog();
             };
             lblLibraryCount = CardLabel(pageLibrary, "", 0, 0, 120, 28, 8.2f, false, Theme.Dim);
-            pageLibrary.Controls.AddRange(new Control[4] { libraryPlatforms, libraryAdd, swAutoAdd, libraryAutoSettings });
+            pageLibrary.Controls.AddRange(new Control[3] { libraryAdd, swAutoAdd, libraryAutoSettings });
             lstGames = new GameLibraryGallery
             {
                 Name = "LibraryGallery",
@@ -692,8 +683,7 @@ namespace PaviseApp
         {
             if (lstGames != null)
             {
-                int platform = libraryPlatformIndex;
-                lstGames.Filter = ((platform == 0) ? null : ((Predicate<GameLibraryItem>)((GameLibraryItem item) => item != null && string.Equals(GameLibraryGallery.SourceOf(item.Profile), (platform == 1) ? "Steam" : "WeGame", StringComparison.OrdinalIgnoreCase))));
+                lstGames.Filter = null;
                 lstGames.FilterText = librarySearchText;
                 AdjustLibraryCardDensity();
             }
@@ -725,12 +715,12 @@ namespace PaviseApp
             openFileDialog.Filter = AutoText("图片", "Images") + "|*.jpg;*.jpeg;*.png;*.bmp";
             openFileDialog.CheckFileExists = true;
             openFileDialog.Multiselect = false;
-            using (OpenFileDialog currentOpenFileDialog = openFileDialog)
+            using (OpenFileDialog openFileDialog2 = openFileDialog)
             {
-                if (currentOpenFileDialog.ShowDialog(this) == DialogResult.OK)
+                if (openFileDialog2.ShowDialog(this) == DialogResult.OK)
                 {
                     string error;
-                    if (!GameCoverStore.TrySet(gameProfile, currentOpenFileDialog.FileName, out error))
+                    if (!GameCoverStore.TrySet(gameProfile, openFileDialog2.FileName, out error))
                     {
                         PaviseDialog.Warn(this, "PAVISE AUTO", error);
                     }
@@ -905,7 +895,8 @@ namespace PaviseApp
                 ownedMenu.Dispose();
             };
             whitePanel.Controls.Add(lstWhite);
-            foreach (Control control in new Control[3] { pageWhitelist, whitePanel, lstWhite })
+            Control[] controlItems = new Control[3] { pageWhitelist, whitePanel, lstWhite };
+            foreach (Control control in controlItems)
             {
                 control.AllowDrop = true;
                 control.DragEnter += OnWhiteDragEnter;

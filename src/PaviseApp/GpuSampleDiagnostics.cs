@@ -36,6 +36,8 @@ namespace PaviseApp
 
         internal uint TargetStatus;
 
+        internal string TargetEngine;
+
         internal void Failure(string stage, uint status)
         {
             FailureStage = stage;
@@ -44,7 +46,7 @@ namespace PaviseApp
 
         public override string ToString()
         {
-            return string.Format(CultureInfo.InvariantCulture, "lastFailure={0} code=0x{1:X8} collected={2} valid={3} instances={4} rejected={5}{6} targetInstances={7} targetRejected={8} targetCode=0x{9:X8} unavailable={10} unavailableCode=0x{11:X8}", FailureStage ?? "none", FailureStatus, CollectedRounds, ValidRounds, Instances, RejectedInstances, (ExceptionType == null) ? "" : (" exception=" + ExceptionType), TargetInstances, TargetRejectedInstances, TargetStatus, UnavailableStage ?? "none", UnavailableStatus);
+            return string.Format(CultureInfo.InvariantCulture, "lastFailure={0} code=0x{1:X8} collected={2} valid={3} instances={4} rejected={5}{6} targetInstances={7} targetRejected={8} targetCode=0x{9:X8} unavailable={10} unavailableCode=0x{11:X8} targetEngine={12}", FailureStage ?? "none", FailureStatus, CollectedRounds, ValidRounds, Instances, RejectedInstances, (ExceptionType == null) ? "" : (" exception=" + ExceptionType), TargetInstances, TargetRejectedInstances, TargetStatus, UnavailableStage ?? "none", UnavailableStatus, TargetEngine ?? "none");
         }
     }
 }

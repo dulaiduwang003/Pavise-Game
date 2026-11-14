@@ -7,6 +7,8 @@ namespace PaviseApp
     {
         public const string Absent = "__pavise_absent__";
 
+        private const char AppliedSep = '\u001f';
+
         private readonly RegistryKey hive;
 
         private readonly string subKey;
@@ -47,8 +49,8 @@ namespace PaviseApp
                     string originalPartResult = OriginalPart(Settings.LoadStr(slot, ""));
                     if (originalPartResult.Length == 0)
                     {
-                        object instance = registryKey.GetValue(valName);
-                        if (instance != null)
+                        object value = registryKey.GetValue(valName);
+                        if (value != null)
                         {
                             RegistryValueKind registryValueKind = RegistryValueKind.Unknown;
                             try
@@ -63,12 +65,12 @@ namespace PaviseApp
                                 Logger.Warn(string.Concat(valName, Lang.T("log.reversiblereg.1", 0), registryValueKind, Lang.T("log.reversiblereg.2", 0)));
                                 return false;
                             }
-                            if (SameByKind(instance, newVal))
+                            if (SameByKind(value, newVal))
                             {
                                 return true;
                             }
                         }
-                        originalPartResult = Encode(instance);
+                        originalPartResult = Encode(value);
                         Settings.SaveStr(slot, originalPartResult);
                         if (Settings.LoadStr(slot, "") != originalPartResult)
                         {
@@ -77,12 +79,12 @@ namespace PaviseApp
                         }
                     }
                     registryKey.SetValue(valName, newVal, kind);
-                    object currentInstance = registryKey.GetValue(valName);
-                    if (currentInstance == null)
+                    object value2 = registryKey.GetValue(valName);
+                    if (value2 == null)
                     {
                         return false;
                     }
-                    bool sameByKindSucceeded = SameByKind(currentInstance, newVal);
+                    bool sameByKindSucceeded = SameByKind(value2, newVal);
                     if (sameByKindSucceeded)
                     {
                         Settings.SaveStr(slot, originalPartResult + '\u001f' + Encode(newVal));
@@ -213,20 +215,20 @@ namespace PaviseApp
             {
                 using (RegistryKey registryKey = hive.OpenSubKey(subKey))
                 {
-                    object instance = ((registryKey == null) ? null : registryKey.GetValue(valName));
-                    if (instance == null)
+                    object value = ((registryKey == null) ? null : registryKey.GetValue(valName));
+                    if (value == null)
                     {
                         return false;
                     }
                     if (kind == RegistryValueKind.DWord)
                     {
-                        return Convert.ToInt64(instance) == Convert.ToInt64(expected);
+                        return Convert.ToInt64(value) == Convert.ToInt64(expected);
                     }
                     if (kind == RegistryValueKind.Binary)
                     {
-                        return BytesEqual(instance as byte[], expected as byte[]);
+                        return BytesEqual(value as byte[], expected as byte[]);
                     }
-                    return string.Equals(instance.ToString(), (expected == null) ? "" : expected.ToString(), StringComparison.Ordinal);
+                    return string.Equals(value.ToString(), (expected == null) ? "" : expected.ToString(), StringComparison.Ordinal);
                 }
             }
             catch
@@ -237,13 +239,13 @@ namespace PaviseApp
 
         public bool Restore()
         {
-            string str = Settings.LoadStr(slot, "");
-            if (str.Length == 0)
+            string value4 = Settings.LoadStr(slot, "");
+            if (value4.Length == 0)
             {
                 return true;
             }
-            string originalPartResult = OriginalPart(str);
-            string appliedPartResult = AppliedPart(str);
+            string originalPartResult = OriginalPart(value4);
+            string appliedPartResult = AppliedPart(value4);
             bool originalAbsent = originalPartResult == "__pavise_absent__";
             object fromBase64StringResult = null;
             if (!originalAbsent)
@@ -292,11 +294,11 @@ namespace PaviseApp
                 bool readbackMatches = false;
                 using (RegistryKey registryKey = hive.OpenSubKey(subKey, true))
                 {
-                    object instance;
-                    if (registryKey != null && appliedPartResult.Length > 0 && TryDecode(appliedPartResult, out instance))
+                    object value;
+                    if (registryKey != null && appliedPartResult.Length > 0 && TryDecode(appliedPartResult, out value))
                     {
-                        object currentInstance = registryKey.GetValue(valName);
-                        if (currentInstance == null || !SameByKind(currentInstance, instance))
+                        object value2 = registryKey.GetValue(valName);
+                        if (value2 == null || !SameByKind(value2, value))
                         {
                             Settings.SaveStr(slot, "");
                             Logger.Log(valName + Lang.T("log.reversiblereg.9", 0));
@@ -318,7 +320,7 @@ namespace PaviseApp
                     else
                     {
                         registryKey.SetValue(valName, fromBase64StringResult, kind);
-                        object candidateInstance = registryKey.GetValue(valName);
+                        object value3 = registryKey.GetValue(valName);
                         RegistryValueKind registryValueKind = RegistryValueKind.Unknown;
                         try
                         {
@@ -327,18 +329,18 @@ namespace PaviseApp
                         catch
                         {
                         }
-                        readbackMatches = candidateInstance != null && registryValueKind == kind;
+                        readbackMatches = value3 != null && registryValueKind == kind;
                         if (readbackMatches && kind == RegistryValueKind.DWord)
                         {
-                            readbackMatches = Convert.ToInt64(candidateInstance) == Convert.ToInt64(fromBase64StringResult);
+                            readbackMatches = Convert.ToInt64(value3) == Convert.ToInt64(fromBase64StringResult);
                         }
                         else if (readbackMatches && kind == RegistryValueKind.Binary)
                         {
-                            readbackMatches = BytesEqual((byte[])candidateInstance, (byte[])fromBase64StringResult);
+                            readbackMatches = BytesEqual((byte[])value3, (byte[])fromBase64StringResult);
                         }
                         else if (readbackMatches)
                         {
-                            readbackMatches = string.Equals(candidateInstance.ToString(), (fromBase64StringResult == null) ? "" : fromBase64StringResult.ToString(), StringComparison.Ordinal);
+                            readbackMatches = string.Equals(value3.ToString(), (fromBase64StringResult == null) ? "" : fromBase64StringResult.ToString(), StringComparison.Ordinal);
                         }
                     }
                 }

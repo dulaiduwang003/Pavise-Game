@@ -17,23 +17,24 @@ namespace PaviseApp
 
         public CompositeGameExtension(params GameExtensionModule[] parts)
         {
-            List<GameExtensionModule> gameExtensionModules = new List<GameExtensionModule>();
+            List<GameExtensionModule> list = new List<GameExtensionModule>();
             if (parts != null)
             {
                 foreach (GameExtensionModule gameExtensionModule in parts)
                 {
                     if (gameExtensionModule != null)
                     {
-                        gameExtensionModules.Add(gameExtensionModule);
+                        list.Add(gameExtensionModule);
                     }
                 }
             }
-            modules = gameExtensionModules.ToArray();
+            modules = list.ToArray();
         }
 
         public override bool TryHandleArgs(string[] args)
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -51,7 +52,8 @@ namespace PaviseApp
 
         public override void Start()
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -66,7 +68,8 @@ namespace PaviseApp
 
         public override bool NeedsProcessIdentity(string name)
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -84,7 +87,8 @@ namespace PaviseApp
 
         public override void NotifyProcessChanges(ProcessChangeBatch batch)
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -98,7 +102,8 @@ namespace PaviseApp
 
         public override void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -131,7 +136,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {
@@ -149,7 +155,8 @@ namespace PaviseApp
 
         public override void Shutdown(int waitMs)
         {
-            foreach (GameExtensionModule gameExtensionModule in modules)
+            GameExtensionModule[] modulesSnapshot = modules;
+            foreach (GameExtensionModule gameExtensionModule in modulesSnapshot)
             {
                 try
                 {

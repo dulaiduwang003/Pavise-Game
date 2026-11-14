@@ -22,7 +22,7 @@ namespace PaviseApp
 
         private static void CheckRecords()
         {
-            foreach (int language in new[] { 0, 1 })
+            foreach (int language in new[] { 0, 1, 2 })
             {
                 Lang.Cur = language;
                 Check(Lang.T("auto.log.started") == Lang.T("auto.log.started", 0), "日志资源受界面语言影响");
@@ -80,7 +80,7 @@ namespace PaviseApp
             string text = File.ReadAllText(Logger.LogPath);
             Check(text.Contains("信息 日志中文检查"), "信息标签未中文化");
             Check(text.Contains("警告 测试告警") && text.Contains("失败 测试失败"), "告警或失败标签丢失");
-            Check(text.Contains("运行时 身份 版本=3.3.0.8") && text.Contains("构建标识="), "构建身份信息丢失");
+            Check(text.Contains("运行时 身份 版本=" + App.Version) && text.Contains("构建标识="), "构建身份信息丢失");
             Check(text.Contains("重复次数=1") && text.Contains("已恢复"), "节流或恢复说明丢失");
             long length = new FileInfo(Logger.LogPath).Length;
             Logger.WritesEnabled = false;

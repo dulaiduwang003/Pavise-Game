@@ -46,46 +46,46 @@ namespace PaviseApp
 
         internal static List<string> Candidates(string root, Func<bool> allowed)
         {
-            List<FileInfo> fileInfos = new List<FileInfo>();
+            List<FileInfo> list = new List<FileInfo>();
             Queue<KeyValuePair<string, int>> queue = new Queue<KeyValuePair<string, int>>();
             queue.Enqueue(new KeyValuePair<string, int>(root, 0));
             Stopwatch stopwatch = Stopwatch.StartNew();
-            int inspectedFiles = 0;
-            while (queue.Count > 0 && inspectedFiles < 5000 && stopwatch.ElapsedMilliseconds < 10000 && allowed())
+            int candidatesValue = 0;
+            while (queue.Count > 0 && candidatesValue < 5000 && stopwatch.ElapsedMilliseconds < 10000 && allowed())
             {
-                KeyValuePair<string, int> dequeue = queue.Dequeue();
-                if (!CacheWarmPlatform.SafePath(dequeue.Key))
+                KeyValuePair<string, int> keyValuePair = queue.Dequeue();
+                if (!CacheWarmPlatform.SafePath(keyValuePair.Key))
                 {
                     continue;
                 }
                 try
                 {
-                    foreach (string enumerateFileSystemEntry in Directory.EnumerateFileSystemEntries(dequeue.Key))
+                    foreach (string item in Directory.EnumerateFileSystemEntries(keyValuePair.Key))
                     {
-                        if (++inspectedFiles > 5000 || stopwatch.ElapsedMilliseconds >= 10000 || !allowed())
+                        if (++candidatesValue > 5000 || stopwatch.ElapsedMilliseconds >= 10000 || !allowed())
                         {
                             break;
                         }
                         try
                         {
-                            FileAttributes attributes = File.GetAttributes(enumerateFileSystemEntry);
+                            FileAttributes attributes = File.GetAttributes(item);
                             if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline)) != 0)
                             {
                                 continue;
                             }
                             if ((attributes & FileAttributes.Directory) != 0)
                             {
-                                if (dequeue.Value < 8 && queue.Count < 512 && !SkipDirectory(Path.GetFileName(enumerateFileSystemEntry)))
+                                if (keyValuePair.Value < 8 && queue.Count < 512 && !SkipDirectory(Path.GetFileName(item)))
                                 {
-                                    queue.Enqueue(new KeyValuePair<string, int>(enumerateFileSystemEntry, dequeue.Value + 1));
+                                    queue.Enqueue(new KeyValuePair<string, int>(item, keyValuePair.Value + 1));
                                 }
                             }
-                            else if (Asset(enumerateFileSystemEntry))
+                            else if (Asset(item))
                             {
-                                FileInfo fileInfo = new FileInfo(enumerateFileSystemEntry);
+                                FileInfo fileInfo = new FileInfo(item);
                                 if (fileInfo.Length >= 1048576)
                                 {
-                                    fileInfos.Add(fileInfo);
+                                    list.Add(fileInfo);
                                 }
                             }
                         }
@@ -104,50 +104,50 @@ namespace PaviseApp
                 {
                 }
             }
-            fileInfos.Sort(delegate(FileInfo a, FileInfo b)
+            list.Sort(delegate(FileInfo a, FileInfo b)
             {
                 int compareToResult = b.LastAccessTimeUtc.CompareTo(a.LastAccessTimeUtc);
                 return (compareToResult == 0) ? StringComparer.OrdinalIgnoreCase.Compare(a.FullName, b.FullName) : compareToResult;
             });
-            List<string> fullNames = new List<string>();
-            foreach (FileInfo currentFileInfo in fileInfos)
+            List<string> list2 = new List<string>();
+            foreach (FileInfo item2 in list)
             {
-                fullNames.Add(currentFileInfo.FullName);
+                list2.Add(item2.FullName);
             }
-            return fullNames;
+            return list2;
         }
 
         internal static long Warm(string root, long budget, Func<bool> allowed, Func<int, bool> wait, Action<long> progress)
         {
             long warmResult = 0L;
             byte[] rawBytes = new byte[1048576];
-            foreach (string candidate in Candidates(root, allowed))
+            foreach (string item in Candidates(root, allowed))
             {
                 if (warmResult >= budget || !allowed())
                 {
                     break;
                 }
-                if (!CacheWarmPlatform.SafePath(candidate))
+                if (!CacheWarmPlatform.SafePath(item))
                 {
                     continue;
                 }
                 try
                 {
-                    using (FileStream fileStream = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.None))
+                    using (FileStream fileStream = new FileStream(item, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.None))
                     {
                         if (!CacheWarmPlatform.HandleUnder(fileStream, root))
                         {
                             continue;
                         }
                         long lengthLimit = Math.Min(fileStream.Length, 268435456L);
-                        long fileBytesRead = 0L;
-                        while (warmResult < budget && fileBytesRead < lengthLimit && allowed())
+                        long numericValue = 0L;
+                        while (warmResult < budget && numericValue < lengthLimit && allowed())
                         {
-                            int readResult = fileStream.Read(rawBytes, 0, (int)Math.Min(rawBytes.Length, Math.Min(budget - warmResult, lengthLimit - fileBytesRead)));
+                            int readResult = fileStream.Read(rawBytes, 0, (int)Math.Min(rawBytes.Length, Math.Min(budget - warmResult, lengthLimit - numericValue)));
                             if (readResult != 0)
                             {
                                 warmResult += readResult;
-                                fileBytesRead += readResult;
+                                numericValue += readResult;
                                 progress(warmResult);
                                 if (wait(32))
                                 {

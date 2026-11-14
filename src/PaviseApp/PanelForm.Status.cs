@@ -67,32 +67,35 @@ namespace PaviseApp
             acPresentedRoster = namesResult;
             if (namesResult.Length == 0)
             {
-                Label currentLabel = new Label();
-                currentLabel.Name = "AntiCheatRosterEmpty";
-                currentLabel.Text = AutoText("暂无兼容名单", "The compatibility list is empty");
-                currentLabel.BackColor = Theme.Card;
-                currentLabel.ForeColor = Theme.Dim;
-                currentLabel.Font = Theme.UI(10f, false);
-                currentLabel.TextAlign = ContentAlignment.MiddleLeft;
-                currentLabel.Visible = acDrawerKind == "roster";
-                acDrawerBody.Controls.Add(currentLabel);
-                acRosterRows.Add(currentLabel);
+                Label label = new Label();
+                label.Name = "AntiCheatRosterEmpty";
+                label.Text = AutoText("暂无兼容名单", "The compatibility list is empty");
+                label.BackColor = Theme.Card;
+                label.ForeColor = Theme.Dim;
+                label.Font = Theme.UI(10f, false);
+                label.TextAlign = ContentAlignment.MiddleLeft;
+                label.Visible = acDrawerKind == "roster";
+                Label label2 = label;
+                acDrawerBody.Controls.Add(label2);
+                acRosterRows.Add(label2);
             }
             else
             {
-                foreach (string entryText in namesResult)
+                string[] textEntries = namesResult;
+                foreach (string entryText in textEntries)
                 {
-                    AcReadOnlyButton currentAcReadOnlyButton = new AcReadOnlyButton(entryText, "", false);
-                    currentAcReadOnlyButton.Name = "AntiCheatRosterItem";
-                    currentAcReadOnlyButton.Visible = acDrawerKind == "roster";
-                    currentAcReadOnlyButton.AccessibleDescription = entryText;
+                    AcReadOnlyButton acReadOnlyButton = new AcReadOnlyButton(entryText, "", false);
+                    acReadOnlyButton.Name = "AntiCheatRosterItem";
+                    acReadOnlyButton.Visible = acDrawerKind == "roster";
+                    acReadOnlyButton.AccessibleDescription = entryText;
+                    AcReadOnlyButton acReadOnlyButton2 = acReadOnlyButton;
                     string captured = entryText;
-                    currentAcReadOnlyButton.Click += delegate
+                    acReadOnlyButton2.Click += delegate
                     {
                         ShowAcInformation(AutoText("兼容名单", "Compatibility list"), captured);
                     };
-                    acDrawerBody.Controls.Add(currentAcReadOnlyButton);
-                    acRosterRows.Add(currentAcReadOnlyButton);
+                    acDrawerBody.Controls.Add(acReadOnlyButton2);
+                    acRosterRows.Add(acReadOnlyButton2);
                 }
             }
             if (acDrawerKind == "roster")
@@ -144,7 +147,8 @@ namespace PaviseApp
                 acCards.Clear();
                 acToggles.Clear();
                 acReadOnlyCards.Clear();
-                foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
+                AcGroup[] groups = AntiCheatCatalog.Groups;
+                foreach (AcGroup acGroup in groups)
                 {
                     if (!acGroup.Suppressible)
                     {
@@ -173,10 +177,17 @@ namespace PaviseApp
                     if (acGroup.Key == "ace")
                     {
                         card.Title = AutoText("ACE 反作弊专家", "ACE Anti-Cheat Expert");
+                        card.Summary = AutoText("英雄联盟国服 · 无畏契约国服 · 三角洲行动 · CF", "League of Legends CN · VALORANT CN · Delta Force · CF");
                     }
                     if (acGroup.Key == "eac")
                     {
                         card.Title = "EasyAntiCheat";
+                        card.Summary = AutoText("Apex · 堡垒之夜 · 永劫无间 · 幻兽帕鲁", "Apex · Fortnite · Naraka: Bladepoint · Palworld");
+                    }
+                    if (acGroup.Key == "battleye")
+                    {
+                        card.Summary = AutoText("PUBG · 彩虹六号 · DayZ · 逃离塔科夫", "PUBG · Rainbow Six · DayZ · Escape from Tarkov");
+                        card.DescriptionBadge = AutoText("BEDaisy 为驱动", "BEDaisy is a driver");
                     }
                     card.Host(toggle);
                     card.DetailsRequested = delegate
@@ -189,11 +200,13 @@ namespace PaviseApp
                     acCards.Add(card);
                     acToggles.Add(toggle);
                 }
-                foreach (AcProtectionGroup acProtectionGroup in AntiCheatCatalog.ProtectionOnlyGroups)
+                AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;
+                foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
                 {
                     AddAcReadOnly(acProtectionGroup.Name, Lang.T("ac." + acProtectionGroup.Key + ".d"), acProtectionGroup.PatternsForDisplay(), false);
                 }
                 ((AcDrawerButton)acOtherToggle).Count = acReadOnlyCards.Count;
+                acModuleCountLabel.Text = string.Format(AutoText("{0} 个专项", "{0} modules"), acCards.Count);
                 RefreshAcGroupStates();
             }
             finally
@@ -258,11 +271,11 @@ namespace PaviseApp
         private void UpdateFixAllState()
         {
             int processedCount = 0;
-            foreach (AuditFix auditItem in BuildAuditFixes().Values)
+            foreach (AuditFix value in BuildAuditFixes().Values)
             {
                 try
                 {
-                    if (auditItem.CanFix())
+                    if (value.CanFix())
                     {
                         processedCount++;
                     }
@@ -284,8 +297,19 @@ namespace PaviseApp
                     ? Theme.Warning : gameMode.LaptopPerformanceState == "applied" ? Theme.Accent : Theme.Dim);
                 return;
             }
-            bool executionFailed = executionResult == "failed" || executionResult == "restore-failed"
-                || executionResult == "stopped" || executionResult == "cooldown";
+            int syncManualPerformanceStatusValue;
+            switch (executionResult)
+            {
+            default:
+                syncManualPerformanceStatusValue = ((executionResult == "cooldown") ? 1 : 0);
+                break;
+            case "failed":
+            case "restore-failed":
+            case "stopped":
+                syncManualPerformanceStatusValue = 1;
+                break;
+            }
+            bool executionFailed = (byte)syncManualPerformanceStatusValue != 0;
             string automationStateLabelResult;
             if (executionFailed)
             {
@@ -350,9 +374,9 @@ namespace PaviseApp
             {
                 using (PolicyResolver.BeginReadScope())
                 {
-                    foreach (Action currentAutomationSync in automationSync)
+                    foreach (Action item in automationSync)
                     {
-                        currentAutomationSync();
+                        item();
                     }
                     SyncPerformanceEnvironmentStatus();
                 }
@@ -370,10 +394,12 @@ namespace PaviseApp
             if (profile == null)
             {
                 coreDraftProfile = null;
+                coreDraftBaseline = null;
                 coreRebuildDraft = null;
+                coreSaveButton.Enabled = coreResetButton.Enabled = false;
                 return;
             }
-            if (coreRebuildDraft != null && curPage == pageCoreScheduling)
+            if (coreRebuildDraft != null)
             {
                 CoreEditorDraftSnapshot coreEditorDraftSnapshot = coreRebuildDraft;
                 coreRebuildDraft = null;
@@ -383,23 +409,15 @@ namespace PaviseApp
                     coreDraftExpected = coreEditorDraftSnapshot.Expected;
                     coreDraftTopology = coreEditorDraftSnapshot.Topology;
                     coreSaveError = coreEditorDraftSnapshot.Error;
+                    coreDraftBaseline = coreEditorDraftSnapshot.Baseline;
+                    coreDraftEnabledValue = coreEditorDraftSnapshot.EnabledValue;
                     coreEditMatrix.ShowSelectionImmediately(coreEditorDraftSnapshot.Mask);
                     coreIsolationToggle.SetSilently(coreEditorDraftSnapshot.Isolation);
                 }
             }
-            coreEnableToggle.SetSilently(PolicyResolver.For(profile).AutoCoresAllowed);
-            coreEnableToggle.Enabled = PolicyResolver.For(profile).ManualCores != null;
             coreEditorTitle.Text = PerformancePolicy.Text("游戏核心范围", "Game CPU range");
             coreEditMatrix.DisabledMask = AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask;
-            string rawResult = ManualCorePlan.Raw(profile);
-            if (coreDraftProfile != profile.Id || coreDraftExpected != rawResult)
-            {
-                bool sameDraftProfile = coreDraftProfile == profile.Id;
-                coreDraftProfile = profile.Id;
-                coreDraftExpected = rawResult;
-                RestoreCoreSelection();
-                coreSaveError = (sameDraftProfile ? "schedule.manual.changed" : null);
-            }
+            if (coreDraftProfile != profile.Id || coreDraftBaseline == null) ReloadCoreDraft(profile);
             CoreDraftChanged();
         }
         private void SyncCoreRuntimePresentation()
@@ -407,35 +425,21 @@ namespace PaviseApp
             AutoCoreStatus status = AutoCores.Status;
             bool watchingProfile = status.ProfileId == coreDraftProfile && status.Watching;
             ManualCorePlan manualCorePlan = ManualCorePlan.Parse(coreDraftExpected);
-            string text = ((manualCorePlan == null) ? PerformancePolicy.Text("尚未保存游戏核心范围。", "No game CPU range saved.") : (PerformancePolicy.Text("已保存：", "Saved: ") + CpuTopology.DescribeMask(manualCorePlan.GameMask)));
-            if (!watchingProfile)
-            {
-                text = text + "\n" + PerformancePolicy.Text("本局硬绑定：等待游戏进程验证。", "Session hard affinity: awaiting game-process verification.");
-            }
-            else if (status.Blocked != null)
-            {
-                text = text + "\n" + PerformancePolicy.Text("本局硬绑定已停用：", "Session hard affinity stopped: ") + Lang.T(status.Blocked);
-            }
-            else if (!status.Manual || status.ExpectedMask == 0)
-            {
-                text = text + "\n" + PerformancePolicy.Text("本局未采用手动选核；已保存的修改下次启动游戏生效。", "This session has no manual CPU range; saved changes apply on the next game launch.");
-            }
-            else
-            {
-                text = text + "\n" + PerformancePolicy.Text("本局目标：", "Session target: ") + CpuTopology.DescribeMask(status.ExpectedMask);
-                string message = text;
-                text = message + "\n" + PerformancePolicy.Text("最近回读：", "Last readback: ") + (status.AffinityRead ? CpuTopology.DescribeMask(status.ObservedMask) : PerformancePolicy.Text("尚未确认", "Unconfirmed")) + (status.AffinityVerified ? " · " + AutoCores.AffinityProtectionText(status) : PerformancePolicy.Text(" · 硬绑定未生效", " · hard affinity not active"));
-                if (manualCorePlan == null || manualCorePlan.GameMask != status.ExpectedMask || manualCorePlan.Isolation != status.ManualIsolation)
-                {
-                    text = text + "\n" + PerformancePolicy.Text("新保存的范围／隔离设置下次启动游戏生效。", "New CPU/isolation settings apply on the next game launch.");
-                }
-            }
-            coreEditorRuntime.Text = text;
-            coreEditorRuntime.ForeColor = ((watchingProfile && (status.Blocked != null || status.Pending)) ? Theme.Warning : ((watchingProfile && status.AffinityVerified) ? Theme.Accent : Theme.Dim));
             Color currentTone = Theme.Dim;
             string currentValue;
             string currentDetail;
-            if (!watchingProfile)
+            if (status.Pending)
+            {
+                currentValue = PerformancePolicy.Text("原范围恢复待确认", "Range restoration pending");
+                currentDetail = PerformancePolicy.Text("正在核验已有设置恢复，全选尚不代表已释放旧限制。", "Restoration is being verified; selecting all CPUs does not confirm that prior restrictions are released.");
+                currentTone = Theme.Warning;
+            }
+            else if (status.ProfileId == coreDraftProfile && status.Unrestricted)
+            {
+                currentValue = PerformancePolicy.Text("全选：不额外限制", "All selected: No additional restriction");
+                currentDetail = PerformancePolicy.Text("保留系统原有核心范围，不新增亲和性限制。", "Keeps the system's existing CPU range without adding affinity restrictions.");
+            }
+            else if (!watchingProfile)
             {
                 currentValue = PerformancePolicy.Text("尚未确认", "Not verified yet");
                 currentDetail = PerformancePolicy.Text("游戏运行后，读取并核对实际核心范围。", "The actual CPU range is checked once the game runs.");
@@ -464,8 +468,8 @@ namespace PaviseApp
                 currentTone = Theme.Warning;
             }
             string savedValue = ((manualCorePlan == null) ? PerformancePolicy.Text("尚未选择", "No range selected") : CpuTopology.DescribeMask(manualCorePlan.GameMask));
-            string savedDetail = ((manualCorePlan == null) ? PerformancePolicy.Text("点击下方核心，选择会自动保存。", "Select cores below to save a range.") : ((!coreEnableToggle.Checked) ? PerformancePolicy.Text("方案已保存，核心调度当前关闭。", "Plan saved; core scheduling is switched off.") : (PerformancePolicy.Text("下次启动游戏使用此范围", "Applied on the next game launch") + (manualCorePlan.Isolation ? PerformancePolicy.Text(" · 含核心隔离", " · with isolation") : ""))));
-            string validateCurrentResult = ((manualCorePlan == null) ? null : manualCorePlan.ValidateCurrent(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask));
+            string savedDetail = ((manualCorePlan == null) ? PerformancePolicy.Text("选择核心后点击保存。", "Select cores, then click Save.") : ((coreDraftEnabledValue != "1") ? PerformancePolicy.Text("方案已保存，游戏核心范围当前关闭。", "Plan saved; game core range is switched off.") : (PerformancePolicy.Text("下次启动游戏使用此范围", "Applied on the next game launch") + (manualCorePlan.Isolation ? PerformancePolicy.Text(" · 含核心隔离", " · with isolation") : ""))));
+            string validateCurrentResult = ((manualCorePlan == null) ? null : manualCorePlan.ValidateCurrent(coreEditMatrix.DisabledMask));
             if (validateCurrentResult != null)
             {
                 savedDetail = PerformancePolicy.Text("需调整：", "Needs adjustment: ") + Lang.T(validateCurrentResult);
@@ -488,7 +492,7 @@ namespace PaviseApp
                     lblCoreReason.Text = Lang.T(isolationPending ? "schedule.isolation.pending" : ((sameProfile && status.Blocked != null) ? status.Blocked : ((gameProfile == null) ? "schedule.manual.pickgame" : "schedule.manual.required")));
                     lblCoreRule.Text = Lang.T("schedule.manual.rule");
                     lblCoreTelemetry.Text = "";
-                    ulong disabledMaskValue = AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask;
+                    ulong disabledMaskValue = coreEditMatrix.DisabledMask;
                     ulong pendingRebootResult = ((disabledMaskValue != 0) ? LegacyReservedCores.PendingReboot(disabledMaskValue) : 0);
                     ulong suspectResult = ((pendingRebootResult == 0) ? LegacyReservedCores.Suspect() : 0);
                     bool visibleValue = suspectResult != 0 && (suspectResult & ~disabledMaskValue) == 0;
@@ -566,7 +570,8 @@ namespace PaviseApp
             criticalThreadSyncing = true;
             try
             {
-                criticalThreadEnabled.Checked = rawResult != null;
+                CriticalThreadRule effective = PolicyResolver.GameSchedulingRule(profile);
+                criticalThreadEnabled.Checked = effective != null && !effective.IsOff;
             }
             finally
             {
@@ -578,27 +583,33 @@ namespace PaviseApp
         }
         private void RefreshCriticalThreadCard()
         {
-            string error;
-            CriticalThreadRule criticalThreadRule = CriticalThreadSwitchRule(out error);
-            CriticalThreadRule parseForRuntime = CriticalThreadRule.ParseForRuntime(criticalThreadExpected);
-            criticalThreadMode.AccessibleDescription = parseForRuntime != null && parseForRuntime.ManualTarget
-                ? ThreadUi("手动 · ", "Manual · ") + CriticalThreadRule.ProcessorName(parseForRuntime.Targets[0])
-                : ThreadUi("自动选核", "Automatic CPU");
-            string threadUiResult = ((criticalThreadExpected == null) ? ThreadUi("默认关闭；打开右上角开关即可启用。", "Off by default. Turn on the switch above to enable it.") : ((parseForRuntime != null && !parseForRuntime.Automatic) ? ThreadUi("此游戏保存的是手动指定核心的旧规则，仍按原规则执行；关闭再打开开关即改为自动选核。", "This game keeps an older rule with manually chosen cores, which still applies; turn the switch off and on to choose cores automatically.") : ThreadUi("已启用；实际状态见下方。", "On; see the runtime state below.")));
-            string errorSnapshot = ((criticalThreadExpected == null) ? error : criticalThreadAllowedError);
-            criticalThreadResult.Text = ((criticalThreadError == null) ? "" : (criticalThreadError + "\n")) + (errorSnapshot ?? threadUiResult);
-            criticalThreadResult.ForeColor = ((criticalThreadError != null || errorSnapshot != null) ? Theme.Warning : Theme.Dim);
-            criticalThreadEnabled.Enabled = criticalThreadExpected != null || criticalThreadRule != null;
-            bool criticalWorkPending = criticalThreadView != null && criticalThreadView.Pending;
-            if (criticalWorkPending && criticalThreadError == null && errorSnapshot == null)
-            {
-                Label label = criticalThreadResult;
-                label.Text = label.Text + "\n" + ThreadUi("偏好可以保存；恢复完成前不会应用新规则。", "Preferences can be saved; new rules wait until recovery completes.");
-            }
+            GameProfile profile = FindLibraryProfile(criticalThreadProfile);
+            CriticalThreadRule rule = profile == null ? null : PolicyResolver.GameSchedulingRule(profile);
+            bool enabled = rule != null && !rule.IsOff;
+            criticalThreadMode.AccessibleDescription = enabled ? ThreadLayoutDescriptions.StrategyName(rule)
+                : ThreadLayoutDescriptions.StrategyName((CriticalThreadRule)null);
+            criticalThreadResult.Text = criticalThreadError ?? (enabled
+                ? ThreadLayoutDescriptions.Text("统一调度已启用；控制状态以逐项读回为准。", "Unified scheduling is enabled; verified field states are shown below.", "統合スケジューリングが有効です。各項目の確認状態を以下に表示します。")
+                : ThreadLayoutDescriptions.Text("此游戏的渲染线程调度已关闭。", "Render thread scheduling is off for this game.", "このゲームのスケジューリングは無効です。"));
+            criticalThreadResult.ForeColor = criticalThreadError != null ? Theme.Warning : Theme.Dim;
+            // 全局停用时，逐游戏入口须说明停用原因与恢复方式。
+            bool globallyOff = !enabled && PolicyResolver.RawGlobalValue(PolicyCatalog.KeyGameScheduling) != "1";
+            // 进程权限历史不能推断线程权限；配置摘要保留用户选择，实际结果由运行快照说明。
+            criticalThreadEnabled.Summary = globallyOff ? ThreadUi("已全局停用 · 打开开关恢复", "Disabled globally · switch on to restore")
+                : !enabled ? ""
+                : ThreadLayoutDescriptions.StrategyName(rule);
+            criticalThreadEnabled.SummaryColor = globallyOff ? Theme.Warning : Color.Empty;
+            criticalThreadEnabled.Invalidate();
+            criticalThreadEnabled.Enabled = true;
+            bool pending = criticalThreadView != null && criticalThreadView.Pending;
             criticalThreadRuntime.Text = CriticalThreadRuntimeText();
-            criticalThreadIssue = criticalWorkPending || criticalThreadError != null || errorSnapshot != null || (parseForRuntime != null && !parseForRuntime.Automatic);
-            criticalThreadResult.Visible = criticalThreadIssue;
+            criticalThreadIssue = pending || criticalThreadError != null;
+            criticalThreadResult.Visible = true;
             LayoutCriticalThreadEditor();
+            if (criticalThreadSynced != null)
+            {
+                criticalThreadSynced();
+            }
         }
         private void RefreshPerformanceEnvironmentObservation()
         {
@@ -777,15 +788,15 @@ namespace PaviseApp
                 {
                     int expandedHeightValue = Theme.S(FullTextCardHeight(descValue, ScrollContentW, swPerformanceEnvironmentBundle, 100) + 17);
                     int expandedHeight = (settingCard.Collapsible ? settingCard.ExpandedHeight : settingCard.Height);
-                    Dictionary<Control, int> baseTopByCard;
-                    if (settingCard.Parent != null && stackBase.TryGetValue(settingCard.Parent, out baseTopByCard))
+                    Dictionary<Control, int> value;
+                    if (settingCard.Parent != null && stackBase.TryGetValue(settingCard.Parent, out value))
                     {
-                        int cardBaseTop = baseTopByCard[settingCard];
-                        foreach (Control control in new List<Control>(baseTopByCard.Keys))
+                        int syncPerformanceTuningEnvironmentValue = value[settingCard];
+                        foreach (Control item in new List<Control>(value.Keys))
                         {
-                            if (baseTopByCard[control] > cardBaseTop)
+                            if (value[item] > syncPerformanceTuningEnvironmentValue)
                             {
-                                baseTopByCard[control] += expandedHeightValue - expandedHeight;
+                                value[item] += expandedHeightValue - expandedHeight;
                             }
                         }
                     }
@@ -797,7 +808,7 @@ namespace PaviseApp
                     }
                 }
             }
-            SettingCard currentCardPerformanceEnvironmentBundle = cardPerformanceEnvironmentBundle;
+            SettingCard settingCard2 = cardPerformanceEnvironmentBundle;
             string labelResult = ((environmentBundleBusySucceeded || cachedEnvironmentTuning == null) ? PerformanceTuning.Label(bundleState) : cachedEnvironmentTuning.BundleLabel);
             Color ink;
             switch (bundleState)
@@ -812,7 +823,7 @@ namespace PaviseApp
                 ink = Theme.Warning;
                 break;
             }
-            currentCardPerformanceEnvironmentBundle.SetStatus(labelResult, ink);
+            settingCard2.SetStatus(labelResult, ink);
             SyncPerformanceCpuMitigations();
             SyncPerformanceStorageEnvironment();
             if (swPerformanceEnvironmentQuantum != null && !swPerformanceEnvironmentQuantum.IsDisposed && cardPerformanceEnvironmentQuantum != null && !cardPerformanceEnvironmentQuantum.IsDisposed)
@@ -861,15 +872,15 @@ namespace PaviseApp
                 {
                     int expandedHeightValue = Theme.S(FullTextCardHeight(descValue, ScrollContentW, swPerformanceEnvironmentStorage, 100) + 17);
                     int expandedHeight = (settingCard.Collapsible ? settingCard.ExpandedHeight : settingCard.Height);
-                    Dictionary<Control, int> baseTopByCard;
-                    int cardBaseTop;
-                    if (settingCard.Parent != null && stackBase.TryGetValue(settingCard.Parent, out baseTopByCard) && baseTopByCard.TryGetValue(settingCard, out cardBaseTop))
+                    Dictionary<Control, int> value;
+                    int value2;
+                    if (settingCard.Parent != null && stackBase.TryGetValue(settingCard.Parent, out value) && value.TryGetValue(settingCard, out value2))
                     {
-                        foreach (Control control in new List<Control>(baseTopByCard.Keys))
+                        foreach (Control item in new List<Control>(value.Keys))
                         {
-                            if (baseTopByCard[control] > cardBaseTop)
+                            if (value[item] > value2)
                             {
-                                baseTopByCard[control] += expandedHeightValue - expandedHeight;
+                                value[item] += expandedHeightValue - expandedHeight;
                             }
                         }
                     }
@@ -916,20 +927,20 @@ namespace PaviseApp
                 id = selectedItem.Profile.Id;
             }
             List<GameProfile> profiles = gameMode.GetProfiles();
-            Dictionary<string, bool> runningsByExecutablePath = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            foreach (GameLibraryItem currentItem in lstGames.Items)
+            Dictionary<string, bool> dictionary = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (GameLibraryItem item in lstGames.Items)
             {
-                if (currentItem != null && currentItem.Profile != null && !string.IsNullOrEmpty(currentItem.Profile.ExecutablePath))
+                if (item != null && item.Profile != null && !string.IsNullOrEmpty(item.Profile.ExecutablePath))
                 {
-                    runningsByExecutablePath[currentItem.Profile.ExecutablePath] = currentItem.Running;
+                    dictionary[item.Profile.ExecutablePath] = item.Running;
                 }
             }
-            List<GameLibraryItem> gameLibraryItems = new List<GameLibraryItem>();
-            foreach (GameProfile profile in profiles)
+            List<GameLibraryItem> list = new List<GameLibraryItem>();
+            foreach (GameProfile item2 in profiles)
             {
-                gameLibraryItems.Add(new GameLibraryItem(profile, RunningIn(runningsByExecutablePath, profile.ExecutablePath), gameMode.HasRendererObservation(profile)));
+                list.Add(new GameLibraryItem(item2, RunningIn(dictionary, item2.ExecutablePath), gameMode.HasRendererObservation(item2)));
             }
-            lstGames.SetItems(gameLibraryItems);
+            lstGames.SetItems(list);
             if (id != null)
             {
                 SelectProfile(id);
@@ -983,11 +994,11 @@ namespace PaviseApp
             Interlocked.Exchange(ref runningPending, 0);
             Interlocked.Exchange(ref nextRunningProbeTicks, ticks + RunningProbeIntervalTicks);
             int version = Volatile.Read(ref runningVersion);
-            GameLibraryGallery currentLstGames = lstGames;
+            GameLibraryGallery list = lstGames;
             List<string> paths = new List<string>();
-            foreach (GameLibraryItem currentItem in currentLstGames.Items)
+            foreach (GameLibraryItem item in list.Items)
             {
-                GameLibraryItem gameLibraryItem = currentItem as GameLibraryItem;
+                GameLibraryItem gameLibraryItem = item as GameLibraryItem;
                 if (gameLibraryItem != null && gameLibraryItem.Profile != null)
                 {
                     paths.Add(gameLibraryItem.Profile.ExecutablePath);
@@ -1022,7 +1033,7 @@ namespace PaviseApp
                         {
                             try
                             {
-                                if (!base.IsDisposed && UiActive && states != null && object.ReferenceEquals(currentLstGames, lstGames) && !currentLstGames.IsDisposed && version == Volatile.Read(ref runningVersion))
+                                if (!base.IsDisposed && UiActive && states != null && object.ReferenceEquals(list, lstGames) && !list.IsDisposed && version == Volatile.Read(ref runningVersion))
                                 {
                                     ApplyRunningStates(states);
                                 }
@@ -1105,10 +1116,10 @@ namespace PaviseApp
         {
             if (lblStatus != null && !lblStatus.IsDisposed && gameMode != null)
             {
-                string text = gameMode.ActiveGame ?? Lang.T("workflow.game.waiting");
-                if (lblStatus.Text != text)
+                string textValue = gameMode.ActiveGame ?? Lang.T("workflow.game.waiting");
+                if (lblStatus.Text != textValue)
                 {
-                    lblStatus.Text = text;
+                    lblStatus.Text = textValue;
                     FitLabelFont(lblStatus, true, 14.5f, 9.5f);
                 }
                 bool pulseValue = gameMode.Enabled && gameMode.IsActive;
@@ -1313,6 +1324,7 @@ namespace PaviseApp
                 if (settingsWorkspaceTile != null)
                 {
                     settingsWorkspaceTile.Summary = ((!gameMode.StandbyCleaningOptionsValid) ? Lang.T("standbycleaner.config.invalid") : ((!elevated) ? Lang.T("gm.standbycleaner.needadmin") : PerformancePolicy.Text("对局中 · 双阈值触发", "During matches · both thresholds")));
+                    settingsWorkspaceTile.Invalidate();
                 }
             }
         }
@@ -1359,7 +1371,7 @@ namespace PaviseApp
                 return;
             }
             Interlocked.Exchange(ref whitePending, 0);
-            ListBox currentLstWhite = lstWhite;
+            ListBox list = lstWhite;
             EmptyStatePanel panel = whitePanel;
             try
             {
@@ -1379,7 +1391,7 @@ namespace PaviseApp
                         {
                             try
                             {
-                                if (!base.IsDisposed && UiActive && full != null && version == Volatile.Read(ref whiteVersion) && object.ReferenceEquals(currentLstWhite, lstWhite) && object.ReferenceEquals(panel, whitePanel) && !currentLstWhite.IsDisposed && !panel.IsDisposed)
+                                if (!base.IsDisposed && UiActive && full != null && version == Volatile.Read(ref whiteVersion) && object.ReferenceEquals(list, lstWhite) && object.ReferenceEquals(panel, whitePanel) && !list.IsDisposed && !panel.IsDisposed)
                                 {
                                     FillWhitelist(full);
                                 }
@@ -1592,6 +1604,15 @@ namespace PaviseApp
                 }
             }
         }
+        // 后台拉起或系统拒绝抢焦点时，窗口会显示却收不到激活和失活事件；按实际前台窗口同步，避免核心动画误以为仍在前台而持续逐帧重绘。
+        private void SyncUiForegroundFromWindow()
+        {
+            if (shotMode)
+            {
+                return;
+            }
+            SyncUiForeground(base.IsHandleCreated && GetForegroundWindow() == base.Handle);
+        }
         private void SyncUiForeground(bool foreground)
         {
             SyncMotionAppearanceActivity(foreground);
@@ -1649,6 +1670,10 @@ namespace PaviseApp
                 UiClock.WakeSlow();
                 NotifyPageActivation();
             }
+            if (shouldRunUi)
+            {
+                SyncUiForegroundFromWindow();
+            }
         }
         private void RefreshLightweightUiState()
         {
@@ -1658,10 +1683,10 @@ namespace PaviseApp
             }
             if (lblStatus != null)
             {
-                string text = gameMode.ActiveGame ?? Lang.T("workflow.game.waiting");
-                if (lblStatus.Text != text)
+                string textValue = gameMode.ActiveGame ?? Lang.T("workflow.game.waiting");
+                if (lblStatus.Text != textValue)
                 {
-                    lblStatus.Text = text;
+                    lblStatus.Text = textValue;
                     FitLabelFont(lblStatus, true, 14.5f, 9.5f);
                 }
             }
@@ -1684,10 +1709,10 @@ namespace PaviseApp
             if (lblSub != null && elevated)
             {
                 string activeGame = gameMode.ActiveGame;
-                string currentText = Lang.T("title.admin") + " " + ((activeGame != null) ? Lang.F("title.guard", activeGame) : Lang.T("v20.admin.ready"));
-                if (lblSub.Text != currentText)
+                string textValue2 = Lang.T("title.admin") + " " + ((activeGame != null) ? Lang.F("title.guard", activeGame) : Lang.T("v20.admin.ready"));
+                if (lblSub.Text != textValue2)
                 {
-                    lblSub.Text = currentText;
+                    lblSub.Text = textValue2;
                 }
                 lblSub.ForeColor = ((activeGame != null) ? Theme.Green : Theme.Faint);
             }

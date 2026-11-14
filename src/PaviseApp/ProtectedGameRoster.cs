@@ -5,6 +5,7 @@ namespace PaviseApp
 {
     internal static class ProtectedGameRoster
     {
+        private const string Key = "AcProtectedGames";
 
         private static readonly object lk = new object();
 
@@ -40,27 +41,28 @@ namespace PaviseApp
             {
                 return cache;
             }
-            Dictionary<string, string> substringsBySubstring = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string entryText in Settings.LoadStr("AcProtectedGames", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            Dictionary<string, string> dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string[] loadStrParts = Settings.LoadStr("AcProtectedGames", "").Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string entryText in loadStrParts)
             {
                 int matchIndex = entryText.LastIndexOf('|');
                 if (matchIndex > 0 && matchIndex < entryText.Length - 1)
                 {
-                    substringsBySubstring[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
+                    dictionary[entryText.Substring(0, matchIndex)] = entryText.Substring(matchIndex + 1);
                 }
             }
-            cache = substringsBySubstring;
+            cache = dictionary;
             return cache;
         }
 
         private static void Persist()
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (KeyValuePair<string, string> item in cache)
             {
-                texts.Add(item.Key + "|" + item.Value);
+                list.Add(item.Key + "|" + item.Value);
             }
-            Settings.SaveStr("AcProtectedGames", string.Join(";", texts.ToArray()));
+            Settings.SaveStr("AcProtectedGames", string.Join(";", list.ToArray()));
         }
 
         private static bool Current(string version)
@@ -92,13 +94,13 @@ namespace PaviseApp
             }
             lock (lk)
             {
-                Dictionary<string, string> versionsByNormResult = Load();
-                string version;
-                if (versionsByNormResult.TryGetValue(normResult, out version) && Current(version))
+                Dictionary<string, string> dictionary = Load();
+                string value;
+                if (dictionary.TryGetValue(normResult, out value) && Current(value))
                 {
                     return;
                 }
-                versionsByNormResult[normResult] = App.Version;
+                dictionary[normResult] = App.Version;
                 Persist();
             }
             Logger.Log(Lang.T("log.protectedgameroster.1", 0) + normResult + Lang.T("log.protectedgameroster.2", 0));
@@ -144,16 +146,16 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                List<string> texts = new List<string>();
+                List<string> list = new List<string>();
                 foreach (KeyValuePair<string, string> item in Load())
                 {
                     if (Current(item.Value))
                     {
-                        texts.Add(item.Key);
+                        list.Add(item.Key);
                     }
                 }
-                texts.Sort(StringComparer.OrdinalIgnoreCase);
-                return texts.ToArray();
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                return list.ToArray();
             }
         }
     }

@@ -87,9 +87,9 @@ namespace PaviseApp
             {
                 throw new IOException("original store does not exist");
             }
-            for (DirectoryInfo currentDirectoryInfo = directoryInfo; currentDirectoryInfo != null; currentDirectoryInfo = currentDirectoryInfo.Parent)
+            for (DirectoryInfo directoryInfo2 = directoryInfo; directoryInfo2 != null; directoryInfo2 = directoryInfo2.Parent)
             {
-                if ((currentDirectoryInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                if ((directoryInfo2.Attributes & FileAttributes.ReparsePoint) != 0)
                 {
                     throw new IOException("reparse store path refused");
                 }
@@ -198,19 +198,22 @@ namespace PaviseApp
                 throw new ObjectDisposedException("original root writer");
             }
             RequireRoot();
-            int reviewedFiles = 0;
-            long reviewedBytes = 0L;
-            foreach (string enumerateFile in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
+            if (GameThreadControlStore.CanonicalRootHasRecoveryDebt(root)) return true;
+            int historicalDebtValue = 0;
+            long numericValue = 0L;
+            foreach (string item in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
             {
-                if (++reviewedFiles > 1024 || (reviewedBytes = checked(reviewedBytes + new FileInfo(enumerateFile).Length)) > 16777216)
+                if (++historicalDebtValue > 1024 || (numericValue = checked(numericValue + new FileInfo(item).Length)) > 16777216)
                 {
                     throw new InvalidDataException("historical hard affinity ledger review exceeds the bounded admission budget");
                 }
-                if ((File.GetAttributes(enumerateFile) & FileAttributes.ReparsePoint) != 0)
+                if ((File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
                 {
                     throw new InvalidDataException("historical ledger is a reparse source");
                 }
-                HardThreadJournal hardThreadJournal = ReadLedger(enumerateFile, null, false);
+                HardThreadJournal hardThreadJournal = ReadLedger(item, null, false);
+                if (GameThreadControlStore.HasDebt(root, hardThreadJournal.Target, hardThreadJournal.SourceNonce,
+                    hardThreadJournal.SourceScopeHash, hardThreadJournal.ControlDeclared)) return true;
                 foreach (HardThreadReceipt row in hardThreadJournal.Rows)
                 {
                     if (!row.Terminal)
@@ -229,18 +232,18 @@ namespace PaviseApp
                 throw new ObjectDisposedException("original root writer");
             }
             RequireRoot();
-            int reviewedFiles = 0;
-            long reviewedBytes = 0L;
-            List<HardThreadJournal> ledgers = new List<HardThreadJournal>();
-            foreach (string enumerateFile in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
+            int historicalJournalsValue = 0;
+            long numericValue = 0L;
+            List<HardThreadJournal> list = new List<HardThreadJournal>();
+            foreach (string item in Directory.EnumerateFiles(root, "hard-thread-*.xml", SearchOption.TopDirectoryOnly))
             {
-                if (++reviewedFiles > 1024 || (reviewedBytes = checked(reviewedBytes + new FileInfo(enumerateFile).Length)) > 16777216 || (File.GetAttributes(enumerateFile) & FileAttributes.ReparsePoint) != 0)
+                if (++historicalJournalsValue > 1024 || (numericValue = checked(numericValue + new FileInfo(item).Length)) > 16777216 || (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
                 {
                     throw new InvalidDataException("bounded historical source required");
                 }
-                ledgers.Add(ReadLedger(enumerateFile, null, false));
+                list.Add(ReadLedger(item, null, false));
             }
-            return ledgers.ToArray();
+            return list.ToArray();
         }
 
         internal static HardThreadJournal[] ObserveHistoricalJournals(string canonicalRoot)
@@ -281,7 +284,7 @@ namespace PaviseApp
             HardThreadJournal hardThreadJournal = ReadHistorical(original.Target);
             string historicalHashResult = HistoricalHash(hardThreadJournal.Target);
             original.RequireCommit(this, root, hardThreadJournal, historicalHashResult);
-            HardThreadJournal markGone = HardThreadHistoricalPolicy.MarkGone(hardThreadJournal, original.Reason);
+            HardThreadJournal hardThreadJournal2 = HardThreadHistoricalPolicy.MarkGone(hardThreadJournal, original.Reason);
             string combinedPath = Path.Combine(root, "hard-thread-gone-" + hardThreadJournal.Target.SessionId.ToString("N") + "-" + hardThreadJournal.Revision + "-" + historicalHashResult + ".bak");
             if (File.Exists(combinedPath))
             {
@@ -300,11 +303,11 @@ namespace PaviseApp
                         throw new InvalidDataException("bounded original archive required");
                     }
                     rawBytes = new byte[(int)fileStream.Length];
-                    int bytesRead;
-                    for (int i = 0; i < rawBytes.Length; i += bytesRead)
+                    int commitHistoricalGoneValue;
+                    for (int i = 0; i < rawBytes.Length; i += commitHistoricalGoneValue)
                     {
-                        bytesRead = fileStream.Read(rawBytes, i, rawBytes.Length - i);
-                        if (bytesRead <= 0)
+                        commitHistoricalGoneValue = fileStream.Read(rawBytes, i, rawBytes.Length - i);
+                        if (commitHistoricalGoneValue <= 0)
                         {
                             throw new EndOfStreamException();
                         }
@@ -324,10 +327,10 @@ namespace PaviseApp
                 string combinedPath2 = Path.Combine(root, ".historical-archive-" + Guid.NewGuid().ToString("N") + ".tmp");
                 try
                 {
-                    using (FileStream currentFileStream = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+                    using (FileStream fileStream2 = new FileStream(combinedPath2, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
                     {
-                        currentFileStream.Write(rawBytes, 0, rawBytes.Length);
-                        currentFileStream.Flush(true);
+                        fileStream2.Write(rawBytes, 0, rawBytes.Length);
+                        fileStream2.Flush(true);
                     }
                     File.Move(combinedPath2, combinedPath);
                 }
@@ -341,13 +344,13 @@ namespace PaviseApp
             }
             original.RequireCommit(this, root, ReadHistorical(hardThreadJournal.Target), HistoricalHash(hardThreadJournal.Target));
             BindOriginalScope(hardThreadJournal.Target, hardThreadJournal.SourceNonce, hardThreadJournal.SourceScopeHash);
-            Save(hardThreadJournal.Revision, markGone);
-            HardThreadJournal currentHardThreadJournal = Load(hardThreadJournal.Target);
-            if (currentHardThreadJournal.Revision != markGone.Revision)
+            Save(hardThreadJournal.Revision, hardThreadJournal2);
+            HardThreadJournal hardThreadJournal3 = Load(hardThreadJournal.Target);
+            if (hardThreadJournal3.Revision != hardThreadJournal2.Revision)
             {
                 throw new IOException("historical gone metadata revision was not confirmed");
             }
-            foreach (HardThreadReceipt row in currentHardThreadJournal.Rows)
+            foreach (HardThreadReceipt row in hardThreadJournal3.Rows)
             {
                 if (!row.Terminal)
                 {
@@ -442,8 +445,9 @@ namespace PaviseApp
                 hardThreadJournal.Target = target;
                 return hardThreadJournal;
             }
-            XmlDocument currentXmlDocument = new XmlDocument();
-            currentXmlDocument.XmlResolver = null;
+            XmlDocument xmlDocument = new XmlDocument();
+            xmlDocument.XmlResolver = null;
+            XmlDocument xmlDocument2 = xmlDocument;
             using (fileStream)
             {
                 if (fileStream.Length > 1048576)
@@ -457,10 +461,10 @@ namespace PaviseApp
                     MaxCharactersInDocument = 1048576L
                 }))
                 {
-                    currentXmlDocument.Load(reader);
+                    xmlDocument2.Load(reader);
                 }
             }
-            XmlElement documentElement = currentXmlDocument.DocumentElement;
+            XmlElement documentElement = xmlDocument2.DocumentElement;
             if (documentElement == null || documentElement.Name != "hardThreads" || (documentElement.GetAttribute("version") != "1" && documentElement.GetAttribute("version") != "2"))
             {
                 throw new InvalidDataException("journal format");
@@ -474,63 +478,66 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("journal filename differs from original session");
             }
-            HardThreadJournal candidateHardThreadJournal = new HardThreadJournal();
-            candidateHardThreadJournal.Target = hardThreadTarget;
-            candidateHardThreadJournal.Revision = Long(documentElement, "revision");
+            HardThreadJournal hardThreadJournal2 = new HardThreadJournal();
+            hardThreadJournal2.Target = hardThreadTarget;
+            hardThreadJournal2.Revision = Long(documentElement, "revision");
+            hardThreadJournal2.ControlDeclared = documentElement.HasAttribute("controlDeclared") && Flag(documentElement, "controlDeclared");
+            HardThreadJournal hardThreadJournal3 = hardThreadJournal2;
             if (documentElement.GetAttribute("version") == "2")
             {
-                candidateHardThreadJournal.SourceNonce = documentElement.GetAttribute("sourceNonce");
-                candidateHardThreadJournal.SourceScopeHash = documentElement.GetAttribute("sourceScopeHash");
-                if (!Digest(candidateHardThreadJournal.SourceNonce) || !Digest(candidateHardThreadJournal.SourceScopeHash))
+                hardThreadJournal3.SourceNonce = documentElement.GetAttribute("sourceNonce");
+                hardThreadJournal3.SourceScopeHash = documentElement.GetAttribute("sourceScopeHash");
+                if (!Digest(hardThreadJournal3.SourceNonce) || !Digest(hardThreadJournal3.SourceScopeHash))
                 {
                     throw new InvalidDataException("original machine scope binding missing");
                 }
             }
-            if (candidateHardThreadJournal.Revision < 1)
+            if (hardThreadJournal3.Revision < 1)
             {
                 throw new InvalidDataException("journal revision");
             }
-            HashSet<string> textsSet = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
             foreach (XmlNode childNode in documentElement.ChildNodes)
             {
                 XmlElement xmlElement = childNode as XmlElement;
-                if (xmlElement == null || xmlElement.Name != "thread" || candidateHardThreadJournal.Rows.Count >= 512)
+                if (xmlElement == null || xmlElement.Name != "thread" || hardThreadJournal3.Rows.Count >= 512)
                 {
                     throw new InvalidDataException("journal row");
                 }
-                HardThreadReceipt currentHardThreadReceipt = new HardThreadReceipt();
-                currentHardThreadReceipt.Thread = new HardThreadIdentity(Number(xmlElement, "tid"), Long(xmlElement, "birth"));
-                currentHardThreadReceipt.Group = Group(xmlElement, "group");
-                currentHardThreadReceipt.Captured = Mask(xmlElement, "captured");
-                currentHardThreadReceipt.Applied = Mask(xmlElement, "applied");
-                currentHardThreadReceipt.PreviousGroup = Group(xmlElement, "previousGroup");
-                currentHardThreadReceipt.Previous = Mask(xmlElement, "previous");
-                currentHardThreadReceipt.PreviousKnown = Flag(xmlElement, "previousKnown");
-                currentHardThreadReceipt.RestorePreviousGroup = Group(xmlElement, "restoreGroup");
-                currentHardThreadReceipt.RestorePrevious = Mask(xmlElement, "restorePrevious");
-                currentHardThreadReceipt.RestorePreviousKnown = Flag(xmlElement, "restoreKnown");
-                currentHardThreadReceipt.Detail = xmlElement.GetAttribute("detail");
+                HardThreadReceipt hardThreadReceipt = new HardThreadReceipt();
+                hardThreadReceipt.Thread = new HardThreadIdentity(Number(xmlElement, "tid"), Long(xmlElement, "birth"));
+                hardThreadReceipt.Group = Group(xmlElement, "group");
+                hardThreadReceipt.Captured = Mask(xmlElement, "captured");
+                hardThreadReceipt.Applied = Mask(xmlElement, "applied");
+                hardThreadReceipt.PreviousGroup = Group(xmlElement, "previousGroup");
+                hardThreadReceipt.Previous = Mask(xmlElement, "previous");
+                hardThreadReceipt.PreviousKnown = Flag(xmlElement, "previousKnown");
+                hardThreadReceipt.RestorePreviousGroup = Group(xmlElement, "restoreGroup");
+                hardThreadReceipt.RestorePrevious = Mask(xmlElement, "restorePrevious");
+                hardThreadReceipt.RestorePreviousKnown = Flag(xmlElement, "restoreKnown");
+                hardThreadReceipt.Detail = xmlElement.GetAttribute("detail");
+                HardThreadReceipt hardThreadReceipt2 = hardThreadReceipt;
                 HardThreadPhase result;
-                if (!Enum.TryParse<HardThreadPhase>(xmlElement.GetAttribute("phase"), false, out result) || !Enum.IsDefined(typeof(HardThreadPhase), result) || currentHardThreadReceipt.Captured == 0 || currentHardThreadReceipt.Applied == 0 || (currentHardThreadReceipt.Applied & ~hardThreadTarget.AllowedMask) != 0 || (currentHardThreadReceipt.PreviousKnown && currentHardThreadReceipt.Previous == 0) || (currentHardThreadReceipt.RestorePreviousKnown && (!currentHardThreadReceipt.PreviousKnown || currentHardThreadReceipt.RestorePrevious == 0)))
+                if (!Enum.TryParse<HardThreadPhase>(xmlElement.GetAttribute("phase"), false, out result) || !Enum.IsDefined(typeof(HardThreadPhase), result) || hardThreadReceipt2.Captured == 0 || hardThreadReceipt2.Applied == 0 || (hardThreadReceipt2.Applied & ~hardThreadTarget.AllowedMask) != 0 || (hardThreadReceipt2.PreviousKnown && hardThreadReceipt2.Previous == 0) || (hardThreadReceipt2.RestorePreviousKnown && (!hardThreadReceipt2.PreviousKnown || hardThreadReceipt2.RestorePrevious == 0)))
                 {
                     throw new InvalidDataException("journal receipt contract");
                 }
-                currentHardThreadReceipt.Phase = result;
-                if ((!currentHardThreadReceipt.Terminal && !textsSet.Add(currentHardThreadReceipt.Thread.Key)) || (currentHardThreadReceipt.Terminal && textsSet.Contains(currentHardThreadReceipt.Thread.Key)))
+                hardThreadReceipt2.Phase = result;
+                if ((!hardThreadReceipt2.Terminal && !hashSet.Add(hardThreadReceipt2.Thread.Key)) || (hardThreadReceipt2.Terminal && hashSet.Contains(hardThreadReceipt2.Thread.Key)))
                 {
                     throw new InvalidDataException("overlapping thread receipts");
                 }
-                if ((result == HardThreadPhase.PreviousRecorded || result == HardThreadPhase.Applied || result == HardThreadPhase.RestoreIntent || result == HardThreadPhase.RestorePreviousRecorded || result == HardThreadPhase.Restored) && !currentHardThreadReceipt.PreviousKnown)
+                if ((result == HardThreadPhase.PreviousRecorded || result == HardThreadPhase.Applied || result == HardThreadPhase.RestoreIntent || result == HardThreadPhase.RestorePreviousRecorded || result == HardThreadPhase.Restored) && !hardThreadReceipt2.PreviousKnown)
                 {
                     throw new InvalidDataException("journal missing native previous");
                 }
-                if (result == HardThreadPhase.RestorePreviousRecorded && !currentHardThreadReceipt.RestorePreviousKnown)
+                if (result == HardThreadPhase.RestorePreviousRecorded && !hardThreadReceipt2.RestorePreviousKnown)
                 {
                     throw new InvalidDataException("journal missing restore previous");
                 }
-                candidateHardThreadJournal.Rows.Add(currentHardThreadReceipt);
+                hardThreadJournal3.Rows.Add(hardThreadReceipt2);
             }
-            return candidateHardThreadJournal;
+            return hardThreadJournal3;
         }
 
         private string LedgerPath(HardThreadTarget target)
@@ -578,7 +585,9 @@ namespace PaviseApp
                     throw new InvalidDataException("original ownership is not settled");
                 }
             }
-            return new HardThreadSettledSource(root, hardThreadJournal.Target, revision, JournalHash(LedgerPath(target), revision == 0));
+            string controlHash = GameThreadControlStore.SettledHash(root, target, hardThreadJournal.SourceNonce,
+                hardThreadJournal.SourceScopeHash, hardThreadJournal.ControlDeclared);
+            return new HardThreadSettledSource(root, hardThreadJournal.Target, revision, JournalHash(LedgerPath(target), revision == 0), controlHash);
         }
 
         internal bool MatchesSettled(HardThreadSettledSource original, bool alreadyRemoved)
@@ -589,6 +598,7 @@ namespace PaviseApp
             }
             RequireRoot();
             string path = LedgerPath(original.Target);
+            if (!GameThreadControlStore.MatchesSettledHash(root, original.Target, original.ControlHash)) return false;
             if (alreadyRemoved)
             {
                 try
@@ -622,6 +632,8 @@ namespace PaviseApp
             {
                 throw new InvalidDataException("journal revision contract");
             }
+            if (journal.Target.AllowedMask == 0 && journal.Rows.Count != 0)
+                throw new InvalidDataException("仅优先级目标不得保存亲和性恢复行");
             string bindResult = Bind(journal.Target);
             if (sourceScopeHash != null && (journal.SourceNonce != sourceNonce || journal.SourceScopeHash != sourceScopeHash))
             {
@@ -652,6 +664,7 @@ namespace PaviseApp
                         Attribute(xmlWriter, "path", journal.Target.ExecutablePath);
                         Attribute(xmlWriter, "allowed", journal.Target.AllowedMask);
                         Attribute(xmlWriter, "revision", journal.Revision);
+                        Attribute(xmlWriter, "controlDeclared", journal.ControlDeclared ? "1" : "0");
                         if (validSourceIdentity)
                         {
                             Attribute(xmlWriter, "sourceNonce", journal.SourceNonce);
@@ -736,7 +749,7 @@ namespace PaviseApp
         public void Dispose()
         {
             disposed = true;
-            List<Exception> exceptions = new List<Exception>();
+            List<Exception> list = new List<Exception>();
             if (writer != null)
             {
                 try
@@ -746,7 +759,7 @@ namespace PaviseApp
                 }
                 catch (Exception item)
                 {
-                    exceptions.Add(item);
+                    list.Add(item);
                 }
             }
             if (rootWriter != null)
@@ -758,12 +771,12 @@ namespace PaviseApp
                 }
                 catch (Exception item2)
                 {
-                    exceptions.Add(item2);
+                    list.Add(item2);
                 }
             }
-            if (exceptions.Count > 0)
+            if (list.Count > 0)
             {
-                throw new AggregateException("original ledger handles did not close", exceptions);
+                throw new AggregateException("original ledger handles did not close", list);
             }
         }
     }

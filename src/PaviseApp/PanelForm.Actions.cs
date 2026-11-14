@@ -26,6 +26,10 @@ namespace PaviseApp
                     stringBuilder.Append(Lang.F("notes.sub", current.Tag)).Append("  |  ").Append(current.Date)
                         .AppendLine()
                         .AppendLine();
+                    if (!string.IsNullOrEmpty(current.Introduction))
+                    {
+                        stringBuilder.AppendLine(current.Introduction).AppendLine();
+                    }
                     for (int i = 0; i < current.Count; i++)
                     {
                         stringBuilder.Append(i + 1).Append(". ").Append(current.Item(i))
@@ -221,13 +225,13 @@ namespace PaviseApp
                 return;
             }
             int processedCount = 0;
-            foreach (AuditFix auditItem in BuildAuditFixes().Values)
+            foreach (AuditFix value in BuildAuditFixes().Values)
             {
                 try
                 {
-                    if (auditItem.CanFix() && (auditItem.ConfirmKey == null || PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(auditItem.ConfirmKey), DlgKind.Warn)))
+                    if (value.CanFix() && (value.ConfirmKey == null || PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T(value.ConfirmKey), DlgKind.Warn)))
                     {
-                        auditItem.Fix();
+                        value.Fix();
                         processedCount++;
                     }
                 }
@@ -261,7 +265,7 @@ namespace PaviseApp
         {
             if (performanceTabs != null)
             {
-                performanceTabs.Index = 3;
+                performanceTabs.Index = SystemPerformanceTab;
                 performanceTabs.SnapToSelection();
             }
         }
@@ -368,6 +372,10 @@ namespace PaviseApp
                 }
             }
         }
+        private void OnIrqCheck(object sender, EventArgs e)
+        {
+            RunIrqCheck();
+        }
         private void OnIrqRestore(object sender, EventArgs e)
         {
             if (!Native.IsElevated())
@@ -432,19 +440,19 @@ namespace PaviseApp
         }
         private void ShowAddGameDialog(IEnumerable<string> seeds)
         {
-            List<string> executablePaths = new List<string>();
+            List<string> list = new List<string>();
             foreach (GameProfile profile in gameMode.GetProfiles())
             {
                 if (!string.IsNullOrEmpty(profile.ExecutablePath))
                 {
-                    executablePaths.Add(profile.ExecutablePath);
+                    list.Add(profile.ExecutablePath);
                 }
                 if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                 {
-                    executablePaths.Add(profile.LearnedExecutablePath);
+                    list.Add(profile.LearnedExecutablePath);
                 }
             }
-            using (AddGameDialog addGameDialog = new AddGameDialog(executablePaths, gameMode.ActiveGame == null, seeds))
+            using (AddGameDialog addGameDialog = new AddGameDialog(list, gameMode.ActiveGame == null, seeds))
             {
                 if (ShowDim(addGameDialog) != DialogResult.OK || addGameDialog.Selected.Count == 0)
                 {
@@ -599,7 +607,7 @@ namespace PaviseApp
                 {
                     PostManualMemoryUi(delegate
                     {
-                        overviewMemoryCleanup.ShowError(ManualMemoryText.T("清理未完成 · 可重试", "Cleanup failed · retry available"));
+                        overviewMemoryCleanup.ShowError(ManualMemoryText.T("清理未完成 · 可重试", "Cleanup failed · retry available", "未完了 · 再試行できます"));
                         Interlocked.Exchange(ref manualMemoryPending, 0);
                     });
                 }
@@ -617,7 +625,7 @@ namespace PaviseApp
             catch
             {
                 Interlocked.Exchange(ref manualMemoryPending, 0);
-                overviewMemoryCleanup.ShowError(ManualMemoryText.T("无法启动清理 · 可重试", "Cannot start cleanup · retry available"));
+                overviewMemoryCleanup.ShowError(ManualMemoryText.T("无法启动清理 · 可重试", "Cannot start cleanup · retry available", "開始できません · 再試行できます"));
             }
         }
         private void ShowDonate()
@@ -746,10 +754,10 @@ namespace PaviseApp
             }
             bool hasModeColorOverride = Theme.HasModeColorOverride(mode);
             Color b = Theme.ModeColor(mode);
-            foreach (ColorSwatch modeSwatche in modeSwatches[(int)mode])
+            foreach (ColorSwatch item in modeSwatches[(int)mode])
             {
-                modeSwatche.Selected = (modeSwatche.IsDefault ? (!hasModeColorOverride) : (hasModeColorOverride && SameRgb(modeSwatche.Swatch, b)));
-                modeSwatche.Invalidate();
+                item.Selected = (item.IsDefault ? (!hasModeColorOverride) : (hasModeColorOverride && SameRgb(item.Swatch, b)));
+                item.Invalidate();
             }
             RefreshModeAccentLabels();
             if (motionAppearance != null && !motionAppearance.IsDisposed) motionAppearance.RefreshPalette();
@@ -1013,6 +1021,14 @@ namespace PaviseApp
         }
         private void ShowPage(int index)
         {
+            bool aboutRequested = index == (int)PageId.About;
+            if (aboutRequested)
+            {
+                // 保留旧页面编号的调用入口，统一转到设置中的关于分类。
+                index = (int)PageId.Settings;
+                nav.SelectSilently(index);
+                settingsTabs.Index = 3;
+            }
             bool environmentRequested = index == 5;
             if (environmentRequested)
             {
@@ -1053,8 +1069,10 @@ namespace PaviseApp
             dBPanel.SuspendLayout();
             try
             {
-                foreach (DBPanel dBPanel2 in pages)
+                DBPanel[] pagesSnapshot = pages;
+                foreach (DBPanel dBPanel2 in pagesSnapshot)
                 {
+                    if (dBPanel2 == pageAbout) continue;
                     dBPanel2.Visible = dBPanel2 == dBPanel;
                 }
                 curPage = dBPanel;
@@ -1123,6 +1141,7 @@ namespace PaviseApp
                     {
                         LayoutPerformanceViewport();
                         RestorePagePosition(index);
+                        if (aboutRequested) settingsTabs.Index = 3;
                     }
                     if (pagePrepared)
                     {
@@ -1184,24 +1203,24 @@ namespace PaviseApp
                 paviseCore.SetAnimationEnabled(false);
             }
             DetachFormFrame();
-            foreach (Bitmap trackedImage in gameIconCache.Values)
+            foreach (Bitmap value in gameIconCache.Values)
             {
                 try
                 {
-                    trackedImage.Dispose();
+                    value.Dispose();
                 }
                 catch
                 {
                 }
             }
             gameIconCache.Clear();
-            foreach (Bitmap control in whiteIconCache.Values)
+            foreach (Bitmap value2 in whiteIconCache.Values)
             {
-                if (control != null)
+                if (value2 != null)
                 {
                     try
                     {
-                        control.Dispose();
+                        value2.Dispose();
                     }
                     catch
                     {
@@ -1237,6 +1256,7 @@ namespace PaviseApp
                 Activate();
                 StartIntro();
                 SyncUiActivity();
+                SyncUiForegroundFromWindow();
                 if (windowVisible)
                 {
                     SyncAllToggles();

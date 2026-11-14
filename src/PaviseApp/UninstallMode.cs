@@ -37,24 +37,24 @@ namespace PaviseApp
                 return uninstallReport;
             }
             Report(progress, PerformancePolicy.Text("还原 Pavise 的系统改动", "Restoring changes made by Pavise"));
-            List<string> texts;
+            List<string> list;
             try
             {
-                texts = LegacyPurge.RestorePersistent(dataDir, progress);
+                list = LegacyPurge.RestorePersistent(dataDir, progress);
             }
             catch
             {
-                List<string> currentTexts = new List<string>();
-                currentTexts.Add("restore");
-                texts = currentTexts;
+                List<string> list2 = new List<string>();
+                list2.Add("restore");
+                list = list2;
             }
-            if (texts == null)
+            if (list == null)
             {
-                List<string> candidateTexts = new List<string>();
-                candidateTexts.Add("restore");
-                texts = candidateTexts;
+                List<string> list3 = new List<string>();
+                list3.Add("restore");
+                list = list3;
             }
-            uninstallReport.Warnings += texts.Count;
+            uninstallReport.Warnings += list.Count;
             if (LegacyPurge.HasHardThreadRecoveryDebt(dataDir) || !GameNvCanonicalStore.SafeToClear(dataDir))
             {
                 uninstallReport.Failure = "Original runtime recovery is pending; application and records retained";
@@ -75,7 +75,7 @@ namespace PaviseApp
                 uninstallReport.Warnings++;
             }
             Report(progress, PerformancePolicy.Text("清理软件配置与记录", "Clearing app settings and records"));
-            if (texts.Count == 0)
+            if (list.Count == 0)
             {
                 try
                 {
@@ -190,20 +190,21 @@ namespace PaviseApp
 
         internal static List<string> LegacyDataDirs(string roaming, string local, string common, string exeDir)
         {
-            List<string> entryTexts = new List<string>();
-            foreach (string entryText in new string[3]
+            List<string> list = new List<string>();
+            string[] textEntries = new string[3]
             {
                 Join(roaming, "Aegis"),
                 Join(local, "Pavise"),
                 Join(common, "Pavise")
-            })
+            };
+            foreach (string entryText in textEntries)
             {
                 if (entryText != null && (string.IsNullOrEmpty(exeDir) || !IsSameOrParent(entryText, exeDir)))
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
-            return entryTexts;
+            return list;
         }
 
         private static string Join(string root, string name)

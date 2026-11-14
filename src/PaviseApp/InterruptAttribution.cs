@@ -314,7 +314,45 @@ namespace PaviseApp
             public IntPtr Context;
         }
 
+        private const int WnodeFlagTracedGuid = 131072;
+
+        private const uint RealTimeMode = 256u;
+
+        private const uint SystemLoggerMode = 33554432u;
+
+        private const uint IndependentSessionMode = 134217728u;
+
+        private const uint ProcessModeRealTime = 256u;
+
+        private const uint ProcessModeRawTimestamp = 4096u;
+
+        private const uint ProcessModeEventRecord = 268435456u;
+
+        private const uint ControlStop = 1u;
+
+        private const uint FlagDpc = 32u;
+
+        private const uint FlagInterrupt = 64u;
+
+        private const int ErrorAccessDenied = 5;
+
+        private const int ErrorAlreadyExists = 183;
+
+        private const int ErrorInvalidParameter = 87;
+
+        private const string SessionName = "PaviseInterruptProbe";
+
+        private const string AliveEventName = "Global\\Pavise_InterruptProbeAlive";
+
         internal const int BucketCount = 13;
+
+        private const int BucketOver500 = 9;
+
+        private const int BucketOver1Ms = 10;
+
+        private const ushort HeaderFlag32Bit = 32;
+
+        private const ushort HeaderFlag64Bit = 64;
 
         private static readonly Guid SessionGuid = new Guid("7d1f8c2a-64b3-4c5e-9a1d-2e8f0b6c4d3a");
 
@@ -409,13 +447,13 @@ namespace PaviseApp
             try
             {
                 bool createdNew;
-                EventWaitHandle eventWaitHandle = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\Pavise_InterruptProbeAlive", out createdNew);
+                EventWaitHandle eventWaitHandle2 = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\Pavise_InterruptProbeAlive", out createdNew);
                 if (!createdNew)
                 {
-                    eventWaitHandle.Close();
+                    eventWaitHandle2.Close();
                     return false;
                 }
-                aliveOwned = eventWaitHandle;
+                aliveOwned = eventWaitHandle2;
                 return true;
             }
             catch
@@ -466,17 +504,17 @@ namespace PaviseApp
                     return false;
                 }
                 uint enableFlags = 96u;
-                IntPtr allocPropsHandle = AllocProps(enableFlags);
+                IntPtr intPtr = AllocProps(enableFlags);
                 try
                 {
                     ulong handle;
-                    uint startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", allocPropsHandle);
+                    uint startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
                     if (startTraceResult == 183)
                     {
                         StopStale();
-                        Marshal.FreeHGlobal(allocPropsHandle);
-                        allocPropsHandle = AllocProps(enableFlags);
-                        startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", allocPropsHandle);
+                        Marshal.FreeHGlobal(intPtr);
+                        intPtr = AllocProps(enableFlags);
+                        startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
                     }
                     switch (startTraceResult)
                     {
@@ -506,7 +544,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(allocPropsHandle);
+                    Marshal.FreeHGlobal(intPtr);
                 }
                 keepAlive = OnEvent;
                 EventTraceLogfile logfile = default(EventTraceLogfile);
@@ -655,33 +693,33 @@ namespace PaviseApp
                     return interruptAttributionResult;
                 }
                 keepAlive = null;
-                Dictionary<string, DriverInterrupt> driverInterruptsByName = new Dictionary<string, DriverInterrupt>();
-                Dictionary<string, long[]> valuesByName = new Dictionary<string, long[]>();
-                Fold(driverInterruptsByName, valuesByName, dpcHits, true);
-                Fold(driverInterruptsByName, valuesByName, isrHits, false);
-                foreach (KeyValuePair<string, DriverInterrupt> driverInterruptEntry in driverInterruptsByName)
+                Dictionary<string, DriverInterrupt> dictionary = new Dictionary<string, DriverInterrupt>();
+                Dictionary<string, long[]> dictionary2 = new Dictionary<string, long[]>();
+                Fold(dictionary, dictionary2, dpcHits, true);
+                Fold(dictionary, dictionary2, isrHits, false);
+                foreach (KeyValuePair<string, DriverInterrupt> item in dictionary)
                 {
-                    DriverInterrupt driverInterrupt = driverInterruptEntry.Value;
-                    long[] dpcBuckets;
-                    if (valuesByName.TryGetValue(driverInterruptEntry.Key, out dpcBuckets))
+                    DriverInterrupt value = item.Value;
+                    long[] value2;
+                    if (dictionary2.TryGetValue(item.Key, out value2))
                     {
-                        driverInterrupt.DpcOver500Us = SumFrom(dpcBuckets, 9);
-                        driverInterrupt.DpcOver1Ms = SumFrom(dpcBuckets, 10);
-                        driverInterrupt.DpcBuckets = (long[])dpcBuckets.Clone();
+                        value.DpcOver500Us = SumFrom(value2, 9);
+                        value.DpcOver1Ms = SumFrom(value2, 10);
+                        value.DpcBuckets = (long[])value2.Clone();
                     }
-                    interruptAttributionResult.Drivers.Add(driverInterrupt);
+                    interruptAttributionResult.Drivers.Add(value);
                 }
                 interruptAttributionResult.Drivers.Sort(delegate(DriverInterrupt a, DriverInterrupt b)
                 {
-                    long interruptTicks = a.Dpc + a.Isr;
-                    return (b.Dpc + b.Isr).CompareTo(interruptTicks);
+                    long value3 = a.Dpc + a.Isr;
+                    return (b.Dpc + b.Isr).CompareTo(value3);
                 });
-                long mappedDpcTicks = 0L;
+                long numericValue = 0L;
                 foreach (DriverInterrupt driver in interruptAttributionResult.Drivers)
                 {
-                    mappedDpcTicks += driver.Dpc;
+                    numericValue += driver.Dpc;
                 }
-                interruptAttributionResult.Unmapped = Math.Max(0L, dpcTotal - mappedDpcTicks);
+                interruptAttributionResult.Unmapped = Math.Max(0L, dpcTotal - numericValue);
                 bool attributionMissing = (dpcTotal > 0 || isrTotal > 0) && interruptAttributionResult.Drivers.Count == 0;
                 string errorValue = (attributionMissing ? ("已采集中断事件，但无法映射到驱动模块，本局中断归因不可用 DPC=" + dpcTotal + " ISR=" + isrTotal + " 模块=" + modules.Count) : null);
                 if (attributionMissing)
@@ -722,43 +760,43 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                DriverInterrupt currentByMod;
-                if (!byMod.TryGetValue(driverValue, out currentByMod))
+                DriverInterrupt value;
+                if (!byMod.TryGetValue(driverValue, out value))
                 {
                     DriverInterrupt driverInterrupt = new DriverInterrupt();
                     driverInterrupt.Driver = driverValue;
-                    currentByMod = (byMod[driverValue] = driverInterrupt);
+                    value = (byMod[driverValue] = driverInterrupt);
                 }
-                RoutineStat routineStat = hit.Value;
+                RoutineStat value2 = hit.Value;
                 if (dpc)
                 {
-                    currentByMod.CpuMask |= routineStat.CpuMask;
-                    currentByMod.CpuMaskTruncated |= routineStat.CpuMaskTruncated;
+                    value.CpuMask |= value2.CpuMask;
+                    value.CpuMaskTruncated |= value2.CpuMaskTruncated;
                 }
-                currentByMod.BadDuration += routineStat.BadDuration;
-                double dpcTotalUsValue = (double)routineStat.TotalTicks * usPerTick;
-                double dpcMaxUsValue = (double)routineStat.MaxTicks * usPerTick;
+                value.BadDuration += value2.BadDuration;
+                double dpcTotalUsValue = (double)value2.TotalTicks * usPerTick;
+                double dpcMaxUsValue = (double)value2.MaxTicks * usPerTick;
                 if (dpc)
                 {
-                    currentByMod.Dpc += routineStat.Count;
-                    currentByMod.DpcTotalUs += dpcTotalUsValue;
-                    if (dpcMaxUsValue > currentByMod.DpcMaxUs)
+                    value.Dpc += value2.Count;
+                    value.DpcTotalUs += dpcTotalUsValue;
+                    if (dpcMaxUsValue > value.DpcMaxUs)
                     {
-                        currentByMod.DpcMaxUs = dpcMaxUsValue;
+                        value.DpcMaxUs = dpcMaxUsValue;
                     }
-                    long[] dpcBucket;
-                    if (!dpcBuckets.TryGetValue(driverValue, out dpcBucket))
+                    long[] value3;
+                    if (!dpcBuckets.TryGetValue(driverValue, out value3))
                     {
-                        dpcBucket = (dpcBuckets[driverValue] = new long[13]);
+                        value3 = (dpcBuckets[driverValue] = new long[13]);
                     }
                     for (int i = 0; i < 13; i++)
                     {
-                        dpcBucket[i] += routineStat.Buckets[i];
+                        value3[i] += value2.Buckets[i];
                     }
                 }
                 else
                 {
-                    currentByMod.Isr += routineStat.Count;
+                    value.Isr += value2.Count;
                 }
             }
         }
@@ -797,39 +835,39 @@ namespace PaviseApp
                 return;
             }
             long toInt64Result = record.UserData.ToInt64();
-            long startTicks = Marshal.ReadInt64(new IntPtr(toInt64Result));
+            long int64 = Marshal.ReadInt64(new IntPtr(toInt64Result));
             ulong key = (ulong)((size == 8) ? Marshal.ReadInt64(new IntPtr(toInt64Result + 8)) : ((uint)Marshal.ReadInt32(new IntPtr(toInt64Result + 8))));
             long timeStamp = record.EventHeader.TimeStamp;
-            long totalTicksValue = timeStamp - startTicks;
+            long totalTicksValue = timeStamp - int64;
             bool validDuration = totalTicksValue >= 0 && totalTicksValue <= sanityMaxTicks;
-            Dictionary<ulong, RoutineStat> routineStatsByKey = (isIsr ? isrHits : dpcHits);
-            RoutineStat routineStat;
-            if (!routineStatsByKey.TryGetValue(key, out routineStat))
+            Dictionary<ulong, RoutineStat> dictionary = (isIsr ? isrHits : dpcHits);
+            RoutineStat value;
+            if (!dictionary.TryGetValue(key, out value))
             {
-                routineStat = (routineStatsByKey[key] = new RoutineStat());
+                value = (dictionary[key] = new RoutineStat());
             }
-            routineStat.Count++;
+            value.Count++;
             ushort processorIndex = record.BufferContext.ProcessorIndex;
             if (processorIndex < 64)
             {
-                routineStat.CpuMask |= (ulong)(1L << (int)processorIndex);
+                value.CpuMask |= (ulong)(1L << (int)processorIndex);
             }
             else
             {
-                routineStat.CpuMaskTruncated = true;
+                value.CpuMaskTruncated = true;
             }
             if (!validDuration)
             {
-                routineStat.BadDuration++;
+                value.BadDuration++;
             }
             else
             {
-                routineStat.TotalTicks += totalTicksValue;
-                if (totalTicksValue > routineStat.MaxTicks)
+                value.TotalTicks += totalTicksValue;
+                if (totalTicksValue > value.MaxTicks)
                 {
-                    routineStat.MaxTicks = totalTicksValue;
+                    value.MaxTicks = totalTicksValue;
                 }
-                routineStat.Buckets[BucketOf(totalTicksValue)]++;
+                value.Buckets[BucketOf(totalTicksValue)]++;
             }
             if (isIsr)
             {
@@ -872,26 +910,26 @@ namespace PaviseApp
             buffersLost = 0u;
             error = 0u;
             int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
-            int propertiesSize = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(propertiesSize);
+            int stopStaleValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
+            IntPtr intPtr = Marshal.AllocHGlobal(stopStaleValue);
             try
             {
-                for (int i = 0; i < propertiesSize; i++)
+                for (int i = 0; i < stopStaleValue; i++)
                 {
-                    Marshal.WriteByte(nativeBuffer, i, 0);
+                    Marshal.WriteByte(intPtr, i, 0);
                 }
                 EventTraceProperties structure = default(EventTraceProperties);
-                structure.Wnode.BufferSize = (uint)propertiesSize;
+                structure.Wnode.BufferSize = (uint)stopStaleValue;
                 structure.Wnode.Guid = SessionGuid;
                 structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
-                Marshal.StructureToPtr(structure, nativeBuffer, false);
-                uint controlTraceResult = ControlTrace(0uL, "PaviseInterruptProbe", nativeBuffer, 1u);
+                Marshal.StructureToPtr(structure, intPtr, false);
+                uint controlTraceResult = ControlTrace(0uL, "PaviseInterruptProbe", intPtr, 1u);
                 if (controlTraceResult != 0)
                 {
                     error = controlTraceResult;
                     return false;
                 }
-                EventTraceProperties eventTraceProperties = (EventTraceProperties)Marshal.PtrToStructure(nativeBuffer, typeof(EventTraceProperties));
+                EventTraceProperties eventTraceProperties = (EventTraceProperties)Marshal.PtrToStructure(intPtr, typeof(EventTraceProperties));
                 eventsLost = eventTraceProperties.EventsLost;
                 buffersLost = eventTraceProperties.RealTimeBuffersLost + eventTraceProperties.LogBuffersLost;
                 return true;
@@ -903,7 +941,7 @@ namespace PaviseApp
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 
@@ -941,35 +979,35 @@ namespace PaviseApp
         {
             loaded = new List<Module>();
             error = null;
-            IntPtr nativeBuffer = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
                 int ret = 0;
                 NtQuerySystemInformation(11, IntPtr.Zero, 0, out ret);
                 ret = checked(Math.Max(ret, 1048576) + 65536);
-                nativeBuffer = Marshal.AllocHGlobal(ret);
+                intPtr = Marshal.AllocHGlobal(ret);
                 int ret2;
-                int ntQuerySystemInformationResult = NtQuerySystemInformation(11, nativeBuffer, ret, out ret2);
+                int ntQuerySystemInformationResult = NtQuerySystemInformation(11, intPtr, ret, out ret2);
                 if (ntQuerySystemInformationResult != 0)
                 {
-                    uint currentNtQuerySystemInformationResult = (uint)ntQuerySystemInformationResult;
-                    error = "驱动模块枚举失败，无法启动中断归因 NTSTATUS=0x" + currentNtQuerySystemInformationResult.ToString("X8");
+                    uint numericValue = (uint)ntQuerySystemInformationResult;
+                    error = "驱动模块枚举失败，无法启动中断归因 NTSTATUS=0x" + numericValue.ToString("X8");
                     return false;
                 }
-                int moduleCount = Marshal.ReadInt32(nativeBuffer);
-                long toInt64Offset = nativeBuffer.ToInt64() + IntPtr.Size;
-                int moduleRecordSize = 296;
-                if (moduleCount < 0 || moduleCount > (ret - IntPtr.Size) / moduleRecordSize)
+                int int32 = Marshal.ReadInt32(intPtr);
+                long toInt64Offset = intPtr.ToInt64() + IntPtr.Size;
+                int readLoadedModulesValue = 296;
+                if (int32 < 0 || int32 > (ret - IntPtr.Size) / readLoadedModulesValue)
                 {
                     error = "驱动模块枚举返回的长度无效，无法启动中断归因";
                     return false;
                 }
-                for (int i = 0; i < moduleCount; i++)
+                for (int i = 0; i < int32; i++)
                 {
-                    long moduleAddress = toInt64Offset + (long)i * (long)moduleRecordSize;
-                    ulong moduleBase = (ulong)Marshal.ReadInt64(new IntPtr(moduleAddress + 16));
-                    uint moduleSize = (uint)Marshal.ReadInt32(new IntPtr(moduleAddress + 24));
-                    if (moduleBase != 0 && moduleSize != 0)
+                    long moduleAddress = toInt64Offset + (long)i * (long)readLoadedModulesValue;
+                    ulong int64 = (ulong)Marshal.ReadInt64(new IntPtr(moduleAddress + 16));
+                    uint int322 = (uint)Marshal.ReadInt32(new IntPtr(moduleAddress + 24));
+                    if (int64 != 0 && int322 != 0)
                     {
                         string ptrToStringAnsiResult = Marshal.PtrToStringAnsi(new IntPtr(moduleAddress + 40));
                         if (!string.IsNullOrEmpty(ptrToStringAnsiResult))
@@ -978,8 +1016,8 @@ namespace PaviseApp
                             string name = ((matchIndex >= 0) ? ptrToStringAnsiResult.Substring(matchIndex + 1) : ptrToStringAnsiResult);
                             loaded.Add(new Module
                             {
-                                Base = moduleBase,
-                                End = moduleBase + moduleSize,
+                                Base = int64,
+                                End = int64 + int322,
                                 Name = name
                             });
                         }
@@ -1000,9 +1038,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (nativeBuffer != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(nativeBuffer);
+                    Marshal.FreeHGlobal(intPtr);
                 }
             }
         }
@@ -1010,14 +1048,14 @@ namespace PaviseApp
         private static IntPtr AllocProps(uint enableFlags)
         {
             int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
-            int propertiesSize = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
-            IntPtr nativeBuffer = Marshal.AllocHGlobal(propertiesSize);
-            for (int i = 0; i < propertiesSize; i++)
+            int allocPropsValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
+            IntPtr intPtr = Marshal.AllocHGlobal(allocPropsValue);
+            for (int i = 0; i < allocPropsValue; i++)
             {
-                Marshal.WriteByte(nativeBuffer, i, 0);
+                Marshal.WriteByte(intPtr, i, 0);
             }
             EventTraceProperties structure = default(EventTraceProperties);
-            structure.Wnode.BufferSize = (uint)propertiesSize;
+            structure.Wnode.BufferSize = (uint)allocPropsValue;
             structure.Wnode.Flags = 131072u;
             structure.Wnode.Guid = SessionGuid;
             structure.Wnode.ClientContext = 1u;
@@ -1028,8 +1066,8 @@ namespace PaviseApp
             structure.FlushTimer = 1u;
             structure.EnableFlags = enableFlags;
             structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
-            Marshal.StructureToPtr(structure, nativeBuffer, false);
-            return nativeBuffer;
+            Marshal.StructureToPtr(structure, intPtr, false);
+            return intPtr;
         }
 
         public static void CleanupStaleSession()

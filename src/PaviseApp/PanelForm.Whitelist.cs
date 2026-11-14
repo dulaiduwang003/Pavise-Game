@@ -23,17 +23,17 @@ namespace PaviseApp
         {
             try
             {
-                List<string> texts = GamePlatformCatalog.DetectedPlatforms();
-                if (texts.Count != 0)
+                List<string> list = GamePlatformCatalog.DetectedPlatforms();
+                if (list.Count != 0)
                 {
-                    for (int i = 0; i < texts.Count; i++)
+                    for (int i = 0; i < list.Count; i++)
                     {
-                        texts[i] = PlatformDisplayName(texts[i]);
+                        list[i] = PlatformDisplayName(list[i]);
                     }
                     if (whiteFilters != null)
                     {
                         TierPicker tierPicker = whiteFilters;
-                        tierPicker.AccessibleDescription = tierPicker.AccessibleDescription + "\r\n" + Lang.F("white.platform.detected", string.Join(" · ", texts.ToArray()));
+                        tierPicker.AccessibleDescription = tierPicker.AccessibleDescription + "\r\n" + Lang.F("white.platform.detected", string.Join(" · ", list.ToArray()));
                     }
                 }
             }
@@ -99,14 +99,14 @@ namespace PaviseApp
         }
         private void AddWhitelistFiles(IEnumerable<string> files)
         {
-            List<string> filesSnapshot = new List<string>(files);
+            List<string> list = new List<string>(files);
             RunWhitelistOp(delegate
             {
                 int processedCount = 0;
                 string whitelistLastError = null;
-                foreach (string currentFilesSnapshot in filesSnapshot)
+                foreach (string item in list)
                 {
-                    string whitelistTarget = ResolveWhitelistTarget(currentFilesSnapshot);
+                    string whitelistTarget = ResolveWhitelistTarget(item);
                     if (!string.IsNullOrEmpty(whitelistTarget))
                     {
                         if (gameMode.AddWhitelistAuto(whitelistTarget))
@@ -163,15 +163,15 @@ namespace PaviseApp
         }
         private void PickRunningForWhitelist()
         {
-            HashSet<string> ruleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (WhitelistRuleView item in gameMode.GetWhitelistRulesFast())
             {
                 if (item.PlatformId == null && item.Rule.Kind != 0)
                 {
-                    ruleValues.Add(item.Rule.Value);
+                    hashSet.Add(item.Rule.Value);
                 }
             }
-            using (RunningPickerDialog runningPickerDialog = new RunningPickerDialog(ruleValues))
+            using (RunningPickerDialog runningPickerDialog = new RunningPickerDialog(hashSet))
             {
                 if (ShowDim(runningPickerDialog) == DialogResult.OK && runningPickerDialog.Selected.Count != 0)
                 {
@@ -218,14 +218,14 @@ namespace PaviseApp
                 return;
             }
             whiteViews = ((views == null) ? new List<WhitelistRuleView>() : new List<WhitelistRuleView>(views));
-            List<WhitelistItem> whitelistItems = new List<WhitelistItem>();
-            List<WhitelistItem> currentWhitelistItems = new List<WhitelistItem>();
+            List<WhitelistItem> list = new List<WhitelistItem>();
+            List<WhitelistItem> list2 = new List<WhitelistItem>();
             foreach (WhitelistRuleView whiteView in whiteViews)
             {
-                WhitelistItem decorate = Decorate(new WhitelistItem(whiteView));
+                WhitelistItem item = Decorate(new WhitelistItem(whiteView));
                 if (whiteView.PlatformId != null)
                 {
-                    currentWhitelistItems.Add(decorate);
+                    list2.Add(item);
                 }
                 else if (whiteView.Required)
                 {
@@ -233,12 +233,12 @@ namespace PaviseApp
                 }
                 else
                 {
-                    whitelistItems.Add(decorate);
+                    list.Add(item);
                 }
             }
-            whitelistItems.AddRange(currentWhitelistItems);
-            whitelistItems.AddRange(AutomaticExemptionItems());
-            whiteRows = whitelistItems;
+            list.AddRange(list2);
+            list.AddRange(AutomaticExemptionItems());
+            whiteRows = list;
             FilterWhitelistRows();
         }
         private void FilterWhitelistRows()
@@ -247,22 +247,22 @@ namespace PaviseApp
             {
                 return;
             }
-            WhitelistItem whitelistItem = lstWhite.SelectedItem as WhitelistItem;
-            string whitelistSelectionKeyResult = WhitelistSelectionKey(whitelistItem);
+            WhitelistItem item = lstWhite.SelectedItem as WhitelistItem;
+            string whitelistSelectionKeyResult = WhitelistSelectionKey(item);
             int topIndex = lstWhite.TopIndex;
-            List<WhitelistItem> whitelistItems = whiteRows;
+            List<WhitelistItem> list = whiteRows;
             string trimmed = (whiteSearchText ?? "").Trim();
             lstWhite.BeginUpdate();
             try
             {
                 lstWhite.Items.Clear();
-                foreach (WhitelistItem currentWhitelistItem in whitelistItems)
+                foreach (WhitelistItem item2 in list)
                 {
-                    int rowCategory = ((currentWhitelistItem.View != null && currentWhitelistItem.View.PlatformId != null) ? 2 : ((!currentWhitelistItem.Automatic && (currentWhitelistItem.View == null || !currentWhitelistItem.View.Required)) ? 1 : 3));
-                    if ((whiteFilterIndex == 0 || whiteFilterIndex == rowCategory) && (trimmed.Length <= 0 || WhitelistContains(currentWhitelistItem.Title, trimmed) || WhitelistContains(currentWhitelistItem.Subtitle, trimmed) || WhitelistContains(currentWhitelistItem.Details, trimmed) || (currentWhitelistItem.View != null && WhitelistContains(currentWhitelistItem.View.Rule.Value, trimmed))))
+                    int filterWhitelistRowsValue = ((item2.View != null && item2.View.PlatformId != null) ? 2 : ((!item2.Automatic && (item2.View == null || !item2.View.Required)) ? 1 : 3));
+                    if ((whiteFilterIndex == 0 || whiteFilterIndex == filterWhitelistRowsValue) && (trimmed.Length <= 0 || WhitelistContains(item2.Title, trimmed) || WhitelistContains(item2.Subtitle, trimmed) || WhitelistContains(item2.Details, trimmed) || (item2.View != null && WhitelistContains(item2.View.Rule.Value, trimmed))))
                     {
-                        int selectedIndex = lstWhite.Items.Add(currentWhitelistItem);
-                        if (whitelistSelectionKeyResult != null && string.Equals(WhitelistSelectionKey(currentWhitelistItem), whitelistSelectionKeyResult, StringComparison.OrdinalIgnoreCase))
+                        int selectedIndex = lstWhite.Items.Add(item2);
+                        if (whitelistSelectionKeyResult != null && string.Equals(WhitelistSelectionKey(item2), whitelistSelectionKeyResult, StringComparison.OrdinalIgnoreCase))
                         {
                             lstWhite.SelectedIndex = selectedIndex;
                         }
@@ -286,7 +286,7 @@ namespace PaviseApp
             whitePanel.Invalidate();
             if (whiteCount != null)
             {
-                whiteCount.Text = ((lstWhite.Items.Count == whitelistItems.Count) ? AutoText(whitelistItems.Count + " 项", whitelistItems.Count + " entries") : AutoText(lstWhite.Items.Count + " / " + whitelistItems.Count + " 项", lstWhite.Items.Count + " / " + whitelistItems.Count + " entries"));
+                whiteCount.Text = ((lstWhite.Items.Count == list.Count) ? AutoText(list.Count + " 项", list.Count + " entries") : AutoText(lstWhite.Items.Count + " / " + list.Count + " 项", lstWhite.Items.Count + " / " + list.Count + " entries"));
             }
             SyncWhitelistRemoveAction();
         }
@@ -353,9 +353,9 @@ namespace PaviseApp
             }
             if (valuesMatch)
             {
-                using (Pen accentPen = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
+                using (Pen pen2 = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
                 {
-                    graphics.DrawLine(accentPen, r.Left, r.Top + Theme.S(8), r.Left, r.Bottom - Theme.S(8));
+                    graphics.DrawLine(pen2, r.Left, r.Top + Theme.S(8), r.Left, r.Bottom - Theme.S(8));
                 }
             }
             int scaledDimension = Theme.S(28);
@@ -387,37 +387,37 @@ namespace PaviseApp
             TextRenderer.DrawText(graphics, whitelistItem.Subtitle, Theme.UI(7.7f, false), new Rectangle(rightOffset, bounds.Top + Theme.S(29), sLimit, Theme.S(18)), Theme.Faint, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             if (showStatus)
             {
-                Rectangle currentRectangle = new Rectangle(bounds.Right - scaledDimension3 - scaledDimension2 - Theme.S(11), bounds.Top + (bounds.Height - Theme.S(23)) / 2, scaledDimension2 - Theme.S(10), Theme.S(23));
+                Rectangle rectangle2 = new Rectangle(bounds.Right - scaledDimension3 - scaledDimension2 - Theme.S(11), bounds.Top + (bounds.Height - Theme.S(23)) / 2, scaledDimension2 - Theme.S(10), Theme.S(23));
                 Color color = ((requiredRule || whitelistItem.Automatic || whitelistItem.View.PlatformId != null) ? Theme.Dim : Theme.Accent);
-                using (GraphicsPath path2 = Theme.TechPath(currentRectangle, Theme.S(4)))
+                using (GraphicsPath path2 = Theme.TechPath(rectangle2, Theme.S(4)))
                 {
                     using (SolidBrush brush3 = new SolidBrush(Col.Alpha(color, 15)))
                     {
                         graphics.FillPath(brush3, path2);
                     }
-                    using (Pen currentPen = new Pen(Col.Alpha(color, 80)))
+                    using (Pen pen3 = new Pen(Col.Alpha(color, 80)))
                     {
-                        graphics.DrawPath(currentPen, path2);
+                        graphics.DrawPath(pen3, path2);
                     }
                 }
-                TextRenderer.DrawText(graphics, whitelistItem.Badge, Theme.UI(7.3f, false), currentRectangle, color, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(graphics, whitelistItem.Badge, Theme.UI(7.3f, false), rectangle2, color, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
             }
             if (showMatchCount && !requiredRule && !whitelistItem.Automatic)
             {
-                Rectangle candidateRectangle = new Rectangle(bounds.Right - scaledDimension3 - Theme.S(10), bounds.Top, scaledDimension3, bounds.Height);
+                Rectangle rectangle3 = new Rectangle(bounds.Right - scaledDimension3 - Theme.S(10), bounds.Top, scaledDimension3, bounds.Height);
                 int width = Theme.S(5);
-                Color currentColor = (hasMatches ? Theme.Green : Theme.Faint);
-                using (SolidBrush brush4 = new SolidBrush(currentColor))
+                Color color2 = (hasMatches ? Theme.Green : Theme.Faint);
+                using (SolidBrush brush4 = new SolidBrush(color2))
                 {
-                    graphics.FillEllipse(brush4, candidateRectangle.Left, candidateRectangle.Top + (candidateRectangle.Height - width) / 2, width, width);
+                    graphics.FillEllipse(brush4, rectangle3.Left, rectangle3.Top + (rectangle3.Height - width) / 2, width, width);
                 }
-                TextRenderer.DrawText(graphics, whitelistItem.StateText, Theme.UI(7.6f, false), new Rectangle(candidateRectangle.Left + Theme.S(11), candidateRectangle.Top, candidateRectangle.Width - Theme.S(11), candidateRectangle.Height), currentColor, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, whitelistItem.StateText, Theme.UI(7.6f, false), new Rectangle(rectangle3.Left + Theme.S(11), rectangle3.Top, rectangle3.Width - Theme.S(11), rectangle3.Height), color2, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             if (!valuesMatch && !hovered)
             {
-                using (Pen candidatePen = new Pen(Col.Alpha(Theme.Stroke, 100)))
+                using (Pen pen4 = new Pen(Col.Alpha(Theme.Stroke, 100)))
                 {
-                    graphics.DrawLine(candidatePen, bounds.Left + Theme.S(13), bounds.Bottom - 1, bounds.Right - Theme.S(12), bounds.Bottom - 1);
+                    graphics.DrawLine(pen4, bounds.Left + Theme.S(13), bounds.Bottom - 1, bounds.Right - Theme.S(12), bounds.Bottom - 1);
                 }
             }
             if (valuesMatch && lstWhite.Focused && (e.State & DrawItemState.Focus) != 0)
@@ -467,9 +467,9 @@ namespace PaviseApp
             int width = Math.Max(2, Theme.S(2));
             int top = box.Top + box.Height / 2;
             int leftOffset = box.Left + box.Width / 2;
-            using (Pen currentPen = new Pen(Col.Alpha(c, required ? 112 : 172), Math.Max(1f, Theme.S(1))))
+            using (Pen pen2 = new Pen(Col.Alpha(c, required ? 112 : 172), Math.Max(1f, Theme.S(1))))
             {
-                g.DrawLine(currentPen, leftOffset - Theme.S(4), top, leftOffset + Theme.S(4), top);
+                g.DrawLine(pen2, leftOffset - Theme.S(4), top, leftOffset + Theme.S(4), top);
             }
             using (SolidBrush brush2 = new SolidBrush(Col.Alpha(c, required ? 160 : 225)))
             {
@@ -478,31 +478,48 @@ namespace PaviseApp
                 g.FillEllipse(brush2, leftOffset + Theme.S(5) - width / 2, top - width / 2, width, width);
             }
         }
+        private static void DrawWhitelistGroupHeader(Control owner, DrawItemEventArgs e, string text)
+        {
+            Graphics graphics = e.Graphics;
+            Rectangle bounds = e.Bounds;
+            using (SolidBrush brush = new SolidBrush(Backdrop.CardFill(owner, Theme.Card)))
+            {
+                graphics.FillRectangle(brush, bounds);
+            }
+            Size size = TextRenderer.MeasureText(graphics, text, Theme.UI(7.8f, false));
+            int leftOffset = bounds.Left + Theme.S(14);
+            int top = bounds.Top + bounds.Height / 2;
+            TextRenderer.DrawText(graphics, text, Theme.UI(7.8f, false), new Rectangle(leftOffset, bounds.Top, size.Width + Theme.S(8), bounds.Height), Theme.Faint, TextFormatFlags.VerticalCenter);
+            using (Pen pen = new Pen(Col.Alpha(Theme.Stroke, 150)))
+            {
+                graphics.DrawLine(pen, leftOffset + size.Width + Theme.S(12), top, bounds.Right - Theme.S(14), top);
+            }
+        }
         private Bitmap WhitelistIcon(WhitelistRule rule)
         {
             if (rule.Kind == WhitelistRuleKind.LegacyName)
             {
                 return null;
             }
-            string ruleValue = rule.Value;
-            Bitmap currentWhiteIconCache;
-            if (whiteIconCache.TryGetValue(ruleValue, out currentWhiteIconCache))
+            string value = rule.Value;
+            Bitmap value2;
+            if (whiteIconCache.TryGetValue(value, out value2))
             {
-                return currentWhiteIconCache;
+                return value2;
             }
             try
             {
-                using (Icon icon = Icon.ExtractAssociatedIcon(ruleValue))
+                using (Icon icon = Icon.ExtractAssociatedIcon(value))
                 {
-                    currentWhiteIconCache = icon.ToBitmap();
+                    value2 = icon.ToBitmap();
                 }
             }
             catch
             {
-                currentWhiteIconCache = null;
+                value2 = null;
             }
-            whiteIconCache[ruleValue] = currentWhiteIconCache;
-            return currentWhiteIconCache;
+            whiteIconCache[value] = value2;
+            return value2;
         }
         private string WhitelistTitle(WhitelistRule rule)
         {
@@ -510,16 +527,16 @@ namespace PaviseApp
             {
                 return rule.Value;
             }
-            string ruleValue = rule.Value;
-            string currentWhiteNameCache;
-            if (whiteNameCache.TryGetValue(ruleValue, out currentWhiteNameCache))
+            string value = rule.Value;
+            string value2;
+            if (whiteNameCache.TryGetValue(value, out value2))
             {
-                return currentWhiteNameCache;
+                return value2;
             }
             string productName = null;
             try
             {
-                FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(ruleValue);
+                FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(value);
                 productName = (string.IsNullOrEmpty(versionInfo.FileDescription) ? versionInfo.ProductName : versionInfo.FileDescription);
                 if (!string.IsNullOrEmpty(productName))
                 {
@@ -533,14 +550,14 @@ namespace PaviseApp
             {
                 try
                 {
-                    productName = Path.GetFileNameWithoutExtension(ruleValue);
+                    productName = Path.GetFileNameWithoutExtension(value);
                 }
                 catch
                 {
-                    productName = ruleValue;
+                    productName = value;
                 }
             }
-            whiteNameCache[ruleValue] = productName;
+            whiteNameCache[value] = productName;
             return productName;
         }
         private static string PlatformDisplayName(string id)
@@ -553,34 +570,36 @@ namespace PaviseApp
         }
         private static List<WhitelistItem> AutomaticExemptionItems()
         {
-            List<WhitelistItem> automaticExemptions = new List<WhitelistItem>();
+            List<WhitelistItem> list = new List<WhitelistItem>();
             string systemNames = string.Join(" · ", SystemProcessCatalog.PresetWhitelist);
-            automaticExemptions.Add(AutomaticExemption("white.auto.system", Lang.F("white.auto.system.list", systemNames), "shield", DetailSection("white.auto.details.processes", systemNames) + "\r\n\r\n" + Lang.T("white.auto.details.system.note")));
-            string[] processNamesForDisplay = NetAcceleratorCatalog.ProcessNamesForDisplay();
-            string[] tokensForDisplay = NetAcceleratorCatalog.TokensForDisplay();
-            automaticExemptions.Add(AutomaticExemption("white.auto.accel", Lang.F("white.auto.accel.list", string.Join(" · ", processNamesForDisplay)), "chart", DetailSection("white.auto.details.processes", string.Join(" · ", processNamesForDisplay)) + "\r\n\r\n" + DetailSection("white.auto.details.namekeywords", string.Join(" · ", tokensForDisplay))));
-            string[] currentProcessNamesForDisplay = HardwareControlCatalog.ProcessNamesForDisplay();
-            string[] currentTokensForDisplay = HardwareControlCatalog.TokensForDisplay();
-            automaticExemptions.Add(AutomaticExemption("white.auto.hardware", Lang.F("white.auto.hardware.list", string.Join(" · ", currentProcessNamesForDisplay)), "chip", DetailSection("white.auto.details.processes", string.Join(" · ", currentProcessNamesForDisplay)) + "\r\n\r\n" + DetailSection("white.auto.details.tokens", string.Join(" · ", currentTokensForDisplay)) + "\r\n\r\n" + Lang.T("white.auto.details.hardware.note")));
-            List<string> texts = new List<string>();
-            List<string> names = new List<string>();
-            foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
+            list.Add(AutomaticExemption("white.auto.system", Lang.F("white.auto.system.list", systemNames), "shield", DetailSection("white.auto.details.processes", systemNames) + "\r\n\r\n" + Lang.T("white.auto.details.system.note")));
+            string[] value = NetAcceleratorCatalog.ProcessNamesForDisplay();
+            string[] value2 = NetAcceleratorCatalog.TokensForDisplay();
+            list.Add(AutomaticExemption("white.auto.accel", Lang.F("white.auto.accel.list", string.Join(" · ", value)), "chart", DetailSection("white.auto.details.processes", string.Join(" · ", value)) + "\r\n\r\n" + DetailSection("white.auto.details.namekeywords", string.Join(" · ", value2))));
+            string[] value3 = HardwareControlCatalog.ProcessNamesForDisplay();
+            string[] value4 = HardwareControlCatalog.TokensForDisplay();
+            list.Add(AutomaticExemption("white.auto.hardware", Lang.F("white.auto.hardware.list", string.Join(" · ", value3)), "chip", DetailSection("white.auto.details.processes", string.Join(" · ", value3)) + "\r\n\r\n" + DetailSection("white.auto.details.tokens", string.Join(" · ", value4)) + "\r\n\r\n" + Lang.T("white.auto.details.hardware.note")));
+            List<string> list2 = new List<string>();
+            List<string> list3 = new List<string>();
+            AcGroup[] groups = AntiCheatCatalog.Groups;
+            foreach (AcGroup acGroup in groups)
             {
-                names.Add(acGroup.Name);
-                texts.Add(acGroup.Name + "\r\n" + string.Join(" · ", acGroup.Procs));
+                list3.Add(acGroup.Name);
+                list2.Add(acGroup.Name + "\r\n" + string.Join(" · ", acGroup.Procs));
             }
-            foreach (AcProtectionGroup acProtectionGroup in AntiCheatCatalog.ProtectionOnlyGroups)
+            AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;
+            foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
             {
-                names.Add(acProtectionGroup.Name);
-                texts.Add(acProtectionGroup.Name + " · " + Lang.T("ac.protectiononly") + "\r\n" + string.Join(" · ", acProtectionGroup.PatternsForDisplay()));
+                list3.Add(acProtectionGroup.Name);
+                list2.Add(acProtectionGroup.Name + " · " + Lang.T("ac.protectiononly") + "\r\n" + string.Join(" · ", acProtectionGroup.PatternsForDisplay()));
             }
-            automaticExemptions.Add(AutomaticExemption("white.auto.anticheat", Lang.F("white.auto.anticheat.list", string.Join(" · ", names.ToArray())), "acshield", Lang.T("white.auto.details.groups") + "\r\n\r\n" + string.Join("\r\n\r\n", texts.ToArray()) + "\r\n\r\n" + DetailSection("white.auto.details.tokens", string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay())) + "\r\n\r\n" + DetailSection("white.auto.details.anticheatdirs", string.Join(" · ", AntiCheatCatalog.DirectoryNamesForDisplay()))));
-            string[] nameKeywordsForDisplay = PeripheralCatalog.NameKeywordsForDisplay();
-            string[] descriptionWordsForDisplay = PeripheralCatalog.DescriptionWordsForDisplay();
-            automaticExemptions.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", nameKeywordsForDisplay)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", nameKeywordsForDisplay)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", descriptionWordsForDisplay)) + "\r\n\r\n" + DetailSection("white.auto.details.vendors", string.Join(" · ", PeripheralCatalog.PresentVendorTokensForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
+            list.Add(AutomaticExemption("white.auto.anticheat", Lang.F("white.auto.anticheat.list", string.Join(" · ", list3.ToArray())), "acshield", Lang.T("white.auto.details.groups") + "\r\n\r\n" + string.Join("\r\n\r\n", list2.ToArray()) + "\r\n\r\n" + DetailSection("white.auto.details.tokens", string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay())) + "\r\n\r\n" + DetailSection("white.auto.details.anticheatdirs", string.Join(" · ", AntiCheatCatalog.DirectoryNamesForDisplay()))));
+            string[] value5 = PeripheralCatalog.NameKeywordsForDisplay();
+            string[] value6 = PeripheralCatalog.DescriptionWordsForDisplay();
+            list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + DetailSection("white.auto.details.vendors", string.Join(" · ", PeripheralCatalog.PresentVendorTokensForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
             string streamingProducts = string.Join(" · ", StreamingToolCatalog.ProductsForDisplay());
-            automaticExemptions.Add(AutomaticExemption("white.auto.streaming", Lang.F("white.auto.streaming.list", streamingProducts), "chart", DetailSection("white.auto.details.products", streamingProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", StreamingToolCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.streaming.note")));
-            return automaticExemptions;
+            list.Add(AutomaticExemption("white.auto.streaming", Lang.F("white.auto.streaming.list", streamingProducts), "chart", DetailSection("white.auto.details.products", streamingProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", StreamingToolCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.streaming.note")));
+            return list;
         }
         private static WhitelistItem AutomaticExemption(string titleKey, string subtitle, string glyph, string details)
         {

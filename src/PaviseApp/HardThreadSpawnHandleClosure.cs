@@ -7,14 +7,14 @@ namespace PaviseApp
     {
         internal static void Close(ref IntPtr thread, ref bool threadUncertain, ref IntPtr process, ref bool processUncertain, bool releaseProcess, Func<IntPtr, bool> closeRaw)
         {
-            List<Exception> exceptions = new List<Exception>();
+            List<Exception> list = new List<Exception>();
             try
             {
                 HardThreadRawHandleClosure.Close(ref thread, ref threadUncertain, closeRaw);
             }
             catch (Exception item)
             {
-                exceptions.Add(item);
+                list.Add(item);
             }
             if (releaseProcess)
             {
@@ -24,12 +24,12 @@ namespace PaviseApp
                 }
                 catch (Exception item2)
                 {
-                    exceptions.Add(item2);
+                    list.Add(item2);
                 }
             }
-            if (exceptions.Count != 0)
+            if (list.Count != 0)
             {
-                throw new AggregateException("Original spawn handles remain unconfirmed", exceptions);
+                throw new AggregateException("Original spawn handles remain unconfirmed", list);
             }
         }
     }

@@ -17,6 +17,12 @@ namespace PaviseApp
 
         internal const string ReceiptKey = "GpuClockLockReceipt";
 
+        private const int NvmlSuccess = 0;
+
+        private const int NvmlNotSupported = 3;
+
+        private const string AmdKey = "GpuClockLockAmd";
+
         private static readonly object lk = new object();
 
         public static bool HasResidue
@@ -108,31 +114,32 @@ namespace PaviseApp
 
         internal static string EncodeReceipt(IList<KeyValuePair<string, uint>> locked)
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             foreach (KeyValuePair<string, uint> item in locked)
             {
-                texts.Add(item.Key + "|" + item.Value.ToString(CultureInfo.InvariantCulture));
+                list.Add(item.Key + "|" + item.Value.ToString(CultureInfo.InvariantCulture));
             }
-            return string.Join(";", texts.ToArray());
+            return string.Join(";", list.ToArray());
         }
 
         internal static List<KeyValuePair<string, uint>> DecodeReceipt(string raw)
         {
-            List<KeyValuePair<string, uint>> keyValuePairs = new List<KeyValuePair<string, uint>>();
+            List<KeyValuePair<string, uint>> list = new List<KeyValuePair<string, uint>>();
             if (string.IsNullOrEmpty(raw))
             {
-                return keyValuePairs;
+                return list;
             }
-            foreach (string entryText in raw.Split(';'))
+            string[] rawParts = raw.Split(';');
+            foreach (string entryText in rawParts)
             {
                 int matchIndex = entryText.IndexOf('|');
                 uint result;
                 if (matchIndex > 0 && uint.TryParse(entryText.Substring(matchIndex + 1), NumberStyles.None, CultureInfo.InvariantCulture, out result))
                 {
-                    keyValuePairs.Add(new KeyValuePair<string, uint>(entryText.Substring(0, matchIndex), result));
+                    list.Add(new KeyValuePair<string, uint>(entryText.Substring(0, matchIndex), result));
                 }
             }
-            return keyValuePairs;
+            return list;
         }
 
         public static bool Restore()
@@ -152,9 +159,9 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                List<KeyValuePair<string, uint>> keyValuePairs = DecodeReceipt(gpuClockLockReceiptValue);
-                List<Device> devices = new List<Device>();
-                if (!Open(devices))
+                List<KeyValuePair<string, uint>> list = DecodeReceipt(gpuClockLockReceiptValue);
+                List<Device> list2 = new List<Device>();
+                if (!Open(list2))
                 {
                     Logger.Log(Lang.T("log.gpuclock.6", 0));
                     return false;
@@ -162,14 +169,14 @@ namespace PaviseApp
                 try
                 {
                     bool allRestored = true;
-                    foreach (KeyValuePair<string, uint> keyValuePairEntry in keyValuePairs)
+                    foreach (KeyValuePair<string, uint> item in list)
                     {
                         Device device = null;
-                        foreach (Device currentDevice in devices)
+                        foreach (Device item2 in list2)
                         {
-                            if (string.Equals(currentDevice.Uuid, keyValuePairEntry.Key, StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(item2.Uuid, item.Key, StringComparison.OrdinalIgnoreCase))
                             {
-                                device = currentDevice;
+                                device = item2;
                                 break;
                             }
                         }

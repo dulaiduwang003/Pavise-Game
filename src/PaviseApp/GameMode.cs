@@ -12,25 +12,59 @@ namespace PaviseApp
         private readonly ProcessActionFailureBudget autoAddFailureBudget = new ProcessActionFailureBudget();
         private readonly ProcessActionFailureBudget rendererProbeFailureBudget = new ProcessActionFailureBudget();
 
+        private const double AutoAddMinUtilization = 20.0;
+
+        private const int AutoAddGateMs = 30000;
+
+        private const int AutoAddRejectCacheLimit = 64;
+
+        private const int AutoAddEvidenceAgeMs = 120000;
+
+        private const uint DuplicateSameAccess = 2u;
+
         internal const string GamePriorityAction = "GamePriority";
 
         internal const string GameIoAction = "GameIoPriority";
 
         internal const string GameGpuAction = "GameGpuPriority";
 
-        internal const string GameMemoryAction = "GameMemoryPriority";
-
         internal const string GameEcoAction = "GameEcoQoS";
 
+        private const int VanishGiveUpTries = 20;
+
+        private const string CriticalThreadAction = "game-critical-thread-hard-affinity";
+
+        private const int BoostRetryMax = 3;
+
+        private const int PlacementRetryMax = 3;
+
+        private const int StateRetryMax = 8;
+
         internal const int SlowEnvDelaySeconds = 20;
+
+        private const int StickyGraceMisses = 1;
 
         internal const string ExitGraceSettingKey = "GameExitGraceSeconds";
 
         internal const int DefaultExitGraceSeconds = 8;
 
+        private const int EnvRetryBaseSeconds = 4;
+
+        private const int EnvRetryCapSeconds = 60;
+
+        private const int EnvRetryMaxSteps = 8;
+
+        private const string PowerFailStreakKey = "PowerPlanFailStreak";
+
         internal const int SwitchOutDebounceMs = 5000;
 
         internal const string AutomaticFsoKey = "AutoDisableFullscreenOptimizations";
+
+        private const string WhitelistFooterPrefix = "PAVISE_WHITELIST_END|";
+
+        private const int PollingSweepIntervalMs = 4000;
+
+        private const int EventBackedSweepIntervalMs = 20000;
 
         internal const int ActiveGameSweepIntervalMs = 500;
 
@@ -38,15 +72,25 @@ namespace PaviseApp
 
         internal const int DirtyScanFloorMs = 500;
 
+        private const int FullGameDetectionIntervalMs = 20000;
+
         internal const int GameTransitionScanIntervalMs = 5000;
 
         internal const int FailedProcessScanRetryMs = 1000;
+
+        private const int RendererActivityMaxAttempts = 5;
 
         internal const string LastSessionKey = "LastSessionBrief";
 
         internal const string StandbyCleanerOptionsKey = "GmStandbyCleanerOptionsV1";
 
+        private const int MaxOverlayAttempts = 2;
+
         internal const int OlderRendererTakeoverForegroundMs = 10000;
+
+        private const long TransientProcessTicks = 20000000L;
+
+        private const int WhiteFamilyPruneIntervalMs = 20000;
 
         private readonly AdaptiveGuard adaptiveGuard = new AdaptiveGuard();
 
@@ -76,6 +120,8 @@ namespace PaviseApp
 
         private bool coreObservationOnly;
 
+        private bool coreRangeUnrestricted;
+
         private PerformancePreset corePreset;
 
         private bool coreAllowed;
@@ -104,7 +150,7 @@ namespace PaviseApp
 
         private readonly CoreAffinityAuditRetry exclusiveAuditRetry = new CoreAffinityAuditRetry();
 
-        private readonly GameAffinityJobLease coreAffinityJobs = new GameAffinityJobLease();
+        private readonly GameAffinityJobLease coreAffinityJobs = new GameAffinityJobLease { OverrideThreadPlacement = true };
 
         private bool exclusiveAuditDeferred;
 
@@ -162,7 +208,7 @@ namespace PaviseApp
 
         private bool boostLaneReleased;
 
-        private static readonly string[] BoostActions = new string[5] { "GamePriority", "GameIoPriority", "GameGpuPriority", "GameMemoryPriority", "GameEcoQoS" };
+        private static readonly string[] BoostActions = new string[4] { "GamePriority", "GameIoPriority", "GameGpuPriority", "GameEcoQoS" };
 
         private readonly Dictionary<int, string> boostActionTargets = new Dictionary<int, string>();
 
@@ -214,10 +260,12 @@ namespace PaviseApp
 
         private CriticalThreadObservation criticalObservation = new CriticalThreadObservation();
 
-        // 连续两次线程集采样一致后，才提交自动隔离。
+        // 没有画面提交证据时，连续两次线程集采样一致后才提交自动隔离。
         private string criticalAutoSelectionKey = "";
 
         private int criticalAutoSelectionStable;
+
+        private string criticalAutoSelectionLabel = "";
 
         private readonly CriticalThreadIdealHints criticalIdealHints = new CriticalThreadIdealHints();
 
@@ -257,17 +305,11 @@ namespace PaviseApp
 
         private int criticalForegroundAuditPending;
 
-        private bool criticalGuardianLaunchBlocked;
-
         private string[] criticalChoiceLabels = new string[0];
 
         private bool criticalChoiceFrameAssociated;
 
         private static readonly object criticalStateLogGate = new object();
-
-        private Dictionary<string, long> criticalStateLogged;
-
-        private string criticalStateLast;
 
         private readonly object sync = new object();
 
@@ -461,6 +503,8 @@ namespace PaviseApp
 
         private bool optionalServicesActive;
 
+        private bool optionalServicesWanted;
+
         private int optionalServiceGeneration;
 
         private bool amdAlagActive;
@@ -494,8 +538,6 @@ namespace PaviseApp
         private bool envResidueOther;
 
         private bool envResidueNvList;
-
-        private bool envResidueGpuPref;
 
         private long residueNextTryTicks;
 
@@ -643,8 +685,6 @@ namespace PaviseApp
         private volatile string armedGameName;
 
         private string lastArmedLogged;
-
-        private volatile bool gpuPrefStageOn;
 
         private readonly Dictionary<int, long> repCpu = new Dictionary<int, long>();
 

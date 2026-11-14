@@ -92,7 +92,11 @@ namespace PaviseApp
 
         internal static bool Apply(GameAffinityJobRecord record, IntPtr job, IntPtr process, out string reason)
         {
-            if (record.Resources == null) return GameAffinityJobNative.Apply(job, process, record.Birth, record.Desired, out reason);
+            return Apply(record, job, process, false, out reason);
+        }
+        internal static bool Apply(GameAffinityJobRecord record, IntPtr job, IntPtr process, bool overrideThreads, out string reason)
+        {
+            if (record.Resources == null) return GameAffinityJobNative.Apply(job, process, record.Birth, record.Desired, overrideThreads, out reason);
             reason = null;
             if (!record.Resources.Valid || !GameAffinityJobNative.Matches(process, record.Birth))
             { reason = "微软后台目标身份无效"; return false; }

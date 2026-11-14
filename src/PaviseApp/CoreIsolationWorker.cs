@@ -11,6 +11,8 @@ namespace PaviseApp
     {
         internal const string Argument = "--core-isolation-worker";
 
+        private const string MutexName = "Global\\Pavise.CoreIsolation.V1";
+
         private static Mutex Acquire()
         {
             Mutex mutex = new Mutex(false, "Global\\Pavise.CoreIsolation.V1");
@@ -100,8 +102,8 @@ namespace PaviseApp
                     return true;
                 }
                 ICoreIsolationStore journal = new CoreIsolationSettingsStore();
-                IntPtr processHandle = Native.OpenProcess(4096, false, result);
-                if (processHandle == IntPtr.Zero)
+                IntPtr intPtr = Native.OpenProcess(4096, false, result);
+                if (intPtr == IntPtr.Zero)
                 {
                     return true;
                 }
@@ -110,7 +112,7 @@ namespace PaviseApp
                     long creation;
                     long cpu;
                     ulong io;
-                    if (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io) || creation != result2)
+                    if (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io) || creation != result2)
                     {
                         return true;
                     }
@@ -123,7 +125,7 @@ namespace PaviseApp
                         }
                         try
                         {
-                            Environment.ExitCode = ((!Run(processHandle, journal)) ? 1 : 0);
+                            Environment.ExitCode = ((!Run(intPtr, journal)) ? 1 : 0);
                         }
                         finally
                         {
@@ -133,7 +135,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
             catch
@@ -189,8 +191,8 @@ namespace PaviseApp
                 {
                     while (Native.StillActive(parent) && stopwatch.ElapsedMilliseconds < 15000)
                     {
-                        string text;
-                        if (!commands.TryTake(out text, 500))
+                        string item;
+                        if (!commands.TryTake(out item, 500))
                         {
                             if (commands.IsCompleted || (coreIsolationEngine.Active && !coreIsolationEngine.Audit()))
                             {
@@ -199,13 +201,13 @@ namespace PaviseApp
                             continue;
                         }
                         stopwatch.Restart();
-                        if (text == "STOP")
+                        if (item == "STOP")
                         {
                             bool restoreSucceeded = coreIsolationEngine.Restore();
                             Console.WriteLine(restoreSucceeded ? "OK" : ("ERR " + coreIsolationEngine.Error));
                             return restoreSucceeded;
                         }
-                        bool executeSucceeded = Execute(coreIsolationEngine, text);
+                        bool executeSucceeded = Execute(coreIsolationEngine, item);
                         Console.WriteLine(executeSucceeded ? "OK" : ("ERR " + (coreIsolationEngine.Error ?? "protocol")));
                         if (!executeSucceeded)
                         {

@@ -81,6 +81,10 @@ namespace PaviseApp
             internal readonly Dictionary<string, string> SelectedFailureBudgets = new Dictionary<string, string>();
             internal bool RecoveryExitObserved;
             internal bool AffinityPrepareInFlight;
+            internal AntiCheatResourceState AntiCheatResources;
+            internal bool AntiCheatResourceRemovalPending;
+            internal bool AntiCheatResourceJournalPending;
+            internal int AntiCheatPid;
             public string Name;
 
             public string FailureTarget;
@@ -88,6 +92,11 @@ namespace PaviseApp
             public string Group;
 
             internal SuppressionCore CountOwner;
+            internal int AccountingPid;
+            internal long AccountingExitedBirth;
+            internal bool AccountingForwardEffects;
+            internal bool AccountingForwardEffectsUnknown;
+            internal BackgroundRecoveryLedger.Ticket BackgroundRecoveryTicket;
 
             internal void SetGroup(string value)
             {
@@ -99,6 +108,12 @@ namespace PaviseApp
             internal void SetOriginalPriority(uint value)
             {
                 bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && Applied && (OrigPri == uint.MaxValue) != (value == uint.MaxValue);
+                if (OrigPri == uint.MaxValue && value != uint.MaxValue)
+                {
+                    BackgroundRecoveryTicket = null;
+                    AccountingForwardEffects = false;
+                    AccountingForwardEffectsUnknown = false;
+                }
                 OrigPri = value;
                 if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
@@ -107,13 +122,16 @@ namespace PaviseApp
             {
                 bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && OrigPri != uint.MaxValue && Applied != value;
                 Applied = value;
+                if (CountOwner != null) CountOwner.EnsureBackgroundAccountingLocked(AccountingPid, this);
                 if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
             internal void SetReasons(SuppressReason value)
             {
                 bool changed = (Reasons & SuppressReason.AntiCheat) != (value & SuppressReason.AntiCheat);
+                SuppressReason previous = Reasons;
                 Reasons = value;
+                if (CountOwner != null) CountOwner.AccountBackgroundReasonsLocked(this, previous);
                 if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
@@ -175,6 +193,8 @@ namespace PaviseApp
 
             public int OrigGpu = -1;
 
+            public GpuPriorityLease GpuLease = new GpuPriorityLease();
+
             public int OrigQoSControl = -1;
 
             public int OrigQoSState = -1;
@@ -224,6 +244,20 @@ namespace PaviseApp
         public const string StateFileName = "Pavise.suppression.state";
 
         internal const string FailureAction = "BackgroundSuppression";
+
+        private const int ProtectedBackoffBaseSeconds = 8;
+
+        private const int ProtectedBackoffCapSeconds = 300;
+
+        private const int ProtectedBackoffMax = 8;
+
+        private const int ReconcileFastSeconds = 4;
+
+        private const int ReconcileStableBaseSeconds = 20;
+
+        private const int ReconcileStableJitterSeconds = 11;
+
+        private const int ReconcileFailureCapSeconds = 60;
 
         private static readonly IAutomaticLayoutPlatform automaticLayoutPlatform = new AutomaticLayoutPlatform();
 
@@ -292,6 +326,8 @@ namespace PaviseApp
             if (previous != null) previous.CountOwner = null;
             map[pid] = entry;
             entry.CountOwner = this;
+            entry.AccountingPid = pid;
+            EnsureBackgroundAccountingLocked(pid, entry);
             if (changed) InvalidateGroupCounts();
         }
 
@@ -307,6 +343,9 @@ namespace PaviseApp
         private static readonly Dictionary<string, long> protectedLogTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
         internal bool EnforceBackgroundAffinity;
+
+        // 默认使用进程亲和性与恢复日志，避免为每个普通后台目标启动独立守护。
+        internal bool BackgroundJobBackend;
 
         internal bool BackgroundReleasePending
         {
@@ -524,17 +563,17 @@ namespace PaviseApp
             long version = Interlocked.Read(ref groupCountsVersion);
             if (version == publishedGroupCountsVersion) return;
             Dictionary<string, int[]> groupCounts = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<int, Entry> mapEntry in map)
+            foreach (KeyValuePair<int, Entry> item in map)
             {
-                if ((mapEntry.Value.Reasons & SuppressReason.AntiCheat) != 0)
+                if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0)
                 {
-                    string key = mapEntry.Value.Group ?? "";
+                    string key = item.Value.Group ?? "";
                     int[] counts;
                     if (!groupCounts.TryGetValue(key, out counts))
                     {
                         counts = (groupCounts[key] = new int[2]);
                     }
-                    if (mapEntry.Value.OrigPri == uint.MaxValue || !mapEntry.Value.Applied)
+                    if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
                     {
                         counts[1]++;
                     }
@@ -568,19 +607,19 @@ namespace PaviseApp
                 try { RefreshGroupCountsLocked(); }
                 finally { Monitor.Exit(sync); }
             }
-            int throttledCount = 0;
-            int protectedCount = 0;
+            int antiCheatGroupCountsCachedValue = 0;
+            int antiCheatGroupCountsCachedValue2 = 0;
             lock (lastGroupCounts)
             {
                 int[] counts;
                 if (lastGroupCounts.TryGetValue(groupKey ?? "", out counts))
                 {
-                    throttledCount = counts[0];
-                    protectedCount = counts[1];
+                    antiCheatGroupCountsCachedValue = counts[0];
+                    antiCheatGroupCountsCachedValue2 = counts[1];
                 }
             }
-            throttled = throttledCount;
-            protectedCnt = protectedCount;
+            throttled = antiCheatGroupCountsCachedValue;
+            protectedCnt = antiCheatGroupCountsCachedValue2;
         }
 
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
@@ -605,11 +644,11 @@ namespace PaviseApp
             }
             try
             {
-                foreach (KeyValuePair<int, Entry> mapEntry in map)
+                foreach (KeyValuePair<int, Entry> item in map)
                 {
-                    if ((mapEntry.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(mapEntry.Value.Group, groupKey))
+                    if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(item.Value.Group, groupKey))
                     {
-                        if (mapEntry.Value.OrigPri == uint.MaxValue || !mapEntry.Value.Applied)
+                        if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
                         {
                             processedCount2++;
                         }

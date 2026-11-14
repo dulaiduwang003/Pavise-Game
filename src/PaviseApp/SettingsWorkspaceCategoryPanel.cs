@@ -20,7 +20,7 @@ namespace PaviseApp
             base.OnPaint(e);
             if (DivisionX > 0 && DivisionBottom > 0)
             {
-                using (Pen pen = new Pen(Theme.Stroke))
+                using (Pen pen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.62f)))
                 {
                     e.Graphics.DrawLine(pen, DivisionX, Theme.S(8), DivisionX, DivisionBottom);
                 }

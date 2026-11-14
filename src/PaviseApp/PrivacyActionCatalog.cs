@@ -1,3 +1,4 @@
+using System;
 
 namespace PaviseApp
 {
@@ -10,7 +11,7 @@ namespace PaviseApp
             BackgroundGlobal = "EnvPrivacyBackgroundGlobalV1", NtfsMemory = "EnvPrivacyNtfsMemoryV1", Archives = "EnvPrivacyArchivesV1";
         internal static readonly PrivacyAction[] All = {
             new PrivacyAction(NtfsMemory, "增加 NTFS 缓存池", "Increase NTFS cache pools", "内存充足时扩大文件系统缓存；开启/恢复需重启。", "Expands file-system caching when memory is sufficient. Enabling or restoring requires restart.", true),
-            new PrivacyAction(BackgroundGlobal, "限制 Windows 应用后台任务", "Restrict Windows app background tasks", "限制 UWP 应用后台活动，可能影响通知与同步；保留逐应用例外，不控制普通桌面程序。应用或恢复后重新启动相关应用；家庭版使用账户设置，必要时注销后重新登录。不会自动关闭应用或重启资源管理器。", "Restricts UWP background activity; notifications and sync may be affected. Per-app exceptions are preserved. Does not control ordinary desktop programs. Restart affected apps after applying or restoring. Home uses account settings and may require signing out and back in. Apps and Explorer are not restarted automatically.", false)
+            new PrivacyAction(BackgroundGlobal, "限制 Windows 应用后台任务", "Restrict Windows app background tasks", "限制 UWP 后台活动，保留逐应用例外，可能影响通知与同步。更改后重启相关应用；家庭版可能需重新登录。普通桌面程序不受影响。", "Restricts UWP background activity while preserving per-app exceptions. May affect notifications and sync. Restart affected apps after changes; Home may require signing in again. Desktop programs are unaffected.", false)
         };
         // 旧 Id 保留用于识别原值和恢复记录，不提供新应用入口。
         internal static readonly PrivacyAction[] Retired = {

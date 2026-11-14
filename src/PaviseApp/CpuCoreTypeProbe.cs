@@ -111,11 +111,11 @@ namespace PaviseApp
                         GetCurrentProcessorNumberEx(out after);
                         if (before.Group != 0 || after.Group != 0 || before.Number != logical || after.Number != logical)
                         { reason = "cpuid-processor-mismatch"; return Unknown(); }
-                        int coreTypeId = type == null ? -1 : (int)(type[0] >> 24);
-                        // 这些值是标识，不是性能高低的数值排名。
-                        if (coreTypeId != 0x20 && coreTypeId != 0x40)
+                        int value = type == null ? -1 : (int)(type[0] >> 24);
+                        // 核型标识不表示性能排名。
+                        if (value != 0x20 && value != 0x40)
                         { reason = "cpuid-core-type-unavailable"; return Unknown(); }
-                        result[logical] = coreTypeId;
+                        result[logical] = value;
                     }
                     complete = true;
                 }
@@ -183,7 +183,7 @@ namespace PaviseApp
 
             internal CpuIdReader()
             {
-                // Windows x64 调用约定：RCX 为叶，RDX 为子叶，R8 为输出指针。CPUID 会覆盖 EAX、EBX、ECX、EDX，需保留非易失的 RBX，并用 R8 保存输出地址。
+                // Windows x64：RCX 传叶、RDX 传子叶、R8 传输出指针；CPUID 覆盖 EAX/EBX/ECX/EDX，须保留非易失 RBX。
 
                 byte[] bytes = { 0x53, 0x8b, 0xc1, 0x8b, 0xca, 0x0f, 0xa2,
                     0x41, 0x89, 0x00, 0x41, 0x89, 0x58, 0x04,

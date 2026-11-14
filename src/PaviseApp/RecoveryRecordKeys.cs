@@ -7,7 +7,7 @@ namespace PaviseApp
     {
         private static readonly HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "PerformanceActionReceiptsV1", "NvDrsList", "AmdSnap", "AppGpuPreferencesV1", "GpuPrefStage", "GpuPowerSnap", "GpuClockLockReceipt", "NvVrrModeSnap", "IntelEnduranceSnap", "LaptopPerfSnap",
+            "PerformanceActionReceiptsV1", "NvDrsList", "AmdSnap", "AppGpuPreferencesV1", "GpuPowerSnap", "GpuClockLockReceipt", "NvVrrModeSnap", "IntelEnduranceSnap", "LaptopPerfSnap",
             "PowerOverlaySnap", "PrevPowerPlan", "ManagedPlanPolicyV3", "ManagedPresetCreationV1", "ExtremePowerKnobSnap", "CoreParkSnap", "CpuIdleStateV1", "PrevReservedCpuSets", "PrevTimerTick", "PrevRefreshHz", "DisplaySoloSnap",
             "MemShieldSnap", "PrevMMAgent", "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevMaintDisabled", "PrevSvcPaused", "PrevOptionalServicesPausedV1", "PrevPresenceQos", "RssSteerReceipt",
             "LinkMetricReceipt", "IrqPrio", RetiredBackgroundCpuCap.LegacyReceiptKey, RetiredBackgroundCpuCap.ReceiptKey, "GameAffinityJobReceiptsV1", "AutoCoreThreadPlacementV1", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "Crash_ThrottleMasks", "Crash_BoostMask", "Crash_BoostNames", "Crash_BoostEntriesV2", "Crash_BoostPriorityOwnershipV1",
@@ -33,9 +33,10 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (string currentPrefixesSnapshot in prefixes)
+            string[] prefixesSnapshot = prefixes;
+            foreach (string value in prefixesSnapshot)
             {
-                if (name.StartsWith(currentPrefixesSnapshot, StringComparison.OrdinalIgnoreCase))
+                if (name.StartsWith(value, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

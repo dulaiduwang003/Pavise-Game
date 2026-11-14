@@ -77,6 +77,10 @@ namespace PaviseApp
 
         internal const int PendingEventRetentionMs = 5000;
 
+        private const int MaxMemberships = 16384;
+
+        private const int MaxMembershipChecks = 1048576;
+
         private readonly object gate = new object();
 
         private readonly Dictionary<Identity, Node> nodes = new Dictionary<Identity, Node>();
@@ -121,74 +125,75 @@ namespace PaviseApp
                     ClearLocked();
                     return GameFamilyEvidence.Empty;
                 }
-                HashSet<int> pids = new HashSet<int>();
-                Dictionary<int, ProcEntry> processEntriesById = new Dictionary<int, ProcEntry>();
-                foreach (ProcEntry procEntry in snapshot.Entries)
+                HashSet<int> hashSet = new HashSet<int>();
+                Dictionary<int, ProcEntry> dictionary = new Dictionary<int, ProcEntry>();
+                ProcEntry[] entries = snapshot.Entries;
+                foreach (ProcEntry procEntry in entries)
                 {
                     if (procEntry != null && procEntry.Pid > 4)
                     {
-                        if (processEntriesById.ContainsKey(procEntry.Pid))
+                        if (dictionary.ContainsKey(procEntry.Pid))
                         {
-                            pids.Add(procEntry.Pid);
+                            hashSet.Add(procEntry.Pid);
                         }
                         else
                         {
-                            processEntriesById.Add(procEntry.Pid, procEntry);
+                            dictionary.Add(procEntry.Pid, procEntry);
                         }
                     }
                 }
-                PoisonPids(pids);
+                PoisonPids(hashSet);
                 lastLive.Clear();
-                foreach (ProcEntry processSnapshot in processEntriesById.Values)
+                foreach (ProcEntry value3 in dictionary.Values)
                 {
-                    if (!pids.Contains(processSnapshot.Pid) && Usable(processSnapshot, ownerSession))
+                    if (!hashSet.Contains(value3.Pid) && Usable(value3, ownerSession))
                     {
-                        lastLive[processSnapshot.Pid] = new Identity(processSnapshot.Session, processSnapshot.Pid, processSnapshot.Creation);
+                        lastLive[value3.Pid] = new Identity(value3.Session, value3.Pid, value3.Creation);
                     }
                 }
                 Prune(nowMs);
-                Dictionary<int, Node> nodesById = new Dictionary<int, Node>();
-                foreach (ProcEntry processSnapshot in processEntriesById.Values)
+                Dictionary<int, Node> dictionary2 = new Dictionary<int, Node>();
+                foreach (ProcEntry value4 in dictionary.Values)
                 {
-                    if (lastLive.ContainsKey(processSnapshot.Pid))
+                    if (lastLive.ContainsKey(value4.Pid))
                     {
                         Node node;
-                        if (!Observe(new Identity(processSnapshot.Session, processSnapshot.Pid, processSnapshot.Creation), processSnapshot.Path, processSnapshot.ParentPid, nowMs, out node))
+                        if (!Observe(new Identity(value4.Session, value4.Pid, value4.Creation), value4.Path, value4.ParentPid, nowMs, out node))
                         {
                             ClearLocked();
                             return GameFamilyEvidence.Empty;
                         }
                         if (node != null && !node.Poisoned)
                         {
-                            nodesById.Add(processSnapshot.Pid, node);
+                            dictionary2.Add(value4.Pid, node);
                         }
                     }
                 }
-                foreach (Node childNode in nodesById.Values)
+                foreach (Node value5 in dictionary2.Values)
                 {
-                    Node currentNode;
-                    ProcEntry processEntry;
-                    if (childNode.ParentPid <= 4 || pids.Contains(childNode.ParentPid))
+                    Node value;
+                    ProcEntry value2;
+                    if (value5.ParentPid <= 4 || hashSet.Contains(value5.ParentPid))
                     {
-                        if (pids.Contains(childNode.ParentPid))
+                        if (hashSet.Contains(value5.ParentPid))
                         {
-                            BreakParent(childNode);
+                            BreakParent(value5);
                         }
                     }
-                    else if (nodesById.TryGetValue(childNode.ParentPid, out currentNode))
+                    else if (dictionary2.TryGetValue(value5.ParentPid, out value))
                     {
-                        if (currentNode.Key.Creation < childNode.Key.Creation)
+                        if (value.Key.Creation < value5.Key.Creation)
                         {
-                            Link(childNode, currentNode.Key);
+                            Link(value5, value.Key);
                         }
                     }
-                    else if (childNode.HasParent && processEntriesById.TryGetValue(childNode.ParentPid, out processEntry) && processEntry.Session == ownerSession && processEntry.Creation > 0 && processEntry.Creation <= childNode.Key.Creation && processEntry.Creation != childNode.Parent.Creation)
+                    else if (value5.HasParent && dictionary.TryGetValue(value5.ParentPid, out value2) && value2.Session == ownerSession && value2.Creation > 0 && value2.Creation <= value5.Key.Creation && value2.Creation != value5.Parent.Creation)
                     {
-                        BreakParent(childNode);
+                        BreakParent(value5);
                     }
                 }
                 Prune(nowMs);
-                return BuildEvidence(profiles, nodesById);
+                return BuildEvidence(profiles, dictionary2);
             }
         }
 
@@ -206,71 +211,72 @@ namespace PaviseApp
                     return;
                 }
                 Prune(nowMs);
-                Dictionary<int, ProcessChange> processChangesById = new Dictionary<int, ProcessChange>();
-                HashSet<int> pids = new HashSet<int>();
-                foreach (ProcessChange processChange in batch.Changes)
+                Dictionary<int, ProcessChange> dictionary = new Dictionary<int, ProcessChange>();
+                HashSet<int> hashSet = new HashSet<int>();
+                ProcessChange[] changes = batch.Changes;
+                foreach (ProcessChange processChange in changes)
                 {
                     if (processChange != null && processChange.Kind == ProcessChangeKind.Started && processChange.Pid > 4)
                     {
-                        if (processChangesById.ContainsKey(processChange.Pid))
+                        if (dictionary.ContainsKey(processChange.Pid))
                         {
-                            pids.Add(processChange.Pid);
+                            hashSet.Add(processChange.Pid);
                         }
                         else
                         {
-                            processChangesById.Add(processChange.Pid, processChange);
+                            dictionary.Add(processChange.Pid, processChange);
                         }
                     }
                 }
-                PoisonPids(pids);
-                Dictionary<int, Node> nodesById = new Dictionary<int, Node>();
-                foreach (ProcessChange processSnapshot in processChangesById.Values)
+                PoisonPids(hashSet);
+                Dictionary<int, Node> dictionary2 = new Dictionary<int, Node>();
+                foreach (ProcessChange value4 in dictionary.Values)
                 {
-                    if (!pids.Contains(processSnapshot.Pid) && Usable(processSnapshot, ownerSession))
+                    if (!hashSet.Contains(value4.Pid) && Usable(value4, ownerSession))
                     {
                         Node node;
-                        if (!Observe(new Identity(processSnapshot.Session, processSnapshot.Pid, processSnapshot.Creation), processSnapshot.Path, processSnapshot.ParentPid, nowMs, out node))
+                        if (!Observe(new Identity(value4.Session, value4.Pid, value4.Creation), value4.Path, value4.ParentPid, nowMs, out node))
                         {
                             ClearLocked();
                             return;
                         }
                         if (node != null && !node.Poisoned)
                         {
-                            nodesById.Add(processSnapshot.Pid, node);
+                            dictionary2.Add(value4.Pid, node);
                         }
                     }
                 }
-                foreach (KeyValuePair<int, Node> nodeEntry in nodesById)
+                foreach (KeyValuePair<int, Node> item in dictionary2)
                 {
-                    Node currentNode = nodeEntry.Value;
-                    ProcessChange currentProcessChange = processChangesById[nodeEntry.Key];
-                    if (currentNode.ParentPid <= 4 || pids.Contains(currentNode.ParentPid))
+                    Node value = item.Value;
+                    ProcessChange processChange2 = dictionary[item.Key];
+                    if (value.ParentPid <= 4 || hashSet.Contains(value.ParentPid))
                     {
-                        if (pids.Contains(currentNode.ParentPid))
+                        if (hashSet.Contains(value.ParentPid))
                         {
-                            BreakParent(currentNode);
+                            BreakParent(value);
                         }
                         continue;
                     }
-                    Node candidateNode;
-                    nodesById.TryGetValue(currentNode.ParentPid, out candidateNode);
-                    if (currentProcessChange.ParentCreation > 0)
+                    Node value2;
+                    dictionary2.TryGetValue(value.ParentPid, out value2);
+                    if (processChange2.ParentCreation > 0)
                     {
-                        Identity identity = new Identity(ownerSession, currentNode.ParentPid, currentProcessChange.ParentCreation);
-                        bool olderParent = candidateNode != null && candidateNode.Key.Creation <= currentNode.Key.Creation && !candidateNode.Key.Equals(identity);
-                        Identity currentLastLive;
-                        if (olderParent | (lastLive.TryGetValue(currentNode.ParentPid, out currentLastLive) && currentLastLive.Creation <= currentNode.Key.Creation && !currentLastLive.Equals(identity)))
+                        Identity identity = new Identity(ownerSession, value.ParentPid, processChange2.ParentCreation);
+                        bool olderParent = value2 != null && value2.Key.Creation <= value.Key.Creation && !value2.Key.Equals(identity);
+                        Identity value3;
+                        if (olderParent | (lastLive.TryGetValue(value.ParentPid, out value3) && value3.Creation <= value.Key.Creation && !value3.Equals(identity)))
                         {
-                            BreakParent(currentNode);
+                            BreakParent(value);
                         }
                         else
                         {
-                            Link(currentNode, identity);
+                            Link(value, identity);
                         }
                     }
-                    else if (currentProcessChange.ParentCreation == 0 && candidateNode != null)
+                    else if (processChange2.ParentCreation == 0 && value2 != null)
                     {
-                        Link(currentNode, candidateNode.Key);
+                        Link(value, value2.Key);
                     }
                 }
                 Prune(nowMs);
@@ -365,29 +371,29 @@ namespace PaviseApp
 
         private void Prune(long nowMs)
         {
-            HashSet<Identity> identitiesSet = new HashSet<Identity>();
-            foreach (Identity liveIdentity in lastLive.Values)
+            HashSet<Identity> hashSet = new HashSet<Identity>();
+            foreach (Identity value in lastLive.Values)
             {
-                KeepChain(liveIdentity, identitiesSet);
+                KeepChain(value, hashSet);
             }
-            foreach (Node retainedNode in nodes.Values)
+            foreach (Node value2 in nodes.Values)
             {
-                if (retainedNode.KeepUntilMs >= nowMs)
+                if (value2.KeepUntilMs >= nowMs)
                 {
-                    KeepChain(retainedNode.Key, identitiesSet);
+                    KeepChain(value2.Key, hashSet);
                 }
             }
-            List<Identity> keys = new List<Identity>();
+            List<Identity> list = new List<Identity>();
             foreach (Identity key in nodes.Keys)
             {
-                if (!identitiesSet.Contains(key))
+                if (!hashSet.Contains(key))
                 {
-                    keys.Add(key);
+                    list.Add(key);
                 }
             }
-            foreach (Identity currentKey in keys)
+            foreach (Identity item in list)
             {
-                nodes.Remove(currentKey);
+                nodes.Remove(item);
             }
         }
 
@@ -411,58 +417,58 @@ namespace PaviseApp
 
         private GameFamilyEvidence BuildEvidence(IList<GameProfile> configured, Dictionary<int, Node> live)
         {
-            Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>> dictionariesById = new Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>>();
+            Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>> dictionary = new Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>>();
             int evidenceValue = 0;
             int evidenceValue2 = 0;
-            foreach (GameProfile currentConfigured in configured)
+            foreach (GameProfile item in configured)
             {
-                if (currentConfigured == null || string.IsNullOrEmpty(currentConfigured.Id))
+                if (item == null || string.IsNullOrEmpty(item.Id))
                 {
                     continue;
                 }
-                GameFamilyProfileKey key = new GameFamilyProfileKey(currentConfigured);
-                if (dictionariesById.ContainsKey(key))
+                GameFamilyProfileKey key = new GameFamilyProfileKey(item);
+                if (dictionary.ContainsKey(key))
                 {
                     continue;
                 }
                 string rootPrefix = key.CreateRootPrefix();
-                Dictionary<int, GameFamilyEvidence.Member> membersById = new Dictionary<int, GameFamilyEvidence.Member>();
-                foreach (Node rootNode in live.Values)
+                Dictionary<int, GameFamilyEvidence.Member> dictionary2 = new Dictionary<int, GameFamilyEvidence.Member>();
+                foreach (Node value2 in live.Values)
                 {
-                    Node node = rootNode;
+                    Node value = value2;
                     for (int i = 0; i <= 24; i++)
                     {
                         if (++evidenceValue > 1048576)
                         {
                             return GameFamilyEvidence.Empty;
                         }
-                        if (node.Poisoned)
+                        if (value.Poisoned)
                         {
                             break;
                         }
-                        if (key.Owns(node.Path, rootPrefix))
+                        if (key.Owns(value.Path, rootPrefix))
                         {
                             if (++evidenceValue2 > 16384)
                             {
                                 return GameFamilyEvidence.Empty;
                             }
-                            membersById.Add(rootNode.Key.Pid, new GameFamilyEvidence.Member(rootNode.Key.Creation, rootNode.Path));
+                            dictionary2.Add(value2.Key.Pid, new GameFamilyEvidence.Member(value2.Key.Creation, value2.Path));
                             break;
                         }
-                        if (!node.HasParent || !nodes.TryGetValue(node.Parent, out node))
+                        if (!value.HasParent || !nodes.TryGetValue(value.Parent, out value))
                         {
                             break;
                         }
                     }
                 }
-                if (membersById.Count > 0)
+                if (dictionary2.Count > 0)
                 {
-                    dictionariesById.Add(key, membersById);
+                    dictionary.Add(key, dictionary2);
                 }
             }
-            if (dictionariesById.Count != 0)
+            if (dictionary.Count != 0)
             {
-                return new GameFamilyEvidence(dictionariesById);
+                return new GameFamilyEvidence(dictionary);
             }
             return GameFamilyEvidence.Empty;
         }

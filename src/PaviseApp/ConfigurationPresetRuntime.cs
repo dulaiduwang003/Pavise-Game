@@ -96,7 +96,7 @@ namespace PaviseApp
             lock (stateGate)
             {
                 if (!IdentityObservationCurrent(session, generation, observationEpoch)) { Volatile.Write(ref refreshing, 0); return; }
-                // 缓存身份必须对应已核验的有效配置，预算耗尽后也不例外。
+                // 缓存身份始终对应已核验的有效配置，包括预算耗尽状态。
                 if (currentConfiguration != savedConfiguration) { current = null; currentConfiguration = null; }
                 if (!identityPhases.TryGetValue(savedConfiguration, out phase))
                     identityPhases[savedConfiguration] = phase = new IdentityRefreshPhase { Session = session, Configuration = savedConfiguration };
@@ -110,12 +110,12 @@ namespace PaviseApp
                 {
                     try
                     {
-                        ConfigurationPresetKind? currentPreset = coordinator.CurrentPreset();
+                        ConfigurationPresetKind? value = coordinator.CurrentPreset();
                         lock (stateGate)
                         {
                             if (object.ReferenceEquals(phase, identityPhase) && IdentityObservationCurrent(session, generation, observationEpoch))
                             {
-                                current = currentPreset;
+                                current = value;
                                 currentConfiguration = phase.Configuration;
                                 phase.Failures = 0; // 完整确认目标不存在，也属于健康观测。
                                 Volatile.Write(ref observedGeneration, generation);
@@ -178,7 +178,7 @@ namespace PaviseApp
                                 Detail = PerformancePolicy.Text("对局、退出或其他配置工作正在进行，未应用预设", "A match, shutdown or configuration operation is active; preset not applied") });
                         }
                         if (revoked()) result.Cancelled = true;
-                        bool verified = result.Failed == 0 && !result.Cancelled && result.Identity != null;
+                        bool verified = result.Failed == 0 && result.Pending == 0 && !result.Cancelled && result.Identity != null;
                         string configuration = verified ? (readPhaseSnapshot() ?? "?") : null;
                         lock (stateGate)
                         {
@@ -200,13 +200,33 @@ namespace PaviseApp
                         // 现有子事务完成后才释放忙碌状态；取消不能丢弃进行中的系统写入。
                         Volatile.Write(ref busy, 0); Volatile.Write(ref globalBusy, 0);
                     }
+                    WriteResult(result);
                     if (completed != null) try { completed(result); } catch { }
                 })) return true;
             }
             catch { }
             Volatile.Write(ref busy, 0); Volatile.Write(ref globalBusy, 0); return false;
         }
-        // AI 导出只读取已保存设置，不探测 GPU 或其他硬件能力。
+        // 每次应用记录一次汇总及未生效项，包含因不适用而撤回的设置。
+        private static void WriteResult(ConfigurationPresetResult result)
+        {
+            if (result == null) return;
+            try
+            {
+                Logger.Log("一键配置 " + result.Summary);
+                string preserved = PerformancePolicy.Text("保留当前选择", "Current selection preserved");
+                foreach (ConfigurationPresetItemResult item in result.Items)
+                {
+                    if (item == null || item.Status == ConfigurationPresetItemStatus.Applied || item.Status == ConfigurationPresetItemStatus.Unchanged) continue;
+                    if (item.Status == ConfigurationPresetItemStatus.Skipped && item.Detail == preserved) continue;
+                    Logger.Log("一键配置 " + (item.Status == ConfigurationPresetItemStatus.Failed ? "未能应用 "
+                        : item.Status == ConfigurationPresetItemStatus.Pending ? "待验证 " : "已跳过 ")
+                        + (item.Title ?? "") + (string.IsNullOrEmpty(item.Key) ? "" : "(" + item.Key + ")") + " | " + (item.Detail ?? ""));
+                }
+            }
+            catch { }
+        }
+        // 导出仅取已保存设置，不触发硬件探测。
         internal static ConfigurationPresetKind? CurrentFromSettings()
         { try { return new ConfigurationPresetCoordinator(new ConfigurationPresetBackend(null)).CurrentPreset(); } catch { return null; } }
     }

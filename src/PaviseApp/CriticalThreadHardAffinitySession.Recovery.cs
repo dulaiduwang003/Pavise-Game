@@ -49,13 +49,22 @@ namespace PaviseApp
                             verified.Clear();
                         }
                         gate.RequireRecovery();
-                        Reload();
-                        HardThreadMachine hardThreadMachine = native.ReadMachine();
-                        if (hardThreadMachine.Read == HardThreadRead.Unknown)
+                        if (!RestoreGameThreadControlBeforeAffinity())
                         {
-                            throw new InvalidOperationException("original process identity is unknown");
+                            Status = HardThreadStatus.RecoveryPending;
+                            Detail = "统一线程属性恢复尚未结清，保留原守护与亲和性收据";
+                            return false;
                         }
-                        if (hardThreadMachine.Read == HardThreadRead.Gone) SettleExitedProcess();
+                        Reload();
+                        HardThreadMachine hardThreadMachine = null;
+                        // 优先级已独立结清且没有亲和性恢复义务时，不用选核拓扑阻止空账本关闭。
+                        if (Pending())
+                        {
+                            hardThreadMachine = native.ReadMachine();
+                            if (hardThreadMachine.Read == HardThreadRead.Unknown)
+                                throw new InvalidOperationException("original process identity is unknown");
+                            if (hardThreadMachine.Read == HardThreadRead.Gone) SettleExitedProcess();
+                        }
                         for (int rowsIndex = journal.Rows.Count - 1; rowsIndex >= 0; rowsIndex--)
                         {
                             HardThreadReceipt hardThreadReceipt = journal.Rows[rowsIndex];
@@ -143,7 +152,8 @@ namespace PaviseApp
                         }
                         bool settled = !Pending();
                         Status = (settled ? HardThreadStatus.Stopped : HardThreadStatus.RecoveryPending);
-                        Detail = (settled ? "original owned changes restored or exact actors exited" : "recovery pending; unknown previous or external conflict is not overwritten");
+                        Detail = settled ? "原归属写入已恢复，或原目标已退出"
+                            : "恢复尚未结清；原值未知或外部冲突时保留现场；" + PendingRecoveryFacts();
                         if (resetOperation)
                         {
                             lastFailureKind = ((!settled) ? HardThreadFailureKind.RecoveryPending : HardThreadFailureKind.None);
@@ -187,6 +197,24 @@ namespace PaviseApp
             }
         }
 
+        private string PendingRecoveryFacts()
+        {
+            var facts = new List<string>();
+            int pending = 0;
+            // 只展示已保存的恢复证据，不为诊断额外查询目标，也不扩大恢复次数。
+            foreach (HardThreadReceipt row in journal.Rows)
+            {
+                if (row.Terminal) continue;
+                pending++;
+                if (facts.Count >= 3) continue;
+                facts.Add("线程=" + row.Thread.Tid + "/" + row.Thread.Creation + " 阶段=" + row.Phase
+                    + " 采集原值=0x" + row.Captured.ToString("X") + " 本方目标=0x" + row.Applied.ToString("X")
+                    + " 写前原值=" + (row.PreviousKnown ? row.PreviousGroup + "/0x" + row.Previous.ToString("X") : "未知")
+                    + " 恢复写前值=" + (row.RestorePreviousKnown ? row.RestorePreviousGroup + "/0x" + row.RestorePrevious.ToString("X") : "未确认"));
+            }
+            return "待恢复=" + pending + "；" + string.Join(" | ", facts.ToArray());
+        }
+
         // 只观察已停用守护退出，不消耗清理尝试；仍需原生 Dispose 工作时返回 false。
 
         internal bool RefreshGuardianClosure()
@@ -215,6 +243,12 @@ namespace PaviseApp
                 {
                     return;
                 }
+                if (!RestoreGameThreadControlBeforeAffinity())
+                {
+                    Status = HardThreadStatus.RecoveryPending;
+                    Detail = "统一线程恢复尚未结清，禁止释放独立守护与原权限";
+                    throw new InvalidOperationException(Detail);
+                }
                 disposed = true;
                 lock (factsGate)
                 {
@@ -225,7 +259,7 @@ namespace PaviseApp
                     Status = HardThreadStatus.RecoveryPending;
                     Detail = "unrestored original ledger retained on disposal";
                 }
-                List<Exception> exceptions = new List<Exception>();
+                List<Exception> list = new List<Exception>();
                 if (!nativeClosed)
                 {
                     try
@@ -235,7 +269,7 @@ namespace PaviseApp
                     }
                     catch (Exception item)
                     {
-                        exceptions.Add(item);
+                        list.Add(item);
                     }
                 }
                 if (!storeClosed)
@@ -247,7 +281,7 @@ namespace PaviseApp
                     }
                     catch (Exception item2)
                     {
-                        exceptions.Add(item2);
+                        list.Add(item2);
                     }
                 }
                 if (guardian == null)
@@ -263,15 +297,15 @@ namespace PaviseApp
                     }
                     catch (Exception item3)
                     {
-                        exceptions.Add(item3);
+                        list.Add(item3);
                     }
                 }
                 resourcesClosed = nativeClosed && storeClosed && guardianClosed;
-                if (exceptions.Count <= 0)
+                if (list.Count <= 0)
                 {
                     return;
                 }
-                throw new AggregateException("original hard affinity resource closure is incomplete", exceptions);
+                throw new AggregateException("original hard affinity resource closure is incomplete", list);
             }
         }
 

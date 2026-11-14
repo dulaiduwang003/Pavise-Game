@@ -9,6 +9,8 @@ namespace PaviseApp
     {
         internal PerformanceLifetime Lifetime { get; set; }
 
+        internal PerformanceSectionKind? SectionKind { get; set; }
+
         internal int FeatureCount;
 
         internal int SelectedCount;
@@ -25,7 +27,7 @@ namespace PaviseApp
         {
             get
             {
-                return LifetimeScope(Lifetime);
+                return SectionKind.HasValue ? "" : LifetimeScope(Lifetime);
             }
         }
 
@@ -37,22 +39,45 @@ namespace PaviseApp
             }
         }
 
+        internal static string SectionTitle(PerformanceSectionKind section)
+        {
+            return section == PerformanceSectionKind.Restart
+                ? PerformancePolicy.Text("需重启电脑", "PC restart required")
+                : PerformancePolicy.Text("普通功能", "General features");
+        }
+
         internal static string LifetimeTitle(PerformanceLifetime lifetime)
         {
-            if (lifetime == PerformanceLifetime.Session)
+            switch (lifetime)
             {
-                return PerformancePolicy.Text("对局生效", "In-match");
+            case PerformanceLifetime.Preparation:
+                return PerformancePolicy.Text("游戏前准备", "Before the match");
+            case PerformanceLifetime.Entry:
+                return PerformancePolicy.Text("入局执行", "On match entry");
+            case PerformanceLifetime.Session:
+                return PerformancePolicy.Text("游戏自动调整", "Automatic game tuning");
+            case PerformanceLifetime.Protection:
+                return PerformancePolicy.Text("保护期间保持", "While protection is on");
+            default:
+                return PerformancePolicy.Text("长期设置", "Persistent settings");
             }
-            return PerformancePolicy.Text("长期生效", "Persistent");
         }
 
         internal static string LifetimeScope(PerformanceLifetime lifetime)
         {
-            if (lifetime == PerformanceLifetime.Session)
+            switch (lifetime)
             {
-                return PerformancePolicy.Text("退局自动还原", "Restored after the match");
+            case PerformanceLifetime.Preparation:
+                return PerformancePolicy.Text("入局后停止", "Stops on match entry");
+            case PerformanceLifetime.Entry:
+                return PerformancePolicy.Text("入局时最多尝试一次", "At most once on match entry");
+            case PerformanceLifetime.Session:
+                return PerformancePolicy.Text("退局时恢复", "Restored after the match");
+            case PerformanceLifetime.Protection:
+                return PerformancePolicy.Text("关闭保护或退出时恢复", "Restored when protection stops or Pavise exits");
+            default:
+                return PerformancePolicy.Text("退局保留配置", "Configuration kept after the match");
             }
-            return PerformancePolicy.Text("退局不还原", "Kept after the match");
         }
 
         internal PerformanceSectionHeading()
@@ -69,6 +94,17 @@ namespace PaviseApp
             int scaledDimension = Theme.S(8);
             int scaledDimension2 = Theme.S(8);
             int headingHeight = Theme.S(22);
+            if (ScopeText.Length == 0)
+            {
+                int countWidth = Math.Min(inner, TextRenderer.MeasureText(CountText, Theme.UI(8.5f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(4));
+                bool inlineCount = inner >= countWidth + scaledDimension + Theme.S(180);
+                int titleWidth = Math.Max(1, inlineCount ? inner - countWidth - scaledDimension : inner);
+                int titleHeight = Math.Max(headingHeight, TextRenderer.MeasureText(Text, Theme.UI(10f, true), new Size(titleWidth, int.MaxValue), TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height);
+                TitleBounds = new Rectangle(pad, scaledDimension2, titleWidth, titleHeight);
+                ScopeBounds = Rectangle.Empty;
+                countBounds = new Rectangle(inlineCount ? pad + inner - countWidth : pad, inlineCount ? scaledDimension2 : TitleBounds.Bottom + Theme.S(4), countWidth, headingHeight);
+                return Math.Max(TitleBounds.Bottom, countBounds.Bottom) + Theme.S(8);
+            }
             int widthOffset = TextRenderer.MeasureText(ScopeText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(20);
             int widthOffset2 = TextRenderer.MeasureText(CountText, Theme.UI(8.5f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(4);
             bool fitsSummary = inner >= widthOffset + widthOffset2 + scaledDimension * 2 + Theme.S(180);
@@ -103,14 +139,17 @@ namespace PaviseApp
             }
             TextRenderer.DrawText(graphics, Text, Theme.UI(10f, true), TitleBounds, Theme.Accent, TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
             Color color = Theme.Dim;
-            using (GraphicsPath path = Theme.Rounded(ScopeBounds, Theme.S(5)))
+            if (!ScopeBounds.IsEmpty)
             {
-                using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Bg, color, Theme.LightMode ? 0.08f : 0.12f)))
+                using (GraphicsPath path = Theme.Rounded(ScopeBounds, Theme.S(5)))
                 {
-                    graphics.FillPath(brush, path);
+                    using (SolidBrush brush = new SolidBrush(Col.Lerp(Theme.Bg, color, Theme.LightMode ? 0.08f : 0.12f)))
+                    {
+                        graphics.FillPath(brush, path);
+                    }
                 }
+                TextRenderer.DrawText(graphics, ScopeText, Theme.UI(8f, false), ScopeBounds, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
-            TextRenderer.DrawText(graphics, ScopeText, Theme.UI(8f, false), ScopeBounds, color, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(graphics, CountText, Theme.UI(8.5f, false), countBounds, (AttentionCount > 0) ? Theme.Warning : Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
     }

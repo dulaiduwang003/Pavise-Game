@@ -130,6 +130,10 @@ namespace PaviseApp
 
         internal const int BurstIntervalMs = 700;
 
+        private const uint PDH_FMT_DOUBLE = 512u;
+
+        private const uint PDH_MORE_DATA = 2147485650u;
+
         private static bool IsUnavailableObservation(uint status)
         {
             // PDH_NO_DATA 也可能表示实例尚未出现；它与 PDH_CSTATUS_NO_INSTANCE 均不是 GPU 活动证据，也不算致命读取失败。
@@ -171,7 +175,8 @@ namespace PaviseApp
                     return null;
                 }
                 IntPtr counter;
-                pdhOpenQueryWResult = PdhAddEnglishCounterW(query, "\\GPU Engine(*engtype_3D)\\Utilization Percentage", IntPtr.Zero, out counter);
+                // 读取全部引擎再按类型筛选：部分驱动把 DX12 渲染队列记在 Graphics_1／Compute_* 上，只看 3D 引擎会把正在渲染的游戏读成 0%。
+                pdhOpenQueryWResult = PdhAddEnglishCounterW(query, "\\GPU Engine(*)\\Utilization Percentage", IntPtr.Zero, out counter);
                 if (pdhOpenQueryWResult != 0)
                 {
                     if (diagnostics != null)
@@ -193,7 +198,7 @@ namespace PaviseApp
                     }
                     return null;
                 }
-                Dictionary<int, double> aggregatedLoadByPid = null;
+                Dictionary<int, double> dictionary = null;
                 int processedCount = 0;
                 bool failedRound = false;
                 for (int i = 0; i < rounds; i++)
@@ -207,7 +212,7 @@ namespace PaviseApp
                     if (IsUnavailableObservation(pdhOpenQueryWResult))
                     {
                         if (diagnostics != null) diagnostics.Unavailable("PdhCollectQueryData.sample", pdhOpenQueryWResult);
-                        if (aggregatedLoadByPid == null || sustained) aggregatedLoadByPid = new Dictionary<int, double>();
+                        if (dictionary == null || sustained) dictionary = new Dictionary<int, double>();
                         continue;
                     }
                     if (pdhOpenQueryWResult != 0)
@@ -223,8 +228,8 @@ namespace PaviseApp
                     {
                         diagnostics.CollectedRounds++;
                     }
-                    Dictionary<int, double> measuredValuesById = ReadByPid(counter, filterAdapter, luidHigh, luidLow, diagnostics);
-                    if (measuredValuesById == null)
+                    Dictionary<int, double> dictionary2 = ReadByPid(counter, filterAdapter, luidHigh, luidLow, diagnostics);
+                    if (dictionary2 == null)
                     {
                         failedRound = true;
                         continue;
@@ -234,39 +239,39 @@ namespace PaviseApp
                     {
                         diagnostics.ValidRounds++;
                     }
-                    if (aggregatedLoadByPid == null)
+                    if (dictionary == null)
                     {
-                        aggregatedLoadByPid = measuredValuesById;
+                        dictionary = dictionary2;
                         continue;
                     }
                     if (sustained)
                     {
-                        Dictionary<int, double> currentMeasuredValuesById = new Dictionary<int, double>();
-                        foreach (KeyValuePair<int, double> loadEntry in aggregatedLoadByPid)
+                        Dictionary<int, double> dictionary3 = new Dictionary<int, double>();
+                        foreach (KeyValuePair<int, double> item in dictionary)
                         {
-                            double currentLoad;
-                            if (measuredValuesById.TryGetValue(loadEntry.Key, out currentLoad))
+                            double value;
+                            if (dictionary2.TryGetValue(item.Key, out value))
                             {
-                                currentMeasuredValuesById[loadEntry.Key] = ((currentLoad < loadEntry.Value) ? currentLoad : loadEntry.Value);
+                                dictionary3[item.Key] = ((value < item.Value) ? value : item.Value);
                             }
                         }
-                        aggregatedLoadByPid = currentMeasuredValuesById;
+                        dictionary = dictionary3;
                         continue;
                     }
-                    foreach (KeyValuePair<int, double> measuredValueEntry in measuredValuesById)
+                    foreach (KeyValuePair<int, double> item2 in dictionary2)
                     {
-                        double aggregatedLoad;
-                        if (!aggregatedLoadByPid.TryGetValue(measuredValueEntry.Key, out aggregatedLoad) || measuredValueEntry.Value > aggregatedLoad)
+                        double value2;
+                        if (!dictionary.TryGetValue(item2.Key, out value2) || item2.Value > value2)
                         {
-                            aggregatedLoadByPid[measuredValueEntry.Key] = measuredValueEntry.Value;
+                            dictionary[item2.Key] = item2.Value;
                         }
                     }
                 }
                 if (sustained && processedCount < 2)
                 {
-                    return aggregatedLoadByPid == null || failedRound ? null : new Dictionary<int, double>();
+                    return dictionary == null || failedRound ? null : new Dictionary<int, double>();
                 }
-                return aggregatedLoadByPid;
+                return dictionary;
             }
             catch (Exception ex)
             {
@@ -310,10 +315,10 @@ namespace PaviseApp
                 }
                 return null;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bufferSize);
+            IntPtr intPtr = Marshal.AllocHGlobal((int)bufferSize);
             try
             {
-                pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, nativeBuffer);
+                pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
                 if (IsUnavailableObservation(pdhGetFormattedCounterArrayWResult))
                 {
                     if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.data", pdhGetFormattedCounterArrayWResult);
@@ -327,12 +332,20 @@ namespace PaviseApp
                     }
                     return null;
                 }
-                Dictionary<int, double> gpuLoadByPid = new Dictionary<int, double>();
+                // 同一进程先按引擎类型累加（多适配器、多个同类引擎），再取最忙的类型，口径与任务管理器的进程 GPU 占用一致。
+                Dictionary<int, Dictionary<string, double>> byEngine = new Dictionary<int, Dictionary<string, double>>();
                 bool observed = itemCount == 0, failedInstance = false;
                 int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
                 for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
                 {
-                    PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(nativeBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
+                    PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
+                    string instanceName = Marshal.PtrToStringUni(pdhFmtCounterValueItem.Name);
+                    string engineType = EngineType(instanceName);
+                    // 视频编解码、复制、覆盖层等引擎不代表画面渲染，既不计入占用，也不影响本轮读取是否成功。
+                    if (!IsRenderEngine(engineType))
+                    {
+                        continue;
+                    }
                     if (IsUnavailableObservation(pdhFmtCounterValueItem.Value.CStatus))
                     {
                         observed = true;
@@ -341,7 +354,6 @@ namespace PaviseApp
                     }
                     if (pdhFmtCounterValueItem.Value.CStatus <= 1) observed = true;
                     else failedInstance = true;
-                    string instanceName = Marshal.PtrToStringUni(pdhFmtCounterValueItem.Name);
                     int pid = ParsePid(instanceName);
                     if (diagnostics != null)
                     {
@@ -379,18 +391,74 @@ namespace PaviseApp
                         double doubleValue = pdhFmtCounterValueItem.Value.DoubleValue;
                         if (!(doubleValue < 0.0))
                         {
-                            double accumulatedLoad;
-                            gpuLoadByPid.TryGetValue(pid, out accumulatedLoad);
-                            gpuLoadByPid[pid] = accumulatedLoad + doubleValue;
+                            Dictionary<string, double> engines;
+                            if (!byEngine.TryGetValue(pid, out engines))
+                            {
+                                engines = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                                byEngine[pid] = engines;
+                            }
+                            double value;
+                            engines.TryGetValue(engineType, out value);
+                            engines[engineType] = value + doubleValue;
                         }
                     }
                 }
-                return failedInstance && !observed ? null : gpuLoadByPid;
+                if (failedInstance && !observed)
+                {
+                    return null;
+                }
+                Dictionary<int, double> dictionary = new Dictionary<int, double>();
+                foreach (KeyValuePair<int, Dictionary<string, double>> process in byEngine)
+                {
+                    string busiestEngine = null;
+                    double busiest = 0.0;
+                    foreach (KeyValuePair<string, double> engine in process.Value)
+                    {
+                        if (busiestEngine == null || engine.Value > busiest)
+                        {
+                            busiestEngine = engine.Key;
+                            busiest = engine.Value;
+                        }
+                    }
+                    dictionary[process.Key] = busiest;
+                    if (diagnostics != null && process.Key == diagnostics.TargetPid)
+                    {
+                        diagnostics.TargetEngine = busiestEngine;
+                    }
+                }
+                return dictionary;
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
+        }
+
+        internal static string EngineType(string instanceName)
+        {
+            if (string.IsNullOrEmpty(instanceName))
+            {
+                return null;
+            }
+            int matchIndex = instanceName.IndexOf("_engtype_", StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0)
+            {
+                return null;
+            }
+            string engineType = instanceName.Substring(matchIndex + "_engtype_".Length);
+            return engineType.Length == 0 ? null : engineType;
+        }
+
+        // 只认 3D、Graphics_*、Compute_*：这些是游戏提交画面与计算的队列；Cuda、视频、复制和安全引擎不算渲染证据。
+        internal static bool IsRenderEngine(string engineType)
+        {
+            if (string.IsNullOrEmpty(engineType))
+            {
+                return false;
+            }
+            return string.Equals(engineType, "3D", StringComparison.OrdinalIgnoreCase)
+                || engineType.StartsWith("Graphics", StringComparison.OrdinalIgnoreCase)
+                || engineType.StartsWith("Compute", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static int ParsePid(string instanceName)
@@ -447,12 +515,12 @@ namespace PaviseApp
                 return false;
             }
             luidHigh = (int)luidLow;
-            uint parsedLuidLow;
-            if (!TryParseHex(toLowerInvariantResult.Substring(matchIndex2 + 1, matchIndex3 - matchIndex2 - 1), out parsedLuidLow))
+            uint value;
+            if (!TryParseHex(toLowerInvariantResult.Substring(matchIndex2 + 1, matchIndex3 - matchIndex2 - 1), out value))
             {
                 return false;
             }
-            luidLow = parsedLuidLow;
+            luidLow = value;
             int matchIndex4 = toLowerInvariantResult.IndexOf("_phys_", matchIndex3, StringComparison.Ordinal);
             if (matchIndex4 < 0)
             {
@@ -485,8 +553,9 @@ namespace PaviseApp
             {
                 return false;
             }
-            uint parsedHexValue = 0u;
-            foreach (char c in substringResult)
+            uint numericValue = 0u;
+            string message = substringResult;
+            foreach (char c in message)
             {
                 int remainingC;
                 if (c >= '0' && c <= '9')
@@ -501,9 +570,9 @@ namespace PaviseApp
                     }
                     remainingC = c - 97 + 10;
                 }
-                parsedHexValue = (parsedHexValue << 4) | (uint)remainingC;
+                numericValue = (numericValue << 4) | (uint)remainingC;
             }
-            value = parsedHexValue;
+            value = numericValue;
             return true;
         }
 
@@ -564,18 +633,18 @@ namespace PaviseApp
             {
                 return null;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bufferSize);
+            IntPtr intPtr = Marshal.AllocHGlobal((int)bufferSize);
             try
             {
-                if (PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, nativeBuffer) != 0)
+                if (PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr) != 0)
                 {
                     return null;
                 }
-                Dictionary<long, RenderAdapter> renderAdaptersByKey = new Dictionary<long, RenderAdapter>();
+                Dictionary<long, RenderAdapter> dictionary = new Dictionary<long, RenderAdapter>();
                 int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
                 for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
                 {
-                    PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(nativeBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
+                    PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
                     if (pdhFmtCounterValueItem.Value.CStatus > 1)
                     {
                         continue;
@@ -596,46 +665,46 @@ namespace PaviseApp
                             utilValue = 0.0;
                         }
                         long key = ((long)luidHigh << 32) | luidLow;
-                        RenderAdapter currentRenderAdapter;
-                        if (!renderAdaptersByKey.TryGetValue(key, out currentRenderAdapter))
+                        RenderAdapter value;
+                        if (!dictionary.TryGetValue(key, out value))
                         {
                             RenderAdapter renderAdapter = new RenderAdapter();
                             renderAdapter.LuidHigh = luidHigh;
                             renderAdapter.LuidLow = luidLow;
                             renderAdapter.PhysIndex = phys;
-                            currentRenderAdapter = (renderAdaptersByKey[key] = renderAdapter);
+                            value = (dictionary[key] = renderAdapter);
                         }
-                        currentRenderAdapter.Util += utilValue;
+                        value.Util += utilValue;
                     }
                 }
-                if (renderAdaptersByKey.Count == 0)
+                if (dictionary.Count == 0)
                 {
                     return null;
                 }
-                RenderAdapter candidateRenderAdapter = null;
-                RenderAdapter resolvedRenderAdapter = null;
-                foreach (RenderAdapter adapter in renderAdaptersByKey.Values)
+                RenderAdapter renderAdapter3 = null;
+                RenderAdapter renderAdapter4 = null;
+                foreach (RenderAdapter value2 in dictionary.Values)
                 {
-                    if (candidateRenderAdapter == null || adapter.Util > candidateRenderAdapter.Util)
+                    if (renderAdapter3 == null || value2.Util > renderAdapter3.Util)
                     {
-                        resolvedRenderAdapter = candidateRenderAdapter;
-                        candidateRenderAdapter = adapter;
+                        renderAdapter4 = renderAdapter3;
+                        renderAdapter3 = value2;
                     }
-                    else if (resolvedRenderAdapter == null || adapter.Util > resolvedRenderAdapter.Util)
+                    else if (renderAdapter4 == null || value2.Util > renderAdapter4.Util)
                     {
-                        resolvedRenderAdapter = adapter;
+                        renderAdapter4 = value2;
                     }
                 }
                 if (strict)
                 {
-                    return UniqueActiveAdapter(renderAdaptersByKey.Values);
+                    return UniqueActiveAdapter(dictionary.Values);
                 }
-                candidateRenderAdapter.Ambiguous = resolvedRenderAdapter != null && resolvedRenderAdapter.Util >= 10.0;
-                return candidateRenderAdapter;
+                renderAdapter3.Ambiguous = renderAdapter4 != null && renderAdapter4.Util >= 10.0;
+                return renderAdapter3;
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 
@@ -648,9 +717,9 @@ namespace PaviseApp
                 {
                     if (renderAdapter != null)
                     {
-                        RenderAdapter currentRenderAdapter = new RenderAdapter();
-                        currentRenderAdapter.Ambiguous = true;
-                        return currentRenderAdapter;
+                        RenderAdapter renderAdapter2 = new RenderAdapter();
+                        renderAdapter2.Ambiguous = true;
+                        return renderAdapter2;
                     }
                     renderAdapter = adapter;
                 }

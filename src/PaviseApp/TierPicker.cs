@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -39,6 +40,30 @@ namespace PaviseApp
         public bool StrongSelection;
 
         internal bool PlainSegments;
+
+        private bool wrapChoices;
+
+        private Rectangle[] wrappedSegments;
+
+        private string[] wrappedLabels;
+
+        private int wrappedWidth, wrappedHeight;
+
+        private float wrappedScale;
+
+        private Font wrappedFont;
+
+        internal bool WrapChoices
+        {
+            get { return wrapChoices; }
+            set
+            {
+                if (wrapChoices == value) return;
+                wrapChoices = value;
+                wrappedSegments = null;
+                Invalidate();
+            }
+        }
 
         private int Count
         {
@@ -127,6 +152,11 @@ namespace PaviseApp
 
         private Rectangle SegmentRect(int index)
         {
+            if (WrapChoices)
+            {
+                WrappedHeightFor(Width);
+                return wrappedSegments[index];
+            }
             int count = Count;
             int scaledDimension = Theme.S(4);
             int countRatio = (base.Width - scaledDimension * (count - 1)) / count;
@@ -136,6 +166,70 @@ namespace PaviseApp
                 countRatio = base.Width - scaledIndex;
             }
             return new Rectangle(scaledIndex, 0, countRatio, base.Height);
+        }
+
+        internal int WrappedHeightFor(int width)
+        {
+            width = Math.Max(1, width);
+            Font font = DsType.Font(DsText.Label, true);
+            bool current = wrappedSegments != null && wrappedWidth == width && wrappedScale == Dpi.Scale
+                && wrappedFont == font && wrappedLabels != null && wrappedLabels.Length == Count;
+            if (current)
+            {
+                for (int i = 0; i < Count; i++)
+                    if (wrappedLabels[i] != ChoiceLabel(i)) { current = false; break; }
+            }
+            if (current) return wrappedHeight;
+            var segments = new List<Rectangle>();
+            int gap = Theme.S(4), horizontalPadding = Theme.S(24);
+            int x = 0, y = 0, rowHeight = 0, rowStart = 0;
+            for (int i = 0; i < Count; i++)
+            {
+                string label = ChoiceLabel(i);
+                Font regularFont = DsType.Font(DsText.Label, false);
+                int natural = Math.Max(TextRenderer.MeasureText(label, font, Size.Empty,
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width,
+                    TextRenderer.MeasureText(label, regularFont, Size.Empty,
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width);
+                int cellWidth = Math.Min(width, Math.Max(Theme.S(72), natural + horizontalPadding));
+                Size textSize = new Size(Math.Max(1, cellWidth - horizontalPadding - 1), int.MaxValue);
+                int textHeight = Math.Max(TextRenderer.MeasureText(label, font, textSize,
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height,
+                    TextRenderer.MeasureText(label, regularFont, textSize,
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height);
+                int cellHeight = Math.Max(Theme.S(32), textHeight + Theme.S(12) + 1);
+                if (x > 0 && x + cellWidth > width)
+                {
+                    SetRowHeight(segments, rowStart, rowHeight);
+                    y += rowHeight + gap;
+                    rowHeight = 0; rowStart = segments.Count; x = 0;
+                }
+                segments.Add(new Rectangle(x, y, cellWidth, cellHeight));
+                rowHeight = Math.Max(rowHeight, cellHeight);
+                x += cellWidth + gap;
+            }
+            SetRowHeight(segments, rowStart, rowHeight);
+            wrappedSegments = segments.ToArray();
+            wrappedLabels = new string[Count];
+            for (int i = 0; i < Count; i++) wrappedLabels[i] = ChoiceLabel(i);
+            wrappedWidth = width; wrappedScale = Dpi.Scale; wrappedFont = font;
+            wrappedHeight = y + rowHeight;
+            return wrappedHeight;
+        }
+
+        private string ChoiceLabel(int index)
+        {
+            return Labels != null && index < Labels.Length ? Labels[index] ?? "" : "";
+        }
+
+        private static void SetRowHeight(List<Rectangle> segments, int start, int height)
+        {
+            for (int i = start; i < segments.Count; i++)
+            {
+                Rectangle value = segments[i];
+                value.Height = height;
+                segments[i] = value;
+            }
         }
 
         private int HitIndex(Point p)
@@ -255,17 +349,17 @@ namespace PaviseApp
                     DsPaint.TechFrame(graphics, rectangle, scaledDimension, Col.Lerp(Theme.Card, Theme.CardHover, t), Col.Lerp(Theme.Stroke, Theme.StrokeHi, t));
                 }
             }
-            Rectangle empty = Rectangle.Empty;
+            Rectangle rectangle2 = Rectangle.Empty;
             if (idx < count)
             {
-                empty = SegmentRect(idx);
-                empty.Width--;
-                empty.Height--;
+                rectangle2 = SegmentRect(idx);
+                rectangle2.Width--;
+                rectangle2.Height--;
                 if (StrongSelection)
                 {
-                    using (GraphicsPath path = (PlainSegments ? Theme.Rounded(empty, Theme.S(5)) : Theme.TechPath(empty, scaledDimension)))
+                    using (GraphicsPath path = (PlainSegments ? Theme.Rounded(rectangle2, Theme.S(5)) : Theme.TechPath(rectangle2, scaledDimension)))
                     {
-                        using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(empty), Col.Lerp(Theme.Accent, Color.White, 0.08f), Theme.Accent2, LinearGradientMode.ForwardDiagonal))
+                        using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(rectangle2), Col.Lerp(Theme.Accent, Color.White, 0.08f), Theme.Accent2, LinearGradientMode.ForwardDiagonal))
                         {
                             using (Pen pen = new Pen(Col.Alpha(Theme.Accent, 235)))
                             {
@@ -274,18 +368,18 @@ namespace PaviseApp
                             }
                         }
                     }
-                    using (Pen currentPen = new Pen(Col.Alpha(Color.White, 100), DsSpace.Line(1)))
+                    using (Pen pen2 = new Pen(Col.Alpha(Color.White, 100), DsSpace.Line(1)))
                     {
-                        graphics.DrawLine(currentPen, empty.Left + Theme.S(2), empty.Top + Theme.S(1), empty.Right - scaledDimension, empty.Top + Theme.S(1));
+                        graphics.DrawLine(pen2, rectangle2.Left + Theme.S(2), rectangle2.Top + Theme.S(1), rectangle2.Right - scaledDimension, rectangle2.Top + Theme.S(1));
                     }
                 }
                 else if (PlainSegments)
                 {
-                    DrawPlainFrame(graphics, empty, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
+                    DrawPlainFrame(graphics, rectangle2, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
                 }
                 else
                 {
-                    DsPaint.TechFrame(graphics, empty, scaledDimension, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
+                    DsPaint.TechFrame(graphics, rectangle2, scaledDimension, Col.Lerp(Theme.Card, Theme.Accent, 0.18f), Col.Alpha(Theme.Accent, 215));
                 }
             }
             for (int j = 0; j < count; j++)
@@ -295,16 +389,19 @@ namespace PaviseApp
                 bounds.Height--;
                 bool isSelected = j == idx;
                 string message = ((Labels != null && j < Labels.Length) ? Labels[j] : "");
-                TextRenderer.DrawText(graphics, message, DsType.Font(DsText.Label, isSelected), bounds, (!base.Enabled) ? Theme.Faint : (isSelected ? (StrongSelection ? Theme.OnAccent : Theme.Fg) : Theme.Dim), TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+                if (WrapChoices) bounds.Inflate(-Theme.S(12), -Theme.S(6));
+                TextRenderer.DrawText(graphics, message, DsType.Font(DsText.Label, isSelected), bounds, (!base.Enabled) ? Theme.Faint : (isSelected ? (StrongSelection ? Theme.OnAccent : Theme.Fg) : Theme.Dim),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                    | (WrapChoices ? TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding : TextFormatFlags.SingleLine));
             }
             PaintBusy(graphics, base.ClientRectangle, null);
             if (!base.Enabled)
             {
                 DsPaint.Veil(graphics, base.ClientRectangle, Col.Alpha(Theme.Card, DsAlpha.VeilTier));
             }
-            if (base.WantsFocusCue && !empty.IsEmpty)
+            if (base.WantsFocusCue && !rectangle2.IsEmpty)
             {
-                DsFocus.Draw(graphics, DsFocus.Inset(empty, 3), Theme.Fg, Theme.Card);
+                DsFocus.Draw(graphics, DsFocus.Inset(rectangle2, 3), Theme.Fg, Theme.Card);
             }
         }
 

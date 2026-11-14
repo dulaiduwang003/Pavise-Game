@@ -65,27 +65,29 @@ namespace PaviseApp
             }
         }
 
-        private bool SaveJournalLocked(bool durable = false)
+        private bool SaveJournalLocked(bool durable = false, bool preserveBackgroundBudgets = false)
         {
             if (string.IsNullOrEmpty(journalPath))
             {
-                MarkJournaledLocked();
+                MarkJournaledLocked(preserveBackgroundBudgets);
                 return true;
             }
             try
             {
                 List<string> lines = new List<string>();
                 lines.Add("PAVISE_SUPPRESSION_V1");
-                foreach (KeyValuePair<int, Entry> mapEntry in map)
+                foreach (KeyValuePair<int, Entry> item in map)
                 {
-                    Entry entry = mapEntry.Value;
+                    Entry entry = item.Value;
                     if (entry.OrigPri != uint.MaxValue)
                     {
-                        if (entry.BackgroundJobPlacement || entry.AntiCheatPlacementExternal || entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded)
+                        if (entry.BackgroundJobPlacement || entry.AntiCheatPlacementExternal || HasAntiCheatResources(entry) || entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded)
                         {
                             durable = true;
                         }
-                        lines.Add(mapEntry.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : ""))));
+                        lines.Add(item.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : "")))
+                            + (HasAntiCheatResources(entry) ? "|ac-resources|" + EncodeAntiCheatResources(entry.AntiCheatResources) : "")
+                            + "|gpu-v1|" + entry.GpuLease.Encode());
                     }
                 }
                 if (lines.Count == 1)
@@ -94,7 +96,7 @@ namespace PaviseApp
                     {
                         File.Delete(journalPath);
                     }
-                    MarkJournaledLocked();
+                    MarkJournaledLocked(preserveBackgroundBudgets);
                     return true;
                 }
                 string journalPathOffset = journalPath + ".tmp";
@@ -121,20 +123,32 @@ namespace PaviseApp
                 {
                     File.Move(journalPathOffset, journalPath);
                 }
-                MarkJournaledLocked();
+                bool resourceJournal = false;
+                foreach (Entry entry in map.Values) resourceJournal |= HasAntiCheatResources(entry);
+                if (resourceJournal)
+                {
+                    string[] actual = File.ReadAllLines(journalPath, Encoding.UTF8);
+                    if (actual.Length != lines.Count) return false;
+                    for (int i = 0; i < actual.Length; i++) if (actual[i] != lines[i]) return false;
+                }
+                MarkJournaledLocked(preserveBackgroundBudgets);
                 return true;
             }
             catch (Exception error)
             {
-                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.1", 0), error);
+                if (!preserveBackgroundBudgets || DateTime.UtcNow.Ticks >= antiCheatJournalFailureLogAt)
+                {
+                    if (preserveBackgroundBudgets) antiCheatJournalFailureLogAt = DateTime.UtcNow.AddSeconds(30).Ticks;
+                    Logger.LogFailure(Lang.T("log.suppressioncorerecovery.1", 0), error);
+                }
                 return false;
             }
         }
 
-        private void MarkJournaledLocked()
+        private void MarkJournaledLocked(bool preserveBackgroundBudgets = false)
         {
             backgroundJobJournalPending = false;
-            backgroundJobJournalFailures.Clear();
+            if (!preserveBackgroundBudgets) backgroundJobJournalFailures.Clear();
             foreach (Entry entry in map.Values)
             {
                 if (entry.OrigPri != uint.MaxValue)
@@ -178,6 +192,20 @@ namespace PaviseApp
         {
             pid = 0;
             string[] lineParts = line.Split('|');
+            GpuPriorityLease gpuLease = null;
+            if (lineParts.Length >= 9 && lineParts[lineParts.Length - 2] == "gpu-v1")
+            {
+                gpuLease = GpuPriorityLease.Parse(lineParts[lineParts.Length - 1]);
+                if (gpuLease == null) return null;
+                Array.Resize(ref lineParts, lineParts.Length - 2);
+            }
+            AntiCheatResourceState resources = null;
+            if (lineParts.Length >= 14 && lineParts[lineParts.Length - 2] == "ac-resources")
+            {
+                resources = ParseAntiCheatResources(lineParts[lineParts.Length - 1]);
+                if (resources == null) return null;
+                Array.Resize(ref lineParts, lineParts.Length - 2);
+            }
             long creation;
             uint originalPriority;
             ulong originalAffinity;
@@ -266,7 +294,9 @@ namespace PaviseApp
             entry.OrigQoSControl = originalQosControl;
             entry.OrigQoSState = originalQosState;
             entry.OrigGpu = originalGpuPriority;
+            entry.GpuLease = gpuLease ?? GpuPriorityLease.Legacy(originalGpuPriority);
             entry.OrigBoost = originalBoost;
+            entry.AntiCheatResources = resources;
             entry.AntiCheatPlacementExternal = externalAcPlacement;
             entry.LegacyPlacementDebt = !externalAcPlacement;
             entry.BackgroundPlacementOwned = lineParts.Length == 15 && !layoutRecord && !externalAcPlacement;
@@ -360,7 +390,7 @@ namespace PaviseApp
                         }
                         else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
                         {
-                            unsettledLines.Add(allLines[i]);
+                            unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
                         }
                         continue;
                     }
@@ -378,22 +408,31 @@ namespace PaviseApp
                         {
                             unsettledLines.Add(allLines[i]); continue;
                         }
-                        if (EntrySnapshotMatches(restoreHandle, entry))
+                        if (!OwnsAntiCheatResources(entry) && EntrySnapshotMatches(restoreHandle, entry))
                         {
                             processedCount++;
+                            continue;
                         }
-                        else if (RestoreBackgroundPlacement(restoreHandle, entry) && RestoreValues(restoreHandle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost, RestorePlacement(entry)))
+                        Func<bool> resourceCheckpoint = delegate
+                        {
+                            allLines[i] = UpdatedResourceJournalLine(allLines[i], entry);
+                            try { return AtomicFile.WriteLines(statePath, allLines, Lang.T("t.suppressioncorerecovery.6")); }
+                            catch { return false; }
+                        };
+                        if (RestoreBackgroundPlacement(restoreHandle, entry) && (OwnsAntiCheatResources(entry) ? RestoreAntiCheatResources(restoreHandle, entry, resourceCheckpoint)
+                            : HasAntiCheatResources(entry) ? RestoreLegacyAntiCheatResources(restoreHandle, entry, resourceCheckpoint)
+                            : RestoreOrdinaryEntryValues(restoreHandle, entry, CpuTopology.AllMask, resourceCheckpoint)))
                         {
                             processedCount++;
                         }
                         else
                         {
-                            unsettledLines.Add(allLines[i]);
+                            unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
                         }
                     }
                     catch (Exception error)
                     {
-                        unsettledLines.Add(allLines[i]);
+                        unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
                         Logger.LogFailure(Lang.T("log.suppressioncorerecovery.5", 0) + pid, error);
                     }
                     finally
@@ -440,12 +479,12 @@ namespace PaviseApp
             {
                 return "";
             }
-            string[] formattedCpuSetIds = new string[ids.Length];
+            string[] textEntries = new string[ids.Length];
             for (int i = 0; i < ids.Length; i++)
             {
-                formattedCpuSetIds[i] = ids[i].ToString();
+                textEntries[i] = ids[i].ToString();
             }
-            return string.Join(",", formattedCpuSetIds);
+            return string.Join(",", textEntries);
         }
 
         private static uint[] ParseCpuSets(string text)
@@ -455,15 +494,15 @@ namespace PaviseApp
                 return new uint[0];
             }
             string[] parts = text.Split(',');
-            uint[] cpuSetIds = new uint[parts.Length];
+            uint[] numericValueItems = new uint[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {
-                if (!uint.TryParse(parts[i], out cpuSetIds[i]))
+                if (!uint.TryParse(parts[i], out numericValueItems[i]))
                 {
                     return null;
                 }
             }
-            return cpuSetIds;
+            return numericValueItems;
         }
 
     }

@@ -11,5 +11,7 @@ namespace PaviseApp
         internal ulong UsedMemoryBytes;
 
         internal string GpuUsageDescription;
+
+        internal string GpuUsageStatus;
     }
 }

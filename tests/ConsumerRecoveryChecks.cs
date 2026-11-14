@@ -287,7 +287,7 @@ namespace PaviseApp
                 Settings.SaveStr(key, value);
                 Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Explicit default invented a new configuration phase: " + entry.Key);
             }
-            Settings.SaveStr("GmBoost", "true");
+            Settings.SaveStr("GmSuppress", "true");
             Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Equivalent true/1 preference changed normalized phase");
             Settings.SaveStr(ConfigurationPresetRuntime.IdentityKey, "new-last-applied-metadata");
             Settings.SaveStr("fixture-report-timestamp", "later");
@@ -300,12 +300,31 @@ namespace PaviseApp
             Check(backend.Loads == 3 && snapshots == 1, "Initial production configuration failure phase was not bounded/cached");
             for (int i = 0; i < 1000; i++) { Settings.SaveStr("fixture-unrelated", i.ToString()); PollIdentity(runtime); }
             Check(backend.Loads == 3, "Unrelated actual Settings mutations requeued failed identity work");
-            Settings.Save("GmBoost", false);
+            // 卡片设置会推进真实设置代次，但不能重开已耗尽的预设身份阶段。
+            foreach (string key in new[] { "GmBoost", "GmBoostCpuV1", "GmBoostIoV1", "GmBoostGpuV1", "GmBoostMemoryV1",
+                "GmThreadBoostStrategyV1", "GmRenderLane", "FrameCoordination", "GmGameSchedulingV1",
+                "GameCriticalThreadHardRuleV1", "GmAutoCoresV2", "GmManualCorePlanV2", "GameFamilyBackground",
+                "GameNvRebarV1", "GameDisableFullscreenOptimizationsV1" })
+            {
+                string a = key == ThreadBoostSelection.Key ? "off" : key == CriticalThreadRule.Key ? CriticalThreadRule.UnifiedOff().Encode()
+                    : key == ManualCorePlan.Key ? "1|FF,3,C,30,C0|FF|0" : "0";
+                string b = key == ThreadBoostSelection.Key ? "on" : key == CriticalThreadRule.Key ? CriticalThreadRule.UnifiedAuto().Encode()
+                    : key == ManualCorePlan.Key ? "2|FF,3,C,30,C0|3F|1|1" : "1";
+                foreach (string value in new[] { a, b, a })
+                {
+                    int generation = Settings.MutationGeneration;
+                    Check(Settings.SaveStr(key, value) && Settings.MutationGeneration > generation, "Game-card mutation did not advance actual settings generation: " + key);
+                    PollIdentity(runtime);
+                    Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial && backend.Loads == 3,
+                        "Game-card A-B-A mutation refilled exhausted preset identity phase: " + key);
+                }
+            }
+            Settings.Save("GmSuppress", false);
             for (int i = 0; i < 3; i++) PollIdentity(runtime);
-            Check(backend.Loads == 6, "Actual GmBoost change did not open a bounded configuration phase");
-            Settings.Save("GmBoost", true); PollIdentity(runtime);
-            Check(backend.Loads == 6 && ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Actual GmBoost A-B-A refilled exhausted A");
-            Settings.SaveStr("GmBoost", "True"); PollIdentity(runtime);
+            Check(backend.Loads == 6, "Actual GmSuppress change did not open a bounded configuration phase");
+            Settings.Save("GmSuppress", true); PollIdentity(runtime);
+            Check(backend.Loads == 6 && ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Actual GmSuppress A-B-A refilled exhausted A");
+            Settings.SaveStr("GmSuppress", "True"); PollIdentity(runtime);
             Check(backend.Loads == 6, "Equivalent boolean representation replenished failed A");
             PerformanceTuning.BeginRecoveryCycle(115); PollIdentity(runtime);
             Check(backend.Loads == 7, "Real session did not reopen saved configuration identity phase");
@@ -321,7 +340,7 @@ namespace PaviseApp
             backend = new FailedIdentityBackend();
             runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null);
             for (int i = 0; i < 3; i++) PollIdentity(runtime);
-            Settings.Save("GmBoost", false); PollIdentity(runtime);
+            Settings.Save("GmSuppress", false); PollIdentity(runtime);
             Check(backend.Loads == 4, "Default runtime constructor did not use actual saved configuration phases");
         }
         private sealed class SavedSameValueIdentityBackend : IConfigurationPresetBackend, IConfigurationPresetSnapshot
@@ -380,15 +399,15 @@ namespace PaviseApp
         {
             Settings.UseTransientStoreForCurrentProcess(); SeedSavedPreset(ConfigurationPresetKind.Default);
             var backend = new SavedSameValueIdentityBackend { BlockThird = false }; var model = new ConfigurationPresetCoordinator(backend);
-            backend.SaveIdentity("4|default|" + model.Fingerprint());
+            backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + model.Fingerprint());
             var runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null);
             var done = new ManualResetEvent(false);
             try
             {
                 for (int i = 0; i < 3; i++) PollIdentity(runtime);
-                SeedSavedPreset(ConfigurationPresetKind.Extreme); backend.SaveIdentity("2|extreme|" + model.Fingerprint()); backend.FailIdentity = false;
+                SeedSavedPreset(ConfigurationPresetKind.Extreme); backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Extreme) + model.Fingerprint()); backend.FailIdentity = false;
                 PollIdentity(runtime); Check(runtime.CurrentPreset == ConfigurationPresetKind.Extreme, "Actual material B did not display verified Extreme");
-                SeedSavedPreset(ConfigurationPresetKind.Default); backend.SaveIdentity("4|default|" + model.Fingerprint());
+                SeedSavedPreset(ConfigurationPresetKind.Default); backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + model.Fingerprint());
                 for (int i = 0; i < 1000; i++) Check(!runtime.CurrentPreset.HasValue, "Actual exhausted material A retained B's preset label");
                 Check(backend.Loads == 4, "Actual A-B-A invalidation reopened the exhausted identity reader");
                 ConfigurationPresetResult result = null;

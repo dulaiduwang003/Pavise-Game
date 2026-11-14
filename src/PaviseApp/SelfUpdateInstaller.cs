@@ -438,7 +438,7 @@ namespace PaviseApp
                 SelfUpdateTransaction tx = ReadPlan(pending);
                 if (HelperAlive(tx) || ReadMarker(tx, "complete") == tx.Nonce || ReadMarker(tx, "restored") == tx.Nonce) return null;
                 return ReadMarker(tx, "applied") == tx.Nonce
-                    ? Text("上次自动更新被中断，尚未确认新版启动或恢复完成。恢复文件已保留，当前程序可以继续使用。请先正常退出 Pavise，再通过夸克网盘或 GitHub 按下载页说明手动更新；暂时不要删除恢复目录。", "The previous automatic update was interrupted before startup or recovery was confirmed. Recovery files were retained and the current application remains usable. Exit Pavise normally, then update manually using Quark or GitHub and the download-page instructions. Keep the recovery directory for now.")
+                    ? Text("上次更新中断，新版启动或恢复尚未确认。请保留恢复目录，正常退出 Pavise 后，按下载页说明通过夸克网盘或 GitHub 手动更新。当前版本可继续使用。", "The last update was interrupted; startup or recovery is unconfirmed. Keep the recovery folder, exit Pavise normally and follow the download-page instructions to update through Quark or GitHub. The current version remains usable.")
                     : Text("上次自动更新在替换程序前中断，原程序未被替换，当前版本可以继续使用。请通过夸克网盘或 GitHub 手动更新。", "The previous automatic update stopped before replacing the executable. The original application is unchanged and remains usable. Update manually using Quark or GitHub.");
             }
             catch { return null; }

@@ -15,6 +15,10 @@ namespace PaviseApp
             public bool DefaultRouteWireless;
         }
 
+        private const string ReceiptKey = "LinkMetricReceipt";
+
+        private const int PreferredMetric = 5;
+
         private static readonly object lk = new object();
 
         private static readonly string ApplyScript = string.Join("\r\n", "$ErrorActionPreference = 'SilentlyContinue'", "$i = [int]$env:PAVISE_LM_INDEX", "$m = [int]$env:PAVISE_LM_METRIC", "if ($null -eq (Get-NetAdapter -InterfaceIndex $i -ErrorAction SilentlyContinue)) { Write-Output 'APPLYFAIL'; exit }", "try { Set-NetIPInterface -InterfaceIndex $i -InterfaceMetric $m -ErrorAction Stop } catch { Write-Output 'APPLYFAIL'; exit }", "$chk = Get-NetIPInterface -InterfaceIndex $i -AddressFamily IPv4 -ErrorAction SilentlyContinue", "if ($null -ne $chk -and $chk.InterfaceMetric -eq $m) { Write-Output 'APPLYOK' } else { Write-Output 'APPLYFAIL' }");
@@ -42,7 +46,8 @@ namespace PaviseApp
         {
             Probe probe = new Probe();
             int bestInterfaceIndexResult = BestInterfaceIndex();
-            foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+            NetworkInterface[] allNetworkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+            foreach (NetworkInterface networkInterface in allNetworkInterfaces)
             {
                 if (networkInterface.OperationalStatus != OperationalStatus.Up)
                 {
@@ -189,10 +194,10 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                Dictionary<string, string> textsByName = new Dictionary<string, string>();
-                textsByName.Add("PAVISE_LM_INDEX", probe.WiredIndex.ToString());
-                textsByName.Add("PAVISE_LM_METRIC", 5.ToString());
-                Dictionary<string, string> args = textsByName;
+                Dictionary<string, string> dictionary = new Dictionary<string, string>();
+                dictionary.Add("PAVISE_LM_INDEX", probe.WiredIndex.ToString());
+                dictionary.Add("PAVISE_LM_METRIC", 5.ToString());
+                Dictionary<string, string> args = dictionary;
                 string stdout;
                 if (!PsRunner.Run(ApplyScript, "link-metric-apply", 30000, args, out stdout) || stdout.IndexOf("APPLYOK", StringComparison.Ordinal) < 0)
                 {
@@ -233,9 +238,9 @@ namespace PaviseApp
 
         private static bool RestoreIndex(int index)
         {
-            Dictionary<string, string> textsByName = new Dictionary<string, string>();
-            textsByName.Add("PAVISE_LM_INDEX", index.ToString());
-            Dictionary<string, string> args = textsByName;
+            Dictionary<string, string> dictionary = new Dictionary<string, string>();
+            dictionary.Add("PAVISE_LM_INDEX", index.ToString());
+            Dictionary<string, string> args = dictionary;
             string stdout;
             if (PsRunner.Run(RestoreScript, "link-metric-restore", 30000, args, out stdout))
             {

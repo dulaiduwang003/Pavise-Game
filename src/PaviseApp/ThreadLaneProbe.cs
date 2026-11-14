@@ -56,8 +56,8 @@ namespace PaviseApp
         {
             canQuery = false;
             queryError = 0;
-            IntPtr threadHandle = Native.OpenThread(2048, false, tid);
-            if (threadHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenThread(2048, false, tid);
+            if (intPtr == IntPtr.Zero)
             {
                 queryError = Marshal.GetLastWin32Error();
                 return -1L;
@@ -68,7 +68,7 @@ namespace PaviseApp
                 long exit;
                 long kernel;
                 long user;
-                if (!GetThreadTimes(threadHandle, out creation, out exit, out kernel, out user))
+                if (!GetThreadTimes(intPtr, out creation, out exit, out kernel, out user))
                 {
                     queryError = Marshal.GetLastWin32Error();
                     return -1L;
@@ -78,29 +78,30 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(threadHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 
         private static bool CanOpenForSet(int tid, out int error)
         {
             error = 0;
-            IntPtr threadHandle = Native.OpenThread(1024, false, tid);
-            if (threadHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenThread(1024, false, tid);
+            if (intPtr == IntPtr.Zero)
             {
                 error = Marshal.GetLastWin32Error();
                 return false;
             }
-            Native.CloseHandle(threadHandle);
+            Native.CloseHandle(intPtr);
             return true;
         }
 
         public static Report Run(int pid, int rounds, int intervalMs)
         {
-            Report result = default(Report);
-            result.Pid = pid;
-            result.Top = new List<Lane>();
-            result.Rounds = rounds;
+            Report report = default(Report);
+            report.Pid = pid;
+            report.Top = new List<Lane>();
+            report.Rounds = rounds;
+            Report result = report;
             try
             {
                 using (Process process = Process.GetProcessById(pid))
@@ -113,35 +114,35 @@ namespace PaviseApp
                 result.Error = ex.Message;
                 return result;
             }
-            Dictionary<int, long> initialCpuTicksByTid = new Dictionary<int, long>();
-            Dictionary<int, long> previousCpuTicksByTid = new Dictionary<int, long>();
-            Dictionary<int, int> queryErrorsById = new Dictionary<int, int>();
+            Dictionary<int, long> dictionary = new Dictionary<int, long>();
+            Dictionary<int, long> dictionary2 = new Dictionary<int, long>();
+            Dictionary<int, int> dictionary3 = new Dictionary<int, int>();
             int leaderStableRoundsValue = 0;
-            int previousLeaderTid = 0;
+            int runValue = 0;
             long ticks = DateTime.UtcNow.Ticks;
             for (int i = 0; i < rounds; i++)
             {
-                Dictionary<int, long> currentCpuTicksByTid = new Dictionary<int, long>();
+                Dictionary<int, long> dictionary4 = new Dictionary<int, long>();
                 try
                 {
-                    using (Process processById = Process.GetProcessById(pid))
+                    using (Process process2 = Process.GetProcessById(pid))
                     {
-                        ProcessThreadCollection threads = processById.Threads;
+                        ProcessThreadCollection threads = process2.Threads;
                         result.ThreadCount = threads.Count;
-                        foreach (ProcessThread thread in threads)
+                        foreach (ProcessThread item2 in threads)
                         {
                             bool canQuery;
                             int queryError;
-                            long cpuOf = CpuOf(thread.Id, out canQuery, out queryError);
+                            long value = CpuOf(item2.Id, out canQuery, out queryError);
                             if (!canQuery)
                             {
-                                queryErrorsById[thread.Id] = queryError;
+                                dictionary3[item2.Id] = queryError;
                                 continue;
                             }
-                            currentCpuTicksByTid[thread.Id] = cpuOf;
-                            if (!initialCpuTicksByTid.ContainsKey(thread.Id))
+                            dictionary4[item2.Id] = value;
+                            if (!dictionary.ContainsKey(item2.Id))
                             {
-                                initialCpuTicksByTid[thread.Id] = cpuOf;
+                                dictionary[item2.Id] = value;
                             }
                         }
                     }
@@ -151,30 +152,30 @@ namespace PaviseApp
                     result.Error = ex2.Message;
                     break;
                 }
-                if (previousCpuTicksByTid.Count > 0)
+                if (dictionary2.Count > 0)
                 {
-                    int leaderTid = 0;
-                    long largestCpuDelta = -1L;
-                    foreach (KeyValuePair<int, long> currentCpuTickEntry in currentCpuTicksByTid)
+                    int runValue2 = 0;
+                    long numericValue = -1L;
+                    foreach (KeyValuePair<int, long> item3 in dictionary4)
                     {
-                        long previousCpuTick;
-                        if (previousCpuTicksByTid.TryGetValue(currentCpuTickEntry.Key, out previousCpuTick))
+                        long value2;
+                        if (dictionary2.TryGetValue(item3.Key, out value2))
                         {
-                            long remainingValue = currentCpuTickEntry.Value - previousCpuTick;
-                            if (remainingValue > largestCpuDelta)
+                            long remainingValue = item3.Value - value2;
+                            if (remainingValue > numericValue)
                             {
-                                largestCpuDelta = remainingValue;
-                                leaderTid = currentCpuTickEntry.Key;
+                                numericValue = remainingValue;
+                                runValue2 = item3.Key;
                             }
                         }
                     }
-                    if (leaderTid != 0 && leaderTid == previousLeaderTid)
+                    if (runValue2 != 0 && runValue2 == runValue)
                     {
                         leaderStableRoundsValue++;
                     }
-                    previousLeaderTid = leaderTid;
+                    runValue = runValue2;
                 }
-                previousCpuTicksByTid = currentCpuTicksByTid;
+                dictionary2 = dictionary4;
                 if (i < rounds - 1)
                 {
                     Thread.Sleep(intervalMs);
@@ -182,46 +183,46 @@ namespace PaviseApp
             }
             result.WallSeconds = (double)(DateTime.UtcNow.Ticks - ticks) / 10000000.0;
             result.LeaderStableRounds = leaderStableRoundsValue;
-            result.SampledThreads = previousCpuTicksByTid.Count;
-            List<Lane> lanes = new List<Lane>();
-            long totalCpuTicks = 0L;
-            foreach (KeyValuePair<int, long> previousCpuTickEntry in previousCpuTicksByTid)
+            result.SampledThreads = dictionary2.Count;
+            List<Lane> list = new List<Lane>();
+            long numericValue2 = 0L;
+            foreach (KeyValuePair<int, long> item4 in dictionary2)
             {
-                long initialCpuTick;
-                if (initialCpuTicksByTid.TryGetValue(previousCpuTickEntry.Key, out initialCpuTick))
+                long value3;
+                if (dictionary.TryGetValue(item4.Key, out value3))
                 {
-                    long remainingValue2 = previousCpuTickEntry.Value - initialCpuTick;
+                    long remainingValue2 = item4.Value - value3;
                     if (remainingValue2 < 0)
                     {
                         remainingValue2 = 0L;
                     }
-                    totalCpuTicks += remainingValue2;
-                    lanes.Add(new Lane
+                    numericValue2 += remainingValue2;
+                    list.Add(new Lane
                     {
-                        Tid = previousCpuTickEntry.Key,
+                        Tid = item4.Key,
                         Cpu100Ns = remainingValue2
                     });
                 }
             }
-            lanes.Sort((Lane a, Lane b) => b.Cpu100Ns.CompareTo(a.Cpu100Ns));
+            list.Sort((Lane a, Lane b) => b.Cpu100Ns.CompareTo(a.Cpu100Ns));
             double scaledWallSeconds = result.WallSeconds * 10000000.0;
-            result.TotalCores = ((scaledWallSeconds > 0.0) ? ((double)totalCpuTicks / scaledWallSeconds) : 0.0);
-            for (int j = 0; j < lanes.Count && j < 8; j++)
+            result.TotalCores = ((scaledWallSeconds > 0.0) ? ((double)numericValue2 / scaledWallSeconds) : 0.0);
+            for (int j = 0; j < list.Count && j < 8; j++)
             {
-                Lane lane = lanes[j];
-                lane.SharePercent = ((totalCpuTicks > 0) ? ((double)lane.Cpu100Ns * 100.0 / (double)totalCpuTicks) : 0.0);
-                lane.CanQuery = true;
-                lane.CanSet = CanOpenForSet(lane.Tid, out lane.SetError);
-                result.Top.Add(lane);
+                Lane item = list[j];
+                item.SharePercent = ((numericValue2 > 0) ? ((double)item.Cpu100Ns * 100.0 / (double)numericValue2) : 0.0);
+                item.CanQuery = true;
+                item.CanSet = CanOpenForSet(item.Tid, out item.SetError);
+                result.Top.Add(item);
             }
-            foreach (KeyValuePair<int, int> queryErrorEntry in queryErrorsById)
+            foreach (KeyValuePair<int, int> item5 in dictionary3)
             {
                 if (result.Top.Count < 12)
                 {
                     result.Top.Add(new Lane
                     {
-                        Tid = queryErrorEntry.Key,
-                        QueryError = queryErrorEntry.Value
+                        Tid = item5.Key,
+                        QueryError = item5.Value
                     });
                     continue;
                 }
@@ -245,40 +246,40 @@ namespace PaviseApp
             stringBuilder.AppendLine();
             stringBuilder.AppendLine(Lang.T("t.threadlaneprobe.12"));
             stringBuilder.AppendLine(Lang.T("t.threadlaneprobe.13"));
-            foreach (Lane top in r.Top)
+            foreach (Lane item in r.Top)
             {
-                if (!top.CanQuery)
+                if (!item.CanQuery)
                 {
                     object[] instanceItems = new object[5] { "  ", null, null, null, null };
-                    int tid = top.Tid;
+                    int tid = item.Tid;
                     instanceItems[1] = tid.ToString().PadRight(9);
                     instanceItems[2] = Lang.T("t.threadlaneprobe.14");
-                    instanceItems[3] = top.QueryError;
+                    instanceItems[3] = item.QueryError;
                     instanceItems[4] = " ";
                     stringBuilder.AppendLine(string.Concat(instanceItems));
                 }
                 else
                 {
-                    string[] formattedParts = new string[5] { "  ", null, null, null, null };
-                    int tid2 = top.Tid;
-                    formattedParts[1] = tid2.ToString().PadRight(9);
-                    double sharePercent = top.SharePercent;
-                    formattedParts[2] = sharePercent.ToString("F1").PadLeft(8);
-                    formattedParts[3] = Lang.T("t.threadlaneprobe.15").PadRight(9);
-                    formattedParts[4] = (top.CanSet ? Lang.T("t.threadlaneprobe.16") : (Lang.T("t.threadlaneprobe.17") + top.SetError + " "));
-                    stringBuilder.AppendLine(string.Concat(formattedParts));
+                    string[] textEntries = new string[5] { "  ", null, null, null, null };
+                    int tid2 = item.Tid;
+                    textEntries[1] = tid2.ToString().PadRight(9);
+                    double sharePercent = item.SharePercent;
+                    textEntries[2] = sharePercent.ToString("F1").PadLeft(8);
+                    textEntries[3] = Lang.T("t.threadlaneprobe.15").PadRight(9);
+                    textEntries[4] = (item.CanSet ? Lang.T("t.threadlaneprobe.16") : (Lang.T("t.threadlaneprobe.17") + item.SetError + " "));
+                    stringBuilder.AppendLine(string.Concat(textEntries));
                 }
             }
             stringBuilder.AppendLine();
             bool hasWritableLane = false;
             bool hasReadOnlyLane = false;
-            foreach (Lane currentTop in r.Top)
+            foreach (Lane item2 in r.Top)
             {
-                if (currentTop.CanSet)
+                if (item2.CanSet)
                 {
                     hasWritableLane = true;
                 }
-                if (currentTop.CanQuery && !currentTop.CanSet)
+                if (item2.CanQuery && !item2.CanSet)
                 {
                     hasReadOnlyLane = true;
                 }

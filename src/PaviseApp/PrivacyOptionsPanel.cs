@@ -69,7 +69,8 @@ namespace PaviseApp
                 performanceGrid.ContentSizeChanged = Relayout;
                 base.Controls.Add(performanceGrid);
             }
-            foreach (PrivacyAction privacyAction in PrivacyActionCatalog.All)
+            PrivacyAction[] all = PrivacyActionCatalog.All;
+            foreach (PrivacyAction privacyAction in all)
             {
                 if (include == null || include(privacyAction))
                 {
@@ -124,6 +125,14 @@ namespace PaviseApp
             performanceGrid.Controls.Add(card);
             performanceGrid.Controls.SetChildIndex(card, 0);
             Relayout();
+        }
+
+        internal int PerformanceHeightFor(int width)
+        {
+            // 性能布局没有额外内边距，宽度与原 Relayout 中的嵌套网格保持一致。
+            // 这里只测量，不修改宽度，避免用途组测高时触发多层尺寸事件。
+            return performanceGrid == null ? Height
+                : Math.Max(Theme.S(4), performanceGrid.MeasureContentHeight(Math.Max(1, width)));
         }
 
         private bool CanModify()
@@ -521,23 +530,23 @@ namespace PaviseApp
                 int width = (widthLimit - (columnCountResult - 1) * scaledDimension) / columnCountResult;
                 int top = 0;
                 int processedCount = 0;
-                int rowHeight = 0;
+                int relayoutValue = 0;
                 foreach (Row row in rows)
                 {
                     if (processedCount == columnCountResult)
                     {
-                        top += rowHeight + scaledDimension;
+                        top += relayoutValue + scaledDimension;
                         processedCount = 0;
-                        rowHeight = 0;
+                        relayoutValue = 0;
                     }
                     PerformanceFeatureCard performanceFeatureCard = (PerformanceFeatureCard)row.Card;
                     int cardHeight = performanceFeatureCard.PresentationHeight(width);
                     performanceFeatureCard.SetBounds(processedCount * (width + scaledDimension), top, width, cardHeight);
                     performanceFeatureCard.ArrangePresentation();
-                    rowHeight = Math.Max(rowHeight, cardHeight);
+                    relayoutValue = Math.Max(relayoutValue, cardHeight);
                     processedCount++;
                 }
-                base.Height = Math.Max(Theme.S(4), top + rowHeight + Theme.S(4));
+                base.Height = Math.Max(Theme.S(4), top + relayoutValue + Theme.S(4));
             }
             finally
             {

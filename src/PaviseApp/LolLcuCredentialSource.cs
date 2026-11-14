@@ -9,6 +9,15 @@ namespace PaviseApp
 {
     internal static class LolLcuCredentialSource
     {
+        private const int RecentLogLimit = 8;
+
+        private const int CredentialProbeLimit = 4;
+
+        private const int LockfileTailBytes = 4096;
+
+        private const int LogHeadBytes = 65536;
+
+        private const int LogTailBytes = 458752;
 
         private static readonly object LogCacheLock = new object();
 
@@ -24,30 +33,30 @@ namespace PaviseApp
             {
                 return 0L;
             }
-            long generationStamp = 17L;
-            string[] lockfilePaths = new string[3]
+            long numericValue = 17L;
+            string[] textEntries = new string[3]
             {
                 Path.Combine(lolRoot, "lockfile"),
                 Path.Combine(lolRoot, "LeagueClient", "lockfile"),
                 Path.Combine(lolRoot, "Riot Client", "lockfile")
             };
-            for (int i = 0; i < lockfilePaths.Length; i++)
+            for (int i = 0; i < textEntries.Length; i++)
             {
                 try
                 {
-                    FileInfo fileInfo = new FileInfo(lockfilePaths[i]);
+                    FileInfo fileInfo = new FileInfo(textEntries[i]);
                     if (fileInfo.Exists)
                     {
-                        generationStamp = (generationStamp * 31) ^ fileInfo.LastWriteTimeUtc.Ticks;
-                        generationStamp = (generationStamp * 31) ^ fileInfo.Length;
+                        numericValue = (numericValue * 31) ^ fileInfo.LastWriteTimeUtc.Ticks;
+                        numericValue = (numericValue * 31) ^ fileInfo.Length;
                     }
                 }
                 catch
                 {
                 }
             }
-            generationStamp = (generationStamp * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClient");
-            return (generationStamp * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClientUx");
+            numericValue = (numericValue * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClient");
+            return (numericValue * 31) ^ CredentialProcessStamp(lolRoot, "LeagueClientUx");
         }
 
         private static long CredentialProcessStamp(string lolRoot, string processName)
@@ -61,27 +70,33 @@ namespace PaviseApp
             {
                 return 0L;
             }
-            long latestCreation = 0L;
-            int credentialPid = 0;
+            long numericValue = 0L;
+            int credentialProcessStampValue = 0;
             try
             {
-                foreach (Process process in processesByName)
+                Process[] processesByNameSnapshot = processesByName;
+                foreach (Process process in processesByNameSnapshot)
                 {
-                    IntPtr processHandle = IntPtr.Zero;
+                    IntPtr intPtr = IntPtr.Zero;
                     try
                     {
-                        processHandle = Native.OpenProcess(4096, false, process.Id);
-                        if (processHandle != IntPtr.Zero)
+                        intPtr = Native.OpenProcess(0x101000, false, process.Id);
+                        if (intPtr != IntPtr.Zero)
                         {
-                            string path = Native.ImagePath(processHandle);
+                            string path = Native.ImagePath(intPtr);
                             string fileName = Path.GetFileName(path);
                             long creation;
                             long cpu;
                             ulong io;
-                            if (LolRuntimeProcesses.IsUnder(path, lolRoot) && string.Equals(fileName, processName + ".exe", StringComparison.OrdinalIgnoreCase) && Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation > latestCreation)
+                            if (LolRuntimeProcesses.IsUnder(path, lolRoot) && string.Equals(fileName, processName + ".exe", StringComparison.OrdinalIgnoreCase) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > numericValue)
                             {
-                                latestCreation = creation;
-                                credentialPid = process.Id;
+                                numericValue = creation;
+                                credentialProcessStampValue = process.Id;
+                                int session, currentSession;
+                                if (LolRuntimeProcesses.TryGetCurrentSessionId(out currentSession)
+                                    && Native.TryGetLiveProcessSessionId(intPtr, process.Id, out session) && session == currentSession
+                                    && Native.QueryProcessIdentityState(intPtr, creation) == 0)
+                                    LolCredentialLookupBudget.ObserveClient(session, process.Id, creation, path);
                             }
                         }
                     }
@@ -90,22 +105,23 @@ namespace PaviseApp
                     }
                     finally
                     {
-                        if (processHandle != IntPtr.Zero)
+                        if (intPtr != IntPtr.Zero)
                         {
-                            Native.CloseHandle(processHandle);
+                            Native.CloseHandle(intPtr);
                         }
                     }
                 }
             }
             finally
             {
-                foreach (Process currentProcess in processesByName)
+                Process[] processesByNameSnapshot2 = processesByName;
+                foreach (Process process2 in processesByNameSnapshot2)
                 {
-                    if (currentProcess != null)
+                    if (process2 != null)
                     {
                         try
                         {
-                            currentProcess.Dispose();
+                            process2.Dispose();
                         }
                         catch
                         {
@@ -113,10 +129,26 @@ namespace PaviseApp
                     }
                 }
             }
-            return latestCreation ^ ((long)credentialPid << 32);
+            return numericValue ^ ((long)credentialProcessStampValue << 32);
         }
 
         public static LolLcuCredentials Find(string lolRoot)
+        {
+            LolLcuCredentials credentials;
+            TryFind(lolRoot, out credentials);
+            return credentials;
+        }
+
+        // 未核验身份或额度时只暂停新的昂贵查找，不代表已有 LCU 会话失效。
+        internal static bool TryFind(string lolRoot, out LolLcuCredentials credentials)
+        {
+            credentials = null;
+            if (!LolCredentialLookupBudget.TryReserve(lolRoot)) return false;
+            credentials = FindCore(lolRoot);
+            return true;
+        }
+
+        private static LolLcuCredentials FindCore(string lolRoot)
         {
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot))
             {
@@ -146,11 +178,11 @@ namespace PaviseApp
 
         private static IList<LolLcuCredentials> ReadProcessCandidates(string lolRoot)
         {
-            List<LolLcuCredentials> lolLcuCredentials = new List<LolLcuCredentials>();
+            List<LolLcuCredentials> list = new List<LolLcuCredentials>();
             int sessionId;
             if (!LolRuntimeProcesses.TryGetCurrentSessionId(out sessionId))
             {
-                return lolLcuCredentials;
+                return list;
             }
             try
             {
@@ -159,12 +191,12 @@ namespace PaviseApp
                     managementObjectSearcher.Options.Timeout = TimeSpan.FromSeconds(3.0);
                     using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
                     {
-                        List<ManagementObject> managementObjects = new List<ManagementObject>();
-                        foreach (ManagementObject currentManagementObjectCollection in managementObjectCollection)
+                        List<ManagementObject> list2 = new List<ManagementObject>();
+                        foreach (ManagementObject item in managementObjectCollection)
                         {
-                            managementObjects.Add(currentManagementObjectCollection);
+                            list2.Add(item);
                         }
-                        managementObjects.Sort(delegate(ManagementObject left, ManagementObject right)
+                        list2.Sort(delegate(ManagementObject left, ManagementObject right)
                         {
                             string a = Convert.ToString(left["Name"]);
                             string a2 = Convert.ToString(right["Name"]);
@@ -186,9 +218,9 @@ namespace PaviseApp
                         });
                         try
                         {
-                            for (int i = 0; i < managementObjects.Count; i++)
+                            for (int i = 0; i < list2.Count; i++)
                             {
-                                ManagementObject managementObject = managementObjects[i];
+                                ManagementObject managementObject = list2[i];
                                 int result;
                                 int result2;
                                 long fileTimeUtc;
@@ -196,19 +228,19 @@ namespace PaviseApp
                                 string token;
                                 if (int.TryParse(Convert.ToString(managementObject["ProcessId"]), out result) && int.TryParse(Convert.ToString(managementObject["SessionId"]), out result2) && TryParseWmiCreation(managementObject["CreationDate"], out fileTimeUtc) && LolRuntimeProcesses.IsExpectedSession(sessionId, result2) && LolRuntimeProcesses.IsOwnedCredentialSourceProcess(lolRoot, result, sessionId, fileTimeUtc) && LolCredentialParser.TryParseCommandLine(Convert.ToString(managementObject["CommandLine"]), out port, out token))
                                 {
-                                    lolLcuCredentials.Add(new LolLcuCredentials(port, token));
+                                    list.Add(new LolLcuCredentials(port, token));
                                 }
                             }
                         }
                         finally
                         {
-                            foreach (ManagementObject currentManagementObject in managementObjects)
+                            foreach (ManagementObject item2 in list2)
                             {
-                                if (currentManagementObject != null)
+                                if (item2 != null)
                                 {
                                     try
                                     {
-                                        currentManagementObject.Dispose();
+                                        item2.Dispose();
                                     }
                                     catch
                                     {
@@ -222,7 +254,7 @@ namespace PaviseApp
             catch
             {
             }
-            return lolLcuCredentials;
+            return list;
         }
 
         private static bool TryParseWmiCreation(object value, out long fileTimeUtc)
@@ -258,7 +290,7 @@ namespace PaviseApp
                 Path.Combine(lolRoot, "Riot Client", "lockfile")
             };
             paths = OrderExistingCredentialFiles(paths);
-            List<LolLcuCredentials> lolLcuCredentials = new List<LolLcuCredentials>(paths.Length);
+            List<LolLcuCredentials> list = new List<LolLcuCredentials>(paths.Length);
             for (int i = 0; i < paths.Length; i++)
             {
                 string content;
@@ -267,10 +299,10 @@ namespace PaviseApp
                 string token;
                 if (TryReadTail(paths[i], 4096, out content) && LolCredentialParser.TryParseLockfile(content, out pid, out port, out token) && LolRuntimeProcesses.IsOwnedCredentialSourceProcess(lolRoot, pid, sessionId))
                 {
-                    lolLcuCredentials.Add(new LolLcuCredentials(port, token));
+                    list.Add(new LolLcuCredentials(port, token));
                 }
             }
-            return lolLcuCredentials;
+            return list;
         }
 
         private static LolLcuCredentials SelectReachableLogCandidate(string lolRoot, Func<LolLcuCredentials, bool> probe, int maximumProbes, HashSet<string> seen, out int probed)
@@ -312,8 +344,8 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                string text = port + "\n" + token;
-                if (!seen.Add(text) || !LolRuntimeProcesses.IsOwnedLcuListenerPort(lolRoot, port))
+                string item = port + "\n" + token;
+                if (!seen.Add(item) || !LolRuntimeProcesses.IsOwnedLcuListenerPort(lolRoot, port))
                 {
                     continue;
                 }
@@ -339,7 +371,7 @@ namespace PaviseApp
             {
                 return new string[0];
             }
-            List<FileInfo> fileInfos = new List<FileInfo>(paths.Length);
+            List<FileInfo> list = new List<FileInfo>(paths.Length);
             for (int i = 0; i < paths.Length; i++)
             {
                 try
@@ -347,24 +379,24 @@ namespace PaviseApp
                     FileInfo fileInfo = new FileInfo(paths[i]);
                     if (fileInfo.Exists)
                     {
-                        fileInfos.Add(fileInfo);
+                        list.Add(fileInfo);
                     }
                 }
                 catch
                 {
                 }
             }
-            fileInfos.Sort(delegate(FileInfo left, FileInfo right)
+            list.Sort(delegate(FileInfo left, FileInfo right)
             {
                 int compareToResult = right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc);
                 return (compareToResult == 0) ? StringComparer.OrdinalIgnoreCase.Compare(left.FullName, right.FullName) : compareToResult;
             });
-            string[] orderedPaths = new string[fileInfos.Count];
-            for (int j = 0; j < fileInfos.Count; j++)
+            string[] textEntries = new string[list.Count];
+            for (int j = 0; j < list.Count; j++)
             {
-                orderedPaths[j] = fileInfos[j].FullName;
+                textEntries[j] = list[j].FullName;
             }
-            return orderedPaths;
+            return textEntries;
         }
 
         internal static LolLcuCredentials SelectReachable(IList<LolLcuCredentials> candidates, Func<LolLcuCredentials, bool> probe, int maximumProbes, out int probed)
@@ -394,8 +426,8 @@ namespace PaviseApp
                 {
                     break;
                 }
-                string text = lolLcuCredentials.Port + "\n" + lolLcuCredentials.Token;
-                if (!seen.Add(text))
+                string item = lolLcuCredentials.Port + "\n" + lolLcuCredentials.Token;
+                if (!seen.Add(item))
                 {
                     continue;
                 }
@@ -420,15 +452,15 @@ namespace PaviseApp
             {
                 return new string[0];
             }
-            List<FileInfo> fileInfos = new List<FileInfo>(limit);
-            AddRecentLogs(fileInfos, Path.Combine(lolRoot, "LeagueClient"), limit);
-            AddRecentLogs(fileInfos, Path.Combine(lolRoot, "LeagueClient", "Logs"), limit);
-            string[] recentLogPaths = new string[fileInfos.Count];
-            for (int i = 0; i < fileInfos.Count; i++)
+            List<FileInfo> list = new List<FileInfo>(limit);
+            AddRecentLogs(list, Path.Combine(lolRoot, "LeagueClient"), limit);
+            AddRecentLogs(list, Path.Combine(lolRoot, "LeagueClient", "Logs"), limit);
+            string[] textEntries = new string[list.Count];
+            for (int i = 0; i < list.Count; i++)
             {
-                recentLogPaths[i] = fileInfos[i].FullName;
+                textEntries[i] = list[i].FullName;
             }
-            return recentLogPaths;
+            return textEntries;
         }
 
         private static void AddRecentLogs(List<FileInfo> output, string directory, int limit)
@@ -439,14 +471,14 @@ namespace PaviseApp
                 {
                     return;
                 }
-                foreach (string enumerateFile in Directory.EnumerateFiles(directory, "*.log", SearchOption.TopDirectoryOnly))
+                foreach (string item in Directory.EnumerateFiles(directory, "*.log", SearchOption.TopDirectoryOnly))
                 {
-                    string fileName = Path.GetFileName(enumerateFile);
+                    string fileName = Path.GetFileName(item);
                     if (fileName.IndexOf("LeagueClient", StringComparison.OrdinalIgnoreCase) < 0 || fileName.IndexOf("LeagueClientUxHelper", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         continue;
                     }
-                    FileInfo fileInfo = new FileInfo(enumerateFile);
+                    FileInfo fileInfo = new FileInfo(item);
                     int i;
                     for (i = 0; i < output.Count && output[i].LastWriteTimeUtc >= fileInfo.LastWriteTimeUtc; i++)
                     {

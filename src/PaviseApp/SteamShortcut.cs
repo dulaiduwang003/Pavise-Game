@@ -8,6 +8,7 @@ namespace PaviseApp
 {
     internal static class SteamShortcut
     {
+        private const string RunGamePrefix = "steam://rungameid/";
 
         public static bool TryResolve(string urlPath, out string executablePath, out string error)
         {
@@ -43,9 +44,9 @@ namespace PaviseApp
                 return false;
             }
             string message = null;
-            foreach (string libraryRoot in LibraryRoots(steamRoot))
+            foreach (string item in LibraryRoots(steamRoot))
             {
-                string path = Path.Combine(libraryRoot, "steamapps\\appmanifest_" + appId + ".acf");
+                string path = Path.Combine(item, "steamapps\\appmanifest_" + appId + ".acf");
                 try
                 {
                     if (!File.Exists(path))
@@ -55,7 +56,7 @@ namespace PaviseApp
                     string vdfValue = ParseVdfValue(File.ReadAllText(path), "installdir");
                     if (!string.IsNullOrEmpty(vdfValue))
                     {
-                        string combinedPath = Path.Combine(libraryRoot, "steamapps\\common\\" + vdfValue);
+                        string combinedPath = Path.Combine(item, "steamapps\\common\\" + vdfValue);
                         if (Directory.Exists(combinedPath))
                         {
                             message = combinedPath;
@@ -90,7 +91,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            foreach (string entryText in content.Split('\n'))
+            string[] contentParts = content.Split('\n');
+            foreach (string entryText in contentParts)
             {
                 string entryTextTrimmed = entryText.Trim();
                 if (entryTextTrimmed.StartsWith("URL=", StringComparison.OrdinalIgnoreCase))
@@ -137,9 +139,9 @@ namespace PaviseApp
             }
             try
             {
-                using (RegistryKey currentRegistryKey = Registry.LocalMachine.OpenSubKey("SOFTWARE\\WOW6432Node\\Valve\\Steam"))
+                using (RegistryKey registryKey2 = Registry.LocalMachine.OpenSubKey("SOFTWARE\\WOW6432Node\\Valve\\Steam"))
                 {
-                    string getValueOffset2 = ((currentRegistryKey == null) ? null : (currentRegistryKey.GetValue("InstallPath") as string));
+                    string getValueOffset2 = ((registryKey2 == null) ? null : (registryKey2.GetValue("InstallPath") as string));
                     if (!string.IsNullOrEmpty(getValueOffset2) && Directory.Exists(getValueOffset2))
                     {
                         return getValueOffset2;
@@ -154,14 +156,15 @@ namespace PaviseApp
 
         private static IEnumerable<string> LibraryRoots(string steamRoot)
         {
-            List<string> steamRoots = new List<string>();
-            steamRoots.Add(steamRoot);
-            List<string> texts = steamRoots;
-            foreach (string path in new string[2]
+            List<string> list = new List<string>();
+            list.Add(steamRoot);
+            List<string> list2 = list;
+            string[] textEntries = new string[2]
             {
                 Path.Combine(steamRoot, "steamapps\\libraryfolders.vdf"),
                 Path.Combine(steamRoot, "config\\libraryfolders.vdf")
-            })
+            };
+            foreach (string path in textEntries)
             {
                 try
                 {
@@ -169,20 +172,20 @@ namespace PaviseApp
                     {
                         continue;
                     }
-                    foreach (string parseLibraryPath in ParseLibraryPaths(File.ReadAllText(path)))
+                    foreach (string item in ParseLibraryPaths(File.ReadAllText(path)))
                     {
                         bool rootAlreadyAdded = false;
-                        foreach (string text in texts)
+                        foreach (string item2 in list2)
                         {
-                            if (string.Equals(text, parseLibraryPath, StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(item2, item, StringComparison.OrdinalIgnoreCase))
                             {
                                 rootAlreadyAdded = true;
                                 break;
                             }
                         }
-                        if (!rootAlreadyAdded && Directory.Exists(parseLibraryPath))
+                        if (!rootAlreadyAdded && Directory.Exists(item))
                         {
-                            texts.Add(parseLibraryPath);
+                            list2.Add(item);
                         }
                     }
                 }
@@ -190,25 +193,25 @@ namespace PaviseApp
                 {
                 }
             }
-            return texts;
+            return list2;
         }
 
         internal static List<string> ParseLibraryPaths(string vdfContent)
         {
-            List<string> replaceResults = new List<string>();
+            List<string> list = new List<string>();
             if (string.IsNullOrEmpty(vdfContent))
             {
-                return replaceResults;
+                return list;
             }
             foreach (Match item in Regex.Matches(vdfContent, "\"path\"\\s+\"((?:\\\\.|[^\"\\\\])*)\""))
             {
                 string replaceResult = item.Groups[1].Value.Replace("\\\\", "\\");
                 if (replaceResult.Length > 0)
                 {
-                    replaceResults.Add(replaceResult);
+                    list.Add(replaceResult);
                 }
             }
-            return replaceResults;
+            return list;
         }
 
         internal static string ParseVdfValue(string content, string key)

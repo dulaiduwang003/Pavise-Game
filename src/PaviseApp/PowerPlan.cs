@@ -6,7 +6,19 @@ namespace PaviseApp
     internal static partial class PowerPlan
     {
 
+        private const string ParkSnapKey = "CoreParkSnap";
+
+        private const string ParkTriesKey = "CoreParkTries";
+
+        private const string ParkAbsent = "-";
+
+        private const int MaxRestoreTries = 3;
+
         internal const string PlanJournalKey = "PrevPowerPlan";
+
+        private const string ChoiceKey = "PowerPlanChoice";
+
+        private const string ChoicePrefix = "v2:";
 
         private const string DefaultPlanKey = "DefaultPlanGuid";
 
@@ -18,11 +30,17 @@ namespace PaviseApp
 
         private const string PlanNote = "Pavise动态计划";
 
+        private const string IdleDisableClearedKey = "IdleDisableCleared";
+
         internal const string ExtremeSnapKey = "ExtremePowerKnobSnap";
 
         internal const string LegacyCpuIdleLedgerKey = "CpuIdleStateV1";
 
         private const string ManagedPolicyKey = "ManagedPlanPolicyV3";
+
+        private const uint AccessScheme = 16u;
+
+        private const uint ErrorInvalidParameter = 87u;
 
         private static readonly Guid Ultimate = new Guid("e9a42b02-d5df-448d-aa00-03f14749eb61");
 
@@ -31,6 +49,8 @@ namespace PaviseApp
         private static readonly Guid Balanced = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
 
         private static readonly Guid PowerSaver = new Guid("a1841308-3541-4fab-bc81-f71556f20b4a");
+
+        private static readonly string[] UltimateNames = new string[2] { "卓越性能", "Ultimate Performance" };
 
         private static string machineSig;
 
@@ -51,16 +71,26 @@ namespace PaviseApp
 
         private static int tuneState = -1;
 
-        // 每个游戏会话限制托管计划重建次数，避免与 OEM 控制器争抢；耗尽后停止切换，并通过正常恢复流程还原原计划。
+        // 外部改动由守护持续写回，不设累计次数上限；本局计数只用于日志，总计数供守护线程判断是否正在拉锯。
 
-        private const int ExternalDriftRebuildLimit = 3;
-        private static int externalDriftRebuilds;
+        private static int externalDriftCorrections;
+        private static long externalDriftCorrectionTotal;
         private static long externalDriftSession = -1;
-        private static bool externalDriftStopped;
-        private static Guid externalDriftAccepted;
+        private static long externalDriftLogTicks;
+        private static bool externalDriftCorrectionPending;
+        private static string externalDriftDetail = "";
+        private static Guid lastActivatedPlan;
         private static string intactMismatch = "";
 
+        // 进程生命周期内只增不减，读取不进电源锁，守护线程不会被一次进行中的应用挡住。
+        internal static long ExternalDriftCorrectionTotal
+        {
+            get { return System.Threading.Interlocked.Read(ref externalDriftCorrectionTotal); }
+        }
+
         // 这里只管理退役版本遗留回执的恢复状态，不能重新启用旧调节策略。
+        private static bool extremeTunePending;
+
         private static readonly Guid IdlePromote = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
 
         private static readonly Guid IdleDemote = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
@@ -207,30 +237,30 @@ namespace PaviseApp
         {
             get
             {
-                string text;
-                if (!Settings.TryLoadStr("PowerPlanChoice", out text))
+                string value;
+                if (!Settings.TryLoadStr("PowerPlanChoice", out value))
                 {
                     return "off";
                 }
-                bool planEnabled;
-                if (text.StartsWith("v2:", StringComparison.Ordinal))
+                bool value2;
+                if (value.StartsWith("v2:", StringComparison.Ordinal))
                 {
-                    text = text.Substring("v2:".Length);
-                    if (text.Length == 0)
+                    value = value.Substring("v2:".Length);
+                    if (value.Length == 0)
                     {
                         return "off";
                     }
                 }
-                else if (!Settings.TryLoadBool("PowerPlanOn", true, out planEnabled) || !planEnabled)
+                else if (!Settings.TryLoadBool("PowerPlanOn", true, out value2) || !value2)
                 {
                     return "off";
                 }
                 Guid g;
-                if (text.Length != 0 && text != "managed" && text != "off" && (!TryGuid(text, out g) || g == Guid.Empty))
+                if (value.Length != 0 && value != "managed" && value != "off" && (!TryGuid(value, out g) || g == Guid.Empty))
                 {
                     return "off";
                 }
-                return text;
+                return value;
             }
         }
 
@@ -361,24 +391,24 @@ namespace PaviseApp
             {
                 return Lang.T("t.systemaudithardware.3");
             }
-            Guid currentGuid = guid.Value;
-            if (currentGuid == Ultimate)
+            Guid value = guid.Value;
+            if (value == Ultimate)
             {
                 return Lang.T("t.powerplan.1");
             }
-            if (currentGuid == HighPerf)
+            if (value == HighPerf)
             {
                 return Lang.T("t.powerplan.3");
             }
-            if (currentGuid == Balanced)
+            if (value == Balanced)
             {
                 return Lang.T("t.powerplan.4");
             }
-            if (currentGuid == PowerSaver)
+            if (value == PowerSaver)
             {
                 return Lang.T("t.powerplan.5");
             }
-            string name = ReadName(currentGuid);
+            string name = ReadName(value);
             if (name.Length <= 0)
             {
                 return Lang.T("t.powerplan.6");
@@ -407,7 +437,7 @@ namespace PaviseApp
         public static List<PowerPlanEntry> ListUserPlans()
         {
             Guid guid = ManagedPlanGuid();
-            List<PowerPlanEntry> powerPlanEntries = new List<PowerPlanEntry>();
+            List<PowerPlanEntry> list = new List<PowerPlanEntry>();
             foreach (Guid item in EnumerateSchemes())
             {
                 if (!ManagedPolicyOwns(item) && (guid == Guid.Empty || item != guid))
@@ -415,11 +445,11 @@ namespace PaviseApp
                     string name = ReadName(item);
                     if (!string.Equals(name, "由软件调度 " + MachineSignature(), StringComparison.OrdinalIgnoreCase) && !string.Equals(name, "Scheduled by Pavise " + MachineSignature(), StringComparison.OrdinalIgnoreCase))
                     {
-                        powerPlanEntries.Add(new PowerPlanEntry(item, (name.Length > 0) ? name : item.ToString()));
+                        list.Add(new PowerPlanEntry(item, (name.Length > 0) ? name : item.ToString()));
                     }
                 }
             }
-            return powerPlanEntries;
+            return list;
         }
 
         public static bool SelectPlan(string id)
@@ -431,17 +461,17 @@ namespace PaviseApp
             {
                 return false;
             }
-            string text;
-            if (!Settings.TryLoadStr("PowerPlanChoice", out text))
+            string value;
+            if (!Settings.TryLoadStr("PowerPlanChoice", out value))
             {
                 return false;
             }
             string message = "v2:" + ((idOffset.Length == 0) ? "managed" : idOffset);
-            if (text != message && !Settings.SaveStr("PowerPlanChoice", message))
+            if (value != message && !Settings.SaveStr("PowerPlanChoice", message))
             {
                 return false;
             }
-            if (text == message) return true;
+            if (value == message) return true;
             lock (lk)
             {
                 managedCreationBlocked = false;
@@ -524,8 +554,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            Guid currentG = g;
-            uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref currentG);
+            Guid guid2 = g;
+            uint powerDeleteSchemeResult = PowerDeleteScheme(IntPtr.Zero, ref guid2);
             if (powerDeleteSchemeResult != 0 && powerDeleteSchemeResult != 2)
             {
                 return false;
@@ -560,9 +590,9 @@ namespace PaviseApp
             {
                 return true;
             }
-            foreach (Guid enumerateScheme in EnumerateSchemes())
+            foreach (Guid item in EnumerateSchemes())
             {
-                if (enumerateScheme != avoid && Set(enumerateScheme))
+                if (item != avoid && Set(item))
                 {
                     return true;
                 }
@@ -612,8 +642,8 @@ namespace PaviseApp
             {
                 return false;
             }
-            Guid currentG = g;
-            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref currentG) != 0)
+            Guid guid2 = g;
+            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref guid2) != 0)
             {
                 return false;
             }
@@ -716,8 +746,8 @@ namespace PaviseApp
             }
             if (!RestoreLaboratoryBeforeCoreChange())
                 return PowerApplyFailed("laboratory-recovery", "Laboratory power recovery pending");
-            string text;
-            if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out text) || text == null || text.Length != 0) && !RestorePlanCore(false))
+            string value;
+            if ((settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr("PrevPowerPlan", out value) || value == null || value.Length != 0) && !RestorePlanCore(false))
             {
                 return PowerApplyFailed("previous-plan-recovery", "Previous power-plan recovery pending");
             }
@@ -745,6 +775,7 @@ namespace PaviseApp
             }
             if (guid2.Value == guid && !targetOwned)
             {
+                lastActivatedPlan = guid;
                 active = true;
                 return true;
             }
@@ -768,6 +799,7 @@ namespace PaviseApp
             if (HandheldBypass) return RestoreHandheldApply();
             if (!prepared) return PowerApplyFailed("managed-preparation", "Managed parameter preparation failed");
             bool restoreSetPlanSucceeded = RestoreSetPlan(guid);
+            if (restoreSetPlanSucceeded) lastActivatedPlan = guid;
             Guid? guid3 = (restoreSetPlanSucceeded ? RestoreCurrentPlan() : null);
             if (restoreSetPlanSucceeded && guid3.HasValue && guid3.Value == guid)
             {
@@ -798,46 +830,32 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                if (AutomaticSelection && externalDriftStopped
-                    && !(active && targetOwned && target == externalDriftAccepted && tuneState == TuneCode(aggressive)))
+                Guid? observed = RestoreCurrentPlan();
+                if (!observed.HasValue || observed.Value == Guid.Empty)
+                    return PowerApplyFailed("active-plan-read", "Active power-plan query failed");
+                Guid heldPlan = lastActivatedPlan != Guid.Empty ? lastActivatedPlan : (active ? target : Guid.Empty);
+                bool planDrift = active && heldPlan != Guid.Empty && observed.Value != heldPlan;
+                bool parameterDrift = active && targetOwned && tuneState == TuneCode(aggressive)
+                    && !ManagedPresetIntact(target, aggressive);
+                bool correctionAdmitted = false;
+                if (externalDriftCorrectionPending || planDrift || parameterDrift)
                 {
-                    return PowerApplyFailed("external-drift-exhausted", "Managed power rebuilding remains stopped until the next game session");
+                    string detail = parameterDrift ? (intactMismatch.Length == 0 ? "parameters-unverified" : intactMismatch) : "";
+                    if (detail.Length == 0) detail = "previous-correction-incomplete";
+                    NoteExternalDriftCorrection(observed.Value, heldPlan, planDrift, parameterDrift, detail);
+                    correctionAdmitted = true;
                 }
                 if (!active)
                 {
-                    return ActivateInner(aggressive);
+                    bool activated = ActivateInner(aggressive);
+                    if (activated) externalDriftCorrectionPending = false;
+                    return activated;
                 }
-                if (targetOwned && tuneState == TuneCode(aggressive) && target != externalDriftAccepted && !ManagedPresetIntact(target, aggressive))
+                // 活动计划没被切走时先原地写回被改的数值；写不回去才重建，重建与重新激活合并为同一次纠偏。
+                if (parameterDrift && (planDrift || !RepairManagedValues(target, aggressive)))
                 {
-                    string detail = intactMismatch.Length == 0 ? "unknown" : intactMismatch;
-                    if (externalDriftRebuilds >= ExternalDriftRebuildLimit)
-                    {
-                        // 反复漂移会耗尽本会话的重建预算，即使备用选择保存失败也不例外。
-                        externalDriftAccepted = target;
-                        externalDriftStopped = true;
-                        if (SelectNoSwitchAfterExternalDrift())
-                        {
-                            Logger.Warn(PerformancePolicy.Text("托管电源参数反复被其他程序修改（常见于笔记本厂商控制中心），已超过 "
-                                + ExternalDriftRebuildLimit + " 次，电源计划已自动改为「不切换」，本局退回原计划；需要时可在电源计划选项中重新开启",
-                                "托管电源参数被其他程序（通常是 OEM 控制中心）反复修改，次数超过 "
-                                + ExternalDriftRebuildLimit + " 次；电源计划已设为“不切换”，随后恢复原计划。可在电源选项中重新开启")
-                                + " 详情=" + detail);
-                            return true;
-                        }
-                        // 关闭状态无法保存时，保留托管计划及返回记录，本会话不再重建。
-                        Logger.Warn(PerformancePolicy.Text("托管电源参数反复被其他程序修改，但「不切换」设置保存失败；本局保留当前计划，不再重建",
-                            "托管电源参数反复被外部修改，且“不切换”保存失败；保留当前计划，本会话不再重建")
-                            + " 详情=" + detail + " 重建次数=" + externalDriftRebuilds + "/" + ExternalDriftRebuildLimit);
-                    }
-                    else
-                    {
-                        // 替换漂移或路由变化的计划时，保留最初返回计划的记录。
-                        externalDriftRebuilds++;
-                        resolved = false;
-                        tuneState = -1;
-                        Logger.Warn(PerformancePolicy.Text("托管电源性能参数发生变化，正在重建并核验", "托管电源性能参数已变化，正在重建并核验")
-                            + " 详情=" + detail + " 重建=" + externalDriftRebuilds + "/" + ExternalDriftRebuildLimit);
-                    }
+                    resolved = false;
+                    tuneState = -1;
                 }
                 Guid guid = ResolveTarget(aggressive);
                 if (HandheldBypass) return RestoreHandheldApply();
@@ -848,14 +866,18 @@ namespace PaviseApp
                 if (targetOwned && saved == Guid.Empty)
                 {
                     active = false;
-                    return ActivateInner(aggressive);
+                    bool activated = ActivateInner(aggressive);
+                    if (activated) externalDriftCorrectionPending = false;
+                    return activated;
                 }
                 if (!targetOwned && !RestoreOwnedIdlePolicy())
                 {
                     return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
                 }
                 if (HandheldBypass) return RestoreHandheldApply();
-                bool retuned = !targetOwned || tuneState == TuneCode(aggressive) || RetuneManagedScheme(guid, aggressive);
+                bool needsRetune = targetOwned && tuneState != TuneCode(aggressive);
+                bool retuned = !needsRetune || RetuneManagedScheme(guid, aggressive);
+                if (retuned && needsRetune) lastActivatedPlan = guid;
                 if (HandheldBypass) return RestoreHandheldApply();
                 if (!retuned)
                 {
@@ -869,12 +891,18 @@ namespace PaviseApp
                 }
                 if (guid2.HasValue && guid2.Value != guid)
                 {
+                    // 重调已激活并读回后再次被切走，是新的一次外部改动，单独计数。
+                    // 尚未执行前向激活时，最初同时发现的参数与 GUID 漂移仍只计一次。
+                    if (needsRetune || (!correctionAdmitted && heldPlan != Guid.Empty && guid2.Value != heldPlan))
+                        NoteExternalDriftCorrection(guid2.Value, guid, true, false, "active-plan-changed-after-observation");
                     if (!RestoreSetPlan(guid))
                         return PowerApplyFailed("activation", "Selected power-plan activation rejected");
+                    lastActivatedPlan = guid;
                     if (RestoreCurrentPlan() != guid)
                         return PowerApplyFailed("activation-readback", "Active power-plan readback mismatch");
                     Logger.Log(Lang.T("log.powerplan.28", 0) + RestorePlanLabel(guid));
                 }
+                externalDriftCorrectionPending = false;
                 return true;
             }
         }
@@ -902,7 +930,7 @@ namespace PaviseApp
                 {
                     Guid? guid2 = RestoreCurrentPlan();
                         return guid2.HasValue && guid2.Value == guid
-                            && (!targetOwned || guid == externalDriftAccepted || ManagedPresetIntact(guid, aggressive));
+                            && (!targetOwned || ManagedPresetIntact(guid, aggressive));
                 }
                 return false;
             }
@@ -920,27 +948,28 @@ namespace PaviseApp
             }
             ManagedPolicyRecord record;
             bool policyUnconfirmed = !ReadManagedPolicy(out record);
-            foreach (string entryText in new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" })
+            string[] textEntries = new string[4] { "PgPlanGuid", "PowerPlanChoice", "ArenaPlanGuid", "UltimatePlanGuid" };
+            foreach (string entryText in textEntries)
             {
-                string text;
-                if (!Settings.TryLoadStr(entryText, out text) || text == null)
+                string value;
+                if (!Settings.TryLoadStr(entryText, out value) || value == null)
                 {
                     policyUnconfirmed = true;
                     continue;
                 }
-                if (entryText == "PowerPlanChoice" && text.StartsWith("v2:", StringComparison.Ordinal))
+                if (entryText == "PowerPlanChoice" && value.StartsWith("v2:", StringComparison.Ordinal))
                 {
-                    text = text.Substring("v2:".Length);
-                    if (text.Length == 0)
+                    value = value.Substring("v2:".Length);
+                    if (value.Length == 0)
                     {
                         policyUnconfirmed = true;
                         continue;
                     }
                 }
-                if (text.Length != 0 && (entryText != "PowerPlanChoice" || (text != "managed" && text != "off")))
+                if (value.Length != 0 && (entryText != "PowerPlanChoice" || (value != "managed" && value != "off")))
                 {
                     Guid g2;
-                    if (!TryGuid(text, out g2) || g2 == Guid.Empty)
+                    if (!TryGuid(value, out g2) || g2 == Guid.Empty)
                     {
                         policyUnconfirmed = true;
                     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace PaviseApp
@@ -38,7 +39,7 @@ namespace PaviseApp
             lock (gate)
             {
                 LaboratoryManualState value;
-                if (!states.TryGetValue(key, out value)) return new LaboratoryManualState { Summary = LaboratoryActionText.Pick("尚未检查", "Not checked") };
+                if (!states.TryGetValue(key, out value)) return new LaboratoryManualState { Summary = LaboratoryActionText.Pick("尚未检查", "Not checked", "未確認") };
                 return new LaboratoryManualState { CanApply = value.CanApply, CanRestore = value.CanRestore, Applied = value.Applied,
                     RestartRequired = value.RestartRequired, Summary = value.Summary, Reason = value.Reason, Failure = value.Failure, Details = value.Details };
             }
@@ -55,7 +56,7 @@ namespace PaviseApp
         private static LaboratoryManualState Failed(string key, Exception error)
         {
             return new LaboratoryManualState { CanRestore = HasReceipt(key), Failure = error.GetType().Name,
-                Summary = LaboratoryActionText.Pick("执行失败，原记录保留", "Action failed; original records retained") };
+                Summary = LaboratoryActionText.Pick("执行失败，原记录保留", "Action failed; original records retained", "実行に失敗。元の記録を保持") };
         }
         private static void InspectAll()
         {
@@ -66,20 +67,20 @@ namespace PaviseApp
                     lock (gate) states[key] = new LaboratoryManualState { Summary = "Retired" };
                     continue;
                 }
-                LaboratoryManualState laboratoryManualState;
+                LaboratoryManualState value;
                 try
                 {
 #if PAVISE_SELFTEST
-                    laboratoryManualState = InspectForTest != null ? InspectForTest(key) : new LaboratoryManualState { Summary = "Not checked" };
+                    value = InspectForTest != null ? InspectForTest(key) : new LaboratoryManualState { Summary = "Not checked" };
 #else
-                    laboratoryManualState = key == LaboratoryFileFilter.Key ? LaboratoryFileFilter.Inspect()
+                    value = key == LaboratoryFileFilter.Key ? LaboratoryFileFilter.Inspect()
                         : key == LaboratoryClockRepair.Key ? LaboratoryClockRepair.Inspect() : LaboratoryAudioEffects.Inspect();
 #endif
                 }
-                catch (Exception error) { laboratoryManualState = Failed(key, error); }
-                laboratoryManualState = laboratoryManualState ?? new LaboratoryManualState();
-                laboratoryManualState.CanApply = false;
-                lock (gate) states[key] = laboratoryManualState;
+                catch (Exception error) { value = Failed(key, error); }
+                value = value ?? new LaboratoryManualState();
+                value.CanApply = false;
+                lock (gate) states[key] = value;
             }
             lock (gate) candidates = new FileFilterCandidate[0];
         }
@@ -133,13 +134,13 @@ namespace PaviseApp
                 InspectAll();
                 if (!ok || !entered)
                 {
-                    if (!entered) error = LaboratoryActionText.Pick("请在对局外且其他维护结束后操作", "Use outside a match after other maintenance completes");
+                    if (!entered) error = LaboratoryActionText.Pick("请在对局外且其他维护结束后操作", "Use outside a match after other maintenance completes", "対局外で、ほかの処理が完了してから操作してください");
                     lock (gate)
                     {
-                        LaboratoryManualState state;
-                        if (!states.TryGetValue(key, out state)) state = new LaboratoryManualState();
-                        state.Failure = string.IsNullOrEmpty(error) ? LaboratoryActionText.Pick("操作未完成", "Action incomplete") : error;
-                        states[key] = state;
+                        LaboratoryManualState value;
+                        if (!states.TryGetValue(key, out value)) value = new LaboratoryManualState();
+                        value.Failure = string.IsNullOrEmpty(error) ? LaboratoryActionText.Pick("操作未完成", "Action incomplete", "操作が未完了") : error;
+                        states[key] = value;
                     }
                 }
             }, completed);

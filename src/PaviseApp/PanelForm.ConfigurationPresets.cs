@@ -13,7 +13,7 @@ namespace PaviseApp
         private string configurationPresetLastResult = "";
         private string configurationPresetLastIssue = "";
         private ConfigurationPresetGuideDialog configurationPresetGuide;
-        private bool configurationPresetRestartPending, configurationPresetRestartPartial;
+        private bool configurationPresetRestartPending, configurationPresetRestartPartial, configurationPresetRestartUnverified;
 #if PAVISE_SELFTEST
         internal Action<ConfigurationPresetGuideDialog> ConfigurationPresetGuideForTest;
         internal Action<string, string> ConfigurationPresetRestartReminderForTest;
@@ -96,7 +96,7 @@ namespace PaviseApp
             if (configurationPresetRestartPending && !IsDisposed && !Disposing && !runtimeShutdownBusy)
             {
                 configurationPresetRestartPending = false;
-                ShowConfigurationPresetRestartReminder(configurationPresetRestartPartial);
+                ShowConfigurationPresetRestartReminder(configurationPresetRestartPartial, configurationPresetRestartUnverified);
             }
         }
 
@@ -117,7 +117,8 @@ namespace PaviseApp
                                 generation != Volatile.Read(ref configurationPresetUiGeneration)) return;
                             configurationPresetLastResult = ConfigurationPresetReport(result);
                             configurationPresetLastIssue = result.Cancelled ? PerformancePolicy.Text("设置已停止，可重新选择。", "Setup stopped. Choose a setup to try again.")
-                                : result.Failed > 0 ? PerformancePolicy.Text("部分设置未能应用，可重试。", "Some settings could not be applied. Try again.") : "";
+                                : result.Failed > 0 ? PerformancePolicy.Text("部分设置未能应用，可重试。", "Some settings could not be applied. Try again.")
+                                : result.Pending > 0 ? PerformancePolicy.Text("部分配置已记录，仍待重启或状态验证。", "Some preferences were saved and await a restart or state verification.") : "";
                             RefreshEnvironmentStateAsync();
                             RefreshAutomationPage();
                             SyncConfigurationPresetControls();
@@ -129,6 +130,7 @@ namespace PaviseApp
                                 {
                                     configurationPresetRestartPending = true;
                                     configurationPresetRestartPartial = result.Failed > 0;
+                                    configurationPresetRestartUnverified = result.Pending > 0;
                                     configurationPresetGuide.Close();
                                 }
                             }
@@ -146,11 +148,14 @@ namespace PaviseApp
             return result.Summary;
         }
 
-        private void ShowConfigurationPresetRestartReminder(bool partial)
+        private void ShowConfigurationPresetRestartReminder(bool partial, bool pending = false)
         {
-            string title = PerformancePolicy.Text("请重启电脑", "Restart your PC");
-            string body = PerformancePolicy.Text("请重启电脑，使已应用的设置生效。", "Restart your PC for the applied settings to take effect.");
-            if (partial) body = PerformancePolicy.Text("部分设置未能应用。", "Some settings could not be applied. ") + body;
+            string title = Lang.Cur == 2 ? "PCの再起動が必要です" : PerformancePolicy.Text("请重启电脑", "Restart your PC");
+            string body = Lang.Cur == 2 ? "適用した設定を有効にするには、PCを再起動してください。"
+                : PerformancePolicy.Text("请重启电脑，使已应用的设置生效。", "Restart your PC for the applied settings to take effect.");
+            if (pending) body = PerformancePolicy.Text("部分配置已记录，状态仍待验证。请重启电脑，使需重启的设置生效；待验证项仍需后续确认。",
+                "Some preferences were saved and still await verification. Restart your PC for changes that require it; pending items remain unconfirmed.");
+            if (partial) body = (Lang.Cur == 2 ? "一部の設定は適用できませんでした。" : PerformancePolicy.Text("部分设置未能应用。", "Some settings could not be applied. ")) + body;
 #if PAVISE_SELFTEST
             if (ConfigurationPresetRestartReminderForTest == null) throw new InvalidOperationException("Preset restart reminder must be mocked");
             ConfigurationPresetRestartReminderForTest(title, body);

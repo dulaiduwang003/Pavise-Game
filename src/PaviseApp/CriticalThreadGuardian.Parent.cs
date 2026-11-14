@@ -20,6 +20,22 @@ namespace PaviseApp
 
                 private readonly int[] openErrors = new int[6];
 
+                // 仅记录清理阻塞阶段，不参与判定或次数结算。
+                internal string Blocker, Deferred;
+
+                private static string PartName(HardThreadCleanupPart part)
+                {
+                    switch (part)
+                    {
+                    case HardThreadCleanupPart.Ledger: return "亲和性账本";
+                    case HardThreadCleanupPart.SessionLock: return "会话锁";
+                    case HardThreadCleanupPart.Configuration: return "守护配置";
+                    case HardThreadCleanupPart.Executable: return "守护程序";
+                    case HardThreadCleanupPart.Registration: return "登记文件";
+                    default: return "守护目录";
+                    }
+                }
+
                 private Scope Original
                 {
                     get
@@ -50,48 +66,65 @@ namespace PaviseApp
                     {
                         try
                         {
-                            if (!owner.childGone || !HardThreadCleanupPolicy.ChildSettled(owner.SpawnSucceeded, owner.ChildState) || owner.Parent == null || owner.Parent.State != 0 || !owner.Parent.Actor.Same(Original.Parent) || !owner.Parent.VerifyImage() || owner.Root == null || !owner.Root.Valid || owner.Root.Identity != Original.RootIdentity || owner.GuardsDirectory == null || !owner.GuardsDirectory.Valid)
+                            // 逐阶段记录阻塞原因，便于定位清理失败。
+                            if (!owner.childGone || !HardThreadCleanupPolicy.ChildSettled(owner.SpawnSucceeded, owner.ChildState))
                             {
+                                Blocker = "守护子进程退出尚未确认";
+                                return false;
+                            }
+                            if (owner.Parent == null || owner.Parent.State != 0 || !owner.Parent.Actor.Same(Original.Parent) || !owner.Parent.VerifyImage())
+                            {
+                                Blocker = "本进程身份或程序文件核验未通过";
+                                return false;
+                            }
+                            if (owner.Root == null || !owner.Root.Valid || owner.Root.Identity != Original.RootIdentity || owner.GuardsDirectory == null || !owner.GuardsDirectory.Valid)
+                            {
+                                Blocker = "守护根目录身份已变化或句柄失效";
                                 return false;
                             }
                             RequireAcl(Original.Root, Original.Sid);
                             if (!store.MatchesSettled(owner.settledSource, owner.cleanupState.Removed(HardThreadCleanupPart.Ledger)))
                             {
+                                Blocker = "亲和性账本或统一线程账本与结清时的记录不一致";
                                 return false;
                             }
-                            foreach (HardThreadCleanupPart cleanupPart in Enum.GetValues(typeof(HardThreadCleanupPart)))
+                            foreach (HardThreadCleanupPart value in Enum.GetValues(typeof(HardThreadCleanupPart)))
                             {
-                                string path = PartPath(cleanupPart);
-                                if (owner.cleanupState.Removed(cleanupPart))
+                                string path = PartPath(value);
+                                if (owner.cleanupState.Removed(value))
                                 {
                                     if (!Missing(path))
                                     {
+                                        Blocker = PartName(value) + "已删除后重新出现";
                                         return false;
                                     }
                                 }
                                 else
                                 {
-                                    if (owner.cleanupState.Deferred(cleanupPart))
+                                    if (owner.cleanupState.Deferred(value))
                                     {
                                         continue;
                                     }
-                                    if (cleanupPart == HardThreadCleanupPart.Directory)
+                                    if (value == HardThreadCleanupPart.Directory)
                                     {
                                         if (owner.SessionDirectory != null)
                                         {
                                             if (!owner.SessionDirectory.Valid)
                                             {
+                                                Blocker = "守护目录句柄失效";
                                                 return false;
                                             }
                                             owner.directoryIdentity = owner.SessionDirectory.Identity;
                                         }
                                         if (string.IsNullOrEmpty(owner.directoryIdentity))
                                         {
+                                            Blocker = "守护目录身份未知";
                                             return false;
                                         }
                                     }
-                                    else if (!VerifyFile(path, ExpectedHash(cleanupPart)))
+                                    else if (!VerifyFile(path, ExpectedHash(value)))
                                     {
+                                        Blocker = PartName(value) + "内容与原记录不一致";
                                         return false;
                                     }
                                 }
@@ -100,6 +133,7 @@ namespace PaviseApp
                         }
                         catch (Exception error)
                         {
+                            Blocker = "守护源核验异常：" + Brief(error);
                             owner.RememberClosureFailure(error);
                             return false;
                         }
@@ -235,16 +269,20 @@ namespace PaviseApp
                         string expected = ExpectedHash(part);
                         if (part != HardThreadCleanupPart.Directory && expected == null)
                         {
-                            return Missing(path);
+                            bool absent = Missing(path);
+                            if (!absent) Blocker = PartName(part) + "并非本次创建，却仍然存在";
+                            return absent;
                         }
                         NoReparse(Path.GetDirectoryName(path));
                         IntPtr handle = CreateFile(path, 2147549184u, 5u, IntPtr.Zero, 3u, (part == HardThreadCleanupPart.Directory) ? 35651584u : 2097152u, IntPtr.Zero);
                         if (handle == IntPtr.Zero || handle == new IntPtr(-1))
                         {
                             openErrors[(int)part] = Marshal.GetLastWin32Error();
+                            Blocker = PartName(part) + "无法以删除权限打开，错误码=" + openErrors[(int)part];
                             return false;
                         }
                         bool marked = false;
+                        string refused = "文件信息不可读或为重解析点";
                         HardThreadConstructionCleanup.AcquireAndRelease(delegate
                         {
                             FileIdentity info;
@@ -254,6 +292,7 @@ namespace PaviseApp
                                 {
                                     if ((info.Attributes & 0x10) == 0 || FileKey(info) != owner.directoryIdentity)
                                     {
+                                        refused = "目录身份与原记录不符";
                                         return;
                                     }
                                 }
@@ -261,6 +300,7 @@ namespace PaviseApp
                                 {
                                     if ((info.Attributes & 0x10u) != 0)
                                     {
+                                        refused = "路径已变成目录";
                                         return;
                                     }
                                     using (SafeFileHandle handle2 = new SafeFileHandle(handle, false))
@@ -269,6 +309,7 @@ namespace PaviseApp
                                         {
                                             if (fileStream.Length > 67108864 || Hash(fileStream) != expected)
                                             {
+                                                refused = "内容与原记录不一致";
                                                 return;
                                             }
                                         }
@@ -278,16 +319,19 @@ namespace PaviseApp
                                 deleteDisposition.Delete = 1;
                                 DeleteDisposition information = deleteDisposition;
                                 marked = SetFileInformationByHandle(handle, 4, ref information, 1u);
+                                if (!marked) refused = "删除标记被系统拒绝，错误码=" + Marshal.GetLastWin32Error();
                             }
                         }, delegate
                         {
                             bool uncertain = false;
                             HardThreadRawHandleClosure.Close(ref handle, ref uncertain, CloseHandle);
                         });
+                        if (!marked) Blocker = PartName(part) + "未删除：" + refused;
                         return marked;
                     }
                     catch (Exception error)
                     {
+                        Blocker = PartName(part) + "清理异常：" + Brief(error);
                         owner.RememberClosureFailure(error);
                         return false;
                     }
@@ -313,6 +357,7 @@ namespace PaviseApp
                         return false;
                     }
                     NoteSettledLeftovers();
+                    Deferred = (Deferred == null ? "" : Deferred + "、") + PartName(part);
                     return true;
                 }
             }
@@ -323,11 +368,36 @@ namespace PaviseApp
 
             internal bool SpawnSucceeded;
 
+            // WMI 超时不表示未创建。结果未知期间保留原控制器，阻止删除现场或再次派生。
+            internal bool BrokerSpawnPending, BrokerSpawnRequested, BrokerAbsenceConfirmed;
+            internal string BrokerSpawnFailure;
+
             internal bool DirectoryCreated;
 
             internal volatile bool controllerReleased;
 
             internal ActorPin Parent;
+
+            internal HardThreadGuardianBrokerPin BrokerProof;
+
+            internal string VerifyBrokerProof(HardThreadGuardianBrokerPin proof)
+            {
+                lock (lifetime)
+                {
+                    if (disposed || BrokerProof != null) throw new IOException("独立守护所有者已关闭或 WMI 证明已登记");
+                    BrokerProof = proof;
+                    return BrokerProof.Verify();
+                }
+            }
+
+            internal string RecheckBrokerProof()
+            {
+                lock (lifetime)
+                {
+                    if (disposed) throw new IOException("独立守护所有者在 armed 前已关闭");
+                    return BrokerProof == null ? null : BrokerProof.Verify();
+                }
+            }
 
             internal DirectoryPin SessionDirectory;
 
@@ -368,6 +438,14 @@ namespace PaviseApp
             private int cleanupDelay = 1000;
             private int cleanupAttempts;
             private bool cleanupExitPhase;
+            // 仅记录文件清理与保护注销的阻塞阶段。
+            private string cleanupBlocker, cleanupDeferred, protectionBlocker;
+
+            private static string Brief(Exception error)
+            {
+                string text = (error.GetType().Name + " " + error.Message).Replace('\r', ' ').Replace('\n', ' ');
+                return text.Length > 200 ? text.Substring(0, 200) : text;
+            }
 
             internal Scope Scope;
 
@@ -405,7 +483,7 @@ namespace PaviseApp
             {
                 get
                 {
-                    if (Child == null && Parent == null && Root == null && Source == null && Pipe == null && SessionDirectory == null && GuardsDirectory == null && wait == null && waitObject == null && UnverifiedSpawn == IntPtr.Zero)
+                    if (!BrokerSpawnPending && BrokerProof == null && Child == null && Parent == null && Root == null && Source == null && Pipe == null && SessionDirectory == null && GuardsDirectory == null && wait == null && waitObject == null && UnverifiedSpawn == IntPtr.Zero)
                     {
                         return SpawnThread == IntPtr.Zero;
                     }
@@ -423,6 +501,7 @@ namespace PaviseApp
                     }
                     if (UnverifiedSpawn == IntPtr.Zero)
                     {
+                        if (BrokerSpawnRequested && !BrokerSpawnPending && BrokerAbsenceConfirmed) return HardThreadRead.Gone;
                         return HardThreadRead.Unknown;
                     }
                     switch (WaitForSingleObject(UnverifiedSpawn, 0u))
@@ -496,6 +575,41 @@ namespace PaviseApp
                 }
             }
 
+            internal void BeginBrokerSpawn()
+            {
+                lock (lifetime)
+                {
+                    if (disposed || BrokerSpawnRequested || Child != null || UnverifiedSpawn != IntPtr.Zero || SpawnThread != IntPtr.Zero)
+                        throw new IOException("独立守护备用创建资格或旧句柄未结清");
+                    BrokerSpawnRequested = BrokerSpawnPending = true;
+                }
+            }
+
+            internal void CompleteBrokerSpawn(IntPtr process, bool absenceConfirmed, string failure)
+            {
+                bool cleanup;
+                lock (lifetime)
+                {
+                    // 仅由本次创建请求的工作线程处理；超时方保留所有权，不另建请求。
+                    BrokerSpawnFailure = failure;
+                    if (process != IntPtr.Zero)
+                    {
+                        UnverifiedSpawn = process;
+                        SpawnSucceeded = true;
+                        BrokerSpawnPending = false;
+                    }
+                    else if (absenceConfirmed)
+                    {
+                        BrokerAbsenceConfirmed = true;
+                        BrokerSpawnPending = false;
+                    }
+                    cleanup = disposed;
+                    // 迟到结果不能被此前的清理失败预算挡住退出通知；观察本身不写游戏，也不补充清理次数。
+                    if (cleanup && process != IntPtr.Zero) WatchLocked();
+                }
+                if (cleanup) Dispose();
+            }
+
             private void ScheduleCleanupLocked()
             {
                 if (cleanupAttempts >= 3) return;
@@ -536,19 +650,30 @@ namespace PaviseApp
                     unregister = Unregister;
                     arg = ((Scope == null) ? null : Scope.Child);
                 }
+                try
+                {
+                    if (!CleanupReleasedGameThreadControl(OriginalScope, settledSource))
+                    { lock (lifetime) { protectionBlocker = "统一线程账本未清理：与结清记录不一致或删除未完成"; ScheduleCleanupLocked(); } return; }
+                }
+                catch (Exception error)
+                { lock (lifetime) { protectionBlocker = "统一线程账本清理未通过：" + Brief(error); ScheduleCleanupLocked(); } return; }
                 bool registrationClosed = unregister == null;
+                string registrationFault = null;
                 if (unregister != null)
                 {
                     try
                     {
                         registrationClosed = unregister(arg);
                     }
-                    catch
+                    catch (Exception error)
                     {
+                        registrationFault = Brief(error);
                     }
                 }
                 lock (lifetime)
                 {
+                    protectionBlocker = registrationClosed ? null : "后台保护登记未注销："
+                        + (registrationFault ?? "调度门禁正被占用或守护身份缺失");
                     protectionReleased = registrationClosed;
                     if (registrationClosed)
                     {
@@ -629,6 +754,11 @@ namespace PaviseApp
                         }
                     }
                 }
+                if (BrokerProof != null)
+                {
+                    try { BrokerProof.Dispose(); BrokerProof = null; }
+                    catch { if (!BrokerProof.ClosureCertain) closeFault = true; }
+                }
                 if (Source != null)
                 {
                     try
@@ -682,6 +812,7 @@ namespace PaviseApp
             {
                 if (!childGone || OriginalScope == null || settledSource == null)
                 {
+                    cleanupBlocker = !childGone ? "守护子进程尚未退出" : OriginalScope == null ? "缺少原守护范围" : "尚未取得结清记录";
                     return;
                 }
                 try
@@ -691,6 +822,8 @@ namespace PaviseApp
                     {
                         CleanupFiles original = new CleanupFiles(this, store);
                         cleanupComplete = cleanupState.Step(original);
+                        cleanupBlocker = cleanupComplete ? null : original.Blocker ?? "句柄关闭结果未确认";
+                        if (original.Deferred != null) cleanupDeferred = original.Deferred;
                     }, delegate
                     {
                         HardThreadConstructionCleanup.CloseOwned(store);
@@ -698,8 +831,19 @@ namespace PaviseApp
                 }
                 catch (Exception error)
                 {
+                    cleanupBlocker = "守护文件清理异常：" + Brief(error);
                     RememberClosureFailure(error);
                 }
+            }
+
+            // 调用方须持有 lifetime；结清返回 null，否则返回各清理阶段状态。
+            private string PendingCleanupLocked()
+            {
+                if (cleanupComplete && protectionReleased && ControllerClosed && !closeFault) return null;
+                return "文件清理=" + (cleanupComplete ? "完成" : "未完成（" + (cleanupBlocker ?? "原因未记录") + "）")
+                    + (cleanupDeferred == null ? "" : "；被其他进程占用而留给后续清扫=" + cleanupDeferred)
+                    + "；本方句柄=" + (ControllerClosed ? "已关闭" : "未全部关闭") + (closeFault ? "，存在关闭故障" : "")
+                    + "；保护注销=" + (protectionReleased ? "完成" : "未完成（" + (protectionBlocker ?? "等待文件清理与句柄关闭") + "）");
             }
 
             public void NoteSettled(HardThreadSettledSource original)
@@ -788,7 +932,7 @@ namespace PaviseApp
             {
                 lock (lifetime)
                 {
-                    if (disposed || failed || Child == null || Child.State != 0)
+                    if (disposed || failed || settledSource != null || Child == null || Child.State != 0)
                     {
                         throw new InvalidOperationException("original guardian is not alive");
                     }
@@ -797,6 +941,8 @@ namespace PaviseApp
 
             public void Dispose()
             {
+                string attemptLabel;
+                bool cleanupRan;
                 lock (lifetime)
                 {
                     bool exited = childGone || ChildState == HardThreadRead.Gone;
@@ -808,7 +954,8 @@ namespace PaviseApp
                     if (cleanupAttempts >= 3) return;
                     cleanupAttempts++;
                     // 每个阶段首次普通停止或清理不计为失败。
-                    string cleanupLine = "Critical guardian cleanup: phase=" + (cleanupExitPhase ? "child-exit" : "live") + " 尝试=" + cleanupAttempts + "/3";
+                    attemptLabel = "phase=" + (cleanupExitPhase ? "child-exit" : "live") + " 尝试=" + cleanupAttempts + "/3";
+                    string cleanupLine = "独立守护清理：" + attemptLabel;
                     if (cleanupAttempts == 1) Logger.Info(cleanupLine); else Logger.Warn(cleanupLine);
                     disposed = true;
                     try
@@ -846,7 +993,7 @@ namespace PaviseApp
                         }
                     }
                     HardThreadRead childState = ChildState;
-                    if (childGone || childState == HardThreadRead.Gone || (Child == null && UnverifiedSpawn == IntPtr.Zero))
+                    if (childGone || childState == HardThreadRead.Gone || (!BrokerSpawnPending && Child == null && UnverifiedSpawn == IntPtr.Zero))
                     {
                         childGone = true;
                         if (OriginalScope == null || (!DirectoryCreated && !SpawnSucceeded))
@@ -870,8 +1017,14 @@ namespace PaviseApp
                     {
                         WatchLocked();
                     }
+                    cleanupRan = childGone;
                 }
                 FinishProtectionRelease();
+                if (!cleanupRan) return;
+                // 每次清理记录未完成阶段，日志数量随清理尝试次数封顶。
+                string pending;
+                lock (lifetime) pending = PendingCleanupLocked();
+                if (pending != null) Logger.Warn("独立守护清理未完成：" + attemptLabel + "；" + pending);
             }
 
             private void ReleaseLocked()

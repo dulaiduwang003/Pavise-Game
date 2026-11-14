@@ -70,10 +70,11 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                TokenPrivileges privileges = default(TokenPrivileges);
-                privileges.PrivilegeCount = 1u;
-                privileges.Luid = luid;
-                privileges.Attributes = 2u;
+                TokenPrivileges tokenPrivileges = default(TokenPrivileges);
+                tokenPrivileges.PrivilegeCount = 1u;
+                tokenPrivileges.Luid = luid;
+                tokenPrivileges.Attributes = 2u;
+                TokenPrivileges privileges = tokenPrivileges;
                 if (!AdjustTokenPrivileges(token, false, ref privileges, 0, IntPtr.Zero, IntPtr.Zero))
                 {
                     return false;

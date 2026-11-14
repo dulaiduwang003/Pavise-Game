@@ -75,9 +75,9 @@ namespace PaviseApp
                     parts.Add(label + (state > 0 ? " skipped=gone" : " skipped=unreadable"));
                     continue;
                 }
-                if (!Write(choice.Thread.Tid, choice.Thread.Creation, original, target))
+                if (!Write(choice.Thread.Tid, choice.Thread.Creation, original, target, true))
                 {
-                    parts.Add(label + " skipped=write");
+                    parts.Add(label + " 写入或原范围核验未通过");
                     continue;
                 }
                 held.Add(new Hint { Tid = choice.Thread.Tid, Creation = choice.Thread.Creation, Original = original, Target = target });
@@ -198,7 +198,7 @@ namespace PaviseApp
             }
         }
 
-        private bool Write(int tid, long creation, int expected, int desired)
+        private bool Write(int tid, long creation, int expected, int desired, bool requireAllowedTarget = false)
         {
             if (expected < 0 || expected > 63 || desired < 0 || desired > 63 || NativeFrameThreads.ProcessState(pid, birth) != 0)
             {
@@ -216,9 +216,10 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                ProcessorNumber processorNumber = new ProcessorNumber { Group = 0, Number = (byte)desired };
+                if (requireAllowedTarget && !Native.ThreadAllowsMask(handle, 1UL << desired)) return false;
+                ProcessorNumber value = new ProcessorNumber { Group = 0, Number = (byte)desired };
                 ProcessorNumber previous;
-                if (!SetThreadIdealProcessorEx(handle, ref processorNumber, out previous))
+                if (!SetThreadIdealProcessorEx(handle, ref value, out previous))
                 {
                     return false;
                 }

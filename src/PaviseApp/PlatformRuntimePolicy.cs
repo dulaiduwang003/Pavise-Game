@@ -34,7 +34,8 @@ namespace PaviseApp
                         return removed;
                     }
                     removed = 0;
-                    foreach (string id in Settings.LoadStr("PlatformRuntimeRemovedV1", "").Split(';'))
+                    string[] loadStrParts = Settings.LoadStr("PlatformRuntimeRemovedV1", "").Split(';');
+                    foreach (string id in loadStrParts)
                     {
                         removed |= Bit(id);
                     }
@@ -110,15 +111,16 @@ namespace PaviseApp
 
         private static bool Save(int mask)
         {
-            List<string> entryTexts = new List<string>();
-            foreach (string entryText in Ids)
+            List<string> list = new List<string>();
+            string[] ids = Ids;
+            foreach (string entryText in ids)
             {
                 if ((mask & Bit(entryText)) != 0)
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
             }
-            return Settings.SaveStr("PlatformRuntimeRemovedV1", string.Join(";", entryTexts.ToArray()));
+            return Settings.SaveStr("PlatformRuntimeRemovedV1", string.Join(";", list.ToArray()));
         }
 
         internal static string ProcessNames(string id)
@@ -132,43 +134,44 @@ namespace PaviseApp
 
         internal static Dictionary<int, PlatformProcessOwner> Collect(ProcessSnapshot snapshot, int self, int session, HashSet<int> gameRoots, Dictionary<int, PlatformProcessOwner> retained)
         {
-            Dictionary<int, PlatformProcessOwner> ownersByPid = new Dictionary<int, PlatformProcessOwner>();
+            Dictionary<int, PlatformProcessOwner> dictionary = new Dictionary<int, PlatformProcessOwner>();
             if (snapshot == null || session < 0)
             {
-                return ownersByPid;
+                return dictionary;
             }
-            Dictionary<int, ProcEntry> procEntriesByPid = new Dictionary<int, ProcEntry>();
-            HashSet<int> pids = new HashSet<int>();
-            Dictionary<string, string> runtimePlatformResultsByDirectoryName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (ProcEntry procEntry in snapshot.Entries)
+            Dictionary<int, ProcEntry> dictionary2 = new Dictionary<int, ProcEntry>();
+            HashSet<int> hashSet = new HashSet<int>();
+            Dictionary<string, string> dictionary3 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ProcEntry[] entries = snapshot.Entries;
+            foreach (ProcEntry procEntry in entries)
             {
                 if (procEntry == null)
                 {
                     continue;
                 }
-                if (!pids.Add(procEntry.Pid))
+                if (!hashSet.Add(procEntry.Pid))
                 {
-                    procEntriesByPid.Remove(procEntry.Pid);
+                    dictionary2.Remove(procEntry.Pid);
                 }
                 else if (procEntry.Pid > 4 && procEntry.Pid != self && procEntry.Session == session && procEntry.Creation > 0)
                 {
                     string imagePath = WhitelistRule.NormalizeImagePath(procEntry.Path);
                     if (imagePath.Length != 0 && string.Equals(WhitelistRule.NormalizeName(procEntry.Name), WhitelistRule.NormalizeName(Path.GetFileName(imagePath)), StringComparison.OrdinalIgnoreCase))
                     {
-                        procEntriesByPid[procEntry.Pid] = procEntry;
+                        dictionary2[procEntry.Pid] = procEntry;
                     }
                 }
             }
-            HashSet<int> currentPids = new HashSet<int>(gameRoots ?? new HashSet<int>());
+            HashSet<int> hashSet2 = new HashSet<int>(gameRoots ?? new HashSet<int>());
             for (int j = 0; j < 24; j++)
             {
                 bool gameDescendantsAdded = false;
-                foreach (ProcEntry processSnapshot in procEntriesByPid.Values)
+                foreach (ProcEntry value5 in dictionary2.Values)
                 {
-                    ProcEntry currentProcEntry;
-                    if (!currentPids.Contains(processSnapshot.Pid) && currentPids.Contains(processSnapshot.ParentPid) && RuntimePlatform(processSnapshot.Name) == null && procEntriesByPid.TryGetValue(processSnapshot.ParentPid, out currentProcEntry) && currentProcEntry.Creation < processSnapshot.Creation)
+                    ProcEntry value;
+                    if (!hashSet2.Contains(value5.Pid) && hashSet2.Contains(value5.ParentPid) && RuntimePlatform(value5.Name) == null && dictionary2.TryGetValue(value5.ParentPid, out value) && value.Creation < value5.Creation)
                     {
-                        currentPids.Add(processSnapshot.Pid);
+                        hashSet2.Add(value5.Pid);
                         gameDescendantsAdded = true;
                     }
                 }
@@ -177,39 +180,39 @@ namespace PaviseApp
                     break;
                 }
             }
-            foreach (int currentPid in currentPids)
+            foreach (int item in hashSet2)
             {
-                procEntriesByPid.Remove(currentPid);
+                dictionary2.Remove(item);
             }
-            foreach (ProcEntry platformProcess in procEntriesByPid.Values)
+            foreach (ProcEntry value6 in dictionary2.Values)
             {
-                string runtimePlatformResult = RuntimePlatform(platformProcess.Name);
+                string runtimePlatformResult = RuntimePlatform(value6.Name);
                 if (runtimePlatformResult != null)
                 {
-                    ownersByPid[platformProcess.Pid] = Owner(platformProcess, runtimePlatformResult);
-                    string directoryName = Path.GetDirectoryName(WhitelistRule.NormalizeImagePath(platformProcess.Path));
-                    if (FamilyBoundary.SafeFamilyDir(directoryName) && (runtimePlatformResult != "steam" || string.Equals(WhitelistRule.NormalizeName(platformProcess.Name), "steam", StringComparison.OrdinalIgnoreCase)))
+                    dictionary[value6.Pid] = Owner(value6, runtimePlatformResult);
+                    string directoryName = Path.GetDirectoryName(WhitelistRule.NormalizeImagePath(value6.Path));
+                    if (FamilyBoundary.SafeFamilyDir(directoryName) && (runtimePlatformResult != "steam" || string.Equals(WhitelistRule.NormalizeName(value6.Name), "steam", StringComparison.OrdinalIgnoreCase)))
                     {
-                        runtimePlatformResultsByDirectoryName[directoryName] = runtimePlatformResult;
+                        dictionary3[directoryName] = runtimePlatformResult;
                     }
                 }
-                PlatformProcessOwner currentRetained;
-                if (retained != null && retained.TryGetValue(platformProcess.Pid, out currentRetained) && currentRetained.Creation == platformProcess.Creation && string.Equals(currentRetained.Name, platformProcess.Name, StringComparison.OrdinalIgnoreCase) && WhitelistRule.PathEquals(currentRetained.Path, platformProcess.Path))
+                PlatformProcessOwner value2;
+                if (retained != null && retained.TryGetValue(value6.Pid, out value2) && value2.Creation == value6.Creation && string.Equals(value2.Name, value6.Name, StringComparison.OrdinalIgnoreCase) && WhitelistRule.PathEquals(value2.Path, value6.Path))
                 {
-                    ownersByPid[platformProcess.Pid] = currentRetained;
+                    dictionary[value6.Pid] = value2;
                 }
             }
-            foreach (ProcEntry helperProcess in procEntriesByPid.Values)
+            foreach (ProcEntry value7 in dictionary2.Values)
             {
-                if (ownersByPid.ContainsKey(helperProcess.Pid) || !Helpers.Contains(WhitelistRule.NormalizeName(helperProcess.Name)))
+                if (dictionary.ContainsKey(value7.Pid) || !Helpers.Contains(WhitelistRule.NormalizeName(value7.Name)))
                 {
                     continue;
                 }
-                foreach (KeyValuePair<string, string> runtimePlatformResultEntry in runtimePlatformResultsByDirectoryName)
+                foreach (KeyValuePair<string, string> item2 in dictionary3)
                 {
-                    if (FamilyBoundary.UnderRoot(WhitelistRule.NormalizeImagePath(helperProcess.Path), runtimePlatformResultEntry.Key))
+                    if (FamilyBoundary.UnderRoot(WhitelistRule.NormalizeImagePath(value7.Path), item2.Key))
                     {
-                        ownersByPid[helperProcess.Pid] = Owner(helperProcess, runtimePlatformResultEntry.Value);
+                        dictionary[value7.Pid] = Owner(value7, item2.Value);
                         break;
                     }
                 }
@@ -217,13 +220,13 @@ namespace PaviseApp
             for (int k = 0; k < 24; k++)
             {
                 bool platformDescendantsAdded = false;
-                foreach (ProcEntry childProcess in procEntriesByPid.Values)
+                foreach (ProcEntry value8 in dictionary2.Values)
                 {
-                    PlatformProcessOwner owner;
-                    ProcEntry candidateProcEntry;
-                    if (!ownersByPid.ContainsKey(childProcess.Pid) && ownersByPid.TryGetValue(childProcess.ParentPid, out owner) && procEntriesByPid.TryGetValue(childProcess.ParentPid, out candidateProcEntry) && candidateProcEntry.Creation < childProcess.Creation)
+                    PlatformProcessOwner value3;
+                    ProcEntry value4;
+                    if (!dictionary.ContainsKey(value8.Pid) && dictionary.TryGetValue(value8.ParentPid, out value3) && dictionary2.TryGetValue(value8.ParentPid, out value4) && value4.Creation < value8.Creation)
                     {
-                        ownersByPid[childProcess.Pid] = Owner(childProcess, owner.Platform);
+                        dictionary[value8.Pid] = Owner(value8, value3.Platform);
                         platformDescendantsAdded = true;
                     }
                 }
@@ -232,7 +235,7 @@ namespace PaviseApp
                     break;
                 }
             }
-            return ownersByPid;
+            return dictionary;
         }
 
         private static PlatformProcessOwner Owner(ProcEntry p, string id)

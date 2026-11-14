@@ -9,11 +9,12 @@ namespace PaviseApp
         private static void RetireSceneRulePreferences()
         {
             bool preferencesRemoved = false;
-            foreach (string name in new string[2] { "GmAggressive", "GmAdaptiveEscalateV1" })
+            string[] textEntries = new string[2] { "GmAggressive", "GmAdaptiveEscalateV1" };
+            foreach (string name in textEntries)
             {
-                bool retiredEnabled;
-                string text;
-                if (Settings.TryLoadStoredBool(name, out retiredEnabled) || (Settings.TryLoadStr(name, out text) && !string.IsNullOrEmpty(text)))
+                bool value;
+                string value2;
+                if (Settings.TryLoadStoredBool(name, out value) || (Settings.TryLoadStr(name, out value2) && !string.IsNullOrEmpty(value2)))
                 {
                     preferencesRemoved = true;
                 }
@@ -48,25 +49,26 @@ namespace PaviseApp
         }
         private bool WritePreset()
         {
-            List<string> ts = new List<string>();
-            ts.Add(Lang.T("t.gamemode.26"));
-            ts.Add(Lang.T("t.gamemode.27"));
-            ts.Add(Lang.T("t.gamemode.28"));
-            ts.Add(Lang.T("t.gamemode.29"));
-            ts.Add(Lang.T("lib.family.whitelist.note"));
-            ts.Add("PAVISE_WHITELIST_V4");
-            List<WhitelistRule> rules = new List<WhitelistRule>();
-            foreach (string currentPresetWhitelist in SystemProcessCatalog.PresetWhitelist)
+            List<string> list = new List<string>();
+            list.Add(Lang.T("t.gamemode.26"));
+            list.Add(Lang.T("t.gamemode.27"));
+            list.Add(Lang.T("t.gamemode.28"));
+            list.Add(Lang.T("t.gamemode.29"));
+            list.Add(Lang.T("lib.family.whitelist.note"));
+            list.Add("PAVISE_WHITELIST_V4");
+            List<WhitelistRule> list2 = new List<WhitelistRule>();
+            string[] presetWhitelist = SystemProcessCatalog.PresetWhitelist;
+            foreach (string value in presetWhitelist)
             {
                 WhitelistRule rule;
-                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, currentPresetWhitelist, out rule))
+                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, value, out rule))
                 {
-                    rules.Add(rule);
-                    ts.Add(rule.Serialize());
+                    list2.Add(rule);
+                    list.Add(rule.Serialize());
                 }
             }
-            ts.Add(BuildWhitelistFooter(rules));
-            return AtomicFile.WriteLines(whitePath, ts.ToArray(), Lang.T("t.gamemode.31"));
+            list.Add(BuildWhitelistFooter(list2));
+            return AtomicFile.WriteLines(whitePath, list.ToArray(), Lang.T("t.gamemode.31"));
         }
         private static int LoadCounter(string key)
         {
@@ -80,6 +82,143 @@ namespace PaviseApp
         private static void SaveCounter(string key, int value)
         {
             Settings.SaveStr(key, value.ToString());
+        }
+        private string ResidueDetail()
+        {
+            List<string> list = new List<string>();
+            if (SelfYield.HasResidue) list.Add(PerformancePolicy.Text("自身及辅助进程让路恢复", "Self/helper scheduling recovery"));
+            if (GameNvDeliveryPending)
+            {
+                list.Add(PerformancePolicy.Text("游戏 NVIDIA 配置恢复", "Game NVIDIA configuration recovery"));
+            }
+            if (CriticalThreadHasRecoveryDebt(false))
+            {
+                list.Add(PerformancePolicy.Text("关键线程硬绑定恢复", "Hard thread affinity recovery"));
+            }
+            if (FrameCoordination.HasResidue)
+            {
+                list.Add(PerformancePolicy.Text("线程协同恢复", "Thread coordination recovery"));
+            }
+            if (GuardSchedulingNeedsRestore)
+            {
+                if (GameDvr.HasResidue)
+                {
+                    list.Add(Lang.T("set.dvr"));
+                }
+                if (Mmcss.HasResidue())
+                {
+                    list.Add(Lang.T("auto.mmcss"));
+                }
+            }
+            bool activeSnapshot;
+            int count;
+            lock (sync)
+            {
+                activeSnapshot = active;
+                count = gameBoost.Count;
+            }
+            if (activeSnapshot)
+            {
+                list.Add(Lang.T("t.gamemodeenv.29"));
+            }
+            if (count > 0)
+            {
+                list.Add(Lang.T("log.gamemodeboost.3") + count + Lang.T("t.gamemodeenv.30"));
+            }
+            if (core.AnyWith(SuppressReason.Background))
+            {
+                list.Add(Lang.T("cfg.group.bg"));
+            }
+            if (doActive || DoTweak.HasResidue)
+            {
+                list.Add(Lang.T("t.gamemodeenv.31"));
+            }
+            if (wuActive || UpdatePause.HasResidue)
+            {
+                list.Add(Lang.T("t.gamemodeenv.32"));
+            }
+            if (maintActive || MaintenancePause.HasResidue)
+            {
+                list.Add(Lang.T("gm.pausemaint"));
+            }
+            if (optionalServicesActive || OptionalServicePause.HasResidue)
+            {
+                list.Add(Lang.T("gm.pausesvc"));
+            }
+            if (standbyCleaner != null && standbyCleaner.HasInFlight)
+            {
+                list.Add(Lang.T("gm.standbycleaner"));
+            }
+            if (pqosActive || PresenceQos.HasResidue)
+            {
+                list.Add(Lang.T("t.gamemodeenv.33"));
+            }
+            if (awakeActive)
+            {
+                list.Add(Lang.T("t.gamemodeenv.34"));
+            }
+            if (dwmBoostActive)
+            {
+                list.Add(Lang.T("gm.dwmboost"));
+            }
+            if (RssSteer.HasResidue)
+            {
+                list.Add(Lang.T("gm.rsssteer"));
+            }
+            if (gpwActive || GpuPowerMax.HasResidue())
+            {
+                list.Add(EnvLabel("gpupower"));
+            }
+            if (GpuClockLock.HasResidue)
+            {
+                list.Add(Lang.T("set.gpuclock"));
+            }
+            if (nvVrrActive || NvVrrWindowed.HasResidue)
+            {
+                list.Add(EnvLabel("nvvrr"));
+            }
+            if (intelEndActive || IntelEndurance.HasResidue)
+            {
+                list.Add(EnvLabel("intelend"));
+            }
+            if (laptopPerfActive || LaptopPerfMode.HasResidue)
+            {
+                list.Add(Lang.T("gm.laptopperf"));
+            }
+            if (DisplaySolo.HasResidue())
+            {
+                list.Add(Lang.T("gm.solo"));
+            }
+            if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue())
+            {
+                list.Add("AMD");
+            }
+            if (planActive || PowerPlan.HasResidue || PowerPlan.HasParkResidue())
+            {
+                list.Add(Lang.T("t.gamemodeenv.35"));
+            }
+            if (NvGameResidueNeedsRestore)
+            {
+                list.Add("NVIDIA Profile");
+            }
+            if (timerRaised)
+            {
+                list.Add(Lang.T("t.gamemodeenv.36"));
+            }
+            if (list.Count <= 0)
+            {
+                return Lang.T("t.gamemodeenv.37");
+            }
+            return string.Join(" ", list.ToArray());
+        }
+        private static long ResidueBackoffTicks(int tries)
+        {
+            long minOffset = 4000L << Math.Min(Math.Max(tries - 1, 0), 7);
+            if (minOffset > 300000)
+            {
+                minOffset = 300000L;
+            }
+            return minOffset * 10000;
         }
         private bool LiveBoolPreferenceLocked(string policyKey, bool globalOn)
         {
@@ -108,25 +247,25 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr processHandle = Native.OpenProcess(1052672, false, modeLockGamePid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(1052672, false, modeLockGamePid);
+            if (intPtr == IntPtr.Zero)
             {
                 return !Native.LastOpenProcessFailureWasNoSuchProcess();
             }
             try
             {
-                if (Native.WaitForSingleObject(processHandle, 0u) != 258u)
+                if (Native.WaitForSingleObject(intPtr, 0u) != 258u)
                 {
                     return false;
                 }
                 long creation;
                 long cpu;
                 ulong io;
-                return !Native.QueryProcessSample(processHandle, out creation, out cpu, out io) || creation == modeLockGameCreation;
+                return !Native.QueryProcessSample(intPtr, out creation, out cpu, out io) || creation == modeLockGameCreation;
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
         public bool TrySetPreset(PerformancePreset value)

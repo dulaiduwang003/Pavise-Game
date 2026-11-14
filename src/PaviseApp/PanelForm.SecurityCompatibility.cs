@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Windows.Forms;
 
 namespace PaviseApp
 {
@@ -37,8 +38,8 @@ namespace PaviseApp
             {
                 PaviseDialog.ShowWithSecondaryAction(this, SecurityCompatibilityPresentation.Title(overviewSecuritySnapshot),
                     SecurityCompatibilityPresentation.Details(overviewSecuritySnapshot),
-                    SecurityCompatibilityPresentation.T("不再显示", "Don't show again"),
-                    SecurityCompatibilityPresentation.T("保存失败", "Save failed"),
+                    SecurityCompatibilityPresentation.T("不再显示", "Don't show again", "今後表示しない"),
+                    SecurityCompatibilityPresentation.T("保存失败", "Save failed", "保存失敗"),
                     HideOverviewSecurityWarning, 600);
             }
             finally { securityCompatibilityOpen = false; }

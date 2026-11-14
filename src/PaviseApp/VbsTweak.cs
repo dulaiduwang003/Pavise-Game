@@ -84,13 +84,13 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    string text = registryKey.GetValue("ImagePath") as string;
-                    if (string.IsNullOrEmpty(text))
+                    string value = registryKey.GetValue("ImagePath") as string;
+                    if (string.IsNullOrEmpty(value))
                     {
                         return false;
                     }
-                    object instance = registryKey.GetValue("Start");
-                    return !(instance is int) || (int)instance != 4;
+                    object value2 = registryKey.GetValue("Start");
+                    return !(value2 is int) || (int)value2 != 4;
                 }
             }
             catch
@@ -125,8 +125,8 @@ namespace PaviseApp
                     {
                         return -1;
                     }
-                    object instance = registryKey.GetValue(name);
-                    return (instance is int) ? ((int)instance) : (-1);
+                    object value = registryKey.GetValue(name);
+                    return (value is int) ? ((int)value) : (-1);
                 }
             }
             catch
@@ -339,7 +339,8 @@ namespace PaviseApp
             {
                 return null;
             }
-            foreach (string entryText in runBcdResult.Split('\n'))
+            string[] runBcdResultParts = runBcdResult.Split('\n');
+            foreach (string entryText in runBcdResultParts)
             {
                 string entryTextTrimmed = entryText.Trim();
                 if (entryTextTrimmed.StartsWith("hypervisorlaunchtype", StringComparison.OrdinalIgnoreCase))

@@ -13,6 +13,14 @@ namespace PaviseApp
             return guard && game && plan && !ending && !stopping && !profileFailed && !gameGone && !noSwitch;
         }
 
+        // 后台线程随主循环启动；未持有电源计划时，会话门禁忽略核对通知。
+        private PowerSchemeGuard powerSchemeGuard;
+
+        private void StartPowerSchemeGuard()
+        {
+            if (powerSchemeGuard == null) powerSchemeGuard = PowerSchemeGuard.Start(NotifyPowerSchemeChanged);
+        }
+
         private void StepPowerPlanMaintenance()
         {
             if (!PowerMaintenanceAdmitted(enabled, active, planActive,

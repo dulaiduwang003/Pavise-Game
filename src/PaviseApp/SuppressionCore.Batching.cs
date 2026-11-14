@@ -47,6 +47,7 @@ namespace PaviseApp
 
         private bool ReapplyReleasedEntry(IntPtr h, Entry e, int pid)
         {
+            CaptureAntiCheatAdmission();
             lock (sync)
             {
                 Entry trackedEntry;
@@ -55,7 +56,14 @@ namespace PaviseApp
                     return false;
                 }
                 if ((e.Reasons & SuppressReason.Background) == 0 && !ReleaseBackgroundJob(e)) return false;
-                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), PlacementIsProtected(e));
+                if (HasAntiCheatResources(e) && !RestoreOwnedAntiCheatResources(h, e)) return false;
+                if (AntiCheatThrottled(e)) return ApplyAntiCheatResources(h, e);
+                if (HasAntiCheatResources(e))
+                {
+                    e.AntiCheatResources.Active = false;
+                    if (!SaveAntiCheatResourceJournal(e)) { e.AntiCheatResources.Active = true; return false; }
+                }
+                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, false, DesiredAffinityOf(e), PlacementIsProtected(e), e);
             }
         }
 
@@ -118,7 +126,7 @@ namespace PaviseApp
                 }
                 if (pendingApplies != null)
                 {
-                    foreach (KeyValuePair<int, string> pendingApplyEntry in pendingApplies)
+                    foreach (KeyValuePair<int, string> item in pendingApplies)
                     {
                         string error = null;
                         bool applyQueuedSucceeded;
@@ -126,7 +134,7 @@ namespace PaviseApp
                         {
                             if (journalSaved)
                             {
-                                applyQueuedSucceeded = ApplyQueued(pendingApplyEntry.Key, pendingApplyEntry.Value, out error);
+                                applyQueuedSucceeded = ApplyQueued(item.Key, item.Value, out error);
                             }
                             else
                             {
@@ -141,14 +149,14 @@ namespace PaviseApp
                         }
                         lock (sync)
                         {
-                            batchApplyResults[pendingApplyEntry.Key] = applyQueuedSucceeded;
+                            batchApplyResults[item.Key] = applyQueuedSucceeded;
                             if (applyQueuedSucceeded)
                             {
-                                batchApplyErrors.Remove(pendingApplyEntry.Key);
+                                batchApplyErrors.Remove(item.Key);
                             }
                             else
                             {
-                                batchApplyErrors[pendingApplyEntry.Key] = error ?? "unknown";
+                                batchApplyErrors[item.Key] = error ?? "unknown";
                             }
                         }
                     }
@@ -202,6 +210,7 @@ namespace PaviseApp
 
         private bool ApplyQueued(int pid, string expectedName, out string error)
         {
+            CaptureAntiCheatAdmission();
             error = null;
             Entry entry;
             uint origPri;

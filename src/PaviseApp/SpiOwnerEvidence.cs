@@ -19,25 +19,25 @@ namespace PaviseApp
             }
             SpiOwnerRecord spiOwnerRecord = access.RecordForEvidence(false);
             string manualReceiptOwner = access.Stamp.ManualReceiptOwner;
-            List<string> texts = new List<string>();
-            foreach (PerformanceActionStore.Receipt all in PerformanceActionStore.All())
+            List<string> list = new List<string>();
+            foreach (PerformanceActionStore.Receipt item in PerformanceActionStore.All())
             {
-                if (all.Id == "MatchVisualEffectsV1")
+                if (item.Id == "MatchVisualEffectsV1")
                 {
-                    if (all.VisualOwner != manualReceiptOwner || !all.VisualRestored || !all.Committed || all.Expected != all.Original)
+                    if (item.VisualOwner != manualReceiptOwner || !item.VisualRestored || !item.Committed || item.Expected != item.Original)
                     {
                         throw new InvalidDataException("Manual SPI receipt is not durably settled for this owner");
                     }
                     access.Assert(access.Stamp, false);
-                    if (PerformanceActionBackend.Read(all.Id, all.Target) != all.Original)
+                    if (PerformanceActionBackend.Read(item.Id, item.Target) != item.Original)
                     {
                         throw new IOException("Original visual effect readback is not confirmed");
                     }
-                    texts.Add(PerformanceActionStore.Slot(all.Id, all.Target) + "\t" + SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(all))));
+                    list.Add(PerformanceActionStore.Slot(item.Id, item.Target) + "\t" + SpiOwnerRecord.Digest(Encoding.UTF8.GetBytes(PerformanceActionStore.Pack(item))));
                 }
             }
-            texts.Sort(StringComparer.Ordinal);
-            string evidence = access.PublishClosure(SpiManualClosureManifest.Bytes(access.Stamp, texts));
+            list.Sort(StringComparer.Ordinal);
+            string evidence = access.PublishClosure(SpiManualClosureManifest.Bytes(access.Stamp, list));
             return new SpiOwnerEvidence(SpiOwnerRecord.Digest(spiOwnerRecord.Bytes()), evidence);
         }
 

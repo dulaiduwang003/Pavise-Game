@@ -75,6 +75,25 @@ namespace PaviseApp
             return IntPtr.Zero;
         }
 
+        internal static IntPtr OpenQueryIdentity(int pid, long birth, out string reason)
+        {
+            reason = null;
+            if (pid <= 0 || birth <= 0) { reason = "目标身份不完整"; return IntPtr.Zero; }
+            // 只读原始范围不需要同步或写入权限；由创建时间和退出时间核验同一个存活目标。
+            IntPtr process = Native.OpenProcess(0x1000, false, pid);
+            if (process == IntPtr.Zero)
+            {
+                reason = "OpenProcess(QUERY_LIMITED_INFORMATION) 失败，win32=" + Marshal.GetLastWin32Error();
+                return IntPtr.Zero;
+            }
+            int identity = Native.QueryProcessIdentityState(process, birth);
+            if (identity == 0) return process;
+            reason = identity == 1 ? "原目标已退出或进程编号已复用"
+                : "GetProcessTimes 未能核验目标身份，win32=" + Marshal.GetLastWin32Error();
+            Native.CloseHandle(process);
+            return IntPtr.Zero;
+        }
+
         internal static IntPtr OpenRestore(int pid, long birth)
         {
             IntPtr process = Native.OpenProcess(0x101200, false, pid);
@@ -138,6 +157,14 @@ namespace PaviseApp
 
         internal static bool Apply(IntPtr job, IntPtr process, long birth, ulong desired, out string reason)
         {
+            return Apply(job, process, birth, desired, false, out reason);
+        }
+        // overrideThreads 只由游戏核心范围使用：用户选定的范围接管游戏全部线程，不因线程状态拒绝。
+        internal static bool Apply(IntPtr job, IntPtr process, long birth, ulong desired, bool overrideThreads, out string reason)
+        { return Apply(job, process, birth, desired, overrideThreads, null, out reason); }
+
+        internal static bool Apply(IntPtr job, IntPtr process, long birth, ulong desired, bool overrideThreads, Func<bool> forwardAllowed, out string reason)
+        {
             reason = null;
             if (desired == 0 || !Matches(process, birth)) { reason = "target-identity"; return false; }
             uint flags; ulong observed;
@@ -146,15 +173,18 @@ namespace PaviseApp
             if (!IsMember(process, job, out member)) { reason = "membership-unreadable"; return false; }
             ulong currentMask;
             if (!Native.TryQueryAffinity(process, out currentMask)
-                || !GameThreadAffinityAdmission.Check(process, birth, currentMask, out reason))
+                || !(overrideThreads ? GameThreadAffinityAdmission.CheckProcessOnly(process, birth, currentMask, out reason)
+                    : GameThreadAffinityAdmission.Check(process, birth, currentMask, out reason)))
             { if (reason == null) reason = GameThreadAffinityAdmission.RefusalPrefix + "process-mask-unreadable"; return false; }
             // Windows 在分配时验证已有 Job 层级；通过实际分配及有效亲和性读回确认保护。
 
             var limits = new ExtendedLimits();
             limits.Basic.Flags = SilentBreakaway | AffinityLimit;
             limits.Basic.Affinity = (UIntPtr)desired;
+            if (forwardAllowed != null && !forwardAllowed()) { reason = "sguard-forward-revoked"; return false; }
             if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
             { reason = "set-job-affinity:" + Marshal.GetLastWin32Error(); return false; }
+            if (forwardAllowed != null && !forwardAllowed()) { reason = "sguard-forward-revoked"; return false; }
             if (!member && !AssignProcessToJobObject(job, process))
             { reason = "assign-job:" + Marshal.GetLastWin32Error(); return false; }
             return Verify(job, process, birth, desired, out reason);

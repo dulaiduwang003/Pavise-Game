@@ -48,7 +48,6 @@ namespace PaviseApp
         {
             if (key == "guard") return enabled && !stopping && !ProfileStoreSaveFailed;
             if (key == "nv-profiles") return NvGameResidueGate(true);
-            if (key == "env:gpupref") return GpuPrefResidueGate(true);
             return null;
         }
         private void RefreshSessionRecoveryIntents()
@@ -56,8 +55,7 @@ namespace PaviseApp
             RecoveryRouteSet routes = sessionRecoveryRoutes;
             if (routes == null || routes.Session != Interlocked.Read(ref gameSessionStarts)) return;
             bool changed = routes.UpdateIntent("guard", SessionRecoveryIntent("guard").Value)
-                | routes.UpdateIntent("nv-profiles", SessionRecoveryIntent("nv-profiles").Value)
-                | routes.UpdateIntent("env:gpupref", SessionRecoveryIntent("env:gpupref").Value);
+                | routes.UpdateIntent("nv-profiles", SessionRecoveryIntent("nv-profiles").Value);
             if (changed)
             {
                 routes.InvalidateNeutral("verify");

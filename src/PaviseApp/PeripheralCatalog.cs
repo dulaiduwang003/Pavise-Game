@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace PaviseApp
 {
@@ -33,6 +34,10 @@ namespace PaviseApp
 
         internal static bool IsInputChainProcess(string name, string path)
         {
+            if (IsAmdNoiseSuppressionProcess(name, path))
+            {
+                return true;
+            }
             if (IsInputAudioLike(name))
             {
                 return true;
@@ -45,6 +50,35 @@ namespace PaviseApp
             return MatchesPresentDevice(name, fileInfoTextResult);
         }
 
+        internal static bool IsAmdNoiseSuppressionProcess(string name, string path)
+        {
+            // 精确识别降噪组件，不把 AMD 厂商或 Noise 字样扩展成整家软件的豁免。
+            if (!IsAmdNoiseSuppressionName(name)) return false;
+            if (string.IsNullOrEmpty(path) || path.Length < 4 || !char.IsLetter(path[0]) || path[1] != ':'
+                || (path[2] != '\\' && path[2] != '/')) return false;
+            try
+            {
+                if (!string.Equals(Path.GetFileName(path), "AMDNoiseSuppression.exe", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            catch { return false; }
+            // 厂商是缓存的最后一项；产品名、描述及其中的换行不参与准入，兼容驱动版本和本地化差异。
+            // 这是后台策略分类，不把版本字段当作数字签名认证。
+            string info = FileInfoText(path);
+            int companySeparator = info.LastIndexOf('\n');
+            if (companySeparator < 0) return false;
+            string company = info.Substring(companySeparator + 1).Trim();
+            bool amd = string.Equals(company, "Advanced Micro Devices, Inc.", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(company, "Advanced Micro Devices, Inc", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(company, "Advanced Micro Devices", StringComparison.OrdinalIgnoreCase);
+            return amd;
+        }
+
+        internal static bool IsAmdNoiseSuppressionName(string name)
+        {
+            return string.Equals(name, "AMDNoiseSuppression", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "AMDNoiseSuppression.exe", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool MatchesPresentDevice(string name, string info)
         {
             string[] tokensResult = PeripheralVendorProbe.Tokens();
@@ -53,13 +87,14 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = (name ?? "").ToLowerInvariant();
-            foreach (string deviceToken in tokensResult)
+            string[] textEntries = tokensResult;
+            foreach (string value in textEntries)
             {
-                if (toLowerInvariantResult.Contains(deviceToken))
+                if (toLowerInvariantResult.Contains(value))
                 {
                     return true;
                 }
-                if (info.Length > 0 && info.Contains(deviceToken))
+                if (info.Length > 0 && info.Contains(value))
                 {
                     return true;
                 }
@@ -74,7 +109,8 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = name.ToLowerInvariant();
-            foreach (string value in NameKeywords)
+            string[] nameKeywords = NameKeywords;
+            foreach (string value in nameKeywords)
             {
                 if (toLowerInvariantResult.Contains(value))
                 {
@@ -91,7 +127,8 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = description.ToLowerInvariant();
-            foreach (string value in DescriptionWords)
+            string[] descriptionWords = DescriptionWords;
+            foreach (string value in descriptionWords)
             {
                 if (toLowerInvariantResult.Contains(value))
                 {
@@ -124,10 +161,10 @@ namespace PaviseApp
             }
             lock (infoCacheSync)
             {
-                string currentInfoCache;
-                if (infoCache.TryGetValue(path, out currentInfoCache))
+                string value;
+                if (infoCache.TryGetValue(path, out value))
                 {
-                    return currentInfoCache;
+                    return value;
                 }
             }
             string fileInfoTextResult = "";

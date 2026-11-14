@@ -45,8 +45,6 @@ namespace PaviseApp
         {
             public bool CpuBoost = true;
 
-            public bool MemoryBoost = true;
-
             public bool IoBoost = true;
 
             public bool GpuBoost = true;
@@ -90,6 +88,9 @@ namespace PaviseApp
             public string PlacementStage;
 
             public int PlacementError;
+
+            // 本次在登记恢复信息和写入前停止，无待结清改动。
+            public bool PlacementUntouched;
         }
 
         private enum HardPinHandleState
@@ -177,6 +178,10 @@ namespace PaviseApp
 
             private readonly string rule;
 
+            internal string OriginalRule { get { return rule; } }
+
+            private readonly bool priorityOnly;
+
             private int revoked;
 
             internal readonly Guid SessionId;
@@ -217,7 +222,10 @@ namespace PaviseApp
                 epoch = originalEpoch;
                 gameSerial = originalGameSerial;
                 rule = originalRule;
-                WorkerAvoidanceAllowed = CriticalThreadRule.ParseForRuntime(originalRule).WorkerAvoidance;
+                // 授权跟随原规则冻结；纯优先级不授予候选固定或其他线程避让权限。
+                CriticalThreadRule originalStrategy = CriticalThreadRule.ParseForRuntime(originalRule);
+                WorkerAvoidanceAllowed = originalStrategy.WritesOtherThreadRanges;
+                priorityOnly = originalStrategy.IsDependencyBoost;
                 store = owner.CriticalThreadStoreRoot;
                 SessionId = Guid.NewGuid();
             }
@@ -283,7 +291,9 @@ namespace PaviseApp
 
             internal void RequireRecovery()
             {
-                if (!Monitor.IsEntered(owner.criticalProcessGate) || SessionId == Guid.Empty || ProcessId <= 0 || ProcessCreation <= 0 || AllowedMask == 0 || string.IsNullOrEmpty(rule) || store != owner.CriticalThreadStoreRoot)
+                if (!Monitor.IsEntered(owner.criticalProcessGate) || SessionId == Guid.Empty || ProcessId <= 0 || ProcessCreation <= 0
+                    || string.IsNullOrEmpty(rule) || AllowedMask == 0 && !priorityOnly
+                    || store != owner.CriticalThreadStoreRoot)
                 {
                     throw new InvalidOperationException("No original game-thread restoration identity");
                 }

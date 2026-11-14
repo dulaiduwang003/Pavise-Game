@@ -71,7 +71,7 @@ namespace PaviseApp
             Name="SettingsCoreMotion";Tag="backdrop-card";AccessibleName=T("模式动效","Mode animation");
             draft[0]=CoreMotionPreferences.Get(PerformancePreset.Standard);draft[1]=CoreMotionPreferences.Get(PerformancePreset.Competitive);
             editing=PresetValue.IsValid((int)initial)?initial:PerformancePreset.Standard;
-            title=Label(T("模式动效","Mode animation"),10.5f,true);title.Name="MotionTitle";
+            title=Label(T("模式动效","Mode animation"),9f,true);title.Name="MotionTitle";
             hint=Label(T("选中即应用 · 两种模式均可选用","Select to apply · shared animation library"),8.5f,false);hint.ForeColor=Theme.Dim;
             modes=new TierPicker{Name="MotionEditingMode",Labels=PresetValue.VisibleOrder().Length==2?new[]{ModeButton.ModeName(PerformancePreset.Standard),ModeButton.ModeName(PerformancePreset.Competitive)}:new[]{"Smart","Esports"},Index=(int)editing};
             modes.IndexChanged=delegate(int id){if(id>=0&&id<2){editing=(PerformancePreset)id;SyncSelection();}};Controls.Add(modes);
@@ -165,6 +165,12 @@ namespace PaviseApp
         protected override void OnLocationChanged(EventArgs e){base.OnLocationChanged(e);SyncViewport();}
         protected override void OnHandleCreated(EventArgs e){base.OnHandleCreated(e);SyncViewport();}
         protected override void OnPaintBackground(PaintEventArgs e){DsPaint.CardBackground(e.Graphics,this,Theme.Card);}
-        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);using(var p=new Pen(Theme.Stroke)){e.Graphics.DrawRectangle(p,0,0,Math.Max(0,Width-1),Math.Max(0,Height-1));}}
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            DsPaint.TechFrame(e.Graphics, new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)),
+                Theme.S(8), Backdrop.CardFill(this, Theme.Card), Col.Lerp(Theme.Card, Theme.Stroke, 0.62f));
+        }
     }
 }

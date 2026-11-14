@@ -23,7 +23,8 @@ namespace PaviseApp
 
         public static RepairTweak Find(string key)
         {
-            foreach (RepairTweak repairTweak in Items)
+            RepairTweak[] items = Items;
+            foreach (RepairTweak repairTweak in items)
             {
                 if (string.Equals(repairTweak.Key, key, StringComparison.Ordinal))
                 {

@@ -52,51 +52,51 @@ namespace PaviseApp
             int[] sliceEdgesResult = SliceEdges();
             for (int i = 0; i < 3; i++)
             {
-                int segmentLeft = sliceEdgesResult[i];
+                int onPaintValue = sliceEdgesResult[i];
                 if (i % 2 == 1)
                 {
                     using (SolidBrush brush2 = new SolidBrush(Color.FromArgb(16, 255, 255, 255)))
                     {
-                        graphics.FillPolygon(brush2, Cell(segmentLeft, sliceEdgesResult[i + 1] - segmentLeft, scaledDimension, i));
+                        graphics.FillPolygon(brush2, Cell(onPaintValue, sliceEdgesResult[i + 1] - onPaintValue, scaledDimension, i));
                     }
                 }
                 if (i > 0)
                 {
                     using (Pen pen = new Pen(Color.FromArgb(70, accent), Math.Max(1f, Theme.S(1))))
                     {
-                        graphics.DrawLine(pen, segmentLeft + scaledDimension, 0, segmentLeft - scaledDimension, base.Height);
+                        graphics.DrawLine(pen, onPaintValue + scaledDimension, 0, onPaintValue - scaledDimension, base.Height);
                     }
                 }
             }
-            using (Pen accentPen = new Pen(Color.FromArgb(150, accent), Math.Max(1f, Theme.S(2))))
+            using (Pen pen2 = new Pen(Color.FromArgb(150, accent), Math.Max(1f, Theme.S(2))))
             {
-                graphics.DrawLine(accentPen, 0, 0, base.Width, 0);
+                graphics.DrawLine(pen2, 0, 0, base.Width, 0);
             }
-            using (Pen strokeHiPen = new Pen(Theme.StrokeHi))
+            using (Pen pen3 = new Pen(Theme.StrokeHi))
             {
-                graphics.DrawRectangle(strokeHiPen, 0, 0, base.Width - 1, base.Height - 1);
+                graphics.DrawRectangle(pen3, 0, 0, base.Width - 1, base.Height - 1);
             }
             Font font = Theme.UI(7.4f, true);
-            Font ui = Theme.UI(9.6f, true);
+            Font font2 = Theme.UI(9.6f, true);
             for (int j = 0; j < 3; j++)
             {
-                int currentSegmentLeft = sliceEdgesResult[j];
-                int remainingOnPaintValue2 = sliceEdgesResult[j + 1] - currentSegmentLeft;
+                int onPaintValue2 = sliceEdgesResult[j];
+                int remainingOnPaintValue2 = sliceEdgesResult[j + 1] - onPaintValue2;
                 int scaledDimension2 = Theme.S(16);
-                Glyphs_Draw(box: new Rectangle(currentSegmentLeft + scaledDimension2, Theme.S(13), Theme.S(15), Theme.S(15)), g: graphics, name: Icons[j], color: Color.FromArgb(210, accent));
+                Glyphs_Draw(box: new Rectangle(onPaintValue2 + scaledDimension2, Theme.S(13), Theme.S(15), Theme.S(15)), g: graphics, name: Icons[j], color: Color.FromArgb(210, accent));
                 using (SolidBrush brush3 = new SolidBrush(Theme.Faint))
                 {
-                    graphics.DrawString(Lang.T(Keys[j]), font, brush3, currentSegmentLeft + scaledDimension2 + Theme.S(20), Theme.S(14));
+                    graphics.DrawString(Lang.T(Keys[j]), font, brush3, onPaintValue2 + scaledDimension2 + Theme.S(20), Theme.S(14));
                 }
                 using (SolidBrush brush4 = new SolidBrush(Theme.Fg))
                 {
-                    RectangleF layoutRectangle = new RectangleF(currentSegmentLeft + scaledDimension2, Theme.S(34), remainingOnPaintValue2 - scaledDimension2 * 2 + Theme.S(6), Theme.S(20));
+                    RectangleF layoutRectangle = new RectangleF(onPaintValue2 + scaledDimension2, Theme.S(34), remainingOnPaintValue2 - scaledDimension2 * 2 + Theme.S(6), Theme.S(20));
                     StringFormat stringFormat = new StringFormat();
                     stringFormat.Trimming = StringTrimming.EllipsisCharacter;
                     stringFormat.FormatFlags = StringFormatFlags.NoWrap;
                     using (StringFormat format = stringFormat)
                     {
-                        graphics.DrawString(values[j], ui, brush4, layoutRectangle, format);
+                        graphics.DrawString(values[j], font2, brush4, layoutRectangle, format);
                     }
                 }
             }

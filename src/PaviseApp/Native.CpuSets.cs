@@ -58,9 +58,9 @@ namespace PaviseApp
                 {
                     return processDefaultCpuSets ? new uint[0] : null;
                 }
-                uint[] cpuSetIds = new uint[required];
+                uint[] numericValueItems = new uint[required];
                 uint required2;
-                return (GetProcessDefaultCpuSets(h, cpuSetIds, (uint)cpuSetIds.Length, out required2) && required2 == required) ? cpuSetIds : null;
+                return (GetProcessDefaultCpuSets(h, numericValueItems, (uint)numericValueItems.Length, out required2) && required2 == required) ? numericValueItems : null;
             }
             catch
             {
@@ -118,10 +118,10 @@ namespace PaviseApp
             {
                 return false;
             }
-            HashSet<uint> cpuSetsSnapshot = new HashSet<uint>(cpuSets);
-            foreach (uint currentExpected in expected)
+            HashSet<uint> hashSet = new HashSet<uint>(cpuSets);
+            foreach (uint item in expected)
             {
-                if (!cpuSetsSnapshot.Contains(currentExpected))
+                if (!hashSet.Contains(item))
                 {
                     return false;
                 }
@@ -131,18 +131,18 @@ namespace PaviseApp
 
         public static bool TryClearCpuSets(int pid)
         {
-            IntPtr processHandle = OpenProcess(8192, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = OpenProcess(8192, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                return TryClearCpuSets(processHandle);
+                return TryClearCpuSets(intPtr);
             }
             finally
             {
-                CloseHandle(processHandle);
+                CloseHandle(intPtr);
             }
         }
 
@@ -185,9 +185,9 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                uint[] cpuSetIds = new uint[required];
+                uint[] numericValueItems = new uint[required];
                 uint required2;
-                return (GetThreadSelectedCpuSets(thread, cpuSetIds, required, out required2) && required2 == required) ? cpuSetIds : null;
+                return (GetThreadSelectedCpuSets(thread, numericValueItems, required, out required2) && required2 == required) ? numericValueItems : null;
             }
             catch
             {

@@ -38,10 +38,20 @@ namespace PaviseApp
         }
 #pragma warning restore 0649
 
+        private const uint SC_MANAGER_ENUMERATE_SERVICE = 4u;
+
+        private const int SC_ENUM_PROCESS_INFO = 0;
+
+        private const uint SERVICE_WIN32 = 48u;
+
+        private const uint SERVICE_ACTIVE = 1u;
+
+        private const int ERROR_MORE_DATA = 234;
+
         public static List<KeyValuePair<string, int>> RunningServices()
         {
-            IntPtr openSCManagerWHandle = OpenSCManagerW(null, null, 4u);
-            if (openSCManagerWHandle == IntPtr.Zero)
+            IntPtr intPtr = OpenSCManagerW(null, null, 4u);
+            if (intPtr == IntPtr.Zero)
             {
                 return null;
             }
@@ -50,35 +60,35 @@ namespace PaviseApp
                 uint resumeHandle = 0u;
                 uint bytesNeeded;
                 uint servicesReturned;
-                EnumServicesStatusExW(openSCManagerWHandle, 0, 48u, 1u, IntPtr.Zero, 0u, out bytesNeeded, out servicesReturned, ref resumeHandle, null);
+                EnumServicesStatusExW(intPtr, 0, 48u, 1u, IntPtr.Zero, 0u, out bytesNeeded, out servicesReturned, ref resumeHandle, null);
                 if (Marshal.GetLastWin32Error() != 234 || bytesNeeded == 0)
                 {
                     return null;
                 }
-                IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bytesNeeded);
+                IntPtr intPtr2 = Marshal.AllocHGlobal((int)bytesNeeded);
                 try
                 {
                     resumeHandle = 0u;
-                    if (!EnumServicesStatusExW(openSCManagerWHandle, 0, 48u, 1u, nativeBuffer, bytesNeeded, out bytesNeeded, out servicesReturned, ref resumeHandle, null))
+                    if (!EnumServicesStatusExW(intPtr, 0, 48u, 1u, intPtr2, bytesNeeded, out bytesNeeded, out servicesReturned, ref resumeHandle, null))
                     {
                         return null;
                     }
-                    List<KeyValuePair<string, int>> keyValuePairs = new List<KeyValuePair<string, int>>((int)servicesReturned);
+                    List<KeyValuePair<string, int>> list = new List<KeyValuePair<string, int>>((int)servicesReturned);
                     int sizeOfResult = Marshal.SizeOf(typeof(ENUM_SERVICE_STATUS_PROCESS));
                     for (uint iterationIndex = 0u; iterationIndex < servicesReturned; iterationIndex++)
                     {
-                        ENUM_SERVICE_STATUS_PROCESS eNUM_SERVICE_STATUS_PROCESS = (ENUM_SERVICE_STATUS_PROCESS)Marshal.PtrToStructure(new IntPtr(nativeBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(ENUM_SERVICE_STATUS_PROCESS));
+                        ENUM_SERVICE_STATUS_PROCESS eNUM_SERVICE_STATUS_PROCESS = (ENUM_SERVICE_STATUS_PROCESS)Marshal.PtrToStructure(new IntPtr(intPtr2.ToInt64() + iterationIndex * sizeOfResult), typeof(ENUM_SERVICE_STATUS_PROCESS));
                         string ptrToStringUniResult = Marshal.PtrToStringUni(eNUM_SERVICE_STATUS_PROCESS.ServiceName);
                         if (!string.IsNullOrEmpty(ptrToStringUniResult))
                         {
-                            keyValuePairs.Add(new KeyValuePair<string, int>(ptrToStringUniResult, (int)eNUM_SERVICE_STATUS_PROCESS.Status.ProcessId));
+                            list.Add(new KeyValuePair<string, int>(ptrToStringUniResult, (int)eNUM_SERVICE_STATUS_PROCESS.Status.ProcessId));
                         }
                     }
-                    return keyValuePairs;
+                    return list;
                 }
                 finally
                 {
-                    Marshal.FreeHGlobal(nativeBuffer);
+                    Marshal.FreeHGlobal(intPtr2);
                 }
             }
             catch
@@ -87,7 +97,7 @@ namespace PaviseApp
             }
             finally
             {
-                CloseServiceHandle(openSCManagerWHandle);
+                CloseServiceHandle(intPtr);
             }
         }
 

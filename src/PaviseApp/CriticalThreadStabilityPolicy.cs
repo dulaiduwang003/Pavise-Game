@@ -60,13 +60,14 @@ namespace PaviseApp
                 return scope.Blocked;
             }
         }
-        internal void Block(string profile, int pid, long birth, long serial, string rawRule)
+        internal void Block(string profile, int pid, long birth, long serial, string rawRule, string reason = null)
         {
             lock (gate)
             {
                 Scope scope = Select(profile, pid, birth, serial, rawRule);
                 if (scope == null) return;
-                scope.Blocked = true; scope.Reason = "session-blocked";
+                if (scope.Blocked && scope.Reason != null && reason == null) return;
+                scope.Blocked = true; scope.Reason = reason ?? "session-blocked";
             }
         }
         internal string BlockReason { get { lock (gate) return current != null && current.Blocked ? current.Reason : ""; } }

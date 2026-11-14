@@ -19,14 +19,12 @@ Pavise 使用 .NET Framework 和 Windows Forms，`build.cmd -b prod` 从 `src/` 
 | `PanelForm.cs` 及 `PanelForm.*.cs` | 窗口状态、页面组合、布局、操作与状态刷新 |
 | `PaviseCore.cs` 及 `PaviseCore.Motion.cs` | 核心图形、缓存图层与动画 |
 | `AutomaticRecoveryBudget.cs`、`ActionFailureStore.cs` | 失败预算、阶段身份与恢复记录 |
-| `tests/README.md`、`tools/Run-PublicTests.ps1` | 回归测试集合、隔离说明与统一运行入口 |
+| `tests/`、`tools/Run-PublicTests.ps1` | 公开回归夹具与统一运行入口 |
 
-除 `tests/README.md` 和 `tools/` 外，上表中的源码路径均相对于 `src/PaviseApp/`。同名 partial 文件属于同一个类型，按职责组织方法；字段初始化与构造函数保留在主文件中。
+除 `tests/` 和 `tools/` 外，上表中的源码路径均相对于 `src/PaviseApp/`。同名 partial 文件属于同一个类型，按职责组织方法；字段初始化与构造函数保留在主文件中。
 
 ## 验证入口
 
 当前维护源码的模块入口见上表，运行行为通过回归测试和台架验证。
 
 可运行的回归测试及其覆盖范围见 [测试说明](../tests/README.md)。发布页保存各正式版程序与更新记录；维护分支中的源码、文档和测试随项目维护更新。核对历史版本时，请结合相应版本的发布记录。
-
-开发期间的机制验证、原生限额与恢复记录、运行开销对照及独立台架方法，见[实验与验证](experiments/README.md)。专题分别说明测试条件、数据身份和结论范围。

@@ -16,6 +16,12 @@ namespace PaviseApp
             Owned
         }
 
+        private const int ProcessTerminate = 1;
+
+        private const int Synchronize = 1048576;
+
+        private const uint WaitObject0 = 0u;
+
         private static readonly string[] WeGameNames = new string[8] { "wegame.exe", "wegame_env.exe", "wegameclient.exe", "pallas.exe", "rail.exe", "tcls_core.exe", "browser.exe", "crashpad_handler.exe" };
 
         private static readonly string[] DownloaderNames = new string[2] { "teniodl.exe", "wegameupdate.exe" };
@@ -149,12 +155,12 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr processHandle = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
                 int id = process.Id;
-                processHandle = Native.OpenProcess(1052672, false, id);
-                if (processHandle == IntPtr.Zero)
+                intPtr = Native.OpenProcess(1052672, false, id);
+                if (intPtr == IntPtr.Zero)
                 {
                     int sessionId2;
                     try
@@ -172,7 +178,7 @@ namespace PaviseApp
                     return false;
                 }
                 int sessionId;
-                if (!Native.TryGetLiveProcessSessionId(processHandle, id, out sessionId))
+                if (!Native.TryGetLiveProcessSessionId(intPtr, id, out sessionId))
                 {
                     return false;
                 }
@@ -181,7 +187,14 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                path = Native.ImagePath(processHandle);
+                path = Native.ImagePath(intPtr);
+                if (!string.IsNullOrEmpty(path) && IsCredentialSourceName(Path.GetFileName(path)))
+                {
+                    long birth, cpu; ulong io;
+                    if (Native.QueryProcessSample(intPtr, out birth, out cpu, out io) && birth > 0
+                        && Native.QueryProcessIdentityState(intPtr, birth) == 0)
+                        LolCredentialLookupBudget.ObserveClient(sessionId, id, birth, path);
+                }
                 return !string.IsNullOrEmpty(path);
             }
             catch
@@ -190,9 +203,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (processHandle != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
         }
@@ -233,31 +246,31 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr processHandle = Native.OpenProcess(1052672, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(1052672, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
                 int sessionId;
-                if (!Native.TryGetLiveProcessSessionId(processHandle, pid, out sessionId) || !IsExpectedSession(expectedSession, sessionId))
+                if (!Native.TryGetLiveProcessSessionId(intPtr, pid, out sessionId) || !IsExpectedSession(expectedSession, sessionId))
                 {
                     return false;
                 }
                 long creation;
                 long cpu;
                 ulong io;
-                if (expectedCreation > 0 && (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io) || !CredentialCreationMatches(expectedCreation, creation)))
+                if (expectedCreation > 0 && (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io) || !CredentialCreationMatches(expectedCreation, creation)))
                 {
                     return false;
                 }
-                string path = Native.ImagePath(processHandle);
+                string path = Native.ImagePath(intPtr);
                 return IsUnder(path, lolRoot) && IsCredentialSourceName(Path.GetFileName(path));
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 
@@ -283,13 +296,13 @@ namespace PaviseApp
                 return false;
             }
             bool result = false;
-            string[] credentialProcessNames = new string[2] { "LeagueClient", "LeagueClientUx" };
-            for (int i = 0; i < credentialProcessNames.Length; i++)
+            string[] textEntries = new string[2] { "LeagueClient", "LeagueClientUx" };
+            for (int i = 0; i < textEntries.Length; i++)
             {
                 Process[] processesByName;
                 try
                 {
-                    processesByName = Process.GetProcessesByName(credentialProcessNames[i]);
+                    processesByName = Process.GetProcessesByName(textEntries[i]);
                 }
                 catch
                 {
@@ -297,7 +310,8 @@ namespace PaviseApp
                 }
                 try
                 {
-                    foreach (Process process in processesByName)
+                    Process[] processesByNameSnapshot = processesByName;
+                    foreach (Process process in processesByNameSnapshot)
                     {
                         string path;
                         SessionRelation sessionRelation;
@@ -402,7 +416,8 @@ namespace PaviseApp
                 return lolProcessSnapshot;
             }
             lolProcessSnapshot.ScanSucceeded = true;
-            foreach (Process process in processes)
+            Process[] processesSnapshot = processes;
+            foreach (Process process in processesSnapshot)
             {
                 string name = null;
                 try
@@ -528,51 +543,52 @@ namespace PaviseApp
             {
                 id = process.Id;
             }
-            List<int> ids = new List<int>();
-            List<long> workingSetBytesByIndex = new List<long>();
-            List<long> creations = new List<long>();
-            List<string> imagePathResults = new List<string>();
-            foreach (Process currentProcessesSnapshot in processes)
+            List<int> list = new List<int>();
+            List<long> list2 = new List<long>();
+            List<long> list3 = new List<long>();
+            List<string> list4 = new List<string>();
+            Process[] processesSnapshot = processes;
+            foreach (Process process2 in processesSnapshot)
             {
-                IntPtr processHandle = IntPtr.Zero;
+                IntPtr intPtr = IntPtr.Zero;
                 try
                 {
-                    if (currentProcessesSnapshot.Id == id)
+                    if (process2.Id == id)
                     {
                         continue;
                     }
                     try
                     {
-                        string processName = currentProcessesSnapshot.ProcessName;
+                        string processName = process2.ProcessName;
                     }
                     catch
                     {
                         continue;
                     }
-                    processHandle = Native.OpenProcess(1052672, false, currentProcessesSnapshot.Id);
+                    intPtr = Native.OpenProcess(1052672, false, process2.Id);
                     int sessionId2;
-                    if (processHandle == IntPtr.Zero || !Native.TryGetLiveProcessSessionId(processHandle, currentProcessesSnapshot.Id, out sessionId2) || !IsExpectedSession(sessionId, sessionId2))
+                    if (intPtr == IntPtr.Zero || !Native.TryGetLiveProcessSessionId(intPtr, process2.Id, out sessionId2) || !IsExpectedSession(sessionId, sessionId2))
                     {
                         continue;
                     }
-                    string imagePathResult = Native.ImagePath(processHandle);
+                    string imagePathResult = Native.ImagePath(intPtr);
                     long creation;
                     long cpu;
                     ulong io;
-                    if (!string.IsNullOrEmpty(imagePathResult) && IsCleanupTarget(imagePathResult, Path.GetFileName(imagePathResult), lolRoot, weGameRoot, includeDownloaders) && Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation > 0)
+                    if (!string.IsNullOrEmpty(imagePathResult) && IsCleanupTarget(imagePathResult, Path.GetFileName(imagePathResult), lolRoot, weGameRoot, includeDownloaders) && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
                     {
-                        long workingSetBytes = 0L;
+                        long item = 0L;
                         try
                         {
-                            workingSetBytes = currentProcessesSnapshot.WorkingSet64;
+                            item = process2.WorkingSet64;
                         }
                         catch
                         {
                         }
-                        ids.Add(currentProcessesSnapshot.Id);
-                        workingSetBytesByIndex.Add(workingSetBytes);
-                        creations.Add(creation);
-                        imagePathResults.Add(imagePathResult);
+                        list.Add(process2.Id);
+                        list2.Add(item);
+                        list3.Add(creation);
+                        list4.Add(imagePathResult);
                     }
                 }
                 catch
@@ -580,55 +596,55 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    if (processHandle != IntPtr.Zero)
+                    if (intPtr != IntPtr.Zero)
                     {
-                        Native.CloseHandle(processHandle);
+                        Native.CloseHandle(intPtr);
                     }
                     try
                     {
-                        currentProcessesSnapshot.Dispose();
+                        process2.Dispose();
                     }
                     catch
                     {
                     }
                 }
             }
-            if (ids.Count == 0)
+            if (list.Count == 0)
             {
                 return lolCleanupResult;
             }
-            for (int j = 0; j < ids.Count; j++)
+            for (int j = 0; j < list.Count; j++)
             {
-                if (!cleanupFailures.Allowed(ids[j], creations[j], imagePathResults[j], "cleanup")) continue;
+                if (!cleanupFailures.Allowed(list[j], list3[j], list4[j], "cleanup")) continue;
                 bool cleaned = false;
                 bool failedOperation = false;
-                IntPtr currentProcessHandle = IntPtr.Zero;
+                IntPtr intPtr2 = IntPtr.Zero;
                 try
                 {
-                    currentProcessHandle = Native.OpenProcess(1052673, false, ids[j]);
+                    intPtr2 = Native.OpenProcess(1052673, false, list[j]);
                     int sessionId3;
-                    if (currentProcessHandle == IntPtr.Zero)
+                    if (intPtr2 == IntPtr.Zero)
                     {
                         failedOperation = Marshal.GetLastWin32Error() != 87;
                         continue;
                     }
-                    if (!Native.TryGetLiveProcessSessionId(currentProcessHandle, ids[j], out sessionId3)) { failedOperation = true; continue; }
+                    if (!Native.TryGetLiveProcessSessionId(intPtr2, list[j], out sessionId3)) { failedOperation = true; continue; }
                     if (!IsExpectedSession(sessionId, sessionId3)) continue;
-                    string imagePathResult2 = Native.ImagePath(currentProcessHandle);
+                    string imagePathResult2 = Native.ImagePath(intPtr2);
                     long creation2;
                     long cpu2;
                     ulong io2;
-                    if (string.IsNullOrEmpty(imagePathResult2) || !Native.QueryProcessSample(currentProcessHandle, out creation2, out cpu2, out io2)) { failedOperation = true; continue; }
-                    if (creation2 != creations[j] || !string.Equals(imagePathResult2, imagePathResults[j], StringComparison.OrdinalIgnoreCase)
+                    if (string.IsNullOrEmpty(imagePathResult2) || !Native.QueryProcessSample(intPtr2, out creation2, out cpu2, out io2)) { failedOperation = true; continue; }
+                    if (creation2 != list3[j] || !string.Equals(imagePathResult2, list4[j], StringComparison.OrdinalIgnoreCase)
                         || !IsCleanupTarget(imagePathResult2, Path.GetFileName(imagePathResult2), lolRoot, weGameRoot, includeDownloaders)) continue;
                     failedOperation = true;
-                    if (TerminateProcess(currentProcessHandle, 0u) && WaitForSingleObject(currentProcessHandle, 1500u) == 0)
+                    if (TerminateProcess(intPtr2, 0u) && WaitForSingleObject(intPtr2, 1500u) == 0)
                     {
                         cleaned = true;
                         lolCleanupResult.Count++;
-                        if (workingSetBytesByIndex[j] > 0)
+                        if (list2[j] > 0)
                         {
-                            lolCleanupResult.WorkingSetBytes += workingSetBytesByIndex[j];
+                            lolCleanupResult.WorkingSetBytes += list2[j];
                         }
                     }
                 }
@@ -638,12 +654,12 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    if (cleaned) cleanupFailures.Succeeded(ids[j], creations[j], imagePathResults[j], "cleanup");
-                    else if (failedOperation) Logger.Warn("LOL 清理失败=" + cleanupFailures.Failed(ids[j], creations[j], imagePathResults[j], "cleanup")
-                        + "/3 目标=" + ids[j] + "/" + creations[j]);
-                    if (currentProcessHandle != IntPtr.Zero)
+                    if (cleaned) cleanupFailures.Succeeded(list[j], list3[j], list4[j], "cleanup");
+                    else if (failedOperation) Logger.Warn("LOL 清理失败=" + cleanupFailures.Failed(list[j], list3[j], list4[j], "cleanup")
+                        + "/3 目标=" + list[j] + "/" + list3[j]);
+                    if (intPtr2 != IntPtr.Zero)
                     {
-                        Native.CloseHandle(currentProcessHandle);
+                        Native.CloseHandle(intPtr2);
                     }
                 }
             }
@@ -685,7 +701,8 @@ namespace PaviseApp
                 bool matched = false;
                 try
                 {
-                    foreach (Process process in processesByName)
+                    Process[] processesByNameSnapshot = processesByName;
+                    foreach (Process process in processesByNameSnapshot)
                     {
                         try
                         {
@@ -744,7 +761,8 @@ namespace PaviseApp
             }
             try
             {
-                foreach (Process process in processesByName)
+                Process[] processesByNameSnapshot = processesByName;
+                foreach (Process process in processesByNameSnapshot)
                 {
                     try
                     {
@@ -772,27 +790,27 @@ namespace PaviseApp
         private static bool TryGetGameIdentityCore(string lolRoot, int pid, int expectedSession, out long creation)
         {
             creation = 0L;
-            IntPtr processHandle = IntPtr.Zero;
+            IntPtr intPtr = IntPtr.Zero;
             try
             {
-                processHandle = Native.OpenProcess(1052672, false, pid);
-                if (processHandle == IntPtr.Zero)
+                intPtr = Native.OpenProcess(1052672, false, pid);
+                if (intPtr == IntPtr.Zero)
                 {
                     return false;
                 }
                 int sessionId;
-                if (!Native.TryGetLiveProcessSessionId(processHandle, pid, out sessionId) || !IsExpectedSession(expectedSession, sessionId))
+                if (!Native.TryGetLiveProcessSessionId(intPtr, pid, out sessionId) || !IsExpectedSession(expectedSession, sessionId))
                 {
                     return false;
                 }
-                string path = Native.ImagePath(processHandle);
+                string path = Native.ImagePath(intPtr);
                 if (!IsGameProcess(path, Path.GetFileName(path), lolRoot))
                 {
                     return false;
                 }
                 long cpu;
                 ulong io;
-                return Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation != 0;
+                return Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation != 0;
             }
             catch
             {
@@ -800,9 +818,9 @@ namespace PaviseApp
             }
             finally
             {
-                if (processHandle != IntPtr.Zero)
+                if (intPtr != IntPtr.Zero)
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
         }
@@ -888,7 +906,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] cleanupRoots = new string[6]
+            string[] textEntries = new string[6]
             {
                 Path.Combine(lolRoot, "Cross"),
                 Path.Combine(lolRoot, "LeagueClient", "FeedBack"),
@@ -897,9 +915,9 @@ namespace PaviseApp
                 Path.Combine(lolRoot, "LeagueClient", "DiagnosticAssistant"),
                 Path.Combine(lolRoot, "Launcher", "qbblinktrial")
             };
-            for (int i = 0; i < cleanupRoots.Length; i++)
+            for (int i = 0; i < textEntries.Length; i++)
             {
-                if (IsUnder(path, cleanupRoots[i]))
+                if (IsUnder(path, textEntries[i]))
                 {
                     return true;
                 }

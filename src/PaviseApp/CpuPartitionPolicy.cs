@@ -83,41 +83,41 @@ namespace PaviseApp
             {
                 return 0uL;
             }
-            int preferredCoreCount = ((physicalCoresCount <= 8) ? 1 : 2);
-            List<ulong> maskValues = new List<ulong>();
+            int squeezeMaskValue = ((physicalCoresCount <= 8) ? 1 : 2);
+            List<ulong> list = new List<ulong>();
             if (hybrid && effMask != 0)
             {
-                foreach (ulong physicalCore in physicalCores)
+                foreach (ulong numericValueEntry in physicalCores)
                 {
-                    if ((physicalCore & allowedMask) == physicalCore && (physicalCore & effMask) == physicalCore)
+                    if ((numericValueEntry & allowedMask) == numericValueEntry && (numericValueEntry & effMask) == numericValueEntry)
                     {
-                        maskValues.Add(physicalCore);
+                        list.Add(numericValueEntry);
                     }
                 }
             }
-            if (maskValues.Count < preferredCoreCount)
+            if (list.Count < squeezeMaskValue)
             {
-                maskValues.Clear();
-                foreach (ulong currentPhysicalCore in physicalCores)
+                list.Clear();
+                foreach (ulong numericValueEntry2 in physicalCores)
                 {
-                    if ((currentPhysicalCore & allowedMask) == currentPhysicalCore)
+                    if ((numericValueEntry2 & allowedMask) == numericValueEntry2)
                     {
-                        maskValues.Add(currentPhysicalCore);
+                        list.Add(numericValueEntry2);
                     }
                 }
             }
-            if (maskValues.Count < preferredCoreCount)
+            if (list.Count < squeezeMaskValue)
             {
                 return 0uL;
             }
-            List<ulong> preferredCoreMasks = PreferCleanCacheDomain(maskValues, l3Domains, gameMask, preferredCoreCount);
-            preferredCoreMasks.Sort();
+            List<ulong> list2 = PreferCleanCacheDomain(list, l3Domains, gameMask, squeezeMaskValue);
+            list2.Sort();
             ulong squeezeMaskResult = 0uL;
-            for (int k = preferredCoreMasks.Count - preferredCoreCount; k < preferredCoreMasks.Count; k++)
+            for (int k = list2.Count - squeezeMaskValue; k < list2.Count; k++)
             {
                 if (k >= 0)
                 {
-                    squeezeMaskResult |= preferredCoreMasks[k];
+                    squeezeMaskResult |= list2[k];
                 }
             }
             squeezeMaskResult &= allowedMask;
@@ -138,27 +138,27 @@ namespace PaviseApp
             {
                 return pool;
             }
-            List<ulong> cleanDomainCandidates = null;
-            foreach (ulong l3Domain in l3Domains)
+            List<ulong> list = null;
+            foreach (ulong numericValueEntry in l3Domains)
             {
-                if (l3Domain == 0 || (l3Domain & gameMask) != 0)
+                if (numericValueEntry == 0 || (numericValueEntry & gameMask) != 0)
                 {
                     continue;
                 }
-                List<ulong> maskValues = new List<ulong>();
-                foreach (ulong currentPool in pool)
+                List<ulong> list2 = new List<ulong>();
+                foreach (ulong item in pool)
                 {
-                    if ((currentPool & l3Domain) == currentPool)
+                    if ((item & numericValueEntry) == item)
                     {
-                        maskValues.Add(currentPool);
+                        list2.Add(item);
                     }
                 }
-                if (maskValues.Count >= reserve && (cleanDomainCandidates == null || maskValues.Count < cleanDomainCandidates.Count))
+                if (list2.Count >= reserve && (list == null || list2.Count < list.Count))
                 {
-                    cleanDomainCandidates = maskValues;
+                    list = list2;
                 }
             }
-            return cleanDomainCandidates ?? pool;
+            return list ?? pool;
         }
 
         internal static int BitCount(ulong mask)
@@ -191,13 +191,14 @@ namespace PaviseApp
 
         public static CorePlan Decide(CoreDesc[] cores, ulong allMask)
         {
-            CorePlan result = default(CorePlan);
-            result.Game = allMask;
-            result.Background = 0uL;
-            result.GameDomain = -1;
-            result.AltDomain = -1;
-            result.Partitioned = false;
-            result.Tag = "flat";
+            CorePlan corePlan = default(CorePlan);
+            corePlan.Game = allMask;
+            corePlan.Background = 0uL;
+            corePlan.GameDomain = -1;
+            corePlan.AltDomain = -1;
+            corePlan.Partitioned = false;
+            corePlan.Tag = "flat";
+            CorePlan result = corePlan;
             if (cores == null || cores.Length == 0 || allMask == 0)
             {
                 return result;
@@ -223,14 +224,14 @@ namespace PaviseApp
                 ulong backgroundValue = 0uL;
                 for (int j = 0; j < cores.Length; j++)
                 {
-                    CoreDesc core = cores[j];
-                    if (core.Eff == minValue)
+                    CoreDesc coreDesc2 = cores[j];
+                    if (coreDesc2.Eff == minValue)
                     {
-                        gameValue |= core.Mask;
+                        gameValue |= coreDesc2.Mask;
                     }
                     else
                     {
-                        backgroundValue |= core.Mask;
+                        backgroundValue |= coreDesc2.Mask;
                     }
                 }
                 if (gameValue != 0 && backgroundValue != 0)
@@ -242,57 +243,57 @@ namespace PaviseApp
                     return result;
                 }
             }
-            Dictionary<int, ulong> coreMasksByL3 = new Dictionary<int, ulong>();
-            Dictionary<int, uint> l3SizesByL3 = new Dictionary<int, uint>();
+            Dictionary<int, ulong> dictionary = new Dictionary<int, ulong>();
+            Dictionary<int, uint> dictionary2 = new Dictionary<int, uint>();
             for (int k = 0; k < cores.Length; k++)
             {
-                CoreDesc currentCore = cores[k];
-                if (currentCore.L3 >= 0 && currentCore.L3Size != 0)
+                CoreDesc coreDesc3 = cores[k];
+                if (coreDesc3.L3 >= 0 && coreDesc3.L3Size != 0)
                 {
-                    ulong accumulatedL3Mask;
-                    coreMasksByL3.TryGetValue(currentCore.L3, out accumulatedL3Mask);
-                    coreMasksByL3[currentCore.L3] = accumulatedL3Mask | currentCore.Mask;
-                    l3SizesByL3[currentCore.L3] = currentCore.L3Size;
+                    ulong value;
+                    dictionary.TryGetValue(coreDesc3.L3, out value);
+                    dictionary[coreDesc3.L3] = value | coreDesc3.Mask;
+                    dictionary2[coreDesc3.L3] = coreDesc3.L3Size;
                 }
             }
-            ulong lowestCoreMask = 0uL;
+            ulong numericValue = 0uL;
             for (int l = 0; l < cores.Length; l++)
             {
-                CoreDesc candidateCore = cores[l];
-                if ((candidateCore.Mask & 1) != 0)
+                CoreDesc coreDesc4 = cores[l];
+                if ((coreDesc4.Mask & 1) != 0)
                 {
-                    lowestCoreMask = candidateCore.Mask;
+                    numericValue = coreDesc4.Mask;
                     break;
                 }
             }
-            if (coreMasksByL3.Count >= 2)
+            if (dictionary.Count >= 2)
             {
-                uint largestL3Size = 0u;
+                uint numericValue2 = 0u;
                 uint maxValue2 = uint.MaxValue;
-                foreach (uint l3Size in l3SizesByL3.Values)
+                foreach (uint value4 in dictionary2.Values)
                 {
-                    if (l3Size > largestL3Size)
+                    if (value4 > numericValue2)
                     {
-                        largestL3Size = l3Size;
+                        numericValue2 = value4;
                     }
-                    if (l3Size < maxValue2)
+                    if (value4 < maxValue2)
                     {
-                        maxValue2 = l3Size;
+                        maxValue2 = value4;
                     }
                 }
-                if (largestL3Size > maxValue2 && largestL3Size != 0)
+                if (numericValue2 > maxValue2 && numericValue2 != 0)
                 {
                     ulong gameValue2 = 0uL;
                     ulong backgroundValue2 = 0uL;
-                    foreach (KeyValuePair<int, ulong> coreMaskEntry in coreMasksByL3)
+                    foreach (KeyValuePair<int, ulong> item in dictionary)
                     {
-                        if (l3SizesByL3[coreMaskEntry.Key] == largestL3Size)
+                        if (dictionary2[item.Key] == numericValue2)
                         {
-                            gameValue2 |= coreMaskEntry.Value;
+                            gameValue2 |= item.Value;
                         }
                         else
                         {
-                            backgroundValue2 |= coreMaskEntry.Value;
+                            backgroundValue2 |= item.Value;
                         }
                     }
                     if (gameValue2 != 0 && backgroundValue2 != 0)
@@ -307,36 +308,36 @@ namespace PaviseApp
                     }
                 }
             }
-            Dictionary<int, ulong> coreMasksByDie = new Dictionary<int, ulong>();
-            Dictionary<int, int> coreCountsByDie = new Dictionary<int, int>();
+            Dictionary<int, ulong> dictionary3 = new Dictionary<int, ulong>();
+            Dictionary<int, int> dictionary4 = new Dictionary<int, int>();
             for (int m = 0; m < cores.Length; m++)
             {
-                CoreDesc resolvedCore = cores[m];
-                if (resolvedCore.Die >= 0)
+                CoreDesc coreDesc5 = cores[m];
+                if (coreDesc5.Die >= 0)
                 {
-                    ulong coreMask;
-                    coreMasksByDie.TryGetValue(resolvedCore.Die, out coreMask);
-                    coreMasksByDie[resolvedCore.Die] = coreMask | resolvedCore.Mask;
-                    int dieCoreCount;
-                    coreCountsByDie.TryGetValue(resolvedCore.Die, out dieCoreCount);
-                    coreCountsByDie[resolvedCore.Die] = dieCoreCount + 1;
+                    ulong value2;
+                    dictionary3.TryGetValue(coreDesc5.Die, out value2);
+                    dictionary3[coreDesc5.Die] = value2 | coreDesc5.Mask;
+                    int value3;
+                    dictionary4.TryGetValue(coreDesc5.Die, out value3);
+                    dictionary4[coreDesc5.Die] = value3 + 1;
                 }
             }
-            if (coreMasksByDie.Count >= 2)
+            if (dictionary3.Count >= 2)
             {
                 int gameDomainValue = -1;
-                int primaryCoreCount = -1;
-                foreach (KeyValuePair<int, int> coreCountEntry in coreCountsByDie)
+                int decideValue = -1;
+                foreach (KeyValuePair<int, int> item2 in dictionary4)
                 {
-                    if (coreCountEntry.Value > primaryCoreCount || (coreCountEntry.Value == primaryCoreCount && (gameDomainValue < 0 || coreCountEntry.Key < gameDomainValue)))
+                    if (item2.Value > decideValue || (item2.Value == decideValue && (gameDomainValue < 0 || item2.Key < gameDomainValue)))
                     {
-                        gameDomainValue = coreCountEntry.Key;
-                        primaryCoreCount = coreCountEntry.Value;
+                        gameDomainValue = item2.Key;
+                        decideValue = item2.Value;
                     }
                 }
-                ulong gameValue3 = ((gameDomainValue >= 0) ? (coreMasksByDie[gameDomainValue] & allMask) : 0);
+                ulong gameValue3 = ((gameDomainValue >= 0) ? (dictionary3[gameDomainValue] & allMask) : 0);
                 ulong backgroundValue3 = allMask & ~gameValue3;
-                if (gameValue3 != 0 && backgroundValue3 != 0 && primaryCoreCount >= 6)
+                if (gameValue3 != 0 && backgroundValue3 != 0 && decideValue >= 6)
                 {
                     result.Game = gameValue3;
                     result.Background = backgroundValue3;
@@ -344,18 +345,18 @@ namespace PaviseApp
                     result.Tag = "symmetric-ccd";
                     result.GameDomain = gameDomainValue;
                     int altDomainValue = -1;
-                    int alternateCoreCount = -1;
-                    foreach (KeyValuePair<int, int> currentCoreCountEntry in coreCountsByDie)
+                    int decideValue2 = -1;
+                    foreach (KeyValuePair<int, int> item3 in dictionary4)
                     {
-                        if (currentCoreCountEntry.Key != gameDomainValue && (currentCoreCountEntry.Value > alternateCoreCount || (currentCoreCountEntry.Value == alternateCoreCount && (altDomainValue < 0 || currentCoreCountEntry.Key < altDomainValue))))
+                        if (item3.Key != gameDomainValue && (item3.Value > decideValue2 || (item3.Value == decideValue2 && (altDomainValue < 0 || item3.Key < altDomainValue))))
                         {
-                            altDomainValue = currentCoreCountEntry.Key;
-                            alternateCoreCount = currentCoreCountEntry.Value;
+                            altDomainValue = item3.Key;
+                            decideValue2 = item3.Value;
                         }
                     }
-                    if (altDomainValue >= 0 && alternateCoreCount >= 6)
+                    if (altDomainValue >= 0 && decideValue2 >= 6)
                     {
-                        ulong altGameValue = coreMasksByDie[altDomainValue] & allMask;
+                        ulong altGameValue = dictionary3[altDomainValue] & allMask;
                         ulong altBackgroundValue = allMask & ~altGameValue;
                         if (altGameValue != 0 && altBackgroundValue != 0)
                         {
@@ -367,24 +368,24 @@ namespace PaviseApp
                     return result;
                 }
             }
-            if (cores.Length >= 8 && lowestCoreMask != 0)
+            if (cores.Length >= 8 && numericValue != 0)
             {
                 int backgroundCoreCountLimit = Math.Max(1, BackgroundCoreCount(cores.Length));
-                List<ulong> masks = new List<ulong>();
+                List<ulong> list = new List<ulong>();
                 coresSnapshot = cores;
                 for (int i = 0; i < coresSnapshot.Length; i++)
                 {
-                    CoreDesc selectedCore = coresSnapshot[i];
-                    if (selectedCore.Mask != lowestCoreMask)
+                    CoreDesc coreDesc6 = coresSnapshot[i];
+                    if (coreDesc6.Mask != numericValue)
                     {
-                        masks.Add(selectedCore.Mask);
+                        list.Add(coreDesc6.Mask);
                     }
                 }
-                masks.Sort();
-                ulong backgroundValue4 = lowestCoreMask;
-                for (int n = 0; n < backgroundCoreCountLimit - 1 && masks.Count - n - 1 >= 0; n++)
+                list.Sort();
+                ulong backgroundValue4 = numericValue;
+                for (int n = 0; n < backgroundCoreCountLimit - 1 && list.Count - n - 1 >= 0; n++)
                 {
-                    backgroundValue4 |= masks[masks.Count - n - 1];
+                    backgroundValue4 |= list[list.Count - n - 1];
                 }
                 ulong gameValue4 = allMask & ~backgroundValue4;
                 if (gameValue4 != 0)
@@ -399,20 +400,20 @@ namespace PaviseApp
             int backgroundCoreCountResult = BackgroundCoreCount(cores.Length);
             if (backgroundCoreCountResult > 0)
             {
-                List<ulong> currentMasks = new List<ulong>();
+                List<ulong> list2 = new List<ulong>();
                 coresSnapshot = cores;
                 for (int i = 0; i < coresSnapshot.Length; i++)
                 {
-                    CoreDesc workingCore = coresSnapshot[i];
-                    currentMasks.Add(workingCore.Mask);
+                    CoreDesc coreDesc7 = coresSnapshot[i];
+                    list2.Add(coreDesc7.Mask);
                 }
-                currentMasks.Sort();
+                list2.Sort();
                 ulong backgroundValue5 = 0uL;
-                for (int list2Index = currentMasks.Count - backgroundCoreCountResult; list2Index < currentMasks.Count; list2Index++)
+                for (int list2Index = list2.Count - backgroundCoreCountResult; list2Index < list2.Count; list2Index++)
                 {
                     if (list2Index >= 0)
                     {
-                        backgroundValue5 |= currentMasks[list2Index];
+                        backgroundValue5 |= list2[list2Index];
                     }
                 }
                 ulong gameValue5 = allMask & ~backgroundValue5;

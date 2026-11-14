@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -8,9 +9,10 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    internal sealed class ConfigurationPresetBackend : IConfigurationPresetBackend, IConfigurationPresetSnapshot
+    internal sealed class ConfigurationPresetBackend : IConfigurationPresetBackend, IConfigurationPresetSnapshot, IConfigurationPresetWriteState
     {
         private readonly GameMode gameMode;
+        public bool PendingVerification { get; private set; }
         private static readonly string[] bundle = { "EnvCpuMitigationsV1", "EnvNtfsLastAccessV1", "EnvAudioIdleV1", "EnvVbsDisabledV1" };
         internal ConfigurationPresetBackend(GameMode gameMode) { this.gameMode = gameMode; }
         public bool SaveIdentity(string value)
@@ -57,7 +59,6 @@ namespace PaviseApp
             if (key == PerformanceTuning.EnvironmentBundleKey) return GroupValue(bundle);
             if (key == PerformanceTuning.StorageGroupKey) return GroupValue(PerformanceTuning.StorageMembers());
             if (PrivacyControl.IsAction(key)) return Boolean(PrivacyControl.PreferencePrefix + key, false);
-            if (key == ThreadBoostSelection.Key) { string selected; return ThreadBoostSelection.TryReadGlobal(out selected) ? selected : null; }
             if (key == LaboratoryPower.IdleKey) { string selected; return !Settings.TryLoadStr(key, out selected) ? null : string.IsNullOrEmpty(selected) ? "default" : selected; }
             PolicyItem policy = PolicyCatalog.ItemOf(key);
             if (policy != null && policy.Kind == PolicyValueKind.Choice)
@@ -69,7 +70,7 @@ namespace PaviseApp
             }
             if (key == "AutoTimerTick" || key == "AutoGlobalTimer")
                 return Boolean(key, key == "AutoTimerTick" ? TimerTickTweak.OwnsState : GlobalTimerResTweak.OwnsState);
-            return Boolean(key, policy != null ? policy.Fallback == "1" : key == "GmMmcss" || key == "GpuPrefStageOn" || key == "GameDvrOff");
+            return Boolean(key, policy != null ? policy.Fallback == "1" : key == "GmMmcss" || key == "GameDvrOff");
         }
         public string ExtraSnapshot()
         { return ReadSavedExtra(); }
@@ -111,10 +112,9 @@ namespace PaviseApp
                 if (build <= 0) return ConfigurationPresetAvailability.No(PerformancePolicy.Text("系统版本无法核验", "OS version could not be verified"));
                 switch (entry.Key)
                 {
-                    case "NvMaxPerf": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("pstate")), "NVIDIA 电源策略接口不支持或无法读取", "NVIDIA power-policy setting unsupported or unreadable");
-                    case "NvShaderCache": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("shadercache")), "NVIDIA 缓存接口不支持或无法读取", "NVIDIA shader-cache setting unsupported or unreadable");
-                    case "NvLowLat": return Available(NvApi.Available && NvApi.SupportsDwordSetting(NvDrsTweaks.SettingIdOf("prerender")), "NVIDIA 低延迟接口不支持或无法读取", "NVIDIA low-latency setting unsupported or unreadable");
-                    case "GpuPrefStageOn": return Available(GpuPrefStage.Supported, "系统不支持游戏显卡偏好登记", "Game GPU preferences are unsupported");
+                    case "NvMaxPerf": return NvSetting("pstate", "NVIDIA 电源策略接口不支持或无法读取", "NVIDIA power-policy setting unsupported or unreadable");
+                    case "NvShaderCache": return NvSetting("shadercache", "NVIDIA 缓存接口不支持或无法读取", "NVIDIA shader-cache setting unsupported or unreadable");
+                    case "NvLowLat": return NvSetting("prerender", "NVIDIA 低延迟接口不支持或无法读取", "NVIDIA low-latency setting unsupported or unreadable");
                     case "AutoGlobalTimer": return Available(build < 19041 || build >= 20348, "系统不支持全局计时器配置", "Global timer configuration is unsupported on this OS");
                     case "AutoTimerTick": return Available(!LaboratoryClockRepair.HasReceipt && TimerTickTweak.CanReadForPreset(), "计时配置不可读取或有待恢复的修复记录", "Timer settings unreadable or timer repair recovery pending");
                     case "GmMmcss": return Available(ServiceExists("MMCSS") && RegistryAvailable("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"), "游戏多媒体调度配置不可用", "Game multimedia scheduling configuration unavailable");
@@ -154,6 +154,13 @@ namespace PaviseApp
             }
             catch (Exception ex) { return ConfigurationPresetAvailability.No(PerformancePolicy.Text("适用性检测失败：", "Eligibility check failed: ") + ex.GetType().Name); }
         }
+        // 区分接口、会话与驱动设置的读取失败，保留不适用原因。
+        private static ConfigurationPresetAvailability NvSetting(string kind, string zh, string en)
+        {
+            string problem = NvApi.DwordSettingProblem(NvDrsTweaks.SettingIdOf(kind));
+            return problem.Length == 0 ? ConfigurationPresetAvailability.Yes()
+                : ConfigurationPresetAvailability.No(PerformancePolicy.Text(zh, en) + "(" + problem + ")");
+        }
         private static bool BadState(string state)
         { return state == "failed" || state == "restore-failed" || state == "stopped" || state == "unverified" || state == "unsupported"; }
         private static bool Wait(Func<Action, bool> begin, Func<bool> cancelled)
@@ -185,7 +192,8 @@ namespace PaviseApp
         private static bool SetGroup(bool storage, bool on, Func<bool> cancelled, out string detail, string onlyMember = null)
         {
             bool ok = true; List<string> descriptions = new List<string>();
-            foreach (string key in onlyMember != null ? new[] { onlyMember } : storage ? PerformanceTuning.StorageMembers().ToArray() : bundle)
+            string[] members = onlyMember != null ? new[] { onlyMember } : storage ? PerformanceTuning.StorageMembers().ToArray() : bundle;
+            foreach (string key in members)
             {
                 if (cancelled != null && cancelled()) { detail = PerformancePolicy.Text("后续设置已停止", "Further settings cancelled"); return false; }
                 bool applicable = !on || key == "EnvVbsDisabledV1" || PerformanceActionBackend.EnvironmentTargets(key).Length > 0;
@@ -235,6 +243,7 @@ namespace PaviseApp
         }
         public bool Write(ConfigurationPresetEntry entry, string value, Func<bool> cancelled, out string detail)
         {
+            PendingVerification = false;
             detail = ""; if (gameMode == null || (cancelled != null && cancelled())) return false;
             bool on = ConfigurationPresetEntry.IsEnabled(value); string key = entry.Key;
             if (key == BackgroundGovernancePolicy.SettingKey)
@@ -286,7 +295,10 @@ namespace PaviseApp
                 }
                 return ok;
             }
-            return gameMode.ApplyConfigurationPresetPreference(key, value, out detail);
+            bool pending;
+            bool preferenceAccepted = gameMode.ApplyConfigurationPresetPreference(key, value, out detail, out pending);
+            PendingVerification = preferenceAccepted && pending;
+            return preferenceAccepted;
         }
     }
 }

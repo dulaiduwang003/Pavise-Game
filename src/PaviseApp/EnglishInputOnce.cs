@@ -26,6 +26,8 @@ namespace PaviseApp
 
         internal const int ForegroundWaitMs = 15000;
 
+        private const int MaximumHistory = 128;
+
         private readonly object stateGate = new object();
 
         private readonly object operationGate = new object();
@@ -115,27 +117,28 @@ namespace PaviseApp
                     historyItems = history.ToArray();
                 }
                 Session session = null;
-                List<Session> sessions = new List<Session>();
-                foreach (Session sessionItem in historyItems)
+                List<Session> list = new List<Session>();
+                Session[] sessionItems = historyItems;
+                foreach (Session session2 in sessionItems)
                 {
                     if (session != null)
                     {
-                        foreach (GameInputProcess process3 in sessionItem.Processes)
+                        foreach (GameInputProcess process3 in session2.Processes)
                         {
                             if (process3.Equals(process))
                             {
-                                session = sessionItem;
+                                session = session2;
                                 break;
                             }
                         }
                         continue;
                     }
                     bool sessionStillAlive = false;
-                    foreach (GameInputProcess process4 in sessionItem.Processes)
+                    foreach (GameInputProcess process4 in session2.Processes)
                     {
                         if (process4.Equals(process))
                         {
-                            session = sessionItem;
+                            session = session2;
                             sessionStillAlive = true;
                             break;
                         }
@@ -158,20 +161,20 @@ namespace PaviseApp
                     }
                     if (!sessionStillAlive)
                     {
-                        sessions.Add(sessionItem);
+                        list.Add(session2);
                     }
-                    else if (session == null && SameProfile(sessionItem.ProfileId, profileId))
+                    else if (session == null && SameProfile(session2.ProfileId, profileId))
                     {
-                        session = sessionItem;
+                        session = session2;
                     }
                 }
                 bool admitted = enabledAtEntry && Evaluate(admission);
                 lock (stateGate)
                 {
                     admitted = admitted && cancellationVersionSnapshot == cancellationVersion;
-                    foreach (Session currentSession in sessions)
+                    foreach (Session item in list)
                     {
-                        history.Remove(currentSession);
+                        history.Remove(item);
                     }
                     if (session != null)
                     {
@@ -186,19 +189,20 @@ namespace PaviseApp
                     {
                         historyExhausted = true;
                     }
-                    Session resolvedSession = new Session();
-                    resolvedSession.ProfileId = profileId;
-                    resolvedSession.Deadline = deadline;
-                    resolvedSession.Consumed = !admitted;
-                    resolvedSession.Revoked = !admitted;
-                    resolvedSession.OriginalAdmission = admission;
-                    resolvedSession.HistoryFull = historyExhausted;
-                    Remember(resolvedSession, process);
-                    if (!resolvedSession.HistoryFull)
+                    Session session3 = new Session();
+                    session3.ProfileId = profileId;
+                    session3.Deadline = deadline;
+                    session3.Consumed = !admitted;
+                    session3.Revoked = !admitted;
+                    session3.OriginalAdmission = admission;
+                    session3.HistoryFull = historyExhausted;
+                    Session session4 = session3;
+                    Remember(session4, process);
+                    if (!session4.HistoryFull)
                     {
-                        history.Add(resolvedSession);
+                        history.Add(session4);
                     }
-                    current = resolvedSession;
+                    current = session4;
                 }
             }
         }

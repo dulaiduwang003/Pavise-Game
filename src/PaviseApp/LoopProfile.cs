@@ -114,16 +114,16 @@ namespace PaviseApp
             double frequencyRatio = (double)(Stopwatch.GetTimestamp() - spanTicks) * 1000.0 / (double)Stopwatch.Frequency;
             lock (countSync)
             {
-                double[] span;
-                if (!spans.TryGetValue(spanNameSnapshot, out span))
+                double[] value;
+                if (!spans.TryGetValue(spanNameSnapshot, out value))
                 {
-                    span = new double[4];
-                    spans[spanNameSnapshot] = span;
+                    value = new double[4];
+                    spans[spanNameSnapshot] = value;
                 }
-                span[0] += 1.0;
-                span[1] += cyclesPerMsRatio;
-                span[2] = Math.Max(span[2], cyclesPerMsRatio);
-                span[3] += frequencyRatio;
+                value[0] += 1.0;
+                value[1] += cyclesPerMsRatio;
+                value[2] = Math.Max(value[2], cyclesPerMsRatio);
+                value[3] += frequencyRatio;
             }
         }
 
@@ -160,25 +160,25 @@ namespace PaviseApp
             {
                 long timestamp = Stopwatch.GetTimestamp();
                 ulong cyclesResult = Cycles();
-                Phase phase;
-                if (!phases.TryGetValue(name, out phase))
+                Phase value;
+                if (!phases.TryGetValue(name, out value))
                 {
-                    phase = new Phase();
-                    phases[name] = phase;
+                    value = new Phase();
+                    phases[name] = value;
                     order.Add(name);
                 }
                 long wallTicksValue = timestamp - markTicks;
                 ulong cyclesValue = cyclesResult - markCycles;
-                phase.Count++;
-                phase.WallTicks += wallTicksValue;
-                phase.Cycles += cyclesValue;
-                if (wallTicksValue > phase.MaxWallTicks)
+                value.Count++;
+                value.WallTicks += wallTicksValue;
+                value.Cycles += cyclesValue;
+                if (wallTicksValue > value.MaxWallTicks)
                 {
-                    phase.MaxWallTicks = wallTicksValue;
+                    value.MaxWallTicks = wallTicksValue;
                 }
-                if (cyclesValue > phase.MaxCycles)
+                if (cyclesValue > value.MaxCycles)
                 {
-                    phase.MaxCycles = cyclesValue;
+                    value.MaxCycles = cyclesValue;
                 }
                 markTicks = timestamp;
                 markCycles = cyclesResult;
@@ -205,15 +205,15 @@ namespace PaviseApp
             {
                 maxIterationCycles = cyclesValue;
             }
-            Phase currentPhase;
-            if (!phases.TryGetValue("(iteration)", out currentPhase))
+            Phase value;
+            if (!phases.TryGetValue("(iteration)", out value))
             {
-                currentPhase = new Phase();
-                phases["(iteration)"] = currentPhase;
+                value = new Phase();
+                phases["(iteration)"] = value;
             }
-            currentPhase.Count++;
-            currentPhase.WallTicks += wallTicksValue;
-            currentPhase.Cycles += cyclesValue;
+            value.Count++;
+            value.WallTicks += wallTicksValue;
+            value.Cycles += cyclesValue;
             iterationStart = 0L;
             markTicks = 0L;
             if (timestamp - windowStart < 20 * Stopwatch.Frequency)
@@ -223,7 +223,7 @@ namespace PaviseApp
             StringBuilder stringBuilder = new StringBuilder("LOOP ");
             stringBuilder.Append(((double)(timestamp - windowStart) / (double)Stopwatch.Frequency).ToString("F1")).Append("s iterations=").Append(iterations)
                 .Append(" cpu=")
-                .Append(Ms(currentPhase.Cycles))
+                .Append(Ms(value.Cycles))
                 .Append("ms maxIterCpu=")
                 .Append(Ms(maxIterationCycles))
                 .Append("ms maxIterWall=")
@@ -263,14 +263,14 @@ namespace PaviseApp
             gc1 = collectionCountResult2;
             gc2 = collectionCountResult3;
             stringBuilder.Append(" |");
-            List<string> orderSnapshot = new List<string>(order);
-            orderSnapshot.Sort((string a, string b) => phases[b].Cycles.CompareTo(phases[a].Cycles));
-            foreach (string currentOrderSnapshot in orderSnapshot)
+            List<string> list = new List<string>(order);
+            list.Sort((string a, string b) => phases[b].Cycles.CompareTo(phases[a].Cycles));
+            foreach (string item in list)
             {
-                Phase phase = phases[currentOrderSnapshot];
+                Phase phase = phases[item];
                 if (phase.Cycles != 0 || phase.WallTicks != 0)
                 {
-                    stringBuilder.Append(' ').Append(currentOrderSnapshot).Append(" cpu=")
+                    stringBuilder.Append(' ').Append(item).Append(" cpu=")
                         .Append(Ms(phase.Cycles))
                         .Append("/max")
                         .Append(Ms(phase.MaxCycles))

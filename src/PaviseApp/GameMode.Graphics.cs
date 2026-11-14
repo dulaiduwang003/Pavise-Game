@@ -1,22 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 
 namespace PaviseApp
 {
     internal partial class GameMode
     {
-        private bool GpuPrefResidueGate(bool hasResidue)
-        {
-            if (hasResidue)
-            {
-                if (enabled && gpuPrefStageOn)
-                {
-                    return preStagedNvPath == null;
-                }
-                return true;
-            }
-            return false;
-        }
         private void PreStageDriverTuning(List<GameProfile> copy, string armedName)
         {
             if (stopping || (sessionRecoveryCaptured && sessionRecoveryRoutes != null && !sessionRecoveryRoutes.Complete))
@@ -24,11 +20,11 @@ namespace PaviseApp
                 return;
             }
             GameProfile armed = null;
-            foreach (GameProfile currentCopy in copy)
+            foreach (GameProfile item in copy)
             {
-                if (string.Equals(currentCopy.Name, armedName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(item.Name, armedName, StringComparison.OrdinalIgnoreCase))
                 {
-                    armed = currentCopy;
+                    armed = item;
                     break;
                 }
             }
@@ -62,8 +58,7 @@ namespace PaviseApp
                 WindowedVrr = nvVrrWindowedOn
             };
             plan = AutomaticPreStagePlan(policySnapshot, Native.OnAcPower(), nvVrrWindowedOn);
-            bool stageGpuPref = gpuPrefStageOn && GpuPrefStage.Supported;
-            QueuePreStagedNvPlan(armed, path, plan, stageGpuPref);
+            QueuePreStagedNvPlan(armed, path, plan);
         }
     }
 }

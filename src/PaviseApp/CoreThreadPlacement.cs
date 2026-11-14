@@ -50,10 +50,10 @@ namespace PaviseApp
         {
             get
             {
-                string text;
-                if (Settings.TryLoadStr("AutoCoreThreadPlacementV1", out text))
+                string value;
+                if (Settings.TryLoadStr("AutoCoreThreadPlacementV1", out value))
                 {
-                    return text.Length != 0;
+                    return value.Length != 0;
                 }
                 return true;
             }
@@ -120,116 +120,118 @@ namespace PaviseApp
 
         private static bool RecoverCore()
         {
-            string text;
-            if (!Settings.TryLoadStr("AutoCoreThreadPlacementV1", out text))
+            string value;
+            if (!Settings.TryLoadStr("AutoCoreThreadPlacementV1", out value))
             {
                 return false;
             }
-            if (text.Length == 0)
+            if (value.Length == 0)
             {
                 return true;
             }
-            if (text.Length > 65536)
+            if (value.Length > 65536)
             {
                 return false;
             }
-            List<string> entryTexts = new List<string>();
-            string[] valueParts = text.Split(';');
+            List<string> list = new List<string>();
+            string[] valueParts = value.Split(';');
             Array.Reverse(valueParts);
-            foreach (string entryText in valueParts)
+            string[] textEntries = valueParts;
+            foreach (string entryText in textEntries)
             {
-                IntPtr processHandle = IntPtr.Zero;
-                IntPtr threadHandle = IntPtr.Zero;
+                IntPtr intPtr = IntPtr.Zero;
+                IntPtr intPtr2 = IntPtr.Zero;
                 try
                 {
                     string[] entryTextParts = entryText.Split('|');
                     if (entryTextParts.Length != 6)
                     {
-                        entryTexts.Add(entryText);
+                        list.Add(entryText);
                         continue;
                     }
-                    Receipt currentReceipt = new Receipt();
-                    currentReceipt.Pid = int.Parse(entryTextParts[0]);
-                    currentReceipt.ProcessCreation = long.Parse(entryTextParts[1]);
-                    currentReceipt.Tid = int.Parse(entryTextParts[2]);
-                    currentReceipt.ThreadCreation = long.Parse(entryTextParts[3]);
-                    currentReceipt.Original = ParseIds(entryTextParts[4]);
-                    currentReceipt.Applied = ParseIds(entryTextParts[5]);
-                    if (currentReceipt.Pid <= 0 || currentReceipt.ProcessCreation <= 0 || currentReceipt.Tid < 0 || (currentReceipt.Tid > 0 && currentReceipt.ThreadCreation <= 0) || currentReceipt.Applied.Length == 0)
+                    Receipt receipt = new Receipt();
+                    receipt.Pid = int.Parse(entryTextParts[0]);
+                    receipt.ProcessCreation = long.Parse(entryTextParts[1]);
+                    receipt.Tid = int.Parse(entryTextParts[2]);
+                    receipt.ThreadCreation = long.Parse(entryTextParts[3]);
+                    receipt.Original = ParseIds(entryTextParts[4]);
+                    receipt.Applied = ParseIds(entryTextParts[5]);
+                    Receipt receipt2 = receipt;
+                    if (receipt2.Pid <= 0 || receipt2.ProcessCreation <= 0 || receipt2.Tid < 0 || (receipt2.Tid > 0 && receipt2.ThreadCreation <= 0) || receipt2.Applied.Length == 0)
                     {
-                        entryTexts.Add(entryText);
+                        list.Add(entryText);
                         continue;
                     }
-                    processHandle = Native.OpenProcess(0x1000 | ((currentReceipt.Tid == 0) ? 8704 : 0), false, currentReceipt.Pid);
+                    intPtr = Native.OpenProcess(0x1000 | ((receipt2.Tid == 0) ? 8704 : 0), false, receipt2.Pid);
                     long creation;
                     long cpu;
                     ulong io;
-                    if (processHandle == IntPtr.Zero)
+                    if (intPtr == IntPtr.Zero)
                     {
                         if (Marshal.GetLastWin32Error() != 87)
                         {
-                            entryTexts.Add(entryText);
+                            list.Add(entryText);
                         }
                     }
-                    else if (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io))
+                    else if (!Native.QueryProcessSample(intPtr, out creation, out cpu, out io))
                     {
-                        entryTexts.Add(entryText);
+                        list.Add(entryText);
                     }
                     else
                     {
-                        if (creation != currentReceipt.ProcessCreation || !Native.StillActive(processHandle))
+                        if (creation != receipt2.ProcessCreation || !Native.StillActive(intPtr))
                         {
                             continue;
                         }
-                        if (currentReceipt.Tid == 0)
+                        if (receipt2.Tid == 0)
                         {
-                            currentReceipt.Handle = processHandle;
-                            if (!RestoreReceipt(currentReceipt)) entryTexts.Add(entryText);
+                            receipt2.Handle = intPtr;
+                            if (!RestoreReceipt(receipt2)) list.Add(entryText);
                             continue;
                         }
-                        threadHandle = Native.OpenThread(1051648, false, currentReceipt.Tid);
+                        intPtr2 = Native.OpenThread(1051648, false, receipt2.Tid);
                         long exit;
                         long kernel;
                         long user;
-                        if (threadHandle == IntPtr.Zero)
+                        if (intPtr2 == IntPtr.Zero)
                         {
                             if (Marshal.GetLastWin32Error() != 87)
                             {
-                                entryTexts.Add(entryText);
+                                list.Add(entryText);
                             }
                         }
-                        else if (!Native.GetThreadTimes(threadHandle, out creation, out exit, out kernel, out user))
+                        else if (!Native.GetThreadTimes(intPtr2, out creation, out exit, out kernel, out user))
                         {
-                            entryTexts.Add(entryText);
+                            list.Add(entryText);
                         }
-                        else if (exit == 0 && creation == currentReceipt.ThreadCreation && Native.QueryThreadOwnerPid(threadHandle) == currentReceipt.Pid)
+                        else if (exit == 0 && creation == receipt2.ThreadCreation && Native.QueryThreadOwnerPid(intPtr2) == receipt2.Pid)
                         {
-                            currentReceipt.Handle = threadHandle;
-                            if (!RestoreReceipt(currentReceipt)) entryTexts.Add(entryText);
+                            receipt2.Handle = intPtr2;
+                            if (!RestoreReceipt(receipt2)) list.Add(entryText);
                         }
                         continue;
                     }
                 }
                 catch
                 {
-                    entryTexts.Add(entryText);
+                    list.Add(entryText);
                 }
                 finally
                 {
-                    if (threadHandle != IntPtr.Zero)
+                    if (intPtr2 != IntPtr.Zero)
                     {
-                        Native.CloseHandle(threadHandle);
+                        Native.CloseHandle(intPtr2);
                     }
-                    if (processHandle != IntPtr.Zero)
+                    if (intPtr != IntPtr.Zero)
                     {
-                        Native.CloseHandle(processHandle);
+                        Native.CloseHandle(intPtr);
                     }
                 }
             }
-            entryTexts.Reverse();
-            if (Settings.SaveStrDurable("AutoCoreThreadPlacementV1", string.Join(";", entryTexts)))
+            list.Reverse();
+            if (Settings.SaveStrDurable("AutoCoreThreadPlacementV1", string.Join(";", list)))
             {
-                return entryTexts.Count == 0;
+                return list.Count == 0;
             }
             return false;
         }

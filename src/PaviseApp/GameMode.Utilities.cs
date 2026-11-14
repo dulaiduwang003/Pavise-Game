@@ -60,8 +60,8 @@ namespace PaviseApp
                 needTweak = !tweakApplied.Contains(pid);
                 ulong value;
                 needPlacement = pass.Exclusive && !placementGaveUp.Contains(pid) && (!gamePlacement.TryGetValue(pid, out value) || value != pass.DesiredMask);
-                long currentGameBoostNextAudit;
-                return !known || needTweak || needPlacement || !gameBoostNextAudit.TryGetValue(pid, out currentGameBoostNextAudit) || DateTime.UtcNow.Ticks >= currentGameBoostNextAudit;
+                long value2;
+                return !known || needTweak || needPlacement || !gameBoostNextAudit.TryGetValue(pid, out value2) || DateTime.UtcNow.Ticks >= value2;
             }
         }
         private void HandlePidReuse(int pid, long currentCreation, ref bool known, ref bool needPlacement)
@@ -71,10 +71,10 @@ namespace PaviseApp
                 return;
             }
             bool staleBoostRemoved = false;
-            Snap currentGameBoost;
+            Snap value;
             lock (sync)
             {
-                if (gameBoost.TryGetValue(pid, out currentGameBoost) && currentGameBoost.Creation > 0 && currentGameBoost.Creation != currentCreation)
+                if (gameBoost.TryGetValue(pid, out value) && value.Creation > 0 && value.Creation != currentCreation)
                 {
                     gameBoost.Remove(pid);
                     gameGpu.Remove(pid);
@@ -98,7 +98,7 @@ namespace PaviseApp
             if (staleBoostRemoved)
             {
                 needPlacement = true;
-                CrashGuard.ReleaseBoostProcess(pid, currentGameBoost.Creation);
+                CrashGuard.ReleaseBoostProcess(pid, value.Creation);
             }
         }
         private bool CaptureAndTrack(IntPtr h, int pid, long currentCreation, BoostPass pass, bool known, out bool newlyTracked, out bool gpuOk, bool applyGpu = true)
@@ -131,8 +131,7 @@ namespace PaviseApp
                     return false;
                 }
                 int ioValue = Native.QueryIoPriority(h);
-                int pgValue = Native.QueryPagePriority(h);
-                if (ioValue < 0 || pgValue < 0)
+                if (ioValue < 0)
                 {
                     return false;
                 }
@@ -154,7 +153,7 @@ namespace PaviseApp
                     stateMask = -1;
                 }
                 CrashGuard.OriginalBoostState recovered;
-                if (!CrashGuard.MarkBoostProcess(pid, currentCreation, pass.RendererName, priValue, affValue, ioValue, pgValue, cls, cpuSetsValue, controlMask, stateMask, out recovered))
+                if (!CrashGuard.MarkBoostProcess(pid, currentCreation, pass.RendererName, priValue, affValue, ioValue, cls, cpuSetsValue, controlMask, stateMask, out recovered))
                 {
                     Logger.Log(Lang.T("log.gamemodeboost.10", 0) + pass.RendererName + " 进程编号 " + pid);
                     return false;
@@ -164,26 +163,25 @@ namespace PaviseApp
                     priValue = recovered.Priority;
                     affValue = recovered.Affinity;
                     ioValue = recovered.Io;
-                    pgValue = recovered.Page;
                     cls = recovered.Gpu;
                     gpuPriorityRead = cls >= 0;
                     cpuSetsValue = recovered.CpuSets;
                     controlMask = recovered.QoSControl;
                     stateMask = recovered.QoSState;
                 }
-                Snap currentSnap = default(Snap);
-                currentSnap.Pri = priValue;
-                currentSnap.Aff = affValue;
-                currentSnap.Io = ioValue;
-                currentSnap.Pg = pgValue;
-                currentSnap.Name = pass.RendererName;
-                currentSnap.Creation = currentCreation;
-                currentSnap.CpuSets = cpuSetsValue;
-                currentSnap.QoSControl = controlMask;
-                currentSnap.QoSState = stateMask;
+                Snap snap = default(Snap);
+                snap.Pri = priValue;
+                snap.Aff = affValue;
+                snap.Io = ioValue;
+                snap.Name = pass.RendererName;
+                snap.Creation = currentCreation;
+                snap.CpuSets = cpuSetsValue;
+                snap.QoSControl = controlMask;
+                snap.QoSState = stateMask;
+                Snap value2 = snap;
                 lock (sync)
                 {
-                    gameBoost[pid] = currentSnap;
+                    gameBoost[pid] = value2;
                     if (!string.IsNullOrEmpty(pass.ActionTarget))
                     {
                         boostActionTargets[pid] = pass.ActionTarget;
@@ -221,23 +219,36 @@ namespace PaviseApp
             {
                 return true;
             }
-            return ApplyIsolatedBoostAction(h, pid, pass, "GameEcoQoS", (long value) => Native.HighQoSMasksOk((int)(value >> 32), (int)value), () => WriteHighQoSBoost(h));
+            // QoS 只恢复旧回执，不通过资源优先级入口写入。
+            bool owned;
+            lock (sync)
+            {
+                HashSet<string> selected, pending;
+                owned = (boostResourceSelections.TryGetValue(pid, out selected) && selected.Contains(GameEcoAction))
+                    || (boostActionRestorePending.TryGetValue(pid, out pending) && pending.Contains(GameEcoAction));
+            }
+            if (owned && RestoreBoostAction(h, pid, pass.RendererCreation, GameEcoAction))
+            {
+                lock (sync)
+                {
+                    HashSet<string> selected;
+                    if (boostResourceSelections.TryGetValue(pid, out selected)) selected.Remove(GameEcoAction);
+                }
+                if (!string.IsNullOrEmpty(pass.ActionTarget)) ActionFailureStore.CancelApply(GameEcoAction, pass.ActionTarget);
+            }
+            return false;
         }
         private void OnGameHandleStripped(int pid, string rendererName, uint granted)
         {
-            string describeForLogResult = KernelAntiCheat.DescribeForLog(rendererName);
-            Logger.Log(Lang.T("log.gamemodeboost.3", 0) + rendererName + " 进程编号 " + pid + Lang.T("log.gamemodeboost.34", 0) + ((describeForLogResult == null) ? Lang.T("nav.tame", 0) : describeForLogResult) + Lang.T("log.gamemodeboost.35", 0) + granted.ToString("X") + Lang.T("log.gamemodeboost.36", 0));
+            Logger.Log(Lang.T("log.gamemodeboost.3", 0) + rendererName + " 进程编号 " + pid
+                + Lang.T("log.gamemodeboost.34", 0) + Lang.T("log.gamemodeboost.35", 0) + granted.ToString("X")
+                + Lang.T("log.gamemodeboost.36", 0));
             ProtectedGameRoster.Remember(rendererName);
         }
+            // 省电状态仅读取，不以未修改判为失败。
         private static string EcoStateText(IntPtr process)
         {
-            int controlMask;
-            int stateMask;
-            if (!Native.TryQueryPowerThrottling(process, out controlMask, out stateMask))
-            {
-                return Lang.T("t.gamemodeboost.33") + QoSDump(process);
-            }
-            return (Native.EcoClearedMasksOk(controlMask, stateMask) ? Lang.T("t.gamemodeboost.38") : Lang.T("t.gamemodeboost.33")) + QoSDump(process);
+            return Lang.T("t.gamemodeboost.39") + QoSDump(process);
         }
         private static bool StoredRuleAdmits(string storedRaw, CriticalThreadRule bound)
         {
@@ -263,9 +274,11 @@ namespace PaviseApp
                 {
                     return;
                 }
-                foreach (string searchPattern in RetiredIrqObservationFiles)
+                string[] retiredIrqObservationFiles = RetiredIrqObservationFiles;
+                foreach (string searchPattern in retiredIrqObservationFiles)
                 {
-                    foreach (string path in Directory.GetFiles(dir, searchPattern))
+                    string[] files = Directory.GetFiles(dir, searchPattern);
+                    foreach (string path in files)
                     {
                         try
                         {
@@ -289,6 +302,52 @@ namespace PaviseApp
             }
             return s.Substring(0, s.Length - 4);
         }
+        private void IsolateOptionalServiceAudit(string reason)
+        {
+            ActionFailureStore.Trip(EnvFailureAction("services"), "system", reason ?? "Service pause verification failed");
+            lock (sync)
+            {
+                envRestorePending.Add("services");
+            }
+        }
+        private Func<bool> CaptureOptionalServicesAdmission()
+        {
+            int generation = Volatile.Read(ref optionalServiceGeneration);
+            return () => generation == Volatile.Read(ref optionalServiceGeneration) && !stopping && !panicReq && enabled && !ProfileStoreSaveFailed && OptionalServicesRequested;
+        }
+        private bool StepOptionalServices(bool want, bool applied, Func<bool> hasResidue, Func<bool> isApplied, Func<bool> activate, Func<bool> restore)
+        {
+            lock (sync)
+            {
+                if (optionalServicesWanted != want)
+                {
+                    optionalServicesWanted = want;
+                    if (!envRestorePending.Contains("services"))
+                    {
+                        envNextAttempt.Remove("services");
+                        envFailures.Remove("services");
+                    }
+                }
+            }
+            if (want)
+            {
+                applied = isApplied();
+            }
+            else if (hasResidue())
+            {
+                applied = true;
+            }
+            bool envStepSucceeded = EnvStep("services", want, applied, activate, restore);
+            if (!want)
+            {
+                return envStepSucceeded;
+            }
+            if (envStepSucceeded)
+            {
+                return isApplied();
+            }
+            return false;
+        }
         internal static bool ForegroundConsumesService(string foregroundName, string envKey)
         {
             if (string.IsNullOrEmpty(foregroundName) || string.IsNullOrEmpty(envKey))
@@ -296,9 +355,10 @@ namespace PaviseApp
                 return false;
             }
             string toLowerInvariantResult = WhitelistRule.NormalizeName(foregroundName).ToLowerInvariant();
-            foreach (string[] serviceConsumer in ForegroundServiceConsumers)
+            string[][] foregroundServiceConsumers = ForegroundServiceConsumers;
+            foreach (string[] textEntriesEntry in foregroundServiceConsumers)
             {
-                if (serviceConsumer[0] == toLowerInvariantResult && serviceConsumer[1] == envKey)
+                if (textEntriesEntry[0] == toLowerInvariantResult && textEntriesEntry[1] == envKey)
                 {
                     return true;
                 }
@@ -315,40 +375,10 @@ namespace PaviseApp
         }
         private void SyncFrameCoordination(BoostPass pass)
         {
-            bool criticalRolesWantedSucceeded = CriticalRolesWanted(pass.RendererPid, pass.RendererCreation);
-            UpdateLaneFallback(pass.RendererPid, pass.RendererCreation, pass.RendererName);
-            bool renderLaneRequired = FrameCoordinationEnabled && !LaneFallbackFor(pass.RendererPid, pass.RendererCreation);
-            if (renderLaneRequired && (!RenderLane.Release() || RenderLane.HasResidue()))
-            {
-                pass.LaneRestorationReady = false;
-                if (criticalRolesWantedSucceeded)
-                {
-                    FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
-                }
-                else
-                {
-                    FrameCoordination.ReleaseExcept(0, 0L);
-                }
-                return;
-            }
-            int pid = pass.RendererPid;
-            long birth = pass.RendererCreation;
-            int epoch = Volatile.Read(ref rendererHandoffEpoch);
-            Func<bool> func = delegate
-            {
-                GameDetection gameDetection = Volatile.Read(ref activeDetection);
-                return FrameCoordinationEnabled && enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed && EffBoost && !pass.WriteDenied && epoch == Volatile.Read(ref rendererHandoffEpoch) && gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameDetection.RendererPid == pid && gameDetection.RendererCreation == birth
-                    && ThreadBoostRecoveryAllowed(pid, birth);
-            };
-            if (renderLaneRequired && pid > 0 && birth > 0 && func())
-            {
-                FrameCoordination.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), pid, birth, FrameAutomaticConfiguration());
-                FrameCoordination.Ensure(pid, birth, pass.RendererName, func);
-            }
-            else
-            {
-                pass.LaneRestorationReady = (criticalRolesWantedSucceeded ? FrameCoordination.ReleaseBoost(pid, birth) : FrameCoordination.ReleaseExcept(0, 0L));
-            }
+            // 旧写入器只归还自身记录；统一角色观察通过独立的只读入口继续工作。
+            bool laneClean = RenderLane.Release();
+            bool frameClean = FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
+            pass.LaneRestorationReady = laneClean && frameClean;
         }
         private void InvalidateOverrideWorkLocked(string key)
         {
@@ -367,6 +397,8 @@ namespace PaviseApp
         }
         private void NotifyOverridePolicyChanged(string key, bool effectiveOn)
         {
+            if (key == PolicyCatalog.KeyGameScheduling && !effectiveOn && criticalOriginalTarget != null && criticalOriginalTarget.Revoked)
+                StopCriticalThreads(1000);
             if (key == "GmAutoCoresV2" || key == "GmManualCorePlanV2")
             {
                 RaiseLibraryChanged();
@@ -468,37 +500,38 @@ namespace PaviseApp
         }
         private Dictionary<int, PlatformProcessOwner> CollectPlatformMembers(ProcessSnapshot snapshot)
         {
-            HashSet<int> rendererPids = new HashSet<int>();
-            HashSet<string> executablePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<int> hashSet = new HashSet<int>();
+            HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             lock (sync)
             {
                 if (activeDetection != null && activeDetection.RendererPid > 4)
                 {
-                    rendererPids.Add(activeDetection.RendererPid);
+                    hashSet.Add(activeDetection.RendererPid);
                 }
                 foreach (GameProfile profile in profiles)
                 {
                     if (!string.IsNullOrEmpty(profile.ExecutablePath))
                     {
-                        executablePaths.Add(profile.ExecutablePath);
+                        hashSet2.Add(profile.ExecutablePath);
                     }
                     if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
                     {
-                        executablePaths.Add(profile.LearnedExecutablePath);
+                        hashSet2.Add(profile.LearnedExecutablePath);
                     }
                 }
             }
             if (snapshot != null)
             {
-                foreach (ProcEntry procEntry in snapshot.Entries)
+                ProcEntry[] entries = snapshot.Entries;
+                foreach (ProcEntry procEntry in entries)
                 {
-                    if (procEntry != null && (executablePaths.Contains(procEntry.Path) || (PlatformRuntimePolicy.RuntimePlatform(procEntry.Name) == null && FamilyBoundary.CatalogProtected(procEntry.Pid, procEntry.Creation, procEntry.Name, procEntry.Path))))
+                    if (procEntry != null && (hashSet2.Contains(procEntry.Path) || (PlatformRuntimePolicy.RuntimePlatform(procEntry.Name) == null && FamilyBoundary.CatalogProtected(procEntry.Pid, procEntry.Creation, procEntry.Name, procEntry.Path))))
                     {
-                        rendererPids.Add(procEntry.Pid);
+                        hashSet.Add(procEntry.Pid);
                     }
                 }
             }
-            platformMembers = PlatformRuntimePolicy.Collect(snapshot, selfPid, selfSession, rendererPids, platformMembers);
+            platformMembers = PlatformRuntimePolicy.Collect(snapshot, selfPid, selfSession, hashSet, platformMembers);
             return platformMembers;
         }
         private static bool PlatformRuleEnabled(PlatformProcessOwner owner)
@@ -511,7 +544,8 @@ namespace PaviseApp
         }
         private void AppendPlatformRuleViews(List<WhitelistRuleView> views, Dictionary<int, PlatformProcessOwner> members)
         {
-            foreach (string entryText in PlatformRuntimePolicy.Ids)
+            string[] ids = PlatformRuntimePolicy.Ids;
+            foreach (string entryText in ids)
             {
                 if (!PlatformRuntimePolicy.Enabled(entryText))
                 {
@@ -520,9 +554,9 @@ namespace PaviseApp
                 int processedCount = ((members == null) ? (-1) : 0);
                 if (members != null)
                 {
-                    foreach (PlatformProcessOwner platformRule in members.Values)
+                    foreach (PlatformProcessOwner value in members.Values)
                     {
-                        if (platformRule.Platform == entryText)
+                        if (value.Platform == entryText)
                         {
                             processedCount++;
                         }
@@ -630,8 +664,24 @@ namespace PaviseApp
         private void PrepareResourcePriorities(BoostPass pass, PolicySnapshot policy)
         {
             policy = policy ?? PolicyResolver.Global();
-            pass.CpuBoost = pass.MemoryBoost = pass.IoBoost = pass.GpuBoost = policy.BoostGame;
-            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.MemoryBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
+            // 进程 CPU 类只由「游戏优先」方案接管：当前会话的有效规则选中它时提为 High，
+            // 其余方案、关闭调度或换成别的方案时不写，已有的本方收据在本轮按原归属恢复。
+            pass.CpuBoost = false;
+            bool schedulingOn = policy.GameSchedulingOn;
+            bool resourceOn = policy.BoostGame;
+            lock (sync)
+            {
+                if (activeDetection != null && activeDetection.Profile != null)
+                {
+                    GameProfile sessionProfile = CriticalPreferenceProfileLocked(activeDetection.Profile.Id);
+                    CriticalThreadRule sessionRule = PolicyResolver.GameSchedulingRule(sessionProfile);
+                    schedulingOn = schedulingOn && sessionRule != null && !sessionRule.IsOff;
+                    resourceOn = PolicyResolver.For(sessionProfile).BoostGame;
+                    pass.CpuBoost = schedulingOn && sessionRule.RaisesGameProcess;
+                }
+            }
+            pass.IoBoost = pass.GpuBoost = schedulingOn && resourceOn;
+            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
             lock (sync)
             {
                 if (combinedMask != boostResourceSelection)
@@ -707,10 +757,10 @@ namespace PaviseApp
                 if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase) && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
                 {
                     bool canReplaceStickyRenderer = false;
-                    GameId stickyId;
+                    GameId value;
                     string name;
                     long creation;
-                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out stickyId) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, stickyId.Creation, RendererForegroundHeldMs(hit.RendererPid)))
+                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out value) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, value.Creation, RendererForegroundHeldMs(hit.RendererPid)))
                     {
                         canReplaceStickyRenderer = true;
                     }
@@ -728,9 +778,9 @@ namespace PaviseApp
                     return ApplyStickiness(null);
                 }
                 {
-                    foreach (int liveStickyFamily in LiveStickyFamily())
+                    foreach (int item in LiveStickyFamily())
                     {
-                        hit.FamilyPids.Add(liveStickyFamily);
+                        hit.FamilyPids.Add(item);
                     }
                     return hit;
                 }
@@ -739,28 +789,29 @@ namespace PaviseApp
             {
                 stickyGraceOnly = false;
                 stickyMiss = 0;
-                GameDetection currentGameDetection = new GameDetection();
-                currentGameDetection.Profile = stickyDetection.Profile;
-                currentGameDetection.RendererPid = stickyDetection.RendererPid;
-                currentGameDetection.RendererCreation = stickyDetection.RendererCreation;
-                currentGameDetection.RendererName = stickyDetection.RendererName;
-                currentGameDetection.RendererPath = stickyDetection.RendererPath;
-                currentGameDetection.RendererForeground = stickyDetection.RendererForeground;
-                currentGameDetection.RendererCandidateSelected = true;
-                currentGameDetection.RendererUserSelected = stickyDetection.RendererUserSelected;
-                currentGameDetection.RendererLearnable = stickyDetection.RendererLearnable;
-                currentGameDetection.Evidence = stickyDetection.Evidence;
-                currentGameDetection.FamilyPids.Add(stickyDetection.RendererPid);
-                foreach (int currentLiveStickyFamily in LiveStickyFamily())
+                GameDetection gameDetection = new GameDetection();
+                gameDetection.Profile = stickyDetection.Profile;
+                gameDetection.RendererPid = stickyDetection.RendererPid;
+                gameDetection.RendererCreation = stickyDetection.RendererCreation;
+                gameDetection.RendererName = stickyDetection.RendererName;
+                gameDetection.RendererPath = stickyDetection.RendererPath;
+                gameDetection.RendererForeground = stickyDetection.RendererForeground;
+                gameDetection.RendererCandidateSelected = true;
+                gameDetection.RendererUserSelected = stickyDetection.RendererUserSelected;
+                gameDetection.RendererLearnable = stickyDetection.RendererLearnable;
+                gameDetection.Evidence = stickyDetection.Evidence;
+                GameDetection gameDetection2 = gameDetection;
+                gameDetection2.FamilyPids.Add(stickyDetection.RendererPid);
+                foreach (int item2 in LiveStickyFamily())
                 {
-                    currentGameDetection.FamilyPids.Add(currentLiveStickyFamily);
+                    gameDetection2.FamilyPids.Add(item2);
                 }
                 foreach (string familyName in stickyDetection.FamilyNames)
                 {
-                    currentGameDetection.FamilyNames.Add(familyName);
+                    gameDetection2.FamilyNames.Add(familyName);
                 }
-                stickyDetection = currentGameDetection;
-                return currentGameDetection;
+                stickyDetection = gameDetection2;
+                return gameDetection2;
             }
             if (stickyDetection != null && stickyMiss < 1 && !AnyStickyReused())
             {
@@ -802,21 +853,21 @@ namespace PaviseApp
             {
                 return false;
             }
-            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 return false;
             }
             try
             {
-                name = Native.ImageName(processHandle);
+                name = Native.ImageName(intPtr);
                 long cpu;
                 ulong io;
-                return Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && !string.IsNullOrEmpty(name);
+                return Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && !string.IsNullOrEmpty(name);
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
         internal static bool IsHandheld(PerformancePreset mode)
@@ -833,28 +884,28 @@ namespace PaviseApp
             {
                 serviceImagePaths = new Dictionary<int, KeyValuePair<long, string>>();
             }
-            KeyValuePair<long, string> serviceImagePath;
-            if (serviceImagePaths.TryGetValue(p.Pid, out serviceImagePath) && serviceImagePath.Key == p.Creation)
+            KeyValuePair<long, string> value;
+            if (serviceImagePaths.TryGetValue(p.Pid, out value) && value.Key == p.Creation)
             {
-                return serviceImagePath.Value;
+                return value.Value;
             }
             string imagePathResult = null;
-            IntPtr processHandle = Native.OpenProcess(4096, false, p.Pid);
-            if (processHandle != IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(4096, false, p.Pid);
+            if (intPtr != IntPtr.Zero)
             {
                 try
                 {
                     long creation;
                     long cpu;
                     ulong io;
-                    if (Native.QueryProcessSample(processHandle, out creation, out cpu, out io) && creation == p.Creation && !Native.IsProtectedProcess(processHandle))
+                    if (Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation == p.Creation && !Native.IsProtectedProcess(intPtr))
                     {
-                        imagePathResult = Native.ImagePath(processHandle);
+                        imagePathResult = Native.ImagePath(intPtr);
                     }
                 }
                 finally
                 {
-                    Native.CloseHandle(processHandle);
+                    Native.CloseHandle(intPtr);
                 }
             }
             if (serviceImagePaths.Count > 1024)

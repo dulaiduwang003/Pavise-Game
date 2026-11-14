@@ -124,6 +124,18 @@ namespace PaviseApp
 
         internal const string GpuScopeDescription = "Busiest 3D engine across all adapters";
 
+        private const uint PdhMoreData = 2147485650u;
+
+        private const uint PdhNoData = 0x800007D5u;
+
+        private const uint PdhNoInstance = 0x800007D1u;
+
+        private const uint PdhDouble = 512u;
+
+        private const uint PdhNoCap100 = 32768u;
+
+        private const uint MaximumGpuBuffer = 4194304u;
+
         private static readonly object hardwareGate = new object();
 
         private static OverviewHardwareInfo cachedHardware;
@@ -134,7 +146,9 @@ namespace PaviseApp
 
         private bool cpuPrimed;
 
-        private bool gpuAttempted;
+        private readonly OverviewGpuSamplingBudget gpuBudget;
+
+        private string gpuUsageStatus, gpuUsageDetail;
 
         private bool gpuPrimed;
 
@@ -151,6 +165,11 @@ namespace PaviseApp
         private IntPtr gpuBuffer;
 
         private uint gpuBufferCapacity;
+
+        internal OverviewTelemetryReader() : this(OverviewGpuSamplingBudget.Shared) { }
+
+        internal OverviewTelemetryReader(OverviewGpuSamplingBudget gpuBudget)
+        { this.gpuBudget = gpuBudget; }
 
         internal OverviewHardwareInfo ReadHardware(string displayDeviceName)
         {
@@ -175,13 +194,13 @@ namespace PaviseApp
             }
             try
             {
-                DisplayMode displayMode = default(DisplayMode);
-                displayMode.Size = (ushort)Marshal.SizeOf(typeof(DisplayMode));
-                if (EnumDisplaySettingsW(string.IsNullOrWhiteSpace(displayDeviceName) ? null : displayDeviceName, -1, ref displayMode))
+                DisplayMode value = default(DisplayMode);
+                value.Size = (ushort)Marshal.SizeOf(typeof(DisplayMode));
+                if (EnumDisplaySettingsW(string.IsNullOrWhiteSpace(displayDeviceName) ? null : displayDeviceName, -1, ref value))
                 {
-                    overviewHardwareInfo.DisplayWidth = Math.Max(0, displayMode.PelsWidth);
-                    overviewHardwareInfo.DisplayHeight = Math.Max(0, displayMode.PelsHeight);
-                    overviewHardwareInfo.DisplayRefreshRate = ((displayMode.DisplayFrequency > 1) ? displayMode.DisplayFrequency : 0);
+                    overviewHardwareInfo.DisplayWidth = Math.Max(0, value.PelsWidth);
+                    overviewHardwareInfo.DisplayHeight = Math.Max(0, value.PelsHeight);
+                    overviewHardwareInfo.DisplayRefreshRate = ((value.DisplayFrequency > 1) ? value.DisplayFrequency : 0);
                 }
             }
             catch
@@ -195,24 +214,27 @@ namespace PaviseApp
             lock (gate)
             {
                 ThrowIfDisposed();
-                OverviewResourceSnapshot currentOverviewResourceSnapshot = new OverviewResourceSnapshot();
-                currentOverviewResourceSnapshot.GpuUsageDescription = "Busiest 3D engine across all adapters";
-                currentOverviewResourceSnapshot.CpuPercent = SampleCpu();
+                OverviewResourceSnapshot overviewResourceSnapshot = new OverviewResourceSnapshot();
+                overviewResourceSnapshot.GpuUsageDescription = "Busiest 3D engine across all adapters";
+                OverviewResourceSnapshot overviewResourceSnapshot2 = overviewResourceSnapshot;
+                overviewResourceSnapshot2.CpuPercent = SampleCpu();
                 try
                 {
                     MemoryStatus memory = default(MemoryStatus);
                     memory.Length = (uint)Marshal.SizeOf(typeof(MemoryStatus));
                     if (GlobalMemoryStatusEx(ref memory) && memory.TotalPhysical != 0 && memory.AvailablePhysical <= memory.TotalPhysical)
                     {
-                        currentOverviewResourceSnapshot.TotalMemoryBytes = memory.TotalPhysical;
-                        currentOverviewResourceSnapshot.UsedMemoryBytes = memory.TotalPhysical - memory.AvailablePhysical;
+                        overviewResourceSnapshot2.TotalMemoryBytes = memory.TotalPhysical;
+                        overviewResourceSnapshot2.UsedMemoryBytes = memory.TotalPhysical - memory.AvailablePhysical;
                     }
                 }
                 catch
                 {
                 }
-                currentOverviewResourceSnapshot.GpuPercent = SampleGpu();
-                return currentOverviewResourceSnapshot;
+                overviewResourceSnapshot2.GpuPercent = SampleGpu();
+                overviewResourceSnapshot2.GpuUsageStatus = gpuUsageStatus;
+                if (!string.IsNullOrEmpty(gpuUsageDetail)) overviewResourceSnapshot2.GpuUsageDescription += "\r\n" + gpuUsageDetail;
+                return overviewResourceSnapshot2;
             }
         }
 
@@ -276,91 +298,110 @@ namespace PaviseApp
 
         private double? SampleGpu()
         {
-            try
+            // 同一预算的页面实例串行查询，离页重建既不重填失败次数，也不制造并行 PDH 读取。
+            lock (gpuBudget.Sync)
             {
-                if (!gpuAttempted)
+                gpuUsageStatus = gpuUsageDetail = null;
+                bool stopped;
+                if (!gpuBudget.CanSample(gpuQuery == IntPtr.Zero, out gpuUsageDetail, out stopped))
                 {
-                    gpuAttempted = true;
-                    if (PdhOpenQueryW(null, IntPtr.Zero, out gpuQuery) != 0 || gpuQuery == IntPtr.Zero)
+                    gpuUsageStatus = stopped ? PerformancePolicy.Text("读取暂停", "Sampling paused") : PerformancePolicy.Text("等待重试", "Retry pending");
+                    return null;
+                }
+                gpuUsageDetail = null;
+                bool initializing = gpuQuery == IntPtr.Zero;
+                string stage = "PdhOpenQuery";
+                try
+                {
+                    uint status;
+                    if (initializing)
                     {
-                        CloseGpuQuery();
+                        status = PdhOpenQueryW(null, IntPtr.Zero, out gpuQuery);
+                        if (status != 0 || gpuQuery == IntPtr.Zero)
+                            return GpuReadFailed(true, stage, status == 0 ? "empty-query" : "0x" + status.ToString("X8"));
+                        stage = "PdhAddEnglishCounter";
+                        status = PdhAddEnglishCounterW(gpuQuery, "\\GPU Engine(*engtype_3D)\\Utilization Percentage", IntPtr.Zero, out gpuCounter);
+                        if (status != 0 || gpuCounter == IntPtr.Zero)
+                            return GpuReadFailed(true, stage, status == 0 ? "empty-counter" : "0x" + status.ToString("X8"));
+                    }
+                    initializing = false;
+                    stage = "PdhCollectQueryData";
+                    status = PdhCollectQueryData(gpuQuery);
+                    if (status == PdhNoData || status == PdhNoInstance)
+                    {
+                        gpuPrimed = false;
+                        gpuUsageDetail = PerformancePolicy.Text("当前没有可用的 GPU 3D 实例数据", "No GPU 3D instance data is currently available");
                         return null;
                     }
-                    if (PdhAddEnglishCounterW(gpuQuery, "\\GPU Engine(*engtype_3D)\\Utilization Percentage", IntPtr.Zero, out gpuCounter) != 0)
+                    if (status != 0) return GpuReadFailed(false, stage, "0x" + status.ToString("X8"));
+                    if (!gpuPrimed)
                     {
-                        CloseGpuQuery();
+                        gpuPrimed = true;
+                        gpuUsageDetail = PerformancePolicy.Text("正在等待相邻 GPU 样本", "Waiting for the next GPU sample");
                         return null;
                     }
+                    stage = "PdhGetFormattedCounterArray";
+                    return ReadGpuArray();
                 }
-                if (gpuQuery == IntPtr.Zero)
+                catch (Exception error)
                 {
-                    return null;
+                    return GpuReadFailed(initializing, stage, error.GetType().Name);
                 }
-                if (PdhCollectQueryData(gpuQuery) != 0)
-                {
-                    gpuPrimed = false;
-                    return null;
-                }
-                if (!gpuPrimed)
-                {
-                    gpuPrimed = true;
-                    return null;
-                }
-                return ReadGpuArray();
             }
-            catch
-            {
-                gpuPrimed = false;
-                return null;
-            }
+        }
+
+        private double? GpuReadFailed(bool initializing, string stage, string error)
+        {
+            gpuPrimed = false;
+            if (initializing || error == "0xC0000BBC") CloseGpuQuery();
+            gpuBudget.Failed(initializing, stage, error);
+            bool stopped;
+            gpuBudget.CanSample(initializing, out gpuUsageDetail, out stopped);
+            gpuUsageStatus = stopped ? PerformancePolicy.Text("读取暂停", "Sampling paused") : PerformancePolicy.Text("读取失败", "Read failed");
+            return null;
         }
 
         private double? ReadGpuArray()
         {
-            uint bytes = 0u;
-            uint count = 0u;
-            uint pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, IntPtr.Zero);
-            if (pdhGetFormattedCounterArrayWResult != 2147485650u || bytes == 0 || bytes > 4194304)
-            {
-                return null;
-            }
+            uint bytes = 0u, count = 0u;
             for (int i = 0; i < 2; i++)
             {
+                // 实例数量变化后的 MORE_DATA 必须重新询问长度，不能信任不足缓冲区返回的长度。
+                bytes = 0;
+                uint status = PdhGetFormattedCounterArrayW(gpuCounter, PdhDouble | PdhNoCap100, ref bytes, ref count, IntPtr.Zero);
+                if (status == PdhNoData || status == PdhNoInstance || (status == 0 && count == 0)) return null;
+                if (status != PdhMoreData) return GpuReadFailed(false, "PdhGetFormattedCounterArray.size", "0x" + status.ToString("X8"));
+                if (bytes == 0 || bytes > MaximumGpuBuffer) return null;
                 if (bytes > gpuBufferCapacity)
                 {
-                    IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bytes);
+                    IntPtr intPtr = Marshal.AllocHGlobal((int)bytes);
                     if (gpuBuffer != IntPtr.Zero)
                     {
                         Marshal.FreeHGlobal(gpuBuffer);
                     }
-                    gpuBuffer = nativeBuffer;
+                    gpuBuffer = intPtr;
                     gpuBufferCapacity = bytes;
                 }
                 bytes = gpuBufferCapacity;
-                pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(gpuCounter, 33280u, ref bytes, ref count, gpuBuffer);
-                if (pdhGetFormattedCounterArrayWResult == 2147485650u && bytes > gpuBufferCapacity && bytes <= 4194304)
-                {
-                    continue;
-                }
-                if (pdhGetFormattedCounterArrayWResult != 0)
-                {
-                    return null;
-                }
+                status = PdhGetFormattedCounterArrayW(gpuCounter, PdhDouble | PdhNoCap100, ref bytes, ref count, gpuBuffer);
+                if (status == PdhMoreData) continue;
+                if (status == PdhNoData || status == PdhNoInstance) return null;
+                if (status != 0) return GpuReadFailed(false, "PdhGetFormattedCounterArray.read", "0x" + status.ToString("X8"));
                 int sizeOfResult = Marshal.SizeOf(typeof(PdhValueItem));
                 if (count == 0 || (ulong)(count * sizeOfResult) > (ulong)gpuBufferCapacity)
                 {
                     return null;
                 }
-                List<KeyValuePair<string, double>> keyValuePairs = new List<KeyValuePair<string, double>>((int)count);
+                List<KeyValuePair<string, double>> list = new List<KeyValuePair<string, double>>((int)count);
                 for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
                 {
                     PdhValueItem pdhValueItem = (PdhValueItem)Marshal.PtrToStructure(new IntPtr(gpuBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhValueItem));
                     if (pdhValueItem.Value.Status <= 1 && pdhValueItem.Name != IntPtr.Zero)
                     {
-                        keyValuePairs.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
+                        list.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
                     }
                 }
-                return AggregateGpu3D(keyValuePairs);
+                return AggregateGpu3D(list);
             }
             return null;
         }
@@ -371,25 +412,25 @@ namespace PaviseApp
             {
                 return null;
             }
-            Dictionary<string, double> minsByGpuEngineKeyResult = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<string, double> valueEntry in values)
+            Dictionary<string, double> dictionary = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, double> value2 in values)
             {
-                string gpuEngineKeyResult = GpuEngineKey(valueEntry.Key);
-                if (gpuEngineKeyResult != null && !double.IsNaN(valueEntry.Value) && !double.IsInfinity(valueEntry.Value) && !(valueEntry.Value < 0.0))
+                string gpuEngineKeyResult = GpuEngineKey(value2.Key);
+                if (gpuEngineKeyResult != null && !double.IsNaN(value2.Value) && !double.IsInfinity(value2.Value) && !(value2.Value < 0.0))
                 {
-                    double min;
-                    minsByGpuEngineKeyResult.TryGetValue(gpuEngineKeyResult, out min);
-                    minsByGpuEngineKeyResult[gpuEngineKeyResult] = Math.Min(100.0, min + Math.Min(100.0, valueEntry.Value));
+                    double value;
+                    dictionary.TryGetValue(gpuEngineKeyResult, out value);
+                    dictionary[gpuEngineKeyResult] = Math.Min(100.0, value + Math.Min(100.0, value2.Value));
                 }
             }
-            if (minsByGpuEngineKeyResult.Count == 0)
+            if (dictionary.Count == 0)
             {
                 return null;
             }
             double aggregateGpu3DResult = 0.0;
-            foreach (double processLoad in minsByGpuEngineKeyResult.Values)
+            foreach (double value3 in dictionary.Values)
             {
-                double maximumGpuPercent = processLoad;
+                double maximumGpuPercent = value3;
                 aggregateGpu3DResult = Math.Max(aggregateGpu3DResult, maximumGpuPercent);
             }
             return aggregateGpu3DResult;
@@ -542,21 +583,21 @@ namespace PaviseApp
             {
                 return 0;
             }
-            IntPtr nativeBuffer = Marshal.AllocHGlobal((int)bytes);
+            IntPtr intPtr = Marshal.AllocHGlobal((int)bytes);
             try
             {
-                if (!GetLogicalProcessorInformationEx(0, nativeBuffer, ref bytes))
+                if (!GetLogicalProcessorInformationEx(0, intPtr, ref bytes))
                 {
                     return 0;
                 }
                 int processedCount = 0;
-                long recordOffset;
+                long numericValue;
                 int physicalCoreCountValue;
-                for (recordOffset = 0L; recordOffset + 8 <= bytes; recordOffset += physicalCoreCountValue)
+                for (numericValue = 0L; numericValue + 8 <= bytes; numericValue += physicalCoreCountValue)
                 {
-                    IntPtr ptr = new IntPtr(nativeBuffer.ToInt64() + recordOffset);
+                    IntPtr ptr = new IntPtr(intPtr.ToInt64() + numericValue);
                     physicalCoreCountValue = Marshal.ReadInt32(ptr, 4);
-                    if (physicalCoreCountValue < 8 || recordOffset + physicalCoreCountValue > bytes)
+                    if (physicalCoreCountValue < 8 || numericValue + physicalCoreCountValue > bytes)
                     {
                         return 0;
                     }
@@ -565,11 +606,11 @@ namespace PaviseApp
                         processedCount++;
                     }
                 }
-                return (recordOffset == bytes) ? processedCount : 0;
+                return (numericValue == bytes) ? processedCount : 0;
             }
             finally
             {
-                Marshal.FreeHGlobal(nativeBuffer);
+                Marshal.FreeHGlobal(intPtr);
             }
         }
 
@@ -578,10 +619,11 @@ namespace PaviseApp
             MemoryFacts memoryFacts = new MemoryFacts();
             try
             {
-                EnumerationOptions options = new EnumerationOptions();
-                options.Timeout = TimeSpan.FromMilliseconds(1200.0);
-                options.ReturnImmediately = false;
-                options.Rewindable = false;
+                EnumerationOptions enumerationOptions = new EnumerationOptions();
+                enumerationOptions.Timeout = TimeSpan.FromMilliseconds(1200.0);
+                enumerationOptions.ReturnImmediately = false;
+                enumerationOptions.Rewindable = false;
+                EnumerationOptions options = enumerationOptions;
                 using (ManagementObjectSearcher managementObjectSearcher = new ManagementObjectSearcher(new ManagementScope("\\\\.\\root\\cimv2"), new ObjectQuery("SELECT Capacity, SMBIOSMemoryType, ConfiguredClockSpeed FROM Win32_PhysicalMemory"), options))
                 {
                     using (ManagementObjectCollection managementObjectCollection = managementObjectSearcher.Get())
@@ -592,21 +634,21 @@ namespace PaviseApp
                         bool typeKnown = true;
                         bool speedKnown = true;
                         bool capacityKnown = true;
-                        ulong totalModuleCapacity = 0uL;
-                        foreach (ManagementObject currentManagementObjectCollection in managementObjectCollection)
+                        ulong numericValue = 0uL;
+                        foreach (ManagementObject item in managementObjectCollection)
                         {
-                            using (currentManagementObjectCollection)
+                            using (item)
                             {
-                                ulong toUnsignedResult = ToUnsigned(currentManagementObjectCollection["Capacity"]);
-                                if (toUnsignedResult == 0 || toUnsignedResult > (ulong)(-1L - (long)totalModuleCapacity))
+                                ulong toUnsignedResult = ToUnsigned(item["Capacity"]);
+                                if (toUnsignedResult == 0 || toUnsignedResult > (ulong)(-1L - (long)numericValue))
                                 {
                                     capacityKnown = false;
                                 }
                                 else
                                 {
-                                    totalModuleCapacity += toUnsignedResult;
+                                    numericValue += toUnsignedResult;
                                 }
-                                string memoryTypeNameResult = MemoryTypeName((int)ToUnsigned(currentManagementObjectCollection["SMBIOSMemoryType"]));
+                                string memoryTypeNameResult = MemoryTypeName((int)ToUnsigned(item["SMBIOSMemoryType"]));
                                 if (memoryTypeNameResult == null || (message != null && message != memoryTypeNameResult))
                                 {
                                     typeKnown = false;
@@ -615,7 +657,7 @@ namespace PaviseApp
                                 {
                                     message = memoryTypeNameResult;
                                 }
-                                ulong toUnsignedResult2 = ToUnsigned(currentManagementObjectCollection["ConfiguredClockSpeed"]);
+                                ulong toUnsignedResult2 = ToUnsigned(item["ConfiguredClockSpeed"]);
                                 if (toUnsignedResult2 == 0 || toUnsignedResult2 > 100000)
                                 {
                                     speedKnown = false;
@@ -631,7 +673,7 @@ namespace PaviseApp
                         {
                             memoryFacts.Type = (typeKnown ? message : null);
                             memoryFacts.Speed = ((speedKnown && maxValue != int.MaxValue) ? maxValue : 0);
-                            memoryFacts.Capacity = (capacityKnown ? totalModuleCapacity : 0);
+                            memoryFacts.Capacity = (capacityKnown ? numericValue : 0);
                         }
                     }
                 }

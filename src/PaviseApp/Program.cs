@@ -8,6 +8,10 @@ namespace PaviseApp
     internal static partial class Program
     {
 
+        private const string PendingPanelKey = "ShowPanelOnNextStart";
+
+        private const string PendingPanelTicksKey = "ShowPanelRequestUtcTicks";
+
         internal const int TrayTipIdleMs = 1500;
 
         internal const int TrayTipInGameMs = 6000;

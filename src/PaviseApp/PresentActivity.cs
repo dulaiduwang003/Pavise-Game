@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -12,18 +13,23 @@ namespace PaviseApp
         internal readonly bool Valid;
         internal readonly string Failure;
         internal readonly int WindowMs;
+        // 通道送达事件总数；未知时为 -1。
+        internal readonly int Events;
 
-        private PresentActivitySample(bool valid, string failure, Dictionary<int, int> frames, int windowMs)
+        private PresentActivitySample(bool valid, string failure, Dictionary<int, int> frames, int windowMs, int events)
         {
-            Valid = valid; Failure = failure ?? ""; WindowMs = windowMs;
+            Valid = valid; Failure = failure ?? ""; WindowMs = windowMs; Events = events;
             this.frames = frames ?? new Dictionary<int, int>();
         }
 
         internal static PresentActivitySample Unavailable(string failure)
-        { return new PresentActivitySample(false, string.IsNullOrEmpty(failure) ? "unavailable" : failure, null, 0); }
+        { return new PresentActivitySample(false, string.IsNullOrEmpty(failure) ? "unavailable" : failure, null, 0, -1); }
 
         internal static PresentActivitySample FromFrames(IDictionary<int, int> frames, int windowMs)
-        { return new PresentActivitySample(windowMs > 0, windowMs > 0 ? "" : "empty-window", frames == null ? null : new Dictionary<int, int>(frames), windowMs); }
+        { return FromFrames(frames, windowMs, -1); }
+
+        internal static PresentActivitySample FromFrames(IDictionary<int, int> frames, int windowMs, int events)
+        { return new PresentActivitySample(windowMs > 0, windowMs > 0 ? "" : "empty-window", frames == null ? null : new Dictionary<int, int>(frames), windowMs, events); }
 
         internal int FramesOf(int pid)
         { int value; return pid > 0 && frames.TryGetValue(pid, out value) ? value : 0; }
@@ -55,6 +61,8 @@ namespace PaviseApp
         private readonly Stopwatch clock = new Stopwatch();
         private Native.EventRecordCallback receive;
         private bool finishing, finished;
+        // 包含非提交事件的送达总数。
+        private int seen;
 
         private PresentActivityCapture() { }
 
@@ -67,7 +75,7 @@ namespace PaviseApp
             {
                 capture.clock.Start();
                 if (capture.trace.StartPresentProbe(capture.receive)) return capture;
-                failure = "start-error-" + capture.trace.Error;
+                failure = "start-error-" + capture.trace.Error + "@" + capture.trace.Stage + " (" + capture.trace.FailureDetail + ")";
             }
             catch (Exception error) { failure = "start-" + error.GetType().Name; }
             try { capture.trace.Stop(); } catch { }
@@ -90,14 +98,16 @@ namespace PaviseApp
             lock (gate)
             {
                 finished = true;
-                if (!stopped) return PresentActivitySample.Unavailable("stop-error-" + trace.Error + "-lost-" + trace.Lost);
+                if (!stopped || trace.Error != 0 || trace.Lost != 0 || !trace.Drained)
+                    return PresentActivitySample.Unavailable("stop-error-" + trace.Error + "-lost-" + trace.Lost
+                        + "(" + trace.LossDetail + " seen=" + Volatile.Read(ref seen) + " " + trace.FailureDetail + ")");
                 foreach (KeyValuePair<int, Counts> pair in counts)
                 {
-                    int currentFrames = pair.Value.Frames;
-                    if (currentFrames > 0) frames[pair.Key] = currentFrames;
+                    int value = pair.Value.Frames;
+                    if (value > 0) frames[pair.Key] = value;
                 }
             }
-            return PresentActivitySample.FromFrames(frames, windowMs);
+            return PresentActivitySample.FromFrames(frames, windowMs, Volatile.Read(ref seen));
         }
 
         internal static Kind Classify(Guid provider, ushort id, byte opcode)
@@ -136,7 +146,14 @@ namespace PaviseApp
         {
             try
             {
+                Interlocked.Increment(ref seen);
                 Native.EventDescriptor descriptor = record.EventHeader.EventDescriptor;
+#if PAVISE_SELFTEST
+                Guid source = record.EventHeader.ProviderId;
+                if (source == FrameCoordinationSampler.Dxgi || source == FrameCoordinationSampler.D3d9 || source == FrameCoordinationTrace.DxgKrnl)
+                { if (!FrameCoordinationTrace.PresentIdListed(source, descriptor.Id)) Interlocked.Increment(ref unlisted); }
+                else Interlocked.Increment(ref foreign);
+#endif
                 Kind kind = Classify(record.EventHeader.ProviderId, descriptor.Id, descriptor.Opcode);
                 if (kind != Kind.None) Count((int)record.EventHeader.ProcessId, kind, descriptor.Id);
             }
@@ -148,6 +165,31 @@ namespace PaviseApp
         internal static PresentActivityCapture ForTest() { var capture = new PresentActivityCapture(); capture.clock.Start(); return capture; }
         internal static PresentActivityCapture CleanupForTest()
         { return new PresentActivityCapture(FrameCoordinationTrace.CleanupFixtureForTest()); }
+        // 各提供程序的全进程事件数，用于核对标识过滤。
+        internal string SourcesForTest()
+        {
+            int dxgi = 0, d3d9 = 0, kernel = 0, history = 0, detailed = 0;
+            lock (gate) foreach (Counts value in counts.Values)
+            { dxgi += value.Dxgi; d3d9 += value.D3d9; kernel += value.KernelPresent; history += value.KernelHistory; detailed += value.KernelDetailed; }
+            return "dxgi=" + dxgi + " d3d9=" + d3d9 + " kernel=" + kernel + " history=" + history + " detailed=" + detailed
+                + " seen=" + Volatile.Read(ref seen);
+        }
+        internal int SourceForTest(int pid, Kind kind)
+        {
+            lock (gate)
+            {
+                Counts value;
+                if (!counts.TryGetValue(pid, out value)) return 0;
+                return kind == Kind.RuntimeDxgi ? value.Dxgi : kind == Kind.RuntimeD3d9 ? value.D3d9
+                    : kind == Kind.KernelPresent ? value.KernelPresent : value.KernelHistory + value.KernelDetailed;
+            }
+        }
+        internal int SeenForTest { get { return Volatile.Read(ref seen); } }
+        // 提交提供程序的清单外事件应为零；foreign 单独统计其他提供程序事件。
+        private int unlisted, foreign;
+        internal int UnlistedForTest { get { return Volatile.Read(ref unlisted); } }
+        internal int ForeignForTest { get { return Volatile.Read(ref foreign); } }
+        internal int UnfilteredForTest { get { return trace.UnfilteredProviders; } }
         internal PresentActivitySample SnapshotForTest(int windowMs)
         {
             var frames = new Dictionary<int, int>();

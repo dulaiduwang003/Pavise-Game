@@ -70,20 +70,20 @@ namespace PaviseApp
                 graphics.Clear(Color.Transparent);
                 graphics.ScaleTransform((float)px / 100f, (float)px / 100f);
                 Color color = Theme.ModeColor(mode);
-                Color currentColor = (enabled ? color : Col.Lerp(color, Color.FromArgb(105, 110, 121), 0.58f));
-                Color candidateColor = (enabled ? Col.Alpha(currentColor, 105) : Rim);
+                Color color2 = (enabled ? color : Col.Lerp(color, Color.FromArgb(105, 110, 121), 0.58f));
+                Color color3 = (enabled ? Col.Alpha(color2, 105) : Rim);
                 using (GraphicsPath path = Squircle(2.5f, 2.5f, 95f, 95f, 25f))
                 {
                     using (SolidBrush brush = new SolidBrush(Ink))
                     {
                         graphics.FillPath(brush, path);
                     }
-                    using (Pen pen = new Pen(candidateColor, 1.8f))
+                    using (Pen pen = new Pen(color3, 1.8f))
                     {
                         graphics.DrawPath(pen, path);
                     }
                 }
-                using (SolidBrush brush2 = new SolidBrush(currentColor))
+                using (SolidBrush brush2 = new SolidBrush(color2))
                 {
                     graphics.FillPolygon(brush2, BoltPts());
                     return bitmap;

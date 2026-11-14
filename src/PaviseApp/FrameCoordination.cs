@@ -83,6 +83,10 @@ namespace PaviseApp
         private static bool captureSessionStoreFailed;
 
         private static OriginalCriticalRoles criticalRoles;
+        private static ThreadLayoutCaptureRequest layoutObservation;
+
+        internal static void ConfigureLayoutObservation(ThreadLayoutCaptureRequest request)
+        { Volatile.Write(ref layoutObservation, request); }
 
         internal static int State
         {
@@ -96,8 +100,8 @@ namespace PaviseApp
         {
             get
             {
-                string text;
-                if (Settings.TryLoadStr("FrameCoordinationJournalV1", out text) && text.Length <= 0 && !FrameMemoryProtection.HasResidue)
+                string value;
+                if (Settings.TryLoadStr("FrameCoordinationJournalV1", out value) && value.Length <= 0 && !FrameMemoryProtection.HasResidue)
                 {
                     return FrameCoordinationTrace.HasResidue;
                 }
@@ -218,7 +222,7 @@ namespace PaviseApp
                 }
             }
             string textResult = ((sample == null) ? PerformancePolicy.Text("采样暂不可用", "Capture is unavailable") : ((!sample.Valid) ? sample.Detail : (sample.NoChangeNeeded ? PerformancePolicy.Text("目标线程优先级由游戏控制，无需重复调整", "Target thread priorities are game-managed; no change needed") : PerformancePolicy.Text("目标线程读取或优先级写入受限，保持原调度", "Thread access or priority writes are blocked; original scheduling retained"))));
-            string concatResult = ((sample == null) ? "" : string.Concat(" [reason=", sample.Issue, " traceCode=", sample.TraceCode, " lostEvents=", sample.LostEvents, " eventCount=", sample.Events, " sampleCpuMs=", sample.CpuMs.ToString("F1", CultureInfo.InvariantCulture), " systemEvents=", sample.SystemEvents, "]"));
+            string concatResult = ((sample == null) ? "" : string.Concat(" [reason=", sample.Issue, " traceCode=", sample.TraceCode, sample.TraceStage.Length == 0 ? "" : " traceStage=" + sample.TraceStage, " lostEvents=", sample.LostEvents, " eventCount=", sample.Events, " sampleCpuMs=", sample.CpuMs.ToString("F1", CultureInfo.InvariantCulture), " systemEvents=", sample.SystemEvents, "]"));
             return message + "FRAME " + PerformancePolicy.Text("线程协同待命：", "Coordination waiting: ") + name + " | " + textResult + concatResult;
         }
 
@@ -382,6 +386,7 @@ namespace PaviseApp
 
         internal static bool Apply(FrameCoordinationSample sample, Func<bool> alive)
         {
+            if (sample != null && sample.LayoutObservation) return false;
             lock (ThreadPriorityReservation.Gate)
             lock (mutation)
             {
@@ -408,27 +413,29 @@ namespace PaviseApp
                     return false;
                 }
                 if (!RestoreLocked()) return false;
-                List<FrameThreadReceipt> frameThreadReceipts = new List<FrameThreadReceipt>();
-                foreach (int dependencyTid in new int[2] { sample.PresentTid, sample.WorkerTid })
+                List<FrameThreadReceipt> list = new List<FrameThreadReceipt>();
+                int[] integerValues = new int[2] { sample.PresentTid, sample.WorkerTid };
+                foreach (int numericValueEntry in integerValues)
                 {
-                    long threadCreation;
-                    if ((dependencyTid == sample.WorkerTid && dependencyTid == sample.PresentTid && frameThreadReceipts.Count > 0) || dependencyTid <= 0 || !sample.Threads.TryGetValue(dependencyTid, out threadCreation))
+                    long value;
+                    if ((numericValueEntry == sample.WorkerTid && numericValueEntry == sample.PresentTid && list.Count > 0) || numericValueEntry <= 0 || !sample.Threads.TryGetValue(numericValueEntry, out value))
                     {
                         continue;
                     }
-                    if (ThreadPriorityReservation.Contains(sample.Pid, sample.Birth, dependencyTid, threadCreation))
+                    if (ThreadPriorityReservation.Contains(sample.Pid, sample.Birth, numericValueEntry, value))
                     {
                         sample.PriorityReserved = true;
                         continue;
                     }
-                    FrameThreadReceipt currentFrameThreadReceipt = new FrameThreadReceipt();
-                    currentFrameThreadReceipt.Pid = sample.Pid;
-                    currentFrameThreadReceipt.ProcessBirth = sample.Birth;
-                    currentFrameThreadReceipt.Tid = dependencyTid;
-                    currentFrameThreadReceipt.ThreadBirth = threadCreation;
-                    currentFrameThreadReceipt.Applied = dependencyTid == sample.PresentTid ? PresentThreadPriority : 1;
+                    FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
+                    frameThreadReceipt.Pid = sample.Pid;
+                    frameThreadReceipt.ProcessBirth = sample.Birth;
+                    frameThreadReceipt.Tid = numericValueEntry;
+                    frameThreadReceipt.ThreadBirth = value;
+                    frameThreadReceipt.Applied = numericValueEntry == sample.PresentTid ? PresentThreadPriority : 1;
+                    FrameThreadReceipt frameThreadReceipt2 = frameThreadReceipt;
                     int priority;
-                    int readResult = platform.Read(currentFrameThreadReceipt, out priority);
+                    int readResult = platform.Read(frameThreadReceipt2, out priority);
                     if (readResult != 0)
                     {
                         if (readResult < 0)
@@ -439,39 +446,39 @@ namespace PaviseApp
                     }
                     if (priority >= -2 && priority < 1)
                     {
-                        currentFrameThreadReceipt.Original = priority;
-                        frameThreadReceipts.Add(currentFrameThreadReceipt);
+                        frameThreadReceipt2.Original = priority;
+                        list.Add(frameThreadReceipt2);
                     }
                 }
-                if (frameThreadReceipts.Count == 0)
+                if (list.Count == 0)
                 {
                     sample.NoChangeNeeded = !sample.PriorityReserved;
                     return false;
                 }
-                string encodeResult = Encode(frameThreadReceipts);
+                string encodeResult = Encode(list);
                 if (!alive())
                 {
                     return false;
                 }
-                string text;
-                if (!Settings.SaveStrDurable("FrameCoordinationJournalV1", encodeResult) || !Settings.TryLoadStr("FrameCoordinationJournalV1", out text) || text != encodeResult)
+                string value2;
+                if (!Settings.SaveStrDurable("FrameCoordinationJournalV1", encodeResult) || !Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) || value2 != encodeResult)
                 {
                     applyExecutionFailure = "Thread recovery record could not be saved or verified";
                     return false;
                 }
                 FrameRecoveryBudget.Own("priority", sample.Pid, sample.Birth);
-                foreach (FrameThreadReceipt candidateFrameThreadReceipt in frameThreadReceipts)
+                foreach (FrameThreadReceipt item in list)
                 {
                     if (!alive())
                     {
                         RestoreLocked();
                         return false;
                     }
-                    if (!platform.Set(candidateFrameThreadReceipt, candidateFrameThreadReceipt.Original, candidateFrameThreadReceipt.Applied))
+                    if (!platform.Set(item, item.Original, item.Applied))
                     {
                         int priority2;
-                        int readResult2 = platform.Read(candidateFrameThreadReceipt, out priority2);
-                        if (readResult2 <= 0 && (readResult2 < 0 || priority2 == candidateFrameThreadReceipt.Original || priority2 == candidateFrameThreadReceipt.Applied))
+                        int readResult2 = platform.Read(item, out priority2);
+                        if (readResult2 <= 0 && (readResult2 < 0 || priority2 == item.Original || priority2 == item.Applied))
                         {
                             applyExecutionFailure = "Thread priority apply or readback failed";
                         }
@@ -479,7 +486,7 @@ namespace PaviseApp
                         return false;
                     }
                 }
-                if (!FrameMemoryProtection.Apply(frameThreadReceipts, platform as IFrameThreadMemory, alive))
+                if (!FrameMemoryProtection.Apply(list, platform as IFrameThreadMemory, alive))
                 {
                     applyExecutionFailure = FrameMemoryProtection.ExecutionFailure;
                     if (!FrameMemoryProtection.Restore())
@@ -500,6 +507,7 @@ namespace PaviseApp
 
         internal static bool ApplyIsolated(FrameCoordinationSample sample, Func<bool> alive, string target)
         {
+            if (sample != null && sample.LayoutObservation) return false;
             if (sample == null || !sample.Valid || alive == null || !alive() || string.IsNullOrEmpty(target))
             {
                 return false;
@@ -554,14 +562,14 @@ namespace PaviseApp
 
         private static string Encode(List<FrameThreadReceipt> receipts)
         {
-            List<string> texts = new List<string>();
-            texts.Add("v2");
-            List<string> currentTexts = texts;
+            List<string> list = new List<string>();
+            list.Add("v2");
+            List<string> list2 = list;
             foreach (FrameThreadReceipt receipt in receipts)
             {
-                currentTexts.Add(receipt.Encode() + "|" + receipt.Applied);
+                list2.Add(receipt.Encode() + "|" + receipt.Applied);
             }
-            return string.Join(";", currentTexts.ToArray());
+            return string.Join(";", list2.ToArray());
         }
 
         internal static bool Parse(string text, out List<FrameThreadReceipt> result)
@@ -577,12 +585,12 @@ namespace PaviseApp
                 return false;
             }
             bool legacy = parts[0] == "v1";
-            HashSet<int> tids = new HashSet<int>();
+            HashSet<int> hashSet = new HashSet<int>();
             for (int i = 1; i < parts.Length; i++)
             {
                 string[] parts2 = parts[i].Split('|');
                 FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
-                if (parts2.Length != (legacy ? 5 : 6) || !int.TryParse(parts2[0], out frameThreadReceipt.Pid) || !long.TryParse(parts2[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(parts2[2], out frameThreadReceipt.Tid) || !long.TryParse(parts2[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(parts2[4], out frameThreadReceipt.Original) || (!legacy && (!int.TryParse(parts2[5], out frameThreadReceipt.Applied) || (frameThreadReceipt.Applied != 1 && frameThreadReceipt.Applied != PresentThreadPriority))) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < -2 || frameThreadReceipt.Original > 0 || !tids.Add(frameThreadReceipt.Tid))
+                if (parts2.Length != (legacy ? 5 : 6) || !int.TryParse(parts2[0], out frameThreadReceipt.Pid) || !long.TryParse(parts2[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(parts2[2], out frameThreadReceipt.Tid) || !long.TryParse(parts2[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(parts2[4], out frameThreadReceipt.Original) || (!legacy && (!int.TryParse(parts2[5], out frameThreadReceipt.Applied) || (frameThreadReceipt.Applied != 1 && frameThreadReceipt.Applied != PresentThreadPriority))) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < -2 || frameThreadReceipt.Original > 0 || !hashSet.Add(frameThreadReceipt.Tid))
                 {
                     return false;
                 }
@@ -599,16 +607,16 @@ namespace PaviseApp
         {
             lock (mutation)
             {
-                string text;
+                string value;
                 List<FrameThreadReceipt> result;
-                if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out text) || text.Length == 0 || !Parse(text, out result))
+                if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out value) || value.Length == 0 || !Parse(value, out result))
                 {
                     return false;
                 }
-                foreach (FrameThreadReceipt currentResult in result)
+                foreach (FrameThreadReceipt item in result)
                 {
                     int priority;
-                    if (platform.Read(currentResult, out priority) != 0 || priority != currentResult.Applied)
+                    if (platform.Read(item, out priority) != 0 || priority != item.Applied)
                     {
                         return false;
                     }
@@ -707,7 +715,7 @@ namespace PaviseApp
         {
             lock (captureSessionGate)
             {
-                // 这是所有权变化，不是识别预算耗尽。只读观察采样仍可用，备用候选不能与外部改动争抢。
+                // 所有权变化后保留只读采样，禁止备用候选覆盖外部改动。
 
                 session.Stopped = true;
                 session.NoChangeNeeded = true;
@@ -727,32 +735,32 @@ namespace PaviseApp
 
         private static bool RestorePriorityCore()
         {
-            string text;
+            string value;
             List<FrameThreadReceipt> result;
-            if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out text) || !Parse(text, out result))
+            if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out value) || !Parse(value, out result))
             {
                 return false;
             }
-            if (text.Length == 0)
+            if (value.Length == 0)
             {
                 return true;
             }
             bool allRestored = true;
-            foreach (FrameThreadReceipt currentResult in result)
+            foreach (FrameThreadReceipt item in result)
             {
                 int priority;
-                int readResult = platform.Read(currentResult, out priority);
+                int readResult = platform.Read(item, out priority);
                 if (readResult < 0)
                 {
                     allRestored = false;
                 }
-                else if (readResult == 0 && priority == currentResult.Applied && !platform.Set(currentResult, currentResult.Applied, currentResult.Original))
+                else if (readResult == 0 && priority == item.Applied && !platform.Set(item, item.Applied, item.Original))
                 {
                     allRestored = false;
                 }
             }
-            string currentText;
-            bool journalCleared = allRestored && Settings.TryLoadStr("FrameCoordinationJournalV1", out currentText) && currentText == text && Settings.SaveStr("FrameCoordinationJournalV1", "") && Settings.TryLoadStr("FrameCoordinationJournalV1", out currentText) && currentText.Length == 0;
+            string value2;
+            bool journalCleared = allRestored && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameCoordinationJournalV1", "") && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2.Length == 0;
             return journalCleared;
         }
 
@@ -761,13 +769,13 @@ namespace PaviseApp
             lock (sync)
             {
                 List<FrameThreadReceipt> result = null;
-                string text;
-                bool keepOwnedRenderer = keepPid > 0 && pid == keepPid && birth == keepBirth && Settings.TryLoadStr("FrameCoordinationJournalV1", out text) && Parse(text, out result);
+                string value;
+                bool keepOwnedRenderer = keepPid > 0 && pid == keepPid && birth == keepBirth && Settings.TryLoadStr("FrameCoordinationJournalV1", out value) && Parse(value, out result);
                 if (keepOwnedRenderer)
                 {
-                    foreach (FrameThreadReceipt currentResult in result)
+                    foreach (FrameThreadReceipt item in result)
                     {
-                        if (currentResult.Pid != keepPid || currentResult.ProcessBirth != keepBirth)
+                        if (item.Pid != keepPid || item.ProcessBirth != keepBirth)
                         {
                             keepOwnedRenderer = false;
                         }
@@ -819,7 +827,9 @@ namespace PaviseApp
             {
                 return;
             }
-            ActionFailureStore.BeginAutomaticCycle(ActionKey, name, FrameRecoveryBudget.Cycle(target, created));
+            ThreadLayoutCaptureRequest request = Volatile.Read(ref layoutObservation);
+            if (request == null || request.Pid != target || request.Birth != created) return;
+            if (!request.NeedsCapture(AutoCores.NowTicks)) return;
             lock (sync)
             {
                 if (closed)
@@ -834,26 +844,33 @@ namespace PaviseApp
                     }
                     return;
                 }
-                if (ActionFailureStore.IsBlocked("FrameCoordination", name))
-                {
-                    state = 4;
-                    return;
-                }
-                FrameCaptureSession session = CaptureSession(target, created);
-                if (session != null && (!session.Stopped || session.NoChangeNeeded) && session.Failures < MaxCaptureFailures)
+                int stage;
+                if (object.ReferenceEquals(request, Volatile.Read(ref layoutObservation))
+                    && request.TryBegin(AutoCores.NowTicks, out stage))
                 {
                     pid = target;
                     birth = created;
                     observing = true;
                     int epoch = NextEpochLocked(target, created);
-                    worker = new Thread((ThreadStart)delegate
+                    try
                     {
-                        Observe(target, created, name, epoch, admitted, session);
-                    });
-                    worker.IsBackground = true;
-                    worker.Name = "Pavise.FrameObserver";
-                    worker.Priority = ThreadPriority.BelowNormal;
-                    worker.Start();
+                        worker = new Thread((ThreadStart)delegate
+                        {
+                            Observe(target, created, name, epoch, admitted, request, stage);
+                        });
+                        worker.IsBackground = true;
+                        worker.Name = "Pavise.FrameObserver";
+                        worker.Priority = ThreadPriority.BelowNormal;
+                        worker.Start();
+                    }
+                    catch (Exception error)
+                    {
+                        observing = false;
+                        worker = null;
+                        state = 3;
+                        request.Complete(stage, new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                            .Reject(FrameCaptureIssue.CaptureFailed, "观察线程启动失败：" + error.GetType().Name + " " + error.Message));
+                    }
                 }
             }
         }
@@ -889,101 +906,34 @@ namespace PaviseApp
             return restoreSucceeded;
         }
 
-        private static void Observe(int target, long created, string name, int epoch, Func<bool> admitted, FrameCaptureSession session)
+        private static void Observe(int target, long created, string name, int epoch, Func<bool> admitted, ThreadLayoutCaptureRequest request, int stage)
         {
             Func<bool> func = () => Current(epoch, admitted);
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            int lastLoggedPresentTid = -1;
             try
             {
-                while (func())
+                state = 1;
+                FrameCoordinationSample sample = TakeObserverCapture(target, created, func, request, stage);
+                state = 0;
+                if (!func() || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation))) return;
+                if (sample == null || sample.Issue == FrameCaptureIssue.Canceled || sample.Issue == FrameCaptureIssue.TargetChanged) return;
+                if (sample.PresentValid)
                 {
-                    bool restoreSucceeded = Restore();
-                    if (!(restoreSucceeded & FrameCoordinationTrace.Heal()))
-                    {
-                        state = 3;
-                        if (!Wait(30000, func))
-                        {
-                            break;
-                        }
-                        continue;
-                    }
-                    if (session.Failures >= MaxCaptureFailures || (session.Stopped && !session.NoChangeNeeded) || CaptureProcessState(target, created) > 0)
-                    {
-                        break;
-                    }
-                    state = 1;
-                    FrameCoordinationSample frameCoordinationSample = TakeCapture(target, created, func, true);
-                    state = 0;
-                    if (!func() || (frameCoordinationSample != null && (frameCoordinationSample.Issue == FrameCaptureIssue.Canceled || frameCoordinationSample.Issue == FrameCaptureIssue.TargetChanged)))
-                    {
-                        break;
-                    }
-                    if (frameCoordinationSample == null || frameCoordinationSample.Issue == FrameCaptureIssue.CaptureFailed || frameCoordinationSample.Issue == FrameCaptureIssue.DecodeFailed || frameCoordinationSample.Issue == FrameCaptureIssue.TraceStopFailed)
-                    {
-                        ActionFailureStore.Trip("FrameCoordination", name, (frameCoordinationSample == null) ? "Thread capture returned no result" : frameCoordinationSample.Detail);
-                    }
-                    bool sampleValid = frameCoordinationSample != null && frameCoordinationSample.Valid;
-                    long elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
-                    ObserveCapture(session, frameCoordinationSample, sampleValid, elapsedMilliseconds);
-                    if (sampleValid)
-                    {
-                        PublishCriticalRoles(frameCoordinationSample, epoch);
-                        if (frameCoordinationSample.PresentTid != lastLoggedPresentTid)
-                        {
-                            lastLoggedPresentTid = frameCoordinationSample.PresentTid;
-                            Logger.Info("线程协同 " + PerformancePolicy.Text("已识别渲染线程（仅观测，不改优先级）：", "渲染线程已识别（仅观测，未改优先级）： ") + name + " 进程编号=" + target + " 画面提交=" + lastLoggedPresentTid);
-                        }
-                        if (!Wait(30000, func))
-                        {
-                            break;
-                        }
-                        continue;
-                    }
-                    if (session.Failures >= MaxCaptureFailures)
-                    {
-                        state = 4;
-                        Logger.Log(WaitingLine(name, frameCoordinationSample) + " | " + PerformancePolicy.Text("连续采样未成功，本进程不再观测", "多次采样均未成功，已停止观测该进程") + " 采样失败次数=" + session.Failures + "/" + MaxCaptureFailures);
-                        break;
-                    }
-                    if (ActionFailureStore.IsBlocked("FrameCoordination", name) || (session.Stopped && !session.NoChangeNeeded))
-                    {
-                        state = 4;
-                        break;
-                    }
-                    if (session.Retry.ShouldLog)
-                    {
-                        Logger.Info("线程协同 " + PerformancePolicy.Text("渲染线程识别等待：", "渲染线程识别等待： ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail) + " 重试间隔毫秒=" + session.Retry.DelayMs + " 采样失败次数=" + session.Failures + "/" + MaxCaptureFailures);
-                    }
-                    if (!Wait(session.Retry.DelayMs, func))
-                    {
-                        break;
-                    }
+                    PublishCriticalRoles(sample, epoch);
+                    Logger.Info("游戏调度 已观察到稳定呈现提交候选：" + name + " 进程编号=" + target
+                        + " 呈现线程=" + sample.PresentTid + "；本次授权观察已结束，后续采集继续使用原请求剩余额度");
                 }
             }
             catch (Exception ex)
             {
                 state = 3;
-                ObserveCapture(session, new FrameCoordinationSample
-                {
-                    Pid = target,
-                    Birth = created
-                }.Reject(FrameCaptureIssue.CaptureFailed), false, stopwatch.ElapsedMilliseconds);
-                if (func())
-                {
-                    ActionFailureStore.Trip("FrameCoordination", name, "Thread capture execution failed: " + ex.Message);
-                    session.Stopped = true;
-                    SaveCaptureSessions();
-                }
-                Logger.Error("线程协同 " + ex.Message);
+                Logger.Error("游戏调度 本次观察未完成：" + ex.GetType().Name + " " + ex.Message);
             }
             finally
             {
-                Restore();
-                FrameCoordinationTrace.Heal();
-                if (Volatile.Read(ref generation) == epoch)
+                lock (sync)
                 {
-                    state = 0;
+                    if (Volatile.Read(ref generation) == epoch) state = 0;
+                    if (object.ReferenceEquals(worker, Thread.CurrentThread)) { worker = null; observing = false; }
                 }
             }
         }
@@ -996,12 +946,12 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                FrameCaptureSession currentCaptureSession;
-                if (captureSessions.TryGetValue(target, out currentCaptureSession) && currentCaptureSession.Birth == created)
+                FrameCaptureSession value;
+                if (captureSessions.TryGetValue(target, out value) && value.Birth == created)
                 {
-                    return currentCaptureSession;
+                    return value;
                 }
-                if (currentCaptureSession != null)
+                if (value != null)
                 {
                     if (CaptureProcessState(target, created) != 0)
                     {
@@ -1011,26 +961,26 @@ namespace PaviseApp
                 }
                 if (captureSessions.Count >= 64)
                 {
-                    List<int> exitedSessionPids = new List<int>();
+                    List<int> list = new List<int>();
                     foreach (KeyValuePair<int, FrameCaptureSession> captureSession in captureSessions)
                     {
                         if (CaptureProcessState(captureSession.Key, captureSession.Value.Birth) > 0)
                         {
-                            exitedSessionPids.Add(captureSession.Key);
+                            list.Add(captureSession.Key);
                         }
                     }
-                    foreach (int exitedPid in exitedSessionPids)
+                    foreach (int item in list)
                     {
-                        captureSessions.Remove(exitedPid);
+                        captureSessions.Remove(item);
                     }
                     if (captureSessions.Count >= 64)
                     {
                         return null;
                     }
                 }
-                currentCaptureSession = new FrameCaptureSession(target, created);
-                captureSessions[target] = currentCaptureSession;
-                return currentCaptureSession;
+                value = new FrameCaptureSession(target, created);
+                captureSessions[target] = value;
+                return value;
             }
         }
 
@@ -1041,16 +991,16 @@ namespace PaviseApp
                 return !captureSessionStoreFailed;
             }
             captureSessionsLoaded = true;
-            string text;
-            if (!Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out text))
+            string value;
+            if (!Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out value))
             {
                 return CaptureSessionLoadFailed();
             }
-            if (text.Length == 0)
+            if (value.Length == 0)
             {
                 return true;
             }
-            string[] valueParts = text.Split(';');
+            string[] valueParts = value.Split(';');
             bool legacy = valueParts[0] == "v1";
             if ((!legacy && valueParts[0] != "v2") || valueParts.Length > 65)
             {
@@ -1073,7 +1023,7 @@ namespace PaviseApp
                 captureSessions[result] = new FrameCaptureSession(result, result2)
                 {
                     PresenterOnly = (result3 != 0),
-                    // 旧预算耗尽时按饱和状态处理，不能重新赠予两次尝试。
+                    // 旧预算耗尽后保持饱和，不补充尝试次数。
                     Failures = (legacy && result4 == storedLimit) ? MaxCaptureFailures : result4,
                     Stopped = (result5 != 0),
                     NoChangeNeeded = (result6 != 0)
@@ -1092,26 +1042,26 @@ namespace PaviseApp
 
         private static void SaveCaptureSessions()
         {
-            List<string> texts = new List<string>();
-            texts.Add("v2");
-            List<string> currentTexts = texts;
-            foreach (FrameCaptureSession captureSession in captureSessions.Values)
+            List<string> list = new List<string>();
+            list.Add("v2");
+            List<string> list2 = list;
+            foreach (FrameCaptureSession value2 in captureSessions.Values)
             {
-                if (captureSession.PresenterOnly || captureSession.Failures != 0 || captureSession.Stopped)
+                if (value2.PresenterOnly || value2.Failures != 0 || value2.Stopped)
                 {
-                    currentTexts.Add(captureSession.Pid.ToString(CultureInfo.InvariantCulture) + "|" + captureSession.Birth.ToString(CultureInfo.InvariantCulture) + "|" + (captureSession.PresenterOnly ? "1" : "0") + "|" + captureSession.Failures.ToString(CultureInfo.InvariantCulture) + "|" + (captureSession.Stopped ? "1" : "0") + "|" + (captureSession.NoChangeNeeded ? "1" : "0"));
+                    list2.Add(value2.Pid.ToString(CultureInfo.InvariantCulture) + "|" + value2.Birth.ToString(CultureInfo.InvariantCulture) + "|" + (value2.PresenterOnly ? "1" : "0") + "|" + value2.Failures.ToString(CultureInfo.InvariantCulture) + "|" + (value2.Stopped ? "1" : "0") + "|" + (value2.NoChangeNeeded ? "1" : "0"));
                 }
             }
-            string joinResult = ((currentTexts.Count == 1) ? "" : string.Join(";", currentTexts.ToArray()));
-            string text;
-            if (Settings.SaveStr("FrameCoordinationCaptureSessionsV1", joinResult) && Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out text) && text == joinResult)
+            string joinResult = ((list2.Count == 1) ? "" : string.Join(";", list2.ToArray()));
+            string value;
+            if (Settings.SaveStr("FrameCoordinationCaptureSessionsV1", joinResult) && Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out value) && value == joinResult)
             {
                 return;
             }
             captureSessionStoreFailed = true;
-            foreach (FrameCaptureSession captureSession in captureSessions.Values)
+            foreach (FrameCaptureSession value3 in captureSessions.Values)
             {
-                captureSession.Stopped = true;
+                value3.Stopped = true;
             }
         }
 
@@ -1126,6 +1076,7 @@ namespace PaviseApp
 
         private static void ObserveCapture(FrameCaptureSession session, FrameCoordinationSample sample, bool applied, long elapsedMs)
         {
+            if (sample != null && sample.LayoutObservation) return;
             if (sample != null && sample.PriorityReserved && !applied) return;
             lock (captureSessionGate)
             {
@@ -1200,6 +1151,47 @@ namespace PaviseApp
             return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly);
         }
 
+        private static FrameCoordinationSample TakeCapture(int target, long created, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation)
+        {
+            return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly, layoutObservation, workloadObservation);
+        }
+
+        private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive)
+        { return TakeObserverCapture(target, created, alive, Volatile.Read(ref layoutObservation)); }
+
+        private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive, ThreadLayoutCaptureRequest request)
+        {
+            int stage;
+            if (request == null || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation))
+                || request.Pid != target || request.Birth != created || !request.TryBegin(AutoCores.NowTicks, out stage))
+            {
+                // 观察入口只消费本次完整采集预算；等待、在途、耗尽及取消均不能另开轻量 ETW。
+                bool changed = request != null && (request.Pid != target || request.Birth != created);
+                return new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                    .Reject(changed ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.Canceled,
+                        changed ? "观察请求身份不匹配，未启动采集" : "尚未取得本次完整观察预算，未启动采集");
+            }
+            return TakeObserverCapture(target, created, alive, request, stage);
+        }
+
+        private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive, ThreadLayoutCaptureRequest request, int stage)
+        {
+            FrameCoordinationSample sample = null;
+            try
+            {
+                if (!alive() || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation)))
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                        .Reject(FrameCaptureIssue.Canceled, "本次观察开始前资格已撤销，未启动采集");
+                // 恢复失败也结算本次有限观察，不能靠反复重建观察线程绕过预算。
+                if (!(Restore() & FrameCoordinationTrace.Heal()))
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                        .Reject(FrameCaptureIssue.TraceStopFailed, "既有线程或采集通道恢复尚未核验，未启动本次采集");
+                sample = TakeCapture(target, created, alive, false, true, request.WorkloadObservation);
+                return sample;
+            }
+            finally { request.Complete(stage, sample); }
+        }
+
         private static void PublishCriticalRoles(FrameCoordinationSample original, int originalEpoch)
         {
             PublishCriticalRolesAt(original, originalEpoch, AutoCores.NowTicks);
@@ -1217,16 +1209,16 @@ namespace PaviseApp
                 {
                     return;
                 }
-                List<CriticalThreadRoleFact> criticalThreadRoleFacts = new List<CriticalThreadRoleFact>();
-                long thread;
-                if (original.PresentTid > 0 && original.Threads.TryGetValue(original.PresentTid, out thread) && thread > 0)
+                List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
+                long value;
+                if (original.PresentTid > 0 && original.Threads.TryGetValue(original.PresentTid, out value) && value > 0)
                 {
-                    criticalThreadRoleFacts.Add(new CriticalThreadRoleFact(original.PresentTid, thread, "presentation-associated"));
-                    if (original.WorkerTid > 0 && original.WorkerTid != original.PresentTid && original.Threads.TryGetValue(original.WorkerTid, out thread) && thread > 0)
+                    list.Add(new CriticalThreadRoleFact(original.PresentTid, value, "presentation-associated"));
+                    if (original.WorkerTid > 0 && original.WorkerTid != original.PresentTid && original.Threads.TryGetValue(original.WorkerTid, out value) && value > 0)
                     {
-                        criticalThreadRoleFacts.Add(new CriticalThreadRoleFact(original.WorkerTid, thread, "dependency-associated"));
+                        list.Add(new CriticalThreadRoleFact(original.WorkerTid, value, "dependency-associated"));
                     }
-                    criticalRoles = new OriginalCriticalRoles(originalEpoch, pid, birth, observed, criticalThreadRoleFacts.ToArray());
+                    criticalRoles = new OriginalCriticalRoles(originalEpoch, pid, birth, observed, list.ToArray());
                 }
             }
         }
@@ -1269,21 +1261,22 @@ namespace PaviseApp
                 {
                     return new CriticalThreadRoleFact[0];
                 }
-                Dictionary<long, long> creationByTid = new Dictionary<long, long>();
+                Dictionary<long, long> dictionary = new Dictionary<long, long>();
                 for (int i = 0; i < latest.Ids.Length; i++)
                 {
-                    creationByTid.Add(latest.Ids[i], latest.Created[i]);
+                    dictionary.Add(latest.Ids[i], latest.Created[i]);
                 }
-                List<CriticalThreadRoleFact> criticalThreadRoleFacts = new List<CriticalThreadRoleFact>();
-                foreach (CriticalThreadRoleFact criticalThreadRoleFact in originalCriticalRoles.Facts)
+                List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
+                CriticalThreadRoleFact[] facts = originalCriticalRoles.Facts;
+                foreach (CriticalThreadRoleFact criticalThreadRoleFact in facts)
                 {
-                    long sampledCreation;
-                    if (creationByTid.TryGetValue(criticalThreadRoleFact.Tid, out sampledCreation) && sampledCreation == criticalThreadRoleFact.Creation)
+                    long value;
+                    if (dictionary.TryGetValue(criticalThreadRoleFact.Tid, out value) && value == criticalThreadRoleFact.Creation)
                     {
-                        criticalThreadRoleFacts.Add(criticalThreadRoleFact);
+                        list.Add(criticalThreadRoleFact);
                     }
                 }
-                return criticalThreadRoleFacts.ToArray();
+                return list.ToArray();
             }
         }
     }

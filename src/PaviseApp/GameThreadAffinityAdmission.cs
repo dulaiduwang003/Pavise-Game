@@ -124,6 +124,57 @@ namespace PaviseApp
             { reason = RefusalPrefix + "thread-unconfirmed:" + thread.Tid; return ThreadRead.Unconfirmed; }
             return ThreadRead.Known;
         }
+        // 用户为游戏手动选定核心范围时使用：只确认进程身份和当前范围，不因线程状态拒绝。
+        // 进程范围写入后会接管全部线程，游戏自行设置的线程分配随之失效，调用方用 Survey 把数量记进日志。
+        internal static bool CheckProcessOnly(IntPtr process, int pid, long birth, ulong expectedMask, out string reason)
+        {
+            reason = null;
+            try
+            {
+                if (ProcessMatches(process, pid, birth, expectedMask)) return true;
+                reason = RefusalPrefix + "process-unconfirmed"; return false;
+            }
+            catch (Exception error) { reason = RefusalPrefix + "inspection-error:" + error.GetType().Name; return false; }
+        }
+        internal static bool CheckProcessOnly(IntPtr process, long birth, ulong expectedMask, out string reason)
+        {
+            try
+            {
+                uint pid = GetProcessId(process);
+                if (pid > int.MaxValue) { reason = RefusalPrefix + "process-unconfirmed"; return false; }
+                return CheckProcessOnly(process, (int)pid, birth, expectedMask, out reason);
+            }
+            catch (Exception error) { reason = RefusalPrefix + "inspection-error:" + error.GetType().Name; return false; }
+        }
+        // 只读清点一次，不重试也不影响是否写入：custom 是自设了掩码或 CPU Sets 的线程数，unreadable 是打不开或读不出的线程数。
+        internal static bool Survey(int pid, ulong processMask, out int custom, out int unreadable)
+        {
+            custom = 0; unreadable = 0;
+            try
+            {
+                HashSet<uint> ids; string reason;
+                if (pid <= 4 || processMask == 0 || !ThreadIds(pid, out ids, out reason)) return false;
+                foreach (uint tid in ids)
+                {
+                    IntPtr handle = OpenThread(0x100040, false, tid);
+                    if (handle == IntPtr.Zero)
+                    {
+                        if (Marshal.GetLastWin32Error() != 87) unreadable++;
+                        continue;
+                    }
+                    try
+                    {
+                        ThreadRead read = InspectThread(new HeldThread { Tid = tid, Handle = handle }, pid, processMask, out reason);
+                        if (read != ThreadRead.Unconfirmed) continue;
+                        if (reason != null && (reason.StartsWith(RefusalPrefix + "custom-mask:", StringComparison.Ordinal) || reason.StartsWith(RefusalPrefix + "custom-cpu-sets:", StringComparison.Ordinal))) custom++;
+                        else unreadable++;
+                    }
+                    finally { Native.CloseHandle(handle); }
+                }
+                return true;
+            }
+            catch { return false; }
+        }
         internal static bool Check(IntPtr process, long birth, ulong expectedMask, out string reason)
         {
             try

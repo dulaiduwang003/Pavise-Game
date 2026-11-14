@@ -1,6 +1,6 @@
 namespace PaviseApp
 {
-    // 仅为已持有且身份核验通过的绑定提供短暂维护宽限；准入、所有权冲突和访问拒绝不能使用这份预算。
+    // 维护宽限仅供身份已核验的现有绑定使用，不用于准入、所有权冲突或访问拒绝。
 
     internal sealed class CoreAffinityAuditRetry
     {

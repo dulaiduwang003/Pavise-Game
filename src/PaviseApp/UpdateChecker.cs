@@ -17,6 +17,16 @@ namespace PaviseApp
             public string Url;
         }
 
+        private const int RequestTimeoutMs = 8000;
+
+        private const int TotalTimeoutMs = 13000;
+
+        private const int GraceAfterFirstHitMs = 2500;
+
+        private const int MaxBodyBytes = 262144;
+
+        private const int MaxDonateId = 64;
+
         public static void CheckAsync(Action<UpdateResult> done)
         {
             ThreadPool.QueueUserWorkItem(delegate
@@ -69,24 +79,25 @@ namespace PaviseApp
             List<UpdateResult> hits = new List<UpdateResult>();
             int pending = sources.Length;
             long firstHitTicks = 0L;
-            foreach (Source source in sources)
+            Source[] sourceItems = sources;
+            foreach (Source source in sourceItems)
             {
                 Source src = source;
                 ThreadPool.QueueUserWorkItem(delegate
                 {
-                    UpdateResult currentUpdateResult = null;
+                    UpdateResult updateResult2 = null;
                     try
                     {
-                        currentUpdateResult = Probe(src);
+                        updateResult2 = Probe(src);
                     }
                     catch
                     {
                     }
                     lock (gate)
                     {
-                        if (currentUpdateResult != null)
+                        if (updateResult2 != null)
                         {
-                            hits.Add(currentUpdateResult);
+                            hits.Add(updateResult2);
                             if (firstHitTicks == 0)
                             {
                                 firstHitTicks = DateTime.UtcNow.Ticks;
@@ -112,7 +123,7 @@ namespace PaviseApp
                 {
                     break;
                 }
-                long currentTicksOffset = ticksOffset;
+                long numericValue = ticksOffset;
                 if (firstHitTicksSnapshot != 0)
                 {
                     long firstHitTicksSnapshotOffset = firstHitTicksSnapshot + 25000000;
@@ -120,22 +131,22 @@ namespace PaviseApp
                     {
                         break;
                     }
-                    if (firstHitTicksSnapshotOffset < currentTicksOffset)
+                    if (firstHitTicksSnapshotOffset < numericValue)
                     {
-                        currentTicksOffset = firstHitTicksSnapshotOffset;
+                        numericValue = firstHitTicksSnapshotOffset;
                     }
                 }
-                int waitMs = (int)((currentTicksOffset - ticks) / 10000) + 1;
-                signal.WaitOne((waitMs < 50) ? 50 : waitMs);
+                int checkValue = (int)((numericValue - ticks) / 10000) + 1;
+                signal.WaitOne((checkValue < 50) ? 50 : checkValue);
             }
             UpdateResult updateResult = null;
             lock (gate)
             {
-                foreach (UpdateResult hit in hits)
+                foreach (UpdateResult item in hits)
                 {
-                    if (updateResult == null || IsNewer(hit.Latest, updateResult.Latest))
+                    if (updateResult == null || IsNewer(item.Latest, updateResult.Latest))
                     {
-                        updateResult = hit;
+                        updateResult = item;
                     }
                 }
             }
@@ -509,11 +520,11 @@ namespace PaviseApp
             int lengthLimit = Math.Max(ver.Length, ver2.Length);
             for (int i = 0; i < lengthLimit; i++)
             {
-                int leftPart = ((i < ver.Length) ? ver[i] : 0);
-                int rightPart = ((i < ver2.Length) ? ver2[i] : 0);
-                if (leftPart != rightPart)
+                int isNewerValue = ((i < ver.Length) ? ver[i] : 0);
+                int isNewerValue2 = ((i < ver2.Length) ? ver2[i] : 0);
+                if (isNewerValue != isNewerValue2)
                 {
-                    return leftPart > rightPart;
+                    return isNewerValue > isNewerValue2;
                 }
             }
             return false;
@@ -535,16 +546,17 @@ namespace PaviseApp
             for (j = 0; j < v.Length && (char.IsDigit(v[j]) || v[j] == '.'); j++)
             {
             }
-            List<int> results = new List<int>();
-            foreach (string s in v.Substring(0, j).Split(new char[1] { '.' }, StringSplitOptions.RemoveEmptyEntries))
+            List<int> list = new List<int>();
+            string[] substringParts = v.Substring(0, j).Split(new char[1] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string s in substringParts)
             {
                 int result;
                 if (int.TryParse(s, out result))
                 {
-                    results.Add(result);
+                    list.Add(result);
                 }
             }
-            return results.ToArray();
+            return list.ToArray();
         }
     }
 }

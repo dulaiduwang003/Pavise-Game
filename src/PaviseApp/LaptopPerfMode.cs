@@ -53,6 +53,10 @@ namespace PaviseApp
 
         internal const string PreferenceKey = "AutoLaptopPerformanceV2";
 
+        private const string Scope = "root\\WMI";
+
+        private const int LenovoPerformance = 3;
+
         private static readonly object lk = new object();
 
 #if PAVISE_SELFTEST
@@ -86,10 +90,10 @@ namespace PaviseApp
         {
             get
             {
-                string text;
-                if (ReadSnapshot(out text))
+                string value;
+                if (ReadSnapshot(out value))
                 {
-                    return !string.IsNullOrEmpty(text);
+                    return !string.IsNullOrEmpty(value);
                 }
                 return true;
             }
@@ -320,19 +324,19 @@ namespace PaviseApp
                 {
                 case Vendor.Lenovo:
                 {
-                    using (ManagementObject first = First("LENOVO_GAMEZONE_DATA"))
+                    using (ManagementObject managementObject2 = First("LENOVO_GAMEZONE_DATA"))
                     {
-                        if (first == null)
+                        if (managementObject2 == null)
                         {
                             return false;
                         }
-                        using (ManagementBaseObject invokeMethod = first.InvokeMethod("GetSmartFanMode", null, InvocationOptions()))
+                        using (ManagementBaseObject managementBaseObject3 = managementObject2.InvokeMethod("GetSmartFanMode", null, InvocationOptions()))
                         {
-                            if (invokeMethod == null)
+                            if (managementBaseObject3 == null)
                             {
                                 return false;
                             }
-                            mode = Convert.ToInt32(invokeMethod["Data"]);
+                            mode = Convert.ToInt32(managementBaseObject3["Data"]);
                             return mode >= 0;
                         }
                     }
@@ -353,16 +357,16 @@ namespace PaviseApp
                 {
                 case Vendor.Lenovo:
                 {
-                    using (ManagementObject first = First("LENOVO_GAMEZONE_DATA"))
+                    using (ManagementObject managementObject2 = First("LENOVO_GAMEZONE_DATA"))
                     {
-                        if (first == null)
+                        if (managementObject2 == null)
                         {
                             return false;
                         }
-                        using (ManagementBaseObject methodParameters = first.GetMethodParameters("SetSmartFanMode"))
+                        using (ManagementBaseObject managementBaseObject3 = managementObject2.GetMethodParameters("SetSmartFanMode"))
                         {
-                            methodParameters["Data"] = (uint)mode;
-                            using (first.InvokeMethod("SetSmartFanMode", methodParameters, InvocationOptions()))
+                            managementBaseObject3["Data"] = (uint)mode;
+                            using (managementObject2.InvokeMethod("SetSmartFanMode", managementBaseObject3, InvocationOptions()))
                             {
                             }
                         }
@@ -414,11 +418,11 @@ namespace PaviseApp
             {
                 try
                 {
-                    string text;
-                    if (!ReadSnapshot(out text)) return RecoveryFailed();
-                    if (sessionReceipt != null && !string.Equals(text, sessionReceipt, StringComparison.Ordinal)) return RecoveryFailed();
-                    if (text.Length == 0) return true;
-                    string[] valueParts = text.Split('|');
+                    string value;
+                    if (!ReadSnapshot(out value)) return RecoveryFailed();
+                    if (sessionReceipt != null && !string.Equals(value, sessionReceipt, StringComparison.Ordinal)) return RecoveryFailed();
+                    if (value.Length == 0) return true;
+                    string[] valueParts = value.Split('|');
                     int vendorRaw, original;
                     if ((valueParts.Length != 2 && valueParts.Length != 3) || !int.TryParse(valueParts[0], out vendorRaw) || !int.TryParse(valueParts[1], out original) || !KnownMode(vendorRaw, original)) return RecoveryFailed();
                     int target = PerformanceModeOf((Vendor)vendorRaw);

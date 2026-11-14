@@ -90,8 +90,10 @@ namespace PaviseApp
                 if (ExplicitWindowsBackgroundProtection(target.Process, target.Path)) selected.Remove(target.Process.Pid);
             PolicySnapshot policy = sessionPolicy ?? PolicyResolver.Global();
             ulong allowed = CpuTopology.BackgroundAllowedMask();
-            ulong isolated = CoreBackgroundTarget();
+            ulong isolated = ManualCoreBackgroundTarget();
             if (isolated != 0) allowed &= isolated;
+            ulong gameReserved = GameBackgroundReservedCores();
+            allowed &= ~gameReserved;
             ulong mask = CpuTopology.MultiGroup ? 0 : WindowsBackgroundPolicy.SelectMask(CpuTopology.PhysicalCoreMasks(), allowed,
                 CpuTopology.EffMask, policy.BackgroundGovernanceMode);
             lock (familyPolicyGate)
@@ -101,7 +103,8 @@ namespace PaviseApp
                 {
                     BackgroundReleaseState released = core.ReleaseBackgroundForRenderer(target.Process.Pid, target.Process.Creation, target.Process.Name);
                     return released == BackgroundReleaseState.Ready || released == BackgroundReleaseState.Gone;
-                }, () => FamilyPolicyEpochCurrent(epoch) && !SmartSceneSwitchedOut, now);
+                }, () => FamilyPolicyEpochCurrent(epoch) && !SmartSceneSwitchedOut && GameBackgroundReservedCores() == gameReserved,
+                    now, !CpuTopology.MultiGroup && (gameReserved != 0 || isolated != 0));
             }
         }
 

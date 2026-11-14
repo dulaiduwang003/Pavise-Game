@@ -208,20 +208,20 @@ namespace PaviseApp
                             {
                                 discoveryMisses++;
                             }
-                            int discoveryDelaySeconds = 15;
+                            int discoverValue = 15;
                             for (int i = 1; i < discoveryMisses; i++)
                             {
-                                discoveryDelaySeconds *= 2;
-                                if (discoveryDelaySeconds >= 600)
+                                discoverValue *= 2;
+                                if (discoverValue >= 600)
                                 {
                                     break;
                                 }
                             }
-                            if (discoveryDelaySeconds > 600)
+                            if (discoverValue > 600)
                             {
-                                discoveryDelaySeconds = 600;
+                                discoverValue = 600;
                             }
-                            nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(discoveryDelaySeconds);
+                            nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(discoverValue);
                         }
                     }
                     else

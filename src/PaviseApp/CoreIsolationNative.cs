@@ -81,7 +81,7 @@ namespace PaviseApp
             }
             IsolationCpuState isolationCpuState = new IsolationCpuState();
             SortedDictionary<int, ulong> sortedDictionary = new SortedDictionary<int, ulong>();
-            HashSet<uint> seenCpuSetIds = new HashSet<uint>();
+            HashSet<uint> hashSet = new HashSet<uint>();
             uint toUInt32Result;
             for (int i = 0; i < length; i += (int)toUInt32Result)
             {
@@ -90,7 +90,7 @@ namespace PaviseApp
                     return null;
                 }
                 toUInt32Result = BitConverter.ToUInt32(b, i);
-                if (toUInt32Result < 32 || toUInt32Result > length - i || BitConverter.ToInt32(b, i + 4) != 0 || BitConverter.ToUInt16(b, i + 12) != 0 || b[i + 14] >= 64 || !seenCpuSetIds.Add(BitConverter.ToUInt32(b, i + 8)))
+                if (toUInt32Result < 32 || toUInt32Result > length - i || BitConverter.ToInt32(b, i + 4) != 0 || BitConverter.ToUInt16(b, i + 12) != 0 || b[i + 14] >= 64 || !hashSet.Add(BitConverter.ToUInt32(b, i + 8)))
                 {
                     return null;
                 }
@@ -108,9 +108,9 @@ namespace PaviseApp
                 {
                     isolationCpuState.Admitted |= allValue;
                 }
-                ulong currentSortedDictionary;
-                sortedDictionary.TryGetValue(b[i + 15], out currentSortedDictionary);
-                sortedDictionary[b[i + 15]] = currentSortedDictionary | allValue;
+                ulong value;
+                sortedDictionary.TryGetValue(b[i + 15], out value);
+                sortedDictionary[b[i + 15]] = value | allValue;
             }
             isolationCpuState.Physical = new List<ulong>(sortedDictionary.Values).ToArray();
             if (isolationCpuState.All != 0)
@@ -131,19 +131,19 @@ namespace PaviseApp
 
         public IntPtr Open(int pid, long creation)
         {
-            IntPtr processHandle = Native.OpenProcess(1060864, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(1060864, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
-                return processHandle;
+                return intPtr;
             }
             long creation2;
             long cpu;
             ulong io;
-            if (Native.QueryProcessSample(processHandle, out creation2, out cpu, out io) && creation2 == creation)
+            if (Native.QueryProcessSample(intPtr, out creation2, out cpu, out io) && creation2 == creation)
             {
-                return processHandle;
+                return intPtr;
             }
-            Native.CloseHandle(processHandle);
+            Native.CloseHandle(intPtr);
             return IntPtr.Zero;
         }
 
@@ -154,8 +154,8 @@ namespace PaviseApp
 
         public bool Gone(int pid, long creation)
         {
-            IntPtr processHandle = Native.OpenProcess(4096, false, pid);
-            if (processHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenProcess(4096, false, pid);
+            if (intPtr == IntPtr.Zero)
             {
                 return Native.LastOpenProcessFailureWasNoSuchProcess();
             }
@@ -164,11 +164,11 @@ namespace PaviseApp
                 long creation2;
                 long cpu;
                 ulong io;
-                return Native.QueryProcessSample(processHandle, out creation2, out cpu, out io) && (creation2 != creation || !Native.StillActive(processHandle));
+                return Native.QueryProcessSample(intPtr, out creation2, out cpu, out io) && (creation2 != creation || !Native.StillActive(intPtr));
             }
             finally
             {
-                Native.CloseHandle(processHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 

@@ -22,7 +22,7 @@ namespace PaviseApp
 
     internal static partial class QuantumRuntime
     {
-        // 依据 PHNT ntexapi.h，SystemPrioritySeparation 为 39，使用设置操作并需 SeTcbPrivilege。调用成功表示内核已接受更新，但没有配套的公开查询接口。
+        // 按 PHNT ntexapi.h 使用 SystemPrioritySeparation=39，需 SeTcbPrivilege；成功仅确认内核接受更新，无公开读回接口。
 
         private const int PrivilegeNotHeld = unchecked((int)0xc0000061);
         private const int AccessDenied = unchecked((int)0xc0000022);
@@ -54,24 +54,24 @@ namespace PaviseApp
                     supported = Environment.Is64BitOperatingSystem && Native.OsBuild() >= 19041;
 #endif
                     if (!supported) return new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, 0, "Online quantum update is unavailable on this platform");
-                    uint quantumBits = raw & 63u;
+                    uint value = raw & 63u;
                     QuantumRuntimeResult direct;
 #if PAVISE_SELFTEST
                     if (DirectForTest == null) return new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, 0, "Native updates are disabled in self-tests");
-                    direct = DirectForTest(quantumBits);
+                    direct = DirectForTest(value);
 #else
                     // 已超时的旧辅助进程必须终结后，才能执行新的更新。
                     if (!ReapOwnedTasks()) return new QuantumRuntimeResult(QuantumRuntimeState.Uncertain, 0, "Previous online quantum helper has not terminated", true);
-                    direct = ApplyDirect(quantumBits);
+                    direct = ApplyDirect(value);
 #endif
                     if (direct == null) return new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "Online quantum update returned no result");
                     if (direct.Applied || direct.Status != PrivilegeNotHeld && direct.Status != AccessDenied && direct.Status != NotAllAssigned) return direct;
 #if PAVISE_SELFTEST
                     return SystemTaskForTest == null
                         ? new QuantumRuntimeResult(QuantumRuntimeState.Unavailable, direct.Status, "SYSTEM helper is disabled in self-tests")
-                        : SystemTaskForTest(quantumBits) ?? new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "SYSTEM helper returned no result", true);
+                        : SystemTaskForTest(value) ?? new QuantumRuntimeResult(QuantumRuntimeState.Failed, 0, "SYSTEM helper returned no result", true);
 #else
-                    return ApplyViaSystemTask(quantumBits);
+                    return ApplyViaSystemTask(value);
 #endif
                 }
                 catch (Exception error)
@@ -97,7 +97,7 @@ namespace PaviseApp
 
         internal static QuantumRuntimeResult DecodeStatus(int status, bool systemTask)
         {
-            // 这是内核接口的接受确认，不是对时间片表的查询。
+            // 状态仅表示内核是否接受请求。
             return new QuantumRuntimeResult(status == 0 ? QuantumRuntimeState.Applied : QuantumRuntimeState.Failed,
                 status, status == 0 ? "Kernel accepted the online quantum update"
                     : "Online quantum update returned NTSTATUS 0x" + unchecked((uint)status).ToString("X8", CultureInfo.InvariantCulture), systemTask);

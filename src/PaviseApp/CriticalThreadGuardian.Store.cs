@@ -103,12 +103,12 @@ namespace PaviseApp
             {
                 if (accessRule.AccessControlType == AccessControlType.Allow)
                 {
-                    string identityReferenceValue = accessRule.IdentityReference.Value;
-                    if (!TrustedSid(identityReferenceValue, sid))
+                    string value = accessRule.IdentityReference.Value;
+                    if (!TrustedSid(value, sid))
                     {
                         throw new IOException("guardian source has a foreign allow rule");
                     }
-                    if (identityReferenceValue == sid && (accessRule.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl)
+                    if (value == sid && (accessRule.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl)
                     {
                         ownerHasFullControl = true;
                     }
@@ -129,7 +129,8 @@ namespace PaviseApp
                 DirectorySecurity directorySecurity = new DirectorySecurity();
                 directorySecurity.SetOwner(new SecurityIdentifier(sid));
                 directorySecurity.SetAccessRuleProtection(true, false);
-                foreach (string sddlForm in new string[3] { sid, "S-1-5-18", "S-1-5-32-544" })
+                string[] textEntries = new string[3] { sid, "S-1-5-18", "S-1-5-32-544" };
+                foreach (string sddlForm in textEntries)
                 {
                     directorySecurity.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sddlForm), FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
                 }

@@ -80,7 +80,7 @@ namespace PaviseApp
                 writesSuspendedForReset = true;
                 try
                 {
-                    List<string> names = new List<string>();
+                    List<string> list = new List<string>();
                     try
                     {
 #if PAVISE_SELFTEST
@@ -121,7 +121,7 @@ namespace PaviseApp
                                     }
                                     if (valueStillPresent)
                                     {
-                                        names.Add(entryText + " (still present)");
+                                        list.Add(entryText + " (still present)");
                                     }
                                     else
                                     {
@@ -130,7 +130,7 @@ namespace PaviseApp
                                 }
                                 catch (Exception ex)
                                 {
-                                    names.Add(entryText + " (" + ex.GetType().Name + ")");
+                                    list.Add(entryText + " (" + ex.GetType().Name + ")");
                                 }
                             }
                             registryKey.Flush();
@@ -138,10 +138,10 @@ namespace PaviseApp
                     }
                     catch (Exception ex2)
                     {
-                        names.Add(ex2.GetType().Name);
+                        list.Add(ex2.GetType().Name);
                     }
-                    failure = ((names.Count == 0) ? null : string.Join("; ", names.ToArray()));
-                    return names.Count == 0;
+                    failure = ((list.Count == 0) ? null : string.Join("; ", list.ToArray()));
+                    return list.Count == 0;
                 }
                 finally
                 {
@@ -174,10 +174,10 @@ namespace PaviseApp
                     readCache.Clear();
                     readCacheGeneration = mutationGenerationSnapshot;
                 }
-                bool currentReadCache;
-                if (readCache.TryGetValue(name, out currentReadCache))
+                bool value;
+                if (readCache.TryGetValue(name, out value))
                 {
-                    return currentReadCache;
+                    return value;
                 }
             }
             bool loadSucceeded = Load(name, def);
@@ -196,12 +196,12 @@ namespace PaviseApp
             value = false;
             try
             {
-                object instance = ReadValue(name);
-                if (instance == null)
+                object value2 = ReadValue(name);
+                if (value2 == null)
                 {
                     return false;
                 }
-                value = Convert.ToInt32(instance) != 0;
+                value = Convert.ToInt32(value2) != 0;
                 return true;
             }
             catch
@@ -215,12 +215,12 @@ namespace PaviseApp
             value = fallback;
             try
             {
-                object instance = ReadValue(name);
-                if (instance != null)
+                object value2 = ReadValue(name);
+                if (value2 != null)
                 {
                     try
                     {
-                        value = Convert.ToInt32(instance) != 0;
+                        value = Convert.ToInt32(value2) != 0;
                     }
                     catch
                     {
@@ -351,6 +351,32 @@ namespace PaviseApp
             }
         }
 
+        // 原值与代次随写入一起取得，防止后续并发写入被归入本次操作。
+        internal static bool SaveGameSchedulingMaster(bool value, out bool original, out int writtenGeneration)
+        {
+            lock (writeSync)
+            {
+                original = Load("GmGameSchedulingV1", true);
+                bool saved = Save("GmGameSchedulingV1", value);
+                writtenGeneration = MutationGeneration;
+                return saved;
+            }
+        }
+
+        // 外层调度开启后若逐游戏保存失败，只撤回本次仍未被后续修改的全局开启值。
+        internal static bool RestoreGameSchedulingMasterIfUnchanged(int expectedGeneration, bool expectedWritten, bool original, out bool superseded)
+        {
+            lock (writeSync)
+            {
+                superseded = MutationGeneration != expectedGeneration;
+                if (superseded) return false;
+                bool current;
+                if (!TryLoadStoredBool("GmGameSchedulingV1", out current)) return false;
+                if (current != expectedWritten) { superseded = true; return false; }
+                return Save("GmGameSchedulingV1", original);
+            }
+        }
+
         public static void Remove(string name)
         {
             if (RecoveryRecordKeys.Contains(name))
@@ -465,31 +491,52 @@ namespace PaviseApp
                 }
             }
 #endif
-            try
+            Exception failure;
+            if (ReadNamesBounded(delegate
             {
-                List<string> entryTexts = new List<string>();
                 using (RegistryKey registryKey = ProfiledOpen())
                 {
-                    if (registryKey != null)
-                    {
-                        string[] valueNames = registryKey.GetValueNames();
-                        foreach (string entryText in valueNames)
-                        {
-                            if (entryText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                            {
-                                entryTexts.Add(entryText);
-                            }
-                        }
-                    }
+                    return registryKey == null ? new string[0] : registryKey.GetValueNames();
                 }
-                entryTexts.Sort(StringComparer.OrdinalIgnoreCase);
-                names = entryTexts.ToArray();
+            }, prefix, out names, out failure))
+            {
                 return true;
             }
-            catch
+            Logger.RepeatedError("settings-names", "设置项名称读取失败，已原地重读 " + NameReadAttempts + " 次： "
+                + (failure == null ? "原因未知" : failure.GetType().Name + " " + failure.Message));
+            return false;
+        }
+
+        internal const int NameReadAttempts = 3;
+
+        // 并发增删注册表值可能使枚举中断，仅按固定次数重读；耗尽后由调用方处理。
+        internal static bool ReadNamesBounded(Func<string[]> read, string prefix, out string[] names, out Exception failure)
+        {
+            names = new string[0];
+            failure = null;
+            for (int attempt = 0; attempt < NameReadAttempts; attempt++)
             {
-                return false;
+                try
+                {
+                    List<string> list = new List<string>();
+                    foreach (string entryText in read() ?? new string[0])
+                    {
+                        if (entryText != null && entryText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            list.Add(entryText);
+                        }
+                    }
+                    list.Sort(StringComparer.OrdinalIgnoreCase);
+                    names = list.ToArray();
+                    failure = null;
+                    return true;
+                }
+                catch (Exception error)
+                {
+                    failure = error;
+                }
             }
+            return false;
         }
 
         internal static bool TryLoadStoredNames(string prefix, out string[] names)
@@ -514,16 +561,16 @@ namespace PaviseApp
             present = false;
             try
             {
-                object instance = ReadValue(name);
-                if (instance == null)
+                object value2 = ReadValue(name);
+                if (value2 == null)
                 {
                     return true;
                 }
-                if (!(instance is string))
+                if (!(value2 is string))
                 {
                     return false;
                 }
-                value = (string)instance;
+                value = (string)value2;
                 present = true;
                 return true;
             }
@@ -542,9 +589,9 @@ namespace PaviseApp
         {
             if (RecoveryRecordKeys.Contains(name))
             {
-                string text;
+                string value;
                 bool present;
-                if (!TryLoadRawStr(name, out text, out present))
+                if (!TryLoadRawStr(name, out value, out present))
                 {
                     return "!unreadable-recovery-record!";
                 }
@@ -552,12 +599,12 @@ namespace PaviseApp
                 {
                     return def;
                 }
-                return text;
+                return value;
             }
             try
             {
-                object instance = ReadValue(name);
-                return (instance == null) ? def : instance.ToString();
+                object value2 = ReadValue(name);
+                return (value2 == null) ? def : value2.ToString();
             }
             catch
             {
@@ -632,8 +679,8 @@ namespace PaviseApp
                     {
                         try
                         {
-                            string text;
-                            if (!TryLoadRawStr("MonitoringGpuIdentityTraceV1", out text))
+                            string value2;
+                            if (!TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value2))
                             {
                                 return false;
                             }
@@ -652,8 +699,8 @@ namespace PaviseApp
                                 }
                                 registryKey.SetValue("MonitoringGpuIdentityTraceV1", valueOffset, RegistryValueKind.String);
                             }
-                            string currentText;
-                            return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out currentText) && currentText == valueOffset;
+                            string value3;
+                            return TryLoadRawStr("MonitoringGpuIdentityTraceV1", out value3) && value3 == valueOffset;
                         }
                         catch (Exception error)
                         {
@@ -682,18 +729,18 @@ namespace PaviseApp
                     {
                         return false;
                     }
-                    string text = val ?? "";
+                    string value = val ?? "";
                     try
                     {
-                        string currentText;
-                        if (RecoveryRecordKeys.Contains(name) && !TryLoadRawStr(name, out currentText))
+                        string value2;
+                        if (RecoveryRecordKeys.Contains(name) && !TryLoadRawStr(name, out value2))
                         {
                             return false;
                         }
 #if PAVISE_SELFTEST
                         if (transientValues != null)
                         {
-                            transientValues[name] = text;
+                            transientValues[name] = value;
                             return true;
                         }
 #endif
@@ -703,7 +750,7 @@ namespace PaviseApp
                             {
                                 throw new InvalidOperationException(Lang.T("t.settings.1"));
                             }
-                            registryKey.SetValue(name, text, RegistryValueKind.String);
+                            registryKey.SetValue(name, value, RegistryValueKind.String);
                             if (durable || RecoveryRecordKeys.Contains(name))
                             {
                                 registryKey.Flush();

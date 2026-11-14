@@ -11,7 +11,7 @@ namespace PaviseApp
         internal string Identity { get { return Process.Pid + "/" + Process.Creation; } }
     }
 
-    // 这是后台治理的内置名单，不按微软进程名称批量放行或批量接管。
+    // 内置名单按身份核验，不仅凭微软进程名称决定治理资格。
     internal static class WindowsBackgroundPolicy
     {
         private static readonly HashSet<string> DiagnosticServices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

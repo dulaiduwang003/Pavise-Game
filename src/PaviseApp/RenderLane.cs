@@ -58,7 +58,19 @@ namespace PaviseApp
 
         internal const double MinDominantShare = 0.35;
 
+        private const int SampleGapMs = 800;
+
+        private const int MaxThreads = 512;
+
+        private const int BatchWindows = 6;
+
         internal const int MaxIdentifyTries = 5;
+
+        private const int RetryGapSeconds = 60;
+
+        private const int ReverifyGapSeconds = 30;
+
+        private const string ThreadBirthKey = "RenderLaneThreadBirthV1";
 
         private static readonly object sync = new object();
 
@@ -192,12 +204,12 @@ namespace PaviseApp
 
         private static bool WaitAlive(int ms, int gen)
         {
-            int elapsedMs = 0;
-            while (elapsedMs < ms)
+            int waitAliveValue = 0;
+            while (waitAliveValue < ms)
             {
-                int upperBound = Math.Min(2000, ms - elapsedMs);
+                int upperBound = Math.Min(2000, ms - waitAliveValue);
                 Thread.Sleep(upperBound);
-                elapsedMs += upperBound;
+                waitAliveValue += upperBound;
                 if (!GenAlive(gen))
                 {
                     return false;
@@ -290,8 +302,8 @@ namespace PaviseApp
             Candidate candidate = default(Candidate);
             Candidate status = default(Candidate);
             bool weakCandidateObserved = false;
-            int previousTid = 0;
-            long previousThreadCreation = 0L;
+            int identifyBatchValue = 0;
+            long numericValue = 0L;
             judge.ResetCandidate();
             for (int i = 0; i < 6; i++)
             {
@@ -321,12 +333,12 @@ namespace PaviseApp
                     }
                     continue;
                 }
-                if (best.Tid != previousTid || best.ThreadCreation != previousThreadCreation)
+                if (best.Tid != identifyBatchValue || best.ThreadCreation != numericValue)
                 {
                     judge.ResetCandidate();
                 }
-                previousTid = best.Tid;
-                previousThreadCreation = best.ThreadCreation;
+                identifyBatchValue = best.Tid;
+                numericValue = best.ThreadCreation;
                 candidate = best;
                 if (best.Share < 0.35)
                 {
@@ -804,12 +816,12 @@ namespace PaviseApp
 
         private static bool HealFromCrashCore()
         {
-            string text;
-            if (!Settings.TryLoadStr("RenderLane", out text))
+            string value;
+            if (!Settings.TryLoadStr("RenderLane", out value))
             {
                 return false;
             }
-            if (text.Length == 0)
+            if (value.Length == 0)
             {
                 return true;
             }
@@ -818,7 +830,7 @@ namespace PaviseApp
             int tid;
             int original;
             long threadCreation;
-            if (!ParseJournal(text, out pid, out creation, out tid, out original) || !ReadThreadBirth(text, out threadCreation))
+            if (!ParseJournal(value, out pid, out creation, out tid, out original) || !ReadThreadBirth(value, out threadCreation))
             {
                 return false;
             }
@@ -827,15 +839,15 @@ namespace PaviseApp
             {
                 return false;
             }
-            bool result = ClearJournal(text);
+            bool result = ClearJournal(value);
             Logger.Log((restoreResult == RestoreResult.Restored) ? (Lang.T("log.renderlane.23", 0) + tid + Lang.T("log.renderlane.24", 0) + original) : ReleasedLine(tid));
             return result;
         }
 
         private static RestoreResult RestoreThread(int pid, long creation, int tid, long threadCreation, int original)
         {
-            string text;
-            if (!Settings.TryLoadStr("RenderLane", out text))
+            string value;
+            if (!Settings.TryLoadStr("RenderLane", out value))
             {
                 return RestoreResult.Failed;
             }
@@ -861,8 +873,8 @@ namespace PaviseApp
             {
                 return RestoreResult.Failed;
             }
-            IntPtr threadHandle = Native.OpenThread(3072, false, tid);
-            if (threadHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenThread(3072, false, tid);
+            if (intPtr == IntPtr.Zero)
             {
                 if (Marshal.GetLastWin32Error() != 87)
                 {
@@ -872,7 +884,7 @@ namespace PaviseApp
             }
             try
             {
-                int threadOwnerPid = Native.QueryThreadOwnerPid(threadHandle);
+                int threadOwnerPid = Native.QueryThreadOwnerPid(intPtr);
                 if (threadOwnerPid < 0)
                 {
                     return RestoreResult.Failed;
@@ -887,7 +899,7 @@ namespace PaviseApp
                     long exit;
                     long kernel;
                     long user;
-                    if (!Native.GetThreadTimes(threadHandle, out creation2, out exit, out kernel, out user))
+                    if (!Native.GetThreadTimes(intPtr, out creation2, out exit, out kernel, out user))
                     {
                         return RestoreResult.Failed;
                     }
@@ -896,7 +908,7 @@ namespace PaviseApp
                         return RestoreResult.Released;
                     }
                 }
-                int threadPriority = Native.GetThreadPriority(threadHandle);
+                int threadPriority = Native.GetThreadPriority(intPtr);
                 if (threadPriority == int.MaxValue)
                 {
                     return RestoreResult.Failed;
@@ -913,11 +925,11 @@ namespace PaviseApp
                 {
                     return RestoreResult.Failed;
                 }
-                return (Native.SetThreadPriority(threadHandle, original) && Native.GetThreadPriority(threadHandle) == original) ? RestoreResult.Restored : RestoreResult.Failed;
+                return (Native.SetThreadPriority(intPtr, original) && Native.GetThreadPriority(intPtr) == original) ? RestoreResult.Restored : RestoreResult.Failed;
             }
             finally
             {
-                Native.CloseHandle(threadHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 
@@ -989,20 +1001,20 @@ namespace PaviseApp
 
         private static bool ClearJournal(string expected)
         {
-            string text;
-            if (!Settings.TryLoadStr("RenderLane", out text))
+            string value;
+            if (!Settings.TryLoadStr("RenderLane", out value))
             {
                 return false;
             }
-            if (text.Length == 0)
+            if (value.Length == 0)
             {
                 return true;
             }
-            if (text != expected)
+            if (value != expected)
             {
                 return false;
             }
-            if (!Settings.SaveStr("RenderLane", "") || !Settings.TryLoadStr("RenderLane", out text) || text.Length != 0)
+            if (!Settings.SaveStr("RenderLane", "") || !Settings.TryLoadStr("RenderLane", out value) || value.Length != 0)
             {
                 return false;
             }
@@ -1043,18 +1055,18 @@ namespace PaviseApp
         {
             best = default(Candidate);
             watchShare = 0.0;
-            Dictionary<int, ThreadSample> threadSamplesById = new Dictionary<int, ThreadSample>();
-            if (!SampleThreads(pid, creation, threadSamplesById, out best))
+            Dictionary<int, ThreadSample> dictionary = new Dictionary<int, ThreadSample>();
+            if (!SampleThreads(pid, creation, dictionary, out best))
             {
                 return false;
             }
             Thread.Sleep(800);
-            Dictionary<int, ThreadSample> currentThreadSamplesById = new Dictionary<int, ThreadSample>();
-            if (!SampleThreads(pid, creation, currentThreadSamplesById, out best))
+            Dictionary<int, ThreadSample> dictionary2 = new Dictionary<int, ThreadSample>();
+            if (!SampleThreads(pid, creation, dictionary2, out best))
             {
                 return false;
             }
-            return SelectCandidate(threadSamplesById, currentThreadSamplesById, watchTid, out best, out watchShare);
+            return SelectCandidate(dictionary, dictionary2, watchTid, out best, out watchShare);
         }
 
         internal static bool SelectCandidate(Dictionary<int, ThreadSample> first, Dictionary<int, ThreadSample> second, int watchTid, out Candidate best, out double watchShare)
@@ -1065,41 +1077,41 @@ namespace PaviseApp
                 Failure = SampleFailure.NoCpuProgress
             };
             watchShare = 0.0;
-            long totalCpuTicks = 0L;
-            long largestCpuTicks = -1L;
-            long watchedCpuTicks = 0L;
-            foreach (KeyValuePair<int, ThreadSample> secondEntry in second)
+            long numericValue = 0L;
+            long numericValue2 = -1L;
+            long numericValue3 = 0L;
+            foreach (KeyValuePair<int, ThreadSample> item in second)
             {
-                ThreadSample currentFirst;
-                if (!first.TryGetValue(secondEntry.Key, out currentFirst) || currentFirst.Creation != secondEntry.Value.Creation)
+                ThreadSample value;
+                if (!first.TryGetValue(item.Key, out value) || value.Creation != item.Value.Creation)
                 {
                     continue;
                 }
-                long remainingCpuTicks = secondEntry.Value.CpuTicks - currentFirst.CpuTicks;
+                long remainingCpuTicks = item.Value.CpuTicks - value.CpuTicks;
                 if (remainingCpuTicks > 0)
                 {
-                    totalCpuTicks += remainingCpuTicks;
-                    if (remainingCpuTicks > largestCpuTicks)
+                    numericValue += remainingCpuTicks;
+                    if (remainingCpuTicks > numericValue2)
                     {
-                        largestCpuTicks = remainingCpuTicks;
-                        best.Tid = secondEntry.Key;
-                        best.ThreadCreation = secondEntry.Value.Creation;
+                        numericValue2 = remainingCpuTicks;
+                        best.Tid = item.Key;
+                        best.ThreadCreation = item.Value.Creation;
                     }
-                    if (watchTid == secondEntry.Key)
+                    if (watchTid == item.Key)
                     {
-                        watchedCpuTicks = remainingCpuTicks;
+                        numericValue3 = remainingCpuTicks;
                     }
                 }
             }
-            if (best.Tid == 0 || totalCpuTicks <= 0)
+            if (best.Tid == 0 || numericValue <= 0)
             {
                 return false;
             }
             best.Failure = SampleFailure.None;
-            best.Share = (double)largestCpuTicks / (double)totalCpuTicks;
+            best.Share = (double)numericValue2 / (double)numericValue;
             if (watchTid != 0)
             {
-                watchShare = (double)watchedCpuTicks / (double)totalCpuTicks;
+                watchShare = (double)numericValue3 / (double)numericValue;
             }
             return true;
         }
@@ -1135,12 +1147,12 @@ namespace PaviseApp
                         status.Failure = SampleFailure.IdentityChanged;
                         return false;
                     }
-                    int sampledThreadCount = 0;
+                    int sampleThreadsValue = 0;
                     foreach (ProcessThread thread in process.Threads)
                     {
                         using (thread)
                         {
-                            if (++sampledThreadCount > 512)
+                            if (++sampleThreadsValue > 512)
                             {
                                 break;
                             }
@@ -1173,21 +1185,21 @@ namespace PaviseApp
 
         private static void ReadAccessibleThread(int pid, int tid, long expectedCreation, Dictionary<int, ThreadSample> into, ref Candidate status)
         {
-            IntPtr threadHandle = Native.OpenThread(2048, false, tid);
-            if (threadHandle == IntPtr.Zero)
+            IntPtr intPtr = Native.OpenThread(2048, false, tid);
+            if (intPtr == IntPtr.Zero)
             {
                 status.NativeError = Marshal.GetLastWin32Error();
                 return;
             }
             try
             {
-                if (Native.QueryThreadOwnerPid(threadHandle) == pid)
+                if (Native.QueryThreadOwnerPid(intPtr) == pid)
                 {
                     long creation;
                     long exit;
                     long kernel;
                     long user;
-                    if (!Native.GetThreadTimes(threadHandle, out creation, out exit, out kernel, out user))
+                    if (!Native.GetThreadTimes(intPtr, out creation, out exit, out kernel, out user))
                     {
                         status.NativeError = Marshal.GetLastWin32Error();
                     }
@@ -1203,7 +1215,7 @@ namespace PaviseApp
             }
             finally
             {
-                Native.CloseHandle(threadHandle);
+                Native.CloseHandle(intPtr);
             }
         }
 

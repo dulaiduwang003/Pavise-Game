@@ -136,12 +136,12 @@ namespace PaviseApp
             TextRenderer.DrawText(graphics, Text, Font, new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(74)), base.Height), ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             int remainingWidth = base.Width - Theme.S(19);
             int heightRatio = base.Height / 2;
-            int arrowDirection = ((!expanded) ? 1 : (-1));
-            using (Pen currentPen = new Pen(Attention ? accent : (expanded ? Theme.Accent : Theme.Dim), Math.Max(1f, Theme.S(1))))
+            int onPaintValue = ((!expanded) ? 1 : (-1));
+            using (Pen pen2 = new Pen(Attention ? accent : (expanded ? Theme.Accent : Theme.Dim), Math.Max(1f, Theme.S(1))))
             {
                 if (modalPresentation)
                 {
-                    graphics.DrawLines(currentPen, new Point[3]
+                    graphics.DrawLines(pen2, new Point[3]
                     {
                         new Point(remainingWidth - Theme.S(2), heightRatio - Theme.S(4)),
                         new Point(remainingWidth + Theme.S(2), heightRatio),
@@ -150,11 +150,11 @@ namespace PaviseApp
                 }
                 else
                 {
-                    graphics.DrawLines(currentPen, new Point[3]
+                    graphics.DrawLines(pen2, new Point[3]
                     {
-                        new Point(remainingWidth - Theme.S(4), heightRatio - arrowDirection * Theme.S(2)),
-                        new Point(remainingWidth, heightRatio + arrowDirection * Theme.S(2)),
-                        new Point(remainingWidth + Theme.S(4), heightRatio - arrowDirection * Theme.S(2))
+                        new Point(remainingWidth - Theme.S(4), heightRatio - onPaintValue * Theme.S(2)),
+                        new Point(remainingWidth, heightRatio + onPaintValue * Theme.S(2)),
+                        new Point(remainingWidth + Theme.S(4), heightRatio - onPaintValue * Theme.S(2))
                     });
                 }
             }

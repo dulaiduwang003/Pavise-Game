@@ -292,7 +292,7 @@ namespace PaviseApp
             },
             {
                 "col.addon.tip",
-                new string[2] { "直接删除 AI 教练 iCreate 录制等附加层 客户端更新会重新下载 无需保留副本", "Deletes add-on layers such as AI Coach and iCreate recording outright. The client re-downloads them on update, so no copy is kept." }
+                new string[2] { "删除 AI 教练、iCreate 录制等附加层；更新时会重新下载。", "Deletes AI Coach, iCreate recording and other add-ons; updates download them again." }
             },
             {
                 "col.addon.locked",
@@ -336,7 +336,7 @@ namespace PaviseApp
             },
             {
                 "col.addon.confirm",
-                new string[2] { "将直接删除识别出的英雄联盟附加层目录 AI 教练 iCreate 录制等\r\n\r\n此操作不可恢复 客户端更新或修复时会重新下载这些组件 游戏本体 登录链路和更新器不在删除范围\r\n\r\n请确认英雄联盟与 WeGame 已完全退出", "The detected League add-on folders (AI Coach, iCreate recording and similar) will be deleted outright.\r\n\r\nThis cannot be undone. The client re-downloads these components on update or repair. The game itself, the login chain and the updater are not touched.\r\n\r\nMake sure League and WeGame are fully closed." }
+                new string[2] { "删除已识别的 AI 教练、iCreate 录制等附加层？\r\n\r\n删除后不可恢复，客户端更新或修复时会重新下载。游戏本体、登录和更新器保留。请先完全退出英雄联盟与 WeGame。", "Delete detected AI Coach, iCreate recording and other add-ons?\r\n\r\nDeletion cannot be undone; client updates or repair download them again. The game, login and updater are kept. Fully exit League and WeGame first." }
             },
             {
                 "lolq.err.noinput",

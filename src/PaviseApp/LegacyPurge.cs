@@ -7,6 +7,7 @@ namespace PaviseApp
 {
     internal static class LegacyPurge
     {
+        private const string RegKey = "Software\\PaviseAuto";
 
         [ThreadStatic]
         private static Action<string> restoreProgress;
@@ -41,21 +42,21 @@ namespace PaviseApp
             restoreProgress = progress;
             try
             {
-                List<string> texts = RestoreEverything(dataDir);
-                List<string> currentTexts = texts;
-                if (currentTexts == null)
+                List<string> list = RestoreEverything(dataDir);
+                List<string> list2 = list;
+                if (list2 == null)
                 {
-                    List<string> candidateTexts = new List<string>();
-                    candidateTexts.Add("系统还原未返回确认结果");
-                    currentTexts = candidateTexts;
+                    List<string> list3 = new List<string>();
+                    list3.Add("系统还原未返回确认结果");
+                    list2 = list3;
                 }
-                return currentTexts;
+                return list2;
             }
             catch (Exception ex)
             {
-                List<string> resolvedTexts = new List<string>();
-                resolvedTexts.Add("系统还原异常: " + ex.GetType().Name);
-                return resolvedTexts;
+                List<string> list4 = new List<string>();
+                list4.Add("系统还原异常: " + ex.GetType().Name);
+                return list4;
             }
             finally
             {
@@ -163,9 +164,9 @@ namespace PaviseApp
                     if (registryKey != null)
                     {
                         bool keyExists;
-                        using (RegistryKey currentRegistryKey = registryKey.OpenSubKey("PaviseAuto"))
+                        using (RegistryKey registryKey2 = registryKey.OpenSubKey("PaviseAuto"))
                         {
-                            keyExists = currentRegistryKey != null;
+                            keyExists = registryKey2 != null;
                         }
                         if (keyExists)
                         {
@@ -174,9 +175,9 @@ namespace PaviseApp
                         }
                     }
                 }
-                using (RegistryKey candidateRegistryKey = Registry.CurrentUser.OpenSubKey("Software\\PaviseAuto"))
+                using (RegistryKey registryKey3 = Registry.CurrentUser.OpenSubKey("Software\\PaviseAuto"))
                 {
-                    return candidateRegistryKey == null;
+                    return registryKey3 == null;
                 }
             }
             catch
@@ -219,65 +220,64 @@ namespace PaviseApp
 
         private static List<string> RestoreEverything(string dataDir)
         {
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             ReportRestoreProgress(PerformancePolicy.Text("等待环境配置停止", "Waiting for environment configuration to stop"));
             if (!PrivacyControl.CloseWork(8000) || !PerformanceTuning.CloseEnvironmentWork(8000))
             {
-                texts.Add(PerformancePolicy.Text("环境配置尚未停止，恢复记录已保留，请稍后重试", "Environment configuration has not stopped; recovery records retained. Retry shortly."));
-                return texts;
+                list.Add(PerformancePolicy.Text("环境配置尚未停止，恢复记录已保留，请稍后重试", "Environment configuration has not stopped; recovery records retained. Retry shortly."));
+                return list;
             }
-            Step("NVIDIA per-game profile recovery", () => GameNvPersistentRecovery.Restore(dataDir), texts);
-            StepIf(Lang.T("cpucap.title"), RetiredBackgroundCpuCap.HasReceipts, RetiredBackgroundCpuCap.Retire, texts);
-            Step(Lang.T("t.gamemodeenv.35"), PowerPlan.Restore, texts);
-            Step(Lang.T("t.legacypurge.1"), PowerPlan.RemoveCreatedPlan, texts);
-            Step(Lang.T("t.legacypurge.2"), PowerPlan.RemoveManagedPlan, texts);
-            StepIf(Lang.T("t.legacypurge.3"), PowerPlan.HasParkResidue, PowerPlan.RestoreParkState, texts);
-            Step(Lang.T("t.gamemodeenv.3"), UpdatePause.Restore, texts);
-            Step("Game DVR", GameDvr.Restore, texts);
-            Step("MMCSS", Mmcss.Restore, texts);
-            Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, texts);
-            Step(Lang.T("gm.dwmboost"), DwmBoost.Restore, texts);
-            StepIf(Lang.T("gm.rsssteer"), () => RssSteer.HasResidue, RssSteer.Restore, texts);
-            Step("Laboratory system experiments", LaboratoryManualActions.RestoreAllForReset, texts);
-            Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, texts);
-            Step(Lang.T("t.legacypurge.7"), PowerOverlay.Restore, texts);
-            Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, texts);
-            Step(Lang.T("t.gamemodeenv.1"), DoTweak.Restore, texts);
-            Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, texts);
-            StepIf(Lang.T("gm.pausesvc"), () => OptionalServicePause.HasResidue, OptionalServicePause.Restore, texts);
-            StepIf(Lang.T("set.timertick"), () => TimerTickTweak.OwnsState, TimerTickTweak.Restore, texts);
-            StepIf(Lang.T("set.gtimer"), () => GlobalTimerResTweak.OwnsState, GlobalTimerResTweak.Restore, texts);
-            StepIf(Lang.T("set.memcompress"), () => MemCompressTweak.OwnsState, MemCompressTweak.Restore, texts);
+            Step("NVIDIA per-game profile recovery", () => GameNvPersistentRecovery.Restore(dataDir), list);
+            StepIf(Lang.T("cpucap.title"), RetiredBackgroundCpuCap.HasReceipts, RetiredBackgroundCpuCap.Retire, list);
+            Step(Lang.T("t.gamemodeenv.35"), PowerPlan.Restore, list);
+            Step(Lang.T("t.legacypurge.1"), PowerPlan.RemoveCreatedPlan, list);
+            Step(Lang.T("t.legacypurge.2"), PowerPlan.RemoveManagedPlan, list);
+            StepIf(Lang.T("t.legacypurge.3"), PowerPlan.HasParkResidue, PowerPlan.RestoreParkState, list);
+            Step(Lang.T("t.gamemodeenv.3"), UpdatePause.Restore, list);
+            Step("Game DVR", GameDvr.Restore, list);
+            Step("MMCSS", Mmcss.Restore, list);
+            Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, list);
+            Step(Lang.T("gm.dwmboost"), DwmBoost.Restore, list);
+            StepIf(Lang.T("gm.rsssteer"), () => RssSteer.HasResidue, RssSteer.Restore, list);
+            Step("Laboratory system experiments", LaboratoryManualActions.RestoreAllForReset, list);
+            Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, list);
+            Step(Lang.T("t.legacypurge.7"), PowerOverlay.Restore, list);
+            Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, list);
+            Step(Lang.T("t.gamemodeenv.1"), DoTweak.Restore, list);
+            Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, list);
+            StepIf(Lang.T("gm.pausesvc"), () => OptionalServicePause.HasResidue, OptionalServicePause.Restore, list);
+            StepIf(Lang.T("set.timertick"), () => TimerTickTweak.OwnsState, TimerTickTweak.Restore, list);
+            StepIf(Lang.T("set.gtimer"), () => GlobalTimerResTweak.OwnsState, GlobalTimerResTweak.Restore, list);
+            StepIf(Lang.T("set.memcompress"), () => MemCompressTweak.OwnsState, MemCompressTweak.Restore, list);
             Step("Extreme", delegate
             {
                 bool extremeUnlockedEnabled = Settings.Save("ExtremeUnlocked", false);
                 extremeUnlockedEnabled &= Settings.SaveStr("ExtremeUnlockTicks", "");
                 extremeUnlockedEnabled &= Settings.SaveStr("ExtremeOptOut", "");
                 return extremeUnlockedEnabled & Settings.SaveStr("ExtremeEnvApplied", "");
-            }, texts);
-            StepIf(Lang.T("set.gpupref"), () => GpuPrefStage.HasResidue, () => GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(), texts);
-            StepIf(Lang.T("set.apppref"), () => AppGpuPreferences.HasResidue, () => AppGpuPreferences.RestoreAll() || AppGpuPreferences.AbandonUnprovableForReset(), texts);
-            Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, texts);
-            StepIf("QoS", NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable, texts);
-            Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, texts);
-            Step("VBS", VbsTweak.Restore, texts);
-            StepIf(Lang.T("set.gpuclock"), () => GpuClockLock.HasResidue, GpuClockLock.Restore, texts);
-            StepIf(Lang.T("set.nvvrr"), () => NvVrrWindowed.HasResidue, NvVrrWindowed.Restore, texts);
-            StepIf(Lang.T("set.intel.endurance"), () => IntelEndurance.HasResidue, IntelEndurance.Restore, texts);
-            StepIf(Lang.T("gm.laptopperf"), () => LaptopPerfMode.HasResidue, LaptopPerfMode.Restore, texts);
-            StepIf(Lang.T("t.linkmetric.name"), () => LinkMetricTweak.RepairedByPavise, LinkMetricTweak.Restore, texts);
-            Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, texts);
-            Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, texts);
-            Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, texts);
-            Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, texts);
-            Step("FrameCoordination", FrameCoordination.HealFromCrash, texts);
+            }, list);
+            StepIf(Lang.T("set.apppref"), () => AppGpuPreferences.HasResidue, () => AppGpuPreferences.RestoreAll() || AppGpuPreferences.AbandonUnprovableForReset(), list);
+            Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, list);
+            StepIf("QoS", NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable, list);
+            Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, list);
+            Step("VBS", VbsTweak.Restore, list);
+            StepIf(Lang.T("set.gpuclock"), () => GpuClockLock.HasResidue, GpuClockLock.Restore, list);
+            StepIf(Lang.T("set.nvvrr"), () => NvVrrWindowed.HasResidue, NvVrrWindowed.Restore, list);
+            StepIf(Lang.T("set.intel.endurance"), () => IntelEndurance.HasResidue, IntelEndurance.Restore, list);
+            StepIf(Lang.T("gm.laptopperf"), () => LaptopPerfMode.HasResidue, LaptopPerfMode.Restore, list);
+            StepIf(Lang.T("t.linkmetric.name"), () => LinkMetricTweak.RepairedByPavise, LinkMetricTweak.Restore, list);
+            Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, list);
+            Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, list);
+            Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, list);
+            Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, list);
+            Step("FrameCoordination", FrameCoordination.HealFromCrash, list);
             Step("RenderLane", delegate
             {
                 RenderLane.HealFromCrash();
                 return !RenderLane.HasResidue();
-            }, texts);
-            Step("MemShield 内存驻留未确认还原：请先退出仍在运行的游戏，再重启重试", () => MemShield.HealFromCrash() && !MemShield.HasResidue(), texts);
-            Step("AC hard affinity", () => new AntiCheatAffinityLease().Recover(), texts);
+            }, list);
+            Step("MemShield 内存驻留未确认还原：请先退出仍在运行的游戏，再重启重试", () => MemShield.HealFromCrash() && !MemShield.HasResidue(), list);
+            Step("AC hard affinity", () => new AntiCheatAffinityLease().Recover(), list);
             Step("DisplaySolo 显示拓扑未还原", delegate
             {
                 if (DisplaySolo.HealFromCrash())
@@ -287,18 +287,18 @@ namespace PaviseApp
                 string displaySoloSnapValue = Settings.LoadStr("DisplaySoloSnap", "");
                 uint result;
                 return displaySoloSnapValue.Length != 0 && (!uint.TryParse(displaySoloSnapValue, out result) || (result != 2 && result != 4 && result != 8)) && Settings.SaveStr("DisplaySoloSnap", "");
-            }, texts);
-            StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, texts);
-            StepIf("Windowed optimizations", () => DirectXGlobalPreference.Windowed.HasResidue, DirectXGlobalPreference.Windowed.Restore, texts);
-            StepIf("Windows VRR", () => DirectXGlobalPreference.Vrr.HasResidue, DirectXGlobalPreference.Vrr.Restore, texts);
-            StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, texts);
-            StepIf("DPI", DpiTweak.HasResidue, DpiTweak.RestoreAll, texts);
-            StepIf(Lang.T("gm.pausemaint"), () => MaintenancePause.HasResidue, MaintenancePause.Restore, texts);
-            StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, texts);
-            StepIf("FTH", () => FthTweak.RepairedByPavise, FthTweak.Restore, texts);
-            StepIf("CFG", CfgOffTweak.HasResidue, CfgOffTweak.RestoreAll, texts);
-            texts.AddRange(PerformanceTuning.RestoreAllFailures(ReportRestoreProgress));
-            StepIf(Lang.T("t.legacypurge.29"), () => IrqRelocate.HasResidue, IrqRelocate.Revert, texts);
+            }, list);
+            StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, list);
+            StepIf("Windowed optimizations", () => DirectXGlobalPreference.Windowed.HasResidue, DirectXGlobalPreference.Windowed.Restore, list);
+            StepIf("Windows VRR", () => DirectXGlobalPreference.Vrr.HasResidue, DirectXGlobalPreference.Vrr.Restore, list);
+            StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, list);
+            StepIf("DPI", DpiTweak.HasResidue, DpiTweak.RestoreAll, list);
+            StepIf(Lang.T("gm.pausemaint"), () => MaintenancePause.HasResidue, MaintenancePause.Restore, list);
+            StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, list);
+            StepIf("FTH", () => FthTweak.RepairedByPavise, FthTweak.Restore, list);
+            StepIf("CFG", CfgOffTweak.HasResidue, CfgOffTweak.RestoreAll, list);
+            list.AddRange(PerformanceTuning.RestoreAllFailures(ReportRestoreProgress));
+            StepIf(Lang.T("t.legacypurge.29"), () => IrqRelocate.HasResidue, IrqRelocate.Revert, list);
             StepIf("自动中断编排 已下架的注册表钉核清退", () => IrqAutoPilot.HasResidue, delegate
             {
                 if (!IrqAutoPilot.RevertAll())
@@ -307,23 +307,24 @@ namespace PaviseApp
                 }
                 IrqAutoPilot.ClearForReset();
                 return !IrqAutoPilot.HasResidue;
-            }, texts);
-            StepIf(Lang.T("irqpin.prio.name"), () => IrqPriorityTweak.HasResidue, IrqPriorityTweak.RestoreAll, texts);
-            StepIf(Lang.T("irqcheck.purge"), () => GpuIrqCheck.HasResidue, GpuIrqCheck.RestoreAll, texts);
-            foreach (string entryText in new string[12]
+            }, list);
+            StepIf(Lang.T("irqpin.prio.name"), () => IrqPriorityTweak.HasResidue, IrqPriorityTweak.RestoreAll, list);
+            StepIf(Lang.T("irqcheck.purge"), () => GpuIrqCheck.HasResidue, GpuIrqCheck.RestoreAll, list);
+            string[] textEntries = new string[12]
             {
                 "pstate", "prerender", "lowlatcpl", "ullenable", "smooth", "shadercache", "ansel", "rebarfeat", "rebaropt", "rebarsize",
                 "dlssovr", "dlsspreset"
-            })
+            };
+            foreach (string entryText in textEntries)
             {
                 string i = entryText;
                 Step("NVIDIA Profile:" + i, delegate
                 {
                     NvDrsTweaks.RestoreKind(i);
                     return !NvDrsTweaks.HasSnapshotFor(i);
-                }, texts);
+                }, list);
             }
-            Step(Lang.T("schedule.isolation"), () => CoreIsolationWorker.Recover(new CoreIsolationSettingsStore()), texts);
+            Step(Lang.T("schedule.isolation"), () => CoreIsolationWorker.Recover(new CoreIsolationSettingsStore()), list);
             Step(Lang.T("t.legacypurge.28"), delegate
             {
                 string journal = Path.Combine(dataDir, "Pavise.suppression.state");
@@ -332,8 +333,8 @@ namespace PaviseApp
                 {
                     SuppressionCore.HealFromCrash(journal);
                 }, CrashGuard.HasPending, () => SuppressionCore.HasPendingJournalFile(journal));
-            }, texts);
-            return texts;
+            }, list);
+            return list;
         }
 
         private static bool RestoreProcessResidue(Action healBoost, Action healSuppression, Func<bool> boostPending, Func<bool> suppressionPending)
@@ -352,21 +353,24 @@ namespace PaviseApp
 
         private static bool IsOwnedDataName(string name)
         {
-            foreach (string b in DataFiles)
+            string[] dataFiles = DataFiles;
+            foreach (string b in dataFiles)
             {
                 if (string.Equals(name, b, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
             }
-            foreach (string filePath in AtomicDataFiles)
+            string[] atomicDataFiles = AtomicDataFiles;
+            foreach (string filePath in atomicDataFiles)
             {
                 if (string.Equals(name, filePath + ".tmp", StringComparison.OrdinalIgnoreCase) || string.Equals(name, filePath + ".stale.bak", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
             }
-            foreach (string filePath2 in UniqueTempDataFiles)
+            string[] uniqueTempDataFiles = UniqueTempDataFiles;
+            foreach (string filePath2 in uniqueTempDataFiles)
             {
                 string filePath2Offset = filePath2 + ".";
                 Guid result;
@@ -606,7 +610,7 @@ namespace PaviseApp
         {
             files = 0;
             error = null;
-            List<string> texts = new List<string>();
+            List<string> list = new List<string>();
             string root2;
             bool exists;
             if (!TryDataRoot(root, out root2, out exists, out error))
@@ -624,43 +628,45 @@ namespace PaviseApp
             }
             try
             {
-                foreach (string path in Directory.GetFileSystemEntries(root2))
+                string[] fileSystemEntries = Directory.GetFileSystemEntries(root2);
+                foreach (string path in fileSystemEntries)
                 {
                     if (IsOwnedDataName(Path.GetFileName(path)))
                     {
-                        DeleteDataFile(root2, path, ref files, texts);
+                        DeleteDataFile(root2, path, ref files, list);
                     }
                 }
             }
             catch (Exception ex)
             {
-                AddFailure(texts, root2 + " (" + ex.GetType().Name + ")");
+                AddFailure(list, root2 + " (" + ex.GetType().Name + ")");
             }
             string root3;
             string error2;
             if (!TryDataRoot(root2, out root3, out exists, out error2))
             {
-                AddFailure(texts, error2);
+                AddFailure(list, error2);
             }
             else if (exists)
             {
                 try
                 {
-                    foreach (string filePath in Directory.GetFileSystemEntries(root3))
+                    string[] fileSystemEntries2 = Directory.GetFileSystemEntries(root3);
+                    foreach (string filePath in fileSystemEntries2)
                     {
                         if (IsOwnedDataName(Path.GetFileName(filePath)))
                         {
-                            AddFailure(texts, "残留: " + filePath);
+                            AddFailure(list, "残留: " + filePath);
                         }
                     }
                 }
                 catch (Exception ex2)
                 {
-                    AddFailure(texts, root3 + " (" + ex2.GetType().Name + ")");
+                    AddFailure(list, root3 + " (" + ex2.GetType().Name + ")");
                 }
             }
-            error = ((texts.Count == 0) ? null : string.Join("; ", texts.ToArray()));
-            return texts.Count == 0;
+            error = ((list.Count == 0) ? null : string.Join("; ", list.ToArray()));
+            return list.Count == 0;
         }
 
         internal static bool TryDeleteDataTree(string dir, out int files, out string error)
@@ -677,7 +683,7 @@ namespace PaviseApp
                 error = "Original runtime recovery is pending; data retained";
                 return false;
             }
-            foreach (string entryText in new string[8]
+            string[] textEntries = new string[8]
             {
                 Path.GetTempPath(),
                 AppDomain.CurrentDomain.BaseDirectory,
@@ -687,7 +693,8 @@ namespace PaviseApp
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 Environment.GetFolderPath(Environment.SpecialFolder.Windows)
-            })
+            };
+            foreach (string entryText in textEntries)
             {
                 if (!string.IsNullOrEmpty(entryText) && Same(root, entryText))
                 {
@@ -699,20 +706,20 @@ namespace PaviseApp
             {
                 return true;
             }
-            List<string> texts = new List<string>();
-            DeleteDataTreeLevel(root, root, ref files, texts);
+            List<string> list = new List<string>();
+            DeleteDataTreeLevel(root, root, ref files, list);
             FileAttributes attributes;
             string error2;
             if (!TryAttributes(root, out attributes, out exists, out error2))
             {
-                AddFailure(texts, error2);
+                AddFailure(list, error2);
             }
             else if (exists)
             {
-                AddFailure(texts, "数据目录仍存在: " + root);
+                AddFailure(list, "数据目录仍存在: " + root);
             }
-            error = ((texts.Count == 0) ? null : string.Join("; ", texts.ToArray()));
-            return texts.Count == 0;
+            error = ((list.Count == 0) ? null : string.Join("; ", list.ToArray()));
+            return list.Count == 0;
         }
 
         internal static int DeleteDataTree(string dir)
@@ -751,7 +758,8 @@ namespace PaviseApp
                 {
                     try
                     {
-                        foreach (string filePath in Directory.GetFileSystemEntries(dir))
+                        string[] fileSystemEntries = Directory.GetFileSystemEntries(dir);
+                        foreach (string filePath in fileSystemEntries)
                         {
                             FileAttributes attributes2;
                             if (!TryAttributes(filePath, out attributes2, out exists, out error))
@@ -830,11 +838,11 @@ namespace PaviseApp
                 return false;
             }
             Logger.Log(why + Lang.T("log.legacypurge.37", 0));
-            List<string> texts = RestoreOrHook(root, progress);
-            if (texts.Count > 0)
+            List<string> list = RestoreOrHook(root, progress);
+            if (list.Count > 0)
             {
-                unrestored = PerformancePolicy.Text("系统还原未完成：", "System restoration incomplete:") + "\n" + string.Join("\n", texts.ToArray());
-                Logger.Log(why + Lang.T("log.legacypurge.38", 0) + texts.Count + Lang.T("log.legacypurge.31", 0) + unrestored + Lang.T("log.legacypurge.39", 0));
+                unrestored = PerformancePolicy.Text("系统还原未完成：", "System restoration incomplete:") + "\n" + string.Join("\n", list.ToArray());
+                Logger.Log(why + Lang.T("log.legacypurge.38", 0) + list.Count + Lang.T("log.legacypurge.31", 0) + unrestored + Lang.T("log.legacypurge.39", 0));
                 return false;
             }
             bool removeRoamingData = includeSettings && IsRoamingDataDir(root);

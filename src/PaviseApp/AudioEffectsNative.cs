@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -22,23 +23,23 @@ namespace PaviseApp
         private bool Query(string id, bool useDefault, out AudioEffectsEndpoint endpoint, out string error)
         {
             endpoint = null; error = "";
-            if (IntPtr.Size != 8) { error = T("音效端点后端仅支持 64 位进程", "Audio-effects endpoint backend requires a 64-bit process"); return false; }
+            if (IntPtr.Size != 8) { error = T("音效端点后端仅支持 64 位进程", "Audio-effects endpoint backend requires a 64-bit process", "音声効果のバックエンドには64ビットプロセスが必要です"); return false; }
             object owner = null; IAudioEffectsDevice device = null; IAudioEffectsPropertyStore properties = null, effects = null;
             try
             {
                 owner = Activator.CreateInstance(Type.GetTypeFromCLSID(EnumeratorClass));
-                var currentOwner = (IAudioEffectsEnumerator)owner;
-                int hr = useDefault ? currentOwner.GetDefaultAudioEndpoint(0, 1, out device) : currentOwner.GetDevice(id, out device);
+                var enumerator = (IAudioEffectsEnumerator)owner;
+                int hr = useDefault ? enumerator.GetDefaultAudioEndpoint(0, 1, out device) : enumerator.GetDevice(id, out device);
                 if (hr < 0) { error = HResult("Output endpoint", hr); return false; }
                 string endpointId; uint state;
                 if ((hr = device.GetId(out endpointId)) < 0 || (hr = device.GetState(out state)) < 0) { error = HResult("Endpoint identity", hr); return false; }
                 if ((hr = device.OpenPropertyStore(0, out properties)) < 0) { error = HResult("Endpoint properties", hr); return false; }
-                AudioEffectsVariant audioEffectsVariant;
+                AudioEffectsVariant value;
                 string name = endpointId;
-                if (properties.GetValue(ref FriendlyName, out audioEffectsVariant) >= 0)
+                if (properties.GetValue(ref FriendlyName, out value) >= 0)
                 {
-                    try { if (audioEffectsVariant.Type == 31 && audioEffectsVariant.Pointer != IntPtr.Zero) name = Marshal.PtrToStringUni(audioEffectsVariant.Pointer); }
-                    finally { PropVariantClear(ref audioEffectsVariant); }
+                    try { if (value.Type == 31 && value.Pointer != IntPtr.Zero) name = Marshal.PtrToStringUni(value.Pointer); }
+                    finally { PropVariantClear(ref value); }
                 }
                 // FX 属性必须通过专用接口读写；普通端点属性的读回不能证明效果已应用。
                 // 此接口使用非公开 ABI，调用前需核验接口支持。
@@ -46,20 +47,20 @@ namespace PaviseApp
                 bool policy = local == null;
                 if (policy)
                 {
-                    if (!ReadPolicyFx(endpointId, out audioEffectsVariant, out error)) return false;
+                    if (!ReadPolicyFx(endpointId, out value, out error)) return false;
                 }
                 else
                 {
                     if ((hr = local.OpenFXPropertyStore(0, out effects)) < 0) { error = HResult("Readable FX properties", hr); return false; }
-                    if ((hr = effects.GetValue(ref SysFx, out audioEffectsVariant)) < 0) { error = HResult("FX system-effects property", hr); return false; }
+                    if ((hr = effects.GetValue(ref SysFx, out value)) < 0) { error = HResult("FX system-effects property", hr); return false; }
                 }
                 AudioEffectsProperty property;
                 try
                 {
-                    if (!DecodeProperty(audioEffectsVariant.Type, audioEffectsVariant.UInt32, out property))
-                    { error = T("系统效果属性类型或值不受支持", "System-effects property type or value is unsupported"); return false; }
+                    if (!DecodeProperty(value.Type, value.UInt32, out property))
+                    { error = T("系统效果属性类型或值不受支持", "System-effects property type or value is unsupported", "システム効果のプロパティ型または値に対応していません"); return false; }
                 }
-                finally { PropVariantClear(ref audioEffectsVariant); }
+                finally { PropVariantClear(ref value); }
                 // VT_EMPTY 是有效原值；应用和恢复均从 FX 属性存储读取。
                 if (!VerifyFxProperty(endpointId, property, out error)) return false;
                 bool legacy, modern; string identity;
@@ -68,14 +69,14 @@ namespace PaviseApp
                     Property = property, LegacyEffects = legacy, ModernEffects = modern, EffectIdentity = identity };
                 return true;
             }
-            catch (Exception ex) { error = T("无法核验音效端点：", "Cannot verify audio-effects endpoint: ") + ex.GetType().Name; return false; }
+            catch (Exception ex) { error = T("无法核验音效端点：", "Cannot verify audio-effects endpoint: ", "音声効果のエンドポイントを確認できません: ") + ex.GetType().Name; return false; }
             finally { Release(effects); Release(properties); Release(device); Release(owner); }
         }
 
         public bool Write(string id, AudioEffectsProperty property, out string error)
         {
             error = "";
-            if (IntPtr.Size != 8) { error = T("音效端点后端仅支持 64 位进程", "Audio-effects endpoint backend requires a 64-bit process"); return false; }
+            if (IntPtr.Size != 8) { error = T("音效端点后端仅支持 64 位进程", "Audio-effects endpoint backend requires a 64-bit process", "音声効果のバックエンドには64ビットプロセスが必要です"); return false; }
             if (property != AudioEffectsProperty.Empty && property != AudioEffectsProperty.Enabled && property != AudioEffectsProperty.Disabled)
             { error = "Unsupported audio-effects property"; return false; }
             object owner = null; IAudioEffectsDevice device = null; IAudioEffectsPropertyStore properties = null;
@@ -89,12 +90,12 @@ namespace PaviseApp
                 if ((hr = local.OpenFXPropertyStore(2, out properties)) < 0) { error = HResult("Writable FX properties", hr); return false; }
                 ushort variantType; uint variantNumber;
                 EncodeProperty(property, out variantType, out variantNumber);
-                var audioEffectsVariant = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
-                if ((hr = properties.SetValue(ref SysFx, ref audioEffectsVariant)) < 0 || (hr = properties.Commit()) < 0)
+                var value = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
+                if ((hr = properties.SetValue(ref SysFx, ref value)) < 0 || (hr = properties.Commit()) < 0)
                 { error = HResult("System-effects commit", hr); return false; }
                 return true;
             }
-            catch (Exception ex) { error = T("音效设置失败：", "Audio-effects write failed: ") + ex.GetType().Name; return false; }
+            catch (Exception ex) { error = T("音效设置失败：", "Audio-effects write failed: ", "音声効果の設定に失敗しました: ") + ex.GetType().Name; return false; }
             finally { Release(properties); Release(device); Release(owner); }
         }
 
@@ -122,17 +123,17 @@ namespace PaviseApp
             {
                 AudioEffectsProperty current;
                 if (!DecodeProperty(before.Type, before.UInt32, out current))
-                { error = T("音效主开关类型或值不受支持", "FX master-switch type or value is unsupported"); return false; }
+                { error = T("音效主开关类型或值不受支持", "FX master-switch type or value is unsupported", "効果マスタースイッチの型または値に対応していません"); return false; }
                 if (!VerifyFxProperty(id, current, out error)) return false;
                 owner = Activator.CreateInstance(Type.GetTypeFromCLSID(PolicyClass));
                 var policy = owner as IAudioEffectsPolicyConfig;
                 if (policy == null) { error = UnsupportedPolicy(); return false; }
-                // 显式设置 vt：未定义的属性在指定类型前仍为 VT_EMPTY。原先不存在时恢复为 VT_EMPTY，原先明确启用时恢复 DWORD 0。
+                // 写前显式设置 vt；恢复时区分原值缺失（VT_EMPTY）与明确启用（DWORD 0）。
 
                 ushort variantType; uint variantNumber;
                 EncodeProperty(property, out variantType, out variantNumber);
-                var audioEffectsVariant = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
-                int hr = policy.SetPropertyValue(id, true, ref SysFx, ref audioEffectsVariant);
+                var value = new AudioEffectsVariant { Type = variantType, UInt32 = variantNumber };
+                int hr = policy.SetPropertyValue(id, true, ref SysFx, ref value);
                 if (hr < 0) { error = HResult("FX policy write", hr); return false; }
                 // 通过同一 FX 路径核验标量值和 APO 链身份。
                 return true;
@@ -142,7 +143,7 @@ namespace PaviseApp
         }
 
         private static string UnsupportedPolicy()
-        { return T("当前输出未提供已适配的音效配置接口", "Current output has no adapted FX configuration interface"); }
+        { return T("当前输出未提供已适配的音效配置接口", "Current output has no adapted FX configuration interface", "現在の出力に対応済みの音声効果設定インターフェイスがありません"); }
 
         private static bool VerifyFxProperty(string id, AudioEffectsProperty property, out string error)
         {
@@ -152,14 +153,14 @@ namespace PaviseApp
             using (RegistryKey key = Registry.LocalMachine.OpenSubKey(path, false))
             {
                 const string name = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5";
-                if (key == null) { error = T("真实音效存储不可用", "Actual FX store is unavailable"); return false; }
+                if (key == null) { error = T("真实音效存储不可用", "Actual FX store is unavailable", "実際の効果ストアを利用できません"); return false; }
                 bool exists = false;
                 foreach (string valueName in key.GetValueNames()) if (valueName.Equals(name, StringComparison.OrdinalIgnoreCase)) { exists = true; break; }
                 object raw = exists ? key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) : null;
                 bool dword = exists && raw is int && key.GetValueKind(name) == RegistryValueKind.DWord;
                 if (FxPropertyMatches(property, exists, dword, dword ? (int)raw : 0)) return true;
             }
-            error = T("音效接口与真实音效存储不一致，未确认修改", "FX interface and actual FX store do not match; change is unconfirmed");
+            error = T("音效接口与真实音效存储不一致，未确认修改", "FX interface and actual FX store do not match; change is unconfirmed", "効果インターフェイスと実際の効果ストアが一致しないため、変更を確認できません");
             return false;
         }
         internal static bool FxPropertyMatches(AudioEffectsProperty property, bool exists, bool dword, int raw)
@@ -204,18 +205,18 @@ namespace PaviseApp
                         processingModes |= name.Equals("{d3993a3f-99c2-4402-b5ec-a92a0367664b}," + propertyId.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
                     // 恢复绑定到已注册的 APO 链和模式；单个效果及界面设置仍归用户管理。
                     if (!effectRegistration && !processingModes) continue;
-                    object instance = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                    if (instance == null) continue;
+                    object value = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                    if (value == null) continue;
                     string formatted;
-                    byte[] bytes = instance as byte[]; string[] stringValues = instance as string[];
+                    byte[] bytes = value as byte[]; string[] list = value as string[];
                     if (bytes != null) formatted = Convert.ToBase64String(bytes);
-                    else if (stringValues != null) formatted = string.Join("\n", stringValues);
-                    else formatted = Convert.ToString(instance, CultureInfo.InvariantCulture);
+                    else if (list != null) formatted = string.Join("\n", list);
+                    else formatted = Convert.ToString(value, CultureInfo.InvariantCulture);
                     stable.Append(name.ToUpperInvariant()).Append('|').Append((int)key.GetValueKind(name)).Append('|').Append(formatted).Append('\n');
                     if (name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},1", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},2", StringComparison.OrdinalIgnoreCase))
-                    { Guid effect; if (instance is string && Guid.TryParse((string)instance, out effect) && effect != Guid.Empty) legacy = true; }
-                    // 现代 SFX/MFX 在微软 SysVAD 的 GetCurrentEffectsSetting 与通知示例中共用该总开关。注册信息只允许发起旁路请求，不能证明音频图已经改变。
+                    { Guid effect; if (value is string && Guid.TryParse((string)value, out effect) && effect != Guid.Empty) legacy = true; }
+                    // 微软 SysVAD 的 GetCurrentEffectsSetting 与通知示例中，SFX/MFX 共用该开关；注册信息仅授权旁路请求，不证明音频图已改变。
                     // 参考：https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/APO/SwapAPO/swapapomfx.cpp
 
 
@@ -223,13 +224,13 @@ namespace PaviseApp
                     if (name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},5", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},6", StringComparison.OrdinalIgnoreCase)
                         || name.Equals("{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},7", StringComparison.OrdinalIgnoreCase))
-                    { Guid effect; if (instance is string && Guid.TryParse((string)instance, out effect) && effect != Guid.Empty) modern = true; }
+                    { Guid effect; if (value is string && Guid.TryParse((string)value, out effect) && effect != Guid.Empty) modern = true; }
                 }
                 using (var hash = SHA256.Create()) identity = Convert.ToBase64String(hash.ComputeHash(Encoding.UTF8.GetBytes(stable.ToString())));
                 return true;
             }
         }
-        private static string T(string zh, string en) { return LaboratoryActionText.Pick(zh, en); }
+        private static string T(string zh, string en, string ja) { return LaboratoryActionText.Pick(zh, en, ja); }
         private static string HResult(string operation, int hr)
         { return operation + " (0x" + hr.ToString("X8", CultureInfo.InvariantCulture) + ")"; }
         private static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
@@ -262,7 +263,7 @@ namespace PaviseApp
             [PreserveSig] int SetValue(ref AudioEffectsPropertyKey key, ref AudioEffectsVariant value);
             [PreserveSig] int Commit();
         }
-        // 该 ABI 参考持续维护的 ToggleSysFx 实现。必须通过 QueryInterface 核验；不支持的 Windows 或端点直接停止，不回退写入普通属性或 MMDevices 注册表。
+        // ABI 参考 ToggleSysFx，须经 QueryInterface 核验；不支持时停止，不回退到普通属性或 MMDevices 注册表。
         // 参考：https://github.com/thebookisclosed/ToggleSysFx/blob/main/MMDeviceApi.cs
 
 
@@ -273,7 +274,7 @@ namespace PaviseApp
             [PreserveSig] int GetInternalState(out uint state);
             [PreserveSig] int OpenFXPropertyStore(uint access, out IAudioEffectsPropertyStore effects);
         }
-        // Windows 10 私有 ABI 带有明确的 FX 存储选择参数，不能用 IMMDevice 的普通属性表替代。Win10 21H1 复现及 AudioDeviceCmdlets 均记录了该虚表，实际操作仍需通过能力与读回检查。
+        // Windows 10 私有 ABI 显式选择 FX 存储，不能替换为 IMMDevice 普通属性表；调用前核验支持，写后读回。
         // 参考：https://learn.microsoft.com/en-us/answers/questions/669471/how-to-control-enable-audio-enhancements-with-code
         // 参考：https://github.com/frgnca/AudioDeviceCmdlets/blob/master/SOURCE/IPolicyConfig.cs
 

@@ -1,11 +1,18 @@
+using System;
 
 namespace PaviseApp
 {
     internal partial class GameMode
     {
-        internal bool ApplyConfigurationPresetPreference(string key, string value, out string detail)
+        internal bool ApplyConfigurationPresetPreference(string key, string value, out string detail, out bool pendingVerification)
         {
+            pendingVerification = false;
             detail = PerformancePolicy.Text("已保存，按适用条件执行", "Saved; runs when eligible");
+            if (ConfigurationPresetCatalog.IsGameTuningKey(key))
+            {
+                detail = PerformancePolicy.Text("请在游戏卡片的深度调优中设置此项", "Configure this in the game card's Advanced tuning");
+                return false;
+            }
             if (stopping || active) return false;
             bool on = ConfigurationPresetEntry.IsEnabled(value);
             if (key == "NvLowLat")
@@ -30,7 +37,9 @@ namespace PaviseApp
                 ApplyEnvironmentTimerOptions();
                 string state = key == "AutoTimerTick" ? timerMode.TickState : timerMode.GlobalState;
                 detail = GameMode.AutomationStateLabel(state);
-                bool ok = state != "failed" && state != "restore-failed" && state != "stopped" && state != "unsupported" && (!on || state != "unverified");
+                // 偏好已记录不代表计时器已生效；等待启动核验不撤回偏好，也不计为一次应用成功。
+                pendingVerification = state == "unverified" || state == "pending-reboot" || state == "restore-pending-reboot";
+                bool ok = state != "failed" && state != "restore-failed" && state != "stopped" && state != "unsupported";
                 if (!ok && on && SetEnvironmentPreference(key, false)) ApplyEnvironmentTimerOptions();
                 return ok;
             }
@@ -67,13 +76,6 @@ namespace PaviseApp
                 if (!ok && on && Settings.SaveDurable(key, false)) { mmcssOn = false; SyncGameDvr(); }
                 return ok;
             }
-            if (key == "GpuPrefStageOn")
-            {
-                if (!Settings.SaveDurable(key, on)) return false;
-                gpuPrefStageOn = on;
-                if (!on && !GpuPrefStage.Restore()) return false;
-                RefreshAutomaticPreferences(); return true;
-            }
             if (key == LaboratoryPower.IdleKey || key == LaboratoryPower.EppKey || key == LaboratoryGpu.ClockKey || key == LaboratoryGpu.PowerKey || key == LaboratoryAudio.Key)
             {
                 if (!Settings.SaveStrDurable(key, value)) return false;
@@ -88,11 +90,9 @@ namespace PaviseApp
                 if (key == LaboratoryAudio.Key && !LaboratoryAudio.Restore()) return false;
                 Poke(); return true;
             }
-            PolicyItem itemOf = PolicyCatalog.ItemOf(key);
-            if (itemOf == null || key == PolicyCatalog.KeyPreset || PerformancePolicy.IsIntent(key) || key == PolicyCatalog.KeyPowerPlan) return false;
-            if (key == ThreadBoostSelection.Key)
-            { if (!ThreadBoostSelection.Save(value)) return false; }
-            else if (itemOf.Kind == PolicyValueKind.Bool)
+            PolicyItem item = PolicyCatalog.ItemOf(key);
+            if (item == null || key == PolicyCatalog.KeyPreset || PerformancePolicy.IsIntent(key) || key == PolicyCatalog.KeyPowerPlan) return false;
+            if (item.Kind == PolicyValueKind.Bool)
             { if (!Settings.SaveDurable(key, on)) return false; }
             else if (!Settings.SaveStrDurable(key, value)) return false;
             RefreshAutomaticPreferences(); return true;

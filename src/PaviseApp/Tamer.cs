@@ -17,6 +17,8 @@ namespace PaviseApp
 
             public long Birth;
 
+            public int Session;
+
 
             public AcquireResult Result;
 
@@ -112,6 +114,7 @@ namespace PaviseApp
         private readonly object engineSync = new object();
 
         private readonly Dictionary<string, bool> enabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private volatile Dictionary<string, bool> forwardEnabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         private readonly object eventSync = new object();
 
@@ -177,6 +180,7 @@ namespace PaviseApp
                 }
                 bool shouldReleasePins = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
                 mode = (int)value;
+                RevokeRuntimeWrites();
                 AntiCheatModes.Save(value);
                 if (shouldReleasePins)
                 {
@@ -257,6 +261,14 @@ namespace PaviseApp
                 enabled[acGroup.Key] = groupMigrationReady && Settings.Load("Tame_" + acGroup.Key, acGroup.Default);
             }
             mode = (int)AntiCheatModes.Current;
+            forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
+            core.AntiCheatForwardAdmission = delegate(string group, SuppressionLevel level)
+            {
+                bool on;
+                return !stopping && DateTime.UtcNow.Ticks >= Interlocked.Read(ref panicUntilUtcTicks)
+                    && group != null && forwardEnabled.TryGetValue(group, out on) && on
+                    && level == AntiCheatModes.LevelOf((AntiCheatMode)mode);
+            };
             RetireNonSuppressibleGroups();
         }
 
@@ -279,6 +291,7 @@ namespace PaviseApp
                     lock (sync)
                     {
                         enabled[acGroup.Key] = false;
+                        forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
                     }
                     Logger.Info(string.Format(Lang.T(acGroup.RecordOnly ? "log.tamer.recordonly.retired" : "log.tamer.retired", 0), acGroup.Name));
                 }
@@ -297,6 +310,7 @@ namespace PaviseApp
         public bool PanicRestore()
         {
             Interlocked.Exchange(ref panicUntilUtcTicks, DateTime.UtcNow.AddSeconds(4.0).Ticks);
+            RevokeRuntimeWrites();
             Interlocked.Exchange(ref fullSweepRequested, 1);
             kick.Set();
             lock (engineSync)
@@ -310,13 +324,27 @@ namespace PaviseApp
             AcGroup acGroup = Array.Find(AntiCheatCatalog.Groups, (AcGroup g) => string.Equals(g.Key, key, StringComparison.OrdinalIgnoreCase));
             if (acGroup != null && acGroup.Suppressible)
             {
+                if (!on)
+                {
+                    // 先发布只读资格快照，再撤销旧代；磁盘保存期间也不能重新准入。
+                    lock (sync)
+                    {
+                        var next = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
+                        next[key] = false;
+                        forwardEnabled = next;
+                    }
+                    RevokeRuntimeWrites(key);
+                }
+                bool saved;
                 lock (sync)
                 {
                     if (!groupMigrationReady) groupMigrationReady = MigrateGroupControls();
-                    if (!groupMigrationReady || !Settings.SaveDurable("Tame_" + key, on)) return;
-                    enabled[key] = on;
+                    saved = groupMigrationReady && Settings.SaveDurable("Tame_" + key, on);
+                    if (saved) enabled[key] = on;
+                    forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
                 }
                 Poke();
+                if (!saved) return;
                 Logger.Log(Lang.T("log.tamer.1", 0) + key + " " + (on ? Lang.T("log.tamer.3", 0) : Lang.T("log.tamer.4", 0)));
             }
         }
@@ -384,6 +412,7 @@ namespace PaviseApp
         public bool Stop()
         {
             stopping = true;
+            RevokeRuntimeWrites();
             kick.Set();
             Thread thread = worker;
             if (thread != null)
@@ -395,6 +424,13 @@ namespace PaviseApp
                 return false;
             }
             return true;
+        }
+
+        private void RevokeRuntimeWrites(string group = null)
+        {
+            core.RevokeAntiCheatRuntimeWrites(group);
+            AntiCheatAffinityRuntime runtime = affinityRuntime;
+            if (runtime != null) runtime.RevokeGroup(group);
         }
 
         public void Poke()
@@ -433,7 +469,16 @@ namespace PaviseApp
         private void Loop()
         {
             Logger.Log(Lang.T("log.tamer.5", 0));
-            affinityRuntime = new AntiCheatAffinityRuntime(core.PrepareAntiCheatAffinity, CheckAffinityAdmission);
+            affinityRuntime = new AntiCheatAffinityRuntime(core.PrepareAntiCheatAffinity, CheckAffinityAdmission)
+            {
+                ForwardAdmission = delegate(AntiCheatAffinityTarget target, int maximumPhysicalCores)
+                {
+                    bool on;
+                    return !stopping && DateTime.UtcNow.Ticks >= Interlocked.Read(ref panicUntilUtcTicks)
+                        && target != null && target.Group != null && forwardEnabled.TryGetValue(target.Group, out on) && on
+                        && maximumPhysicalCores == AntiCheatModes.CoreLimitOf((AntiCheatMode)mode);
+                }
+            };
             long nextFullSweepTicks = 0L;
             long nextOverflowSweepTicks = 0L;
             long nextMaintenanceTicks = 0L;
@@ -563,27 +608,43 @@ namespace PaviseApp
         private void SyncAffinity(bool suspended)
         {
             AntiCheatAffinityGameContext context = suspended ? null : GovernanceContext();
-            List<KeyValuePair<string, int>> services = context == null ? null : GovernanceServices();
+            List<KeyValuePair<string, int>> services = null;
+            bool servicesRead = false;
             Dictionary<string, string> activeGroups = BuildActive();
             List<AntiCheatAffinityTarget> targets = new List<AntiCheatAffinityTarget>();
+            HashSet<int> pausedTargets = new HashSet<int>();
             foreach (int pid in core.PidsWith(SuppressReason.AntiCheat))
             {
                 string name = core.NameOf(pid), group;
                 long birth = core.CreationOf(pid);
                 AcquireRequest retained = new AcquireRequest { Pid = pid, Name = name, Birth = birth };
-                if (suspended || name == null || !activeGroups.TryGetValue(name, out group)
-                    || CheckGovernanceAdmission(retained, context, services) != null)
+                if (suspended || name == null || !activeGroups.TryGetValue(name, out group))
                 {
                     core.Release(pid, SuppressReason.AntiCheat);
                     continue;
                 }
+                // 进程发现仍按原节奏运行；只有实际待核验目标才需要枚举服务表。
+                if (context != null && !servicesRead)
+                { services = GovernanceServices(); servicesRead = true; }
+                if (RetainedGovernanceUnknown(retained, context, services))
+                {
+                    if (affinityRuntime.MaintainsTarget(pid, birth))
+                    {
+                        targets.Add(new AntiCheatAffinityTarget { Pid = pid, Birth = birth, Name = name, Group = group });
+                        pausedTargets.Add(pid);
+                    }
+                    continue;
+                }
+                if (CheckGovernanceAdmission(retained, context, services) != null)
+                { core.Release(pid, SuppressReason.AntiCheat); continue; }
                 if (!suspended && birth > 0 && name != null)
                     core.Reconcile(pid, name, SuppressReason.AntiCheat);
-                if (birth > 0 && core.IsThrottled(pid) && name != null && activeGroups.TryGetValue(name, out group))
+                // 资源准入已经核验独立服务或 ACE 直属客户端；客户端同样需要现有的核心范围限制。
+                if (birth > 0 && (core.IsThrottled(pid) || affinityRuntime.MaintainsTarget(pid, birth)) && name != null && activeGroups.TryGetValue(name, out group))
                     targets.Add(new AntiCheatAffinityTarget { Pid = pid, Birth = birth, Name = name, Group = group });
             }
             if (targets.Count == 0) context = null;
-            affinityRuntime.Tick(context, targets, AntiCheatModes.CoreLimitOf((AntiCheatMode)mode));
+            affinityRuntime.Tick(context, targets, AntiCheatModes.CoreLimitOf((AntiCheatMode)mode), pausedTargets);
             affinityFastWake = context != null || affinityRuntime.PendingRecovery || (!suspended && targets.Count > 0);
         }
 
@@ -631,6 +692,24 @@ namespace PaviseApp
             catch { return false; }
         }
 
+        // 已纳管对象读取暂时失败不等于退出或失去资格；暂停写入，待原身份和服务表可核验后继续。
+        private static bool RetainedGovernanceUnknown(AcquireRequest request, AntiCheatAffinityGameContext context,
+            IEnumerable<KeyValuePair<string, int>> services)
+        {
+            if (context == null || request == null || request.Birth <= 0) return false;
+            if (context.GameAncestors == null || services == null) return true;
+            IntPtr process = Native.OpenProcess(0x101000, false, request.Pid);
+            if (process == IntPtr.Zero) return !Native.LastOpenProcessFailureWasNoSuchProcess();
+            try
+            {
+                int state = Native.QueryProcessIdentityState(process, request.Birth);
+                if (state != 0) return state < 0;
+                string name; long birth; int session;
+                return !ReadGovernanceIdentity(request.Pid, out name, out birth, out session);
+            }
+            finally { Native.CloseHandle(process); }
+        }
+
         private static string CheckGovernanceAdmission(AcquireRequest request, AntiCheatAffinityGameContext context,
             IEnumerable<KeyValuePair<string, int>> services)
         {
@@ -640,22 +719,28 @@ namespace PaviseApp
             if (!ReadGovernanceIdentity(request.Pid, out name, out birth, out session)
                 || birth != request.Birth || !string.Equals(name, request.Name, StringComparison.OrdinalIgnoreCase))
                 return "process-identity-changed";
+            request.Session = session;
             string reason;
-            return AntiCheatAffinityEligibility.Eligible(name, request.Pid, session, services, context.GameAncestors, out reason)
-                ? null : reason;
+            if (AntiCheatAffinityEligibility.Eligible(name, request.Pid, session, services, context.GameAncestors, out reason)) return null;
+            ProcEntry service;
+            if (!AntiCheatAffinityEligibility.TryAceClientService(context.Processes, name, request.Pid, birth, session,
+                context.GameAncestors, out service, out reason)) return reason;
+            string serviceName; long serviceBirth; int serviceSession;
+            if (!ReadGovernanceIdentity(service.Pid, out serviceName, out serviceBirth, out serviceSession)
+                || serviceBirth != service.Creation || serviceSession != service.Session
+                || !string.Equals(serviceName, service.Name, StringComparison.OrdinalIgnoreCase)) return "service-identity-changed";
+            return AntiCheatAffinityEligibility.Eligible(serviceName, service.Pid, serviceSession, services, context.GameAncestors, out reason) ? null : reason;
         }
 
         private string CheckAffinityAdmission(AntiCheatAffinityTarget target, AntiCheatAffinityGameContext context)
         {
             try
             {
-                using (Process process = Process.GetProcessById(target.Pid))
-                {
-                    if (process.StartTime.ToUniversalTime().ToFileTimeUtc() != target.Birth) return "process-identity-changed";
-                    string reason;
-                    return AntiCheatAffinityEligibility.Eligible(target.Name, target.Pid, process.SessionId,
-                        SvcQuery.RunningServices(), context.GameAncestors, out reason) ? null : reason;
-                }
+                if (target == null) return "process-identity-unavailable";
+                if (!IsGroupEnabled(target.Group)) return "group-disabled";
+                // 真正施加核心限制前再次核验客户端、父服务和创建时间，避免只在扫描时放行。
+                return CheckGovernanceAdmission(new AcquireRequest { Pid = target.Pid, Birth = target.Birth, Name = target.Name },
+                    context, SvcQuery.RunningServices());
             }
             catch { return "service-identity-unavailable"; }
         }
@@ -879,7 +964,8 @@ namespace PaviseApp
             }
             SuppressionCore.BatchResult batchResult = null;
             AntiCheatAffinityGameContext context = GovernanceContext();
-            List<KeyValuePair<string, int>> services = context == null ? null : GovernanceServices();
+            List<KeyValuePair<string, int>> services = null;
+            bool servicesRead = false;
             core.BeginBatch();
             try
             {
@@ -889,10 +975,15 @@ namespace PaviseApp
                     {
                         try
                         {
+                            if (context != null && IsGroupEnabled(acquisition.Group) && !servicesRead)
+                            { services = GovernanceServices(); servicesRead = true; }
                             string blocked = !IsGroupEnabled(acquisition.Group) ? "group-disabled"
                                 : CheckGovernanceAdmission(acquisition, context, services);
                             if (blocked != null)
                             {
+                                if (IsGroupEnabled(acquisition.Group) && core.HasReason(acquisition.Pid, SuppressReason.AntiCheat)
+                                    && RetainedGovernanceUnknown(acquisition, context, services))
+                                { acquisition.Result = AcquireResult.AlreadyProtected; continue; }
                                 core.Release(acquisition.Pid, SuppressReason.AntiCheat);
                                 acquisition.Result = AcquireResult.AlreadyProtected;
                                 continue;
@@ -911,6 +1002,12 @@ namespace PaviseApp
                     {
                         try
                         {
+                            string trackedName = core.NameOf(release), group;
+                            Dictionary<string, string> groups = BuildActive();
+                            if (context != null && trackedName != null && groups.TryGetValue(trackedName, out group) && !servicesRead)
+                            { services = GovernanceServices(); servicesRead = true; }
+                            if (trackedName != null && groups.TryGetValue(trackedName, out group)
+                                && RetainedGovernanceUnknown(new AcquireRequest { Pid = release, Birth = core.CreationOf(release), Name = trackedName }, context, services)) continue;
                             core.Release(release, SuppressReason.AntiCheat);
                         }
                         catch
@@ -947,11 +1044,15 @@ namespace PaviseApp
             }
         }
 
-        private static void LogAcquireResult(AcquireRequest request)
+        private void LogAcquireResult(AcquireRequest request)
         {
             if (request.Result == AcquireResult.NewlyThrottled)
             {
-                Logger.Log(Lang.T("log.tamer.8", 0) + request.Name + " 进程编号 " + request.Pid);
+                string evidence;
+                if (core.TryReadAntiCheatEvidence(request.Pid, request.Birth, out evidence))
+                    Logger.Log(Lang.T("log.tamer.8", 0) + request.Name + " 进程编号 " + request.Pid + " | " + evidence);
+                else
+                    Logger.Warn("反作弊压制后的状态未能核验：" + request.Name + " 进程编号=" + request.Pid + "；" + evidence);
             }
             else if (request.Result == AcquireResult.NewlyProtected && request.FailureDetail != "self-protected")
             {
@@ -971,7 +1072,7 @@ namespace PaviseApp
             {
                 Logger.Log(Lang.T("log.tamer.14", 0) + reason + Lang.T("log.gamemodeboost.53", 0) + releaseReasonResult + Lang.T("log.program.3", 0));
             }
-            return affinityRestored && !core.AnyWith(SuppressReason.AntiCheat);
+            return affinityRestored && !core.AnyWith(SuppressReason.AntiCheat) && !core.AntiCheatResourceRecoveryPending;
         }
     }
 }

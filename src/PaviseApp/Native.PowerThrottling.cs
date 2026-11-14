@@ -89,7 +89,7 @@ namespace PaviseApp
 
         public static bool EcoClearedMasksOk(int controlMask, int stateMask)
         {
-            if (((uint)controlMask & ((1u))) != 0)
+            if (((uint)controlMask & (true ? 1u : 0u)) != 0)
             {
                 return (stateMask & 1) == 0;
             }
@@ -155,16 +155,17 @@ namespace PaviseApp
         internal static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask, out int win32, out int ntStatus)
         {
             int sizeOfResult = Marshal.SizeOf(typeof(PowerThrottlingState));
-            PowerThrottlingState info = default(PowerThrottlingState);
-            info.Version = 1u;
+            PowerThrottlingState powerThrottlingState = default(PowerThrottlingState);
+            powerThrottlingState.Version = 1u;
+            PowerThrottlingState info = powerThrottlingState;
             bool processInformation = GetProcessInformation(process, 4, ref info, sizeOfResult);
             win32 = processInformation ? 0 : Marshal.GetLastWin32Error();
             ntStatus = 0;
             if (!processInformation)
             {
-                PowerThrottlingState currentPowerThrottlingState = default(PowerThrottlingState);
-                currentPowerThrottlingState.Version = 1u;
-                info = currentPowerThrottlingState;
+                PowerThrottlingState powerThrottlingState2 = default(PowerThrottlingState);
+                powerThrottlingState2.Version = 1u;
+                info = powerThrottlingState2;
                 ntStatus = NtQueryInformationProcessPower(process, 77, ref info, sizeOfResult, IntPtr.Zero);
                 processInformation = ntStatus == 0;
             }
@@ -189,10 +190,11 @@ namespace PaviseApp
 
         private static bool SetPowerThrottling(IntPtr process, uint controlMask, uint stateMask)
         {
-            PowerThrottlingState info = default(PowerThrottlingState);
-            info.Version = 1u;
-            info.ControlMask = controlMask;
-            info.StateMask = stateMask;
+            PowerThrottlingState powerThrottlingState = default(PowerThrottlingState);
+            powerThrottlingState.Version = 1u;
+            powerThrottlingState.ControlMask = controlMask;
+            powerThrottlingState.StateMask = stateMask;
+            PowerThrottlingState info = powerThrottlingState;
             return SetProcessInformation(process, 4, ref info, Marshal.SizeOf(typeof(PowerThrottlingState)));
         }
 

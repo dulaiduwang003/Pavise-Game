@@ -36,10 +36,24 @@ namespace PaviseApp
         bool VerifyBaseline(Guid baseline, Guid destination);
     }
 
+        // 只有平台确认不归预设所有的字段可跳过策略锁定；不支持该接口时按写入失败处理。
+    internal interface IPowerPresetPolicyLocks
+    {
+        bool MaySkipPolicyLocked(ManagedPowerPresetValue value, bool ac);
+    }
+
     internal static class PowerPresetWriter
     {
+        // ERROR_ACCESS_DISABLED_BY_POLICY：该设置被组策略接管，任何计划里的写入都会被拒绝。
+        internal const uint PolicyLockedCode = 1260;
+        private const int PolicyNoticeLimit = 32;
         [ThreadStatic] private static uint failureNativeCode;
+        [ThreadStatic] private static List<string> policyLocked;
+        private static readonly HashSet<string> policyNotices = new HashSet<string>(StringComparer.Ordinal);
         internal static uint LastFailureNativeCode { get { return failureNativeCode; } }
+        // 最近一次成功创建的策略锁定跳过项，均未经读回核验。
+        internal static string[] LastPolicyLockedFields
+        { get { return policyLocked == null ? new string[0] : policyLocked.ToArray(); } }
         internal static ManagedPowerSchemeEvidence ClassifySchemeEvidence(uint nativeCode)
         {
             return new ManagedPowerSchemeEvidence(nativeCode == 0 || nativeCode == 234 ? ManagedPowerSchemeState.Present
@@ -74,6 +88,16 @@ namespace PaviseApp
         internal static bool Create(ManagedPowerPreset preset, Guid destination, Guid ultimate, Guid highPerformance,
             Guid verifiedBaseline, IPowerPresetWriterPlatform platform, out string failure)
         {
+            policyLocked = new List<string>();
+            bool created = CreateCandidate(preset, destination, ultimate, highPerformance, verifiedBaseline, platform, out failure);
+            // 创建失败时候选计划会被清理，不留下跳过记录。
+            if (!created) policyLocked = null;
+            return created;
+        }
+
+        private static bool CreateCandidate(ManagedPowerPreset preset, Guid destination, Guid ultimate, Guid highPerformance,
+            Guid verifiedBaseline, IPowerPresetWriterPlatform platform, out string failure)
+        {
             failure = "";
             failureNativeCode = 0;
             if (preset == null) return Fail(out failure, "Create: missing parameter set");
@@ -82,28 +106,30 @@ namespace PaviseApp
             if (!NormalizeInherited(preset, destination, copySource == verifiedBaseline ? verifiedBaseline : Guid.Empty, platform, out failure)) return false;
 
             int written = 0, skipped = 0;
-            foreach (ManagedPowerPresetValue entry in preset.Entries)
+            foreach (ManagedPowerPresetValue value in preset.Entries)
             {
-                if (!platform.IsRegistered(entry))
+                if (!platform.IsRegistered(value))
                 {
                     skipped++;
-                    Logger.Info("电源 来源=" + preset.Id + " 已跳过未注册设置： " + SettingPath(entry));
+                    Logger.Info("电源 来源=" + preset.Id + " 已跳过未注册设置： " + SettingPath(value));
                     continue;
                 }
                 foreach (bool ac in new[] { true, false })
                 {
-                    string raw = ac ? entry.AcRaw : entry.DcRaw;
-                    uint? requested = ac ? entry.Ac : entry.Dc;
-                    int type = ac ? entry.AcRegistryType : entry.DcRegistryType;
-                    string field = (ac ? "AC " : "DC ") + SettingPath(entry);
+                    string raw = ac ? value.AcRaw : value.DcRaw;
+                    uint? requested = ac ? value.Ac : value.Dc;
+                    int type = ac ? value.AcRegistryType : value.DcRegistryType;
+                    string field = (ac ? "AC " : "DC ") + SettingPath(value);
                     if (raw != null || (requested.HasValue && type != (int)RegistryValueKind.DWord))
                         return Fail(out failure, "Unsupported preset value type: " + field + " 类型=" + type);
                     if (!requested.HasValue) continue;
                     if (!Inactive(platform, destination)) return Fail(out failure, "Write: candidate became active or active plan is unreadable; " + field);
-                    uint code = platform.Write(destination, entry, ac, requested.Value);
+                    uint code = platform.Write(destination, value, ac, requested.Value);
+                    // 被策略锁定且最终值本就取自本机原计划的字段不写也不回读，其余参数继续。
+                    if (PolicyLockedSkip(platform, value, ac, code, field)) continue;
                     if (code != 0) return Fail(out failure, "PowerWrite" + (ac ? "AC" : "DC") + "ValueIndex code=" + code + "; " + field + " requested=" + requested.Value, code);
                     uint actual;
-                    code = platform.Read(destination, entry, ac, out actual);
+                    code = platform.Read(destination, value, ac, out actual);
                     if (code != 0) return Fail(out failure, "PowerRead" + (ac ? "AC" : "DC") + "ValueIndex code=" + code + "; " + field, code);
                     if (actual != requested.Value)
                         return Fail(out failure, "Readback mismatch: " + field + " requested=" + requested.Value + " actual=" + actual);
@@ -112,8 +138,32 @@ namespace PaviseApp
             }
             if (!Inactive(platform, destination)) return Fail(out failure, "Verify: candidate became active or active plan is unreadable");
             Logger.Info("电源 来源=" + preset.Id + " 方法=复制后原生写入；复制来源=" + copySource.ToString("D")
-                + " 已核验=" + written + " 未注册=" + skipped);
+                + " 已核验=" + written + " 未注册=" + skipped
+                + (policyLocked.Count > 0 ? " 策略锁定=" + policyLocked.Count : ""));
+            NotePolicyLocked(preset.Id, "创建", policyLocked);
             return true;
+        }
+
+        // 只有 1260 且平台确认该字段的最终值不归预设所有时才跳过。其他错误码、其他字段照旧算写入失败。
+        private static bool PolicyLockedSkip(IPowerPresetWriterPlatform platform, ManagedPowerPresetValue value, bool ac, uint code, string field)
+        {
+            var locks = platform as IPowerPresetPolicyLocks;
+            if (code != PolicyLockedCode || locks == null || !locks.MaySkipPolicyLocked(value, ac)) return false;
+            policyLocked.Add(field);
+            return true;
+        }
+
+        // 同一来源、阶段和设置组只记录一次明细；后续创建与适配仅报告数量。
+        internal static void NotePolicyLocked(string source, string stage, ICollection<string> fields)
+        {
+            if (fields == null || fields.Count == 0) return;
+            string list = string.Join(", ", fields);
+            lock (policyNotices)
+            {
+                if (policyNotices.Count >= PolicyNoticeLimit || !policyNotices.Add(source + "|" + stage + "|" + list)) return;
+            }
+            Logger.Warn("电源 来源=" + source + " 阶段=" + stage + " 组策略锁定 " + fields.Count
+                + " 项设置，写入被拒（错误码 " + PolicyLockedCode + "）；已跳过，未写入也未核验，实际值由系统策略决定： " + list);
         }
 
         // 按 GUID 尝试隐藏模板；只有原生明确报告来源不存在，才继续下一备用来源。访问拒绝和操作不受支持均算失败。
@@ -221,44 +271,45 @@ namespace PaviseApp
             var explicitValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var templateSettings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Guid acPersonality = Guid.Empty, dcPersonality = Guid.Empty;
-            foreach (ManagedPowerPresetValue entry in preset.Entries)
+            foreach (ManagedPowerPresetValue value in preset.Entries)
             {
-                string path = SettingPath(entry);
+                string path = SettingPath(value);
                 templateSettings.Add(path);
-                if (entry.Ac.HasValue) explicitValues.Add(path + "/AC");
-                if (entry.Dc.HasValue) explicitValues.Add(path + "/DC");
-                if (entry.Sub == ManagedPowerPreset.SubNone && entry.Setting == new Guid("245d8541-3943-4422-b025-13a784f679b7"))
-                { acPersonality = Personality(entry.Ac); dcPersonality = Personality(entry.Dc); }
+                if (value.Ac.HasValue) explicitValues.Add(path + "/AC");
+                if (value.Dc.HasValue) explicitValues.Add(path + "/DC");
+                if (value.Sub == ManagedPowerPreset.SubNone && value.Setting == new Guid("245d8541-3943-4422-b025-13a784f679b7"))
+                { acPersonality = Personality(value.Ac); dcPersonality = Personality(value.Dc); }
             }
             if (acPersonality == Guid.Empty || dcPersonality == Guid.Empty)
                 return Fail(out failure, "Reset: preset personality is missing or unsupported");
             ManagedPowerPresetValue[] inherited = platform.StoredSettings(destination);
             if (inherited == null) return Fail(out failure, "Reset: inherited settings could not be enumerated");
-            foreach (ManagedPowerPresetValue currentInherited in inherited)
+            foreach (ManagedPowerPresetValue value in inherited)
             {
-                if (!platform.IsRegistered(currentInherited)) continue;
+                if (!platform.IsRegistered(value)) continue;
                 foreach (bool ac in new[] { true, false })
                 {
-                    if (!(ac ? currentInherited.Ac : currentInherited.Dc).HasValue || explicitValues.Contains(SettingPath(currentInherited) + (ac ? "/AC" : "/DC"))) continue;
+                    if (!(ac ? value.Ac : value.Dc).HasValue || explicitValues.Contains(SettingPath(value) + (ac ? "/AC" : "/DC"))) continue;
                     if (!Inactive(platform, destination)) return Fail(out failure, "Reset: candidate became active or active plan is unreadable");
                     // 按原配置的 personality 解析缺省值，不继承复制源额外的覆盖，也不改注册表权限。
                     uint expected, actual;
-                    uint code = platform.ReadDefault(currentInherited, ac ? acPersonality : dcPersonality, ac, out expected);
-                    string field = (ac ? "AC " : "DC ") + SettingPath(currentInherited);
+                    uint code = platform.ReadDefault(value, ac ? acPersonality : dcPersonality, ac, out expected);
+                    string field = (ac ? "AC " : "DC ") + SettingPath(value);
                     if (code != 0)
                     {
                         // 确认确切获准的本机基准后，才复制 OEM 专用值。
                         string retainedFailure;
-                        if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(currentInherited)))
+                        if (SourceUnavailable(code) && copiedBaseline != Guid.Empty && !templateSettings.Contains(SettingPath(value)))
                         {
-                            if (RetainVerifiedLocalValue(platform, copiedBaseline, destination, currentInherited, ac, out retainedFailure)) continue;
+                            if (RetainVerifiedLocalValue(platform, copiedBaseline, destination, value, ac, out retainedFailure)) continue;
                             return Fail(out failure, "Read default: " + field + " code=" + code + "; " + retainedFailure, code);
                         }
                         return Fail(out failure, "Read default: " + field + " code=" + code, code);
                     }
-                    code = platform.Write(destination, currentInherited, ac, expected);
+                    code = platform.Write(destination, value, ac, expected);
+                    if (PolicyLockedSkip(platform, value, ac, code, field)) continue;
                     if (code != 0) return Fail(out failure, "Write default: " + field + " code=" + code, code);
-                    code = platform.Read(destination, currentInherited, ac, out actual);
+                    code = platform.Read(destination, value, ac, out actual);
                     if (code != 0 || actual != expected)
                         return Fail(out failure, "Default readback: " + field + " code=" + code + " expected=" + expected + " actual=" + actual, code);
                 }
