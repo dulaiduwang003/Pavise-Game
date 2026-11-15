@@ -42,6 +42,36 @@ namespace PaviseApp
                     CpuTopology.MultiGroup ? -1 : 0, reserved, domain, ancestors, processes, avoid);
             }
         }
+        // 反作弊引擎轮询此值决定本局是否压制 ACE；游戏退出宽限开始即视为退局。
+        // 读取游戏库中的最新设置，对局中改动立即生效，不冻结在会话快照里。
+        internal AntiCheatMode? GetAceSessionChoice()
+        {
+            string value;
+            bool configured;
+            lock (sync)
+            {
+                GameDetection detection = activeDetection;
+                if (!active || !enabled || stopping || panicReq || ProfileStoreSaveFailed || gameGoneSinceTicks != 0
+                    || detection == null || detection.Profile == null)
+                {
+                    return null;
+                }
+                GameProfile profile = FindProfileLocked(detection.Profile.Id) ?? detection.Profile;
+                configured = profile.Overrides.TryGetValue(AceSuppressionPolicy.Key, out value);
+            }
+            return AceSuppressionPolicy.Parse(configured ? value : AceSuppressionPolicy.LegacyDefault());
+        }
+
+        internal Action AntiCheatSessionChanged;
+
+        private void NotifyAntiCheatSession()
+        {
+            Action changed = AntiCheatSessionChanged;
+            if (changed == null) return;
+            try { changed(); }
+            catch { }
+        }
+
         private AutoCoreGovernor NewCoreGovernor()
         {
             if (coreRangeUnrestricted || corePlan == null || !corePlan.Available)
@@ -90,7 +120,11 @@ namespace PaviseApp
             }
             if (corePlan.Available)
             {
-                Logger.Log(string.Format(Lang.T("schedule.manual.plan", 0), CpuTopology.DescribeMask(coreManual.GameMask)));
+                // 范围未启用时这一行只是配置记录：游戏进程不受限制，已保存的范围仅供反作弊等后台选核时避让；
+                // 已保存为全部核心时没有可避让的余核，不再写“供避让参考”。
+                string planKey = !coreObservationOnly ? "schedule.manual.plan"
+                    : coreManual.IsUnrestricted(allMask) ? "schedule.manual.plan.unused" : "schedule.manual.plan.reference";
+                Logger.Log(string.Format(Lang.T(planKey, 0), CpuTopology.DescribeMask(coreManual.GameMask)));
             }
             else
             {
@@ -416,13 +450,24 @@ namespace PaviseApp
             }
             if (stateOk && firstVerified)
             {
+                // 本局没有开启任何提优、没有解除省电限制、也没有核验到核心范围时，这里只是完成了一次状态核验，不能记成“已生效”。
+                bool applied = pass.CpuBoost || pass.IoBoost || (gpuOk && pass.GpuBoost) || ecoCleared || placementVerified;
                 long firstBoostStamp = Interlocked.Exchange(ref boostFirstStampTicks, 0L);
                 if (firstBoostStamp != 0)
                 {
-                    Logger.Log(Lang.T("log.gamemodeboost.60", 0) + (DateTime.UtcNow.Ticks - firstBoostStamp) / 10000 + Lang.T("log.gamemodeboost.61", 0));
+                    Logger.Log(Lang.T(applied ? "log.gamemodeboost.60" : "log.gamemodeboost.62", 0) + (DateTime.UtcNow.Ticks - firstBoostStamp) / 10000 + Lang.T("log.gamemodeboost.61", 0));
+                }
+                if (!applied)
+                {
+                    Logger.Info(BoostIdleLine(pass.RendererName, pid, Native.PowerThrottlingSupported ? EcoStateText(h) : ""));
+                    return;
                 }
                 Logger.Log(BoostSuccessLine(pass.RendererName, pid, (!pass.CpuBoost) ? "" : ((pass.PriorityTarget == 128) ? Lang.T("log.gamemodeboost.28", 0) : Lang.T("log.gamemodeboost.29", 0)), placementText, placementVerified, (pass.IoBoost ? Lang.T("log.gamemodeboost.30", 0) : "") + ((gpuOk && pass.GpuBoost) ? Lang.T("log.gamemodeboost.31", 0) : "") + ((!Native.PowerThrottlingSupported) ? "" : (ecoCleared ? Lang.T("t.gamemodeboost.32", 0) : EcoStateText(h)))));
             }
+        }
+        internal static string BoostIdleLine(string renderer, int pid, string otherStates)
+        {
+            return Lang.T("log.gamemodeboost.63") + renderer + "(pid " + pid + ")" + Lang.T("log.gamemodeboost.64") + otherStates;
         }
         internal static string BoostSuccessLine(string renderer, int pid, string priority, string placement, bool placementVerified, string otherStates)
         {

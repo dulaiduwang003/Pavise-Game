@@ -11,48 +11,9 @@ namespace PaviseApp
         bool HasPending { get; }
         bool ReadOriginalMask(WindowsBackgroundTarget target, out ulong mask, out string reason);
         bool Ensure(WindowsBackgroundTarget target, ulong original, ulong desired, int mode, out string reason);
-        bool Verify(WindowsBackgroundTarget target, ulong desired, out string reason);
         bool Release(WindowsBackgroundTarget target, out string reason);
         bool ReleaseAll(out string reason);
         bool Stop(out string reason);
-    }
-
-    internal sealed class WindowsBackgroundJobs : IWindowsBackgroundJobs
-    {
-        private readonly GameAffinityJobLease leases = new GameAffinityJobLease();
-        public bool HasActive { get { return leases.HasActive; } }
-        public bool HasPending { get { return leases.HasPending; } }
-        public bool ReadOriginalMask(WindowsBackgroundTarget target, out ulong mask, out string reason)
-        {
-            mask = 0; reason = null;
-            string identityFailure;
-            IntPtr process = GameAffinityJobNative.OpenQueryIdentity(target.Process.Pid, target.Process.Creation, out identityFailure);
-            if (process == IntPtr.Zero) { reason = "微软后台原始范围读取未完成：" + identityFailure; return false; }
-            try
-            {
-                if (!Native.TryQueryAffinity(process, out mask))
-                {
-                    reason = "微软后台 GetProcessAffinityMask 失败，win32=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                    return false;
-                }
-                if (mask == 0) { reason = "微软后台原始核心范围为空"; return false; }
-                int identity = Native.QueryProcessIdentityState(process, target.Process.Creation);
-                if (identity == 0) return true;
-                mask = 0;
-                reason = identity == 1 ? "微软后台读取期间原目标已退出或身份已变化"
-                    : "微软后台读取后身份未能核验";
-                return false;
-            }
-            finally { Native.CloseHandle(process); }
-        }
-        public bool Ensure(WindowsBackgroundTarget target, ulong original, ulong desired, int mode, out string reason)
-        { return leases.EnsureWindowsBackground(target.Process.Pid, target.Process.Creation, target.Process.Name, original, desired, mode, out reason); }
-        public bool Verify(WindowsBackgroundTarget target, ulong desired, out string reason)
-        { return leases.Verify(target.Process.Pid, target.Process.Creation, desired, out reason); }
-        public bool Release(WindowsBackgroundTarget target, out string reason)
-        { return leases.Release(target.Process.Pid, target.Process.Creation, out reason); }
-        public bool ReleaseAll(out string reason) { return leases.ReleaseAll(out reason); }
-        public bool Stop(out string reason) { return leases.Stop(out reason); }
     }
 
     internal sealed class WindowsBackgroundActivitySnapshot
@@ -83,7 +44,7 @@ namespace PaviseApp
 
         internal sealed class FailurePhase
         {
-            internal int Failures, Corrections;
+            internal int Failures;
             internal long Next;
             internal bool Exhausted;
             internal bool Allowed(long now) { return !Exhausted && Failures < 3 && now >= Next; }
@@ -97,7 +58,7 @@ namespace PaviseApp
         private readonly Dictionary<int, long> reserved = new Dictionary<int, long>();
         private long session = -1;
         private WindowsBackgroundActivitySnapshot activity = new WindowsBackgroundActivitySnapshot(-1, new KeyValuePair<int, long>[0], false, false);
-        private int restoreExceptions, stopExceptions;
+        private int restoreFailures, stopFailures;
 
         internal WindowsBackgroundGovernor(IWindowsBackgroundJobs jobs) { this.jobs = jobs; }
         internal bool HasRecovery { get { return jobs.HasActive || jobs.HasPending; } }
@@ -121,7 +82,7 @@ namespace PaviseApp
             if (serial != session)
             {
                 // 仅真实新对局创建新预算；关闭再开启、重建扫描线程或回到旧档位都沿用本局预算。
-                session = serial; phases.Clear(); restoreExceptions = 0; stopExceptions = 0;
+                session = serial; phases.Clear(); restoreFailures = 0; stopFailures = 0;
             }
             mode = BackgroundGovernancePolicy.Normalize(mode);
             reserved.Clear();
@@ -169,29 +130,18 @@ namespace PaviseApp
                         state.Active = false; state.Original = 0;
                     }
                     operation = phase;
+                    // 一次性施加：首次写入并读回成功后不再逐轮核验，也不由守护进程维护；这些系统服务不会自行解除 Job 限制。
+                    if (same) { state.Verified = true; continue; }
                     if (!phase.Allowed(now)) continue;
-                    if (same && jobs.Verify(target, state.Desired, out reason)) { state.Verified = true; continue; }
                     state.Verified = false;
-                    if (same)
-                    {
-                        if (phase.Corrections >= 3)
-                        {
-                            phase.Exhausted = true;
-                            Logger.Warn("微软后台纠正预算耗尽：" + target.Category + " " + target.Process.Name
-                                + " 进程编号=" + target.Process.Pid + "；保留恢复所有权，停止主动尝试");
-                            continue;
-                        }
-                        phase.Corrections++;
-                    }
-                    if (state.Active)
-                    {
-                        if (!jobs.Release(target, out reason)) { Failed(target, phase, now, reason); continue; }
-                        state.Active = false; state.Original = 0;
-                    }
                     if (backgroundMask == 0 && !preserveResourcesWithoutCore) { Failed(target, phase, now, "没有可核验的单组后台核心范围"); continue; }
                     if (!prepare(target)) { Failed(target, phase, now, "原后台治理所有权尚未恢复"); continue; }
                     if (state.Original == 0 && !jobs.ReadOriginalMask(target, out state.Original, out reason))
-                    { Failed(target, phase, now, reason); continue; }
+                    {
+                        // 目标在本轮扫描后退出属于正常收尾：此时本方限制已撤回，没有对象可治理，不占用失败预算，也不告警。
+                        if (GameAffinityJobNative.IsTargetGone(reason)) { targets.Remove(target.Identity); continue; }
+                        Failed(target, phase, now, reason); continue;
+                    }
                     ulong desired = backgroundMask & state.Original;
                     bool coreUnavailable = desired == 0 && preserveResourcesWithoutCore;
                     if (coreUnavailable) desired = state.Original;
@@ -248,15 +198,15 @@ namespace PaviseApp
 
         internal bool Restore()
         {
-            if (restoreExceptions >= 3) { PublishRecoveryPending(); return false; }
+            if (restoreFailures >= 3) { PublishRecoveryPending(); return false; }
             string reason;
             bool restored;
             try { restored = jobs.ReleaseAll(out reason); }
             catch (Exception error)
             {
-                restoreExceptions++;
-                Logger.Warn("微软后台恢复异常：尝试=" + restoreExceptions + "/3 原因=" + error.GetType().Name
-                    + (restoreExceptions >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
+                restoreFailures++;
+                Logger.Warn("微软后台恢复异常：尝试=" + restoreFailures + "/3 原因=" + error.GetType().Name
+                    + (restoreFailures >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
                 PublishRecoveryPending();
                 return false;
             }
@@ -267,25 +217,39 @@ namespace PaviseApp
                 targets.Clear(); reserved.Clear();
                 PublishActivity(false);
             }
-            else PublishRecoveryPending();
+            else
+            {
+                // 返回失败与抛出异常共用本局预算；成功观察、关闭再开或切档都不能补回次数。
+                restoreFailures++;
+                Logger.Warn("微软后台恢复未完成：尝试=" + restoreFailures + "/3 原因=" + reason
+                    + (restoreFailures >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
+                PublishRecoveryPending();
+            }
             return restored;
         }
 
         internal bool Stop()
         {
-            if (stopExceptions >= 3 || !Restore()) return false;
+            if (stopFailures >= 3) { PublishRecoveryPending(); return false; }
+            if (!Restore()) return false;
             string reason;
             try
             {
                 bool stopped = jobs.Stop(out reason);
-                if (!stopped) PublishRecoveryPending();
+                if (!stopped)
+                {
+                    stopFailures++;
+                    Logger.Warn("微软后台收尾未完成：尝试=" + stopFailures + "/3 原因=" + reason
+                        + (stopFailures >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
+                    PublishRecoveryPending();
+                }
                 return stopped;
             }
             catch (Exception error)
             {
-                stopExceptions++;
-                Logger.Warn("微软后台守护收尾异常：尝试=" + stopExceptions + "/3 原因=" + error.GetType().Name
-                    + (stopExceptions >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
+                stopFailures++;
+                Logger.Warn("微软后台守护收尾异常：尝试=" + stopFailures + "/3 原因=" + error.GetType().Name
+                    + (stopFailures >= 3 ? "；保留记录及句柄，停止主动尝试" : ""));
                 PublishRecoveryPending();
                 return false;
             }

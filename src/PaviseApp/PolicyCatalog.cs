@@ -104,7 +104,7 @@ namespace PaviseApp
 
         public static readonly string[] HandheldBlocked = new string[0];
 
-        private static readonly PolicyItem[] Items = new PolicyItem[24]
+        private static readonly PolicyItem[] Items = new PolicyItem[23]
         {
             new PolicyItem("PerformancePreset", PolicyValueKind.Enum, "0", "cfg.mode", "cfg.group.mode", new string[2] { "0", "1" }),
             new PolicyItem("GmSuppress", PolicyValueKind.Bool, "1", "v14.bg.master", "cfg.group.bg", null),
@@ -116,18 +116,17 @@ namespace PaviseApp
             new PolicyItem("GameDisableFullscreenOptimizationsV1", PolicyValueKind.Bool, "0", "auto.fso", "cfg.group.gpu", null),
             new PolicyItem("GmAutoCoresV2", PolicyValueKind.Bool, "0", "schedule.auto.allow", "cfg.group.bg", null),
             new PolicyItem("GameNvRebarV1", PolicyValueKind.Bool, "0", "set.nvrebar", "cfg.group.gpu", null),
+            new PolicyItem(AceSuppressionPolicy.Key, PolicyValueKind.Choice, AceSuppressionPolicy.Off, "lib.ace", "cfg.group.bg", AceSuppressionPolicy.Choices),
             new PolicyItem("GmBoost", PolicyValueKind.Bool, "1", "gm.boost", "cfg.group.bg", null),
             new PolicyItem("PowerPlanOn", PolicyValueKind.Bool, "1", "plan.pick.title", "cfg.group.mempower", null),
             new PolicyItem("GmCacheWarmV2", PolicyValueKind.Bool, "0", "gm.cachewarm", "cfg.group.mempower", null),
             new PolicyItem("GmStandbyCleanerV2", PolicyValueKind.Bool, "0", "gm.standbycleaner", "cfg.group.env", null),
-            new PolicyItem("GmDwmBoost", PolicyValueKind.Bool, "0", "extreme.dwm", "cfg.group.env", null),
             new PolicyItem("AutoTimerTick", PolicyValueKind.Bool, "0", "set.timertick", "cfg.group.env", null),
             new PolicyItem("AutoGlobalTimer", PolicyValueKind.Bool, "0", "set.gtimer", "cfg.group.env", null),
             new PolicyItem("GmPauseUpdate", PolicyValueKind.Bool, "0", "gm.pausewu", "cfg.group.env", null),
             new PolicyItem("GmIntelEnduranceV1", PolicyValueKind.Bool, "0", "set.intel.endurance", "cfg.group.gpu", null),
             new PolicyItem("NvLowLat", PolicyValueKind.Choice, "off", "set.nvll", "cfg.group.gpu", new string[2] { "off", "on" }),
             new PolicyItem("AmdAntiLag", PolicyValueKind.Bool, "0", "set.amdalag", "cfg.group.gpu", null),
-            new PolicyItem("GmPauseMaintenanceV1", PolicyValueKind.Bool, "1", "gm.pausemaint", "cfg.group.env", null),
             new PolicyItem("NvMaxPerf", PolicyValueKind.Bool, "0", "set.nvmax", "cfg.group.gpu", null),
             new PolicyItem("NvShaderCache", PolicyValueKind.Bool, "0", "auto.nvshader", "cfg.group.gpu", null)
         };

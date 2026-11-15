@@ -99,6 +99,11 @@ namespace PaviseApp
             messages.Add("autoadd.preference.unsaved", new string[2] { "自动入库设置未能保存，本次运行仍遵从当前开关", "Auto-add preference could not be saved; this run still follows the current switch" });
             messages.Add("t.autoadd.1", new string[2] { "# 从游戏库移除过的路径不再自动入库；重新手动添加会自动解除。", "# Paths removed from the library are never auto-added again; adding them back manually lifts this." });
             messages.Add("lib.rebar", new string[2] { "ReBAR 强开", "Force ReBAR" });
+            messages.Add("lib.ace", new string[2] { "反作弊压制", "Anti-cheat suppression" });
+            messages.Add("lib.ace.adjust", new string[2] { "选择反作弊压制强度", "Choose the anti-cheat suppression strength" });
+            messages.Add("lib.ace.tip", new string[2] { "仅支持含 ACE 的反作弊", "Only supports games with ACE anti-cheat" });
+            messages.Add("lib.ace.confirm", new string[2] { "为本游戏开启反作弊压制？仅支持含 ACE 的反作弊；只在本游戏对局期间生效，退局恢复，其他游戏不受影响。选择压制强度：", "Enable anti-cheat suppression for this game? Only supports games with ACE anti-cheat; it applies only during this game's matches and restores on exit, and other games are unaffected. Choose the strength:" });
+            messages.Add("lib.ace.failed", new string[2] { "反作弊压制设置未能保存，请重试。", "The anti-cheat suppression setting could not be saved. Please try again." });
             messages.Add("lib.fso", new string[3] { "禁用全屏优化", "Disable fullscreen optimizations", "全画面最適化を無効化" });
             messages.Add("lib.fso.tip", new string[3] { "默认关闭；仅在游戏有兼容问题时尝试，下次启动游戏生效。", "Off by default. Try it for game compatibility issues; takes effect on the next game launch.", "既定はオフ。ゲームの互換性に問題がある場合に試してください。次回のゲーム起動時に適用されます。" });
             messages.Add("lib.fso.failed", new string[3] { "全屏优化设置未能保存或应用，请重试。", "The fullscreen optimization setting could not be saved or applied. Please try again.", "全画面最適化の設定を保存または適用できませんでした。もう一度お試しください。" });

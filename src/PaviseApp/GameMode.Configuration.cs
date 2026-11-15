@@ -157,10 +157,6 @@ namespace PaviseApp
             {
                 list.Add(Lang.T("t.gamemodeenv.34"));
             }
-            if (dwmBoostActive)
-            {
-                list.Add(Lang.T("gm.dwmboost"));
-            }
             if (RssSteer.HasResidue)
             {
                 list.Add(Lang.T("gm.rsssteer"));

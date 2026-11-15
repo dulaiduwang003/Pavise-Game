@@ -210,6 +210,8 @@ namespace PaviseApp
             case "GameNvRebarV1":
             case "GameDisableFullscreenOptimizationsV1":
                 return "0";
+            case AceSuppressionPolicy.Key:
+                return AceSuppressionPolicy.LegacyDefault();
             default:
                 if (preferenceReads != null)
                 {

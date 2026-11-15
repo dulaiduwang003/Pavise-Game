@@ -100,6 +100,8 @@ namespace PaviseApp
         private bool ReleaseAll(string reason) { Interlocked.Increment(ref releaseCalls); return true; }
         private static int FullSweepInterval(bool eventsAvailable) { return eventsAvailable ? 60000 : 8000; }
         private void SyncAffinity(bool suspended) { }
+        // ACE 会话开关不在本台架范围内，循环中的同步调用按空操作处理。
+        private void SyncAceSession() { }
         private bool Sweep()
         {
             int count;

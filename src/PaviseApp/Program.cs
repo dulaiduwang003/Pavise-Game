@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -35,23 +36,39 @@ namespace PaviseApp
         [STAThread]
         private static void Main(string[] args)
         {
+            // 守护与核心隔离辅助进程先分流，再进入完整主流程。完整主流程放在单独的方法里且不内联，
+            // 辅助进程就不必为编译它而加载界面程序集，减少启动开销。
+            if (RunHelperProcess(args)) return;
+            RunApplication(args);
+        }
+
+        // 只识别由 Pavise 自己以固定参数拉起的辅助进程，自动启动交接等参数不会出现在这里。
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool RunHelperProcess(string[] args)
+        {
+            if (args == null || args.Length == 0) return false;
+            if (GameAffinityJobGuard.TryHandleArgs(args) || CoreIsolationWorker.TryHandleArgs(args)) return true;
+            foreach (string argument in args)
+                if (string.Equals(argument, "--hard-thread-guardian", StringComparison.OrdinalIgnoreCase)) return TryHandleCriticalThreadGuardian(args);
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RunApplication(string[] args)
+        {
             int securityProbeExit;
             if (SecurityStartupProbe.TryRunHelper(args, out securityProbeExit))
             { Environment.ExitCode = securityProbeExit; return; }
             AutostartJobHandoff.Incoming jobHandoff;
             args = AutostartJobHandoff.Strip(args, out jobHandoff);
             if (SelfUpdateInstaller.TryRun(args)) return;
-            if (TryHandleCriticalThreadGuardian(args))
-            {
-                return;
-            }
             if (args.Length == 2 && args[0] == "--finish-uninstall")
             {
                 Environment.ExitCode = ((!UninstallFinalizer.Run(args[1])) ? 1 : 0);
             }
             else
             {
-                if (GameAffinityJobGuard.TryHandleArgs(args) || CoreIsolationWorker.TryHandleArgs(args) || GameExtension.TryHandleArgs(args))
+                if (GameExtension.TryHandleArgs(args))
                 {
                     return;
                 }

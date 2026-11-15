@@ -75,6 +75,11 @@ namespace PaviseApp
             return IntPtr.Zero;
         }
 
+        // 原目标已经不在：不是读取失败，调用方不应计入失败预算。
+        internal const string TargetGone = "原目标已退出或进程编号已复用";
+        internal static bool IsTargetGone(string reason)
+        { return reason != null && reason.IndexOf(TargetGone, StringComparison.Ordinal) >= 0; }
+
         internal static IntPtr OpenQueryIdentity(int pid, long birth, out string reason)
         {
             reason = null;
@@ -83,12 +88,14 @@ namespace PaviseApp
             IntPtr process = Native.OpenProcess(0x1000, false, pid);
             if (process == IntPtr.Zero)
             {
-                reason = "OpenProcess(QUERY_LIMITED_INFORMATION) 失败，win32=" + Marshal.GetLastWin32Error();
+                int error = Marshal.GetLastWin32Error();
+                // 进程编号已不存在（87）与身份核验发现已退出是同一件事，调用方据此区分“目标已退出”和读取失败。
+                reason = error == 87 ? TargetGone : "OpenProcess(QUERY_LIMITED_INFORMATION) 失败，win32=" + error;
                 return IntPtr.Zero;
             }
             int identity = Native.QueryProcessIdentityState(process, birth);
             if (identity == 0) return process;
-            reason = identity == 1 ? "原目标已退出或进程编号已复用"
+            reason = identity == 1 ? TargetGone
                 : "GetProcessTimes 未能核验目标身份，win32=" + Marshal.GetLastWin32Error();
             Native.CloseHandle(process);
             return IntPtr.Zero;

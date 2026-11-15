@@ -29,7 +29,6 @@ namespace PaviseApp
             messages.Add("log.powerplan.off", new string[3] { "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off" });
             messages.Add("plan.pick.managed", new string[2] { "托管", "Managed" });
             messages.Add("plan.pick.local", new string[2] { "本机", "Local" });
-            messages.Add("extreme.dwm", new string[2] { "DWM 合成调度保护", "DWM scheduling protection" });
             messages.Add("st.power.verified", new[] { "对局电源已验证", "Match power verified", "ゲーム用電源を確認済み" });
             messages.Add("st.power.pending", new[] { "对局电源待验证", "Match power pending verification", "ゲーム用電源を確認中" });
             messages.Add("st.power.stopped", new[] { "对局电源故障·已停用", "Match power failed; stopped", "ゲーム用電源でエラー・停止中" });

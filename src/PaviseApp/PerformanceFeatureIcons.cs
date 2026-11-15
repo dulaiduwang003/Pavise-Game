@@ -184,7 +184,6 @@ namespace PaviseApp
             Add(dictionary, Kind.Power, "PowerPlanOn");
             Add(dictionary, Kind.CacheWarm, "GmCacheWarmV2");
             Add(dictionary, Kind.CleanMemory, "GmStandbyCleanerV2");
-            Add(dictionary, Kind.Desktop, "GmDwmBoost");
             Add(dictionary, Kind.English, "GmEnglishInputV1");
             Add(dictionary, Kind.NvPerformance, "NvMaxPerf");
             Add(dictionary, Kind.Shader, "NvShaderCache");

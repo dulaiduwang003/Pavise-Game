@@ -22,6 +22,8 @@ namespace PaviseApp
     internal enum AntiCheatAffinityRead { Known, Gone, DifferentProcess, Unavailable, Unsupported }
     internal sealed class AntiCheatAffinityObservation
     {
+        // 逐线程核验报告“目标新建了尚未纳入的线程”时使用的阶段名（由 SGuardThreadAffinityJournal 写出），只用于日志措辞。
+        internal const string NewThreadPendingPhase = "new-thread-not-admitted";
         internal AntiCheatAffinityRead Read;
         internal ushort Group;
         internal ulong Mask, AllowedMask;
@@ -486,8 +488,17 @@ namespace PaviseApp
                     guard.Owned = true; guard.EverOwned = true; guard.MaintenanceFailures = 0; guard.NextRead = now + 1000;
                     if (maintaining && now >= guard.NextLog)
                     {
-                        Logger.Info("反作弊亲和性读回漂移已纠正：目标=" + identity.Key + " 掩码=0x" + targetMask.ToString("X", CultureInfo.InvariantCulture)
-                            + " 纠正前掩码=0x" + read.Mask.ToString("X", CultureInfo.InvariantCulture) + " 核验详情=" + read.Detail);
+                        // 目标新建的线程尚未纳入时，进程掩码和已有线程都没有漂移，不能记成“漂移已纠正”。
+                        if (read.Mask == targetMask && (read.Detail ?? "").IndexOf(AntiCheatAffinityObservation.NewThreadPendingPhase, StringComparison.Ordinal) >= 0)
+                        {
+                            Logger.Info("反作弊新线程已纳入：目标=" + identity.Key + " 掩码=0x" + targetMask.ToString("X", CultureInfo.InvariantCulture)
+                                + " 进程掩码未变 线程详情=" + read.Detail);
+                        }
+                        else
+                        {
+                            Logger.Info("反作弊亲和性读回漂移已纠正：目标=" + identity.Key + " 掩码=0x" + targetMask.ToString("X", CultureInfo.InvariantCulture)
+                                + " 纠正前掩码=0x" + read.Mask.ToString("X", CultureInfo.InvariantCulture) + " 核验详情=" + read.Detail);
+                        }
                         guard.NextLog = now + 30000;
                     }
                     return guard.Last = Result(maintaining ? "reasserted" : "bound", after.Detail.Length == 0

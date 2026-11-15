@@ -379,8 +379,6 @@ namespace PaviseApp
 
         private volatile bool boostOn;
 
-        private volatile bool pauseMaintOn;
-
         private bool maintActive;
 
         private volatile bool nvMaxPerf;
@@ -403,8 +401,6 @@ namespace PaviseApp
 
         private volatile string nvDlssMode = "off";
 
-        private volatile bool dwmBoostOn;
-
         private volatile bool amdAfmf;
 
         private volatile bool rsrOn;
@@ -412,8 +408,6 @@ namespace PaviseApp
         private bool pqosActive;
 
         private bool awakeActive;
-
-        private bool dwmBoostActive;
 
         private bool gpwActive;
 

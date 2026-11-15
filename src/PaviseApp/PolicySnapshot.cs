@@ -190,7 +190,7 @@ namespace PaviseApp
         {
             get
             {
-                return On("GmPauseMaintenanceV1");
+                return SuppressBackground;
             }
         }
 
@@ -235,14 +235,6 @@ namespace PaviseApp
             get
             {
                 return false;
-            }
-        }
-
-        public bool DwmBoost
-        {
-            get
-            {
-                return On("GmDwmBoost");
             }
         }
 

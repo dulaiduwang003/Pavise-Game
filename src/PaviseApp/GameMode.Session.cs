@@ -565,6 +565,7 @@ namespace PaviseApp
                 if (gameGoneSinceTicks != 0)
                 {
                     gameGoneSinceTicks = 0L;
+                    NotifyAntiCheatSession();
                     if (active)
                     {
                         Logger.Log(Lang.T("log.gamemode.44", 0));
@@ -663,6 +664,7 @@ namespace PaviseApp
                 if (gameGoneSinceTicks == 0)
                 {
                     gameGoneSinceTicks = ticks;
+                    NotifyAntiCheatSession();
                     InvalidatePowerPlanSession();
                     RevokeCriticalThreadIntent("session-unconfirmed/exit-grace");
                     StopCriticalThreads(0, "session-unconfirmed/exit-grace");
@@ -1011,6 +1013,7 @@ namespace PaviseApp
                 lastPowerPolicyKey = -1;
                 powerSessionEnding = false;
             }
+            NotifyAntiCheatSession();
         }
         private void ReportBegin(string game)
         {

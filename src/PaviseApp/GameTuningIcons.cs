@@ -12,6 +12,11 @@ namespace PaviseApp
                 Glyphs.Draw(g, "chip", bounds, color);
                 return;
             }
+            if (key == "ace")
+            {
+                Glyphs.Draw(g, "acshield", bounds, color);
+                return;
+            }
             GraphicsState gstate = g.Save();
             try
             {

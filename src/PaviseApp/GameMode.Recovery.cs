@@ -807,14 +807,6 @@ namespace PaviseApp
             {
                 operationsSucceeded = false;
             }
-            if (RunAutomaticRestore("dwmboost", () => DwmBoost.Restore()))
-            {
-                dwmBoostActive = false;
-            }
-            else
-            {
-                operationsSucceeded = false;
-            }
             if (!RunAutomaticRestore("rss", () => RssSteer.Restore()))
             {
                 operationsSucceeded = false;

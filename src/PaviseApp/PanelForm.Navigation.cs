@@ -113,13 +113,8 @@ namespace PaviseApp
                     coreDraftProfile = null;
                 }
             }, SyncCorePage);
-            pageHooks[3] = new PageHook(pageAntiCheat, delegate(bool active)
-            {
-                if (active)
-                {
-                    SyncAcRoster();
-                }
-            }, RefreshAcGroupStates);
+            // 反作弊页已下线，保留空页面占位，页面编号与旧设置保持兼容。
+            pageHooks[3] = new PageHook(pageAntiCheat, null, null);
             pageHooks[4] = new PageHook(pageGraphics, null, null);
             pageHooks[5] = new PageHook(pageEnvironment, null, null);
             pageHooks[6] = new PageHook(pageAudit, null, null);
@@ -488,10 +483,6 @@ namespace PaviseApp
             if (page == pageCoreScheduling)
             {
                 return "CPU SCHEDULING // MODULE 10";
-            }
-            if (page == pageAntiCheat)
-            {
-                return "DEFENSE // MODULE 02";
             }
             if (page == pageWhitelist)
             {

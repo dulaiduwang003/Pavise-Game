@@ -237,7 +237,6 @@ namespace PaviseApp
             Step("Game DVR", GameDvr.Restore, list);
             Step("MMCSS", Mmcss.Restore, list);
             Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, list);
-            Step(Lang.T("gm.dwmboost"), DwmBoost.Restore, list);
             StepIf(Lang.T("gm.rsssteer"), () => RssSteer.HasResidue, RssSteer.Restore, list);
             Step("Laboratory system experiments", LaboratoryManualActions.RestoreAllForReset, list);
             Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, list);

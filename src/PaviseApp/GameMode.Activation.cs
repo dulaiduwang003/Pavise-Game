@@ -103,6 +103,7 @@ namespace PaviseApp
                 activeGame = null;
                 firstSweep = true;
             }
+            NotifyAntiCheatSession();
             SyncPerformanceAutomation();
             sessionPolicy = null;
             lock (sync)
@@ -233,7 +234,9 @@ namespace PaviseApp
         {
             PresentActivitySample sample = capture != null ? capture.Finish() : PresentActivitySample.Unavailable(failure);
             if (failure == "budget-exhausted") return sample;
-            RecordRendererCaptureResult(budget, candidate, "present", sample.Valid, sample.Failure);
+            // 诊断读数只随告警写一次；探测结论行沿用原有的失败文本。
+            RecordRendererCaptureResult(budget, candidate, "present", sample.Valid,
+                sample.Diagnostics.Length == 0 ? sample.Failure : sample.Failure + " 诊断[" + sample.Diagnostics + "]");
             return sample;
         }
 

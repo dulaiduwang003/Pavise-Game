@@ -12,7 +12,7 @@ namespace PaviseApp
             internal readonly WindowsBackgroundGovernor.FailurePhase Budget = new WindowsBackgroundGovernor.FailurePhase();
         }
 
-        private readonly WindowsBackgroundGovernor windowsBackground = new WindowsBackgroundGovernor(new WindowsBackgroundJobs());
+        private readonly WindowsBackgroundGovernor windowsBackground = new WindowsBackgroundGovernor(new WindowsBackgroundDirectJobs());
         private readonly Dictionary<string, WindowsPathRead> windowsBackgroundPaths = new Dictionary<string, WindowsPathRead>(StringComparer.Ordinal);
         private WindowsBackgroundGovernor.FailurePhase windowsServiceReadBudget = new WindowsBackgroundGovernor.FailurePhase();
         private long windowsBackgroundSession = -1, windowsBackgroundNext;

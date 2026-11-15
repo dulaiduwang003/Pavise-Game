@@ -690,7 +690,6 @@ namespace PaviseApp
             bool awake = BackgroundSessionPolicy.KeepAwake(enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed, activeDetection);
             bool powerPlanOn = policySnapshot2.PowerPlanOn;
             bool afmfRequested = false;
-            bool dwmBoost = policySnapshot2.DwmBoost;
             bool slowActionsDue = slowEnvAtTicks == 0 || ticks >= slowEnvAtTicks;
             bool want = pauseDownloads && slowActionsDue && Native.IsElevated() && !SessionServiceSuspended("do", ticks)
                 && (doActive || DoTweak.HasResidue || DeliveryOptimizationActivity.IsDownloading());
@@ -705,7 +704,6 @@ namespace PaviseApp
             RestoreRetiredOptionalServices();
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             StepDisplayAwake(awake);
-            dwmBoostActive = EnvStep("dwmboost", dwmBoost, dwmBoostActive, DwmBoost.Activate, DwmBoost.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             gpwActive = EnvStep("gpupower", false, gpwActive || GpuPowerMax.HasResidue(), null, GpuPowerMax.Restore);
             nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available, nvVrrActive || (!nvVrrWindowedOn && NvVrrWindowed.HasResidue), NvVrrWindowed.Activate, NvVrrWindowed.Restore);
@@ -842,7 +840,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            if (doActive || wuActive || maintActive || optionalServicesActive || pqosActive || awakeActive || dwmBoostActive || gpwActive || nvVrrActive || intelEndActive || laptopPerfActive || Volatile.Read(ref laptopPerfWorker) != 0 || planActive || timerRaised || rsrActive || amdAlagActive || amdAfmfActive || (standbyCleaner != null && standbyCleaner.HasInFlight))
+            if (doActive || wuActive || maintActive || optionalServicesActive || pqosActive || awakeActive || gpwActive || nvVrrActive || intelEndActive || laptopPerfActive || Volatile.Read(ref laptopPerfWorker) != 0 || planActive || timerRaised || rsrActive || amdAlagActive || amdAfmfActive || (standbyCleaner != null && standbyCleaner.HasInFlight))
             {
                 return true;
             }

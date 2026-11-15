@@ -14,10 +14,54 @@ namespace PaviseApp
         private string configurationPresetLastIssue = "";
         private ConfigurationPresetGuideDialog configurationPresetGuide;
         private bool configurationPresetRestartPending, configurationPresetRestartPartial, configurationPresetRestartUnverified;
+        private bool tuningIntroHandled, tuningIntroQueued;
 #if PAVISE_SELFTEST
         internal Action<ConfigurationPresetGuideDialog> ConfigurationPresetGuideForTest;
         internal Action<string, string> ConfigurationPresetRestartReminderForTest;
 #endif
+
+        private bool ReadyForTuningIntro()
+        {
+            return !tuningIntroHandled && pagePolicy != null && curPage == pagePolicy
+                && !IsDisposed && !Disposing && !runtimeShutdownBusy && wipeBusy == 0
+                && !SelfUpdateGate.IsBusy && !UpdateDialog.IsOpen && IsHandleCreated && Visible && Enabled
+                && WindowState != FormWindowState.Minimized && !shotMode
+                && !introPending && !introActive && !outroActive && !moveSizeLoop;
+        }
+
+        private void QueueTuningIntro()
+        {
+            if (tuningIntroQueued || !ReadyForTuningIntro()) return;
+            tuningIntroQueued = true;
+            try
+            {
+                BeginInvoke(new MethodInvoker(delegate
+                {
+                    tuningIntroQueued = false;
+                    if (!ReadyForTuningIntro() || AnyDialogOpen()) return;
+                    tuningIntroHandled = true;
+                    if (Settings.Load("TuningIntroSeenV1", false)) return;
+                    try
+                    {
+                        using (var dialog = PaviseDialog.CreateTuningIntro(this))
+                        {
+                            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                        }
+                        // 保存失败只留到下次启动处理，避免反复打断本次操作。
+                        bool confirmed;
+                        if (!Settings.SaveDurable("TuningIntroSeenV1", true)
+                            || !Settings.TryLoadBool("TuningIntroSeenV1", false, out confirmed) || !confirmed)
+                            Logger.Warn("调优面板使用提示已确认，但确认状态未能保存");
+                    }
+                    catch (Exception error) { Logger.Warn("调优面板使用提示展示失败： " + error.GetType().Name); }
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                tuningIntroQueued = false;
+                tuningIntroHandled = true;
+            }
+        }
 
         private void BuildConfigurationPresetControls()
         {

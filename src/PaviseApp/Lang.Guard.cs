@@ -15,7 +15,7 @@ namespace PaviseApp
             messages.Add("background.governance.status.normal", new[] { "正常治理", "Normal governance", "通常の制御" });
             messages.Add("background.governance.status.aggressive", new[] { "激进治理（含动态提优限制）", "Aggressive governance (including priority-boost limits)", "積極的な制御（一時的な優先度上昇も抑制）" });
             messages.Add("background.governance.summary", new[] { "治理普通后台、诊断服务、搜索索引与小组件", "Governs background apps, diagnostics, indexing and Widgets", "診断・検索インデックス・ウィジェットも制御し、積極的ではさらに制限" });
-            messages.Add("background.governance.detail", new[] { "治理普通后台；诊断服务、索引和小组件每目标限 0.01% CPU，正常最多 2 个物理核，激进最多 1 核并降低优先级。激进还限制普通后台动态提优，后台响应可能变慢。\n智能切出释放，竞技保持；游戏、必要依赖及手工白名单受保护，关闭或退局恢复。", "Governs background apps. Diagnostics, indexing and Widgets are capped at 0.01% CPU per target: up to 2 physical cores in Normal, 1 with lower priority in Aggressive. Aggressive also blocks background priority boosts and may slow background responses.\nSmart releases limits on switch-out; Competitive keeps them. Games, required dependencies and manual whitelist entries stay protected. Off or game exit restores changes.", "通常は一般のバックグラウンドに加え、診断・検索インデックス・ウィジェットのCPU使用量と実行コアを制御します。積極的では割り当てをさらに下げ、一般のバックグラウンドの動的優先度上昇も抑えるため、応答が遅くなる場合があります。\nスマートは切り替え時に解除し、競技は制御を継続。ゲーム・必要な依存先・手動の許可ルールを保護し、無効化・終了時に復元します。" });
+            messages.Add("background.governance.detail", new[] { "治理普通后台；诊断服务、索引和小组件每目标限 0.01% CPU，正常最多 2 个物理核，激进最多 1 核并降低优先级。激进还限制普通后台动态提优，后台响应可能变慢。对局期间还暂停传递优化的后台下载，并阻止新的自动维护开始。\n智能切出释放，竞技保持；游戏、必要依赖及手工白名单受保护，关闭或退局恢复。", "Governs background apps. Diagnostics, indexing and Widgets are capped at 0.01% CPU per target: up to 2 physical cores in Normal, 1 with lower priority in Aggressive. Aggressive also blocks background priority boosts and may slow background responses. During matches it also pauses Delivery Optimization background downloads and keeps new automatic maintenance from starting.\nSmart releases limits on switch-out; Competitive keeps them. Games, required dependencies and manual whitelist entries stay protected. Off or game exit restores changes.", "通常は一般のバックグラウンドに加え、診断・検索インデックス・ウィジェットのCPU使用量と実行コアを制御します。積極的では割り当てをさらに下げ、一般のバックグラウンドの動的優先度上昇も抑えるため、応答が遅くなる場合があります。\nスマートは切り替え時に解除し、競技は制御を継続。ゲーム・必要な依存先・手動の許可ルールを保護し、無効化・終了時に復元します。" });
             messages.Add("auto.framecoord", new string[3] { "渲染关键线程提优", "Render thread boost", "描画重要スレッドの優先度" });
             messages.Add("auto.threadboost", new string[3] { "游戏线程提优", "Game thread boost", "ゲームスレッド優先度" });
             messages.Add("background.scope", new string[3] { "后台范围：可纳入的独立服务 {0} 个；普通后台禁用动态优先级提升策略：{1}", "Background scope: {0} eligible dedicated services; policy disables ordinary background dynamic priority boosts: {1}", "対象の独立サービス：{0} 件、通常のバックグラウンドで動的優先度ブーストを無効にする方針：{1}" });
@@ -280,6 +280,9 @@ namespace PaviseApp
             messages.Add("log.gamemodeboost.59", new string[2] { "本机不接受计时器分辨率豁免位 已停止再尝试 提优其余部分照常 该位只影响窗口被遮挡时游戏能否维持高精度计时 ", "This machine does not accept the timer-resolution exemption bit, so it will no longer be attempted; the rest of the boost is unaffected. The bit only governs whether a game keeps high-resolution timing while its window is occluded " });
             messages.Add("log.gamemodeboost.60", new string[2] { "游戏提优首次生效 detectionLatency=", "Game priority first applied detectionLatency=" });
             messages.Add("log.gamemodeboost.61", new string[2] { "ms", "ms" });
+            messages.Add("log.gamemodeboost.62", new string[2] { "游戏状态首次核验 detectionLatency=", "Game state first verified detectionLatency=" });
+            messages.Add("log.gamemodeboost.63", new string[2] { "游戏优先级未启用 ", "Game priorities not enabled " });
+            messages.Add("log.gamemodeboost.64", new string[2] { " 本局未开启 CPU、读写或显卡提优", " no CPU, I/O or GPU boost is enabled for this session" });
             messages.Add("log.tamer.1", new string[2] { "反作弊分组 ", "Anti-cheat group " });
             messages.Add("log.tamer.3", new string[2] { "开启压制", "enable suppression" });
             messages.Add("log.tamer.4", new string[2] { "关闭并恢复", "disable and restore" });
@@ -297,6 +300,8 @@ namespace PaviseApp
             messages.Add("t.backgroundpressurecontroller.2", new string[2] { "写入被拒绝，通常为安全软件的自我保护机制所致", "The write was denied, typically by security software protecting itself" });
             messages.Add("t.backgroundpressurecontroller.3", new string[2] { "写入后回读不一致，该值已被其他程序改回", "The read-back after writing does not match; another program reverted the value" });
             messages.Add("t.backgroundpressurecontroller.4", new string[2] { "写入被拒", "Write denied" });
+            messages.Add("t.backgroundpressurecontroller.10", new string[2] { "线程分配保护拒绝，目标自行设置了线程亲和性或 CPU 集，未改写其核心范围", "Thread placement guard refused: the target sets its own thread affinity or CPU sets, so its core range was left unchanged" });
+            messages.Add("t.backgroundpressurecontroller.11", new string[2] { "未归类原因", "Unclassified reason" });
             messages.Add("t.backgroundpressurecontroller.5", new string[2] { "省电", "Power saving" });
             messages.Add("t.backgroundpressurecontroller.6", new string[2] { "限流", "Throttling" });
             messages.Add("t.backgroundpressurecontroller.7", new string[2] { "隔离", "Isolation" });

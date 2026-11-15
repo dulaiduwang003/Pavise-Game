@@ -81,7 +81,6 @@ namespace PaviseApp
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
-            pauseMaintOn = Settings.Load("GmPauseMaintenanceV1", true);
             pauseServicesOn = false;
             Settings.Remove("GmPauseServices");
             InitializeStandbyCleaner();
@@ -94,7 +93,8 @@ namespace PaviseApp
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
-            dwmBoostOn = Settings.Load("GmDwmBoost", false);
+            // 桌面合成调度已下线：DWM 的 MMCSS 请求只随本进程存活，不留系统残留，只需清除旧开关。
+            Settings.Remove("GmDwmBoost");
             // 独显预选已下线，开关和旧台账一并清除；旧版写入的显卡偏好保持现值，不再恢复。
             Settings.Remove("GpuPrefStageOn");
             Settings.Remove("GpuPrefStage");
@@ -112,7 +112,7 @@ namespace PaviseApp
             Settings.Remove("GmCacheWarm");
             cacheWarmOn = Settings.Load("GmCacheWarmV2", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
-            mmcssOn = Settings.Load("GmMmcss", true);
+            mmcssOn = true;
             string[] retiredSettings = AutoCores.RetiredSettings;
             foreach (string name in retiredSettings)
             {
