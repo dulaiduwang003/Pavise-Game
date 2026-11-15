@@ -361,6 +361,7 @@ namespace PaviseApp
             if (setProfileOverrideSucceeded)
             {
                 NotifyOverridePolicyChanged(key, PolicyCatalog.Canonical(key, value) == "1");
+                if (key == AceSuppressionPolicy.Key) NotifyAntiCheatSession();
             }
             return setProfileOverrideSucceeded;
         }

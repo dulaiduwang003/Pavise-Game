@@ -585,7 +585,10 @@ namespace PaviseApp
             foreach (AcGroup acGroup in groups)
             {
                 list3.Add(acGroup.Name);
-                list2.Add(acGroup.Name + "\r\n" + string.Join(" · ", acGroup.Procs));
+                // ACE 只在游戏库深度调优里为该游戏开启时于对局中压制，其余反作弊一律只保护或只记录。
+                string scope = acGroup.Suppressible ? AutoText("按游戏设置压制（游戏库 · 深度调优）", "Suppressed only for games enabled in Library · Advanced tuning")
+                    : (acGroup.RecordOnly ? AutoText("仅记录", "Record only") : Lang.T("ac.protectiononly"));
+                list2.Add(acGroup.Name + " · " + scope + "\r\n" + string.Join(" · ", acGroup.Procs));
             }
             AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;
             foreach (AcProtectionGroup acProtectionGroup in protectionOnlyGroups)
@@ -597,6 +600,16 @@ namespace PaviseApp
             string[] value5 = PeripheralCatalog.NameKeywordsForDisplay();
             string[] value6 = PeripheralCatalog.DescriptionWordsForDisplay();
             list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + DetailSection("white.auto.details.vendors", string.Join(" · ", PeripheralCatalog.PresentVendorTokensForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
+            string[] restricted = ProtectedGameRoster.Names();
+            if (restricted.Length > 0)
+            {
+                WhitelistItem history = AutomaticExemption("ac.roster", string.Format(AutoText("{0} 个游戏 · {1}", "{0} games · {1}"), restricted.Length, string.Join(" · ", restricted)), "shield",
+                    Lang.T("ac.roster.confirm") + "\r\n\r\n" + string.Join("\r\n", restricted));
+                history.AccessHistory = true;
+                history.Badge = AutoText("历史记录", "History");
+                history.StateText = AutoText("查看与清空", "View and clear");
+                list.Add(history);
+            }
             string streamingProducts = string.Join(" · ", StreamingToolCatalog.ProductsForDisplay());
             list.Add(AutomaticExemption("white.auto.streaming", Lang.F("white.auto.streaming.list", streamingProducts), "chart", DetailSection("white.auto.details.products", streamingProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", StreamingToolCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.streaming.note")));
             return list;

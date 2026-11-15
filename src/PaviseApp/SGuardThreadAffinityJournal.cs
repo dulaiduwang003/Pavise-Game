@@ -347,6 +347,25 @@ namespace PaviseApp
         private static bool Ids(int pid, out HashSet<uint> ids, out string reason)
         {
             ids = new HashSet<uint>(); reason = null;
+            List<uint> own;
+            // 逐秒核验走这里：优先只遍历该进程自己的线程，其次系统进程信息查询，最后 Toolhelp，预算和停止原因一致。
+            if (ProcessThreadList.TryReadOwn(pid, MaximumThreads, out own))
+            {
+                foreach (uint tid in own)
+                    if (!ids.Add(tid) || ids.Count > MaximumThreads)
+                    { reason = "反作弊线程准入停止：阶段=thread-count-budget"; return false; }
+                return true;
+            }
+            bool found; List<uint> listed; int systemThreads;
+            if (ProcessThreadList.TryRead(pid, out found, out listed, out systemThreads))
+            {
+                if (systemThreads > 32768) { reason = "反作弊线程准入停止：阶段=snapshot-entry-budget"; return false; }
+                foreach (uint tid in listed)
+                    if (!ids.Add(tid) || ids.Count > MaximumThreads)
+                    { reason = "反作弊线程准入停止：阶段=thread-count-budget"; return false; }
+                if (ids.Count == 0) return Failure("thread-snapshot-complete", out reason);
+                return true;
+            }
             IntPtr snapshot = CreateToolhelp32Snapshot(4, 0);
             if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return Failure("thread-snapshot", out reason);
             try
@@ -751,6 +770,7 @@ namespace PaviseApp
                         if (!Read(journal, row, out fact, out reason)) return false;
                         if (!fact.Gone) { admitted = true; break; }
                     }
+                    // 阶段名被 AntiCheatAffinityLease 的日志用来区分“新线程待纳入”和真实漂移，改名时两处一起改。
                     if (!admitted) { reason = "反作弊线程覆盖待确认：阶段=new-thread-not-admitted:TID=" + tid; return false; }
                 }
                 return true;

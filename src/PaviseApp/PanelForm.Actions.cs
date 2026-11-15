@@ -44,55 +44,6 @@ namespace PaviseApp
                 finally { releaseNotesShowing = false; }
             }
         }
-        private void ShowAcHelp()
-        {
-            ShowAcInformation(Lang.T("v14.anticheat"), Lang.T("v14.anticheat.groups.sub") + "\r\n\r\n" + Lang.T("ac.mode." + AntiCheatModes.Token(tamer.Mode) + ".d") + "\r\n\r\n" + Lang.T("ac.mode.disclaimer"));
-        }
-        private void ShowAcInformation(string title, string detail)
-        {
-            PaviseDialog.Info(this, title, detail);
-        }
-        private void OpenAcDrawer(string kind)
-        {
-            if (kind != "roster" && kind != "records")
-            {
-                return;
-            }
-            if (acDrawerKind != kind)
-            {
-                acDrawerBody.AutoScrollPosition = Point.Empty;
-            }
-            acDrawerKind = kind;
-            acOtherOpen = kind == "records";
-            if (kind == "roster")
-            {
-                SyncAcRoster();
-            }
-            acDrawerTitle.Text = AutoText((kind == "roster") ? "兼容名单" : "兼容与记录", (kind == "roster") ? "Compatibility list" : "Compatibility & records");
-            acDrawer.Visible = true;
-            acList.Visible = false;
-            acClear.Visible = kind == "roster";
-            lblAcRoster.Visible = kind == "roster";
-            foreach (Control acReadOnlyCard in acReadOnlyCards)
-            {
-                acReadOnlyCard.Visible = kind == "records";
-            }
-            foreach (Control acRosterRow in acRosterRows)
-            {
-                acRosterRow.Visible = kind == "roster";
-            }
-            LayoutAntiCheatViewport();
-            acDrawer.BringToFront();
-            acDrawerClose.Focus();
-        }
-        private void OnClearRoster()
-        {
-            if (ProtectedGameRoster.Names().Length != 0 && PaviseDialog.Confirm(this, Lang.T("ac.roster"), Lang.T("ac.roster.confirm"), DlgKind.Warn))
-            {
-                ProtectedGameRoster.Clear();
-                SyncAcRoster();
-            }
-        }
         private void ShowAuditIdle()
         {
             auditScan.SetIdle(Lang.T("audit.idle.title"), Lang.F("audit.idle.hint", 120));
@@ -958,6 +909,16 @@ namespace PaviseApp
             {
                 return false;
             }
+            if (whitelistItem.AccessHistory)
+            {
+                PaviseDialog.ShowWithSecondaryAction(this, whitelistItem.Title, whitelistItem.Details, Lang.T("btn.roster.clear"), AutoText("清空失败", "Clear failed"), delegate
+                {
+                    ProtectedGameRoster.Clear();
+                    RefreshWhitelist(false);
+                    return ProtectedGameRoster.Names().Length == 0;
+                }, 560);
+                return true;
+            }
             TextBox textBox = new TextBox();
             textBox.Multiline = true;
             textBox.ReadOnly = true;
@@ -1169,6 +1130,7 @@ namespace PaviseApp
                     throw;
                 }
             }
+            if (index == 2) QueueTuningIntro();
         }
         protected override void OnHandleDestroyed(EventArgs e)
         {
@@ -1430,6 +1392,7 @@ namespace PaviseApp
                 {
                     pageHook.OnTick();
                 }
+                QueueTuningIntro();
             }
         }
         private void OnAutoHideTick(object s, EventArgs e)
@@ -1482,7 +1445,7 @@ namespace PaviseApp
             {
                 SetModeFlyout(false);
             }
-            else if ((curPage != pageAntiCheat || !CloseAcDrawer()) && (curPage != pageLibrary || lstGames == null || !lstGames.CollapseExpandedConfiguration()))
+            else if ((curPage != pageLibrary || lstGames == null || !lstGames.CollapseExpandedConfiguration()))
             {
                 if (curPage == pageCoreScheduling)
                 {

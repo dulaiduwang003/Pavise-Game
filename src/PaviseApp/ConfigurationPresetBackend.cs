@@ -70,7 +70,7 @@ namespace PaviseApp
             }
             if (key == "AutoTimerTick" || key == "AutoGlobalTimer")
                 return Boolean(key, key == "AutoTimerTick" ? TimerTickTweak.OwnsState : GlobalTimerResTweak.OwnsState);
-            return Boolean(key, policy != null ? policy.Fallback == "1" : key == "GmMmcss" || key == "GameDvrOff");
+            return Boolean(key, policy != null ? policy.Fallback == "1" : key == "GameDvrOff");
         }
         public string ExtraSnapshot()
         { return ReadSavedExtra(); }
@@ -117,10 +117,8 @@ namespace PaviseApp
                     case "NvLowLat": return NvSetting("prerender", "NVIDIA 低延迟接口不支持或无法读取", "NVIDIA low-latency setting unsupported or unreadable");
                     case "AutoGlobalTimer": return Available(build < 19041 || build >= 20348, "系统不支持全局计时器配置", "Global timer configuration is unsupported on this OS");
                     case "AutoTimerTick": return Available(!LaboratoryClockRepair.HasReceipt && TimerTickTweak.CanReadForPreset(), "计时配置不可读取或有待恢复的修复记录", "Timer settings unreadable or timer repair recovery pending");
-                    case "GmMmcss": return Available(ServiceExists("MMCSS") && RegistryAvailable("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"), "游戏多媒体调度配置不可用", "Game multimedia scheduling configuration unavailable");
                     case "GmPauseUpdate": return Available(ServiceExists("wuauserv"), "未找到 Windows 更新服务", "Windows Update service unavailable");
                     case "GmPauseDl": return Available(ServiceExists("DoSvc"), "未找到传递优化服务", "Delivery Optimization service unavailable");
-                    case "GmPauseMaintenanceV1": return Available(ServiceExists("Schedule"), "计划任务服务不可用", "Task Scheduler service unavailable");
                     case "AutoNtfsShortNamesV1": return Available(NtfsAvailable(), "未找到可核验的 NTFS 卷", "No verified NTFS volume available");
                     case "AutoGameMitigationsV1": return Available(build >= 16299, "系统不支持逐程序保护配置", "Per-image mitigation settings unsupported");
                     case PerformanceActionCatalog.CpuMitigations:

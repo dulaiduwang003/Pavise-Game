@@ -67,15 +67,6 @@ namespace PaviseApp
                 }
                 return ok;
             }
-            if (key == "GmMmcss")
-            {
-                if (!Settings.SaveDurable(key, on)) return false;
-                mmcssOn = on; SyncGameDvr();
-                string state = AutomaticExecutionState(key); detail = AutomationStateLabel(state);
-                bool ok = state != "failed" && state != "restore-failed" && state != "stopped";
-                if (!ok && on && Settings.SaveDurable(key, false)) { mmcssOn = false; SyncGameDvr(); }
-                return ok;
-            }
             if (key == LaboratoryPower.IdleKey || key == LaboratoryPower.EppKey || key == LaboratoryGpu.ClockKey || key == LaboratoryGpu.PowerKey || key == LaboratoryAudio.Key)
             {
                 if (!Settings.SaveStrDurable(key, value)) return false;

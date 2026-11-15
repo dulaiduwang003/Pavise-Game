@@ -172,6 +172,13 @@ namespace PaviseApp
                 catch
                 {
                 }
+                try
+                {
+                    WindowsBackgroundDirectJobs.ReportLeftovers();
+                }
+                catch
+                {
+                }
                 ThreadPool.QueueUserWorkItem(delegate
                 {
                     try
@@ -374,6 +381,8 @@ namespace PaviseApp
                 Tamer tamer = new Tamer(core3);
                 GameMode gameMode = new GameMode(dir, core3);
                 tamer.AffinityGameContext = gameMode.GetAntiCheatAffinityContext;
+                tamer.AceSessionChoice = gameMode.GetAceSessionChoice;
+                gameMode.AntiCheatSessionChanged = tamer.Poke;
                 gameMode.InitializeAutomation();
                 gameMode.Enabled = Settings.Load("GameModeOn", true);
                 if (gameMode.ProfileStoreSaveFailed)

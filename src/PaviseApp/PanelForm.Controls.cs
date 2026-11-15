@@ -50,67 +50,6 @@ namespace PaviseApp
                 }
             };
         }
-        private AcViewState CaptureAcViewState()
-        {
-            if (curPage != pageAntiCheat || acDrawerBody == null || acViewport == null)
-            {
-                return null;
-            }
-            float acLayoutScaleLimit = Math.Max(0.01f, acLayoutScale);
-            int lowerBound = Math.Max(0, -acViewport.AutoScrollPosition.Y);
-            AcViewState acViewState = new AcViewState();
-            acViewState.Drawer = acDrawerKind;
-            acViewState.BodyScroll = acDrawerBody.AutoScroll;
-            acViewState.InnerY = (float)Math.Max(0, -acDrawerBody.AutoScrollPosition.Y) / acLayoutScaleLimit;
-            acViewState.OuterY = (float)lowerBound / acLayoutScaleLimit;
-            acViewState.BodyOrigin = (float)(acRosterBar.Top + lowerBound + acDrawer.Top + acDrawerBody.Top) / acLayoutScaleLimit;
-            return acViewState;
-        }
-        private void RestoreAcViewState(AcViewState state)
-        {
-            if (state != null && curPage == pageAntiCheat)
-            {
-                if (state.Drawer.Length > 0)
-                {
-                    OpenAcDrawer(state.Drawer);
-                }
-                RestoreAcScrollPosition(state);
-            }
-        }
-        private bool CloseAcDrawer()
-        {
-            if (acDrawerKind.Length == 0 || acDrawer == null)
-            {
-                return false;
-            }
-            string acDrawerKindSnapshot = acDrawerKind;
-            acDrawerKind = "";
-            acOtherOpen = false;
-            acDrawer.Visible = false;
-            acList.Visible = true;
-            LayoutAntiCheatViewport();
-            ((acDrawerKindSnapshot == "roster") ? acRosterEntry : acOtherToggle).Focus();
-            return true;
-        }
-        private void AddAcReadOnly(string name, string description, string[] processes, bool recordOnly)
-        {
-            string tag = Lang.T(recordOnly ? "ac.recordonly" : "ac.protectiononly");
-            if (tag == "ac.recordonly")
-            {
-                tag = AutoText("仅记录", "Record only");
-            }
-            AcReadOnlyButton acReadOnlyButton = new AcReadOnlyButton(name, tag, recordOnly);
-            acReadOnlyButton.Name = "AntiCheatReadOnly";
-            acReadOnlyButton.Visible = false;
-            acReadOnlyButton.AccessibleName = name + " · " + tag;
-            AcReadOnlyButton acReadOnlyButton2 = acReadOnlyButton;
-            acReadOnlyButton2.Click += delegate
-            {
-                ShowAcInformation(name, tag + "\r\n\r\n" + description + "\r\n\r\n" + string.Join(" · ", processes));
-            };
-            acDrawerBody.Controls.Add(acReadOnlyButton2);
-            acReadOnlyCards.Add(acReadOnlyButton2);
-        }
         private static Color StatusInk(bool needsAction, bool doneByPavise)
         {
             if (doneByPavise)
@@ -555,7 +494,6 @@ namespace PaviseApp
                 matchIndex = 0;
             }
             int mainReturnPageSnapshot = mainReturnPage;
-            AcViewState acViewState = CaptureAcViewState();
             CoreViewState coreViewState = CaptureCoreViewState();
             CoreEditorDraftSnapshot coreDraftSnapshot = CaptureCoreDraft();
             SavePagePosition(curPage);
@@ -568,9 +506,6 @@ namespace PaviseApp
             {
                 item.Dispose();
             }
-            acGroups.Clear();
-            acCards.Clear();
-            acToggles.Clear();
             accentLabels.Clear();
             policySync.Clear();
             stackBase.Clear();
@@ -588,14 +523,13 @@ namespace PaviseApp
                 coreRebuildDraft = coreDraftSnapshot;
                 SyncCoreEditor(CorePageProfile());
             }
-            RestoreAcViewState(acViewState);
             RestoreCoreViewState(coreViewState);
             if (UiActive)
             {
                 RefreshSlowStateAsync();
             }
         }
-        public void RenderTo(string path, int pageIndex, bool showAntiCheat = false, bool showModePicker = false, string previewMode = null)
+        public void RenderTo(string path, int pageIndex, bool showModePicker = false, string previewMode = null)
         {
             shotMode = true;
             base.StartPosition = FormStartPosition.Manual;
@@ -612,15 +546,6 @@ namespace PaviseApp
                 }
             }
             OnUiTick(null, EventArgs.Empty);
-            if (showAntiCheat)
-            {
-                nav.Select(3);
-                nav.SnapToSelection();
-                if (curPage != null)
-                {
-                    curPage.Left = pageBaseLeft;
-                }
-            }
             PerformancePreset? standard;
             switch (previewMode)
             {

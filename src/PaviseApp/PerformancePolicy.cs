@@ -41,6 +41,7 @@ namespace PaviseApp
             case "AutoBackgroundCoreLayoutV1":
             case "MatchVisualEffectsV1":
             case "GmBoostMemoryV1":
+            case "GmDwmBoost":
                 break;
             }
             return true;
@@ -120,6 +121,7 @@ namespace PaviseApp
             case "GmAutoCoresV2":
             case "GameFamilyBackground":
             case "GameNvRebarV1":
+            case AceSuppressionPolicy.Key:
                 return true;
             }
         }
@@ -184,7 +186,8 @@ namespace PaviseApp
                 return Resolve("GmBoost", raw);
             }
             if (key == "GmAwake") return "1";
-            if (key == "GmPauseDl" || key == "GmGpuDemote") return PolicyResolver.GlobalValue("GmSuppress") == "1" ? Resolve("GmSuppress", raw) : "0";
+            // 后台 GPU 让位、下载暂停与自动维护限制都随对局写入、退局恢复，由后台治理统一控制，不单独保存开关。
+            if (key == "GmPauseDl" || key == "GmGpuDemote" || key == "GmPauseMaintenanceV1") return PolicyResolver.GlobalValue("GmSuppress") == "1" ? Resolve("GmSuppress", raw) : "0";
             if (key == "PowerPlanOn")
             {
                 if (!PowerPlan.NoSwitchSelected)

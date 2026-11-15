@@ -104,7 +104,7 @@ namespace PaviseApp
                     {
                         IntPtr handle = panelForm.Handle;
                         GC.KeepAlive(handle);
-                        panelForm.RenderTo(args[1], pageIndex, args.Length >= 5 && args[4] == "anticheat", args.Length >= 5 && args[4] == "mode", (args.Length >= 5) ? args[4] : null);
+                        panelForm.RenderTo(args[1], pageIndex, args.Length >= 5 && args[4] == "mode", (args.Length >= 5) ? args[4] : null);
                         return true;
                     }
                 }

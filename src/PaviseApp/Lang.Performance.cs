@@ -6,6 +6,13 @@ namespace PaviseApp
     {
         private static void AddPerformanceMessages(Dictionary<string, string[]> messages)
         {
+            messages.Add("tuning.intro.title", new string[2] { "调优面板使用提示", "Welcome to Tuning" });
+            messages.Add("tuning.intro.body", new string[2] {
+                "不熟悉这里的选项？可以点击右上角「一键配置」，也可以保持默认，不调整也没关系。\n\nPavise 的核心功能会在游戏调度中按配置自动运行，包括对局中的资源编排与后台治理，无需在这里逐项设置。\n\n这里只是苍蝇再小也是肉，按需选择即可。",
+                "Not sure what these options do? Use One-click setup in the top-right corner, or leave the defaults as they are. There is no need to adjust them.\n\nPavise's core features run automatically during game scheduling according to your configuration, including resource orchestration and background governance during matches. You do not need to configure them one by one here.\n\nThese are just small extras; every little bit counts. Choose what suits you."
+            });
+            messages.Add("tuning.intro.accept", new string[2] { "知道了", "Got it" });
+            messages.Add("tuning.intro.countdown", new string[2] { "知道了（{0} 秒）", "Got it ({0}s)" });
             messages.Add("gfx.common", new string[2] { "通用", "Common" });
             messages.Add("gfx.common.sub", new string[2] { "Windows 应用显卡偏好", "Windows app graphics preferences" });
             messages.Add("apppref.nextlaunch", new string[2] { "下次启动应用生效", "Applies on the next app launch" });
@@ -19,8 +26,6 @@ namespace PaviseApp
             messages.Add("v20.about.online", new string[2] { "在线", "ONLINE" });
             messages.Add("v20.about.privacy", new string[2] { "隐私边界", "PRIVACY BOUNDARY" });
             messages.Add("v20.about.privacy.value", new string[2] { "0 项设备数据上传", "0 DEVICE DATA UPLOADS" });
-            messages.Add("log.dwmboost.1", new string[2] { "已请求 DWM 参与多媒体调度（MMCSS）", "Requested DWM participation in multimedia scheduling (MMCSS)" });
-            messages.Add("log.dwmboost.2", new string[2] { "已撤销本程序的 DWM 多媒体调度请求", "Released this application's DWM multimedia scheduling request" });
             messages.Add("log.rsssteer.5", new string[2] { "RSS 还原未完全成功 收据保留 下轮重试", "RSS restore incomplete; the receipt is kept for retry" });
             messages.Add("log.rsssteer.6", new string[2] { "RSS 收包区间已按收据还原", "RSS processing range restored from the receipt" });
             messages.Add("log.memcompress.1", new string[2] { "读取内存压缩状态失败 未改动", "Reading memory compression state failed; nothing changed" });

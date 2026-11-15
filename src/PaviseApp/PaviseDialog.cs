@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -40,6 +41,15 @@ namespace PaviseApp
         private bool requiredActionCompleted;
 
         private PillButton secondaryActionButton;
+
+        private Stopwatch closeDelay;
+
+        private Timer closeDelayTimer;
+
+        private bool CloseDelayPending
+        {
+            get { return closeDelay != null && (!closeDelay.IsRunning || closeDelay.Elapsed.TotalSeconds < 3); }
+        }
 
         private float sweep;
 
@@ -296,6 +306,7 @@ namespace PaviseApp
             };
             ok.Click += delegate
             {
+                if (paviseDialog.CloseDelayPending) return;
                 if (!paviseDialog.requiredAction)
                 {
                     paviseDialog.DialogResult = DialogResult.OK;
@@ -359,6 +370,11 @@ namespace PaviseApp
             base.AcceptButton = null;
             base.KeyDown += delegate(object s, KeyEventArgs e)
             {
+                if (paviseDialog.CloseDelayPending && (e.KeyCode == Keys.Escape || e.KeyCode == Keys.Return))
+                {
+                    e.SuppressKeyPress = e.Handled = true;
+                    return;
+                }
                 if (e.KeyCode == Keys.Escape)
                 {
                     if (paviseDialog.requiredAction)
@@ -413,6 +429,11 @@ namespace PaviseApp
 
         protected override void OnShown(EventArgs e)
         {
+            if (closeDelay != null)
+            {
+                closeDelay.Start();
+                closeDelayTimer.Start();
+            }
             base.OnShown(e);
             Fx.EnterForm(this);
         }
@@ -420,11 +441,42 @@ namespace PaviseApp
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
-            if (requiredAction && !requiredActionCompleted && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
+            if ((CloseDelayPending || requiredAction && !requiredActionCompleted)
+                && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
             {
                 e.Cancel = true;
                 base.DialogResult = DialogResult.None;
             }
+        }
+
+        internal static PaviseDialog CreateTuningIntro(IWin32Window owner)
+        {
+            var dialog = new PaviseDialog(Lang.T("tuning.intro.title"), Lang.T("tuning.intro.body"),
+                DlgKind.Info, Lang.T("tuning.intro.accept"), null, null, 600, null, null, owner);
+            var accept = (PillButton)dialog.Controls["dialogAccept"];
+            dialog.closeDelay = new Stopwatch();
+            dialog.closeDelayTimer = new Timer { Interval = 100 };
+            accept.Enabled = false;
+            accept.Text = Lang.F("tuning.intro.countdown", 3);
+            int buttonWidth = Math.Max(accept.Width, TextRenderer.MeasureText(accept.Text, accept.Font).Width + Theme.S(32));
+            accept.Width = Math.Min(buttonWidth, Math.Max(1, dialog.ClientSize.Width - Theme.S(52)));
+            accept.Left = dialog.ClientSize.Width - Theme.S(26) - accept.Width;
+            dialog.closeDelayTimer.Tick += delegate
+            {
+                // 按实际展示后的单调时间解锁，界面卡顿不能缩短阅读时间。
+                int remaining = Math.Max(0, (int)Math.Ceiling(3 - dialog.closeDelay.Elapsed.TotalSeconds));
+                accept.Text = remaining > 0 ? Lang.F("tuning.intro.countdown", remaining) : Lang.T("tuning.intro.accept");
+                if (remaining > 0) return;
+                dialog.closeDelayTimer.Stop();
+                accept.Enabled = true;
+            };
+            dialog.FormClosing += delegate(object sender, FormClosingEventArgs e)
+            {
+                if (!dialog.CloseDelayPending && e.CloseReason == CloseReason.UserClosing)
+                    dialog.DialogResult = DialogResult.OK;
+            };
+            dialog.Disposed += delegate { dialog.closeDelayTimer.Dispose(); };
+            return dialog;
         }
 
         internal static PaviseDialog CreateRequiredRestart(Func<bool> restart)

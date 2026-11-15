@@ -1035,8 +1035,27 @@ namespace PaviseApp
                     + " familyBest=" + (bestPid > 0 ? bestPid + ":" + bestFrames : "none") + " presenters=" + presents.ProcessCount
                     + (presents.Events < 0 ? "" : " events=" + presents.Events)
                 : "unavailable=" + presents.Failure;
-            Logger.Info("渲染进程探测 " + candidate.RendererName + " 进程编号=" + candidate.RendererPid + " 结论=" + verdict.ToString().ToLowerInvariant()
-                + " GPU三维占用=" + gpuText + " " + presentText + (gpuRequired ? " 需GPU证据=是" : ""));
+            string line = RendererProbeLogLine("渲染进程探测 " + candidate.RendererName + " 进程编号=" + candidate.RendererPid + " 结论=" + verdict.ToString().ToLowerInvariant()
+                + " GPU三维占用=" + gpuText + " " + presentText + (gpuRequired ? " 需GPU证据=是" : ""), Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
+            if (line != null) Logger.Info(line);
+        }
+        private static readonly object rendererProbeLogGate = new object();
+        private static string rendererProbeLogLast;
+        private static long rendererProbeLogAtMs;
+        private static int rendererProbeLogRepeats;
+        // 同一候选连续得到完全相同的探测结论（典型情形是探测通道次数耗尽后的复查）时不逐条重复记录；
+        // 结论变化立即记录，重复期间每五分钟补记一次，被省略的次数随下一条写出。返回 null 表示本条不写。
+        internal static string RendererProbeLogLine(string line, long nowMs)
+        {
+            lock (rendererProbeLogGate)
+            {
+                bool same = line == rendererProbeLogLast;
+                if (same && nowMs - rendererProbeLogAtMs < 300000) { rendererProbeLogRepeats++; return null; }
+                string text = rendererProbeLogRepeats == 0 ? line
+                    : line + (same ? "；此前相同结论 " : "；上一结论另有 ") + rendererProbeLogRepeats + " 次未重复记录";
+                rendererProbeLogLast = line; rendererProbeLogAtMs = nowMs; rendererProbeLogRepeats = 0;
+                return text;
+            }
         }
         private void RecordRendererProbeFailure(RendererProbeTicket ticket, string stage)
         {

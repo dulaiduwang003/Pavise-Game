@@ -116,6 +116,8 @@ namespace PaviseApp
         internal int UnfilteredProviders;
         internal string LossDetail
         { get { return "events=" + LostEvents + " buffers=" + LostBuffers + (UnfilteredProviders == 0 ? "" : " unfiltered=" + UnfilteredProviders); } }
+        // 停止时系统回填的会话缓冲读数及停止耗时，仅用于丢事件诊断；未停止过时为空。
+        internal string SessionStats = "session=n/a";
         internal int PumpTid;
         internal double CpuMs = double.NaN;
         internal bool Drained { get { Thread current = pump; return current == null || !current.IsAlive; } }
@@ -419,10 +421,15 @@ namespace PaviseApp
             stopRequested = true;
             if (session != 0)
             {
+                long stopStarted = Stopwatch.GetTimestamp();
                 rc = Control(session, name, properties, Native.EventTraceControlStop);
+                long stopMs = (Stopwatch.GetTimestamp() - stopStarted) * 1000 / Stopwatch.Frequency;
                 var value = (Native.EventTraceProperties)Marshal.PtrToStructure(properties, typeof(Native.EventTraceProperties));
                 LostEvents = value.EventsLost; LostBuffers = value.RealTimeBuffersLost;
                 Lost = LostEvents + LostBuffers;
+                SessionStats = "session=bufferKB:" + value.BufferSize + ",min:" + value.MinimumBuffers + ",max:" + value.MaximumBuffers
+                    + ",allocated:" + value.NumberOfBuffers + ",free:" + value.FreeBuffers + ",written:" + value.BuffersWritten
+                    + ",logLost:" + value.LogBuffersLost + ",stopRc:" + rc + ",stopMs:" + stopMs;
                 // 停止失败时保留会话句柄，由所属预算控制后续恢复。
                 if (rc == 0 || rc == 4201 || rc == 234) session = 0;
                 if (rc != 0 && rc != 4201) RecordCleanupFailure(rc, "stop-trace");

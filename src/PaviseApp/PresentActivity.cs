@@ -16,14 +16,20 @@ namespace PaviseApp
         // 通道送达事件总数；未知时为 -1。
         internal readonly int Events;
 
-        private PresentActivitySample(bool valid, string failure, Dictionary<int, int> frames, int windowMs, int events)
+        // 采样无效时的现场读数，只写进告警日志；不参与判定，也不改变 Failure 的原有文本。
+        internal readonly string Diagnostics;
+
+        private PresentActivitySample(bool valid, string failure, Dictionary<int, int> frames, int windowMs, int events, string diagnostics = null)
         {
-            Valid = valid; Failure = failure ?? ""; WindowMs = windowMs; Events = events;
+            Valid = valid; Failure = failure ?? ""; WindowMs = windowMs; Events = events; Diagnostics = diagnostics ?? "";
             this.frames = frames ?? new Dictionary<int, int>();
         }
 
         internal static PresentActivitySample Unavailable(string failure)
-        { return new PresentActivitySample(false, string.IsNullOrEmpty(failure) ? "unavailable" : failure, null, 0, -1); }
+        { return Unavailable(failure, null); }
+
+        internal static PresentActivitySample Unavailable(string failure, string diagnostics)
+        { return new PresentActivitySample(false, string.IsNullOrEmpty(failure) ? "unavailable" : failure, null, 0, -1, diagnostics); }
 
         internal static PresentActivitySample FromFrames(IDictionary<int, int> frames, int windowMs)
         { return FromFrames(frames, windowMs, -1); }
@@ -63,6 +69,12 @@ namespace PaviseApp
         private bool finishing, finished;
         // 包含非提交事件的送达总数。
         private int seen;
+        // 丢事件诊断读数，只由采样线程写入：送达事件覆盖的处理器、首末事件的会话时间戳，以及实时通道自己上报的丢失标记。
+        // 用于在下一份日志里区分丢失集中在窗口的某一段、某些处理器，还是消费端没有跟上。
+        private static readonly Guid RealtimeLoss = new Guid("6a399ae0-4bc6-4de9-870b-3657f8947e7e");
+        private long startStamp, firstStamp, lastStamp, firstLossStamp;
+        private ulong processors;
+        private int lostEventMarks, lostBufferMarks, lostFileMarks;
 
         private PresentActivityCapture() { }
 
@@ -73,6 +85,8 @@ namespace PaviseApp
             capture.receive = capture.Receive;
             try
             {
+                // 会话使用 QPC 时钟且消费端保留原始时间戳，与这里的计数同源。
+                capture.startStamp = Stopwatch.GetTimestamp();
                 capture.clock.Start();
                 if (capture.trace.StartPresentProbe(capture.receive)) return capture;
                 failure = "start-error-" + capture.trace.Error + "@" + capture.trace.Stage + " (" + capture.trace.FailureDetail + ")";
@@ -100,7 +114,7 @@ namespace PaviseApp
                 finished = true;
                 if (!stopped || trace.Error != 0 || trace.Lost != 0 || !trace.Drained)
                     return PresentActivitySample.Unavailable("stop-error-" + trace.Error + "-lost-" + trace.Lost
-                        + "(" + trace.LossDetail + " seen=" + Volatile.Read(ref seen) + " " + trace.FailureDetail + ")");
+                        + "(" + trace.LossDetail + " seen=" + Volatile.Read(ref seen) + " " + trace.FailureDetail + ")", DiagnosticsLocked(windowMs));
                 foreach (KeyValuePair<int, Counts> pair in counts)
                 {
                     int value = pair.Value.Frames;
@@ -109,6 +123,22 @@ namespace PaviseApp
             }
             return PresentActivitySample.FromFrames(frames, windowMs, Volatile.Read(ref seen));
         }
+
+        // 调用方持有 gate。时间以采样开始为零点，单位毫秒；n/a 表示没有任何事件送达。
+        private string DiagnosticsLocked(int windowMs)
+        {
+            int dxgi = 0, d3d9 = 0, kernel = 0, history = 0, detailed = 0;
+            foreach (Counts value in counts.Values)
+            { dxgi += value.Dxgi; d3d9 += value.D3d9; kernel += value.KernelPresent; history += value.KernelHistory; detailed += value.KernelDetailed; }
+            long first = Volatile.Read(ref firstStamp), last = Volatile.Read(ref lastStamp), loss = Volatile.Read(ref firstLossStamp);
+            return "window=" + windowMs + "ms cpus=0x" + Volatile.Read(ref processors).ToString("X")
+                + " firstEvent=" + Offset(first) + " lastEvent=" + Offset(last)
+                + " kinds=dxgi:" + dxgi + ",d3d9:" + d3d9 + ",kernel:" + kernel + ",history:" + history + ",detailed:" + detailed
+                + " rtLost=event:" + Volatile.Read(ref lostEventMarks) + ",buffer:" + Volatile.Read(ref lostBufferMarks) + ",file:" + Volatile.Read(ref lostFileMarks)
+                + (loss == 0 ? "" : "@" + Offset(loss)) + " " + trace.SessionStats;
+        }
+        private string Offset(long stamp)
+        { return stamp == 0 ? "n/a" : ((stamp - startStamp) * 1000 / Stopwatch.Frequency) + "ms"; }
 
         internal static Kind Classify(Guid provider, ushort id, byte opcode)
         {
@@ -148,6 +178,19 @@ namespace PaviseApp
             {
                 Interlocked.Increment(ref seen);
                 Native.EventDescriptor descriptor = record.EventHeader.EventDescriptor;
+                long stamp = record.EventHeader.TimeStamp;
+                if (firstStamp == 0) Volatile.Write(ref firstStamp, stamp);
+                Volatile.Write(ref lastStamp, stamp);
+                // 缓冲上下文的低字节是写入该事件的处理器编号；超过 64 个处理器时折叠，只用于诊断。
+                Volatile.Write(ref processors, processors | (1UL << (int)(record.BufferContext & 63)));
+                if (record.EventHeader.ProviderId == RealtimeLoss)
+                {
+                    // 事件类型 32、33、34 依次表示实时通道丢失了事件、缓冲或备份文件。
+                    if (descriptor.Opcode == 32) Interlocked.Increment(ref lostEventMarks);
+                    else if (descriptor.Opcode == 33) Interlocked.Increment(ref lostBufferMarks);
+                    else if (descriptor.Opcode == 34) Interlocked.Increment(ref lostFileMarks);
+                    if (firstLossStamp == 0) Volatile.Write(ref firstLossStamp, stamp);
+                }
 #if PAVISE_SELFTEST
                 Guid source = record.EventHeader.ProviderId;
                 if (source == FrameCoordinationSampler.Dxgi || source == FrameCoordinationSampler.D3d9 || source == FrameCoordinationTrace.DxgKrnl)
@@ -161,8 +204,9 @@ namespace PaviseApp
         }
 
 #if PAVISE_SELFTEST
-        private PresentActivityCapture(FrameCoordinationTrace ownedTrace) { trace = ownedTrace; clock.Start(); }
-        internal static PresentActivityCapture ForTest() { var capture = new PresentActivityCapture(); capture.clock.Start(); return capture; }
+        private PresentActivityCapture(FrameCoordinationTrace ownedTrace) { trace = ownedTrace; startStamp = Stopwatch.GetTimestamp(); clock.Start(); }
+        internal static PresentActivityCapture ForTest() { var capture = new PresentActivityCapture(); capture.startStamp = Stopwatch.GetTimestamp(); capture.clock.Start(); return capture; }
+        internal void ReceiveForTest(ref Native.EventRecord record) { Receive(ref record); }
         internal static PresentActivityCapture CleanupForTest()
         { return new PresentActivityCapture(FrameCoordinationTrace.CleanupFixtureForTest()); }
         // 各提供程序的全进程事件数，用于核对标识过滤。

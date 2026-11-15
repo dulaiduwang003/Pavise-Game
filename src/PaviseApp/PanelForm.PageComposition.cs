@@ -157,200 +157,6 @@ namespace PaviseApp
             };
             LayoutAboutViewport();
         }
-        private void BuildAntiCheatPage()
-        {
-            acArranging = false;
-            acOtherOpen = false;
-            acDrawerKind = "";
-            acPresentedRoster = new string[0];
-            foreach (Control acRosterRow in acRosterRows)
-            {
-                acRosterRow.Dispose();
-            }
-            acRosterRows.Clear();
-            pageAntiCheat.AutoScroll = false;
-            acViewport = new DBPanel
-            {
-                Name = "AntiCheatWorkspace",
-                BackColor = Theme.Bg,
-                AutoScroll = true
-            };
-            Native.Dark(acViewport);
-            pageAntiCheat.Controls.Add(acViewport);
-            acRosterBar = new AcConsoleSurface
-            {
-                Name = "AntiCheatConsole"
-            };
-            acViewport.Controls.Add(acRosterBar);
-            acControlBay = new DBPanel
-            {
-                Name = "AntiCheatControlBay",
-                BackColor = Theme.Bg
-            };
-            acRosterBar.Controls.Add(acControlBay);
-            acTitleIcon = new AcGlyph
-            {
-                Key = "master"
-            };
-            acControlBay.Controls.Add(acTitleIcon);
-            acTitleLabel = CardLabel(acControlBay, AutoText("专项压制", "Suppression"), 0, 0, 220, 36, 17f, true, Theme.Fg);
-            acTitleLabel.Name = "acTitleLabel";
-            acSubtitleLabel = CardLabel(acControlBay, AutoText("所选专项入局时启用，统一调整压制强度", "Selected modules activate on game entry; adjust their suppression strength"), 0, 0, 480, 22, 9f, false, Theme.Dim);
-            acSubtitleLabel.Name = "AntiCheatSubtitle";
-            acModuleCountLabel = CardLabel(acControlBay, "", 0, 0, 140, 24, 9f, false, Theme.Dim);
-            acModuleCountLabel.Name = "AntiCheatModuleCount";
-            acModuleCountLabel.TextAlign = ContentAlignment.MiddleRight;
-            acHelp = new PerformanceInfoButton
-            {
-                Name = "acInfo",
-                AccessibleName = AutoText("专项压制 · 说明", "Suppression · Info"),
-                Bg = Theme.Bg
-            };
-            acHelp.Click += delegate
-            {
-                ShowAcHelp();
-            };
-            acControlBay.Controls.Add(acHelp);
-            acStrengthSurface = new AcStrengthSurface
-            {
-                Name = "AntiCheatStrengthSurface",
-                BackColor = Theme.Bg
-            };
-            acControlBay.Controls.Add(acStrengthSurface);
-            acStrengthLabel = CardLabel(acStrengthSurface, Lang.T("ac.mode"), 0, 0, 190, 24, 11f, true, Theme.Fg);
-            acStrengthLabel.Name = "acStrengthLabel";
-            acStrengthHintLabel = CardLabel(acStrengthSurface, AutoText("对已开启的专项统一生效", "Applies to enabled modules"), 0, 0, 210, 22, 8.5f, false, Theme.Dim);
-            acStrengthHintLabel.Name = "AntiCheatStrengthHint";
-            acModePicker = new AntiCheatStrengthPicker
-            {
-                Name = "acStrength",
-                Labels = new string[3]
-                {
-                    Lang.T("ac.mode.gentle"),
-                    Lang.T("ac.mode.balanced"),
-                    Lang.T("ac.mode.isolated")
-                },
-                Index = (int)tamer.Mode,
-                AccessibleName = Lang.T("ac.mode"),
-                Bg = Theme.Card
-            };
-            acModePicker.IndexChanged = delegate(int index)
-            {
-                tamer.Mode = (AntiCheatMode)index;
-                RefreshAcGroupStates();
-            };
-            acStrengthSurface.Controls.Add(acModePicker);
-            acStrengthHelp = new PerformanceActionButton(AutoText("档位说明  ⓘ", "Mode details  ⓘ"))
-            {
-                Name = "AntiCheatStrengthInfo",
-                Quiet = true,
-                Bg = Theme.Card
-            };
-            acStrengthHelp.Click += delegate
-            {
-                ShowAcHelp();
-            };
-            acStrengthSurface.Controls.Add(acStrengthHelp);
-            acModulesLabel = CardLabel(acRosterBar, AutoText("反作弊专项", "Anti-cheat modules"), 0, 0, 260, 26, 11f, true, Theme.Fg);
-            acModulesLabel.Name = "AntiCheatModulesTitle";
-            acList = new AcModuleSurface
-            {
-                Name = "AntiCheatModules",
-                BackColor = Theme.Bg
-            };
-            acRosterBar.Controls.Add(acList);
-            acUtility = new DBPanel
-            {
-                Name = "AntiCheatUtilities",
-                BackColor = Theme.Bg
-            };
-            acRosterBar.Controls.Add(acUtility);
-            acRosterEntry = new AcDrawerButton(AutoText("兼容名单", "Compatibility list"), "roster")
-            {
-                Name = "AntiCheatRoster"
-            };
-            acRosterEntry.Click += delegate
-            {
-                OpenAcDrawer("roster");
-            };
-            acUtility.Controls.Add(acRosterEntry);
-            acOtherToggle = new AcDrawerButton(AutoText("兼容与记录", "Compatibility & records"), "records")
-            {
-                Name = "AntiCheatOtherGroups"
-            };
-            acOtherToggle.Click += delegate
-            {
-                if (acDrawerKind == "records")
-                {
-                    CloseAcDrawer();
-                }
-                else
-                {
-                    OpenAcDrawer("records");
-                }
-            };
-            acUtility.Controls.Add(acOtherToggle);
-            lblAcRoster = new Label
-            {
-                Name = "AntiCheatRosterCount",
-                AutoSize = false,
-                BackColor = Theme.Card,
-                ForeColor = Theme.Dim,
-                Font = Theme.UI(9f, false)
-            };
-            acDrawer = new DBPanel
-            {
-                Name = "AntiCheatDrawer",
-                BackColor = Theme.Card,
-                Visible = false
-            };
-            acRosterBar.Controls.Add(acDrawer);
-            acDrawerTitle = new Label
-            {
-                Name = "AntiCheatDrawerTitle",
-                BackColor = Theme.Card,
-                ForeColor = Theme.Fg,
-                Font = Theme.UI(11f, true)
-            };
-            acDrawer.Controls.Add(acDrawerTitle);
-            acDrawer.Controls.Add(lblAcRoster);
-            acDrawerClose = new PerformanceActionButton(AutoText("返回模块", "Back to modules"))
-            {
-                Name = "AntiCheatDrawerClose",
-                Bg = Theme.Card
-            };
-            acDrawerClose.Click += delegate
-            {
-                CloseAcDrawer();
-            };
-            acDrawer.Controls.Add(acDrawerClose);
-            acClear = new PerformanceActionButton(Lang.T("btn.roster.clear"))
-            {
-                Name = "acClearRoster",
-                Bg = Theme.Card,
-                ForeColor = Theme.Danger
-            };
-            acClear.Click += delegate
-            {
-                OnClearRoster();
-            };
-            acDrawer.Controls.Add(acClear);
-            acDrawerBody = new DBPanel
-            {
-                Name = "AntiCheatDrawerBody",
-                BackColor = Theme.Card,
-                AutoScroll = true
-            };
-            Native.Dark(acDrawerBody);
-            acDrawer.Controls.Add(acDrawerBody);
-            RefreshAcList();
-            SyncAcRoster();
-            pageAntiCheat.SizeChanged += delegate
-            {
-                LayoutAntiCheatViewport();
-            };
-            LayoutAntiCheatViewport();
-        }
         private void BuildAutomationPage()
         {
             automationSync.Clear();
@@ -550,26 +356,10 @@ namespace PaviseApp
             bool visibleValue2 = (label3.Visible = visibleValue);
             bool visible = (label2.Visible = visibleValue2);
             label.Visible = visible;
-            criticalThreadInfo = new PerformanceInfoButton
-            {
-                Name = "LibraryThreadAffinityInfo",
-                TabIndex = 1,
-                AccessibleName = ThreadLayoutDescriptions.Text("渲染线程调度说明与状态", "Render thread scheduling details and status", "ゲームスケジュールの説明と状態")
-            };
-            criticalThreadInfo.Click += delegate
-            {
-                string body = criticalThreadHelp.Text + "\r\n\r\n" + criticalThreadResult.Text + "\r\n\r\n" + criticalThreadCompanion.Text + "\r\n\r\n" + criticalThreadRuntime.Text;
-                PaviseDialog.Info(LibraryDialogOwner, criticalThreadEnabled.Text, body);
-            };
-            criticalThreadEditor.Controls.Add(criticalThreadInfo);
-            // 说明按钮置于整行开关上方，避免被开关覆盖。
-            criticalThreadInfo.BringToFront();
-            criticalThreadEnabled.TitleTrailing = Theme.S(32);
-            criticalThreadEnabled.Overlay = criticalThreadInfo;
             criticalThreadMode = new GameCardDetailsButton
             {
                 Name = "RenderAffinitySettings",
-                TabIndex = 2,
+                TabIndex = 1,
                 ShowAdjustLabel = true,
                 OwnerRow = criticalThreadEnabled,
                 AccessibleName = PerformancePolicy.Text("设置渲染线程调度策略和清核", "Choose the render thread scheduling strategy and clear core")
@@ -928,7 +718,6 @@ namespace PaviseApp
             BuildWhitelistPage();
             BuildAutomationPage();
             BuildCoreSchedulingPage();
-            BuildAntiCheatPage();
             BuildAuditPage();
             BuildLogPage();
             BuildSettingsPage();
@@ -1064,9 +853,11 @@ namespace PaviseApp
             };
             string[] cloneResult = (string[])textEntries.Clone();
             cloneResult[1] = PerformancePolicy.Text("游戏库", "Library");
-            cloneResult[2] = PerformancePolicy.Text("性能", "Performance");
+            // 这一页是后台治理、电源、计时器、图形与系统项的开关，不只是性能项；与游戏库里逐游戏的“深度调优”对应。
+            cloneResult[2] = PerformancePolicy.Text("调优", "Tuning");
             cloneResult[10] = Lang.T("nav.white");
-            nav = new NavRail(cloneResult, icons, new int[7] { 0, 1, 10, 2, 3, 6, 8 }, null, null, 0);
+            // 反作弊专项已并入游戏库深度调优（仅 ACE），保护名单在白名单页，底部导航不再显示反作弊页。
+            nav = new NavRail(cloneResult, icons, new int[6] { 0, 1, 10, 2, 6, 8 }, null, null, 0);
             nav.Name = "MainNavigation";
             nav.ShowBranding = false;
             nav.SelectionChanged = ShowPage;

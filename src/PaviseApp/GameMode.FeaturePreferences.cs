@@ -132,24 +132,6 @@ namespace PaviseApp
             }
         }
 
-        public bool PauseMaintenance
-        {
-            get
-            {
-                return pauseMaintOn;
-            }
-            set
-            {
-                pauseMaintOn = value;
-                Settings.Save("GmPauseMaintenanceV1", value);
-                if (value)
-                {
-                    ClearEnvFuse("maint");
-                }
-                RequestPolicyApply("PauseMaintenance");
-            }
-        }
-
         public bool PauseServices
         {
             get
@@ -174,24 +156,6 @@ namespace PaviseApp
             {
                 Settings.Save("GmGpuPowerMax", false);
                 RequestPolicyApply("GpuPowerLift");
-            }
-        }
-
-        public bool DwmBoostOn
-        {
-            get
-            {
-                return dwmBoostOn;
-            }
-            set
-            {
-                dwmBoostOn = value;
-                Settings.Save("GmDwmBoost", value);
-                if (value)
-                {
-                    ClearEnvFuse("dwmboost");
-                }
-                RequestPolicyApply("DwmBoostOn");
             }
         }
 

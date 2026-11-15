@@ -129,6 +129,77 @@ namespace PaviseApp
                 }
             }
         }
+        // 开启时先选强度并确认风险；关闭直接保存，对局中改动由反作弊引擎立即撤销并恢复。
+        private void ToggleGameAceSuppression(GameLibraryItem item)
+        {
+            if (aceChangeBusy || item == null || item.Profile == null)
+            {
+                return;
+            }
+            string current = PolicyResolver.For(item.Profile).ValueOf(AceSuppressionPolicy.Key);
+            if (AceSuppressionPolicy.Parse(current).HasValue)
+            {
+                SaveGameAceSuppression(item, AceSuppressionPolicy.Off);
+                return;
+            }
+            ChooseGameAceSuppression(item, current);
+        }
+        private void AdjustGameAceSuppression(GameLibraryItem item)
+        {
+            if (aceChangeBusy || item == null || item.Profile == null)
+            {
+                return;
+            }
+            ChooseGameAceSuppression(item, PolicyResolver.For(item.Profile).ValueOf(AceSuppressionPolicy.Key));
+        }
+        private void ChooseGameAceSuppression(GameLibraryItem item, string current)
+        {
+            AntiCheatMode? selected = AceSuppressionPolicy.Parse(current);
+            using (AntiCheatStrengthPicker picker = new AntiCheatStrengthPicker
+            {
+                Name = "libraryAceStrength",
+                Horizontal = true,
+                Index = (int)(selected.HasValue ? selected.Value : AntiCheatModes.Default),
+                AccessibleName = Lang.T("ac.mode"),
+                Bg = Theme.Card
+            })
+            {
+                picker.Width = Theme.S(428);
+                picker.Height = picker.MinimumContentHeight(picker.Width);
+                string separator = PerformancePolicy.Text("：", ": ");
+                string body = Lang.T("lib.ace.confirm") + "\r\n\r\n"
+                    + Lang.T("ac.mode.gentle") + separator + Lang.T("ac.mode.gentle.d") + "\r\n"
+                    + Lang.T("ac.mode.balanced") + separator + Lang.T("ac.mode.balanced.d") + "\r\n"
+                    + Lang.T("ac.mode.isolated") + separator + Lang.T("ac.mode.isolated.d") + "\r\n\r\n"
+                    + Lang.T("ac.mode.disclaimer");
+                if (!PaviseDialog.Confirm(LibraryDialogOwner, Lang.T("lib.ace"), body, DlgKind.Warn, picker, 480))
+                {
+                    return;
+                }
+                SaveGameAceSuppression(item, AntiCheatModes.Token((AntiCheatMode)picker.Index));
+            }
+        }
+        private void SaveGameAceSuppression(GameLibraryItem item, string value)
+        {
+            aceChangeBusy = true;
+            string id = item.Profile.Id;
+            try
+            {
+                if (!gameMode.SetProfileOverride(id, AceSuppressionPolicy.Key, value) && !gameMode.ProfileStoreSaveFailed)
+                {
+                    PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.ace"), Lang.T("lib.ace.failed"));
+                }
+            }
+            finally
+            {
+                aceChangeBusy = false;
+                if (!base.IsDisposed && !base.Disposing)
+                {
+                    RefreshGames();
+                    SelectProfile(id);
+                }
+            }
+        }
         private async void ToggleGameRebar(GameLibraryItem item)
         {
             if (rebarChangeBusy || item == null || item.Profile == null)

@@ -52,6 +52,25 @@ namespace PaviseApp
         private static bool ThreadIds(int pid, out HashSet<uint> ids, out string reason)
         {
             ids = new HashSet<uint>(); reason = null;
+            List<uint> own;
+            // 优先只遍历目标进程自己的线程；拿不到查询权限时再用系统进程信息查询，最后回退到 Toolhelp，上限和拒绝原因三者一致。
+            if (ProcessThreadList.TryReadOwn(pid, MaxThreads, out own))
+            {
+                foreach (uint tid in own)
+                    if (tid == 0 || !ids.Add(tid) || ids.Count > MaxThreads)
+                    { reason = RefusalPrefix + "thread-set-invalid"; return false; }
+                return true;
+            }
+            bool found; List<uint> listed; int systemThreads;
+            if (ProcessThreadList.TryRead(pid, out found, out listed, out systemThreads))
+            {
+                if (systemThreads > MaxSnapshotEntries) { reason = RefusalPrefix + "snapshot-limit"; return false; }
+                foreach (uint tid in listed)
+                    if (tid == 0 || !ids.Add(tid) || ids.Count > MaxThreads)
+                    { reason = RefusalPrefix + "thread-set-invalid"; return false; }
+                if (ids.Count == 0) { reason = RefusalPrefix + "thread-set-unconfirmed"; return false; }
+                return true;
+            }
             IntPtr snapshot = CreateToolhelp32Snapshot(4, 0);
             if (snapshot == InvalidHandle || snapshot == IntPtr.Zero)
             { reason = RefusalPrefix + "snapshot-unavailable:" + Marshal.GetLastWin32Error(); return false; }

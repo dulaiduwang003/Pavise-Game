@@ -145,6 +145,8 @@ namespace PaviseApp
         private Thread worker;
 
         internal Func<AntiCheatAffinityGameContext> AffinityGameContext;
+        // 当前对局游戏的 ACE 压制选择；为空表示本局不压制。未接入时保持手动控制，供隔离测试使用。
+        internal Func<AntiCheatMode?> AceSessionChoice;
         private AntiCheatAffinityRuntime affinityRuntime;
         private bool affinityFastWake;
         private bool affinityShutdownOk = true;
@@ -166,13 +168,14 @@ namespace PaviseApp
             return affinity.Length == 0 ? status : status + " · " + affinity;
         }
 
+        // 强度来自当前对局游戏的逐游戏设置，只作用于本进程，不再写回旧版全局强度。
         public AntiCheatMode Mode
         {
             get
             {
                 return (AntiCheatMode)mode;
             }
-            set
+            internal set
             {
                 if (mode == (int)value)
                 {
@@ -181,7 +184,6 @@ namespace PaviseApp
                 bool shouldReleasePins = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
                 mode = (int)value;
                 RevokeRuntimeWrites();
-                AntiCheatModes.Save(value);
                 if (shouldReleasePins)
                 {
                     int setModeValue = 0;
@@ -256,9 +258,10 @@ namespace PaviseApp
                 }
             }
             groupMigrationReady = MigrateGroupControls();
+            // 旧版全局开关只作为逐游戏默认值的来源；启动时一律不压制，等对局按游戏设置开启。
             foreach (AcGroup acGroup in AntiCheatCatalog.Groups)
             {
-                enabled[acGroup.Key] = groupMigrationReady && Settings.Load("Tame_" + acGroup.Key, acGroup.Default);
+                enabled[acGroup.Key] = false;
             }
             mode = (int)AntiCheatModes.Current;
             forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
@@ -335,11 +338,11 @@ namespace PaviseApp
                     }
                     RevokeRuntimeWrites(key);
                 }
+                // 开关只随本局游戏设置变化，不写回旧版全局开关；迁移未完成时保持暂停，不在这里重复尝试。
                 bool saved;
                 lock (sync)
                 {
-                    if (!groupMigrationReady) groupMigrationReady = MigrateGroupControls();
-                    saved = groupMigrationReady && Settings.SaveDurable("Tame_" + key, on);
+                    saved = groupMigrationReady || !on;
                     if (saved) enabled[key] = on;
                     forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
                 }
@@ -496,6 +499,7 @@ namespace PaviseApp
                         bool fullSweep = false;
                         bool overflowSweep = false;
                         bool phaseChanged = false;
+                        SyncAceSession();
                         RefreshGovernanceSession();
                         SweepRetryPhase retryPhase = SelectSweepRetryPhase(changes, out phaseChanged);
                         captureRetryPhase = retryPhase;
@@ -652,6 +656,18 @@ namespace PaviseApp
         {
             try { return AffinityGameContext == null ? null : AffinityGameContext(); }
             catch { return null; }
+        }
+
+        // 对局开始时按游戏设置的强度开启 ACE 压制；退局、游戏退出或改为关闭时撤销本方写入并恢复。
+        private void SyncAceSession()
+        {
+            Func<AntiCheatMode?> provider = AceSessionChoice;
+            if (provider == null || !groupMigrationReady) return;
+            AntiCheatMode? choice;
+            try { choice = provider(); }
+            catch { choice = null; }
+            if (choice.HasValue && Mode != choice.Value) Mode = choice.Value;
+            if (choice.HasValue != IsGroupEnabled("ace")) SetGroupEnabled("ace", choice.HasValue);
         }
 
         private void RefreshGovernanceSession()

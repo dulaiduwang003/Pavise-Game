@@ -24,7 +24,6 @@ namespace PaviseApp
             bgSuppressOn = policySnapshot.SuppressBackground;
             boostOn = policySnapshot.BoostGame;
             pauseUpdateOn = policySnapshot.PauseUpdate;
-            pauseMaintOn = policySnapshot.PauseMaintenance;
             pauseServicesOn = policySnapshot.PauseServices;
             planSwitch = policySnapshot.PowerPlanOn;
             renderLaneOn = policySnapshot.RenderLane;
@@ -38,7 +37,6 @@ namespace PaviseApp
             nvDlssMode = "off";
             amdAfmf = false;
             intelEnduranceOn = policySnapshot.IntelEnduranceOff;
-            dwmBoostOn = policySnapshot.DwmBoost;
             nvVrrWindowedOn = Settings.LoadCached("NvVrrWindowed", false);
             rsrOn = false;
             lock (sync)
@@ -49,7 +47,8 @@ namespace PaviseApp
                 }
             }
             killGameDvr = Settings.LoadCached("GameDvrOff", true);
-            mmcssOn = Settings.LoadCached("GmMmcss", true);
+            // 多媒体调度只在保护开启期间写入、关闭保护即恢复，作为默认行为执行，不再提供开关。
+            mmcssOn = true;
             SuppressionCore.GpuDemoteEnabled = bgSuppressOn;
         }
         internal void RefreshAutomaticPreferences()

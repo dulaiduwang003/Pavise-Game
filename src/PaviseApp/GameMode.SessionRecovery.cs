@@ -115,7 +115,6 @@ namespace PaviseApp
                 case "services": optionalServicesActive = false; break;
                 case "pqos": pqosActive = false; break;
                 case "awake": awakeActive = false; break;
-                case "dwmboost": dwmBoostActive = false; break;
                 case "rsr": rsrActive = false; break;
                 case "gpupower": gpwActive = false; break;
                 case "nvvrr": nvVrrActive = false; break;

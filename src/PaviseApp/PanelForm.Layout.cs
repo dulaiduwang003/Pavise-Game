@@ -162,195 +162,6 @@ namespace PaviseApp
             first.SetBounds(Theme.S(20), top, width, Theme.S(36));
             second.SetBounds(Theme.S(32) + width, top, available - width, Theme.S(36));
         }
-        private void LayoutAntiCheatViewport()
-        {
-            if (acRosterBar == null || acList == null || acArranging || acViewport == null)
-            {
-                return;
-            }
-            AcViewState acViewState = CaptureAcViewState();
-            acArranging = true;
-            try
-            {
-                int left = Theme.S((pageAntiCheat.ClientSize.Width < Theme.S(500)) ? 16 : 24);
-                int top = Theme.S(16);
-                acViewport.SetBounds(left, top, Math.Max(1, pageAntiCheat.ClientSize.Width - left * 2), Math.Max(1, pageAntiCheat.ClientSize.Height - top - Theme.S(8)));
-                Point point = new Point(0, Math.Max(0, -acViewport.AutoScrollPosition.Y));
-                acViewport.AutoScrollPosition = Point.Empty;
-                int width = Math.Max(1, acViewport.Width);
-                int inset = Theme.S(width < Theme.S(700) ? 16 : 20);
-                int gap = Theme.S(10);
-                int utilityHeight = Theme.S(48);
-                int contentWidth = 1, controlHeight = 0, sectionTop = 0, listTop = 0, rowsHeight = 0, consoleHeight = 0;
-                bool contentOverflows = false;
-                // 滚动条占位后重新测量一次，窄窗口仍只保留外层纵向滚动。
-                for (int pass = 0; pass < 2; pass++)
-                {
-                    contentWidth = Math.Max(1, width - inset * 2);
-                    controlHeight = LayoutAcControlBay(contentWidth);
-                    sectionTop = inset + controlHeight + Theme.S(18);
-                    listTop = sectionTop + Theme.S(34);
-                    rowsHeight = Math.Max(0, acCards.Count - 1) * gap;
-                    foreach (SettingCard card in acCards)
-                    {
-                        rowsHeight += ((AntiCheatModuleRow)card).MeasureHeight(contentWidth);
-                    }
-                    int requiredHeight = listTop + rowsHeight + Theme.S(16) + utilityHeight + inset;
-                    consoleHeight = Math.Max(requiredHeight, Math.Min(Theme.S(590), acViewport.Height));
-                    contentOverflows = consoleHeight > acViewport.Height;
-                    if (!contentOverflows || pass != 0) break;
-                    width = Math.Max(1, width - SystemInformation.VerticalScrollBarWidth);
-                }
-                acRosterBar.SetBounds(0, 0, width, consoleHeight);
-                acControlBay.SetBounds(inset, inset, contentWidth, controlHeight);
-                acModulesLabel.SetBounds(inset + Theme.S(16), sectionTop, Math.Max(1, contentWidth - Theme.S(16)), Theme.S(26));
-                acModulesLabel.Visible = acDrawerKind.Length == 0;
-                int utilityTop = consoleHeight - inset - utilityHeight;
-                int listHeight = Math.Max(rowsHeight, utilityTop - Theme.S(16) - listTop);
-                acList.SetBounds(inset, listTop, contentWidth, listHeight);
-                int rowTop = 0;
-                int extraHeight = Math.Max(0, listHeight - rowsHeight);
-                for (int i = 0; i < acCards.Count; i++)
-                {
-                    AntiCheatModuleRow row = (AntiCheatModuleRow)acCards[i];
-                    int rowHeight = row.MeasureHeight(contentWidth) + extraHeight / acCards.Count + (i < extraHeight % acCards.Count ? 1 : 0);
-                    row.SetBounds(0, rowTop, contentWidth, rowHeight);
-                    row.ArrangeContent();
-                    rowTop += rowHeight + gap;
-                }
-                acUtility.SetBounds(inset, utilityTop, contentWidth, utilityHeight);
-                int utilityGap = Theme.S(18);
-                int entryWidth = Math.Max(1, (contentWidth - utilityGap) / 2);
-                acRosterEntry.SetBounds(0, 0, entryWidth, utilityHeight);
-                acOtherToggle.SetBounds(entryWidth + utilityGap, 0, Math.Max(1, contentWidth - entryWidth - utilityGap), utilityHeight);
-                acDrawer.SetBounds(inset, sectionTop, contentWidth, listHeight + listTop - sectionTop);
-                LayoutAcDrawer(contentOverflows);
-                if (contentOverflows && acDrawer.Visible)
-                {
-                    int heightValue = Math.Max(0, acDrawerBody.AutoScrollMinSize.Height - acDrawerBody.Height);
-                    if (heightValue > 0)
-                    {
-                        acDrawerBody.Height += heightValue;
-                        acDrawer.Height += heightValue;
-                        consoleHeight += heightValue;
-                        acRosterBar.Height = consoleHeight;
-                        acUtility.Top += heightValue;
-                    }
-                }
-                acRosterBar.SectionBounds = acDrawerKind.Length == 0 ? new Rectangle(inset, sectionTop, contentWidth, Theme.S(26)) : Rectangle.Empty;
-                acRosterBar.Invalidate();
-                acList.Invalidate();
-                acViewport.AutoScrollMinSize = new Size(0, consoleHeight);
-                acViewport.AutoScrollPosition = new Point(0, Math.Min(point.Y, DockScrollLimit(acViewport)));
-                pageAntiCheat.AutoScrollMinSize = Size.Empty;
-                acLayoutScale = Dpi.Scale;
-                RestoreAcScrollPosition(acViewState);
-            }
-            finally
-            {
-                acArranging = false;
-            }
-        }
-        private int LayoutAcControlBay(int width)
-        {
-            int titleLeft = Theme.S(46);
-            int countWidth = Theme.S(110);
-            int infoSize = Theme.S(26);
-            acTitleIcon.SetBounds(Theme.S(4), Theme.S(3), Theme.S(30), Theme.S(32));
-            int titleWidth = Math.Min(TextRenderer.MeasureText(acTitleLabel.Text, acTitleLabel.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Theme.S(4), Math.Max(1, width - titleLeft - infoSize - countWidth - Theme.S(12)));
-            acTitleLabel.SetBounds(titleLeft, 0, titleWidth, Theme.S(36));
-            acHelp.SetBounds(acTitleLabel.Right + Theme.S(4), Theme.S(4), infoSize, infoSize);
-            acModuleCountLabel.SetBounds(Math.Max(0, width - countWidth), Theme.S(6), countWidth, Theme.S(26));
-            int subtitleHeight = TextRenderer.MeasureText(acSubtitleLabel.Text, acSubtitleLabel.Font, new Size(Math.Max(1, width - titleLeft), int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
-            acSubtitleLabel.SetBounds(titleLeft, Theme.S(38), Math.Max(1, width - titleLeft), Math.Max(Theme.S(20), subtitleHeight));
-            int strengthTop = acSubtitleLabel.Bottom + Theme.S(18);
-            int helpWidth = Theme.S(Lang.Cur == 0 ? 116 : 134);
-            bool inline = width >= Theme.S(820);
-            acModePicker.Horizontal = true;
-            int pickerLeft = inline ? Theme.S(240) : Theme.S(20);
-            int helpLeft = width - helpWidth - Theme.S(16);
-            int pickerWidth = Math.Max(1, inline ? helpLeft - Theme.S(26) - pickerLeft : width - Theme.S(40));
-            int pickerHeight = acModePicker.MinimumContentHeight(pickerWidth);
-            int strengthHeight = inline ? Math.Max(Theme.S(80), pickerHeight + Theme.S(24)) : Theme.S(76) + pickerHeight + Theme.S(16);
-            acStrengthSurface.SetBounds(0, strengthTop, width, strengthHeight);
-            acStrengthLabel.SetBounds(Theme.S(38), Theme.S(16), inline ? Theme.S(188) : Math.Max(1, helpLeft - Theme.S(50)), Theme.S(26));
-            acStrengthHintLabel.SetBounds(Theme.S(38), Theme.S(44), inline ? Theme.S(188) : Math.Max(1, width - Theme.S(58)), Theme.S(22));
-            acModePicker.SetBounds(pickerLeft, inline ? (strengthHeight - pickerHeight) / 2 : Theme.S(76), pickerWidth, pickerHeight);
-            acStrengthHelp.SetBounds(helpLeft, inline ? (strengthHeight - Theme.S(32)) / 2 : Theme.S(14), helpWidth, Theme.S(32));
-            acStrengthSurface.PickerLeft = inline ? pickerLeft : 0;
-            acStrengthSurface.HelpLeft = helpLeft;
-            acStrengthSurface.Invalidate();
-            return acStrengthSurface.Bottom;
-        }
-        private void LayoutAntiCheatCards()
-        {
-            LayoutAntiCheatViewport();
-        }
-        private void RestoreAcScrollPosition(AcViewState state)
-        {
-            if (state != null && state.Drawer == acDrawerKind && curPage == pageAntiCheat)
-            {
-                if (acDrawerBody.AutoScroll && state.Drawer.Length > 0)
-                {
-                    float innerY = (state.BodyScroll ? state.InnerY : Math.Max(0f, state.OuterY - state.BodyOrigin));
-                    int drawerScrollLimit = DockScrollLimit(acDrawerBody);
-                    acDrawerBody.AutoScrollPosition = new Point(0, Math.Min((int)Math.Round(innerY * Dpi.Scale), drawerScrollLimit));
-                }
-                float outerY = state.OuterY;
-                if (!acDrawerBody.AutoScroll && state.BodyScroll && state.Drawer.Length > 0)
-                {
-                    int lowerBound = Math.Max(0, -acViewport.AutoScrollPosition.Y);
-                    outerY = (float)(acRosterBar.Top + lowerBound + acDrawer.Top + acDrawerBody.Top) / Dpi.Scale + state.InnerY;
-                }
-                int viewportScrollLimit = DockScrollLimit(acViewport);
-                acViewport.AutoScrollPosition = new Point(0, Math.Min((int)Math.Round(outerY * Dpi.Scale), viewportScrollLimit));
-            }
-        }
-        private void LayoutAcDrawer(bool outerScroll)
-        {
-            Point point = new Point(0, Math.Max(0, -acDrawerBody.AutoScrollPosition.Y));
-            int left = Theme.S(8);
-            int width = Theme.S(122);
-            int top = Theme.S(52);
-            acDrawerTitle.SetBounds(left, Theme.S(12), Math.Max(1, acDrawer.Width - width - left * 3), Theme.S(26));
-            acDrawerClose.SetBounds(Math.Max(left, acDrawer.Width - width - left), Theme.S(8), width, Theme.S(34));
-            int top2 = top;
-            if (acDrawerKind == "roster")
-            {
-                lblAcRoster.SetBounds(left, top, Math.Max(1, acDrawer.Width - Theme.S(120)), Theme.S(28));
-                acClear.SetBounds(Math.Max(left, acDrawer.Width - Theme.S(96)), top - Theme.S(3), Theme.S(88), Theme.S(32));
-                top2 += Theme.S(42);
-            }
-            acDrawerBody.SetBounds(left, top2, Math.Max(1, acDrawer.Width - left * 2), Math.Max(1, acDrawer.Height - top2 - left));
-            acDrawerBody.AutoScrollPosition = Point.Empty;
-            int width2 = Math.Max(1, acDrawerBody.Width - ((!outerScroll) ? SystemInformation.VerticalScrollBarWidth : 0));
-            int top3 = 0;
-            if (acDrawerKind == "records")
-            {
-                int layoutAcDrawerValue = ((width2 < Theme.S(620)) ? 1 : 2);
-                int scaledDimension = Theme.S(10);
-                int width3 = Math.Max(1, (width2 - (layoutAcDrawerValue - 1) * scaledDimension) / layoutAcDrawerValue);
-                for (int i = 0; i < acReadOnlyCards.Count; i++)
-                {
-                    acReadOnlyCards[i].SetBounds(i % layoutAcDrawerValue * (width3 + scaledDimension), i / layoutAcDrawerValue * Theme.S(62), width3, Theme.S(52));
-                }
-                top3 = (acReadOnlyCards.Count + layoutAcDrawerValue - 1) / layoutAcDrawerValue * Theme.S(62);
-            }
-            else if (acDrawerKind == "roster")
-            {
-                foreach (Control acRosterRow in acRosterRows)
-                {
-                    acRosterRow.SetBounds(0, top3, width2, Theme.S(48));
-                    top3 += Theme.S(54);
-                }
-            }
-            acDrawerBody.AutoScrollMinSize = new Size(0, top3);
-            acDrawerBody.AutoScroll = !outerScroll;
-            if (!outerScroll)
-            {
-                acDrawerBody.AutoScrollPosition = new Point(0, Math.Min(point.Y, DockScrollLimit(acDrawerBody)));
-            }
-        }
         private void LayoutAuditViewport()
         {
             if (auditArranging || pageAudit == null || auditScan == null || btnAuditStart == null || auditScroll == null || auditScan.IsDisposed)
@@ -503,16 +314,11 @@ namespace PaviseApp
         }
         private void LayoutCriticalThreadEditor()
         {
-            if (criticalThreadEditor != null && !criticalThreadEditor.IsDisposed && criticalThreadInfo != null && criticalThreadMode != null)
+            if (criticalThreadEditor != null && !criticalThreadEditor.IsDisposed && criticalThreadMode != null)
             {
                 int width = Math.Max(1, criticalThreadEditor.Width);
                 criticalThreadEnabled.SetBounds(0, 0, width, Theme.S(40));
-                int width2 = TextRenderer.MeasureText(criticalThreadEnabled.Text, Theme.UI(8f, true)).Width;
-                // 标题后面紧跟着说明按钮，状态摘要要排在按钮之后。
-                criticalThreadEnabled.TitleTrailing = Theme.S(32);
-                criticalThreadInfo.SetBounds(Math.Min(Theme.S(36) + width2, Math.Max(0, width - Theme.S(142))), Theme.S(4), Theme.S(28), Theme.S(32));
                 criticalThreadMode.SetBounds(Math.Max(0, width - Theme.S(65)), Theme.S(2), Theme.S(64), Theme.S(36));
-                criticalThreadInfo.BringToFront();
                 criticalThreadMode.BringToFront();
                 criticalThreadResult.SetBounds(Theme.S(12), Theme.S(46), Math.Max(1, width - Theme.S(24)), Theme.S(30));
                 if (criticalThreadIssue)
@@ -1302,7 +1108,6 @@ namespace PaviseApp
             LayoutLibraryViewport();
             LayoutWhitelistViewport();
             LayoutPerformanceViewport();
-            LayoutAntiCheatViewport();
             LayoutAboutViewport();
             LayoutAuditViewport();
             LayoutCoreViewport();
@@ -1501,7 +1306,6 @@ namespace PaviseApp
         }
         protected override void OnResize(EventArgs e)
         {
-            AcViewState acViewState = CaptureAcViewState();
             CoreViewState coreViewState = CaptureCoreViewState();
             SetModeFlyout(false);
             if (base.WindowState == FormWindowState.Minimized)
@@ -1509,7 +1313,6 @@ namespace PaviseApp
             }
             base.OnResize(e);
             CenterRoot();
-            RestoreAcScrollPosition(acViewState);
             RestoreCoreViewState(coreViewState);
             ScheduleFit();
             SyncUiActivity();

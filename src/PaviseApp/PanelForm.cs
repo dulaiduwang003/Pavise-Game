@@ -19,268 +19,6 @@ namespace PaviseApp
 {
     internal partial class PanelForm : Form
     {
-        private sealed class AcViewState
-        {
-            internal string Drawer;
-
-            internal bool BodyScroll;
-
-            internal float InnerY;
-
-            internal float OuterY;
-
-            internal float BodyOrigin;
-        }
-
-        private sealed class AcConsoleSurface : DBPanel
-        {
-            internal Rectangle SectionBounds;
-
-            internal AcConsoleSurface()
-            {
-                BackColor = Theme.Bg;
-            }
-
-            protected override void OnPaintBackground(PaintEventArgs e)
-            {
-                Graphics graphics = e.Graphics;
-                graphics.Clear(Theme.Bg);
-                if (base.Width < 2 || base.Height < 2)
-                {
-                    return;
-                }
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(12), Theme.Bg, Col.Lerp(Theme.Bg, Theme.Stroke, 0.65f));
-                using (Pen pen = new Pen(Col.Alpha(Theme.Accent, 205), Math.Max(1, Theme.S(1))))
-                {
-                    graphics.DrawLines(pen, new Point[4]
-                    {
-                        new Point(0, Theme.S(28)),
-                        new Point(0, Theme.S(14)),
-                        new Point(Theme.S(14), 0),
-                        new Point(Theme.S(28), 0)
-                    });
-                    graphics.DrawLines(pen, new Point[4]
-                    {
-                        new Point(base.Width - Theme.S(28), base.Height - 1),
-                        new Point(base.Width - Theme.S(14), base.Height - 1),
-                        new Point(base.Width - 1, base.Height - Theme.S(14)),
-                        new Point(base.Width - 1, base.Height - Theme.S(28))
-                    });
-                }
-                if (!SectionBounds.IsEmpty)
-                {
-                    using (SolidBrush brush = new SolidBrush(Theme.Accent))
-                    {
-                        graphics.FillRectangle(brush, SectionBounds.Left, SectionBounds.Top + Theme.S(4), Theme.S(3), Theme.S(18));
-                    }
-                }
-            }
-        }
-
-        private sealed class AcModuleSurface : DBPanel
-        {
-            protected override void OnPaintBackground(PaintEventArgs e)
-            {
-                DsPaint.CardBackground(e.Graphics, this, Theme.Bg);
-            }
-        }
-
-        private sealed class AcStrengthSurface : DBPanel
-        {
-            internal int PickerLeft;
-
-            internal int HelpLeft;
-
-            protected override void OnPaintBackground(PaintEventArgs e)
-            {
-                Graphics graphics = e.Graphics;
-                DsPaint.CardBackground(graphics, this, Theme.Bg);
-                if (Width < 2 || Height < 2) return;
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                DsPaint.TechFrame(graphics, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8), Backdrop.CardFill(this, Theme.Card), Col.Lerp(Theme.Card, Theme.Stroke, 0.7f));
-                using (SolidBrush brush = new SolidBrush(Theme.Accent))
-                {
-                    graphics.FillRectangle(brush, Theme.S(20), Theme.S(20), Theme.S(3), Theme.S(20));
-                }
-                if (PickerLeft > 0)
-                {
-                    using (Pen pen = new Pen(Col.Lerp(Theme.Card, Theme.Stroke, 0.65f)))
-                    {
-                        graphics.DrawLine(pen, PickerLeft - Theme.S(14), Theme.S(18), PickerLeft - Theme.S(14), Height - Theme.S(18));
-                        graphics.DrawLine(pen, HelpLeft - Theme.S(12), Theme.S(18), HelpLeft - Theme.S(12), Height - Theme.S(18));
-                    }
-                }
-            }
-        }
-
-        private sealed class AcGlyph : Control
-        {
-            internal string Key;
-
-            internal AcGlyph()
-            {
-                SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-                BackColor = Theme.Bg;
-                base.TabStop = false;
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                DsPaint.FillBackground(e.Graphics, this, BackColor);
-                AntiCheatFeatureIcons.Draw(e.Graphics, base.ClientRectangle, Key, Theme.Accent);
-            }
-        }
-
-        private sealed class AcDrawerButton : PillButton
-        {
-            private readonly string label;
-
-            private readonly string icon;
-
-            private int count;
-
-            private int labelWidth;
-
-            private int badgeWidth;
-
-            private float labelScale;
-
-            private string countText = "0";
-
-            internal int Count
-            {
-                get
-                {
-                    return count;
-                }
-                set
-                {
-                    if (count != value)
-                    {
-                        count = value;
-                        countText = count.ToString();
-                        badgeWidth = 0;
-                        base.AccessibleName = label + " · " + count;
-                        Invalidate();
-                    }
-                }
-            }
-
-            internal AcDrawerButton(string title, string glyph)
-                : base(title)
-            {
-                label = title;
-                icon = glyph;
-                Bg = Theme.Card;
-                base.AccessibleName = title + " · 0";
-            }
-
-            protected override AccessibleObject CreateAccessibilityInstance()
-            {
-                return new AcButtonAccessibility(this);
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                Graphics graphics = e.Graphics;
-                DsPaint.CardBackground(graphics, this, Theme.Bg);
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                Color fill = Col.Lerp(Theme.Card, Theme.CardHover, hover.Value);
-                DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(8), fill, Focused ? Theme.Accent : Theme.Stroke);
-                AntiCheatFeatureIcons.Draw(graphics, new Rectangle(Theme.S(16), (base.Height - Theme.S(20)) / 2, Theme.S(20), Theme.S(20)), icon, Theme.Dim);
-                if (labelScale != Dpi.Scale || badgeWidth == 0)
-                {
-                    labelScale = Dpi.Scale;
-                    labelWidth = TextRenderer.MeasureText(label, Theme.UI(9f, true), Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width;
-                    badgeWidth = Math.Max(Theme.S(28), TextRenderer.MeasureText(countText, Theme.UI(8f, false), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(16));
-                }
-                int minLimit = Math.Max(1, Math.Min(labelWidth, base.Width - Theme.S(92) - badgeWidth));
-                TextRenderer.DrawText(graphics, label, Theme.UI(9f, true), new Rectangle(Theme.S(48), 0, minLimit, base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                Rectangle rectangle = new Rectangle(Theme.S(48) + minLimit + Theme.S(9), (base.Height - Theme.S(22)) / 2, badgeWidth, Theme.S(22));
-                DsPaint.TechFrame(graphics, rectangle, Theme.S(5), Theme.Inset, Theme.Stroke);
-                TextRenderer.DrawText(graphics, countText, Theme.UI(8f, false), rectangle, Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                TextRenderer.DrawText(graphics, "›", Theme.UI(16f, false), new Rectangle(Math.Max(0, base.Width - Theme.S(30)), 0, Theme.S(20), base.Height), Theme.Dim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-                if (base.WantsFocusCue)
-                {
-                    DsFocus.Draw(graphics, Rectangle.Inflate(base.ClientRectangle, -Theme.S(3), -Theme.S(3)), Theme.Accent, Theme.Card);
-                }
-            }
-        }
-
-        private sealed class AcReadOnlyButton : PillButton
-        {
-            private readonly string title;
-
-            private readonly string tag;
-
-            private readonly bool record;
-
-            internal AcReadOnlyButton(string name, string state, bool recordOnly)
-                : base(name)
-            {
-                title = name;
-                tag = state;
-                record = recordOnly;
-                Bg = Theme.Card;
-            }
-
-            protected override AccessibleObject CreateAccessibilityInstance()
-            {
-                return new AcButtonAccessibility(this);
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                Graphics graphics = e.Graphics;
-                graphics.Clear(Theme.Card);
-                DsPaint.TechFrame(graphics, new Rectangle(0, 0, base.Width - 1, base.Height - 1), Theme.S(6), Col.Lerp(Theme.Card, Theme.CardHover, hover.Value), Focused ? Theme.Accent : Theme.Stroke);
-                AntiCheatFeatureIcons.Draw(graphics, new Rectangle(Theme.S(12), (base.Height - Theme.S(20)) / 2, Theme.S(20), Theme.S(20)), record ? "records" : "master", Theme.Dim);
-                int sLimit = ((tag.Length != 0) ? Math.Min(Theme.S(94), base.Width / 3) : 0);
-                TextRenderer.DrawText(graphics, title, Theme.UI(9f, true), new Rectangle(Theme.S(42), 0, Math.Max(1, base.Width - Theme.S(54) - sLimit), base.Height), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                if (sLimit > 0)
-                {
-                    TextRenderer.DrawText(graphics, tag, Theme.UI(8f, false), new Rectangle(base.Width - sLimit - Theme.S(10), 0, sLimit, base.Height), Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.Right | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                }
-                if (base.WantsFocusCue)
-                {
-                    DsFocus.Draw(graphics, Rectangle.Inflate(base.ClientRectangle, -Theme.S(3), -Theme.S(3)), Theme.Accent, Theme.Card);
-                }
-            }
-        }
-
-        private sealed class AcButtonAccessibility : ControlAccessibleObject
-        {
-            private readonly PillButton button;
-
-            public override string DefaultAction
-            {
-                get
-                {
-                    return AutoText("打开", "Open");
-                }
-            }
-
-            public override AccessibleStates State
-            {
-                get
-                {
-                    return base.State | (button.Busy ? AccessibleStates.Busy : AccessibleStates.None);
-                }
-            }
-
-            internal AcButtonAccessibility(PillButton owner)
-                : base(owner)
-            {
-                button = owner;
-            }
-
-            public override void DoDefaultAction()
-            {
-                button.PerformClick();
-            }
-        }
-
         private sealed class AuditFix
         {
             public Func<bool> CanFix;
@@ -515,7 +253,11 @@ namespace PaviseApp
 
             private readonly FamilySuppressionSwitch fullscreen;
 
+            private readonly FamilySuppressionSwitch ace;
+
             private readonly GameCardDetailsButton coreDetails;
+
+            private readonly GameCardDetailsButton aceDetails;
 
             private readonly Label extensionTitle;
 
@@ -548,6 +290,27 @@ namespace PaviseApp
                 family.IconKey = "family";
                 rebar.IconKey = "rebar";
                 fullscreen.IconKey = "fullscreen";
+                // ACE 压制按游戏开启，强度在调整窗口内选择，只在该游戏对局期间生效。
+                ace = MakeOption("libraryAceToggle", Lang.T("lib.ace"), true, form.ToggleGameAceSuppression);
+                ace.IconKey = "ace";
+                ace.DetailsWidth = 62;
+                aceDetails = new GameCardDetailsButton
+                {
+                    Name = "libraryAceSettings",
+                    ShowAdjustLabel = true,
+                    OwnerRow = ace,
+                    AccessibleName = Lang.T("lib.ace.adjust")
+                };
+                aceDetails.Click += delegate
+                {
+                    if (item != null)
+                    {
+                        owner.AdjustGameAceSuppression(item);
+                    }
+                };
+                base.Controls.Add(aceDetails);
+                aceDetails.BringToFront();
+                ace.DetailsOverlay = aceDetails;
                 coreDetails = new GameCardDetailsButton
                 {
                     Name = "libraryCoreSettings",
@@ -580,9 +343,11 @@ namespace PaviseApp
                 core.TabIndex = 0;
                 coreDetails.TabIndex = 1;
                 owner.criticalThreadEditor.TabIndex = 2;
-                family.TabIndex = 3;
-                rebar.TabIndex = 4;
-                fullscreen.TabIndex = 5;
+                ace.TabIndex = 3;
+                aceDetails.TabIndex = 4;
+                family.TabIndex = 5;
+                rebar.TabIndex = 6;
+                fullscreen.TabIndex = 7;
                 RefreshItem(initial);
             }
 
@@ -650,13 +415,20 @@ namespace PaviseApp
                 family.Gated = !item.RendererObserved;
                 rebar.Checked = PolicyResolver.For(profile).NvRebar;
                 fullscreen.Checked = profile.DisableFullscreenOptimizations;
+                string aceChoice = corePolicy.ValueOf(AceSuppressionPolicy.Key);
+                ace.Checked = AceSuppressionPolicy.Parse(aceChoice).HasValue;
+                // 关闭时在行内说明适用范围，开启后显示所选强度。
+                ace.Summary = ace.Checked ? AceSuppressionPolicy.Label(aceChoice) : Lang.T("lib.ace.tip");
+                ace.Enabled = !owner.aceChangeBusy;
+                aceDetails.Enabled = !owner.aceChangeBusy;
                 family.Enabled = !owner.familyChangeBusy;
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
-                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-                string[] textEntries = new string[4]
+                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[5] { core, ace, family, rebar, fullscreen };
+                string[] textEntries = new string[5]
                 {
                     "lib.cores.toggle.tip",
+                    "lib.ace.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
                     "lib.rebar.tip",
                     "lib.fso.tip"
@@ -710,15 +482,19 @@ namespace PaviseApp
                     coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), core.Top + Theme.S(2), Theme.S(64), Theme.S(36));
                     coreDetails.BringToFront();
                     owner.criticalThreadEditor.SetBounds(0, core.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
-                    // 核心范围和渲染调度的行内摘要保持同列。
-                    int summaryColumn = Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft());
-                    if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn)
+                    ace.SetBounds(0, owner.criticalThreadEditor.Bottom + Theme.S(8), width, Theme.S(40));
+                    aceDetails.SetBounds(Math.Max(0, ace.Width - Theme.S(65)), ace.Top + Theme.S(2), Theme.S(64), Theme.S(36));
+                    aceDetails.BringToFront();
+                    // 核心范围、渲染调度和 ACE 压制的行内摘要保持同列。
+                    int summaryColumn = Math.Max(Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft()), ace.NaturalSummaryLeft());
+                    if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn || ace.SummaryLeft != summaryColumn)
                     {
-                        core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = summaryColumn;
+                        core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = ace.SummaryLeft = summaryColumn;
                         core.Invalidate();
                         owner.criticalThreadEnabled.Invalidate();
+                        ace.Invalidate();
                     }
-                    otherTitle.SetBounds(Theme.S(4), owner.criticalThreadEditor.Bottom + Theme.S(12), labelWidth, Theme.S(22));
+                    otherTitle.SetBounds(Theme.S(4), ace.Bottom + Theme.S(12), labelWidth, Theme.S(22));
                     int rowTop = otherTitle.Bottom + Theme.S(4);
                     FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[3] { family, rebar, fullscreen };
                     for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
@@ -771,6 +547,9 @@ namespace PaviseApp
             public string Details;
 
             public bool Automatic;
+
+            // 进程访问受限历史：原在反作弊页，随反作弊页下线移到白名单，点开可查看与清空。
+            public bool AccessHistory;
 
             public WhitelistItem(WhitelistRuleView view)
             {
@@ -912,74 +691,6 @@ namespace PaviseApp
 
         private int aboutContentTop;
 
-        private DBPanel acViewport;
-
-        private DBPanel acList;
-
-        private DBPanel acControlBay;
-
-        private AcStrengthSurface acStrengthSurface;
-
-        private DBPanel acUtility;
-
-        private DBPanel acDrawer;
-
-        private DBPanel acDrawerBody;
-
-        private AcConsoleSurface acRosterBar;
-
-        private Label lblAcRoster;
-
-        private Label acTitleLabel;
-
-        private Label acSubtitleLabel;
-
-        private Label acModuleCountLabel;
-
-        private Label acModulesLabel;
-
-        private Label acStrengthLabel;
-
-        private Label acStrengthHintLabel;
-
-        private Label acDrawerTitle;
-
-        private AntiCheatStrengthPicker acModePicker;
-
-        private PillButton acHelp;
-
-        private PillButton acClear;
-
-        private PillButton acOtherToggle;
-
-        private PillButton acRosterEntry;
-
-        private PillButton acDrawerClose;
-
-        private PillButton acStrengthHelp;
-
-        private AcGlyph acTitleIcon;
-
-        private bool acOtherOpen;
-
-        private bool acArranging;
-
-        private float acLayoutScale = 1f;
-
-        private string acDrawerKind = "";
-
-        private string[] acPresentedRoster = new string[0];
-
-        private readonly List<AcGroup> acGroups = new List<AcGroup>();
-
-        private readonly List<SettingCard> acCards = new List<SettingCard>();
-
-        private readonly List<Toggle> acToggles = new List<Toggle>();
-
-        private readonly List<Control> acReadOnlyCards = new List<Control>();
-
-        private readonly List<Control> acRosterRows = new List<Control>();
-
         private bool auditArranging;
 
         private DBPanel pageAudit;
@@ -1104,8 +815,6 @@ namespace PaviseApp
 
         // 调度行同步后的可选通知；资源优先级已随调整窗口独立读取草案。
         private Action criticalThreadSynced;
-
-        private PerformanceInfoButton criticalThreadInfo;
 
         private bool criticalThreadIssue;
 
@@ -1241,6 +950,8 @@ namespace PaviseApp
         private bool familyChangeBusy;
 
         private bool rebarChangeBusy;
+
+        private bool aceChangeBusy;
 
         private bool fullscreenOptimizationsChangeBusy;
 

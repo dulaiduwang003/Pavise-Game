@@ -35,6 +35,8 @@ namespace PaviseApp
             messages.Add("schedule.manual.changed", new string[2] { "该游戏配置已被外部修改或移除。请恢复已保存配置后重新编辑。", "This game's configuration changed externally or was removed. Reload the saved configuration before editing again." });
             messages.Add("schedule.manual.rule", new string[3] { "手动配置在本局保持固定，不进行自动扩核或学习；退出游戏后恢复。", "Manual selection stays fixed for this session, with no automatic expansion or learning. Restored when the game exits.", "このセッション中は手動設定を固定し、自動拡張や学習は行いません。終了時に復元します。" });
             messages.Add("schedule.manual.plan", new string[3] { "手动游戏核心：{0}", "Manual game CPUs: {0}", "手動ゲームCPU：{0}" });
+            messages.Add("schedule.manual.plan.unused", new string[2] { "手动游戏核心：{0}（已选全部核心，游戏核心范围本局未启用）", "Manual game CPUs: {0} (all CPUs selected; game core range is off this session)" });
+            messages.Add("schedule.manual.plan.reference", new string[2] { "手动游戏核心：{0}（游戏核心范围本局未启用，不限制游戏进程，仅供后台选核避让参考）", "Manual game CPUs: {0} (game core range is off this session; the game is not restricted and the range only guides background placement)" });
             messages.Add("schedule.page.sub", new string[3] { "游戏核心与隔离按游戏手动配置，所有模式均可使用。", "Configure game cores and isolation per game, available in every mode.", "ゲームごとにコアと分離を手動設定できます。全モードで利用可能です。" });
             messages.Add("schedule.auto.unsupported", new string[2] { "当前处理器组或进程位数无法安全表示完整核心拓扑，本次不落核。", "The processor groups or process bitness cannot safely represent the complete topology; no placement applied." });
             messages.Add("schedule.auto.identity", new string[3] { "无法确认当前游戏进程身份，本局保持共享。", "The current game process identity could not be verified; cores stay shared for this session.", "現在のゲームプロセスの識別情報を確認できません。このセッションは共有を維持します。" });
