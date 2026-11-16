@@ -111,12 +111,12 @@ namespace PaviseApp
 
         private void QueueWindowScaleUpdate()
         {
-            if (windowScaleUpdatePending || base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop) return;
+            if (shotMode || Dpi.NoFit || windowScaleUpdatePending || base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop) return;
             windowScaleUpdatePending = true;
             BeginInvoke((MethodInvoker)delegate
             {
                 windowScaleUpdatePending = false;
-                if (base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop || base.WindowState == FormWindowState.Minimized) return;
+                if (shotMode || Dpi.NoFit || base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop || base.WindowState == FormWindowState.Minimized) return;
                 // 普通调整窗口大小仍由客户区适配处理，仅环境变化时恢复所选比例。
                 if (Dpi.UpdateWindowEnvironment(base.Handle)) ApplyPendingDpiRebuild();
             });
