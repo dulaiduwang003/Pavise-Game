@@ -7,6 +7,7 @@ $output = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) { throw 'Use a new output directory; earlier results are retained.' }
 $null = New-Item -ItemType Directory -Path $output
 $suites = @(
+    @{Name='DpiScaling'; Arguments=''},
     @{Name='SmartGovernanceThreshold'; Arguments=''},
     @{Name='BackgroundGovernanceRuntime'; Arguments=''},
     @{Name='ConfigurationPresetReads'; Arguments=''},

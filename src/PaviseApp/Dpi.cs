@@ -17,6 +17,8 @@ namespace PaviseApp
 
         private static int currentDpi = 96;
 
+        private static Rectangle currentWorkingArea;
+
         public static float Scale = 1f;
 
         public static bool NoFit;
@@ -32,6 +34,7 @@ namespace PaviseApp
 
         public static void Init()
         {
+            currentWorkingArea = Rectangle.Empty;
             try
             {
                 Native.SetProcessDpiAwarenessContext((IntPtr)(-4));
@@ -97,7 +100,8 @@ namespace PaviseApp
             if (NoFit || fitW <= 0 || fitH <= 0) return scale;
             try
             {
-                Rectangle area = Screen.PrimaryScreen.WorkingArea;
+                Rectangle area = currentWorkingArea;
+                if (area.Width <= 0 || area.Height <= 0) area = Screen.PrimaryScreen.WorkingArea;
                 if (area.Width <= 0 || area.Height <= 0) return scale;
                 float cap = Math.Min(area.Width / (float)fitW, area.Height / (float)fitH);
                 if (cap < 1f) cap = 1f;
@@ -128,7 +132,8 @@ namespace PaviseApp
             }
             if (scalePreferencePercent > 0)
             {
-                upperBound = Math.Min(upperBound, ScaleFor(currentDpi));
+                // 客户区已提供可用空间，不能再套用另一块屏幕的适配上限。
+                upperBound = Math.Min(upperBound, RequestedScaleFor(currentDpi));
             }
             return upperBound;
         }
@@ -160,6 +165,29 @@ namespace PaviseApp
             }
             Scale = ScaleFor(dpi);
             return true;
+        }
+
+        internal static bool UpdateWindowEnvironment(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            int previousDpi = currentDpi;
+            Rectangle previousArea = currentWorkingArea;
+            int dpi = WindowDpi(hwnd);
+            if (dpi > 0) currentDpi = dpi;
+            try
+            {
+                Rectangle area = Screen.FromHandle(hwnd).WorkingArea;
+                if (area.Width > 0 && area.Height > 0) currentWorkingArea = area;
+            }
+            catch { }
+            return previousDpi != currentDpi || previousArea != currentWorkingArea;
+        }
+
+        public static bool UpdateWindow(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            UpdateWindowEnvironment(hwnd);
+            return Update(currentDpi);
         }
 
         public static int WindowDpi(IntPtr hwnd)

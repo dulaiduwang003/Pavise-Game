@@ -512,12 +512,14 @@ namespace PaviseApp
                     PaviseDialog.Warn(this, "PAVISE AUTO", Lang.T("set.scale.fail"));
                     return;
                 }
+                Dpi.UpdateWindowEnvironment(base.Handle);
                 if (Dpi.SetScalePreference(percent))
                 {
                     BeginInvoke(new MethodInvoker(delegate
                     {
-                        Theme.DropFontCache();
-                        RebuildUi();
+                        if (base.IsDisposed || base.Disposing || runtimeShutdownBusy) return;
+                        Dpi.UpdateWindow(base.Handle);
+                        RebuildUiForScale();
                     }));
                 }
             };

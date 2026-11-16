@@ -86,12 +86,46 @@ namespace PaviseApp
         }
         private void ApplyPendingDpiRebuild()
         {
-            if (base.IsDisposed) return;
-            int dpi = Dpi.WindowDpi(base.Handle);
-            if (dpi <= 0 || !Dpi.Update(dpi)) return;
+            if (base.IsDisposed || base.Disposing || runtimeShutdownBusy) return;
+            if (!Dpi.UpdateWindow(base.Handle)) return;
+            Logger.Log(Lang.T("log.panelform.11", 0) + Dpi.WindowDpi(base.Handle));
+            RebuildUiForScale();
+        }
+
+        private void RebuildUiForScale()
+        {
+            if (base.IsDisposed || base.Disposing || runtimeShutdownBusy) return;
+            Rectangle area = Screen.FromHandle(base.Handle).WorkingArea;
             Theme.DropFontCache();
-            Logger.Log(Lang.T("log.panelform.11", 0) + dpi);
             RebuildUi();
+            if (!Dpi.NoFit && base.WindowState == FormWindowState.Normal)
+            {
+                // 放大后仍留在选择比例时的屏幕内，避免右侧或底部控件越界。
+                int left = Math.Max(area.Left, Math.Min(base.Left, area.Right - base.Width));
+                int top = Math.Max(area.Top, Math.Min(base.Top, area.Bottom - base.Height));
+                base.Location = new Point(left, top);
+            }
+        }
+
+        private bool windowScaleUpdatePending;
+
+        private void QueueWindowScaleUpdate()
+        {
+            if (windowScaleUpdatePending || base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop) return;
+            windowScaleUpdatePending = true;
+            BeginInvoke((MethodInvoker)delegate
+            {
+                windowScaleUpdatePending = false;
+                if (base.IsDisposed || base.Disposing || runtimeShutdownBusy || !base.IsHandleCreated || !base.Visible || moveSizeLoop || base.WindowState == FormWindowState.Minimized) return;
+                // 普通调整窗口大小仍由客户区适配处理，仅环境变化时恢复所选比例。
+                if (Dpi.UpdateWindowEnvironment(base.Handle)) ApplyPendingDpiRebuild();
+            });
+        }
+
+        protected override void OnLocationChanged(EventArgs e)
+        {
+            base.OnLocationChanged(e);
+            QueueWindowScaleUpdate();
         }
         private static void CollectThemeControls(Control parent, List<Control> controls)
         {
