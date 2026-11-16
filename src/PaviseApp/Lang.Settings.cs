@@ -46,6 +46,10 @@ namespace PaviseApp
             messages.Add("set.memcompress", new string[2] { "内存压缩设置", "Memory compression settings" });
             messages.Add("set.light", new string[2] { "亮色模式", "Light mode" });
             messages.Add("set.light.n", new string[2] { "切换为浅色界面，立即生效，默认为暗色。", "Switches to the light UI. Takes effect immediately; dark is the default." });
+            messages.Add("set.scale", new string[2] { "界面缩放", "Interface scale" });
+            messages.Add("set.scale.n", new string[2] { "默认跟随 Windows 显示缩放；也可选择 100%–300%，每档 25%。屏幕空间不足时会自动适配。", "Follows Windows display scaling by default; choose 100%–300% in 25% steps. The app fits the available screen space when needed." });
+            messages.Add("set.scale.windows", new string[2] { "跟随 Windows", "Follow Windows" });
+            messages.Add("set.scale.fail", new string[2] { "界面缩放保存失败，已保留原设置。", "Could not save interface scaling. The previous setting was retained." });
             messages.Add("backdrop.title", new string[2] { "背景封面", "Backdrop image" });
             messages.Add("backdrop.dim", new string[2] { "封面浓度", "Backdrop strength" });
             messages.Add("backdrop.dim.off", new string[2] { "关闭", "Off" });

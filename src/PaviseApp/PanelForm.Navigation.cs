@@ -422,6 +422,7 @@ namespace PaviseApp
             if (m.Msg == 561) BeginMoveSizeLoop();
             else if (m.Msg == 562) EndMoveSizeLoop();
             base.WndProc(ref m);
+            if (m.Msg == 736 || m.Msg == 126 || m.Msg == 26) QueueWindowScaleUpdate();
         }
         private PageHook CurrentPageHook()
         {
@@ -465,6 +466,7 @@ namespace PaviseApp
             if (!moveSizeLoop) return;
             moveSizeLoop = false;
             if (base.IsDisposed || !UiActive) return;
+            QueueWindowScaleUpdate();
             if (uiTimer != null) uiTimer.Start();
             OnUiTick(null, EventArgs.Empty);
             if (fitDeferredByDrag) { fitDeferredByDrag = false; ScheduleFit(); }

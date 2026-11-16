@@ -22,6 +22,7 @@ namespace PaviseApp
             HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             hashSet.Add("Lang");
             hashSet.Add("UiLight");
+            hashSet.Add("UiScalePercent");
             hashSet.Add("SecurityCompatibilityWarningHidden");
             hashSet.Add("AutoHideOnGame");
             hashSet.Add("DeepTuningLastPage");
