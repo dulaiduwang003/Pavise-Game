@@ -30,6 +30,7 @@ namespace PaviseApp
 
         private static readonly HashSet<string> failedCompletions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private static readonly HashSet<string> recoveredIntents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> unconfirmedIntentClears = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private static bool migrated;
 
@@ -228,7 +229,34 @@ namespace PaviseApp
 
         private static bool SaveIntent(string action, string target, string text)
         {
-            return Save(IntentKey(action, target), text, DurableIntent(action));
+            if (!string.IsNullOrEmpty(text)) return Save(IntentKey(action, target), text, DurableIntent(action));
+            string key = RecordKey(action, target);
+            // 删除已发生但刷新或读回失败时，值缺失不能证明取消已耐久提交。
+            unconfirmedIntentClears.Add(key);
+            bool saved = Save(IntentKey(action, target), text, DurableIntent(action));
+            if (saved) unconfirmedIntentClears.Remove(key);
+            return saved;
+        }
+
+        private static bool EmptyCancellationScopeSettled(string key)
+        {
+            if (admissions.ContainsKey(key) || admissions.ContainsValue(key) || recoveredIntents.Contains(key)
+                || failedCompletions.Contains(key) || volatileFailures.ContainsKey(key) || unconfirmedIntentClears.Contains(key)) return false;
+            Dictionary<string, AutomaticPhase> phases;
+            if (automaticPhases.TryGetValue(key, out phases))
+                foreach (AutomaticPhase phase in phases.Values)
+                    if (phase.Attempts != 0 || phase.FailureSequence != 0) return false;
+            return true;
+        }
+
+        private static bool EmptyCancellationConfirmed(string action, string target, string key, ActionFailureRecord failure)
+        {
+            if (failure != null || !EmptyCancellationScopeSettled(key)) return false;
+            string wildcard = RecordKey(action, "*");
+            if (wildcard != key && (!EmptyCancellationScopeSettled(wildcard) || Read(wildcard, action, "*") != null)) return false;
+            string intent;
+            // 只省略从未进入执行阶段且本次实读为空的清理；历史失败和待确认取消仍走原耐久路径。
+            return Settings.TryLoadStr(IntentKey(action, target), out intent) && string.IsNullOrEmpty(intent);
         }
 
         private static ActionFailureRecord Read(string key, string action, string target)
@@ -420,6 +448,7 @@ namespace PaviseApp
                 {
                     return;
                 }
+                if (EmptyCancellationConfirmed(action, target, recordKeyResult, actionFailureRecord2)) return;
                 if (!SaveIntent(action, target, ""))
                 {
                     Trip(action, target, "Cancelled execution intent could not be cleared");

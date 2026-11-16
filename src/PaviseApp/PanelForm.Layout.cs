@@ -970,23 +970,25 @@ namespace PaviseApp
                     int remainingULimit = uLimit - layoutWhitelistViewportValue * 2;
                     int layoutWhitelistViewportValue2 = 10;
                     bool wideLayout = uLimit >= 920;
-                    bool mediumLayout = uLimit >= 520;
+                    bool mediumLayout = uLimit >= 660;
                     int layoutWhitelistViewportValue3 = 16;
                     int layoutWhitelistViewportValue4;
                     if (wideLayout)
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, 280, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue + 292, layoutWhitelistViewportValue3, 300, 38);
-                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + 608, layoutWhitelistViewportValue3, Math.Max(1, remainingULimit - 864), 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 248, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 112, layoutWhitelistViewportValue3, 112, 38);
+                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, 200, 38);
+                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue + 212, layoutWhitelistViewportValue3, 280, 38);
+                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + 504, layoutWhitelistViewportValue3, Math.Max(1, remainingULimit - 866), 38);
+                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 350, layoutWhitelistViewportValue3, 126, 38);
+                        WhiteBounds(whiteService, uLimit - layoutWhitelistViewportValue - 214, layoutWhitelistViewportValue3, 112, 38);
+                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 92, layoutWhitelistViewportValue3, 92, 38);
                         layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 38 + 12;
                     }
                     else if (mediumLayout)
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit - 248, 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 238, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 102, layoutWhitelistViewportValue3, 102, 38);
+                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit - 362, 38);
+                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 350, layoutWhitelistViewportValue3, 126, 38);
+                        WhiteBounds(whiteService, uLimit - layoutWhitelistViewportValue - 214, layoutWhitelistViewportValue3, 112, 38);
+                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 92, layoutWhitelistViewportValue3, 92, 38);
                         WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, Math.Min(330, remainingULimit - 100), 34);
                         WhiteBounds(whiteCount, layoutWhitelistViewportValue + Math.Min(330, remainingULimit - 100) + 12, layoutWhitelistViewportValue3 + 48, Math.Max(1, remainingULimit - 342), 34);
                         layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 94;
@@ -995,10 +997,22 @@ namespace PaviseApp
                     {
                         WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit, 38);
                         WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, remainingULimit, 34);
-                        int ratio = (remainingULimit - layoutWhitelistViewportValue2) / 2;
-                        WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, ratio, 34);
-                        WhiteBounds(whiteBrowse, layoutWhitelistViewportValue + ratio + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, remainingULimit - ratio - layoutWhitelistViewportValue2, 34);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 138;
+                        if (uLimit >= 420)
+                        {
+                            int buttonWidth = (remainingULimit - layoutWhitelistViewportValue2 * 2) / 3;
+                            WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
+                            WhiteBounds(whiteService, layoutWhitelistViewportValue + buttonWidth + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
+                            WhiteBounds(whiteBrowse, layoutWhitelistViewportValue + (buttonWidth + layoutWhitelistViewportValue2) * 2, layoutWhitelistViewportValue3 + 92, remainingULimit - (buttonWidth + layoutWhitelistViewportValue2) * 2, 34);
+                            layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 138;
+                        }
+                        else
+                        {
+                            int buttonWidth = (remainingULimit - layoutWhitelistViewportValue2) / 2;
+                            WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
+                            WhiteBounds(whiteService, layoutWhitelistViewportValue + buttonWidth + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, remainingULimit - buttonWidth - layoutWhitelistViewportValue2, 34);
+                            WhiteBounds(whiteBrowse, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 136, remainingULimit, 34);
+                            layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 182;
+                        }
                     }
                     whiteCount.Visible = (wideLayout || mediumLayout) && whiteCount.Width >= Theme.S(70);
                     whiteSearch.SetBounds(Theme.S(40), Theme.S(10), Math.Max(1, whiteSearchPanel.Width - Theme.S(52)), Theme.S(24));

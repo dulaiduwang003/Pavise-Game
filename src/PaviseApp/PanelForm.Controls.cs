@@ -390,6 +390,16 @@ namespace PaviseApp
                 item.StateText = ((item.View.CurrentMatches > 0) ? Lang.F("white.state.running", item.View.CurrentMatches) : ((item.View.CurrentMatches < 0) ? Lang.T("white.matches.pending") : Lang.T("white.state.idle")));
                 return item;
             }
+            if (rule.Kind == WhitelistRuleKind.Service)
+            {
+                item.Title = rule.Value;
+                item.Subtitle = Lang.T("white.service.rule.sub");
+                item.Badge = Lang.T("white.kind.service");
+                item.StateText = item.View.CurrentMatches < 0 ? Lang.T("white.service.pending")
+                    : (item.View.CurrentMatches > 0 ? Lang.F("white.service.hosts", item.View.CurrentMatches) : Lang.T("white.service.unmatched"));
+                item.Details = Lang.T("white.service.scope");
+                return item;
+            }
             item.Title = WhitelistTitle(rule);
             item.Subtitle = ((rule.Kind == WhitelistRuleKind.LegacyName) ? Lang.T("white.badge.name.sub") : rule.Value);
             item.Badge = (item.View.Required ? Lang.T("white.required.badge") : Lang.T("white.badge.family"));

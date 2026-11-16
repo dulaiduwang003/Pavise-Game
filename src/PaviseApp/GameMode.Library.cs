@@ -568,7 +568,7 @@ namespace PaviseApp
                     list.Add(Lang.T("t.gamemodelibrary.23"));
                     list.Add(Lang.T("t.gamemodelibrary.24"));
                     list.Add(Lang.T("t.gamemodelibrary.25"));
-                    list.Add("PAVISE_WHITELIST_V4");
+                    list.Add(WhitelistRule.HeaderFor(rules));
                     if (rules != null)
                     {
                         foreach (WhitelistRule rule in rules)
@@ -685,6 +685,7 @@ namespace PaviseApp
             }
             whiteRules.Add(rule);
             whiteRevision++;
+            InvalidateServiceWhitelistRules();
             if (RuleProtectsFamily(rule))
             {
                 Interlocked.Exchange(ref whiteHasFamilyRules, 1);

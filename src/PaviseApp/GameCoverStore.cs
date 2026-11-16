@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
@@ -23,11 +24,57 @@ namespace PaviseApp
 
         internal const int CoverHeight = 540;
 
+        internal const int MaximumCachedCovers = 24;
+
         private static readonly object Gate = new object();
 
-        private static readonly Dictionary<string, Bitmap> Cache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, CacheEntry> Cache = new Dictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
 
-        public static Bitmap Load(GameProfile profile)
+        private static readonly LinkedList<string> Recency = new LinkedList<string>();
+
+        private sealed class CachedCoverPath
+        {
+            internal string Id, DataRoot, Path;
+        }
+
+        // 游戏库刷新会替换配置实例；弱引用缓存不能延长旧配置及其派生路径的生命周期。
+        private static readonly ConditionalWeakTable<GameProfile, CachedCoverPath> CoverPaths = new ConditionalWeakTable<GameProfile, CachedCoverPath>();
+        private static readonly ConditionalWeakTable<GameProfile, CachedCoverPath>.CreateValueCallback CreateCoverPath = delegate { return new CachedCoverPath(); };
+
+        internal sealed class CacheEntry
+        {
+            internal Bitmap Image;
+            internal LinkedListNode<string> Position;
+            internal int Borrowers;
+            internal bool Cached;
+        }
+
+        // 缓存淘汰与绘制结束可以并发；只在缓存和最后一个绘制借用均已释放后销毁图片。
+        internal sealed class Lease : IDisposable
+        {
+            private CacheEntry entry;
+
+            internal Lease(CacheEntry entry) { this.entry = entry; }
+
+            internal Bitmap Image
+            {
+                get { lock (Gate) return entry == null ? null : entry.Image; }
+            }
+
+            public void Dispose()
+            {
+                lock (Gate)
+                {
+                    if (entry == null) return;
+                    CacheEntry previous = entry;
+                    entry = null;
+                    previous.Borrowers--;
+                    DisposeUnowned(previous);
+                }
+            }
+        }
+
+        public static Lease Acquire(GameProfile profile)
         {
             string coverPathResult = CoverPath(profile);
             if (coverPathResult == null)
@@ -36,28 +83,37 @@ namespace PaviseApp
             }
             lock (Gate)
             {
-                Bitmap value;
-                if (Cache.TryGetValue(coverPathResult, out value))
+                CacheEntry entry;
+                if (Cache.TryGetValue(coverPathResult, out entry))
                 {
-                    return value;
+                    Recency.Remove(entry.Position);
+                    Recency.AddFirst(entry.Position);
                 }
-                try
+                else
                 {
-                    if (File.Exists(coverPathResult))
+                    Bitmap value = null;
+                    try
                     {
-                        value = ReadCover(coverPathResult);
+                        try
+                        {
+                            if (File.Exists(coverPathResult)) value = ReadCover(coverPathResult);
+                        }
+                        catch (Exception error)
+                        {
+                            if (!IsFileOrImageError(error)) throw;
+                        }
+                        entry = AddCached(coverPathResult, value);
+                        value = null;
+                    }
+                    finally
+                    {
+                        if (value != null) value.Dispose();
                     }
                 }
-                catch (Exception error)
-                {
-                    if (!IsFileOrImageError(error))
-                    {
-                        throw;
-                    }
-                    value = null;
-                }
-                Cache[coverPathResult] = value;
-                return value;
+                if (entry.Image == null) return null;
+                var lease = new Lease(entry);
+                entry.Borrowers++;
+                return lease;
             }
         }
 
@@ -82,6 +138,7 @@ namespace PaviseApp
             }
             Bitmap bitmap = null;
             string combinedPath = null;
+            bool persisted = false;
             try
             {
                 bitmap = ReadCover(sourceFile);
@@ -104,14 +161,21 @@ namespace PaviseApp
                         File.Move(combinedPath, coverPathResult);
                     }
                     combinedPath = null;
+                    persisted = true;
                     Invalidate(coverPathResult);
-                    Cache[coverPathResult] = bitmap;
+                    AddCached(coverPathResult, bitmap);
                     bitmap = null;
                 }
                 return true;
             }
             catch (Exception ex)
             {
+                if (persisted)
+                {
+                    // 文件已经提交，缓存不足不改变保存结果；未移交图片由 finally 释放，下次借图重新读取。
+                    if (ex is OutOfMemoryException || ex is ExternalException) return true;
+                    throw;
+                }
                 if (!IsFileOrImageError(ex))
                 {
                     throw;
@@ -195,48 +259,102 @@ namespace PaviseApp
         {
             lock (Gate)
             {
-                foreach (Bitmap value in Cache.Values)
+                foreach (CacheEntry entry in Cache.Values)
                 {
-                    if (value != null)
-                    {
-                        value.Dispose();
-                    }
+                    entry.Cached = false;
+                    entry.Position = null;
+                    DisposeUnowned(entry);
                 }
                 Cache.Clear();
+                Recency.Clear();
             }
         }
 
         private static void Invalidate(string path)
         {
-            Bitmap value;
-            if (Cache.TryGetValue(path, out value))
+            CacheEntry entry;
+            if (Cache.TryGetValue(path, out entry))
             {
                 Cache.Remove(path);
-                if (value != null)
+                Recency.Remove(entry.Position);
+                entry.Position = null;
+                entry.Cached = false;
+                DisposeUnowned(entry);
+            }
+        }
+
+        private static CacheEntry AddCached(string path, Bitmap image)
+        {
+            var entry = new CacheEntry { Image = image };
+            try
+            {
+                entry.Position = Recency.AddFirst(path);
+                Cache.Add(path, entry);
+                entry.Cached = true;
+                // 不存在或损坏的封面也占一个条目；异常遗留节点必须逐个剥离，避免持锁空转。
+                while (Cache.Count > MaximumCachedCovers)
                 {
-                    value.Dispose();
+                    LinkedListNode<string> oldest = Recency.Last;
+                    if (oldest == null) throw new InvalidOperationException("封面缓存缺少淘汰索引。");
+                    CacheEntry candidate;
+                    if (!Cache.TryGetValue(oldest.Value, out candidate) || !object.ReferenceEquals(candidate.Position, oldest))
+                    {
+                        Recency.Remove(oldest);
+                        continue;
+                    }
+                    Invalidate(oldest.Value);
                 }
+                return entry;
+            }
+            catch
+            {
+                CacheEntry published;
+                if (Cache.TryGetValue(path, out published) && object.ReferenceEquals(published, entry)) Cache.Remove(path);
+                if (entry.Position != null && object.ReferenceEquals(entry.Position.List, Recency)) Recency.Remove(entry.Position);
+                entry.Position = null;
+                entry.Cached = false;
+                // 失败不转移传入图片的所有权，调用方负责释放；已经借出的其他图片保持原租约。
+                entry.Image = null;
+                throw;
+            }
+        }
+
+        private static void DisposeUnowned(CacheEntry entry)
+        {
+            if (!entry.Cached && entry.Borrowers == 0 && entry.Image != null)
+            {
+                entry.Image.Dispose();
+                entry.Image = null;
             }
         }
 
         private static string CoverPath(GameProfile profile)
         {
-            if (profile == null || string.IsNullOrEmpty(profile.Id) || string.IsNullOrEmpty(Paths.Data))
+            if (profile == null) return null;
+            string id = profile.Id;
+            string dataRoot = Paths.Data;
+            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(dataRoot))
             {
                 return null;
             }
-            byte[] hash;
-            using (SHA256 sHA = SHA256.Create())
+            CachedCoverPath cached = CoverPaths.GetValue(profile, CreateCoverPath);
+            lock (cached)
             {
-                hash = sHA.ComputeHash(Encoding.UTF8.GetBytes(profile.Id));
+                if (string.Equals(cached.Id, id, StringComparison.Ordinal) && string.Equals(cached.DataRoot, dataRoot, StringComparison.Ordinal))
+                    return cached.Path;
+                byte[] hash;
+                using (SHA256 sHA = SHA256.Create())
+                {
+                    hash = sHA.ComputeHash(Encoding.UTF8.GetBytes(id));
+                }
+                StringBuilder stringBuilder = new StringBuilder(64);
+                foreach (byte b in hash) stringBuilder.Append(b.ToString("x2"));
+                string path = Path.Combine(dataRoot, "GameCovers", stringBuilder.ToString() + ".png");
+                cached.Id = id;
+                cached.DataRoot = dataRoot;
+                cached.Path = path;
+                return path;
             }
-            StringBuilder stringBuilder = new StringBuilder(64);
-            byte[] rawBytes = hash;
-            foreach (byte b in rawBytes)
-            {
-                stringBuilder.Append(b.ToString("x2"));
-            }
-            return Path.Combine(Paths.Data, "GameCovers", stringBuilder.ToString() + ".png");
         }
 
         private static Bitmap ReadCover(string path)

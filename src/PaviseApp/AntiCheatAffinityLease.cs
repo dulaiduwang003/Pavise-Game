@@ -589,6 +589,7 @@ namespace PaviseApp
             private bool recovered;
             private long forwardEpoch;
             private string device;
+            [ThreadStatic] private static StringBuilder identityImageBuffer;
             [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
             [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
             [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessTimes(IntPtr handle, out long creation, out long exit, out long kernel, out long user);
@@ -625,12 +626,28 @@ namespace PaviseApp
                 if (!GetProcessTimes(handle, out born, out exit, out kernel, out user)) return AntiCheatAffinityRead.Unavailable;
                 if (exit != 0) return AntiCheatAffinityRead.Gone;
                 if (born != expected.CreationTime) return AntiCheatAffinityRead.DifferentProcess;
-                StringBuilder image = new StringBuilder(32768); int length = image.Capacity;
-                if (!QueryFullProcessImageName(handle, 0, image, ref length)) return AntiCheatAffinityRead.Unavailable;
-                try { path = Path.GetFullPath(image.ToString()); }
-                catch { return AntiCheatAffinityRead.Unavailable; }
-                return expected.ImagePath.Length == 0 || string.Equals(path, expected.ImagePath, StringComparison.OrdinalIgnoreCase)
-                    ? AntiCheatAffinityRead.Known : AntiCheatAffinityRead.DifferentProcess;
+                StringBuilder image = identityImageBuffer;
+                identityImageBuffer = null;
+                try
+                {
+                    if (image == null) image = new StringBuilder(32768);
+                    image.Length = 0;
+                    int length = image.Capacity;
+                    if (!QueryFullProcessImageName(handle, 0, image, ref length)) return AntiCheatAffinityRead.Unavailable;
+                    try { path = Path.GetFullPath(image.ToString()); }
+                    catch { return AntiCheatAffinityRead.Unavailable; }
+                    return expected.ImagePath.Length == 0 || string.Equals(path, expected.ImagePath, StringComparison.OrdinalIgnoreCase)
+                        ? AntiCheatAffinityRead.Known : AntiCheatAffinityRead.DifferentProcess;
+                }
+                finally
+                {
+                    // 只暂存字符空间；借出时清槽，重入归还的缓冲优先保留，身份和路径每次重新读取。
+                    if (image != null)
+                    {
+                        image.Length = 0;
+                        if (identityImageBuffer == null) identityImageBuffer = image;
+                    }
+                }
             }
             internal static bool TryIdentify(int pid, long creation, string expectedName, out AntiCheatAffinityIdentity identity, out string reason)
             {

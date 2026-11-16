@@ -517,6 +517,19 @@ namespace PaviseApp
             public readonly Dictionary<int, string> Names = new Dictionary<int, string>();
 
             public readonly Dictionary<int, long> Creations = new Dictionary<int, long>();
+
+            private FamilyBoundary.DescendantIndex familyDescendants;
+
+            public FamilyBoundary.DescendantIndex FamilyDescendants
+            {
+                get
+                {
+                    FamilyBoundary.DescendantIndex current = Volatile.Read(ref familyDescendants);
+                    if (current != null) return current;
+                    var created = new FamilyBoundary.DescendantIndex(Parents);
+                    return Interlocked.CompareExchange(ref familyDescendants, created, null) ?? created;
+                }
+            }
         }
 
         private sealed class WhitelistMatchIndex
@@ -529,7 +542,7 @@ namespace PaviseApp
             {
                 foreach (WhitelistRule rule in rules)
                 {
-                    if (rule == null || rule.Value == null || (rule.Kind != 0 && rule.Value.Length == 0)) continue;
+                    if (rule == null || rule.Kind == WhitelistRuleKind.Service || rule.Value == null || (rule.Kind != 0 && rule.Value.Length == 0)) continue;
                     (rule.Kind == 0 ? names : paths)[rule.Value] = null;
                 }
                 foreach (WhitelistProcessInfo process in processes.Values)
@@ -549,6 +562,7 @@ namespace PaviseApp
 
             internal List<WhitelistProcessInfo> Candidates(WhitelistRule rule)
             {
+                if (rule.Kind == WhitelistRuleKind.Service) return empty;
                 List<WhitelistProcessInfo> matches;
                 return (rule.Kind == 0 ? names : paths).TryGetValue(rule.Value, out matches) && matches != null ? matches : empty;
             }

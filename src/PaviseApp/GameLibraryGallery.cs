@@ -43,7 +43,7 @@ namespace PaviseApp
 
         public Func<string, Bitmap> IconProvider;
 
-        public Func<GameProfile, Bitmap> CoverProvider;
+        public Func<GameProfile, GameCoverStore.Lease> CoverProvider;
 
         public Action<Control, GameLibraryItem> ConfigurationRefresher { get; set; }
 

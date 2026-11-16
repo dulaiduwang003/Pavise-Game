@@ -392,6 +392,125 @@ namespace PaviseApp
         private static void CheckBuild(Func<bool> continueBuild)
         { if (continueBuild != null && !continueBuild()) throw new BuildStoppedException(); }
 
+        // 保留原比较顺序和排序实现，只在长排序中补检查点；取消时不发布尚未完成的摘要。
+        private static void SortForBuild<T>(List<T> values, Comparison<T> comparison, Func<bool> continueBuild)
+        {
+            if (continueBuild == null) { values.Sort(comparison); return; }
+            CheckBuild(continueBuild);
+            int comparisons = 0;
+            try
+            {
+                values.Sort(delegate(T left, T right)
+                {
+                    if ((comparisons++ & 1023) == 0) CheckBuild(continueBuild);
+                    return comparison(left, right);
+                });
+            }
+            catch (InvalidOperationException error)
+            {
+                // List.Sort 包装比较器异常；只还原本方取消，其他排序错误继续向外报告。
+                Exception cause = error;
+                while (cause is InvalidOperationException && cause.InnerException != null) cause = cause.InnerException;
+                if (cause is BuildStoppedException) throw new BuildStoppedException();
+                throw;
+            }
+            CheckBuild(continueBuild);
+        }
+
+        // 数值默认排序保留框架快路径；大列表按块排序，再复用短侧缓冲归并，避免逐次比较包装委托。
+        private static void SortDefaultForBuild<T>(List<T> values, Func<bool> continueBuild)
+        {
+            if (continueBuild == null) { values.Sort(); return; }
+            const int blockSize = 8192;
+            CheckBuild(continueBuild);
+            int count = values.Count;
+            if (count <= blockSize)
+            {
+                values.Sort();
+                CheckBuild(continueBuild);
+                return;
+            }
+            for (int offset = 0; offset < count;)
+            {
+                int length = Math.Min(blockSize, count - offset);
+                CheckBuild(continueBuild);
+                values.Sort(offset, length, null);
+                CheckBuild(continueBuild);
+                offset += length;
+            }
+            int bufferLength = 0;
+            for (int width = blockSize; width < count;)
+            {
+                bufferLength = Math.Max(bufferLength, Math.Min(width, count - width));
+                if (width >= count - width) break;
+                width *= 2;
+            }
+            T[] buffer = null;
+            var comparer = Comparer<T>.Default;
+            for (int width = blockSize; width < count;)
+            {
+                for (int start = 0; start < count - width;)
+                {
+                    CheckBuild(continueBuild);
+                    int middle = start + width;
+                    int end = middle + Math.Min(width, count - middle);
+                    if (comparer.Compare(values[middle - 1], values[middle]) > 0)
+                    {
+                        if (buffer == null) buffer = new T[bufferLength];
+                        MergeDefaultForBuild(values, start, middle, end, buffer, comparer, continueBuild);
+                    }
+                    start = end;
+                }
+                if (width >= count - width) break;
+                width *= 2;
+            }
+            CheckBuild(continueBuild);
+        }
+
+        private static void MergeDefaultForBuild<T>(List<T> values, int start, int middle, int end,
+            T[] buffer, IComparer<T> comparer, Func<bool> continueBuild)
+        {
+            bool copyLeft = middle - start <= end - middle;
+            int copied = copyLeft ? middle - start : end - middle;
+            int source = copyLeft ? start : middle;
+            for (int offset = 0; offset < copied;)
+            {
+                CheckBuild(continueBuild);
+                int length = Math.Min(8192, copied - offset);
+                values.CopyTo(source + offset, buffer, offset, length);
+                offset += length;
+            }
+            int moves = 0;
+            if (copyLeft)
+            {
+                int left = 0, right = middle, write = start;
+                while (left < copied && right < end)
+                {
+                    if ((moves++ & 1023) == 0) CheckBuild(continueBuild);
+                    values[write++] = comparer.Compare(buffer[left], values[right]) <= 0 ? buffer[left++] : values[right++];
+                }
+                while (left < copied)
+                {
+                    if ((moves++ & 1023) == 0) CheckBuild(continueBuild);
+                    values[write++] = buffer[left++];
+                }
+            }
+            else
+            {
+                int left = middle - 1, right = copied - 1, write = end - 1;
+                while (left >= start && right >= 0)
+                {
+                    if ((moves++ & 1023) == 0) CheckBuild(continueBuild);
+                    values[write--] = comparer.Compare(values[left], buffer[right]) > 0 ? values[left--] : buffer[right--];
+                }
+                while (right >= 0)
+                {
+                    if ((moves++ & 1023) == 0) CheckBuild(continueBuild);
+                    values[write--] = buffer[right--];
+                }
+            }
+        }
+
         private ThreadRelationSnapshot BuildCore(FrameCoordinationSample sample, int presenter,
             Dictionary<long, int>[] edges, FrameCaptureIssue captureIssue, Func<int, long, bool> verifyIdentity,
             bool exportWorkload, Func<bool> continueBuild)
@@ -414,12 +533,12 @@ namespace PaviseApp
             { truncatedWorker = worker; worker = 0; workerBucket = null; workerBirth = 0; }
             if (verifyIdentity != null && knownPresenter && !verifyIdentity(presenter, presenterBirth)) reason = "呈现线程身份已变化或不可读";
             if (verifyIdentity != null && worker > 0 && !verifyIdentity(worker, workerBirth)) reason = "伴随线程身份已变化或不可读";
-            // 全线程和角色重建复用按实际事件量分配的暂存区，避免为每个线程保留全量副本。
-            var selected = new List<SelectedTransition>(recordedTransitions);
-            SelectTransitions(selected, presenter, presenterBucket);
-            SelectTransitions(selected, worker, workerBucket);
+            // 暂存区只随当前要重建的角色增长，后续逐线程复用，不按全游戏转换总数预留。
+            var selected = new List<SelectedTransition>();
+            SelectTransitions(selected, presenter, presenterBucket, continueBuild);
+            SelectTransitions(selected, worker, workerBucket, continueBuild);
             CheckBuild(continueBuild);
-            selected.Sort(CompareTransitions);
+            SortForBuild(selected, CompareTransitions, continueBuild);
             CheckBuild(continueBuild);
             Track a = knownPresenter ? new Track(presenter, presenterBirth, begin, half, end, true, presenterBucket.Count) : null;
             Track b = worker > 0 ? new Track(worker, workerBirth, begin, half, end, true, workerBucket.Count) : null;
@@ -444,10 +563,10 @@ namespace PaviseApp
             if ((a != null && a.Conflicts != 0) || (b != null && b.Conflicts != 0)) reason = reason ?? "线程状态重建存在歧义";
             if (a != null && a.Known == 0) reason = reason ?? "未取得可重建的呈现线程调度区间";
             if (b != null && b.Known == 0) reason = reason ?? "未取得可重建的伴随线程调度区间";
-            var intervals = PresentIntervals(presenter);
+            var intervals = PresentIntervals(presenter, continueBuild);
             bool valid = reason == null;
             CheckBuild(continueBuild);
-            ThreadRelationMetrics presenterMetrics = Metrics(a, valid), workerMetrics = Metrics(b, valid);
+            ThreadRelationMetrics presenterMetrics = Metrics(a, valid, false, continueBuild), workerMetrics = Metrics(b, valid, false, continueBuild);
             ReleaseIntervals(a); ReleaseIntervals(b);
             CheckBuild(continueBuild);
             // 渲染策略只消费原呈现/伙伴关系；完整工作图只在工作组用途明确请求时重建。
@@ -508,7 +627,7 @@ namespace PaviseApp
                 metrics.Add(track);
                 bool identityVerified = verifyIdentity == null || verifyIdentity(track.Tid, track.Creation);
                 // 已退出身份不能再写，但同创建时间、包围采集窗的计数零增长仍可证明历史零负载。
-                ThreadRelationMetrics summary = Metrics(track, true, sample.CpuZeroGrowthVerified(track.Tid, track.Creation, begin, end));
+                ThreadRelationMetrics summary = Metrics(track, true, sample.CpuZeroGrowthVerified(track.Tid, track.Creation, begin, end), continueBuild);
                 if (identityVerified)
                 { ledger.Add(track.Tid, summary); capacityKnown.Add(track.Tid); }
                 else
@@ -520,12 +639,12 @@ namespace PaviseApp
                     else { result.CapacityGapThreads++; result.CapacityGapRunning += summary.RunningMs; }
                 }
             }
-            metrics.Sort(delegate(Track left, Track right)
+            SortForBuild(metrics, delegate(Track left, Track right)
             {
                 int order = (Milliseconds(right.Running) + Milliseconds(right.Ready))
                     .CompareTo(Milliseconds(left.Running) + Milliseconds(left.Ready));
                 return order == 0 ? left.Tid.CompareTo(right.Tid) : order;
-            });
+            }, continueBuild);
             var selected = new List<Track>(32);
             // 保留呈现身份，不占用计算候选名额，也不默认选为主候选。
             foreach (Track value in metrics)
@@ -548,7 +667,7 @@ namespace PaviseApp
                     ledger.Remove(value.Tid); continue;
                 }
                 Track detail = Reconstruct(value.Tid, buckets[value.Tid], true, transitions, continueBuild);
-                confirmed.Add(Metrics(detail, true));
+                confirmed.Add(Metrics(detail, true, false, continueBuild));
                 ReleaseIntervals(detail);
                 CheckBuild(continueBuild);
             }
@@ -558,22 +677,23 @@ namespace PaviseApp
             if (edges != null && edges.Length == 2 && edges[0] != null && edges[1] != null)
             {
                 var keys = new HashSet<long>(edges[0].Keys); keys.UnionWith(edges[1].Keys);
+                int visitedEdges = 0;
                 foreach (long key in keys)
                 {
-                    if ((graph.Count & 1023) == 0) CheckBuild(continueBuild);
+                    if ((visitedEdges++ & 1023) == 0) CheckBuild(continueBuild);
                     int target = (int)(key >> 32), source = (int)(uint)key;
                     if (source == target || !selectedIds.Contains(source) || !selectedIds.Contains(target)) continue;
                     int first, second; edges[0].TryGetValue(key, out first); edges[1].TryGetValue(key, out second);
                     if (first != 0 || second != 0) graph.Add(new UnifiedWorkloadEdge(source, target, first, second));
                 }
             }
-            graph.Sort(delegate(UnifiedWorkloadEdge left, UnifiedWorkloadEdge right)
+            SortForBuild(graph, delegate(UnifiedWorkloadEdge left, UnifiedWorkloadEdge right)
             {
                 int order = Math.Min(right.First, right.Second).CompareTo(Math.Min(left.First, left.Second));
                 if (order != 0) return order;
                 order = left.Source.CompareTo(right.Source);
                 return order != 0 ? order : left.Target.CompareTo(right.Target);
-            });
+            }, continueBuild);
             if (graph.Count > 128) { graph.RemoveRange(128, graph.Count - 128); result.Truncated = true; }
             result.Threads = confirmed.ToArray(); result.Edges = graph.ToArray();
             result.Ledger = new List<ThreadRelationMetrics>(ledger.Values).ToArray();
@@ -590,9 +710,9 @@ namespace PaviseApp
             Func<bool> continueBuild)
         {
             transitions.Clear();
-            SelectTransitions(transitions, tid, bucket);
+            SelectTransitions(transitions, tid, bucket, continueBuild);
             CheckBuild(continueBuild);
-            transitions.Sort(CompareTransitions);
+            SortForBuild(transitions, CompareTransitions, continueBuild);
             CheckBuild(continueBuild);
             var track = new Track(tid, bucket.Creation, begin, half, end, detailed, bucket.Count);
             var details = new List<string>(4);
@@ -615,12 +735,18 @@ namespace PaviseApp
         internal static string TruncatedWorkerText(int tid)
         { return "伴随线程 " + tid.ToString(CultureInfo.InvariantCulture) + " 的状态转换超过单线程诊断预算，未纳入成对指标；本次只按呈现线程成立"; }
 
-        private static void SelectTransitions(List<SelectedTransition> selected, int tid, Bucket bucket)
+        private static void SelectTransitions(List<SelectedTransition> selected, int tid, Bucket bucket, Func<bool> continueBuild)
         {
             if (bucket == null) return;
+            CheckBuild(continueBuild);
+            int required = selected.Count + bucket.Count;
+            if (selected.Capacity < required) selected.Capacity = required;
             for (int index = 0; index < bucket.Count; index++)
+            {
+                if ((index & 1023) == 0) CheckBuild(continueBuild);
                 selected.Add(new SelectedTransition { Tid = tid,
                     Value = bucket.Blocks[index / TransitionsPerBlock][index % TransitionsPerBlock] });
+            }
         }
 
         private int ChooseWorker(int presenter, Dictionary<long, int>[] edges)
@@ -826,10 +952,14 @@ namespace PaviseApp
             track.Readies.Clear(); track.Readies.Capacity = 0;
         }
 
-        private ThreadRelationMetrics Metrics(Track track, bool complete, bool cpuZeroGrowthVerified = false)
+        private ThreadRelationMetrics Metrics(Track track, bool complete, bool cpuZeroGrowthVerified = false, Func<bool> continueBuild = null)
         {
             if (track == null) return null;
-            if (track.Runs != null) { track.Runs.Sort(); track.Readies.Sort(); }
+            if (track.Runs != null)
+            {
+                SortDefaultForBuild(track.Runs, continueBuild);
+                SortDefaultForBuild(track.Readies, continueBuild);
+            }
             var keys = new List<int>(track.Cpus.Keys); keys.Sort();
             var cpus = new StringBuilder();
             var cpuRunning = new List<KeyValuePair<int, double>>(keys.Count);
@@ -852,14 +982,24 @@ namespace PaviseApp
                 complete && track.KnownSecond > 0 ? Milliseconds(track.RunningSecond) : -1, track.Migrations, cpuRunning.ToArray(), cpuZeroGrowthVerified);
         }
 
-        private List<double> PresentIntervals(int presenter)
+        private List<double> PresentIntervals(int presenter, Func<bool> continueBuild)
         {
             var stamps = new List<long>();
-            foreach (Present value in presents) if (value.Tid == presenter) stamps.Add(value.Time);
-            stamps.Sort();
+            int visited = 0;
+            foreach (Present value in presents)
+            {
+                if ((visited++ & 1023) == 0) CheckBuild(continueBuild);
+                if (value.Tid == presenter) stamps.Add(value.Time);
+            }
+            SortDefaultForBuild(stamps, continueBuild);
             var intervals = new List<double>();
-            for (int index = 1; index < stamps.Count; index++) if (stamps[index] > stamps[index - 1]) intervals.Add(Milliseconds(stamps[index] - stamps[index - 1]));
-            intervals.Sort(); return intervals;
+            for (int index = 1; index < stamps.Count; index++)
+            {
+                if ((index & 1023) == 0) CheckBuild(continueBuild);
+                if (stamps[index] > stamps[index - 1]) intervals.Add(Milliseconds(stamps[index] - stamps[index - 1]));
+            }
+            SortDefaultForBuild(intervals, continueBuild);
+            return intervals;
         }
 
         private double Milliseconds(long ticks) { return frequency > 0 ? ticks * 1000.0 / frequency : 0; }

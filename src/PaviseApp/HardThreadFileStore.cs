@@ -10,6 +10,10 @@ namespace PaviseApp
 {
     internal sealed class HardThreadFileStore : IHardThreadStore, IDisposable, IHardThreadSettledStore
     {
+        private const int MaximumLedgerBytes = 1048576;
+
+        private static readonly Encoding LedgerEncoding = new UTF8Encoding(false);
+
         private readonly string root;
 
         private FileStream writer;
@@ -23,6 +27,90 @@ namespace PaviseApp
         private string sourceNonce;
 
         private string sourceScopeHash;
+
+        private readonly List<EncodedReceipt> encodedReceipts = new List<EncodedReceipt>();
+
+        private StringBuilder receiptText;
+
+        private XmlWriter receiptEncoder;
+
+        private sealed class BoundedReceiptTextWriter : StringWriter
+        {
+            internal BoundedReceiptTextWriter(StringBuilder text) : base(text, CultureInfo.InvariantCulture) { }
+
+            private void RequireSpace(int count)
+            {
+                if (count > MaximumLedgerBytes - GetStringBuilder().Length)
+                    throw new InvalidDataException("bounded original journal required");
+            }
+
+            public override void Write(char value)
+            {
+                RequireSpace(1);
+                base.Write(value);
+            }
+
+            public override void Write(char[] buffer, int index, int count)
+            {
+                RequireSpace(count);
+                base.Write(buffer, index, count);
+            }
+
+            public override void Write(string value)
+            {
+                if (value != null) RequireSpace(value.Length);
+                base.Write(value);
+            }
+        }
+
+        private sealed class BoundedLedgerStream : Stream
+        {
+            private readonly FileStream output;
+
+            internal BoundedLedgerStream(FileStream output) { this.output = output; }
+
+            public override bool CanRead { get { return false; } }
+            public override bool CanSeek { get { return false; } }
+            public override bool CanWrite { get { return output.CanWrite; } }
+            public override long Length { get { return output.Length; } }
+            public override long Position { get { return output.Position; } set { throw new NotSupportedException(); } }
+
+            public override void Flush() { output.Flush(); }
+            public override int Read(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+            public override long Seek(long offset, SeekOrigin origin) { throw new NotSupportedException(); }
+            public override void SetLength(long value) { throw new NotSupportedException(); }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                if (count > MaximumLedgerBytes - output.Position)
+                    throw new InvalidDataException("bounded original journal required");
+                output.Write(buffer, offset, count);
+            }
+
+            public override void WriteByte(byte value)
+            {
+                if (output.Position >= MaximumLedgerBytes)
+                    throw new InvalidDataException("bounded original journal required");
+                output.WriteByte(value);
+            }
+        }
+
+        private sealed class EncodedReceipt
+        {
+            internal HardThreadReceipt Snapshot;
+            internal string Xml;
+
+            internal bool Matches(HardThreadReceipt row)
+            {
+                HardThreadReceipt saved = Snapshot;
+                return saved.Thread.Tid == row.Thread.Tid && saved.Thread.Creation == row.Thread.Creation
+                    && saved.Group == row.Group && saved.Captured == row.Captured && saved.Applied == row.Applied
+                    && saved.PreviousGroup == row.PreviousGroup && saved.Previous == row.Previous
+                    && saved.PreviousKnown == row.PreviousKnown && saved.RestorePreviousGroup == row.RestorePreviousGroup
+                    && saved.RestorePrevious == row.RestorePrevious && saved.RestorePreviousKnown == row.RestorePreviousKnown
+                    && saved.Phase == row.Phase && string.Equals(saved.Detail ?? "", row.Detail ?? "", StringComparison.Ordinal);
+            }
+        }
 
         private sealed class RootWriterBusyException : IOException
         {
@@ -450,7 +538,7 @@ namespace PaviseApp
             XmlDocument xmlDocument2 = xmlDocument;
             using (fileStream)
             {
-                if (fileStream.Length > 1048576)
+                if (fileStream.Length > MaximumLedgerBytes)
                 {
                     throw new InvalidDataException("bounded original journal required");
                 }
@@ -648,9 +736,9 @@ namespace PaviseApp
             {
                 using (FileStream fileStream = new FileStream(combinedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
                 {
-                    using (XmlWriter xmlWriter = XmlWriter.Create(fileStream, new XmlWriterSettings
+                    using (XmlWriter xmlWriter = XmlWriter.Create(new BoundedLedgerStream(fileStream), new XmlWriterSettings
                     {
-                        Encoding = new UTF8Encoding(false),
+                        Encoding = LedgerEncoding,
                         Indent = false,
                         CloseOutput = false
                     }))
@@ -670,24 +758,11 @@ namespace PaviseApp
                             Attribute(xmlWriter, "sourceNonce", journal.SourceNonce);
                             Attribute(xmlWriter, "sourceScopeHash", journal.SourceScopeHash);
                         }
-                        foreach (HardThreadReceipt row in journal.Rows)
-                        {
-                            xmlWriter.WriteStartElement("thread");
-                            Attribute(xmlWriter, "tid", row.Thread.Tid);
-                            Attribute(xmlWriter, "birth", row.Thread.Creation);
-                            Attribute(xmlWriter, "group", row.Group);
-                            Attribute(xmlWriter, "captured", row.Captured);
-                            Attribute(xmlWriter, "applied", row.Applied);
-                            Attribute(xmlWriter, "previousGroup", row.PreviousGroup);
-                            Attribute(xmlWriter, "previous", row.Previous);
-                            Attribute(xmlWriter, "previousKnown", row.PreviousKnown ? "1" : "0");
-                            Attribute(xmlWriter, "restoreGroup", row.RestorePreviousGroup);
-                            Attribute(xmlWriter, "restorePrevious", row.RestorePrevious);
-                            Attribute(xmlWriter, "restoreKnown", row.RestorePreviousKnown ? "1" : "0");
-                            Attribute(xmlWriter, "phase", row.Phase.ToString());
-                            Attribute(xmlWriter, "detail", row.Detail ?? "");
-                            xmlWriter.WriteEndElement();
-                        }
+                        // 每次提交仍写完整耐久账本；只复用字段完全相同的行编码，不缓存磁盘版本或恢复判定。
+                        if (encodedReceipts.Count > journal.Rows.Count)
+                            encodedReceipts.RemoveRange(journal.Rows.Count, encodedReceipts.Count - journal.Rows.Count);
+                        for (int index = 0; index < journal.Rows.Count; index++)
+                            WriteCachedReceipt(xmlWriter, journal.Rows[index], index);
                         xmlWriter.WriteEndElement();
                     }
                     fileStream.Flush(true);
@@ -702,6 +777,13 @@ namespace PaviseApp
                     File.Move(combinedPath, bindResult);
                 }
             }
+            catch
+            {
+                // 失败的编码不能占住大缓冲或成为重试依据；下次仍从正式账本核对版本。
+                encodedReceipts.Clear();
+                ResetReceiptEncoder();
+                throw;
+            }
             finally
             {
                 if (File.Exists(combinedPath))
@@ -714,6 +796,69 @@ namespace PaviseApp
         private static void Attribute(XmlWriter writer, string key, object value)
         {
             writer.WriteAttributeString(key, Convert.ToString(value, CultureInfo.InvariantCulture));
+        }
+
+        private void WriteCachedReceipt(XmlWriter writer, HardThreadReceipt row, int index)
+        {
+            EncodedReceipt encoded = index < encodedReceipts.Count ? encodedReceipts[index] : null;
+            if (encoded == null || !encoded.Matches(row))
+            {
+                try
+                {
+                    if (receiptEncoder == null)
+                    {
+                        receiptText = new StringBuilder(384);
+                        receiptEncoder = XmlWriter.Create(new BoundedReceiptTextWriter(receiptText), new XmlWriterSettings
+                        {
+                            ConformanceLevel = ConformanceLevel.Fragment,
+                            OmitXmlDeclaration = true,
+                            Indent = false,
+                            CloseOutput = true
+                        });
+                    }
+                    XmlWriter fragment = receiptEncoder;
+                    fragment.WriteStartElement("thread");
+                    Attribute(fragment, "tid", row.Thread.Tid);
+                    Attribute(fragment, "birth", row.Thread.Creation);
+                    Attribute(fragment, "group", row.Group);
+                    Attribute(fragment, "captured", row.Captured);
+                    Attribute(fragment, "applied", row.Applied);
+                    Attribute(fragment, "previousGroup", row.PreviousGroup);
+                    Attribute(fragment, "previous", row.Previous);
+                    Attribute(fragment, "previousKnown", row.PreviousKnown ? "1" : "0");
+                    Attribute(fragment, "restoreGroup", row.RestorePreviousGroup);
+                    Attribute(fragment, "restorePrevious", row.RestorePrevious);
+                    Attribute(fragment, "restoreKnown", row.RestorePreviousKnown ? "1" : "0");
+                    Attribute(fragment, "phase", row.Phase.ToString());
+                    Attribute(fragment, "detail", row.Detail ?? "");
+                    fragment.WriteEndElement();
+                    // 片段模式允许连续根节点。先排空编码器再清文本，保留内部缓冲供下一行和下一次提交复用。
+                    fragment.Flush();
+                    string xml = receiptText.ToString();
+                    receiptText.Length = 0;
+                    if (xml.Length > MaximumLedgerBytes / 3 && LedgerEncoding.GetByteCount(xml) > MaximumLedgerBytes)
+                        throw new InvalidDataException("bounded original journal required");
+                    encoded = new EncodedReceipt { Snapshot = row.Clone(), Xml = xml };
+                    if (index < encodedReceipts.Count) encodedReceipts[index] = encoded;
+                    else encodedReceipts.Add(encoded);
+                }
+                catch
+                {
+                    ResetReceiptEncoder();
+                    throw;
+                }
+            }
+            // 片段只能来自上方 XmlWriter，字段转义和字符检查与完整写入保持一致。
+            writer.WriteRaw(encoded.Xml);
+        }
+
+        private void ResetReceiptEncoder()
+        {
+            XmlWriter previous = receiptEncoder;
+            receiptEncoder = null;
+            receiptText = null;
+            // 错误状态的 XmlWriter 可能在关闭时再次抛错，不能覆盖原始编码或持久化失败。
+            if (previous != null) { try { previous.Dispose(); } catch { } }
         }
 
         private static int Number(XmlElement node, string key)
@@ -749,6 +894,8 @@ namespace PaviseApp
         public void Dispose()
         {
             disposed = true;
+            encodedReceipts.Clear();
+            ResetReceiptEncoder();
             List<Exception> list = new List<Exception>();
             if (writer != null)
             {

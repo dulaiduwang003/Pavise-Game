@@ -515,7 +515,9 @@ namespace PaviseApp
             {
                 return;
             }
-            overviewNextTelemetry = timestamp + Stopwatch.Frequency * 2;
+            // 游戏运行或窗口失焦时只降低展示采样频率；主动打开概览仍可立即读取，守护不依赖此计时。
+            int interval = OverviewTelemetryPollingMilliseconds(motionAppearanceForeground, gameMode != null && gameMode.IsActive);
+            overviewNextTelemetry = timestamp + Stopwatch.Frequency * interval / 1000;
             int generation = overviewHudGeneration;
             string display = Screen.FromControl(this).DeviceName;
             Action work = delegate
@@ -583,6 +585,10 @@ namespace PaviseApp
             {
                 Interlocked.Exchange(ref overviewTelemetryPending, 0);
             }
+        }
+        internal static int OverviewTelemetryPollingMilliseconds(bool foreground, bool gameActive)
+        {
+            return foreground && !gameActive ? 2000 : 10000;
         }
         private void DisposeOverviewTelemetry()
         {

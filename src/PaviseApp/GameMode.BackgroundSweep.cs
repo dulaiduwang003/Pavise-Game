@@ -12,6 +12,7 @@ namespace PaviseApp
         }
         private void SweepWithStableWhitelistCore(ProcessSnapshot all, HashSet<int> gamePids)
         {
+            if (!ServiceWhitelistForwardAllowed()) return;
             PolicySnapshot policy = sessionPolicy;
             PerformancePreset preset = ((policy != null) ? policy.Preset : ActivePreset);
             SuppressionCore.BackgroundBoostLimit = (policy ?? PolicyResolver.Global()).BackgroundBoostLimitRequested;
@@ -104,6 +105,7 @@ namespace PaviseApp
                     {
                         continue;
                     }
+                    if (ServiceWhitelistBlocksOrdinary(pid)) continue;
                     string nm;
                     long creation;
                     long cpu;
@@ -457,7 +459,8 @@ namespace PaviseApp
                 {
                 }
             }
-            return FamilyBoundary.ExpandUserFacingFamily(whitelist.Parents, whitelist.Names, hashSet);
+            return hashSet.Count == 0 ? hashSet
+                : FamilyBoundary.ExpandUserFacingFamily(whitelist.Parents, whitelist.Names, hashSet, whitelist.FamilyDescendants);
         }
 
     }

@@ -1171,6 +1171,13 @@ namespace PaviseApp
             if (lblWhiteHint != null && !lblWhiteHint.IsDisposed)
             {
                 WhitelistItem whitelistItem = ((lstWhite == null) ? null : (lstWhite.SelectedItem as WhitelistItem));
+                if (whitelistItem != null && whitelistItem.View != null && whitelistItem.View.Rule.Kind == WhitelistRuleKind.Service)
+                {
+                    lblWhiteHint.Text = Lang.T("white.service.rule.hint");
+                    lblWhiteHint.AccessibleDescription = Lang.T("white.service.scope");
+                    return;
+                }
+                lblWhiteHint.AccessibleDescription = "";
                 lblWhiteHint.Text = ((whitelistItem == null) ? AutoText("拖入 EXE 或快捷方式即可添加", "Drop an EXE or shortcut to add it") : (whitelistItem.Automatic ? AutoText("点击查看匹配范围", "Select to view matching rules") : ((whitelistItem.View != null && whitelistItem.View.Required) ? AutoText("系统依赖，保持保护", "System dependency · protected") : ((whitelistItem.View != null && whitelistItem.View.PlatformId != null) ? AutoText("移除后按普通后台规则处理", "Removal applies normal background rules") : AutoText("保护此应用与已验证的子进程", "Protects this app and verified descendants")))));
             }
         }

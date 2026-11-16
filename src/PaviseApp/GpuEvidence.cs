@@ -165,6 +165,7 @@ namespace PaviseApp
             IntPtr query = IntPtr.Zero;
             try
             {
+                if (canceled != null && canceled()) return null;
                 uint pdhOpenQueryWResult = PdhOpenQueryW(null, IntPtr.Zero, out query);
                 if (pdhOpenQueryWResult != 0 || query == IntPtr.Zero)
                 {
@@ -208,6 +209,7 @@ namespace PaviseApp
                         break;
                     }
                     Thread.Sleep(intervalMs);
+                    if (canceled != null && canceled()) break;
                     pdhOpenQueryWResult = PdhCollectQueryData(query);
                     if (IsUnavailableObservation(pdhOpenQueryWResult))
                     {

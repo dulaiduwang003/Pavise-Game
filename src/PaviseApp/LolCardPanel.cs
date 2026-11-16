@@ -35,6 +35,12 @@ namespace PaviseApp
 
         private int inspectBusy;
 
+        private int refreshQueued;
+
+        private int refreshPending;
+
+        private int refreshSerial;
+
         private string inspectRoot = "";
 
         private string inspectError = "";
@@ -110,7 +116,7 @@ namespace PaviseApp
             tick.Interval = 2000;
             tick.Tick += delegate
             {
-                if (base.Visible && FindForm() != null)
+                if (CanRefreshDisplay)
                 {
                     RefreshState(true);
                 }
@@ -197,10 +203,10 @@ namespace PaviseApp
             return toggle;
         }
 
-        protected override void OnVisibleChanged(EventArgs e)
+        protected override void OnDisplayRefreshActivityChanged(bool active)
         {
-            base.OnVisibleChanged(e);
-            if (base.Visible)
+            if (tick == null) return;
+            if (active)
             {
                 tick.Start();
                 RefreshState(true);
@@ -209,6 +215,12 @@ namespace PaviseApp
             {
                 tick.Stop();
             }
+        }
+
+        protected override void OnDisplayRefreshHandleDestroyed()
+        {
+            Interlocked.Exchange(ref refreshQueued, 0);
+            Interlocked.Exchange(ref refreshPending, 0);
         }
 
         protected override void OnLayout(LayoutEventArgs levent)
@@ -419,22 +431,32 @@ namespace PaviseApp
 
         private void OnServiceChanged()
         {
-            if (base.IsDisposed || !base.IsHandleCreated)
-            {
-                return;
-            }
+            if (!DisplayRefreshActive) return;
+            Interlocked.Exchange(ref refreshPending, 1);
+            int job = Interlocked.Increment(ref refreshSerial);
+            if (job == 0) job = Interlocked.Increment(ref refreshSerial);
+            if (Interlocked.CompareExchange(ref refreshQueued, job, 0) != 0) return;
             try
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (!base.IsDisposed)
+                    try
                     {
-                        RefreshState(true);
+                        if (Volatile.Read(ref refreshQueued) != job) return;
+                        Interlocked.Exchange(ref refreshPending, 0);
+                        if (CanRefreshDisplay) RefreshState(true);
+                    }
+                    finally
+                    {
+                        // 句柄重建后的新任务不属于旧回调，迟到回调不能清除它的合并标志。
+                        if (Interlocked.CompareExchange(ref refreshQueued, 0, job) == job
+                            && Interlocked.Exchange(ref refreshPending, 0) != 0) OnServiceChanged();
                     }
                 });
             }
             catch
             {
+                Interlocked.CompareExchange(ref refreshQueued, 0, job);
             }
         }
 

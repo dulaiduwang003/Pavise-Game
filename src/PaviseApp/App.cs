@@ -4,7 +4,7 @@ namespace PaviseApp
     {
         public const string DisplayName = "PAVISE AUTO";
 
-        public const string Version = "3.3.1.1";
+        public const string Version = "3.3.1.2";
 
         public const string Author = "bdth";
 

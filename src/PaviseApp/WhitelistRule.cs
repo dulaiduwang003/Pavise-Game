@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -7,6 +8,8 @@ namespace PaviseApp
     internal sealed class WhitelistRule
     {
         internal const string Header = "PAVISE_WHITELIST_V4";
+
+        internal const string ServiceHeader = "PAVISE_WHITELIST_V5";
 
         internal const string PreviousHeader = "PAVISE_WHITELIST_V3";
 
@@ -48,6 +51,14 @@ namespace PaviseApp
         public static bool TryCreate(WhitelistRuleKind kind, string value, out WhitelistRule rule)
         {
             rule = null;
+            if (kind == WhitelistRuleKind.Service)
+            {
+                if (!ValidServiceName(value)) return false;
+                rule = new WhitelistRule(kind, value);
+                return true;
+            }
+            if (kind != WhitelistRuleKind.LegacyName && kind != WhitelistRuleKind.ExactPath && kind != WhitelistRuleKind.ApplicationFamily)
+                return false;
             string name = ((kind == WhitelistRuleKind.LegacyName) ? NormalizeName(value) : NormalizeImagePath(value));
             if (string.IsNullOrEmpty(name))
             {
@@ -63,6 +74,31 @@ namespace PaviseApp
             }
             rule = new WhitelistRule(kind, name);
             return true;
+        }
+
+        private static bool ValidServiceName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 256) return false;
+            // 服务键名原样保存，空格与 .exe 都不按进程或路径规则改写。
+            for (int index = 0; index < value.Length; index++)
+            {
+                char current = value[index];
+                if (char.IsControl(current) || current == '/' || current == '\\') return false;
+                if (char.IsSurrogate(current))
+                {
+                    if (!char.IsHighSurrogate(current) || index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1])) return false;
+                    index++;
+                }
+            }
+            return true;
+        }
+
+        internal static string HeaderFor(IList<WhitelistRule> rules)
+        {
+            if (rules != null)
+                foreach (WhitelistRule rule in rules)
+                    if (rule != null && rule.Kind == WhitelistRuleKind.Service) return ServiceHeader;
+            return Header;
         }
 
         public static bool TryParseVersioned(string line, out WhitelistRule rule)
@@ -89,13 +125,17 @@ namespace PaviseApp
             case 'F':
                 kind = WhitelistRuleKind.ApplicationFamily;
                 break;
+            case 'S':
+                kind = WhitelistRuleKind.Service;
+                break;
             default:
                 return false;
             }
             string @string;
             try
             {
-                @string = Encoding.UTF8.GetString(Convert.FromBase64String(line.Substring(2)));
+                byte[] bytes = Convert.FromBase64String(line.Substring(2));
+                @string = kind == WhitelistRuleKind.Service ? new UTF8Encoding(false, true).GetString(bytes) : Encoding.UTF8.GetString(bytes);
             }
             catch
             {
@@ -106,12 +146,14 @@ namespace PaviseApp
 
         public string Serialize()
         {
-            char c = ((Kind == WhitelistRuleKind.LegacyName) ? 'N' : ((Kind == WhitelistRuleKind.ExactPath) ? 'P' : 'F'));
+            char c = Kind == WhitelistRuleKind.Service ? 'S'
+                : ((Kind == WhitelistRuleKind.LegacyName) ? 'N' : ((Kind == WhitelistRuleKind.ExactPath) ? 'P' : 'F'));
             return c + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Value));
         }
 
         internal bool MatchesNormalized(string normalizedName, string normalizedImagePath)
         {
+            if (Kind == WhitelistRuleKind.Service) return false;
             if (Kind != 0)
             {
                 if (!string.IsNullOrEmpty(normalizedImagePath))

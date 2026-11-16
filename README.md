@@ -13,7 +13,7 @@
 **A free, open-source runtime resource orchestrator for Windows games.**<br>
 Intelligent background suppression during play helps your existing hardware devote more of its performance to the current game.
 
-**Source version 3.3.1.1 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
+**Source version 3.3.1.2 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -24,7 +24,7 @@ Intelligent background suppression during play helps your existing hardware devo
 
 </div>
 
-> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.1. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.2. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
 
 ## Why runtime resource orchestration?
 
@@ -98,7 +98,7 @@ Development experiments on Microsoft background governance, Job limits, recovery
 
 ## Complete feature list
 
-The following lists the features and sub-capabilities in the current 3.3.1.1 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
+The following lists the features and sub-capabilities in the current 3.3.1.2 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
 <details>
 <summary>View the complete feature list</summary>
@@ -120,7 +120,7 @@ The following lists the features and sub-capabilities in the current 3.3.1.1 sou
 | **Storage and audio** | Storage power-management bundle; keeping storage awake; disabling storage-controller runtime power management and D3Cold; keeping audio awake on AC power; original storage and audio setting restoration. |
 | **Performance laboratory** | EPP power yielding; locking GPU clocks to the maximum; maximum GPU power limit; low-buffer audio stream; CPU idle policy (original policy, higher idle threshold, or idle disabled); laboratory-state checks and restoration. |
 | **Anti-cheat controls** | ACE suppression enabled per game in Library advanced tuning and applied only during that game's matches; Gentle, Balanced, and Strong levels; hard affinity of ACE to auxiliary cores; original-setting restoration; EasyAntiCheat, BattlEye, and other anti-cheat software are protected, never suppressed; game and launch-chain dependency protection. |
-| **Whitelist and dependency protection** | Adding running processes, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components (marked per-game suppression, protection only, or record only), input/audio/peripheral driver chains, and streaming tools; viewing and clearing the process access restriction history. |
+| **Whitelist and dependency protection** | Adding running processes, services, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components (marked per-game suppression, protection only, or record only), input/audio/peripheral driver chains, and streaming tools; viewing and clearing the process access restriction history. |
 | **League of Legends and WeGame** | Dedicated LoL enhancements; auxiliary-process cleanup and restoration; immediate cleanup or restore; WeGame UI-component handling; headless LoL client; lobby restoration; LoL add-on inspection and removal; overlay-cleanup notices; login and update dependency protection. |
 | **System checkup** | Sampling; cancellation and rerun; findings, evidence levels, and action links; restoration records; one-click repair. |
 | **Checkup: platform and CPU** | Platform capabilities; GPU inventory; NVIDIA interfaces; CPU Sets partitioning; EcoQoS; Windows version; 3D V-Cache driver; Windows Game Mode; CPU and background load; CPU topology; throttling events from the last seven days; top three background consumers; resident RGB software detection. |
@@ -175,7 +175,7 @@ Discovery budgets are per managed game session and rule phase. Game priority, Re
 | **Normal** | Lowers eligible background resource priorities and enables efficiency mode. Each built-in Microsoft target uses the minimum nonzero Windows Job CPU quota of 0.01% (`CpuRate=1`) and at most two background physical cores. |
 | **Aggressive** | Also limits temporary background thread boosts. Built-in targets use the same minimum nonzero CPU quota of 0.01% and at most one background physical core, with lower CPU and I/O priorities. |
 
-The built-in list covers DiagTrack, DPS, WdiServiceHost, WdiSystemHost, diagsvc, WSearch, verified indexing workers, Widgets, and their WebView2 processes. These targets are governed even at low utilization. Preset system allowlists do not exempt them; manual allowlists and family protection still apply. A shared service host is admitted only when every running service it hosts is on the list. Only running services are considered, and original settings are restored after play.
+The built-in list covers DiagTrack, DPS, WdiServiceHost, WdiSystemHost, diagsvc, WSearch, verified indexing workers, Widgets, and their WebView2 processes. These targets are governed even at low utilization. Preset system allowlists do not exempt them; manual process allowlists and family protection still apply. Service allowlists exempt only ordinary background control, including the whole shared host, and do not affect Microsoft background governance. A shared service host is admitted only when every running service it hosts is on the list. Only running services are considered, and original settings are restored after play.
 
 For ACE suppression, acquired resource fields and affinity are continually verified and corrected without a cumulative drift or maintenance-failure limit. Failures back off to at most 30 seconds with rate-limited logs. Unknown identity, original values, or legal ranges pause writes. Initial acquisition, new threads, and restoration retain bounded retries. Disabling, changing intensity, or ending a session revokes old write authorization before restoring owned values, preserving later external changes.
 
@@ -194,6 +194,10 @@ Persistent preset settings such as VBS and CPU software mitigations change the c
 Smart and Competitive share power parameters. With managed power, laptops retain the previous policy and desktops use CPU-matched presets. If a high-performance template is missing, the original plan can be checked and copied as a candidate. Supported handhelds leave power management to Windows and vendor software.
 
 While a game session owns a power plan, the guard keeps verifying the active plan and managed parameters and writes back external changes. Repeated external edits do not change the user's choice to No switching. Checks and writes are serial; repeated conflicts slow the response interval to at most 15 seconds, with rate-limited logs. Initial acquisition, plan creation, write failures, monitor-registration failures, and restoration retain finite retry budgets. Restoration preserves later external changes. Reselect the power plan if an older version changed it to No switching.
+
+## 3.3.1.2 release notes
+
+- Reduced runtime overhead and improved UI scaling; added service whitelisting for ordinary background control only.
 
 ## 3.3.1.1 release notes
 

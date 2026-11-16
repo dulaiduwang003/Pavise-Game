@@ -139,6 +139,7 @@ namespace PaviseApp
                 }
                 bool headerRead = false;
                 bool legacyWhitelist = false;
+                bool serviceWhitelist = false;
                 bool needsWhitelistUpgrade = true;
                 bool malformedWhitelist = false;
                 bool whitelistReadFailed = false;
@@ -154,14 +155,16 @@ namespace PaviseApp
                     {
                         continue;
                     }
-                    if (string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V3", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V2", StringComparison.Ordinal))
+                    if (string.Equals(entryTextTrimmed, WhitelistRule.ServiceHeader, StringComparison.Ordinal)
+                        || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V3", StringComparison.Ordinal) || string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V2", StringComparison.Ordinal))
                     {
                         if (headerRead || malformedWhitelist || whitelistReadFailed)
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.11"));
                         }
                         headerRead = true;
-                        needsWhitelistUpgrade = !string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal);
+                        serviceWhitelist = string.Equals(entryTextTrimmed, WhitelistRule.ServiceHeader, StringComparison.Ordinal);
+                        needsWhitelistUpgrade = !serviceWhitelist && !string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V4", StringComparison.Ordinal);
                         legacyWhitelist = string.Equals(entryTextTrimmed, "PAVISE_WHITELIST_V2", StringComparison.Ordinal);
                         continue;
                     }
@@ -182,14 +185,15 @@ namespace PaviseApp
                     WhitelistRule rule2;
                     if (headerRead)
                     {
-                        if (!WhitelistRule.TryParseVersioned(entryTextTrimmed, out rule2))
+                        if (!WhitelistRule.TryParseVersioned(entryTextTrimmed, out rule2)
+                            || rule2.Kind == WhitelistRuleKind.Service && !serviceWhitelist)
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.14"));
                         }
                     }
                     else
                     {
-                        if (entryTextTrimmed.Length > 1 && entryTextTrimmed[1] == '|' && (entryTextTrimmed[0] == 'N' || entryTextTrimmed[0] == 'n' || entryTextTrimmed[0] == 'P' || entryTextTrimmed[0] == 'p' || entryTextTrimmed[0] == 'F' || entryTextTrimmed[0] == 'f'))
+                        if (entryTextTrimmed.Length > 1 && entryTextTrimmed[1] == '|' && (entryTextTrimmed[0] == 'N' || entryTextTrimmed[0] == 'n' || entryTextTrimmed[0] == 'P' || entryTextTrimmed[0] == 'p' || entryTextTrimmed[0] == 'F' || entryTextTrimmed[0] == 'f' || entryTextTrimmed[0] == 'S' || entryTextTrimmed[0] == 's'))
                         {
                             throw new InvalidDataException(Lang.T("t.gamemode.15"));
                         }

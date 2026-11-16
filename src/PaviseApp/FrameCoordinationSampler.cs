@@ -187,22 +187,6 @@ namespace PaviseApp
             // ETW 的扩展处理器索引为 16 位，只为实际出现的编号分配状态，不按最大编号预留数组。
             private readonly Dictionary<int, SchedulerCpuState> cpuStates = new Dictionary<int, SchedulerCpuState>();
 
-            private bool CheckCpuBudget()
-            {
-                long creation;
-                long exit;
-                long kernel;
-                long user;
-                if (!Native.GetThreadTimes(new IntPtr(-2), out creation, out exit, out kernel, out user))
-                {
-                    Sample.ConsumerCpuMs = -1;
-                    return true;
-                }
-                // ETW 消费者持续排空事件；自身耗时仅记账，超过参考水位也不弃样。
-                Sample.ConsumerCpuMs = (double)(kernel + user) / 10000.0;
-                return true;
-            }
-
             private bool AdmitRelevantEvent()
             {
                 if (RelevantCount < int.MaxValue) RelevantCount++;
@@ -220,10 +204,7 @@ namespace PaviseApp
                     if (Count < int.MaxValue) Count++;
                     if (!Invalid)
                     {
-                        if ((Count == 1 || Count % 4096 == 0) && !CheckCpuBudget())
-                        {
-                            return;
-                        }
+                        // 消费者退出后统一读取完整 CPU 时间；事件回调只负责解码和记账。
                         long timeStamp = r.EventHeader.TimeStamp;
                         if (Invalid || timeStamp < Begin || timeStamp > End)
                         {
@@ -281,22 +262,24 @@ namespace PaviseApp
                             }
                             case 50:
                             {
-                                if (Relation != null)
+                                if (r.UserDataLength < 8)
                                 {
-                                    if (r.UserDataLength < 8) Relation.Invalidate("ReadyThread数据不足，状态重建弃用");
-                                    else Relation.Ready(timeStamp, Marshal.ReadInt32(r.UserData), Marshal.ReadByte(r.UserData, 6), bufferContextMask);
+                                    if (Relation != null) Relation.Invalidate("ReadyThread数据不足，状态重建弃用");
+                                    break;
                                 }
-                                if (r.UserDataLength < 8 || ((uint)Marshal.ReadByte(r.UserData, 6) & (true ? 1u : 0u)) != 0)
+                                int targetTid = Marshal.ReadInt32(r.UserData);
+                                byte readyFlags = Marshal.ReadByte(r.UserData, 6);
+                                if (Relation != null) Relation.Ready(timeStamp, targetTid, readyFlags, bufferContextMask);
+                                if ((readyFlags & 1) != 0)
                                 {
                                     break;
                                 }
                                 int receiveValue2 = cpu.Running;
                                 // 非零条目均由本次采样固定线程集中的 CSwitch 事件准入。
                                 if (FixedThreadSet && receiveValue2 == 0) break;
-                                int int322 = Marshal.ReadInt32(r.UserData);
-                                if (receiveValue2 != int322 && Sample.Threads.ContainsKey(int322) && (FixedThreadSet || Sample.Threads.ContainsKey(receiveValue2)) && AdmitRelevantEvent())
+                                if (receiveValue2 != targetTid && Sample.Threads.ContainsKey(targetTid) && (FixedThreadSet || Sample.Threads.ContainsKey(receiveValue2)) && AdmitRelevantEvent())
                                 {
-                                    long key = ((long)int322 << 32) | (uint)receiveValue2;
+                                    long key = ((long)targetTid << 32) | (uint)receiveValue2;
                                     Dictionary<long, int> edges = Edges[receiveValue];
                                     int value;
                                     edges.TryGetValue(key, out value);

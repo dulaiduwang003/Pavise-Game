@@ -6,6 +6,35 @@ namespace PaviseApp
 {
     internal static class FamilyBoundary
     {
+        // 索引只属于一份已完成的快照；保留全部边，由各用途继续执行原有身份与边界检查。
+        internal sealed class DescendantIndex
+        {
+            private readonly Dictionary<int, int> firstChild;
+            private readonly int[] childPids, nextSibling;
+
+            internal DescendantIndex(Dictionary<int, int> parents)
+            {
+                int count = parents == null ? 0 : parents.Count;
+                firstChild = new Dictionary<int, int>(count);
+                childPids = new int[count];
+                nextSibling = new int[count];
+                if (parents == null) return;
+                int position = 0;
+                foreach (KeyValuePair<int, int> edge in parents)
+                {
+                    int previous;
+                    nextSibling[position] = firstChild.TryGetValue(edge.Value, out previous) ? previous : -1;
+                    childPids[position] = edge.Key;
+                    firstChild[edge.Value] = position++;
+                }
+            }
+
+            internal int FirstChild(int parent)
+            { int position; return firstChild.TryGetValue(parent, out position) ? position : -1; }
+            internal int ChildAt(int position) { return childPids[position]; }
+            internal int NextSibling(int position) { return nextSibling[position]; }
+        }
+
         private sealed class CatalogVerdict
         {
             public long Creation;
@@ -294,6 +323,8 @@ namespace PaviseApp
             }
             Dictionary<int, int> dictionary = exactExecutablesOnly ? null : new Dictionary<int, int>();
             HashSet<int> hashSet3 = new HashSet<int>();
+            if (!exactExecutablesOnly && familyEvidence != null)
+                hashSet3.UnionWith(familyEvidence.MatchingProcesses(configured, snapshot, selfPid, ownerSession, forceFamilyProtection));
             ProcEntry[] entries = snapshot.Entries;
             foreach (ProcEntry procEntry in entries)
             {
@@ -305,17 +336,6 @@ namespace PaviseApp
                     || legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name)))
                 {
                     hashSet3.Add(procEntry.Pid);
-                }
-                if (!exactExecutablesOnly && familyEvidence != null)
-                {
-                    foreach (GameProfile item2 in configured)
-                    {
-                        if (item2 != null && (forceFamilyProtection || FamilyExemptFor(item2)) && familyEvidence.Contains(item2, procEntry.Pid, procEntry.Creation, procEntry.Path))
-                        {
-                            hashSet3.Add(procEntry.Pid);
-                            break;
-                        }
-                    }
                 }
                 if (!exactExecutablesOnly)
                 {
@@ -339,7 +359,8 @@ namespace PaviseApp
             return hashSet;
         }
 
-        internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents, Dictionary<int, string> names, HashSet<int> roots)
+        internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents, Dictionary<int, string> names, HashSet<int> roots,
+            DescendantIndex descendants = null)
         {
             HashSet<int> hashSet = new HashSet<int>(roots ?? new HashSet<int>());
             HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -364,25 +385,20 @@ namespace PaviseApp
                     }
                 }
             }
-            bool membersAdded;
-            do
+            if (parents == null || names == null || hashSet.Count == 0) return hashSet;
+            descendants = descendants ?? new DescendantIndex(parents);
+            var pending = new Queue<int>(hashSet);
+            while (pending.Count != 0)
             {
-                membersAdded = false;
-                if (parents == null || names == null)
+                int parent = pending.Dequeue();
+                string parentName;
+                if (!names.TryGetValue(parent, out parentName) || SystemProcessCatalog.IsShellProcess(parentName)) continue;
+                for (int position = descendants.FirstChild(parent); position >= 0; position = descendants.NextSibling(position))
                 {
-                    break;
-                }
-                foreach (KeyValuePair<int, int> parent in parents)
-                {
-                    string value2;
-                    if (!hashSet.Contains(parent.Key) && hashSet.Contains(parent.Value) && names.TryGetValue(parent.Value, out value2) && !SystemProcessCatalog.IsShellProcess(value2))
-                    {
-                        hashSet.Add(parent.Key);
-                        membersAdded = true;
-                    }
+                    int child = descendants.ChildAt(position);
+                    if (hashSet.Add(child)) pending.Enqueue(child);
                 }
             }
-            while (membersAdded);
             return hashSet;
         }
 

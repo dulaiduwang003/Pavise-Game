@@ -1192,6 +1192,8 @@ namespace PaviseApp
 
         private PillButton whiteBrowse;
 
+        private PillButton whiteService;
+
         private PillButton whiteReset;
 
         private List<WhitelistRuleView> whiteViews = new List<WhitelistRuleView>();

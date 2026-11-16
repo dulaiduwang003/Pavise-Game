@@ -80,7 +80,11 @@ namespace PaviseApp
             StepWindowsBackground(snapshot, gamePids, switchedOut);
             int epoch = backgroundCoreProtectionEpoch;
             if (EffSuppress && !switchedOut && FamilyPolicyEpochCurrent(epoch))
-                RunBackgroundPolicy(epoch, delegate { SyncCoreBackgroundImpl(backgroundCoreProtected, GameSessionDetector.ForegroundPid()); });
+                RunBackgroundPolicy(epoch, delegate
+                {
+                    using (SuccessLogBatch.Begin("background-core-coordination session=" + AutomationSession))
+                        SyncCoreBackgroundImpl(backgroundCoreProtected, GameSessionDetector.ForegroundPid());
+                });
             Logger.Info("后台核心协调：已接管游戏关键物理核=0x" + reserved.ToString("X")
                 + "；后台仅在原允许范围内避让，余核不足时撤回本方收核，保留其他后台策略及恢复归属");
         }

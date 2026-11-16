@@ -15,7 +15,7 @@ namespace PaviseApp
     {
         private const int MaximumThreads = 4096, MaximumNewThreads = 256, MaximumFailures = 3;
         private const uint ThreadAccess = 0x100060;
-        private static readonly ConcurrentDictionary<string, IntPtr> retained = new ConcurrentDictionary<string, IntPtr>(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<HandleIdentity, IntPtr> retained = new ConcurrentDictionary<HandleIdentity, IntPtr>();
         private static readonly ConcurrentDictionary<string, long> logTimes = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
         private sealed class Row
         {
@@ -40,6 +40,64 @@ namespace PaviseApp
             internal bool StrictThreadAdmission, CpuSetsCaptured, CpuSetMasksObserved;
             internal string ProcessCpuSetIds = "", ProcessCpuSetMasks = "";
             internal readonly List<Row> Rows = new List<Row>();
+        }
+        private struct ThreadIdentity : IEquatable<ThreadIdentity>
+        {
+            private readonly uint tid;
+            private readonly long birth;
+            internal ThreadIdentity(uint tid, long birth) { this.tid = tid; this.birth = birth; }
+            public bool Equals(ThreadIdentity other) { return tid == other.tid && birth == other.birth; }
+            public override bool Equals(object other) { return other is ThreadIdentity && Equals((ThreadIdentity)other); }
+            public override int GetHashCode() { return unchecked((int)tid * 397 ^ birth.GetHashCode()); }
+        }
+        // 索引只缩小日志中的查找范围，不缓存线程事实；枚举后的身份和范围仍由调用方重新读取。
+        // 同一 TID 的历次身份按原日志顺序保留，终态由使用时判断，不能让旧身份遮住复用后的线程。
+        private sealed class RowIndex
+        {
+            private struct RowChain { internal int First, Last; }
+            private readonly List<Row> rows;
+            private readonly Dictionary<uint, RowChain> byTid;
+            private readonly Dictionary<ThreadIdentity, int> byIdentity;
+            private readonly List<int> next;
+            internal RowIndex(List<Row> rows)
+            {
+                this.rows = rows;
+                byTid = new Dictionary<uint, RowChain>(rows.Count);
+                byIdentity = new Dictionary<ThreadIdentity, int>(rows.Count);
+                next = new List<int>(rows.Count);
+                for (int index = 0; index < rows.Count; index++) Index(rows[index], index);
+            }
+            private void Index(Row row, int position)
+            {
+                var identity = new ThreadIdentity(row.Tid, row.Birth);
+                if (byIdentity.ContainsKey(identity)) throw new InvalidDataException("journal-row-identity-duplicate");
+                byIdentity.Add(identity, position);
+                next.Add(-1);
+                RowChain chain;
+                if (byTid.TryGetValue(row.Tid, out chain))
+                {
+                    next[chain.Last] = position;
+                    chain.Last = position;
+                    byTid[row.Tid] = chain;
+                }
+                else byTid.Add(row.Tid, new RowChain { First = position, Last = position });
+            }
+            internal int FirstFor(uint tid)
+            {
+                RowChain chain;
+                return byTid.TryGetValue(tid, out chain) ? chain.First : -1;
+            }
+            internal int NextPosition(int position) { return next[position]; }
+            internal int PositionOf(uint tid, long birth)
+            {
+                int position;
+                return byIdentity.TryGetValue(new ThreadIdentity(tid, birth), out position) ? position : -1;
+            }
+            internal void Add(Row row)
+            {
+                Index(row, rows.Count);
+                rows.Add(row);
+            }
         }
         [StructLayout(LayoutKind.Sequential)]
         private struct GroupAffinity { internal UIntPtr Mask; internal ushort Group, R0, R1, R2; }
@@ -74,7 +132,22 @@ namespace PaviseApp
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetThreadSelectedCpuSetMasks(IntPtr handle, [Out] GroupAffinity[] masks, ushort capacity, out ushort required);
         [DllImport("kernel32.dll")] private static extern ushort GetActiveProcessorGroupCount();
 
-        private static string HandleKey(Journal journal, Row row) { return journal.Name + ":" + row.Tid + ":" + row.Birth; }
+        private struct HandleIdentity : IEquatable<HandleIdentity>
+        {
+            internal readonly string Name;
+            private readonly uint Tid;
+            private readonly long Birth;
+            internal HandleIdentity(string name, uint tid, long birth) { Name = name; Tid = tid; Birth = birth; }
+            public bool Equals(HandleIdentity other)
+            { return Tid == other.Tid && Birth == other.Birth && string.Equals(Name, other.Name, StringComparison.Ordinal); }
+            public override bool Equals(object other) { return other is HandleIdentity && Equals((HandleIdentity)other); }
+            public override int GetHashCode()
+            {
+                unchecked { return (((Name == null ? 0 : StringComparer.Ordinal.GetHashCode(Name)) * 397) ^ (int)Tid) * 397 ^ Birth.GetHashCode(); }
+            }
+        }
+        // 只把当前日志身份组成值键；两轮原生读取及持有句柄的身份核验仍由原路径执行。
+        private static HandleIdentity HandleKey(Journal journal, Row row) { return new HandleIdentity(journal.Name, row.Tid, row.Birth); }
         private static string Location(GameAffinityJobRecord record)
         {
             if (record == null || !GameAffinityJobRecord.ValidName(record.Name, record.Pid, record.Birth)) throw new InvalidDataException("invalid-job-identity");
@@ -162,7 +235,7 @@ namespace PaviseApp
                 || (!journal.CpuSetsCaptured && (journal.ProcessCpuSetIds.Length != 0 || journal.ProcessCpuSetMasks.Length != 0))
                 || journal.PrepareAttempts > 3 || journal.NewThreads > MaximumNewThreads || journal.NewFailures > MaximumFailures || journal.RecoverySnapshots > 3)
                 throw new InvalidDataException("journal-scope-or-budget-changed");
-            var identities = new HashSet<string>(StringComparer.Ordinal);
+            var identities = new HashSet<ThreadIdentity>();
             foreach (XmlNode node in root.ChildNodes)
             {
                 XmlElement element = node as XmlElement;
@@ -180,7 +253,7 @@ namespace PaviseApp
                 if (row.Tid == 0 || row.Birth <= 0 || row.OriginalGroup != 0 || row.Original == 0 || (!row.RecoveryOnly && (row.Original & ~journal.Original) != 0)
                     || Number(element, "applied") != journal.Desired || !row.CpuSetsCaptured || !ValidCpuSetIds(row.CpuSetIds) || !ValidCpuSetMasks(row.CpuSetMasks)
                     || (!row.RecoveryOnly && (row.CpuSetIds.Length != 0 || row.CpuSetMasks.Length != 0))
-                    || !identities.Add(row.Tid + ":" + row.Birth) || journal.Rows.Count >= MaximumThreads || row.Failures > MaximumFailures
+                    || !identities.Add(new ThreadIdentity(row.Tid, row.Birth)) || journal.Rows.Count >= MaximumThreads || row.Failures > MaximumFailures
                     || (row.Phase != "prepared" && row.Phase != "intent" && row.Phase != "applied" && row.Phase != "restore-intent" && !row.Terminal)
                     || (row.PreviousKnown && row.Previous == 0) || (row.RecoveryCaptured && row.RecoveryMask == 0)
                     || (row.RecoveryOnly && (!journal.Recovering || !row.RecoveryCaptured || row.Acquired || row.RecoveryOwned))) throw new InvalidDataException("journal-row-invalid");
@@ -386,7 +459,7 @@ namespace PaviseApp
         }
         private static bool Read(Journal journal, Row row, out Fact fact, out string reason, bool forward = true)
         {
-            fact = new Fact(); reason = null; IntPtr handle; string key = HandleKey(journal, row);
+            fact = new Fact(); reason = null; IntPtr handle; HandleIdentity key = HandleKey(journal, row);
             if (!retained.TryGetValue(key, out handle))
             {
                 handle = OpenThread(ThreadAccess, false, row.Tid);
@@ -426,19 +499,19 @@ namespace PaviseApp
             foreach (Row row in journal.Rows)
             {
                 if (!row.Terminal) continue;
-                string key = HandleKey(journal, row); IntPtr handle;
+                HandleIdentity key = HandleKey(journal, row); IntPtr handle;
                 if (retained.TryGetValue(key, out handle) && CloseHandle(handle)) { IntPtr removed; retained.TryRemove(key, out removed); }
             }
         }
         private static void ReleaseUnrecorded(Journal journal)
         {
             if (journal == null) return;
-            var owned = new HashSet<string>(StringComparer.Ordinal);
+            var owned = new HashSet<HandleIdentity>();
             foreach (Row row in journal.Rows) owned.Add(HandleKey(journal, row));
-            var remove = new List<string>();
-            foreach (string key in retained.Keys)
-                if (key.StartsWith(journal.Name + ":", StringComparison.Ordinal) && !owned.Contains(key)) remove.Add(key);
-            foreach (string key in remove)
+            var remove = new List<HandleIdentity>();
+            foreach (HandleIdentity key in retained.Keys)
+                if (string.Equals(key.Name, journal.Name, StringComparison.Ordinal) && !owned.Contains(key)) remove.Add(key);
+            foreach (HandleIdentity key in remove)
             {
                 IntPtr handle, removed;
                 if (retained.TryGetValue(key, out handle) && CloseHandle(handle)) retained.TryRemove(key, out removed);
@@ -464,6 +537,7 @@ namespace PaviseApp
                 }
                 if (journal.Prepared) return PrepareMaintenance(record, process, out reason);
                 bool reopening = journal.Rows.Count > 0;
+                var rowIndex = new RowIndex(journal.Rows);
                 while (journal.PrepareAttempts < 3)
                 {
                     journal.PrepareAttempts++; Save(record, journal);
@@ -484,13 +558,13 @@ namespace PaviseApp
                         row.OriginalGroup = fact.Group; row.Original = fact.Mask; CaptureThreadCpuSets(row, fact);
                         if (reopening)
                         {
-                            Row historical = null;
-                            foreach (Row previous in journal.Rows) if (previous.Tid == row.Tid && previous.Birth == row.Birth) { historical = previous; break; }
+                            int historicalPosition = rowIndex.PositionOf(row.Tid, row.Birth);
+                            Row historical = historicalPosition < 0 ? null : journal.Rows[historicalPosition];
                             if (historical == null)
                             {
                                 if (journal.NewThreads >= MaximumNewThreads || journal.NewFailures >= MaximumFailures || journal.Rows.Count >= MaximumThreads)
                                 { reason = "反作弊线程再次准入停止：阶段=historical-new-thread-budget"; return false; }
-                                journal.NewThreads++; row.Phase = "not-applied"; journal.Rows.Add(row); Save(record, journal);
+                                journal.NewThreads++; row.Phase = "not-applied"; rowIndex.Add(row); Save(record, journal);
                             }
                             else row.Failures = historical.Failures;
                         }
@@ -512,9 +586,8 @@ namespace PaviseApp
                     {
                         foreach (Row row in rows)
                         {
-                            for (int index = 0; index < journal.Rows.Count; index++)
-                                if (journal.Rows[index].Tid == row.Tid && journal.Rows[index].Birth == row.Birth)
-                                { row.Phase = "prepared"; journal.Rows[index] = row; break; }
+                            int position = rowIndex.PositionOf(row.Tid, row.Birth);
+                            if (position >= 0) { row.Phase = "prepared"; journal.Rows[position] = row; }
                         }
                     }
                     else journal.Rows.AddRange(rows);
@@ -568,12 +641,14 @@ namespace PaviseApp
                     if (journal.NewFailures < MaximumFailures) { journal.NewFailures++; Save(record, journal); }
                     return false;
                 }
+                var rowIndex = new RowIndex(journal.Rows);
                 foreach (uint tid in ids)
                 {
                     bool exists = false;
-                    foreach (Row known in journal.Rows)
+                    for (int position = rowIndex.FirstFor(tid); position >= 0; position = rowIndex.NextPosition(position))
                     {
-                        if (known.Tid != tid || known.Terminal) continue;
+                        Row known = journal.Rows[position];
+                        if (known.Terminal) continue;
                         if (!known.Acquired && journal.NewFailures >= MaximumFailures)
                         { reason = "反作弊新线程准入停止：阶段=new-thread-failure-budget:TID=" + tid; return false; }
                         Fact current;
@@ -601,7 +676,7 @@ namespace PaviseApp
                     { journal.NewFailures++; Save(record, journal); return false; }
                     if ((fact.Mask & ~record.Original) != 0)
                     { journal.NewFailures++; Save(record, journal); reason = "反作弊进程写入暂停：阶段=new-thread-original-range:TID=" + tid; return false; }
-                    row.OriginalGroup = fact.Group; row.Original = fact.Mask; CaptureThreadCpuSets(row, fact); journal.Rows.Add(row); Save(record, journal);
+                    row.OriginalGroup = fact.Group; row.Original = fact.Mask; CaptureThreadCpuSets(row, fact); rowIndex.Add(row); Save(record, journal);
                 }
                 HashSet<uint> final;
                 if (!Ids(record.Pid, out final, out reason) || !ids.SetEquals(final))
@@ -719,22 +794,23 @@ namespace PaviseApp
             if (!ProcessKnown(record, process, out processMask, out gone, out reason) || gone) return false;
             HashSet<uint> ids;
             if (!Ids(record.Pid, out ids, out reason)) { journal.NewFailures++; Save(record, journal); return false; }
+            var rowIndex = new RowIndex(journal.Rows);
             foreach (uint tid in ids)
             {
                 bool exists = false;
-                foreach (Row known in journal.Rows) if (known.Tid == tid && !known.Terminal) { exists = true; break; }
+                for (int position = rowIndex.FirstFor(tid); position >= 0; position = rowIndex.NextPosition(position))
+                    if (!journal.Rows[position].Terminal) { exists = true; break; }
                 if (exists) continue;
                 if (journal.NewThreads >= MaximumNewThreads || journal.Rows.Count >= MaximumThreads) return true;
                 // 准入次数在读线程前落盘；读取失败、TID复用和线程重建都不会退还次数。
                 journal.NewThreads++; Save(record, journal);
                 var row = new Row { Tid = tid }; Fact fact;
                 if (!Read(journal, row, out fact, out reason)) { journal.NewFailures++; Save(record, journal); return false; }
-                bool seen = false;
-                foreach (Row prior in journal.Rows) if (prior.Tid == row.Tid && prior.Birth == row.Birth) { seen = true; break; }
+                bool seen = rowIndex.PositionOf(row.Tid, row.Birth) >= 0;
                 if (seen || fact.Gone) continue;
                 if (!FreshThreadAllowed(journal, row, fact, processMask, out reason)) { journal.NewFailures++; Save(record, journal); return false; }
                 if ((fact.Mask & ~record.Original) != 0) { journal.NewFailures++; Save(record, journal); reason = "反作弊新线程准入拒绝：阶段=original-range:TID=" + tid; return false; }
-                row.OriginalGroup = fact.Group; row.Original = fact.Mask; CaptureThreadCpuSets(row, fact); journal.Rows.Add(row); Save(record, journal);
+                row.OriginalGroup = fact.Group; row.Original = fact.Mask; CaptureThreadCpuSets(row, fact); rowIndex.Add(row); Save(record, journal);
                 if (!Write(record, journal, row, process, fact, record.Desired, "intent", out reason)) { journal.NewFailures++; Save(record, journal); return false; }
                 row.Phase = "applied"; row.Acquired = true; Save(record, journal);
             }
@@ -760,15 +836,20 @@ namespace PaviseApp
                 }
                 HashSet<uint> ids;
                 if (!Ids(record.Pid, out ids, out reason)) return false;
+                var rowIndex = new RowIndex(journal.Rows);
                 foreach (uint tid in ids)
                 {
                     bool admitted = false;
-                    foreach (Row row in journal.Rows)
+                    for (int position = rowIndex.FirstFor(tid); position >= 0; position = rowIndex.NextPosition(position))
                     {
-                        if (row.Tid != tid || row.Terminal || !row.Acquired) continue;
+                        Row row = journal.Rows[position];
+                        if (row.Terminal || !row.Acquired) continue;
                         Fact fact;
                         if (!Read(journal, row, out fact, out reason)) return false;
-                        if (!fact.Gone) { admitted = true; break; }
+                        if (fact.Gone) continue;
+                        if (fact.Group != 0 || fact.Mask != journal.Desired)
+                        { reason = "反作弊线程读回漂移：TID=" + row.Tid + " 当前=0x" + fact.Mask.ToString("X") + " 目标=0x" + journal.Desired.ToString("X"); return false; }
+                        admitted = true; break;
                     }
                     // 阶段名被 AntiCheatAffinityLease 的日志用来区分“新线程待纳入”和真实漂移，改名时两处一起改。
                     if (!admitted) { reason = "反作弊线程覆盖待确认：阶段=new-thread-not-admitted:TID=" + tid; return false; }
@@ -806,7 +887,7 @@ namespace PaviseApp
                     HashSet<uint> before, after;
                     if (!Ids(record.Pid, out before, out reason)) return false;
                     var candidates = new List<Row>();
-                    var facts = new Dictionary<string, Fact>(StringComparer.Ordinal);
+                    var facts = new Dictionary<HandleIdentity, Fact>();
                     int additional = 0; bool unstable = false;
                     foreach (uint tid in before)
                     {

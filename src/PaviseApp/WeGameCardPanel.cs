@@ -13,8 +13,9 @@ namespace PaviseApp
         private Color surface = Theme.Card;
         private WeGameShellSnapshot last;
         private int refreshQueued;
+        private int refreshPending;
+        private int refreshSerial;
         private string stateError = "";
-        private Control visibilityParent;
 
         public WeGameCardPanel(WeGameShellService service, GameProfile profile)
         {
@@ -28,7 +29,7 @@ namespace PaviseApp
             AccessibleRole = AccessibleRole.Grouping;
             tick = new System.Windows.Forms.Timer();
             tick.Interval = 1000;
-            tick.Tick += delegate { if (Visible && FindForm() != null) RefreshState(); };
+            tick.Tick += delegate { if (CanRefreshDisplay) RefreshState(); };
             service.Changed += OnServiceChanged;
             RefreshState();
         }
@@ -75,30 +76,10 @@ namespace PaviseApp
             Invalidate();
         }
 
-        protected override void OnVisibleChanged(EventArgs e)
-        {
-            base.OnVisibleChanged(e);
-            UpdatePolling();
-        }
-
-        protected override void OnParentChanged(EventArgs e)
-        {
-            if (visibilityParent != null) visibilityParent.VisibleChanged -= OnContainerVisibleChanged;
-            base.OnParentChanged(e);
-            visibilityParent = Parent;
-            if (visibilityParent != null) visibilityParent.VisibleChanged += OnContainerVisibleChanged;
-            UpdatePolling();
-        }
-
-        private void OnContainerVisibleChanged(object sender, EventArgs e)
-        {
-            UpdatePolling();
-        }
-
-        private void UpdatePolling()
+        protected override void OnDisplayRefreshActivityChanged(bool active)
         {
             if (tick == null) return;
-            if (!IsDisposed && !Disposing && Visible && (visibilityParent == null || visibilityParent.Visible))
+            if (active)
             {
                 tick.Start();
                 RefreshState();
@@ -106,10 +87,10 @@ namespace PaviseApp
             else tick.Stop();
         }
 
-        protected override void OnHandleCreated(EventArgs e)
+        protected override void OnDisplayRefreshHandleDestroyed()
         {
-            base.OnHandleCreated(e);
-            RefreshState();
+            Interlocked.Exchange(ref refreshQueued, 0);
+            Interlocked.Exchange(ref refreshPending, 0);
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -162,16 +143,31 @@ namespace PaviseApp
 
         private void QueueRefresh()
         {
-            if (IsDisposed || Disposing || !IsHandleCreated || Interlocked.CompareExchange(ref refreshQueued, 1, 0) != 0) return;
+            if (!DisplayRefreshActive) return;
+            Interlocked.Exchange(ref refreshPending, 1);
+            int job = Interlocked.Increment(ref refreshSerial);
+            if (job == 0) job = Interlocked.Increment(ref refreshSerial);
+            if (Interlocked.CompareExchange(ref refreshQueued, job, 0) != 0) return;
             try
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    Interlocked.Exchange(ref refreshQueued, 0);
-                    RefreshState();
+                    try
+                    {
+                        if (Volatile.Read(ref refreshQueued) != job) return;
+                        Interlocked.Exchange(ref refreshPending, 0);
+                        if (CanRefreshDisplay) RefreshState();
+                    }
+                    finally
+                    {
+                        // 旧句柄回调只能结清自身令牌，不能释放新句柄已经排队的刷新。
+                        if (Interlocked.CompareExchange(ref refreshQueued, 0, job) == job
+                            && Interlocked.Exchange(ref refreshPending, 0) != 0) QueueRefresh();
+                    }
                 });
             }
-            catch (InvalidOperationException) { Interlocked.Exchange(ref refreshQueued, 0); }
+            catch (InvalidOperationException) { Interlocked.CompareExchange(ref refreshQueued, 0, job); }
+            catch { Interlocked.CompareExchange(ref refreshQueued, 0, job); throw; }
         }
 
         protected override void Dispose(bool disposing)
@@ -179,7 +175,6 @@ namespace PaviseApp
             if (disposing)
             {
                 service.Changed -= OnServiceChanged;
-                if (visibilityParent != null) visibilityParent.VisibleChanged -= OnContainerVisibleChanged;
                 tick.Stop();
                 tick.Dispose();
             }

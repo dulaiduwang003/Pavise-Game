@@ -17,6 +17,13 @@ namespace PaviseApp
         private static readonly HashSet<string> DiagnosticServices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "DiagTrack", "DPS", "WdiServiceHost", "WdiSystemHost", "diagsvc" };
 
+        private struct ServiceHost
+        {
+            internal int Count;
+            internal string SingleName;
+            internal bool AllDiagnostic;
+        }
+
         internal static bool PotentialName(string name)
         {
             string normalized = WhitelistRule.NormalizeName(name).ToLowerInvariant();
@@ -43,7 +50,7 @@ namespace PaviseApp
         {
             foreach (WhitelistRule rule in rules)
             {
-                if (rule == null) continue;
+                if (rule == null || rule.Kind == WhitelistRuleKind.Service) continue;
                 if (rule.Kind == WhitelistRuleKind.LegacyName && preset(rule.Value)) continue;
                 if (rule.MatchesNormalized(WhitelistRule.NormalizeName(process.Name), path)) return true;
             }
@@ -55,7 +62,8 @@ namespace PaviseApp
         {
             foreach (WhitelistRule rule in rules)
             {
-                if (rule == null || (rule.Kind == WhitelistRuleKind.LegacyName && preset(rule.Value))) continue;
+                if (rule == null || rule.Kind == WhitelistRuleKind.Service
+                    || (rule.Kind == WhitelistRuleKind.LegacyName && preset(rule.Value))) continue;
                 HashSet<int> members;
                 if (evaluated.TryGetValue(rule.Key, out members)) protectedPids.UnionWith(members);
             }
@@ -105,21 +113,24 @@ namespace PaviseApp
         {
             var selected = new Dictionary<int, WindowsBackgroundTarget>();
             if (snapshot == null || string.IsNullOrEmpty(windows) || readPath == null) return selected;
-            var hosts = new Dictionary<int, List<string>>();
+            var hosts = new Dictionary<int, ServiceHost>();
             if (services != null) foreach (KeyValuePair<string, int> service in services)
             {
                 if (service.Value <= 4) continue;
-                List<string> names;
-                if (!hosts.TryGetValue(service.Value, out names)) hosts[service.Value] = names = new List<string>();
-                names.Add(service.Key);
+                ServiceHost host;
+                if (!hosts.TryGetValue(service.Value, out host)) host.AllDiagnostic = true;
+                host.Count++;
+                host.SingleName = service.Key;
+                host.AllDiagnostic &= DiagnosticServices.Contains(service.Key);
+                hosts[service.Value] = host;
             }
-            foreach (KeyValuePair<int, List<string>> host in hosts)
+            // 每轮仍读取完整服务名单；只聚合判定所需的信息，避免每个宿主分配一个服务列表。
+            foreach (KeyValuePair<int, ServiceHost> host in hosts)
             {
                 ProcEntry process = snapshot.Find(host.Key);
                 if (!Admissible(process, protectedPids) || process.Session != 0) continue;
-                bool search = host.Value.Count == 1 && host.Value[0].Equals("WSearch", StringComparison.OrdinalIgnoreCase);
-                bool diagnostic = host.Value.Count > 0;
-                foreach (string name in host.Value) diagnostic &= DiagnosticServices.Contains(name);
+                bool search = host.Value.Count == 1 && host.Value.SingleName.Equals("WSearch", StringComparison.OrdinalIgnoreCase);
+                bool diagnostic = host.Value.Count > 0 && host.Value.AllDiagnostic;
                 string image = WhitelistRule.NormalizeName(process.Name).ToLowerInvariant();
                 if ((!search || image != "searchindexer") && (!diagnostic || image != "svchost")) continue;
                 string path = readPath(process);

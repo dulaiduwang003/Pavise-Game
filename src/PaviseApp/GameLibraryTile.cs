@@ -179,7 +179,7 @@ namespace PaviseApp
 
         public Func<string, Bitmap> IconProvider;
 
-        public Func<GameProfile, Bitmap> CoverProvider;
+        public Func<GameProfile, GameCoverStore.Lease> CoverProvider;
 
         public GameLibraryItem Item { get; private set; }
 
@@ -656,6 +656,7 @@ namespace PaviseApp
             Rectangle coverBounds = CoverBounds;
             Bitmap icon = null;
             Bitmap bitmap = null;
+            GameCoverStore.Lease coverLease = null;
             try
             {
                 if (IconProvider != null)
@@ -670,69 +671,77 @@ namespace PaviseApp
             {
                 if (CoverProvider != null)
                 {
-                    bitmap = CoverProvider(Item.Profile);
+                    coverLease = CoverProvider(Item.Profile);
+                    bitmap = coverLease == null ? null : coverLease.Image;
                 }
             }
             catch
             {
             }
-            using (GraphicsPath graphicsPath = Theme.TechPath(rectangle, Theme.S(8)))
+            try
             {
-                GraphicsState gstate = graphics.Save();
-                graphics.SetClip(graphicsPath);
-                using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, Theme.Card, Theme.Inset, LinearGradientMode.ForwardDiagonal))
+                using (GraphicsPath graphicsPath = Theme.TechPath(rectangle, Theme.S(8)))
                 {
-                    graphics.FillRectangle(brush, rectangle);
-                }
-                if (bitmap != null)
-                {
-                    DrawCover(graphics, bitmap, coverBounds);
-                }
-                else
-                {
-                    DrawDefaultCover(graphics, coverBounds, icon);
-                }
-                DrawFooter(graphics, coverBounds.Bottom, icon);
-                if (selected)
-                {
-                    int scaledDimension = Theme.S(34);
-                    using (SolidBrush brush2 = new SolidBrush(Theme.Accent))
+                    GraphicsState gstate = graphics.Save();
+                    graphics.SetClip(graphicsPath);
+                    using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, Theme.Card, Theme.Inset, LinearGradientMode.ForwardDiagonal))
                     {
-                        graphics.FillPolygon(brush2, new Point[3]
-                        {
-                            new Point(0, 0),
-                            new Point(scaledDimension, 0),
-                            new Point(0, scaledDimension)
-                        });
+                        graphics.FillRectangle(brush, rectangle);
                     }
-                    using (Pen pen = new Pen(Theme.OnAccent, Math.Max(1.6f, Theme.S(2))))
+                    if (bitmap != null)
                     {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        graphics.DrawLines(pen, new Point[3]
+                        DrawCover(graphics, bitmap, coverBounds);
+                    }
+                    else
+                    {
+                        DrawDefaultCover(graphics, coverBounds, icon);
+                    }
+                    DrawFooter(graphics, coverBounds.Bottom, icon);
+                    if (selected)
+                    {
+                        int scaledDimension = Theme.S(34);
+                        using (SolidBrush brush2 = new SolidBrush(Theme.Accent))
                         {
-                            new Point(Theme.S(7), Theme.S(13)),
-                            new Point(Theme.S(11), Theme.S(17)),
-                            new Point(Theme.S(19), Theme.S(8))
-                        });
+                            graphics.FillPolygon(brush2, new Point[3]
+                            {
+                                new Point(0, 0),
+                                new Point(scaledDimension, 0),
+                                new Point(0, scaledDimension)
+                            });
+                        }
+                        using (Pen pen = new Pen(Theme.OnAccent, Math.Max(1.6f, Theme.S(2))))
+                        {
+                            pen.StartCap = LineCap.Round;
+                            pen.EndCap = LineCap.Round;
+                            graphics.DrawLines(pen, new Point[3]
+                            {
+                                new Point(Theme.S(7), Theme.S(13)),
+                                new Point(Theme.S(11), Theme.S(17)),
+                                new Point(Theme.S(19), Theme.S(8))
+                            });
+                        }
+                    }
+                    graphics.Restore(gstate);
+                    using (Pen pen2 = new Pen(selected ? Theme.Accent : (hovered ? Theme.StrokeHi : Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.35f)), selected ? Math.Max(1f, Theme.S(1)) : 1f))
+                    {
+                        graphics.DrawPath(pen2, graphicsPath);
                     }
                 }
-                graphics.Restore(gstate);
-                using (Pen pen2 = new Pen(selected ? Theme.Accent : (hovered ? Theme.StrokeHi : Col.Lerp(Theme.Stroke, Theme.StrokeHi, 0.35f)), selected ? Math.Max(1f, Theme.S(1)) : 1f))
+                if (selected || hovered)
                 {
-                    graphics.DrawPath(pen2, graphicsPath);
+                    using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, selected ? 230 : 100), Math.Max(1f, Theme.S(1))))
+                    {
+                        graphics.DrawLine(pen3, Theme.S(9), 0, Math.Max(Theme.S(10), base.Width - Theme.S(10)), 0);
+                    }
+                }
+                if (Focused && ShowFocusCues)
+                {
+                    ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(rectangle, -Theme.S(4), -Theme.S(4)), Theme.Accent, Theme.Card);
                 }
             }
-            if (selected || hovered)
+            finally
             {
-                using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, selected ? 230 : 100), Math.Max(1f, Theme.S(1))))
-                {
-                    graphics.DrawLine(pen3, Theme.S(9), 0, Math.Max(Theme.S(10), base.Width - Theme.S(10)), 0);
-                }
-            }
-            if (Focused && ShowFocusCues)
-            {
-                ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(rectangle, -Theme.S(4), -Theme.S(4)), Theme.Accent, Theme.Card);
+                if (coverLease != null) coverLease.Dispose();
             }
         }
 

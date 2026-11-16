@@ -163,20 +163,48 @@ namespace PaviseApp
         }
         private void PickRunningForWhitelist()
         {
-            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (WhitelistRuleView item in gameMode.GetWhitelistRulesFast())
-            {
-                if (item.PlatformId == null && item.Rule.Kind != 0)
-                {
-                    hashSet.Add(item.Rule.Value);
-                }
-            }
+            HashSet<string> hashSet = WhitelistExecutablePaths(gameMode.GetWhitelistRulesFast());
             using (RunningPickerDialog runningPickerDialog = new RunningPickerDialog(hashSet))
             {
                 if (ShowDim(runningPickerDialog) == DialogResult.OK && runningPickerDialog.Selected.Count != 0)
                 {
                     AddWhitelistFiles(runningPickerDialog.Selected);
                 }
+            }
+        }
+        internal static HashSet<string> WhitelistExecutablePaths(IEnumerable<WhitelistRuleView> views)
+        {
+            HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WhitelistRuleView item in views)
+            {
+                if (item.PlatformId == null && (item.Rule.Kind == WhitelistRuleKind.ExactPath || item.Rule.Kind == WhitelistRuleKind.ApplicationFamily))
+                {
+                    hashSet.Add(item.Rule.Value);
+                }
+            }
+            return hashSet;
+        }
+        private void PickServicesForWhitelist()
+        {
+            if (Volatile.Read(ref whiteOpBusy) != 0) return;
+            var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WhitelistRuleView view in gameMode.GetWhitelistRulesFast())
+                if (view.Rule != null && view.Rule.Kind == WhitelistRuleKind.Service) known.Add(view.Rule.Value);
+            using (var picker = new ServicePickerDialog(known))
+            {
+                if (ShowDim(picker) != DialogResult.OK || picker.Selected.Count == 0) return;
+                string[] selected = picker.Selected.ToArray();
+                RunWhitelistOp(delegate
+                {
+                    int added = 0, failed = 0;
+                    string error = null;
+                    foreach (string name in selected)
+                    {
+                        if (gameMode.AddWhitelistService(name)) added++;
+                        else { failed++; if (error == null) error = gameMode.WhitelistLastError; }
+                    }
+                    return failed == 0 ? null : Lang.F("white.service.add.failed", added, failed, error ?? "");
+                });
             }
         }
         private bool CanRemoveSelectedWhitelist()
@@ -364,6 +392,10 @@ namespace PaviseApp
             {
                 DrawWhitelistAutomaticIcon(graphics, rectangle, whitelistItem.Glyph);
             }
+            else if (whitelistItem.View.Rule.Kind == WhitelistRuleKind.Service)
+            {
+                DrawWhitelistAutomaticIcon(graphics, rectangle, "settings");
+            }
             else
             {
                 Bitmap bitmap = WhitelistIcon(whitelistItem.View.Rule);
@@ -497,7 +529,7 @@ namespace PaviseApp
         }
         private Bitmap WhitelistIcon(WhitelistRule rule)
         {
-            if (rule.Kind == WhitelistRuleKind.LegacyName)
+            if (rule.Kind == WhitelistRuleKind.LegacyName || rule.Kind == WhitelistRuleKind.Service)
             {
                 return null;
             }
@@ -523,7 +555,7 @@ namespace PaviseApp
         }
         private string WhitelistTitle(WhitelistRule rule)
         {
-            if (rule.Kind == WhitelistRuleKind.LegacyName)
+            if (rule.Kind == WhitelistRuleKind.LegacyName || rule.Kind == WhitelistRuleKind.Service)
             {
                 return rule.Value;
             }

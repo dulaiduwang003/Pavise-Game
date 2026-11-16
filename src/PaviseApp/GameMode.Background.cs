@@ -98,8 +98,12 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                action();
-                return true;
+                lock (serviceWhitelistGate)
+                {
+                    if (!ServiceWhitelistForwardAllowed()) return false;
+                    action();
+                    return true;
+                }
             }
         }
         internal static bool RuntimeBackgroundExempt(BackgroundReleaseState state)

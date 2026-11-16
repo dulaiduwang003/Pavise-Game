@@ -328,6 +328,7 @@ namespace PaviseApp
         }
         private void SyncCoreBackgroundImpl(HashSet<int> protectedPids, int foreground)
         {
+            if (!ServiceWhitelistForwardAllowed()) return;
             core.RetryRetiredAutomaticLayouts();
             if (core.BackgroundAffinityPending)
             {
@@ -345,6 +346,7 @@ namespace PaviseApp
             foreach (int item in core.PidsWith(SuppressReason.Background))
             {
                 if (GameBackgroundReservedCores() != reserved) break;
+                if (ServiceWhitelistBlocksOrdinary(item)) continue;
                 long creation = core.CreationOf(item);
                 string processName = core.NameOf(item);
                 if (creation > 0 && !string.IsNullOrEmpty(processName))

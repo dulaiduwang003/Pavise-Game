@@ -389,7 +389,8 @@ namespace PaviseApp
                 if (!ReadAntiCheatResource(handle, kind, out observed) || desired < 0)
                 {
                     if (!maintaining) field.Failures = Math.Min(3, field.Failures + 1);
-                    if (!SaveAntiCheatResourceJournal(entry)) LastApplyError = "resource-read-budget-journal";
+                    // 已接管字段读失败不会改变持久状态；先前未提交的日志仍须沿用原耐久重试。
+                    if ((!maintaining || entry.AntiCheatResourceJournalPending) && !SaveAntiCheatResourceJournal(entry)) LastApplyError = "resource-read-budget-journal";
                     complete = false; LastApplyError = "resource-read-unknown:" + kind; continue;
                 }
                 if (field.Original < 0 || field.Phase == 'N') field.Original = observed;

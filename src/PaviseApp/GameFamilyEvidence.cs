@@ -45,5 +45,42 @@ namespace PaviseApp
             }
             return false;
         }
+
+        internal HashSet<int> MatchingProcesses(IList<GameProfile> configured, ProcessSnapshot snapshot,
+            int selfPid, int ownerSession, bool forceFamilyProtection)
+        {
+            var result = new HashSet<int>();
+            if (configured == null || snapshot == null || ownerSession < 0) return result;
+            var byPid = new Dictionary<int, List<Member>>();
+            var seen = new HashSet<GameFamilyProfileKey>();
+            foreach (GameProfile profile in configured)
+            {
+                if (profile == null || string.IsNullOrEmpty(profile.Id)
+                    || !forceFamilyProtection && !FamilyBoundary.FamilyExemptFor(profile)) continue;
+                var key = new GameFamilyProfileKey(profile);
+                Dictionary<int, Member> members;
+                if (!seen.Add(key) || !profiles.TryGetValue(key, out members)) continue;
+                foreach (KeyValuePair<int, Member> entry in members)
+                {
+                    List<Member> candidates;
+                    if (!byPid.TryGetValue(entry.Key, out candidates))
+                        byPid.Add(entry.Key, candidates = new List<Member>());
+                    candidates.Add(entry.Value);
+                }
+            }
+            // 只为本次不可变证据建立索引；每个成员仍匹配同一快照中的创建时间、路径和会话。
+            foreach (ProcEntry process in snapshot.Entries)
+            {
+                if (process.Pid <= 4 || process.Pid == selfPid || process.Session != ownerSession
+                    || process.Creation <= 0 || string.IsNullOrEmpty(process.Path)) continue;
+                List<Member> candidates;
+                if (!byPid.TryGetValue(process.Pid, out candidates)) continue;
+                foreach (Member member in candidates)
+                    if (member.Creation == process.Creation
+                        && string.Equals(member.Path, process.Path, StringComparison.OrdinalIgnoreCase))
+                    { result.Add(process.Pid); break; }
+            }
+            return result;
+        }
     }
 }

@@ -380,6 +380,23 @@ namespace PaviseApp
         private static readonly Dictionary<char, List<Fragment>> LegacyIndex = Index(true);
         private static readonly Dictionary<char, List<Fragment>> ChineseIndex = Index(false);
 
+        // 写日志和读取日志共用固定表达式，避免争用运行库的全局表达式缓存。
+        private static readonly Regex ProtectedPath = new Regex(@"https?://[^\s]+|[A-Za-z]:[\\/][^\r\n|]*");
+        private static readonly Regex ProtectedList = new Regex(@"(?<prefix>(?: targets=| 目标列表=| name=| 名称=))(?<data>.*)$");
+        private static readonly Regex ProtectedSessionName = new Regex(@"^(?<prefix>(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[[^\]]+\]\s*[^|]+\|\s*)(?<name>.*)$");
+        private static readonly Regex ProtectedExclusiveName = new Regex(@"(?<prefix>THREAD exclusive verified: |线程整核隔离已核验：\s*)(?<name>.*?)(?= pid=| 进程编号=)");
+        private static readonly Regex CanonicalSessionState = new Regex(@"^(?<prefix>(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[[^\]]+\]\s*)(?<state>[^|\s]+)");
+        private static readonly Regex CanonicalAutomaticState = new Regex(@"(?<prefix>(?:AUTO|自动) \[[^\]]*\]\s*[^|]+\|\s*)(?<state>[^\s|]+)");
+        private static readonly Regex RecordSessionState = new Regex(@"^(?<prefix>(?:(?:信息|警告|失败|成功)\s+)?会话 \[[^\]]+\]\s*)(?<state>[^|\s]+)");
+        private static readonly Regex RecordAutomaticState = new Regex(@"(?<prefix>自动 \[[^\]]*\]\s*[^|]+\|\s*)(?<state>[^\s|]+)");
+        private static readonly Regex SeverityPrefix = new Regex(@"^(?:信息|警告|失败|成功|INFO|WARN|FAIL|PASS)\s+");
+        private static readonly Regex ChineseText = new Regex(@"[\u4e00-\u9fff]");
+        private static readonly Regex SessionPrefix = new Regex(@"^(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[");
+        private static readonly Regex PathPrefix = new Regex(@"https?://|[A-Za-z]:[\\/]");
+        private static readonly Regex FieldState = new Regex(@"(?<![A-Za-z0-9_])(?<label>(?:result|state|action|event|结果|状态|动作|事件)=)(?<state>[^\s;]+)");
+        private static readonly string[] LegacyLevels = { "INFO ", "WARN ", "FAIL ", "PASS " };
+        private static readonly string[] ProtectedTailMarkers = { " targets=", " 目标列表=", " name=", " 名称=" };
+
         private static Dictionary<char, List<Fragment>> Index(bool legacy)
         {
             var index = new Dictionary<char, List<Fragment>>();
@@ -403,12 +420,12 @@ namespace PaviseApp
             var protectedValues = new List<string>();
             string marker = "\uE000" + Guid.NewGuid().ToString("N") + "_";
             MatchEvaluator protect = match => { string token = marker + protectedValues.Count + "\uE001"; protectedValues.Add(match.Value); return token; };
-            value = Regex.Replace(value, @"https?://[^\s]+|[A-Za-z]:[\\/][^\r\n|]*", protect);
-            value = Regex.Replace(value, @"(?<prefix>(?: targets=| 目标列表=| name=| 名称=))(?<data>.*)$", match =>
+            value = ProtectedPath.Replace(value, protect);
+            value = ProtectedList.Replace(value, match =>
             { string data = match.Groups["data"].Value; string token = marker + protectedValues.Count + "\uE001"; protectedValues.Add(data); return match.Groups["prefix"].Value + token; });
-            value = Regex.Replace(value, @"^(?<prefix>(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[[^\]]+\]\s*[^|]+\|\s*)(?<name>.*)$", match =>
+            value = ProtectedSessionName.Replace(value, match =>
             { string token = marker + protectedValues.Count + "\uE001"; protectedValues.Add(match.Groups["name"].Value); return match.Groups["prefix"].Value + token; });
-            value = Regex.Replace(value, @"(?<prefix>THREAD exclusive verified: |线程整核隔离已核验：\s*)(?<name>.*?)(?= pid=| 进程编号=)", match =>
+            value = ProtectedExclusiveName.Replace(value, match =>
             { string token = marker + protectedValues.Count + "\uE001"; protectedValues.Add(match.Groups["name"].Value); return match.Groups["prefix"].Value + token; });
             var output = new StringBuilder(value.Length);
             for (int index = 0; index < value.Length;)
@@ -437,8 +454,8 @@ namespace PaviseApp
         internal static string Canonical(string value)
         {
             value = value ?? "";
-            value = Regex.Replace(value, @"^(?<prefix>(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[[^\]]+\]\s*)(?<state>[^|\s]+)", match => match.Groups["prefix"].Value + StateCode(match.Groups["state"].Value));
-            value = Regex.Replace(value, @"(?<prefix>(?:AUTO|自动) \[[^\]]*\]\s*[^|]+\|\s*)(?<state>[^\s|]+)", match => match.Groups["prefix"].Value + StateCode(match.Groups["state"].Value));
+            value = CanonicalSessionState.Replace(value, match => match.Groups["prefix"].Value + StateCode(match.Groups["state"].Value));
+            value = CanonicalAutomaticState.Replace(value, match => match.Groups["prefix"].Value + StateCode(match.Groups["state"].Value));
             value = FieldStates(value, false);
             value = Translate(value, false);
             return value;
@@ -447,16 +464,16 @@ namespace PaviseApp
         internal static string Record(string value)
         {
             value = value ?? "";
-            foreach (string level in new[] { "INFO ", "WARN ", "FAIL ", "PASS " })
+            foreach (string level in LegacyLevels)
                 if (value.StartsWith(level, StringComparison.Ordinal)) { value = Chinese(level) + value.Substring(level.Length); break; }
-            string body = Regex.Replace(value, @"^(?:信息|警告|失败|成功|INFO|WARN|FAIL|PASS)\s+", "");
+            string body = SeverityPrefix.Replace(value, "");
             bool legacyRecord = body.StartsWith("SESSION [", StringComparison.Ordinal) || body.StartsWith("AUTO [", StringComparison.Ordinal)
                 || body.StartsWith("THREAD ", StringComparison.Ordinal) || body.StartsWith("SUPPRESSION ", StringComparison.Ordinal)
                 || body.StartsWith("RUNTIME ", StringComparison.Ordinal) || body.StartsWith("STARTUP ", StringComparison.Ordinal)
                 || body.StartsWith("POWER ", StringComparison.Ordinal) || body.StartsWith("GAME placement ", StringComparison.Ordinal);
-            if (legacyRecord || !Regex.IsMatch(body, @"[\u4e00-\u9fff]")) value = Chinese(value);
-            value = Regex.Replace(value, @"^(?<prefix>(?:(?:信息|警告|失败|成功)\s+)?会话 \[[^\]]+\]\s*)(?<state>[^|\s]+)", match => match.Groups["prefix"].Value + State(match.Groups["state"].Value));
-            value = Regex.Replace(value, @"(?<prefix>自动 \[[^\]]*\]\s*[^|]+\|\s*)(?<state>[^\s|]+)", match => match.Groups["prefix"].Value + State(match.Groups["state"].Value));
+            if (legacyRecord || !ChineseText.IsMatch(body)) value = Chinese(value);
+            value = RecordSessionState.Replace(value, match => match.Groups["prefix"].Value + State(match.Groups["state"].Value));
+            value = RecordAutomaticState.Replace(value, match => match.Groups["prefix"].Value + State(match.Groups["state"].Value));
             value = FieldStates(value, true);
             return value;
         }
@@ -464,13 +481,13 @@ namespace PaviseApp
         // 只转换结构化状态字段，后面的名称、名单和路径不参与状态翻译。
         private static string FieldStates(string value, bool toChinese)
         {
-            if (Regex.IsMatch(value, @"^(?:(?:INFO|WARN|FAIL|PASS|信息|警告|失败|成功)\s+)?(?:SESSION|会话) \[")) return value;
+            if (SessionPrefix.IsMatch(value)) return value;
             int end = value.Length;
-            foreach (string marker in new[] { " targets=", " 目标列表=", " name=", " 名称=" })
+            foreach (string marker in ProtectedTailMarkers)
             { int found = value.IndexOf(marker, StringComparison.Ordinal); if (found >= 0) end = Math.Min(end, found); }
-            Match path = Regex.Match(value, @"https?://|[A-Za-z]:[\\/]");
+            Match path = PathPrefix.Match(value);
             if (path.Success) end = Math.Min(end, path.Index);
-            string prefix = Regex.Replace(value.Substring(0, end), @"(?<![A-Za-z0-9_])(?<label>(?:result|state|action|event|结果|状态|动作|事件)=)(?<state>[^\s;]+)",
+            string prefix = FieldState.Replace(value.Substring(0, end),
                 match => match.Groups["label"].Value + (toChinese ? State(match.Groups["state"].Value) : StateCode(match.Groups["state"].Value)));
             return prefix + value.Substring(end);
         }
@@ -491,8 +508,8 @@ namespace PaviseApp
             value = value ?? "";
             DateTime timestamp;
             if (value.Length >= 19 && DateTime.TryParseExact(value.Substring(0, 19), "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out timestamp)) value = value.Substring(19).Trim();
-            value = Regex.Replace(value, @"^(?:信息|警告|失败|成功|INFO|WARN|FAIL|PASS)\s+", "");
-            return Regex.IsMatch(value, @"[\u4e00-\u9fff]") ? value : Chinese(value);
+            value = SeverityPrefix.Replace(value, "");
+            return ChineseText.IsMatch(value) ? value : Chinese(value);
         }
     }
 }

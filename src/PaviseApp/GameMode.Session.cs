@@ -639,6 +639,7 @@ namespace PaviseApp
                 ApplyCacheWarmPolicy();
                 RefreshAutoCoreMode();
                 StepWindowsBackground(processSnapshot, gamePids, smartSceneSwitchedOut);
+                BeginServiceWhitelistCycle();
                 if (EffSuppress && !smartSceneSwitchedOut)
                 {
                     Sweep(processSnapshot, gamePids);

@@ -714,7 +714,7 @@ namespace PaviseApp
             {
                 Name = "LibraryGallery",
                 IconProvider = GameIcon,
-                CoverProvider = GameCoverStore.Load,
+                CoverProvider = GameCoverStore.Acquire,
                 ConfigurationPresenter = OpenLibraryConfiguration
             };
             lstGames.FilterText = librarySearchText;
@@ -836,10 +836,10 @@ namespace PaviseApp
             whiteSearch.BorderStyle = BorderStyle.None;
             whiteSearch.BackColor = Theme.Card;
             whiteSearch.Text = whiteSearchText;
-            whiteSearch.AccessibleName = AutoText("搜索应用或路径", "Search apps or paths");
+            whiteSearch.AccessibleName = Lang.T("white.search");
             whiteSearch.HandleCreated += delegate
             {
-                SendWhitelistCue(whiteSearch.Handle, 5377, new IntPtr(1), AutoText("搜索应用或路径", "Search apps or paths"));
+                SendWhitelistCue(whiteSearch.Handle, 5377, new IntPtr(1), Lang.T("white.search"));
             };
             whiteSearch.TextChanged += delegate
             {
@@ -891,6 +891,12 @@ namespace PaviseApp
             {
                 BrowseForWhitelist();
             };
+            whiteService = new PillButton(Lang.T("white.service.add"))
+            {
+                Name = "whitelistService",
+                AccessibleDescription = Lang.T("white.service.scope")
+            };
+            whiteService.Click += delegate { PickServicesForWhitelist(); };
             whitePanel = new EmptyStatePanel
             {
                 Name = "WhitelistSurface",
@@ -1013,7 +1019,7 @@ namespace PaviseApp
                 AutoEllipsis = true,
                 TextAlign = ContentAlignment.MiddleLeft
             };
-            pageWhitelist.Controls.AddRange(new Control[10] { whiteSearchPanel, whiteFilters, whiteCount, whitePick, whiteBrowse, whitePanel, btnRemoveWhitelist, btnRestorePlatformProtection, whiteReset, lblWhiteHint });
+            pageWhitelist.Controls.AddRange(new Control[11] { whiteSearchPanel, whiteFilters, whiteCount, whitePick, whiteService, whiteBrowse, whitePanel, btnRemoveWhitelist, btnRestorePlatformProtection, whiteReset, lblWhiteHint });
             pageWhitelist.SizeChanged += delegate
             {
                 LayoutWhitelistViewport();

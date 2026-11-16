@@ -71,6 +71,78 @@ namespace PaviseApp
             }
         }
 
+        // 仅在本次建证据期间复用祖先链和路径判定，不延长历史节点或证据的有效期。
+        private sealed class CaptureAncestorIndex
+        {
+            private readonly Node[] indexedNodes;
+            private readonly int[] ancestors, offsets;
+            private readonly byte[] lengths, pathMatches;
+
+            private CaptureAncestorIndex(Dictionary<Identity, Node> history, Dictionary<int, Node> live)
+            {
+                indexedNodes = new Node[history.Count];
+                history.Values.CopyTo(indexedNodes, 0);
+                var positions = new Dictionary<Node, int>(indexedNodes.Length);
+                for (int index = 0; index < indexedNodes.Length; index++) positions.Add(indexedNodes[index], index);
+                offsets = new int[live.Count];
+                lengths = new byte[live.Count];
+                pathMatches = new byte[indexedNodes.Length];
+                int liveIndex = 0, ancestorCount = 0;
+                foreach (Node origin in live.Values)
+                {
+                    offsets[liveIndex] = ancestorCount;
+                    Node current = origin;
+                    for (int depth = 0; depth <= MaxAncestorDepth; depth++)
+                    {
+                        lengths[liveIndex]++; ancestorCount++;
+                        if (current.Poisoned || !current.HasParent || !history.TryGetValue(current.Parent, out current)) break;
+                    }
+                    liveIndex++;
+                }
+                ancestors = new int[ancestorCount];
+                liveIndex = 0;
+                foreach (Node origin in live.Values)
+                {
+                    Node current = origin;
+                    for (int depth = 0; depth < lengths[liveIndex]; depth++)
+                    {
+                        ancestors[offsets[liveIndex] + depth] = positions[current];
+                        if (depth + 1 < lengths[liveIndex]) current = history[current.Parent];
+                    }
+                    liveIndex++;
+                }
+            }
+
+            internal static CaptureAncestorIndex Create(Dictionary<Identity, Node> history, Dictionary<int, Node> live, int profileCount)
+            {
+                // 小库和浅家族沿用直接路径，只在多配置、深链足够多时支付本轮索引成本。
+                if (profileCount < 16 || live.Count < 32) return null;
+                int deep = 0;
+                foreach (Node node in live.Values)
+                {
+                    Node parent;
+                    if (node.HasParent && history.TryGetValue(node.Parent, out parent) && !parent.Poisoned
+                        && parent.HasParent && history.ContainsKey(parent.Parent) && ++deep * 4 >= live.Count)
+                        return new CaptureAncestorIndex(history, live);
+                }
+                return null;
+            }
+
+            internal void BeginProfile() { Array.Clear(pathMatches, 0, pathMatches.Length); }
+            internal int Length(int liveIndex) { return lengths[liveIndex]; }
+            internal Node At(int liveIndex, int depth, out int nodeIndex)
+            {
+                nodeIndex = ancestors[offsets[liveIndex] + depth];
+                return indexedNodes[nodeIndex];
+            }
+            internal bool Owns(int nodeIndex, GameFamilyProfileKey profile, string rootPrefix)
+            {
+                byte found = pathMatches[nodeIndex];
+                if (found == 0) pathMatches[nodeIndex] = found = profile.Owns(indexedNodes[nodeIndex].Path, rootPrefix) ? (byte)2 : (byte)1;
+                return found == 2;
+            }
+        }
+
         internal const int MaxNodes = 4096;
 
         internal const int MaxAncestorDepth = 24;
@@ -418,6 +490,7 @@ namespace PaviseApp
         private GameFamilyEvidence BuildEvidence(IList<GameProfile> configured, Dictionary<int, Node> live)
         {
             Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>> dictionary = new Dictionary<GameFamilyProfileKey, Dictionary<int, GameFamilyEvidence.Member>>();
+            CaptureAncestorIndex ancestors = CaptureAncestorIndex.Create(nodes, live, configured.Count);
             int evidenceValue = 0;
             int evidenceValue2 = 0;
             foreach (GameProfile item in configured)
@@ -433,11 +506,16 @@ namespace PaviseApp
                 }
                 string rootPrefix = key.CreateRootPrefix();
                 Dictionary<int, GameFamilyEvidence.Member> dictionary2 = new Dictionary<int, GameFamilyEvidence.Member>();
+                if (ancestors != null) ancestors.BeginProfile();
+                int liveIndex = 0;
                 foreach (Node value2 in live.Values)
                 {
                     Node value = value2;
                     for (int i = 0; i <= 24; i++)
                     {
+                        int nodeIndex = -1;
+                        if (ancestors != null) value = ancestors.At(liveIndex, i, out nodeIndex);
+                        // 缓存只减少重复计算；重复祖先和被污染节点仍逐项占用原逻辑预算。
                         if (++evidenceValue > 1048576)
                         {
                             return GameFamilyEvidence.Empty;
@@ -446,7 +524,7 @@ namespace PaviseApp
                         {
                             break;
                         }
-                        if (key.Owns(value.Path, rootPrefix))
+                        if (ancestors == null ? key.Owns(value.Path, rootPrefix) : ancestors.Owns(nodeIndex, key, rootPrefix))
                         {
                             if (++evidenceValue2 > 16384)
                             {
@@ -455,11 +533,13 @@ namespace PaviseApp
                             dictionary2.Add(value2.Key.Pid, new GameFamilyEvidence.Member(value2.Key.Creation, value2.Path));
                             break;
                         }
-                        if (!value.HasParent || !nodes.TryGetValue(value.Parent, out value))
+                        if (ancestors != null ? i + 1 >= ancestors.Length(liveIndex)
+                            : !value.HasParent || !nodes.TryGetValue(value.Parent, out value))
                         {
                             break;
                         }
                     }
+                    liveIndex++;
                 }
                 if (dictionary2.Count > 0)
                 {
