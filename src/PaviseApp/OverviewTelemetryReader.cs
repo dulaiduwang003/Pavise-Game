@@ -371,7 +371,8 @@ namespace PaviseApp
                 uint status = PdhGetFormattedCounterArrayW(gpuCounter, PdhDouble | PdhNoCap100, ref bytes, ref count, IntPtr.Zero);
                 if (status == PdhNoData || status == PdhNoInstance || (status == 0 && count == 0)) return null;
                 if (status != PdhMoreData) return GpuReadFailed(false, "PdhGetFormattedCounterArray.size", "0x" + status.ToString("X8"));
-                if (bytes == 0 || bytes > MaximumGpuBuffer) return null;
+                if (bytes == 0 || bytes > MaximumGpuBuffer)
+                    return GpuReadFailed(false, "PdhGetFormattedCounterArray.size", "invalid-size:" + bytes);
                 if (bytes > gpuBufferCapacity)
                 {
                     IntPtr intPtr = Marshal.AllocHGlobal((int)bytes);
@@ -388,11 +389,12 @@ namespace PaviseApp
                 if (status == PdhNoData || status == PdhNoInstance) return null;
                 if (status != 0) return GpuReadFailed(false, "PdhGetFormattedCounterArray.read", "0x" + status.ToString("X8"));
                 int sizeOfResult = Marshal.SizeOf(typeof(PdhValueItem));
-                if (count == 0 || (ulong)(count * sizeOfResult) > (ulong)gpuBufferCapacity)
-                {
-                    return null;
-                }
+                if (count == 0) return null;
+                // 成功返回的 bytes 是本轮实际使用长度，不能把复用缓冲区的旧尾区当作有效数组。
+                if (bytes == 0 || bytes > gpuBufferCapacity || (ulong)(count * sizeOfResult) > bytes)
+                    return GpuReadFailed(false, "PdhGetFormattedCounterArray.read", "invalid-layout:bytes=" + bytes + ",count=" + count);
                 List<KeyValuePair<string, double>> list = new List<KeyValuePair<string, double>>((int)count);
+                uint failedStatus = 0;
                 for (uint iterationIndex = 0u; iterationIndex < count; iterationIndex++)
                 {
                     PdhValueItem pdhValueItem = (PdhValueItem)Marshal.PtrToStructure(new IntPtr(gpuBuffer.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhValueItem));
@@ -400,8 +402,14 @@ namespace PaviseApp
                     {
                         list.Add(new KeyValuePair<string, double>(Marshal.PtrToStringUni(pdhValueItem.Name), pdhValueItem.Value.Value));
                     }
+                    else if (pdhValueItem.Value.Status > 1 && pdhValueItem.Value.Status != PdhNoData && pdhValueItem.Value.Status != PdhNoInstance)
+                        failedStatus = pdhValueItem.Value.Status;
                 }
-                return AggregateGpu3D(list);
+                double? value = AggregateGpu3D(list);
+                // 单个退出或坏实例不影响其他健康实例；整批没有可用数据时才计一次真实状态失败。
+                if (!value.HasValue && failedStatus != 0)
+                    return GpuReadFailed(false, "PdhGetFormattedCounterArray.CStatus", "0x" + failedStatus.ToString("X8"));
+                return value;
             }
             return null;
         }

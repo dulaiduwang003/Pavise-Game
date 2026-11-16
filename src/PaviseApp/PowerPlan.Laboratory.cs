@@ -119,13 +119,26 @@ namespace PaviseApp
                 if (gpu == null || samplePid != rendererPid)
                 {
                     ResetSampling(); samplePid = rendererPid;
-                    gpu = new GpuEvidence.GpuEngineSampler(); gpu.Open(rendererPid);
+                    gpu = new GpuEvidence.GpuEngineSampler();
                 }
-                RenderAdapter adapter = gpu.Resolve(rendererPid, true);
-                if (adapter == null)
+                GpuEvidence.GpuEngineSampleResult observation = gpu.IsOpen ? null : gpu.OpenClassified(rendererPid);
+                if (observation == null || observation.State != GpuEvidence.GpuEngineSampleState.NativeFailure && gpu.IsOpen)
+                    observation = gpu.ResolveClassified(rendererPid, true);
+                RenderAdapter adapter = observation.Adapter;
+                if (observation.State == GpuEvidence.GpuEngineSampleState.NativeFailure)
+                {
+                    result.GpuSamplingFailed = true; result.GpuSamplingFailure = observation.Failure;
+                }
+                else if (adapter == null)
                 {
                     // 通配表可能遗漏渲染进程后创建的设备，谨慎限制重新打开的频率。
-                    if (++drySamples >= 6) { drySamples = 0; gpu.Open(rendererPid); }
+                    if (++drySamples >= 6)
+                    {
+                        drySamples = 0;
+                        GpuEvidence.GpuEngineSampleResult reopened = gpu.OpenClassified(rendererPid);
+                        if (reopened.State == GpuEvidence.GpuEngineSampleState.NativeFailure)
+                        { result.GpuSamplingFailed = true; result.GpuSamplingFailure = reopened.Failure; }
+                    }
                 }
                 else drySamples = 0;
                 if (adapter != null)

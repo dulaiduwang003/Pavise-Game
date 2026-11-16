@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    internal sealed class InterruptAttribution
+    internal sealed class InterruptAttribution : IDisposable
     {
         private sealed class RoutineStat
         {
@@ -358,7 +358,24 @@ namespace PaviseApp
 
         private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
 
+        private static readonly object ownershipGate = new object();
+        private static InterruptAttribution retainedOwner;
         private EventWaitHandle aliveOwned;
+        private IntPtr loggerName, sessionProperties;
+        private ulong sessionHandle;
+        private bool startAttempted, sessionPending, sessionStopAccepted, consumerCloseAccepted, workerStarted, consumerReturned;
+        private volatile bool decodeRevoked;
+        private bool incomplete, forceConsumerClose, stopProvedComplete;
+        private uint capturedEventsLost, capturedBuffersLost, cleanupError;
+        private int stopFailures, closeFailures, ownershipFailures;
+        private long stopNext, closeNext, ownershipNext;
+        private Timer cleanupTimer;
+        private InterruptAttributionResult stopResult;
+        private const int CleanupAttempts = 3, StopWaitMs = 10000;
+        private const uint ClosePending = 7007, InvalidHandle = 6, SessionNotFound = 4201;
+
+        private static long NowMilliseconds()
+        { return (long)(Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency)); }
 
         internal static readonly double[] BucketUpperUs = new double[13]
         {
@@ -430,159 +447,125 @@ namespace PaviseApp
 
         private bool TakeOwnership()
         {
-            try
+            lock (ownershipGate)
             {
-                EventWaitHandle result;
-                if (EventWaitHandle.TryOpenExisting("Global\\Pavise_InterruptProbeAlive", out result))
-                {
-                    using (result)
-                    {
-                    }
-                    return false;
-                }
-            }
-            catch
-            {
-            }
-            try
-            {
-                bool createdNew;
-                EventWaitHandle eventWaitHandle2 = new EventWaitHandle(false, EventResetMode.ManualReset, "Global\\Pavise_InterruptProbeAlive", out createdNew);
-                if (!createdNew)
-                {
-                    eventWaitHandle2.Close();
-                    return false;
-                }
-                aliveOwned = eventWaitHandle2;
-                return true;
-            }
-            catch
-            {
-                return true;
-            }
-        }
-
-        private void ReleaseOwnership()
-        {
-            EventWaitHandle eventWaitHandle = aliveOwned;
-            aliveOwned = null;
-            if (eventWaitHandle != null)
-            {
+                if (retainedOwner != null) return object.ReferenceEquals(retainedOwner, this);
                 try
                 {
-                    eventWaitHandle.Close();
+                    EventWaitHandle existing;
+                    if (EventWaitHandle.TryOpenExisting(AliveEventName, out existing))
+                    { existing.Close(); return false; }
+                    bool created;
+                    var owned = new EventWaitHandle(false, EventResetMode.ManualReset, AliveEventName, out created);
+                    if (!created) { owned.Close(); return false; }
+                    aliveOwned = owned;
+                    retainedOwner = this;
+                    return true;
                 }
-                catch
-                {
-                }
+                catch { return false; }
             }
         }
 
+        private bool ReleaseOwnership()
+        {
+            lock (ownershipGate)
+            {
+                try { if (aliveOwned != null) aliveOwned.Close(); }
+                catch { return false; }
+                aliveOwned = null;
+                if (object.ReferenceEquals(retainedOwner, this)) retainedOwner = null;
+                return true;
+            }
+        }
         public bool Start()
         {
             lock (gate)
             {
-                if (started)
-                {
-                    return true;
-                }
-                Busy = false;
-                FailDetail = null;
+                if (started && !stopRequested) return true;
+                if (startAttempted || stopRequested) return false;
+                startAttempted = true;
+                Busy = false; FailDetail = null;
                 if (!TakeOwnership())
                 {
-                    Busy = true;
+                    Busy = true; FailDetail = Lang.T("irq.probe.busy");
                     Logger.Log(Lang.T("log.interruptattribution.9", 0));
                     return false;
                 }
-                Native.TryEnableDebugPrivilege();
-                string error;
-                if (!LoadModules(out error))
-                {
-                    FailDetail = error;
-                    Logger.Warn("中断 " + error);
-                    ReleaseOwnership();
-                    return false;
-                }
-                uint enableFlags = 96u;
-                IntPtr intPtr = AllocProps(enableFlags);
                 try
                 {
-                    ulong handle;
-                    uint startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
-                    if (startTraceResult == 183)
+                    Native.TryEnableDebugPrivilege();
+                    string error;
+                    if (!LoadModules(out error))
                     {
-                        StopStale();
-                        Marshal.FreeHGlobal(intPtr);
-                        intPtr = AllocProps(enableFlags);
-                        startTraceResult = StartTrace(out handle, "PaviseInterruptProbe", intPtr);
+                        FailDetail = error; Logger.Warn("中断 " + error);
+                        BeginCleanupLocked(); return false;
                     }
-                    switch (startTraceResult)
+                    sessionProperties = AllocProps(FlagDpc | FlagInterrupt);
+                    ulong opened;
+                    uint result = StartTrace(out opened, SessionName, sessionProperties);
+                    if (result == ErrorAlreadyExists)
                     {
-                    case 87u:
-                        Logger.Log(Lang.T("log.interruptattribution.1", 0));
-                        FailDetail = Lang.T("irq.fail.nokernel");
-                        ReleaseOwnership();
-                        return false;
-                    default:
+                        // 旧会话必须先由本所有者按同一份预算结清，失败时不能重建对象再试。
+                        sessionPending = true;
+                        TryStopSessionLocked(NowMilliseconds());
+                        if (!sessionStopAccepted) { FailDetail = "旧中断采集会话停止未确认"; BeginCleanupLocked(); return false; }
+                        IntPtr previousProperties = sessionProperties;
+                        sessionProperties = IntPtr.Zero;
+                        sessionPending = sessionStopAccepted = false;
+                        Marshal.FreeHGlobal(previousProperties);
+                        sessionProperties = AllocProps(FlagDpc | FlagInterrupt);
+                        result = StartTrace(out opened, SessionName, sessionProperties);
+                    }
+                    if (result != 0)
                     {
-                        Logger.Warn(Lang.T("log.interruptattribution.2", 0) + startTraceResult);
-                        bool elevated = false;
-                        try
+                        if (result == ErrorAlreadyExists) sessionPending = true;
+                        if (result == ErrorInvalidParameter)
                         {
-                            elevated = Native.IsElevated();
+                            Logger.Log(Lang.T("log.interruptattribution.1", 0));
+                            FailDetail = Lang.T("irq.fail.nokernel");
                         }
-                        catch
+                        else
                         {
+                            Logger.Warn(Lang.T("log.interruptattribution.2", 0) + result);
+                            bool elevated = false;
+                            try { elevated = Native.IsElevated(); } catch { }
+                            FailDetail = result != ErrorAccessDenied ? Lang.T("irq.fail.start") + result
+                                : elevated ? Lang.T("irq.fail.denied") : Lang.T("irq.state.needadmin");
                         }
-                        FailDetail = ((startTraceResult != 5) ? (Lang.T("irq.fail.start") + startTraceResult) : (elevated ? Lang.T("irq.fail.denied") : Lang.T("irq.state.needadmin")));
-                        ReleaseOwnership();
+                        BeginCleanupLocked();
                         return false;
                     }
-                    case 0u:
-                        break;
+                    sessionHandle = opened; sessionPending = true; sessionStopAccepted = false;
+                    stopProvedComplete = incomplete = false; capturedEventsLost = capturedBuffersLost = cleanupError = 0;
+                    keepAlive = OnEvent;
+                    loggerName = Marshal.StringToHGlobalUni(SessionName);
+                    EventTraceLogfile logfile = default(EventTraceLogfile);
+                    logfile.LoggerName = loggerName;
+                    logfile.ProcessTraceMode = ProcessModeRealTime | ProcessModeRawTimestamp | ProcessModeEventRecord;
+                    logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
+                    traceHandle = OpenTrace(ref logfile);
+                    if (traceHandle == ulong.MaxValue || traceHandle == 0)
+                    {
+                        int openError = Marshal.GetLastWin32Error();
+                        Logger.Warn(Lang.T("log.interruptattribution.3", 0) + openError);
+                        FailDetail = Lang.T("irq.fail.open") + openError;
+                        traceHandle = 0; BeginCleanupLocked(); return false;
                     }
+                    long frequency = logfile.LogfileHeader.PerfFreq;
+                    if (frequency <= 0) frequency = Stopwatch.Frequency;
+                    usPerTick = 1000000.0 / frequency; sanityMaxTicks = frequency;
+                    worker = new Thread(RunProcessTrace) { IsBackground = true };
+                    try { worker.Priority = ThreadPriority.Highest; } catch { }
+                    consumerExitedEarly = processTraceSucceeded = false;
+                    worker.Start(); workerStarted = true; started = true;
+                    return true;
                 }
-                finally
+                catch (Exception error)
                 {
-                    Marshal.FreeHGlobal(intPtr);
-                }
-                keepAlive = OnEvent;
-                EventTraceLogfile logfile = default(EventTraceLogfile);
-                logfile.LoggerName = Marshal.StringToHGlobalUni("PaviseInterruptProbe");
-                logfile.ProcessTraceMode = 268439808u;
-                logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
-                traceHandle = OpenTrace(ref logfile);
-                if (traceHandle == ulong.MaxValue || traceHandle == 0)
-                {
-                    int lastWin32Error = Marshal.GetLastWin32Error();
-                    Logger.Warn(Lang.T("log.interruptattribution.3", 0) + lastWin32Error);
-                    FailDetail = Lang.T("irq.fail.open") + lastWin32Error;
-                    StopStale();
-                    ReleaseOwnership();
+                    FailDetail = "中断采集启动异常：" + error.GetType().Name;
+                    BeginCleanupLocked();
                     return false;
                 }
-                long perfFreq = logfile.LogfileHeader.PerfFreq;
-                if (perfFreq <= 0)
-                {
-                    perfFreq = Stopwatch.Frequency;
-                }
-                usPerTick = 1000000.0 / (double)perfFreq;
-                sanityMaxTicks = perfFreq;
-                worker = new Thread(RunProcessTrace);
-                worker.IsBackground = true;
-                try
-                {
-                    worker.Priority = ThreadPriority.Highest;
-                }
-                catch
-                {
-                }
-                stopRequested = false;
-                consumerExitedEarly = false;
-                processTraceSucceeded = false;
-                worker.Start();
-                started = true;
-                return true;
             }
         }
 
@@ -604,9 +587,11 @@ namespace PaviseApp
             }
             finally
             {
-                if (!stopRequested)
+                lock (gate)
                 {
-                    consumerExitedEarly = true;
+                    if (!stopRequested) { consumerExitedEarly = true; incomplete = true; stopRequested = decodeRevoked = true; }
+                    consumerReturned = true;
+                    CleanupLocked();
                 }
             }
         }
@@ -631,68 +616,34 @@ namespace PaviseApp
 
         public InterruptAttributionResult Stop()
         {
-            InterruptAttributionResult interruptAttributionResult = new InterruptAttributionResult();
+            // 先撤销新的采集资格；正常 STOP 仍排空原窗口，失败或超时才撤销解码并弃用整窗。
+            stopRequested = true;
+            Thread draining;
             lock (gate)
             {
-                if (!started)
-                {
-                    interruptAttributionResult.Error = Lang.T("t.interruptattribution.4");
-                    return interruptAttributionResult;
-                }
-                stopRequested = true;
-                uint eventsLost;
-                uint buffersLost;
-                uint error;
-                bool stopStaleSucceeded = StopStale(out eventsLost, out buffersLost, out error);
-                interruptAttributionResult.EventsLost = eventsLost;
-                interruptAttributionResult.BuffersLost = buffersLost;
-                if (!stopStaleSucceeded)
-                {
-                    try
-                    {
-                        if (traceHandle != 0)
-                        {
-                            CloseTrace(traceHandle);
-                        }
-                    }
-                    catch
-                    {
-                    }
-                }
-                bool workerStopped = true;
-                if (worker != null)
-                {
-                    try
-                    {
-                        workerStopped = worker.Join(10000);
-                    }
-                    catch
-                    {
-                        workerStopped = false;
-                    }
-                }
-                if (stopStaleSucceeded)
-                {
-                    try
-                    {
-                        if (traceHandle != 0)
-                        {
-                            CloseTrace(traceHandle);
-                        }
-                    }
-                    catch
-                    {
-                    }
-                }
-                interruptAttributionResult.Incomplete = !CaptureComplete(stopStaleSucceeded, workerStopped, processTraceSucceeded, consumerExitedEarly);
-                started = false;
-                ReleaseOwnership();
+                if (!startAttempted)
+                    return new InterruptAttributionResult { Incomplete = true, Error = Lang.T("t.interruptattribution.4") };
+                if (stopResult != null) return stopResult;
+                CleanupLocked(); draining = worker;
+            }
+            bool workerStopped = !workerStarted || consumerReturned;
+            if (!workerStopped && draining != null && draining != Thread.CurrentThread)
+            { try { workerStopped = draining.Join(StopWaitMs); } catch { workerStopped = false; } }
+            lock (gate)
+            {
+                if (stopResult != null) return stopResult;
+                workerStopped = !workerStarted || consumerReturned;
+                if (!workerStopped) { incomplete = true; decodeRevoked = forceConsumerClose = true; }
+                CleanupLocked();
+                var interruptAttributionResult = new InterruptAttributionResult {
+                    EventsLost = capturedEventsLost, BuffersLost = capturedBuffersLost,
+                    Incomplete = incomplete || !CaptureComplete(stopProvedComplete, workerStopped, processTraceSucceeded, consumerExitedEarly) };
+                stopResult = interruptAttributionResult;
                 if (!workerStopped)
                 {
                     interruptAttributionResult.Error = Lang.T("t.interruptattribution.5");
                     return interruptAttributionResult;
                 }
-                keepAlive = null;
                 Dictionary<string, DriverInterrupt> dictionary = new Dictionary<string, DriverInterrupt>();
                 Dictionary<string, long[]> dictionary2 = new Dictionary<string, long[]>();
                 Fold(dictionary, dictionary2, dpcHits, true);
@@ -733,7 +684,7 @@ namespace PaviseApp
                 }
                 if (interruptAttributionResult.Incomplete)
                 {
-                    interruptAttributionResult.Error = "ETW 消费或停止未完整 win32=" + error;
+                    interruptAttributionResult.Error = "ETW 消费或停止未完整 win32=" + cleanupError;
                 }
                 else if (interruptAttributionResult.Lossy)
                 {
@@ -817,6 +768,7 @@ namespace PaviseApp
 
         private void OnEvent(ref EventRecord record)
         {
+            if (decodeRevoked) return;
             if (record.EventHeader.ProviderId != PerfInfoGuid)
             {
                 return;
@@ -904,47 +856,89 @@ namespace PaviseApp
             return null;
         }
 
-        private static bool StopStale(out uint eventsLost, out uint buffersLost, out uint error)
+        private void BeginCleanupLocked()
         {
-            eventsLost = 0u;
-            buffersLost = 0u;
-            error = 0u;
-            int scaledValue = ("PaviseInterruptProbe".Length + 1) * 2;
-            int stopStaleValue = Marshal.SizeOf(typeof(EventTraceProperties)) + scaledValue + 16;
-            IntPtr intPtr = Marshal.AllocHGlobal(stopStaleValue);
-            try
+            stopRequested = decodeRevoked = forceConsumerClose = incomplete = true;
+            CleanupLocked();
+        }
+
+        private void TryStopSessionLocked(long now)
+        {
+            if (!sessionPending || sessionStopAccepted || stopFailures >= CleanupAttempts || now < stopNext) return;
+            uint result;
+            try { result = ControlTrace(sessionHandle, SessionName, sessionProperties, ControlStop); }
+            catch { result = uint.MaxValue; }
+            if (result == 0 || result == SessionNotFound)
             {
-                for (int i = 0; i < stopStaleValue; i++)
+                sessionStopAccepted = true;
+                if (result == 0)
                 {
-                    Marshal.WriteByte(intPtr, i, 0);
+                    stopProvedComplete = true;
+                    var properties = (EventTraceProperties)Marshal.PtrToStructure(sessionProperties, typeof(EventTraceProperties));
+                    capturedEventsLost = properties.EventsLost;
+                    capturedBuffersLost = properties.RealTimeBuffersLost + properties.LogBuffersLost;
                 }
-                EventTraceProperties structure = default(EventTraceProperties);
-                structure.Wnode.BufferSize = (uint)stopStaleValue;
-                structure.Wnode.Guid = SessionGuid;
-                structure.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
-                Marshal.StructureToPtr(structure, intPtr, false);
-                uint controlTraceResult = ControlTrace(0uL, "PaviseInterruptProbe", intPtr, 1u);
-                if (controlTraceResult != 0)
-                {
-                    error = controlTraceResult;
-                    return false;
-                }
-                EventTraceProperties eventTraceProperties = (EventTraceProperties)Marshal.PtrToStructure(intPtr, typeof(EventTraceProperties));
-                eventsLost = eventTraceProperties.EventsLost;
-                buffersLost = eventTraceProperties.RealTimeBuffersLost + eventTraceProperties.LogBuffersLost;
-                return true;
+                else { incomplete = true; cleanupError = result; }
             }
-            catch
+            else
             {
-                error = uint.MaxValue;
-                return false;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(intPtr);
+                stopFailures++; stopNext = now + (1000L << (stopFailures - 1));
+                incomplete = forceConsumerClose = decodeRevoked = true; cleanupError = result;
+                Logger.Warn("中断采集停止失败：返回码=" + result + " 尝试=" + stopFailures + "/" + CleanupAttempts + "；保留会话归属");
             }
         }
 
+        private void CleanupLocked()
+        {
+            if (!stopRequested) return;
+            long now = NowMilliseconds();
+            TryStopSessionLocked(now);
+            if (traceHandle != 0 && traceHandle != ulong.MaxValue && !consumerCloseAccepted && (forceConsumerClose || consumerReturned || !workerStarted)
+                && closeFailures < CleanupAttempts && now >= closeNext)
+            {
+                uint result;
+                try { result = CloseTrace(traceHandle); } catch { result = uint.MaxValue; }
+                if (result == 0 || result == ClosePending || result == InvalidHandle && (consumerReturned || !workerStarted))
+                    consumerCloseAccepted = true;
+                else
+                {
+                    closeFailures++; closeNext = now + (1000L << (closeFailures - 1));
+                    incomplete = decodeRevoked = forceConsumerClose = true; cleanupError = result;
+                    Logger.Warn("中断采集消费者关闭失败：返回码=" + result + " 尝试=" + closeFailures + "/" + CleanupAttempts + "；保留回调和原句柄");
+                }
+            }
+            bool drained = !workerStarted || consumerReturned;
+            bool sessionClosed = !sessionPending || sessionStopAccepted;
+            bool consumerClosed = traceHandle == 0 || traceHandle == ulong.MaxValue || consumerCloseAccepted;
+            if (drained && sessionClosed && consumerClosed)
+            {
+                // 句柄关闭受理与 ProcessTrace 返回均已确认，才可归还回调资源及全局占用。
+                traceHandle = sessionHandle = 0; sessionPending = false; started = false;
+                worker = null; keepAlive = null;
+                if (loggerName != IntPtr.Zero) { Marshal.FreeHGlobal(loggerName); loggerName = IntPtr.Zero; }
+                if (sessionProperties != IntPtr.Zero) { Marshal.FreeHGlobal(sessionProperties); sessionProperties = IntPtr.Zero; }
+                if (now >= ownershipNext && ownershipFailures < CleanupAttempts && !ReleaseOwnership())
+                {
+                    ownershipFailures++; ownershipNext = now + (1000L << (ownershipFailures - 1)); incomplete = true;
+                    Logger.Warn("中断采集占用句柄关闭未确认：尝试=" + ownershipFailures + "/" + CleanupAttempts);
+                }
+            }
+            long due = long.MaxValue;
+            if (sessionPending && !sessionStopAccepted && stopFailures < CleanupAttempts) due = stopNext;
+            if (!consumerClosed && (forceConsumerClose || drained) && closeFailures < CleanupAttempts) due = Math.Min(due, closeNext);
+            if (drained && sessionClosed && consumerClosed && aliveOwned != null && ownershipFailures < CleanupAttempts) due = Math.Min(due, ownershipNext);
+            if (due == long.MaxValue)
+            {
+                if (cleanupTimer != null) cleanupTimer.Dispose(); cleanupTimer = null;
+            }
+            else
+            {
+                if (cleanupTimer == null) cleanupTimer = new Timer(delegate { lock (gate) CleanupLocked(); }, null, -1, -1);
+                cleanupTimer.Change((int)Math.Min(int.MaxValue, Math.Max(1L, due - now)), -1);
+            }
+        }
+
+        public void Dispose() { Stop(); }
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern uint StartTrace(out ulong handle, string name, IntPtr props);
 
@@ -1070,28 +1064,28 @@ namespace PaviseApp
             return intPtr;
         }
 
-        public static void CleanupStaleSession()
-        {
-            try
-            {
-                StopStale();
-            }
-            catch
-            {
-            }
-        }
-
-        public static void HealFromCrash()
-        {
-            StopStale();
-        }
+        public static void CleanupStaleSession() { StopStale(); }
+        public static void HealFromCrash() { StopStale(); }
 
         private static void StopStale()
         {
-            uint eventsLost;
-            uint buffersLost;
-            uint error;
-            StopStale(out eventsLost, out buffersLost, out error);
+            InterruptAttribution original;
+            lock (ownershipGate) original = retainedOwner;
+            // 活跃诊断不属于陈旧会话；已有清理继续使用原对象和预算。
+            if (original != null)
+            {
+                if (original.stopRequested) { lock (original.gate) original.CleanupLocked(); }
+                return;
+            }
+            var recovery = new InterruptAttribution();
+            lock (recovery.gate)
+            {
+                if (!recovery.TakeOwnership()) return;
+                recovery.startAttempted = true;
+                recovery.stopRequested = recovery.decodeRevoked = recovery.forceConsumerClose = recovery.incomplete = true;
+                try { recovery.sessionProperties = AllocProps(0); recovery.sessionPending = true; recovery.CleanupLocked(); }
+                catch { recovery.BeginCleanupLocked(); }
+            }
         }
     }
 }

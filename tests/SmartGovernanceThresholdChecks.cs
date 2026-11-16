@@ -83,11 +83,50 @@ namespace PaviseApp
                 "Missing samples must not complete a confirmation window");
         }
 
+        internal static ushort NativeGroups = 1;
+        internal static int NativeReads;
+        internal static bool NativeAvailable = true;
+        internal static long NativeIdle, NativeKernel, NativeUser;
+        internal static ushort ReadNativeGroups() { return NativeGroups; }
+        internal static bool ReadNativeTimes(out long idle, out long kernel, out long user)
+        {
+            NativeReads++; idle = NativeIdle; kernel = NativeKernel; user = NativeUser; return NativeAvailable;
+        }
+
+        private static void NativeCounterScope()
+        {
+            var cpu = Smart();
+            NativeReads = 0; NativeGroups = 2;
+            Check(double.IsNaN(cpu.Sample()) && NativeReads == 0, "Multiple groups still queried partial system times");
+            NativeGroups = 1; NativeIdle = 100; NativeKernel = NativeUser = 200;
+            Check(double.IsNaN(cpu.Sample()) && NativeReads == 1, "Single-group wrapper did not prime its native sample");
+            NativeIdle = 200; NativeKernel = NativeUser = 400;
+            Check(cpu.Sample() == 0.75 && NativeReads == 2, "Single-group wrapper did not preserve CPU deltas");
+            NativeGroups = 2;
+            for (int i = 0; i < 1000; i++)
+                Check(double.IsNaN(cpu.Sample()) && NativeReads == 2, "Multi-group polling continued partial native samples");
+            NativeGroups = 1; NativeIdle = 300; NativeKernel = NativeUser = 600;
+            Check(double.IsNaN(cpu.Sample()), "Native wrapper reused the pre-group-change baseline");
+            cpu = Smart();
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 100, 200, 200)), "First native reading was treated as a delta");
+            Check(cpu.ObserveSystemTimes(1, true, 200, 400, 400) == 0.75, "Single-group CPU delta changed");
+            for (int i = 0; i < 1000; i++)
+                Check(double.IsNaN(cpu.ObserveSystemTimes(2, true, 300 + i, 600 + i, 600 + i)), "Partial processor-group data became whole-system load");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 2000, 4000, 4000)), "A return from multiple groups reused the old baseline");
+            Check(cpu.ObserveSystemTimes(1, true, 2100, 4200, 4200) == 0.75, "Single-group sampling did not recover after priming");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, false, 2200, 4400, 4400)), "A failed native read fabricated CPU load");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 2300, 4600, 4600)), "A failed read did not invalidate the baseline");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(0, true, 1, 2, 2)), "Unknown group count became usable CPU load");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 2, 1, 1)), "Idle time exceeded kernel time without rejection");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 1, long.MaxValue, 1)), "Counter sum overflow was accepted");
+            Check(double.IsNaN(cpu.ObserveSystemTimes(1, true, 1, 2, -1)), "Negative user counter was accepted");
+        }
+
         public static int Main()
         {
             try
             {
-                SmartBoundaries(); OtherConsumersUnchanged(); GuardTiming(); InvalidInput();
+                SmartBoundaries(); OtherConsumersUnchanged(); GuardTiming(); InvalidInput(); NativeCounterScope();
                 Console.WriteLine("PASS Smart governance thresholds assertions=" + checks
                     + "; Smart=70/60; other_users=90/80; confirmation=10s; exit_hold=5s; relaxation=120s; native_samples=false; Pavise_started=false");
                 return 0;

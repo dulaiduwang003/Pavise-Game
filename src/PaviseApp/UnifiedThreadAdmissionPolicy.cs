@@ -9,6 +9,7 @@ namespace PaviseApp
         internal readonly int Pid, PresenterTid, WorkerTid, Streams, StablePartners;
         internal readonly long Birth, Observed;
         internal readonly bool Valid, StreamsKnown;
+        internal readonly bool PresentIdentityOnly;
         internal readonly HardThreadIdentity Presenter, Worker;
         internal readonly ThreadRelationSnapshot Relation;
         internal readonly string FailureReason;
@@ -19,6 +20,7 @@ namespace PaviseApp
             FailureReason = CaptureFailure(sample);
             if (sample == null) return;
             Pid = sample.Pid; Birth = sample.Birth; PresenterTid = sample.PresentTid; WorkerTid = sample.WorkerTid;
+            PresentIdentityOnly = sample.PresentIdentityOnly;
             Streams = sample.PresentStreamCount; StreamsKnown = sample.PresentStreamsKnown;
             StablePartners = sample.StablePartnerCount;
             Valid = sample.PresentValid && sample.Issue == FrameCaptureIssue.None && sample.LostEvents == 0;

@@ -14,7 +14,10 @@ namespace PaviseApp
             "MSICenterService", "DragonCenter", "FanControl", "SpeedFan", "HWiNFO64", "HWiNFO32", "ArmouryCrate", "ArmouryCrate.UserSessionHelper", "ArmourySwAgent", "AsusAppService",
             "AsusOSD", "LegionGoQuickSettings", "AYASpace", "AYASpaceII", "OneXConsole", "OneXPlayerManager", "GPDWinControls", "MSI Center M", "ClawCenter", "ArmouryCrateService",
             "ArmouryCrateSE", "ArmouryCrate.Service", "ArmourySocketServer", "LegionSpace", "LegionSpace.Service", "HandheldCompanion", "PowerControl", "SteamController", "PerformanceOverlay", "RTSS",
-            "RTSSHooksLoader64", "MSIAfterburner"
+            "RTSSHooksLoader64", "MSIAfterburner",
+            // 平台功耗与温控基础组件按驱动包声明的进程名保护，不扩展为厂商或 Power、PMF 泛词。
+            "amdpmfservice", "amdpmfserviceuser", "AmdPpkgSvc", "amd3dvcacheSvc", "amd3dvcacheuser",
+            "esif_uf", "ipf_uf", "ipf_helper", "ipfsvc"
         };
 
         private static readonly string[] Tokens = new string[32]

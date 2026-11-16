@@ -597,7 +597,7 @@ namespace PaviseApp
             btnDelete.Enabled = false;
         }
 
-        private readonly ProcessActionFailureBudget inspectionFailures = new ProcessActionFailureBudget();
+        private static readonly ProcessActionFailureBudget inspectionFailures = new ProcessActionFailureBudget();
 
         private void QueueInspection(LolOptimizationSnapshot s)
         {
@@ -617,7 +617,8 @@ namespace PaviseApp
             }
             bool rootChanged = !string.Equals(root, inspectRoot, StringComparison.OrdinalIgnoreCase);
             int combinedMask = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | ((s.CrossProcessCount > 0) ? 16 : 0);
-            if (!inspectionFailures.Allowed(0, combinedMask, root, "availability")) return;
+            string observationStage = "availability|" + PerformanceTuning.RecoveryCycleSerial;
+            if (!inspectionFailures.Allowed(0, combinedMask, root, observationStage)) return;
             bool selectionChanged = combinedMask != inspectSignature;
             TimeSpan timeSpan = ((inspectBlocked && combinedMask == 0) ? TimeSpan.FromSeconds(5.0) : TimeSpan.FromMinutes(2.0));
             if ((!rootChanged && !selectionChanged && DateTime.UtcNow - inspectUtc < timeSpan) || Interlocked.CompareExchange(ref fileOpBusy, 0, 0) != 0 || Interlocked.CompareExchange(ref inspectBusy, 1, 0) != 0)
@@ -636,64 +637,76 @@ namespace PaviseApp
                 blockers.Clear();
             }
             inspectRoot = root;
-            ThreadPool.QueueUserWorkItem(delegate
+            try
             {
-                bool can = false;
-                bool blocked = false;
-                int count = 0;
-                string error = "";
-                List<string> names = new List<string>();
-                try
+                if (!ThreadPool.QueueUserWorkItem(delegate
                 {
-                    LolAddonCleaner.Inspection inspection = LolAddonCleaner.InspectAvailability(root);
-                    can = inspection.CanDelete;
-                    blocked = inspection.IsBlocked;
-                    count = inspection.CandidateCount;
-                    error = inspection.Error;
-                    names.AddRange(inspection.BlockingProcesses);
-                }
-                catch (Exception ex)
-                {
-                    error = ex.Message;
-                }
-                if (string.IsNullOrEmpty(error)) inspectionFailures.Succeeded(0, combinedMask, root, "availability");
-                else inspectionFailures.Failed(0, combinedMask, root, "availability");
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
+                    bool can = false;
+                    bool blocked = false;
+                    int count = 0;
+                    string error = "";
+                    List<string> names = new List<string>();
+                    try
                     {
-                        if (base.IsDisposed)
+                        LolAddonCleaner.Inspection inspection = LolAddonCleaner.InspectAvailability(root);
+                        can = inspection.CanDelete;
+                        blocked = inspection.IsBlocked;
+                        count = inspection.CandidateCount;
+                        error = inspection.Error;
+                        names.AddRange(inspection.BlockingProcesses);
+                    }
+                    catch (Exception ex)
+                    {
+                        error = ex.Message;
+                    }
+                    // 健康观察不补充失败预算，页面重建也沿用同一会话的账本。
+                    if (!string.IsNullOrEmpty(error)) inspectionFailures.Failed(0, combinedMask, root, observationStage);
+                    try
+                    {
+                        BeginInvoke((MethodInvoker)delegate
                         {
-                            Interlocked.Exchange(ref inspectBusy, 0);
-                        }
-                        else if (!string.Equals(root, service.GetSnapshot().LolRoot, StringComparison.OrdinalIgnoreCase))
-                        {
-                            Interlocked.Exchange(ref inspectBusy, 0);
-                            RefreshState(true);
-                        }
-                        else
-                        {
-                            canDelete = can;
-                            inspectBlocked = blocked;
-                            candidateCount = count;
-                            inspectCompleted = true;
-                            blockers.Clear();
-                            blockers.AddRange(names);
-                            inspectError = error ?? "";
-                            inspectUtc = DateTime.UtcNow;
-                            Interlocked.Exchange(ref inspectBusy, 0);
-                            if (!base.IsDisposed)
+                            if (base.IsDisposed)
                             {
-                                RefreshState(false);
+                                Interlocked.Exchange(ref inspectBusy, 0);
                             }
-                        }
-                    });
-                }
-                catch
+                            else if (!string.Equals(root, service.GetSnapshot().LolRoot, StringComparison.OrdinalIgnoreCase))
+                            {
+                                Interlocked.Exchange(ref inspectBusy, 0);
+                                RefreshState(true);
+                            }
+                            else
+                            {
+                                canDelete = can;
+                                inspectBlocked = blocked;
+                                candidateCount = count;
+                                inspectCompleted = true;
+                                blockers.Clear();
+                                blockers.AddRange(names);
+                                inspectError = error ?? "";
+                                inspectUtc = DateTime.UtcNow;
+                                Interlocked.Exchange(ref inspectBusy, 0);
+                                if (!base.IsDisposed)
+                                {
+                                    RefreshState(false);
+                                }
+                            }
+                        });
+                    }
+                    catch
+                    {
+                        Interlocked.Exchange(ref inspectBusy, 0);
+                    }
+                }))
                 {
                     Interlocked.Exchange(ref inspectBusy, 0);
+                    inspectionFailures.Failed(0, combinedMask, root, observationStage);
                 }
-            });
+            }
+            catch
+            {
+                Interlocked.Exchange(ref inspectBusy, 0);
+                inspectionFailures.Failed(0, combinedMask, root, observationStage);
+            }
         }
 
         private void OnDelete()

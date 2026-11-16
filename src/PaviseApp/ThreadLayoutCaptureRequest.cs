@@ -14,6 +14,7 @@ namespace PaviseApp
         internal readonly long Birth;
         internal readonly string Identity;
         internal bool WorkloadObservation { get { return workload; } }
+        internal readonly bool PresentIdentityOnly;
         private readonly long createdAt;
         private readonly bool workload;
         private readonly int maximumAttempts;
@@ -26,9 +27,11 @@ namespace PaviseApp
         private UnifiedThreadCaptureEvidence unifiedBaseline, lastBaselineAttempt;
 
         internal ThreadLayoutCaptureRequest(int pid, long birth, string identity, long now,
-            Action<string, string, bool> writer, bool workloadMode = false)
+            Action<string, string, bool> writer, bool workloadMode = false, bool presentIdentityOnly = false)
         {
+            if (workloadMode && presentIdentityOnly) throw new ArgumentException("工作组观察不能使用仅呈现身份采集", "presentIdentityOnly");
             Pid = pid; Birth = birth; Identity = identity; report = writer;
+            PresentIdentityOnly = presentIdentityOnly;
             workload = workloadMode; maximumAttempts = workload ? 3 : 2;
             createdAt = foregroundSince = now;
             nextBaselineAt = now + TimeSpan.FromSeconds(15).Ticks;
@@ -228,12 +231,15 @@ namespace PaviseApp
             {
                 if (!capturing || stage != activeStage) return;
                 capturing = false; activeStage = -1;
+                if (sample != null && (sample.PresentIdentityOnly != PresentIdentityOnly
+                    || PresentIdentityOnly && (!sample.LayoutObservation || sample.PresenterOnly || sample.Relation != null)))
+                    sample.Reject(FrameCaptureIssue.CaptureFailed, "采集用途与原观察请求不一致，本轮样本弃用");
                 changedDuringCapture = stage == 0 && appliedAt > 0;
                 lostForeground = captureForegroundLost || !foreground;
                 if (stage == 0 && !canceled && !changedDuringCapture && !lostForeground)
                 {
                     lastBaselineAttempt = new UnifiedThreadCaptureEvidence(sample, now);
-                    // 工作组策略继续核验关系摘要；三种渲染策略只要求单来源、呈现身份及采集完整性。
+                    // 工作组策略继续核验关系摘要；渲染策略只要求单来源、呈现身份及采集完整性。
                     frozen = sample != null && sample.Pid == Pid && sample.Birth == Birth && (workload
                         ? (sample.Issue == FrameCaptureIssue.None || sample.Issue == FrameCaptureIssue.InsufficientEvidence)
                             && sample.LostEvents == 0 && sample.Relation != null && sample.Relation.WorkloadValid
@@ -263,6 +269,7 @@ namespace PaviseApp
             string context = stage == 0 ? "角色基线" : "角色复核";
             string detail = "采集次数=" + Attempts + "/" + maximumAttempts + "；基线已冻结=" + frozen
                 + "；关系可用=" + usable;
+            if (PresentIdentityOnly) detail += "；采集用途=仅呈现身份；调度关系、CPU排队与换核分布=未采集";
             if (sample != null)
             {
                 detail += "；丢失事件=" + sample.LostEvents + "；返回码=" + sample.TraceCode
@@ -296,7 +303,7 @@ namespace PaviseApp
             else detail += "；原因=采样未返回";
             if (changedDuringCapture) detail += "；采集期间已施加干预，本轮不能作为原布局基线";
             if (lostForeground) detail += "；采集期间前台资格中断，本轮不能作为准入基线";
-            Write(context, detail, workload ? frozen : usable);
+            Write(context, detail, workload || PresentIdentityOnly ? frozen : usable);
         }
 
         private static string ShortReason(string reason)

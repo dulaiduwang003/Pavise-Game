@@ -14,13 +14,14 @@ namespace PaviseApp
         internal const double ProcessorShareFloor = .05;
 
         internal readonly bool Known, Queued;
+        internal readonly bool NotCollected;
         internal readonly string Unknown;
         internal readonly double WindowMs, ReadyShare, ReadyP95Ms, RunningShare, MigrationsPerSecond;
         internal readonly int Processors;
         internal readonly DateTime ObservedLocal;
 
-        private SchedulingBottleneckEvidence(string unknown, DateTime observedLocal)
-        { Unknown = unknown; ObservedLocal = observedLocal; }
+        private SchedulingBottleneckEvidence(string unknown, DateTime observedLocal, bool notCollected = false)
+        { Unknown = unknown; ObservedLocal = observedLocal; NotCollected = notCollected; }
 
         private SchedulingBottleneckEvidence(ThreadRelationSnapshot relation, ThreadRelationMetrics role, DateTime observedLocal)
         {
@@ -36,8 +37,10 @@ namespace PaviseApp
                     if (cpu.Value >= role.RunningMs * ProcessorShareFloor) Processors++;
         }
 
-        internal static SchedulingBottleneckEvidence From(ThreadRelationSnapshot relation, HardThreadIdentity presenter, DateTime observedLocal)
+        internal static SchedulingBottleneckEvidence From(ThreadRelationSnapshot relation, HardThreadIdentity presenter, DateTime observedLocal, bool presentIdentityOnly = false)
         {
+            if (presentIdentityOnly)
+                return new SchedulingBottleneckEvidence("本次仅识别呈现角色，调度关系、CPU排队与换核分布未采集", observedLocal, true);
             if (relation == null || presenter == null)
                 return new SchedulingBottleneckEvidence("首次采集没有可用的线程关系读数", observedLocal);
             if (!relation.Valid || relation.LostEvents != 0)
@@ -64,6 +67,7 @@ namespace PaviseApp
         // 日志保留完整读数与判据结果。
         internal string Describe()
         {
+            if (NotCollected) return "放置前观察：" + Unknown;
             if (!Known) return "放置前观察不可用：" + Unknown;
             return "放置前观察：渲染线程排队占窗口 " + Percent(ReadyShare) + "，P95 " + Number(ReadyP95Ms, "F3") + " 毫秒，"
                 + (Queued ? "已达到" : "未达到") + "持续排队门槛；占用单核 " + Percent(RunningShare)
@@ -75,6 +79,9 @@ namespace PaviseApp
         internal string Hint(SchedulingStrategy strategy)
         {
             string time = ObservedLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
+            if (NotCollected)
+                return PerformancePolicy.Text("最近一次对局（" + time + "）仅识别呈现角色；调度关系、CPU 排队和换核分布未采集，不能据此判断有无 CPU 瓶颈。",
+                    "The most recent session (" + time + ") identified the presenting thread only. Scheduling relationships, CPU queueing and processor migration were not collected; CPU bottlenecks cannot be assessed from this sample.");
             if (!Known)
                 return PerformancePolicy.Text("最近一次对局（" + time + "）的首次采样没有可用的渲染线程读数。",
                     "The first sample of the most recent session (" + time + ") has no usable render thread readings.");

@@ -158,7 +158,6 @@ namespace PaviseApp
                 NoteAutoAdd(path, "GpuUnavailable", (diagnostics == null) ? null : diagnostics.ToString(), now);
                 return;
             }
-            autoAddFailureBudget.Succeeded(pid, identity.Creation, path, "capture");
             double value;
             if (!dictionary.TryGetValue(pid, out value))
             {
@@ -911,14 +910,15 @@ namespace PaviseApp
                 {
                     Handoff.Refresh(true, RendererForegroundPid() == current.RendererPid, RendererNowMs());
                 }
-                ticket = Handoff.BeginProbe(RendererNowMs());
+                ticket = TryBeginRendererProbe(rendererProbeFailureBudget, Handoff, current, RendererNowMs());
             }
             if (ticket == null)
             {
                 Interlocked.Exchange(ref rendererGpuSamplingBusy, 0);
                 return;
             }
-            if (!rendererProbeFailureBudget.Allowed(ticket.Detection.RendererPid, ticket.Detection.RendererCreation, ticket.Detection.RendererPath, "probe"))
+            if (!rendererProbeFailureBudget.Allowed(ticket.Detection.RendererPid, ticket.Detection.RendererCreation, ticket.Detection.RendererPath, "probe")
+                || !rendererProbeFailureBudget.Allowed(ticket.Detection.RendererPid, ticket.Detection.RendererCreation, ticket.Detection.RendererPath, "gpu"))
             {
                 Handoff.Complete(ticket, null, false, RendererNowMs());
                 Interlocked.Exchange(ref rendererGpuSamplingBusy, 0);
@@ -969,7 +969,6 @@ namespace PaviseApp
                         if (sampled && !func())
                         {
                             if (utilization == null && (presents == null || !presents.Valid)) RecordRendererProbeFailure(ticket, "capture");
-                            else rendererProbeFailureBudget.Succeeded(ticket.Detection.RendererPid, ticket.Detection.RendererCreation, ticket.Detection.RendererPath, "probe");
                         }
                         bool gpuRequired = RendererGpuProofRequired(ticket.Detection);
                         RendererProof verdict = Handoff.Complete(ticket, utilization, presents, identityValid, RendererNowMs(), gpuRequired);
@@ -1001,6 +1000,15 @@ namespace PaviseApp
                 RecordRendererProbeFailure(ticket, "queue-exception");
                 Interlocked.Exchange(ref rendererGpuSamplingBusy, 0);
             }
+        }
+        internal static RendererProbeTicket TryBeginRendererProbe(ProcessActionFailureBudget budget, RendererHandoffTracker tracker,
+            GameDetection candidate, long nowMs)
+        {
+            // GPU 数据是两种入场证明的共同前提；该通道耗尽后不再启动无法判定的系统 Present 观察。
+            // Present 耗尽仍可使用独立 GPU 证明，因此不在这里阻止它。
+            if (candidate == null || !budget.Allowed(candidate.RendererPid, candidate.RendererCreation, candidate.RendererPath, "gpu")
+                || !budget.Allowed(candidate.RendererPid, candidate.RendererCreation, candidate.RendererPath, "probe")) return null;
+            return tracker.BeginProbe(nowMs);
         }
         internal static PresentActivityCapture TryStartRendererPresent(ProcessActionFailureBudget budget, GameDetection candidate, out string failure)
         {

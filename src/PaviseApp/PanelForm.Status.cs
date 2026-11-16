@@ -842,7 +842,7 @@ namespace PaviseApp
                     try
                     {
                         states = QueryLibraryRunningState(paths);
-                        if (states != null) runningObservationFailures.Succeeded(0, observationSession, observationKey, "running");
+                        // 成功快照不补充当前游戏列表的失败预算，真实新会话或列表变化仍独立计数。
                     }
                     catch
                     {

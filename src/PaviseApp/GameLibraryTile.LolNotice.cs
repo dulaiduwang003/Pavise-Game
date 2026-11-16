@@ -91,7 +91,6 @@ namespace PaviseApp
                 try { available = InspectAddonNoticeResult(profile, out failed); }
                 catch { failed = true; }
                 if (failed) RecordAddonNoticeFailure(session, key);
-                else addonNoticeFailures.Succeeded(0, session, key, "notice");
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate

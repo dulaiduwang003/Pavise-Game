@@ -67,6 +67,7 @@ namespace PaviseApp
         private readonly Stopwatch clock = new Stopwatch();
         private Native.EventRecordCallback receive;
         private bool finishing, finished;
+        private int receiveFailure;
         // 包含非提交事件的送达总数。
         private int seen;
         // 丢事件诊断读数，只由采样线程写入：送达事件覆盖的处理器、首末事件的会话时间戳，以及实时通道自己上报的丢失标记。
@@ -115,6 +116,10 @@ namespace PaviseApp
                 if (!stopped || trace.Error != 0 || trace.Lost != 0 || !trace.Drained)
                     return PresentActivitySample.Unavailable("stop-error-" + trace.Error + "-lost-" + trace.Lost
                         + "(" + trace.LossDetail + " seen=" + Volatile.Read(ref seen) + " " + trace.FailureDetail + ")", DiagnosticsLocked(windowMs));
+                int failure = Volatile.Read(ref receiveFailure);
+                if (failure != 0)
+                    return PresentActivitySample.Unavailable(failure == 2 ? "consumer-error-OutOfMemoryException" : "consumer-error",
+                        DiagnosticsLocked(windowMs));
                 foreach (KeyValuePair<int, Counts> pair in counts)
                 {
                     int value = pair.Value.Frames;
@@ -174,6 +179,7 @@ namespace PaviseApp
 
         private void Receive(ref Native.EventRecord record)
         {
+            if (Volatile.Read(ref finished) || Volatile.Read(ref receiveFailure) != 0) return;
             try
             {
                 Interlocked.Increment(ref seen);
@@ -200,7 +206,12 @@ namespace PaviseApp
                 Kind kind = Classify(record.EventHeader.ProviderId, descriptor.Id, descriptor.Opcode);
                 if (kind != Kind.None) Count((int)record.EventHeader.ProcessId, kind, descriptor.Id);
             }
-            catch { }
+            catch (Exception error)
+            {
+                // 托管解码或计数分配失败同样破坏窗口完整性；不能把已有部分计数继续作为入场证据。
+                // 这里只存首次失败码，OOM 分支不再分配诊断字符串。
+                Interlocked.CompareExchange(ref receiveFailure, error is OutOfMemoryException ? 2 : 1, 0);
+            }
         }
 
 #if PAVISE_SELFTEST

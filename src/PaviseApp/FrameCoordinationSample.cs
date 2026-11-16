@@ -22,6 +22,8 @@ namespace PaviseApp
         internal bool PriorityReserved;
 
         internal bool PresenterOnly;
+        // 只识别呈现身份时不采集调度关系；它与旧式 PresenterOnly 兼容采集是不同用途。
+        internal bool PresentIdentityOnly;
         // 完整实验观测只发布诊断与角色线索，不改变既有提优或识别的失败预算。
         internal bool LayoutObservation;
 
@@ -75,7 +77,8 @@ namespace PaviseApp
 
         internal string DescribePresentCapture()
         {
-            return "捕获Issue=" + Issue + "；呈现选择=" + (PresentSelectionReason ?? Detail ?? "尚未完成")
+            return "捕获Issue=" + Issue + "；采集用途=" + (PresentIdentityOnly ? "仅呈现身份，调度关系未采集" : "完整或兼容观察")
+                + "；呈现选择=" + (PresentSelectionReason ?? Detail ?? "尚未完成")
                 + (TraceFailureDetail.Length == 0 ? "" : "；ETW证据=" + TraceFailureDetail)
                 + "；单呈现角色已核验=" + PresentValid
                 + "；前半提交=" + (PresentFirstHalf ?? "未汇总") + "；后半提交=" + (PresentSecondHalf ?? "未汇总")

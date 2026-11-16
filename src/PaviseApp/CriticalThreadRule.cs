@@ -136,10 +136,10 @@ namespace PaviseApp
             return new CriticalThreadRule(false, CriticalThreadLayout.Unified);
         }
 
-        // 用户打开开关而没有选过方案时使用的缺省方案。已保存的 7|auto 仍按多核协同读取。
+        // 未选过方案时只提优呈现线程，不默认固定核心、清核或提高整进程优先级；已保存的策略原样读取。
         internal static CriticalThreadRule UnifiedDefault()
         {
-            return UnifiedStrategy(SchedulingStrategy.GamePriority, false);
+            return UnifiedStrategy(SchedulingStrategy.RenderBoost, false);
         }
 
         private CriticalThreadRule(SchedulingStrategy strategy, bool clearCore)

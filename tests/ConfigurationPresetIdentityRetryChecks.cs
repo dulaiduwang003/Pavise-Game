@@ -188,13 +188,49 @@ namespace PaviseApp
             Check(backend.Loads == before + 20, "Healthy negative observations were capped");
             backend.Fail = true; generation++;
             for (int i = 0; i < 10; i++) Poll(runtime);
-            Check(backend.Loads == before + 23, "Complete healthy observation did not end the prior failure episode");
+            Check(backend.Loads == before + 21, "Healthy observations refunded earlier identity failures");
             backend = new IdentityBackend(); var coordinator = new ConfigurationPresetCoordinator(backend);
             backend.Identity = ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + coordinator.Fingerprint();
             runtime = new ConfigurationPresetRuntime(backend, () => generation, null, () => session);
             Poll(runtime); Check(runtime.CurrentPreset == ConfigurationPresetKind.Default, "Verified identity was not published");
             backend.Mismatch = true; generation++; Poll(runtime);
             Check(!runtime.CurrentPreset.HasValue, "Successful mismatch observation retained a stale preset");
+        }
+        private static void InterleavedSourceFailures()
+        {
+            long session = 1;
+            int generation = 0, generations = 0, snapshots = 0;
+            bool failGeneration = false, failSnapshot = false;
+            var backend = new IdentityBackend();
+            var runtime = new ConfigurationPresetRuntime(backend,
+                () => { generations++; if (failGeneration) throw new InvalidOperationException("fixture generation"); return generation; },
+                null, () => session, null,
+                () => { snapshots++; if (failSnapshot) throw new InvalidOperationException("fixture snapshot"); return "A"; });
+            for (int fault = 0; fault < 3; fault++)
+            {
+                failGeneration = true; Poll(runtime);
+                failGeneration = false;
+                if (fault < 2) for (int i = 0; i < 20; i++) { generation++; Poll(runtime); }
+            }
+            int stopped = generations;
+            for (int i = 0; i < 1000; i++)
+            { generation++; Poll(runtime); Check(generations == stopped, "Healthy generation observations refunded earlier failures"); }
+            session++; Poll(runtime);
+            Check(generations > stopped, "New session did not reopen generation source");
+
+            runtime = new ConfigurationPresetRuntime(backend, () => generation, null, () => session, null,
+                () => { snapshots++; if (failSnapshot) throw new InvalidOperationException("fixture snapshot"); return "A"; });
+            for (int fault = 0; fault < 3; fault++)
+            {
+                failSnapshot = true; generation++; Poll(runtime);
+                failSnapshot = false;
+                if (fault < 2) for (int i = 0; i < 20; i++) { generation++; Poll(runtime); }
+            }
+            stopped = snapshots;
+            for (int i = 0; i < 1000; i++)
+            { generation++; Poll(runtime); Check(snapshots == stopped, "Healthy phase snapshots refunded earlier failures"); }
+            session++; Poll(runtime);
+            Check(snapshots == stopped + 1, "New session did not reopen phase source");
         }
         private static void SingleFlightAndStaleCompletion()
         {
@@ -219,7 +255,7 @@ namespace PaviseApp
         }
         private static int Main()
         {
-            try { BackendFailure(); MaterialSnapshotPhase(); PhaseSnapshotFailure(); CapturedConfigurationFailure(); SameValueApplySurvivesOldFailure(); VerifiedIdentityBelongsToMaterialPhase(); QueueFailures(); HealthyNegativeAndSuccessEpisode(); SingleFlightAndStaleCompletion();
+            try { BackendFailure(); MaterialSnapshotPhase(); PhaseSnapshotFailure(); CapturedConfigurationFailure(); SameValueApplySurvivesOldFailure(); VerifiedIdentityBelongsToMaterialPhase(); QueueFailures(); HealthyNegativeAndSuccessEpisode(); InterleavedSourceFailures(); SingleFlightAndStaleCompletion();
                 Console.WriteLine("PASS ConfigurationPresetIdentityRetryChecks checks=" + checks + " real_ThreadPool=true native_writes=0 product_started=false"); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }

@@ -61,6 +61,8 @@ namespace PaviseApp
         private static bool identitySealed, presentSealed;
         private Channel channel = frameChannel;
         private readonly object memory = new object();
+        private Action drainedCleanup;
+        private bool drainedCleanupRegistered, consumerReturned;
         private readonly object cleanup = new object();
         private readonly object failureGate = new object();
         private IntPtr properties, loggerName;
@@ -121,6 +123,38 @@ namespace PaviseApp
         internal int PumpTid;
         internal double CpuMs = double.NaN;
         internal bool Drained { get { Thread current = pump; return current == null || !current.IsAlive; } }
+        // 只接管一次消费者资源；登记与完成可交错，但 ProcessTrace 返回前不得释放。
+        internal void OwnDrainedCleanup(Action cleanupAction)
+        {
+            if (cleanupAction == null) throw new ArgumentNullException("cleanupAction");
+            bool complete;
+            lock (memory)
+            {
+                if (drainedCleanupRegistered) throw new InvalidOperationException("消费者资源已登记释放归属");
+                drainedCleanupRegistered = true;
+                complete = consumerReturned;
+                if (!complete) drainedCleanup = cleanupAction;
+            }
+            if (complete) RunDrainedCleanup(cleanupAction);
+        }
+
+        private void NotifyConsumerReturned()
+        {
+            Action release;
+            lock (memory)
+            {
+                consumerReturned = true;
+                release = drainedCleanup;
+                drainedCleanup = null;
+            }
+            if (release != null) RunDrainedCleanup(release);
+        }
+
+        private void RunDrainedCleanup(Action release)
+        {
+            try { release(); }
+            catch (Exception) { RecordCleanupFailure(31, "drained-cleanup"); }
+        }
         internal static bool IdentityClosing { get { lock (ledgerGate) return identitySealed; } }
         private static string SessionName(string prefix)
         { return prefix + Process.GetCurrentProcess().Id + "." + Guid.NewGuid().ToString("N"); }
@@ -241,7 +275,7 @@ namespace PaviseApp
         // 初始化全程持有清理锁，防止停止操作插入到句柄只打开一半的状态。
         private bool StartLocked(int pid, Native.EventRecordCallback receive, bool presenterOnly)
         {
-            if (started) { RecordPrimaryFailure(1247, "already-started"); return false; }
+            if (started || stopRequested) { RecordPrimaryFailure(1247, "already-started"); return false; }
             started = true;
             if (!presenterOnly && GetActiveProcessorGroupCount() != 1) { RecordPrimaryFailure(50, "processor-groups"); return false; }
             int refusal;
@@ -275,7 +309,7 @@ namespace PaviseApp
         {
             lock (cleanup)
             {
-                if (started) { RecordPrimaryFailure(1247, "already-started"); return false; }
+                if (started || stopRequested) { RecordPrimaryFailure(1247, "already-started"); return false; }
                 channel = presentChannel; name = SessionName(PresentSessionPrefix);
                 started = true;
                 int refusal;
@@ -338,14 +372,23 @@ namespace PaviseApp
             consumer = OpenConsumer(ref log);
             if (consumer == Native.InvalidProcessTraceHandle) { int error = Marshal.GetLastWin32Error(); RecordPrimaryFailure(error == 0 ? 6 : error, "open-consumer"); Stop(); return false; }
             ulong opened = consumer;
-            pump = new Thread(delegate() {
+            pump = new Thread(delegate()
+            {
                 PumpTid = Native.GetCurrentThreadId(); LoopProfile.Tag("FrameTracePump");
                 try { int rc = ProcessConsumer(opened); if (rc != 0 && rc != 1223) RecordPrimaryFailure(rc, "process-trace"); }
-                finally {
-                    IntPtr thread = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, PumpTid);
-                    if (thread != IntPtr.Zero) { try { long b,e,k,u; if (Native.GetThreadTimes(thread,out b,out e,out k,out u)) CpuMs=(k+u)/10000.0; } finally { Native.CloseHandle(thread); } }
-                    // ProcessTrace 已返回，不再有回调；迟到的采样线程自行结清，不再取得清理锁或等待自身。
-                    if (handlesClosed) Settle();
+                finally
+                {
+                    try
+                    {
+                        IntPtr thread = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, PumpTid);
+                        if (thread != IntPtr.Zero) { try { long b,e,k,u; if (Native.GetThreadTimes(thread,out b,out e,out k,out u)) CpuMs=(k+u)/10000.0; } finally { Native.CloseHandle(thread); } }
+                    }
+                    finally
+                    {
+                        // ProcessTrace 已返回，迟到消费者也先释放本方回调资源；回执仍按句柄状态结清。
+                        NotifyConsumerReturned();
+                        if (handlesClosed) Settle();
+                    }
                 }
             });
             pump.IsBackground = true; pump.Priority = ThreadPriority.BelowNormal;
@@ -444,6 +487,7 @@ namespace PaviseApp
             bool closedHandles = session == 0 && consumer == Native.InvalidProcessTraceHandle;
             if (closedHandles) handlesClosed = true;
             bool settled = closedHandles && PumpFinished(waitMs);
+            if (Drained) NotifyConsumerReturned();
             bool cleared = settled && Settle();
             return settled && cleared && Error == 0 && Lost == 0;
         }
@@ -515,8 +559,9 @@ namespace PaviseApp
                 }
                 else
                 {
-                    if (!pending.Drained) return false;
-                    pending.Stop();
+                    // 健康采集不被修复打断；停止失败的消费者须先重试关闭，不能反过来等它自行退出。
+                    if (!pending.Drained && !pending.stopRequested && pending.Error == 0) return false;
+                    pending.StopWithin(IdentityHealWaitMs);
                 }
             }
             lock (ledgerGate)

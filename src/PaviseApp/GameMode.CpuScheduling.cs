@@ -351,6 +351,7 @@ namespace PaviseApp
                 string processName = core.NameOf(item);
                 if (creation > 0 && !string.IsNullOrEmpty(processName))
                 {
+                    if (TryProtectHardwareControlBackground(item, creation, processName)) continue;
                     bool changed;
                     if (IsCriticalThreadGuardian(item, creation))
                     {

@@ -7,11 +7,12 @@ namespace PaviseApp
     internal sealed class OverviewGpuReader
     {
         private static readonly OverviewGpuReader shared = new OverviewGpuReader(
-            GpuInventory.Primary, OverviewGpuProbe.Read, Stopwatch.GetTimestamp, Stopwatch.Frequency * 30);
+            GpuInventory.Primary, OverviewGpuProbe.Read, Stopwatch.GetTimestamp, Stopwatch.Frequency * 30, OverviewGpuProbe.ReadResult);
 
         private readonly object gate = new object();
         private readonly Func<GpuAdapter> readInventory;
         private readonly Func<OverviewGpuInfo> readFallback;
+        private readonly Func<OverviewGpuProbeResult> readClassifiedFallback;
         private readonly Func<long> clock;
         private readonly long retryTicks;
         private OverviewGpuInfo cached;
@@ -22,9 +23,14 @@ namespace PaviseApp
 
         internal OverviewGpuReader(Func<GpuAdapter> readInventory, Func<OverviewGpuInfo> readFallback,
             Func<long> clock, long retryTicks)
+            : this(readInventory, readFallback, clock, retryTicks, null) { }
+
+        internal OverviewGpuReader(Func<GpuAdapter> readInventory, Func<OverviewGpuInfo> readFallback,
+            Func<long> clock, long retryTicks, Func<OverviewGpuProbeResult> readClassifiedFallback)
         {
             this.readInventory = readInventory;
             this.readFallback = readFallback;
+            this.readClassifiedFallback = readClassifiedFallback;
             this.clock = clock;
             this.retryTicks = retryTicks;
         }
@@ -54,16 +60,23 @@ namespace PaviseApp
                 }
                 if (cached == null && fallbackFailures < 3)
                 {
+                    string failure = null;
                     try
                     {
-                        OverviewGpuInfo fallback = readFallback();
+                        OverviewGpuProbeResult observation = readClassifiedFallback == null ? null : readClassifiedFallback();
+                        OverviewGpuInfo fallback = readClassifiedFallback == null ? readFallback() : observation == null ? null : observation.Info;
                         if (fallback != null && !string.IsNullOrWhiteSpace(fallback.Name))
                             cached = new OverviewGpuInfo(fallback.Name.Trim(), fallback.MemoryBytes);
+                        else if (observation != null && observation.State == OverviewGpuProbeState.NativeFailure)
+                            failure = observation.Failure;
                     }
                     catch (Exception error)
+                    { failure = error.GetType().Name; }
+                    // 日志失败不属于第二次设备读取失败，扣次数与日志调用放在同一异常捕获范围之外。
+                    if (failure != null)
                     {
                         fallbackFailures++;
-                        Logger.Warn("概览 GPU 备用读取失败，阶段=" + cycle + " 尝试=" + fallbackFailures + "/3: " + error.GetType().Name);
+                        Logger.Warn("概览 GPU 备用读取失败，阶段=" + cycle + " 尝试=" + fallbackFailures + "/3: " + failure);
                     }
                 }
                 attempted = true;

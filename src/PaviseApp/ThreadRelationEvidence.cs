@@ -216,6 +216,8 @@ namespace PaviseApp
         // 旧常量名供诊断与既有台架引用，仅表示软水位；固定窗口内按实际事件量扩展，不据此弃样。
         internal const int MaximumThreadTransitions = MaximumTransitions;
         internal const int MaximumEventBytes = MaximumTransitions * 16;
+        // 应急边界保留高负载完整窗口；触及后不发布部分图，仍由原请求结算本次采集。
+        internal const int EmergencyMaximumBlocks = 16384, EmergencyMaximumPresents = 65536;
         private struct Transition
         {
             internal long Time;
@@ -293,6 +295,9 @@ namespace PaviseApp
         private int recordedTransitions, allocatedBlocks, overflowedThreads, sequence;
         private long recordedThrough;
         private string invalid;
+        private string resourceLimitDetail;
+        internal bool ResourceLimitReached { get { return resourceLimitDetail != null; } }
+        internal string ResourceLimitDetail { get { return resourceLimitDetail ?? ""; } }
         // 键只接收原生 16 位 CPU 索引；已出现的零线程也保留，区分空闲与尚无上下文。
         private readonly Dictionary<int, int> workloadRunning = new Dictionary<int, int>();
         private bool workloadCpuConsistent = true;
@@ -311,6 +316,9 @@ namespace PaviseApp
         }
 
         internal void Invalidate(string reason) { if (invalid == null) invalid = reason; }
+
+        private void ReachResourceLimit(string detail)
+        { if (resourceLimitDetail == null) resourceLimitDetail = detail; Invalidate(detail); }
 
         internal void Switch(long time, int cpu, int incoming, int outgoing, byte oldState)
         {
@@ -342,13 +350,15 @@ namespace PaviseApp
         {
             Bucket bucket;
             if (invalid != null || time < begin || time > end || !buckets.TryGetValue(tid, out bucket) || bucket.Overflowed) return;
-            // 仅整数寻址或真实分配失败使采集无效，软水位不丢弃高频线程或竞争者。
+            // 旧软水位不丢弃高频线程；应急容量、整数寻址或实际分配失败会整窗拒绝。
             if (recordedTransitions == int.MaxValue) { Invalidate("状态转换数量超过集合可寻址范围"); return; }
             int offset = bucket.Count % TransitionsPerBlock;
             if (offset == 0)
             {
+                if (allocatedBlocks >= EmergencyMaximumBlocks)
+                { ReachResourceLimit("关系状态块超过完整采集应急上限"); return; }
                 try { bucket.Blocks.Add(new Transition[TransitionsPerBlock]); }
-                catch (OutOfMemoryException) { Invalidate("调度状态块分配失败，实际内存不足"); return; }
+                catch (OutOfMemoryException) { ReachResourceLimit("调度状态块分配失败，实际内存不足"); return; }
                 allocatedBlocks++;
             }
             bucket.Blocks[bucket.Count / TransitionsPerBlock][offset] = new Transition {
@@ -361,8 +371,10 @@ namespace PaviseApp
         internal void SuccessfulPresent(int tid, long time)
         {
             if (invalid != null || time < begin || time > end || !buckets.ContainsKey(tid)) return;
+            if (presents.Count >= EmergencyMaximumPresents)
+            { ReachResourceLimit("成功呈现记录超过完整采集应急上限"); return; }
             try { presents.Add(new Present { Tid = tid, Time = time }); }
-            catch (OutOfMemoryException) { Invalidate("画面提交记录分配失败，实际内存不足"); return; }
+            catch (OutOfMemoryException) { ReachResourceLimit("画面提交记录分配失败，实际内存不足"); return; }
             recordedThrough = Math.Max(recordedThrough, time);
         }
 
@@ -370,7 +382,16 @@ namespace PaviseApp
             Dictionary<long, int>[] edges, FrameCaptureIssue captureIssue, Func<int, long, bool> verifyIdentity, bool exportWorkload = true,
             Func<bool> continueBuild = null)
         {
-            try { return BuildCore(sample, presenter, edges, captureIssue, verifyIdentity, exportWorkload, continueBuild); }
+            try
+            {
+                if (ResourceLimitReached || captureIssue == FrameCaptureIssue.EventBudget || captureIssue == FrameCaptureIssue.SystemEventBudget
+                    || captureIssue == FrameCaptureIssue.EdgeBudget || captureIssue == FrameCaptureIssue.CpuBudget || captureIssue == FrameCaptureIssue.ThreadBudget)
+                    return new ThreadRelationSnapshot(sample.Pid, sample.Birth, begin, end, frequency, false,
+                        ResourceLimitReached ? ResourceLimitDetail : "完整采集触发应急保护，未重建部分图", sample.LostEvents, null, null,
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, trackedThreads, recordedTransitions, presents.Count,
+                        recordedThrough, allocatedBlocks, overflowedThreads, null, half);
+                return BuildCore(sample, presenter, edges, captureIssue, verifyIdentity, exportWorkload, continueBuild);
+            }
             catch (BuildStoppedException)
             {
                 return new ThreadRelationSnapshot(sample.Pid, sample.Birth, begin, end, frequency, false,
@@ -380,6 +401,7 @@ namespace PaviseApp
             }
             catch (OutOfMemoryException)
             {
+                sample.Reject(FrameCaptureIssue.CaptureFailed, "摘要分配失败，实际内存不足，本轮样本弃用");
                 return new ThreadRelationSnapshot(sample.Pid, sample.Birth, begin, end, frequency, false,
                     "摘要分配失败，实际内存不足，未发布部分工作图", sample.LostEvents, null, null,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, trackedThreads, recordedTransitions, presents.Count,

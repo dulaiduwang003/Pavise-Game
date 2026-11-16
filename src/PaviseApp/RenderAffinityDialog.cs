@@ -74,7 +74,9 @@ namespace PaviseApp
             bool legacyManual = CriticalThreadRule.IsLegacyManual(storedRaw);
             bool retiredComparison = IsRetiredComparison(storedRaw) || initial != null && IsRetiredComparison(initial.Encode());
             if (initial != null) initial = CriticalThreadRule.ParseForRuntime(initial.Encode());
-            mode = retiredComparison || initial == null || initial.IsOff ? 0 : Math.Max(0, Array.IndexOf(ModeStrategies, initial.Strategy));
+            // 缺省选择跟随运行规则，不依赖列表顺序；已有正式方案仍按原策略预览。
+            int defaultMode = Math.Max(0, Array.IndexOf(ModeStrategies, CriticalThreadRule.UnifiedDefault().Strategy));
+            mode = retiredComparison || initial == null || initial.IsOff ? defaultMode : Math.Max(0, Array.IndexOf(ModeStrategies, initial.Strategy));
 
             title = LabelOf(Text, Theme.UI(17f, true), Theme.Fg);
             title.Name = "RenderAffinityTitle";

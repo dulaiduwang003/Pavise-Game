@@ -70,7 +70,7 @@ namespace PaviseApp
                 if (phaseReadFailures >= 3 || generationReadFailures >= 3) { Volatile.Write(ref refreshing, 0); return; }
             }
             int generation;
-            try { generation = readGeneration(); generationReadFailures = 0; }
+            try { generation = readGeneration(); }
             catch { generationReadFailures++; Volatile.Write(ref refreshing, 0); return; }
             if (savedConfiguration == null || generation != phaseGeneration)
             {
@@ -82,7 +82,7 @@ namespace PaviseApp
                     {
                         if (!IdentityObservationCurrent(session, generation, observationEpoch)) { Volatile.Write(ref refreshing, 0); return; }
                         savedConfiguration = configuration;
-                        phaseGeneration = generation; phaseReadFailures = 0;
+                        phaseGeneration = generation;
                     }
                 }
                 catch
@@ -117,7 +117,7 @@ namespace PaviseApp
                             {
                                 current = value;
                                 currentConfiguration = phase.Configuration;
-                                phase.Failures = 0; // 完整确认目标不存在，也属于健康观测。
+                                // 有效观察只更新缓存，不退还同一配置与会话已消耗的失败次数。
                                 Volatile.Write(ref observedGeneration, generation);
                             }
                         }

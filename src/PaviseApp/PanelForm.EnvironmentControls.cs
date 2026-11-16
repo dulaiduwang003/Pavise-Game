@@ -119,7 +119,7 @@ namespace PaviseApp
                     int failures = environmentObservationFailures.Failed(0, observationSession, observationConfiguration, "environment");
                     Logger.Warn("系统环境观测失败=" + failures + "/3: " + ex.Message);
                 }
-                if (observed != null) environmentObservationFailures.Succeeded(0, observationSession, observationConfiguration, "environment");
+                // 成功观测只刷新显示，不返还同一会话和配置已经消耗的失败次数。
                 Action apply = delegate
                 {
                     cycle.Busy = 0;

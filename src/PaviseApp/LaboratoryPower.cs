@@ -7,6 +7,8 @@ namespace PaviseApp
     internal sealed class LaboratoryPowerSample
     {
         internal bool IdentityValid, AdapterKnown, Ambiguous;
+        internal bool GpuSamplingFailed;
+        internal string GpuSamplingFailure;
         internal int AdapterHigh;
         internal uint AdapterLow, AdapterPhysical;
         internal double CpuPercent = double.NaN, GpuPercent = double.NaN, CpuWatts = double.NaN;
@@ -174,6 +176,8 @@ namespace PaviseApp
                 case "有效采样中断，已撤销让路": return "Valid samples stopped; EPP yield was reverted";
                 case "采样暂缺，等待复核": return "Samples are temporarily unavailable; awaiting verification";
                 case "等待 CPU 功耗和游戏 GPU 有效采样": return "Waiting for valid CPU package power and game GPU samples";
+                case "GPU 采样失败，等待退避": return "GPU sampling failed; waiting for the retry cooldown";
+                case "GPU 采样失败次数已用完，本次会话暂停采样": return "GPU sampling failure budget exhausted; sampling paused for this session";
                 case "本次会话试探次数已用完": return "No more trials in this session";
                 case "瓶颈变化，已归还 CPU 性能偏好": return "Bottleneck changed; original CPU performance preference restored";
                 case "正在观察游戏负载": return "Observing game load";
@@ -297,22 +301,31 @@ namespace PaviseApp
             long now = platform.Now;
             if (now < nextSample) return;
             nextSample = now + TimeSpan.TicksPerSecond * 5;
+            // 查询重开、策略往返和成功观察都不补充次数；只有真实新会话清理此账本。
+            string gpuSamplingIdentity = "gpu-sample|" + pid.ToString(CultureInfo.InvariantCulture) + "|" + creation.ToString(CultureInfo.InvariantCulture);
+            if (!failures.CanAttempt(gpuSamplingIdentity, now, 3))
+            {
+                MissingEppSample(now, failures.Exhausted(gpuSamplingIdentity, 3)
+                    ? "GPU 采样失败次数已用完，本次会话暂停采样" : "GPU 采样失败，等待退避");
+                return;
+            }
             LaboratoryPowerSample sample = platform.Sample(pid, creation);
             if (sample == null || !sample.IdentityValid)
             { StopEpp("渲染进程身份失效，已停止试探"); return; }
+            if (sample.GpuSamplingFailed)
+            {
+                failures.Failed(gpuSamplingIdentity, platform.Now, 3, "EPP GPU采样" + (string.IsNullOrEmpty(sample.GpuSamplingFailure) ? "" : "；" + sample.GpuSamplingFailure));
+                MissingEppSample(platform.Now, failures.Exhausted(gpuSamplingIdentity, 3)
+                    ? "GPU 采样失败次数已用完，本次会话暂停采样" : "GPU 采样失败，等待退避");
+                return;
+            }
             if (sample.AdapterKnown && !sample.Ambiguous && adapterKnown
                 && (sample.AdapterHigh != adapterHigh || sample.AdapterLow != adapterLow || sample.AdapterPhysical != adapterPhysical))
             { StopEpp("渲染显卡发生变化，已停止试探"); return; }
             if (!sample.AdapterKnown || sample.Ambiguous || !Valid(sample.CpuPercent, 100)
                 || !Valid(sample.GpuPercent, 100) || !Valid(sample.CpuWatts, 1000) || sample.CpuWatts <= 0)
             {
-                if (phase > 0 && now - lastGood >= TimeSpan.TicksPerSecond * 10)
-                    StopEpp("有效采样中断，已撤销让路");
-                else
-                {
-                    if (phase == 0) ResetWindow();
-                    eppState = phase > 0 ? "采样暂缺，等待复核" : "等待 CPU 功耗和游戏 GPU 有效采样";
-                }
+                MissingEppSample(now, "等待 CPU 功耗和游戏 GPU 有效采样");
                 return;
             }
             if (!adapterKnown)
@@ -362,6 +375,17 @@ namespace PaviseApp
 
         private static bool Valid(double value, double max)
         { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0 && value <= max; }
+        private void MissingEppSample(long now, string waiting)
+        {
+            // 退避只阻止新采样，不能把已写入的 EPP 留到 30/60 秒后才恢复。
+            if (phase > 0 && now - lastGood >= TimeSpan.TicksPerSecond * 10)
+                StopEpp("有效采样中断，已撤销让路");
+            else
+            {
+                if (phase == 0) ResetWindow();
+                eppState = phase > 0 ? "采样暂缺，等待复核" : waiting;
+            }
+        }
         private bool RestoreBeforeIdleChange()
         {
             // 先处理 EPP，再处理空闲策略；两次观测都属于同一份固定空闲配置。

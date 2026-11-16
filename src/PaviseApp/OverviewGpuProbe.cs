@@ -16,6 +16,21 @@ namespace PaviseApp
         }
     }
 
+    internal enum OverviewGpuProbeState { Success, NoData, NativeFailure }
+
+    internal sealed class OverviewGpuProbeResult
+    {
+        internal readonly OverviewGpuInfo Info;
+        internal readonly OverviewGpuProbeState State;
+        internal readonly string Failure;
+        internal OverviewGpuProbeResult(OverviewGpuInfo info, string failure)
+        {
+            Info = info; Failure = failure;
+            State = info != null ? OverviewGpuProbeState.Success
+                : string.IsNullOrEmpty(failure) ? OverviewGpuProbeState.NoData : OverviewGpuProbeState.NativeFailure;
+        }
+    }
+
     internal static class OverviewGpuProbe
     {
         private const int DxgiNotFound = unchecked((int)0x887A0002);
@@ -85,7 +100,17 @@ namespace PaviseApp
 
         internal static OverviewGpuInfo Read()
         {
-            return ReadDxgi() ?? ReadDisplayDevices();
+            return ReadResult().Info;
+        }
+
+        internal static OverviewGpuProbeResult ReadResult()
+        {
+            string dxgiFailure, displayFailure;
+            OverviewGpuInfo info = ReadDxgi(out dxgiFailure);
+            if (info != null) return new OverviewGpuProbeResult(info, null);
+            info = ReadDisplayDevices(out displayFailure);
+            // 正常无设备与接口失败分开；任一备用渠道得到有效显示信息后即缓存成功。
+            return new OverviewGpuProbeResult(info, dxgiFailure ?? displayFailure);
         }
 
         internal static OverviewGpuInfo SelectDxgi(OverviewGpuInfo selected, string name, ulong memoryBytes, uint flags)
@@ -104,14 +129,16 @@ namespace PaviseApp
             return (flags & DisplayPrimary) != 0 ? 2 : ((flags & DisplayAttached) != 0 ? 1 : 0);
         }
 
-        private static OverviewGpuInfo ReadDxgi()
+        private static OverviewGpuInfo ReadDxgi(out string failure)
         {
+            failure = null;
             OverviewGpuInfo selected = null;
             IDXGIFactory1 factory = null;
             try
             {
                 Guid iid = typeof(IDXGIFactory1).GUID;
-                if (CreateDXGIFactory1(ref iid, out factory) < 0 || factory == null) return null;
+                int created = CreateDXGIFactory1(ref iid, out factory);
+                if (created < 0 || factory == null) { failure = "CreateDXGIFactory1 0x" + created.ToString("X8"); return null; }
                 // 执行上限也用于防止异常驱动陷入无限循环。
                 for (uint index = 0; index < 256; index++)
                 {
@@ -120,23 +147,26 @@ namespace PaviseApp
                     {
                         int status = factory.EnumAdapters1(index, out adapter);
                         if (status == DxgiNotFound) break;
-                        if (status < 0 || adapter == null) continue;
+                        if (status < 0 || adapter == null) { failure = "EnumAdapters1 0x" + status.ToString("X8"); continue; }
                         AdapterDescription description;
-                        if (adapter.GetDesc1(out description) >= 0)
+                        int described = adapter.GetDesc1(out description);
+                        if (described >= 0)
                             selected = SelectDxgi(selected, description.Description,
                                 description.DedicatedVideoMemory.ToUInt64(), description.Flags);
+                        else failure = "GetDesc1 0x" + described.ToString("X8");
                     }
-                    catch { }
+                    catch (Exception error) { failure = error.GetType().Name; }
                     finally { Release(adapter); }
                 }
             }
-            catch { }
+            catch (Exception error) { failure = error.GetType().Name; }
             finally { Release(factory); }
             return selected;
         }
 
-        private static OverviewGpuInfo ReadDisplayDevices()
+        private static OverviewGpuInfo ReadDisplayDevices(out string failure)
         {
+            failure = null;
             OverviewGpuInfo selected = null;
             int selectedRank = -1;
             try
@@ -155,10 +185,10 @@ namespace PaviseApp
                             selectedRank = rank;
                         }
                     }
-                    catch { }
+                    catch (Exception error) { failure = error.GetType().Name; }
                 }
             }
-            catch { }
+            catch (Exception error) { failure = error.GetType().Name; }
             return selected;
         }
 

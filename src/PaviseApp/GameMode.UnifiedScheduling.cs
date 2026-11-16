@@ -83,7 +83,7 @@ namespace PaviseApp
         private SchedulingBottleneckEvidence NoteSchedulingEvidence(CriticalRuntimeSource source, UnifiedThreadCaptureEvidence window)
         {
             SchedulingBottleneckEvidence observed = SchedulingBottleneckEvidence.From(window == null ? null : window.Relation,
-                window == null ? null : window.Presenter, DateTime.Now);
+                window == null ? null : window.Presenter, DateTime.Now, window != null && window.PresentIdentityOnly);
             lock (schedulingEvidence) schedulingEvidence[source.Profile] = observed;
             return observed;
         }
@@ -312,7 +312,8 @@ namespace PaviseApp
                     if (phase.InitialAttempts >= 3) PublishUnifiedState(source, "conflict", "首次接管次数已用完；本局停止新增接管，保留恢复归属", false, false);
                     return true;
                 }
-                UnifiedThreadCaptureEvidence admittedBaseline = request == null ? null : request.ReadUnifiedBaseline();
+                // 失败窗口仅留作诊断，不能用其过期时间挡住冷却后尚余的身份确认与采集次数。
+                UnifiedThreadCaptureEvidence admittedBaseline = request == null || !request.HasUsableBaseline ? null : request.ReadUnifiedBaseline();
                 if (phase.Roles == null && admittedBaseline != null && now - admittedBaseline.Observed > TimeSpan.FromSeconds(65).Ticks)
                 {
                     PublishUnifiedState(source, "observing", "角色证据已超过准入新鲜度；停止原基线的线程扫描，不追加采集额度", false, false);

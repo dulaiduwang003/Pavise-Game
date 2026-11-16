@@ -868,7 +868,7 @@ namespace PaviseApp
                         observing = false;
                         worker = null;
                         state = 3;
-                        request.Complete(stage, new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                        request.Complete(stage, new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
                             .Reject(FrameCaptureIssue.CaptureFailed, "观察线程启动失败：" + error.GetType().Name + " " + error.Message));
                     }
                 }
@@ -1156,6 +1156,11 @@ namespace PaviseApp
             return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly, layoutObservation, workloadObservation);
         }
 
+        private static FrameCoordinationSample TakeCapture(int target, long created, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation, bool presentIdentityOnly)
+        {
+            return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly, layoutObservation, workloadObservation, presentIdentityOnly);
+        }
+
         private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive)
         { return TakeObserverCapture(target, created, alive, Volatile.Read(ref layoutObservation)); }
 
@@ -1180,13 +1185,13 @@ namespace PaviseApp
             try
             {
                 if (!alive() || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation)))
-                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
                         .Reject(FrameCaptureIssue.Canceled, "本次观察开始前资格已撤销，未启动采集");
                 // 恢复失败也结算本次有限观察，不能靠反复重建观察线程绕过预算。
                 if (!(Restore() & FrameCoordinationTrace.Heal()))
-                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
                         .Reject(FrameCaptureIssue.TraceStopFailed, "既有线程或采集通道恢复尚未核验，未启动本次采集");
-                sample = TakeCapture(target, created, alive, false, true, request.WorkloadObservation);
+                sample = TakeCapture(target, created, alive, false, true, request.WorkloadObservation, request.PresentIdentityOnly);
                 return sample;
             }
             finally { request.Complete(stage, sample); }

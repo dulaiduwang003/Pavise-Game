@@ -154,6 +154,7 @@ namespace PaviseApp
                         if (core.HasReason(pid, SuppressReason.Background) && core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
                         continue;
                     }
+                    if (TryProtectHardwareControlBackground(pid, procEntry.Creation, nm)) continue;
                     if (processInfo == null)
                     {
                         sameSession = selfSession >= 0 && procEntry.Session == selfSession;
@@ -423,6 +424,15 @@ namespace PaviseApp
             {
                 firstSweep = false;
             }
+        }
+        private bool TryProtectHardwareControlBackground(int pid, long creation, string name)
+        {
+            if (!HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
+            // 未知身份只阻止新的普通限制；恢复只使用本方持有且创建时间一致的记录。
+            if (creation <= 0 || core.CreationOf(pid) != creation) return true;
+            BackgroundReleaseState state = core.ReleaseBackgroundForRenderer(pid, creation, name);
+            if (RuntimeBackgroundExempt(state)) ReportUntrack(pid);
+            return true;
         }
         private bool TryProtectAmdNoiseSuppression(int pid, long creation, string name, string path)
         {

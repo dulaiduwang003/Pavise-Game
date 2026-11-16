@@ -78,7 +78,8 @@ namespace PaviseApp
                         string line = "线程识别 会话=" + source.Serial + " 游戏=" + source.Profile + " PID=" + source.Pid
                             + " 创建=" + source.Birth + " 阶段=" + stage + "；" + detail;
                         if (usable) Logger.Info(line); else Logger.Warn(line);
-                    }, source.Rule.UsesWorkloadDiscovery);
+                    }, source.Rule.UsesWorkloadDiscovery, source.Rule.IsRenderStrategy
+                        && source.Rule.Strategy == SchedulingStrategy.RenderBoost && !source.Rule.ClearCore);
                 threadLayoutCapturePhases.Add(identity, request);
             }
             threadLayoutCapture = request;

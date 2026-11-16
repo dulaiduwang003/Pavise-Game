@@ -8,6 +8,22 @@ namespace PaviseApp
 {
     internal static class GpuEvidence
     {
+        internal enum GpuEngineSampleState { Success, NoData, NativeFailure }
+
+        internal sealed class GpuEngineSampleResult
+        {
+            internal readonly GpuEngineSampleState State;
+            internal readonly RenderAdapter Adapter;
+            internal readonly string Failure;
+            internal GpuEngineSampleResult(GpuEngineSampleState state, RenderAdapter adapter = null, string failure = null)
+            { State = state; Adapter = adapter; Failure = failure; }
+        }
+
+        internal const uint MaximumFormattedArrayBytes = 8u * 1024u * 1024u;
+
+        private static GpuEngineSampleResult EngineFailure(string stage, uint status)
+        { return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, stage + " 0x" + status.ToString("X8", CultureInfo.InvariantCulture)); }
+
         internal sealed class GpuEngineSampler : IDisposable
         {
             private IntPtr query;
@@ -30,28 +46,39 @@ namespace PaviseApp
             }
 
             public bool Open(int targetPid)
+            { return OpenClassified(targetPid).State != GpuEngineSampleState.NativeFailure && IsOpen; }
+
+            internal GpuEngineSampleResult OpenClassified(int targetPid)
             {
                 Close();
                 try
                 {
-                    if (PdhOpenQueryW(null, IntPtr.Zero, out query) != 0 || query == IntPtr.Zero)
-                    {
-                        query = IntPtr.Zero;
-                        return false;
-                    }
-                    string message = ((targetPid > 4) ? ("pid_" + targetPid.ToString(CultureInfo.InvariantCulture) + "_*engtype_3D") : "*engtype_3D");
-                    if (PdhAddEnglishCounterW(query, "\\GPU Engine(" + message + ")\\Utilization Percentage", IntPtr.Zero, out counter) != 0)
+                    uint status = PdhOpenQueryW(null, IntPtr.Zero, out query);
+                    if (status != 0 || query == IntPtr.Zero)
                     {
                         Close();
-                        return false;
+                        return IsUnavailableObservation(status) ? new GpuEngineSampleResult(GpuEngineSampleState.NoData)
+                            : EngineFailure("PdhOpenQuery", status);
                     }
-                    primed = PdhCollectQueryData(query) == 0;
-                    return true;
+                    string message = ((targetPid > 4) ? ("pid_" + targetPid.ToString(CultureInfo.InvariantCulture) + "_*engtype_3D") : "*engtype_3D");
+                    status = PdhAddEnglishCounterW(query, "\\GPU Engine(" + message + ")\\Utilization Percentage", IntPtr.Zero, out counter);
+                    if (status != 0 || counter == IntPtr.Zero)
+                    {
+                        Close();
+                        return IsUnavailableObservation(status) ? new GpuEngineSampleResult(GpuEngineSampleState.NoData)
+                            : EngineFailure("PdhAddEnglishCounter", status);
+                    }
+                    status = PdhCollectQueryData(query);
+                    primed = status == 0;
+                    if (primed) return new GpuEngineSampleResult(GpuEngineSampleState.Success);
+                    if (IsUnavailableObservation(status)) return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
+                    Close();
+                    return EngineFailure("PdhCollectQueryData.prime", status);
                 }
-                catch
+                catch (Exception error)
                 {
                     Close();
-                    return false;
+                    return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU初始化 " + error.GetType().Name);
                 }
             }
 
@@ -61,27 +88,32 @@ namespace PaviseApp
             }
 
             public RenderAdapter Resolve(int pid, bool strict)
+            { return ResolveClassified(pid, strict).Adapter; }
+
+            internal GpuEngineSampleResult ResolveClassified(int pid, bool strict)
             {
                 if (query == IntPtr.Zero || pid <= 0)
                 {
-                    return null;
+                    return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
                 }
                 try
                 {
-                    if (PdhCollectQueryData(query) != 0)
+                    uint status = PdhCollectQueryData(query);
+                    if (status != 0)
                     {
-                        return null;
+                        return IsUnavailableObservation(status) ? new GpuEngineSampleResult(GpuEngineSampleState.NoData)
+                            : EngineFailure("PdhCollectQueryData.sample", status);
                     }
                     if (!primed)
                     {
                         primed = true;
-                        return null;
+                        return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
                     }
-                    return PickAdapter(counter, pid, strict);
+                    return PickAdapterClassified(counter, pid, strict);
                 }
-                catch
+                catch (Exception error)
                 {
-                    return null;
+                    return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU读取 " + error.GetType().Name);
                 }
             }
 
@@ -309,7 +341,7 @@ namespace PaviseApp
                 if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.size", pdhGetFormattedCounterArrayWResult);
                 return new Dictionary<int, double>();
             }
-            if (pdhGetFormattedCounterArrayWResult != 2147485650u || bufferSize == 0)
+            if (pdhGetFormattedCounterArrayWResult != PDH_MORE_DATA)
             {
                 if (diagnostics != null)
                 {
@@ -317,11 +349,17 @@ namespace PaviseApp
                 }
                 return null;
             }
+            if (bufferSize == 0 || bufferSize > MaximumFormattedArrayBytes)
+            {
+                if (diagnostics != null) diagnostics.Failure("PdhGetFormattedCounterArray.invalid-size:" + bufferSize, pdhGetFormattedCounterArrayWResult);
+                return null;
+            }
+            uint capacity = bufferSize;
             IntPtr intPtr = Marshal.AllocHGlobal((int)bufferSize);
             try
             {
                 pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
-                if (IsUnavailableObservation(pdhGetFormattedCounterArrayWResult))
+                if (IsUnavailableObservation(pdhGetFormattedCounterArrayWResult) || pdhGetFormattedCounterArrayWResult == PDH_MORE_DATA)
                 {
                     if (diagnostics != null) diagnostics.Unavailable("PdhGetFormattedCounterArray.data", pdhGetFormattedCounterArrayWResult);
                     return new Dictionary<int, double>();
@@ -336,8 +374,14 @@ namespace PaviseApp
                 }
                 // 同一进程先按引擎类型累加（多适配器、多个同类引擎），再取最忙的类型，口径与任务管理器的进程 GPU 占用一致。
                 Dictionary<int, Dictionary<string, double>> byEngine = new Dictionary<int, Dictionary<string, double>>();
-                bool observed = itemCount == 0, failedInstance = false;
+                bool observed = itemCount == 0, failedInstance = false, failedValue = false;
+                uint firstBadStatus = 0;
                 int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
+                if (bufferSize > capacity || itemCount > 0 && (bufferSize == 0 || (ulong)itemCount * (uint)sizeOfResult > bufferSize))
+                {
+                    if (diagnostics != null) diagnostics.Failure("PdhGetFormattedCounterArray.invalid-layout:bytes=" + bufferSize + ",count=" + itemCount, pdhGetFormattedCounterArrayWResult);
+                    return null;
+                }
                 for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
                 {
                     PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
@@ -350,12 +394,9 @@ namespace PaviseApp
                     }
                     if (IsUnavailableObservation(pdhFmtCounterValueItem.Value.CStatus))
                     {
-                        observed = true;
                         if (diagnostics != null) diagnostics.Unavailable("counter.CStatus", pdhFmtCounterValueItem.Value.CStatus);
                         continue;
                     }
-                    if (pdhFmtCounterValueItem.Value.CStatus <= 1) observed = true;
-                    else failedInstance = true;
                     int pid = ParsePid(instanceName);
                     if (diagnostics != null)
                     {
@@ -373,12 +414,14 @@ namespace PaviseApp
                     int luidHigh2;
                     uint luidLow2;
                     uint phys;
+                    bool matchingAdapter = !filterAdapter || (ParseAdapter(instanceName, out luidHigh2, out luidLow2, out phys) && luidHigh2 == luidHigh && luidLow2 == luidLow);
                     if (pdhFmtCounterValueItem.Value.CStatus > 1)
                     {
+                        if (pid > 0 && matchingAdapter)
+                        { if (!failedInstance) firstBadStatus = pdhFmtCounterValueItem.Value.CStatus; failedInstance = true; }
                         if (diagnostics != null)
                         {
                             diagnostics.RejectedInstances++;
-                            diagnostics.Failure("counter.CStatus", pdhFmtCounterValueItem.Value.CStatus);
                         }
                     }
                     else if (pid <= 0)
@@ -388,11 +431,14 @@ namespace PaviseApp
                             diagnostics.RejectedInstances++;
                         }
                     }
-                    else if (!filterAdapter || (ParseAdapter(instanceName, out luidHigh2, out luidLow2, out phys) && luidHigh2 == luidHigh && luidLow2 == luidLow))
+                    else if (matchingAdapter)
                     {
                         double doubleValue = pdhFmtCounterValueItem.Value.DoubleValue;
+                        if (double.IsNaN(doubleValue) || double.IsInfinity(doubleValue))
+                        { failedValue = true; continue; }
                         if (!(doubleValue < 0.0))
                         {
+                            observed = true;
                             Dictionary<string, double> engines;
                             if (!byEngine.TryGetValue(pid, out engines))
                             {
@@ -407,6 +453,12 @@ namespace PaviseApp
                 }
                 if (failedInstance && !observed)
                 {
+                    if (diagnostics != null) diagnostics.Failure("counter.CStatus", firstBadStatus);
+                    return null;
+                }
+                if (failedValue && !observed)
+                {
+                    if (diagnostics != null) diagnostics.Failure("counter.non-finite", 0);
                     return null;
                 }
                 Dictionary<int, double> dictionary = new Dictionary<int, double>();
@@ -627,87 +679,78 @@ namespace PaviseApp
         }
 
         private static RenderAdapter PickAdapter(IntPtr counter, int pid, bool strict = false)
+        { return PickAdapterClassified(counter, pid, strict).Adapter; }
+
+        private static GpuEngineSampleResult PickAdapterClassified(IntPtr counter, int pid, bool strict)
         {
-            uint bufferSize = 0u;
-            uint itemCount = 0u;
-            uint pdhGetFormattedCounterArrayWResult = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
-            if (pdhGetFormattedCounterArrayWResult != 2147485650u || bufferSize == 0)
+            // 实例表可能在两次调用间变化，只重取一次；分配和数组边界都以本次实际字节数核验。
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                return null;
-            }
-            IntPtr intPtr = Marshal.AllocHGlobal((int)bufferSize);
-            try
-            {
-                if (PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr) != 0)
+                uint bufferSize = 0u, itemCount = 0u;
+                uint status = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, IntPtr.Zero);
+                if (IsUnavailableObservation(status) || status == 0 && itemCount == 0)
+                    return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
+                if (status != PDH_MORE_DATA) return EngineFailure("PdhGetFormattedCounterArray.size", status);
+                if (bufferSize == 0 || bufferSize > MaximumFormattedArrayBytes)
+                    return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU适配器数组长度无效：" + bufferSize);
+                uint capacity = bufferSize;
+                IntPtr intPtr = Marshal.AllocHGlobal((int)capacity);
+                try
                 {
-                    return null;
-                }
-                Dictionary<long, RenderAdapter> dictionary = new Dictionary<long, RenderAdapter>();
-                int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
-                for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
-                {
-                    PdhFmtCounterValueItem pdhFmtCounterValueItem = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
-                    if (pdhFmtCounterValueItem.Value.CStatus > 1)
+                    status = PdhGetFormattedCounterArrayW(counter, 512u, ref bufferSize, ref itemCount, intPtr);
+                    if (status == PDH_MORE_DATA) continue;
+                    if (IsUnavailableObservation(status)) return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
+                    if (status != 0) return EngineFailure("PdhGetFormattedCounterArray.data", status);
+                    int sizeOfResult = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
+                    if (bufferSize > capacity || itemCount > 0 && (bufferSize == 0 || (ulong)itemCount * (uint)sizeOfResult > bufferSize))
+                        return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU适配器数组布局无效：bytes=" + bufferSize + ",count=" + itemCount);
+                    if (itemCount == 0) return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
+                    Dictionary<long, RenderAdapter> dictionary = new Dictionary<long, RenderAdapter>();
+                    bool failedInstance = false; uint firstBadStatus = 0;
+                    bool failedValue = false;
+                    for (uint iterationIndex = 0u; iterationIndex < itemCount; iterationIndex++)
                     {
-                        continue;
-                    }
-                    string instanceName = Marshal.PtrToStringUni(pdhFmtCounterValueItem.Name);
-                    int luidHigh;
-                    uint luidLow;
-                    uint phys;
-                    if (ParsePid(instanceName) != pid || !ParseAdapter(instanceName, out luidHigh, out luidLow, out phys))
-                    {
-                        continue;
-                    }
-                    double utilValue = pdhFmtCounterValueItem.Value.DoubleValue;
-                    if (!double.IsNaN(utilValue) && !double.IsInfinity(utilValue))
-                    {
-                        if (utilValue < 0.0)
-                        {
-                            utilValue = 0.0;
-                        }
+                        PdhFmtCounterValueItem item = (PdhFmtCounterValueItem)Marshal.PtrToStructure(new IntPtr(intPtr.ToInt64() + (long)iterationIndex * sizeOfResult), typeof(PdhFmtCounterValueItem));
+                        string instanceName = Marshal.PtrToStringUni(item.Name);
+                        int luidHigh; uint luidLow, phys;
+                        if (ParsePid(instanceName) != pid || !ParseAdapter(instanceName, out luidHigh, out luidLow, out phys)) continue;
+                        if (IsUnavailableObservation(item.Value.CStatus)) continue;
+                        if (item.Value.CStatus > 1)
+                        { if (!failedInstance) firstBadStatus = item.Value.CStatus; failedInstance = true; continue; }
+                        double utilValue = item.Value.DoubleValue;
+                        if (double.IsNaN(utilValue) || double.IsInfinity(utilValue))
+                        { failedValue = true; continue; }
+                        if (utilValue < 0.0) utilValue = 0.0;
                         long key = ((long)luidHigh << 32) | luidLow;
                         RenderAdapter value;
                         if (!dictionary.TryGetValue(key, out value))
                         {
-                            RenderAdapter renderAdapter = new RenderAdapter();
-                            renderAdapter.LuidHigh = luidHigh;
-                            renderAdapter.LuidLow = luidLow;
-                            renderAdapter.PhysIndex = phys;
-                            value = (dictionary[key] = renderAdapter);
+                            value = new RenderAdapter { LuidHigh = luidHigh, LuidLow = luidLow, PhysIndex = phys };
+                            dictionary[key] = value;
                         }
                         value.Util += utilValue;
+                        if (double.IsInfinity(value.Util)) return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU适配器利用率合计溢出");
                     }
-                }
-                if (dictionary.Count == 0)
-                {
-                    return null;
-                }
-                RenderAdapter renderAdapter3 = null;
-                RenderAdapter renderAdapter4 = null;
-                foreach (RenderAdapter value2 in dictionary.Values)
-                {
-                    if (renderAdapter3 == null || value2.Util > renderAdapter3.Util)
+                    if (dictionary.Count == 0)
                     {
-                        renderAdapter4 = renderAdapter3;
-                        renderAdapter3 = value2;
+                        if (failedInstance) return EngineFailure("PdhGetFormattedCounterArray.item", firstBadStatus);
+                        if (failedValue) return new GpuEngineSampleResult(GpuEngineSampleState.NativeFailure, null, "GPU适配器利用率不是有限值");
+                        return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
                     }
-                    else if (renderAdapter4 == null || value2.Util > renderAdapter4.Util)
+                    RenderAdapter first = null, second = null;
+                    foreach (RenderAdapter value in dictionary.Values)
                     {
-                        renderAdapter4 = value2;
+                        if (first == null || value.Util > first.Util) { second = first; first = value; }
+                        else if (second == null || value.Util > second.Util) second = value;
                     }
+                    RenderAdapter selected = strict ? UniqueActiveAdapter(dictionary.Values) : first;
+                    if (!strict) selected.Ambiguous = second != null && second.Util >= 10.0;
+                    return new GpuEngineSampleResult(selected != null && !selected.Ambiguous && selected.Util > 0
+                        ? GpuEngineSampleState.Success : GpuEngineSampleState.NoData, selected);
                 }
-                if (strict)
-                {
-                    return UniqueActiveAdapter(dictionary.Values);
-                }
-                renderAdapter3.Ambiguous = renderAdapter4 != null && renderAdapter4.Util >= 10.0;
-                return renderAdapter3;
+                finally { Marshal.FreeHGlobal(intPtr); }
             }
-            finally
-            {
-                Marshal.FreeHGlobal(intPtr);
-            }
+            return new GpuEngineSampleResult(GpuEngineSampleState.NoData);
         }
 
         internal static RenderAdapter UniqueActiveAdapter(IEnumerable<RenderAdapter> adapters)

@@ -39,6 +39,7 @@ namespace PaviseApp
 
             internal bool FixedThreadSet;
             internal bool WorkloadObservation;
+            internal double CallerCpuBeforeEvents = double.NaN;
 
             internal volatile bool Invalid;
 
@@ -48,6 +49,16 @@ namespace PaviseApp
             internal IntPtr FlagsName;
 
             internal IntPtr DxgiStreamName, D3d9StreamName;
+
+            internal void ReleasePropertyNames()
+            {
+                IntPtr flags = Interlocked.Exchange(ref FlagsName, IntPtr.Zero);
+                IntPtr dxgi = Interlocked.Exchange(ref DxgiStreamName, IntPtr.Zero);
+                IntPtr d3d9 = Interlocked.Exchange(ref D3d9StreamName, IntPtr.Zero);
+                if (flags != IntPtr.Zero) Marshal.FreeHGlobal(flags);
+                if (dxgi != IntPtr.Zero) Marshal.FreeHGlobal(dxgi);
+                if (d3d9 != IntPtr.Zero) Marshal.FreeHGlobal(d3d9);
+            }
 
             internal ThreadRelationCollector Relation;
 
@@ -63,6 +74,7 @@ namespace PaviseApp
             private readonly Dictionary<ulong, PresentStreamEvidence> dxgiPresentStreams = new Dictionary<ulong, PresentStreamEvidence>(),
                 d3d9PresentStreams = new Dictionary<ulong, PresentStreamEvidence>();
             private bool streamUnknown;
+            private int presentCounterKeys;
             // 窗口边界可截断一次提交，每线程每端仅允许一次；真实丢事件仍使样本无效。
             internal const int PresentEdgeToleranceMs = 250;
             private readonly HashSet<int> presentStarted = new HashSet<int>(), edgeStops = new HashSet<int>();
@@ -193,6 +205,16 @@ namespace PaviseApp
                 return true;
             }
 
+            private void FailBudget(FrameCaptureIssue issue, string detail)
+            { Fault = issue; FaultDetail = detail; Invalid = true; }
+
+            private bool RelationWithinBudget()
+            {
+                if (Relation == null || !Relation.ResourceLimitReached) return true;
+                FailBudget(FrameCaptureIssue.EventBudget, Relation.ResourceLimitDetail);
+                return false;
+            }
+
             internal void Receive(ref Native.EventRecord r)
             {
                 try
@@ -202,9 +224,14 @@ namespace PaviseApp
                         return;
                     }
                     if (Count < int.MaxValue) Count++;
+                    if (Count > EmergencySystemEvents)
+                    { FailBudget(FrameCaptureIssue.SystemEventBudget, "事件送达超过完整采集应急上限"); return; }
+                    if ((Count & (CpuCheckInterval - 1)) == 0
+                        && CpuEmergencyExceeded(ConsumerThreadCpuMs(), CallerCpuBeforeEvents))
+                    { FailBudget(FrameCaptureIssue.CpuBudget, "事件消费与窗前准备的累计 CPU 超过应急上限"); return; }
                     if (!Invalid)
                     {
-                        // 消费者退出后统一读取完整 CPU 时间；事件回调只负责解码和记账。
+                        // 消费者退出后汇总完整 CPU；回调仅每 4096 个事件读取一次自身耗时作应急检查。
                         long timeStamp = r.EventHeader.TimeStamp;
                         if (Invalid || timeStamp < Begin || timeStamp > End)
                         {
@@ -215,7 +242,7 @@ namespace PaviseApp
                         Guid providerId = r.EventHeader.ProviderId;
                         if (providerId == KernelThread)
                         {
-                            if (PresenterOnly)
+                            if (PresenterOnly || Sample.PresentIdentityOnly)
                             {
                                 return;
                             }
@@ -256,6 +283,7 @@ namespace PaviseApp
                                 int int32 = Marshal.ReadInt32(r.UserData);
                                 if (Relation != null)
                                     Relation.Switch(timeStamp, bufferContextMask, int32, Marshal.ReadInt32(r.UserData, 4), Marshal.ReadByte(r.UserData, 14));
+                                if (!RelationWithinBudget()) return;
                                 bool isInSampleThreads = Sample.Threads.ContainsKey(int32);
                                 cpu.Running = (isInSampleThreads ? int32 : 0);
                                 break;
@@ -270,6 +298,7 @@ namespace PaviseApp
                                 int targetTid = Marshal.ReadInt32(r.UserData);
                                 byte readyFlags = Marshal.ReadByte(r.UserData, 6);
                                 if (Relation != null) Relation.Ready(timeStamp, targetTid, readyFlags, bufferContextMask);
+                                if (!RelationWithinBudget()) return;
                                 if ((readyFlags & 1) != 0)
                                 {
                                     break;
@@ -282,7 +311,8 @@ namespace PaviseApp
                                     long key = ((long)targetTid << 32) | (uint)receiveValue2;
                                     Dictionary<long, int> edges = Edges[receiveValue];
                                     int value;
-                                    edges.TryGetValue(key, out value);
+                                    if (!edges.TryGetValue(key, out value) && Edges[0].Count + Edges[1].Count >= EmergencyDependencyEdges)
+                                    { FailBudget(FrameCaptureIssue.EdgeBudget, "线程关联超过完整采集应急上限"); return; }
                                     edges[key] = value == int.MaxValue ? value : value + 1;
                                 }
                                 break;
@@ -364,16 +394,38 @@ namespace PaviseApp
                                             Dictionary<ulong, PresentStreamEvidence> streams = isDxgi ? dxgiPresentStreams : d3d9PresentStreams;
                                             PresentStreamEvidence source;
                                             if (!streams.TryGetValue(stream, out source))
-                                            { source = new PresentStreamEvidence(); streams.Add(stream, source); }
+                                            {
+                                                if (PresentStreamCount >= EmergencyPresentSources)
+                                                {
+                                                    Sample.PresentSourceCapacityEvents++;
+                                                    FailBudget(FrameCaptureIssue.EventBudget, "成功呈现来源超过采集应急上限");
+                                                    return;
+                                                }
+                                                source = new PresentStreamEvidence(); streams.Add(stream, source);
+                                            }
                                             int submitted;
-                                            source.Counts[receiveValue].TryGetValue(threadId, out submitted);
+                                            if (!source.Counts[receiveValue].TryGetValue(threadId, out submitted))
+                                            {
+                                                if (presentCounterKeys >= EmergencyPresentCounterKeys)
+                                                { FailBudget(FrameCaptureIssue.EdgeBudget, "呈现来源计数键超过采集应急上限"); return; }
+                                                presentCounterKeys++;
+                                            }
                                             source.Counts[receiveValue][threadId] = submitted + 1;
                                             source.Successes++;
                                         }
                                         Sample.PresentStreamCount = PresentStreamCount;
                                         Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
+                                        // 第二个成功来源已足以否定单一来源；保留两源诊断后停止，不截取单源继续准入。
+                                        if (Sample.PresentIdentityOnly && PresentStreamCount > 1)
+                                        {
+                                            Fault = FrameCaptureIssue.InsufficientEvidence;
+                                            FaultDetail = "仅呈现身份采集确认多个成功来源，本轮样本弃用";
+                                            Invalid = true;
+                                            return;
+                                        }
                                     }
                                     if (Relation != null) Relation.SuccessfulPresent(threadId, timeStamp);
+                                    if (!RelationWithinBudget()) return;
                                 }
                                 pendingStreams.Remove(threadId);
                             }
@@ -407,7 +459,7 @@ namespace PaviseApp
             }
         }
 
-        // 保留历史诊断参考值；固定采集窗口中的事件量和累计 CPU 不再充当失败条件。
+        // 保留历史诊断参考值；应急停止使用下方独立门限，不把旧软水位当作失败条件。
         internal const int MaxRelevantEvents = 750000;
 
         internal const int MaxSystemEvents = 1000000;
@@ -415,6 +467,32 @@ namespace PaviseApp
         internal const int CpuCheckInterval = 4096;
 
         internal const double MaxCaptureCpuMs = 500.0;
+
+        // 根据合成高负载留出余量的应急保护，不是游戏帧时间目标；超过才弃用整窗，不发布截断证据。
+        internal const int EmergencySystemEvents = 4000000, EmergencyDependencyEdges = 262144;
+        internal const int EmergencyPresentCounterKeys = 262144;
+        internal const int EmergencyPresentSources = 4096, EmergencyInitialThreads = 16384;
+        internal const double EmergencyCaptureCpuMs = 2000.0;
+
+        private static bool CpuEmergencyExceeded(double consumer, double caller)
+        {
+            bool consumerKnown = KnownCpu(consumer), callerKnown = KnownCpu(caller);
+            // 任一已知分量已超界时不必等另一分量；未知读数不当作零展示，也不单独导致弃样。
+            return consumerKnown && consumer > EmergencyCaptureCpuMs || callerKnown && caller > EmergencyCaptureCpuMs
+                || consumerKnown && callerKnown && consumer + caller > EmergencyCaptureCpuMs;
+        }
+
+        private static bool KnownCpu(double value)
+        { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0; }
+
+        private static double CpuSince(double before, double after)
+        { return KnownCpu(before) && KnownCpu(after) && after >= before ? after - before : double.NaN; }
+
+        private static bool ResourceBudgetIssue(FrameCaptureIssue issue)
+        {
+            return issue == FrameCaptureIssue.EventBudget || issue == FrameCaptureIssue.SystemEventBudget
+                || issue == FrameCaptureIssue.EdgeBudget || issue == FrameCaptureIssue.CpuBudget || issue == FrameCaptureIssue.ThreadBudget;
+        }
 
         internal static readonly Guid Dxgi = new Guid("ca11c036-0102-4a2d-a6ad-f03cfed5d3c9");
 
@@ -574,12 +652,16 @@ namespace PaviseApp
         { return Capture(pid, birth, alive, presenterOnly, layoutObservation, false); }
 
         internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation)
+        { return Capture(pid, birth, alive, presenterOnly, layoutObservation, workloadObservation, false); }
+
+        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation, bool presentIdentityOnly)
         {
             double captureThreadCpuStart = CaptureThreadCpuMs();
             FrameCoordinationSample frameCoordinationSample = new FrameCoordinationSample();
             frameCoordinationSample.Pid = pid;
             frameCoordinationSample.Birth = birth;
             frameCoordinationSample.PresenterOnly = presenterOnly;
+            frameCoordinationSample.PresentIdentityOnly = presentIdentityOnly;
             // 来源读取取决于采集用途，须在消费者启动前冻结。
             frameCoordinationSample.LayoutObservation = layoutObservation;
             FrameCoordinationSample frameCoordinationSample2 = frameCoordinationSample;
@@ -592,6 +674,8 @@ namespace PaviseApp
             FrameCoordinationTrace frameCoordinationTrace = new FrameCoordinationTrace();
             try
             {
+                if (presentIdentityOnly && (presenterOnly || !layoutObservation || workloadObservation))
+                    return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, "仅呈现身份采集的用途组合无效");
                 if (!alive())
                 {
                     return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
@@ -605,13 +689,18 @@ namespace PaviseApp
                 {
                     using (Process process = Process.GetProcessById(pid))
                     {
-                        foreach (ProcessThread thread in process.Threads)
+                        ProcessThreadCollection threads = process.Threads;
+                        if (threads.Count > EmergencyInitialThreads)
+                            return frameCoordinationSample2.Reject(FrameCaptureIssue.ThreadBudget, "初始线程身份表超过采集应急上限");
+                        foreach (ProcessThread thread in threads)
                         {
                             if (!alive()) return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
                             ReadInitialThreadIdentity(frameCoordinationSample2, thread.Id);
+                            if (frameCoordinationSample2.Issue == FrameCaptureIssue.ThreadBudget) return frameCoordinationSample2;
                         }
                     }
                 }
+                if (frameCoordinationSample2.Issue == FrameCaptureIssue.ThreadBudget) return frameCoordinationSample2;
                 if (!alive()) return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
                 processStateResult = NativeFrameThreads.ProcessState(pid, birth);
                 if (processStateResult != 0)
@@ -620,13 +709,17 @@ namespace PaviseApp
                 evidence2.FlagsName = Marshal.StringToHGlobalUni("Flags");
                 evidence2.DxgiStreamName = Marshal.StringToHGlobalUni("pIDXGISwapChain");
                 evidence2.D3d9StreamName = Marshal.StringToHGlobalUni("pSwapchain");
+                frameCoordinationTrace.OwnDrainedCleanup(evidence2.ReleasePropertyNames);
                 evidence2.Begin = Stopwatch.GetTimestamp();
                 evidence2.Half = evidence2.Begin + Stopwatch.Frequency * 8 / 5;
                 evidence2.End = evidence2.Begin + Stopwatch.Frequency * 16 / 5;
-                if (!presenterOnly)
+                if (!presenterOnly && !presentIdentityOnly)
                     evidence2.Relation = new ThreadRelationCollector(frameCoordinationSample2.Threads, evidence2.Begin,
                         evidence2.Half, evidence2.End, Stopwatch.Frequency);
-                if (!frameCoordinationTrace.Start(pid, evidence2.Receive, presenterOnly))
+                evidence2.CallerCpuBeforeEvents = CpuSince(captureThreadCpuStart, CaptureThreadCpuMs());
+                if (CpuEmergencyExceeded(double.NaN, evidence2.CallerCpuBeforeEvents))
+                    return frameCoordinationSample2.Reject(FrameCaptureIssue.CpuBudget, "采集准备的 CPU 已超过应急上限");
+                if (!frameCoordinationTrace.Start(pid, evidence2.Receive, presenterOnly || presentIdentityOnly))
                 {
                     frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
                     frameCoordinationSample2.TraceStage = frameCoordinationTrace.Stage;
@@ -647,14 +740,26 @@ namespace PaviseApp
                 frameCoordinationSample2.SystemEvents = evidence2.Count;
                 frameCoordinationSample2.SchedulerSwitches = evidence2.SchedulerSwitches;
                 FrameCaptureIssue frameCaptureIssue = CaptureIssue(alive(), NativeFrameThreads.ProcessState(pid, birth), stopped, frameCoordinationTrace.Drained, frameCoordinationTrace.Error, frameCoordinationTrace.Lost, evidence2.Fault, frameCoordinationSample2.CpuMs);
+                if (frameCaptureIssue == FrameCaptureIssue.None && CpuEmergencyExceeded(frameCoordinationTrace.CpuMs,
+                    CpuSince(captureThreadCpuStart, CaptureThreadCpuMs())))
+                    frameCaptureIssue = FrameCaptureIssue.CpuBudget;
                 int presentTidValue = frameCoordinationTrace.Drained ? Dominant(evidence2.Presents[0], 16, 0.7) : 0;
                 int dominantResult = frameCoordinationTrace.Drained ? Dominant(evidence2.Presents[1], 16, 0.7) : 0;
                 if (frameCoordinationTrace.Drained)
                 {
                     evidence2.CompletePresentStreams();
-                    evidence2.CompletePresentDiagnostics(presentTidValue, dominantResult, frameCaptureIssue);
+                    if (!ResourceBudgetIssue(frameCaptureIssue))
+                        evidence2.CompletePresentDiagnostics(presentTidValue, dominantResult, frameCaptureIssue);
+                    else frameCoordinationSample2.PresentSelectionReason = "完整采集触发应急保护：" + frameCaptureIssue;
                 }
-                var processingPacer = new CaptureProcessingPacer(CaptureThreadCpuMs,
+                var processingPacer = new CaptureProcessingPacer(delegate
+                    {
+                        double current = CaptureThreadCpuMs();
+                        if ((frameCaptureIssue == FrameCaptureIssue.None || frameCaptureIssue == FrameCaptureIssue.CpuBudget)
+                            && CpuEmergencyExceeded(frameCoordinationTrace.CpuMs, CpuSince(captureThreadCpuStart, current)))
+                            frameCoordinationSample2.Reject(FrameCaptureIssue.CpuBudget, "采集及摘要处理的累计 CPU 超过应急上限");
+                        return current;
+                    },
                     delegate { return Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency; },
                     delegate { Thread.Sleep(1); frameCoordinationSample2.ProcessingYields++; });
                 if (evidence2.Relation != null)
@@ -662,7 +767,8 @@ namespace PaviseApp
                         ? ThreadRelationSnapshot.Unavailable(pid, birth, evidence2.Begin, evidence2.End, Stopwatch.Frequency,
                             frameCoordinationSample2.LostEvents, "事件消费者尚未退出，保留现场并弃用关系摘要")
                         : evidence2.Relation.Build(frameCoordinationSample2,
-                            presentTidValue == dominantResult ? presentTidValue : 0, evidence2.Edges, frameCaptureIssue,
+                            presentTidValue == dominantResult ? presentTidValue : 0, evidence2.Edges,
+                            frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget ? FrameCaptureIssue.CpuBudget : frameCaptureIssue,
                             delegate(int tid, long created) { return VerifyRelationIdentity(frameCoordinationSample2, tid, created); }, workloadObservation,
                             delegate
                             {
@@ -672,6 +778,7 @@ namespace PaviseApp
                                     return false;
                                 }
                                 processingPacer.Continue();
+                                if (frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget) return false;
                                 if (alive()) return true;
                                 frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
                                 return false;
@@ -738,12 +845,7 @@ namespace PaviseApp
                     else if (frameCoordinationSample2.Valid)
                         frameCoordinationSample2.Reject(FrameCaptureIssue.TraceStopFailed, frameCoordinationSample2.TraceFailureDetail);
                 }
-                if (frameCoordinationTrace.Drained && evidence2.FlagsName != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(evidence2.FlagsName);
-                    if (evidence2.DxgiStreamName != IntPtr.Zero) Marshal.FreeHGlobal(evidence2.DxgiStreamName);
-                    if (evidence2.D3d9StreamName != IntPtr.Zero) Marshal.FreeHGlobal(evidence2.D3d9StreamName);
-                }
+                if (frameCoordinationTrace.Drained) evidence2.ReleasePropertyNames();
                 CompleteCaptureCpu(frameCoordinationSample2, frameCoordinationTrace.CpuMs, captureThreadCpuStart, CaptureThreadCpuMs());
             }
         }
@@ -755,9 +857,16 @@ namespace PaviseApp
                 ? (kernel + user) / 10000.0 : double.NaN;
         }
 
-        // CPU 统计涵盖事件消费、建图、身份核验和收尾；超过参考值仍处理同一完整样本。
+        // 消费者为本次新线程，累计 CPU 可直接作为本窗分量；只在固定事件检查点调用。
+        private static double ConsumerThreadCpuMs()
+        { return CaptureThreadCpuMs(); }
+
+        // CPU 统计涵盖事件消费、建图、身份核验和收尾；旧参考值不弃样，应急超限则整窗拒绝。
         internal static void CompleteCaptureCpu(FrameCoordinationSample sample, double consumerCpu, double callerBefore, double callerAfter)
         {
+            if ((sample.Valid || sample.Issue == FrameCaptureIssue.None || sample.Issue == FrameCaptureIssue.InsufficientEvidence)
+                && CpuEmergencyExceeded(consumerCpu, CpuSince(callerBefore, callerAfter)))
+                sample.Reject(FrameCaptureIssue.CpuBudget, "采集及收尾的累计 CPU 超过应急上限");
             if (double.IsNaN(consumerCpu) || double.IsInfinity(consumerCpu) || consumerCpu < 0
                 || double.IsNaN(callerBefore) || double.IsInfinity(callerBefore) || callerBefore < 0
                 || double.IsNaN(callerAfter) || double.IsInfinity(callerAfter) || callerAfter < callerBefore)
@@ -772,6 +881,8 @@ namespace PaviseApp
 
         internal static void ReadInitialThreadIdentity(FrameCoordinationSample sample, int tid)
         {
+            if (sample.Threads.Count >= EmergencyInitialThreads && !sample.Threads.ContainsKey(tid))
+            { sample.Reject(FrameCaptureIssue.ThreadBudget, "初始线程身份表超过采集应急上限"); return; }
             IntPtr handle = Native.OpenThread(2048, false, tid);
             if (handle == IntPtr.Zero)
             {

@@ -54,6 +54,9 @@ namespace PaviseApp
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
 
+        [DllImport("kernel32.dll")]
+        private static extern ushort GetActiveProcessorGroupCount();
+
         public bool Update(double utilization, long now)
         {
             if (double.IsNaN(utilization))
@@ -123,11 +126,22 @@ namespace PaviseApp
 
         public double Sample()
         {
+            int groups = GetActiveProcessorGroupCount();
+            // 多处理器组时该 API 只返回调用线程主组的时间，不能据此判断整机压力。
+            if (groups != 1) return ObserveSystemTimes(groups, false, 0, 0, 0);
             long idle;
             long kernel;
             long user;
-            if (!GetSystemTimes(out idle, out kernel, out user))
+            bool known = GetSystemTimes(out idle, out kernel, out user);
+            return ObserveSystemTimes(groups, known, idle, kernel, user);
+        }
+
+        internal double ObserveSystemTimes(int groups, bool known, long idle, long kernel, long user)
+        {
+            if (groups != 1 || !known || idle < 0 || kernel < idle || user < 0 || kernel > long.MaxValue - user)
             {
+                // 不跨未知区间拼接差值；恢复可读后先建立新基线。
+                lastIdle = lastTotal = -1L;
                 return double.NaN;
             }
             long kernelOffset = kernel + user;

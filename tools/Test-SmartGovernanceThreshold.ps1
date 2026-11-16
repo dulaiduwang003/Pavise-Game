@@ -1,4 +1,4 @@
-param([string]$OutputDirectory)
+﻿param([string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $workspace ('build/SmartGovernanceThreshold-'+[guid]::NewGuid().ToString('N'))}
@@ -13,6 +13,14 @@ foreach($relative in @('src/PaviseApp/CpuSaturation.cs','src/PaviseApp/AdaptiveG
  $manifest+=[pscustomobject]@{Source=$source;Frozen=$copy;SHA256=(Get-FileHash -LiteralPath $copy).Hash}
 }
 $manifest|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $output 'source-manifest.json') -Encoding UTF8
+$cpuPath=Join-Path $output 'CpuSaturation.cs'
+$cpuText=[IO.File]::ReadAllText($cpuPath)
+$timePattern='\[DllImport\("kernel32\.dll", SetLastError = true\)\]\s*private static extern bool GetSystemTimes\(out long idle, out long kernel, out long user\);'
+$groupPattern='\[DllImport\("kernel32\.dll"\)\]\s*private static extern ushort GetActiveProcessorGroupCount\(\);'
+if([regex]::Matches($cpuText,$timePattern).Count -ne 1 -or [regex]::Matches($cpuText,$groupPattern).Count -ne 1){throw 'CPU native fixture boundaries must each match once.'}
+$cpuText=[regex]::Replace($cpuText,$timePattern,'private static bool GetSystemTimes(out long idle, out long kernel, out long user) { return SmartGovernanceThresholdChecks.ReadNativeTimes(out idle, out kernel, out user); }')
+$cpuText=[regex]::Replace($cpuText,$groupPattern,'private static ushort GetActiveProcessorGroupCount() { return SmartGovernanceThresholdChecks.ReadNativeGroups(); }')
+[IO.File]::WriteAllText($cpuPath,$cpuText,(New-Object Text.UTF8Encoding($false)))
 $exe=Join-Path $output 'SmartGovernanceThresholdChecks.exe'
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 & $compiler /nologo /target:exe /optimize+ /platform:x64 /codepage:65001 /main:PaviseApp.SmartGovernanceThresholdChecks ('/out:'+$exe) /reference:System.dll /reference:System.Core.dll @($manifest.Frozen) *> (Join-Path $output 'compile.log')

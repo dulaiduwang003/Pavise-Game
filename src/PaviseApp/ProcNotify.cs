@@ -102,8 +102,21 @@ namespace PaviseApp
             }
         }
 
+        private bool StopFastPath()
+        {
+            EtwProcessWatcher original = etw;
+            if (original == null) return true;
+            try { original.Dispose(); } catch { }
+            if (!original.IsStopped) return false;
+            original.ProcessStarted -= OnFastProcessStart;
+            if (object.ReferenceEquals(etw, original)) etw = null;
+            return true;
+        }
+
         private void StartFastPath()
         {
+            // 未退出的旧消费者自行推进有界清理；不能用新对象覆盖其句柄和委托归属。
+            if (etw != null && (!etw.IsStopped || !StopFastPath())) return;
             if (FastTrack == null)
             {
                 return;
@@ -122,18 +135,11 @@ namespace PaviseApp
                     return;
                 }
                 Logger.Log(Lang.T("log.procnotify.3", 0) + etw.LastError);
-                try
-                {
-                    etw.Dispose();
-                }
-                catch
-                {
-                }
-                etw = null;
+                StopFastPath();
             }
             catch
             {
-                etw = null;
+                StopFastPath();
             }
         }
 
@@ -141,7 +147,7 @@ namespace PaviseApp
         {
             try
             {
-                if (FastTrack == null || this.FastStart == null || pid <= 4)
+                if (Volatile.Read(ref accepting) == 0 || FastTrack == null || this.FastStart == null || pid <= 4)
                 {
                     return;
                 }
@@ -467,17 +473,7 @@ namespace PaviseApp
                     Interlocked.Exchange(ref accepting, 0);
                     Interlocked.Increment(ref lifecycleGeneration);
                     active = false;
-                    if (etw != null)
-                    {
-                        try
-                        {
-                            etw.Dispose();
-                        }
-                        catch
-                        {
-                        }
-                        etw = null;
-                    }
+                    StopFastPath();
                     Kill(ref startW);
                     Kill(ref stopW);
                     DisposeTimer();

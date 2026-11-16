@@ -244,9 +244,8 @@ namespace PaviseApp
             string stage, bool succeeded, string failure)
         {
             if (!budget.Allowed(candidate.RendererPid, candidate.RendererCreation, candidate.RendererPath, stage)) return;
-            if (succeeded)
-                budget.Succeeded(candidate.RendererPid, candidate.RendererCreation, candidate.RendererPath, stage);
-            else
+            // 成功观察只说明本轮可用，不能退还同一进程身份已经消耗的采集失败次数。
+            if (!succeeded)
             {
                 int count = budget.Failed(candidate.RendererPid, candidate.RendererCreation, candidate.RendererPath, stage);
                 Logger.Warn("渲染进程 " + stage + " 探测失败=" + count + "/3 进程编号=" + candidate.RendererPid + " 原因=" + failure
