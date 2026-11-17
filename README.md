@@ -197,19 +197,14 @@ While a game session owns a power plan, the guard keeps verifying the active pla
 
 ## 3.3.1.2 release notes
 
-- Reduced runtime overhead and improved UI scaling; added service whitelisting for ordinary background control only.
-- Removed the separate anti-cheat engine: ACE installed under Program Files\AntiCheatExpert is now governed as ordinary background, while other anti-cheat software is protected and never suppressed. Anti-cheat suppression in advanced tuning is now a single per-game switch, on by default; when off, ACE is only protected during that game's matches. Writes left by earlier versions are no longer restored; affected anti-cheat processes return to system defaults when they restart.
-- Added a built-in Voice chat apps whitelist category: KOOK, YY, TeamSpeak, Mumble and Discord are not governed as background during matches.
-- The AI tuning prompt is back: Settings → General generates a prompt with this PC's hardware, every feature and the current settings.
-- The WeGame main process is now governed as ordinary background instead of being exempt as the League of Legends launcher or because its window is open.
-- Microsoft background governance now runs as part of ordinary background governance: no separate scan, no dedicated Job, and no 0.01% CPU quota. These targets receive the same priorities, efficiency mode, and background cores as other background processes, and service allowlists can now exempt them. Limits left by earlier versions are no longer restored; the affected services return to system defaults when they restart.
-- Background download (Delivery Optimization) activity is now checked once per match instead of repeatedly during play.
-- Game priority is marked recommended: the game process runs at High with disk and GPU priority, the render thread at highest and its partner thread slightly higher. It no longer pins a core and has no clear-core or resource sub-switches. It is also the default when a game has no saved valid strategy; existing selections are kept.
-- Strengthened the other render scheduling strategies: except Enhanced dedicated rendering, they now also run the game process at High, lifting the render thread to the highest level; Dedicated rendering also keeps the render thread on a dedicated core.
-- Aggressive background governance now confines background apps to a small set of cores (efficiency cores on hybrid CPUs, the non-3D-cache CCD on X3D, the other CCD on dual-CCD CPUs, core 0 and the last cores elsewhere). It only narrows each process's existing range and restores at game end; Normal is unchanged.
-- Multimedia scheduling is a separate switch again, on by default and enabled by both configuration presets. It still applies only while protection is on and restores when the switch or protection is turned off, or Pavise exits.
-- With render thread scheduling on, the game is held at high-performance QoS during matches: Windows does not move it to efficiency cores when it loses focus or is covered, and on Windows 11 its timer-resolution requests still apply. The original state is restored when scheduling is turned off or the match ends.
-- Changes left by 1.x and 2.x builds are no longer restored (memory residency, RSS NIC queues, display topology, GPU power and clock locks, IFEO priorities, per-program CFG and DPI settings, kernel reserved cores, interrupt relocation and priorities, SysMain/WSearch pauses, NIC interrupt affinity, AMD Anti-Lag and other retired graphics items, processor-idle disabling, the MMCSS Games task Priority and SFIO Priority, and power plans with old names). Any that are still present keep their current values; anything written by 3.x builds is still restored.
+- Render thread scheduling is on by default; games without a chosen strategy use the recommended Game priority. Games you turned off stay off.
+- With scheduling on, the game keeps high-performance QoS during matches, and every strategy except Enhanced dedicated rendering also runs it at High; restored at game end.
+- The separate anti-cheat engine is gone: ACE is governed as ordinary background and can be turned off per game in advanced tuning; other anti-cheat software is only protected.
+- Microsoft background services and the WeGame main process are now ordinary background; Aggressive governance also confines background apps to a few cores.
+- Built-in whitelist for voice chat apps (KOOK, YY, TeamSpeak, Mumble, Discord), plus a service whitelist.
+- The AI tuning prompt is back (Settings → General); Multimedia scheduling is a separate switch again, on by default.
+- Changes left by 1.x/2.x builds and by the old anti-cheat and Microsoft background governance are no longer restored and keep their current values.
+- Lower runtime overhead and better UI scaling.
 
 ## 3.3.1.1 release notes
 
