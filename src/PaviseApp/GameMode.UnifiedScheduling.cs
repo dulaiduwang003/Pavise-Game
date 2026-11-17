@@ -442,8 +442,9 @@ namespace PaviseApp
             if (process == IntPtr.Zero) throw new InvalidOperationException("游戏进程查询句柄不可用");
             try
             {
-                // 进入这里的方案都不持有进程类别（游戏优先在角色发现前已转交线程协同），接管线程前先归还旧的整进程提优。
-                if (!CrashGuard.RestoreBoostPriority(process, source.Pid, source.Birth))
+                // 持有进程类别的方案保留资源通道写的高优先级，线程目标按高等级换算；只有不持有的方案（专核强化）
+                // 才在接管线程前归还旧的整进程提优。
+                if (!source.Rule.RaisesGameProcess && !CrashGuard.RestoreBoostPriority(process, source.Pid, source.Birth))
                     throw new InvalidOperationException("旧进程 CPU 提优恢复未确认，暂不捕获线程提优基线");
                 uint currentClass = Native.GetPriorityClass(process);
                 // 普通线程属性分别准入；显式时间关键规则仍沿用原有的类别边界，不扩展到实时等级。

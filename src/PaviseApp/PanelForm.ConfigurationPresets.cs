@@ -103,7 +103,8 @@ namespace PaviseApp
             stripWidth = Math.Min(stripWidth, Math.Max(1, width - gap - Theme.S(250)));
             int tabsWidth = Math.Max(1, width - stripWidth - gap);
             performanceCategories.SetBounds(left, top, tabsWidth, Theme.S(44));
-            configurationPresetStrip.SetBounds(left + tabsWidth + gap, top + Theme.S(6), stripWidth, Theme.S(32));
+            // 按钮与顶栏链接按钮同高，在 44 高的分类栏里竖直居中。
+            configurationPresetStrip.SetBounds(left + tabsWidth + gap, top + Theme.S(2), stripWidth, Theme.S(40));
         }
 
         private void SyncConfigurationPresetControls()

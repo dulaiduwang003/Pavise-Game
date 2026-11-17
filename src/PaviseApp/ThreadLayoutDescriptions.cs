@@ -27,27 +27,27 @@ namespace PaviseApp
         {
             if (strategy == SchedulingStrategy.GamePriority)
                 return PerformancePolicy.Text(
-                    "沿用 3.3.0.8 的做法：游戏进程设为高优先级，磁盘与显卡同时提优；已识别的渲染线程设为最高，配合线程略提，不固定核心、不清核。CPU 满载时其他程序可能变慢。",
-                    "The 3.3.0.8 approach: the game process runs at High with raised disk and GPU priority; the identified render thread runs at the highest priority and its partner thread slightly higher, without pinning or clearing cores. Other apps may slow down when the CPU is saturated.");
+                    "游戏进程设为高优先级，磁盘与显卡同时提优；已识别的渲染线程设为最高，配合线程略提，不固定核心、不清核。CPU 满载时其他程序可能变慢。",
+                    "The game process runs at High with raised disk and GPU priority; the identified render thread runs at the highest priority and its partner thread slightly higher, without pinning or clearing cores. Other apps may slow down when the CPU is saturated.");
             if (strategy == SchedulingStrategy.RenderCoreTimeCritical)
                 return PerformancePolicy.Text(
-                    "在固定核心上进一步提高渲染优先级。须通过运行条件核验；条件失效时撤回提优。",
-                    "Gives rendering stronger priority on a fixed core. Requires verified operating conditions; the boost is withdrawn if they fail.");
+                    "游戏进程保持原优先级，只把固定核心上的渲染线程提到最高。须通过运行条件核验；条件失效时撤回提优。",
+                    "Keeps the game process priority and raises only the render thread on a fixed core to the highest level. Requires verified operating conditions; the boost is withdrawn if they fail.");
             if (strategy == SchedulingStrategy.DependencyBoost)
                 return PerformancePolicy.Text(
-                    "同时照顾渲染与已识别的关联任务，减少依赖等待。保留原有核心分配，不使用清核。",
-                    "Prioritizes rendering and identified dependencies to reduce waits. Keeps existing CPU placement; clear core is unavailable.");
+                    "游戏进程设为高，同时照顾渲染与已识别的关联任务，减少依赖等待。保留原有核心分配，不使用清核。",
+                    "Runs the game process at High and prioritizes rendering and identified dependencies to reduce waits. Keeps existing CPU placement; clear core is unavailable.");
             if (strategy == SchedulingStrategy.RenderBoost)
                 return PerformancePolicy.Text(
-                    "优先安排已识别的渲染线程，减少 CPU 排队。不开清核时保留原有核心分配。",
-                    "Prioritizes the identified render thread to reduce CPU queueing. Keeps existing CPU placement with clear core off.");
+                    "游戏进程设为高，已识别的渲染线程提到最高，减少 CPU 排队。不开清核时保留原有核心分配。",
+                    "Runs the game process at High and the identified render thread at the highest priority to reduce CPU queueing. Keeps existing CPU placement with clear core off.");
             if (strategy == SchedulingStrategy.RenderCore)
                 return PerformancePolicy.Text(
-                    "固定渲染核心，减少换核开销。可配合清核减少竞争，固定核心不代表独占。",
-                    "Fixes the render core to reduce migration. Optional clear core reduces contention; fixed placement is not exclusive.");
+                    "游戏进程设为高，渲染线程提到最高并固定在独立核心上，减少换核开销。可配合清核减少竞争，固定核心不代表独占。",
+                    "The game process runs at High and the render thread at the highest priority on a dedicated core to reduce migration. Optional clear core reduces contention; fixed placement is not exclusive.");
             return PerformancePolicy.Text(
-                "将已识别的关键任务分配到不同核心，减少相互竞争，为其他任务保留并行空间。",
-                "Places identified critical tasks on separate cores to reduce contention and leave room for other work.");
+                "游戏进程设为高，将已识别的关键任务分配到不同核心并提优，减少相互竞争，为其他任务保留并行空间。",
+                "Runs the game process at High and places identified critical tasks on separate cores with raised priority to reduce contention and leave room for other work.");
         }
 
         internal static string StrategyHint(CriticalThreadRule rule)
@@ -60,8 +60,8 @@ namespace PaviseApp
         internal static string ClearCoreHint(SchedulingStrategy strategy, bool on)
         {
             if (strategy == SchedulingStrategy.GamePriority)
-                return PerformancePolicy.Text("游戏优先沿用 3.3.0.8，不固定核心，不使用清核。",
-                    "Game priority follows 3.3.0.8: no core pinning, and clear core is unavailable.");
+                return PerformancePolicy.Text("游戏优先不固定核心，不使用清核。",
+                    "Game priority does not pin cores, and clear core is unavailable.");
             if (strategy == SchedulingStrategy.DependencyBoost)
                 return PerformancePolicy.Text("依赖协同保留游戏原有核心分配，不使用清核。",
                     "Dependency coordination keeps the game's CPU placement; clear core is unavailable.");

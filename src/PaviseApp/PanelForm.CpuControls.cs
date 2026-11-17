@@ -220,7 +220,7 @@ namespace PaviseApp
             CriticalThreadRule rule = PolicyResolver.GameSchedulingRule(profile);
             if (rule != null && rule.UsesClassicThreadBoost)
             {
-                return ThreadUi("游戏优先沿用 3.3.0.8 的线程提优：渲染线程设为最高、配合线程略提，不固定核心。", "Game priority uses the 3.3.0.8 thread boost: the render thread at highest and its partner slightly higher, without core pinning.");
+                return ThreadUi("游戏优先的线程提优：渲染线程设为最高、配合线程略提，不固定核心。", "Game priority thread boost: the render thread at highest and its partner slightly higher, without core pinning.");
             }
             return ThreadUi("本游戏不运行线程提优，不与此规则叠加。", "Thread boost does not run for this game and does not combine with this rule.");
         }
@@ -298,7 +298,8 @@ namespace PaviseApp
         // 界面台架用它替代模态确认；产品运行时保持为空。
         internal Func<bool> SchedulingRiskConfirmForTest;
 
-        // 渲染线程调度逐游戏默认关闭。开启前说明效果需自行对照、可能变差；取消时不写入任何配置。
+        // 手动打开渲染线程调度前说明效果需自行对照、可能变差；取消时不写入任何配置。
+        // 默认开启的游戏优先不经过这里，只有用户显式打开开关时才确认。
         private bool ConfirmSchedulingRisk()
         {
             if (SchedulingRiskConfirmForTest != null) return SchedulingRiskConfirmForTest();

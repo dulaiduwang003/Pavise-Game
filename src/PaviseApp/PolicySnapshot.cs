@@ -9,6 +9,8 @@ namespace PaviseApp
 
         private readonly HashSet<string> overridden = new HashSet<string>(StringComparer.Ordinal);
         private readonly bool gameSchedulingRuleOff;
+        // 没有逐游戏开关值时是否默认开启渲染线程调度，构造时按已存方案算好。
+        private readonly bool gameSchedulingImplicitOn;
         // 逐游戏快照；全局快照不套用逐游戏的默认值。
         private readonly bool gameScoped;
 
@@ -64,6 +66,15 @@ namespace PaviseApp
             get
             {
                 return On("GmBoost");
+            }
+        }
+
+        // 深度调优的逐游戏“反作弊压制”：开启时本局把已核实的 ACE 按普通后台治理，关闭时 ACE 只保护。
+        public bool AceGovernanceOn
+        {
+            get
+            {
+                return On(PolicyCatalog.KeyAceGovernance);
             }
         }
 
@@ -363,6 +374,8 @@ namespace PaviseApp
             gameScoped = true;
             CriticalThreadRule savedSchedulingRule = CriticalThreadRule.ParseForRuntime(CriticalThreadRule.Raw(profile));
             gameSchedulingRuleOff = savedSchedulingRule != null && savedSchedulingRule.IsOff;
+            CriticalThreadRule storedSchedulingRule = PolicyResolver.StoredSchedulingRule(profile);
+            gameSchedulingImplicitOn = storedSchedulingRule != null && storedSchedulingRule.IsGamePriority;
             ManualCores = ManualCorePlan.Parse(ManualCorePlan.Raw(profile));
             if (ManualCores != null)
             {
@@ -432,9 +445,10 @@ namespace PaviseApp
             string value;
             if (!values.TryGetValue(key, out value))
             {
-                // 渲染线程调度逐游戏默认关闭：没有显式开启的游戏不继承全局开启值，
+                // 没有显式开关值的游戏，要运行的方案是游戏优先时默认开启，和 3.3.0.8 默认提优一致；
+                // 保存过渲染专核、清核等其他方案但从没打开过开关的游戏仍按关闭处理，免得默认值一改就突然绑核。
                 // 全局值只保留为总开关，由 GameSchedulingOn 另行核对。
-                if (gameScoped && key == PolicyCatalog.KeyGameScheduling) return "0";
+                if (gameScoped && key == PolicyCatalog.KeyGameScheduling) return gameSchedulingImplicitOn ? "1" : "0";
                 return PolicyResolver.RawGlobalValue(key);
             }
             return value;

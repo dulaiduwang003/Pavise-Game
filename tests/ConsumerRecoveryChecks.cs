@@ -303,7 +303,7 @@ namespace PaviseApp
             // 卡片设置会推进真实设置代次，但不能重开已耗尽的预设身份阶段。
             foreach (string key in new[] { "GmBoost", "GmBoostCpuV1", "GmBoostIoV1", "GmBoostGpuV1", "GmBoostMemoryV1",
                 "GmThreadBoostStrategyV1", "GmRenderLane", "FrameCoordination", "GmGameSchedulingV1",
-                "GameCriticalThreadHardRuleV1", "GmAutoCoresV2", "GmManualCorePlanV2", "GameFamilyBackground",
+                "GameCriticalThreadHardRuleV1", "GmAutoCoresV2", "GmManualCorePlanV2", "GameAceGovernanceV1", "GameFamilyBackground",
                 "GameNvRebarV1", "GameDisableFullscreenOptimizationsV1" })
             {
                 string a = key == ThreadBoostSelection.Key ? "off" : key == CriticalThreadRule.Key ? CriticalThreadRule.UnifiedOff().Encode()

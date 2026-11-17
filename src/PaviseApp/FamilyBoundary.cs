@@ -49,6 +49,9 @@ namespace PaviseApp
 
             public int PlatformMask;
 
+            // 判定时的 ACE 治理开关；开关变化后旧结论作废。
+            public bool AceGovernance;
+
             public bool Protected;
         }
 
@@ -120,18 +123,20 @@ namespace PaviseApp
             int currentGenerationResult = PeripheralVendorProbe.CurrentGeneration();
             int currentGenerationResult2 = SecurityProductCatalog.CurrentGeneration();
             int mask = PlatformRuntimePolicy.Mask;
+            bool governAce = AntiCheatCatalog.AceGovernanceActive;
             if (creation > 0)
             {
                 lock (catalogSync)
                 {
                     CatalogVerdict value;
-                    if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == currentGenerationResult && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
+                    if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == currentGenerationResult && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && value.AceGovernance == governAce && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
                     {
                         return value.Protected;
                     }
                 }
             }
-            bool protectedRuntime = (AntiCheatCatalog.IsAntiCheatProcess(name, path) && !AntiCheatCatalog.IsGovernedAce(name, path)) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name) || StreamingToolCatalog.IsStreamingToolProcess(name, path);
+            // 已核实的 ACE 只在本局开着“反作弊压制”时交给后台治理，关着时和其他反作弊一样只保护。
+            bool protectedRuntime = (AntiCheatCatalog.IsAntiCheatProcess(name, path) && !(governAce && AntiCheatCatalog.IsGovernedAce(name, path))) || WeGameRuntimeProtection.IsCriticalRuntime(name, path) || NetAcceleratorCatalog.IsAcceleratorLikeName(name) || NetAcceleratorCatalog.IsAcceleratorLikePath(path) || SecurityProductCatalog.IsSecurityProduct(path) || PeripheralCatalog.IsInputChainProcess(name, path) || HardwareControlCatalog.IsHardwareControlProcess(name) || StreamingToolCatalog.IsStreamingToolProcess(name, path) || VoiceChatCatalog.IsVoiceChatProcess(name, path);
             if (creation > 0)
             {
                 lock (catalogSync)
@@ -148,6 +153,7 @@ namespace PaviseApp
                         VendorGeneration = currentGenerationResult,
                         SecurityGeneration = currentGenerationResult2,
                         PlatformMask = mask,
+                        AceGovernance = governAce,
                         Protected = protectedRuntime
                     };
                 }

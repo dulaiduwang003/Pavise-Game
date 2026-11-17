@@ -129,6 +129,38 @@ namespace PaviseApp
                 }
             }
         }
+        // 反作弊压制只切换逐游戏的 ACE 治理开关，对局中下一轮后台扫描就按新值治理或放手，不需要确认。
+        private void ToggleGameAceGovernance(GameLibraryItem item)
+        {
+            if (aceChangeBusy || item == null || item.Profile == null)
+            {
+                return;
+            }
+            aceChangeBusy = true;
+            string id = item.Profile.Id;
+            try
+            {
+                GameProfile current = FindLibraryProfile(id);
+                if (current == null)
+                {
+                    return;
+                }
+                bool enable = !PolicyResolver.For(current).AceGovernanceOn;
+                if (!gameMode.SetProfileOverride(id, PolicyCatalog.KeyAceGovernance, enable ? "1" : "0") && !gameMode.ProfileStoreSaveFailed)
+                {
+                    PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.ace"), Lang.T("lib.family.save.failed"));
+                }
+            }
+            finally
+            {
+                aceChangeBusy = false;
+                if (!base.IsDisposed && !base.Disposing)
+                {
+                    RefreshGames();
+                    SelectProfile(id);
+                }
+            }
+        }
         private async void ToggleGameRebar(GameLibraryItem item)
         {
             if (rebarChangeBusy || item == null || item.Profile == null)

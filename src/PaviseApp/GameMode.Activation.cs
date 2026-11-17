@@ -105,6 +105,8 @@ namespace PaviseApp
             }
             SyncPerformanceAutomation();
             sessionPolicy = null;
+            // 退局后 ACE 回到只保护，下一局由后台扫描按游戏设置重新写入。
+            AntiCheatCatalog.AceGovernanceActive = false;
             lock (sync)
             {
                 coreSessionPolicy = null;

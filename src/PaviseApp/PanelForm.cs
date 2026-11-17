@@ -247,6 +247,8 @@ namespace PaviseApp
 
             private readonly FamilySuppressionSwitch core;
 
+            private readonly FamilySuppressionSwitch ace;
+
             private readonly FamilySuppressionSwitch family;
 
             private readonly FamilySuppressionSwitch rebar;
@@ -278,11 +280,13 @@ namespace PaviseApp
                 BackColor = Theme.Card;
                 AutoScroll = false;
                 core = MakeOption("libraryCoreToggle", Lang.T("lib.cores.range"), true, form.ToggleGameCoreScheduling);
+                ace = MakeOption("libraryAceToggle", Lang.T("lib.ace"), false, form.ToggleGameAceGovernance);
                 family = MakeOption("libraryFamilyToggle", Lang.T("lib.family.suppress"), false, form.ToggleGameFamilySuppression);
                 rebar = MakeOption("libraryRebarToggle", Lang.T("lib.rebar"), false, form.ToggleGameRebar);
                 fullscreen = MakeOption("libraryFullscreenToggle", Lang.T("lib.fso"), false, form.ToggleGameFullscreenOptimizations);
                 core.IconKey = "core";
                 core.DetailsWidth = 62;
+                ace.IconKey = "ace";
                 family.IconKey = "family";
                 rebar.IconKey = "rebar";
                 fullscreen.IconKey = "fullscreen";
@@ -318,9 +322,10 @@ namespace PaviseApp
                 core.TabIndex = 0;
                 coreDetails.TabIndex = 1;
                 owner.criticalThreadEditor.TabIndex = 2;
-                family.TabIndex = 3;
-                rebar.TabIndex = 4;
-                fullscreen.TabIndex = 5;
+                ace.TabIndex = 3;
+                family.TabIndex = 4;
+                rebar.TabIndex = 5;
+                fullscreen.TabIndex = 6;
                 RefreshItem(initial);
             }
 
@@ -384,17 +389,21 @@ namespace PaviseApp
                     : corePlan == null ? AutoText("尚未选择范围", "No range selected")
                     : CoreRangeSummary(corePlan);
                 core.SummaryColor = core.Checked && corePlan == null ? Theme.Warning : Color.Empty;
+                // 反作弊压制默认开启，只作用于核实过的 ACE；切换后本局下一轮后台扫描就按新值治理或放手。
+                ace.Checked = corePolicy.AceGovernanceOn;
                 family.Checked = profile.SuppressFamilyBackground;
                 family.Gated = !item.RendererObserved;
-                rebar.Checked = PolicyResolver.For(profile).NvRebar;
+                rebar.Checked = corePolicy.NvRebar;
                 fullscreen.Checked = profile.DisableFullscreenOptimizations;
+                ace.Enabled = !owner.aceChangeBusy;
                 family.Enabled = !owner.familyChangeBusy;
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
-                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
-                string[] textEntries = new string[4]
+                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[5] { core, ace, family, rebar, fullscreen };
+                string[] textEntries = new string[5]
                 {
                     "lib.cores.toggle.tip",
+                    "lib.ace.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
                     "lib.rebar.tip",
                     "lib.fso.tip"
@@ -458,7 +467,7 @@ namespace PaviseApp
                     }
                     otherTitle.SetBounds(Theme.S(4), owner.criticalThreadEditor.Bottom + Theme.S(12), labelWidth, Theme.S(22));
                     int rowTop = otherTitle.Bottom + Theme.S(4);
-                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[3] { family, rebar, fullscreen };
+                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { ace, family, rebar, fullscreen };
                     for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                     {
                         familySuppressionSwitchItems[i].SetBounds(0, rowTop, width, Theme.S(40));
@@ -907,6 +916,8 @@ namespace PaviseApp
         private Label lblLibraryHint;
 
         private Label lblLibraryCount;
+
+        private bool aceChangeBusy;
 
         private bool familyChangeBusy;
 

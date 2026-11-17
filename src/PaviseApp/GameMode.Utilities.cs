@@ -213,13 +213,33 @@ namespace PaviseApp
             }
             return true;
         }
-        private bool ClearEfficiencyMode(IntPtr h, int pid, BoostPass pass)
+        // 对局中给游戏锁定高性能 QoS，沿用 2.2.2.3 的做法：不让系统节流它的执行速度，Win11 上还要求系统照常接受它的计时器精度请求，
+        // 免得游戏没焦点或被遮挡时被降到能效核、限帧计时变粗。读到的原状态记进回执，关闭调度、换游戏或退局时按回执恢复。
+        // 这一项不属于资源优先级的开关，不走它们的入口，那里不认识这个名字会抛异常。
+        private bool SyncGameQos(IntPtr h, int pid, BoostPass pass)
         {
             if (!Native.PowerThrottlingSupported)
             {
                 return true;
             }
-            // QoS 只恢复旧回执，不通过资源优先级入口写入。
+            if (pass.QosBoost)
+            {
+                bool applied = ApplyIsolatedBoostAction(h, pid, pass, GameEcoAction,
+                    (long value) => Native.HighQoSMasksOk((int)(value >> 32), (int)value), () => WriteHighQoSBoost(h));
+                if (applied)
+                {
+                    lock (sync)
+                    {
+                        HashSet<string> selected;
+                        if (!boostResourceSelections.TryGetValue(pid, out selected))
+                        {
+                            selected = boostResourceSelections[pid] = new HashSet<string>(StringComparer.Ordinal);
+                        }
+                        selected.Add(GameEcoAction);
+                    }
+                }
+                return applied;
+            }
             bool owned;
             lock (sync)
             {
@@ -723,9 +743,9 @@ namespace PaviseApp
         private void PrepareResourcePriorities(BoostPass pass, PolicySnapshot policy)
         {
             policy = policy ?? PolicyResolver.Global();
-            // 进程 CPU 类只由「游戏优先」接管并提为高；其余方案、关闭调度或换成别的方案时不写，
+            // 进程 CPU 类由除专核强化外的方案接管并提为高；专核强化、关闭调度或换成它时不写，
             // 已有的本方收据在本轮按原归属恢复。游戏优先与 3.3.0.8 的“性能优先级”一样一项全包，
-            // 磁盘与显卡优先级不再看单独的资源开关；其他方案仍按资源开关决定。
+            // 磁盘与显卡优先级不再看单独的资源开关；其他方案仍按资源开关决定（默认开）。
             pass.CpuBoost = false;
             pass.ClassicThreadBoost = false;
             bool schedulingOn = policy.GameSchedulingOn;
@@ -745,7 +765,9 @@ namespace PaviseApp
             // 线程协同的工作线程每 200 毫秒复核一次准入，这里只发布本轮结论，不让它去拿会话锁。
             Volatile.Write(ref classicThreadBoostOn, pass.ClassicThreadBoost);
             pass.IoBoost = pass.GpuBoost = schedulingOn && resourceOn;
-            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.ClassicThreadBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
+            // 高性能 QoS 不分方案，只要这款游戏开着渲染线程调度就锁定，关掉调度即按回执恢复。
+            pass.QosBoost = schedulingOn;
+            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.ClassicThreadBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0) | (pass.QosBoost ? 16 : 0);
             lock (sync)
             {
                 if (combinedMask != boostResourceSelection)

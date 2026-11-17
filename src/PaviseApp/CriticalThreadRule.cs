@@ -54,7 +54,10 @@ namespace PaviseApp
         // 不固定核心、不清核，也不进入统一线程调度。
         internal bool IsGamePriority { get { return FormalStrategy && Strategy == SchedulingStrategy.GamePriority; } }
 
-        internal bool RaisesGameProcess { get { return IsGamePriority; } }
+        // 按用户决定，除专核强化外的方案都和游戏优先一样把游戏进程设为高。线程目标是相对值，进程到高之后
+        // 渲染线程 +2 即为 15、提优成员 +1 即为 14，和游戏优先同级；渲染专核由此相当于游戏优先再固定渲染核。
+        // 专核强化保持原进程等级，在自己的放置核验下写 15，高等级下它本来就不准入。
+        internal bool RaisesGameProcess { get { return FormalStrategy && !IsTimeCriticalRender; } }
 
         // 线程层交给 3.3.0.8 的线程协同，统一调度只撤回自己的旧控制，不发现角色、不写线程。
         internal bool UsesClassicThreadBoost { get { return IsGamePriority; } }

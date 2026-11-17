@@ -121,6 +121,7 @@ namespace PaviseApp
             case "GmAutoCoresV2":
             case "GameFamilyBackground":
             case "GameNvRebarV1":
+            case "GameAceGovernanceV1":
                 return true;
             }
         }

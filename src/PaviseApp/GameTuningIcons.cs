@@ -25,6 +25,26 @@ namespace PaviseApp
                     pen.LineJoin = LineJoin.Round;
                     switch (key)
                     {
+                    case "ace":
+                        // 盾牌加向下箭头 表示压低反作弊的后台优先级
+                        g.DrawLines(pen, new PointF[6]
+                        {
+                            new PointF(12f, 2f),
+                            new PointF(20f, 5f),
+                            new PointF(20f, 11f),
+                            new PointF(12f, 22f),
+                            new PointF(4f, 11f),
+                            new PointF(4f, 5f)
+                        });
+                        g.DrawLine(pen, 4f, 5f, 12f, 2f);
+                        g.DrawLine(pen, 12f, 7f, 12f, 15f);
+                        g.DrawLines(pen, new PointF[3]
+                        {
+                            new PointF(9f, 12f),
+                            new PointF(12f, 15f),
+                            new PointF(15f, 12f)
+                        });
+                        break;
                     case "family":
                         g.DrawRectangle(pen, 9, 2, 6, 5);
                         g.DrawLines(pen, new PointF[4]

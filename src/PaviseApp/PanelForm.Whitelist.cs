@@ -617,8 +617,8 @@ namespace PaviseApp
             foreach (AcGroup acGroup in groups)
             {
                 list3.Add(acGroup.Name);
-                // ACE 随普通后台治理压制，其余反作弊只保护或只记录。
-                string scope = acGroup.RecordOnly ? AutoText("仅记录", "Record only") : acGroup.Governed ? AutoText("随后台治理压制", "Governed as background") : Lang.T("ac.protectiononly");
+                // ACE 按游戏深度调优里的“反作弊压制”开关随后台治理压制，默认开；其余反作弊只保护或只记录。
+                string scope = acGroup.RecordOnly ? AutoText("仅记录", "Record only") : acGroup.Governed ? AutoText("按游戏开关压制 · 默认开", "Per-game switch · on by default") : Lang.T("ac.protectiononly");
                 list2.Add(acGroup.Name + " · " + scope + "\r\n" + string.Join(" · ", acGroup.Procs));
             }
             AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;
@@ -643,6 +643,9 @@ namespace PaviseApp
             }
             string streamingProducts = string.Join(" · ", StreamingToolCatalog.ProductsForDisplay());
             list.Add(AutomaticExemption("white.auto.streaming", Lang.F("white.auto.streaming.list", streamingProducts), "chart", DetailSection("white.auto.details.products", streamingProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", StreamingToolCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.streaming.note")));
+            // 语音通话软件内置保护，对局中开黑不因后台治理卡语音。
+            string voiceProducts = string.Join(" · ", VoiceChatCatalog.ProductsForDisplay());
+            list.Add(AutomaticExemption("white.auto.voice", Lang.F("white.auto.voice.list", voiceProducts), "pulse", DetailSection("white.auto.details.voiceproducts", voiceProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", VoiceChatCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.voice.note")));
             return list;
         }
         private static WhitelistItem AutomaticExemption(string titleKey, string subtitle, string glyph, string details)

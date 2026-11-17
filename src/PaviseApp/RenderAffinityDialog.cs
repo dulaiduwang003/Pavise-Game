@@ -203,16 +203,16 @@ namespace PaviseApp
         private static string CompactStrategyHint(SchedulingStrategy strategy)
         {
             return strategy == SchedulingStrategy.GamePriority
-                ? T("沿用 3.3.0.8：游戏进程设为高，磁盘与显卡同时提优；渲染线程设为最高，配合线程略提，不固定核心。CPU 满载时其他程序可能变慢。", "The 3.3.0.8 approach: game process at High with disk and GPU priority; the render thread at highest and its partner slightly higher, without pinning cores. Other apps may slow down when the CPU is saturated.")
+                ? T("游戏进程设为高，磁盘与显卡同时提优；渲染线程设为最高，配合线程略提，不固定核心。CPU 满载时其他程序可能变慢。", "Runs the game process at High with disk and GPU priority; the render thread at highest and its partner slightly higher, without pinning cores. Other apps may slow down when the CPU is saturated.")
                 : strategy == SchedulingStrategy.RenderBoost
-                ? T("优先安排已识别的渲染线程。不开清核时保留原有核心分配。", "Prioritizes the identified render thread. Keeps CPU placement with clear core off.")
+                ? T("游戏进程设为高，优先安排渲染线程（提到最高）。不开清核时保留原有核心分配。", "Runs the game process at High. Prioritizes the render thread at highest priority. Keeps CPU placement with clear core off.")
                 : strategy == SchedulingStrategy.RenderCore
-                ? T("固定渲染核心以减少换核开销，清核可进一步减少游戏线程竞争。", "Fixes the render core to reduce migration. Clear core can further reduce game-thread contention.")
+                ? T("游戏进程设为高，渲染线程提到最高并固定渲染核心，减少换核；清核可进一步减少游戏线程竞争。", "Runs the game process at High. Fixes the render core with the render thread at highest to reduce migration. Clear core can further reduce game-thread contention.")
                 : strategy == SchedulingStrategy.DependencyBoost
-                ? T("同时提高渲染与已识别关联任务的优先级，保留原有核心分配。", "Prioritizes rendering and identified dependencies, keeping existing CPU placement.")
+                ? T("游戏进程设为高，渲染与已识别的关联任务再高一级，保留原有核心分配。", "Runs the game process at High; rendering and identified dependencies one step higher, keeping existing CPU placement.")
                 : strategy == SchedulingStrategy.RenderCoreTimeCritical
-                ? T("在固定核心上进一步提高渲染优先级，须通过运行条件核验。", "Raises rendering priority further on a fixed core; requires verified operating conditions.")
-                : T("将已识别的关键任务分配到不同核心，为其他任务保留并行空间。", "Separates identified critical tasks across cores, leaving room for other work.");
+                ? T("游戏进程保持原优先级，在固定核心上把渲染线程提到最高，须通过运行条件核验。", "Keeps the game process priority and raises the render thread to highest on a fixed core; requires verified operating conditions.")
+                : T("游戏进程设为高，已识别的关键任务分到不同核心并提一级，为其他任务保留并行空间。", "Runs the game process at High. Separates identified critical tasks across cores one step higher, leaving room for other work.");
         }
 
         private sealed class StrategyChoice : PillButton

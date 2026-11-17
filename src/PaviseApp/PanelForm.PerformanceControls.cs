@@ -39,7 +39,7 @@ namespace PaviseApp
         {
             if (category == 0 && PerformanceRestartFor("GmMmcss") == scope)
             {
-                AddManualPerformanceToggle(parent, ref y, "GmMmcss", AutoText("多媒体调度", "Multimedia scheduling"), AutoText("默认关闭。开启后在保护开启期间调整 MMCSS 配置，关闭开关、关闭保护或退出时恢复。现有程序需重新读取配置。", "Off by default. When on, adjusts MMCSS configuration while protection is on; restores it when the switch or protection is turned off, or Pavise exits. Existing programs must reload the configuration."), () => Settings.LoadCached("GmMmcss", false), (bool value) => SaveManualPerformancePreference("GmMmcss", value));
+                AddManualPerformanceToggle(parent, ref y, "GmMmcss", AutoText("多媒体调度", "Multimedia scheduling"), AutoText("默认开启。在保护开启期间调整 MMCSS 配置，关闭开关、关闭保护或退出时恢复。现有程序需重新读取配置。", "On by default. Adjusts MMCSS configuration while protection is on; restores it when the switch or protection is turned off, or Pavise exits. Existing programs must reload the configuration."), () => Settings.LoadCached("GmMmcss", true), (bool value) => SaveManualPerformancePreference("GmMmcss", value));
             }
             if (category == 2 && PerformanceRestartFor("GmEnglishInputV1") == scope)
             {
@@ -611,7 +611,7 @@ namespace PaviseApp
                 card.Summary = AutoText("降低部分游戏防护，减少额外开销", "Reduce selected game protections and their overhead");
                 break;
             case "GmMmcss":
-                card.Summary = AutoText("默认关闭；开启后保护期间调整，关闭保护后恢复", "Off by default; adjust while protection is on, restore when it stops");
+                card.Summary = AutoText("默认开启；保护期间调整，关闭保护后恢复", "On by default; adjusts while protection is on, restores when it stops");
                 break;
             case LaptopPerfMode.PreferenceKey:
                 card.Summary = AutoText("插电对局切换厂商性能档，退局恢复原档", "Use the vendor performance profile on AC; restore after matches");

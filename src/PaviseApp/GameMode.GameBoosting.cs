@@ -67,7 +67,7 @@ namespace PaviseApp
                         {
                             bool isolationVerified = boostPass.Exclusive && coreEngaged && coreAffinityVerified;
                             string placementText = (isolationVerified ? (Lang.T("t.gamemodeboost.18") + CpuTopology.CountSetBits(boostPass.DesiredMask) + Lang.T("t.gamemodeboost.16")) : Lang.T("t.gamemodeboost.17"));
-                            bool ecoCleared = ClearEfficiencyMode(intPtr, pid, boostPass);
+                            bool ecoCleared = SyncGameQos(intPtr, pid, boostPass);
                             EngageLaneAndReport(intPtr, pid, currentCreation, boostPass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, isolationVerified);
                             ApplyGameTweaks(intPtr, pid, boostPass, needTweak);
                         }

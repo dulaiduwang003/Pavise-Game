@@ -49,6 +49,9 @@ namespace PaviseApp
 
             public bool GpuBoost = true;
 
+            // 本局是否给游戏锁定高性能 QoS，跟随渲染线程调度。
+            public bool QosBoost = true;
+
             public bool NvMaxPerf;
 
             public string NvLowLat;

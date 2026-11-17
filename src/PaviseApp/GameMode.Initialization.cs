@@ -112,14 +112,10 @@ namespace PaviseApp
             Settings.Remove("GmCacheWarm");
             cacheWarmOn = Settings.Load("GmCacheWarmV2", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
-            // 多媒体调度改为默认关闭的开关。旧版默认开启、旧预设两档都写入开启，存下的值不代表用户在新开关上的选择，
-            // 升级后清除一次；先写入迁移标记再清除，标记写不进去就保持旧值，避免以后反复清掉用户新开的设置。
-            bool mmcssMigrated;
-            if (!Settings.TryLoadStoredBool(MmcssDefaultOffMarker, out mmcssMigrated) && Settings.SaveDurable(MmcssDefaultOffMarker, true))
-            {
-                Settings.Remove("GmMmcss");
-            }
-            mmcssOn = Settings.Load("GmMmcss", false);
+            // 多媒体调度按用户决定恢复为默认开启，和 2.2.2.3 一样；在开关上手动关掉的保持关闭。
+            // 3.3.1.2 测试版曾为默认关闭清掉旧值并留下迁移标记，这里删掉不再使用的标记。
+            Settings.Remove("GmMmcssDefaultOffV1");
+            mmcssOn = Settings.Load("GmMmcss", true);
             string[] retiredSettings = AutoCores.RetiredSettings;
             foreach (string name in retiredSettings)
             {

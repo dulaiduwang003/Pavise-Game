@@ -98,6 +98,8 @@ namespace PaviseApp
             messages.Add("autoadd.reason.ConfirmingActivity", new string[2] { "已发现前台 3D 活动，等待再次确认", "Foreground 3D activity found; awaiting confirmation" });
             messages.Add("autoadd.preference.unsaved", new string[2] { "自动入库设置未能保存，本次运行仍遵从当前开关", "Auto-add preference could not be saved; this run still follows the current switch" });
             messages.Add("t.autoadd.1", new string[2] { "# 从游戏库移除过的路径不再自动入库；重新手动添加会自动解除。", "# Paths removed from the library are never auto-added again; adding them back manually lifts this." });
+            messages.Add("lib.ace", new string[2] { "反作弊压制", "Anti-cheat suppression" });
+            messages.Add("lib.ace.tip", new string[2] { "默认开启：对局时把 Program Files\\AntiCheatExpert 下核实过的 ACE 按普通后台压低优先级；其他反作弊始终只保护。遇到掉线或 ACE 报错可关闭，关闭后只保护不压制。切换后几秒内生效，退局恢复。", "On by default: during matches, verified ACE under Program Files\\AntiCheatExpert is governed as ordinary background; other anti-cheats are always protected only. Turn off if you see disconnects or ACE errors; it is then protected, not suppressed. Takes effect within seconds; restored on game exit." });
             messages.Add("lib.rebar", new string[2] { "ReBAR 强开", "Force ReBAR" });
             messages.Add("lib.fso", new string[3] { "禁用全屏优化", "Disable fullscreen optimizations", "全画面最適化を無効化" });
             messages.Add("lib.fso.tip", new string[3] { "默认关闭；仅在游戏有兼容问题时尝试，下次启动游戏生效。", "Off by default. Try it for game compatibility issues; takes effect on the next game launch.", "既定はオフ。ゲームの互換性に問題がある場合に試してください。次回のゲーム起動時に適用されます。" });

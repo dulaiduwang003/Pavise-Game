@@ -257,6 +257,10 @@ namespace PaviseApp
             return false;
         }
 
+        // 本局是否治理已核实的 ACE，由后台扫描每轮按当前游戏的“反作弊压制”开关写入，退局复位为不治理。
+        // 关闭时 ACE 和其他反作弊一样只保护；保护判断的缓存把它算进条件，切换后下一轮即生效。
+        internal static volatile bool AceGovernanceActive;
+
         // ACE 并入普通后台治理的身份条件：进程名属于 ACE 分组，且映像就在 Program Files\AntiCheatExpert 下、
         // 文件名与进程名一致。路径未知或在游戏目录里自带的组件不算，继续按反作弊保护。
         internal static bool IsGovernedAce(string name, string path)

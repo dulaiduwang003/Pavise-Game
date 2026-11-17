@@ -167,11 +167,17 @@ namespace PaviseApp
 
         internal static CriticalThreadRule GameSchedulingRule(GameProfile profile)
         {
-            // 逐游戏默认关闭；没有游戏档案时也不按全局值放行。
+            // 没有游戏档案时不按全局值放行；逐游戏是否开启见 PolicySnapshot.GameSchedulingOn。
             if (profile == null) return CriticalThreadRule.UnifiedOff();
             if (!For(profile).GameSchedulingOn) return CriticalThreadRule.UnifiedOff();
+            return StoredSchedulingRule(profile);
+        }
+
+        // 开关打开时这款游戏要运行的方案，不看开关本身。未保存或旧布局的配置走缺省的游戏优先；
+        // 已退役对照由解析器明确停用，不能按缺省规则重新启用；损坏的规则返回 null。
+        internal static CriticalThreadRule StoredSchedulingRule(GameProfile profile)
+        {
             string raw = CriticalThreadRule.Raw(profile);
-            // 旧布局的运行配置不再延用；已退役对照由解析器明确停用，不能按缺省规则重新启用。
             return raw == null || !raw.StartsWith("7|", StringComparison.Ordinal)
                 ? CriticalThreadRule.UnifiedDefault() : CriticalThreadRule.ParseForRuntime(raw);
         }

@@ -860,7 +860,8 @@ namespace PaviseApp
             SettingsWorkspaceTile settingsWorkspaceTile3 = SettingsTile(panel, "SettingsExitGrace");
             SettingsWorkspaceTile settingsWorkspaceTile4 = SettingsTile(panel, "SettingsLanguage");
             SettingsWorkspaceTile settingsWorkspaceTile5 = SettingsTile(panel, "SettingsStandbyCleanerCard");
-            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || settingsWorkspaceTile5 == null)
+            SettingsWorkspaceTile aiTuning = SettingsTile(panel, "SettingsAiTuning");
+            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || settingsWorkspaceTile5 == null || aiTuning == null)
             {
                 return;
             }
@@ -895,8 +896,12 @@ namespace PaviseApp
             settingsWorkspaceTile2.BottomSeparator = true;
             settingsWorkspaceTile3.BottomSeparator = true;
             settingsWorkspaceTile4.BottomSeparator = true;
-            settingsWorkspaceTile5.BottomSeparator = false;
-            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = new SettingsWorkspaceTile[5] { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, settingsWorkspaceTile5 };
+            // AI 调优提示词放在常规设置最后一行。
+            aiTuning.SetBounds(0, top, width, aiTuning.MeasureHeight(width));
+            top = aiTuning.Bottom;
+            settingsWorkspaceTile5.BottomSeparator = true;
+            aiTuning.BottomSeparator = false;
+            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = new SettingsWorkspaceTile[6] { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, settingsWorkspaceTile5, aiTuning };
             foreach (SettingsWorkspaceTile settingsWorkspaceTile8 in settingsWorkspaceTileItems2)
             {
                 settingsWorkspaceTile8.ArrangeContent();

@@ -238,10 +238,29 @@ namespace PaviseApp
         {
             ulong manual = ManualCoreBackgroundTarget();
             ulong reserved = GameBackgroundReservedCores();
-            if (manual == 0 && reserved == 0) return 0;
+            // 手动核心隔离优先；没有隔离时，激进档按分区把后台收到后台核心上。
+            ulong aggressive = manual == 0 ? AggressiveCoreBackgroundTarget() : 0;
+            if (manual == 0 && reserved == 0 && aggressive == 0) return 0;
             ulong allowed = CpuTopology.BackgroundAllowedMask();
             if (manual != 0) allowed &= manual;
+            else if (aggressive != 0) allowed &= aggressive;
             return allowed & ~reserved;
+        }
+        // 上次记进日志的激进档后台核心，变化时才再记一行。
+        private ulong loggedAggressiveCoreTarget;
+        private ulong AggressiveCoreBackgroundTarget()
+        {
+            PolicySnapshot policy = sessionPolicy ?? PolicyResolver.Global();
+            bool safePartition = CpuTopology.HasSafeBackgroundPartition();
+            ulong target = BackgroundGovernancePolicy.AggressiveCoreTarget(policy.SuppressBackground, policy.BackgroundGovernanceMode, CpuTopology.MultiGroup,
+                safePartition, CpuTopology.ThrottleMask, safePartition ? 0 : CpuTopology.BackgroundSqueezeMask(), CpuTopology.AllMask);
+            if (target != loggedAggressiveCoreTarget)
+            {
+                loggedAggressiveCoreTarget = target;
+                if (target != 0)
+                    Logger.Info("后台治理激进档：普通后台收到 CPU" + CpuTopology.DescribeRanges(target) + "（" + (safePartition ? "分区 " + CpuTopology.PartitionTag : "末尾物理核") + "），只在各进程原范围内收紧");
+            }
+            return target;
         }
         private ulong ManualCoreBackgroundTarget()
         {

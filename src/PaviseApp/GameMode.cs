@@ -414,7 +414,6 @@ namespace PaviseApp
         private volatile bool killGameDvr;
 
         private volatile bool mmcssOn;
-        internal const string MmcssDefaultOffMarker = "GmMmcssDefaultOffV1";
 
         private bool guardDvrActive;
 

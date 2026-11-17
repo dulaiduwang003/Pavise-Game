@@ -435,6 +435,7 @@ namespace PaviseApp
             AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", tierPicker2).Summary = AutoText("界面与新日志一并切换", "Switch the UI and new log messages together");
             int sy = 0;
             BuildStandbyCleanerSettingsCard(scroll, ref sy);
+            BuildAiTuningSettingsCard(scroll);
             RefreshStandbyCleanerPresentation();
             scroll = settingsTabPanels[1];
             PillButton pillButton = new PillButton(Lang.T("workflow.attention.action.logs"));

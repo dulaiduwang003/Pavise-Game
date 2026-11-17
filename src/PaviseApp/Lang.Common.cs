@@ -90,6 +90,10 @@ namespace PaviseApp
             messages.Add("white.auto.streaming", new string[3] { "直播与推流工具", "Live streaming and broadcast tools", "ライブ配信・送出ツール" });
             messages.Add("white.auto.streaming.list", new string[3] { "直播工具：{0}", "Broadcast tools: {0}", "配信ツール：{0}" });
             messages.Add("white.auto.details.products", new string[3] { "直播工具目录", "Broadcast tool catalog", "配信ツール一覧" });
+            messages.Add("white.auto.voice", new string[2] { "语音通话软件", "Voice chat apps" });
+            messages.Add("white.auto.voice.list", new string[2] { "语音软件：{0}", "Voice apps: {0}" });
+            messages.Add("white.auto.details.voiceproducts", new string[2] { "语音软件目录", "Voice app catalog" });
+            messages.Add("white.auto.details.voice.note", new string[2] { "只认进程名与程序文件名一致的进程，后台治理不压制它们；想让它们被压制，可在对局时关闭这些软件。", "Only processes whose name matches the program file are recognized, and background control leaves them alone. Close these apps during matches if you want them governed." });
             messages.Add("white.auto.details.streaming.note", new string[3] { "保护已识别的直播工具、专用组件和身份核验通过的子孙进程；已确认的成员在父进程退出后仍受保护。独立启动组件须单独识别，游戏家族压制不影响此保护。", "Protects recognized broadcast tools, dedicated components and verified descendants, including confirmed members whose parent has exited. Independent components need their own match. Game-family suppression does not disable this protection.", "認識した配信アプリと一覧の専用コンポーネント、および識別を確認した子孫プロセスを保護します。確認済みで実行中のメンバーは親の終了後も保護します。独立起動したコンポーネントには個別の照合規則が必要です。ゲーム関連のバックグラウンド制御を有効にしても、この保護は維持されます。" });
             messages.Add("white.auto.details.body", new string[2] { "当前版本的识别目录，可选择文本并复制。", "Recognition catalog for this version. Select text to copy." });
             messages.Add("white.auto.details.processes", new string[2] { "明确进程名（不含 .exe）", "Explicit process names (without .exe)" });
@@ -123,7 +127,7 @@ namespace PaviseApp
             messages.Add("white.kind.service", new string[2] { "服务", "Service" });
             messages.Add("white.service.add", new string[2] { "添加服务", "Add service" });
             messages.Add("white.service.title", new string[2] { "选择服务", "Choose services" });
-            messages.Add("white.service.scope", new string[2] { "不启动服务，仅豁免普通后台治理，不影响微软后台治理。若服务共用宿主，整个宿主从普通后台治理中豁免。", "Does not start services. Only ordinary background control is exempted; Microsoft background governance is unchanged. Shared service hosts are exempted as a whole from ordinary background control." });
+            messages.Add("white.service.scope", new string[2] { "不启动服务，仅豁免普通后台治理（含微软后台）。若服务共用宿主，整个宿主从普通后台治理中豁免。", "Does not start services. Only ordinary background control is exempted, including Microsoft background. Shared service hosts are exempted as a whole from ordinary background control." });
             messages.Add("white.service.search", new string[2] { "按服务名或显示名搜索", "Search service or display name" });
             messages.Add("white.service.busy", new string[2] { "正在读取已安装的服务", "Reading installed services" });
             messages.Add("white.service.failed", new string[2] { "读取服务失败，请重新打开窗口重试。", "Could not read services. Reopen this window to retry." });
@@ -131,7 +135,7 @@ namespace PaviseApp
             messages.Add("white.service.count", new string[2] { "显示 {0} / {1} 个服务", "Showing {0} / {1} services" });
             messages.Add("white.service.add.failed", new string[2] { "已添加 {0} 个服务，{1} 个未添加。{2}", "Added {0} services; {1} were not added. {2}" });
             messages.Add("white.service.rule.sub", new string[2] { "服务名精确匹配 · 仅普通后台治理", "Exact service-name match · Ordinary background only" });
-            messages.Add("white.service.rule.hint", new string[2] { "仅普通后台豁免；微软后台治理不变", "Ordinary background exemption only; Microsoft governance unchanged" });
+            messages.Add("white.service.rule.hint", new string[2] { "仅豁免普通后台，含已并入的微软后台", "Ordinary background exemption only, including Microsoft background" });
             messages.Add("white.service.hosts", new string[2] { "{0} 个当前宿主", "{0} current hosts" });
             messages.Add("white.service.unmatched", new string[2] { "暂无已核验宿主", "No verified host" });
             messages.Add("white.service.pending", new string[2] { "宿主待核验", "Host awaiting verification" });

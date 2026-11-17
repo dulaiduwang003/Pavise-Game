@@ -41,6 +41,118 @@ namespace PaviseApp
             }
         }
 
+        // 吸引注意：每隔几秒让一道扫光掠过按钮，图标框跟着亮一下。只在窗口处于前台、按钮可见可用时扫，
+        // 两次扫光之间不占用界面帧时钟，失焦、隐藏、忙碌或测试冻结时不动。
+        private Timer attentionTimer;
+        private bool sweeping;
+        private float sweepPhase;
+        private const int AttentionIntervalMs = 3600;
+
+        public bool Attention
+        {
+            get { return attentionTimer != null; }
+            set
+            {
+                if (value == Attention) return;
+                if (value)
+                {
+                    attentionTimer = new Timer { Interval = AttentionIntervalMs };
+                    attentionTimer.Tick += delegate { StartSweep(); };
+                    attentionTimer.Start();
+                }
+                else
+                {
+                    attentionTimer.Dispose();
+                    attentionTimer = null;
+                    sweeping = false;
+                    Invalidate();
+                }
+            }
+        }
+
+        private bool CanSweep()
+        {
+            Form form = FindForm();
+            return IsHandleCreated && Visible && Enabled && !Busy && !UiClock.Frozen && !UiClock.Suspended
+                && form != null && Form.ActiveForm == form;
+        }
+
+        private void StartSweep()
+        {
+            if (sweeping || !CanSweep()) return;
+            sweeping = true;
+            sweepPhase = 0f;
+            UiClock.Wake(4);
+        }
+
+        protected override bool StepAll()
+        {
+            bool changed = base.StepAll();
+            if (!sweeping) return changed;
+            if (!CanSweep())
+            {
+                sweeping = false;
+                return true;
+            }
+            sweepPhase += 0.024f * UiClock.DeltaScale;
+            if (sweepPhase >= 1f)
+            {
+                sweeping = false;
+                sweepPhase = 0f;
+            }
+            else
+            {
+                UiClock.Wake(4);
+            }
+            return true;
+        }
+
+        // 斜向扫光，两端淡出；扫到中段时最亮。
+        private void PaintSweep(Graphics g, Rectangle bounds)
+        {
+            if (!sweeping) return;
+            float t = sweepPhase;
+            float eased = t * t * (3f - 2f * t);
+            int band = Theme.S(58), slant = Theme.S(18);
+            int center = (int)(-band + (bounds.Width + band * 2) * eased);
+            int alpha = (int)(135f * (float)Math.Sin(Math.PI * t));
+            if (alpha <= 0) return;
+            Point[] points = new Point[4]
+            {
+                new Point(center - band / 2 + slant, bounds.Top),
+                new Point(center + band / 2 + slant, bounds.Top),
+                new Point(center + band / 2 - slant, bounds.Bottom),
+                new Point(center - band / 2 - slant, bounds.Bottom)
+            };
+            Rectangle rect = new Rectangle(center - band / 2 - slant, bounds.Top, band + slant * 2, Math.Max(1, bounds.Height));
+            using (LinearGradientBrush brush = new LinearGradientBrush(DsPaint.GradientRect(rect), Color.Transparent, Color.Transparent, LinearGradientMode.Horizontal))
+            {
+                ColorBlend blend = new ColorBlend(3);
+                blend.Colors = new Color[3] { Col.Alpha(AccentColor, 0), Col.Alpha(Col.Lerp(AccentColor, Color.White, 0.5f), alpha), Col.Alpha(AccentColor, 0) };
+                blend.Positions = new float[3] { 0f, 0.5f, 1f };
+                brush.InterpolationColors = blend;
+                g.FillPolygon(brush, points);
+            }
+        }
+
+        private float SweepGlow { get { return sweeping ? (float)Math.Sin(Math.PI * sweepPhase) : 0f; } }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            sweeping = false;
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && attentionTimer != null)
+            {
+                attentionTimer.Dispose();
+                attentionTimer = null;
+            }
+            base.Dispose(disposing);
+        }
+
         public RogLinkButton(string text, string code, string glyph)
         {
             Text = text;
@@ -103,7 +215,9 @@ namespace PaviseApp
                 {
                     graphics.FillPath(brush, graphicsPath);
                 }
-                using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, AccentColor, 0.16f + hoverIfEnabled * 0.58f), DsSpace.Line(1)))
+                // 扫光经过时外框跟着亮起，和悬停时的强调色一致。
+                float edgeHot = Math.Max(hoverIfEnabled, SweepGlow * 0.85f);
+                using (Pen pen = new Pen(Col.Lerp(Theme.Stroke, AccentColor, 0.16f + edgeHot * 0.58f), DsSpace.Line(1)))
                 {
                     graphics.DrawPath(pen, graphicsPath);
                 }
@@ -122,16 +236,19 @@ namespace PaviseApp
                 {
                     graphics.FillPolygon(brush2, points);
                 }
+                PaintSweep(graphics, rectangle);
                 graphics.Restore(gstate);
                 PaintBusy(graphics, rectangle, graphicsPath);
             }
             int scaledDimension2 = Theme.S(26);
             Rectangle r = new Rectangle(Theme.S(9), (base.Height - scaledDimension2) / 2, scaledDimension2, scaledDimension2);
-            DsPaint.TechFrame(graphics, r, Theme.S(5), Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hoverIfEnabled * 0.24f), Col.Alpha(AccentColor, (int)(78f + hoverIfEnabled * 106f)));
+            float frameHot = Math.Min(1f, hoverIfEnabled + SweepGlow * 0.6f);
+            DsPaint.TechFrame(graphics, r, Theme.S(5), Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + frameHot * 0.24f), Col.Alpha(AccentColor, (int)(78f + frameHot * 106f)));
             Glyphs.Draw(graphics, glyph, new Rectangle(r.Left + Theme.S(6), r.Top + Theme.S(6), Theme.S(14), Theme.S(14)), AccentColor);
             if (base.Width >= Theme.S(79))
             {
-                PaintCaption(graphics, compact, hoverIfEnabled, down);
+                // 扫光时底部强调线随之伸长，文字亮度只跟悬停走。
+                PaintCaption(graphics, compact, hoverIfEnabled, down, Math.Max(hoverIfEnabled, SweepGlow));
             }
             if (dot)
             {
@@ -150,7 +267,7 @@ namespace PaviseApp
             }
         }
 
-        private void PaintCaption(Graphics g, bool compact, float hot, float down)
+        private void PaintCaption(Graphics g, bool compact, float hot, float down, float lineHot)
         {
             int left = Theme.S(43);
             int scaledDimension = Theme.S(36);
@@ -169,8 +286,8 @@ namespace PaviseApp
                 DrawForwardMark(g, hot, down);
             }
             int top = base.Height - Theme.S(4);
-            int sOffset = Theme.S(30) + (int)(hot * (float)Theme.S(44));
-            using (Pen pen = new Pen(Col.Alpha(AccentColor, (int)(92f + hot * 120f)), DsSpace.Line(1)))
+            int sOffset = Theme.S(30) + (int)(lineHot * (float)Theme.S(44));
+            using (Pen pen = new Pen(Col.Alpha(AccentColor, (int)(92f + lineHot * 120f)), DsSpace.Line(1)))
             {
                 g.DrawLine(pen, left, top, left + sOffset, top);
             }

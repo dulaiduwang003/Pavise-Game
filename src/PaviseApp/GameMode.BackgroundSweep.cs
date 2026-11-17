@@ -16,6 +16,22 @@ namespace PaviseApp
             using (SuccessLogBatch.Begin("background-sweep session=" + AutomationSession))
                 SweepWithStableWhitelistCore(all, gamePids);
         }
+        // 深度调优里的“反作弊压制”按当前保存的游戏设置逐轮读取，开关一改下一轮扫描就按新值治理或放手；
+        // 没有对应游戏时用本局或全局设置，默认开启。
+        private bool AceGovernanceForSweep(PolicySnapshot policy)
+        {
+            GameProfile current = null;
+            lock (sync)
+            {
+                if (activeDetection != null && activeDetection.Profile != null)
+                {
+                    GameProfile stored = FindProfileLocked(activeDetection.Profile.Id);
+                    if (stored != null) current = stored.Clone();
+                }
+            }
+            if (current != null) return PolicyResolver.For(current).AceGovernanceOn;
+            return (policy ?? PolicyResolver.Global()).AceGovernanceOn;
+        }
         private void SweepWithStableWhitelistCore(ProcessSnapshot all, HashSet<int> gamePids)
         {
             if (!ServiceWhitelistForwardAllowed()) return;
@@ -25,6 +41,9 @@ namespace PaviseApp
             bool preserveOnForeground = preset == PerformancePreset.Competitive;
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool wideScope = WideBackgroundScope(policy ?? PolicyResolver.Global());
+            // 保护判断要先知道本轮是否治理 ACE，所以开关在算白名单之前写入。
+            bool governAce = AceGovernanceForSweep(policy);
+            AntiCheatCatalog.AceGovernanceActive = governAce;
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
             Dictionary<int, WindowsBackgroundTarget> windowsTargets = SelectWindowsBackground(all, gamePids, whitelist);
             int epoch = FamilyPolicyEpoch;
@@ -155,16 +174,17 @@ namespace PaviseApp
                         continue;
                     }
                     bool sameSession = processInfo != null && selfSession >= 0 && processInfo.Session == selfSession;
-                    // 已核实的微软后台对象按普通后台处理：系统预设名单、会话和 Windows 目录门槛不豁免它们，
-                    // 用户手工规则在核实阶段排除，游戏家族、运行期保护和服务白名单照常生效。
+                    // verifiedBackground 是身份已经核实、按普通后台处理的两类对象：微软后台，以及本局开着“反作弊压制”时的 ACE。
+                    // 它们不受系统预设名单、会话和 Windows 目录门槛豁免；用户手工规则在核实阶段排除，
+                    // 游戏家族、运行期保护和服务白名单照常生效。
                     WindowsBackgroundTarget windowsTarget;
-                    bool windowsBuiltIn = windowsTargets.TryGetValue(pid, out windowsTarget) && windowsTarget.Process.Creation == procEntry.Creation;
-                    // ACE 同样并入普通后台：核实 Program Files\AntiCheatExpert 下的身份后，跳过会话与反作弊保护门槛。
-                    // 与微软后台同一规则：系统预设名单不豁免，用户手工加入白名单的 ACE 照常豁免，交回下面的普通白名单判断。
-                    if (!windowsBuiltIn && AntiCheatCatalog.IsGovernedAceName(nm))
+                    bool verifiedBackground = windowsTargets.TryGetValue(pid, out windowsTarget) && windowsTarget.Process.Creation == procEntry.Creation;
+                    // ACE 要核实 Program Files\AntiCheatExpert 下的身份；用户手工加入白名单的 ACE 照常豁免。
+                    // 开关关着时 ACE 已在上面的运行期保护里放过，这里不会走到。
+                    if (!verifiedBackground && governAce && AntiCheatCatalog.IsGovernedAceName(nm))
                     {
                         string acePath = (processInfo != null ? processInfo.Path : null) ?? ReadWindowsBackgroundPath(procEntry);
-                        windowsBuiltIn = AntiCheatCatalog.IsGovernedAce(nm, acePath) && !ExplicitWindowsBackgroundProtection(procEntry, acePath);
+                        verifiedBackground = AntiCheatCatalog.IsGovernedAce(nm, acePath) && !ExplicitWindowsBackgroundProtection(procEntry, acePath);
                     }
                     // WeGame 主进程是英雄联盟的祖先且常有可见窗口，但每局游戏由 LeagueClient 创建；
                     // 按用户要求不再按游戏祖先（创建者、渲染祖先、游戏库家族）或可见窗口家族豁免，只有它本身在前台时不压。
@@ -176,7 +196,7 @@ namespace PaviseApp
                     }
                     string servicePath = (sameSession ? null : ServiceImagePath(procEntry, preset));
                     bool eligibleService = !sameSession && BackgroundServicePolicy.Eligible(preset, procEntry, servicePath, services, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-                    if (!windowsBuiltIn && !sameSession && !eligibleService)
+                    if (!verifiedBackground && !sameSession && !eligibleService)
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -209,7 +229,7 @@ namespace PaviseApp
                         continue;
                     }
                     bool platformRemoved = whitelist.PlatformProcesses.TryGetValue(pid, out platformOwner) && !PlatformRuntimePolicy.Enabled(platformOwner.Platform);
-                    bool whitelisted = !windowsBuiltIn && (whitelist.Protected.Contains(pid) || (eligibleService && ServiceWhitelisted(nm, servicePath)));
+                    bool whitelisted = !verifiedBackground && (whitelist.Protected.Contains(pid) || (eligibleService && ServiceWhitelisted(nm, servicePath)));
                     if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, whitelisted, libraryFamily.Contains(pid) && !governedLauncher, protectGameFamily, gamePids, gameDescendants, platformRemoved))
                     {
                         if (core.Release(pid, SuppressReason.Background))
@@ -239,7 +259,7 @@ namespace PaviseApp
                         }
                     }
                     // 系统服务进程常读不到进程样本；已核实的微软对象改用同一快照里的创建时间核对身份，不按 0 放行。
-                    if (windowsBuiltIn && creation <= 0) creation = procEntry.Creation;
+                    if (verifiedBackground && creation <= 0) creation = procEntry.Creation;
                     if (TryProtectAmdNoiseSuppression(pid, creation, nm, imagePath))
                     {
                         continue;
@@ -266,13 +286,13 @@ namespace PaviseApp
                     {
                         libraryRoot = activeGameRoot;
                     }
-                    if (windowsBuiltIn ? (!preserveOnForeground && pid == foregroundPid)
+                    if (verifiedBackground ? (!preserveOnForeground && pid == foregroundPid)
                         : !FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, imagePath, (sameSession || eligibleService) ? selfSession : (-1), selfSession, foregroundPid, userFacingFamily.Contains(pid) && !governedLauncher, windowsPrefix, protectRendererAncestors && rendererAncestors.Contains(pid) && !governedLauncher, libraryRoot, wideScope, protectGameFamily, creation, platformRemoved, preserveOnForeground))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-                    if (!windowsBuiltIn && SelfProtectedRoster.Contains(nm))
+                    if (!verifiedBackground && SelfProtectedRoster.Contains(nm))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         selfProtectedCount++;

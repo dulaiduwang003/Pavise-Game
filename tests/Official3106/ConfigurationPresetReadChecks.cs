@@ -129,7 +129,9 @@ namespace PaviseApp
                     if (ruleKind == 2) profile.Overrides[CriticalThreadRule.Key] = CriticalThreadRule.UnifiedStrategy(SchedulingStrategy.RenderCore, overridden == 1).Encode();
                     PolicySnapshot policy = PolicyResolver.For(profile);
                     Check(policy.BoostGame == (overridden < 0 ? globalBoost != 0 : overridden == 1), "resource priority fallback fixture is incorrect");
-                    Check(policy.GameSchedulingOn == (overridden == 1 && globalScheduling != 0 && ruleKind != 1), "game scheduling opt-in fixture is incorrect");
+                    // 没有逐游戏开关值的游戏，方案按游戏优先运行时默认开启（未保存方案即游戏优先）；保存了其他方案的仍需显式开启。
+                    Check(policy.GameSchedulingOn == (globalScheduling != 0 && ruleKind != 1 && (overridden == 1 || overridden < 0 && ruleKind == 0)),
+                        "game scheduling default-on fixture is incorrect");
                     Check(policy.AutoCoresAllowed == (overridden == 1) && profile.SuppressFamilyBackground == (overridden == 1)
                         && policy.NvRebar == (overridden == 1) && profile.DisableFullscreenOptimizations == (overridden == 1), "game-card fixture is incorrect");
                     profiles.Add(profile);

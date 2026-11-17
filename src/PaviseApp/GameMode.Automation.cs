@@ -47,8 +47,8 @@ namespace PaviseApp
                 }
             }
             killGameDvr = Settings.LoadCached("GameDvrOff", true);
-            // 多媒体调度是用户开关，默认关闭；开启后只在保护开启期间写入，关闭保护或关闭开关即恢复。
-            mmcssOn = Settings.LoadCached("GmMmcss", false);
+            // 多媒体调度是用户开关，默认开启；只在保护开启期间写入，关闭保护或关闭开关即恢复。
+            mmcssOn = Settings.LoadCached("GmMmcss", true);
             SuppressionCore.GpuDemoteEnabled = bgSuppressOn;
         }
         internal void RefreshAutomaticPreferences()
