@@ -35,7 +35,7 @@ namespace PaviseApp
         internal static bool WantsBackgroundBoostLimit(bool masterEnabled, int mode)
         { return masterEnabled && mode == Aggressive; }
 
-        // 激进档另把普通后台收到分区给后台的那组核心上，把游戏常用的核心让出来；正常档不收核，和 2.2.2.3 一样。
+        // 激进档另把普通后台收到分区给后台的那组核心上，把游戏常用的核心让出来；正常档不收核。
         // 有可靠分区时直接用它：大小核是能效核，X3D 是不带 3D 缓存的那组，双 CCD 是另一个 CCD，其余八核以上机型是 0 号核加末尾核。
         // 没有分区时退回末尾 1～2 个物理核；算不出来、多处理器组或结果覆盖全部核心时不收核。
         internal static ulong AggressiveCoreTarget(bool masterEnabled, int mode, bool multiGroup, bool safePartition, ulong partitionBackground, ulong tailSqueeze, ulong allMask)

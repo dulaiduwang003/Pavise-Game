@@ -213,7 +213,7 @@ namespace PaviseApp
         {
             return PerformancePolicy.Text(zh, en);
         }
-        // 3.3.0.8 的线程提优现在只由游戏优先启动，旧的全局线程提优开关和资源开关都不再决定它是否运行。
+        // 线程协同提优只由游戏优先启动，全局线程提优开关和资源开关都不决定它是否运行。
         private static string CriticalThreadCompanionText(GameProfile profile, out bool coupled)
         {
             coupled = false;

@@ -150,8 +150,8 @@ namespace PaviseApp
                 }
                 if (source.Rule.UsesClassicThreadBoost)
                 {
-                    // 游戏优先的线程由 3.3.0.8 线程协同在提优通道里负责，这里不发现角色、不采样、不写线程；
-                    // 此前若有统一线程控制，先按归属撤回。状态只转述线程协同自己的阶段。
+                    // 游戏优先的线程由线程协同在提优通道里负责，这里不发现角色、不采样、不写线程；
+                    // 若已有统一线程控制，先按归属撤回。状态只转述线程协同自己的阶段。
                     if (unifiedThreadControl != null) unifiedThreadControl.RequestStop();
                     if (!WithdrawCriticalThreadsLocked("游戏优先改由线程协同提优"))
                     {
@@ -769,7 +769,7 @@ namespace PaviseApp
                 + unifiedClearCoreNote + note;
         }
 
-        // 游戏优先的状态取自 3.3.0.8 线程协同本身：写入并读回后才报已生效；识别中、等待重试、
+        // 游戏优先的状态取自线程协同本身：写入并读回后才报已生效；识别中、等待重试、
         // 额度用尽或已让还给游戏分别如实显示。备用提优生效时以它为准。
         private void PublishClassicThreadState(CriticalRuntimeSource source)
         {

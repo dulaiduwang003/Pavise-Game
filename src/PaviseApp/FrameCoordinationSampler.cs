@@ -713,8 +713,8 @@ namespace PaviseApp
                 evidence2.Begin = Stopwatch.GetTimestamp();
                 evidence2.Half = evidence2.Begin + Stopwatch.Frequency * 8 / 5;
                 evidence2.End = evidence2.Begin + Stopwatch.Frequency * 16 / 5;
-                // 关系摘要只供统一调度的布局观察使用；游戏优先的线程协同采样与 3.3.0.8 一样只认呈现与配合线程，
-                // 不在对局里额外建关系图，也不会因建图的资源上限弃掉本可用的样本。
+                // 关系摘要只供统一调度的布局观察使用；线程协同只认呈现与配合线程，不建关系图，
+                // 也就不会因建图的资源上限弃掉可用样本。
                 if (layoutObservation && !presenterOnly && !presentIdentityOnly)
                     evidence2.Relation = new ThreadRelationCollector(frameCoordinationSample2.Threads, evidence2.Begin,
                         evidence2.Half, evidence2.End, Stopwatch.Frequency);

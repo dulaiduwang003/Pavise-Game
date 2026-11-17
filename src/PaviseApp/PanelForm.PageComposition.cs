@@ -856,7 +856,7 @@ namespace PaviseApp
             // 这一页是后台治理、电源、计时器、图形与系统项的开关，不只是性能项；与游戏库里逐游戏的“深度调优”对应。
             cloneResult[2] = PerformancePolicy.Text("调优", "Tuning");
             cloneResult[10] = Lang.T("nav.white");
-            // 反作弊专项已并入游戏库深度调优（仅 ACE），保护名单在白名单页，底部导航不再显示反作弊页。
+            // 反作弊在游戏库深度调优里逐游戏设置（仅 ACE），保护名单在白名单页，底部导航不放反作弊页。
             nav = new NavRail(cloneResult, icons, new int[6] { 0, 1, 10, 2, 6, 8 }, null, null, 0);
             nav.Name = "MainNavigation";
             nav.ShowBranding = false;

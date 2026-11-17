@@ -187,7 +187,7 @@ namespace PaviseApp
                         verifiedBackground = AntiCheatCatalog.IsGovernedAce(nm, acePath) && !ExplicitWindowsBackgroundProtection(procEntry, acePath);
                     }
                     // WeGame 主进程是英雄联盟的祖先且常有可见窗口，但每局游戏由 LeagueClient 创建；
-                    // 按用户要求不再按游戏祖先（创建者、渲染祖先、游戏库家族）或可见窗口家族豁免，只有它本身在前台时不压。
+                    // 因此不按游戏祖先（创建者、渲染祖先、游戏库家族）或可见窗口家族豁免，只有它本身在前台时不压。
                     bool governedLauncher = GovernedGameLauncher(nm, (processInfo != null ? processInfo.Path : null) ?? procEntry.Path);
                     if (TryProtectHardwareControlBackground(pid, procEntry.Creation, nm)) continue;
                     if (processInfo == null)

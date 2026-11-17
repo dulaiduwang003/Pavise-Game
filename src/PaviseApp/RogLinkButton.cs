@@ -41,7 +41,7 @@ namespace PaviseApp
             }
         }
 
-        // 吸引注意：每隔几秒让一道扫光掠过按钮，图标框跟着亮一下。只在窗口处于前台、按钮可见可用时扫，
+        // 每隔几秒扫光一次，图标框随之高亮。只在窗口前台、按钮可见可用时扫，
         // 两次扫光之间不占用界面帧时钟，失焦、隐藏、忙碌或测试冻结时不动。
         private Timer attentionTimer;
         private bool sweeping;
@@ -107,7 +107,6 @@ namespace PaviseApp
             return true;
         }
 
-        // 斜向扫光，两端淡出；扫到中段时最亮。
         private void PaintSweep(Graphics g, Rectangle bounds)
         {
             if (!sweeping) return;

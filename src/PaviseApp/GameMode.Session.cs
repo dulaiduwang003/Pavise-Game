@@ -12,7 +12,7 @@ namespace PaviseApp
     {
         private void ApplyGameProcessActions(ProcessSnapshot all)
         {
-            // 游戏优先一项全包，不看单独的资源开关：进程类别、磁盘与显卡优先级和线程协同都在完整提优通道里。
+            // 游戏优先不看单独的资源开关：进程类别、磁盘与显卡优先级和线程协同都走完整提优通道。
             if (EffBoost || ClassicThreadBoostWanted())
             {
                 corePlacementOnly = false;

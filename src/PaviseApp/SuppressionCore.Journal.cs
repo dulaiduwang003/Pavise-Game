@@ -67,7 +67,7 @@ namespace PaviseApp
 
         private long journalFailureLogAt;
 
-        // 旧版反作弊压制留下的日志行不再恢复，读取时直接丢弃。
+        // 旧版反作弊压制留下的日志行不恢复，读取时丢弃。
         private static bool RetiredAntiCheatLine(string line)
         {
             return line.Contains("|ac-resources|") || line.Contains("|ac-placement|");

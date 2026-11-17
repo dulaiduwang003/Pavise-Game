@@ -6,7 +6,7 @@ namespace PaviseApp
 {
     internal sealed class ConfigurationPresetStrip : Control
     {
-        // 和顶栏“访问官网”同一种按钮样式，并开启扫光提示，让入口更醒目。
+        // 与顶栏“访问官网”同款按钮样式，带扫光提示。
         internal readonly RogLinkButton GuideButton;
         private readonly ToolTip tips = new ToolTip();
         internal event Action GuideRequested;

@@ -213,9 +213,8 @@ namespace PaviseApp
             }
             return true;
         }
-        // 对局中给游戏锁定高性能 QoS，沿用 2.2.2.3 的做法：不让系统节流它的执行速度，Win11 上还要求系统照常接受它的计时器精度请求，
-        // 免得游戏没焦点或被遮挡时被降到能效核、限帧计时变粗。读到的原状态记进回执，关闭调度、换游戏或退局时按回执恢复。
-        // 这一项不属于资源优先级的开关，不走它们的入口，那里不认识这个名字会抛异常。
+        // 对局中锁定游戏的高性能 QoS：关闭执行速度节流，Win11 上保留它的计时器精度请求，避免失焦或被遮挡时降到能效核、限帧计时变粗。
+        // 原状态记入回执，关闭调度、换游戏或退局时按回执恢复。不属于资源优先级开关，不能走它们的入口，那里不认识这个名字会抛异常。
         private bool SyncGameQos(IntPtr h, int pid, BoostPass pass)
         {
             if (!Native.PowerThrottlingSupported)
@@ -409,7 +408,7 @@ namespace PaviseApp
             }
         }
 
-        // 游戏优先原样沿用 3.3.0.8 的接线：渲染进程确认后立即采样，呈现线程设为 TIME_CRITICAL、配合线程 +1，
+        // 游戏优先：渲染进程确认后立即采样，呈现线程设为 TIME_CRITICAL、配合线程 +1，
         // 不固定核心，也不等前台；识别额度用尽后才改由备用提优选最忙线程，两者互斥。
         // 其他方案下这两条写入器只归还自己的旧记录，统一角色观察走独立的只读入口。
         private void SyncFrameCoordination(BoostPass pass)
@@ -743,9 +742,8 @@ namespace PaviseApp
         private void PrepareResourcePriorities(BoostPass pass, PolicySnapshot policy)
         {
             policy = policy ?? PolicyResolver.Global();
-            // 进程 CPU 类由除专核强化外的方案接管并提为高；专核强化、关闭调度或换成它时不写，
-            // 已有的本方收据在本轮按原归属恢复。游戏优先与 3.3.0.8 的“性能优先级”一样一项全包，
-            // 磁盘与显卡优先级不再看单独的资源开关；其他方案仍按资源开关决定（默认开）。
+            // 进程 CPU 类由除专核强化外的方案提为高；专核强化或关闭调度时不写，已有的本方收据在本轮按原归属恢复。
+            // 游戏优先的磁盘与显卡优先级不看资源开关，其他方案按资源开关决定（默认开）。
             pass.CpuBoost = false;
             pass.ClassicThreadBoost = false;
             bool schedulingOn = policy.GameSchedulingOn;

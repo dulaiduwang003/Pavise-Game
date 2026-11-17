@@ -896,7 +896,6 @@ namespace PaviseApp
             settingsWorkspaceTile2.BottomSeparator = true;
             settingsWorkspaceTile3.BottomSeparator = true;
             settingsWorkspaceTile4.BottomSeparator = true;
-            // AI 调优提示词放在常规设置最后一行。
             aiTuning.SetBounds(0, top, width, aiTuning.MeasureHeight(width));
             top = aiTuning.Bottom;
             settingsWorkspaceTile5.BottomSeparator = true;

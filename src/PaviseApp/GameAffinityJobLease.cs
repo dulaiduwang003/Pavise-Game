@@ -25,7 +25,7 @@ namespace PaviseApp
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(ThreadRecoveryRoot ?? "")) });
         }
 
-        // 旧版反作弊和微软后台治理的回执（第 10、11 列）不再恢复，读取时直接丢弃，不能阻塞游戏核心范围的回执。
+        // 旧版反作弊和微软后台治理的回执（第 10、11 列）不恢复，读取时丢弃，不能阻塞游戏核心范围的回执。
         internal static bool RetiredFormat(string line)
         {
             return line != null && line.Split('|').Length >= 10;

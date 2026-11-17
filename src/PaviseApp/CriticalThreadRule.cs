@@ -8,7 +8,7 @@ namespace PaviseApp
 
     // 只保存逐游戏策略，线程身份由运行时确认。
     // 新值只能追加在末尾；持久化使用策略文本，不使用枚举数值。
-    // RetiredGentle 是已删除的“温和提优”：档案加载要求原文能解析回自身，所以只保留编码，运行时按关闭处理，界面不再提供。
+    // RetiredGentle 对应退役的“温和提优”：档案加载要求原文能解析回自身，只保留编码，运行时按关闭处理。
     internal enum SchedulingStrategy { Orchestration, RenderBoost, RenderCore, DependencyBoost, RenderCoreTimeCritical, GamePriority, RetiredGentle }
 
     internal sealed class CriticalThreadRule
@@ -37,10 +37,10 @@ namespace PaviseApp
 
         internal readonly SchedulingStrategy Strategy;
 
-        // ParseForRuntime 已将旧手动规则转换为自动选核策略；已删除方案的旧编码不算正式策略。
+        // ParseForRuntime 已将旧手动规则转换为自动选核策略；退役方案的旧编码不算正式策略。
         private bool FormalStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy != SchedulingStrategy.RetiredGentle; } }
 
-        // 已删除方案的旧编码，只供档案读取和界面提示，运行副本一律关闭。
+        // 退役方案的旧编码只供档案读取和界面提示，运行副本一律关闭。
         internal bool IsRetiredStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy == SchedulingStrategy.RetiredGentle; } }
 
         internal bool IsOrchestration { get { return FormalStrategy && Strategy == SchedulingStrategy.Orchestration; } }
@@ -49,17 +49,15 @@ namespace PaviseApp
 
         internal bool IsTimeCriticalRender { get { return FormalStrategy && Strategy == SchedulingStrategy.RenderCoreTimeCritical; } }
 
-        // 游戏优先：完整沿用 3.3.0.8 的组合。进程类别、磁盘与显卡优先级由资源通道写入、核验和恢复；
-        // 线程由原线程协同提优（呈现线程 TIME_CRITICAL、配合线程 +1，识别用尽后按最忙线程备用提优），
-        // 不固定核心、不清核，也不进入统一线程调度。
+        // 游戏优先：进程类别、磁盘与显卡优先级由资源通道写入、核验和恢复；线程交给线程协同
+        // （呈现线程 TIME_CRITICAL、配合线程 +1，识别用尽后按最忙线程备用提优），不固定核心、不清核，不进入统一线程调度。
         internal bool IsGamePriority { get { return FormalStrategy && Strategy == SchedulingStrategy.GamePriority; } }
 
-        // 按用户决定，除专核强化外的方案都和游戏优先一样把游戏进程设为高。线程目标是相对值，进程到高之后
-        // 渲染线程 +2 即为 15、提优成员 +1 即为 14，和游戏优先同级；渲染专核由此相当于游戏优先再固定渲染核。
-        // 专核强化保持原进程等级，在自己的放置核验下写 15，高等级下它本来就不准入。
+        // 除专核强化外的方案都把游戏进程设为高。线程目标是相对值，进程为高时渲染线程 +2 即 15、提优成员 +1 即 14。
+        // 专核强化保持原进程等级：它在自己的放置核验下写 15，进程为高时不准入。
         internal bool RaisesGameProcess { get { return FormalStrategy && !IsTimeCriticalRender; } }
 
-        // 线程层交给 3.3.0.8 的线程协同，统一调度只撤回自己的旧控制，不发现角色、不写线程。
+        // 线程层交给线程协同，统一调度只撤回自己的旧控制，不发现角色、不写线程。
         internal bool UsesClassicThreadBoost { get { return IsGamePriority; } }
 
         internal bool UsesWorkloadDiscovery { get { return IsOrchestration || IsDependencyBoost; } }
@@ -148,8 +146,7 @@ namespace PaviseApp
             return new CriticalThreadRule(false, CriticalThreadLayout.Unified);
         }
 
-        // 界面标为推荐的方案，同时是未选过方案时的缺省：游戏优先（3.3.0.8 的组合：进程高优先级、磁盘与显卡提优、
-        // 线程协同提优，不固定核心、不清核）。推荐标签和缺省共用这一个值，避免两处分叉。
+        // 推荐方案，也是未选过方案时的缺省；推荐标签和缺省共用此值。
         internal const SchedulingStrategy RecommendedStrategy = SchedulingStrategy.GamePriority;
 
         // 已保存的策略原样读取，不因缺省变化改写。
@@ -163,7 +160,7 @@ namespace PaviseApp
         {
             if (!Enum.IsDefined(typeof(SchedulingStrategy), strategy)) throw new ArgumentException("Unknown scheduling strategy");
             Strategy = strategy;
-            // 依赖协同和已删除的温和提优从不带清核。游戏优先旧存档里的“|x”只为原文能读回而保留，运行时不清核。
+            // 依赖协同和退役的温和提优不带清核；游戏优先旧存档里的“|x”只为原文能读回而保留，运行时不清核。
             WorkerAvoidance = clearCore && strategy != SchedulingStrategy.DependencyBoost && strategy != SchedulingStrategy.RetiredGentle;
         }
 
@@ -275,7 +272,7 @@ namespace PaviseApp
             CriticalThreadRule rule = Parse(text);
             // 运行只接收统一规则；旧格式解析仅供原有恢复收据核验使用。
             if (rule == null || !rule.IsUnified || !rule.Automatic && !rule.IsOff) return null;
-            // 退役对照和已删除的温和提优仅保留读取兼容，运行副本关闭，不按缺省方案重新启用。
+            // 退役的对照和温和提优只保留读取兼容，运行副本关闭，不按缺省方案重新启用。
             if (rule.IsComparison || rule.IsRetiredStrategy) return UnifiedOff();
             // 游戏优先不清核；旧存档的“7|game|x”按“7|game”运行。
             if (rule.IsGamePriority && rule.WorkerAvoidance) return UnifiedStrategy(SchedulingStrategy.GamePriority, false);

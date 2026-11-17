@@ -22,7 +22,7 @@ namespace PaviseApp
         [DllImport("kernel32.dll")] private static extern uint GetThreadId(IntPtr thread);
         private const int NoMoreEntries = unchecked((int)0x8000001A);
 
-        // 只遍历目标进程自己的线程，成本与该进程线程数成正比，不再为一个进程解析全系统数千条线程。
+        // 只遍历目标进程自己的线程，成本与该进程线程数成正比，不必为一个进程解析全系统数千条线程。
         // 已结束但对象仍被引用的线程不计入，与系统进程信息查询的口径一致。
         // 调用方须在检查期间持有目标进程句柄，进程编号不会被复用。打不开（受保护进程）或遍历失败时返回 false，
         // 调用方回退到系统查询；超过 limit 时多返回一条，由调用方按原有上限拒绝。

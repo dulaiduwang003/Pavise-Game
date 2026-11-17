@@ -4,8 +4,8 @@ using System.IO;
 
 namespace PaviseApp
 {
-    // 语音通话软件在对局中常开着开黑或通话，压到最低优先级容易卡语音，按进程名内置保护，不靠出声检测。
-    // 只认进程名与本机绝对路径映像文件名一致的进程，不扩大到同目录的其他程序；需要压制时用户可以不开这些软件。
+    // 语音软件对局中常开着，压到最低优先级容易卡语音，按进程名内置保护，不靠出声检测。
+    // 只认进程名与本机绝对路径映像文件名一致的进程，不扩大到同目录的其他程序。
     internal static class VoiceChatCatalog
     {
         private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -15,7 +15,7 @@ namespace PaviseApp
             "Discord", "DiscordPTB", "DiscordCanary"
         };
 
-        // 按用户决定，QQ 和微信不内置保护，按普通后台治理；需要时由用户自己加白。
+        // QQ 和微信不内置保护，按普通后台治理，需要时手动加白。
         private static readonly string[] Products = new string[]
         {
             "KOOK（开黑啦）", "YY 语音", "TeamSpeak", "Mumble", "Discord"

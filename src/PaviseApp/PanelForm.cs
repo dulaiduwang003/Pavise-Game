@@ -519,7 +519,7 @@ namespace PaviseApp
 
             public bool Automatic;
 
-            // 进程访问受限历史：原在反作弊页，随反作弊页下线移到白名单，点开可查看与清空。
+            // 进程访问受限历史，点开可查看与清空。
             public bool AccessHistory;
 
             public WhitelistItem(WhitelistRuleView view)

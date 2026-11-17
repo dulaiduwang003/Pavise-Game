@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 每个游戏单独保存策略；依赖协同不使用清核。游戏优先沿用 3.3.0.8，一项全包，不提供清核与资源子开关。
+    // 每个游戏单独保存策略；依赖协同不使用清核，游戏优先不提供清核与资源子开关。
     internal sealed class RenderAffinityDialog : Form
     {
         private static readonly SchedulingStrategy[] ModeStrategies =
@@ -84,7 +84,6 @@ namespace PaviseApp
             if (initial != null) initial = CriticalThreadRule.ParseForRuntime(initial.Encode());
             // 缺省选择跟随运行规则，不依赖列表顺序；已有正式方案仍按原策略预览。
             int defaultMode = Math.Max(0, Array.IndexOf(ModeStrategies, CriticalThreadRule.UnifiedDefault().Strategy));
-            // 未保存、已关闭或只剩已删除方案的旧编码时，预选缺省（推荐）方案，不靠列表顺序碰巧落到首项。
             mode = retiredComparison || retiredStrategy || initial == null || initial.IsOff ? defaultMode : Math.Max(0, Array.IndexOf(ModeStrategies, initial.Strategy));
 
             title = LabelOf(Text, Theme.UI(17f, true), Theme.Fg);

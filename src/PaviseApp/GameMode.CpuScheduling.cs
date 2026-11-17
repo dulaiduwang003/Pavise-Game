@@ -55,7 +55,7 @@ namespace PaviseApp
             if (corePlan.Available)
             {
                 // 范围未启用时这一行只是配置记录：游戏进程不受限制，已保存的范围仅供反作弊等后台选核时避让；
-                // 已保存为全部核心时没有可避让的余核，不再写“供避让参考”。
+                // 已保存为全部核心时没有可避让的余核，不写“供避让参考”。
                 string planKey = !coreObservationOnly ? "schedule.manual.plan"
                     : coreManual.IsUnrestricted(allMask) ? "schedule.manual.plan.unused" : "schedule.manual.plan.reference";
                 Logger.Log(string.Format(Lang.T(planKey, 0), CpuTopology.DescribeMask(coreManual.GameMask)));

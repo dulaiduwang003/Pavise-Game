@@ -62,7 +62,7 @@ namespace PaviseApp
             return canRenderOnAmd;
         }
 
-        // 1.x/2.x 写入的逐显卡旧项（Anti-Lag、Chill、Enhanced Sync、RIS、FRTC、最低频率）不再恢复，读取快照时直接丢弃。
+        // 1.x/2.x 写入的逐显卡旧项（Anti-Lag、Chill、Enhanced Sync、RIS、FRTC、最低频率）不恢复，读取快照时丢弃。
         private static readonly string[] RetiredSnapSuffixes = { ".alag", ".esync", ".chill", ".ris", ".frtc", ".gfxmin" };
 
         private static bool IsRetiredSnapKey(string key)

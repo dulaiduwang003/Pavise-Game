@@ -86,7 +86,7 @@ namespace PaviseApp
 
             public uint PriorityTarget = Native.HIGH_PRIORITY_CLASS;
 
-            // 本局规则为游戏优先：线程交给 3.3.0.8 的线程协同（呈现线程 TIME_CRITICAL、配合线程 +1、识别用尽后备用提优）。
+            // 本局规则为游戏优先：线程交给线程协同（呈现线程 TIME_CRITICAL、配合线程 +1、识别用尽后备用提优）。
             public bool ClassicThreadBoost;
 
             public long IdentityGeneration;

@@ -445,7 +445,7 @@ namespace PaviseApp
             string value;
             if (!values.TryGetValue(key, out value))
             {
-                // 没有显式开关值的游戏，要运行的方案是游戏优先时默认开启，和 3.3.0.8 默认提优一致；
+                // 没有显式开关值的游戏，要运行的方案是游戏优先时默认开启；
                 // 保存过渲染专核、清核等其他方案但从没打开过开关的游戏仍按关闭处理，免得默认值一改就突然绑核。
                 // 全局值只保留为总开关，由 GameSchedulingOn 另行核对。
                 if (gameScoped && key == PolicyCatalog.KeyGameScheduling) return gameSchedulingImplicitOn ? "1" : "0";
