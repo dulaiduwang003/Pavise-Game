@@ -31,7 +31,7 @@ namespace PaviseApp
             {
                 return result;
             }
-            if ((reasons & (SuppressReason.AntiCheat | SuppressReason.Background)) == 0)
+            if ((reasons & SuppressReason.Background) == 0)
             {
                 return result;
             }

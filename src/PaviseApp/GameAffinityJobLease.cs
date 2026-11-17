@@ -13,24 +13,22 @@ namespace PaviseApp
     {
         internal const int RecoveryOrderingObservationLimit = 120;
         internal string Name, Phase, ThreadRecoveryRoot;
-        internal bool OwnThreadAffinity;
-        internal bool StrictThreadAdmission;
         internal int Pid, OwnerPid;
         internal long Birth, OwnerBirth;
         internal ulong Original, Desired;
-        internal WindowsBackgroundLimits Resources;
 
         internal string Encode()
         {
-            if (OwnThreadAffinity && (Resources != null || !string.IsNullOrEmpty(ThreadRecoveryRoot)))
-                throw new InvalidOperationException("sguard-thread-owner-scope-conflict");
-            string row = string.Join("|", new[] { Name, Pid.ToString(CultureInfo.InvariantCulture), Birth.ToString(CultureInfo.InvariantCulture),
+            return string.Join("|", new[] { Name, Pid.ToString(CultureInfo.InvariantCulture), Birth.ToString(CultureInfo.InvariantCulture),
                 Original.ToString(CultureInfo.InvariantCulture), Desired.ToString(CultureInfo.InvariantCulture), Phase,
                 OwnerPid.ToString(CultureInfo.InvariantCulture), OwnerBirth.ToString(CultureInfo.InvariantCulture),
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(ThreadRecoveryRoot ?? "")) });
-            if (StrictThreadAdmission && !OwnThreadAffinity) throw new InvalidOperationException("thread-admission-owner-missing");
-            if (OwnThreadAffinity) return row + (StrictThreadAdmission ? "||AntiCheatThreads1" : "||SGuardThreads1");
-            return Resources == null ? row : row + "|" + Resources.Encode();
+        }
+
+        // 旧版反作弊和微软后台治理的回执（第 10、11 列）不再恢复，读取时直接丢弃，不能阻塞游戏核心范围的回执。
+        internal static bool RetiredFormat(string line)
+        {
+            return line != null && line.Split('|').Length >= 10;
         }
 
         internal static bool ValidName(string name, int pid, long birth)
@@ -47,7 +45,7 @@ namespace PaviseApp
         {
             string[] fields = line.Split('|');
             var value = new GameAffinityJobRecord();
-            if ((fields.Length != 8 && fields.Length != 9 && fields.Length != 10 && fields.Length != 11) || !int.TryParse(fields[1], out value.Pid) || value.Pid <= 4
+            if ((fields.Length != 8 && fields.Length != 9) || !int.TryParse(fields[1], out value.Pid) || value.Pid <= 4
                 || !long.TryParse(fields[2], out value.Birth) || value.Birth <= 0
                 || !ulong.TryParse(fields[3], out value.Original) || value.Original == 0
                 || !ulong.TryParse(fields[4], out value.Desired) || value.Desired == 0
@@ -56,17 +54,6 @@ namespace PaviseApp
                 || !ValidName(fields[0], value.Pid, value.Birth)
                 || (fields[5] != "prepared" && fields[5] != "armed" && fields[5] != "neutral")) return null;
             value.Name = fields[0]; value.Phase = fields[5];
-            if (fields.Length == 10)
-            {
-                value.Resources = WindowsBackgroundLimits.Parse(fields[9]);
-                if (value.Resources == null) return null;
-            }
-            if (fields.Length == 11)
-            {
-                if (fields[9] != "" || (fields[10] != "SGuardThreads1" && fields[10] != "AntiCheatThreads1")) return null;
-                value.OwnThreadAffinity = true;
-                value.StrictThreadAdmission = fields[10] == "AntiCheatThreads1";
-            }
             try
             {
                 value.ThreadRecoveryRoot = fields.Length >= 9 ? Encoding.UTF8.GetString(Convert.FromBase64String(fields[8])) : "";
@@ -74,7 +61,6 @@ namespace PaviseApp
                     || Path.GetFullPath(value.ThreadRecoveryRoot) != value.ThreadRecoveryRoot)) return null;
             }
             catch { return null; }
-            if (value.OwnThreadAffinity && !string.IsNullOrEmpty(value.ThreadRecoveryRoot)) return null;
             return value;
         }
 
@@ -94,9 +80,7 @@ namespace PaviseApp
         internal bool SameScope(GameAffinityJobRecord other)
         {
             return other != null && Name == other.Name && Pid == other.Pid && Birth == other.Birth
-                && OwnerPid == other.OwnerPid && OwnerBirth == other.OwnerBirth
-                && (Resources == null) == (other.Resources == null) && OwnThreadAffinity == other.OwnThreadAffinity
-                && StrictThreadAdmission == other.StrictThreadAdmission;
+                && OwnerPid == other.OwnerPid && OwnerBirth == other.OwnerBirth;
         }
     }
 
@@ -121,6 +105,7 @@ namespace PaviseApp
                         var names = new HashSet<string>(StringComparer.Ordinal);
                         foreach (string line in (raw ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
                         {
+                            if (GameAffinityJobRecord.RetiredFormat(line.TrimEnd('\r'))) continue;
                             GameAffinityJobRecord record = GameAffinityJobRecord.Parse(line.TrimEnd('\r'));
                             if (record == null || !names.Add(record.Name) || records.Count >= 256) return false;
                             records.Add(record);
@@ -223,7 +208,6 @@ namespace PaviseApp
             internal bool RecoveryExitPhase;
             internal bool RecoveryGuardAlive, RecoveryTargetGone;
             internal GameAffinityJobRecord Record;
-            internal EventWaitHandle ForwardRevoked;
         }
 
         private sealed class LeaseView
@@ -239,9 +223,8 @@ namespace PaviseApp
             internal readonly long Birth;
             internal readonly bool Active, Pending;
             internal readonly string Name;
-            internal readonly bool OwnThreads;
             internal EntryView(Entry entry)
-            { Pid = entry.Pid; Birth = entry.Birth; Active = entry.Active && !entry.Pending; Pending = entry.Pending; Name = entry.Name; OwnThreads = entry.Record != null && entry.Record.OwnThreadAffinity; }
+            { Pid = entry.Pid; Birth = entry.Birth; Active = entry.Active && !entry.Pending; Pending = entry.Pending; Name = entry.Name; }
         }
         private sealed class Operation : IDisposable
         {
@@ -278,34 +261,11 @@ namespace PaviseApp
         private static int orphanReadFailures;
         private static long orphanReadNext;
         private readonly Dictionary<int, Entry> leases = new Dictionary<int, Entry>();
-        private readonly Dictionary<string, int> threadGuardStarts = new Dictionary<string, int>(StringComparer.Ordinal);
         private bool recoveryPending;
         private int operationDepth;
-        private long forwardEpoch;
-        internal Func<bool> ForwardAdmission;
         private static readonly LeaseView UnknownView = new LeaseView(new EntryView[0], true, true, true, true);
         private volatile LeaseView view = new LeaseView(new EntryView[0], false, false, false, false);
         internal string ThreadRecoveryRoot { get; set; }
-        // 撤权不等父进程的操作锁；守护会在每个后续原生写入前观察同一事件。
-        internal void RevokeForward(int pid = 0, long birth = 0)
-        {
-            Interlocked.Increment(ref forwardEpoch);
-            foreach (EntryView entry in view.Entries)
-            {
-                if (!entry.OwnThreads || (pid != 0 && (entry.Pid != pid || entry.Birth != birth))) continue;
-                try { using (EventWaitHandle signal = EventWaitHandle.OpenExisting(entry.Name + ".ForwardRevoked")) signal.Set(); }
-                catch (WaitHandleCannotBeOpenedException) { }
-            }
-        }
-
-        private bool ForwardCurrent(Entry entry, long epoch, out string reason)
-        {
-            reason = null;
-            if (!entry.Record.OwnThreadAffinity) return true;
-            if (epoch == Interlocked.Read(ref forwardEpoch) && (ForwardAdmission == null || ForwardAdmission())) return true;
-            // 全局代号也会因别组撤权变化，只拒绝旧轮次；持久撤权事件由明确匹配的 RevokeForward 设置。
-            reason = "sguard-forward-revoked"; return false;
-        }
 
         private Operation BeginOperation(bool wait = true)
         {
@@ -446,14 +406,6 @@ namespace PaviseApp
             try
             {
                 if (GuardAlive(entry)) { reason = "previous-guardian-live"; return false; }
-                if (entry.Record.OwnThreadAffinity)
-                {
-                    string key = entry.Pid + ":" + entry.Birth + ":" + entry.Original + ":" + entry.Desired;
-                    int attempts;
-                    threadGuardStarts.TryGetValue(key, out attempts);
-                    if (attempts >= 3) { reason = "sguard-guardian-start-budget-exhausted"; return false; }
-                    threadGuardStarts[key] = attempts + 1;
-                }
                 if (entry.Protocol != null) { entry.Protocol.Dispose(); entry.Protocol = null; }
                 if (entry.Guard != null) entry.Guard.Dispose();
                 entry.ProtocolLost = false;
@@ -497,23 +449,12 @@ namespace PaviseApp
             }
             if (entry.Process != IntPtr.Zero) { Native.CloseHandle(entry.Process); entry.Process = IntPtr.Zero; }
             if (entry.Job != IntPtr.Zero) { Native.CloseHandle(entry.Job); entry.Job = IntPtr.Zero; }
-            if (entry.ForwardRevoked != null) { entry.ForwardRevoked.Dispose(); entry.ForwardRevoked = null; }
         }
 
         // 仅游戏核心范围的所有者置为 true。后台、反作弊和微软后台的所有者保持严格准入。
         internal bool OverrideThreadPlacement;
-        // SGuard 使用专用逐线程日志和两阶段恢复，不能借用游戏的无日志覆盖分支。
-        internal bool OwnThreadAffinity;
-        internal bool StrictThreadAdmission;
         internal bool Ensure(int pid, long birth, string name, ulong originalMask, ulong desiredMask, out string reason)
-        { return EnsureCore(pid, birth, name, originalMask, desiredMask, null, out reason); }
-
-        internal bool EnsureWindowsBackground(int pid, long birth, string name, ulong originalMask, ulong desiredMask, int mode, out string reason)
-        { return EnsureCore(pid, birth, name, originalMask, desiredMask, BackgroundGovernancePolicy.Normalize(mode), out reason); }
-
-        private bool EnsureCore(int pid, long birth, string name, ulong originalMask, ulong desiredMask, int? windowsMode, out string reason)
         {
-            long admittedEpoch = Interlocked.Read(ref forwardEpoch);
             using (BeginOperation())
             {
                 reason = null;
@@ -527,8 +468,6 @@ namespace PaviseApp
                     threadRoot = string.IsNullOrEmpty(ThreadRecoveryRoot) ? "" : Path.GetFullPath(ThreadRecoveryRoot);
                 }
                 catch { reason = "invalid-thread-recovery-root"; return false; }
-                if (OwnThreadAffinity && !windowsMode.HasValue && threadRoot.Length != 0)
-                { reason = "sguard-thread-owner-scope-conflict"; return false; }
                 Entry entry;
                 if (leases.TryGetValue(pid, out entry) && entry.Birth != birth)
                 {
@@ -543,8 +482,7 @@ namespace PaviseApp
                 {
                     if (!Recover(out reason)) { recoveryPending = true; return false; }
                     recoveryPending = false;
-                    if (windowsMode.HasValue) Native.TryEnableDebugPrivilege();
-                    IntPtr process = windowsMode.HasValue ? Native.OpenProcess(0x101701, false, pid) : GameAffinityJobNative.OpenTarget(pid, birth);
+                    IntPtr process = GameAffinityJobNative.OpenTarget(pid, birth);
                     if (process == IntPtr.Zero) { reason = "process-access"; return false; }
                     if (!GameAffinityJobNative.Matches(process, birth))
                     { Native.CloseHandle(process); reason = "target-identity"; return false; }
@@ -555,9 +493,6 @@ namespace PaviseApp
                     ulong current;
                     if (!Native.TryQueryAffinity(process, out current) || current != originalMask)
                     { Native.CloseHandle(process); reason = "original-affinity-changed"; return false; }
-                    WindowsBackgroundLimits resources = null;
-                    if (windowsMode.HasValue && !WindowsBackgroundJobNative.Capture(process, windowsMode.Value, out resources, out reason))
-                    { Native.CloseHandle(process); return false; }
                     string jobName = GameAffinityJobNative.Prefix + Guid.NewGuid().ToString("N") + "." + pid + "." + birth;
                     IntPtr job = GameAffinityJobNative.Create(jobName, out reason);
                     if (job == IntPtr.Zero) { Native.CloseHandle(process); return false; }
@@ -569,16 +504,8 @@ namespace PaviseApp
                         Name = jobName, Process = process, Job = job };
                     entry.Record = new GameAffinityJobRecord { Name = jobName, Pid = pid, Birth = birth, Original = originalMask,
                         Desired = desiredMask, OwnerPid = ownerPid, OwnerBirth = ownerBirth, Phase = "prepared",
-                        ThreadRecoveryRoot = threadRoot, Resources = resources, OwnThreadAffinity = OwnThreadAffinity && !windowsMode.HasValue,
-                        StrictThreadAdmission = OwnThreadAffinity && StrictThreadAdmission && !windowsMode.HasValue };
+                        ThreadRecoveryRoot = threadRoot };
                     leases.Add(pid, entry);
-                    if (entry.Record.OwnThreadAffinity)
-                    {
-                        try { entry.ForwardRevoked = new EventWaitHandle(false, EventResetMode.ManualReset, entry.Name + ".ForwardRevoked"); }
-                        catch (Exception error) { entry.Pending = true; reason = "sguard-forward-signal:" + error.GetType().Name; return false; }
-                        PublishView();
-                        if (!ForwardCurrent(entry, admittedEpoch, out reason)) { entry.Pending = true; return false; }
-                    }
                     if (!GameAffinityJobReceiptStore.Save(entry.Record))
                     { entry.Pending = true; reason = "receipt-write"; return false; }
                     if (!StartGuard(entry, out reason))
@@ -589,23 +516,10 @@ namespace PaviseApp
                     }
                 }
                 if (entry.Pending) { reason = "recovery-pending"; return false; }
-                if ((entry.Record.Resources != null) != windowsMode.HasValue)
-                { reason = "job-resource-owner-conflict"; return false; }
-                if (entry.Record.OwnThreadAffinity != (OwnThreadAffinity && !windowsMode.HasValue))
-                { reason = "job-thread-owner-conflict"; return false; }
-                if (entry.Record.StrictThreadAdmission != (OwnThreadAffinity && StrictThreadAdmission && !windowsMode.HasValue))
-                { reason = "job-thread-admission-mode-conflict"; return false; }
-                if (entry.Active && entry.Desired == desiredMask
-                    && (!windowsMode.HasValue || entry.Record.Resources.MatchesMode(windowsMode.Value)))
-                {
-                    if (!entry.Record.OwnThreadAffinity) return VerifyLocked(entry, desiredMask, out reason);
-                    if (!GuardAlive(entry)) { entry.Pending = true; reason = "guardian-lost"; return false; }
-                    if (!ForwardCurrent(entry, admittedEpoch, out reason)) return false;
-                    return Command(entry, "MAINTAIN " + desiredMask, out reason) && VerifyLocked(entry, desiredMask, out reason);
-                }
+                if (entry.Active && entry.Desired == desiredMask) return VerifyLocked(entry, desiredMask, out reason);
                 // 改变活动范围或记录前，先拒绝游戏自行设置的线程放置；原生写入前再次核对。
                 ulong currentRange;
-                bool overrideThreads = (OverrideThreadPlacement || entry.Record.OwnThreadAffinity) && !windowsMode.HasValue;
+                bool overrideThreads = OverrideThreadPlacement;
                 if (!Native.TryQueryAffinity(entry.Process, out currentRange)
                     || !(overrideThreads ? GameThreadAffinityAdmission.CheckProcessOnly(entry.Process, pid, birth, currentRange, out reason)
                         : GameThreadAffinityAdmission.Check(entry.Process, pid, birth, currentRange, out reason)))
@@ -628,25 +542,13 @@ namespace PaviseApp
                 { reason = "original-affinity-changed"; return false; }
                 entry.Original = originalMask;
                 entry.Desired = desiredMask;
-                if (windowsMode.HasValue)
-                {
-                    WindowsBackgroundLimits resources;
-                    if (!WindowsBackgroundJobNative.Capture(entry.Process, windowsMode.Value, out resources, out reason)) return false;
-                    entry.Record.Resources = resources;
-                }
                 entry.Record.Original = entry.Original; entry.Record.Desired = desiredMask; entry.Record.Phase = "armed";
                 entry.Record.ThreadRecoveryRoot = threadRoot;
-                if (entry.Record.OwnThreadAffinity)
-                {
-                    if (!ForwardCurrent(entry, admittedEpoch, out reason)) return false;
-                    entry.ForwardRevoked.Reset();
-                    if (!ForwardCurrent(entry, admittedEpoch, out reason)) return false;
-                }
                 if (!GameAffinityJobReceiptStore.Save(entry.Record)) { entry.Pending = true; reason = "receipt-arm"; return false; }
                 // 守护已持有 Job 和目标句柄，且是唯一写入方；父进程退出不会使迟到的应用失去恢复所有者。
 
-                if (!Command(entry, "APPLY " + desiredMask + " " + entry.Original + (entry.Record.OwnThreadAffinity ? " owned-threads" : overrideThreads ? " override" : ""), out reason)
-                    || !SGuardAffinityOperations.Verify(entry.Record, entry.Job, entry.Process, out reason))
+                if (!Command(entry, "APPLY " + desiredMask + " " + entry.Original + (overrideThreads ? " override" : ""), out reason)
+                    || !GameAffinityJobNative.Verify(entry.Job, entry.Process, entry.Record.Birth, entry.Record.Desired, out reason))
                 {
                     string failure = reason, cleanup;
                     if (!ReleaseLocked(entry, out cleanup)) failure += "; recovery=" + cleanup;
@@ -664,18 +566,7 @@ namespace PaviseApp
             if (entry.Desired != desiredMask) { reason = "job-requested-mask-changed"; return false; }
             if (!entry.Active || entry.Pending) { reason = "job-not-active"; return false; }
             if (!GuardAlive(entry) || entry.ProtocolLost) { entry.Pending = true; reason = "guardian-lost"; return false; }
-            return SGuardAffinityOperations.Verify(entry.Record, entry.Job, entry.Process, out reason);
-        }
-
-        // Job 接管被拒后改用进程范围限制，回执同步报告实际后端。
-        internal bool IsDirectRange(int pid, long birth)
-        {
-            using (BeginOperation())
-            {
-                Entry entry;
-                return leases.TryGetValue(pid, out entry) && entry.Birth == birth && entry.Active && !entry.Pending
-                    && SGuardAffinityOperations.DirectRange(entry.Record, entry.Job, entry.Process);
-            }
+            return GameAffinityJobNative.Verify(entry.Job, entry.Process, entry.Record.Birth, entry.Record.Desired, out reason);
         }
 
         internal bool Verify(int pid, long birth, ulong desiredMask, out string reason)
@@ -692,7 +583,6 @@ namespace PaviseApp
 
         private bool ReleaseLocked(Entry entry, out string reason)
         {
-            if (entry.ForwardRevoked != null) entry.ForwardRevoked.Set();
             if (!entry.Active && !entry.Pending && entry.Record.Phase == "neutral") { reason = null; return true; }
             long now = AutoCores.NowTicks;
             bool targetGone = Native.WaitForSingleObject(entry.Process, 0) == 0;
@@ -775,10 +665,9 @@ namespace PaviseApp
                 GameAffinityJobRecord current;
                 if (!GameAffinityJobReceiptStore.Find(entry.Name, out current)) { failure = "receipt-unreadable"; return false; }
                 bool gone = Native.WaitForSingleObject(entry.Process, 0) == 0;
-                if (current == null && entry.Record.OwnThreadAffinity) { failure = "sguard-receipt-missing-retained"; return false; }
                 if (current == null)
-                    return gone ? WindowsBackgroundJobNative.ClearGone(entry.Record, entry.Job, out failure)
-                        : WindowsBackgroundJobNative.Neutral(entry.Record, entry.Job, out failure);
+                    return gone ? GameAffinityJobNative.ClearForGoneTarget(entry.Job, out failure)
+                        : GameAffinityJobNative.VerifyNeutral(entry.Job, out failure);
                 if (!entry.Record.SameScope(current)) { failure = "receipt-scope-changed"; return false; }
                 if (!gone)
                 {
@@ -786,7 +675,7 @@ namespace PaviseApp
                     if (!current.TryThreadRecoveryPending(out threadPending)) { failure = "thread-recovery-unconfirmed"; return false; }
                     if (threadPending) { failure = "thread-recovery-pending"; return false; }
                 }
-                bool clean = SGuardAffinityOperations.Restore(current, entry.Job, entry.Process, out failure);
+                bool clean = GameAffinityJobNative.RestoreRecord(current, entry.Job, entry.Process, out failure);
                 if (!clean) return false;
                 current.Phase = "neutral";
                 if (!GameAffinityJobReceiptStore.Save(current)) { failure = "receipt-neutral"; return false; }
@@ -801,7 +690,6 @@ namespace PaviseApp
 
         internal bool Release(int pid, long birth, out string reason)
         {
-            RevokeForward(pid, birth);
             using (BeginOperation())
             {
                 Entry entry;
@@ -812,8 +700,6 @@ namespace PaviseApp
 
         internal bool ReleaseExcept(int keepPid, long keepBirth, out string reason)
         {
-            foreach (EntryView entry in view.Entries)
-                if (entry.OwnThreads && (entry.Pid != keepPid || entry.Birth != keepBirth)) RevokeForward(entry.Pid, entry.Birth);
             using (BeginOperation())
             {
                 reason = null; bool ok = true;
@@ -843,7 +729,6 @@ namespace PaviseApp
 
         internal bool Stop(out string reason)
         {
-            RevokeForward();
             using (BeginOperation())
             {
                 if (!ReleaseAll(out reason)) return false;
@@ -1004,9 +889,6 @@ namespace PaviseApp
             int openError = job == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
             if (job == IntPtr.Zero)
             {
-                // 未进入 Job 的 SGuard 目标不依赖 Job 句柄，可按进程范围和线程日志直接结清。
-                if (openError == 2 && record.Phase == "armed" && target != 1 && record.OwnThreadAffinity && !record.StrictThreadAdmission)
-                    return RecoverWithoutJob(record, budget, out reason);
                 if (openError != 2 || (record.Phase == "armed" && target != 1))
                 { reason = "job-handle-lost; game-exit-required"; return false; }
                 if (GameAffinityJobReceiptStore.Remove(record.Name)) { CloseRecoveredOrphan(budget); return true; }
@@ -1018,7 +900,7 @@ namespace PaviseApp
             {
                 if (target != 1)
                 {
-                    if (process == IntPtr.Zero) process = budget.Process = WindowsBackgroundJobNative.OpenRestore(record);
+                    if (process == IntPtr.Zero) process = budget.Process = GameAffinityJobNative.OpenRestore(record.Pid, record.Birth);
                     if (process == IntPtr.Zero) { reason = "recovery-process-access"; return false; }
                 }
                 string failure = null;
@@ -1027,10 +909,9 @@ namespace PaviseApp
                 {
                     GameAffinityJobRecord current;
                     if (!GameAffinityJobReceiptStore.Find(record.Name, out current)) { failure = "receipt-unreadable"; return false; }
-                    if (current == null && record.OwnThreadAffinity) { failure = "sguard-receipt-missing-retained"; return false; }
                     if (current == null)
-                        return target == 1 ? WindowsBackgroundJobNative.ClearGone(record, job, out failure)
-                            : WindowsBackgroundJobNative.Neutral(record, job, out failure);
+                        return target == 1 ? GameAffinityJobNative.ClearForGoneTarget(job, out failure)
+                            : GameAffinityJobNative.VerifyNeutral(job, out failure);
                     if (!record.SameScope(current)) { failure = "receipt-scope-changed"; return false; }
                     if (target != 1)
                     {
@@ -1038,7 +919,7 @@ namespace PaviseApp
                         if (!current.TryThreadRecoveryPending(out threadPending)) { failure = "thread-recovery-unconfirmed"; return false; }
                         if (threadPending) { failure = "thread-recovery-pending"; return false; }
                     }
-                    bool cleared = SGuardAffinityOperations.Restore(current, job, target == 1 ? IntPtr.Zero : process, out failure);
+                    bool cleared = GameAffinityJobNative.RestoreRecord(current, job, target == 1 ? IntPtr.Zero : process, out failure);
                     if (!cleared) return false;
                     current.Phase = "neutral";
                     if (!GameAffinityJobReceiptStore.Save(current)) { failure = "receipt-neutral"; return false; }
@@ -1053,38 +934,6 @@ namespace PaviseApp
             {
                 // 原始记录尚未结清时，保留最后可访问的句柄，预算耗尽后也不释放。
 
-                if (settled) CloseRecoveredOrphan(budget);
-            }
-        }
-
-        private static bool RecoverWithoutJob(GameAffinityJobRecord record, OrphanRecoveryBudget budget, out string reason)
-        {
-            reason = null;
-            if (budget.Process == IntPtr.Zero) budget.Process = WindowsBackgroundJobNative.OpenRestore(record);
-            IntPtr process = budget.Process;
-            if (process == IntPtr.Zero) { reason = "recovery-process-access"; return false; }
-            bool settled = false;
-            try
-            {
-                string failure = null;
-                bool contended;
-                settled = GameAffinityJobOperation.Run(record, delegate
-                {
-                    GameAffinityJobRecord current;
-                    if (!GameAffinityJobReceiptStore.Find(record.Name, out current)) { failure = "receipt-unreadable"; return false; }
-                    if (current == null) { failure = "sguard-receipt-missing-retained"; return false; }
-                    if (!record.SameScope(current)) { failure = "receipt-scope-changed"; return false; }
-                    if (!SGuardAffinityOperations.RestoreWithoutJob(current, process, out failure)) return false;
-                    current.Phase = "neutral";
-                    if (!GameAffinityJobReceiptStore.Save(current)) { failure = "receipt-neutral"; return false; }
-                    return true;
-                }, out contended);
-                reason = failure ?? (settled ? null : (contended ? "recovery-operation-pending" : "recovery-operation-unconfirmed"));
-                return settled;
-            }
-            finally
-            {
-                // 未结清时保留进程句柄，后续尝试沿用同一身份。
                 if (settled) CloseRecoveredOrphan(budget);
             }
         }

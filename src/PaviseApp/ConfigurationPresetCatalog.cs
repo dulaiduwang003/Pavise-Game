@@ -27,6 +27,8 @@ namespace PaviseApp
             E("AutoNtfsShortNamesV1", "游戏盘短文件名减负", "Game-volume short names", "0", "1"),
             E("GmCacheWarmV2", "缓存预热", "Cache warm-up", "0", "0"),
             E("AutoGameMitigationsV1", "游戏保护开销减负 · CFG", "Game mitigation overhead · CFG", "0", "1", true),
+            // 多媒体调度默认关闭，两种预设都不替用户开启。
+            E("GmMmcss", "多媒体调度", "Multimedia scheduling", "0", "0", true),
             E("GmSuppress", "后台治理", "Background governance", "1", "1"),
             E("BackgroundGovernanceMode", "后台治理强度", "Background governance strength", "0", "1"),
             E("GmPauseUpdate", "对局期间暂停 Windows 更新", "Pause Windows Update during matches", "1", "1"),
@@ -72,8 +74,6 @@ namespace PaviseApp
             case "GameFamilyBackground":
             case "GameNvRebarV1":
             case "GameDisableFullscreenOptimizationsV1":
-            // ACE 逐游戏压制（AceSuppressionPolicy.Key），用字面量避免预设台架依赖完整策略源码。
-            case "GameAceSuppressionV1":
                 return true;
             default:
                 return false;

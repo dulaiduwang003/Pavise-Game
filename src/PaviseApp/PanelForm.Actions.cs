@@ -355,18 +355,6 @@ namespace PaviseApp
                 {
                     allRestored = false;
                 }
-                try
-                {
-                    if (IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue)
-                    {
-                        IrqRestoreResult irqRestoreResult = IrqRelocate.RestoreDevices(null);
-                        allRestored &= irqRestoreResult != null && irqRestoreResult.Success;
-                    }
-                }
-                catch
-                {
-                    allRestored = false;
-                }
                 if (allRestored)
                 {
                     PaviseDialog.Success(this, Lang.T("irqcheck.restore.btn"), Lang.T("irqcheck.restore.done"));

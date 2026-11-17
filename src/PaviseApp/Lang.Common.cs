@@ -182,17 +182,13 @@ namespace PaviseApp
             messages.Add("t.legacypurge.3", new string[2] { "核心停泊", "Core parking" });
             messages.Add("t.legacypurge.6", new string[2] { "无输入降级", "No-input throttling" });
             messages.Add("t.legacypurge.7", new string[2] { "电源滑块", "Power slider" });
-            messages.Add("t.legacypurge.8", new string[2] { "服务暂停", "Service pause" });
             messages.Add("t.legacypurge.10", new string[2] { "网络优化", "Network optimization" });
             messages.Add("t.legacypurge.11", new string[2] { "时间片校正", "Time-slice correction" });
             messages.Add("t.legacypurge.14", new string[2] { "辅助功能拦截", "Accessibility interception" });
             messages.Add("t.legacypurge.16", new string[2] { "旧键鼠队列设置恢复", "Legacy keyboard/mouse queue recovery" });
             messages.Add("t.legacypurge.21", new string[2] { "MSI 修复", "MSI fix" });
-            messages.Add("t.legacypurge.22", new string[2] { "后备提优 IFEO", "Fallback boost IFEO" });
             messages.Add("t.legacypurge.28", new string[2] { "未完成的进程状态记账", "Unfinished process state bookkeeping" });
-            messages.Add("t.legacypurge.29", new string[2] { "设备中断页亲和性设置", "Device Interrupts page affinity" });
             messages.Add("t.versionmigrations.2", new string[2] { "未知", "unknown" });
-            messages.Add("t.versionmigrations.8", new string[2] { "网卡中断亲和", "NIC interrupt affinity" });
             messages.Add("t.legacypurge.19", new string[2] { "AMD 驱动调优", "AMD driver tuning" });
             messages.Add("t.etwprocesswatcher.1", new string[2] { "StartTrace 失败 rc ", "StartTrace failed rc " });
             messages.Add("t.etwprocesswatcher.2", new string[2] { "EnableTraceEx2 失败 rc ", "EnableTraceEx2 failed rc " });

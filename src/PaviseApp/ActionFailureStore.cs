@@ -737,14 +737,14 @@ namespace PaviseApp
                 migrated = true;
                 PruneEmptyRecords("ActionAttempt_");
                 PruneEmptyRecords("ActionFailure_");
-                string[] textEntries = new string[17]
+                string[] textEntries = new string[15]
                 {
-                    "do", "wu", "services", "standby", "awake", "dwmboost", "gpupower", "amdalag", "amdafmf", "maint",
+                    "do", "wu", "services", "standby", "awake", "dwmboost", "amdafmf", "maint",
                     "intelend", "laptopperf", "gamedvr", "mmcss", "pqos", "rsr", "nvvrr"
                 };
-                string[] textEntries2 = new string[17]
+                string[] textEntries2 = new string[15]
                 {
-                    "GmPauseDl", "GmPauseUpdate", "GmPauseServices", "GmStandbyCleanerV2", "GmAwake", "GmDwmBoost", "GmGpuPowerMax", "AmdAntiLag", "AmdAfmf", "GmPauseMaintenanceV1",
+                    "GmPauseDl", "GmPauseUpdate", "GmPauseServices", "GmStandbyCleanerV2", "GmAwake", "GmDwmBoost", "AmdAfmf", "GmPauseMaintenanceV1",
                     "GmIntelEnduranceV1", "GmLaptopPerfV1", "GameDvrOff", "GmMmcss", "PresenceQos", "GmRsr", "NvVrrWindowed"
                 };
                 for (int i = 0; i < textEntries.Length; i++)

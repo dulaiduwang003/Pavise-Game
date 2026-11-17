@@ -67,6 +67,14 @@ namespace PaviseApp
             return IntPtr.Zero;
         }
 
+        // 按回执阶段结清：未生效的回执只核验 Job 已中性；已生效的写回原范围，目标已退出时清空 Job 限制。
+        internal static bool RestoreRecord(GameAffinityJobRecord record, IntPtr job, IntPtr process, out string reason)
+        {
+            if (record.Phase != "armed") return VerifyNeutral(job, out reason);
+            return process == IntPtr.Zero ? ClearForGoneTarget(job, out reason)
+                : Restore(job, process, record.Birth, record.Original, record.Desired, out reason);
+        }
+
         internal static IntPtr OpenIdentity(int pid, long birth)
         {
             IntPtr process = Native.OpenProcess(0x101000, false, pid);

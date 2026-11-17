@@ -13,30 +13,26 @@ namespace PaviseApp
             try
             {
                 SuppressionCore.BackgroundBoostLimit = false;
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Isolated, false), "Normal governance must leave ordinary background boost alone");
+                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Isolated), "Normal governance must leave ordinary background boost alone");
                 int state = 0, writes = 0;
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 0 && writes == 0, "Normal governance must not write the boost state");
-                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.Isolated, false, 1) == 1, "Normal governance must keep a captured disabled state");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, -1, () => 0,
+                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.Isolated, 1) == 1, "Normal governance must keep a captured disabled state");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, -1, () => 0,
                     disabled => { throw new Exception("Normal governance never needs a boost baseline"); }) == "", "Normal governance must not demand a boost snapshot");
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Eco, true) && SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained, true),
-                    "Anti-cheat taming keeps its own boost rule under Normal governance");
 
                 SuppressionCore.BackgroundBoostLimit = true;
                 state = 0; writes = 0;
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 1, "Aggressive governance must disable ordinary background boost");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.None, false, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.None, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 0 && writes == 2, "Release must restore captured enabled state");
-                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.None, false, 1) == 1, "Release must retain captured disabled state");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, -1, () => 0,
+                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.None, 1) == 1, "Release must retain captured disabled state");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, -1, () => 0,
                     disabled => { throw new Exception("Unknown baseline must prevent writes"); }) == "boost-snapshot", "Unknown original boost cannot be invented");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => 0, disabled => false) == "boost-write", "Write refusal must be reported");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => 0, disabled => true) == "boost-readback", "Successful setter without readback must fail");
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Eco, true) && SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained, true),
-                    "Anti-cheat taming keeps its own boost rule under Aggressive governance");
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained, false), "Aggressive governance applies only to the background tier");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => 0, disabled => false) == "boost-write", "Write refusal must be reported");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => 0, disabled => true) == "boost-readback", "Successful setter without readback must fail");
+                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained), "Aggressive governance applies only to the background tier");
             }
             finally { SuppressionCore.BackgroundBoostLimit = saved; }
         }

@@ -88,6 +88,8 @@ namespace PaviseApp
             {
             case CriticalThreadBoostCoupling.Unified:
                 return ThreadLayoutDescriptions.Text("优先级与放置由统一游戏调度管理", "Priority and placement share the game scheduler", "優先度と配置は統合ゲームスケジューラーが管理します");
+            case CriticalThreadBoostCoupling.Classic:
+                return PerformancePolicy.Text("游戏优先：沿用 3.3.0.8 的线程提优，不固定核心", "Game priority: 3.3.0.8 thread boost, no core pinning");
             case CriticalThreadBoostCoupling.BoostOff:
                 return PerformancePolicy.Text("线程提优：关闭", "Thread boost: off");
             case CriticalThreadBoostCoupling.BoostDisabled:

@@ -373,12 +373,71 @@ namespace PaviseApp
             }
             return false;
         }
+        // 本轮资源准备得出的游戏优先结论；线程协同工作线程的准入委托只读它，不拿会话锁。
+        private bool classicThreadBoostOn;
+
+        // 与资源准备同一判定：游戏调度开启且本局规则为游戏优先。供会话起点这类尚未跑过资源准备的入口使用。
+        private bool ClassicThreadBoostWanted()
+        {
+            PolicySnapshot policy = sessionPolicy ?? PolicyResolver.Global();
+            if (!policy.GameSchedulingOn) return false;
+            lock (sync)
+            {
+                if (activeDetection == null || activeDetection.Profile == null) return false;
+                CriticalThreadRule rule = PolicyResolver.GameSchedulingRule(CriticalPreferenceProfileLocked(activeDetection.Profile.Id));
+                return rule != null && !rule.IsOff && rule.UsesClassicThreadBoost;
+            }
+        }
+
+        // 游戏优先原样沿用 3.3.0.8 的接线：渲染进程确认后立即采样，呈现线程设为 TIME_CRITICAL、配合线程 +1，
+        // 不固定核心，也不等前台；识别额度用尽后才改由备用提优选最忙线程，两者互斥。
+        // 其他方案下这两条写入器只归还自己的旧记录，统一角色观察走独立的只读入口。
         private void SyncFrameCoordination(BoostPass pass)
         {
-            // 旧写入器只归还自身记录；统一角色观察通过独立的只读入口继续工作。
-            bool laneClean = RenderLane.Release();
-            bool frameClean = FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
-            pass.LaneRestorationReady = laneClean && frameClean;
+            if (!pass.ClassicThreadBoost)
+            {
+                bool laneClean = RenderLane.Release();
+                bool frameClean = FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
+                pass.LaneRestorationReady = laneClean && frameClean;
+                return;
+            }
+            bool criticalRolesWanted = CriticalRolesWanted(pass.RendererPid, pass.RendererCreation);
+            UpdateLaneFallback(pass.RendererPid, pass.RendererCreation, pass.RendererName);
+            bool frameOn = !LaneFallbackFor(pass.RendererPid, pass.RendererCreation);
+            if (frameOn && (!RenderLane.Release() || RenderLane.HasResidue()))
+            {
+                // 备用提优的旧写入尚未归还前不启动呈现线程提优，避免两条写入器同时持有线程。
+                pass.LaneRestorationReady = false;
+                if (criticalRolesWanted)
+                {
+                    FrameCoordination.ReleaseBoost(pass.RendererPid, pass.RendererCreation);
+                }
+                else
+                {
+                    FrameCoordination.ReleaseExcept(0, 0L);
+                }
+                return;
+            }
+            int pid = pass.RendererPid;
+            long birth = pass.RendererCreation;
+            int epoch = Volatile.Read(ref rendererHandoffEpoch);
+            Func<bool> admitted = delegate
+            {
+                GameDetection gameDetection = Volatile.Read(ref activeDetection);
+                return Volatile.Read(ref classicThreadBoostOn) && enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed && !pass.WriteDenied
+                    && epoch == Volatile.Read(ref rendererHandoffEpoch) && gameDetection != null && gameDetection.RendererCandidateSelected
+                    && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameDetection.RendererPid == pid && gameDetection.RendererCreation == birth
+                    && ThreadBoostRecoveryAllowed(pid, birth);
+            };
+            if (frameOn && pid > 0 && birth > 0 && admitted())
+            {
+                FrameCoordination.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), pid, birth, FrameAutomaticConfiguration());
+                FrameCoordination.Ensure(pid, birth, pass.RendererName, admitted);
+            }
+            else
+            {
+                pass.LaneRestorationReady = criticalRolesWanted ? FrameCoordination.ReleaseBoost(pid, birth) : FrameCoordination.ReleaseExcept(0, 0L);
+            }
         }
         private void InvalidateOverrideWorkLocked(string key)
         {
@@ -664,9 +723,11 @@ namespace PaviseApp
         private void PrepareResourcePriorities(BoostPass pass, PolicySnapshot policy)
         {
             policy = policy ?? PolicyResolver.Global();
-            // 进程 CPU 类只由「游戏优先」方案接管：当前会话的有效规则选中它时提为 High，
-            // 其余方案、关闭调度或换成别的方案时不写，已有的本方收据在本轮按原归属恢复。
+            // 进程 CPU 类只由「游戏优先」接管并提为高；其余方案、关闭调度或换成别的方案时不写，
+            // 已有的本方收据在本轮按原归属恢复。游戏优先与 3.3.0.8 的“性能优先级”一样一项全包，
+            // 磁盘与显卡优先级不再看单独的资源开关；其他方案仍按资源开关决定。
             pass.CpuBoost = false;
+            pass.ClassicThreadBoost = false;
             bool schedulingOn = policy.GameSchedulingOn;
             bool resourceOn = policy.BoostGame;
             lock (sync)
@@ -676,12 +737,15 @@ namespace PaviseApp
                     GameProfile sessionProfile = CriticalPreferenceProfileLocked(activeDetection.Profile.Id);
                     CriticalThreadRule sessionRule = PolicyResolver.GameSchedulingRule(sessionProfile);
                     schedulingOn = schedulingOn && sessionRule != null && !sessionRule.IsOff;
-                    resourceOn = PolicyResolver.For(sessionProfile).BoostGame;
+                    resourceOn = PolicyResolver.For(sessionProfile).BoostGame || schedulingOn && sessionRule.IsGamePriority;
                     pass.CpuBoost = schedulingOn && sessionRule.RaisesGameProcess;
+                    pass.ClassicThreadBoost = schedulingOn && sessionRule.UsesClassicThreadBoost;
                 }
             }
+            // 线程协同的工作线程每 200 毫秒复核一次准入，这里只发布本轮结论，不让它去拿会话锁。
+            Volatile.Write(ref classicThreadBoostOn, pass.ClassicThreadBoost);
             pass.IoBoost = pass.GpuBoost = schedulingOn && resourceOn;
-            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
+            int combinedMask = (pass.CpuBoost ? 1 : 0) | (pass.ClassicThreadBoost ? 2 : 0) | (pass.IoBoost ? 4 : 0) | (pass.GpuBoost ? 8 : 0);
             lock (sync)
             {
                 if (combinedMask != boostResourceSelection)

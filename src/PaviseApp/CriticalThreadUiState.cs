@@ -78,7 +78,7 @@ namespace PaviseApp
         {
             get
             {
-                if (Coupling == CriticalThreadBoostCoupling.Unified && Coverage == CriticalThreadCoverageState.CandidatesOnly)
+                if ((Coupling == CriticalThreadBoostCoupling.Unified || Coupling == CriticalThreadBoostCoupling.Classic) && Coverage == CriticalThreadCoverageState.CandidatesOnly)
                     return ThreadLayoutDescriptions.Text("已接管字段已回读；其他线程维持原设置", "Managed fields read back; other threads keep their settings", "管理項目を確認しました。他のスレッドの設定は維持します");
                 switch (Coverage)
                 {
@@ -98,6 +98,15 @@ namespace PaviseApp
         {
             get
             {
+                if (Coupling == CriticalThreadBoostCoupling.Classic)
+                {
+                    switch (State)
+                    {
+                        case "active": return PerformancePolicy.Text("线程提优已核验", "Thread boost verified");
+                        case "conflict": return PerformancePolicy.Text("本局已停止线程提优 · 规则保留", "Thread boost stopped this session; rule retained");
+                        case "observing": return PerformancePolicy.Text("正在识别渲染线程", "Identifying the render thread");
+                    }
+                }
                 if (Coupling == CriticalThreadBoostCoupling.Unified)
                 {
                     switch (State)

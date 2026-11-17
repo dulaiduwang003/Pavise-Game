@@ -67,18 +67,22 @@ namespace PaviseApp
             }
         }
 
+        private static volatile bool lastLegacyDisplay;
+
+        // 仅供界面显示：一次读取失败时沿用上次读到的结果，不凭空提示“旧版校正记录待恢复”。
+        // 恢复路径不走这里，读不到时仍按可能有记录保守处理。
         internal static bool LegacyRecordsForDisplay
         {
             get
             {
                 try
                 {
-                    return HasLegacyRecords;
+                    lastLegacyDisplay = HasLegacyRecords;
                 }
                 catch
                 {
-                    return true;
                 }
+                return lastLegacyDisplay;
             }
         }
 

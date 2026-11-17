@@ -5,11 +5,14 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 每个游戏单独保存策略；依赖协同不使用清核。
+    // 每个游戏单独保存策略；依赖协同不使用清核。游戏优先沿用 3.3.0.8，一项全包，不提供清核与资源子开关。
     internal sealed class RenderAffinityDialog : Form
     {
         private static readonly SchedulingStrategy[] ModeStrategies =
             { SchedulingStrategy.GamePriority, SchedulingStrategy.RenderBoost, SchedulingStrategy.RenderCore, SchedulingStrategy.Orchestration, SchedulingStrategy.DependencyBoost, SchedulingStrategy.RenderCoreTimeCritical };
+
+        // 推荐标签只标在推荐方案（游戏优先）上；未保存方案时的缺省选中项也是它。
+        internal static bool IsRecommended(SchedulingStrategy strategy) { return strategy == CriticalThreadRule.RecommendedStrategy; }
 
         private readonly Func<CriticalThreadRule, bool?, string> save;
         private readonly ulong all, allowed, reserved;
@@ -29,6 +32,9 @@ namespace PaviseApp
         private readonly FamilySuppressionSwitch clearCore;
         private readonly FamilySuppressionSwitch resources;
         private readonly bool initialResources;
+        // 资源开关的草案与旧保存接口是否支持它；游戏优先期间开关只显示“已包含”，切回其他方案时还原草案。
+        private bool resourcesRequested;
+        private bool resourcesSaveSupported = true;
         private int mode;
         private int layoutMode = -1;
         private bool arranging;
@@ -39,7 +45,8 @@ namespace PaviseApp
             : this(profile, initial, saveRule == null ? null : new Func<CriticalThreadRule, bool?, string>((rule, resource) => saveRule(rule)), conflict, status)
         {
             // 旧保存接口不支持资源设置。
-            resources.Enabled = false;
+            resourcesSaveSupported = false;
+            RefreshChoice();
         }
 
         internal RenderAffinityDialog(GameProfile profile, CriticalThreadRule initial, Func<CriticalThreadRule, bool?, string> saveRule, string conflict = null, string status = null,
@@ -73,10 +80,12 @@ namespace PaviseApp
             bool legacyLayout = initial != null && !initial.IsUnified || stored != null && !stored.IsUnified;
             bool legacyManual = CriticalThreadRule.IsLegacyManual(storedRaw);
             bool retiredComparison = IsRetiredComparison(storedRaw) || initial != null && IsRetiredComparison(initial.Encode());
+            bool retiredStrategy = stored != null && stored.IsRetiredStrategy || initial != null && initial.IsRetiredStrategy;
             if (initial != null) initial = CriticalThreadRule.ParseForRuntime(initial.Encode());
             // 缺省选择跟随运行规则，不依赖列表顺序；已有正式方案仍按原策略预览。
             int defaultMode = Math.Max(0, Array.IndexOf(ModeStrategies, CriticalThreadRule.UnifiedDefault().Strategy));
-            mode = retiredComparison || initial == null || initial.IsOff ? defaultMode : Math.Max(0, Array.IndexOf(ModeStrategies, initial.Strategy));
+            // 未保存、已关闭或只剩已删除方案的旧编码时，预选缺省（推荐）方案，不靠列表顺序碰巧落到首项。
+            mode = retiredComparison || retiredStrategy || initial == null || initial.IsOff ? defaultMode : Math.Max(0, Array.IndexOf(ModeStrategies, initial.Strategy));
 
             title = LabelOf(Text, Theme.UI(17f, true), Theme.Fg);
             title.Name = "RenderAffinityTitle";
@@ -128,6 +137,9 @@ namespace PaviseApp
             if (retiredComparison) conflictHint.Text += (conflictHint.Text.Length == 0 ? "" : "\n") + T(
                 "旧对照已停用，保存策略后用外层开关开启。",
                 "Old comparison is off. Save a strategy, then enable the outer switch.");
+            if (retiredStrategy) conflictHint.Text += (conflictHint.Text.Length == 0 ? "" : "\n") + T(
+                "温和提优已下架，本游戏的调度暂按关闭处理；选择方案并保存后用外层开关开启。",
+                "Gentle boost was removed, so scheduling is off for this game. Choose and save a strategy, then enable the outer switch.");
             observationHint = LabelOf("", Theme.UI(9f, false), Theme.Dim);
             observationHint.Name = "RenderAffinityObservation";
             // 切换到依赖协同时保留清核草案，切回后还原勾选。
@@ -144,6 +156,7 @@ namespace PaviseApp
             preview = LabelOf("", Theme.UI(9f, false), Theme.Dim);
             preview.Name = "RenderAffinityPreview";
             initialResources = PolicyResolver.For(profile).BoostGame;
+            resourcesRequested = initialResources;
             resources = new FamilySuppressionSwitch
             {
                 Name = "RenderAffinityResources", Surface = Theme.Bg, TabIndex = ModeStrategies.Length + 1,
@@ -151,7 +164,7 @@ namespace PaviseApp
                 Summary = T("GPU 与磁盘调度", "GPU and disk scheduling"),
                 AccessibleName = Lang.T("gm.scheduling.resources.title"), AccessibleDescription = Lang.T("gm.scheduling.resources.detail")
             };
-            resources.Click += delegate { resources.Checked = !resources.Checked; UpdateAccessibleDescription(); };
+            resources.Click += delegate { if (resources.Enabled) { resourcesRequested = !resources.Checked; RefreshChoice(); } };
             resourceHint = LabelOf(T("需开启渲染线程调度，下局生效。", "Requires render thread scheduling; applies next session."), Theme.UI(9f, false), Theme.Dim);
             resourceHint.Name = "RenderAffinityResourceHint";
             sessionHint = LabelOf(T("保存后下局生效", "Saved changes apply next session"), Theme.UI(9f, false), Theme.Dim);
@@ -179,7 +192,7 @@ namespace PaviseApp
 
         private static string ChoiceSummary(SchedulingStrategy strategy)
         {
-            return strategy == SchedulingStrategy.GamePriority ? T("整个游戏优先，渲染线程固定核心并提优", "Prioritize the whole game; pin and prioritize rendering")
+            return strategy == SchedulingStrategy.GamePriority ? T("整个游戏优先，渲染线程提到最高，不固定核心", "Prioritize the whole game and its render thread; no core pinning")
                 : strategy == SchedulingStrategy.RenderBoost ? T("优先安排渲染线程", "Prioritize rendering")
                 : strategy == SchedulingStrategy.RenderCore ? T("固定渲染核心，减少换核", "Fix the render core to reduce migration")
                 : strategy == SchedulingStrategy.DependencyBoost ? T("渲染等待关联任务完成", "Rendering waits for related tasks")
@@ -190,7 +203,7 @@ namespace PaviseApp
         private static string CompactStrategyHint(SchedulingStrategy strategy)
         {
             return strategy == SchedulingStrategy.GamePriority
-                ? T("提高整个游戏进程的优先级，同时固定并优先安排渲染线程。CPU 满载时其他程序可能变慢。", "Raises the whole game process priority, and pins and prioritizes the render thread. Other apps may slow down when the CPU is saturated.")
+                ? T("沿用 3.3.0.8：游戏进程设为高，磁盘与显卡同时提优；渲染线程设为最高，配合线程略提，不固定核心。CPU 满载时其他程序可能变慢。", "The 3.3.0.8 approach: game process at High with disk and GPU priority; the render thread at highest and its partner slightly higher, without pinning cores. Other apps may slow down when the CPU is saturated.")
                 : strategy == SchedulingStrategy.RenderBoost
                 ? T("优先安排已识别的渲染线程。不开清核时保留原有核心分配。", "Prioritizes the identified render thread. Keeps CPU placement with clear core off.")
                 : strategy == SchedulingStrategy.RenderCore
@@ -224,7 +237,28 @@ namespace PaviseApp
                 Strategy = strategy;
                 Font = Theme.UI(10.5f, true);
                 AccessibleRole = AccessibleRole.RadioButton;
-                AccessibleDescription = ChoiceSummary(strategy) + " " + ThreadLayoutDescriptions.StrategyHint(strategy);
+                AccessibleDescription = (IsRecommended(strategy) ? RecommendedText + T("。", ". ") : "")
+                    + ChoiceSummary(strategy) + " " + ThreadLayoutDescriptions.StrategyHint(strategy);
+            }
+
+            internal static string RecommendedText { get { return T("推荐", "Recommended"); } }
+
+            // 推荐标签紧跟方案名；放不下时不画，不挤压名称和摘要。
+            internal Rectangle RecommendedBounds
+            {
+                get
+                {
+                    if (!IsRecommended(Strategy)) return Rectangle.Empty;
+                    Rectangle caption = CaptionBounds;
+                    TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+                    int captionWidth = TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue), flags).Width;
+                    Size label = TextRenderer.MeasureText(RecommendedText, Theme.UI(8f, true), new Size(int.MaxValue, int.MaxValue), flags);
+                    int width = label.Width + Theme.S(12), height = Math.Max(label.Height + Theme.S(4), Theme.S(18));
+                    int left = caption.Left + captionWidth + Theme.S(8);
+                    int lineHeight = TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue), flags).Height;
+                    if (left + width > caption.Right) return Rectangle.Empty;
+                    return new Rectangle(left, caption.Top + Math.Max(0, (lineHeight - height) / 2), width, height);
+                }
             }
 
             internal Rectangle IconBounds
@@ -298,6 +332,13 @@ namespace PaviseApp
                 using (Pen divider = new Pen(Col.Lerp(fill, Theme.Stroke, 0.8f)))
                     graphics.DrawLine(divider, icon.Right + Theme.S(10), Height / 2 - Theme.S(20), icon.Right + Theme.S(10), Height / 2 + Theme.S(20));
                 TextRenderer.DrawText(graphics, Text, Font, CaptionBounds, Theme.Fg, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                Rectangle badge = RecommendedBounds;
+                if (!badge.IsEmpty)
+                {
+                    DsPaint.TechFrame(graphics, badge, Theme.S(3), Col.Lerp(fill, Theme.Accent, Theme.LightMode ? 0.10f : 0.18f), Theme.Accent);
+                    TextRenderer.DrawText(graphics, RecommendedText, Theme.UI(8f, true), badge, Theme.Accent,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                }
                 TextRenderer.DrawText(graphics, ChoiceSummary(Strategy), Theme.UI(8.5f, false), SummaryBounds, Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
                 Rectangle radio = RadioBounds;
                 using (SolidBrush brush = new SolidBrush(selected ? Theme.Accent : Theme.Card)) graphics.FillEllipse(brush, radio);
@@ -351,7 +392,7 @@ namespace PaviseApp
             {
                 if (choice == SchedulingStrategy.GamePriority) return new string[] {
                     T("适用情况", "Use case"), T("游戏与其他程序争用 CPU", "The game competes with other apps for CPU"),
-                    T("调整内容", "Changes"), T("提高游戏进程优先级，固定并提优渲染线程", "Raises game process priority; pins and prioritizes rendering"),
+                    T("调整内容", "Changes"), T("游戏进程设为高，渲染线程提到最高，不固定核心", "Game process at High; render thread at highest; no core pinning"),
                     T("使用限制", "Limits"), T("CPU 满载时其他程序可能变慢", "Other apps may slow when the CPU is saturated") };
                 if (choice == SchedulingStrategy.RenderBoost) return new string[] {
                     T("适用情况", "Use case"), T("渲染线程等待 CPU", "Rendering waits for CPU time"),
@@ -595,10 +636,17 @@ namespace PaviseApp
         private void RefreshChoice()
         {
             for (int i = 0; i < modes.Length; i++) { modes[i].Kind = i == mode ? BtnKind.Primary : BtnKind.Normal; ((StrategyChoice)modes[i]).RefreshSelection(); }
-            clearCore.Enabled = FormalMode && SelectedStrategy != SchedulingStrategy.DependencyBoost;
+            clearCore.Enabled = FormalMode && SelectedStrategy != SchedulingStrategy.DependencyBoost && SelectedStrategy != SchedulingStrategy.GamePriority;
             clearCore.Checked = clearCore.Enabled && clearCoreRequested;
             clearCore.Summary = clearCore.Enabled ? T("其他游戏线程避开关键核心", "Make room for critical threads")
                 : T("此模式保留原范围，不使用清核", "This mode keeps CPU ranges; clear core is unavailable");
+            // 游戏优先已含磁盘与显卡优先级：开关显示为已包含且不可改，草案保留，切回其他方案时还原。
+            bool resourcesIncluded = FormalMode && SelectedStrategy == SchedulingStrategy.GamePriority;
+            resources.Enabled = resourcesSaveSupported && !resourcesIncluded;
+            resources.Checked = resourcesIncluded || resourcesRequested;
+            resources.Summary = resourcesIncluded ? T("游戏优先已包含 GPU 与磁盘调度", "Included in Game priority")
+                : T("GPU 与磁盘调度", "GPU and disk scheduling");
+            resources.Invalidate();
             string failure;
             Draft(out failure);
             error.Text = failure == null ? "" : Lang.T(failure);
@@ -610,6 +658,8 @@ namespace PaviseApp
             observationHint.Text = observation == null || !FormalMode ? "" : observation.Hint(SelectedStrategy);
             preview.Text = !FormalMode ? "" : SelectedStrategy == SchedulingStrategy.DependencyBoost
                 ? T("兼顾已识别的关联任务，保留游戏原有核心分配。", "Support identified related tasks while keeping the game's CPU placement.")
+                : SelectedStrategy == SchedulingStrategy.GamePriority
+                ? T("不固定核心、不清核，保留游戏原有核心分配；开局即识别渲染线程，不等待前台。", "No core pinning or clear core; the game's CPU placement is kept. The render thread is identified at session start without waiting for the foreground.")
                 : SelectedStrategy == SchedulingStrategy.RenderCoreTimeCritical
                 ? T("清核可能影响多线程游戏；专核强化仅在运行条件核验通过后生效。", "Clear core may slow heavily threaded games. Enhanced mode requires verified operating conditions.")
                 : T("清核可能影响多线程游戏；系统任务仍可使用这些核心。", "Clear core may slow heavily threaded games; system tasks can still use these cores.");
@@ -783,7 +833,10 @@ namespace PaviseApp
         {
             string failure;
             CriticalThreadRule rule = Draft(out failure);
-            if (failure == null) failure = save(rule, resources.Checked == initialResources ? (bool?)null : resources.Checked);
+            // 游戏优先不写资源开关：它运行时已包含磁盘与显卡优先级，保留的草案只供其他方案使用。
+            bool? resource = !resourcesSaveSupported || SelectedStrategy == SchedulingStrategy.GamePriority || resourcesRequested == initialResources
+                ? (bool?)null : resourcesRequested;
+            if (failure == null) failure = save(rule, resource);
             if (failure != null) { error.Text = Lang.T(failure); UpdateAccessibleDescription(); LayoutChoice(); return; }
             DialogResult = DialogResult.OK;
             Close();

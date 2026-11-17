@@ -364,15 +364,6 @@ namespace PaviseApp
             {
                 Logger.Log(Lang.T("log.gamemodeboost.46", 0) + clearResult + Lang.T("log.gamemodeboost.47", 0));
             }
-            bool persistentTweaksRestored = true;
-            if (IfeoBoost.HasResidue())
-            {
-                persistentTweaksRestored &= IfeoBoost.RestoreAll();
-            }
-            if (CfgOffTweak.HasResidue())
-            {
-                persistentTweaksRestored &= CfgOffTweak.RestoreAll();
-            }
             try
             {
                 ActionFailureStore.Records();
@@ -413,7 +404,7 @@ namespace PaviseApp
                     }
                     panicDone.Reset();
                 }
-                return panicResult && persistentTweaksRestored;
+                return panicResult;
             }
         }
         private bool Deactivate(string reason)
@@ -625,7 +616,7 @@ namespace PaviseApp
             SelfYield.BeginSession(Interlocked.Read(ref gameSessionStarts));
             GameDetection retryDetection = Volatile.Read(ref activeDetection);
             RenderLane.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), retryDetection == null ? 0 : retryDetection.RendererPid,
-                retryDetection == null ? 0 : retryDetection.RendererCreation, "lane:" + EffLane);
+                retryDetection == null ? 0 : retryDetection.RendererCreation, "lane:" + ClassicThreadBoostWanted());
             PerformanceTuning.BeginRecoveryCycle(Interlocked.Read(ref gameSessionStarts));
             string[] envKeys = EnvKeys;
             foreach (string key in envKeys)
@@ -642,11 +633,6 @@ namespace PaviseApp
         private bool RestoreRetiredServiceDebt(bool pending, Func<bool> hasResidue, Func<bool> restore)
         {
             return EnvStep("services", false, pending || hasResidue(), null, restore);
-        }
-        private static bool RestoreAmdAntiLagEnv()
-        {
-            bool restoreAntiLagSucceeded = AdlxTweaks.RestoreAntiLag();
-            return restoreAntiLagSucceeded & AdlxTweaks.RestoreChill();
         }
         private static bool RestorePowerPlan()
         {
@@ -745,7 +731,6 @@ namespace PaviseApp
             RunSessionRecoveryRoute("selfyield", delegate { SelfYield.Release(); return !SelfYield.HasResidue; });
             bool labClean = RunSessionRecoveryRoute("laboratory", () => RestoreLaboratory());
             bool operationsSucceeded = labClean && !SelfYield.HasResidue;
-            if (!RunSessionRecoveryRoute("windows-background", () => windowsBackground.Restore())) operationsSucceeded = false;
             if (!RunSessionRecoveryRoute("critical", () => StopCriticalThreads(0, "RestoreEnv")))
             {
                 operationsSucceeded = false;
@@ -807,10 +792,6 @@ namespace PaviseApp
             {
                 operationsSucceeded = false;
             }
-            if (!RunAutomaticRestore("rss", () => RssSteer.Restore()))
-            {
-                operationsSucceeded = false;
-            }
             if (RunAutomaticRestore("rsr", () => AdlxTweaks.RestoreRsr()))
             {
                 rsrActive = false;
@@ -818,20 +799,6 @@ namespace PaviseApp
             else
             {
                 operationsSucceeded = false;
-            }
-            {
-            if (RunAutomaticRestore("gpupower", () => GpuPowerMax.Restore()))
-            {
-                gpwActive = false;
-            }
-            else
-            {
-                operationsSucceeded = false;
-            }
-            if (!RunAutomaticRestore("gpuclock", () => GpuClockLock.Restore()))
-            {
-                operationsSucceeded = false;
-            }
             }
             if (RunAutomaticRestore("nvvrr", () => NvVrrWindowed.Restore()))
             {
@@ -854,31 +821,11 @@ namespace PaviseApp
             {
                 operationsSucceeded = false;
             }
-            if (RunAutomaticRestore("amdalag", () => RestoreAmdAntiLagEnv()))
-            {
-                amdAlagActive = false;
-            }
-            else
-            {
-                operationsSucceeded = false;
-            }
             if (RunAutomaticRestore("amdafmf", () => AdlxTweaks.RestoreAfmf()))
             {
                 amdAfmfActive = false;
             }
             else
-            {
-                operationsSucceeded = false;
-            }
-            if (!RunAutomaticRestore("amdsync", () => AdlxTweaks.RestoreEnhancedSync()))
-            {
-                operationsSucceeded = false;
-            }
-            if (!RunAutomaticRestore("amdris", () => AdlxTweaks.RestoreRis()))
-            {
-                operationsSucceeded = false;
-            }
-            if (!RunAutomaticRestore("amdfrtc", () => AdlxTweaks.RestoreFrtc()))
             {
                 operationsSucceeded = false;
             }
@@ -921,17 +868,16 @@ namespace PaviseApp
         }
         private bool EnvRestoreCompleted(bool operationsSucceeded)
         {
-            if (windowsBackground.HasRecovery) return false;
             if (Volatile.Read(ref laptopPerfWorker) != 0) return false;
             if (LaboratoryPower.HasResidue || LaboratoryGpu.HasResidue || (laboratory != null && !laboratory.IsRestored)) return false;
             if (!operationsSucceeded || PowerPlan.HasResidue || PowerPlan.HasParkResidue() || PowerOverlay.HasResidue || OptionalServicePause.HasResidue)
             {
                 return false;
             }
-            string[] textEntries = new string[15]
+            string[] textEntries = new string[13]
             {
-                "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos", "GpuPowerSnap", "AmdSnap", "NvDrsList", "PrevPowerPlan", "PowerOverlaySnap",
-                "CpuIdleStateV1", "PrevOptionalServicesPausedV1", "LaptopPerfSnap", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "FrameCoordinationTraceV1"
+                "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos", "AmdSnap", "NvDrsList", "PrevPowerPlan", "PowerOverlaySnap",
+                "PrevOptionalServicesPausedV1", "LaptopPerfSnap", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "FrameCoordinationTraceV1"
             };
             string[] textEntries2 = textEntries;
             foreach (string name in textEntries2)

@@ -253,11 +253,7 @@ namespace PaviseApp
 
             private readonly FamilySuppressionSwitch fullscreen;
 
-            private readonly FamilySuppressionSwitch ace;
-
             private readonly GameCardDetailsButton coreDetails;
-
-            private readonly GameCardDetailsButton aceDetails;
 
             private readonly Label extensionTitle;
 
@@ -290,27 +286,6 @@ namespace PaviseApp
                 family.IconKey = "family";
                 rebar.IconKey = "rebar";
                 fullscreen.IconKey = "fullscreen";
-                // ACE 压制按游戏开启，强度在调整窗口内选择，只在该游戏对局期间生效。
-                ace = MakeOption("libraryAceToggle", Lang.T("lib.ace"), true, form.ToggleGameAceSuppression);
-                ace.IconKey = "ace";
-                ace.DetailsWidth = 62;
-                aceDetails = new GameCardDetailsButton
-                {
-                    Name = "libraryAceSettings",
-                    ShowAdjustLabel = true,
-                    OwnerRow = ace,
-                    AccessibleName = Lang.T("lib.ace.adjust")
-                };
-                aceDetails.Click += delegate
-                {
-                    if (item != null)
-                    {
-                        owner.AdjustGameAceSuppression(item);
-                    }
-                };
-                base.Controls.Add(aceDetails);
-                aceDetails.BringToFront();
-                ace.DetailsOverlay = aceDetails;
                 coreDetails = new GameCardDetailsButton
                 {
                     Name = "libraryCoreSettings",
@@ -343,11 +318,9 @@ namespace PaviseApp
                 core.TabIndex = 0;
                 coreDetails.TabIndex = 1;
                 owner.criticalThreadEditor.TabIndex = 2;
-                ace.TabIndex = 3;
-                aceDetails.TabIndex = 4;
-                family.TabIndex = 5;
-                rebar.TabIndex = 6;
-                fullscreen.TabIndex = 7;
+                family.TabIndex = 3;
+                rebar.TabIndex = 4;
+                fullscreen.TabIndex = 5;
                 RefreshItem(initial);
             }
 
@@ -415,20 +388,13 @@ namespace PaviseApp
                 family.Gated = !item.RendererObserved;
                 rebar.Checked = PolicyResolver.For(profile).NvRebar;
                 fullscreen.Checked = profile.DisableFullscreenOptimizations;
-                string aceChoice = corePolicy.ValueOf(AceSuppressionPolicy.Key);
-                ace.Checked = AceSuppressionPolicy.Parse(aceChoice).HasValue;
-                // 关闭时在行内说明适用范围，开启后显示所选强度。
-                ace.Summary = ace.Checked ? AceSuppressionPolicy.Label(aceChoice) : Lang.T("lib.ace.tip");
-                ace.Enabled = !owner.aceChangeBusy;
-                aceDetails.Enabled = !owner.aceChangeBusy;
                 family.Enabled = !owner.familyChangeBusy;
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
-                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[5] { core, ace, family, rebar, fullscreen };
-                string[] textEntries = new string[5]
+                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { core, family, rebar, fullscreen };
+                string[] textEntries = new string[4]
                 {
                     "lib.cores.toggle.tip",
-                    "lib.ace.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
                     "lib.rebar.tip",
                     "lib.fso.tip"
@@ -482,19 +448,15 @@ namespace PaviseApp
                     coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), core.Top + Theme.S(2), Theme.S(64), Theme.S(36));
                     coreDetails.BringToFront();
                     owner.criticalThreadEditor.SetBounds(0, core.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
-                    ace.SetBounds(0, owner.criticalThreadEditor.Bottom + Theme.S(8), width, Theme.S(40));
-                    aceDetails.SetBounds(Math.Max(0, ace.Width - Theme.S(65)), ace.Top + Theme.S(2), Theme.S(64), Theme.S(36));
-                    aceDetails.BringToFront();
-                    // 核心范围、渲染调度和 ACE 压制的行内摘要保持同列。
-                    int summaryColumn = Math.Max(Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft()), ace.NaturalSummaryLeft());
-                    if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn || ace.SummaryLeft != summaryColumn)
+                    // 核心范围和渲染调度的行内摘要保持同列。
+                    int summaryColumn = Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft());
+                    if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn)
                     {
-                        core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = ace.SummaryLeft = summaryColumn;
+                        core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = summaryColumn;
                         core.Invalidate();
                         owner.criticalThreadEnabled.Invalidate();
-                        ace.Invalidate();
                     }
-                    otherTitle.SetBounds(Theme.S(4), ace.Bottom + Theme.S(12), labelWidth, Theme.S(22));
+                    otherTitle.SetBounds(Theme.S(4), owner.criticalThreadEditor.Bottom + Theme.S(12), labelWidth, Theme.S(22));
                     int rowTop = otherTitle.Bottom + Theme.S(4);
                     FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[3] { family, rebar, fullscreen };
                     for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
@@ -795,7 +757,6 @@ namespace PaviseApp
 
         private Label lblCoreTelemetry;
 
-        private PillButton btnCoreClearReserved;
 
         private Panel coreQuickPanel;
 
@@ -950,8 +911,6 @@ namespace PaviseApp
         private bool familyChangeBusy;
 
         private bool rebarChangeBusy;
-
-        private bool aceChangeBusy;
 
         private bool fullscreenOptimizationsChangeBusy;
 
@@ -1226,7 +1185,6 @@ namespace PaviseApp
 
         private bool shotMode;
 
-        private readonly Tamer tamer;
 
         private readonly GameMode gameMode;
 
@@ -1523,9 +1481,8 @@ namespace PaviseApp
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
         private static extern IntPtr SendWhitelistCue(IntPtr window, int message, IntPtr parameter, string text);
 
-        public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
+        public PanelForm(GameMode gm, Icon icon, bool isElevated)
         {
-            tamer = t;
             gameMode = gm;
             elevated = isElevated;
             appIcon = (Icon)icon.Clone();

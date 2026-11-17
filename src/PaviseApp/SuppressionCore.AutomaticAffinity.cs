@@ -100,10 +100,6 @@ namespace PaviseApp
 
         private static bool RestoreAutomaticLayoutValues(IntPtr h, Entry e)
         {
-            if (e.AntiCheatPlacementExternal)
-            {
-                return true;
-            }
             if (e.AutomaticLayoutSets == null || e.AutomaticLayoutYielded)
             {
                 return true;
@@ -218,7 +214,7 @@ namespace PaviseApp
 
         private static bool PlacementIsProtected(Entry e)
         {
-            if (e.BackgroundJobPlacement || e.AntiCheatPlacementExternal || AntiCheatThrottled(e))
+            if (e.BackgroundJobPlacement)
             {
                 return true;
             }
@@ -231,93 +227,7 @@ namespace PaviseApp
 
         private static bool RestorePlacement(Entry e)
         {
-            return !e.BackgroundJobPlacement && !e.AntiCheatPlacementExternal && !e.BackgroundPlacementOwned && !e.AutomaticLayoutYielded;
-        }
-
-        // 独立反作弊亲和性租约准入前，先结清旧亲和性恢复债务。
-        internal bool PrepareAntiCheatAffinity(int pid, long creation, string name)
-        {
-            Entry entry;
-            lock (sync)
-            {
-                if (!map.TryGetValue(pid, out entry) || entry.Creation != creation || !SameName(entry.Name, name)
-                    || !AntiCheatThrottled(entry) || entry.OrigPri == uint.MaxValue || entry.RestoreInFlight || entry.LegacyPlacementDebt) return false;
-                if (entry.AntiCheatPlacementExternal && entry.Journaled) return true;
-                if (entry.AffinityPrepareInFlight) { RecoveryAttemptTrace.DeferredFor(TimeSpan.FromSeconds(1)); return false; }
-                if (RestoreBudgetBlocked(entry, "affinity-prepare", false)) return false;
-                entry.AffinityPrepareInFlight = true;
-            }
-            bool completed = false;
-            try { completed = PrepareAntiCheatAffinityCore(pid, creation, name); return completed; }
-            finally { lock (sync) { entry.AffinityPrepareInFlight = false; RecordFailureBudget(entry, "affinity-prepare", completed, 0); } }
-        }
-
-        private bool PrepareAntiCheatAffinityCore(int pid, long creation, string name)
-        {
-            Entry entry;
-            lock (sync)
-            {
-                if (!map.TryGetValue(pid, out entry) || !AntiCheatThrottled(entry) || entry.Creation != creation || creation <= 0 || !SameName(entry.Name, name) || entry.OrigPri == uint.MaxValue || entry.RestoreInFlight || entry.LegacyPlacementDebt)
-                {
-                    return false;
-                }
-                if (entry.AntiCheatPlacementExternal)
-                {
-                    return entry.Journaled || SaveJournalLocked(true);
-                }
-            }
-            IntPtr handle = Native.OpenProcess(12800, false, pid);
-            if (handle == IntPtr.Zero)
-            {
-                return false;
-            }
-            try
-            {
-                lock (sync)
-                {
-                    Entry current;
-                    if (!map.TryGetValue(pid, out current) || current != entry || !AntiCheatThrottled(entry) || entry.RestoreInFlight || !SameProcess(handle, entry))
-                    {
-                        return false;
-                    }
-                    if (!RestoreBackgroundPlacement(handle, entry))
-                    {
-                        return false;
-                    }
-                    bool oldOwned = entry.BackgroundPlacementOwned;
-                    bool oldPending = entry.BackgroundRestorePending;
-                    bool oldVerified = entry.BackgroundPlacementVerified;
-                    bool oldYielded = entry.AutomaticLayoutYielded;
-                    bool oldRestoring = entry.AutomaticLayoutRestoring;
-                    uint[] oldLayout = entry.AutomaticLayoutSets;
-                    ulong oldSqueeze = entry.SqueezeAff;
-                    entry.AntiCheatPlacementExternal = true;
-                    entry.BackgroundPlacementOwned = false;
-                    entry.BackgroundRestorePending = false;
-                    entry.BackgroundPlacementVerified = false;
-                    entry.AutomaticLayoutSets = null;
-                    entry.AutomaticLayoutYielded = false;
-                    entry.AutomaticLayoutRestoring = false;
-                    entry.SqueezeAff = 0;
-                    if (SaveJournalLocked(true))
-                    {
-                        return true;
-                    }
-                    entry.AntiCheatPlacementExternal = false;
-                    entry.BackgroundPlacementOwned = oldOwned;
-                    entry.BackgroundRestorePending = oldPending;
-                    entry.BackgroundPlacementVerified = oldVerified;
-                    entry.AutomaticLayoutSets = oldLayout;
-                    entry.AutomaticLayoutYielded = oldYielded;
-                    entry.AutomaticLayoutRestoring = oldRestoring;
-                    entry.SqueezeAff = oldSqueeze;
-                    return false;
-                }
-            }
-            finally
-            {
-                Native.CloseHandle(handle);
-            }
+            return !e.BackgroundJobPlacement && !e.BackgroundPlacementOwned && !e.AutomaticLayoutYielded;
         }
 
     }

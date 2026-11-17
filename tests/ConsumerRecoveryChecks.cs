@@ -495,10 +495,48 @@ namespace PaviseApp
             }
             finally { Settings.SaveStrDurable(slot, ""); Check(coordinator.Close(1000), "Memory coordinator did not close after fixture receipt cleanup"); }
         }
+        // 写入途中进程退出留下的执行意图：没有恢复记录时按恢复完成结清，之后照常重新应用；有记录时不越过记录。
+        private static void DanglingIntentWithoutReceipt()
+        {
+            Settings.UseTransientStoreForCurrentProcess(); PerformanceTuning.BeginRecoveryCycle(118);
+            const string action = "AutoGameMitigationsV1";
+            string target = @"C:\SyntheticOnly\dangling.exe", other = @"C:\SyntheticOnly\owned.exe";
+            var admissions = (IDictionary)typeof(ActionFailureStore).GetField("admissions", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            string reason;
+            foreach (string item in new[] { target, other })
+            {
+                ActionFailureStore.BeginAutomaticCycle(action, item, "118\noff64");
+                Check(ActionFailureStore.TryBeginApply(action, item, out reason), "Fixture intent was not admitted: " + reason);
+                // 模拟重启：内存准入已不在，持久意图仍在；新进程开始新一轮自动阶段。
+                admissions.Remove(ActionFailureStore.RecordKey(action, item));
+                ActionFailureStore.BeginAutomaticCycle(action, item, "119\noff64");
+            }
+            Check(ActionFailureStore.IsIsolated(action, target) && ActionFailureStore.IsBlocked(action, target), "Dangling intent did not isolate the target");
+            var receipt = new PerformanceActionStore.Receipt { Id = action, Target = other, Original = "a", Expected = "b", Committed = true };
+            string slot = PerformanceActionStore.Slot(receipt.Id, receipt.Target);
+            Settings.SaveStrDurable(slot, PerformanceActionStore.Pack(receipt));
+            Settings.SaveStrDurable(PerformanceActionStore.ListKey, slot);
+            try
+            {
+                Check(!PerformanceTuning.SettleIntentWithoutReceipt(action, other) && ActionFailureStore.IsBlocked(action, other),
+                    "A target with its own recovery record was settled without restoring it");
+                Check(PerformanceTuning.SettleIntentWithoutReceipt(action, target) && !ActionFailureStore.IsBlocked(action, target),
+                    "A dangling intent without any recovery record stayed blocked");
+                Check(ActionFailureStore.IsIsolated(action, target), "Settling the intent erased the failure record before a verified apply");
+                Check(ActionFailureStore.TryBeginApply(action, target, out reason) && ActionFailureStore.CompleteApply(action, target)
+                    && !ActionFailureStore.IsIsolated(action, target), "Verified apply after settlement did not clear isolation: " + reason);
+            }
+            finally
+            {
+                Settings.SaveStrDurable(slot, ""); Settings.SaveStrDurable(PerformanceActionStore.ListKey, "");
+                ActionFailureStore.CancelApply(action, other);
+            }
+        }
+
         private static int Main()
         {
             try { Settings.UseTransientStoreForCurrentProcess(); Logger.WritesEnabled = false;
-                SharedBudget(); QuantumCycle(); PrivacyReceipt(); GuardianPhase(); SuppressionPhases(); HistoricalBudgets(); SuppressionActualRecovery(); StandbyStableCycle(); BackgroundJournalDebt(); SavedPresetConfigurationPhase(); SavedSameValueApplyRace(); SavedMaterialDisplay(); RecoveryOwnerReporters();
+                SharedBudget(); QuantumCycle(); PrivacyReceipt(); GuardianPhase(); SuppressionPhases(); HistoricalBudgets(); SuppressionActualRecovery(); StandbyStableCycle(); BackgroundJournalDebt(); SavedPresetConfigurationPhase(); SavedSameValueApplyRace(); SavedMaterialDisplay(); RecoveryOwnerReporters(); DanglingIntentWithoutReceipt();
                 Console.WriteLine("PASS ConsumerRecoveryChecks checks=" + checks + " production_methods=true transient_settings=true native_writes=0 product_started=false"); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }

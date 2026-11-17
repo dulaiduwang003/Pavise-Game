@@ -76,8 +76,6 @@ namespace PaviseApp
             ulong reserved = GameBackgroundReservedCores();
             if (reserved == reconciledBackgroundReservation) return;
             reconciledBackgroundReservation = reserved;
-            windowsBackgroundNext = 0;
-            StepWindowsBackground(snapshot, gamePids, switchedOut);
             int epoch = backgroundCoreProtectionEpoch;
             if (EffSuppress && !switchedOut && FamilyPolicyEpochCurrent(epoch))
                 RunBackgroundPolicy(epoch, delegate

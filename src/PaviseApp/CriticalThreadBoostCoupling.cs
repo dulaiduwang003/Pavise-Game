@@ -13,6 +13,8 @@ namespace PaviseApp
         OtherThread,
         FrameAssociated,
         FrameOther,
-        Unified
+        Unified,
+        // 游戏优先：线程由 3.3.0.8 线程协同提优，统一调度不参与。
+        Classic
     }
 }

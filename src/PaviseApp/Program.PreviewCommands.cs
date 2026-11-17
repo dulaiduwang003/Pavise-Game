@@ -78,7 +78,6 @@ namespace PaviseApp
                 Logger.LogPath = Path.Combine(dataValue, "Pavise.log");
                 int pageIndex = ((args.Length >= 3) ? int.Parse(args[2]) : 0);
                 SuppressionCore core = new SuppressionCore();
-                Tamer t = new Tamer(core);
                 try
                 {
                     GameMode gameMode2 = new GameMode(dataValue, core);
@@ -100,7 +99,7 @@ namespace PaviseApp
                         File.Copy(Application.ExecutablePath, nebulaStrikeWin64ShippingPath, true);
                         gameMode2.AddGameExecutable("NEBULA STRIKE", nebulaStrikeWin64ShippingPath);
                     }
-                    using (PanelForm panelForm = new PanelForm(t, gameMode2, IconArt.MakeIcon(Dpi.S(24)), true))
+                    using (PanelForm panelForm = new PanelForm(gameMode2, IconArt.MakeIcon(Dpi.S(24)), true))
                     {
                         IntPtr handle = panelForm.Handle;
                         GC.KeepAlive(handle);
@@ -150,12 +149,11 @@ namespace PaviseApp
                 Application.SetCompatibleTextRenderingDefault(false);
                 Logger.LogPath = Path.Combine(Paths.Data, "Pavise.preview.log");
                 SuppressionCore core2 = new SuppressionCore();
-                Tamer t2 = new Tamer(core2);
                 GameMode gameMode3 = new GameMode(Paths.Data, core2);
                 gameMode3.Enabled = Settings.Load("GameModeOn", true);
                 using (Icon icon2 = IconArt.MakeMultiIcon(gameMode3.ActivePreset, gameMode3.Enabled))
                 {
-                    using (PanelForm panelForm2 = new PanelForm(t2, gameMode3, icon2, true))
+                    using (PanelForm panelForm2 = new PanelForm(gameMode3, icon2, true))
                     {
                         panelForm2.RealExit = true;
                         panelForm2.ShowPanel();

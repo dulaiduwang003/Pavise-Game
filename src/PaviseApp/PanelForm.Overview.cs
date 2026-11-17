@@ -194,16 +194,6 @@ namespace PaviseApp
             };
             coreMapPanel.Controls.Add(coreMatrix);
             lblCoreReserved = CardLabel(coreMapPanel, "", 0, 0, 280, 40, 8.5f, false, Theme.Warning);
-            btnCoreClearReserved = new PerformanceActionButton(Lang.T("schedule.auto.reserved.clear"))
-            {
-                Name = "coreClearReserved",
-                Visible = false
-            };
-            btnCoreClearReserved.Click += delegate
-            {
-                ClearSuspectReservedCores();
-            };
-            coreMapPanel.Controls.Add(btnCoreClearReserved);
             pageCoreScheduling.SizeChanged += delegate
             {
                 LayoutCoreViewport();

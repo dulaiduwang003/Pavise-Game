@@ -129,6 +129,18 @@ namespace PaviseApp
             RequestPolicyApply("SetGameDvrSuppression");
             return true;
         }
+        private long nextSuppressionRetryTicks;
+
+        // 普通后台恢复失败的条目按各自预算重试；每 8 秒检查一次，不随对局扫描节奏加快。
+        // 用单调时钟计时：系统时间被往回调时，墙钟会让重试停到时间追回为止。
+        private void RetryPendingSuppressionRestores()
+        {
+            long now = AutoCores.NowTicks;
+            if (now < nextSuppressionRetryTicks) return;
+            nextSuppressionRetryTicks = now + TimeSpan.FromSeconds(8).Ticks;
+            core.RetryPending();
+        }
+
         internal static SuppressionLevel BackgroundLevel()
         {
             return SuppressionLevel.Isolated;

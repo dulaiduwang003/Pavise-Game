@@ -6,29 +6,14 @@ namespace PaviseApp
 {
     internal static class AdlxTweaks
     {
-        private delegate bool FeatureGetter(IntPtr gpu, out bool supported, out bool enabled);
-
-        private delegate bool FeatureApplier(IntPtr gpu);
-
-        private delegate bool RestoreApply(IntPtr gpu, string orig);
-
-        private delegate bool RangeGetter(IntPtr gpu, out bool supported, out string snapValue, out AdlxIntRange range);
-
-        private delegate bool RangeSetter(IntPtr gpu, int value);
-
-        private delegate bool RangeVerifier(IntPtr gpu, int value);
 
         internal const string SnapKey = "AmdSnap";
-
-        public const int RisSharpness = 80;
 
         public const int RsrDefaultSharpness = 75;
 
         private static readonly object lk = new object();
 
         private static bool renderSkipLogged;
-
-        private static int alagSup;
 
         private static int afmfSup;
 
@@ -77,161 +62,60 @@ namespace PaviseApp
             return canRenderOnAmd;
         }
 
+        // 1.x/2.x 写入的逐显卡旧项（Anti-Lag、Chill、Enhanced Sync、RIS、FRTC、最低频率）不再恢复，读取快照时直接丢弃。
+        private static readonly string[] RetiredSnapSuffixes = { ".alag", ".esync", ".chill", ".ris", ".frtc", ".gfxmin" };
+
+        private static bool IsRetiredSnapKey(string key)
+        {
+            foreach (string suffix in RetiredSnapSuffixes)
+            {
+                if (key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static Dictionary<string, string> LoadSnap()
         {
-            return NvDrsTweaks.ParseSnapshot(Settings.LoadStr("AmdSnap", ""));
+            Dictionary<string, string> snapshot = NvDrsTweaks.ParseSnapshot(Settings.LoadStr("AmdSnap", ""));
+            List<string> retired = new List<string>();
+            foreach (string key in snapshot.Keys)
+            {
+                if (IsRetiredSnapKey(key))
+                {
+                    retired.Add(key);
+                }
+            }
+            foreach (string key in retired)
+            {
+                snapshot.Remove(key);
+            }
+            return snapshot;
+        }
+
+        // 启动时把旧项从持久快照中清掉，避免它们一直被当成待恢复记录。
+        private static void DropRetiredSnapshot()
+        {
+            lock (lk)
+            {
+                string raw = Settings.LoadStr("AmdSnap", "");
+                if (raw.Length == 0)
+                {
+                    return;
+                }
+                Dictionary<string, string> snapshot = LoadSnap();
+                if (NvDrsTweaks.ParseSnapshot(raw).Count != snapshot.Count && SaveSnap(snapshot))
+                {
+                    Logger.Info("启动 事件=旧版AMD显卡记录 结果=已丢弃");
+                }
+            }
         }
 
         private static bool SaveSnap(Dictionary<string, string> snapshot)
         {
             return Settings.SaveStrDurable("AmdSnap", (snapshot.Count == 0) ? "" : NvDrsTweaks.SerializeSnapshot(snapshot));
-        }
-
-        private static string GpuKey(IntPtr gpu, int index, ref bool identityMissing)
-        {
-            string gpuPnpStringResult = AdlxApi.GpuPnpString(gpu);
-            if (string.IsNullOrEmpty(gpuPnpStringResult))
-            {
-                identityMissing = true;
-                return "g" + index;
-            }
-            return "id" + gpuPnpStringResult.Replace('=', '_').Replace(';', '_');
-        }
-
-        private static bool EnsureSnapshot(Dictionary<string, string> snapshot, string key, string legacyKey, string value, string label)
-        {
-            if (!snapshot.ContainsKey(key) && legacyKey != null && snapshot.ContainsKey(legacyKey))
-            {
-                snapshot[key] = snapshot[legacyKey];
-                snapshot.Remove(legacyKey);
-                if (!SaveSnap(snapshot))
-                {
-                    Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.1", 0));
-                    return false;
-                }
-                return true;
-            }
-            if (!snapshot.ContainsKey(key))
-            {
-                snapshot[key] = value;
-                if (!SaveSnap(snapshot))
-                {
-                    Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.1", 0));
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        public static bool RestoreAntiLag()
-        {
-            return RestoreFeature("alag", "Anti-Lag", delegate(IntPtr gpu, string orig)
-            {
-                bool supported;
-                bool enabled;
-                if ((orig != "0" && orig != "1") || !AdlxApi.AntiLagGet(gpu, out supported, out enabled) || !supported)
-                {
-                    return false;
-                }
-                if (enabled == (orig == "1"))
-                {
-                    return true;
-                }
-                return AdlxApi.AntiLagSet(gpu, orig == "1") && AdlxApi.AntiLagGet(gpu, out supported, out enabled) && supported && enabled == (orig == "1");
-            });
-        }
-
-        public static bool ActivateEnhancedSync()
-        {
-            return ApplyToggle("esync", "Enhanced Sync", delegate(IntPtr gpu, out bool supported, out bool enabled)
-            {
-                return AdlxApi.EnhancedSyncGet(gpu, out supported, out enabled);
-            }, (IntPtr gpu) => AdlxApi.EnhancedSyncSet(gpu, true), true);
-        }
-
-        public static bool RestoreEnhancedSync()
-        {
-            return RestoreFeature("esync", "Enhanced Sync", (IntPtr gpu, string orig) => AdlxApi.EnhancedSyncSet(gpu, orig == "1"));
-        }
-
-        public static bool RestoreChill()
-        {
-            return RestoreFeature("chill", "Chill", delegate(IntPtr gpu, string orig)
-            {
-                string[] origParts = orig.Split('|');
-                int result;
-                int result2;
-                if (origParts.Length != 3 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || !int.TryParse(origParts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out result2))
-                {
-                    return true;
-                }
-                return (origParts[0] != "1") ? AdlxApi.ChillSet(gpu, false, 0, 0) : AdlxApi.ChillSet(gpu, true, result, result2);
-            });
-        }
-
-        public static bool ActivateRis()
-        {
-            bool supported2;
-            bool enabled;
-            int sharpness;
-            AdlxIntRange range2;
-            return ApplyRange("ris", Lang.T("t.adlxtweaks.4"), 80, Lang.T("t.adlxtweaks.5") + 80, delegate(IntPtr gpu, out bool supported, out string snapValue, out AdlxIntRange range)
-            {
-                bool enabled2;
-                int sharpness2;
-                bool result = AdlxApi.RisGet(gpu, out supported, out enabled2, out sharpness2, out range);
-                snapValue = (enabled2 ? "1" : "0") + "|" + sharpness2;
-                return result;
-            }, (IntPtr gpu, int target) => AdlxApi.RisSet(gpu, true, target), (IntPtr gpu, int target) => AdlxApi.RisGet(gpu, out supported2, out enabled, out sharpness, out range2) && enabled);
-        }
-
-        public static bool RestoreRis()
-        {
-            return RestoreFeature("ris", Lang.T("t.adlxtweaks.4"), delegate(IntPtr gpu, string orig)
-            {
-                string[] origParts = orig.Split('|');
-                int result;
-                return origParts.Length != 2 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || AdlxApi.RisSet(gpu, origParts[0] == "1", result);
-            });
-        }
-
-        public static bool HasAntiLagResidue()
-        {
-            Dictionary<string, string> snapshot = LoadSnap();
-            if (!HasPrefix(snapshot, ".alag"))
-            {
-                return HasPrefix(snapshot, ".chill");
-            }
-            return true;
-        }
-
-        public static bool RestoreFrameLimit()
-        {
-            return RestoreChill() & RestoreFrtc();
-        }
-
-        public static bool HasFrameLimitResidue()
-        {
-            Dictionary<string, string> snapshot = LoadSnap();
-            if (!HasPrefix(snapshot, ".chill"))
-            {
-                return HasPrefix(snapshot, ".frtc");
-            }
-            return true;
-        }
-
-        public static bool RestoreFrtc()
-        {
-            return RestoreFeature("frtc", Lang.T("t.adlxtweaks.8"), delegate(IntPtr gpu, string orig)
-            {
-                string[] origParts = orig.Split('|');
-                int result;
-                if (origParts.Length != 2 || !int.TryParse(origParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
-                {
-                    return true;
-                }
-                return (origParts[0] != "1") ? AdlxApi.FrtcSet(gpu, false, 0) : AdlxApi.FrtcSet(gpu, true, result);
-            });
         }
 
         public static bool ActivateAfmf()
@@ -474,22 +358,6 @@ namespace PaviseApp
             return rsrSup > 0;
         }
 
-        public static bool AntiLagSupported()
-        {
-            if (!AmdRenderGateOpen())
-            {
-                return false;
-            }
-            if (alagSup == 0)
-            {
-                alagSup = (ProbeGpuToggle(delegate(IntPtr gpu, out bool s, out bool e)
-                {
-                    return AdlxApi.AntiLagGet(gpu, out s, out e);
-                }) ? 1 : (-1));
-            }
-            return alagSup > 0;
-        }
-
         public static bool AfmfSupported()
         {
             if (!AmdRenderGateOpen())
@@ -503,279 +371,6 @@ namespace PaviseApp
                 afmfSup = ((Available && AdlxApi.AfmfGet(out supported, out enabled) && supported) ? 1 : (-1));
             }
             return afmfSup > 0;
-        }
-
-        private static bool ProbeGpuToggle(FeatureGetter get)
-        {
-            if (!Available)
-            {
-                return false;
-            }
-            IntPtr[] gpus = AdlxApi.GetGpus();
-            if (gpus == null || gpus.Length == 0)
-            {
-                return false;
-            }
-            try
-            {
-                IntPtr[] gpusSnapshot = gpus;
-                foreach (IntPtr gpu in gpusSnapshot)
-                {
-                    bool supported;
-                    bool enabled;
-                    if (get(gpu, out supported, out enabled) && supported)
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            finally
-            {
-                AdlxApi.ReleaseAll(gpus);
-            }
-        }
-
-        private static bool ApplyRange(string keySuffix, string label, int desired, string successLog, RangeGetter get, RangeSetter set, RangeVerifier verify)
-        {
-            if (!Available)
-            {
-                return false;
-            }
-            lock (lk)
-            {
-                IntPtr[] gpus = AdlxApi.GetGpus();
-                if (gpus == null || gpus.Length == 0)
-                {
-                    return false;
-                }
-                try
-                {
-                    Dictionary<string, string> snapshot = LoadSnap();
-                    bool identityMissing = false;
-                    int processedCount = 0;
-                    int processedCount2 = 0;
-                    for (int i = 0; i < gpus.Length; i++)
-                    {
-                        bool supported;
-                        string snapValue;
-                        AdlxIntRange range;
-                        if (get(gpus[i], out supported, out snapValue, out range) && supported)
-                        {
-                            string key = GpuKey(gpus[i], i, ref identityMissing) + "." + keySuffix;
-                            if (!EnsureSnapshot(snapshot, key, "g" + i + "." + keySuffix, snapValue, label))
-                            {
-                                return false;
-                            }
-                            int value = Clamp(desired, range.Min, range.Max);
-                            if (!set(gpus[i], value))
-                            {
-                                processedCount2++;
-                            }
-                            else if (verify(gpus[i], value))
-                            {
-                                processedCount++;
-                            }
-                            else
-                            {
-                                processedCount2++;
-                            }
-                        }
-                    }
-                    if (processedCount > 0 && processedCount2 == 0)
-                    {
-                        Logger.Log(successLog);
-                        return true;
-                    }
-                    if (processedCount2 > 0)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24", 0) + processedCount2 + Lang.T("log.adlxtweaks.25", 0));
-                    }
-                    else if (processedCount == 0)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26", 0));
-                    }
-                    return false;
-                }
-                finally
-                {
-                    AdlxApi.ReleaseAll(gpus);
-                }
-            }
-        }
-
-        private static bool ApplyToggle(string keySuffix, string label, FeatureGetter get, FeatureApplier apply, bool wantEnabled)
-        {
-            if (!Available)
-            {
-                return false;
-            }
-            lock (lk)
-            {
-                IntPtr[] gpus = AdlxApi.GetGpus();
-                if (gpus == null || gpus.Length == 0)
-                {
-                    return false;
-                }
-                try
-                {
-                    Dictionary<string, string> snapshot = LoadSnap();
-                    bool identityMissing = false;
-                    int processedCount = 0;
-                    int processedCount2 = 0;
-                    for (int i = 0; i < gpus.Length; i++)
-                    {
-                        bool supported;
-                        bool enabled;
-                        if (!get(gpus[i], out supported, out enabled) || !supported)
-                        {
-                            continue;
-                        }
-                        if (enabled == wantEnabled)
-                        {
-                            processedCount++;
-                            continue;
-                        }
-                        string key = GpuKey(gpus[i], i, ref identityMissing) + "." + keySuffix;
-                        if (!EnsureSnapshot(snapshot, key, "g" + i + "." + keySuffix, enabled ? "1" : "0", label))
-                        {
-                            return false;
-                        }
-                        bool supported2;
-                        bool enabled2;
-                        if (!apply(gpus[i]))
-                        {
-                            processedCount2++;
-                        }
-                        else if (get(gpus[i], out supported2, out enabled2) && enabled2 == wantEnabled)
-                        {
-                            processedCount++;
-                        }
-                        else
-                        {
-                            processedCount2++;
-                        }
-                    }
-                    if (processedCount > 0 && processedCount2 == 0)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.27", 0));
-                        return true;
-                    }
-                    if (processedCount2 > 0)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24", 0) + processedCount2 + Lang.T("log.adlxtweaks.25", 0));
-                    }
-                    else if (processedCount == 0)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26", 0));
-                    }
-                    return false;
-                }
-                finally
-                {
-                    AdlxApi.ReleaseAll(gpus);
-                }
-            }
-        }
-
-        private static bool RestoreFeature(string suffix, string label, RestoreApply apply)
-        {
-            lock (lk)
-            {
-                Dictionary<string, string> dictionary = LoadSnap();
-                if (!HasPrefix(dictionary, "." + suffix))
-                {
-                    return true;
-                }
-                if (!Available)
-                {
-                    return false;
-                }
-                IntPtr[] gpus = AdlxApi.GetGpus();
-                if (gpus == null)
-                {
-                    return false;
-                }
-                try
-                {
-                    bool restoreFeatureSucceeded = true;
-                    bool identityMissing = false;
-                    HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 0; i < gpus.Length; i++)
-                    {
-                        string[] textEntries = new string[2]
-                        {
-                            GpuKey(gpus[i], i, ref identityMissing) + "." + suffix,
-                            "g" + i + "." + suffix
-                        };
-                        string[] textEntries2 = textEntries;
-                        foreach (string entryText in textEntries2)
-                        {
-                            hashSet.Add(entryText);
-                            string value;
-                            if (dictionary.TryGetValue(entryText, out value))
-                            {
-                                if (apply(gpus[i], value))
-                                {
-                                    dictionary.Remove(entryText);
-                                }
-                                else
-                                {
-                                    restoreFeatureSucceeded = false;
-                                }
-                            }
-                        }
-                    }
-                    if (!identityMissing)
-                    {
-                        List<string> list = new List<string>();
-                        foreach (KeyValuePair<string, string> item in dictionary)
-                        {
-                            if (item.Key.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase) && !hashSet.Contains(item.Key))
-                            {
-                                list.Add(item.Key);
-                            }
-                        }
-                        foreach (string item2 in list)
-                        {
-                            dictionary.Remove(item2);
-                        }
-                        if (list.Count > 0)
-                        {
-                            Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.28", 0) + list.Count + Lang.T("log.adlxtweaks.29", 0));
-                        }
-                    }
-                    if (!SaveSnap(dictionary))
-                    {
-                        restoreFeatureSucceeded = false;
-                    }
-                    if (restoreFeatureSucceeded)
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.renderlane.13", 0));
-                    }
-                    else
-                    {
-                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.30", 0));
-                    }
-                    return restoreFeatureSucceeded;
-                }
-                finally
-                {
-                    AdlxApi.ReleaseAll(gpus);
-                }
-            }
-        }
-
-        private static bool HasPrefix(Dictionary<string, string> snapshot, string suffix)
-        {
-            foreach (KeyValuePair<string, string> item in snapshot)
-            {
-                if (item.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-            return false;
         }
 
         private static int Clamp(int value, int min, int max)
@@ -824,148 +419,7 @@ namespace PaviseApp
 
         public static bool HasResidue()
         {
-            return Settings.LoadStr("AmdSnap", "").Length > 0;
-        }
-
-        public static bool GfxMinSupported()
-        {
-            if (!Available)
-            {
-                return false;
-            }
-            IntPtr[] gpus = AdlxApi.GetGpus();
-            if (gpus == null || gpus.Length == 0)
-            {
-                return false;
-            }
-            try
-            {
-                IntPtr[] gpusSnapshot = gpus;
-                foreach (IntPtr gpu in gpusSnapshot)
-                {
-                    bool supported;
-                    int min;
-                    int max;
-                    AdlxIntRange minRange;
-                    if (AdlxApi.GfxMinGet(gpu, out supported, out min, out max, out minRange) && supported)
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            finally
-            {
-                AdlxApi.ReleaseAll(gpus);
-            }
-        }
-
-        internal static int GfxMinTarget(int currentMax, AdlxIntRange minRange)
-        {
-            int currentMaxSnapshot = currentMax;
-            if (minRange.Max > 0 && currentMaxSnapshot > minRange.Max)
-            {
-                currentMaxSnapshot = minRange.Max;
-            }
-            if (minRange.Min > 0 && currentMaxSnapshot < minRange.Min)
-            {
-                currentMaxSnapshot = minRange.Min;
-            }
-            return currentMaxSnapshot;
-        }
-
-        public static bool ActivateGfxMin()
-        {
-            if (!AmdRenderGateOpen())
-            {
-                return true;
-            }
-            if (!Available)
-            {
-                return false;
-            }
-            lock (lk)
-            {
-                IntPtr[] gpus = AdlxApi.GetGpus();
-                if (gpus == null || gpus.Length == 0)
-                {
-                    return false;
-                }
-                try
-                {
-                    Dictionary<string, string> snapshot = LoadSnap();
-                    bool identityMissing = false;
-                    int processedCount = 0;
-                    int processedCount2 = 0;
-                    for (int i = 0; i < gpus.Length; i++)
-                    {
-                        bool supported;
-                        int min;
-                        int max;
-                        AdlxIntRange minRange;
-                        if (!AdlxApi.GfxMinGet(gpus[i], out supported, out min, out max, out minRange) || !supported)
-                        {
-                            continue;
-                        }
-                        int gfxMinTargetResult = GfxMinTarget(max, minRange);
-                        if (gfxMinTargetResult <= 0 || min >= gfxMinTargetResult)
-                        {
-                            processedCount++;
-                            continue;
-                        }
-                        string key = GpuKey(gpus[i], i, ref identityMissing) + ".gfxmin";
-                        if (!EnsureSnapshot(snapshot, key, null, min.ToString(CultureInfo.InvariantCulture), Lang.T("t.adlxtweaks.gfxmin")))
-                        {
-                            return false;
-                        }
-                        bool supported2;
-                        int min2;
-                        int max2;
-                        AdlxIntRange minRange2;
-                        if (!AdlxApi.GfxMinSet(gpus[i], gfxMinTargetResult))
-                        {
-                            processedCount2++;
-                        }
-                        else if (AdlxApi.GfxMinGet(gpus[i], out supported2, out min2, out max2, out minRange2) && min2 >= gfxMinTargetResult)
-                        {
-                            processedCount++;
-                        }
-                        else
-                        {
-                            processedCount2++;
-                        }
-                    }
-                    if (processedCount > 0 && processedCount2 == 0)
-                    {
-                        Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin", 0) + Lang.T("log.adlxtweaks.27", 0));
-                        return true;
-                    }
-                    if (processedCount2 > 0)
-                    {
-                        Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin", 0) + Lang.T("log.adlxtweaks.24", 0) + processedCount2 + Lang.T("log.adlxtweaks.25", 0));
-                    }
-                    else
-                    {
-                        Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin", 0) + Lang.T("log.adlxtweaks.26", 0));
-                    }
-                    return false;
-                }
-                finally
-                {
-                    AdlxApi.ReleaseAll(gpus);
-                }
-            }
-        }
-
-        public static bool RestoreGfxMin()
-        {
-            int result;
-            return RestoreFeature("gfxmin", Lang.T("t.adlxtweaks.gfxmin"), (IntPtr gpu, string orig) => !int.TryParse(orig, NumberStyles.Integer, CultureInfo.InvariantCulture, out result) || AdlxApi.GfxMinSet(gpu, result));
-        }
-
-        public static bool HasGfxMinResidue()
-        {
-            return HasPrefix(LoadSnap(), ".gfxmin");
+            return LoadSnap().Count > 0;
         }
 
         public static bool SamGet(out bool supported, out bool enabled)
@@ -1036,7 +490,8 @@ namespace PaviseApp
 
         public static void HealFromCrash()
         {
-            if (Settings.LoadStr("AmdSnap", "").Length != 0 && (RestoreAntiLag() & RestoreEnhancedSync() & RestoreChill() & RestoreRis() & RestoreFrtc() & RestoreAfmf() & RestoreRsr() & RestoreGfxMin()))
+            DropRetiredSnapshot();
+            if (HasResidue() && (RestoreAfmf() & RestoreRsr()))
             {
                 Logger.Log(Lang.T("log.adlxtweaks.33", 0));
             }

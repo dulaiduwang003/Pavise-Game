@@ -115,13 +115,6 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.program.1", 0));
                 }
                 Settings.Remove("EvidenceMode");
-                try
-                {
-                    MemShield.HealFromCrash();
-                }
-                catch
-                {
-                }
                 LaboratorySession.Recover();
                 if (!LaboratoryManualActions.RecoverStartup()) Logger.Warn("手动实验室恢复仍未完成");
                 PowerPlan.HealFromCrash();
@@ -132,13 +125,6 @@ namespace PaviseApp
                 catch (Exception sweepError)
                 {
                     Logger.Warn("电源 事件=遗留清理 失败详情=" + sweepError.GetType().Name);
-                }
-                try
-                {
-                    PowerPlan.ClearLegacyIdleDisableOnce();
-                }
-                catch
-                {
                 }
                 try
                 {
@@ -172,13 +158,6 @@ namespace PaviseApp
                 catch
                 {
                 }
-                try
-                {
-                    WindowsBackgroundDirectJobs.ReportLeftovers();
-                }
-                catch
-                {
-                }
                 ThreadPool.QueueUserWorkItem(delegate
                 {
                     try
@@ -191,13 +170,6 @@ namespace PaviseApp
                 });
                 try
                 {
-                    RssSteer.HealFromCrash();
-                }
-                catch
-                {
-                }
-                try
-                {
                     PresenceQos.HealFromCrash();
                 }
                 catch
@@ -206,27 +178,6 @@ namespace PaviseApp
                 try
                 {
                     PowerOverlay.HealFromCrash();
-                }
-                catch
-                {
-                }
-                try
-                {
-                    DisplaySolo.HealFromCrash();
-                }
-                catch
-                {
-                }
-                try
-                {
-                    GpuPowerMax.HealFromCrash();
-                }
-                catch
-                {
-                }
-                try
-                {
-                    GpuClockLock.HealFromCrash();
                 }
                 catch
                 {
@@ -283,26 +234,6 @@ namespace PaviseApp
                 }
                 try
                 {
-                    if (IfeoBoost.HasResidue())
-                    {
-                        IfeoBoost.RestoreAll();
-                    }
-                }
-                catch
-                {
-                }
-                try
-                {
-                    if (CfgOffTweak.HasResidue())
-                    {
-                        CfgOffTweak.RestoreAll();
-                    }
-                }
-                catch
-                {
-                }
-                try
-                {
                     PerformanceTuning.RestoreSession();
                 }
                 catch
@@ -311,13 +242,6 @@ namespace PaviseApp
                 if (!CoreIsolationWorker.Recover(new CoreIsolationSettingsStore()))
                 {
                     Logger.Warn(Lang.T("schedule.isolation.pending", 0));
-                }
-                try
-                {
-                    LegacyReservedCores.Heal();
-                }
-                catch
-                {
                 }
                 if (HardThreadFileStore.CanonicalRootHasRecoveryDebt(Path.Combine(dir, "CriticalThreadHardAffinityV1")))
                 {
@@ -331,7 +255,6 @@ namespace PaviseApp
                     int suppressionRestored = SuppressionCore.HealFromCrash(Path.Combine(dir, "Pavise.suppression.state"));
                     if (suppressionRestored > 0) Logger.Log(Lang.T("log.program.2", 0) + suppressionRestored + Lang.T("log.program.3", 0));
                 }
-                if (jobAffinityRecovered && !new AntiCheatAffinityLease().Recover()) Logger.Warn("反作弊亲和性等待恢复");
                 if (jobAffinityRecovered && !HardThreadFileStore.CanonicalRootHasRecoveryDebt(Path.Combine(dir, "CriticalThreadHardAffinityV1")))
                 {
                     CrashGuard.HealFromCrash();
@@ -339,20 +262,6 @@ namespace PaviseApp
                 else
                 {
                     Logger.Warn(PerformancePolicy.Text("线程或 Job 亲和性恢复尚未结清，保留进程亲和性恢复记录", "线程或 Job 亲和性恢复未完成，已保留进程亲和性恢复记录"));
-                }
-                try
-                {
-                    IrqRelocate.HealFromCrash();
-                }
-                catch
-                {
-                }
-                try
-                {
-                    IrqAutoPilot.HealFromCrash();
-                }
-                catch
-                {
                 }
                 if (BlockIfOsTooOld(dir))
                 {
@@ -378,23 +287,14 @@ namespace PaviseApp
                 bool shouldShowStartupPanel = ShouldShowStartupPanel(isAutostart, requested, result2, DateTime.UtcNow.Ticks);
                 RetiredBackgroundCpuCap.Retire();
                 SuppressionCore core3 = new SuppressionCore(Path.Combine(dir, "Pavise.suppression.state"));
-                Tamer tamer = new Tamer(core3);
                 GameMode gameMode = new GameMode(dir, core3);
-                tamer.AffinityGameContext = gameMode.GetAntiCheatAffinityContext;
-                tamer.AceSessionChoice = gameMode.GetAceSessionChoice;
-                gameMode.AntiCheatSessionChanged = tamer.Poke;
                 gameMode.InitializeAutomation();
                 gameMode.Enabled = Settings.Load("GameModeOn", true);
                 if (gameMode.ProfileStoreSaveFailed)
                 {
                     int files;
                     string failure;
-                    bool tryResetUserData = TryResetUserData(dir, delegate
-                    {
-                        bool stopSucceeded = tamer.Stop();
-                        bool stopSucceeded2 = gameMode.Stop();
-                        return stopSucceeded && stopSucceeded2;
-                    }, out files, out failure);
+                    bool tryResetUserData = TryResetUserData(dir, () => gameMode.Stop(), out files, out failure);
                     PaviseDialog.Error(null, Lang.T("store.savefatal.title"), tryResetUserData ? Lang.F("store.savefatal.body", dir) : Lang.F("store.savefatal.deletefail", dir, failure));
                     return;
                 }
@@ -403,13 +303,6 @@ namespace PaviseApp
                 int updateRuntimeReady = 0;
                 Thread bootThread = new Thread((ThreadStart)delegate
                 {
-                    try
-                    {
-                        SvcPause.HealFromCrash();
-                    }
-                    catch
-                    {
-                    }
                     try
                     {
                         DoTweak.HealFromCrash();
@@ -431,7 +324,6 @@ namespace PaviseApp
                             return;
                         }
                         LegacyMonitoringCleanup.Start();
-                        tamer.Start();
                         gameMode.Start();
                         GameExtension.Start();
                     }
@@ -455,7 +347,6 @@ namespace PaviseApp
                 procNotify.BatchChanged += delegate(ProcessChangeBatch batch)
                 {
                     gameMode.NotifyProcessChanges(batch);
-                    tamer.NotifyProcessChanges(batch);
                     GameExtension.NotifyProcessChanges(batch);
                 };
                 SystemAudit.LibraryPaths = gameMode.LibraryExecutablePaths;
@@ -463,11 +354,10 @@ namespace PaviseApp
                 procNotify.FastStart += gameMode.KickGameDetectionNow;
                 procNotify.Start();
                 gameMode.ProcessEventsAvailable = procNotify.IsActive;
-                tamer.ProcessEventsAvailable = procNotify.IsActive;
                 PerformancePreset runtimeIconMode = gameMode.ActivePreset;
                 bool runtimeIconEnabled = gameMode.Enabled;
                 Icon icon3 = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-                PanelForm panel = new PanelForm(tamer, gameMode, icon3, elevated);
+                PanelForm panel = new PanelForm(gameMode, icon3, elevated);
                 GC.KeepAlive(panel.Handle);
                 if (shouldShowStartupPanel)
                 {
@@ -612,17 +502,6 @@ namespace PaviseApp
                     try
                     {
                         GameExtension.Shutdown(4000);
-                    }
-                    catch
-                    {
-                        succeeded = false;
-                    }
-                    try
-                    {
-                        if (!tamer.Stop())
-                        {
-                            succeeded = false;
-                        }
                     }
                     catch
                     {
@@ -1011,7 +890,6 @@ namespace PaviseApp
                 }
                 SystemEvents.SessionEnded += delegate
                 {
-                    try { tamer.PanicRestore(); } catch { }
                     bool labClosed = false;
                     try { labClosed = gameMode.CloseLaboratory(8000); } catch { }
                     try
@@ -1066,13 +944,6 @@ namespace PaviseApp
                     try
                     {
                         PowerOverlay.Restore();
-                    }
-                    catch
-                    {
-                    }
-                    try
-                    {
-                        if (labClosed) GpuPowerMax.Restore();
                     }
                     catch
                     {

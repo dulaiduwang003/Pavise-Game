@@ -65,6 +65,21 @@ namespace PaviseApp
             }
         }
 
+        private long journalFailureLogAt;
+
+        // 旧版反作弊压制留下的日志行不再恢复，读取时直接丢弃。
+        private static bool RetiredAntiCheatLine(string line)
+        {
+            return line.Contains("|ac-resources|") || line.Contains("|ac-placement|");
+        }
+
+        private static string UpdatedJournalLine(string original, Entry entry)
+        {
+            int gpuMarker = original.LastIndexOf("|gpu-v1|", StringComparison.Ordinal);
+            if (gpuMarker >= 0) original = original.Substring(0, gpuMarker);
+            return original + "|gpu-v1|" + entry.GpuLease.Encode();
+        }
+
         private bool SaveJournalLocked(bool durable = false, bool preserveBackgroundBudgets = false)
         {
             if (string.IsNullOrEmpty(journalPath))
@@ -81,12 +96,11 @@ namespace PaviseApp
                     Entry entry = item.Value;
                     if (entry.OrigPri != uint.MaxValue)
                     {
-                        if (entry.BackgroundJobPlacement || entry.AntiCheatPlacementExternal || HasAntiCheatResources(entry) || entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded)
+                        if (entry.BackgroundJobPlacement || entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded)
                         {
                             durable = true;
                         }
-                        lines.Add(item.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : "")))
-                            + (HasAntiCheatResources(entry) ? "|ac-resources|" + EncodeAntiCheatResources(entry.AntiCheatResources) : "")
+                        lines.Add(item.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + CpuSetsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + CpuSetsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : ""))
                             + "|gpu-v1|" + entry.GpuLease.Encode());
                     }
                 }
@@ -123,22 +137,14 @@ namespace PaviseApp
                 {
                     File.Move(journalPathOffset, journalPath);
                 }
-                bool resourceJournal = false;
-                foreach (Entry entry in map.Values) resourceJournal |= HasAntiCheatResources(entry);
-                if (resourceJournal)
-                {
-                    string[] actual = File.ReadAllLines(journalPath, Encoding.UTF8);
-                    if (actual.Length != lines.Count) return false;
-                    for (int i = 0; i < actual.Length; i++) if (actual[i] != lines[i]) return false;
-                }
                 MarkJournaledLocked(preserveBackgroundBudgets);
                 return true;
             }
             catch (Exception error)
             {
-                if (!preserveBackgroundBudgets || DateTime.UtcNow.Ticks >= antiCheatJournalFailureLogAt)
+                if (!preserveBackgroundBudgets || DateTime.UtcNow.Ticks >= journalFailureLogAt)
                 {
-                    if (preserveBackgroundBudgets) antiCheatJournalFailureLogAt = DateTime.UtcNow.AddSeconds(30).Ticks;
+                    if (preserveBackgroundBudgets) journalFailureLogAt = DateTime.UtcNow.AddSeconds(30).Ticks;
                     Logger.LogFailure(Lang.T("log.suppressioncorerecovery.1", 0), error);
                 }
                 return false;
@@ -174,6 +180,7 @@ namespace PaviseApp
                 for (int i = 1; i < allLines.Length; i++)
                 {
                     int pid;
+                    if (RetiredAntiCheatLine(allLines[i])) continue;
                     Entry entry = ParseJournalLine(allLines[i], out pid);
                     if (entry != null && pid > 0 && entry.OrigPri != uint.MaxValue)
                     {
@@ -197,13 +204,6 @@ namespace PaviseApp
             {
                 gpuLease = GpuPriorityLease.Parse(lineParts[lineParts.Length - 1]);
                 if (gpuLease == null) return null;
-                Array.Resize(ref lineParts, lineParts.Length - 2);
-            }
-            AntiCheatResourceState resources = null;
-            if (lineParts.Length >= 14 && lineParts[lineParts.Length - 2] == "ac-resources")
-            {
-                resources = ParseAntiCheatResources(lineParts[lineParts.Length - 1]);
-                if (resources == null) return null;
                 Array.Resize(ref lineParts, lineParts.Length - 2);
             }
             long creation;
@@ -250,7 +250,6 @@ namespace PaviseApp
             ulong backgroundApplied = 0uL;
             ulong backgroundPrevious = 0uL;
             bool layoutRecord = lineParts.Length == 15 && lineParts[12] == "layout";
-            bool externalAcPlacement = lineParts.Length == 15 && lineParts[12] == "ac-placement";
             bool jobPlacement = lineParts.Length == 15 && lineParts[12] == "bg-job";
             uint[] automaticLayoutSetsValue = null;
             bool automaticLayoutYielded = false;
@@ -265,13 +264,6 @@ namespace PaviseApp
                 if (automaticLayoutSetsValue.Length == 0)
                 {
                     automaticLayoutSetsValue = null;
-                }
-            }
-            else if (externalAcPlacement)
-            {
-                if (lineParts[13] != "1" || lineParts[14] != "0")
-                {
-                    return null;
                 }
             }
             else if (lineParts.Length == 15 && ((lineParts[12] != "bg" && !jobPlacement) || !ulong.TryParse(lineParts[13], out backgroundApplied) || !ulong.TryParse(lineParts[14], out backgroundPrevious)))
@@ -296,10 +288,8 @@ namespace PaviseApp
             entry.OrigGpu = originalGpuPriority;
             entry.GpuLease = gpuLease ?? GpuPriorityLease.Legacy(originalGpuPriority);
             entry.OrigBoost = originalBoost;
-            entry.AntiCheatResources = resources;
-            entry.AntiCheatPlacementExternal = externalAcPlacement;
-            entry.LegacyPlacementDebt = !externalAcPlacement;
-            entry.BackgroundPlacementOwned = lineParts.Length == 15 && !layoutRecord && !externalAcPlacement;
+            entry.LegacyPlacementDebt = true;
+            entry.BackgroundPlacementOwned = lineParts.Length == 15 && !layoutRecord;
             entry.BackgroundJobPlacement = jobPlacement;
             entry.BackgroundPid = pid;
             entry.AutomaticLayoutSets = automaticLayoutSetsValue;
@@ -363,6 +353,7 @@ namespace PaviseApp
                 for (int i = 1; i < allLines.Length; i++)
                 {
                     int pid;
+                    if (RetiredAntiCheatLine(allLines[i])) continue;
                     Entry entry = ParseJournalLine(allLines[i], out pid);
                     if (entry == null)
                     {
@@ -390,7 +381,7 @@ namespace PaviseApp
                         }
                         else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
                         {
-                            unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
+                            unsettledLines.Add(UpdatedJournalLine(allLines[i], entry));
                         }
                         continue;
                     }
@@ -408,31 +399,30 @@ namespace PaviseApp
                         {
                             unsettledLines.Add(allLines[i]); continue;
                         }
-                        if (!OwnsAntiCheatResources(entry) && EntrySnapshotMatches(restoreHandle, entry))
+                        if (EntrySnapshotMatches(restoreHandle, entry))
                         {
                             processedCount++;
                             continue;
                         }
                         Func<bool> resourceCheckpoint = delegate
                         {
-                            allLines[i] = UpdatedResourceJournalLine(allLines[i], entry);
+                            allLines[i] = UpdatedJournalLine(allLines[i], entry);
                             try { return AtomicFile.WriteLines(statePath, allLines, Lang.T("t.suppressioncorerecovery.6")); }
                             catch { return false; }
                         };
-                        if (RestoreBackgroundPlacement(restoreHandle, entry) && (OwnsAntiCheatResources(entry) ? RestoreAntiCheatResources(restoreHandle, entry, resourceCheckpoint)
-                            : HasAntiCheatResources(entry) ? RestoreLegacyAntiCheatResources(restoreHandle, entry, resourceCheckpoint)
-                            : RestoreOrdinaryEntryValues(restoreHandle, entry, CpuTopology.AllMask, resourceCheckpoint)))
+                        if (RestoreBackgroundPlacement(restoreHandle, entry)
+                            && RestoreOrdinaryEntryValues(restoreHandle, entry, CpuTopology.AllMask, resourceCheckpoint))
                         {
                             processedCount++;
                         }
                         else
                         {
-                            unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
+                            unsettledLines.Add(UpdatedJournalLine(allLines[i], entry));
                         }
                     }
                     catch (Exception error)
                     {
-                        unsettledLines.Add(UpdatedResourceJournalLine(allLines[i], entry));
+                        unsettledLines.Add(UpdatedJournalLine(allLines[i], entry));
                         Logger.LogFailure(Lang.T("log.suppressioncorerecovery.5", 0) + pid, error);
                     }
                     finally

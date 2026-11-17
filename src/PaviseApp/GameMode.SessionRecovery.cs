@@ -116,10 +116,8 @@ namespace PaviseApp
                 case "pqos": pqosActive = false; break;
                 case "awake": awakeActive = false; break;
                 case "rsr": rsrActive = false; break;
-                case "gpupower": gpwActive = false; break;
                 case "nvvrr": nvVrrActive = false; break;
                 case "intelend": intelEndActive = false; break;
-                case "amdalag": amdAlagActive = false; break;
                 case "amdafmf": amdAfmfActive = false; break;
                 case "powerplan": planActive = false; lastPowerPolicyKey = -1; Interlocked.Exchange(ref nextPowerAuditTicks, 0L); break;
             }

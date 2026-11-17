@@ -104,7 +104,7 @@ namespace PaviseApp
 
         public static readonly string[] HandheldBlocked = new string[0];
 
-        private static readonly PolicyItem[] Items = new PolicyItem[23]
+        private static readonly PolicyItem[] Items = new PolicyItem[22]
         {
             new PolicyItem("PerformancePreset", PolicyValueKind.Enum, "0", "cfg.mode", "cfg.group.mode", new string[2] { "0", "1" }),
             new PolicyItem("GmSuppress", PolicyValueKind.Bool, "1", "v14.bg.master", "cfg.group.bg", null),
@@ -116,7 +116,6 @@ namespace PaviseApp
             new PolicyItem("GameDisableFullscreenOptimizationsV1", PolicyValueKind.Bool, "0", "auto.fso", "cfg.group.gpu", null),
             new PolicyItem("GmAutoCoresV2", PolicyValueKind.Bool, "0", "schedule.auto.allow", "cfg.group.bg", null),
             new PolicyItem("GameNvRebarV1", PolicyValueKind.Bool, "0", "set.nvrebar", "cfg.group.gpu", null),
-            new PolicyItem(AceSuppressionPolicy.Key, PolicyValueKind.Choice, AceSuppressionPolicy.Off, "lib.ace", "cfg.group.bg", AceSuppressionPolicy.Choices),
             new PolicyItem("GmBoost", PolicyValueKind.Bool, "1", "gm.boost", "cfg.group.bg", null),
             new PolicyItem("PowerPlanOn", PolicyValueKind.Bool, "1", "plan.pick.title", "cfg.group.mempower", null),
             new PolicyItem("GmCacheWarmV2", PolicyValueKind.Bool, "0", "gm.cachewarm", "cfg.group.mempower", null),

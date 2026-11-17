@@ -96,6 +96,32 @@ namespace PaviseApp
             }
         }
 
+        // 游戏优先的界面状态：写入器对指定进程所处的阶段。只认当前写入目标，观察模式和其他进程一律算空闲。
+        internal enum ClassicPhase { Idle, Capturing, Applied, Waiting, Stopped, YieldedToGame }
+
+        internal static ClassicPhase PhaseFor(int target, long created)
+        {
+            int current;
+            lock (sync)
+            {
+                if (target <= 0 || created <= 0 || observing || pid != target || birth != created) return ClassicPhase.Idle;
+                current = state;
+            }
+            if (current == 1) return ClassicPhase.Capturing;
+            if (current == 2) return ClassicPhase.Applied;
+            if (current == 3) return ClassicPhase.Waiting;
+            if (current == 4) return ClassicPhase.Stopped;
+            lock (captureSessionGate)
+            {
+                // 游戏改回线程设置或被提优线程退出时，本阶段记为让还给游戏，不再重复提优。
+                FrameCaptureSession session;
+                if (LoadCaptureSessions() && captureSessions.TryGetValue(target, out session) && session.Birth == created
+                    && session.Stopped && session.NoChangeNeeded)
+                    return ClassicPhase.YieldedToGame;
+            }
+            return ClassicPhase.Idle;
+        }
+
         internal static bool HasResidue
         {
             get
@@ -300,10 +326,11 @@ namespace PaviseApp
                         state = ((frameCoordinationSample == null || !frameCoordinationSample.NoChangeNeeded) ? 3 : 0);
                         if (session.Stopped)
                         {
+                            // WaitingLine 输出原始等级前缀，写入日志时才译成中文；这里按原始前缀判断，失败行保持失败等级。
                             string waitingLineResult = WaitingLine(name, frameCoordinationSample);
-                            if (!waitingLineResult.StartsWith("失败 ", StringComparison.Ordinal))
+                            if (!waitingLineResult.StartsWith("FAIL ", StringComparison.Ordinal))
                             {
-                                waitingLineResult = "信息 " + waitingLineResult.Substring(waitingLineResult.IndexOf("FRAME", StringComparison.Ordinal));
+                                waitingLineResult = "INFO " + waitingLineResult.Substring(waitingLineResult.IndexOf("FRAME", StringComparison.Ordinal));
                             }
                             Logger.Log(waitingLineResult + " | " + PerformancePolicy.Text("本阶段停止重复采样", "本阶段停止继续采样") + " 采样失败次数=" + session.Failures + "/" + MaxCaptureFailures);
                             break;

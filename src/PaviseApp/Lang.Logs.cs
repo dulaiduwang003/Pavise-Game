@@ -25,7 +25,6 @@ namespace PaviseApp
             messages.Add("log.export.filter", new string[3] { "日志文件 (*.log)|*.log|文本文件 (*.txt)|*.txt", "Log files (*.log)|*.log|Text files (*.txt)|*.txt", "ログファイル (*.log)|*.log|テキストファイル (*.txt)|*.txt" });
             messages.Add("log.export.saved", new string[3] { "日志已导出到：", "Log exported to:", "ログの保存先：" });
             messages.Add("log.export.failed", new string[3] { "日志导出失败：", "Could not export the log:", "ログを出力できませんでした：" });
-            messages.Add("log.solo.2", new string[2] { "对局单屏 已切回原来的多屏布局", "Single display: switched back to the original multi-display layout" });
             messages.Add("log.adaptive.1", new string[2] { "自适应压制 CPU 达到70%并持续10秒 已临时扩大后台范围 当前周期第 ", "Adaptive suppression: CPU at or above 70% for 10 seconds; temporarily widened background control. Current-cycle episode " });
             messages.Add("log.adaptive.2", new string[2] { "智能后台治理：负载恢复并稳定，已恢复常规范围", "Smart background control: load recovered and stayed calm; restored the normal scope" });
             messages.Add("log.adaptive.3", new string[2] { "智能后台治理：已结束临时扩大范围，升档状态与采样已复位", "Smart background control: temporary wider scope ended; escalation state and sampling reset" });

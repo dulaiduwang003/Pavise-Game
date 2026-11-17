@@ -103,7 +103,6 @@ namespace PaviseApp
                 activeGame = null;
                 firstSweep = true;
             }
-            NotifyAntiCheatSession();
             SyncPerformanceAutomation();
             sessionPolicy = null;
             lock (sync)

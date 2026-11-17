@@ -54,14 +54,6 @@ namespace PaviseApp
             }
         }
 
-        public bool FrameCoordinationEnabled
-        {
-            get
-            {
-                return AutomationPolicySnapshot.FrameCoordinationOn;
-            }
-        }
-
         public bool SuppressBackground
         {
             get

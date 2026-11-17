@@ -223,7 +223,7 @@ namespace PaviseApp
             if (HandheldBypass) return Guid.Empty;
             if (!RestoreLaboratoryBeforeCoreChange())
                 return ManagedPlanFailed("laboratory-recovery", "Laboratory power recovery pending");
-            if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy())
+            if (!RestoreOwnedIdlePolicy())
                 return ManagedPlanFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
             if (managedCreationBlocked)
                 return ManagedPlanFailed("creation-blocked", "Managed creation remains blocked after failure");
@@ -432,7 +432,7 @@ namespace PaviseApp
             {
                 return PowerApplyFailed("baseline-activation", "Baseline activation or readback failed");
             }
-            if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue || !RestoreOwnedIdlePolicy())
+            if (!RestoreOwnedIdlePolicy())
             {
                 return PowerApplyFailed("idle-policy-recovery", "Legacy processor idle-policy recovery pending");
             }
@@ -472,7 +472,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            string[] textEntries = new string[5] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" };
+            string[] textEntries = new string[3] { "由软件调度", "Scheduled by Pavise", "Pavise" };
             foreach (string value in textEntries)
             {
                 if (name.StartsWith(value, StringComparison.Ordinal))
@@ -488,7 +488,7 @@ namespace PaviseApp
             if (System.Threading.Interlocked.Exchange(ref orphanSweepDone, 1) != 0) return;
             lock (lk)
             {
-                if (HandheldBypass || active || LaboratoryHasResidue || IdlePolicyHasResidue || LegacyCpuIdleHasResidue) return;
+                if (HandheldBypass || active || LaboratoryHasResidue || IdlePolicyHasResidue) return;
                 // 未完成的创建记录表示所有权尚未稳定，此时不做改动。
                 if (Settings.LoadStr(PresetCreationKey, "").Length > 0) return;
                 ManagedPolicyRecord record;

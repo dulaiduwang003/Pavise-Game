@@ -87,6 +87,23 @@ namespace PaviseApp
             return restored;
         }
 
+        // 执行意图悬空（上次写入途中进程退出），但恢复记录里没有该目标：本方总是先落恢复记录再写配置，
+        // 没有记录就说明没有本方写入需要恢复。按恢复完成结清意图，与按记录恢复后的结清走同一路径，
+        // 不补写、不改配置，也不退还失败次数。恢复记录读不到时不结清，继续保留隔离。
+        internal static bool SettleIntentWithoutReceipt(string id, string target)
+        {
+            List<PerformanceActionStore.Receipt> receipts;
+            try
+            {
+                if (!ReadRecoveryReceipts(out receipts)) return false;
+            }
+            catch { return false; }
+            foreach (PerformanceActionStore.Receipt receipt in receipts)
+                if (receipt.Id == id && string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase)) return false;
+            ActionFailureStore.CancelApply(id, target);
+            return !ActionFailureStore.IsBlocked(id, target);
+        }
+
         internal static bool ReadRecoveryReceipts(out List<PerformanceActionStore.Receipt> receipts)
         {
             List<PerformanceActionStore.Receipt> read = null;

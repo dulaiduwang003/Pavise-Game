@@ -443,8 +443,7 @@ namespace PaviseApp
                     coreMapPanel.SetBounds(left2, top, width6, Theme.S(80));
                     lblCoreReserved.SetBounds(0, 0, width6, Theme.S(40));
                     lblCoreReserved.Height = WrappedHeight(lblCoreReserved);
-                    btnCoreClearReserved.SetBounds(0, lblCoreReserved.Bottom + Theme.S(6), width6, Theme.S(34));
-                    coreMapPanel.Height = (btnCoreClearReserved.Visible ? btnCoreClearReserved.Bottom : lblCoreReserved.Bottom) + Theme.S(8);
+                    coreMapPanel.Height = lblCoreReserved.Bottom + Theme.S(8);
                     top = coreMapPanel.Bottom + Theme.S(8);
                 }
                 coreRightRail.AutoScrollMinSize = new Size(0, top + Theme.S(18));

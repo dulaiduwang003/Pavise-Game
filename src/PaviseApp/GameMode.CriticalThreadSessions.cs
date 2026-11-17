@@ -106,8 +106,10 @@ namespace PaviseApp
                 return;
             }
             if (logState) LogCriticalThreadState(state, detail);
-            int sameTid;
-            CriticalThreadBoostCoupling coupling = CriticalThreadCoupling(source.Pid, source.Birth, applied, out sameTid);
+            int sameTid = 0;
+            // 游戏优先不建立统一调度源，不能落回旧全局线程提优开关的判定。
+            CriticalThreadBoostCoupling coupling = source.Rule.UsesClassicThreadBoost ? CriticalThreadBoostCoupling.Classic
+                : CriticalThreadCoupling(source.Pid, source.Birth, applied, out sameTid);
             CriticalThreadUiState view = new CriticalThreadUiState(source.Profile, state, detail, true, applied, pending, workers, observed, (criticalPlan == null) ? 0 : criticalPlan.Workers, (applied && criticalPlan != null) ? criticalPlan.Choices.Select((HardThreadChoice x) => x.Mask).ToArray() : null, applied ? criticalChoiceLabels : null, true, source.Rule.WorkerAvoidance, coverage, source.Token, source.Serial, source.Epoch, source.Pid, source.Birth, source.RuleText, coupling, sameTid);
             lock (sync)
             {

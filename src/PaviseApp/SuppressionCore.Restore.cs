@@ -22,8 +22,7 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                return RestoreBackgroundPlacement(handle, entry) && (HasAntiCheatResources(entry) ? RestoreRecordedAntiCheatResources(handle, entry)
-                    : RestoreOrdinaryEntryValues(handle, entry));
+                return RestoreBackgroundPlacement(handle, entry) && RestoreOrdinaryEntryValues(handle, entry);
             }
             catch (Exception ex)
             {
@@ -209,8 +208,7 @@ namespace PaviseApp
                         return RestoreResult.Gone;
                     }
                 }
-                if (RestoreBackgroundPlacement(restoreHandle, e) && (HasAntiCheatResources(e) ? RestoreRecordedAntiCheatResources(restoreHandle, e)
-                    : RestoreOrdinaryEntryValues(restoreHandle, e)))
+                if (RestoreBackgroundPlacement(restoreHandle, e) && RestoreOrdinaryEntryValues(restoreHandle, e))
                 {
                     return RestoreResult.Restored;
                 }
@@ -336,7 +334,6 @@ namespace PaviseApp
 
         private bool TryNeutralizeUnwritableLocked(IntPtr h, int pid, Entry e)
         {
-            if (HasAntiCheatResources(e) && AntiCheatThrottled(e)) return false;
             if (e == null || e.OrigPri == uint.MaxValue)
             {
                 return false;
@@ -430,11 +427,6 @@ namespace PaviseApp
                         if (restoreOutcome != RestoreResult.Protected)
                         {
                             RemoveEntryLocked(pid);
-                            if (HasAntiCheatResources(e) && !SaveJournalLocked(true))
-                            {
-                                SetEntryLocked(pid, e); e.AntiCheatResourceRemovalPending = true;
-                                restoreOutcome = result = RestoreResult.Protected;
-                            }
                         }
                     }
                     else if (restoreOutcome == RestoreResult.Restored)

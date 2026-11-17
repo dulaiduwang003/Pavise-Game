@@ -64,16 +64,9 @@ namespace PaviseApp
             }
         }
 
+        // 只剩普通后台一种原因：条目仍在即表示释放或恢复尚未结清。
         private static BackgroundReleaseState RendererReleaseStateOf(Entry entry)
         {
-            if ((entry.Reasons & SuppressReason.Background) != 0 || entry.BackgroundRestorePending || (entry.BackgroundPlacementOwned && (entry.Reasons & SuppressReason.AntiCheat) != 0))
-            {
-                return BackgroundReleaseState.Pending;
-            }
-            if (((uint)entry.Reasons & 0xFFFFFFFDu) != 0)
-            {
-                return BackgroundReleaseState.OtherReasonActive;
-            }
             return BackgroundReleaseState.Pending;
         }
 
@@ -118,7 +111,6 @@ namespace PaviseApp
                 batchApplyErrors.Remove(pid);
                 TryClearMarkLocked();
                 RefreshThrottledCacheLocked();
-                RefreshGroupCountsLocked();
                 return true;
             }
         }
@@ -150,7 +142,6 @@ namespace PaviseApp
 
         public int ReleaseReason(SuppressReason reason)
         {
-            if ((reason & SuppressReason.AntiCheat) != 0) RevokeAntiCheatAdmission();
             int releasedCount = 0;
             List<int> pids = PidsWith(reason);
             BeginJournalDefer();
@@ -182,7 +173,6 @@ namespace PaviseApp
 
         private int ReleaseOne(int pid, SuppressReason reason, long expectedCreation, bool requireCreation, string expectedName, out bool had, out RestoreResult? restoreResult)
         {
-            if ((reason & SuppressReason.AntiCheat) != 0) RevokeAntiCheatTarget(pid);
             restoreResult = null;
             bool needsReapply = false;
             bool hasRemainingReasons = false;
@@ -205,25 +195,18 @@ namespace PaviseApp
                 SuppressionLevel level = entry.Level;
                 bool hasSqueezedAffinity = entry.SqueezeAff != 0;
                 entry.SetReasons(entry.Reasons & ~reason);
-                if ((reason & SuppressReason.AntiCheat) != 0)
-                {
-                    entry.AntiCheatLevel = SuppressionLevel.None;
-                }
                 if ((reason & SuppressReason.Background) != 0)
                 {
                     entry.BackgroundReleaseDebt |= entry.OrigPri != uint.MaxValue && (entry.Journaled || entry.Applied);
                     entry.BackgroundLevel = SuppressionLevel.None;
-                    if ((entry.Reasons & ~reason & SuppressReason.AntiCheat) == 0)
-                    {
-                        entry.SqueezeAff = 0uL;
-                    }
+                    entry.SqueezeAff = 0uL;
                 }
-                entry.Level = EffectiveLevel(entry);
+                entry.Level = entry.BackgroundLevel;
                 RefreshThrottledCacheLocked();
                 if (entry.Reasons != 0)
                 {
                     hasRemainingReasons = true;
-                    needsReapply = entry.OrigPri != uint.MaxValue && entry.Journaled && (level != entry.Level || !entry.Applied || hasSqueezedAffinity || (reason & SuppressReason.AntiCheat) != 0);
+                    needsReapply = entry.OrigPri != uint.MaxValue && entry.Journaled && (level != entry.Level || !entry.Applied || hasSqueezedAffinity);
                     if (!needsReapply) entry.BackgroundReleaseDebt = false;
                     PersistJournalLocked();
                 }

@@ -27,8 +27,8 @@ namespace PaviseApp
         {
             if (strategy == SchedulingStrategy.GamePriority)
                 return PerformancePolicy.Text(
-                    "提高整个游戏进程的 CPU 优先级，并固定、优先安排已识别的渲染线程，三项配合生效。CPU 满载时其他程序可能变慢。",
-                    "Raises the whole game process CPU priority, and pins and prioritizes the identified render thread; the three work together. Other apps may slow down when the CPU is saturated.");
+                    "沿用 3.3.0.8 的做法：游戏进程设为高优先级，磁盘与显卡同时提优；已识别的渲染线程设为最高，配合线程略提，不固定核心、不清核。CPU 满载时其他程序可能变慢。",
+                    "The 3.3.0.8 approach: the game process runs at High with raised disk and GPU priority; the identified render thread runs at the highest priority and its partner thread slightly higher, without pinning or clearing cores. Other apps may slow down when the CPU is saturated.");
             if (strategy == SchedulingStrategy.RenderCoreTimeCritical)
                 return PerformancePolicy.Text(
                     "在固定核心上进一步提高渲染优先级。须通过运行条件核验；条件失效时撤回提优。",
@@ -59,6 +59,9 @@ namespace PaviseApp
         // 辅助说明保留清核范围和生效条件。
         internal static string ClearCoreHint(SchedulingStrategy strategy, bool on)
         {
+            if (strategy == SchedulingStrategy.GamePriority)
+                return PerformancePolicy.Text("游戏优先沿用 3.3.0.8，不固定核心，不使用清核。",
+                    "Game priority follows 3.3.0.8: no core pinning, and clear core is unavailable.");
             if (strategy == SchedulingStrategy.DependencyBoost)
                 return PerformancePolicy.Text("依赖协同保留游戏原有核心分配，不使用清核。",
                     "Dependency coordination keeps the game's CPU placement; clear core is unavailable.");
@@ -87,25 +90,25 @@ namespace PaviseApp
             if (layout != CriticalThreadLayout.Unified)
                 return Text("旧布局不再运行，仅恢复已有记录。", "Legacy layouts no longer run; existing records are recovery-only.", "旧配置は実行せず、既存記録の復元のみ行います。");
             return PerformancePolicy.Text(
-                "选择游戏优先、渲染优先、渲染专核、多核协同、依赖协同或专核强化；可单独设置清核和资源优先级。",
-                "Choose a scheduling strategy, with optional clear core and resource priority.");
+                "选择游戏优先（推荐）、渲染优先、渲染专核、多核协同、依赖协同或专核强化；游戏优先一项全包，其余方案可单独设置清核和资源优先级。",
+                "Choose a scheduling strategy; Game priority is recommended and all-inclusive. The others take optional clear core and resource priority.");
         }
 
         internal static string Help()
         {
             string separator = PerformancePolicy.Text("：", ": ");
-            return StrategyName(SchedulingStrategy.GamePriority) + separator + StrategyHint(SchedulingStrategy.GamePriority)
+            return StrategyName(SchedulingStrategy.GamePriority) + PerformancePolicy.Text("（推荐）", " (recommended)") + separator + StrategyHint(SchedulingStrategy.GamePriority)
                 + "\n\n" + StrategyName(SchedulingStrategy.RenderBoost) + separator + StrategyHint(SchedulingStrategy.RenderBoost)
                 + "\n\n" + StrategyName(SchedulingStrategy.RenderCore) + separator + StrategyHint(SchedulingStrategy.RenderCore)
                 + "\n\n" + StrategyName(SchedulingStrategy.Orchestration) + separator + StrategyHint(SchedulingStrategy.Orchestration)
                 + "\n\n" + StrategyName(SchedulingStrategy.DependencyBoost) + separator + StrategyHint(SchedulingStrategy.DependencyBoost)
                 + "\n\n" + StrategyName(SchedulingStrategy.RenderCoreTimeCritical) + separator + StrategyHint(SchedulingStrategy.RenderCoreTimeCritical)
                 + "\n\n" + PerformancePolicy.Text(
-                "清核：让其他游戏任务避开关键核心，依赖协同不可用。可能影响多线程游戏，系统任务仍可使用这些核心。",
-                "Clear core: moves other game tasks off critical cores; unavailable with Dependency coordination. May slow heavily threaded games; system tasks can still use these cores.")
+                "清核：让其他游戏任务避开关键核心，依赖协同与游戏优先不可用。可能影响多线程游戏，系统任务仍可使用这些核心。",
+                "Clear core: moves other game tasks off critical cores; unavailable with Dependency coordination and Game priority. May slow heavily threaded games; system tasks can still use these cores.")
                 + "\n\n" + PerformancePolicy.Text(
-                "资源优先级：提高游戏的 GPU 与磁盘 I/O 优先级，需要开启渲染线程调度。",
-                "Resource priority: raises game GPU and disk I/O priority. Requires render thread scheduling.")
+                "资源优先级：提高游戏的 GPU 与磁盘 I/O 优先级，需要开启渲染线程调度；游戏优先已包含，无需单独开启。",
+                "Resource priority: raises game GPU and disk I/O priority. Requires render thread scheduling; Game priority already includes it.")
                 + "\n\n" + PerformancePolicy.Text(
                 "保存后下局生效，由渲染线程调度开关控制。关闭、退局或退出时恢复本方修改，保留外部后续改动。",
                 "Saved changes apply next session through the scheduling switch. Disabling it, game end or app exit restores owned changes while preserving later external edits.")

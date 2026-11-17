@@ -12,7 +12,8 @@ namespace PaviseApp
     {
         private void ApplyGameProcessActions(ProcessSnapshot all)
         {
-            if (EffBoost)
+            // 游戏优先一项全包，不看单独的资源开关：进程类别、磁盘与显卡优先级和线程协同都在完整提优通道里。
+            if (EffBoost || ClassicThreadBoostWanted())
             {
                 corePlacementOnly = false;
                 Boost(all);
@@ -372,7 +373,7 @@ namespace PaviseApp
                 return false;
             }
             bool recovered = FinishShutdownRecovery(core.RestoreAutomaticLayouts,
-                () => { bool isolationClean = StopCoreIsolation(); bool backgroundClean = core.StopBackgroundAffinityJobs(); bool windowsClean = windowsBackground.Stop(); return coreAffinityJobs.Stop() && backgroundClean && isolationClean && windowsClean; }, RestoreAllHardPins, RestoreGuardScheduling);
+                () => { bool isolationClean = StopCoreIsolation(); bool backgroundClean = core.StopBackgroundAffinityJobs(); return coreAffinityJobs.Stop() && backgroundClean && isolationClean; }, RestoreAllHardPins, RestoreGuardScheduling);
             SelfYield.Release();
             return recovered && manualRestored && !SelfYield.HasResidue;
         }
@@ -450,6 +451,7 @@ namespace PaviseApp
                 try
                 {
                     RetryPendingHardPinRestores();
+                    RetryPendingSuppressionRestores();
                     ApplyEnvironmentTimerOptions();
                     if (panicReq)
                     {
@@ -548,7 +550,7 @@ namespace PaviseApp
                 return true;
             }
             PruneWhitelistFamilyMembersIfDue(processSnapshot);
-            antiCheatProcessSnapshot = processSnapshot;
+            latestProcessSnapshot = processSnapshot;
             HashSet<int> gamePids;
             string runningGame = FindRunningGame(processSnapshot, out gamePids);
             if (!enabled || stopping || panicReq || ProfileStoreSaveFailed)
@@ -565,7 +567,6 @@ namespace PaviseApp
                 if (gameGoneSinceTicks != 0)
                 {
                     gameGoneSinceTicks = 0L;
-                    NotifyAntiCheatSession();
                     if (active)
                     {
                         Logger.Log(Lang.T("log.gamemode.44", 0));
@@ -638,7 +639,6 @@ namespace PaviseApp
                 ApplyStandbyCleanerPolicy();
                 ApplyCacheWarmPolicy();
                 RefreshAutoCoreMode();
-                StepWindowsBackground(processSnapshot, gamePids, smartSceneSwitchedOut);
                 BeginServiceWhitelistCycle();
                 if (EffSuppress && !smartSceneSwitchedOut)
                 {
@@ -665,7 +665,6 @@ namespace PaviseApp
                 if (gameGoneSinceTicks == 0)
                 {
                     gameGoneSinceTicks = ticks;
-                    NotifyAntiCheatSession();
                     InvalidatePowerPlanSession();
                     RevokeCriticalThreadIntent("session-unconfirmed/exit-grace");
                     StopCriticalThreads(0, "session-unconfirmed/exit-grace");
@@ -674,7 +673,6 @@ namespace PaviseApp
                     InvalidateEnglishInputWork();
                     Logger.Log(Lang.T("log.gamemode.47", 0) + ExitGraceSeconds + Lang.T("log.gamemode.48", 0));
                     gracePreReleased += ReleaseBackground(Lang.T("t.gamemode.49"));
-                    windowsBackground.Restore();
                 }
                 if (ExitGraceElapsed(gameGoneSinceTicks, ticks, ExitGraceSeconds))
                 {
@@ -1014,7 +1012,6 @@ namespace PaviseApp
                 lastPowerPolicyKey = -1;
                 powerSessionEnding = false;
             }
-            NotifyAntiCheatSession();
         }
         private void ReportBegin(string game)
         {

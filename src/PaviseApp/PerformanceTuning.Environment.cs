@@ -84,13 +84,17 @@ namespace PaviseApp
 
         private static void ApplyEnvironmentTarget(string id, string target, EnvironmentChangeResult result)
         {
-            if (ActionFailureStore.IsIsolated(id, target) && !RestoreEnvironmentTarget(id, target))
+            if (ActionFailureStore.IsIsolated(id, target))
             {
-                ActionFailureStore.Trip(id, target, "Recovery incomplete before retry");
-                result.Succeeded = false;
-                result.Stopped = true;
-                result.RecoveryFailed = true;
-                return;
+                if (!RestoreEnvironmentTarget(id, target))
+                {
+                    ActionFailureStore.Trip(id, target, "Recovery incomplete before retry");
+                    result.Succeeded = false;
+                    result.Stopped = true;
+                    result.RecoveryFailed = true;
+                    return;
+                }
+                SettleIntentWithoutReceipt(id, target);
             }
 
             string reason;

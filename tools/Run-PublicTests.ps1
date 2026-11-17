@@ -15,7 +15,6 @@ $suites = @(
     @{Name='AutomaticRetryOwner'; Arguments=''},
     @{Name='ConsumerRecovery'; Arguments=''},
     @{Name='TimerRetryBoundary'; Arguments=''},
-    @{Name='TamerRetry'; Arguments=''},
     @{Name='SecurityStartup'; Arguments=''},
     @{Name='SourceCleanup'; Arguments=''},
     @{Name='ChineseLogs'; Arguments=''}

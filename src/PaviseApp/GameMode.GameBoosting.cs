@@ -10,8 +10,9 @@ namespace PaviseApp
     {
         private void Boost(ProcessSnapshot all)
         {
-            if (FrameCoordinationEnabled || EffLane) RefreshThreadBoostRecoveryAdmission();
             BoostPass boostPass = PrepareBoostPass();
+            // 游戏优先的线程提优要先确认没有未结清的硬绑定恢复；读取自带限频，其他方案不读。
+            if (boostPass.ClassicThreadBoost) RefreshThreadBoostRecoveryAdmission();
             SyncFrameCoordination(boostPass);
             if (boostPass.Exclusive)
             {
@@ -111,7 +112,7 @@ namespace PaviseApp
             }
             // 名单只保留历史观测；本次进程能力由当前句柄核验，各动作仍使用原有有限失败预算。
             boostPass.WriteDenied = false;
-            RenderLane.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), boostPass.RendererPid, boostPass.RendererCreation, "lane:" + EffLane);
+            RenderLane.SyncAutomaticPhase(Interlocked.Read(ref gameSessionStarts), boostPass.RendererPid, boostPass.RendererCreation, "lane:" + boostPass.ClassicThreadBoost);
             StepAutoCores(boostPass);
             AutoCorePlan autoCorePlan = corePlan;
             AutoCoreGovernor autoCoreGovernor = coreGovernor;
@@ -123,6 +124,11 @@ namespace PaviseApp
         internal static uint BoostPriorityTarget()
         {
             return Native.HIGH_PRIORITY_CLASS;
+        }
+        // 只往上调：游戏自己已是 Realtime 时保留原类别，不往下改。
+        internal static bool BoostPrioritySatisfied(uint target, long current)
+        {
+            return current == target || current == 0x100;
         }
         private void ResolvePriorityTarget(BoostPass pass)
         {
@@ -158,8 +164,9 @@ namespace PaviseApp
             {
                 return false;
             }
-            // 旧备用提优只保留恢复入口，角色提优统一由当前游戏调度计划决定。
-            pass.LaneAllowed = false;
+            // 备用提优只属于游戏优先：呈现线程识别额度用尽后才启用，掌机档不启用；其他方案只保留恢复入口。
+            pass.LaneAllowed = pass.ClassicThreadBoost && LaneEligible && !pass.WriteDenied && LaneFallbackFor(pass.RendererPid, pass.RendererCreation)
+                && ThreadBoostRecoveryAllowed(pass.RendererPid, pass.RendererCreation);
             if (!pass.LaneAllowed)
             {
                 if (!boostLaneReleased)
@@ -229,8 +236,7 @@ namespace PaviseApp
                 }
                 return true;
             }
-            // 游戏自己已是 Realtime 时保留原类别，不往下改成 High。
-            bool applySelectedBoostActionSucceeded = ApplySelectedBoostAction(h, pid, pass, "GamePriority", pass.CpuBoost, (long value) => value == pass.PriorityTarget || value == 0x100, () => WriteBoostAction("GamePriority", h, pass.PriorityTarget));
+            bool applySelectedBoostActionSucceeded = ApplySelectedBoostAction(h, pid, pass, "GamePriority", pass.CpuBoost, (long value) => BoostPrioritySatisfied(pass.PriorityTarget, value), () => WriteBoostAction("GamePriority", h, pass.PriorityTarget));
             bool applySelectedBoostActionSucceeded2 = ApplySelectedBoostAction(h, pid, pass, "GameIoPriority", pass.IoBoost, (long value) => value == 3, () => WriteBoostAction("GameIoPriority", h, 3L));
             stateOk = applySelectedBoostActionSucceeded && applySelectedBoostActionSucceeded2;
             lock (sync)

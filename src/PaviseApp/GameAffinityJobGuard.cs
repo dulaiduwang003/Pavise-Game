@@ -36,12 +36,12 @@ namespace PaviseApp
                 { Reply("ERR guardian-receipt-mismatch"); return true; }
                 parent = GameAffinityJobNative.OpenIdentity(ownerPid, ownerBirth);
                 if (parent == IntPtr.Zero) { Reply("ERR guardian-owner-identity"); return true; }
-                target = WindowsBackgroundJobNative.OpenTarget(record);
+                target = GameAffinityJobNative.OpenTarget(record.Pid, record.Birth);
                 if (target == IntPtr.Zero) { Reply("ERR guardian-target-identity-or-access"); return true; }
                 job = GameAffinityJobNative.Open(record.Name);
                 if (job == IntPtr.Zero) { Reply("ERR guardian-job-open"); return true; }
-                string reason;
-                if (!WindowsBackgroundJobNative.Inspect(record, job, out reason))
+                string reason; uint flags; ulong mask;
+                if (!GameAffinityJobNative.Inspect(job, out flags, out mask, out reason))
                 { Reply("ERR guardian-job-inspect:" + reason); return true; }
                 Environment.ExitCode = Run(parent, target, job, record) ? 0 : 1;
             }
@@ -83,10 +83,9 @@ namespace PaviseApp
         {
             GameAffinityJobRecord current;
             if (!GameAffinityJobReceiptStore.Find(record.Name, out current)) { reason = "receipt-unreadable"; return false; }
-            if (current == null && record.OwnThreadAffinity) { reason = "sguard-receipt-missing-retained"; return false; }
             if (current == null)
-                return Native.WaitForSingleObject(target, 0) == 0 ? WindowsBackgroundJobNative.ClearGone(record, job, out reason)
-                    : WindowsBackgroundJobNative.Neutral(record, job, out reason);
+                return Native.WaitForSingleObject(target, 0) == 0 ? GameAffinityJobNative.ClearForGoneTarget(job, out reason)
+                    : GameAffinityJobNative.VerifyNeutral(job, out reason);
             if (!record.SameScope(current)) { reason = "receipt-scope-changed"; return false; }
             record = current;
             uint targetState = Native.WaitForSingleObject(target, 0);
@@ -97,7 +96,7 @@ namespace PaviseApp
                 if (!record.TryThreadRecoveryPending(out debt)) { reason = "thread-recovery-unconfirmed"; return false; }
                 if (debt) { reason = "thread-recovery-pending"; return false; }
             }
-            bool restored = SGuardAffinityOperations.Restore(record, job, target, out reason);
+            bool restored = GameAffinityJobNative.RestoreRecord(record, job, target, out reason);
             if (!restored) return false;
             record.Phase = "neutral";
             if (!GameAffinityJobReceiptStore.Save(record)) { reason = "receipt-neutral"; return false; }
@@ -227,28 +226,10 @@ namespace PaviseApp
                         continue;
                     }
                     string[] fields = command.Split(' ');
-                    ulong maintenanceTarget;
-                    if (fields.Length == 2 && fields[0] == "MAINTAIN" && record.OwnThreadAffinity && !pending
-                        && ulong.TryParse(fields[1], out maintenanceTarget) && maintenanceTarget == record.Desired)
-                    {
-                        string maintenanceFailure = null;
-                        bool maintained = GameAffinityJobOperation.Run(record, delegate
-                        {
-                            GameAffinityJobRecord current;
-                            if (!GameAffinityJobNative.Alive(parent) || commands.IsAddingCompleted
-                                || !GameAffinityJobReceiptStore.Find(record.Name, out current) || current == null
-                                || !record.SameScope(current) || current.Phase != "armed" || current.Desired != maintenanceTarget)
-                            { maintenanceFailure = "sguard-forward-revoked"; return false; }
-                            return SGuardAffinityOperations.Maintain(current, job, target, out maintenanceFailure);
-                        });
-                        Reply(maintained ? "OK" : "ERR " + (maintenanceFailure ?? "sguard-maintenance-operation-pending"));
-                        continue;
-                    }
                     ulong desired, original;
                     // 第四个字段只接受 override，由游戏核心范围的所有者发出；其余所有者沿用三字段命令和严格准入。
                     bool overrideThreads = fields.Length == 4 && fields[3] == "override";
-                    bool ownedThreads = fields.Length == 4 && fields[3] == "owned-threads" && record.OwnThreadAffinity;
-                    if ((fields.Length != 3 && !overrideThreads && !ownedThreads) || fields[0] != "APPLY" || pending
+                    if ((fields.Length != 3 && !overrideThreads) || fields[0] != "APPLY" || pending
                         || !ulong.TryParse(fields[1], out desired) || desired == 0
                         || !ulong.TryParse(fields[2], out original) || original == 0)
                     { Reply("ERR invalid-command-or-recovery-pending"); break; }
@@ -263,7 +244,7 @@ namespace PaviseApp
                         // 在启动恢复锁内再次核对写入权限，拒绝 EOF 后仍滞留缓冲区的 APPLY。
                         if (!GameAffinityJobNative.Alive(parent) || commands.IsAddingCompleted)
                         { applyFailure = "forward-owner-lost"; return false; }
-                        return SGuardAffinityOperations.Apply(record, job, target, overrideThreads && record.Resources == null, out applyFailure);
+                        return GameAffinityJobNative.Apply(job, target, record.Birth, record.Desired, overrideThreads, out applyFailure);
                     });
                     reason = applyFailure ?? (applied ? null : "apply-operation-pending");
                     if (applied) Reply("OK");

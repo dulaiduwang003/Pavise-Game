@@ -18,24 +18,16 @@ namespace PaviseApp
             bool switchedOut = SmartSceneSwitchedOut;
             if (!Enabled || !IsActive) return null;
             var processes = new List<KeyValuePair<int, long>>(core.CaptureAppliedActivity());
-            // 微软后台由独立 Job 治理，合并身份回执后继续统一去重与校验 PID 复用。
-            WindowsBackgroundActivitySnapshot windowsActivity = windowsBackground.CaptureActivity();
-            bool windowsSession = windowsActivity.Session == session;
-            if (windowsSession) processes.AddRange(windowsActivity.Processes);
-            var services = new List<string>(SvcPause.CaptureConfirmedStops());
-            services.AddRange(DoTweak.CaptureConfirmedStops());
+            var services = new List<string>(DoTweak.CaptureConfirmedStops());
             services.AddRange(UpdatePause.CaptureConfirmedStops());
             services.AddRange(OptionalServicePause.CaptureConfirmedStops());
             ProcessSnapshot scan = Volatile.Read(ref whiteEvalSnapshot);
-            ProcessSnapshot antiCheatScan = antiCheatProcessSnapshot;
-            if (scan == null || (antiCheatScan != null && antiCheatScan.TakenTicks > scan.TakenTicks)) scan = antiCheatScan;
-            bool releasePending = switchedOut && (core.BackgroundReleasePending || windowsActivity.RecoveryPending
-                || windowsSession && windowsActivity.Processes.Count != 0);
-            bool activityPending = windowsActivity.RecoveryPending || windowsSession && windowsActivity.Pending;
+            ProcessSnapshot latestScan = latestProcessSnapshot;
+            if (scan == null || (latestScan != null && latestScan.TakenTicks > scan.TakenTicks)) scan = latestScan;
+            bool releasePending = switchedOut && core.BackgroundReleasePending;
             if (!Enabled || !IsActive || session != GuardActivitySession
-                || foregroundVersion != GuardActivityForegroundVersion || switchedOut != SmartSceneSwitchedOut
-                || !object.ReferenceEquals(windowsActivity, windowsBackground.CaptureActivity())) return null;
-            return GuardActivitySnapshot.Create(session, scan, processes, services, foregroundVersion, switchedOut, releasePending, activityPending);
+                || foregroundVersion != GuardActivityForegroundVersion || switchedOut != SmartSceneSwitchedOut) return null;
+            return GuardActivitySnapshot.Create(session, scan, processes, services, foregroundVersion, switchedOut, releasePending, false);
         }
     }
 }

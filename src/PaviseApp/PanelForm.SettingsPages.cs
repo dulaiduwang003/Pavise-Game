@@ -96,7 +96,7 @@ namespace PaviseApp
             dictionary.Add("gpuirqrestore", new AuditFix
             {
                 CanFix = () => false,
-                CanRevert = () => GpuIrqCheck.HasResidue || IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue,
+                CanRevert = () => GpuIrqCheck.HasResidue,
                 Revert = delegate
                 {
                     OnIrqRestore(null, EventArgs.Empty);

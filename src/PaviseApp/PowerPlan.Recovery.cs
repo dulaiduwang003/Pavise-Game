@@ -14,14 +14,13 @@ namespace PaviseApp
             {
                 if (!RestoreLaboratoryBeforeCoreChange()) return false;
                 if (!RecoverPresetCreation(ManagedPlans)) return false;
-                bool restoreLegacyCpuIdleSucceeded = RestoreLegacyCpuIdle();
-                restoreLegacyCpuIdleSucceeded &= RestoreOwnedIdlePolicy();
+                bool idlePolicyRestored = RestoreOwnedIdlePolicy();
                 bool restorePlanCoreSucceeded = RestorePlanCore();
-                if (restoreLegacyCpuIdleSucceeded && restorePlanCoreSucceeded)
+                if (idlePolicyRestored && restorePlanCoreSucceeded)
                 {
                     managedCreationBlocked = false;
                 }
-                return restoreLegacyCpuIdleSucceeded && restorePlanCoreSucceeded;
+                return idlePolicyRestored && restorePlanCoreSucceeded;
             }
         }
 
@@ -299,7 +298,6 @@ namespace PaviseApp
             lock (lk)
             {
                 if (!RestoreLaboratoryBeforeCoreChange() || !RecoverPresetCreation(ManagedPlans)) return;
-                RestoreLegacyCpuIdle();
                 RestoreOwnedIdlePolicy();
                 HealPlanFromCrashCore();
             }

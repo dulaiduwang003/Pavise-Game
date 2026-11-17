@@ -4,118 +4,123 @@ using System.Threading;
 
 namespace PaviseApp
 {
+    // 微软后台（诊断服务、搜索索引、小组件及其 WebView2）并入普通后台治理。这里只按服务身份、可信路径、
+    // 创建时间和家族关系核实对象；写入强度、核心放置、切出释放和退局恢复全部沿用普通后台的同一套策略与恢复归属。
     internal partial class GameMode
     {
-        private sealed class WindowsPathRead
+        private sealed class WindowsBackgroundRead
         {
-            internal string Path;
-            internal readonly WindowsBackgroundGovernor.FailurePhase Budget = new WindowsBackgroundGovernor.FailurePhase();
+            internal int Failures;
+            internal long Next;
+            internal bool Allowed(long now) { return Failures < 3 && now >= Next; }
+            internal void Fail(long now) { Failures++; Next = now + TimeSpan.FromSeconds(Failures * 2).Ticks; }
         }
 
-        private readonly WindowsBackgroundGovernor windowsBackground = new WindowsBackgroundGovernor(new WindowsBackgroundDirectJobs());
-        private readonly Dictionary<string, WindowsPathRead> windowsBackgroundPaths = new Dictionary<string, WindowsPathRead>(StringComparer.Ordinal);
-        private WindowsBackgroundGovernor.FailurePhase windowsServiceReadBudget = new WindowsBackgroundGovernor.FailurePhase();
-        private long windowsBackgroundSession = -1, windowsBackgroundNext;
+        private readonly Dictionary<string, string> windowsBackgroundPaths = new Dictionary<string, string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, WindowsBackgroundRead> windowsBackgroundPathReads = new Dictionary<string, WindowsBackgroundRead>(StringComparer.Ordinal);
+        private readonly HashSet<string> windowsServiceHosts = new HashSet<string>(StringComparer.Ordinal);
+        private List<KeyValuePair<string, int>> windowsServices;
+        private WindowsBackgroundRead windowsServiceRead = new WindowsBackgroundRead();
+        private long windowsBackgroundSession = -1;
 
         private string ReadWindowsBackgroundPath(ProcEntry process)
         {
             if (process == null || process.Pid <= 4 || process.Creation <= 0) return null;
             if (!string.IsNullOrEmpty(process.Path)) return process.Path;
             string key = process.Pid + "/" + process.Creation;
-            WindowsPathRead entry;
-            if (!windowsBackgroundPaths.TryGetValue(key, out entry)) windowsBackgroundPaths[key] = entry = new WindowsPathRead();
-            if (entry.Path != null) return entry.Path;
+            string path;
+            if (windowsBackgroundPaths.TryGetValue(key, out path)) return path;
+            WindowsBackgroundRead read;
+            if (!windowsBackgroundPathReads.TryGetValue(key, out read)) windowsBackgroundPathReads[key] = read = new WindowsBackgroundRead();
             long now = AutoCores.NowTicks;
-            if (!entry.Budget.Allowed(now)) return null;
+            if (!read.Allowed(now)) return null;
             IntPtr handle = IntPtr.Zero;
             try
             {
                 handle = GameAffinityJobNative.OpenIdentity(process.Pid, process.Creation);
-                if (handle != IntPtr.Zero) entry.Path = Native.ImagePath(handle);
+                if (handle != IntPtr.Zero) path = Native.ImagePath(handle);
             }
-            catch { entry.Path = null; }
+            catch { path = null; }
             finally { if (handle != IntPtr.Zero) Native.CloseHandle(handle); }
-            if (!string.IsNullOrEmpty(entry.Path)) return entry.Path;
-            entry.Budget.Fail(now);
-            Logger.Warn("微软后台身份读取失败：进程编号=" + process.Pid + " 尝试=" + entry.Budget.Failures
-                + "/3" + (entry.Budget.Exhausted ? "；停止本局该目标的主动读取，保留恢复所有权" : ""));
+            if (!string.IsNullOrEmpty(path))
+            {
+                windowsBackgroundPaths[key] = path;
+                return path;
+            }
+            read.Fail(now);
+            Logger.Warn("微软后台身份读取失败：进程编号=" + process.Pid + " 尝试=" + read.Failures
+                + "/3" + (read.Failures >= 3 ? "；本局不再读取该目标" : ""));
             return null;
+        }
+
+        private static bool WindowsServiceHostName(string name)
+        {
+            return string.Equals(name, "svchost", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "svchost.exe", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "SearchIndexer", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "SearchIndexer.exe", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 服务表只在出现新的服务宿主时重读；宿主身份未变时沿用上一次结果，不在每轮扫描枚举服务控制管理器。
+        private List<KeyValuePair<string, int>> WindowsBackgroundServices(ProcessSnapshot snapshot, long now)
+        {
+            bool unseen = false;
+            var hosts = new List<string>();
+            foreach (ProcEntry process in snapshot.Entries)
+            {
+                if (process.Pid <= 4 || process.Session != 0 || process.Creation <= 0 || !WindowsServiceHostName(process.Name)) continue;
+                string key = process.Pid + "/" + process.Creation;
+                hosts.Add(key);
+                if (!windowsServiceHosts.Contains(key)) unseen = true;
+            }
+            if (!unseen || !windowsServiceRead.Allowed(now)) return windowsServices;
+            List<KeyValuePair<string, int>> services = SvcQuery.RunningServices();
+            if (services == null)
+            {
+                windowsServiceRead.Fail(now);
+                Logger.Warn("微软后台服务枚举失败：尝试=" + windowsServiceRead.Failures + "/3"
+                    + (windowsServiceRead.Failures >= 3 ? "；本局沿用上一次结果，不再主动枚举" : ""));
+                return windowsServices;
+            }
+            windowsServices = services;
+            windowsServiceHosts.Clear();
+            windowsServiceHosts.UnionWith(hosts);
+            return services;
         }
 
         private bool ExplicitWindowsBackgroundProtection(ProcEntry process, string path)
         {
             lock (sync)
             {
-                // 系统预设名单不豁免已核实的内置治理对象，用户手工添加的规则仍然生效。
+                // 系统预设名单不豁免已核实的内置对象，用户手工添加的规则仍然生效。
                 return WindowsBackgroundPolicy.ExplicitlyProtected(process, path, whiteRules, IsPresetWhitelistName);
             }
         }
 
-        private void StepWindowsBackground(ProcessSnapshot snapshot, HashSet<int> gamePids, bool switchedOut)
+        // 普通后台扫描每轮调用一次，返回本轮已核实的微软后台对象。
+        private Dictionary<int, WindowsBackgroundTarget> SelectWindowsBackground(ProcessSnapshot snapshot, HashSet<int> gamePids, WhitelistEvaluation whitelist)
         {
-            if (!EffSuppress || switchedOut || !enabled || stopping || panicReq || ProfileStoreSaveFailed)
-            { windowsBackground.Restore(); return; }
-            int epoch = FamilyPolicyEpoch;
             long serial = Interlocked.Read(ref gameSessionStarts);
-            long now = AutoCores.NowTicks;
             if (serial != windowsBackgroundSession)
             {
-                windowsBackgroundSession = serial; windowsBackgroundNext = 0;
-                windowsBackgroundPaths.Clear(); windowsServiceReadBudget = new WindowsBackgroundGovernor.FailurePhase();
+                windowsBackgroundSession = serial;
+                windowsBackgroundPaths.Clear();
+                windowsBackgroundPathReads.Clear();
+                windowsServiceHosts.Clear();
+                windowsServices = null;
+                windowsServiceRead = new WindowsBackgroundRead();
             }
-            if (now < windowsBackgroundNext && !firstSweep) return;
-            windowsBackgroundNext = now + TimeSpan.FromMilliseconds(1500).Ticks;
-            List<KeyValuePair<string, int>> services = null;
-            if (windowsServiceReadBudget.Allowed(now))
-            {
-                services = SvcQuery.RunningServices();
-                if (services == null)
-                {
-                    windowsServiceReadBudget.Fail(now);
-                    Logger.Warn("微软后台服务枚举失败：尝试=" + windowsServiceReadBudget.Failures + "/3"
-                        + (windowsServiceReadBudget.Exhausted ? "；本局停止主动枚举，保留恢复所有权" : ""));
-                }
-            }
-            string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var protectedPids = new HashSet<int>(gamePids ?? EmptyPidSet);
             protectedPids.Add(selfPid);
-            WhitelistEvaluation whitelist = EvaluateWhitelist(snapshot);
             protectedPids.UnionWith(whitelist.RuntimeProtected);
             lock (sync)
                 WindowsBackgroundPolicy.AddExplicitFamilies(protectedPids, whiteRules, whitelist.ByRule, IsPresetWhitelistName);
-            Dictionary<int, WindowsBackgroundTarget> selected = WindowsBackgroundPolicy.Select(snapshot, services, selfSession,
-                windows, programFiles, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), ReadWindowsBackgroundPath, protectedPids);
+            Dictionary<int, WindowsBackgroundTarget> selected = WindowsBackgroundPolicy.Select(snapshot, WindowsBackgroundServices(snapshot, AutoCores.NowTicks), selfSession,
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), ReadWindowsBackgroundPath, protectedPids);
             foreach (WindowsBackgroundTarget target in new List<WindowsBackgroundTarget>(selected.Values))
                 if (ExplicitWindowsBackgroundProtection(target.Process, target.Path)) selected.Remove(target.Process.Pid);
-            PolicySnapshot policy = sessionPolicy ?? PolicyResolver.Global();
-            ulong allowed = CpuTopology.BackgroundAllowedMask();
-            ulong isolated = ManualCoreBackgroundTarget();
-            if (isolated != 0) allowed &= isolated;
-            ulong gameReserved = GameBackgroundReservedCores();
-            allowed &= ~gameReserved;
-            ulong mask = CpuTopology.MultiGroup ? 0 : WindowsBackgroundPolicy.SelectMask(CpuTopology.PhysicalCoreMasks(), allowed,
-                CpuTopology.EffMask, policy.BackgroundGovernanceMode);
-            lock (familyPolicyGate)
-            {
-                if (!FamilyPolicyEpochCurrent(epoch) || SmartSceneSwitchedOut) { windowsBackground.Restore(); return; }
-                windowsBackground.Update(serial, policy.BackgroundGovernanceMode, mask, selected, delegate(WindowsBackgroundTarget target)
-                {
-                    BackgroundReleaseState released = core.ReleaseBackgroundForRenderer(target.Process.Pid, target.Process.Creation, target.Process.Name);
-                    return released == BackgroundReleaseState.Ready || released == BackgroundReleaseState.Gone;
-                }, () => FamilyPolicyEpochCurrent(epoch) && !SmartSceneSwitchedOut && GameBackgroundReservedCores() == gameReserved,
-                    now, !CpuTopology.MultiGroup && (gameReserved != 0 || isolated != 0));
-            }
-        }
-
-        private bool DelegateWindowsBackground(ProcEntry process)
-        {
-            if (windowsBackground.Reserved(process.Pid, process.Creation)) return true;
-            string name = WhitelistRule.NormalizeName(process.Name).ToLowerInvariant();
-            if (name != "searchindexer" && name != "searchprotocolhost" && name != "searchfilterhost"
-                && name != "widgets" && name != "widgetservice") return false;
-            return WindowsBackgroundPolicy.DelegatedImage(name, ReadWindowsBackgroundPath(process),
-                Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
+            // 诊断服务与索引宿主以 SYSTEM 运行，普通后台写入前需要调试权限才能打开。
+            if (selected.Count != 0) Native.TryEnableDebugPrivilege();
+            return selected;
         }
     }
 }

@@ -26,8 +26,6 @@ namespace PaviseApp
             messages.Add("v20.about.online", new string[2] { "在线", "ONLINE" });
             messages.Add("v20.about.privacy", new string[2] { "隐私边界", "PRIVACY BOUNDARY" });
             messages.Add("v20.about.privacy.value", new string[2] { "0 项设备数据上传", "0 DEVICE DATA UPLOADS" });
-            messages.Add("log.rsssteer.5", new string[2] { "RSS 还原未完全成功 收据保留 下轮重试", "RSS restore incomplete; the receipt is kept for retry" });
-            messages.Add("log.rsssteer.6", new string[2] { "RSS 收包区间已按收据还原", "RSS processing range restored from the receipt" });
             messages.Add("log.memcompress.1", new string[2] { "读取内存压缩状态失败 未改动", "Reading memory compression state failed; nothing changed" });
             messages.Add("log.memcompress.2", new string[2] { "内存压缩快照写入失败 未改动", "Writing the memory compression snapshot failed; nothing changed" });
             messages.Add("log.memcompress.5", new string[2] { "还原内存压缩未通过校验 记录保留", "Restoring memory compression failed verification; the record is kept" });
@@ -70,9 +68,6 @@ namespace PaviseApp
             messages.Add("v14.preset.forced.off", new string[2] { "预设强制关", "Forced off by preset" });
             messages.Add("v14.anticheat.groups.sub", new string[2] { "分组开关控制专项压制，全部关闭即停止；后台豁免始终保留。「仅保护」与「只记录」不压制。", "Group switches control suppression; all off stops it. Background exemptions remain. Protection-only and record-only groups are not suppressed." });
             messages.Add("v14.anticheat", new string[2] { "反作弊", "Anti-cheat" });
-            messages.Add("log.gpuclock.6", new string[2] { "显卡频率解锁失败 收据保留待重试", "GPU clock unlock failed; the receipt is kept for retry" });
-            messages.Add("log.gpuclock.7", new string[2] { "显卡频率已解锁", "GPU clock unlocked" });
-            messages.Add("log.gpuclock.8", new string[2] { "检测到上次未解锁的显卡频率 已解锁", "Detected a GPU clock lock left from last time; unlocked" });
             messages.Add("v211.link.failed", new string[2] { "打不开浏览器，请手动复制链接访问。", "Could not open a browser; please copy the link and open it manually." });
             messages.Add("nvll.on", new string[2] { "低延迟", "Low latency" });
             messages.Add("nvll.ultra", new string[2] { "超低延迟 Ultra", "Ultra low latency" });
@@ -82,9 +77,6 @@ namespace PaviseApp
             messages.Add("v16.spec.gpu", new string[2] { "显示适配器", "Display adapter" });
             messages.Add("v16.spec.mem", new string[2] { "系统内存", "System memory" });
             messages.Add("v16.device.hags.on", new string[2] { "已开启", "On" });
-            messages.Add("log.dpi.1", new string[2] { "已声明 DPI 感知", "DPI awareness declared for" });
-            messages.Add("log.dpi.2", new string[2] { "已撤销 DPI 感知声明", "DPI awareness declaration removed for" });
-            messages.Add("log.dpi.3", new string[2] { "DPI 兼容层操作失败", "DPI compatibility-layer operation failed" });
             messages.Add("t.amdsam.unsupported", new string[2] { "本机显卡或平台不支持", "Not supported by this GPU or platform" });
             messages.Add("t.amdsam.byus", new string[2] { "已由 Pavise 开启，重启后生效，关闭开关即关回", "Enabled by Pavise; effective after a restart, and switching off turns it back off" });
             messages.Add("t.amdsam.external", new string[2] { "系统中已开启，无需处理", "Already enabled in the system; no action required" });
@@ -96,7 +88,6 @@ namespace PaviseApp
             messages.Add("log.amdsam.4", new string[2] { "AMD SAM 已开启 重启后生效", "AMD SAM enabled, takes effect after a restart" });
             messages.Add("log.amdsam.5", new string[2] { "AMD SAM 关回失败 记录保留待重试", "AMD SAM switch-off failed; the record is kept for retry" });
             messages.Add("log.amdsam.6", new string[2] { "AMD SAM 已关回", "AMD SAM turned back off" });
-            messages.Add("t.adlxtweaks.gfxmin", new string[2] { "最低核心频率", "minimum core clock" });
             messages.Add("log.nvvrr.1", new string[2] { "G-SYNC 窗口模式 读取驱动值失败", "G-SYNC windowed: reading the driver value failed" });
             messages.Add("log.nvvrr.2", new string[2] { "G-SYNC 窗口模式 写入失败", "G-SYNC windowed: write failed" });
             messages.Add("log.nvvrr.3", new string[2] { "G-SYNC 已补成全屏加窗口 退局写回", "G-SYNC set to fullscreen and windowed; written back at match end" });
@@ -212,7 +203,6 @@ namespace PaviseApp
             messages.Add("log.gamedvr.4", new string[2] { "Game DVR 设置已还原", "Game DVR settings restored" });
             messages.Add("log.adlxapi.1", new string[2] { "ADLX 初始化失败 (ADLX_RESULT ", "ADLX initialization failed (ADLX_RESULT " });
             messages.Add("log.adlxapi.2", new string[2] { ")，AMD 调优不可用", "), AMD tuning unavailable" });
-            messages.Add("log.adlxtweaks.1", new string[2] { "：快照无法持久化，本轮未启用", ": snapshot cannot be persisted, not enabled this round" });
             messages.Add("log.adlxtweaks.11", new string[2] { "AMD 流体运动帧：本机驱动或 GPU 不支持", "AMD Fluid Motion Frames: not supported by this machine's driver or GPU" });
             messages.Add("log.adlxtweaks.12", new string[2] { "AMD 流体运动帧：快照无法持久化，本轮未启用", "AMD Fluid Motion Frames: snapshot cannot be persisted, not enabled this round" });
             messages.Add("log.adlxtweaks.13", new string[2] { "AMD 流体运动帧：写入失败", "AMD Fluid Motion Frames: write failed" });
@@ -226,13 +216,6 @@ namespace PaviseApp
             messages.Add("log.adlxtweaks.21", new string[2] { "RSR 驱动级升格：已开启（需游戏内选低一档分辨率才生效，退出还原）", "RSR driver-level upscaling: enabled (only takes effect when a one-step-lower resolution is selected in game, restored on exit)" });
             messages.Add("log.adlxtweaks.22", new string[2] { "RSR 驱动级升格还原失败，快照保留，下次启动继续尝试", "RSR driver-level upscaling restore failed; snapshot kept, will retry on next launch" });
             messages.Add("log.adlxtweaks.23", new string[2] { "RSR 驱动级升格已还原", "RSR driver-level upscaling restored" });
-            messages.Add("log.adlxtweaks.24", new string[2] { "：写入或回读核验失败 (", ": write or read-back verification failed (" });
-            messages.Add("log.adlxtweaks.25", new string[2] { " 个 GPU)", " GPU(s))" });
-            messages.Add("log.adlxtweaks.26", new string[2] { "：本机 GPU 均不支持该功能", ": no GPU on this machine supports this feature" });
-            messages.Add("log.adlxtweaks.27", new string[2] { "：已开启（驱动级，退出恢复）", ": enabled (driver-level, restored on exit)" });
-            messages.Add("log.adlxtweaks.28", new string[2] { "：", ": " });
-            messages.Add("log.adlxtweaks.29", new string[2] { " 条快照对应的 GPU 已不在本机，丢弃", " snapshot entries reference GPUs no longer in this machine, discarded" });
-            messages.Add("log.adlxtweaks.30", new string[2] { " 还原失败，快照保留，下次启动继续尝试", " restore failed; snapshot kept, will retry on next launch" });
             messages.Add("log.adlxtweaks.31", new string[2] { "AMD 着色器缓存重置：", "AMD shader cache reset: " });
             messages.Add("log.adlxtweaks.32", new string[2] { " 个 GPU 已执行", " GPU(s) done" });
             messages.Add("log.adlxtweaks.33", new string[2] { "检测到上次未还原的 AMD 驱动设置，已恢复", "Detected AMD driver settings not restored last time; recovered" });
@@ -240,9 +223,6 @@ namespace PaviseApp
             messages.Add("log.adlxtweaks.35", new string[2] { "AMD 运行时不可用，快照对应的驱动设置已无从访问，丢弃残留快照", "AMD runtime unavailable and the snapshotted driver settings are no longer reachable; discarding the stale snapshot" });
             messages.Add("log.adlxtweaks.36", new string[2] { "AMD 对局功能跳过 游戏由其他厂商独显渲染 写 AMD 核显无效果", "AMD in-session features skipped: the game renders on another vendor's discrete GPU, writing to the AMD iGPU has no effect" });
             messages.Add("rsr.warn", new string[2] { "开启 RSR？\n\n需在游戏内降低分辨率，以画质换帧率。画面可能变软、细节闪烁，1080p 下更明显；画质优先时建议关闭。", "Enable RSR?\n\nLower the in-game resolution to trade image quality for FPS. Images may soften and details may shimmer, especially at 1080p. Keep it off if image quality comes first." });
-            messages.Add("t.adlxtweaks.4", new string[2] { "锐化", "Sharpening" });
-            messages.Add("t.adlxtweaks.5", new string[2] { "AMD 锐化：RIS 已开启，强度 ", "AMD sharpening: RIS enabled, strength " });
-            messages.Add("t.adlxtweaks.8", new string[2] { "帧率上限", "Frame cap" });
             messages.Add("log.gpupowermax.7", new string[2] { " 原 ", " was " });
             messages.Add("log.hagstweak.1", new string[2] { "GPU 硬件调度 HAGS 写入或回读失败 未标记为已开启", "GPU hardware scheduling HAGS write or read-back failed; not marked as enabled" });
             messages.Add("log.hagstweak.2", new string[2] { "HAGS 状态标志无法持久化 已还原注册表修改", "HAGS state flag cannot be persisted; registry change reverted" });
@@ -250,10 +230,6 @@ namespace PaviseApp
             messages.Add("log.hagstweak.4", new string[2] { "GPU 硬件调度 HAGS 已关闭 重启后生效", "GPU hardware scheduling HAGS disabled, takes effect after reboot" });
             messages.Add("log.hagstweak.5", new string[2] { "本机 GPU 或驱动不支持硬件加速 GPU 调度 未写入", "This GPU or driver does not support hardware-accelerated GPU scheduling, nothing written" });
             messages.Add("log.hagstweak.6", new string[2] { "GPU 硬件调度 HAGS 已还原为改动前的原值 重启后生效", "GPU hardware scheduling HAGS restored to its pre-change value, takes effect after reboot" });
-            messages.Add("log.cfgofftweak.6", new string[2] { "已还原控制流保护策略 ", "Restored Control Flow Guard policy for " });
-            messages.Add("log.cfgofftweak.8", new string[2] { "关闭控制流保护 部分本体还原失败 登记保留待下次重试", "Disable CFG: some executables failed to restore, record kept for next retry" });
-            messages.Add("log.ifeoboost.8", new string[2] { "后备提优已撤销 ", "Fallback boost revoked " });
-            messages.Add("log.ifeoboost.9", new string[2] { "后备提优 部分 IFEO 还原失败 快照保留待下次重试", "Fallback boost: some IFEO entries failed to restore, snapshot kept for next retry" });
             messages.Add("log.inputmythtweak.11", new string[2] { "键鼠队列长度 已还原原值", "Keyboard/mouse queue length: original values restored" });
             messages.Add("log.inputmythtweak.12", new string[2] { "键鼠队列长度 还原失败 快照保留待下次重试", "Keyboard/mouse queue length: restore failed, snapshot kept for next retry" });
             messages.Add("log.mpotweak.1", new string[2] { "多平面叠加 MPO 设置已恢复 重启或重新登录后生效", "Multi-plane overlay MPO settings restored, takes effect after a reboot or re-login" });
@@ -267,11 +243,6 @@ namespace PaviseApp
             messages.Add("log.nettweak.3", new string[2] { "网络限流校正 已改回系统默认 ", "Network throttling fix: changed back to the system default " });
             messages.Add("log.nettweak.4", new string[2] { " 重启后生效", " takes effect after reboot" });
             messages.Add("log.nettweak.5", new string[2] { "网络限流校正 已还原为改动前的值", "Network throttling fix: restored to the pre-change value" });
-            messages.Add("log.networkaffinitytweak.1", new string[2] { "枚举网卡设备失败 ", "Failed to enumerate NIC devices " });
-            messages.Add("t.networkaffinitytweak.2", new string[2] { "网络优先级", "Network priority" });
-            messages.Add("log.networkaffinitytweak.3", new string[2] { "网络优先级 ", "Network priority " });
-            messages.Add("log.networkaffinitytweak.4", new string[2] { " 的 QoS 策略创建失败", " QoS policy creation failed" });
-            messages.Add("log.networkaffinitytweak.5", new string[2] { "网络优先级 策略名无法持久化 已撤回本轮创建的 QoS 策略", "Network priority: policy name cannot be persisted, QoS policies created this round withdrawn" });
             messages.Add("log.notif.1", new string[2] { "通知弹窗已还原", "Notification popups restored" });
             messages.Add("log.nvdrstweaks.1", new string[2] { "Smooth Motion 插帧 需要 RTX 40 或 50 系显卡 该项跳过", "Smooth Motion frame generation requires an RTX 40 or 50 series GPU; item skipped" });
             messages.Add("log.nvdrstweaks.2", new string[2] { "Smooth Motion 插帧 需要 ", "Smooth Motion frame generation requires driver " });

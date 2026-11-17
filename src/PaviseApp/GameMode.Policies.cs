@@ -308,8 +308,6 @@ namespace PaviseApp
                 return Lang.T("gm.dwmboost");
             case "rsr":
                 return Lang.T("set.rsr");
-            case "gpupower":
-                return Lang.T("t.gamemodeenv.6");
             case "maint":
                 return Lang.T("gm.pausemaint");
             case "nvvrr":
@@ -318,8 +316,6 @@ namespace PaviseApp
                 return Lang.T("set.intel.endurance");
             case "laptopperf":
                 return Lang.T("gm.laptopperf");
-            case "amdalag":
-                return "AMD Anti-Lag";
             case "amdafmf":
                 return Lang.T("t.gamemodeenv.8");
             case "GameDvrOff":
@@ -636,8 +632,6 @@ namespace PaviseApp
                 return "GmPauseUpdate";
             case "dwmboost":
                 return "GmDwmBoost";
-            case "gpupower":
-                return "GmGpuPowerMax";
             case "services":
                 return "GmPauseServices";
             case "standby":
@@ -650,8 +644,6 @@ namespace PaviseApp
                 return "GmIntelEnduranceV1";
             case "laptopperf":
                 return LaptopPerfMode.PreferenceKey;
-            case "amdalag":
-                return "AmdAntiLag";
             case "amdafmf":
                 return "AmdAfmf";
             case "gamedvr":
@@ -705,10 +697,8 @@ namespace PaviseApp
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             StepDisplayAwake(awake);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
-            gpwActive = EnvStep("gpupower", false, gpwActive || GpuPowerMax.HasResidue(), null, GpuPowerMax.Restore);
             nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available, nvVrrActive || (!nvVrrWindowedOn && NvVrrWindowed.HasResidue), NvVrrWindowed.Activate, NvVrrWindowed.Restore);
             intelEndActive = EnvStep("intelend", EffIntelEnduranceOff && IntelGraphicsApi.HasAvailable && IntelEndurance.Supported(), intelEndActive, IntelEndurance.Activate, IntelEndurance.Restore);
-            amdAlagActive = EnvStep("amdalag", false, amdAlagActive || AdlxTweaks.HasAntiLagResidue(), null, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", afmfRequested && AdlxTweaks.AfmfSupported(), amdAfmfActive, AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
             StepLaptopPerformancePolicy();
             StepPowerPlanMaintenance();
@@ -805,7 +795,6 @@ namespace PaviseApp
         }
         private bool EnvActive()
         {
-            if (windowsBackground.HasRecovery) return true;
             if (SessionRecoveryPending) return true;
             if (SelfYield.HasResidue) return true;
             if (laboratory != null && !laboratory.IsRestored) return true;
@@ -840,14 +829,14 @@ namespace PaviseApp
             {
                 return true;
             }
-            if (doActive || wuActive || maintActive || optionalServicesActive || pqosActive || awakeActive || gpwActive || nvVrrActive || intelEndActive || laptopPerfActive || Volatile.Read(ref laptopPerfWorker) != 0 || planActive || timerRaised || rsrActive || amdAlagActive || amdAfmfActive || (standbyCleaner != null && standbyCleaner.HasInFlight))
+            if (doActive || wuActive || maintActive || optionalServicesActive || pqosActive || awakeActive || nvVrrActive || intelEndActive || laptopPerfActive || Volatile.Read(ref laptopPerfWorker) != 0 || planActive || timerRaised || rsrActive || amdAfmfActive || (standbyCleaner != null && standbyCleaner.HasInFlight))
             {
                 return true;
             }
             int mutationGeneration = Settings.MutationGeneration;
             if (mutationGeneration != envResidueGeneration)
             {
-                envResidueOther = LaboratoryPower.HasResidue || LaboratoryGpu.HasResidue || DoTweak.HasResidue || UpdatePause.HasResidue || MaintenancePause.HasResidue || OptionalServicePause.HasResidue || PresenceQos.HasResidue || GpuPowerMax.HasResidue() || GpuClockLock.HasResidue || AdlxTweaks.HasResidue() || NvVrrWindowed.HasResidue || IntelEndurance.HasResidue || LaptopPerfMode.HasResidue || PowerPlan.HasResidue || PowerPlan.HasParkResidue() || PowerOverlay.HasResidue || DisplaySolo.HasResidue();
+                envResidueOther = LaboratoryPower.HasResidue || LaboratoryGpu.HasResidue || DoTweak.HasResidue || UpdatePause.HasResidue || MaintenancePause.HasResidue || OptionalServicePause.HasResidue || PresenceQos.HasResidue || AdlxTweaks.HasResidue() || NvVrrWindowed.HasResidue || IntelEndurance.HasResidue || LaptopPerfMode.HasResidue || PowerPlan.HasResidue || PowerPlan.HasParkResidue() || PowerOverlay.HasResidue;
                 envResidueNvList = NvDrsTweaks.HasGameResidue;
                 envResidueGeneration = mutationGeneration;
             }

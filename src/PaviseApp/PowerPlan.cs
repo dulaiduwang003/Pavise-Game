@@ -30,11 +30,7 @@ namespace PaviseApp
 
         private const string PlanNote = "Pavise动态计划";
 
-        private const string IdleDisableClearedKey = "IdleDisableCleared";
-
         internal const string ExtremeSnapKey = "ExtremePowerKnobSnap";
-
-        internal const string LegacyCpuIdleLedgerKey = "CpuIdleStateV1";
 
         private const string ManagedPolicyKey = "ManagedPlanPolicyV3";
 
@@ -98,8 +94,6 @@ namespace PaviseApp
         private static readonly Guid IdleScaling = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
 
         private static readonly Guid RetiredIdleCheck = new Guid("c4581c31-89ab-4597-8e2b-9c9cab440e6b");
-
-        private static CpuIdleReceipt cpuIdleReceipt;
 
         private static bool managedCreationBlocked;
 
@@ -223,8 +217,6 @@ namespace PaviseApp
 
         private static readonly Guid LatencyHintUnpark1 = new Guid("616cdaa5-695e-4545-97ad-97dc2d1bdd89");
 
-        private static readonly Guid IdleDisableSet = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
-
         public static string ManagedPlanTitle
         {
             get
@@ -336,7 +328,7 @@ namespace PaviseApp
             get
             {
                 if (Settings.LoadStr(PresetCreationKey, "").Length != 0) return true;
-                if (!settledRestoreTarget.HasValue && !LaboratoryHasResidue && !IdlePolicyHasResidue && !LegacyCpuIdleHasResidue)
+                if (!settledRestoreTarget.HasValue && !LaboratoryHasResidue && !IdlePolicyHasResidue)
                 {
                     return Settings.LoadStr("PrevPowerPlan", "").Length > 0;
                 }
@@ -528,10 +520,6 @@ namespace PaviseApp
             {
                 if (HandheldBypass) return false;
                 if (!RestoreLaboratoryBeforeCoreChange()) return false;
-                if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
-                {
-                    return false;
-                }
                 return RemoveManagedPlanCore();
             }
         }
@@ -616,10 +604,6 @@ namespace PaviseApp
             {
                 if (HandheldBypass) return false;
                 if (!RestoreLaboratoryBeforeCoreChange()) return false;
-                if (!RestoreLegacyCpuIdle() || LegacyCpuIdleHasResidue)
-                {
-                    return false;
-                }
                 return RemoveCreatedPlanCore();
             }
         }

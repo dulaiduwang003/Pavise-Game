@@ -157,18 +157,6 @@ namespace PaviseApp
             {
                 list.Add(Lang.T("t.gamemodeenv.34"));
             }
-            if (RssSteer.HasResidue)
-            {
-                list.Add(Lang.T("gm.rsssteer"));
-            }
-            if (gpwActive || GpuPowerMax.HasResidue())
-            {
-                list.Add(EnvLabel("gpupower"));
-            }
-            if (GpuClockLock.HasResidue)
-            {
-                list.Add(Lang.T("set.gpuclock"));
-            }
             if (nvVrrActive || NvVrrWindowed.HasResidue)
             {
                 list.Add(EnvLabel("nvvrr"));
@@ -181,11 +169,7 @@ namespace PaviseApp
             {
                 list.Add(Lang.T("gm.laptopperf"));
             }
-            if (DisplaySolo.HasResidue())
-            {
-                list.Add(Lang.T("gm.solo"));
-            }
-            if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue())
+            if (rsrActive || amdAfmfActive || AdlxTweaks.HasResidue())
             {
                 list.Add("AMD");
             }

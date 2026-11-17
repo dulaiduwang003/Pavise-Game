@@ -20,14 +20,6 @@ namespace PaviseApp
             }
         }
 
-        public bool Suppressible
-        {
-            get
-            {
-                return Category == AcCategory.Suppressible;
-            }
-        }
-
         public bool RecordOnly
         {
             get
@@ -36,9 +28,12 @@ namespace PaviseApp
             }
         }
 
-        public AcGroup(string key, string name, bool def, string[] procs)
-            : this(key, name, def, procs, AcCategory.Suppressible)
+        public bool Governed
         {
+            get
+            {
+                return Category == AcCategory.Governed;
+            }
         }
 
         public AcGroup(string key, string name, bool def, string[] procs, AcCategory category)

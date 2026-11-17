@@ -6,7 +6,6 @@ namespace PaviseApp
     internal enum SuppressReason
     {
         None = 0,
-        AntiCheat = 1,
         Background = 2
     }
 }

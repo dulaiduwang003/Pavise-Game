@@ -49,8 +49,9 @@ namespace PaviseApp
 
         public readonly Dictionary<string, string> Overrides = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        private static readonly string[] RetiredOverrideKeys = new string[38]
+        private static readonly string[] RetiredOverrideKeys = new string[39]
         {
+            "GameAceSuppressionV1",
             "GmDisplaySolo", "GmMemShield", "GmGpuClockLockV1", "GmCacheWarm", "GmManualCorePlanV1", "GmCoreMask", "GmStrictCores", "GmCoreDomainAlt", "GmHeavySqueezeV2", "GmHeavyCoreMaskV1",
             "AutoRecording", "AutoInput", "AutoGraphics", "GmEnglishInputV1", "GmStandbyCleanerV2", "GmPauseUpdate", "GmPauseServices", "NvMaxPerf", "NvLowLat", "NvSmoothMotion",
             "NvShaderCache", "NvRebar", "NvDlss", "AmdAntiLag", "AmdAfmf", "GmIntelEnduranceV1", "GmGpuPowerMax", "GmWsTrimV1", "GmIdlePolicyV1", "AutoBackgroundCoreLayoutV1",

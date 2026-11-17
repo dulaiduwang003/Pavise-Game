@@ -9,7 +9,7 @@ namespace PaviseApp
             lock (sync)
             {
                 GameDetection detection = activeDetection;
-                return "thread-boost:" + FrameCoordinationEnabled + "|roles:"
+                return "thread-boost:" + Volatile.Read(ref classicThreadBoostOn) + "|roles:"
                     + (detection == null || detection.Profile == null ? "" : CriticalThreadRule.Raw(CriticalPreferenceProfileLocked(detection.Profile.Id)));
             }
         }

@@ -78,13 +78,10 @@ namespace PaviseApp
             string label = state.Length == 0
                 ? Lang.T(on ? "env.performance.pending" : "env.performance.off")
                 : PerformanceTuning.Label(state);
-            bool legacy = on && !expanded && !failed && state != "working";
-            if (legacy)
-            {
-                label = PerformancePolicy.Text("旧版基础范围 · 关闭后重新开启可扩展",
-                    "Legacy basic scope; switch off and on to expand");
-            }
-            cardPerformanceCpuMitigations.SetStatus(label, (failed || legacy) ? Theme.Warning : (on ? Theme.Accent : Theme.Dim));
+            // 基础范围是作者同款预设的正常取值，不是故障：只在正常状态后标注范围，不用警告色。
+            bool basicScope = on && !expanded && !failed && state != "working";
+            if (basicScope) label += PerformancePolicy.Text(" · 基础范围", " · basic scope");
+            cardPerformanceCpuMitigations.SetStatus(label, failed ? Theme.Warning : (on ? Theme.Accent : Theme.Dim));
         }
     }
 }

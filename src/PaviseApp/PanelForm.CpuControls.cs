@@ -149,18 +149,6 @@ namespace PaviseApp
                 textOffset += PerformancePolicy.Text(" · 核心类型未确认", " · core types unconfirmed");
             return textOffset;
         }
-        private void ClearSuspectReservedCores()
-        {
-            ulong suspectResult = LegacyReservedCores.Suspect();
-            if (suspectResult != 0 && PaviseDialog.Confirm(this, Lang.T("schedule.auto.reserved.clear"), Lang.F("schedule.auto.reserved.confirm", CpuTopology.DescribeMask(suspectResult)), DlgKind.Warn))
-            {
-                if (!LegacyReservedCores.ClearSuspect())
-                {
-                    PaviseDialog.Warn(this, Lang.T("schedule.auto.reserved.clear"), Lang.T("schedule.auto.reserved.failed"));
-                }
-                SyncCorePage();
-            }
-        }
         private void AddCoreShortcut(string name, string title, ulong mask, int threads)
         {
             mask &= CpuTopology.AllMask;
@@ -225,24 +213,15 @@ namespace PaviseApp
         {
             return PerformancePolicy.Text(zh, en);
         }
+        // 3.3.0.8 的线程提优现在只由游戏优先启动，旧的全局线程提优开关和资源开关都不再决定它是否运行。
         private static string CriticalThreadCompanionText(GameProfile profile, out bool coupled)
         {
-            PolicySnapshot policySnapshot = PolicyResolver.For(profile);
-            coupled = true;
-            if (!policySnapshot.EffBoost)
-            {
-                coupled = false;
-                return ThreadUi("本游戏的游戏资源优先级已关闭，线程提优不运行。", "Game resource priority is off for this game, so thread boost does not run.");
-            }
-            if (policySnapshot.FrameCoordinationOn)
-            {
-                return ThreadUi("本游戏选择了渲染关键线程提优。与此规则同用时，呈现关联或依赖关联候选可能同时被提优；组合效果未测。", "Render-critical thread boost is selected for this game. Used with this rule, presentation-related or dependency-related candidates may also be boosted; the combination is untested.");
-            }
-            if (policySnapshot.RenderLane && GameMode.LaneSupported(policySnapshot.Preset))
-            {
-                return ThreadUi("本游戏选择了高负载线程提优。与此规则同用时，可能作用于同一线程；组合效果未测。", "Busy-thread boost is selected for this game. Used with this rule, it may target the same thread; the combination is untested.");
-            }
             coupled = false;
+            CriticalThreadRule rule = PolicyResolver.GameSchedulingRule(profile);
+            if (rule != null && rule.UsesClassicThreadBoost)
+            {
+                return ThreadUi("游戏优先沿用 3.3.0.8 的线程提优：渲染线程设为最高、配合线程略提，不固定核心。", "Game priority uses the 3.3.0.8 thread boost: the render thread at highest and its partner slightly higher, without core pinning.");
+            }
             return ThreadUi("本游戏不运行线程提优，不与此规则叠加。", "Thread boost does not run for this game and does not combine with this rule.");
         }
         private string CriticalThreadRuntimeText()
@@ -407,7 +386,7 @@ namespace PaviseApp
         private string CoreWorkspaceLayoutKey()
         {
             AutoCoreStatus status = AutoCores.Status;
-            return string.Concat(pageCoreScheduling.ClientSize, "|", Dpi.Scale, "|", coreDraftProfile, "|", coreEditMatrix.Selected, "|", coreEditorResult.Visible, "|", coreEditorResult.Text, "|", corePlanPreview.Height, "|", status.Pending, "|", status.Blocked, "|", CoreIsolationClient.State, "|", lblCoreReason.Text, "|", lblCoreReserved.Text, "|", btnCoreClearReserved.Visible);
+            return string.Concat(pageCoreScheduling.ClientSize, "|", Dpi.Scale, "|", coreDraftProfile, "|", coreEditMatrix.Selected, "|", coreEditorResult.Visible, "|", coreEditorResult.Text, "|", corePlanPreview.Height, "|", status.Pending, "|", status.Blocked, "|", CoreIsolationClient.State, "|", lblCoreReason.Text, "|", lblCoreReserved.Text);
         }
         private void RevealCoreCell(Rectangle cell)
         {

@@ -237,13 +237,10 @@ namespace PaviseApp
             Step("Game DVR", GameDvr.Restore, list);
             Step("MMCSS", Mmcss.Restore, list);
             Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, list);
-            StepIf(Lang.T("gm.rsssteer"), () => RssSteer.HasResidue, RssSteer.Restore, list);
             Step("Laboratory system experiments", LaboratoryManualActions.RestoreAllForReset, list);
             Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, list);
             Step(Lang.T("t.legacypurge.7"), PowerOverlay.Restore, list);
-            Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, list);
             Step(Lang.T("t.gamemodeenv.1"), DoTweak.Restore, list);
-            Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, list);
             StepIf(Lang.T("gm.pausesvc"), () => OptionalServicePause.HasResidue, OptionalServicePause.Restore, list);
             StepIf(Lang.T("set.timertick"), () => TimerTickTweak.OwnsState, TimerTickTweak.Restore, list);
             StepIf(Lang.T("set.gtimer"), () => GlobalTimerResTweak.OwnsState, GlobalTimerResTweak.Restore, list);
@@ -257,10 +254,8 @@ namespace PaviseApp
             }, list);
             StepIf(Lang.T("set.apppref"), () => AppGpuPreferences.HasResidue, () => AppGpuPreferences.RestoreAll() || AppGpuPreferences.AbandonUnprovableForReset(), list);
             Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, list);
-            StepIf("QoS", NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable, list);
             Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, list);
             Step("VBS", VbsTweak.Restore, list);
-            StepIf(Lang.T("set.gpuclock"), () => GpuClockLock.HasResidue, GpuClockLock.Restore, list);
             StepIf(Lang.T("set.nvvrr"), () => NvVrrWindowed.HasResidue, NvVrrWindowed.Restore, list);
             StepIf(Lang.T("set.intel.endurance"), () => IntelEndurance.HasResidue, IntelEndurance.Restore, list);
             StepIf(Lang.T("gm.laptopperf"), () => LaptopPerfMode.HasResidue, LaptopPerfMode.Restore, list);
@@ -268,46 +263,20 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, list);
             Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, list);
             Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, list);
-            Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, list);
             Step("FrameCoordination", FrameCoordination.HealFromCrash, list);
             Step("RenderLane", delegate
             {
                 RenderLane.HealFromCrash();
                 return !RenderLane.HasResidue();
             }, list);
-            Step("MemShield 内存驻留未确认还原：请先退出仍在运行的游戏，再重启重试", () => MemShield.HealFromCrash() && !MemShield.HasResidue(), list);
-            Step("AC hard affinity", () => new AntiCheatAffinityLease().Recover(), list);
-            Step("DisplaySolo 显示拓扑未还原", delegate
-            {
-                if (DisplaySolo.HealFromCrash())
-                {
-                    return !DisplaySolo.HasResidue();
-                }
-                string displaySoloSnapValue = Settings.LoadStr("DisplaySoloSnap", "");
-                uint result;
-                return displaySoloSnapValue.Length != 0 && (!uint.TryParse(displaySoloSnapValue, out result) || (result != 2 && result != 4 && result != 8)) && Settings.SaveStr("DisplaySoloSnap", "");
-            }, list);
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, list);
             StepIf("Windowed optimizations", () => DirectXGlobalPreference.Windowed.HasResidue, DirectXGlobalPreference.Windowed.Restore, list);
             StepIf("Windows VRR", () => DirectXGlobalPreference.Vrr.HasResidue, DirectXGlobalPreference.Vrr.Restore, list);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, list);
-            StepIf("DPI", DpiTweak.HasResidue, DpiTweak.RestoreAll, list);
             StepIf(Lang.T("gm.pausemaint"), () => MaintenancePause.HasResidue, MaintenancePause.Restore, list);
             StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, list);
             StepIf("FTH", () => FthTweak.RepairedByPavise, FthTweak.Restore, list);
-            StepIf("CFG", CfgOffTweak.HasResidue, CfgOffTweak.RestoreAll, list);
             list.AddRange(PerformanceTuning.RestoreAllFailures(ReportRestoreProgress));
-            StepIf(Lang.T("t.legacypurge.29"), () => IrqRelocate.HasResidue, IrqRelocate.Revert, list);
-            StepIf("自动中断编排 已下架的注册表钉核清退", () => IrqAutoPilot.HasResidue, delegate
-            {
-                if (!IrqAutoPilot.RevertAll())
-                {
-                    return false;
-                }
-                IrqAutoPilot.ClearForReset();
-                return !IrqAutoPilot.HasResidue;
-            }, list);
-            StepIf(Lang.T("irqpin.prio.name"), () => IrqPriorityTweak.HasResidue, IrqPriorityTweak.RestoreAll, list);
             StepIf(Lang.T("irqcheck.purge"), () => GpuIrqCheck.HasResidue, GpuIrqCheck.RestoreAll, list);
             string[] textEntries = new string[12]
             {

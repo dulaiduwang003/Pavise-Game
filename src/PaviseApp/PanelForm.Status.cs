@@ -315,11 +315,7 @@ namespace PaviseApp
                     lblCoreRule.Text = Lang.T("schedule.manual.rule");
                     lblCoreTelemetry.Text = "";
                     ulong disabledMaskValue = coreEditMatrix.DisabledMask;
-                    ulong pendingRebootResult = ((disabledMaskValue != 0) ? LegacyReservedCores.PendingReboot(disabledMaskValue) : 0);
-                    ulong suspectResult = ((pendingRebootResult == 0) ? LegacyReservedCores.Suspect() : 0);
-                    bool visibleValue = suspectResult != 0 && (suspectResult & ~disabledMaskValue) == 0;
-                    lblCoreReserved.Text = ((pendingRebootResult != 0) ? Lang.F("schedule.auto.reserved.legacy", CpuTopology.DescribeMask(pendingRebootResult)) : (visibleValue ? Lang.F("schedule.auto.reserved.suspect", CpuTopology.DescribeMask(suspectResult)) : ((disabledMaskValue != 0) ? Lang.F("schedule.auto.reserved.other", CpuTopology.DescribeMask(disabledMaskValue)) : "")));
-                    btnCoreClearReserved.Visible = visibleValue;
+                    lblCoreReserved.Text = (disabledMaskValue != 0) ? Lang.F("schedule.auto.reserved.other", CpuTopology.DescribeMask(disabledMaskValue)) : "";
                     ManualCorePlan manualCorePlan = ((gameProfile != null) ? PolicyResolver.For(gameProfile).ManualCores : null);
                     coreMatrix.PrimaryTag = Lang.T("schedule.manual.selected");
                     coreMatrix.DisabledMask = disabledMaskValue;
@@ -1293,7 +1289,7 @@ namespace PaviseApp
         }
         private void SyncToggleValues()
         {
-            if (gameMode != null && tamer != null)
+            if (gameMode != null)
             {
                 if (swGame != null)
                 {

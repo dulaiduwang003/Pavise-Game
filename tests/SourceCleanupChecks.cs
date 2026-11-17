@@ -41,24 +41,6 @@ namespace PaviseApp
             }
         }
 
-        private static void CheckKeyboardNavigation()
-        {
-            MethodInfo inputKey = typeof(AntiCheatStrengthPicker).GetMethod("IsInputKey", BindingFlags.Instance | BindingFlags.NonPublic);
-            using (var picker = new AntiCheatStrengthPicker())
-            {
-                foreach (bool horizontal in new[] { false, true })
-                {
-                    picker.Horizontal = horizontal;
-                    foreach (Keys key in new[] { Keys.Home, Keys.End, Keys.Enter, Keys.Space,
-                        horizontal ? Keys.Left : Keys.Up, horizontal ? Keys.Right : Keys.Down })
-                    {
-                        Check((bool)inputKey.Invoke(picker, new object[] { key }), "Navigation key was lost: " + key);
-                        Check((bool)inputKey.Invoke(picker, new object[] { key | Keys.Shift }), "Modified navigation key was lost: " + key);
-                    }
-                }
-                Check(!picker.IsHandleCreated, "Keyboard checks unexpectedly created a window");
-            }
-        }
 
         private static void CheckAnimationAdmission()
         {
@@ -82,7 +64,6 @@ namespace PaviseApp
                 Logger.WritesEnabled = false;
                 Lang.Init();
                 CheckAutomationLabels();
-                CheckKeyboardNavigation();
                 CheckAnimationAdmission();
                 Console.WriteLine("PASS source cleanup checks=" + checks + "; product_started=false registry_writes=0 visible_windows=0");
                 return 0;

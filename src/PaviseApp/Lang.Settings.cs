@@ -64,7 +64,6 @@ namespace PaviseApp
             messages.Add("theme.hint", new string[2] { "为各模式设置强调色；「默认」恢复内置配色。", "Set an accent color per mode; Default restores the built-in palette." });
             messages.Add("set.nvmax", new string[2] { "NVIDIA 电源模式 最高性能优先", "NVIDIA power mode: prefer maximum performance" });
             messages.Add("set.nvmax.n", new string[2] { "保持 GPU 高性能状态；功耗、温度上升，散热不足可能降频。", "Keeps the GPU in its high-performance state. Raises power and heat; weak cooling may throttle." });
-            messages.Add("set.gpuclock", new string[2] { "对局锁定显卡核心频率", "Lock GPU core clock during play" });
             messages.Add("set.nv.none", new string[2] { "未检测到 NVIDIA 驱动，本项停用", "No NVIDIA driver detected; this item is disabled" });
             messages.Add("site.entry", new string[3] { "访问官网", "Visit website", "公式サイト" });
             messages.Add("site.update.available", new string[3] { "v{0} · 查看更新", "v{0} · What's new", "v{0} · 更新内容" });

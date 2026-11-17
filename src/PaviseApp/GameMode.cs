@@ -409,13 +409,12 @@ namespace PaviseApp
 
         private bool awakeActive;
 
-        private bool gpwActive;
-
         private readonly TimerResolutionLease timerLease = new TimerResolutionLease();
 
         private volatile bool killGameDvr;
 
         private volatile bool mmcssOn;
+        internal const string MmcssDefaultOffMarker = "GmMmcssDefaultOffV1";
 
         private bool guardDvrActive;
 
@@ -487,9 +486,9 @@ namespace PaviseApp
 
         private readonly HashSet<string> envRestorePending = new HashSet<string>(StringComparer.Ordinal);
 
-        internal static readonly string[] EnvKeys = new string[17]
+        internal static readonly string[] EnvKeys = new string[15]
         {
-            "do", "wu", "services", "standby", "pqos", "awake", "dwmboost", "rsr", "gpupower", "amdalag",
+            "do", "wu", "services", "standby", "pqos", "awake", "dwmboost", "rsr",
             "amdafmf", "maint", "nvvrr", "intelend", "laptopperf", "gamedvr", "mmcss"
         };
 
@@ -500,8 +499,6 @@ namespace PaviseApp
         private bool optionalServicesWanted;
 
         private int optionalServiceGeneration;
-
-        private bool amdAlagActive;
 
         private bool amdAfmfActive;
 
@@ -942,7 +939,7 @@ namespace PaviseApp
             }
         }
 
-        private volatile ProcessSnapshot antiCheatProcessSnapshot;
+        private volatile ProcessSnapshot latestProcessSnapshot;
 
         public string ActiveGame
         {

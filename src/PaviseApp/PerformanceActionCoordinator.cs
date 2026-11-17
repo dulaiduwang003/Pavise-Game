@@ -354,11 +354,13 @@ namespace PaviseApp
             Attempt value;
             if (ActionFailureStore.IsIsolated(id, target))
             {
-                if (!RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false))
+                int restoredReceipts;
+                if (!RestoreSelected(id, (PerformanceActionStore.Receipt receipt) => string.Equals(receipt.Target, target, StringComparison.OrdinalIgnoreCase), false, out restoredReceipts))
                 {
                     Record(id, "restore-failed", target);
                     return;
                 }
+                if (restoredReceipts == 0) PerformanceTuning.SettleIntentWithoutReceipt(id, target);
             }
             ActionFailureStore.BeginAutomaticCycle(id, target, request.SessionSerial + "\n" + wanted);
             if (ActionFailureStore.IsBlocked(id, target))

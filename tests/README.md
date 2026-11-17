@@ -26,7 +26,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps
 | `AutomaticRetryOwner` | 恢复所有权、预算耗尽、A→B→A 与新会话边界 | 从源码提取实际方法，协作者使用内存夹具 |
 | `ConsumerRecovery` | 各调用方的恢复路由、失败边界和持有状态 | 完整产品源码，恢复接口使用内存回调 |
 | `TimerRetryBoundary` | 计时器请求、取消、启动身份与有限恢复 | 临时内存设置与模拟计时器接口 |
-| `TamerRetry` | 后台扫描失败后的等待与事件唤醒边界 | 实际循环方法、真实时钟和事件，扫描及进程端点为夹具 |
 | `SecurityStartup` | 一次性安全软件检查、缓存、超时与子进程退出失败 | 系统提供程序由固定输入替代，子进程由夹具持有 |
 | `SourceCleanup` | 自动动作状态翻译、键盘导航与动画准入 | 产品源码、内存设置与未显示的控件，不启动应用入口 |
 | `ChineseLogs` | 中文日志写入、新旧格式兼容、会话归属、告警级别及进程名和路径保留 | 产品源码、临时内存设置与测试目录日志，不启动应用或原生工作线程 |

@@ -6,72 +6,6 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        internal AntiCheatAffinityGameContext GetAntiCheatAffinityContext()
-        {
-            lock (sync)
-            {
-                GameDetection detection = activeDetection;
-                if (!active || !enabled || stopping || panicReq || ProfileStoreSaveFailed || gameGoneSinceTicks != 0
-                    || detection == null || !detection.RendererCandidateSelected || detection.RendererSafetyOnly
-                    || detection.RequiresGpuConfirm || detection.RendererPid <= 0 || detection.RendererCreation <= 0)
-                {
-                    AntiCheatContextStable(null, 0);
-                    return null;
-                }
-                if (!AntiCheatContextStable(detection, AutoCores.NowTicks)) return null;
-                ulong reserved = 0, domain = 0, avoid = 0;
-                if (!CpuTopology.MultiGroup)
-                {
-                    // 反作弊优先避让用户配置的游戏范围，不依赖本局是否强制执行该范围。
-                    if (coreManual != null) avoid = coreManual.GameMask & allMask;
-                    if (corePlan != null) reserved |= corePlan.Allocated;
-                    HardPin pin;
-                    if (coreEngaged && hardPins.TryGetValue(detection.RendererPid, out pin) && pin.Creation == detection.RendererCreation)
-                    {
-                        if (pin.AppliedAffinity != allMask) domain = pin.AppliedAffinity;
-                        if (coreManual != null && coreManual.Isolation && CoreIsolationClient.State == "schedule.isolation.active") reserved |= pin.AppliedAffinity;
-                    }
-                    CriticalThreadUiState threads = criticalThreadUi;
-                    if (threads.TargetPid == detection.RendererPid && threads.TargetBirth == detection.RendererCreation && (threads.Applied || threads.Pending))
-                        foreach (ulong mask in threads.CandidateMasks) reserved |= mask;
-                }
-                ProcessSnapshot processes = antiCheatProcessSnapshot;
-                HashSet<int> ancestors = VerifiedAntiCheatAncestors(processes, detection);
-                if (ancestors == null) return null;
-                return new AntiCheatAffinityGameContext(detection.RendererPid, detection.RendererCreation, gameSessionStarts,
-                    CpuTopology.MultiGroup ? -1 : 0, reserved, domain, ancestors, processes, avoid);
-            }
-        }
-        // 反作弊引擎轮询此值决定本局是否压制 ACE；游戏退出宽限开始即视为退局。
-        // 读取游戏库中的最新设置，对局中改动立即生效，不冻结在会话快照里。
-        internal AntiCheatMode? GetAceSessionChoice()
-        {
-            string value;
-            bool configured;
-            lock (sync)
-            {
-                GameDetection detection = activeDetection;
-                if (!active || !enabled || stopping || panicReq || ProfileStoreSaveFailed || gameGoneSinceTicks != 0
-                    || detection == null || detection.Profile == null)
-                {
-                    return null;
-                }
-                GameProfile profile = FindProfileLocked(detection.Profile.Id) ?? detection.Profile;
-                configured = profile.Overrides.TryGetValue(AceSuppressionPolicy.Key, out value);
-            }
-            return AceSuppressionPolicy.Parse(configured ? value : AceSuppressionPolicy.LegacyDefault());
-        }
-
-        internal Action AntiCheatSessionChanged;
-
-        private void NotifyAntiCheatSession()
-        {
-            Action changed = AntiCheatSessionChanged;
-            if (changed == null) return;
-            try { changed(); }
-            catch { }
-        }
-
         private AutoCoreGovernor NewCoreGovernor()
         {
             if (coreRangeUnrestricted || corePlan == null || !corePlan.Available)
@@ -446,7 +380,7 @@ namespace PaviseApp
         }
         private void EngageLaneAndReport(IntPtr h, int pid, long currentCreation, BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText, bool placementVerified)
         {
-            if (pass.LaneAllowed && pass.LaneRestorationReady && EffLane && LaneEligible && pass.PriorityTarget == 128 && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
+            if (pass.LaneAllowed && pass.LaneRestorationReady && pass.ClassicThreadBoost && LaneEligible && pass.PriorityTarget == 128 && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
             {
                 RenderLane.EnsureForGame(pid, currentCreation, pass.RendererName,
                     () => ThreadBoostRecoveryAllowed(pid, currentCreation));
@@ -512,7 +446,7 @@ namespace PaviseApp
         }
         private void UpdateLaneFallback(int pid, long birth, string name)
         {
-            bool renderIdentificationExhausted = FrameCoordinationEnabled && FrameCoordination.IdentificationExhausted(pid, birth, name);
+            bool renderIdentificationExhausted = Volatile.Read(ref classicThreadBoostOn) && FrameCoordination.IdentificationExhausted(pid, birth, name);
             LaneFallbackTarget laneFallbackTarget = laneFallback;
             if (!renderIdentificationExhausted)
             {

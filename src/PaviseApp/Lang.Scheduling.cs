@@ -70,13 +70,6 @@ namespace PaviseApp
             messages.Add("schedule.auto.live.windows", new string[2] { "采样间隔", "Sample interval" });
             messages.Add("schedule.auto.live.releases", new string[2] { "后台避让进程", "Background moved" });
             messages.Add("schedule.auto.state.pending", new string[3] { "隔离还原未确认", "Isolation restore not confirmed", "隔離の復元が未確認" });
-            messages.Add("schedule.auto.reserved.suspect", new string[3] { "{0} 的内核保留值与旧版 Pavise 一致，但来源未确认。仅在确认是旧版残留后清除，重启释放。", "The reservation for {0} matches older Pavise values, but its source is unknown. Clear only if confirmed as a Pavise leftover; restart to release.", "{0} はカーネルのコア予約で使用中です。旧バージョンの Pavise の設定と一致しますが記録が見つからないため、ご自身や他のツールが設定した可能性もあります。Pavise の残りであれば削除でき、再起動後に解放されます。" });
-            messages.Add("schedule.auto.reserved.clear", new string[3] { "清除保留核", "Clear reserved cores", "予約コアを削除" });
-            messages.Add("schedule.auto.reserved.confirm", new string[3] { "清除内核保留设置（{0}），重启后释放这些核心？请先确认是旧版 Pavise 残留。", "Clear the kernel reservation ({0}) and release these cores after restart? First confirm it was left by an older Pavise.", "カーネルのコア予約（{0}）を削除します。再起動後、これらのコアはシステムとゲームに戻ります。旧バージョンの Pavise が残したものだと確認できた場合のみ実行してください。" });
-            messages.Add("schedule.auto.reserved.failed", new string[3] { "删除失败，保留核设置没有变化。请查看运行日志。", "Could not delete it; the reservation is unchanged. See the run log.", "削除できませんでした。予約設定は変更されていません。実行ログを確認してください。" });
-            messages.Add("log.autocore.legacycorrupt", new string[3] { "旧版内核保留核的回执无法解析 当前值 {0} 未做改动", "The legacy kernel core reservation receipt could not be parsed; current value {0} left unchanged", "旧バージョンのカーネルコア予約の記録を解析できません。現在の値 {0} は変更していません" });
-            messages.Add("log.autocore.legacychanged", new string[3] { "内核保留核已被改成 {0} 不是旧版写入的值 未做改动", "The kernel core reservation was changed to {0}, which is not what the older version wrote; left unchanged", "カーネルのコア予約が {0} に変更されており、旧バージョンが書いた値ではないため変更していません" });
-            messages.Add("schedule.auto.reserved.legacy", new string[3] { "{0} 被旧版 Pavise 的内核保留核占着，设置已清除，重启后释放，独占核会多出这几颗。", "{0} is held by the kernel core reservation from an older Pavise; the setting is cleared and the cores are released after a restart, adding them to the exclusive cores.", "{0} は旧バージョンの Pavise によるカーネル予約で使用中です。設定は削除済みで、再起動後に解放され専有コアに加わります。" });
             messages.Add("schedule.auto.reserved.other", new string[3] { "{0} 已被系统或其他工具保留，不参与独占。", "{0} is reserved by the system or another tool and is left out of the exclusive cores.", "{0} はシステムまたは他のツールが予約しているため、専有の対象外です。" });
             messages.Add("log.autocore.unavailable", new string[3] { "自动核心独占 本局不用 {0}", "Auto exclusive cores not used this session: {0}", "自動コア専有はこのセッションで使用しません：{0}" });
             messages.Add("log.autocore.allocated", new string[3] { "已被保留的核心 {0} 不参与独占", "Already reserved cores {0} are left out of the exclusive cores", "予約済みのコア {0} は専有の対象外" });
@@ -87,8 +80,6 @@ namespace PaviseApp
             messages.Add("log.autocore.deferred", new string[3] { "核心独占 暂缓落核：第 {0}/{1} 次尝试未进入写入（步骤={2}），{3} 秒后重试", "Exclusive cores deferred: attempt {0}/{1} stopped before any write (stage={2}); retrying in {3} s", "コア専有を保留：{0}/{1} 回目は書き込み前に中断（段階={2}）。{3} 秒後に再試行します" });
             messages.Add("log.autocore.blocked", new string[3] { "核心独占 本局停用 {0}", "Exclusive cores stopped for this session: {0}", "コア専有をこのセッションで停止：{0}" });
             messages.Add("log.autocore.external", new string[3] { "其他程序改动了游戏亲和性 读回 0x{0} 已让出核心独占", "Another program changed the game's affinity (read back 0x{0}); exclusive cores withdrawn", "他のプログラムがゲームのアフィニティを変更（読み戻し 0x{0}）。コア専有を撤回" });
-            messages.Add("log.autocore.legacycleared", new string[3] { "已清除旧版内核保留核 {0} 重启后释放", "Cleared the legacy kernel core reservation {0}; released after restart", "旧バージョンのカーネルコア予約 {0} を削除。再起動後に解放" });
-            messages.Add("log.autocore.legacyfailed", new string[3] { "旧版内核保留核 {0} 清除失败 下次启动重试", "Could not clear the legacy kernel core reservation {0}; retrying at next launch", "旧バージョンのカーネルコア予約 {0} を削除できません。次回起動時に再試行" });
             messages.Add("log.placement.unreadable", new string[3] { "暂时无法读取实际核心分配，当前状态未知。", "Actual core placement could not be read; its current state is unknown.", "実際のコア配置を読み取れないため、現在の状態は不明です。" });
             messages.Add("log.placement.unconfirmed", new string[3] { "核心策略尚未完整确认。", "The core policy has not been fully verified.", "コアポリシーを完全には確認できていません。" });
             messages.Add("log.placement.stopped", new string[3] { " 本局停止自动重试。", " Automatic retries stopped for this session.", " このセッションの自動再試行を停止しました。" });
@@ -162,7 +153,6 @@ namespace PaviseApp
             messages.Add("log.renderlane.26", new string[2] { " 不再主导 已解钉重新识别 当前主导线程 ", " no longer dominant; unpinned and re-identifying. Current dominant thread " });
             messages.Add("log.renderlane.27", new string[2] { "渲染主权域 ", "Render sovereignty domain: " });
             messages.Add("log.renderlane.28", new string[2] { " 反复错钉 本局不再介入", " was mis-pinned repeatedly; no further attempts this match" });
-            messages.Add("irqpin.prio.name", new string[2] { "设备中断优先级", "Device interrupt priority" });
             messages.Add("t.cputopology.1", new string[3] { "无", "None", "なし" });
             messages.Add("t.cputopology.2", new string[3] { " 个 核 ", " cores: ", " コア: " });
         }

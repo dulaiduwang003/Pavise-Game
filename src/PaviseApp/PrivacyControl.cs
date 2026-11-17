@@ -23,6 +23,9 @@ namespace PaviseApp
 
         private static int retiredRecoveryFailures;
 
+        // 退役项不会再产生新回执：确认一次已全部结清后，本次运行不再扫描。
+        private static bool retiredRecoveryClean;
+
         private static string activeAction;
 
         internal static Func<bool> AdmissionAllowed;
@@ -986,7 +989,7 @@ namespace PaviseApp
 
         internal static void BeginRecoveryCycle(long serial)
         {
-            lock (gate) { retiredRecoveryFailures = 0; retiredRecoveryAt = 0; }
+            lock (gate) { if (!retiredRecoveryClean) { retiredRecoveryFailures = 0; retiredRecoveryAt = 0; } }
         }
 
         internal static bool TryRestoreRetired(Func<bool> mayContinue)
@@ -997,7 +1000,7 @@ namespace PaviseApp
             }
             lock (gate)
             {
-                if (closing || working || retiredRecoveryFailures >= 5 || DateTime.UtcNow.Ticks < retiredRecoveryAt)
+                if (closing || working || retiredRecoveryClean || retiredRecoveryFailures >= 5 || DateTime.UtcNow.Ticks < retiredRecoveryAt)
                 {
                     return false;
                 }
@@ -1005,7 +1008,7 @@ namespace PaviseApp
             }
             return Queue("EnvPrivacyServiceV1", delegate
             {
-                bool ready = true;
+                bool ready = true, completed = false;
                 try
                 {
                     lock (SystemConfigurationGate.Sync)
@@ -1022,13 +1025,14 @@ namespace PaviseApp
                             {
                                 if (IsClosing || !RecoveryAdmitted(mayContinue))
                                 {
-                                    break;
+                                    return;
                                 }
                                 bool restoreReceiptSucceeded = RestoreReceipt(item);
                                 ready = ready && restoreReceiptSucceeded;
                                 SetResult(item.Id, "", RetiredPlan(), restoreReceiptSucceeded ? "restored" : "restore-failed", restoreReceiptSucceeded ? "" : PerformancePolicy.Text("旧配置恢复未完成，记录已保留。", "Legacy settings remain pending restoration; records are retained."));
                             }
                         }
+                        completed = true;
                     }
                 }
                 catch (Exception ex)
@@ -1041,6 +1045,7 @@ namespace PaviseApp
                     lock (gate)
                     {
                         if (!ready) retiredRecoveryFailures = Math.Min(5, retiredRecoveryFailures + 1);
+                        if (ready && completed) retiredRecoveryClean = true;
                         retiredRecoveryAt = DateTime.UtcNow.AddSeconds(ready ? 60 : Math.Min(300, 30 * (1 << retiredRecoveryFailures))).Ticks;
                     }
                     Finish();

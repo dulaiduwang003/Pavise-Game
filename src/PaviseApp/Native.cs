@@ -90,6 +90,8 @@ namespace PaviseApp
 
         public const uint HIGH_PRIORITY_CLASS = 128u;
 
+        public const uint ABOVE_NORMAL_PRIORITY_CLASS = 32768u;
+
         private const int ProcessIoPriorityNt = 33;
 
         private const int ProcessPagePriorityNt = 39;

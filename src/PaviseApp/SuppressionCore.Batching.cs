@@ -47,7 +47,6 @@ namespace PaviseApp
 
         private bool ReapplyReleasedEntry(IntPtr h, Entry e, int pid)
         {
-            CaptureAntiCheatAdmission();
             lock (sync)
             {
                 Entry trackedEntry;
@@ -56,14 +55,7 @@ namespace PaviseApp
                     return false;
                 }
                 if ((e.Reasons & SuppressReason.Background) == 0 && !ReleaseBackgroundJob(e)) return false;
-                if (HasAntiCheatResources(e) && !RestoreOwnedAntiCheatResources(h, e)) return false;
-                if (AntiCheatThrottled(e)) return ApplyAntiCheatResources(h, e);
-                if (HasAntiCheatResources(e))
-                {
-                    e.AntiCheatResources.Active = false;
-                    if (!SaveAntiCheatResourceJournal(e)) { e.AntiCheatResources.Active = true; return false; }
-                }
-                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, false, DesiredAffinityOf(e), PlacementIsProtected(e), e);
+                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, DesiredAffinityOf(e), PlacementIsProtected(e), e);
             }
         }
 
@@ -172,7 +164,6 @@ namespace PaviseApp
                     batchApplyResults.Clear();
                     batchApplyErrors.Clear();
                     RefreshThrottledCacheLocked();
-                    RefreshGroupCountsLocked();
                     return new BatchResult(values, errorValues);
                 }
             }
@@ -210,7 +201,6 @@ namespace PaviseApp
 
         private bool ApplyQueued(int pid, string expectedName, out string error)
         {
-            CaptureAntiCheatAdmission();
             error = null;
             Entry entry;
             uint origPri;
@@ -266,11 +256,6 @@ namespace PaviseApp
                     }
                     applyEntryLockedSucceeded = ApplyEntryLocked(processHandle, currentEntry, pid);
                     if (!applyEntryLockedSucceeded && TryNeutralizeUnwritableLocked(processHandle, pid, currentEntry))
-                    {
-                        error = "self-protected";
-                        return false;
-                    }
-                    if (!applyEntryLockedSucceeded && GiveUpAntiCheatLocked(processHandle, pid, currentEntry))
                     {
                         error = "self-protected";
                         return false;

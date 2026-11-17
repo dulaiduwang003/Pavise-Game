@@ -14,26 +14,15 @@ namespace PaviseApp
 
         public AcquireResult Acquire(int pid, string name, SuppressReason reason, string group, SuppressionLevel level, long expectedCreation = 0L)
         {
-            CaptureAntiCheatAdmission();
             if (level == SuppressionLevel.None)
             {
                 level = SuppressionLevel.Eco;
             }
-            if ((reason & SuppressReason.AntiCheat) != 0 && !RegisterAntiCheatRequest(pid, expectedCreation, name, group, level)) return AcquireResult.AlreadyProtected;
-            AntiCheatSnapshotAttempt snapshot = null;
-            if ((reason & SuppressReason.AntiCheat) != 0 && !BeginAntiCheatSnapshot(pid, expectedCreation, name, level, out snapshot)) return AcquireResult.AlreadyProtected;
-            try { return AcquireCore(pid, name, reason, group, level, expectedCreation, snapshot); }
-            finally { CompleteAntiCheatSnapshot(snapshot); }
-        }
-
-        private AcquireResult AcquireCore(int pid, string name, SuppressReason reason, string group, SuppressionLevel level, long expectedCreation, AntiCheatSnapshotAttempt snapshot)
-        {
             IntPtr processHandle = Native.OpenProcess(12800, false, pid);
             if (processHandle == IntPtr.Zero)
             {
                 lock (sync)
                 {
-                    if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                     Entry protectedEntry;
                     if (map.TryGetValue(pid, out protectedEntry) && SameName(protectedEntry.Name, name))
                     {
@@ -80,10 +69,8 @@ namespace PaviseApp
                         ReleaseBackgroundForRenderer(pid, creation, processName);
                         return AcquireResult.AlreadyProtected;
                     }
-                    if ((reason & SuppressReason.AntiCheat) != 0 && !BindAntiCheatRequest(pid, creation, name, group, level)) return AcquireResult.AlreadyProtected;
                     lock (sync)
                     {
-                        if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                         Entry trackedEntry;
                         bool alreadyTracked = map.TryGetValue(pid, out trackedEntry);
                         if (alreadyTracked && DiscardChangedTrackedNameLocked(pid, name, creation, trackedEntry))
@@ -112,14 +99,6 @@ namespace PaviseApp
                                 trackedEntry = null;
                             }
                         }
-                        if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue && (reason & SuppressReason.AntiCheat) != 0
-                            && !HasAntiCheatResources(trackedEntry) && !trackedEntry.GaveUpRestored
-                            && (trackedEntry.LegacyPlacementDebt || ((trackedEntry.Reasons & SuppressReason.Background) != 0 && (trackedEntry.Journaled || trackedEntry.Applied))))
-                        {
-                            // 整档失败也可能已经写入部分字段，旧日志债务先沿稳定恢复预算结清。
-                            if (!AttachAntiCheatResourceHistory(pid, trackedEntry)) return AcquireResult.AlreadyProtected;
-                            trackedEntry.AntiCheatResources.Active = false;
-                        }
                         if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue && trackedEntry.GaveUp)
                         {
                             trackedEntry.SetReasons(trackedEntry.Reasons | reason);
@@ -138,8 +117,6 @@ namespace PaviseApp
                         }
                         if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue)
                         {
-                            if (snapshot != null) snapshot.Completed = true;
-                            if (trackedEntry.AntiCheatResourceRemovalPending) return AcquireResult.AlreadyProtected;
                             SuppressionLevel level2 = trackedEntry.Level;
                             SuppressReason reasons = trackedEntry.Reasons;
                             string group2 = trackedEntry.Group;
@@ -149,10 +126,6 @@ namespace PaviseApp
                                 trackedEntry.SetGroup(group);
                             }
                             SetReasonLevel(trackedEntry, reason, level);
-                            if ((reason & SuppressReason.AntiCheat) != 0)
-                            {
-                                if (!AttachAntiCheatResourceHistory(pid, trackedEntry)) return AcquireResult.AlreadyProtected;
-                            }
                             bool requestChanged = reasons != trackedEntry.Reasons || level2 != trackedEntry.Level || !SameName(group2, trackedEntry.Group);
                             long ticks = DateTime.UtcNow.Ticks;
                             bool levelChanged = level2 != trackedEntry.Level;
@@ -173,10 +146,6 @@ namespace PaviseApp
                                 {
                                     return AcquireResult.AlreadyProtected;
                                 }
-                                if (!trackedEntry.Applied && GiveUpAntiCheatLocked(processHandle, pid, trackedEntry))
-                                {
-                                    return AcquireResult.AlreadyProtected;
-                                }
                                 return (!trackedEntry.Applied) ? AcquireResult.ApplyFailed : AcquireResult.AlreadyThrottled;
                             }
                             if (!trackedEntry.Applied)
@@ -189,16 +158,11 @@ namespace PaviseApp
                                 RecordBatchApplyResultLocked(pid, true, null);
                                 return AcquireResult.AlreadyThrottled;
                             }
-                            if (!(HasAntiCheatResources(trackedEntry) && AntiCheatThrottled(trackedEntry)) && !GpuPolicyNeedsRelease(trackedEntry) && VerifyBackgroundJob(trackedEntry) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, DesiredGpu(trackedEntry), AntiCheatThrottled(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry), trackedEntry.OrigBoost))
+                            if (!GpuPolicyNeedsRelease(trackedEntry) && VerifyBackgroundJob(trackedEntry) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, DesiredGpu(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry), trackedEntry.OrigBoost))
                             {
                                 ScheduleAfterMatch(trackedEntry, pid);
                                 RecordBatchApplyResultLocked(pid, true, null);
                                 return AcquireResult.AlreadyThrottled;
-                            }
-                            if (!AllowAntiCheatCorrection(processHandle, pid, trackedEntry))
-                            {
-                                RecordBatchApplyResultLocked(pid, false, "anti-cheat-policy-conflict");
-                                return AcquireResult.AlreadyProtected;
                             }
                             if (QueueApplyLocked(pid, name))
                             {
@@ -207,10 +171,6 @@ namespace PaviseApp
                             trackedEntry.SetApplied(ApplyEntryLocked(processHandle, trackedEntry, pid));
                             ScheduleAfterApply(trackedEntry, trackedEntry.Applied, pid);
                             if (!trackedEntry.Applied && TryNeutralizeUnwritableLocked(processHandle, pid, trackedEntry))
-                            {
-                                return AcquireResult.AlreadyProtected;
-                            }
-                            if (!trackedEntry.Applied && GiveUpAntiCheatLocked(processHandle, pid, trackedEntry))
                             {
                                 return AcquireResult.AlreadyProtected;
                             }
@@ -233,7 +193,6 @@ namespace PaviseApp
                         {
                             return AcquireResult.ApplyFailed;
                         }
-                        if (snapshot != null) snapshot.Completed = true;
                         uint[] yieldCpuSets = CpuTopology.BackgroundYieldCpuSetIds();
                         bool inheritedCpuSets = SameCpuSets(origCpuSetsValue, CpuTopology.BackgroundCpuSetIds()) || SameCpuSets(origCpuSetsValue, CpuTopology.InactiveBackgroundCpuSetIds()) || (yieldCpuSets != null && yieldCpuSets.Length > 0 && SameCpuSets(origCpuSetsValue, yieldCpuSets));
                         ulong squeezeMask = (CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask());
@@ -329,15 +288,13 @@ namespace PaviseApp
                             SetEntryLocked(pid, newTrackedEntry);
                             e = newTrackedEntry;
                         }
-                        if (AntiCheatThrottled(e) && !AttachAntiCheatResourceHistory(pid, e)) return AcquireResult.ApplyFailed;
                         if (!PersistJournalLocked())
                         {
-                            if (HasAntiCheatResources(e)) e.AntiCheatResourceJournalPending = true;
                             return AcquireResult.ApplyFailed;
                         }
                         bool queueApplyLockedSucceeded = QueueApplyLocked(pid, name);
-                        bool applied = queueApplyLockedSucceeded || (AntiCheatThrottled(e) ? ApplyAntiCheatResources(processHandle, e)
-                            : ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, DesiredGpu(e), origBoostValue, false, DesiredAffinityOf(e), PlacementIsProtected(e), e));
+                        bool applied = queueApplyLockedSucceeded
+                            || ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, DesiredGpu(e), origBoostValue, DesiredAffinityOf(e), PlacementIsProtected(e), e);
                         Entry appliedEntry;
                         if (map.TryGetValue(pid, out appliedEntry) && !queueApplyLockedSucceeded)
                         {
@@ -346,10 +303,6 @@ namespace PaviseApp
                             if (!applied && TryNeutralizeUnwritableLocked(processHandle, pid, appliedEntry))
                             {
                                 return AcquireResult.NewlyProtected;
-                            }
-                            if (!applied && GiveUpAntiCheatLocked(processHandle, pid, appliedEntry))
-                            {
-                                return AcquireResult.AlreadyProtected;
                             }
                         }
                         if (!marked)
@@ -383,27 +336,25 @@ namespace PaviseApp
             if (entry.BackgroundJobPlacement && (entry.BackgroundJobActive || entry.BackgroundRestorePending)) return false;
             if (entry.GpuLease.PendingCheckpoint || entry.GpuLease.Phase == 'P' || entry.GpuLease.Phase == 'A') return false;
             int gpu = entry.GpuLease.Phase == 'L' ? entry.OrigGpu : -1;
-            return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, gpu, entry.OrigBoost, !entry.AntiCheatPlacementExternal && !entry.BackgroundJobPlacement);
+            return SnapshotMatchesCurrent(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, gpu, entry.OrigBoost, !entry.BackgroundJobPlacement);
         }
 
         private bool ApplyEntryValues(IntPtr handle, Entry entry)
         {
-            if (AntiCheatThrottled(entry)) return ApplyAntiCheatResources(handle, entry);
             if (!VerifyBackgroundJob(entry)) return false;
             DetectBackgroundPlacementChange(handle, entry);
-            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, DesiredGpu(entry), entry.OrigBoost, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry), entry);
+            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, DesiredGpu(entry), entry.OrigBoost, DesiredAffinityOf(entry), PlacementIsProtected(entry), entry);
         }
 
         private bool BeginSuppressionCycle(IntPtr handle, Entry entry, int pid)
         {
             string signature = PerformanceTuning.RecoveryCycleSerial + "\n" + pid + "/" + entry.Creation + "/"
-                + entry.Level + "/" + entry.BackgroundLevel + "/" + entry.AntiCheatLevel + "/" + GpuDemoteEnabled + "/" + EnforceBackgroundAffinity;
+                + entry.Level + "/" + entry.BackgroundLevel + "/" + GpuDemoteEnabled + "/" + EnforceBackgroundAffinity;
             return ActionFailureStore.BeginAutomaticCycle("BackgroundSuppression", FailureTargetOf(handle, entry), signature);
         }
 
         private bool ApplyEntryLocked(IntPtr h, Entry e, int pid)
         {
-            if (AntiCheatThrottled(e)) return ApplyAntiCheatResources(h, e);
             if (FailureBudgetFor(e, "reconcile").Failures >= 8) return false;
             string target = FailureTargetOf(h, e);
             BeginSuppressionCycle(h, e, pid);
@@ -513,45 +464,6 @@ namespace PaviseApp
             return entry.FailureTarget;
         }
 
-        private bool GiveUpAntiCheatLocked(IntPtr h, int pid, Entry e)
-        {
-            if (HasAntiCheatResources(e) && AntiCheatThrottled(e)) return false;
-            if (e == null || e.GaveUp || e.OrigPri == uint.MaxValue)
-            {
-                return false;
-            }
-            if ((e.Reasons & SuppressReason.AntiCheat) == 0 || (e.Reasons & SuppressReason.Background) != 0)
-            {
-                return false;
-            }
-            string lastApplyErrorSnapshot = LastApplyError;
-            bool gaveUpRestoredValue = RestoreBackgroundPlacement(h, e) && RestoreOrdinaryEntryValues(h, e);
-            e.GaveUp = true;
-            e.GaveUpRestored = gaveUpRestoredValue;
-            e.SetApplied(false);
-            e.SqueezeAff = 0uL;
-            e.NextReconcileTicks = long.MaxValue;
-            Logger.Log(Lang.T("log.suppressioncore.giveup.1", 0) + e.Name + " 进程编号 " + pid + Lang.T("log.suppressioncore.giveup.2", 0) + (string.IsNullOrEmpty(lastApplyErrorSnapshot) ? "" : lastApplyErrorSnapshot) + Lang.T(gaveUpRestoredValue ? "log.suppressioncore.giveup.3" : "log.suppressioncore.giveup.4", 0));
-            return true;
-        }
-
-        private bool AllowAntiCheatCorrection(IntPtr handle, int pid, Entry entry)
-        {
-            if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) return true;
-            if (!entry.Applied || !AntiCheatThrottled(entry)
-                || (entry.Reasons & SuppressReason.Background) != 0) return true;
-            long now = DateTime.UtcNow.Ticks;
-            if (now < entry.AntiCheatCorrectionWindow || now - entry.AntiCheatCorrectionWindow >= TimeSpan.FromMinutes(1).Ticks)
-            {
-                entry.AntiCheatCorrectionWindow = now;
-                entry.AntiCheatCorrections = 0;
-            }
-            if (entry.AntiCheatCorrections < 3) { entry.AntiCheatCorrections++; return true; }
-            LastApplyError = "anti-cheat-policy-conflict";
-            GiveUpAntiCheatLocked(handle, pid, entry);
-            return false;
-        }
-
         internal static bool AffinityOnlyFailure(string detail)
         {
             if (string.IsNullOrEmpty(detail))
@@ -571,20 +483,9 @@ namespace PaviseApp
 
         private static void ScheduleAfterMatch(Entry e, int pid)
         {
-            if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
-            {
-                e.AntiCheatResources.MaintenanceFailures = 0;
-                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
-                return;
-            }
             RecordFailureBudget(e, "reconcile", true, 0);
             e.BackgroundReleaseDebt = false;
             e.ReconcileFailures = 0;
-            if (AntiCheatThrottled(e))
-            {
-                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
-                return;
-            }
             if (e.FastReconcileRemaining > 0)
             {
                 e.FastReconcileRemaining--;
@@ -598,12 +499,6 @@ namespace PaviseApp
 
         private static void ScheduleAfterApply(Entry e, bool applied, int pid)
         {
-            if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
-            {
-                e.SetApplied(applied);
-                if (applied) e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
-                return;
-            }
             FailureBudgetFor(e, "reconcile");
             if (!applied) e.SetApplied(false);
             if (applied)
@@ -612,7 +507,7 @@ namespace PaviseApp
                 e.BackgroundReleaseDebt = false;
                 e.ReconcileFailures = 0;
                 e.FastReconcileRemaining = 2;
-                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatThrottled(e) ? AntiCheatAuditSeconds(e.Level) : 4).Ticks;
+                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(4).Ticks;
                 return;
             }
             if (e.ReconcileFailures < 8)
@@ -633,17 +528,16 @@ namespace PaviseApp
             if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
         }
 
-        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false, Entry accountingEntry = null)
+        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu, int origBoost, ulong desiredAffinity, bool affinityOwned = false, Entry accountingEntry = null)
         {
-            affinityOwned |= antiCheat;
             Interlocked.Increment(ref applyOperations);
             List<string> failures = new List<string>();
-            if (DisableDynamicBoost(level, antiCheat) && DesiredBoostDisabled(level, antiCheat, origBoost) < 0)
+            if (DisableDynamicBoost(level) && DesiredBoostDisabled(level, origBoost) < 0)
             {
                 failures.Add("boost-snapshot");
                 return StopFailedApply(failures);
             }
-            uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
+            uint desiredPriority = DesiredPriority(level, originalPriority);
             if (Native.GetPriorityClass(h) != desiredPriority && !AccountBackgroundWrite(accountingEntry, Native.SetPriorityClass(h, desiredPriority)))
             {
                 failures.Add("priority-write");
@@ -712,7 +606,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            int desiredIoPriority = DesiredIoPriority(level, antiCheat);
+            int desiredIoPriority = DesiredIoPriority(level);
             if (Native.QueryIoPriority(h) != desiredIoPriority && !AccountBackgroundWrite(accountingEntry, Native.TrySetIoPriority(h, desiredIoPriority)))
             {
                 failures.Add("io-write");
@@ -721,7 +615,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            int desiredPagePriority = DesiredPagePriority(level, antiCheat);
+            int desiredPagePriority = DesiredPagePriority(level);
             if (Native.QueryPagePriority(h) != desiredPagePriority && !AccountBackgroundWrite(accountingEntry, Native.TrySetPagePriority(h, desiredPagePriority)))
             {
                 failures.Add("page-write");
@@ -732,7 +626,7 @@ namespace PaviseApp
             }
             if (Native.PowerThrottlingSupported)
             {
-                bool desiredTimerSealSucceeded = DesiredTimerSeal(level, antiCheat);
+                bool desiredTimerSealSucceeded = DesiredTimerSeal(level);
                 uint requiredQosMask = Native.EcoQoSWantMask(desiredTimerSealSucceeded);
                 int controlMask;
                 int stateMask;
@@ -747,7 +641,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            string boostFailure = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => AccountBackgroundWrite(accountingEntry, Native.TrySetBoostDisabled(h, disabled)));
+            string boostFailure = ApplyBoostPolicy(level, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => AccountBackgroundWrite(accountingEntry, Native.TrySetBoostDisabled(h, disabled)));
             if (boostFailure.Length > 0)
             {
                 failures.Add(boostFailure);
@@ -768,7 +662,7 @@ namespace PaviseApp
             {
                 failures.Add("page-readback");
             }
-            if (Native.PowerThrottlingSupported && !EcoStateVisible(h, Native.EcoQoSWantMask(DesiredTimerSeal(level, antiCheat))))
+            if (Native.PowerThrottlingSupported && !EcoStateVisible(h, Native.EcoQoSWantMask(DesiredTimerSeal(level))))
             {
                 failures.Add("eco-readback");
             }
@@ -815,7 +709,6 @@ namespace PaviseApp
 
         internal bool Reconcile(int pid, string expectedName, SuppressReason reason, bool forceAudit)
         {
-            CaptureAntiCheatAdmission();
             long ticks = DateTime.UtcNow.Ticks;
             Entry entry;
             uint origPri;
@@ -832,8 +725,8 @@ namespace PaviseApp
                 {
                     return true;
                 }
-                if (!(HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) && FailureBudgetFor(entry, "reconcile").Failures >= 8) return true;
-                if ((!forceAudit || HasAntiCheatResources(entry) && AntiCheatThrottled(entry) && entry.AntiCheatResources.MaintenanceFailures > 0) && ticks < entry.NextReconcileTicks)
+                if (FailureBudgetFor(entry, "reconcile").Failures >= 8) return true;
+                if (!forceAudit && ticks < entry.NextReconcileTicks)
                 {
                     return true;
                 }
@@ -850,8 +743,7 @@ namespace PaviseApp
                     Entry currentEntry;
                     if (map.TryGetValue(pid, out currentEntry) && currentEntry == entry)
                     {
-                        if (HasAntiCheatResources(currentEntry) && AntiCheatThrottled(currentEntry)) PauseAntiCheatResources(currentEntry, "OpenProcess:" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
-                        else ScheduleAfterApply(currentEntry, false, pid);
+                        ScheduleAfterApply(currentEntry, false, pid);
                     }
                 }
                 return true;
@@ -861,7 +753,7 @@ namespace PaviseApp
                 string processName = Native.ImageName(processHandle);
                 if (processName == null || !SameName(processName, expectedName))
                 {
-                    if (processName == null) { lock (sync) { if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) PauseAntiCheatResources(entry, "process-image-unknown"); else ScheduleAfterApply(entry, false, pid); } }
+                    if (processName == null) { lock (sync) ScheduleAfterApply(entry, false, pid); }
                     return false;
                 }
                 long creation;
@@ -869,7 +761,7 @@ namespace PaviseApp
                 ulong io;
                 if (!Native.QueryProcessSample(processHandle, out creation, out cpu, out io))
                 {
-                    lock (sync) { if (HasAntiCheatResources(entry) && AntiCheatThrottled(entry)) PauseAntiCheatResources(entry, "process-creation-unknown"); else ScheduleAfterApply(entry, false, pid); }
+                    lock (sync) ScheduleAfterApply(entry, false, pid);
                     return false;
                 }
                 lock (sync)
@@ -897,7 +789,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(appliedEntry);
-                    if (!(HasAntiCheatResources(appliedEntry) && AntiCheatThrottled(appliedEntry)) && !GpuPolicyNeedsRelease(appliedEntry) && VerifyBackgroundJob(appliedEntry) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, desiredGpu, AntiCheatThrottled(appliedEntry), DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry), appliedEntry.OrigBoost))
+                    if (!GpuPolicyNeedsRelease(appliedEntry) && VerifyBackgroundJob(appliedEntry) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, desiredGpu, DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry), appliedEntry.OrigBoost))
                     {
                         if (!appliedEntry.Applied && appliedEntry.ReconcileFailures > 0)
                         {
@@ -909,7 +801,6 @@ namespace PaviseApp
                         return true;
                     }
                     bool applied = appliedEntry.Applied;
-                    if (!AllowAntiCheatCorrection(processHandle, pid, appliedEntry)) return true;
                     int reconcileFailures = appliedEntry.ReconcileFailures;
                     appliedEntry.SetApplied(ApplyEntryLocked(processHandle, appliedEntry, pid));
                     ScheduleAfterApply(appliedEntry, appliedEntry.Applied, pid);
@@ -939,10 +830,6 @@ namespace PaviseApp
             finally
             {
                 Native.CloseHandle(processHandle);
-                if ((reason & SuppressReason.AntiCheat) != 0)
-                {
-                    lock (sync) RefreshGroupCountsLocked();
-                }
             }
         }
 

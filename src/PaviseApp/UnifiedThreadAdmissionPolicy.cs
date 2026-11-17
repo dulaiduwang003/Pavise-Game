@@ -146,7 +146,7 @@ namespace PaviseApp
                 || relation.Presenter.Tid != presenter[0].Tid || relation.Presenter.Creation != presenter[0].Creation
                 || !UnifiedThreadPressurePolicy.Accept(relation, relation.Presenter, out reason))
             { reason = "呈现角色已识别，持续排队资格未确认；" + reason; return new HardThreadIdentity[0]; }
-            reason = "仅呈现角色具有持续CPU排队资格，温和提优且不写优先核；" + reason;
+            reason = "仅呈现角色具有持续CPU排队资格，只做普通提优且不写优先核；" + reason;
             return presenter;
         }
     }

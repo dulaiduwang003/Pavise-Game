@@ -617,9 +617,8 @@ namespace PaviseApp
             foreach (AcGroup acGroup in groups)
             {
                 list3.Add(acGroup.Name);
-                // ACE 只在游戏库深度调优里为该游戏开启时于对局中压制，其余反作弊一律只保护或只记录。
-                string scope = acGroup.Suppressible ? AutoText("按游戏设置压制（游戏库 · 深度调优）", "Suppressed only for games enabled in Library · Advanced tuning")
-                    : (acGroup.RecordOnly ? AutoText("仅记录", "Record only") : Lang.T("ac.protectiononly"));
+                // ACE 随普通后台治理压制，其余反作弊只保护或只记录。
+                string scope = acGroup.RecordOnly ? AutoText("仅记录", "Record only") : acGroup.Governed ? AutoText("随后台治理压制", "Governed as background") : Lang.T("ac.protectiononly");
                 list2.Add(acGroup.Name + " · " + scope + "\r\n" + string.Join(" · ", acGroup.Procs));
             }
             AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;

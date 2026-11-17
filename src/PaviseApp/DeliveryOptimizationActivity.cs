@@ -5,6 +5,8 @@ using System.Threading;
 
 namespace PaviseApp
 {
+    // 每局只确认一次是否有后台下载：查询经 WMI，代价不在本进程，对局中不反复轮询。
+    // 结果在本局内保持到下一局；读取或入队失败仍按每局三次的预算间隔重试。
     internal static class DeliveryOptimizationActivity
     {
         private static readonly object sync = new object();
@@ -14,6 +16,7 @@ namespace PaviseApp
         private static long failureCycle = -1;
         private static int readFailures, queueFailures;
         private static bool observationUnknown;
+        private static long observedCycle = -1;
 
 #if PAVISE_SELFTEST
         internal static Func<long> ClockForTest;
@@ -22,7 +25,7 @@ namespace PaviseApp
         internal static void ResetForTest()
         {
             lock (sync) { nextProbe = queuedAt = observedAt = 0; probing = downloading = observationUnknown = false;
-                failureCycle = -1; readFailures = queueFailures = 0; }
+                failureCycle = -1; observedCycle = -1; readFailures = queueFailures = 0; }
             ClockForTest = null; ReadForTest = null; QueueForTest = null;
         }
 #endif
@@ -42,12 +45,16 @@ namespace PaviseApp
             bool current;
             lock (sync)
             {
-                if (cycle > failureCycle) { failureCycle = cycle; readFailures = queueFailures = 0; nextProbe = 0; }
-                current = CurrentLocked(now);
-                if (probing || readFailures >= 3 || queueFailures >= 3 || (now >= queuedAt && now < nextProbe)) return current;
+                if (cycle > failureCycle)
+                {
+                    failureCycle = cycle; readFailures = queueFailures = 0; nextProbe = 0;
+                    downloading = false; observationUnknown = false; observedCycle = -1;
+                }
+                current = CurrentLocked(cycle);
+                if (probing || observedCycle == cycle || readFailures >= 3 || queueFailures >= 3 || (now >= queuedAt && now < nextProbe)) return current;
                 probing = true;
                 queuedAt = now;
-                nextProbe = now + interval;
+                nextProbe = long.MaxValue;
             }
             try
             {
@@ -66,7 +73,7 @@ namespace PaviseApp
                     catch (Exception error) { failure = error; }
                     lock (sync)
                     {
-                        if (failure == null) { downloading = active; observedAt = Now(); observationUnknown = false; }
+                        if (failure == null) { downloading = active; observedAt = Now(); observationUnknown = false; observedCycle = cycle; }
                         else
                         {
                             observationUnknown = true;
@@ -76,7 +83,7 @@ namespace PaviseApp
                                 Logger.Warn("传递优化活动读取失败，阶段=" + cycle + " 尝试=" + readFailures + "/3: " + failure.GetType().Name);
                             }
                         }
-                        nextProbe = Now() + interval;
+                        if (failure != null) nextProbe = Now() + interval;
                         probing = false;
                     }
                 };
@@ -98,10 +105,10 @@ namespace PaviseApp
                     }
                 }
             }
-            lock (sync) return CurrentLocked(Now());
+            lock (sync) return CurrentLocked(cycle);
         }
-        private static bool CurrentLocked(long now)
-        { return downloading && now >= observedAt && (observationUnknown || now - observedAt < interval); }
+        private static bool CurrentLocked(long cycle)
+        { return downloading && observedCycle == cycle; }
 
         internal static bool IsBackgroundDownload(object status, object isBackground)
         {

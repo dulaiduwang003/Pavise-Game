@@ -8,7 +8,8 @@ namespace PaviseApp
 
     // 只保存逐游戏策略，线程身份由运行时确认。
     // 新值只能追加在末尾；持久化使用策略文本，不使用枚举数值。
-    internal enum SchedulingStrategy { Orchestration, RenderBoost, RenderCore, DependencyBoost, RenderCoreTimeCritical, GamePriority }
+    // RetiredGentle 是已删除的“温和提优”：档案加载要求原文能解析回自身，所以只保留编码，运行时按关闭处理，界面不再提供。
+    internal enum SchedulingStrategy { Orchestration, RenderBoost, RenderCore, DependencyBoost, RenderCoreTimeCritical, GamePriority, RetiredGentle }
 
     internal sealed class CriticalThreadRule
     {
@@ -36,8 +37,11 @@ namespace PaviseApp
 
         internal readonly SchedulingStrategy Strategy;
 
-        // ParseForRuntime 已将旧手动规则转换为自动选核策略。
-        private bool FormalStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget; } }
+        // ParseForRuntime 已将旧手动规则转换为自动选核策略；已删除方案的旧编码不算正式策略。
+        private bool FormalStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy != SchedulingStrategy.RetiredGentle; } }
+
+        // 已删除方案的旧编码，只供档案读取和界面提示，运行副本一律关闭。
+        internal bool IsRetiredStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy == SchedulingStrategy.RetiredGentle; } }
 
         internal bool IsOrchestration { get { return FormalStrategy && Strategy == SchedulingStrategy.Orchestration; } }
 
@@ -45,18 +49,23 @@ namespace PaviseApp
 
         internal bool IsTimeCriticalRender { get { return FormalStrategy && Strategy == SchedulingStrategy.RenderCoreTimeCritical; } }
 
-        // 游戏优先：进程提优、渲染线程提优与渲染线程固定核心三项配合；进程类别由资源通道单独记账和恢复。
+        // 游戏优先：完整沿用 3.3.0.8 的组合。进程类别、磁盘与显卡优先级由资源通道写入、核验和恢复；
+        // 线程由原线程协同提优（呈现线程 TIME_CRITICAL、配合线程 +1，识别用尽后按最忙线程备用提优），
+        // 不固定核心、不清核，也不进入统一线程调度。
         internal bool IsGamePriority { get { return FormalStrategy && Strategy == SchedulingStrategy.GamePriority; } }
 
         internal bool RaisesGameProcess { get { return IsGamePriority; } }
 
+        // 线程层交给 3.3.0.8 的线程协同，统一调度只撤回自己的旧控制，不发现角色、不写线程。
+        internal bool UsesClassicThreadBoost { get { return IsGamePriority; } }
+
         internal bool UsesWorkloadDiscovery { get { return IsOrchestration || IsDependencyBoost; } }
 
-        internal bool IsRenderStrategy { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderBoost || Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical || Strategy == SchedulingStrategy.GamePriority); } }
+        internal bool IsRenderStrategy { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderBoost || Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical); } }
 
-        internal bool SupportsClearCore { get { return FormalStrategy && !IsDependencyBoost; } }
+        internal bool SupportsClearCore { get { return FormalStrategy && !IsDependencyBoost && !IsGamePriority; } }
 
-        internal bool PinsRenderThread { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical || Strategy == SchedulingStrategy.GamePriority); } }
+        internal bool PinsRenderThread { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical); } }
 
         // 写入其他游戏线程范围的资格：编排要放置工作池成员，支持清核的策略可额外让其他线程避让。
         internal bool WritesOtherThreadRanges { get { return IsOrchestration || ClearCore && SupportsClearCore; } }
@@ -136,10 +145,14 @@ namespace PaviseApp
             return new CriticalThreadRule(false, CriticalThreadLayout.Unified);
         }
 
-        // 未选过方案时只提优呈现线程，不默认固定核心、清核或提高整进程优先级；已保存的策略原样读取。
+        // 界面标为推荐的方案，同时是未选过方案时的缺省：游戏优先（3.3.0.8 的组合：进程高优先级、磁盘与显卡提优、
+        // 线程协同提优，不固定核心、不清核）。推荐标签和缺省共用这一个值，避免两处分叉。
+        internal const SchedulingStrategy RecommendedStrategy = SchedulingStrategy.GamePriority;
+
+        // 已保存的策略原样读取，不因缺省变化改写。
         internal static CriticalThreadRule UnifiedDefault()
         {
-            return UnifiedStrategy(SchedulingStrategy.RenderBoost, false);
+            return UnifiedStrategy(RecommendedStrategy, false);
         }
 
         private CriticalThreadRule(SchedulingStrategy strategy, bool clearCore)
@@ -147,7 +160,8 @@ namespace PaviseApp
         {
             if (!Enum.IsDefined(typeof(SchedulingStrategy), strategy)) throw new ArgumentException("Unknown scheduling strategy");
             Strategy = strategy;
-            WorkerAvoidance = clearCore && strategy != SchedulingStrategy.DependencyBoost;
+            // 依赖协同和已删除的温和提优从不带清核。游戏优先旧存档里的“|x”只为原文能读回而保留，运行时不清核。
+            WorkerAvoidance = clearCore && strategy != SchedulingStrategy.DependencyBoost && strategy != SchedulingStrategy.RetiredGentle;
         }
 
         // 无清核的编排沿用 7|auto 编码。
@@ -197,8 +211,8 @@ namespace PaviseApp
             ManualTarget = true;
         }
 
-        // 清核开关。只对统一规则有意义，旧布局的避让标志不算；旧手动规则的“|x”也按清核读取。
-        internal bool ClearCore { get { return IsUnified && WorkerAvoidance && !IsOff && !IsComparison; } }
+        // 清核开关。只对统一规则有意义，旧布局的避让标志不算；旧手动规则的“|x”也按清核读取，游戏优先的旧“|x”不算。
+        internal bool ClearCore { get { return IsUnified && WorkerAvoidance && !IsOff && !IsComparison && !IsGamePriority; } }
 
         private CriticalThreadRule(string topology, ulong processor, bool manualTarget)
             : this(topology, processor, CriticalThreadLayout.Compatible)
@@ -258,8 +272,10 @@ namespace PaviseApp
             CriticalThreadRule rule = Parse(text);
             // 运行只接收统一规则；旧格式解析仅供原有恢复收据核验使用。
             if (rule == null || !rule.IsUnified || !rule.Automatic && !rule.IsOff) return null;
-            // 退役对照规则仅保留读取兼容，运行副本关闭。
-            if (rule.IsComparison) return UnifiedOff();
+            // 退役对照和已删除的温和提优仅保留读取兼容，运行副本关闭，不按缺省方案重新启用。
+            if (rule.IsComparison || rule.IsRetiredStrategy) return UnifiedOff();
+            // 游戏优先不清核；旧存档的“7|game|x”按“7|game”运行。
+            if (rule.IsGamePriority && rule.WorkerAvoidance) return UnifiedStrategy(SchedulingStrategy.GamePriority, false);
             // 旧手动规则转换为自动选核，保留清核选择。
             return rule.ManualTarget ? UnifiedStrategy(SchedulingStrategy.RenderCore, rule.ClearCore) : rule;
         }
@@ -417,15 +433,15 @@ namespace PaviseApp
         {
             return strategy == SchedulingStrategy.RenderBoost ? "render" : strategy == SchedulingStrategy.RenderCore ? "core"
                 : strategy == SchedulingStrategy.DependencyBoost ? "dependency" : strategy == SchedulingStrategy.RenderCoreTimeCritical ? "core-critical"
-                : strategy == SchedulingStrategy.GamePriority ? "game" : "auto";
+                : strategy == SchedulingStrategy.GamePriority ? "game" : strategy == SchedulingStrategy.RetiredGentle ? "gentle" : "auto";
         }
 
         private static bool TryStrategy(string token, out SchedulingStrategy strategy)
         {
             strategy = token == "render" ? SchedulingStrategy.RenderBoost : token == "core" ? SchedulingStrategy.RenderCore
                 : token == "dependency" ? SchedulingStrategy.DependencyBoost : token == "core-critical" ? SchedulingStrategy.RenderCoreTimeCritical
-                : token == "game" ? SchedulingStrategy.GamePriority : SchedulingStrategy.Orchestration;
-            return token == "auto" || token == "render" || token == "core" || token == "dependency" || token == "core-critical" || token == "game";
+                : token == "game" ? SchedulingStrategy.GamePriority : token == "gentle" ? SchedulingStrategy.RetiredGentle : SchedulingStrategy.Orchestration;
+            return token == "auto" || token == "render" || token == "core" || token == "dependency" || token == "core-critical" || token == "game" || token == "gentle";
         }
 
         private static ulong Hex(string text)

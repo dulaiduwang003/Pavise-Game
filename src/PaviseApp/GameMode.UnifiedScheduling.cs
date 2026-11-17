@@ -148,6 +148,19 @@ namespace PaviseApp
                         restored ? "游戏调度已关闭，原设置恢复已核验" : "已停止运行期写入，原设置恢复待确认", false, !restored);
                     return true;
                 }
+                if (source.Rule.UsesClassicThreadBoost)
+                {
+                    // 游戏优先的线程由 3.3.0.8 线程协同在提优通道里负责，这里不发现角色、不采样、不写线程；
+                    // 此前若有统一线程控制，先按归属撤回。状态只转述线程协同自己的阶段。
+                    if (unifiedThreadControl != null) unifiedThreadControl.RequestStop();
+                    if (!WithdrawCriticalThreadsLocked("游戏优先改由线程协同提优"))
+                    {
+                        PublishUnifiedState(source, "recovery-pending", "已停止统一调度的线程写入，原线程设置恢复待确认", false, true);
+                        return true;
+                    }
+                    PublishClassicThreadState(source);
+                    return true;
+                }
                 if (criticalSource == null)
                 {
                     criticalSource = source;
@@ -355,8 +368,7 @@ namespace PaviseApp
                     // 呈现身份沿用有限观察；时间关键模式额外要求固定核，不能在选核失败时仅抬高优先级。
                     phase.PriorityRoles = new[] { roles[0] };
                     phase.Evidence = reason + "；" + (source.Rule.IsTimeCriticalRender
-                        ? "独立核时间关键：自动选核固定，仅此线程目标 TIME_CRITICAL，进程类别保持不变" : source.Rule.IsGamePriority
-                        ? "游戏优先：进程类别由资源通道另行写入、核验和恢复，本行不代表进程提优已生效；渲染线程自动选核固定，普通提优按角色上限准入"
+                        ? "独立核时间关键：自动选核固定，仅此线程目标 TIME_CRITICAL，进程类别保持不变"
                         : source.Rule.PinsRenderThread
                         ? "渲染线程独立核：自动选核固定；普通提优按角色上限准入，High 可用 +2，Realtime 保留优先级；进程类别不改"
                         : "渲染线程提优：普通提优按角色上限准入，High 可用 +2，Realtime 保留优先级；进程类别和亲和性不动");
@@ -430,8 +442,8 @@ namespace PaviseApp
             if (process == IntPtr.Zero) throw new InvalidOperationException("游戏进程查询句柄不可用");
             try
             {
-                // 游戏优先的进程类别由资源通道持有并单独记账，这里不归还；其余方案先归还旧的整进程提优。
-                if (!source.Rule.RaisesGameProcess && !CrashGuard.RestoreBoostPriority(process, source.Pid, source.Birth))
+                // 进入这里的方案都不持有进程类别（游戏优先在角色发现前已转交线程协同），接管线程前先归还旧的整进程提优。
+                if (!CrashGuard.RestoreBoostPriority(process, source.Pid, source.Birth))
                     throw new InvalidOperationException("旧进程 CPU 提优恢复未确认，暂不捕获线程提优基线");
                 uint currentClass = Native.GetPriorityClass(process);
                 // 普通线程属性分别准入；显式时间关键规则仍沿用原有的类别边界，不扩展到实时等级。
@@ -756,9 +768,62 @@ namespace PaviseApp
                 + unifiedClearCoreNote + note;
         }
 
+        // 游戏优先的状态取自 3.3.0.8 线程协同本身：写入并读回后才报已生效；识别中、等待重试、
+        // 额度用尽或已让还给游戏分别如实显示。备用提优生效时以它为准。
+        private void PublishClassicThreadState(CriticalRuntimeSource source)
+        {
+            string state, detail, english;
+            bool applied = false;
+            if (RenderLane.IsActiveFor(source.Pid, source.Birth))
+            {
+                state = "active";
+                applied = true;
+                detail = "游戏优先：呈现线程识别额度已用完，备用提优已把最忙线程提高两档；不固定核心";
+                english = "Game priority: render-thread identification ran out, so the busiest thread was raised two levels; no core pinning.";
+            }
+            else
+            {
+                switch (FrameCoordination.PhaseFor(source.Pid, source.Birth))
+                {
+                    case FrameCoordination.ClassicPhase.Applied:
+                        state = "active";
+                        applied = true;
+                        detail = "游戏优先：呈现线程已设为 TIME_CRITICAL，识别到配合线程时另 +1；不固定核心，每 5 秒核验一次";
+                        english = "Game priority: the render thread runs at TIME_CRITICAL and an identified partner thread gets +1; no core pinning, checked every 5 seconds.";
+                        break;
+                    case FrameCoordination.ClassicPhase.Capturing:
+                        state = "observing";
+                        detail = "游戏优先：正在识别呈现线程，单次约 3 秒";
+                        english = "Game priority: identifying the render thread (about 3 seconds per capture).";
+                        break;
+                    case FrameCoordination.ClassicPhase.Waiting:
+                        state = "observing";
+                        detail = "游戏优先：本次未识别出呈现线程，按退避等待下次采样；采样失败上限 " + FrameCoordination.MaxCaptureFailures + " 次";
+                        english = "Game priority: this capture did not identify the render thread; waiting for the next attempt (at most " + FrameCoordination.MaxCaptureFailures + " failures).";
+                        break;
+                    case FrameCoordination.ClassicPhase.Stopped:
+                        state = "conflict";
+                        detail = "游戏优先：呈现线程识别额度已用完或已被隔离，本阶段不再采样；进程、磁盘和显卡优先级不受影响";
+                        english = "Game priority: render-thread identification is exhausted or isolated for this phase; process, disk and GPU priorities are unaffected.";
+                        break;
+                    case FrameCoordination.ClassicPhase.YieldedToGame:
+                        state = "conflict";
+                        detail = "游戏优先：被提优的线程已退出或被游戏改回，本方设置已归还，本局对该进程不再提优";
+                        english = "Game priority: the boosted thread exited or the game changed it back; our setting was returned and boosting stopped for this process.";
+                        break;
+                    default:
+                        state = "observing";
+                        detail = "游戏优先：等待线程协同启动";
+                        english = "Game priority: waiting for thread coordination to start.";
+                        break;
+                }
+            }
+            PublishUnifiedState(source, state, detail, applied, false, null, english);
+        }
+
         // 含实时读数的说明须提供稳定 logKey，避免每次采样都产生日志。
         private void PublishUnifiedState(CriticalRuntimeSource source, string state, string detail, bool applied, bool recoveryPending,
-            string logKey = null)
+            string logKey = null, string englishDetail = null)
         {
             if (source == null) return;
             logKey = logKey ?? detail;
@@ -779,7 +844,8 @@ namespace PaviseApp
             string uiDetail = detail;
             if (Lang.Cur != 0)
             {
-                uiDetail = state == "active" ? ThreadLayoutDescriptions.Text("", "Managed fields were read back. Saved rules remain under continuous correction.", "管理項目の読み戻しを確認しました。保存したルールを継続的に維持します。")
+                uiDetail = englishDetail != null ? englishDetail
+                    : state == "active" ? ThreadLayoutDescriptions.Text("", "Managed fields were read back. Saved rules remain under continuous correction.", "管理項目の読み戻しを確認しました。保存したルールを継続的に維持します。")
                     : state == "off" ? ThreadLayoutDescriptions.Text("", "Game scheduling is off; owned settings were restored.", "ゲームスケジューリングは無効で、所有する設定を復元しました。")
                     : recoveryPending ? ThreadLayoutDescriptions.Text("", "New writes stopped; restoration is awaiting verification.", "新規書き込みを停止し、復元の確認を待っています。")
                     : state == "unsupported" ? ThreadLayoutDescriptions.Text("", "This thread-control stage could not be started. Existing recovery ownership is retained; background governance is unaffected.", "")

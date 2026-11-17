@@ -90,15 +90,11 @@ namespace PaviseApp
         {
             changed = false;
             if (squeezeMask != 0 && GameAffinityJobLease.IsGuardian(pid, creation)) return false;
-            if (squeezeMask != 0 && reason == SuppressReason.AntiCheat)
-            {
-                return false;
-            }
             if (squeezeMask != 0 && reason == SuppressReason.Background && (WeGameRuntimeProtection.IsProtectedRuntimeName(name) || PeripheralCatalog.IsInputAudioLike(name)))
             {
                 return false;
             }
-            if (reason != SuppressReason.AntiCheat && reason != SuppressReason.Background && squeezeMask != 0)
+            if (reason != SuppressReason.Background && squeezeMask != 0)
             {
                 return false;
             }
@@ -332,7 +328,7 @@ namespace PaviseApp
                         currentEntry.BackgroundRestorePending = false;
                     }
                     currentEntry.SqueezeAff = squeezeAffValue;
-                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, DesiredGpu(currentEntry), currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry), false, currentEntry);
+                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, DesiredGpu(currentEntry), currentEntry.OrigBoost, DesiredAffinityOf(currentEntry), false, currentEntry);
                     if (!applyThrottleSucceeded && squeezeAffValue != 0)
                     {
                         currentEntry.SqueezeAff = 0uL;
@@ -389,10 +385,6 @@ namespace PaviseApp
         private static bool RestoreBackgroundPlacement(IntPtr handle, Entry e)
         {
             if (e.BackgroundJobPlacement) return ReleaseBackgroundJob(e);
-            if (e.AntiCheatPlacementExternal)
-            {
-                return true;
-            }
             if (RestoreAutomaticLayoutValues(handle, e))
             {
                 if (e.BackgroundPlacementOwned)
@@ -485,7 +477,7 @@ namespace PaviseApp
         private void DetectBackgroundPlacementChange(IntPtr handle, Entry e)
         {
             ulong mask;
-            if (!EnforceBackgroundAffinity && !e.BackgroundRestorePending && e.BackgroundPlacementOwned && !e.SqueezeRefused && (e.Reasons & SuppressReason.AntiCheat) == 0 && (!Native.TryQueryAffinity(handle, out mask) || mask != ((e.SqueezeAff == 0) ? e.OrigAff : e.SqueezeAff) || !Native.CpuSetsMatch(handle, e.OrigCpuSets ?? new uint[0])))
+            if (!EnforceBackgroundAffinity && !e.BackgroundRestorePending && e.BackgroundPlacementOwned && !e.SqueezeRefused && (!Native.TryQueryAffinity(handle, out mask) || mask != ((e.SqueezeAff == 0) ? e.OrigAff : e.SqueezeAff) || !Native.CpuSetsMatch(handle, e.OrigCpuSets ?? new uint[0])))
             {
                 e.SqueezeRefused = true;
                 e.SqueezeAff = 0uL;
@@ -495,16 +487,7 @@ namespace PaviseApp
 
         private static bool SqueezeOwnedBy(Entry e, SuppressReason reason)
         {
-            if (e.AntiCheatPlacementExternal || reason == SuppressReason.AntiCheat)
-            {
-                return false;
-            }
-            bool valuesMatch = (e.Reasons & SuppressReason.AntiCheat) != 0;
-            if (!valuesMatch)
-            {
-                return (e.Reasons & SuppressReason.Background) != 0;
-            }
-            return false;
+            return (e.Reasons & SuppressReason.Background) != 0;
         }
 
         public int ClearSqueezes(SuppressReason reason)

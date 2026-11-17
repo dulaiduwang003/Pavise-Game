@@ -134,7 +134,7 @@ namespace PaviseApp
             {
             case GpuIrqOutcome.NeedsPlacement:
                 value = Lang.T("audit.irq.overlap");
-                auditIrqProposalText = Lang.F("audit.irq.proposal", IrqRelocate.MaskText(gpuIrq.Target));
+                auditIrqProposalText = Lang.F("audit.irq.proposal", GpuIrqCheck.MaskText(gpuIrq.Target));
                 warn = true;
                 break;
             case GpuIrqOutcome.NeedsVerification:
@@ -178,7 +178,7 @@ namespace PaviseApp
             }
             if (gpuIrq.Gpu != null)
             {
-                auditIrqProposalText = auditIrqProposalText + " " + Lang.F("audit.irq.sample", gpuIrq.Gpu.Name, IrqRelocate.MaskText(gpuIrq.Gpu.Seen), gpuIrq.Gpu.Events, gpuIrq.Gpu.P99Us.ToString("F0"));
+                auditIrqProposalText = auditIrqProposalText + " " + Lang.F("audit.irq.sample", gpuIrq.Gpu.Name, GpuIrqCheck.MaskText(gpuIrq.Gpu.Seen), gpuIrq.Gpu.Events, gpuIrq.Gpu.P99Us.ToString("F0"));
             }
             report.Machine.Add(new AuditRow
             {

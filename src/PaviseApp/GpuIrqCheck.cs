@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
+using System.Text;
 using System.Threading;
 
 namespace PaviseApp
@@ -37,9 +38,39 @@ namespace PaviseApp
             }
         }
 
-        public static List<string> TouchedDevices()
+        internal static string MaskText(ulong mask)
         {
-            return engine.TouchedDevices();
+            if (mask == 0)
+            {
+                return "?";
+            }
+            StringBuilder stringBuilder = new StringBuilder();
+            int rangeStart = -1;
+            for (int i = 0; i <= 64; i++)
+            {
+                bool selected = i < 64 && (mask & (ulong)(1L << i)) != 0;
+                if (selected && rangeStart < 0)
+                {
+                    rangeStart = i;
+                }
+                else if (!selected && rangeStart >= 0)
+                {
+                    if (stringBuilder.Length > 0)
+                    {
+                        stringBuilder.Append(',');
+                    }
+                    if (i - 1 == rangeStart)
+                    {
+                        stringBuilder.Append(rangeStart);
+                    }
+                    else
+                    {
+                        stringBuilder.Append(rangeStart).Append('-').Append(i - 1);
+                    }
+                    rangeStart = -1;
+                }
+            }
+            return stringBuilder.ToString();
         }
 
         public static GpuIrqState LoadState()
@@ -544,7 +575,7 @@ namespace PaviseApp
                         gpuIrqState.Phase = GpuIrqPhase.Applied;
                         gpuIrqState.Reason = "";
                         gpuIrqResult.Outcome = GpuIrqOutcome.Verified;
-                        Logger.Log(string.Format(Lang.T("log.irqcheck.verified", 0), gpuIrqState.DeviceName, IrqRelocate.MaskText(gpuIrqState.Target)));
+                        Logger.Log(string.Format(Lang.T("log.irqcheck.verified", 0), gpuIrqState.DeviceName, GpuIrqCheck.MaskText(gpuIrqState.Target)));
                     }
                     else
                     {
@@ -596,7 +627,7 @@ namespace PaviseApp
                     gpuIrqState.Target = gpuIrqResult.Target;
                     gpuIrqState.BaselineP99 = gpuIrqSample.P99Us;
                     gpuIrqState.Reason = "";
-                    Logger.Log(string.Format(Lang.T("log.irqcheck.scheduled", 0), gpuIrqSample.Name, IrqRelocate.MaskText(gpuIrqSample.Seen), IrqRelocate.MaskText(gpuIrqResult.Target)));
+                    Logger.Log(string.Format(Lang.T("log.irqcheck.scheduled", 0), gpuIrqSample.Name, GpuIrqCheck.MaskText(gpuIrqSample.Seen), GpuIrqCheck.MaskText(gpuIrqResult.Target)));
                     break;
                 }
                 case GpuIrqOutcome.NoRegion:

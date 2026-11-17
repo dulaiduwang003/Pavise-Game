@@ -211,7 +211,7 @@ namespace PaviseApp
                 return Lang.T(awaiting ? "irqcheck.hint.pending" : "irqcheck.hint.verify");
             case GpuIrqPhase.Applied:
                 color = Theme.Green;
-                return Lang.F("irqcheck.hint.applied", IrqRelocate.MaskText(state.Target));
+                return Lang.F("irqcheck.hint.applied", GpuIrqCheck.MaskText(state.Target));
             case GpuIrqPhase.Clear:
                 color = Theme.Green;
                 return Lang.T("irqcheck.hint.clear");
@@ -288,7 +288,7 @@ namespace PaviseApp
         internal static string IrqResultText(GpuIrqResult r, out DlgKind kind)
         {
             kind = DlgKind.Info;
-            string maskTextResult = ((r.Gpu == null) ? "—" : IrqRelocate.MaskText(r.Gpu.Seen));
+            string maskTextResult = ((r.Gpu == null) ? "—" : GpuIrqCheck.MaskText(r.Gpu.Seen));
             string irqcheckOutFailedText;
             switch (r.Outcome)
             {
@@ -316,11 +316,11 @@ namespace PaviseApp
                 break;
             case GpuIrqOutcome.Clear:
                 kind = DlgKind.Success;
-                irqcheckOutFailedText = Lang.F("irqcheck.out.clear", maskTextResult, IrqRelocate.MaskText(r.Region));
+                irqcheckOutFailedText = Lang.F("irqcheck.out.clear", maskTextResult, GpuIrqCheck.MaskText(r.Region));
                 break;
             case GpuIrqOutcome.Scheduled:
                 kind = DlgKind.Warn;
-                irqcheckOutFailedText = Lang.F("irqcheck.out.scheduled", maskTextResult, IrqRelocate.MaskText(r.Region), IrqRelocate.MaskText(r.Target));
+                irqcheckOutFailedText = Lang.F("irqcheck.out.scheduled", maskTextResult, GpuIrqCheck.MaskText(r.Region), GpuIrqCheck.MaskText(r.Target));
                 break;
             case GpuIrqOutcome.Verified:
                 kind = DlgKind.Success;

@@ -7,7 +7,7 @@ namespace PaviseApp
         private static void AddPowerMessages(Dictionary<string, string[]> messages)
         {
             messages.Add("gm.scheduling.title", new string[3] { "游戏调度", "Game scheduling", "ゲームスケジュール" });
-            messages.Add("gm.scheduling.detail", new string[2] { "选择游戏优先、渲染或多核调度方案，可另开清核和 GPU／磁盘资源优先级。游戏优先会提高整个游戏进程的优先级；依赖协同不使用清核；专核强化须通过运行条件核验。保存后下局生效，关闭或退局时恢复本方修改。", "Choose Game priority, a rendering or a multicore strategy, with optional clear core and GPU/disk priority. Game priority raises the whole game process priority; Dependency coordination has no clear core; enhanced rendering requires verified operating conditions. Applies next session; owned changes are restored when disabled or the game ends." });
+            messages.Add("gm.scheduling.detail", new string[2] { "选择游戏优先（推荐）、渲染或多核调度方案。游戏优先沿用 3.3.0.8：整个游戏进程设为高、磁盘与显卡同时提优，渲染线程提到最高、不固定核心，一项全包；其余方案可另开清核和 GPU／磁盘资源优先级，依赖协同不使用清核，专核强化须通过运行条件核验。保存后下局生效，关闭或退局时恢复本方修改。", "Choose Game priority (recommended), a rendering or a multicore strategy. Game priority follows 3.3.0.8: the whole game process at High with disk and GPU priority, and the render thread at highest without core pinning, all in one. The other strategies take optional clear core and GPU/disk priority; Dependency coordination has no clear core, and enhanced rendering requires verified operating conditions. Applies next session; owned changes are restored when disabled or the game ends." });
             messages.Add("gm.scheduling.masteroff", new string[2] { "全局渲染线程调度已关闭，仍可保存配置。请在深度调优中开启。", "Global render thread scheduling is off. You can save settings; enable it in Advanced tuning." });
             messages.Add("gm.scheduling.gameoff", new string[2] { "此游戏的渲染线程调度已关闭，仍可保存配置。请在深度调优中开启。", "Render thread scheduling is off for this game. You can save settings; enable it in Advanced tuning." });
             messages.Add("lib.threads.title", new string[2] { "渲染线程调度", "Render thread scheduling" });
@@ -17,7 +17,6 @@ namespace PaviseApp
             messages.Add("gm.scheduling.resources.detail", new string[2] { "提高游戏的 GPU 和磁盘 I/O 优先级。需开启渲染线程调度，下局生效，退局恢复。", "Raises game GPU and disk I/O priority. Requires render thread scheduling; applies next session and restores at game end." });
             messages.Add("gm.scheduling.resources.summary", new string[2] { "GPU／磁盘", "GPU / disk" });
             messages.Add("gm.scheduling.resources.masteroff", new string[2] { "需开启渲染线程调度", "Needs render thread scheduling" });
-            messages.Add("log.powerplanschemes.47", new string[2] { "已清除托管方案里旧版遗留的处理器空闲禁用设置", "Cleared the legacy processor idle disable setting from the managed plan." });
             messages.Add("plan.pick.title", new string[2] { "对局电源计划", "Match Power Plan" });
             messages.Add("plan.pick.auto", new string[2] { "由软件调度", "Automatic" });
             messages.Add("plan.pick.pgcontrolled", new string[3] { "由 PG 控制", "PG controlled", "PG が制御" });

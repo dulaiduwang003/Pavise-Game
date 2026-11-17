@@ -16,7 +16,7 @@ namespace PaviseApp
         private static string FailurePhaseIdentity(Entry entry, string action)
         {
             return action + "/" + PerformanceTuning.RecoveryCycleSerial + "/" + entry.Level + "/"
-                + entry.AntiCheatLevel + "/" + entry.BackgroundLevel + "/" + GpuDemoteEnabled
+                + entry.BackgroundLevel + "/" + GpuDemoteEnabled
                 + "/" + entry.RecoveryExitObserved;
         }
 
@@ -80,11 +80,6 @@ namespace PaviseApp
             internal readonly Dictionary<string, FailureBudget> FailureBudgets = new Dictionary<string, FailureBudget>();
             internal readonly Dictionary<string, string> SelectedFailureBudgets = new Dictionary<string, string>();
             internal bool RecoveryExitObserved;
-            internal bool AffinityPrepareInFlight;
-            internal AntiCheatResourceState AntiCheatResources;
-            internal bool AntiCheatResourceRemovalPending;
-            internal bool AntiCheatResourceJournalPending;
-            internal int AntiCheatPid;
             public string Name;
 
             public string FailureTarget;
@@ -100,14 +95,11 @@ namespace PaviseApp
 
             internal void SetGroup(string value)
             {
-                bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && !SameName(Group ?? "", value ?? "");
                 Group = value;
-                if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
             internal void SetOriginalPriority(uint value)
             {
-                bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && Applied && (OrigPri == uint.MaxValue) != (value == uint.MaxValue);
                 if (OrigPri == uint.MaxValue && value != uint.MaxValue)
                 {
                     BackgroundRecoveryTicket = null;
@@ -115,24 +107,19 @@ namespace PaviseApp
                     AccountingForwardEffectsUnknown = false;
                 }
                 OrigPri = value;
-                if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
             internal void SetApplied(bool value)
             {
-                bool changed = (Reasons & SuppressReason.AntiCheat) != 0 && OrigPri != uint.MaxValue && Applied != value;
                 Applied = value;
                 if (CountOwner != null) CountOwner.EnsureBackgroundAccountingLocked(AccountingPid, this);
-                if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
             internal void SetReasons(SuppressReason value)
             {
-                bool changed = (Reasons & SuppressReason.AntiCheat) != (value & SuppressReason.AntiCheat);
                 SuppressReason previous = Reasons;
                 Reasons = value;
                 if (CountOwner != null) CountOwner.AccountBackgroundReasonsLocked(this, previous);
-                if (changed && CountOwner != null) CountOwner.InvalidateGroupCounts();
             }
 
             public uint OrigPri;
@@ -164,9 +151,6 @@ namespace PaviseApp
             public int BackgroundPid;
             public GameAffinityJobLease BackgroundJobs;
             public string BackgroundAffinityDetail;
-
-            // Reasons 清空后及持久日志中，仍保留反作弊放置所有权。
-            public bool AntiCheatPlacementExternal;
 
             public bool LegacyPlacementDebt;
 
@@ -205,8 +189,6 @@ namespace PaviseApp
 
             public SuppressionLevel Level;
 
-            public SuppressionLevel AntiCheatLevel;
-
             public SuppressionLevel BackgroundLevel;
 
             public bool Applied;
@@ -222,10 +204,6 @@ namespace PaviseApp
             public int ReconcileFailures;
 
             public int FastReconcileRemaining;
-
-            public long AntiCheatCorrectionWindow;
-
-            public int AntiCheatCorrections;
 
             public bool Journaled;
 
@@ -301,34 +279,15 @@ namespace PaviseApp
 
         private int lastThrottledCount;
 
-        private readonly Dictionary<string, int[]> lastGroupCounts = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-        private long groupCountsVersion;
-        private long publishedGroupCountsVersion = -1;
-
-        private void InvalidateGroupCounts()
-        {
-            Interlocked.Increment(ref groupCountsVersion);
-        }
-
-        private static bool SameCountContribution(Entry first, Entry second)
-        {
-            bool a = first != null && (first.Reasons & SuppressReason.AntiCheat) != 0;
-            bool b = second != null && (second.Reasons & SuppressReason.AntiCheat) != 0;
-            return a == b && (!a || (SameName(first.Group ?? "", second.Group ?? "")
-                && (first.OrigPri != uint.MaxValue && first.Applied) == (second.OrigPri != uint.MaxValue && second.Applied)));
-        }
-
         private void SetEntryLocked(int pid, Entry entry)
         {
             Entry previous;
             map.TryGetValue(pid, out previous);
-            bool changed = !SameCountContribution(previous, entry);
             if (previous != null) previous.CountOwner = null;
             map[pid] = entry;
             entry.CountOwner = this;
             entry.AccountingPid = pid;
             EnsureBackgroundAccountingLocked(pid, entry);
-            if (changed) InvalidateGroupCounts();
         }
 
         private void RemoveEntryLocked(int pid)
@@ -337,7 +296,6 @@ namespace PaviseApp
             if (!map.TryGetValue(pid, out previous)) return;
             map.Remove(pid);
             previous.CountOwner = null;
-            if (!SameCountContribution(previous, null)) InvalidateGroupCounts();
         }
 
         private static readonly Dictionary<string, long> protectedLogTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -442,16 +400,7 @@ namespace PaviseApp
                 {
                     return SuppressionLevel.None;
                 }
-                SuppressionLevel suppressionLevel = SuppressionLevel.None;
-                if ((reason & SuppressReason.AntiCheat) != 0)
-                {
-                    suppressionLevel = entry.AntiCheatLevel;
-                }
-                if ((reason & SuppressReason.Background) != 0 && entry.BackgroundLevel > suppressionLevel)
-                {
-                    suppressionLevel = entry.BackgroundLevel;
-                }
-                return suppressionLevel;
+                return (reason & SuppressReason.Background) != 0 ? entry.BackgroundLevel : SuppressionLevel.None;
             }
         }
 
@@ -556,121 +505,6 @@ namespace PaviseApp
         private void RefreshThrottledCacheLocked()
         {
             Volatile.Write(ref lastThrottledCount, CountThrottledLocked(SuppressReason.Background));
-        }
-
-        private void RefreshGroupCountsLocked()
-        {
-            long version = Interlocked.Read(ref groupCountsVersion);
-            if (version == publishedGroupCountsVersion) return;
-            Dictionary<string, int[]> groupCounts = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<int, Entry> item in map)
-            {
-                if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0)
-                {
-                    string key = item.Value.Group ?? "";
-                    int[] counts;
-                    if (!groupCounts.TryGetValue(key, out counts))
-                    {
-                        counts = (groupCounts[key] = new int[2]);
-                    }
-                    if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
-                    {
-                        counts[1]++;
-                    }
-                    else
-                    {
-                        counts[0]++;
-                    }
-                }
-            }
-            lock (lastGroupCounts)
-            {
-                foreach (KeyValuePair<string, int[]> group in groupCounts)
-                {
-                    lastGroupCounts[group.Key] = group.Value;
-                }
-                foreach (string groupKey in new List<string>(lastGroupCounts.Keys))
-                {
-                    if (!groupCounts.ContainsKey(groupKey))
-                    {
-                        lastGroupCounts[groupKey] = new int[2];
-                    }
-                }
-            }
-            publishedGroupCountsVersion = version;
-        }
-
-        public void AntiCheatGroupCountsCached(string groupKey, out int throttled, out int protectedCnt)
-        {
-            if (Monitor.TryEnter(sync))
-            {
-                try { RefreshGroupCountsLocked(); }
-                finally { Monitor.Exit(sync); }
-            }
-            int antiCheatGroupCountsCachedValue = 0;
-            int antiCheatGroupCountsCachedValue2 = 0;
-            lock (lastGroupCounts)
-            {
-                int[] counts;
-                if (lastGroupCounts.TryGetValue(groupKey ?? "", out counts))
-                {
-                    antiCheatGroupCountsCachedValue = counts[0];
-                    antiCheatGroupCountsCachedValue2 = counts[1];
-                }
-            }
-            throttled = antiCheatGroupCountsCachedValue;
-            protectedCnt = antiCheatGroupCountsCachedValue2;
-        }
-
-        public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
-        {
-            int processedCount = 0;
-            int processedCount2 = 0;
-            string key = groupKey ?? "";
-            if (!Monitor.TryEnter(sync, 15))
-            {
-                lock (lastGroupCounts)
-                {
-                    int[] counts;
-                    if (lastGroupCounts.TryGetValue(key, out counts))
-                    {
-                        processedCount = counts[0];
-                        processedCount2 = counts[1];
-                    }
-                }
-                throttled = processedCount;
-                protectedCnt = processedCount2;
-                return;
-            }
-            try
-            {
-                foreach (KeyValuePair<int, Entry> item in map)
-                {
-                    if ((item.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(item.Value.Group, groupKey))
-                    {
-                        if (item.Value.OrigPri == uint.MaxValue || !item.Value.Applied)
-                        {
-                            processedCount2++;
-                        }
-                        else
-                        {
-                            processedCount++;
-                        }
-                    }
-                }
-                lock (lastGroupCounts)
-                {
-                    lastGroupCounts[key] = new int[2] { processedCount, processedCount2 };
-                }
-                // 直接查询区分 null 和空值，完整缓存会将二者合并。
-                if (string.IsNullOrEmpty(groupKey)) publishedGroupCountsVersion = -1;
-            }
-            finally
-            {
-                Monitor.Exit(sync);
-            }
-            throttled = processedCount;
-            protectedCnt = processedCount2;
         }
 
         private static bool ShouldLogProtected(string name)

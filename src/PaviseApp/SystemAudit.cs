@@ -358,7 +358,7 @@ namespace PaviseApp
             }
             BuildPersistent(report, facts);
             BuildGpuInterrupt(report);
-            if (GpuIrqCheck.HasResidue || IrqRelocate.HasResidue || IrqPriorityTweak.HasResidue)
+            if (GpuIrqCheck.HasResidue)
             {
                 report.Persistent.Add(new AuditRow
                 {

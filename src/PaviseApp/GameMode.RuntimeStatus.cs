@@ -246,7 +246,7 @@ namespace PaviseApp
                         }
                         return Lang.F("st.grace", activeGame, remainingExitGraceSeconds);
                     }
-                    int throttledCountCachedResult = core.ThrottledCountCached() + windowsBackground.ActiveCount;
+                    int throttledCountCachedResult = core.ThrottledCountCached();
                     int count = boostStateVerified.Count;
                     string stActiveText = Lang.F("st.active", activeGame, throttledCountCachedResult);
                     return stActiveText + Lang.T("st.sep") + Lang.F("st.boost", count, PowerPlanStatusText);
@@ -280,7 +280,7 @@ namespace PaviseApp
         {
             get
             {
-                if (!enabled || !EffBoost)
+                if (!enabled || !EffBoost && !ClassicThreadBoostWanted())
                 {
                     return Lang.T("v14.boost.disabled");
                 }

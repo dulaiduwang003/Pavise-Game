@@ -14,15 +14,11 @@ namespace PaviseApp
 
         private static readonly ReversibleReg Resp = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "SystemResponsiveness", RegistryValueKind.DWord, "Mmcss_Resp");
 
-        private static readonly ReversibleReg Pri = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Priority", RegistryValueKind.DWord, "Mmcss_Pri");
-
         private static readonly ReversibleReg Sched = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Scheduling Category", RegistryValueKind.String, "Mmcss_Sched");
-
-        private static readonly ReversibleReg Sfio = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "SFIO Priority", RegistryValueKind.String, "Mmcss_Sfio");
 
         private static readonly ReversibleReg Lazy = new ReversibleReg(Registry.LocalMachine, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "NoLazyMode", RegistryValueKind.DWord, "Mmcss_NoLazy");
 
-        private static readonly ReversibleReg[] All = new ReversibleReg[5] { Resp, Pri, Sched, Sfio, Lazy };
+        private static readonly ReversibleReg[] All = new ReversibleReg[3] { Resp, Sched, Lazy };
 
         private static readonly object lk = new object();
 
@@ -53,7 +49,7 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                if (!(values[0].Apply(10) & values[2].Apply("High") & values[4].Apply(1)))
+                if (!(values[0].Apply(10) & values[1].Apply("High") & values[2].Apply(1)))
                 {
                     ReversibleReg[] valuesSnapshot = values;
                     foreach (ReversibleReg reversibleReg in valuesSnapshot)

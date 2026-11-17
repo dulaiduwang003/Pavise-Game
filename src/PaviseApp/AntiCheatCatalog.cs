@@ -7,7 +7,7 @@ namespace PaviseApp
     {
         public static readonly AcGroup[] Groups = new AcGroup[9]
         {
-            new AcGroup("ace", "ac.ace.n", false, new string[10] { "SGuard64", "SGuardSvc64", "ACE-Tray", "ACE-PC", "ACE-Helper", "ACE-Service64", "SGuard", "SGuardSvc", "AntiCheatExpert", "AntiCheatExpert.Service" }),
+            new AcGroup("ace", "ac.ace.n", false, new string[10] { "SGuard64", "SGuardSvc64", "ACE-Tray", "ACE-PC", "ACE-Helper", "ACE-Service64", "SGuard", "SGuardSvc", "AntiCheatExpert", "AntiCheatExpert.Service" }, AcCategory.Governed),
             new AcGroup("tp", "ac.tp.n", false, new string[6] { "TenSafe", "TenSafe_1", "TenSafe_2", "TASLogin", "TP3Helper", "TPHelper" }, AcCategory.RecordOnly),
             new AcGroup("vanguard", "Vanguard (Riot)", false, new string[2] { "vgc", "vgtray" }, AcCategory.ProtectOnly),
             new AcGroup("eac", "EasyAntiCheat (Epic)", false, new string[2] { "EasyAntiCheat", "EasyAntiCheat_EOS" }, AcCategory.ProtectOnly),
@@ -243,6 +243,35 @@ namespace PaviseApp
         internal static string[] NameTokensForDisplay()
         {
             return (string[])NameTokens.Clone();
+        }
+
+        internal static bool IsGovernedAceName(string name)
+        {
+            string normalized = NormalizeName(name);
+            foreach (AcGroup group in Groups)
+            {
+                if (!group.Governed) continue;
+                foreach (string proc in group.Procs)
+                    if (string.Equals(proc, normalized, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        // ACE 并入普通后台治理的身份条件：进程名属于 ACE 分组，且映像就在 Program Files\AntiCheatExpert 下、
+        // 文件名与进程名一致。路径未知或在游戏目录里自带的组件不算，继续按反作弊保护。
+        internal static bool IsGovernedAce(string name, string path)
+        {
+            if (!IsGovernedAceName(name) || string.IsNullOrEmpty(path)) return false;
+            string image = WhitelistRule.NormalizeImagePath(path);
+            if (image.Length == 0 || !string.Equals(NormalizeName(System.IO.Path.GetFileName(image)), NormalizeName(name), StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (Environment.SpecialFolder folder in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
+            {
+                string root = Environment.GetFolderPath(folder);
+                if (string.IsNullOrEmpty(root)) continue;
+                string prefix = WhitelistRule.NormalizeImagePath(System.IO.Path.Combine(root, "AntiCheatExpert")) + "\\";
+                if (image.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
     }
 }
