@@ -30,6 +30,6 @@ namespace PaviseApp
     internal static class LaboratoryActionText
     {
         internal static string Pick(string zh, string en, string ja)
-        { return Lang.Cur == 0 ? zh : Lang.Cur == 2 ? ja : en; }
+        { return Lang.Cur == 0 ? zh : Lang.Cur == 2 ? ja : Lang.Cur == 3 ? Lang.TranslateEnglish(en) : en; }
     }
 }

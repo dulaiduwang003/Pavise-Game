@@ -160,6 +160,7 @@ namespace PaviseApp
 
         internal static string Text(string zh, string en)
         {
+            if (Lang.Cur == 3) return Lang.TranslateEnglish(en);
             if (Lang.Cur != 0)
             {
                 return en;

@@ -50,7 +50,7 @@ namespace PaviseApp
             }
         }
 
-        private static string Text(string zh, string en) { return Lang.Cur == 1 ? en : zh; }
+        private static string Text(string zh, string en) { return Lang.Cur == 3 ? Lang.TranslateEnglish(en) : Lang.Cur == 1 ? en : zh; }
 
         // 自定义配置编号独立于固件模式，按 JSON 字段解析。
         private static bool Parse(string json, out Selection value)

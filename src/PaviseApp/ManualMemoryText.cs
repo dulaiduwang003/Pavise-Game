@@ -44,7 +44,7 @@ namespace PaviseApp
             {
                 if (Lang.Cur != 2)
                 {
-                    return english;
+                    return Lang.Cur == 3 ? Lang.TranslateEnglish(english) : english;
                 }
                 return japanese;
             }

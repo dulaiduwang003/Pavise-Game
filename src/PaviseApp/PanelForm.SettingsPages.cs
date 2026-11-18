@@ -420,16 +420,17 @@ namespace PaviseApp
             TierPicker tierPicker = new TierPicker();
             tierPicker.Name = "SettingsLanguagePicker";
             TierPicker tierPicker2 = tierPicker;
-            tierPicker2.Labels = new string[2]
+            tierPicker2.Labels = new string[3]
             {
                 Lang.T("lang.zh"),
-                Lang.T("lang.en")
+                Lang.T("lang.en"),
+                "PT-BR"
             };
-            tierPicker2.Index = Lang.Cur;
+            tierPicker2.Index = Lang.Cur == 3 ? 2 : Lang.Cur;
             tierPicker2.Size = new Size(Theme.S(232), Theme.S(40));
             tierPicker2.IndexChanged = delegate(int index)
             {
-                Lang.Set(index);
+                Lang.Set(index == 2 ? 3 : index);
                 BeginInvoke(new MethodInvoker(RebuildUi));
             };
             AddSettingsTile(scroll, "SettingsLanguage", Lang.T("set.lang"), Lang.T("set.lang.n"), "language", tierPicker2).Summary = AutoText("界面与新日志一并切换", "Switch the UI and new log messages together");
@@ -447,7 +448,7 @@ namespace PaviseApp
             {
                 nav.Select(7);
             };
-            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.T("v20.log.sub"), "logs", pillButton2).Summary = AutoText("查看运行记录与故障详情", "View activity and failure details");
+            AddSettingsTile(scroll, "SettingsLogs", Lang.T("nav.log"), Lang.Ui("v20.log.sub"), "logs", pillButton2).Summary = AutoText("查看运行记录与故障详情", "View activity and failure details");
             btnWipeAll = new PillButton(Lang.T("btn.wipe"), BtnKind.Normal)
             {
                 Bg = Theme.Card,

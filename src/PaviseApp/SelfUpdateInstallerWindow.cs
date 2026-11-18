@@ -36,7 +36,7 @@ namespace PaviseApp
             Label label = new Label { Text = text, ForeColor = Theme.Fg, BackColor = Theme.Card, AutoSize = false };
             label.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h)); Controls.Add(label); return label;
         }
-        private static string T(string zh, string en) { return Lang.Cur == 0 ? zh : en; }
+        private static string T(string zh, string en) { return Lang.Cur == 0 ? zh : Lang.Cur == 3 ? Lang.TranslateEnglish(en) : en; }
         private void Post(Action action)
         {
             try { if (!IsDisposed && IsHandleCreated) BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) action(); }); } catch { }

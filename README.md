@@ -6,7 +6,7 @@
 
 # PAVISE
 
-**English** · [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md) · [Guia em português](README.pt-BR.md)
 
 ### Keep resources for your game.
 

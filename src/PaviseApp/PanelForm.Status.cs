@@ -772,7 +772,7 @@ namespace PaviseApp
             }
             if (lblLibraryCount != null)
             {
-                lblLibraryCount.Text = AutoText(profiles.Count + " 款游戏", profiles.Count + " games");
+                lblLibraryCount.Text = Lang.Cur == 3 ? profiles.Count + (profiles.Count == 1 ? " jogo" : " jogos") : AutoText(profiles.Count + " 款游戏", profiles.Count + " games");
             }
             SyncLibraryHint();
             RefreshLibraryInspector();
@@ -926,7 +926,7 @@ namespace PaviseApp
             if (lblLogStreamHint != null)
             {
                 bool writesEnabled = Logger.WritesEnabled;
-                lblLogStreamHint.Text = writesEnabled ? Lang.T(logDiagnostics ? "log.diagnostics.hint" : "log.actions.hint") : Lang.T("v20.log.paused");
+                lblLogStreamHint.Text = writesEnabled ? Lang.Ui(logDiagnostics ? "log.diagnostics.hint" : "log.actions.hint") : Lang.Ui("v20.log.paused");
                 lblLogStreamHint.ForeColor = (writesEnabled ? Theme.Faint : LogStreamView.SeverityColor(LogEventSeverity.Warning));
             }
         }

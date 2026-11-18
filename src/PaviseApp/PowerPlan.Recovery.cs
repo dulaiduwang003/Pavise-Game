@@ -151,14 +151,19 @@ namespace PaviseApp
             long now = DateTime.UtcNow.Ticks;
             if (externalDriftCorrections > 3 && now >= externalDriftLogTicks && now - externalDriftLogTicks < TimeSpan.TicksPerMinute) return;
             externalDriftLogTicks = now;
-            string reason = planDrift && parameterDrift ? PerformancePolicy.Text("活动计划及参数", "active plan and parameters")
-                : planDrift ? PerformancePolicy.Text("活动计划", "active plan")
-                : parameterDrift ? PerformancePolicy.Text("参数", "parameters") : PerformancePolicy.Text("上次纠偏未完成", "previous correction incomplete");
-            Logger.Warn(PerformancePolicy.Text("检测到外部电源改动，守护正在写回", "External power changes detected; the guard is writing them back")
-                + PerformancePolicy.Text(" 当前GUID=", " current-guid=") + currentPlan
-                + PerformancePolicy.Text(" 目标GUID=", " target-guid=") + desiredPlan
-                + PerformancePolicy.Text(" 原因=", " reason=") + reason
-                + PerformancePolicy.Text(" 本局累计=", " session-total=") + externalDriftCorrections + " detail=" + detail);
+            string reason = planDrift && parameterDrift ? PowerLogText("活动计划及参数", "active plan and parameters")
+                : planDrift ? PowerLogText("活动计划", "active plan")
+                : parameterDrift ? PowerLogText("参数", "parameters") : PowerLogText("上次纠偏未完成", "previous correction incomplete");
+            Logger.Warn(PowerLogText("检测到外部电源改动，守护正在写回", "External power changes detected; the guard is writing them back")
+                + PowerLogText(" 当前GUID=", " current-guid=") + currentPlan
+                + PowerLogText(" 目标GUID=", " target-guid=") + desiredPlan
+                + PowerLogText(" 原因=", " reason=") + reason
+                + PowerLogText(" 本局累计=", " session-total=") + externalDriftCorrections + " detail=" + detail);
+        }
+
+        private static string PowerLogText(string zh, string en)
+        {
+            return Lang.Cur == 0 ? zh : en;
         }
 
         // 活动计划仍是本方计划且只有数值被改时，原地写回再重新应用同一计划，不新建计划也不切换计划。

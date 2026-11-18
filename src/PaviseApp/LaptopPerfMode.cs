@@ -141,7 +141,7 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static string Text(string chinese, string english) { return Lang.Cur == 1 ? english : chinese; }
+        private static string Text(string chinese, string english) { return Lang.Cur == 3 ? Lang.TranslateEnglish(english) : Lang.Cur == 1 ? english : chinese; }
         private static bool Result(string status, string chinese, string english, bool ok)
         { lastDetail = Text(chinese, english); lastStatus = status; return ok; }
 

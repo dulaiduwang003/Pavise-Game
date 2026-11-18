@@ -13,7 +13,17 @@ namespace PaviseApp
         private static readonly Regex ExplicitToken = new Regex(@"^(?:THREAD|FOCUS) \[(?<token>[^\]]+)\]", RegexOptions.CultureInvariant);
         private static readonly Regex Target = new Regex(@"(?:^|;)(?<name>.*?)\(pid=(?<pid>\d+),birth=\d+\)(?=;|$)", RegexOptions.CultureInvariant);
         private static readonly Regex Technical = new Regex(@"(?<!\S)(?:birth|creation|epoch|generation|win32|code|traceCode|lostEvents|sampleCpuMs|eventCount|systemEvents|activationMs|workerMask|granted|countScope|includes)=[^\s;；]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        private static string Text(string zh, string en, string ja) { return zh; }
+        [ThreadStatic] private static bool portugueseDisplay;
+        private static string Text(string zh, string en, string ja)
+        { return portugueseDisplay ? Lang.TranslateEnglish(en) : zh; }
+
+        internal static List<LogEventEntry> ProjectForDisplay(IList<LogEventEntry> chronological, int filter, string activeSession)
+        {
+            bool previous = portugueseDisplay;
+            portugueseDisplay = Lang.Cur == 3;
+            try { return Project(chronological, filter, activeSession); }
+            finally { portugueseDisplay = previous; }
+        }
 
         internal static List<LogEventEntry> Project(IList<LogEventEntry> chronological, int filter, string activeSession)
         {

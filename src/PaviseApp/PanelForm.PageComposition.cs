@@ -43,7 +43,7 @@ namespace PaviseApp
             int remainingAboutPageValue4 = ContentW - aboutPageValue3 - aboutPageValue4;
             int aboutPageValue5 = 366;
             RoundPanel roundPanel = (aboutIdentityPanel = MakeConsolePanel(pageAbout, 30, aboutPageValue2, aboutPageValue3, aboutPageValue5, false));
-            Label label = CardLabel(roundPanel, "PROJECT // IDENTITY", 20, 15, aboutPageValue3 - 126, 20, 7.6f, true, Theme.Faint);
+            Label label = CardLabel(roundPanel, Lang.Cur == 3 ? "PROJETO // IDENTIDADE" : "PROJECT // IDENTITY", 20, 15, aboutPageValue3 - 126, 20, 7.6f, true, Theme.Faint);
             label.Name = "aboutIdentityHeading";
             label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Label label2 = CardLabel(roundPanel, "NODE 01", aboutPageValue3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
@@ -82,7 +82,7 @@ namespace PaviseApp
             label4.Name = "aboutContact";
             label4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + aboutPageValue3 + aboutPageValue4, aboutPageValue2, remainingAboutPageValue4, aboutPageValue5, true));
-            Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
+            Label label5 = CardLabel(roundPanel2, (Lang.Cur == 3 ? "VERSÃO // " : "RELEASE // ") + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
             label5.Name = "aboutReleaseHeading";
             label5.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             StatusDot statusDot = new StatusDot();
@@ -110,7 +110,7 @@ namespace PaviseApp
             RoundPanel roundPanel3 = MakeConsolePanel(roundPanel2, 20, 153, remainingAboutPageValue4 - 40, 54, false);
             roundPanel3.Name = "aboutWebsite";
             roundPanel3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            CardLabel(roundPanel3, "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Name = "aboutWebsiteHeading";
+            CardLabel(roundPanel3, Lang.Cur == 3 ? "PAVISE // SITE OFICIAL" : "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Name = "aboutWebsiteHeading";
             AccentLabel(roundPanel3, "pavise.club", 14, 25, remainingAboutPageValue4 - 68, 25, 10f, true).Name = "aboutWebsiteAddress";
             RoundPanel roundPanel4 = MakeConsolePanel(roundPanel2, 20, 218, remainingAboutPageValue4 - 40, 60, false);
             roundPanel4.Name = "aboutPrivacy";
@@ -377,19 +377,19 @@ namespace PaviseApp
         {
             pageLog.SetBounds(0, Theme.S(TopH), Theme.S(WinW), Theme.S(PageH));
             int contentWOffset = ContentW + RailW;
-            int pageHeaderResult = PageHeader(pageLog, Lang.T("nav.log"), Lang.T("v20.log.sub"), 1, true, 0, contentWOffset);
+            int pageHeaderResult = PageHeader(pageLog, Lang.T("nav.log"), Lang.Ui("v20.log.sub"), 1, true, 0, contentWOffset);
             RoundPanel roundPanel = MakeConsolePanel(pageLog, 30, pageHeaderResult, contentWOffset, 64, true);
             roundPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            logActionsButton = new PillButton(Lang.T("log.category.actions"));
+            logActionsButton = new PillButton(Lang.Ui("log.category.actions"));
             logActionsButton.Name = "showActionLog";
             logActionsButton.SetBounds(Theme.S(18), Theme.S(14), Theme.S(128), Theme.S(36));
             logActionsButton.Click += delegate { SelectLogCategory(false); };
-            logDiagnosticsButton = new PillButton(Lang.T("log.category.diagnostics"));
+            logDiagnosticsButton = new PillButton(Lang.Ui("log.category.diagnostics"));
             logDiagnosticsButton.Name = "showDiagnosticLog";
             logDiagnosticsButton.SetBounds(Theme.S(154), Theme.S(14), Theme.S(144), Theme.S(36));
             logDiagnosticsButton.Click += delegate { SelectLogCategory(true); };
             roundPanel.Controls.AddRange(new Control[] { logActionsButton, logDiagnosticsButton });
-            CardLabel(roundPanel, Lang.T("log.latest.session"), 320, 7, contentWOffset - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            CardLabel(roundPanel, Lang.Ui("log.latest.session"), 320, 7, contentWOffset - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             lblLogStreamHint = new Label
             {
                 Name = "logSessionHint",
@@ -418,7 +418,7 @@ namespace PaviseApp
             logStream.Dock = DockStyle.Fill;
             Native.Dark(logStream);
             logWrap.Controls.Add(logStream);
-            PillButton pillButton = new PillButton(Lang.T("v20.log.refresh"));
+            PillButton pillButton = new PillButton(Lang.Ui("v20.log.refresh"));
             pillButton.Name = "refreshSessionLog";
             PillButton pillButton2 = pillButton;
             pillButton2.SetBounds(Theme.S(30), Theme.S(lowerBound), Theme.S(96), Theme.S(36));
@@ -427,10 +427,10 @@ namespace PaviseApp
             {
                 RefreshLog(true);
             };
-            PillButton exportLog = new PillButton(Lang.T("log.export.file"));
+            PillButton exportLog = new PillButton(Lang.Ui("log.export.file"));
             logExportButton = exportLog;
             exportLog.Name = "exportLogFile";
-            exportLog.AccessibleName = Lang.T("log.export.file");
+            exportLog.AccessibleName = Lang.Ui("log.export.file");
             exportLog.SetBounds(Theme.S(136), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
             exportLog.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             exportLog.Click += ExportLogFile;

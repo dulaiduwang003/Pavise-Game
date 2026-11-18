@@ -299,8 +299,8 @@ namespace PaviseApp
                 {
                     overviewCapacityOffset = overviewCapacityOffset + " " + hardware.MemoryType.Trim();
                 }
-                setOverviewSpecSucceeded |= SetOverviewSpec(2, "MEMORY", overviewCapacityOffset, (hardware.MemorySpeedMts > 0) ? (hardware.MemorySpeedMts + " MT/s") : "", "memory");
-                if (setOverviewSpecSucceeded | SetOverviewSpec(3, "DISPLAY", (hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0) ? (hardware.DisplayWidth + " × " + hardware.DisplayHeight) : "--", (hardware.DisplayRefreshRate > 0) ? (hardware.DisplayRefreshRate + " Hz") : "", "display"))
+                setOverviewSpecSucceeded |= SetOverviewSpec(2, Lang.Cur == 3 ? "MEMÓRIA" : "MEMORY", overviewCapacityOffset, (hardware.MemorySpeedMts > 0) ? (hardware.MemorySpeedMts + " MT/s") : "", "memory");
+                if (setOverviewSpecSucceeded | SetOverviewSpec(3, Lang.Cur == 3 ? "TELA" : "DISPLAY", (hardware.DisplayWidth > 0 && hardware.DisplayHeight > 0) ? (hardware.DisplayWidth + " × " + hardware.DisplayHeight) : "--", (hardware.DisplayRefreshRate > 0) ? (hardware.DisplayRefreshRate + " Hz") : "", "display"))
                 {
                     overviewViewport = Size.Empty;
                     LayoutOverviewPage();
@@ -643,7 +643,7 @@ namespace PaviseApp
                 BackColor = Theme.StrokeHi
             };
             pageOverview.Controls.Add(overviewStatusDivider);
-            string message = ((Lang.Cur == 0) ? "守护" : ((Lang.Cur == 2) ? "保護" : "Guard"));
+            string message = ((Lang.Cur == 0) ? "守护" : ((Lang.Cur == 2) ? "保護" : Lang.Cur == 3 ? "Proteção" : "Guard"));
             lblOverviewGuard = CardLabel(pageOverview, message, 0, 0, 42, 42, 11.5f, false, Theme.Dim);
             lblOverviewGuard.Name = "overviewGuardLabel";
             lblOverviewGuard.TextAlign = ContentAlignment.MiddleLeft;

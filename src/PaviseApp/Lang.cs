@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace PaviseApp
 {
@@ -27,15 +27,16 @@ namespace PaviseApp
 
         public static void Init()
         {
-            Cur = ((Settings.LoadStr("Lang", "zh") == "en") ? 1 : 0);
+            string saved = Settings.LoadStr("Lang", "zh");
+            Cur = saved == "pt-BR" ? 3 : saved == "en" ? 1 : 0;
         }
 
         public static void Set(int i)
         {
             lock (ChangeGate)
             {
-                Cur = ((i == 1) ? 1 : 0);
-                Settings.SaveStr("Lang", (Cur == 1) ? "en" : "zh");
+                Cur = i == 3 ? 3 : i == 1 ? 1 : 0;
+                Settings.SaveStr("Lang", Cur == 3 ? "pt-BR" : Cur == 1 ? "en" : "zh");
             }
         }
 
@@ -48,9 +49,35 @@ namespace PaviseApp
             string[] value;
             if (M.TryGetValue(key, out value))
             {
+                if (language == 3)
+                {
+                    string translated;
+                    if (PortugueseMessages.TryGetValue(key, out translated)) return translated;
+                    return value.Length > 1 ? value[1] : value[0];
+                }
                 return value[(language >= 0 && language < value.Length) ? language : 0];
             }
             return key;
+        }
+
+        // UI labels in the log viewer are localized without changing canonical log records.
+        internal static string Ui(string key)
+        {
+            string translated;
+            return Cur == 3 && key != null && PortugueseMessages.TryGetValue(key, out translated) ? translated : T(key);
+        }
+
+        // Prompt fragments originate in the Chinese-only hardware and feature catalog.
+        internal static string TranslateChinese(string value)
+        {
+            string translated;
+            return Cur == 3 && value != null && PortuguesePromptMessages.TryGetValue(value, out translated) ? translated : value;
+        }
+
+        internal static string TranslateEnglish(string english)
+        {
+            string translated;
+            return english != null && PortugueseDirectMessages.TryGetValue(english, out translated) ? translated : english;
         }
 
         public static string F(string key, params object[] args)

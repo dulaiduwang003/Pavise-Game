@@ -399,18 +399,20 @@ namespace PaviseApp
             get { lock (lk) return waitOnlyRound; }
         }
 
+        private static string DiagnosticText(string zh, string en) { return Lang.Cur == 0 ? zh : en; }
+
         internal static string StateName(int state)
         {
             switch (state)
             {
-            case 1: return PerformancePolicy.Text("已停止", "stopped");
-            case 2: return PerformancePolicy.Text("启动中(START_PENDING)", "start pending");
-            case 3: return PerformancePolicy.Text("停止中(STOP_PENDING)", "stop pending");
-            case 4: return PerformancePolicy.Text("运行中", "running");
-            case 5: return PerformancePolicy.Text("继续中(CONTINUE_PENDING)", "continue pending");
-            case 6: return PerformancePolicy.Text("暂停中(PAUSE_PENDING)", "pause pending");
-            case 7: return PerformancePolicy.Text("已暂停", "paused");
-            default: return PerformancePolicy.Text("读不到", "unreadable");
+            case 1: return DiagnosticText("已停止", "stopped");
+            case 2: return DiagnosticText("启动中(START_PENDING)", "start pending");
+            case 3: return DiagnosticText("停止中(STOP_PENDING)", "stop pending");
+            case 4: return DiagnosticText("运行中", "running");
+            case 5: return DiagnosticText("继续中(CONTINUE_PENDING)", "continue pending");
+            case 6: return DiagnosticText("暂停中(PAUSE_PENDING)", "pause pending");
+            case 7: return DiagnosticText("已暂停", "paused");
+            default: return DiagnosticText("读不到", "unreadable");
             }
         }
 
@@ -425,28 +427,28 @@ namespace PaviseApp
                 {
                     Receipt receipt;
                     if (!receipts.TryGetValue(name, out receipt) || receipt.State == Phase.Settled || receipt.HoldStep.Length == 0) continue;
-                    string started = receipt.StartStep.Length == 0 ? "" : PerformancePolicy.Text(" 启动步骤=", " start step=") + receipt.StartStep
-                        + PerformancePolicy.Text(" 系统错误码=", " system error=") + receipt.StartWin32;
+                    string started = receipt.StartStep.Length == 0 ? "" : DiagnosticText(" 启动步骤=", " start step=") + receipt.StartStep
+                        + DiagnosticText(" 系统错误码=", " system error=") + receipt.StartWin32;
                     switch (receipt.HoldStep)
                     {
                     case "stop-pending":
-                        parts.Add(name + PerformancePolicy.Text(" 仍在停止中，停完后再启动", " is still stopping; it will be started once stopped")); break;
+                        parts.Add(name + DiagnosticText(" 仍在停止中，停完后再启动", " is still stopping; it will be started once stopped")); break;
                     case "start-pending":
-                        parts.Add(name + PerformancePolicy.Text(" 正在启动，等待完成", " is starting; waiting for it to finish")); break;
+                        parts.Add(name + DiagnosticText(" 正在启动，等待完成", " is starting; waiting for it to finish")); break;
                     case "running-unconfirmed":
-                        parts.Add(name + PerformancePolicy.Text(" 已在运行，下一次复核后结清", " is already running; it will be settled after one more check")); break;
+                        parts.Add(name + DiagnosticText(" 已在运行，下一次复核后结清", " is already running; it will be settled after one more check")); break;
                     case "query":
-                        parts.Add(name + PerformancePolicy.Text(" 状态读取失败", " state could not be read")); break;
+                        parts.Add(name + DiagnosticText(" 状态读取失败", " state could not be read")); break;
                     case "ledger-write":
-                        parts.Add(name + PerformancePolicy.Text(" 恢复记录写入失败，未发起启动", " recovery record could not be written; no start was issued")); break;
+                        parts.Add(name + DiagnosticText(" 恢复记录写入失败，未发起启动", " recovery record could not be written; no start was issued")); break;
                     case "start-used":
-                        parts.Add(name + PerformancePolicy.Text(" 已停止，唯一一次启动已经用过，需要手动启动", " is stopped and the single start attempt was already used; start it manually") + started); break;
+                        parts.Add(name + DiagnosticText(" 已停止，唯一一次启动已经用过，需要手动启动", " is stopped and the single start attempt was already used; start it manually") + started); break;
                     default:
-                        parts.Add(name + (receipt.HoldWait ? PerformancePolicy.Text(" 启动请求已受理，等待完成", " start request accepted; waiting for it to finish")
-                            : PerformancePolicy.Text(" 启动未完成", " did not start")) + PerformancePolicy.Text(" 当前状态=", " state=") + StateName(receipt.HoldState) + started); break;
+                        parts.Add(name + (receipt.HoldWait ? DiagnosticText(" 启动请求已受理，等待完成", " start request accepted; waiting for it to finish")
+                            : DiagnosticText(" 启动未完成", " did not start")) + DiagnosticText(" 当前状态=", " state=") + StateName(receipt.HoldState) + started); break;
                     }
                 }
-                return string.Join(PerformancePolicy.Text("；", "; "), parts.ToArray());
+                return string.Join(DiagnosticText("；", "; "), parts.ToArray());
             }
         }
 

@@ -12,14 +12,14 @@ namespace PaviseApp
             Control button = sender as Control;
             bool diagnostics = logDiagnostics;
             string session = gameMode == null ? "" : gameMode.AutomationSession;
-            string title = Lang.T(diagnostics ? "log.export.diagnostics.title" : "log.export.actions.title");
+            string title = Lang.Ui(diagnostics ? "log.export.diagnostics.title" : "log.export.actions.title");
             try
             {
                 string destination;
                 using (var dialog = new SaveFileDialog())
                 {
                     dialog.Title = title;
-                    dialog.Filter = Lang.T("log.export.filter");
+                    dialog.Filter = Lang.Ui("log.export.filter");
                     dialog.DefaultExt = "log";
                     dialog.AddExtension = true;
                     dialog.OverwritePrompt = true;
@@ -33,12 +33,12 @@ namespace PaviseApp
                 if (button != null) button.Enabled = false;
                 await Task.Run(delegate { ExportLogSnapshot(destination, diagnostics, session); });
                 if (!IsDisposed && !Disposing)
-                    PaviseDialog.Info(this, title, Lang.T(diagnostics ? "log.export.diagnostics.saved" : "log.export.actions.saved") + "\r\n" + destination);
+                    PaviseDialog.Info(this, title, Lang.Ui(diagnostics ? "log.export.diagnostics.saved" : "log.export.actions.saved") + "\r\n" + destination);
             }
             catch (Exception error)
             {
                 if (!IsDisposed && !Disposing)
-                    PaviseDialog.Warn(this, title, Lang.T("log.export.failed") + "\r\n" + error.Message);
+                    PaviseDialog.Warn(this, title, Lang.Ui("log.export.failed") + "\r\n" + error.Message);
             }
             finally
             {

@@ -9,7 +9,7 @@ namespace PaviseApp
         internal const string HiddenSettingKey = "SecurityCompatibilityWarningHidden";
 
         internal static string T(string zh, string en, string ja)
-        { return Lang.Cur == 1 ? en : Lang.Cur == 2 ? ja : zh; }
+        { return Lang.Cur == 3 ? Lang.TranslateEnglish(en) : Lang.Cur == 1 ? en : Lang.Cur == 2 ? ja : zh; }
 
         internal static bool NeedsWarning(SecurityProductSnapshot snapshot)
         {

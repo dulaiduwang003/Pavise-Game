@@ -830,6 +830,6 @@ namespace PaviseApp
             catch { return false; }
         }
         private static string Quote(string value) { return TaskHelper.QuoteCommandArgument(value); }
-        private static string Text(string zh, string en) { return Lang.Cur == 0 ? zh : en; }
+        private static string Text(string zh, string en) { return Lang.Cur == 0 ? zh : Lang.Cur == 3 ? Lang.TranslateEnglish(en) : en; }
     }
 }

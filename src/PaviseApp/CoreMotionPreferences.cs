@@ -24,6 +24,15 @@ namespace PaviseApp
         internal static string Name(int id) { id = Valid(id) ? id : 0; return PerformancePolicy.Text(Chinese[id], English[id]); }
         internal static string Description(int id) { id = Valid(id) ? id : 0; return PerformancePolicy.Text(DescriptionsZh[id], DescriptionsEn[id]); }
         internal static string ChineseChoices { get { return string.Join("/", Chinese); } }
+        internal static string PortugueseChoices
+        {
+            get
+            {
+                string[] names = new string[Count];
+                for (int i = 0; i < names.Length; i++) names[i] = Lang.TranslateEnglish(English[i]);
+                return string.Join("/", names);
+            }
+        }
     }
 
     internal static class CoreMotionPreferences

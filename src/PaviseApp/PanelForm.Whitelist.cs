@@ -314,7 +314,7 @@ namespace PaviseApp
             whitePanel.Invalidate();
             if (whiteCount != null)
             {
-                whiteCount.Text = ((lstWhite.Items.Count == list.Count) ? AutoText(list.Count + " 项", list.Count + " entries") : AutoText(lstWhite.Items.Count + " / " + list.Count + " 项", lstWhite.Items.Count + " / " + list.Count + " entries"));
+                whiteCount.Text = Lang.Cur == 3 ? ((lstWhite.Items.Count == list.Count) ? list.Count + (list.Count == 1 ? " item" : " itens") : lstWhite.Items.Count + " / " + list.Count + " itens") : ((lstWhite.Items.Count == list.Count) ? AutoText(list.Count + " 项", list.Count + " entries") : AutoText(lstWhite.Items.Count + " / " + list.Count + " 项", lstWhite.Items.Count + " / " + list.Count + " entries"));
             }
             SyncWhitelistRemoveAction();
         }
