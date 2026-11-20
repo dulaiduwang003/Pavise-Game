@@ -356,7 +356,7 @@ namespace PaviseApp
             List<LogEventEntry> list2 = new List<LogEventEntry>(all);
             list2.Reverse();
             groups.Clear();
-            groups.AddRange(actionEvents ? ActionLogProjection.Project(list2, filter, SessionToken)
+            groups.AddRange(actionEvents ? ActionLogProjection.ProjectForDisplay(list2, filter, SessionToken)
                 : technicalEvents ? ProjectTechnical(list2, filter, SessionToken)
                 : LogEventProjection.Project(list2, filter, SessionToken));
             foreach (LogEventEntry item in list)
@@ -648,7 +648,7 @@ namespace PaviseApp
             int countLimit = Math.Min(shown.Count, lowerBound + base.ClientSize.Height / Math.Max(1, RowH) + 2);
             if (shown.Count == 0)
             {
-                TextRenderer.DrawText(graphics, Lang.T((filter == 4) ? "log.latest.empty" : "rep.log.none"), Theme.UI(10f, true), base.ClientRectangle, Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(graphics, Lang.Ui((filter == 4) ? "log.latest.empty" : "rep.log.none"), Theme.UI(10f, true), base.ClientRectangle, Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 return;
             }
             for (int i = lowerBound; i < countLimit; i++)

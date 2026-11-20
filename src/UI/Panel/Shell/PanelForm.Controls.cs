@@ -153,17 +153,17 @@ namespace PaviseApp
             if (logActionsButton != null)
             {
                 logActionsButton.Kind = logDiagnostics ? BtnKind.Normal : BtnKind.Primary;
-                logActionsButton.AccessibleDescription = Lang.T("log.actions.hint");
+                logActionsButton.AccessibleDescription = Lang.Ui("log.actions.hint");
                 logActionsButton.Invalidate();
             }
             if (logDiagnosticsButton != null)
             {
                 logDiagnosticsButton.Kind = logDiagnostics ? BtnKind.Primary : BtnKind.Normal;
-                logDiagnosticsButton.AccessibleDescription = Lang.T("log.diagnostics.hint");
+                logDiagnosticsButton.AccessibleDescription = Lang.Ui("log.diagnostics.hint");
                 logDiagnosticsButton.Invalidate();
             }
             if (logExportButton != null)
-                logExportButton.AccessibleDescription = Lang.T(logDiagnostics ? "log.export.diagnostics.detail" : "log.export.actions.detail");
+                logExportButton.AccessibleDescription = Lang.Ui(logDiagnostics ? "log.export.diagnostics.detail" : "log.export.actions.detail");
         }
         private void SelectLogCategory(bool diagnostics)
         {

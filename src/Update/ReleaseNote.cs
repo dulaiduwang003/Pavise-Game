@@ -12,19 +12,7 @@ namespace PaviseApp
 
         public string Introduction
         {
-            get
-            {
-                if (introduction == null || introduction.Length == 0)
-                {
-                    return "";
-                }
-                int language = Lang.Cur;
-                if (language < 0 || language >= introduction.Length || string.IsNullOrEmpty(introduction[language]))
-                {
-                    return introduction[0];
-                }
-                return introduction[language];
-            }
+            get { return Localized(introduction); }
         }
 
         public string Tag
@@ -66,17 +54,18 @@ namespace PaviseApp
             {
                 return "";
             }
-            string[] textEntries = items[index];
-            if (textEntries == null || textEntries.Length == 0)
-            {
-                return "";
-            }
-            int cur = Lang.Cur;
-            if (cur < 0 || cur >= textEntries.Length || string.IsNullOrEmpty(textEntries[cur]))
-            {
-                return textEntries[0];
-            }
-            return textEntries[cur];
+            return Localized(items[index]);
+        }
+
+        private static string Localized(string[] entries)
+        {
+            if (entries == null || entries.Length == 0) return "";
+            int language = Lang.Effective;
+            if (language >= 0 && language < entries.Length && !string.IsNullOrEmpty(entries[language]))
+                return entries[language];
+            if (language == Lang.Portuguese && entries.Length > Lang.English && !string.IsNullOrEmpty(entries[Lang.English]))
+                return Lang.TranslateEnglish(entries[Lang.English]);
+            return entries[Lang.Chinese];
         }
     }
 }

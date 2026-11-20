@@ -6,7 +6,7 @@
 
 # PAVISE
 
-[English](README.md) · **简体中文**
+[English](README.md) · **简体中文** · [Guia em português](README.pt-BR.md)
 
 ### 把资源留给游戏。
 
@@ -313,6 +313,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps
 [提交问题](https://github.com/dulaiduwang003/Pavise-Game/issues) · [使用教程](https://pavise.club/docs/) · [更新记录](https://pavise.club/changelog/)
 
 由 **[bdth](https://github.com/dulaiduwang003)** 创建并维护。Pavise 永久免费，打赏完全自愿。欢迎反馈问题和友好交流。
+
+巴西葡萄牙语本地化由 **Psyducks2** 贡献。 [GitHub 主页](https://github.com/Psyducks2) · [PR #35](https://github.com/dulaiduwang003/Pavise-Game/pull/35)
 
 [自愿打赏](https://pavise.club/support/) · [作者主页](https://github.com/dulaiduwang003)
 

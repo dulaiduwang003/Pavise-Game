@@ -981,7 +981,7 @@ namespace PaviseApp
 
         private static string ReleasedLine(int tid)
         {
-            return Lang.T("log.renderlane.21") + tid + PerformancePolicy.Text(" 已结束或优先级已被外部改动，未写回原值", " ended or had its priority changed externally; the original value was not written back");
+            return Lang.T("log.renderlane.21") + tid + Logger.Text(" 已结束或优先级已被外部改动，未写回原值", " ended or had its priority changed externally; the original value was not written back");
         }
 
         private static bool RestorePriorityVerified(Func<int> readPriority, Func<int, bool> setPriority, int original)

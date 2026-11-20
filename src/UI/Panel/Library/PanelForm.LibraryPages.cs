@@ -697,7 +697,7 @@ namespace PaviseApp
             swAutoAdd = new FamilySuppressionSwitch
             {
                 Name = "libraryAutoAdd",
-                Text = Lang.T("v15.library.autoadd"),
+                Text = Lang.Effective == Lang.Portuguese ? "Auto" : Lang.T("v15.library.autoadd"),
                 Checked = gameMode.AutoAddFullscreen,
                 AccessibleName = Lang.T("v15.library.autoadd"),
                 AccessibleDescription = Lang.T("v15.library.autoadd.desc")
@@ -862,7 +862,7 @@ namespace PaviseApp
                 {
                     AutoText("全部", "All"),
                     AutoText("手动", "Manual"),
-                    AutoText("平台", "Platforms"),
+                    Lang.Effective == Lang.Portuguese ? "Plataf." : AutoText("平台", "Platforms"),
                     AutoText("内置", "Built-in")
                 },
                 Index = whiteFilterIndex,

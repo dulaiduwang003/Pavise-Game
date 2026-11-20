@@ -67,7 +67,7 @@ namespace PaviseApp
                     }
                 }
                 Color foreColor = ((!control.Enabled) ? Theme.Faint : (control.Checked ? Color.White : Theme.Dim));
-                TextRenderer.DrawText(graphics, control.Checked ? "ON" : "OFF", Theme.UI(8.5f, true), LabelBounds(control), foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(graphics, control.Checked ? Lang.Text("ON", "ON") : Lang.Text("OFF", "OFF"), Theme.UI(8.5f, true), LabelBounds(control), foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             finally
             {

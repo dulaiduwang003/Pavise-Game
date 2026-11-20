@@ -22,10 +22,11 @@ namespace PaviseApp
 
         private static void CheckRecords()
         {
-            foreach (int language in new[] { 0, 1, 2 })
+            foreach (int language in new[] { Lang.Chinese, Lang.English, Lang.Portuguese })
             {
                 Lang.Cur = language;
-                Check(Lang.T("auto.log.started") == (language == 0 ? "已开始接管" : "Session management started"), "日志资源没有跟随界面语言");
+                bool chineseDiagnostics = language != Lang.English;
+                Check(Lang.T("auto.log.started") == (chineseDiagnostics ? "已开始接管" : "Session management started"), "日志资源偏离当前语言的诊断约定");
                 RoundTrip("INFO SESSION [session-a] start | THREAD helper.exe 线程 游戏");
                 RoundTrip("INFO SESSION [session-a] end | 游戏 原名");
                 RoundTrip("INFO SESSION [session-a] start | 结果=applied 状态=stopped");
@@ -55,9 +56,9 @@ namespace PaviseApp
                 Check(warnings == 1 && errors == 0, "中文告警级别改变");
                 var actions = ActionLogProjection.Project(entries, 4, "session-a");
                 Check(actions.Count >= 4, "动作视图丢失会话动作");
-                Check(language == 0 ? actions.All(entry => entry.Module != "SESSION" && entry.Module != "FEATURE") : actions.Any(entry => entry.Module == "SESSION"), "动作模块没有跟随界面语言");
-                Check(actions.Any(entry => entry.Message.Contains(language == 0 ? "恢复未完成" : "Restoration incomplete")), "恢复失败被误报为成功");
-                Check(ActionLogProjection.Export(session, "session-a").Contains(language == 0 ? "Pavise 会话动作记录" : "Pavise session action log"), "动作导出没有跟随界面语言");
+                Check(chineseDiagnostics ? actions.All(entry => entry.Module != "SESSION" && entry.Module != "FEATURE") : actions.Any(entry => entry.Module == "SESSION"), "动作模块偏离当前语言的诊断约定");
+                Check(actions.Any(entry => entry.Message.Contains(chineseDiagnostics ? "恢复未完成" : "Restoration incomplete")), "恢复失败被误报为成功");
+                Check(ActionLogProjection.Export(session, "session-a").Contains(chineseDiagnostics ? "Pavise 会话动作记录" : "Pavise session action log"), "动作导出偏离当前语言的诊断约定");
 
                 string name = "THREAD helper.exe";
                 string raw = "2026-11-09 22:01:00  信息 线程整核隔离已核验：" + name + " 进程编号=42 物理核掩码=0x3";

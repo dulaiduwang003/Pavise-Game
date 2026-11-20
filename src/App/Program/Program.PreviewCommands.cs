@@ -54,7 +54,8 @@ namespace PaviseApp
                 Lang.Init();
                 if (args.Length >= 4)
                 {
-                    Lang.Cur = ((args[3] == "en") ? 1 : ((args[3] == "ja") ? 2 : 0));
+                    int language = Lang.IndexOf(args[3]);
+                    Lang.Cur = language >= 0 ? language : Lang.Chinese;
                 }
                 if (args.Length >= 5 && (args[4] == "light" || args[4] == "backdrop-light"))
                 {

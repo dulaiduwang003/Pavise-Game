@@ -151,9 +151,9 @@ namespace PaviseApp
             long now = DateTime.UtcNow.Ticks;
             if (externalDriftCorrections > 3 && now >= externalDriftLogTicks && now - externalDriftLogTicks < TimeSpan.TicksPerMinute) return;
             externalDriftLogTicks = now;
-            string reason = planDrift && parameterDrift ? PerformancePolicy.Text("活动计划及参数", "active plan and parameters")
-                : planDrift ? PerformancePolicy.Text("活动计划", "active plan")
-                : parameterDrift ? PerformancePolicy.Text("参数", "parameters") : PerformancePolicy.Text("上次纠偏未完成", "previous correction incomplete");
+            string reason = planDrift && parameterDrift ? Logger.Text("活动计划及参数", "active plan and parameters")
+                : planDrift ? Logger.Text("活动计划", "active plan")
+                : parameterDrift ? Logger.Text("参数", "parameters") : Logger.Text("上次纠偏未完成", "previous correction incomplete");
             Logger.Warn(Logger.Format("{0}{1}{2}{3}{4}{5}{6}{7}{8} detail={9}", "{0}{1}{2}{3}{4}{5}{6}{7}{8} detail={9}", Logger.Text("检测到外部电源改动，守护正在写回", "External power changes detected; the guard is writing them back"), Logger.Text(" 当前GUID=", " current-guid="), currentPlan, Logger.Text(" 目标GUID=", " target-guid="), desiredPlan, Logger.Text(" 原因=", " reason="), reason, Logger.Text(" 本局累计=", " session-total="), externalDriftCorrections, detail));
         }
 

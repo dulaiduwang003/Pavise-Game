@@ -6,7 +6,7 @@
 
 # PAVISE
 
-**English** · [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md) · [Guia em português](README.pt-BR.md)
 
 ### Keep resources for your game.
 
@@ -318,6 +318,8 @@ For frame drops, stutter, or latency, compare the same scene with and without Pa
 [Report an issue](https://github.com/dulaiduwang003/Pavise-Game/issues) · [User guide](https://pavise.club/en/docs/v3/) · [Changelog](https://pavise.club/en/changelog/)
 
 Created and maintained by **[bdth](https://github.com/dulaiduwang003)**. Pavise remains free, and donations are entirely voluntary. Bug reports and constructive discussion are welcome.
+
+Brazilian Portuguese localization was contributed by **Psyducks2**. [GitHub profile](https://github.com/Psyducks2) · [PR #35](https://github.com/dulaiduwang003/Pavise-Game/pull/35)
 
 [Support development](https://pavise.club/en/support/) · [Author's profile](https://github.com/dulaiduwang003)
 

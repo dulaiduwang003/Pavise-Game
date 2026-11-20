@@ -12,6 +12,7 @@ namespace PaviseApp
         internal const int Chinese = 0;
         internal const int English = 1;
         internal const int FirstAddedLanguage = 3;
+        internal const int Portuguese = FirstAddedLanguage;
 
         // 登记表和译文都是整份替换 读的线程不用加锁
         private static volatile string[] codes = { "zh", "en" };
@@ -22,6 +23,16 @@ namespace PaviseApp
         [System.ThreadStatic] private static int overridden;
 
         internal static int Effective { get { return overriding ? overridden : Cur; } }
+
+        // 葡萄牙语只用于界面和动作视图 技术记录继续用原有的中文格式
+        internal static int DiagnosticLanguage
+        {
+            get
+            {
+                int language = Effective;
+                return language == Portuguese ? Chinese : language;
+            }
+        }
 
         internal static System.IDisposable Override(int language)
         {
@@ -47,6 +58,11 @@ namespace PaviseApp
         }
 
         private static readonly Dictionary<string, string[]> M = CreateMessages();
+
+        static Lang()
+        {
+            Register(Portuguese, "pt-BR", PortugueseDirectMessages);
+        }
 
         private static Dictionary<string, string[]> CreateMessages()
         {
@@ -117,12 +133,42 @@ namespace PaviseApp
 
         public static string T(string key, int language)
         {
-            string[] value;
-            if (M.TryGetValue(key, out value))
+            if (language == Portuguese && key != null
+                && (key.StartsWith("log.", System.StringComparison.Ordinal)
+                    || key.IndexOf(".log.", System.StringComparison.Ordinal) >= 0))
             {
-                return Pick(value, language);
+                language = Chinese;
             }
-            return key;
+            return Ui(key, language);
+        }
+
+        // 界面控件使用译文 日志记录保留原有语言
+        internal static string Ui(string key)
+        {
+            return Ui(key, Effective);
+        }
+
+        private static string Ui(string key, int language)
+        {
+            string[] value;
+            if (key == null || !M.TryGetValue(key, out value)) return key;
+
+            string translated;
+            return language == Portuguese && PortugueseMessages.TryGetValue(key, out translated)
+                ? translated : Pick(value, language);
+        }
+
+        internal static string TranslateEnglish(string value)
+        {
+            string translated;
+            return value != null && PortugueseDirectMessages.TryGetValue(value, out translated) ? translated : value;
+        }
+
+        internal static string TranslateChinese(string value)
+        {
+            string translated;
+            return Effective == Portuguese && value != null && PortuguesePromptMessages.TryGetValue(value, out translated)
+                ? translated : value;
         }
 
         // 缺这一列时先退回英文再退回中文

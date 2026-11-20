@@ -46,7 +46,7 @@ namespace PaviseApp
             }
             Rectangle bounds = (toggle.Checked ? new Rectangle(Theme.S(8), 0, toggle.Width - Theme.S(40), toggle.Height) : new Rectangle(Theme.S(32), 0, toggle.Width - Theme.S(38), toggle.Height));
             Color foreColor = ((!toggle.Enabled) ? Theme.Dim : (toggle.Checked ? Color.White : Theme.Dim));
-            TextRenderer.DrawText(g, toggle.Checked ? "ON" : "OFF", Theme.UI(9.5f, true), bounds, foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, toggle.Checked ? Lang.Text("ON", "ON") : Lang.Text("OFF", "OFF"), Theme.UI(9.5f, true), bounds, foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
     }
 }

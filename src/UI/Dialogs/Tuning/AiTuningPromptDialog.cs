@@ -248,7 +248,7 @@ namespace PaviseApp
                 preview.SelectionLength = 0;
                 preview.ScrollToCaret();
                 copy.Enabled = !copying && Volatile.Read(ref readPending) == 0 && completePrompt.Length > 0;
-                SetStatus(Pick("已生成 " + completePrompt.Length + " 字符 / " + featureCount + " 条功能说明。",
+                SetStatus(Lang.Effective == Lang.Portuguese ? "Pronto: " + completePrompt.Length + " caracteres / " + featureCount + " recursos." : Pick("已生成 " + completePrompt.Length + " 字符 / " + featureCount + " 条功能说明。",
                     "Ready: " + completePrompt.Length + " characters / " + featureCount + " feature entries."), false);
             }
             catch
@@ -278,12 +278,12 @@ namespace PaviseApp
                 if (!string.Equals(original, actual, StringComparison.Ordinal))
                 {
                     copy.Text = Pick("重试复制", "Retry copy");
-                    SetStatus(Pick("复制完整性校验失败：预期 " + original.Length + " 字符，读回 " + (actual ?? "").Length + " 字符，请重试。",
+                    SetStatus(Lang.Effective == Lang.Portuguese ? "Falha ao verificar a cópia: esperados " + original.Length + ", recebidos " + (actual ?? "").Length + " caracteres. Tente novamente." : Pick("复制完整性校验失败：预期 " + original.Length + " 字符，读回 " + (actual ?? "").Length + " 字符，请重试。",
                         "Copy verification failed: expected " + original.Length + ", received " + (actual ?? "").Length + " characters. Please retry."), true);
                     return;
                 }
                 copy.Text = Pick("已复制 ✓", "Copied ✓");
-                SetStatus(Pick("已核对完整复制：" + original.Length + " 字符 / " + featureCount + " 条说明" + (original.Contains("[AuditResults]") ? "，含体检。" : "。"),
+                SetStatus(Lang.Effective == Lang.Portuguese ? "Cópia completa verificada: " + original.Length + " caracteres / " + featureCount + " recursos" + (original.Contains("[AuditResults]") ? ", incluindo verificação." : ".") : Pick("已核对完整复制：" + original.Length + " 字符 / " + featureCount + " 条说明" + (original.Contains("[AuditResults]") ? "，含体检。" : "。"),
                     "Complete copy verified: " + original.Length + " characters / " + featureCount + " entries."), false);
                 copyFeedback.Start();
             }

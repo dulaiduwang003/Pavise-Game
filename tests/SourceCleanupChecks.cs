@@ -29,7 +29,7 @@ namespace PaviseApp
                 { "unsupported", "auto.log.unsupported" }, { "unchanged", "auto.log.unchanged" },
                 { "stopped", "auto.log.stopped" }, { "restoring", "auto.log.restoring" }
             };
-            for (int language = 0; language < 3; language++)
+            foreach (int language in new[] { Lang.Chinese, Lang.English, Lang.Portuguese })
             {
                 Lang.Cur = language;
                 for (int index = 0; index < labels.GetLength(0); index++)

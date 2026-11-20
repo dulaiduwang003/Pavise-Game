@@ -75,6 +75,7 @@ namespace PaviseApp
             return PerformancePolicy.Text(motion.DescriptionZh, motion.DescriptionEn);
         }
         internal static string ChineseChoices { get { return string.Join("/", Array.ConvertAll(Choices, motion => motion.Chinese)); } }
+        internal static string PortugueseChoices { get { return string.Join("/", Array.ConvertAll(Choices, motion => Lang.TranslateEnglish(motion.English))); } }
     }
 
     internal static class CoreMotionPreferences

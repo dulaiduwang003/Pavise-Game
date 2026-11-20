@@ -15,7 +15,20 @@ namespace PaviseApp
         private static readonly Regex Technical = new Regex(@"(?<!\S)(?:birth|creation|epoch|generation|win32|code|traceCode|lostEvents|sampleCpuMs|eventCount|systemEvents|activationMs|workerMask|granted|countScope|includes)=[^\s;；]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         private static string Text(string zh, string en, string ja) { return Lang.Text(zh, en); }
 
+        // 一次投影固定界面语言 技术记录和导出使用各自的语言设置
+        internal static List<LogEventEntry> ProjectForDisplay(IList<LogEventEntry> chronological, int filter, string activeSession)
+        {
+            using (Lang.Override(Lang.Effective))
+                return ProjectCore(chronological, filter, activeSession);
+        }
+
         internal static List<LogEventEntry> Project(IList<LogEventEntry> chronological, int filter, string activeSession)
+        {
+            using (Lang.Override(Lang.DiagnosticLanguage))
+                return ProjectCore(chronological, filter, activeSession);
+        }
+
+        private static List<LogEventEntry> ProjectCore(IList<LogEventEntry> chronological, int filter, string activeSession)
         {
             var result = new List<LogEventEntry>();
             if (chronological == null || chronological.Count == 0) return result;
@@ -52,6 +65,12 @@ namespace PaviseApp
         }
 
         internal static string Export(string raw, string activeSession)
+        {
+            using (Lang.Override(Lang.DiagnosticLanguage))
+                return ExportCore(raw, activeSession);
+        }
+
+        private static string ExportCore(string raw, string activeSession)
         {
             List<LogEventEntry> events = LogStreamView.ParseEvents(raw ?? "");
             List<LogEventEntry> rows = Project(events, 4, activeSession);

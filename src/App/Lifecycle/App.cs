@@ -42,7 +42,7 @@ namespace PaviseApp
         {
             get
             {
-                return "https://pavise.club/" + ((Lang.Cur == 1) ? "en/" : "") + "changelog/#latest";
+                return "https://pavise.club/" + ((Lang.Cur != Lang.Chinese) ? "en/" : "") + "changelog/#latest";
             }
         }
 

@@ -101,7 +101,7 @@ namespace PaviseApp
 
         public static void Info(string msg)
         {
-            Log(LogText.LevelTag(LogEventSeverity.Info, Lang.Cur) + msg);
+            Log(LogText.LevelTag(LogEventSeverity.Info, Lang.DiagnosticLanguage) + msg);
         }
 
         internal static void RuntimeIdentity()
@@ -114,31 +114,33 @@ namespace PaviseApp
 
         public static void Warn(string msg)
         {
-            Log(LogText.LevelTag(LogEventSeverity.Warning, Lang.Cur) + msg);
+            Log(LogText.LevelTag(LogEventSeverity.Warning, Lang.DiagnosticLanguage) + msg);
         }
 
         // 日志调用点用的中英双写 放在 Logger 上是因为只编部分源文件的测试都自带 Logger 替身 不带 Lang
-        // 中文和英文直接取 其他语言拿英文模板去查 Lang 登记的译文
+        // 葡萄牙语界面仍使用原有中文技术记录
         internal static string Text(string chinese, string english)
-        { return Lang.Text(chinese, english); }
+        { return Lang.Effective == Lang.Portuguese ? chinese : Lang.Text(chinese, english); }
 
         // 带参数的要传模板 先拼好再传的话其他语言查不到译文
         internal static string Format(string chinese, string english, params object[] args)
-        { return Lang.Format(chinese, english, args); }
+        { return string.Format(Text(chinese, english), args); }
 
         internal static void Log(string chinese, string english)
-        { WriteLocalized(chinese, Lang.Text(chinese, english), Lang.Cur); }
+        { WriteLocalized(chinese, Text(chinese, english), Lang.DiagnosticLanguage); }
 
         internal static void LogFormat(string chinese, string english, params object[] args)
-        { WriteLocalized(string.Format(chinese ?? "", args), Lang.Format(chinese, english, args), Lang.Cur); }
+        { WriteLocalized(string.Format(chinese ?? "", args), Format(chinese, english, args), Lang.DiagnosticLanguage); }
 
         // 一行由好几段文案拼成时 调用点交一个拼整行的函数 中文模式只拼一次
         // 其他语言先按当前语言拼出要写的文字 再在本线程临时切成中文拼一次用来定级别 所以拼的过程不能有副作用
         internal static void Log(Func<string> build)
         {
             if (build == null) return;
-            int language = Lang.Cur;
-            string localized = build();
+            int language = Lang.DiagnosticLanguage;
+            string localized;
+            if (language == Lang.Effective) localized = build();
+            else using (Lang.Override(language)) localized = build();
             if (language == Lang.Chinese) { Log(localized); return; }
             string chinese;
             try { using (Lang.Override(Lang.Chinese)) chinese = build(); }
@@ -157,7 +159,7 @@ namespace PaviseApp
 
         public static void Error(string msg)
         {
-            Log(LogText.LevelTag(LogEventSeverity.Error, Lang.Cur) + msg);
+            Log(LogText.LevelTag(LogEventSeverity.Error, Lang.DiagnosticLanguage) + msg);
         }
 
         internal static void RepeatedError(string source, string message, long now = -1L)
@@ -238,7 +240,7 @@ namespace PaviseApp
                     {
                         return;
                     }
-                    msg = LogText.Record(msg, Lang.Cur);
+                    msg = LogText.Record(msg, Lang.DiagnosticLanguage);
                     string newLineOffset = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + (msg ?? "").Replace("\r\n", " ⏎ ").Replace("\r", " ⏎ ").Replace("\n", " ⏎ ") + Environment.NewLine;
                     if (knownLength < 0 || !string.Equals(knownPath, LogPath, StringComparison.OrdinalIgnoreCase))
                     {
@@ -290,7 +292,7 @@ namespace PaviseApp
         public static void LogFailure(string context, Exception error)
         {
             string messageOffset = context + " " + error.GetType().Name + " - " + error.Message;
-            Log(LogText.LevelTag(LogEventSeverity.Error, Lang.Cur) + messageOffset);
+            Log(LogText.LevelTag(LogEventSeverity.Error, Lang.DiagnosticLanguage) + messageOffset);
         }
 
         internal static void AppendCrash(string path, string details)

@@ -337,7 +337,12 @@ namespace PaviseApp
             whitePanel.Invalidate();
             if (whiteCount != null)
             {
-                whiteCount.Text = ((lstWhite.Items.Count == list.Count) ? AutoText(list.Count + " 项", list.Count + " entries") : AutoText(lstWhite.Items.Count + " / " + list.Count + " 项", lstWhite.Items.Count + " / " + list.Count + " entries"));
+                int visibleCount = lstWhite.Items.Count;
+                int totalCount = list.Count;
+                string count = visibleCount == totalCount ? totalCount.ToString() : visibleCount + " / " + totalCount;
+                whiteCount.Text = Lang.Effective == Lang.Portuguese
+                    ? count + (visibleCount == totalCount && totalCount == 1 ? " item" : " itens")
+                    : AutoText(count + " 项", count + " entries");
             }
             SyncWhitelistRemoveAction();
         }
