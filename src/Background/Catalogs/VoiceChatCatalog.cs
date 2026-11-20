@@ -1,0 +1,57 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace PaviseApp
+{
+    // 语音软件对局中常开着 压到最低优先级容易卡语音 按进程名内置保护 不靠出声检测
+    // 只认进程名与本机绝对路径映像文件名一致的进程 不扩大到同目录的其他程序
+    internal static class VoiceChatCatalog
+    {
+        private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "KOOK", "KaiHeiLa", "YY", "oopz",
+            "ts3client_win64", "ts3client_win32", "TeamSpeak", "mumble",
+            "Discord", "DiscordPTB", "DiscordCanary"
+        };
+
+        // QQ 和微信不内置保护 按普通后台治理 需要时手动加白
+        // 显示名跟随界面语言 每次取都按当前语言生成 名单不参与进程匹配
+        private static string[] Products()
+        {
+            return new string[]
+            {
+                Lang.Text("KOOK（开黑啦）", "KOOK"), Lang.Text("YY 语音", "YY Voice"), "Oopz", "TeamSpeak", "Mumble", "Discord"
+            };
+        }
+
+        internal static bool IsVoiceChatProcess(string name, string imagePath)
+        {
+            string normalizedName = WhitelistRule.NormalizeName(name);
+            if (!ProcessNames.Contains(normalizedName)) return false;
+            string path = WhitelistRule.NormalizeImagePath(imagePath);
+            if (path.Length < 4 || !char.IsLetter(path[0]) || path[1] != ':' || path[2] != '\\') return false;
+            try
+            {
+                return string.Equals(Path.GetExtension(path), ".exe", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(normalizedName, Path.GetFileNameWithoutExtension(path), StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        internal static string[] ProductsForDisplay()
+        {
+            return Products();
+        }
+
+        internal static string[] ProcessNamesForDisplay()
+        {
+            var names = new List<string>(ProcessNames);
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            return names.ToArray();
+        }
+    }
+}

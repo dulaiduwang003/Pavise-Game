@@ -1,11 +1,11 @@
-param([Parameter(Mandatory = $true)][string]$Executable)
+﻿param([Parameter(Mandatory = $true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSEdition -eq 'Core') {
     & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Executable $Executable
     exit $LASTEXITCODE
 }
 $identityPath = [IO.Path]::GetFullPath($Executable)
-$identitySource = Join-Path (Split-Path $PSScriptRoot -Parent) 'src/PaviseApp/App.cs'
+$identitySource = Join-Path (Split-Path $PSScriptRoot -Parent) 'src/App/Lifecycle/App.cs'
 $identitySourceText = [IO.File]::ReadAllText($identitySource)
 $identityVersionMatches = [regex]::Matches($identitySourceText, '(?m)^\s*public const string Version = "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)";\s*$')
 if ($identityVersionMatches.Count -ne 1) { throw 'The source must declare exactly one canonical application version.' }
@@ -21,21 +21,27 @@ if ($identityFile.FileVersion -ne $identityExpectedVersion -or $identityFile.Pro
     $identityAssembly.GetName().Version.ToString() -ne $identityExpectedVersion) {
     throw ('Expected application, file, informational and assembly version ' + $identityExpectedVersion + '.')
 }
+# 原生代码链进 exe 的正式构建不带 DLL 镜像和落盘代码 只有纯 IL 的同源构建才有
+$identityPeKind = [Reflection.PortableExecutableKinds]::NotAPortableExecutableImage
+$identityMachine = [Reflection.ImageFileMachine]::I386
+$identityAssembly.ManifestModule.GetPEKind([ref]$identityPeKind, [ref]$identityMachine)
+if (($identityPeKind -band [Reflection.PortableExecutableKinds]::ILOnly) -eq 0) {
+    if ($identityMachine -ne [Reflection.ImageFileMachine]::AMD64) { throw 'The linked executable must be x64.' }
+    foreach ($identityType in @('NativeEtwImage', 'NativeCpuImage', 'NativeImageFile')) {
+        if ($null -ne $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "The linked executable still carries the extracted native image: $identityType" }
+    }
+}
 foreach ($identityType in @(
     'GamingHandheldDetection',
     'OverviewTelemetryReader',
     'OverviewMemoryCleanupControl',
     'ManualMemoryCleaner',
     'WindowsManualMemoryNative',
-    'HardThreadGuardianLaunchPolicy',
+    'SessionJobProbe',
     'GameConfigurationDialog',
-    'WeGameGameExtension',
-    'WeGameShellService',
-    'WeGameCardPanel',
     'LaboratorySession',
     'LaboratoryPower',
     'LaboratoryGpu',
-    'LaboratoryAudio',
     'LaboratoryEppEligibility',
     'LaboratoryManualActions',
     'LaboratoryFileFilter',
@@ -44,10 +50,16 @@ foreach ($identityType in @(
     'ClockRepairNative',
     'LaboratoryAudioEffects',
     'AudioEffectsNative',
-    'CriticalThreadStabilityPolicy',
+    'Tamer',
+    'AntiCheatAffinityLease',
+    'AntiCheatAffinityTopology',
+    'AntiCheatAffinityRuntime',
+    'AntiCheatAffinityEligibility',
+    'AntiCheatSuppressionPolicy',
+    'SvcQuery',
     'GameAffinityJobNative',
     'GameAffinityJobLease',
-    'GameAffinityJobGuard',
+    'BackgroundResourceJobPlatform',
     'BackgroundGovernancePolicy',
     'StreamingToolCatalog',
     'VoiceChatCatalog',
@@ -55,10 +67,9 @@ foreach ($identityType in @(
     'AiTuningPromptDialog',
     'AiTuningHardwareReport',
     'AiTuningFeatureCatalog',
+    'SecurityProductCatalog',
     'SecurityProductSnapshot',
     'SecurityStartupProbe',
-    'SecurityCompatibilityPresentation',
-    'SecurityCompatibilityWarningIcon',
     'CpuMitigationPolicy',
     'QuantumRuntime',
     'QuantumLiveUpdate',
@@ -69,10 +80,24 @@ foreach ($identityType in @(
     'SelfUpdateInstallerWindow',
     'SelfUpdateGate',
     'UpdateDialog',
-    'LegacyMonitoringCleanup')) {
+    'LegacyMonitoringCleanup',
+    'LaptopPerformanceCoordinator',
+    'BackgroundLogQueue',
+    'RendererProbeLogFilter',
+    'LaboratoryCoordinator',
+    'NvDriverRetryCoordinator',
+    'PowerMaintenance',
+    'DisplayAwakeLogThrottle',
+    'AutomaticFsoCoordinator',
+    'AutomationLogDedup',
+    'ModeLockGameIdentity',
+    'AutoAddCoordinator',
+    'RendererProbeCoordinator')) {
     if ($null -eq $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "Required implementation is missing: $identityType" }
 }
 foreach ($identityType in @(
+    'SecurityCompatibilityPresentation',
+    'SecurityCompatibilityWarningIcon',
     'HandheldDevice',
     'HandheldDeviceMode',
     'HandheldPowerPolicy',
@@ -82,6 +107,9 @@ foreach ($identityType in @(
     'MonitoringWddmSensors',
     'MonitoringConsoleSurface',
     'WeGameShellReadiness',
+    'WeGameCardPanel',
+    'WeGameGameExtension',
+    'WeGameShellService',
     'MonitoringFrameWindow',
     'MonitoringFrameStatistics',
     'PaviseNativeMonitor',
@@ -132,7 +160,16 @@ foreach ($identityType in @(
     'FreezeGuard',
     'FreezeLeaseSet',
     'FreezeNative',
-    'FreezeTarget')) {
+    'FreezeTarget',
+    'LaboratoryAudio',
+    'LaboratoryAudioSession',
+    'LaboratoryAudioEndpoint',
+    'LaboratoryAudioPeriod',
+    'ILaboratoryAudioDriver',
+    'LowLatencyAudioNative',
+    'NativeGuard',
+    'NativeGuardImage',
+    'NativeGuardProtocol')) {
     if ($null -ne $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "Retired implementation is present: $identityType" }
 }
 foreach ($identityResource in $identityAssembly.GetManifestResourceNames()) {
@@ -144,9 +181,6 @@ foreach ($identityType in $identityAssembly.GetTypes()) {
         throw ('Retired monitoring/report type is compiled: ' + $identityType.FullName)
     }
 }
-$identityWeGame = $identityAssembly.GetType('PaviseApp.WeGameShellService', $true)
-if ($null -ne $identityWeGame.GetMethod('ConfirmReadyAndDetach', $identityFlags)) { throw 'Retired manual WeGame confirmation is present.' }
-if ($null -eq $identityAssembly.GetType('PaviseApp.WeGameGameExtension', $true).GetMethod('CanAutoDetachRenderer', $identityFlags)) { throw 'Observed-renderer WeGame gate is missing.' }
 $identityPanel = $identityAssembly.GetType('PaviseApp.PanelForm', $true)
 if ($null -ne $identityAssembly.GetType('PaviseApp.PageId', $true).GetField('Monitoring', $identityFlags)) { throw 'Retired monitoring page is present.' }
 if ($null -ne $identityPanel.GetMethod('BuildGamePerformancePage', $identityFlags)) { throw 'Retired game-performance workspace is present.' }

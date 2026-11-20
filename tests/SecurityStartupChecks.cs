@@ -8,11 +8,22 @@ using System.Threading;
 namespace PaviseApp
 {
     internal static class Logger
-    {
+    { internal static string Text(string chinese, string english) { return Lang.Text(chinese, english); } internal static string Format(string chinese, string english, params object[] args) { return Lang.Format(chinese, english, args); } internal static void Log(string chinese, string english) { Log(Lang.Text(chinese, english)); } internal static void LogFormat(string chinese, string english, params object[] args) { Log(Lang.Format(chinese, english, args)); } internal static void Log(System.Func<string> build) { Log(build()); }
         internal static readonly List<string> Warnings = new List<string>();
         internal static readonly List<string> Records = new List<string>();
         internal static void Warn(string text) { Warnings.Add(text); }
         internal static void Log(string text) { Records.Add(text); }
+    }
+    // 辅助进程的语言靠环境变量从父进程带过来 测试只登记中英两种
+    internal static class Lang
+    {
+        internal const int Chinese = 0;
+        internal static int Cur;
+        private static readonly string[] codes = { "zh", "en" };
+        internal static int IndexOf(string code) { return Array.IndexOf(codes, code); }
+        internal static string CodeOf(int index) { return index >= 0 && index < codes.Length ? codes[index] : codes[Chinese]; }
+        internal static string Text(string chinese, string english) { return Cur == Chinese ? chinese : english; }
+        internal static string Format(string chinese, string english, params object[] args) { return string.Format(Text(chinese, english), args); }
     }
     internal static class FamilyBoundary
     { internal static bool UnderRoot(string path, string root) { return path.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase); } }
@@ -30,6 +41,15 @@ namespace PaviseApp
             File.AppendAllText(log, Process.GetCurrentProcess().Id + Environment.NewLine);
             if (mode == "timeout" || mode == "termination" || mode == "exitquery") Thread.Sleep(30000);
             if (mode == "failure") throw new IOException("Synthetic provider denial");
+            if (mode == "language")
+            {
+                // 用产品自己的失败记录拼摘要 摘要里错误码字段的写法就是子进程实际用的语言
+                Type factsType = typeof(SecurityStartupProbe).GetNestedType("Facts", BindingFlags.NonPublic);
+                object facts = Activator.CreateInstance(factsType, true);
+                factsType.GetMethod("Failed", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(facts,
+                    new object[] { "WSC-probe", new System.Runtime.InteropServices.COMException("probe", unchecked((int)0x80070005)), true });
+                return (SecurityProductSnapshot)typeof(SecurityStartupProbe).GetMethod("CompleteSnapshot", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { facts });
+            }
             return new SecurityProductSnapshot(true, false, new[] {
                 new SecurityProductInfo("Microsoft Defender Antivirus", "defender", SecurityProductState.Active, false, true, true),
                 new SecurityProductInfo("Fixture AV", "fixture", SecurityProductState.Inactive, true, true, false)
@@ -108,6 +128,54 @@ namespace PaviseApp
             factsType.GetField("Unknown", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(disabled, true);
             Check(((SecurityProductSnapshot)complete.Invoke(null, new[] { disabled })).HasUnknownState, "Defender fallback concealed unrelated provider failure");
         }
+        // 经 ReadOnce 时摘要跟随父进程界面语言 直接起子进程时变量缺失或代码没登记都按中文
+        private static void LanguageChecks()
+        {
+            string mode = Environment.GetEnvironmentVariable("PAVISE_SECURITY_FIXTURE"), oldLog = Environment.GetEnvironmentVariable("PAVISE_SECURITY_FIXTURE_LOG");
+            string log = Path.Combine(Path.GetTempPath(), "pavise-security-language-" + Guid.NewGuid().ToString("N") + ".txt");
+            Environment.SetEnvironmentVariable("PAVISE_SECURITY_FIXTURE", "language");
+            Environment.SetEnvironmentVariable("PAVISE_SECURITY_FIXTURE_LOG", log);
+            try
+            {
+                foreach (int language in new[] { 1, 0 })
+                {
+                    Lang.Cur = language;
+                    string summary = SecurityStartupProbe.ReadOnce().FailureSummary;
+                    Check(language == 1 ? summary.Contains(" error=0x") && !summary.Contains("错误码") : summary.Contains(" 错误码=0x"), "Helper text did not follow UI language " + language + ": " + summary);
+                }
+                Lang.Cur = 1;
+                foreach (string code in new[] { null, "xx" })
+                {
+                    string summary = RunHelper(code);
+                    Check(summary.Contains(" 错误码=0x"), "Missing or unregistered language code did not fall back to Chinese: " + (code ?? "missing") + ": " + summary);
+                }
+            }
+            finally
+            {
+                Lang.Cur = 0;
+                Environment.SetEnvironmentVariable("PAVISE_SECURITY_FIXTURE", mode);
+                Environment.SetEnvironmentVariable("PAVISE_SECURITY_FIXTURE_LOG", oldLog);
+                try { File.Delete(log); } catch (IOException) { }
+            }
+        }
+
+        // 不经 ReadOnce 直接起子进程 模拟没传语言或传了没登记的代码
+        private static string RunHelper(string language)
+        {
+            string token = Guid.NewGuid().ToString("N");
+            var start = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName, SecurityStartupProbe.HelperArgument + " " + token)
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+            start.EnvironmentVariables["PAVISE_SECURITY_STARTUP_TOKEN"] = token;
+            if (language == null) start.EnvironmentVariables.Remove("PAVISE_SECURITY_STARTUP_LANGUAGE");
+            else start.EnvironmentVariables["PAVISE_SECURITY_STARTUP_LANGUAGE"] = language;
+            using (Process child = Process.Start(start))
+            {
+                string output = child.StandardOutput.ReadToEnd();
+                Check(child.WaitForExit(20000) && child.ExitCode == 0, "Direct helper run failed");
+                return SecurityStartupProbe.Decode(output).FailureSummary;
+            }
+        }
+
         public static int Main(string[] args)
         {
             int helperExit;
@@ -141,12 +209,12 @@ namespace PaviseApp
                 Check(snapshot.ScanCompleted, "Startup did not seal result");
                 if (mode == "success" || mode == "fallback") Check(snapshot.Products.Length == 2 && !snapshot.HasUnknownState && SecurityProductCatalog.IsSecurityProduct(@"C:\FixtureSecurity\av.exe"), "Successful startup facts lost");
                 else Check(snapshot.HasUnknownState, "Failed provider became healthy absence");
-                int expectedWarnings = mode == "success" || mode == "fallback" ? 0 : 1;
-                Check(Logger.Warnings.Count == expectedWarnings, "Resolved fallback became a warning or unknown inspection lost its warning");
+                Check(Logger.Warnings.Count == 0 && Logger.Records.Count == 1 && Logger.Records[0].Contains("启动安全清单已封存"),
+                    "Startup protection inventory must log a single summary without a compatibility warning");
                 if (mode == "fallback")
-                    Check(Logger.Records.Exists(text => text.Contains("备用来源已确认状态") && text.Contains("WSC:COMException")), "Fallback diagnostic was discarded");
+                    Check(snapshot.FailureSummary == "WSC:COMException", "Fallback diagnostic was discarded from the protection snapshot");
                 for (int i = 0; i < 1000; i++) { SecurityProductCatalog.StartupScanOnce(); SecurityProductCatalog.Roots(); SecurityProductCatalog.CurrentGeneration(); }
-                Check(Logger.Warnings.Count == expectedWarnings, "Repeated reads duplicated startup warnings");
+                Check(Logger.Warnings.Count == 0 && Logger.Records.Count == 1, "Repeated reads produced additional startup messages");
                 string[] launches = File.ReadAllLines(log); Check(launches.Length == 1, "Repeated calls refilled startup scan budget");
                 if (mode == "timeout")
                 {
@@ -154,6 +222,7 @@ namespace PaviseApp
                     bool exited = false; try { using (Process child = Process.GetProcessById(int.Parse(launches[0]))) exited = child.HasExited; } catch (ArgumentException) { exited = true; }
                     Check(exited, "Timed out scanner remained alive after startup returned");
                 }
+                if (mode == "success") LanguageChecks();
                 Console.WriteLine("PASS security startup mode=" + mode + " checks=" + checks + " scans=1; OS providers=fake; UI/runtime getters=cache only; product_started=false");
                 return 0;
             }

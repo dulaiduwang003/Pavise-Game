@@ -6,7 +6,7 @@ $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Use a fresh output directory.'}
 $null=New-Item -ItemType Directory -Path $output
 $manifest=@()
-foreach($relative in @('src/PaviseApp/CpuSaturation.cs','src/PaviseApp/AdaptiveGuard.cs','tests/SmartGovernanceThresholdChecks.cs')){
+foreach($relative in @('src/Scheduling/Cpu/CpuSaturation.cs','src/Tuning/Tweaks/System/AdaptiveGuard.cs','tests/SmartGovernanceThresholdChecks.cs')){
  $source=Join-Path $workspace $relative
  $copy=Join-Path $output ([IO.Path]::GetFileName($relative))
  Copy-Item -LiteralPath $source -Destination $copy

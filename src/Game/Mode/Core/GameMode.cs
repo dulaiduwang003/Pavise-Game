@@ -1,0 +1,941 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+namespace PaviseApp
+{
+    internal partial class GameMode
+    {
+
+
+
+
+
+        private const uint DuplicateSameAccess = 2u;
+
+        internal const string GamePriorityAction = "GamePriority";
+
+        internal const string GameIoAction = "GameIoPriority";
+
+        internal const string GameGpuAction = "GameGpuPriority";
+
+        internal const string GameEcoAction = "GameEcoQoS";
+
+
+
+
+
+        internal const int SlowEnvDelaySeconds = 20;
+
+        internal const string ExitGraceSettingKey = "GameExitGraceSeconds";
+
+        internal const int DefaultExitGraceSeconds = 8;
+
+
+
+        internal const int SwitchOutDebounceMs = 5000;
+
+        internal const string AutomaticFsoKey = "AutoDisableFullscreenOptimizations";
+
+
+
+
+        internal const int ActiveGameSweepIntervalMs = 500;
+
+        internal const int EventBackedActiveGameSweepIntervalMs = 1000;
+
+        internal const int DirtyScanFloorMs = 500;
+
+
+        internal const int GameTransitionScanIntervalMs = 5000;
+
+        internal const int FailedProcessScanRetryMs = 1000;
+
+
+        internal const string LastSessionKey = "LastSessionBrief";
+
+        internal const string StandbyCleanerOptionsKey = "GmStandbyCleanerOptionsV1";
+
+        internal const int OlderRendererTakeoverForegroundMs = 10000;
+
+
+
+        private readonly AdaptiveGuard adaptiveGuard = new AdaptiveGuard();
+
+        private readonly CpuSaturation adaptivePressure = new CpuSaturation(AdaptiveGuard.EnterUtilization, AdaptiveGuard.ExitUtilization);
+
+        private volatile bool adaptiveEscalated;
+
+        private bool autoAddPreferenceUnsaved;
+
+        private string autoIgnorePath;
+
+        private readonly LibraryIgnoreTransaction libraryIgnoreTransaction;
+
+        private bool autoIgnoreLoadFailed;
+
+        private volatile bool autoAddOn;
+
+        private readonly HashSet<string> autoAddIgnore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private bool coreObservationOnly;
+
+        private bool coreRangeUnrestricted;
+
+        private PerformancePreset corePreset;
+
+        private bool coreAllowed;
+
+        private long corePolicyCheckTicks;
+
+        private int corePolicyDirty;
+
+        private CoreIsolationClient coreIsolation;
+
+        private AutoCorePlan corePlan;
+
+        private ManualCorePlan coreManual;
+
+        private AutoCoreGovernor coreGovernor;
+
+        private int coreWatchPid;
+
+        private long coreWatchCreation;
+
+        private volatile bool coreEngaged;
+
+        private volatile bool corePinPending;
+
+        private long exclusiveCheckTicks;
+
+        private readonly CoreAffinityAuditRetry exclusiveAuditRetry = new CoreAffinityAuditRetry();
+
+        private readonly GameAffinityJobLease coreAffinityJobs = new GameAffinityJobLease { OverrideThreadPlacement = true };
+
+        private bool exclusiveAuditDeferred;
+
+        private ulong coreGameMask;
+
+        private ulong[] corePhysical;
+
+        private ulong coreAffinityObserved;
+
+        private bool coreAffinityRead;
+
+        private bool coreAffinityVerified;
+
+        private string corePlacementStopReason;
+
+        private bool coreBackgroundPending;
+
+        private string corePlacementEvidence;
+
+        private int exclusiveWriteBacks;
+
+        private int automaticNvPlanKey = -1;
+
+        private readonly TimerModeController timerMode = new TimerModeController();
+
+        private readonly Dictionary<string, string> automationEvidence = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        private string automationSession = "";
+
+        private bool automationSessionEnding;
+
+        private bool corePlacementOnly;
+
+        private long boostFirstStampTicks;
+
+        private int boostIdentityPid;
+
+        private long boostIdentityCreation;
+
+        private long boostIdentityGeneration;
+
+        private bool boostIdentityNeedsAudit = true;
+
+        private bool boostLaneReleased;
+
+        private static readonly string[] BoostActions = new string[4] { "GamePriority", "GameIoPriority", "GameGpuPriority", "GameEcoQoS" };
+
+        private readonly Dictionary<int, string> boostActionTargets = new Dictionary<int, string>();
+
+        private readonly Dictionary<int, HashSet<string>> boostActionRestorePending = new Dictionary<int, HashSet<string>>();
+
+        private long nvTweakRetryAtTicks;
+
+        private long nvTweakGeneration;
+
+        private readonly Dictionary<int, int> boostVanishTries = new Dictionary<int, int>();
+
+        private readonly object criticalProcessGate = new object();
+
+        private long criticalIntentEpoch;
+
+        private CriticalThreadTargetLease criticalOriginalTarget;
+
+        private CriticalThreadMint criticalMintInFlight;
+
+        private int criticalRolesPid;
+
+        private long criticalRolesBirth;
+
+        private bool criticalRolesTouched;
+
+        private readonly object criticalHistoricalQueueGate = new object();
+
+        private readonly ManualResetEvent criticalHistoricalIdle = new ManualResetEvent(true);
+
+        private bool criticalHistoricalWorker;
+
+        private long criticalHistoricalRetry;
+
+        private volatile CriticalThreadUiState criticalThreadUi = new CriticalThreadUiState("", "off", "", false, false, false, 0, 0L, 0uL, null, null, false, false, CriticalThreadCoverageState.None, null, 0L, 0L, 0, 0L);
+
+        private CriticalRuntimeSource criticalSource;
+
+        private CriticalThreadObservation criticalObservation = new CriticalThreadObservation();
+
+        private readonly CriticalThreadIdealHints criticalIdealHints = new CriticalThreadIdealHints();
+
+        private CriticalThreadHardAffinitySession criticalSession;
+
+        private bool criticalRestorationConfirmed;
+
+
+        private HardThreadPlan criticalPlan;
+
+
+        private volatile bool criticalThreadResidue;
+
+        private volatile bool criticalHistoricalDebt;
+
+        private long criticalDebtNextRead;
+
+        private CriticalThreadRuntimeTelemetry criticalRuntimeTelemetry;
+
+        private int criticalForegroundAuditPending;
+
+        private string[] criticalChoiceLabels = new string[0];
+
+        private static readonly object criticalStateLogGate = new object();
+
+        private readonly object sync = new object();
+
+        private readonly List<GameProfile> profiles = new List<GameProfile>();
+
+        private readonly GameProfileStore profileStore;
+
+        private int profileSaveFailureSignaled;
+
+        private readonly string dataDir;
+
+        private readonly AutoResetEvent kick = new AutoResetEvent(true);
+
+        private readonly string whitePath;
+
+        private readonly int selfPid;
+
+        private readonly string selfName;
+
+        private readonly int selfSession;
+
+        private readonly string windowsPrefix;
+
+        private readonly SuppressionCore core;
+
+        private volatile bool enabled;
+
+        private volatile bool stopping;
+
+        private bool active;
+
+        private string activeGame;
+
+        private bool firstSweep = true;
+
+        private readonly Dictionary<int, Snap> gameBoost = new Dictionary<int, Snap>();
+
+        private readonly Dictionary<int, int> gameGpu = new Dictionary<int, int>();
+
+        private readonly Dictionary<int, ulong> gamePlacement = new Dictionary<int, ulong>();
+
+        private readonly Dictionary<int, HardPin> hardPins = new Dictionary<int, HardPin>();
+
+        private readonly Dictionary<int, int> boostFail = new Dictionary<int, int>();
+
+        private readonly Dictionary<int, long> gameBoostNextAudit = new Dictionary<int, long>();
+
+        private readonly HashSet<int> tweakApplied = new HashSet<int>();
+
+        private readonly HashSet<int> boostDenied = new HashSet<int>();
+
+        private readonly HashSet<int> boostStateWarned = new HashSet<int>();
+
+        private readonly HashSet<int> boostStateVerified = new HashSet<int>();
+
+        private readonly HashSet<int> boostHandleStripped = new HashSet<int>();
+
+        private readonly HashSet<int> boostEcoGaveUp = new HashSet<int>();
+
+        private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
+
+        private readonly HashSet<int> placementGaveUp = new HashSet<int>();
+
+        private readonly Dictionary<int, int> boostStateFail = new Dictionary<int, int>();
+
+        private volatile bool bgSuppressOn;
+
+        private volatile bool boostOn;
+
+        private bool maintActive;
+
+        private volatile bool nvMaxPerf;
+
+        private volatile bool nvShaderCacheMax;
+
+        private volatile bool nvRebarOn;
+
+        private volatile string nvDlssMode = "off";
+
+        private volatile bool amdAfmf;
+
+        private volatile bool rsrOn;
+
+        private bool pqosActive;
+
+        private bool awakeActive;
+
+        private readonly TimerResolutionLease timerLease = new TimerResolutionLease();
+
+        private volatile bool killGameDvr;
+
+        private bool guardDvrActive;
+
+        private volatile bool planSwitch;
+
+        private long slowEnvAtTicks;
+
+        private volatile bool pauseUpdateOn;
+
+        private volatile bool pauseServicesOn;
+
+        private volatile bool renderLaneOn;
+
+        private volatile bool panicReq;
+
+        private int panicSeq;
+
+        private readonly object panicCallGate = new object();
+
+        private int panicServed;
+
+        private volatile bool panicResult;
+
+        private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
+
+        private bool doActive;
+
+        private readonly ulong allMask;
+
+        private PerformancePreset preset;
+
+        private GameDetection activeDetection;
+
+        private volatile PolicySnapshot sessionPolicy;
+
+        private Thread worker;
+
+        private GameDetection stickyDetection;
+
+        private readonly Dictionary<int, GameId> stickyIds = new Dictionary<int, GameId>();
+
+        private int stickyMiss;
+
+        private bool stickyGraceOnly;
+
+        private volatile int exitGraceSeconds = 8;
+
+        private int gracePreReleased;
+
+        private long gameGoneSinceTicks;
+
+        internal static readonly string[] RetiredIrqObservationFiles = new string[4] { "Pavise.irq-sessions.dat", "Pavise.irq-sessions.dat.*.tmp", "irq-adjustment-*.xml", "irq-adjustment-*.xml.*.tmp" };
+
+        private readonly Dictionary<string, long> envNextAttempt = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        private readonly Dictionary<string, int> envFailures = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        private readonly HashSet<string> envFused = new HashSet<string>(StringComparer.Ordinal);
+
+        private readonly HashSet<string> envRestorePending = new HashSet<string>(StringComparer.Ordinal);
+
+        internal static readonly string[] EnvKeys = new string[12]
+        {
+            "do", "wu", "services", "standby", "pqos", "awake", "dwmboost", "rsr",
+            "amdafmf", "maint", "laptopperf", "gamedvr"
+        };
+
+        private bool wuActive;
+
+        private bool optionalServicesActive;
+
+        private int optionalServiceGeneration;
+
+        private bool amdAfmfActive;
+
+        private bool rsrActive;
+
+        private volatile bool planActive;
+
+        private volatile int lastPowerPolicyKey = -1;
+
+        private long nextPowerAuditTicks;
+
+        private int powerApplyInFlight;
+
+        private int powerSessionGen;
+
+        private volatile bool powerSessionEnding;
+
+        private readonly object powerApplyGate = new object();
+
+        private int planFailStreak;
+
+        private int envResidueGeneration = -1;
+
+        private bool envResidueOther;
+
+        private bool envResidueNvList;
+
+        private long residueNextTryTicks;
+
+        private GameFamilyHistory gameFamilyHistory;
+
+        private GameFamilyEvidence gameFamilyEvidence = GameFamilyEvidence.Empty;
+
+        private readonly object familyPolicyGate = new object();
+
+        private int familyPolicyEpoch;
+
+        private readonly SessionForegroundTracker sessionForeground = new SessionForegroundTracker();
+
+        private volatile bool smartSwitchedOut;
+
+        private volatile bool sessionSwitchedOut;
+
+        private volatile string switchedOutForegroundName = "";
+
+        private int switchedOutForegroundPid;
+
+        private static readonly string[][] ForegroundServiceConsumers = new string[9][]
+        {
+            new string[2] { "searchhost", "services" },
+            new string[2] { "searchapp", "services" },
+            new string[2] { "startmenuexperiencehost", "services" },
+            new string[2] { "outlook", "services" },
+            new string[2] { "printdialog", "services" },
+            new string[2] { "systemsettings", "wu" },
+            new string[2] { "systemsettings", "do" },
+            new string[2] { "winstore.app", "wu" },
+            new string[2] { "winstore.app", "do" }
+        };
+
+        private volatile LaneFallbackTarget laneFallback;
+
+        private readonly object gameNvGate = new object();
+
+        private GameNvCanonicalStore gameNvStore;
+
+        private bool gameNvRecoveryChecked;
+
+        private bool gameNvRootClear;
+
+        private bool gameNvWorker;
+
+        private bool gameNvRecoveryStopped;
+
+        private int gameNvPending = 1;
+
+        private readonly ManualResetEvent gameNvIdle = new ManualResetEvent(true);
+
+        private string whitelistLastError = "";
+
+        private volatile bool shutdownWritersStopped;
+
+        private readonly PerformanceActionCoordinator performanceActions = new PerformanceActionCoordinator();
+
+        private Dictionary<int, PlatformProcessOwner> platformMembers = new Dictionary<int, PlatformProcessOwner>();
+
+        private int whiteEvalPlatformMask = -1;
+
+        private int whiteEvalPlatformRenderer;
+
+        private long whiteEvalPlatformRendererCreation;
+
+        private volatile string preStagedNvPath;
+
+        private readonly object driverStageGate = new object();
+
+        private int processSetDirty;
+
+        private int urgentProcessScan;
+
+        private volatile bool armedAwaitingElection;
+
+        private int transitionScanPending;
+
+        private int transitionProbeRendererPid;
+
+        private long transitionProbeRendererCreation;
+
+        private int gameDetectionDirty = 1;
+
+        private int processEventsAvailable;
+
+        private long lastProcessScanTicks;
+
+        private long processScanRetryAfterTicks;
+
+        private long lastFullGameDetectionTicks;
+
+        private long processScanCount;
+
+        private RendererHandoffTracker rendererHandoff;
+
+        private GameDetection rendererDirectPending;
+
+        private int rendererObservedForeground;
+
+        private long rendererForegroundSinceMs;
+
+        private int rendererHandoffEpoch;
+
+        private RendererObservationStore rendererObservations;
+
+        private BackgroundLogQueue rendererObservationTrace;
+
+        private readonly Dictionary<int, HashSet<string>> boostResourceSelections = new Dictionary<int, HashSet<string>>();
+
+        private int boostResourceSelection = -1;
+
+        private long gameSessionStarts;
+
+        private volatile string armedGameName;
+
+        private string lastArmedLogged;
+
+        private readonly Dictionary<int, long> repCpu = new Dictionary<int, long>();
+
+        private readonly Dictionary<int, long> repCreation = new Dictionary<int, long>();
+
+        private readonly Dictionary<int, string> repProc = new Dictionary<int, string>();
+
+        private readonly Dictionary<int, long> repSealed = new Dictionary<int, long>();
+
+        private long repStart;
+
+        private string repGame;
+
+        private long repPaviseCpuStart;
+
+        private string repProfileId;
+
+        private volatile bool standbyCleanerOn;
+
+        private volatile bool standbyCleanerOptionsValid;
+
+        private volatile StandbyCleanerOptions standbyCleanerOptions = StandbyCleanerOptions.Default;
+
+        private int standbyCleanerGeneration;
+
+        private int standbyCleanerRestorePending;
+
+        private StandbyCleanerRunner standbyCleaner;
+
+        private static readonly HashSet<int> EmptyPidSet = new HashSet<int>();
+
+        private readonly List<WhitelistRule> whiteRules = new List<WhitelistRule>();
+
+        private readonly HashSet<string> whiteRuleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly Dictionary<string, Dictionary<int, long>> whiteFamilyMembers = new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly object whiteEvalSync = new object();
+
+        private int whiteRevision;
+
+        private int whiteHasFamilyRules;
+
+        private long lastWhiteFamilyPruneTicks;
+
+        private ProcessSnapshot whiteEvalSnapshot;
+
+        private WhitelistEvaluation whiteEvalCached;
+
+        private int whiteEvalRevision;
+
+        private int whiteEvalMembersVersion;
+
+        private int whiteFamilyMembersVersion;
+
+        private Dictionary<int, long> runtimeFamilyMembers = new Dictionary<int, long>();
+
+        private bool AdaptiveEscalationWanted
+        {
+            get
+            {
+                if (AutomationPolicySnapshot.AdaptiveEscalation && !stopping)
+                {
+                    return !panicReq;
+                }
+                return false;
+            }
+        }
+
+        public bool AutoAddFullscreen
+        {
+            get
+            {
+                return autoAddOn;
+            }
+            set
+            {
+                lock (sync)
+                {
+                    if (autoAddOn == value)
+                    {
+                        return;
+                    }
+                    autoAddOn = value;
+                    AutoAdd.Invalidate();
+                    if (value)
+                    {
+                        AutoAdd.OpenGate();
+                    }
+                    autoAddPreferenceUnsaved = !Settings.Save("GmAutoAdd", value);
+                }
+                Logger.Log(() => Lang.T(value ? "log.autoadd.1" : "log.autoadd.2"));
+                if (autoAddPreferenceUnsaved)
+                {
+                    Logger.Warn(Lang.T("autoadd.preference.unsaved"));
+                }
+            }
+        }
+
+        private bool CorePending
+        {
+            get
+            {
+                if (!corePinPending && !coreBackgroundPending && (core == null || !core.BackgroundAffinityPending) && !CoreThreadPlacement.UnownedPending && (coreAffinityJobs == null || !coreAffinityJobs.HasPending))
+                {
+                    return CoreIsolationClient.State == "schedule.isolation.pending";
+                }
+                return true;
+            }
+        }
+
+        private string CriticalThreadStoreRoot
+        {
+            get
+            {
+                return Path.GetFullPath(Path.Combine(dataDir, HardThreadStorageDomain.StoreDirectory));
+            }
+        }
+
+        private bool timerRaised
+        {
+            get
+            {
+                if (timerLease != null)
+                {
+                    return timerLease.HasResidue;
+                }
+                return false;
+            }
+        }
+
+        public bool Enabled
+        {
+            get
+            {
+                return enabled;
+            }
+            set
+            {
+                bool enabledChanged;
+                lock (sync)
+                {
+                    enabledChanged = enabled != value;
+                    enabled = value;
+                    if (enabledChanged)
+                    {
+                        AutoAdd.Invalidate();
+                        InvalidatePowerPlanSession();
+                        RevokeCriticalThreadIntent("Enabled");
+                        if (!value)
+                        {
+                            ModeLockGame.RememberLocked(activeDetection);
+                        }
+                        Interlocked.Increment(ref optionalServiceGeneration);
+                        InvalidateStandbyCleanerWork();
+                        ClearFamilyDiscovery();
+                        InvalidateRendererHandoff();
+                    }
+                }
+                if (enabledChanged)
+                {
+                    if (value)
+                    {
+                        ClearEnvFuse("gamedvr");
+                    }
+                    SyncGameDvr();
+                }
+                if (enabledChanged && value)
+                {
+                    RequestFullGameDetection();
+                }
+                if (enabledChanged && value)
+                {
+                    RequestPolicyApply("Enabled");
+                }
+                else
+                {
+                    kick.Set();
+                }
+            }
+        }
+
+        private bool GuardSchedulingNeedsRestore
+        {
+            get
+            {
+                if (!GuardSchedulingRecoveryPending)
+                {
+                    if (GameDvr.HasResidue)
+                    {
+                        if (enabled && !stopping)
+                        {
+                            if (profileStore != null)
+                            {
+                                return ProfileStoreSaveFailed;
+                            }
+                            return false;
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        private bool GuardSchedulingRecoveryPending
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return envRestorePending.Contains("gamedvr");
+                }
+            }
+        }
+
+        private bool EffPauseServices
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        private bool OptionalServicesRequested
+        {
+            get
+            {
+                if (EffPauseServices)
+                {
+                    return !SessionServicesSuspended;
+                }
+                return false;
+            }
+        }
+
+        public bool IsActive
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return active;
+                }
+            }
+        }
+
+        private volatile ProcessSnapshot latestProcessSnapshot;
+
+        public string ActiveGame
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return active ? activeGame : null;
+                }
+            }
+        }
+
+        public bool ModeSwitchLocked
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return ModeSwitchLockedLocked();
+                }
+            }
+        }
+
+        public PerformancePreset Preset
+        {
+            get
+            {
+                lock (sync)
+                {
+                    return preset;
+                }
+            }
+            set
+            {
+                TrySetPreset(value);
+            }
+        }
+
+        public PerformancePreset ActivePreset
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot != null)
+                {
+                    return policySnapshot.Preset;
+                }
+                lock (sync)
+                {
+                    return preset;
+                }
+            }
+        }
+
+        public string SessionPolicySourceName
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null || policySnapshot.IsGlobal || !IsActive)
+                {
+                    return null;
+                }
+                return policySnapshot.ProfileName;
+            }
+        }
+
+        public string ControlSourceText
+        {
+            get
+            {
+                return PerformancePolicy.Text("手动", "Manual");
+            }
+        }
+
+        public string SessionPolicyProfileId
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null || !IsActive)
+                {
+                    return null;
+                }
+                return policySnapshot.ProfileId;
+            }
+        }
+
+        private bool EffSuppress
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null)
+                {
+                    return bgSuppressOn;
+                }
+                return policySnapshot.EffSuppress;
+            }
+        }
+
+        private PerformancePreset EffPreset
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null)
+                {
+                    return Preset;
+                }
+                return policySnapshot.Preset;
+            }
+        }
+
+        private bool EffBoost
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null)
+                {
+                    return boostOn;
+                }
+                return policySnapshot.EffBoost;
+            }
+        }
+
+        private bool EffLane
+        {
+            get
+            {
+                PolicySnapshot policySnapshot = sessionPolicy;
+                if (policySnapshot == null)
+                {
+                    return renderLaneOn;
+                }
+                return policySnapshot.EffLane;
+            }
+        }
+
+        private bool LaneEligible
+        {
+            get
+            {
+                return LaneSupported(EffPreset);
+            }
+        }
+
+        public event Action LibraryChanged;
+
+        public event Action ProfileStoreSaveFailure;
+
+        public event Action<string> SessionEnded;
+
+        public event Action<string> SessionBriefed;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess, out IntPtr targetHandle, uint desiredAccess, bool inheritHandle, uint options);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetProcessId(IntPtr process);
+
+    }
+}

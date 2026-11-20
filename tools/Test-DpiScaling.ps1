@@ -7,7 +7,7 @@ $output = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) { throw 'Use a fresh output directory; earlier results are retained.' }
 $null = New-Item -ItemType Directory -Path $output
 $utf8 = New-Object Text.UTF8Encoding($false)
-$manifest = @('src/PaviseApp/Dpi.cs', 'tests/DpiScalingChecks.cs', 'tools/Test-DpiScaling.ps1') | ForEach-Object {
+$manifest = @('src/UI/DesignSystem/Painting/Dpi.cs', 'tests/DpiScalingChecks.cs', 'tools/Test-DpiScaling.ps1') | ForEach-Object {
     $original = Join-Path $workspace $_
     $copy = Join-Path $output ([IO.Path]::GetFileName($_))
     Copy-Item -LiteralPath $original -Destination $copy
@@ -52,7 +52,7 @@ function Run-Checks([string]$name, [string]$expectedFailure) {
 try {
     Run-Checks 'production' ''
     if ($Mutations) {
-        # 每个负对照只修改冻结副本，必须编译成功并在指定行为断言处失败。
+        # 每个负对照只修改冻结副本 必须编译成功并在指定行为断言处失败
         $cases = @(
             @{Name='old-primary-screen-cap'; Find='Rectangle area = currentWorkingArea;'; Replace='Rectangle area = Screen.PrimaryScreen.WorkingArea;'; Failure='大副屏不能被小主屏封顶'},
             @{Name='old-client-screen-cap'; Find='upperBound = Math.Min(upperBound, RequestedScaleFor(currentDpi));'; Replace='upperBound = Math.Min(upperBound, ScaleFor(currentDpi));'; Failure='明确客户区不能再套用缓存屏幕上限'},

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 namespace PaviseApp {
-internal static class Logger { internal static int Logs; internal static void Log(string s) { Logs++; } internal static void Warn(string s) { Logs++; } }
+internal static class Logger { internal static string Text(string chinese, string english) { return chinese; } internal static string Format(string chinese, string english, params object[] args) { return string.Format(chinese, args); } internal static void Log(string chinese, string english) { Log(chinese); } internal static void LogFormat(string chinese, string english, params object[] args) { Log(string.Format(chinese, args)); } internal static void Log(System.Func<string> build) { Log(build()); } internal static int Logs; internal static void Log(string s) { Logs++; } internal static void Warn(string s) { Logs++; } }
 internal static class PowerPlan { internal static string Selected = "A"; internal static long Session; internal static void BeginAutomaticSession(long session) { Session = session; } internal static string AutomaticPolicySignature(bool aggressive) { return Selected + ":" + aggressive; } }
 internal static class ActionFailureStore {
     internal static int Admissions; internal static bool Allow=true;
@@ -48,7 +48,7 @@ internal partial class GameMode {
         Check(PowerPlan.Session==11,"new game serial did not reach the power drift owner");
         Check(!m.BeginPowerAttempt(2,out reason),"permanent error retried");
         m.gameSessionStarts=12;
-        // 守护写回每次都是一次成功的应用事务，连续多少次都不能被攒成失败预算。
+        // 守护写回每次都是一次成功的应用事务 连续多少次都不能被攒成失败预算
         int verifiedLogs=Logger.Logs;
         for(int i=0;i<200;i++) {Check(m.BeginPowerAttempt(2,out reason),"successful independent maintenance capped");m.CompletePowerAttempt(true,"verified");}
         Check(Logger.Logs-verifiedLogs==3,"repeated verified power applies flooded the log or were not recorded: "+(Logger.Logs-verifiedLogs));

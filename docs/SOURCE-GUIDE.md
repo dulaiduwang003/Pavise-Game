@@ -1,30 +1,23 @@
 # 源码与验证入口
 
-Pavise 使用 .NET Framework 和 Windows Forms，`build.cmd -b prod` 从 `src/` 递归编译源码，并核验程序集版本、必要实现和嵌入资源。构建不会运行应用入口。
+Pavise 使用 .NET Framework 和 Windows Forms。`build.cmd -b prod` 从 `src/` 递归编译 C# 源码，用 MSVC x64 和 Windows SDK 链接内置原生组件，并核验版本和资源。构建过程不会启动 Pavise。
 
 ## 模块入口
 
 | 位置 | 职责 |
 | --- | --- |
-| `Program.cs` | 单实例、启动、退出与运行时编排 |
-| `GameMode.cs` | 会话状态、属性与构造；具体方法按职责放在同名 partial 文件中 |
-| `GameMode.Session.cs`、`GameMode.Detection.cs` | 扫描循环、会话切换与游戏识别 |
-| `GameMode.Background.cs`、`GameMode.Protection.cs` | 后台压制编排、白名单与依赖保护 |
-| `GameMode.CpuScheduling.cs`、`GameMode.Recovery.cs` | 线程／核心调度编排及恢复调用方 |
-| `GameMode.Automation.cs`、`GameMode.Policies.cs` | 自动动作状态与功能策略编排 |
-| `SuppressionCore.cs` 及 `SuppressionCore.*.cs` | 后台进程的应用、核验与恢复 |
-| `CriticalThread*`、`GameAffinityJob*` | 关键线程、核心范围及 Job 生命周期 |
-| `GameMode.WindowsBackground.cs`、`WindowsBackgroundPolicy.cs` | 微软后台对象核实，核实后并入普通后台治理 |
-| `PowerPlan*`、`ManagedPowerPreset*`、`Timer*` | 对局电源、模板、计时器请求与恢复 |
-| `PanelForm.cs` 及 `PanelForm.*.cs` | 窗口状态、页面组合、布局、操作与状态刷新 |
-| `PaviseCore.cs` 及 `PaviseCore.Motion.cs` | 核心图形、缓存图层与动画 |
-| `AutomaticRecoveryBudget.cs`、`ActionFailureStore.cs` | 失败预算、阶段身份与恢复记录 |
-| `tests/`、`tools/Run-PublicTests.ps1` | 公开回归夹具与统一运行入口 |
+| [`src/App/Program/`](../src/App/Program/) 和 [`src/App/Lifecycle/`](../src/App/Lifecycle/) | 单实例、启动、托盘、退出和应用生命周期 |
+| [`src/Game/Mode/Core/`](../src/Game/Mode/Core/) 和 [`src/Game/Mode/Detection/`](../src/Game/Mode/Detection/) | 对局会话、策略、恢复编排和游戏识别 |
+| [`src/Game/Mode/Background/`](../src/Game/Mode/Background/) 和 [`src/Background/`](../src/Background/) | 后台治理、保护规则、Job 管理和恢复 |
+| [`src/Scheduling/`](../src/Scheduling/) 和 [`src/Game/Mode/Threads/`](../src/Game/Mode/Threads/) | 游戏线程调度、核心范围和亲和性 |
+| [`src/Frame/`](../src/Frame/) 和 [`src/Native/`](../src/Native/) | 帧采集、ETW 前置处理和 CPUID 探测 |
+| [`src/Power/`](../src/Power/) 和 [`src/Tuning/`](../src/Tuning/) | 电源计划、计时器和系统调优 |
+| [`src/UI/`](../src/UI/) 和 [`src/Localization/`](../src/Localization/) | 窗口、游戏库、界面动效和本地化 |
+| [`src/Infrastructure/Recovery/`](../src/Infrastructure/Recovery/) 和 [`src/Update/`](../src/Update/) | 恢复预算、失败记录、更新和卸载 |
 
-除 `tests/` 和 `tools/` 外，上表中的源码路径均相对于 `src/PaviseApp/`。同名 partial 文件属于同一个类型，按职责组织方法；字段初始化与构造函数保留在主文件中。
+同名 `partial` 文件属于同一类型，按职责放在各自目录中。表中的路径相对于仓库根目录。
 
-## 验证入口
+## 原生构建与回归
 
-当前维护源码的模块入口见上表，运行行为通过回归测试和台架验证。
-
-可运行的回归测试及其覆盖范围见 [测试说明](../tests/README.md)。发布页保存各正式版程序与更新记录；维护分支中的源码、文档和测试随项目维护更新。核对历史版本时，请结合相应版本的发布记录。
+- 正式构建读取 [ETW 镜像](../src/Interop/NativeEtwImage.cs)和 [CPUID 镜像](../src/Interop/NativeCpuImage.cs)。修改原生源码后，用 Zig 0.15.2 运行 [`tools/Build-Native.ps1`](../tools/Build-Native.ps1)生成镜像。可将 `zig.exe` 加入 PATH，或使用 `-Zig` 指定其路径。
+- 公开回归由 [`tools/Run-PublicTests.ps1`](../tools/Run-PublicTests.ps1) 统一运行。测试范围和单项命令见[测试说明](../tests/README.md)。

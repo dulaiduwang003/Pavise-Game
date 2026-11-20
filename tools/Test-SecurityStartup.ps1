@@ -1,5 +1,6 @@
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Common\PaviseSources.ps1')
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $workspace ('build/SecurityStartup-' + [Guid]::NewGuid().ToString('N')) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -8,7 +9,7 @@ $frozen = Join-Path $output 'frozen'
 $null = New-Item -ItemType Directory -Path $frozen
 $encoding = New-Object Text.UTF8Encoding($false)
 foreach ($name in @('SecurityProductCatalog.cs', 'SecurityProductSnapshot.cs', 'SecurityStartupProbe.cs')) {
-    Copy-Item -LiteralPath (Join-Path $workspace ('src/PaviseApp/' + $name)) -Destination (Join-Path $frozen $name)
+    Copy-Item -LiteralPath (Resolve-PaviseSource -Root (Join-Path $workspace 'src') -Name $name) -Destination (Join-Path $frozen $name)
 }
 Copy-Item -LiteralPath (Join-Path $workspace 'tests/SecurityStartupChecks.cs') -Destination (Join-Path $frozen 'SecurityStartupChecks.cs')
 $probe = Join-Path $frozen 'SecurityStartupProbe.cs'

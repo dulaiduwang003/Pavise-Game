@@ -5,10 +5,10 @@ if(-not $OutputDirectory){$OutputDirectory=Join-Path $workspace ('build/Automati
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Use a fresh output directory.'}
 $null=New-Item -ItemType Directory -Path $output
-$source=Join-Path $workspace 'src/PaviseApp/GameMode.AutomaticRetries.cs'
+$source=Join-Path $workspace 'src/Game/Mode/Core/GameMode.AutomaticRetries.cs'
 $frozen=Join-Path $output 'GameMode.AutomaticRetries.cs'
 Copy-Item -LiteralPath $source -Destination $frozen
-Copy-Item -LiteralPath (Join-Path $workspace 'src/PaviseApp/RecoveryRouteSet.cs') -Destination (Join-Path $output 'RecoveryRouteSet.cs')
+Copy-Item -LiteralPath (Join-Path $workspace 'src/Infrastructure/Recovery/RecoveryRouteSet.cs') -Destination (Join-Path $output 'RecoveryRouteSet.cs')
 $hash=(Get-FileHash -LiteralPath $frozen).Hash
 $exe=Join-Path $output 'AutomaticRetryOwnerChecks.exe'
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'

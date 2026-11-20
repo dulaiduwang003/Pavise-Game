@@ -1,0 +1,118 @@
+using System.Collections.Generic;
+
+namespace PaviseApp
+{
+    internal static partial class Lang
+    {
+        private static void AddPowerMessages(Dictionary<string, string[]> messages)
+        {
+            messages.Add("gm.scheduling.title", new string[3] { "渲染线程亲和性", "Render thread affinity", "Render thread affinity" });
+            messages.Add("gm.scheduling.detail", new string[2] { "逐游戏决定关键线程在哪些核心上跑，只做核心放置，不改优先级。自动（推荐）在对局稳定后按实测给一到三条帧关键线程各指定一颗优先运行的物理核，不锁定，系统仍可按需调度，其他线程不受限制，后台程序避开这些核，条件不满足时少放或不放；渲染单核把渲染线程固定到最合适的一颗核；手动固定到你选的 CPU。保存后下局生效，关闭或退局时恢复本方修改。", "Decides per game which cores the critical threads run on; it only places cores and never changes priority. Automatic (recommended) measures the game once play settles and points one to three frame-critical threads at preferred physical cores without locking them, so Windows can still move them; other threads are not restricted and background apps stay off those cores, with fewer or none when conditions are not met. Single render core pins the render thread to the best core; Manual pins it to the CPUs you choose. Changes apply next session and owned changes are restored when it is turned off or the game ends." });
+            messages.Add("gm.scheduling.masteroff", new string[2] { "全局渲染线程亲和性已关闭，仍可保存配置。请在深度调优中开启。", "Global render thread affinity is off. You can save settings; enable it in Advanced tuning." });
+            messages.Add("gm.scheduling.gameoff", new string[2] { "此游戏的渲染线程亲和性已关闭，仍可保存配置。请在深度调优中开启。", "Render thread affinity is off for this game. You can save settings; enable it in Advanced tuning." });
+            messages.Add("lib.threads.title", new string[2] { "渲染线程亲和性", "Render thread affinity" });
+            messages.Add("lib.threads.enable.warn", new string[2] { "为本游戏开启渲染线程亲和性？\n\n它会把关键线程固定到独立核心上，效果因游戏和硬件而异。请在相同游戏场景下对照开启前后的 1% low 和流畅度，变差时关闭。", "Enable render thread affinity for this game?\n\nIt pins critical threads to dedicated cores, and results vary by game and hardware. Compare 1% lows and smoothness in the same scene with it on and off, and turn it off if it gets worse." });
+            messages.Add("lib.cores.range", new string[2] { "游戏核心范围", "Game core range" });
+            messages.Add("gm.scheduling.resources.title", new string[2] { "性能优先级", "Performance priority" });
+            messages.Add("gm.scheduling.resources.detail", new string[2] { "对局中把游戏进程设为高优先级，磁盘读写和显卡调度调高，并锁定高性能 QoS（游戏没焦点或被遮挡时不被降到能效核）。默认开，可单独关掉这款游戏；下局生效，退局恢复。", "During matches the game process runs at High, with raised disk I/O and GPU scheduling priority and high-performance QoS locked (it is not moved to efficiency cores when unfocused or covered). On by default; turn it off for this game only. Applies next session and restores at game end." });
+            messages.Add("plan.pick.title", new string[2] { "对局电源计划", "Match Power Plan" });
+            messages.Add("plan.pick.auto", new string[2] { "由软件调度", "Automatic" });
+            messages.Add("plan.pick.pgcontrolled", new string[3] { "由 PG 控制", "PG controlled", "PG が制御" });
+            messages.Add("power.name", new string[2] { "对局电源计划", "Match power plan" });
+            messages.Add("plan.pick.off", new string[3] { "不切换", "Don't switch", "切り替えない" });
+            messages.Add("log.powerplan.off", new string[3] { "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off", "POWER event=selection-saved selection=off" });
+            messages.Add("st.power.verified", new[] { "对局电源已验证", "Match power verified", "ゲーム用電源を確認済み" });
+            messages.Add("st.power.pending", new[] { "对局电源待验证", "Match power pending verification", "ゲーム用電源を確認中" });
+            messages.Add("st.power.stopped", new[] { "对局电源故障·已停用", "Match power failed; stopped", "ゲーム用電源でエラー・停止中" });
+            messages.Add("st.power.restore.failed", new[] { "电源恢复未完成", "Power restoration incomplete", "電源の復元が未完了" });
+            messages.Add("st.power.unchanged", new[] { "沿用系统电源", "Keeping system power plan", "システムの電源プランを維持" });
+            messages.Add("st.power.waiting", new[] { "对局电源待命", "Match power standing by", "ゲーム用電源は待機中" });
+            messages.Add("gm.laptopperf", new string[2] { "对局切换厂商性能档", "Switch to the vendor performance mode during play" });
+            messages.Add("log.laptopperf.5", new string[2] { "厂商性能档已被外部改动 不切回 只清账", "Vendor performance mode was changed externally; not switched back, record cleared" });
+            messages.Add("log.laptopperf.6", new string[2] { "厂商性能档已切回", "Vendor performance mode switched back" });
+            messages.Add("log.laptopperf.7", new string[2] { "检测到上次未切回的厂商性能档 已切回", "Detected a vendor performance mode left from last time; switched back" });
+            messages.Add("bal.update", new string[2] { "发现新版本 {0}，请打开设置中的关于页面查看", "New version {0} available; see Settings > About" });
+            messages.Add("bal.noelev", new string[2] { "当前非管理员运行，压制类功能不会生效", "Not running as administrator; suppression features will not take effect" });
+            messages.Add("log.poweroverlay.6", new string[2] { "电源滑块已还原", "Power slider restored" });
+            messages.Add("log.poweroverlay.7", new string[2] { "检测到上次未还原的电源滑块设置 已恢复", "Detected a power slider setting left unrestored from last time, now recovered" });
+            messages.Add("log.poweroverlay.external", new string[2] { "电源滑块已由其他软件或用户更改，保留当前选择", "Power slider changed externally; keeping the current selection" });
+            messages.Add("log.powerplancorepark.3", new string[2] { "核心停泊还原写回失败 快照保留待下次重试", "Core parking restore write-back failed, snapshot kept for next retry" });
+            messages.Add("log.powerplancorepark.4", new string[2] { "核心停泊已还原电源方案原值", "Core parking restored to power plan original values" });
+            messages.Add("log.powerplancorepark.8", new string[2] { "旧版核心停泊多次还原失败，原值记录已保留，等待后续重试。", "Legacy core-parking restoration failed repeatedly. Original values are retained for a later retry." });
+            messages.Add("t.powerplanschemes.1", new string[2] { "最小处理器状态", "Minimum processor state" });
+            messages.Add("t.powerplanschemes.2", new string[2] { "最大处理器状态", "Maximum processor state" });
+            messages.Add("t.powerplanschemes.3", new string[2] { "核心停放最小核心数", "Core parking minimum cores" });
+            messages.Add("t.powerplanschemes.4", new string[2] { "核心停放最大核心数", "Core parking maximum cores" });
+            messages.Add("t.powerplanschemes.5", new string[2] { "睿频模式", "Turbo boost mode" });
+            messages.Add("t.powerplanschemes.6", new string[2] { "允许节流状态", "Allow throttle states" });
+            messages.Add("t.powerplanschemes.7", new string[2] { "系统散热方式", "System cooling policy" });
+            messages.Add("t.powerplanschemes.8", new string[2] { "PCIe 链接电源管理", "PCIe link power management" });
+            messages.Add("t.powerplanschemes.9", new string[2] { "USB 选择性暂停", "USB selective suspend" });
+            messages.Add("t.powerplanschemes.10", new string[2] { "关闭硬盘时间", "Hard disk off timeout" });
+            messages.Add("t.powerplanschemes.11", new string[2] { "电源计划类型", "Power plan type" });
+            messages.Add("t.powerplanschemes.12", new string[2] { "能源性能首选项", "Energy performance preference" });
+            messages.Add("t.powerplanschemes.13", new string[2] { "睿频策略", "Turbo boost policy" });
+            messages.Add("t.powerplanschemes.14", new string[2] { "升频策略", "Performance increase policy" });
+            messages.Add("t.powerplanschemes.15", new string[2] { "降频策略", "Performance decrease policy" });
+            messages.Add("t.powerplanschemes.16", new string[2] { "升频时间", "Performance increase time" });
+            messages.Add("t.powerplanschemes.17", new string[2] { "降频时间", "Performance decrease time" });
+            messages.Add("t.powerplanschemes.18", new string[2] { "升频阈值", "Performance increase threshold" });
+            messages.Add("t.powerplanschemes.19", new string[2] { "降频阈值", "Performance decrease threshold" });
+            messages.Add("t.powerplanschemes.20", new string[2] { "延迟敏感性能", "Latency sensitivity performance" });
+            messages.Add("t.powerplanschemes.21", new string[2] { "延迟敏感解除停放", "Latency sensitivity unparking" });
+            messages.Add("t.powerplanschemes.22", new string[2] { "处理器忙闲度", "Processor duty cycling" });
+            messages.Add("t.powerplanschemes.23", new string[2] { "处理器最大频率", "Maximum processor frequency" });
+            messages.Add("t.powerplanschemes.24", new string[2] { "无线适配器节能", "Wireless adapter power saving" });
+            messages.Add("t.powerplanschemes.25", new string[2] { "E核最小处理器状态", "E-core minimum processor state" });
+            messages.Add("t.powerplanschemes.26", new string[2] { "E核最大处理器状态", "E-core maximum processor state" });
+            messages.Add("t.powerplanschemes.27", new string[2] { "E核停放最小核心数", "E-core parking minimum cores" });
+            messages.Add("t.powerplanschemes.28", new string[2] { "E核停放最大核心数", "E-core parking maximum cores" });
+            messages.Add("t.powerplanschemes.29", new string[2] { "E核能源性能首选项", "E-core energy performance preference" });
+            messages.Add("t.powerplanschemes.30", new string[2] { "异类线程调度策略", "Heterogeneous thread scheduling policy" });
+            messages.Add("t.powerplanschemes.31", new string[2] { "异类短线程调度策略", "Heterogeneous short-thread scheduling policy" });
+            messages.Add("t.powerplanschemes.35", new string[2] { "NVMe 主盘电源态延迟容忍", "Primary NVMe latency tolerance" });
+            messages.Add("t.powerplanschemes.36", new string[2] { "NVMe 从盘电源态延迟容忍", "Secondary NVMe latency tolerance" });
+            messages.Add("t.powerplanschemes.37", new string[2] { "AHCI 链路电源管理", "AHCI link power management" });
+            messages.Add("t.powerplanschemes.43", new string[2] { "USB 3 链路电源管理", "USB 3 link power management" });
+            messages.Add("t.powerplanschemes.44", new string[2] { "Intel 核显电源计划", "Intel graphics power plan" });
+            messages.Add("t.powerplanschemes.45", new string[2] { "E核睿频策略", "E-core turbo boost policy" });
+            messages.Add("t.powerplanschemes.46", new string[2] { "E核升频策略", "E-core performance increase policy" });
+            messages.Add("t.powerplanschemes.47", new string[2] { "E核降频策略", "E-core performance decrease policy" });
+            messages.Add("t.powerplanschemes.48", new string[2] { "E核升频时间", "E-core performance increase time" });
+            messages.Add("t.powerplanschemes.49", new string[2] { "E核降频时间", "E-core performance decrease time" });
+            messages.Add("t.powerplanschemes.50", new string[2] { "E核升频阈值", "E-core performance increase threshold" });
+            messages.Add("t.powerplanschemes.51", new string[2] { "E核降频阈值", "E-core performance decrease threshold" });
+            messages.Add("t.powerplanschemes.52", new string[2] { "E核延迟敏感性能", "E-core latency sensitivity performance" });
+            messages.Add("t.powerplanschemes.53", new string[2] { "E核延迟敏感解除停放", "E-core latency sensitivity unparking" });
+            messages.Add("t.powerplanschemes.54", new string[2] { "切换显卡全局策略", "Switchable graphics global policy" });
+            messages.Add("t.powerplan.1", new string[2] { "卓越性能", "Ultimate Performance" });
+            messages.Add("t.powerplan.2", new string[2] { "由软件调度 ", "Scheduled by Pavise " });
+            messages.Add("t.powerplan.3", new string[2] { "高性能", "High Performance" });
+            messages.Add("t.powerplan.4", new string[2] { "平衡", "Balanced" });
+            messages.Add("t.powerplan.5", new string[2] { "节能", "Power Saver" });
+            messages.Add("t.powerplan.6", new string[2] { "自定义计划", "Custom plan" });
+            messages.Add("log.powerplan.7", new string[2] { "POWER selection=managed plan=", "POWER selection=managed plan=" });
+            messages.Add("log.powerplan.8", new string[2] { " event=selection-saved routing=processor-specific", " event=selection-saved routing=processor-specific" });
+            messages.Add("log.powerplan.9", new string[2] { "POWER event=selection-saved selection=managed plan=", "POWER event=selection-saved selection=managed plan=" });
+            messages.Add("log.powerplan.10", new string[2] { "POWER selection=existing plan=", "POWER selection=existing plan=" });
+            messages.Add("log.powerplan.11", new string[2] { " event=selection-saved parameterWrite=disabled", " event=selection-saved parameterWrite=disabled" });
+            messages.Add("log.powerplan.15", new string[2] { "POWER event=managed-plan-deleted plan=", "POWER event=managed-plan-deleted plan=" });
+            messages.Add("log.powerplan.19", new string[2] { "POWER event=owned-system-plan-deleted source=ultimate-performance", "POWER event=owned-system-plan-deleted source=ultimate-performance" });
+            messages.Add("log.powerplan.23", new string[2] { "POWER selection=existing plan=", "POWER selection=existing plan=" });
+            messages.Add("log.powerplan.24", new string[2] { " event=target-resolved parameterWrite=disabled", " event=target-resolved parameterWrite=disabled" });
+            messages.Add("log.powerplan.25", new string[2] { "POWER event=activation-cancelled reason=snapshot-persistence-failed", "POWER event=activation-cancelled reason=snapshot-persistence-failed" });
+            messages.Add("log.powerplan.26", new string[2] { "POWER event=activation-verified plan=", "POWER event=activation-verified plan=" });
+            messages.Add("log.powerplan.27", new string[2] { "POWER event=activation-failed", "POWER event=activation-failed" });
+            messages.Add("log.powerplan.28", new string[2] { "POWER event=reactivation-verified target=", "POWER event=reactivation-verified target=" });
+            messages.Add("log.powerplan.29", new string[2] { "POWER event=restore-complete", "POWER event=restore-complete" });
+            messages.Add("log.powerplan.30", new string[2] { "POWER event=restore-failed reason=original-plan-missing", "POWER event=restore-failed reason=original-plan-missing" });
+            messages.Add("log.powerplan.31", new string[2] { "POWER event=restore-failed snapshot=retained retry=next-start", "POWER event=restore-failed snapshot=retained retry=next-start" });
+            messages.Add("log.powerplan.32", new string[2] { "POWER event=orphan-plan-recovered target=system", "POWER event=orphan-plan-recovered target=system" });
+            messages.Add("log.powerplan.36", new string[2] { "POWER event=restore-skipped reason=external-change activePlan=", "POWER event=restore-skipped reason=external-change activePlan=" });
+            messages.Add("t.powerplanprofile.1", new string[2] { "Intel大小核", "Intel hybrid cores" });
+            messages.Add("t.powerplanprofile.2", new string[2] { "AMD密集核", "AMD dense cores" });
+            messages.Add("t.powerplanprofile.3", new string[2] { "X3D大缓存", "X3D large cache" });
+            messages.Add("t.powerplanprofile.4", new string[2] { "双CCD", "Dual CCD" });
+        }
+    }
+}

@@ -9,7 +9,7 @@ using System.Threading;
 namespace PaviseApp
 {
     internal static class SelfTests { internal static bool TryHandleRuntimeMode(string[] args) { throw new InvalidOperationException("Product startup forbidden in isolated recovery checks"); } }
-    // 生产方法仅使用内存委托及临时 Settings 执行。
+    // 生产方法仅使用内存委托及临时 Settings 执行
     internal static class ConsumerRecoveryChecks
     {
         private static int checks;
@@ -18,13 +18,17 @@ namespace PaviseApp
         { return new PerformanceActionStore.Receipt { Id = "fixture", Target = target, Original = "0", Expected = expected, Committed = true }; }
         private static void QuantumCycle()
         {
+            // 前台时间片已下线 不做前向应用 自动阶段不跟保存的档位走 和其他系统设置一样只按会话和动作区分
             Settings.Save(PerformanceActionCatalog.Quantum, true);
             Settings.SaveStr(QuantumProfiles.SettingKey, "38");
-            string a = PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.Quantum);
+            string quantum = PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.Quantum);
             Settings.SaveStr(QuantumProfiles.SettingKey, "37");
-            string b = PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.Quantum);
+            Check(quantum == PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.Quantum)
+                && quantum == PerformanceTuning.RecoveryCycleSerial + "\n" + PerformanceActionCatalog.Quantum, "Retired quantum phase still follows the saved profile");
             Settings.SaveStr(QuantumProfiles.SettingKey, "38");
-            Check(a != b && a == PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.Quantum), "Quantum phase did not follow the actual stable profile value");
+            // 阶段账本按 A B A 切回 A 时不补回 A 的失败次数
+            string a = PerformanceTuning.EnvironmentAutomaticCycle(PerformanceActionCatalog.CpuMitigations), b = a + "\nfixture-material-change";
+            Check(a != b, "Fixture phases are not distinct");
             string reason;
             ActionFailureStore.BeginAutomaticCycle("fixture-quantum", "target", a);
             Check(ActionFailureStore.TryBeginApply("fixture-quantum", "target", out reason), "Quantum initial admission failed");
@@ -65,7 +69,6 @@ namespace PaviseApp
         private sealed class PrivacyBackend : IPrivacyBackend
         {
             internal string Value = "wanted"; internal bool Fail = true; internal int Writes, Reads;
-            public PrivacyPlan Inspect(string action, string selectedTarget) { throw new Exception("No forward inspect allowed"); }
             public string Read(string action, string target) { Reads++; return Value; }
             public bool Write(string action, string target, string value) { Writes++; if (Fail) return false; Value = value; return true; }
         }
@@ -73,7 +76,7 @@ namespace PaviseApp
         {
             PerformanceTuning.BeginRecoveryCycle(104);
             var backend = new PrivacyBackend(); PrivacyControl.Bind(backend);
-            var receipt = new PerformanceActionStore.Receipt { Id = PrivacyActionCatalog.BackgroundGlobal, Target = "fixture", Original = "original", Expected = "wanted", Committed = true };
+            var receipt = new PerformanceActionStore.Receipt { Id = PrivacyActionCatalog.Diagnostics, Target = "fixture", Original = "original", Expected = "wanted", Committed = true };
             string slot = PerformanceActionStore.Slot(receipt.Id, receipt.Target);
             Check(Settings.SaveStrDurable(slot, PerformanceActionStore.Pack(receipt)), "Memory receipt seed failed");
             for (int i = 0; i < 1000; i++) Check(!PrivacyControl.RestoreReceipt(receipt), "Failed restore reported success");
@@ -82,20 +85,6 @@ namespace PaviseApp
             backend.Fail = false; PerformanceTuning.BeginRecoveryCycle(105);
             Check(PrivacyControl.RestoreReceipt(receipt), "New session did not restore saved original");
             Check(backend.Value == "original" && Settings.LoadStr(slot, "").Length == 0, "Restore did not verify and durably clear receipt");
-        }
-        private static void GuardianPhase()
-        {
-            int calls = 0; var waits = new List<int>();
-            Check(!CriticalThreadGuardian.RetainRecoveryUntilSettled(() => { calls++; if (calls == 2) throw new Exception("fixture"); return false; }, delay => waits.Add(delay)), "Exhausted guardian phase reported settled");
-            Check(calls == 3 && waits.Count == 2 && waits[0] == 250 && waits[1] == 500, "Critical guardian phase budget/backoff incorrect");
-            calls = 0; Check(CriticalThreadGuardian.RetainRecoveryUntilSettled(() => { calls++; return true; }, delay => { throw new Exception("Unexpected wait"); }) && calls == 1, "Healthy guardian restoration was capped or delayed");
-            calls = 0; int exitWaits = 0;
-            Check(!CriticalThreadGuardian.RetainRecoveryAcrossTargetExit(() => { calls++; return false; }, delay => { }, () => true,
-                () => { exitWaits++; return true; }, 250) && calls == 3 && exitWaits == 0, "Critical initially gone target received two phases");
-            bool gone = false; int live = 0, exited = 0;
-            Check(!CriticalThreadGuardian.RetainRecoveryAcrossTargetExit(() => { if (gone) exited++; else live++; return false; }, delay => gone = true,
-                () => gone, () => { exitWaits++; return true; }, 250) && live == 1 && exited == 3 && exitWaits == 0,
-                "Critical exit during backoff refilled gone phase twice");
         }
         private static object Invoke(Type type, string name, params object[] args)
         { return type.GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, args); }
@@ -115,15 +104,16 @@ namespace PaviseApp
         }
         private static void HistoricalBudgets()
         {
-            Type type = typeof(CriticalThreadGuardian); const string key = "fixture-history-A";
-            for (int i = 0; i < 3; i++) { Check((bool)Invoke(type, "HistoricalAttemptAllowed", key), "Historical budget stopped prematurely"); Invoke(type, "HistoricalAttemptEnded", key, false); }
-            for (int i = 0; i < 1000; i++) Check(!(bool)Invoke(type, "HistoricalAttemptAllowed", key), "Cross-batch history budget refilled");
-            Check((bool)Invoke(type, "HistoricalAttemptAllowed", "fixture-history-B"), "Exhausted journal blocked a different historical journal");
-            Check((bool)Invoke(type, "BeginHistoricalAttempt", "fixture-owned-history"), "Historical operation did not acquire its own attempt");
-            Check(!(bool)Invoke(type, "BeginHistoricalAttempt", "fixture-owned-history"), "Concurrent historical operation acquired the same attempt");
-            Invoke(type, "HistoricalAttemptEnded", "fixture-owned-history", false);
-            Check((bool)Invoke(type, "BeginHistoricalAttempt", "fixture-owned-history"), "Completed historical failure leaked in-flight ownership");
-            Invoke(type, "HistoricalAttemptEnded", "fixture-owned-history", true);
+            // 历史回执每个阶段最多三次 跨批次不补次数 换阶段或换回执各有自己的三次
+            Type type = typeof(HardThreadStorageDomain); const string key = "fixture-history-A/live";
+            for (int i = 0; i < 3; i++) { Check((bool)Invoke(type, "AttemptAllowed", key), "Historical budget stopped prematurely"); Invoke(type, "AttemptEnded", key, false); }
+            for (int i = 0; i < 1000; i++) Check(!(bool)Invoke(type, "AttemptAllowed", key), "Cross-batch history budget refilled");
+            Check((bool)Invoke(type, "AttemptAllowed", "fixture-history-A/gone"), "Exhausted live phase blocked the exited phase of the same journal");
+            Check((bool)Invoke(type, "AttemptAllowed", "fixture-history-B/live"), "Exhausted journal blocked a different historical journal");
+            const string settled = "fixture-history-C/live";
+            Invoke(type, "AttemptEnded", settled, false); Invoke(type, "AttemptEnded", settled, false); Invoke(type, "AttemptEnded", settled, true);
+            for (int i = 0; i < 3; i++) { Check((bool)Invoke(type, "AttemptAllowed", settled), "A settled journal kept its old failures"); Invoke(type, "AttemptEnded", settled, false); }
+            Check(!(bool)Invoke(type, "AttemptAllowed", settled), "A reused key was not bounded again after it settled");
         }
         private sealed class FailedLayoutPlatform : SuppressionCore.IAutomaticLayoutPlatform
         {
@@ -257,167 +247,6 @@ namespace PaviseApp
             }
             finally { Check(runner.Close(1000), "Second standby worker did not stop"); faulted.Dispose(); }
         }
-        private sealed class FailedIdentityBackend : IConfigurationPresetBackend
-        {
-            internal int Loads;
-            public string LoadIdentity() { Interlocked.Increment(ref Loads); throw new IOException("fixture identity failure"); }
-            public string Read(ConfigurationPresetEntry entry) { throw new Exception("Identity failure must precede fingerprint reads"); }
-            public ConfigurationPresetAvailability Inspect(ConfigurationPresetEntry entry) { throw new Exception("No native inspection permitted"); }
-            public bool Write(ConfigurationPresetEntry entry, string value, Func<bool> cancelled, out string detail) { throw new Exception("No write permitted"); }
-            public bool SaveIdentity(string identity) { throw new Exception("No identity write permitted"); }
-        }
-        private static void PollIdentity(ConfigurationPresetRuntime runtime)
-        {
-            var ignored = runtime.CurrentPreset;
-            FieldInfo refreshing = typeof(ConfigurationPresetRuntime).GetField("refreshing", BindingFlags.NonPublic | BindingFlags.Instance);
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            while ((int)refreshing.GetValue(runtime) != 0 && timer.ElapsedMilliseconds < 3000) Thread.Sleep(1);
-            Check((int)refreshing.GetValue(runtime) == 0, "Preset identity refresh did not complete");
-        }
-        private static void SavedPresetConfigurationPhase()
-        {
-            Settings.UseTransientStoreForCurrentProcess();
-            var saved = new ConfigurationPresetBackend(null);
-            string initial = ConfigurationPresetBackend.SavedIdentityPhase();
-            foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
-            {
-                string value = saved.Read(entry);
-                Check(value != null, "Default saved preset value was unreadable: " + entry.Key);
-                string key = PrivacyControl.IsAction(entry.Key) ? PrivacyControl.PreferencePrefix + entry.Key : entry.Key;
-                Settings.SaveStr(key, value);
-                Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Explicit default invented a new configuration phase: " + entry.Key);
-            }
-            Settings.SaveStr("GmSuppress", "true");
-            Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Equivalent true/1 preference changed normalized phase");
-            Settings.SaveStr(ConfigurationPresetRuntime.IdentityKey, "new-last-applied-metadata");
-            Settings.SaveStr("fixture-report-timestamp", "later");
-            Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Identity/report metadata changed configuration phase");
-            PerformanceTuning.BeginRecoveryCycle(114);
-            var backend = new FailedIdentityBackend(); int snapshots = 0;
-            var runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null, null, null,
-                () => { snapshots++; return ConfigurationPresetBackend.SavedIdentityPhase(); });
-            for (int i = 0; i < 3; i++) PollIdentity(runtime);
-            Check(backend.Loads == 3 && snapshots == 1, "Initial production configuration failure phase was not bounded/cached");
-            for (int i = 0; i < 1000; i++) { Settings.SaveStr("fixture-unrelated", i.ToString()); PollIdentity(runtime); }
-            Check(backend.Loads == 3, "Unrelated actual Settings mutations requeued failed identity work");
-            // 卡片设置会推进真实设置代次，但不能重开已耗尽的预设身份阶段。
-            foreach (string key in new[] { "GmBoost", "GmBoostCpuV1", "GmBoostIoV1", "GmBoostGpuV1", "GmBoostMemoryV1",
-                "GmThreadBoostStrategyV1", "GmRenderLane", "FrameCoordination", "GmGameSchedulingV1",
-                "GameCriticalThreadHardRuleV1", "GmAutoCoresV2", "GmManualCorePlanV2", "GameAceGovernanceV1", "GameFamilyBackground",
-                "GameNvRebarV1", "GameDisableFullscreenOptimizationsV1" })
-            {
-                string a = key == ThreadBoostSelection.Key ? "off" : key == CriticalThreadRule.Key ? CriticalThreadRule.UnifiedOff().Encode()
-                    : key == ManualCorePlan.Key ? "1|FF,3,C,30,C0|FF|0" : "0";
-                string b = key == ThreadBoostSelection.Key ? "on" : key == CriticalThreadRule.Key ? CriticalThreadRule.UnifiedAuto().Encode()
-                    : key == ManualCorePlan.Key ? "2|FF,3,C,30,C0|3F|1|1" : "1";
-                foreach (string value in new[] { a, b, a })
-                {
-                    int generation = Settings.MutationGeneration;
-                    Check(Settings.SaveStr(key, value) && Settings.MutationGeneration > generation, "Game-card mutation did not advance actual settings generation: " + key);
-                    PollIdentity(runtime);
-                    Check(ConfigurationPresetBackend.SavedIdentityPhase() == initial && backend.Loads == 3,
-                        "Game-card A-B-A mutation refilled exhausted preset identity phase: " + key);
-                }
-            }
-            Settings.Save("GmSuppress", false);
-            for (int i = 0; i < 3; i++) PollIdentity(runtime);
-            Check(backend.Loads == 6, "Actual GmSuppress change did not open a bounded configuration phase");
-            Settings.Save("GmSuppress", true); PollIdentity(runtime);
-            Check(backend.Loads == 6 && ConfigurationPresetBackend.SavedIdentityPhase() == initial, "Actual GmSuppress A-B-A refilled exhausted A");
-            Settings.SaveStr("GmSuppress", "True"); PollIdentity(runtime);
-            Check(backend.Loads == 6, "Equivalent boolean representation replenished failed A");
-            PerformanceTuning.BeginRecoveryCycle(115); PollIdentity(runtime);
-            Check(backend.Loads == 7, "Real session did not reopen saved configuration identity phase");
-            Settings.Save("EnvQuantumProfileV1", true); Settings.SaveStr("EnvQuantumSelectedProfileV1", "38");
-            string quantum = ConfigurationPresetBackend.SavedIdentityPhase();
-            Settings.SaveStr("EnvQuantumSelectedProfileV1", "038");
-            Check(ConfigurationPresetBackend.SavedIdentityPhase() == quantum, "Equivalent quantum numeric representation changed phase");
-            Settings.SaveStr("EnvQuantumSelectedProfileV1", "37");
-            Check(ConfigurationPresetBackend.SavedIdentityPhase() != quantum, "Actual quantum sub-choice was absent from phase");
-            Settings.Save("EnvStorageIdleV1", true); string storage = ConfigurationPresetBackend.SavedIdentityPhase();
-            Settings.Save("EnvStorageRuntimeV1", true);
-            Check(ConfigurationPresetBackend.SavedIdentityPhase() != storage, "Storage sub-member change was hidden by an already-enabled group");
-            backend = new FailedIdentityBackend();
-            runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null);
-            for (int i = 0; i < 3; i++) PollIdentity(runtime);
-            Settings.Save("GmSuppress", false); PollIdentity(runtime);
-            Check(backend.Loads == 4, "Default runtime constructor did not use actual saved configuration phases");
-        }
-        private sealed class SavedSameValueIdentityBackend : IConfigurationPresetBackend, IConfigurationPresetSnapshot
-        {
-            internal readonly ConfigurationPresetBackend Saved = new ConfigurationPresetBackend(null);
-            internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(false);
-            internal int Loads;
-            internal bool FailIdentity = true, BlockThird = true;
-            public string LoadIdentity() { int call = Interlocked.Increment(ref Loads); if (call == 3 && BlockThird) { Entered.Set(); Release.WaitOne(); } if (FailIdentity) throw new IOException("old saved-identity observer"); return Saved.LoadIdentity(); }
-            public string Read(ConfigurationPresetEntry entry) { return Saved.Read(entry); }
-            public string ExtraSnapshot() { return Saved.ExtraSnapshot(); }
-            public ConfigurationPresetAvailability Inspect(ConfigurationPresetEntry entry) { return ConfigurationPresetAvailability.Yes(); }
-            public bool Write(ConfigurationPresetEntry entry, string value, Func<bool> cancelled, out string detail)
-            { detail = "already configured; memory transaction boundary"; return Read(entry) == value; }
-            public bool SaveIdentity(string identity) { return Saved.SaveIdentity(identity); }
-        }
-        private static void SeedSavedPreset(ConfigurationPresetKind preset)
-        {
-            foreach (ConfigurationPresetEntry entry in ConfigurationPresetCatalog.Entries)
-            {
-                string key = PrivacyControl.IsAction(entry.Key) ? PrivacyControl.PreferencePrefix + entry.Key : entry.Key;
-                if (entry.Key == PerformanceActionCatalog.Quantum)
-                {
-                    bool on = ConfigurationPresetEntry.IsEnabled(entry.Value(preset));
-                    Settings.Save(entry.Key, on); Settings.SaveStr(QuantumProfiles.SettingKey, on ? entry.Value(preset) : "38");
-                }
-                else if (entry.Key == PerformanceActionCatalog.CpuMitigations) Settings.Save(key, true);
-                else Settings.SaveStr(key, entry.Value(preset));
-            }
-            Settings.Save(CpuMitigationPolicy.ExpandedPreferenceKey, preset == ConfigurationPresetKind.Extreme);
-            foreach (string member in PerformanceTuning.StorageMembers()) Settings.Save(member, preset == ConfigurationPresetKind.Extreme);
-        }
-        private static void SavedSameValueApplyRace()
-        {
-            Settings.UseTransientStoreForCurrentProcess(); SeedSavedPreset(ConfigurationPresetKind.Extreme);
-            var backend = new SavedSameValueIdentityBackend(); var completed = new ManualResetEvent(false);
-            var runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null);
-            string phase = ConfigurationPresetBackend.SavedIdentityPhase();
-            try
-            {
-                PollIdentity(runtime); PollIdentity(runtime); var ignored = runtime.CurrentPreset;
-                Check(backend.Entered.WaitOne(3000), "Real saved-identity third failure did not block");
-                int before = Settings.MutationGeneration; ConfigurationPresetResult result = null;
-                Check(runtime.TryApply(ConfigurationPresetKind.Extreme, () => false, value => { result = value; completed.Set(); }), "Real saved same-value apply was not admitted");
-                Check(completed.WaitOne(3000) && result != null && result.Failed == 0 && result.Identity != null, "Real saved settings did not verify Extreme");
-                Check(Settings.MutationGeneration > before && ConfigurationPresetBackend.SavedIdentityPhase() == phase,
-                    "Same-value apply must bump real Settings generation without changing its material phase");
-                Check(runtime.CurrentPreset == ConfigurationPresetKind.Extreme, "Verified saved apply did not publish Extreme");
-                backend.Release.Set(); PollIdentity(runtime);
-                for (int i = 0; i < 1000; i++) Check(runtime.CurrentPreset == ConfigurationPresetKind.Extreme, "Old exception erased a newer verified saved identity");
-                Check(backend.Loads == 3, "Same-value real apply reopened exhausted material phase A");
-            }
-            finally { backend.Release.Set(); PollIdentity(runtime); backend.Entered.Dispose(); backend.Release.Dispose(); completed.Dispose(); }
-        }
-        private static void SavedMaterialDisplay()
-        {
-            Settings.UseTransientStoreForCurrentProcess(); SeedSavedPreset(ConfigurationPresetKind.Default);
-            var backend = new SavedSameValueIdentityBackend { BlockThird = false }; var model = new ConfigurationPresetCoordinator(backend);
-            backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + model.Fingerprint());
-            var runtime = new ConfigurationPresetRuntime(backend, () => Settings.MutationGeneration, null);
-            var done = new ManualResetEvent(false);
-            try
-            {
-                for (int i = 0; i < 3; i++) PollIdentity(runtime);
-                SeedSavedPreset(ConfigurationPresetKind.Extreme); backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Extreme) + model.Fingerprint()); backend.FailIdentity = false;
-                PollIdentity(runtime); Check(runtime.CurrentPreset == ConfigurationPresetKind.Extreme, "Actual material B did not display verified Extreme");
-                SeedSavedPreset(ConfigurationPresetKind.Default); backend.SaveIdentity(ConfigurationPresetCoordinator.IdentityPrefix(ConfigurationPresetKind.Default) + model.Fingerprint());
-                for (int i = 0; i < 1000; i++) Check(!runtime.CurrentPreset.HasValue, "Actual exhausted material A retained B's preset label");
-                Check(backend.Loads == 4, "Actual A-B-A invalidation reopened the exhausted identity reader");
-                ConfigurationPresetResult result = null;
-                Check(runtime.TryApply(ConfigurationPresetKind.Default, () => false, value => { result = value; done.Set(); }), "Explicit verified apply to material A was not admitted");
-                Check(done.WaitOne(3000) && result != null && result.Failed == 0 && result.Identity != null, "Actual saved material A failed verification");
-                for (int i = 0; i < 1000; i++) Check(runtime.CurrentPreset == ConfigurationPresetKind.Default, "Actual material A erased its own newer verified apply");
-                Check(backend.Loads == 4, "Verified material A apply refilled its exhausted observer phase");
-            }
-            finally { backend.Release.Set(); PollIdentity(runtime); backend.Entered.Dispose(); backend.Release.Dispose(); done.Dispose(); }
-        }
         private static void RecoveryOwnerReporters()
         {
             PerformanceTuning.BeginRecoveryCycle(116); Settings.UseTransientStoreForCurrentProcess();
@@ -468,21 +297,21 @@ namespace PaviseApp
             {
                 lock (SystemConfigurationGate.Sync)
                 {
-                    coordinator.Queue(false, false, new string[0]);
+                    coordinator.Queue(false, false);
                     using (var trace = new RecoveryAttemptTrace())
                     {
                         Check(!coordinator.WaitForSessionRestore(0) && trace.Reported && trace.Next > DateTime.UtcNow.Ticks
                             && trace.Next <= DateTime.UtcNow.AddSeconds(2).Ticks, "Async wait did not report its one-second deferred state");
                     }
                 }
-                Check(coordinator.DrainForNvHandoff(3000), "Coordinator cooldown worker did not drain");
+                Check(coordinator.DrainForTest(3000), "Coordinator cooldown worker did not drain");
                 using (var trace = new RecoveryAttemptTrace())
                     Check(!coordinator.WaitForSessionRestore(0) && trace.Reported && trace.Next == due, "Worker's actual restore deadline was not published to the waiting route");
                 int actual = 0;
                 for (int i = 0; i < 5; i++) PerformanceTuning.RestoreWithBudget(receipt, 5, () => { actual++; return false; });
                 attemptType.GetField("Next", fields).SetValue(attempt, 0L);
                 coordinatorType.GetField("nextCheck", fields).SetValue(coordinator, 0L);
-                coordinator.Queue(false, false, new string[0]); Check(coordinator.DrainForNvHandoff(3000), "Coordinator exhausted worker did not drain");
+                coordinator.Queue(false, false); Check(coordinator.DrainForTest(3000), "Coordinator exhausted worker did not drain");
                 using (var trace = new RecoveryAttemptTrace())
                 {
                     Check(!coordinator.WaitForSessionRestore(0) && trace.Reported && trace.Next == long.MaxValue && trace.PhaseObservers.Count > 0,
@@ -495,11 +324,11 @@ namespace PaviseApp
             }
             finally { Settings.SaveStrDurable(slot, ""); Check(coordinator.Close(1000), "Memory coordinator did not close after fixture receipt cleanup"); }
         }
-        // 写入途中进程退出留下的执行意图：没有恢复记录时按恢复完成结清，之后照常重新应用；有记录时不越过记录。
+        // 写入途中进程退出留下的执行意图 没有恢复记录时按恢复完成结清 之后照常重新应用 有记录时不越过记录
         private static void DanglingIntentWithoutReceipt()
         {
             Settings.UseTransientStoreForCurrentProcess(); PerformanceTuning.BeginRecoveryCycle(118);
-            const string action = "AutoGameMitigationsV1";
+            const string action = PerformanceActionCatalog.CpuMitigations;
             string target = @"C:\SyntheticOnly\dangling.exe", other = @"C:\SyntheticOnly\owned.exe";
             var admissions = (IDictionary)typeof(ActionFailureStore).GetField("admissions", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
             string reason;
@@ -507,7 +336,7 @@ namespace PaviseApp
             {
                 ActionFailureStore.BeginAutomaticCycle(action, item, "118\noff64");
                 Check(ActionFailureStore.TryBeginApply(action, item, out reason), "Fixture intent was not admitted: " + reason);
-                // 模拟重启：内存准入已不在，持久意图仍在；新进程开始新一轮自动阶段。
+                // 模拟重启 内存准入已不在 持久意图仍在 新进程开始新一轮自动阶段
                 admissions.Remove(ActionFailureStore.RecordKey(action, item));
                 ActionFailureStore.BeginAutomaticCycle(action, item, "119\noff64");
             }
@@ -533,10 +362,66 @@ namespace PaviseApp
             }
         }
 
+        private static int AutomaticFailures(string cyclePrefix)
+        {
+            var failures = (Dictionary<string, int>)typeof(PerformanceTuning).GetField("recoveryFailures", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            int total = 0;
+            lock (SystemConfigurationGate.Sync)
+                foreach (KeyValuePair<string, int> entry in failures) if (entry.Key.StartsWith(cyclePrefix, StringComparison.Ordinal)) total += entry.Value;
+            return total;
+        }
+
+        // 用户亲手关开关算用户操作 每次操作每条回执只写一次 失败不占自动预算 成功时清零这条回执的自动失败计数
+        private static void UserRestoreBudget()
+        {
+            PerformanceTuning.BeginRecoveryCycle(119);
+            var receipt = Receipt("user", "A"); int calls = 0;
+            Func<bool> fail = () => { calls++; return false; };
+            using (PerformanceTuning.BeginUserRestore())
+            {
+                Check(!PerformanceTuning.RestoreWithBudget(receipt, 3, fail) && calls == 1, "User restore did not write once");
+                // 嵌套进来的步骤沿用同一次操作 这次已经失败的回执不重复写
+                using (PerformanceTuning.BeginUserRestore())
+                    for (int i = 0; i < 5; i++) Check(!PerformanceTuning.RestoreWithBudget(receipt, 3, fail), "Failure reported restored");
+                Check(calls == 1, "One user operation retried a failed receipt");
+            }
+            for (int i = 0; i < 5; i++) PerformanceTuning.RestoreWithBudget(receipt, 3, fail);
+            Check(calls == 4 && AutomaticFailures("119|") == 3, "User operation consumed the automatic budget");
+            using (PerformanceTuning.BeginUserRestore()) PerformanceTuning.RestoreWithBudget(receipt, 3, fail);
+            Check(calls == 5, "A later user operation did not get its own write");
+            for (int i = 0; i < 3; i++) PerformanceTuning.RestoreWithBudget(receipt, 3, fail);
+            Check(calls == 5 && AutomaticFailures("119|") == 3, "Failed user restore cleared the exhausted automatic budget");
+            // 用户恢复成功说明故障已经消失 自动计数清零 之后的自动失败从 1 开始算 照样封顶三次
+            using (PerformanceTuning.BeginUserRestore())
+                Check(PerformanceTuning.RestoreWithBudget(receipt, 3, () => { calls++; return true; }), "Exhausted automatic budget blocked the user restore");
+            Check(calls == 6 && AutomaticFailures("119|") == 0, "Successful user restore kept the old automatic failures");
+            Check(!PerformanceTuning.RestoreWithBudget(receipt, 3, fail) && calls == 7 && AutomaticFailures("119|") == 1,
+                "Automatic failure after a successful user restore did not run or did not count from one");
+            for (int i = 0; i < 5; i++) PerformanceTuning.RestoreWithBudget(receipt, 3, fail);
+            Check(calls == 9 && AutomaticFailures("119|") == 3, "Automatic budget after a successful user restore was not bounded at three");
+            PerformanceTuning.BeginRecoveryCycle(120);
+            for (int i = 0; i < 5; i++) PerformanceTuning.RestoreWithBudget(receipt, 3, fail);
+            Check(calls == 12, "New session did not keep the plain automatic budget");
+            // 重置和卸载里的全部恢复也是用户自己点的 同样不被用完的自动预算挡住
+            Settings.UseTransientStoreForCurrentProcess(); PerformanceTuning.BeginRecoveryCycle(121);
+            var backend = new PrivacyBackend(); PrivacyControl.Bind(backend);
+            var owned = new PerformanceActionStore.Receipt { Id = PrivacyActionCatalog.Diagnostics, Target = "reset", Original = "original", Expected = "wanted", Committed = true };
+            string slot = PerformanceActionStore.Slot(owned.Id, owned.Target);
+            Check(Settings.SaveStrDurable(slot, PerformanceActionStore.Pack(owned)), "Memory receipt seed failed");
+            for (int i = 0; i < 5; i++) Check(!PrivacyControl.RestoreReceipt(owned), "Failed restore reported success");
+            Check(backend.Writes == 3, "Automatic privacy restore ignored its budget");
+            Check(PerformanceTuning.RestoreAllFailures().Count == 1 && backend.Writes == 4, "Exhausted automatic budget blocked the reset restore");
+            Check(!PrivacyControl.RestoreReceipt(owned) && backend.Writes == 4, "Reset restore refilled the automatic budget");
+            backend.Fail = false;
+            Check(PerformanceTuning.RestoreAllFailures().Count == 0 && backend.Value == "original" && Settings.LoadStr(slot, "").Length == 0,
+                "Reset restore did not finish after the fault cleared");
+        }
+
         private static int Main()
         {
             try { Settings.UseTransientStoreForCurrentProcess(); Logger.WritesEnabled = false;
-                SharedBudget(); QuantumCycle(); PrivacyReceipt(); GuardianPhase(); SuppressionPhases(); HistoricalBudgets(); SuppressionActualRecovery(); StandbyStableCycle(); BackgroundJournalDebt(); SavedPresetConfigurationPhase(); SavedSameValueApplyRace(); SavedMaterialDisplay(); RecoveryOwnerReporters(); DanglingIntentWithoutReceipt();
+                SharedBudget(); QuantumCycle(); PrivacyReceipt(); SuppressionPhases(); HistoricalBudgets(); SuppressionActualRecovery(); StandbyStableCycle(); BackgroundJournalDebt(); RecoveryOwnerReporters(); DanglingIntentWithoutReceipt();
+                UserRestoreBudget();
                 Console.WriteLine("PASS ConsumerRecoveryChecks checks=" + checks + " production_methods=true transient_settings=true native_writes=0 product_started=false"); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }

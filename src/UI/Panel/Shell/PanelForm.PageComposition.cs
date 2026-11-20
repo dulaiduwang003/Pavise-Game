@@ -1,0 +1,765 @@
+using System;
+using System.Drawing;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace PaviseApp
+{
+    internal partial class PanelForm : Form
+    {
+        private void BuildAboutPage()
+        {
+            int aboutPageValue = (aboutContentTop = 8);
+            aboutViewport = Size.Empty;
+            pageAbout.AutoScroll = false;
+            Native.Dark(pageAbout);
+            AboutHeroPanel aboutHeroPanel = (this.aboutHeroPanel = new AboutHeroPanel());
+            aboutHeroPanel.SetBounds(Theme.S(30), Theme.S(aboutPageValue), Theme.S(ContentW), Theme.S(130));
+            pageAbout.Controls.Add(aboutHeroPanel);
+            PictureBox pictureBox = new PictureBox();
+            pictureBox.SetBounds(Theme.S(24), Theme.S(23), Theme.S(84), Theme.S(84));
+            pictureBox.BackColor = Color.Transparent;
+            pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
+            aboutIcon = pictureBox;
+            OwnedImage(pictureBox, IconArt.Render(Theme.S(108), Theme.CurrentMode, true));
+            aboutHeroLabels = new Label[4]
+            {
+                CardLabel(aboutHeroPanel, Lang.T("v20.about.system"), 132, 12, 360, 20, 7.1f, true, Theme.Faint),
+                CardLabel(aboutHeroPanel, "PAVISE AUTO", 130, 31, 330, 40, 24f, true, Theme.Fg),
+                AccentLabel(aboutHeroPanel, "AUTO GUARD  //  " + App.VersionTag, 132, 71, 360, 22, 8f, true),
+                CardLabel(aboutHeroPanel, Lang.T("about.desc").Replace("\r\n", " "), 132, 96, 390, 27, 9f, false, Theme.Dim)
+            };
+            aboutHeroPanel.Controls.Add(pictureBox);
+            aboutMetricControls = new Control[3][]
+            {
+                AddAboutMetric(aboutHeroPanel, Lang.T("v20.about.build"), App.VersionTag, 582, 27, 116, false),
+                AddAboutMetric(aboutHeroPanel, Lang.T("v20.about.platform"), "WINDOWS x64", 706, 27, 124, false),
+                AddAboutMetric(aboutHeroPanel, Lang.T("v20.about.state"), Lang.T("v20.about.ready"), 838, 27, 108, true)
+            };
+            int aboutPageValue2 = aboutPageValue + 130 + 12;
+            int aboutPageValue3 = 454;
+            int aboutPageValue4 = 14;
+            int remainingAboutPageValue4 = ContentW - aboutPageValue3 - aboutPageValue4;
+            int aboutPageValue5 = 366;
+            RoundPanel roundPanel = (aboutIdentityPanel = MakeConsolePanel(pageAbout, 30, aboutPageValue2, aboutPageValue3, aboutPageValue5, false));
+            Label label = CardLabel(roundPanel, "PROJECT // IDENTITY", 20, 15, aboutPageValue3 - 126, 20, 7.6f, true, Theme.Faint);
+            label.Name = "aboutIdentityHeading";
+            label.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Label label2 = CardLabel(roundPanel, "NODE 01", aboutPageValue3 - 88, 15, 68, 18, 6.5f, false, Theme.Faint);
+            label2.Name = "aboutIdentityNode";
+            label2.TextAlign = ContentAlignment.MiddleRight;
+            label2.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            string[] textEntries = new string[4] { "about.author", "about.douyin", "about.repo", "about.lic" };
+            string[] textEntries2 = new string[4]
+            {
+                "bdth 2074055628@qq.com",
+                "44601770838",
+                App.RepoUrl.Replace("https://", ""),
+                Lang.T("about.lic.value")
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                int aboutPageValue6 = 47 + i * 44;
+                Label label3 = AddAboutRow(roundPanel, i, Lang.T(textEntries[i]).ToUpperInvariant(), textEntries2[i], aboutPageValue6, aboutPageValue3, i == 2 || i == 3);
+                if (i == 2 || i == 3)
+                {
+                    string targetUrl = ((i == 2) ? App.RepoUrl : App.RepoUrl + "/blob/dev/LICENSE");
+                    label3.Cursor = Cursors.Hand;
+                    label3.Click += delegate
+                    {
+                        OpenExternal(targetUrl);
+                    };
+                }
+            }
+            Label freeLabel = CardLabel(roundPanel, Lang.T("about.free"), 20, 231, aboutPageValue3 - 40, 22, 9.5f, true, Theme.Green);
+            freeLabel.Name = "aboutFree";
+            freeLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Label refundHint = CardLabel(roundPanel, Lang.T("about.refund.hint"), 20, 258, aboutPageValue3 - 40, 44, 7.8f, false, Theme.Fg);
+            refundHint.Name = "aboutRefund";
+            refundHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Label label4 = CardLabel(roundPanel, Lang.T("about.contact.hint"), 20, 312, aboutPageValue3 - 40, 40, 7.8f, false, Theme.Dim);
+            label4.Name = "aboutContact";
+            label4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            RoundPanel roundPanel2 = (aboutReleasePanel = MakeConsolePanel(pageAbout, 30 + aboutPageValue3 + aboutPageValue4, aboutPageValue2, remainingAboutPageValue4, aboutPageValue5, true));
+            Label label5 = CardLabel(roundPanel2, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, remainingAboutPageValue4 - 126, 20, 7.6f, true, Theme.Faint);
+            label5.Name = "aboutReleaseHeading";
+            label5.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            StatusDot statusDot = new StatusDot();
+            statusDot.Name = "aboutReleaseStateDot";
+            statusDot.SetBounds(Theme.S(remainingAboutPageValue4 - 126), Theme.S(12), Theme.S(22), Theme.S(22));
+            statusDot.Bg = Theme.Card;
+            statusDot.Color = Theme.Green;
+            statusDot.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            roundPanel2.Controls.Add(statusDot);
+            Label label6 = CardLabel(roundPanel2, Lang.T("v20.about.online"), remainingAboutPageValue4 - 102, 12, 82, 24, 6.7f, true, Theme.Green);
+            label6.Name = "aboutReleaseState";
+            label6.TextAlign = ContentAlignment.MiddleRight;
+            label6.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            AccentLabel(roundPanel2, App.VersionTag, 20, 45, 254, 43, 23f, true).Name = "aboutReleaseVersion";
+            Label label7 = CardLabel(roundPanel2, Lang.T("v15.about.identity"), 22, 87, remainingAboutPageValue4 - 44, 22, 8.2f, false, Theme.Dim);
+            label7.Name = "aboutReleaseIdentity";
+            label7.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Panel panel = new Panel();
+            panel.Name = "aboutReleaseDivider";
+            panel.BackColor = Theme.StrokeHi;
+            panel.SetBounds(Theme.S(20), Theme.S(119), Theme.S(remainingAboutPageValue4 - 40), 1);
+            panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            roundPanel2.Controls.Add(panel);
+            CardLabel(roundPanel2, Lang.T("site.about.source"), 20, 132, remainingAboutPageValue4 - 40, 18, 7f, true, Theme.Faint).Name = "aboutUpdateSource";
+            RoundPanel roundPanel3 = MakeConsolePanel(roundPanel2, 20, 153, remainingAboutPageValue4 - 40, 54, false);
+            roundPanel3.Name = "aboutWebsite";
+            roundPanel3.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            CardLabel(roundPanel3, "PAVISE // OFFICIAL WEBSITE", 14, 6, remainingAboutPageValue4 - 68, 18, 7.3f, true, Theme.Faint).Name = "aboutWebsiteHeading";
+            AccentLabel(roundPanel3, "pavise.club", 14, 25, remainingAboutPageValue4 - 68, 25, 10f, true).Name = "aboutWebsiteAddress";
+            RoundPanel roundPanel4 = MakeConsolePanel(roundPanel2, 20, 218, remainingAboutPageValue4 - 40, 60, false);
+            roundPanel4.Name = "aboutPrivacy";
+            roundPanel4.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            StatusDot statusDot2 = new StatusDot();
+            statusDot2.Name = "aboutPrivacyDot";
+            statusDot2.SetBounds(Theme.S(14), Theme.S(18), Theme.S(22), Theme.S(22));
+            statusDot2.Bg = Theme.Card;
+            statusDot2.FollowAccent = true;
+            roundPanel4.Controls.Add(statusDot2);
+            CardLabel(roundPanel4, Lang.T("v20.about.privacy"), 44, 8, remainingAboutPageValue4 - 116, 19, 7f, true, Theme.Faint).Name = "aboutPrivacyHeading";
+            CardLabel(roundPanel4, Lang.T("v20.about.privacy.value"), 44, 27, remainingAboutPageValue4 - 116, 25, 9.4f, true, Theme.Fg).Name = "aboutPrivacyValue";
+            lblAboutUpdate = CardLabel(roundPanel2, "", 20, aboutPageValue5 - 76, remainingAboutPageValue4 - 40, 18, 7.7f, false, Theme.Faint);
+            lblAboutUpdate.Name = "aboutUpdateStatus";
+            lblAboutUpdate.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            int ratio = (remainingAboutPageValue4 - 52) / 2;
+            PillButton pillButton = new PillButton(Lang.T("notes.open"), BtnKind.Primary);
+            pillButton.Name = "aboutReleaseNotes";
+            pillButton.Bg = Theme.Card;
+            PillButton pillButton2 = pillButton;
+            pillButton2.SetBounds(Theme.S(20), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
+            pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            pillButton2.Click += delegate
+            {
+                ShowReleaseNotes();
+            };
+            roundPanel2.Controls.Add(pillButton2);
+            PillButton pillButton3 = new PillButton(PerformancePolicy.Text("检查与更新", "Check for updates"));
+            pillButton3.Name = "aboutWebsiteDownload";
+            pillButton3.Bg = Theme.Card;
+            PillButton pillButton4 = pillButton3;
+            pillButton4.SetBounds(Theme.S(32 + ratio), Theme.S(aboutPageValue5 - 50), Theme.S(ratio), Theme.S(36));
+            pillButton4.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            pillButton4.Click += delegate
+            {
+                OpenSoftwareUpdate();
+            };
+            roundPanel2.Controls.Add(pillButton4);
+            RefreshAboutUpdate();
+            pageAbout.SizeChanged += delegate
+            {
+                aboutViewport = Size.Empty;
+                LayoutAboutViewport();
+            };
+            LayoutAboutViewport();
+        }
+        private void BuildAutomationPage()
+        {
+            automationSync.Clear();
+            ResetEnvironmentObservation();
+            environmentPerformanceSwitches.Clear();
+            environmentPerformanceCards.Clear();
+            performanceGrid = new PerformanceFeatureGrid { Name = "PerformanceGrid" };
+            pagePolicy.Controls.Add(performanceGrid);
+            LayoutPerformanceViewport();
+
+            int y = 2;
+            BuildStandbyCleanerTuningCard(performanceGrid, ref y);
+            foreach (PolicyItem item in PolicyCatalog.All)
+            {
+                if (PerformancePolicy.IsIntent(item.Key) || PerformancePolicy.IsRetired(item.Key)
+                    || PerformancePolicy.IsGamePriorityOption(item.Key) || item.Key == "GmThreadBoostStrategyV1"
+                    || item.Key == "PowerPlanOn" || item.Key == "AutoTimerTick" || item.Key == "AutoGlobalTimer"
+                    || item.Key == PolicyCatalog.KeyStandbyCleaner)
+                {
+                    continue;
+                }
+                AddManualPolicyControl(performanceGrid, ref y, item);
+            }
+            BuildEnvironmentRecordingOption(performanceGrid, ref y);
+            BuildPerformanceTuningEnvironment(performanceGrid, ref y);
+            BuildEnvironmentTimerOptions(performanceGrid, ref y);
+            BuildLaboratoryOptions(performanceGrid, ref y);
+            ConfigurePerformanceCards(performanceGrid);
+            GroupPerformanceSections(performanceGrid);
+            performanceGrid.Complete();
+            pagePolicy.SizeChanged += delegate { LayoutPerformanceViewport(); };
+            RefreshAutomationPage();
+        }
+        private void BuildCriticalThreadEditor(Control parent, int width)
+        {
+            criticalThreadEditor = new CoreThreadSurface();
+            parent.Controls.Add(criticalThreadEditor);
+            criticalThreadProfile = (criticalThreadExpected = (criticalThreadError = null));
+            criticalThreadEditor.Name = "CriticalThreadEditor";
+            criticalThreadTitle = CardLabel(criticalThreadEditor, Lang.T("lib.threads.title"), 18, 12, width - 104, 30, 11f, true, Theme.Fg);
+            criticalThreadEnabled = new FamilySuppressionSwitch(true)
+            {
+                Name = "libraryThreadAffinityToggle",
+                TabIndex = 0,
+                DetailsWidth = 62,
+                Text = Lang.T("lib.threads.title"),
+                IconKey = "threads"
+            };
+            criticalThreadEnabled.Click += delegate
+            {
+                if (!criticalThreadSyncing)
+                {
+                    SaveCriticalThreadSwitch(!criticalThreadEnabled.Checked);
+                }
+            };
+            criticalThreadEditor.Controls.Add(criticalThreadEnabled);
+            criticalThreadHelp = CardLabel(criticalThreadEditor, ThreadLayoutDescriptions.Help(), 18, 50, width - 36, 80, 9f, false, Theme.Dim);
+            criticalThreadHelp.AutoEllipsis = false;
+            criticalThreadCompanion = CardLabel(criticalThreadEditor, "", 18, 0, width - 36, 40, 9f, false, Theme.Dim);
+            criticalThreadCompanion.Name = "CriticalThreadCompanion";
+            criticalThreadCompanion.AutoEllipsis = false;
+            criticalThreadResult = CardLabel(criticalThreadEditor, "", 18, 0, width - 36, 40, 9f, false, Theme.Dim);
+            criticalThreadResult.Name = "CriticalThreadSaveResult";
+            criticalThreadResult.AutoEllipsis = false;
+            criticalThreadRuntime = CardLabel(criticalThreadEditor, "", 18, 0, width - 36, 60, 9f, false, Theme.Dim);
+            criticalThreadRuntime.Name = "CriticalThreadRuntime";
+            criticalThreadRuntime.AutoEllipsis = false;
+            Label label = criticalThreadTitle;
+            Label label2 = criticalThreadHelp;
+            Label label3 = criticalThreadCompanion;
+            bool visibleValue = (criticalThreadRuntime.Visible = false);
+            bool visibleValue2 = (label3.Visible = visibleValue);
+            bool visible = (label2.Visible = visibleValue2);
+            label.Visible = visible;
+            criticalThreadMode = new GameCardDetailsButton
+            {
+                Name = "RenderAffinitySettings",
+                TabIndex = 1,
+                ShowAdjustLabel = true,
+                OwnerRow = criticalThreadEnabled,
+                AccessibleName = PerformancePolicy.Text("设置渲染线程调度策略和清核", "Choose the render thread scheduling strategy and clear core")
+            };
+            criticalThreadMode.Click += delegate { OpenRenderAffinityEditor(); };
+            criticalThreadEditor.Controls.Add(criticalThreadMode);
+            criticalThreadMode.BringToFront();
+            criticalThreadEnabled.DetailsOverlay = criticalThreadMode;
+            criticalThreadEditor.SizeChanged += delegate
+            {
+                LayoutCriticalThreadEditor();
+            };
+        }
+        private void BuildLogPage()
+        {
+            pageLog.SetBounds(0, Theme.S(TopH), Theme.S(WinW), Theme.S(PageH));
+            int contentWOffset = ContentW + RailW;
+            int pageHeaderResult = PageHeader(pageLog, Lang.T("nav.log"), Lang.T("v20.log.sub"), 1, true, 0, contentWOffset);
+            RoundPanel roundPanel = MakeConsolePanel(pageLog, 30, pageHeaderResult, contentWOffset, 64, true);
+            roundPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            logActionsButton = new PillButton(Lang.T("log.category.actions"));
+            logActionsButton.Name = "showActionLog";
+            logActionsButton.SetBounds(Theme.S(18), Theme.S(14), Theme.S(128), Theme.S(36));
+            logActionsButton.Click += delegate { SelectLogCategory(false); };
+            logDiagnosticsButton = new PillButton(Lang.T("log.category.diagnostics"));
+            logDiagnosticsButton.Name = "showDiagnosticLog";
+            logDiagnosticsButton.SetBounds(Theme.S(154), Theme.S(14), Theme.S(144), Theme.S(36));
+            logDiagnosticsButton.Click += delegate { SelectLogCategory(true); };
+            roundPanel.Controls.AddRange(new Control[] { logActionsButton, logDiagnosticsButton });
+            CardLabel(roundPanel, Lang.T("log.latest.session"), 320, 7, contentWOffset - 338, 24, 10.5f, true, Theme.Fg).Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblLogStreamHint = new Label
+            {
+                Name = "logSessionHint",
+                ForeColor = Theme.Faint,
+                BackColor = Color.Transparent,
+                Font = Theme.UI(7.8f, false),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
+            };
+            lblLogStreamHint.SetBounds(Theme.S(320), Theme.S(31), Theme.S(contentWOffset - 338), Theme.S(24));
+            lblLogStreamHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            roundPanel.Controls.Add(lblLogStreamHint);
+            int pageHeaderResultOffset = pageHeaderResult + 76;
+            int lowerBound = Math.Max(PageH - 48, pageHeaderResultOffset + 190);
+            logWrap = new RoundPanel();
+            logWrap.SetBounds(Theme.S(30), Theme.S(pageHeaderResultOffset), Theme.S(contentWOffset), Theme.S(lowerBound - pageHeaderResultOffset - 10));
+            logWrap.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            logWrap.BackColor = Theme.Bg;
+            logWrap.Fill = Theme.Inset;
+            logWrap.Border = Theme.StrokeHi;
+            logWrap.Radius = Theme.S(14);
+            logWrap.AccentEdge = true;
+            logWrap.Padding = new Padding(Theme.S(5));
+            logStream = new LogStreamView();
+            ConfigureLogView();
+            logStream.Dock = DockStyle.Fill;
+            Native.Dark(logStream);
+            logWrap.Controls.Add(logStream);
+            PillButton pillButton = new PillButton(Lang.T("v20.log.refresh"));
+            pillButton.Name = "refreshSessionLog";
+            PillButton pillButton2 = pillButton;
+            pillButton2.SetBounds(Theme.S(30), Theme.S(lowerBound), Theme.S(96), Theme.S(36));
+            pillButton2.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            pillButton2.Click += delegate
+            {
+                RefreshLog(true);
+            };
+            PillButton exportLog = new PillButton(Lang.T("log.export.file"));
+            logExportButton = exportLog;
+            exportLog.Name = "exportLogFile";
+            exportLog.AccessibleName = Lang.T("log.export.file");
+            exportLog.SetBounds(Theme.S(136), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
+            exportLog.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            exportLog.Click += ExportLogFile;
+            PillButton pillButton3 = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
+            pillButton3.SetBounds(Theme.S(258), Theme.S(lowerBound), Theme.S(112), Theme.S(36));
+            pillButton3.Name = "clearSessionLog";
+            pillButton3.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            pillButton3.Click += delegate
+            {
+                if (PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("rep.clear.ask"), DlgKind.Warn))
+                {
+                    Logger.Clear();
+                    Logger.Log(() => Lang.T("log.panelformlogpage.1"));
+                    Logger.RuntimeIdentity();
+                    RefreshLog(true);
+                }
+            };
+            swLogWrites = MakeSwitch(Settings.Load("LogWritesEnabled", true), OnLogWritesToggle);
+            swLogWrites.Location = new Point(Theme.S(30 + contentWOffset) - swLogWrites.Width, Theme.S(lowerBound + 6));
+            swLogWrites.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            Label label = new Label();
+            label.Text = Lang.T("set.logwrites");
+            label.ForeColor = Theme.Dim;
+            label.BackColor = Theme.Bg;
+            label.Font = Theme.UI(8.6f, false);
+            label.TextAlign = ContentAlignment.MiddleRight;
+            Label label2 = label;
+            label2.SetBounds(Theme.S(30 + contentWOffset - 162) - swLogWrites.Width, Theme.S(lowerBound), Theme.S(152), Theme.S(36));
+            label2.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            pageLog.Controls.AddRange(new Control[6] { logWrap, pillButton2, exportLog, pillButton3, label2, swLogWrites });
+            RefreshLog(true);
+        }
+        private void BuildManualMemoryCleaner(OverviewUsageItem memory)
+        {
+            overviewMemoryCleanup = new OverviewMemoryCleanupControl(elevated)
+            {
+                Name = "overviewMemoryCleanup"
+            };
+            memory.AttachMemoryAction(overviewMemoryCleanup);
+            overviewMemoryCleanup.SetGamePolicy(gameMode.IsActive);
+            if (manualMemoryReport != null)
+            {
+                overviewMemoryCleanup.ShowReport(manualMemoryReport);
+            }
+            else if (Volatile.Read(ref manualMemoryPending) != 0)
+            {
+                overviewMemoryCleanup.ShowProgress(manualMemoryProgressNumber, manualMemoryProgressStep);
+            }
+            overviewMemoryCleanup.GeometryChanged += delegate
+            {
+                overviewViewport = Size.Empty;
+                LayoutOverviewPage();
+            };
+            overviewMemoryCleanup.CleanRequested += delegate
+            {
+                StartManualMemoryCleanup();
+            };
+            if (!manualMemoryDisposeRegistered)
+            {
+                manualMemoryDisposeRegistered = true;
+                base.Disposed += delegate
+                {
+                    manualMemoryDisposed = true;
+                };
+            }
+        }
+        private void BuildAppearanceSection(Control scroll)
+        {
+            SettingsAppearanceEditorPanel settingsAppearanceEditorPanel = new SettingsAppearanceEditorPanel();
+            settingsAppearanceEditorPanel.Name = "SettingsAppearanceEditor";
+            settingsAppearanceEditorPanel.BackColor = Theme.Card;
+            settingsAppearanceEditorPanel.AccessibleRole = AccessibleRole.Grouping;
+            settingsAppearanceEditorPanel.AccessibleName = Lang.T("sec.appearance");
+            SettingsAppearanceEditorPanel settingsAppearanceEditorPanel2 = settingsAppearanceEditorPanel;
+            settingsAppearanceEditorPanel2.SetBounds(0, Theme.S(2), Theme.S(ScrollContentW), Theme.S(200));
+            scroll.Controls.Add(settingsAppearanceEditorPanel2);
+            backdropPreview = new BackdropPreview();
+            backdropPreview.Name = "SettingsBackdropPreview";
+            backdropPreview.EmptyText = Lang.T("backdrop.preview.empty");
+            settingsAppearanceEditorPanel2.Controls.Add(backdropPreview);
+            CardLabel(settingsAppearanceEditorPanel2, Lang.T("backdrop.title"), 0, 0, 280, 24, 9f, true, Theme.Fg).Name = "SettingsBackdropTitle";
+            lblBackdropState = CardLabel(settingsAppearanceEditorPanel2, "", 0, 0, 280, 40, 8.5f, false, Theme.Dim);
+            lblBackdropState.Name = "SettingsBackdropState";
+            btnBackdrop = new PillButton(Lang.T(Backdrop.Active ? "btn.backdrop.change" : "btn.backdrop.set"));
+            btnBackdrop.Name = "SettingsBackdropChoose";
+            btnBackdrop.Size = new Size(Theme.S(116), Theme.S(30));
+            btnBackdrop.Click += delegate
+            {
+                OnBackdropPick();
+            };
+            settingsAppearanceEditorPanel2.Controls.Add(btnBackdrop);
+            btnBackdropReset = new PillButton(Lang.T("btn.backdrop.reset"));
+            btnBackdropReset.Name = "SettingsBackdropReset";
+            btnBackdropReset.Size = new Size(Theme.S(104), Theme.S(30));
+            btnBackdropReset.Click += delegate
+            {
+                OnBackdropReset();
+            };
+            settingsAppearanceEditorPanel2.Controls.Add(btnBackdropReset);
+            CardLabel(settingsAppearanceEditorPanel2, Lang.T("backdrop.dim"), 0, 0, 160, 24, 8.6f, true, Theme.Fg).Name = "SettingsBackdropDimTitle";
+            pickBackdropDim = new TierPicker
+            {
+                Name = "SettingsBackdropDimPicker"
+            };
+            pickBackdropDim.Labels = new string[4]
+            {
+                Lang.T("backdrop.dim.off"),
+                Lang.T("backdrop.dim.1"),
+                Lang.T("backdrop.dim.2"),
+                Lang.T("backdrop.dim.3")
+            };
+            pickBackdropDim.Index = (Backdrop.Active ? (Backdrop.Dim + 1) : 0);
+            pickBackdropDim.Size = new Size(Theme.S(276), Theme.S(30));
+            pickBackdropDim.IndexChanged = OnBackdropDim;
+            settingsAppearanceEditorPanel2.Controls.Add(pickBackdropDim);
+            Panel panel = new Panel();
+            panel.Name = "SettingsAppearanceSeparator";
+            panel.BackColor = Col.Lerp(Theme.Card, Theme.Stroke, 0.62f);
+            settingsAppearanceEditorPanel2.Controls.Add(panel);
+            CardLabel(settingsAppearanceEditorPanel2, Lang.T("sec.theme"), 0, 0, 280, 24, 9f, true, Theme.Fg).Name = "SettingsAccentTitle";
+            CardLabel(settingsAppearanceEditorPanel2, Lang.T("theme.hint"), 0, 0, 280, 18, 8f, false, Theme.Dim).Name = "SettingsAccentHint";
+            BuildThemeColorRows(settingsAppearanceEditorPanel2, 0);
+            SyncBackdropAppearance();
+            BuildMotionAppearance(scroll);
+        }
+        private void BuildThemeColorRows(Control parent, int startY)
+        {
+            PerformancePreset[] visibleOrderResult = PresetValue.VisibleOrder();
+            int processedCount = 0;
+            PerformancePreset[] performancePresetItems = visibleOrderResult;
+            foreach (PerformancePreset performancePreset in performancePresetItems)
+            {
+                PerformancePreset capMode = performancePreset;
+                modeSwatches[(int)performancePreset].Clear();
+                int v = startY + processedCount * 34;
+                bool isActivePreset = performancePreset == gameMode.ActivePreset;
+                Label label = new Label();
+                label.Text = ModeName(performancePreset);
+                label.ForeColor = (isActivePreset ? Theme.ModeColor(performancePreset) : Theme.Fg);
+                label.BackColor = Color.Transparent;
+                label.Font = Theme.UI(8.6f, isActivePreset);
+                label.TextAlign = ContentAlignment.MiddleLeft;
+                label.SetBounds(Theme.S(18), Theme.S(v), Theme.S(82), Theme.S(26));
+                parent.Controls.Add(label);
+                modeAccentLabels[(int)performancePreset] = label;
+                int themeColorRowsValue = 108;
+                bool hasModeColorOverride = Theme.HasModeColorOverride(performancePreset);
+                ColorSwatch colorSwatch = new ColorSwatch(Theme.ModeColorBuiltin(performancePreset));
+                colorSwatch.IsDefault = true;
+                colorSwatch.Selected = !hasModeColorOverride;
+                colorSwatch.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
+                colorSwatch.Picked = delegate
+                {
+                    OnModeColorPick(capMode, Color.Empty);
+                };
+                parent.Controls.Add(colorSwatch);
+                modeSwatches[(int)performancePreset].Add(colorSwatch);
+                themeColorRowsValue += 32;
+                Color a = Theme.ModeColor(performancePreset);
+                Color[] accentPalette = AccentPalette;
+                foreach (Color color in accentPalette)
+                {
+                    Color cc = color;
+                    ColorSwatch colorSwatch2 = new ColorSwatch(cc);
+                    colorSwatch2.Selected = hasModeColorOverride && SameRgb(a, cc);
+                    colorSwatch2.SetBounds(Theme.S(themeColorRowsValue), Theme.S(v), Theme.S(26), Theme.S(26));
+                    colorSwatch2.Picked = delegate
+                    {
+                        OnModeColorPick(capMode, cc);
+                    };
+                    parent.Controls.Add(colorSwatch2);
+                    modeSwatches[(int)performancePreset].Add(colorSwatch2);
+                    themeColorRowsValue += 32;
+                }
+                processedCount++;
+            }
+        }
+        private void BuildUi(Icon appIcon)
+        {
+            modeVisualInitialized = false;
+            visualPolicySource = null;
+            builtLang = Lang.Cur;
+            Text = "PAVISE AUTO";
+            base.Icon = appIcon;
+            base.AutoScaleMode = AutoScaleMode.None;
+            base.FormBorderStyle = FormBorderStyle.None;
+            base.StartPosition = FormStartPosition.CenterScreen;
+            base.MaximizeBox = false;
+            if (!fitting)
+            {
+                if (Dpi.SetDesignSize(WinW, WinH)) Theme.DropFontCache();
+                base.ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
+            }
+            BackColor = Theme.Bg;
+            Font = Theme.UI(9.5f, false);
+            AttachFormFrame();
+            BuildNavigation();
+            pageTabPanels.Clear();
+            tabScrollPositions.Clear();
+            DBPanel topBar = new DBPanel
+            {
+                Name = "WorkspaceTopBar"
+            };
+            topBar.SetBounds(Theme.S(RailW), 0, Theme.S(WinW - RailW), Theme.S(TopH));
+            topBar.BackColor = Theme.Bg;
+            topBar.MouseDown += DragMove;
+            topBar.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen pen = new Pen(Theme.Stroke))
+                {
+                    e.Graphics.DrawLine(pen, 0, topBar.Height - 1, topBar.Width, topBar.Height - 1);
+                }
+            };
+            lblSub = new Label();
+            lblSub.Text = (elevated ? (Lang.T("title.admin") + " " + Lang.T("v20.admin.ready")) : Lang.T("title.noelev"));
+            lblSub.ForeColor = (elevated ? Theme.Faint : Theme.Danger);
+            lblSub.BackColor = Color.Transparent;
+            lblSub.Font = Theme.UI(9f, false);
+            lblSub.UseCompatibleTextRendering = false;
+            lblSub.AutoEllipsis = true;
+            lblSub.Name = "PrivilegeStatus";
+            lblSub.Padding = new Padding(Theme.S(24), 0, 0, 0);
+            lblSub.TextAlign = ContentAlignment.MiddleLeft;
+            lblSub.SetBounds(0, 0, 1, 1);
+            lblSub.Visible = false;
+            lblSub.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                Glyphs.Draw(e.Graphics, "shield", new Rectangle(0, Theme.S(4), Theme.S(16), Theme.S(16)), lblSub.ForeColor);
+            };
+            WorkspaceBrand workspaceBrand = new WorkspaceBrand();
+            workspaceBrand.Name = "WorkspaceBrand";
+            WorkspaceBrand workspaceBrand2 = workspaceBrand;
+            workspaceBrand2.SetState(gameMode.ActivePreset, gameMode.Enabled);
+            workspaceBrand2.SetBounds(Theme.S(24), Theme.S(4), Theme.S(270), Theme.S(52));
+            workspaceBrand2.MouseDown += DragMove;
+            modeButton = new ModeButton();
+            modeButton.Compact = true;
+            modeButton.Name = "StrategyButton";
+            modeButton.SetBounds(Theme.S(PageW - 342), Theme.S(12), Theme.S(232), Theme.S(46));
+            modeButton.Clicked = ToggleModeFlyout;
+            modeButton.SetMode(gameMode.ActivePreset);
+            modeButton.SetSource(ModeSourceText(gameMode.SessionPolicySourceName, true));
+            themeSwitch = new ThemeSwitch(Theme.LightMode);
+            themeSwitch.Compact = false;
+            themeSwitch.Name = "WorkspaceThemeSwitch";
+            themeSwitch.SetBounds(Theme.S(PageW - 450), Theme.S(12), Theme.S(94), Theme.S(46));
+            themeSwitch.Toggled = OnThemeToggled;
+            BuildHeaderLinks();
+            BuildStrategyControls();
+            int scaledDimension = Theme.S(WinW - RailW);
+            CaptionButton captionButton = new CaptionButton(false);
+            captionButton.Name = "WindowMinimize";
+            captionButton.AccessibleName = AutoText("最小化", "Minimize");
+            captionButton.SetBounds(scaledDimension - Theme.S(92), 0, Theme.S(44), Theme.S(64));
+            captionButton.Click += delegate
+            {
+                base.WindowState = FormWindowState.Minimized;
+            };
+            CaptionButton captionButton4 = new CaptionButton(true);
+            captionButton4.Name = "WindowClose";
+            captionButton4.AccessibleName = AutoText("关闭窗口", "Close window");
+            captionButton4.SetBounds(scaledDimension - Theme.S(48), 0, Theme.S(44), Theme.S(64));
+            captionButton4.Click += delegate
+            {
+                BeginOutro();
+            };
+            topBar.Controls.AddRange(new Control[8] { workspaceBrand2, lblSub, headerWebsite, btnDonate, themeSwitch, modeButton, captionButton, captionButton4 });
+            pages = new DBPanel[(int)PageId.Count];
+            pages[0] = (pageOverview = MakePage());
+            pages[1] = (pageLibrary = MakePage());
+            pages[10] = (pageWhitelist = MakePage());
+            pages[2] = (pagePolicy = MakePage());
+            pages[12] = (pageCoreScheduling = MakePage());
+            pages[3] = (pageAntiCheat = MakePage());
+            pages[4] = (pageGraphics = MakePage());
+            pages[5] = (pageEnvironment = MakePage());
+            pages[6] = (pageAudit = MakePage());
+            pages[11] = (pageIrq = MakePage());
+            pages[7] = (pageLog = MakePage());
+            pages[8] = (pageSettings = MakePage());
+            pages[9] = (pageAbout = new SettingsWorkspaceCategoryPanel { Visible = false });
+            BuildOverviewPage();
+            BuildLibraryPage();
+            BuildWhitelistPage();
+            BuildAutomationPage();
+            BuildCoreSchedulingPage();
+            BuildAuditPage();
+            BuildLogPage();
+            BuildSettingsPage();
+            BuildAboutPage();
+            RegisterPages();
+            root = new WorkspacePanel();
+            root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
+            root.BackColor = Theme.Bg;
+            root.Controls.Add(topBar);
+            DBPanel[] pagesSnapshot = pages;
+            foreach (DBPanel value in pagesSnapshot)
+            {
+                if (value == pageAbout) continue;
+                root.Controls.Add(value);
+            }
+            root.Controls.Add(nav);
+            coreBackBar = new AdvancedBackBar(Lang.T("cfg.back"), "RETURN // LIBRARY");
+            coreBackBar.Name = "coreBackToLibrary";
+            coreBackBar.SetBounds(Theme.S(24), 0, Theme.S(230), Theme.S(TopH));
+            coreBackBar.BackRequested = delegate
+            {
+                nav.Select(1);
+            };
+            coreBackBar.Visible = false;
+            root.Controls.Add(coreBackBar);
+            overviewBackBar = new AdvancedBackBar(AutoText("返回设置", "Back to settings"), "RETURN // SETTINGS");
+            overviewBackBar.Name = "detailsBackToOverview";
+            overviewBackBar.SetBounds(Theme.S(24), 0, Theme.S(230), Theme.S(TopH));
+            overviewBackBar.BackRequested = delegate
+            {
+                nav.Select(8);
+            };
+            overviewBackBar.Visible = false;
+            root.Controls.Add(overviewBackBar);
+            root.Controls.Add(modeFlyout);
+            modeFlyout.BringToFront();
+            base.Controls.Add(root);
+            LayoutWorkspaceViewport();
+            CenterRoot();
+            base.KeyPreview = true;
+            base.KeyDown -= OnEscHide;
+            base.KeyDown += OnEscHide;
+            nav.Select(0);
+            if (Backdrop.Active)
+            {
+                ApplyBackdropLabels(this);
+            }
+            uiTimer = new System.Windows.Forms.Timer();
+            uiTimer.Interval = 1200;
+            uiTimer.Tick += OnUiTick;
+            uiActivityKnown = false;
+            SyncUiActivity();
+        }
+        private void BuildStrategyControls()
+        {
+            powerPlanChoices.Clear();
+            modeFlyout = new StrategyFlyout
+            {
+                Visible = false,
+                Trigger = modeButton
+            };
+            modeFlyout.Dismiss = delegate
+            {
+                SetModeFlyout(false);
+            };
+            powerButton = modeFlyout.Power;
+            ConfigureLaptopPerformanceToggle();
+            ConfigureBackgroundGovernanceControl();
+            modeFlyout.Scene.AccessibleName = AutoText("游戏场景", "Game scene");
+            modeFlyout.Scene.IndexChanged = delegate(int index)
+            {
+                ChooseGlobalMode((index == 1) ? PerformancePreset.Competitive : PerformancePreset.Standard);
+            };
+            powerButton.SelectionChanged += delegate(int index)
+            {
+                if (index >= 0 && index < powerPlanChoices.Count)
+                {
+                    ChoosePowerPlan(powerPlanChoices[index]);
+                }
+            };
+        }
+        private void BuildHeaderLinks()
+        {
+            headerWebsite = new RogLinkButton(Lang.T("site.entry"), "", "globe")
+            {
+                Name = "WorkspaceWebsite"
+            };
+            headerWebsite.Click += delegate
+            {
+                OpenExternal("https://pavise.club/");
+            };
+            RogLinkButton donate = (btnDonate = new RogLinkButton(Lang.T("donate.entry"), "", "heart")
+            {
+                Name = "WorkspaceDonate",
+                External = false
+            });
+            donate.Click += delegate
+            {
+                ShowDonate();
+            };
+            donate.TextChanged += delegate
+            {
+                if (donate.Parent != null)
+                {
+                    LayoutWorkspaceHeader(donate.Parent);
+                }
+            };
+            RefreshDonateButton();
+        }
+        private void BuildNavigation()
+        {
+            navigationScale = Dpi.Scale;
+            string[] textEntries = new string[(int)PageId.Count]
+            {
+                Lang.T("nav.overview"),
+                Lang.T("nav.library"),
+                Lang.T("v20.advanced.nav.policy"),
+                Lang.T("v20.advanced.nav.anticheat"),
+                Lang.T("nav.graphics"),
+                Lang.T("v20.advanced.nav.system"),
+                Lang.T("v20.nav.report"),
+                Lang.T("nav.log"),
+                Lang.T("nav.set"),
+                Lang.T("nav.about"),
+                Lang.T("nav.white"),
+                Lang.T("v20.advanced.nav.irq"),
+                Lang.T("nav.corescheduling")
+            };
+            string[] icons = new string[(int)PageId.Count]
+            {
+                "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info",
+                "white", "chip", "chip"
+            };
+            string[] cloneResult = (string[])textEntries.Clone();
+            cloneResult[1] = PerformancePolicy.Text("游戏库", "Library");
+            cloneResult[(int)PageId.Policy] = Lang.T("v20.advanced.nav.system");
+            cloneResult[10] = Lang.T("nav.white");
+            // 反作弊在游戏库深度调优里逐游戏设置（仅 ACE） 保护名单在白名单页 底部导航不放反作弊页
+            nav = new NavRail(cloneResult, icons, new int[6] { 0, 1, 10, 2, 6, 8 }, null, null, 0);
+            nav.Name = "MainNavigation";
+            nav.ShowBranding = false;
+            nav.SelectionChanged = ShowPage;
+            nav.ItemInvoked = delegate(int page)
+            {
+                nav.Select(page);
+            };
+            tuningNav = new NavRail(textEntries, icons, new int[4] { 2, 4, 5, 11 }, null, null, 0);
+            tuningNav.Name = "TuningNavigation";
+            tuningNav.ShowBranding = false;
+            tuningNav.SectionTitle = Lang.T("v20.advanced.title");
+            tuningNav.SelectionChanged = delegate(int page)
+            {
+                if (IsAdvancedPage(page))
+                {
+                    nav.Select(page);
+                }
+            };
+            NavRail[] navRailItems = new NavRail[2] { nav, tuningNav };
+            foreach (NavRail navRail in navRailItems)
+            {
+                AssertNavMatchesPageIds(navRail);
+                navRail.SetBounds(Theme.S((WinW - 920) / 2), Theme.S(WinH - 88), Theme.S(920), Theme.S(72));
+                navRail.SetMode(visualMode, visualEnabled);
+            }
+            tuningNav.Visible = false;
+            advBackBar = new AdvancedBackBar();
+            advBackBar.SetBounds(0, 0, Theme.S(230), Theme.S(TopH));
+            advBackBar.BackRequested = ReturnFromDeepTuning;
+            tuningNav.Controls.Add(advBackBar);
+        }
+    }
+}

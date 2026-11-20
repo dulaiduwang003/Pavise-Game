@@ -13,7 +13,7 @@
 **A free, open-source runtime resource orchestrator for Windows games.**<br>
 Intelligent background suppression during play helps your existing hardware devote more of its performance to the current game.
 
-**Source version 3.3.1.2 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
+**Source version 3.3.1.3 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -24,7 +24,7 @@ Intelligent background suppression during play helps your existing hardware devo
 
 </div>
 
-> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.2. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.3. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
 
 ## Why runtime resource orchestration?
 
@@ -40,7 +40,7 @@ Our goal is to make **professional Windows gaming resource management freely ava
 
 Once the guard is enabled and a game is detected, Pavise can, according to your settings:
 
-- **Make background work yield:** lower eligible background CPU, disk I/O, memory-page, and GPU scheduling priorities and request efficiency mode. CPU placement can also move manageable background work away from game cores.
+- **Make background work yield:** lower eligible background CPU, disk I/O, and memory-page priorities and request efficiency mode. CPU placement can also move manageable background work away from game cores.
 - **Adjust to the situation:** Smart mode adapts to foreground status and sustained load; Competitive mode keeps background governance active throughout the game session, including when you switch away.
 - **Protect applications you need:** the game, essential dependencies, and allowlisted applications remain protected. Add voice chat, streaming tools, and other applications that need their resources to the whitelist.
 - **Restore changes and show what happened:** recorded temporary session changes are restored after play. Overview counters, action logs, and diagnostic logs show suppression and restoration results.
@@ -69,20 +69,20 @@ Requirements: **Windows 10 version 2004 (build 19041) or later, .NET Framework 4
 
 1. Download to a permanent folder. If using the complete ZIP, extract all accompanying files together.
 2. Run as administrator, add the actual game EXE, and review the whitelist and per-game settings.
-3. Select the features or configuration preset you want, choose Smart or Competitive mode and the background governance level, then enable the guard and start your game.
+3. Select the features you want, choose Smart or Competitive mode and the background governance level, then enable the guard and start your game.
 4. After leaving the game, check the restoration status. Export the session logs if troubleshooting is needed.
 
 Before upgrading, exit the game and close the old version normally. In-app updates are under **About → Check for updates** and preserve your personal data.
 
 ## Build from source
 
-Use the .NET Framework C# compiler and Windows PowerShell included with Windows. Visual Studio is not required.
+Use the .NET Framework C# compiler and Windows PowerShell included with Windows, plus `link.exe`, `lib.exe` and `rc.exe` from Visual Studio Build Tools (MSVC x64 tools and a Windows SDK). The build script finds these tools with vswhere, or you can point `PAVISE_MSVC_ENV` at your own environment script. The ETW and CPUID object files are precompiled with Zig and stored in `src/Interop/NativeEtwImage.cs` and `src/Interop/NativeCpuImage.cs`. The standard build links them into `Pavise.exe` without requiring Zig. The [source guide](docs/SOURCE-GUIDE.md) maps the current directories and build entry points.
 
 ```bat
 build.cmd -b prod
 ```
 
-The output is `build\Pavise.exe`. The build checks the implementation and version identity.
+The output is `build\Pavise.exe`. It imports only KERNEL32 and mscoree and needs no VC runtime; the build checks the implementation and version identity. `build.cmd -b dev <output> --il-only` builds a pure IL twin from the same sources for tests and release checks that load the program as an assembly; it is not for release.
 
 ## Tests and benchmarks
 
@@ -92,73 +92,70 @@ This repository includes runnable regression tests for the current source, cover
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps1
 ```
 
-Tests use in-memory settings, controlled interfaces, or their own processes. Test windows stay hidden, and the Pavise application entry point is not started. The independent CPU and memory benchmark also provides capability probes, measurement checks, and controlled background CPU-placement experiments. See the [test documentation](tests/README.md) for requirements, isolation boundaries, and measurement limits, and the [source guide](docs/SOURCE-GUIDE.md) for code entry points.
+Tests use in-memory settings, controlled interfaces, or their own processes. Test windows stay hidden, and the Pavise application entry point is not started. The independent CPU and memory benchmark also provides capability probes, measurement checks, and controlled background CPU-placement experiments. See the [test documentation](tests/README.md) for requirements, isolation boundaries, and measurement limits.
 
 Development experiments on Microsoft background governance, Job limits, recovery, CPU topology, runtime overhead, and independent benchmarks are collected in [Experiments and validation](https://github.com/dulaiduwang003/Pavise-Game/blob/pavise3x/docs/experiments/README.md). Each topic includes methods, data, and test conditions. The linked records cover measurements from November 7–10, 2026 on the 3.3.0.8 development snapshot.
 
 ## Complete feature list
 
-The following lists the features and sub-capabilities in the current 3.3.1.2 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
+The following lists the features and sub-capabilities in the current 3.3.1.3 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
 <details>
 <summary>View the complete feature list</summary>
 
 | Group | Features |
 | --- | --- |
-| **Guard and overview** | Guard switch; Smart and Competitive modes; configuration presets (Author's setup, Extreme, Custom); game and guard status; hardware and utilization monitoring; live CPU, GPU, and memory readings; session counters for suppressed processes and paused services; security software compatibility notice, details, and dismissal. |
-| **Intelligent background suppression (core)** | Background governance; Off, Normal, and Aggressive levels; dynamic scope expansion under load; built-in Microsoft background targets (diagnostic services, search indexing, Widgets, and their WebView2 processes) handled as ordinary background; whole-core background limits; background CPU, disk I/O, memory-page, and GPU priority reduction; efficiency mode (EcoQoS); limits on dynamic background thread boosts; Delivery Optimization download yielding; automatic maintenance limits during play; game and essential dependency protection; releasing or retaining governance when switching away; restoration after play. |
+| **Guard and overview** | Guard switch, Smart and Competitive modes, game and guard status, hardware and utilization monitoring, live CPU, GPU, and memory readings, and session counters for suppressed processes and paused services. |
+| **Intelligent background suppression (core)** | Background governance; Off, Normal, and Aggressive levels; dynamic scope expansion under load; whole-core background limits; background CPU, disk I/O, and memory-page priority reduction; efficiency mode (EcoQoS); limits on dynamic background thread boosts; Delivery Optimization download yielding; automatic maintenance limits during play; game and essential dependency protection; releasing or retaining governance when switching away; restoration after play. |
 | **Game library and detection** | Game executable detection; adding an EXE or a running game; selecting minimized or tray games; Steam and WeGame scanning; automatic library additions; ignore list and undo; search; renaming games; replacing or restoring covers; removing games. |
-| **Per-game tuning** | Per-game configuration; forced optimization trigger; game-family background governance; disabling fullscreen optimizations; NVIDIA ReBAR; advanced tuning grouped into CPU and Other with saved values shown inline; game core range and isolation; a separate render-thread scheduling switch; seven scheduling strategies; optional clear core; GPU and disk I/O resource priority in the scheduling dialog. |
+| **Per-game tuning** | Per-game configuration; forced optimization trigger; Suppress family processes; disabling fullscreen optimizations; NVIDIA ReBAR; advanced tuning grouped into CPU and Other with saved values shown inline; game core range and isolation; a separate render-thread affinity switch with Automatic, Single render core, and Manual modes and optional whole-core avoidance; per-game opt-out of Performance priority and Game thread boost. |
 | **CPU placement and isolation** | All-core, P-core, E-core, CCD, and cache-domain selection; manual logical processor selection; keeping one thread per core or including SMT siblings; whole-core background avoidance; draft CPU selections with Save and Reload saved; CPU-range restoration. |
-| **Render threads and resource priority** | Game priority (recommended), Render priority, Dedicated rendering, Multicore coordination, Dependency coordination, and Enhanced dedicated rendering; per-game strategy selection; Game priority is all-inclusive, and every other strategy except Dependency coordination offers optional clear core; bounded role discovery; verified placement and priority changes; ongoing correction and owned restoration; GPU and disk I/O priority saved with the strategy. Game memory-page priority has been removed. |
+| **Performance priority, thread boost, and render thread affinity** | Two per-game switches in advanced tuning, on by default: Performance priority (game process at High, raised disk and GPU priority, locked high-performance QoS) and Game thread boost (frame-submitting thread at the highest level with its partner slightly higher, or the busiest thread when it cannot be identified). Per-game render thread affinity only places cores: Automatic gives one to three frame-critical threads their own physical cores by measurement, Single render core pins the render thread to the best core, and Manual pins it to chosen CPUs. Changes apply next session and owned changes are restored when it is turned off, the game ends, or the app exits. Game memory priority adjustment and its legacy recovery path have been removed. |
 | **In-game power** | No-switch, managed, or existing power plans; managed power and dynamic parameters; separate AC and DC settings; CPU-topology matching; core parking, EPP, and boost coordination; plan and parameter verification; an in-game power-plan guard; original-plan restoration; laptop vendor performance modes; Lenovo SmartFan and ASUS G-Helper integration; original vendor-mode restoration; handheld compatibility; keeping the system awake during play. |
-| **Timers and multimedia** | Timer tick configuration; global timer resolution; high-resolution timer requests during play; timer readback and post-restart verification; timer-state restoration; multimedia scheduling. |
-| **Memory and caches** | Game-cache prewarming; standby-list cleanup; Default, Conservative, Aggressive, and Custom cleanup policies; list-size and available-memory thresholds; polling interval; manual deep cleanup; reclaiming Pavise's own memory during play; available physical-memory change display; larger NTFS cache pool. |
-| **Graphics and presentation** | Hardware-accelerated GPU scheduling (HAGS); optimizations for windowed games; Windows and NVIDIA windowed VRR options; AMD Smart Access Memory; NVIDIA low-latency mode, maximum-performance preference, and shader-cache size; OpenGL driver threading; disabling Intel Endurance Gaming limits; disabling background game recording. |
-| **System performance** | System performance bundle; VBS, Hypervisor, and memory integrity management; disabling configurable CPU software mitigations with basic or extended scope; disabling NTFS last-access updates; game protection-overhead settings (CFG, EAF, EAF+, IAF, CallerCheck, and 32-bit SimExec); game-volume short-name settings; Windows app background limits; pausing Windows Update; English input-layout switching for games and restoration afterward. |
-| **Foreground time slices** | Original-setting restoration; short variable 3:1, 2:1, or 1:1; short fixed 1:1; long variable 3:1, 2:1, or 1:1; long fixed 1:1; applying or restoring without restarting; restart-status notice. |
-| **Storage and audio** | Storage power-management bundle; keeping storage awake; disabling storage-controller runtime power management and D3Cold; keeping audio awake on AC power; original storage and audio setting restoration. |
-| **Performance laboratory** | EPP power yielding; locking GPU clocks to the maximum; maximum GPU power limit; low-buffer audio stream; CPU idle policy (original policy, higher idle threshold, or idle disabled); laboratory-state checks and restoration. |
-| **Anti-cheat governance and protection** | ACE installed under Program Files\AntiCheatExpert is governed as ordinary background; EasyAntiCheat, BattlEye, Vanguard, and other anti-cheat processes are protected and never suppressed (automatic whitelist rule); game and launch-chain dependency protection. |
+| **Timers** | Global timer resolution; high-resolution timer requests during play; timer readback and post-restart verification; timer-state restoration. |
+| **Memory and caches** | Turn Standby memory cleanup on or off in Environment. Open Parameters to choose Default, Conservative, Aggressive, or Custom and adjust the standby-list size threshold, available-memory threshold, and polling interval. Other features include manual deep cleanup, reclaiming Pavise's own memory during play, and a display of changes in available physical memory. |
+| **Graphics and presentation** | NVIDIA maximum-performance preference and shader-cache size; disabling background game recording. |
+| **System performance** | System enhancement groups VBS and memory integrity, configurable CPU software mitigations, and AC audio power management under one switch. Turning it on uses the extended CPU policy on supported systems and the basic policy where applicable. Upgrading preserves the previous scope. Enabling it reduces protection and can affect Hyper-V and WSL2. Restart Windows after applying or restoring these settings. Windows Update can be paused separately. |
+| **Audio** | Keeping audio awake on AC power; original audio setting restoration. |
+| **Performance laboratory** | EPP power yielding, maximum GPU clock requests (raise the clock floor on supported AMD GPUs or request a clock lock on NVIDIA), maximum power limits on supported AMD and NVIDIA discrete GPUs, CPU idle policy (original policy or higher idle threshold), and laboratory-state checks and restoration. |
+| **Anti-cheat suppression and protection** | Per-game Anti-cheat suppression switch in the Library, off by default and turned on per game: installed ACE, EasyAntiCheat and BattlEye services are suppressed only during that game's matches and restored when the match ends; components bundled in game folders and Vanguard are only protected, other anti-cheat software is protected or recorded only; anti-cheat is never governed as ordinary background; game and launch-chain dependency protection. |
 | **Whitelist and dependency protection** | Adding running processes, services, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components (marked protection only or record only), input/audio/peripheral driver chains, and streaming tools; viewing and clearing the process access restriction history. |
-| **League of Legends and WeGame** | Dedicated LoL enhancements; auxiliary-process cleanup and restoration; immediate cleanup or restore; WeGame UI-component handling; headless LoL client; lobby restoration; LoL add-on inspection and removal; overlay-cleanup notices; login and update dependency protection. |
+| **League of Legends and WeGame** | Dedicated LoL enhancements; auxiliary-process cleanup and restoration; immediate cleanup or restore; headless LoL client; lobby restoration; LoL add-on inspection and removal; overlay-cleanup notices; login and update dependency protection. |
 | **System checkup** | Sampling; cancellation and rerun; findings, evidence levels, and action links; restoration records; one-click repair. |
 | **Checkup: platform and CPU** | Platform capabilities; GPU inventory; NVIDIA interfaces; CPU Sets partitioning; EcoQoS; Windows version; 3D V-Cache driver; Windows Game Mode; CPU and background load; CPU topology; throttling events from the last seven days; top three background consumers; resident RGB software detection. |
 | **Checkup: memory** | Capacity, usage, and remaining memory; page file; memory speed; module count and channel layout; memory compression; page combining. |
 | **Checkup: display and graphics** | Primary and multiple-display refresh rates; NVIDIA throttle flags; ReBAR; HAGS; MPO; Game DVR. |
-| **Checkup: power and system** | Current power plan; energy-saving mode; AC or battery status; core parking; input-idle demotion; Windows-version guidance for Ryzen branch-prediction improvements; foreground time-slice inspection and settings link. |
+| **Checkup: power and system** | Current power plan; energy-saving mode; AC or battery status; core parking; input-idle demotion; Windows-version guidance for Ryzen branch-prediction improvements; foreground time-slice inspection and restoring records left by Pavise. |
 | **Checkup: input chain** | Keyboard and mouse connection types, including Bluetooth; Filter Keys; accessibility hotkey interception; third-party ThreadDpcEnable changes. |
 | **Checkup: storage and network** | DirectStorage and BypassIO; reasons passthrough is blocked; network links; default route; network throttling settings. |
 | **Checkup: GPU interrupts and drivers** | GPU interrupt inspection; ISR/DPC placement and P99 sampling; interrupt placement; post-restart verification; rollback on regression; original GPU interrupt configuration restoration; separate GPU MSI repair and restoration; driver latency diagnosis; maximum duration, P99, and device clues. |
 | **Checkup: repair and restoration** | Memory compression; network throttling; wired-network preference; Fault Tolerant Heap (FTH); separate repair and restore actions. |
-| **General and maintenance** | Startup at sign-in; automatic hiding when a game begins; exit grace period (0, 2, 5, 8, 15, or 30 seconds); shader-cache cleanup; settings reset; restoration-record protection; independent recovery guard after an abnormal exit. |
-| **Window and appearance** | Language selection; light and dark themes; separate Smart and Competitive colors; background intensity; visual customization; separate mode effects; immediate effect application or defaults; window dragging and minimizing; tray open, hide, and exit. |
-| **17 interface animations** | Original Smart, Solar Eclipse, Plasma Heart, Warp Gate, Firebird, Abyssal Jellyfish, Quantum Binary, Astral Whale, Starship Engine, Singularity Bloom, Photon Cube, Event Horizon, Supernova, Celestial Orrery, Chronoglass, Original Esports, and Original Extreme. |
+| **General and maintenance** | Startup at sign-in; automatic hiding when a game begins; exit grace period (0, 2, 5, 8, 15, or 30 seconds); shader-cache cleanup; settings reset; restoration-record protection; automatic restoration on the next start after an abnormal exit. |
+| **Window and appearance** | Adjust UI scale at the top of Appearance. Choose the language, light or dark theme, separate Smart and Competitive colors, and background intensity. Drag or minimize the window, or open, hide, or exit from the tray. |
+| **5 interface animations** | Choose a static thumbnail for each mode in Appearance to apply it immediately, or restore the default. Choices include Original Smart, Original Esports, Original Extreme, Astral Whale, and Event Horizon. |
 | **Logs and AI tuning** | Log-writing switch; runtime logs; action and diagnostic views; refresh and clear; copying selections; separate action and diagnostic exports; output folder and filename selection; scheduling role identification, actual CPU placement, priority verification, and restoration results; AI tuning prompt summarizing this PC's hardware, every feature and the current settings, with a goal field, preview and copy. |
 | **Updates, about, and support** | Version information and release notes; website and source links; voluntary donations; in-app update checks; signature verification; download, verification, and installation progress; cancelling checks or downloads; rollback on failure; manual updates; GitHub and Quark alternatives; preserving personal data during upgrades; restore and uninstall. |
 
 </details>
 
-Open a game's Advanced tuning page in the library to configure render-thread scheduling. The first-level switch is off by default for each game. Enabling it shows a notice that results vary by game and hardware, and performance may drop or stutter; compare the same scene yourself. On first enable, the recommended Game priority is used if no valid strategy has been saved: the game process runs at High with disk and GPU priority and the identified render thread is boosted, without pinning a CPU or clearing a core. Existing valid selections are retained. The dialog offers six strategies. Game priority is listed first and marked recommended; it includes its own GPU and disk I/O priority and has no clear core. The other strategies take optional clear core and GPU or disk I/O priority:
+**Performance priority** and **Game thread boost** are two per-game switches in Library → Advanced tuning, on by default for every game; there is no global switch. Turn either off for a game that does not need it; the change applies next session.
 
-| Strategy | Potential use |
+- Performance priority: during matches the game process runs at High (an existing Realtime category is kept), disk I/O and GPU scheduling priority are raised, and high-performance QoS is locked so the game is not moved to efficiency cores when unfocused or covered. Original values are recorded and restored when it is turned off or the game ends; later changes by other programs are preserved.
+- Game thread boost: once the render process is confirmed it samples for about 3.2 seconds to identify the frame-submitting thread and sets it to TIME_CRITICAL; a stable partner thread gets +1. It does not pin cores or wait for the foreground. After at most 5 unsuccessful captures per phase, a fallback raises the busiest thread two levels (not in Handheld). Boosted threads are checked every 5 seconds and returned if the game changes them back or they exit. Other apps such as voice, streaming, or recording may slow down when the CPU is saturated.
+
+**Render thread affinity** in Library → Advanced tuning is a per-game switch, off by default, with a warning that results vary by game and hardware. It only decides which cores threads run on and never changes thread or process priority. The dialog offers three modes:
+
+| Mode | What it does |
 | --- | --- |
-| Game priority | The game competes with other applications for CPU time, and both the process and render thread need higher scheduling priority. |
-| Render priority | A ready render thread queues behind competing CPU work, affecting response. |
-| Dedicated rendering | Frequent render-thread migration adds cache-rebuilding overhead and frame-time variation. |
-| Multicore coordination | Critical tasks compete on the same core while other busy work needs room to run in parallel. |
-| Dependency coordination | Rendering waits for related tasks; boosting rendering alone does not shorten that wait. |
-| Enhanced dedicated rendering | A fixed render core still faces ordinary-thread contention and response-sensitive scheduling delays. |
+| **Automatic (recommended)** | Measures the game twice to find the serial threads that gate frame time (the render thread and the main or RHI threads it waits on) and points each at a preferred physical core (ideal processor only, not locked); other threads are not restricted and background apps stay off those cores. A second thread is reserved only when the two together need more than one core; a third only when the three need more than two cores on a CPU with at least ten physical cores. Each reservation must leave the remaining cores 10% headroom for the measured load of all other threads. If conditions are not met it reserves fewer or none. |
+| **Single render core** | Pins the identified render thread to the most suitable physical core, with optional whole-core avoidance. It does not depend on load, so it also pins in GPU-bound games. |
+| **Manual** | Choose one to four logical CPUs in the core grid; the render thread runs only on them, with optional whole-core avoidance. Choose again after changing the processor or the game's CPU range. |
 
-These are possible use cases, rather than detected bottlenecks or promised gains. Strategy and resource settings are saved together for the next game session without changing the switch. Disabling the switch immediately withdraws write authorization and restores owned changes. An explicit enable can start during the current session only if this target and strategy have not already had an enabled discovery phase; disabling and re-enabling the same phase keeps its spent budget and waits for the next session. Retired comparison rules stay off until a formal strategy is saved and explicitly enabled. Identity or range uncertainty pauses the affected writes. Resource priority requires render-thread scheduling and covers GPU and disk I/O only; game memory-page priority is no longer adjusted or restored. Read-only scheduling diagnostics can still record its original state.
+Core choice prefers performance cores (hybrid CPUs) and the 3D V-Cache CCD (X3D), and avoids CPU 0, where system interrupts and DPCs tend to land. Whole-core avoidance only constrains covered game threads and leaves at least two physical cores for them; system tasks can still use those cores, so it is not system-wide exclusivity. New game threads are checked every 10 seconds, with a rescan 2 seconds later (at most twice in a row) when coverage is incomplete.
 
-The game process is set to High (an existing Realtime category is retained) together with high disk I/O and GPU priority, regardless of the separate resource switch. Thread boosting uses frame coordination: as soon as the render process is confirmed, a capture of about 3.2 seconds identifies the presenting thread, which is set to TIME_CRITICAL; a stable partner thread, when one is identified, gets +1. It does not pin or clear cores and does not wait for the game to be in the foreground. A phase allows at most five unsuccessful captures; after that, a busy-thread fallback raises the busiest thread by two levels (not in the Handheld scene). Boosted threads are checked every five seconds; if the game changes them back or the thread exits, the owned change is returned and boosting stops for that process. Only this strategy raises the whole game's CPU priority. Original values are recorded and restored when disabled, at game exit, or when moving to another strategy, while preserving later external changes. Voice chat, streaming, recording, and other applications may slow down when the CPU is saturated.
+Strategies that only adjusted priority (Game priority, Render priority, Dependency coordination) are now handled by the two per-game switches and their saved rules run as off; old Dedicated rendering runs as Single render core, Multicore coordination as Automatic, and Enhanced dedicated rendering as Single render core with whole-core avoidance. Changes apply next session; turning it off revokes write eligibility at once and restores owned changes. Real frame-time gains must be judged by comparing 1% lows in a fixed scene, not inferred from setting readback.
 
-Enhanced dedicated rendering gives a confirmed presentation thread stronger priority on a fixed CPU without changing the process category. It requires verified topology, legal range and binding, plus room for Pavise's control thread to run outside the target CPU. With clear core enabled, the latest thread snapshot must also have complete coverage. If coverage or operating conditions fail, Pavise withdraws its added priority; recovery uses the same session and remaining budget. An exhausted initial boost budget stops further acquisition, restoring priority before releasing the binding. Existing High or Realtime processes and threads with special priorities are not newly acquired by this strategy. Clear core affects covered game threads; system tasks may still use the CPU.
-
-Dependency coordination prioritizes a small, stable set of tasks related to presentation. It keeps existing CPU ranges, does not pin threads, and does not use clear core. Independent observations must confirm the same presentation identity and associated members; high CPU use alone is insufficient. It does not restrict selection by CPU vendor, core type, SMT, core count, or processor groups. Unverifiable identity or priority permissions prevent writes, and an incomplete group is rolled back. Once acquired, only those threads' priorities are maintained. Disabling, game exit, or role exit restores owned changes. A bounded recheck after a member exits must retain the same presentation identity and reconfirm membership with fresh evidence; dependency clues do not establish the complete frame-critical path or coverage of every busy thread.
-
-Discovery budgets are per managed game session and rule phase. Game priority uses the budget described above. Render priority, Dedicated rendering, and Enhanced dedicated rendering allow at most two captures; Multicore coordination and Dependency coordination allow three. Each capture is about 3.2 seconds. Render priority with clear core off collects presentation events for the target process and verifies stream and thread identity without system scheduling events; queueing and migration readings are marked as not collected. Strategies requiring CPU placement, clear core, or dependency analysis retain full capture. Both capture paths share the original attempt budget; limits and failures do not refill it. Consecutive matches in the same game process do not refill these budgets. When a critical role exits, the old plan is restored first, including clear-core limits on other threads. After restoration is settled, remaining capture budget permits at most one replacement-role recheck with fresh identity and original values. An exhausted budget or previously used recheck stops new acquisition. Unfinished restoration retains records, handles, and guardians and prevents new observation or acquisition. Role changes do not refill initial-acquisition, new-thread, or failure budgets, and a surviving thread changing duties does not automatically trigger reselection.
+Discovery budgets are per managed game session and rule phase: Single render core and Manual use at most 2 captures, Automatic at most 3, about 3.2 seconds each, and failed or exhausted captures are not refilled; consecutive matches in the same game process do not add captures. When a critical role exits, the original plan is restored first (including avoidance limits on other threads); once recovery settles and the phase still has capture budget, one replacement role may be reviewed.
 
 ## Background suppression: mode and intensity
 
@@ -171,13 +168,13 @@ Discovery budgets are per managed game session and rule phase. Game priority use
 
 | Background governance level | Behavior |
 | --- | --- |
-| **Off** | Disables background governance, including the built-in Microsoft targets. |
-| **Normal** | Lowers eligible background resource priorities, enables efficiency mode, and places them on background cores. Built-in Microsoft targets are governed the same way as other background processes. |
-| **Aggressive** | Also limits temporary background thread boosts, including for built-in targets. |
+| **Off** | Disables background governance. |
+| **Normal** | Lowers background CPU, disk I/O and memory priorities, enables efficiency mode and blocks temporary boosts. CPU usage per app is capped at the equivalent of two cores, up to a quarter of the machine. The disk limit is 50 MiB/s per app when Windows accepts it. |
+| **Aggressive** | Caps each background app at 0.01% of total CPU capacity and confines it to a few cores. The disk limit is 1 MiB/s per app. Both levels retain the CPU cap, priority lock and very low I/O priority if Windows rejects the disk limit. |
 
-The built-in list covers DiagTrack, DPS, WdiServiceHost, WdiSystemHost, diagsvc, WSearch, verified indexing workers, Widgets, and their WebView2 processes. After verification by service identity, trusted path, and process family, they join ordinary background governance: they are governed even at low utilization, receive the same priorities, efficiency mode, and background cores as other background processes, and are released and restored under the ordinary rules. A separate Job CPU quota is no longer used. Preset system allowlists do not exempt them; manual process allowlists, family protection, and service allowlists still apply. A shared service host is admitted only when every running service it hosts is on the list, and stopped services are never started for this.
+Background governance leaves system services and system components in the Windows folder alone: session 0 processes that host services such as diagnostics and search indexing are not governed, and wide scope only adds apps with visible windows, never the Windows folder.
 
-The separate anti-cheat engine has been removed. ACE is now governed as ordinary background: only processes in the ACE group installed under Program Files\AntiCheatExpert are admitted, and they receive the same priorities, efficiency mode, background cores, and restoration as other background processes. ACE components bundled inside game folders, and EasyAntiCheat, BattlEye, and other anti-cheat software, remain protected by the whitelist. The WeGame main process is also governed as ordinary background and is no longer exempt as the League of Legends launcher. Writes and core limits left by earlier versions are no longer restored; affected anti-cheat processes return to system defaults when they restart.
+Anti-cheat software is never governed as ordinary background. Anti-cheat suppression in Library advanced tuning is off by default and turned on per game. Only during that game's matches, the ACE, EasyAntiCheat and BattlEye services it uses are suppressed, and only service processes installed in their standard locations and registered with Windows services qualify (ACE under Program Files\AntiCheatExpert, EasyAntiCheat under Program Files (x86)\EasyAntiCheat or EasyAntiCheat_EOS, BattlEye under Program Files (x86)\Common Files\BattlEye). Suppression uses the strongest level: lowest CPU priority, lowest disk I/O and memory priority, efficiency mode and no priority boost, moved to at most two background physical cores during matches and verified every second; no CPU caps, disk limits or freezing. Original settings are restored when the match ends, the game exits or the switch is turned off, and on the next start after an abnormal exit. Components bundled in game folders, unreadable paths and Vanguard are only protected. The WeGame main process is governed as ordinary background and is not exempt as the League of Legends launcher.
 
 Clear core reclaims a normal game thread's record only after verifying its exit and the updated restoration ledger. New threads can use the released capacity without refilling failure budgets. Live threads, unknown identities, and records with pending restoration are retained. Capacity limits and scan intervals can still leave coverage gaps.
 
@@ -185,25 +182,48 @@ Game CPU selections and isolation remain drafts until Save is clicked. Their sep
 
 Automatic render placement and clear core stay within the game's allowed CPU range and avoid physical cores reserved by other features. With game core range disabled, Pavise adds no selection limit but still respects the game's existing process range. Ordinary strategy saves and CPU-range changes apply in the next session; explicit enable follows the discovery-phase rules above. Disabling immediately stops correction and restores owned changes. Pinning a thread is not whole-core exclusivity; system interrupts and protected processes remain under Windows control.
 
-## Configuration presets and power
-
-Author's setup and Extreme are batches of feature settings, selected separately from Smart or Competitive mode. Both presets set **CPU idle policy to the original policy and foreground time slices to restore the original configuration**. Upgrading preserves existing choices; the new preset definitions apply when you reapply a preset.
-
-Persistent preset settings such as VBS and CPU software mitigations change the corresponding system protections. Follow each feature's instructions and restart notices.
+## Power
 
 Smart and Competitive share power parameters. With managed power, laptops retain the previous policy and desktops use CPU-matched presets. If a high-performance template is missing, the original plan can be checked and copied as a candidate. Supported handhelds leave power management to Windows and vendor software.
 
 While a game session owns a power plan, the guard keeps verifying the active plan and managed parameters and writes back external changes. Repeated external edits do not change the user's choice to No switching. Checks and writes are serial; repeated conflicts slow the response interval to at most 15 seconds, with rate-limited logs. Initial acquisition, plan creation, write failures, monitor-registration failures, and restoration retain finite retry budgets. Restoration preserves later external changes. Reselect the power plan if an older version changed it to No switching.
 
+## 3.3.1.3 release notes
+
+- Added an optional per-game setting for ACE, EasyAntiCheat and BattlEye suppression. It is off by default.
+- Background limits now exclude system services and components in the Windows folder. Removed the service whitelist.
+- Background limits now spare the 64-bit Steam overlay, Edge Game Assist, the NetEase UU launcher and Oopz.
+- Peripheral protection now covers Flydigi and other brands and can identify drivers by device connection or custom keywords.
+- Aggressive mode keeps the preferred core available for games and favors its CCD on dual-CCD processors.
+- Background limits restore previously lowered GPU priorities and retain CPU caps and Idle priority if disk limits fail.
+- Fixed helper processes in apps such as WeChat staying at low priority after a match.
+- Pavise now restores settings on the next launch after a crash, without a separate guard process.
+- Global timer resolution is now selected by testing the available settings on the PC, including on Windows 10.
+- Removed one-click setup, cache warm-up and several graphics and system tuning options. Their existing settings are preserved.
+- Old timer-tick and NTFS tweaks are restored automatically. Checkup can restore foreground scheduling changes made by Pavise.
+- Match tracing and CPU core-type detection are now built into Pavise.exe.
+- Renamed Tuning to Environment in the main navigation.
+- Environment now groups system enhancements under one switch and includes standby memory cleanup and its settings.
+- UI scale moved to the top of Appearance. Removed 12 animations and replaced live previews with thumbnails.
+
 ## 3.3.1.2 release notes
 
-- Render thread scheduling is on by default; games without a chosen strategy use the recommended Game priority. Games you turned off stay off.
-- With scheduling on, the game keeps high-performance QoS during matches, and every strategy except Enhanced dedicated rendering also runs it at High; restored at game end.
-- The separate anti-cheat engine is gone: ACE is governed as ordinary background and can be turned off per game in advanced tuning; other anti-cheat software is only protected.
-- Microsoft background services and the WeGame main process are now ordinary background; Aggressive governance also confines background apps to a few cores.
-- Built-in whitelist for voice chat apps (KOOK, YY, TeamSpeak, Mumble, Discord), plus a service whitelist.
-- The AI tuning prompt is back (Settings → General); Multimedia scheduling is a separate switch again, on by default.
-- Changes left by 1.x/2.x builds and by the old anti-cheat and Microsoft background governance are no longer restored and keep their current values.
+- New per-game switches in advanced tuning: Performance priority and Game thread boost, on by default.
+- Render thread scheduling is now Render thread affinity: core placement only, with Automatic, Single render core and Manual modes.
+- The separate anti-cheat engine is gone; ACE is governed as ordinary background and other anti-cheat software is only protected.
+- Microsoft background services and the WeGame main process join ordinary background governance.
+- The whitelist adds built-in voice chat apps and a service whitelist.
+- The AI tuning prompt is back, and Multimedia scheduling is a separate switch again.
+- Changes left by 1.x/2.x builds and by the old anti-cheat and Microsoft background governance are no longer restored.
+- Fixed a case where exiting a game reported restoration as incomplete and the next game ignored the manual core range.
+- Critical-thread measurement pre-filters events in a built-in native component and uses less CPU.
+- Critical-thread identification and Game thread boost start after the game has run for two minutes; games unsuitable for reserved cores are not measured again for 7 days or until they update.
+- Fixed the ACE main process (SGuard64) not being moved to background cores.
+- Per-game family governance now keeps only the game itself; its launch chain, such as the launcher, is governed as ordinary background.
+- Games already confirmed are taken over as soon as they start, without waiting for the loading screen.
+- The core shows a "Motion paused" hint while its animation is paused during a match.
+- Fixed the render thread affinity dialog flickering when clicking cores in Manual mode.
+- Fixed the Automatic mode recommended badge not showing in the English UI at high scaling.
 - Lower runtime overhead and better UI scaling.
 
 ## 3.3.1.1 release notes
@@ -279,7 +299,7 @@ I never expected so many players to take an interest in Pavise and use it. Pavis
 
 ## Software architecture
 
-The main application handles configuration, game detection, and session coordination. CPU, background, power, and system modules act when their conditions are met. An independent recovery guard handles required restoration after abnormal exits. Configuration, restoration records, and logs are stored locally and separately.
+The main application handles configuration, game detection, and session coordination. CPU, background, power, and system modules act when their conditions are met. After an abnormal exit, applied changes are restored from the restoration records on the next start. Configuration, restoration records, and logs are stored locally and separately.
 
 ## Game optimization execution flow
 

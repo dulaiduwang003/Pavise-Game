@@ -13,32 +13,33 @@ namespace PaviseApp
             try
             {
                 SuppressionCore.BackgroundBoostLimit = false;
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Isolated), "Normal governance must leave ordinary background boost alone");
+                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Isolated, false), "Normal governance must leave ordinary background boost alone");
                 int state = 0, writes = 0;
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 0 && writes == 0, "Normal governance must not write the boost state");
-                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.Isolated, 1) == 1, "Normal governance must keep a captured disabled state");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, -1, () => 0,
+                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.Isolated, false, 1) == 1, "Normal governance must keep a captured disabled state");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, -1, () => 0,
                     disabled => { throw new Exception("Normal governance never needs a boost baseline"); }) == "", "Normal governance must not demand a boost snapshot");
 
                 SuppressionCore.BackgroundBoostLimit = true;
                 state = 0; writes = 0;
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 1, "Aggressive governance must disable ordinary background boost");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.None, 0, () => state,
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.None, false, 0, () => state,
                     disabled => { state = disabled ? 1 : 0; writes++; return true; }) == "" && state == 0 && writes == 2, "Release must restore captured enabled state");
-                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.None, 1) == 1, "Release must retain captured disabled state");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, -1, () => 0,
+                Check(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.None, false, 1) == 1, "Release must retain captured disabled state");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, -1, () => 0,
                     disabled => { throw new Exception("Unknown baseline must prevent writes"); }) == "boost-snapshot", "Unknown original boost cannot be invented");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => 0, disabled => false) == "boost-write", "Write refusal must be reported");
-                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, 0, () => 0, disabled => true) == "boost-readback", "Successful setter without readback must fail");
-                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained), "Aggressive governance applies only to the background tier");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => 0, disabled => false) == "boost-write", "Write refusal must be reported");
+                Check(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, false, 0, () => 0, disabled => true) == "boost-readback", "Successful setter without readback must fail");
+                Check(SuppressionCore.DisableDynamicBoost(SuppressionLevel.Isolated, true), "Anti-cheat suppression keeps its own boost rule");
+                Check(!SuppressionCore.DisableDynamicBoost(SuppressionLevel.Restrained, false), "Aggressive governance applies only to the background tier");
             }
             finally { SuppressionCore.BackgroundBoostLimit = saved; }
         }
         private static void NativeBoostRoundTrip()
         {
-            // 原生目标仅为测试进程自身，不打开 Pavise 或游戏句柄；即使恢复失败，也不会超出测试进程生命周期。
+            // 原生目标仅为测试进程自身 不打开 Pavise 或游戏句柄 即使恢复失败 也不会超出测试进程生命周期
 
             IntPtr self = new IntPtr(-1);
             int original = Native.QueryBoostDisabled(self);
@@ -61,8 +62,14 @@ namespace PaviseApp
             try
             {
                 Check(PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "1") == "1" && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "garbage") == "0", "Governance setting must be canonical with safe default");
-                Check(!BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 1) && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0)
-                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1), "Only enabled Aggressive governance may limit background boost");
+                Check(!BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 1) && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 0)
+                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0) && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1),
+                    "Both enabled governance levels must limit background boost, and governance Off must not");
+                Check(BackgroundGovernancePolicy.ResourceCpuRate(1, 32) == 1 && BackgroundGovernancePolicy.ResourceCpuRate(0, 32) == 625
+                    && BackgroundGovernancePolicy.ResourceCpuRate(0, 8) == 2500 && BackgroundGovernancePolicy.ResourceCpuRate(0, 4) == 2500,
+                    "Resource Job CPU caps must be two cores per process, at most 25% on small machines, and 0.01% for Aggressive");
+                Check(BackgroundGovernancePolicy.ResourceIoBandwidth(0) == 50L * 1024 * 1024 && BackgroundGovernancePolicy.ResourceIoBandwidth(1) == 1024 * 1024,
+                    "Resource Job disk targets must be 50 MiB/s for Normal and 1 MiB/s for Aggressive");
                 Check(RecoveryRecordKeys.Contains(RetiredBackgroundCpuCap.ReceiptKey) && RecoveryRecordKeys.Contains(RetiredBackgroundCpuCap.LegacyReceiptKey),
                     "Retired CPU cap receipts must still be swept by reset and settings archival");
                 BoostLevels(); NativeBoostRoundTrip();

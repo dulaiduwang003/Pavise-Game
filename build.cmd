@@ -54,8 +54,16 @@ set MANIFEST=build\Pavise.manifest.tmp
 >> "%MANIFEST%" echo     ^<application^>^<supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" /^>^</application^>
 >> "%MANIFEST%" echo   ^</compatibility^>
 >> "%MANIFEST%" echo ^</assembly^>
+if /i "%~4"=="--il-only" goto ilonly
+rem 原生 ETW 代码直接链进 exe 需要 MSVC 的 link.exe 和 Windows SDK 细节见 tools\Build-MixedExe.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Build-MixedExe.ps1" -Output "%OUT%" -Manifest "%MANIFEST%" -Icon src\Assets\Pavise.ico -Define PAVISE_STABILITY_COMPARISON -ProductResources
+if errorlevel 1 goto err
+goto identity
+:ilonly
+rem 同一份源码编出的纯 IL 版本 原生代码从 DLL 镜像加载 只给要用反射加载程序的测试和发布检查用
 "%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -define:PAVISE_STABILITY_COMPARISON -win32icon:src\Assets\Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -resource:"tools\Uninstall-Rtss.ps1",Pavise.LegacyCleanup.RtssUninstall.ps1 @"%POWER_RESOURCE_RSP%" -recurse:src\*.cs
 if errorlevel 1 goto err
+:identity
 echo [2/2] checking implementation and version identity...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Verify-BuildIdentity.ps1" -Executable "%OUT%"
 if errorlevel 1 goto err
@@ -94,9 +102,12 @@ call :restorecp
 exit /b 1
 
 :usage
-echo Usage: build.cmd -b dev [output.exe] [--selftest ^| --compile-only]
+echo Usage: build.cmd -b dev [output.exe] [--selftest ^| --il-only]
 echo        prod is the same build the exe is shipped as compiled
 echo        Builds use src\Assets\Pavise.ico and never run a Pavise entry point.
+echo        The default build links the native ETW code into the exe and needs MSVC link.exe
+echo        (Visual Studio Build Tools, or PAVISE_MSVC_ENV pointing at an environment script).
+echo        --il-only builds the pure IL twin that loads the native code from its DLL image.
 call :restorecp
 exit /b 2
 

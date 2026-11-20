@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 
-// 只替换显示器、DPI 与设置读取边界；缩放计算和状态切换均使用完整产品源码。
+// 只替换显示器 DPI 与设置读取边界 缩放计算和状态切换均使用完整产品源码
 namespace System.Windows.Forms
 {
     internal sealed class Screen
@@ -165,7 +165,7 @@ namespace PaviseApp
         private static void WindowEnvironment()
         {
             Configure("200", new Rectangle(0, 0, 3840, 2080), new Rectangle(-1920, 0, 1920, 1040), 144, 144);
-            // 模拟现有客户区适配：只调用真实 FitScale，环境轮询不得把已适配比例改回去。
+            // 模拟现有客户区适配 只调用真实 FitScale 环境轮询不得把已适配比例改回去
             Dpi.Scale = Dpi.FitScale(1220, 760);
             for (int i = 0; i < 100; i++)
             {

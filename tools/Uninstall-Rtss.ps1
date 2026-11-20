@@ -1,4 +1,4 @@
-﻿# 仅清理旧组件，必须匹配 Pavise 安装回执；点导入仅定义辅助方法，不执行卸载。
+﻿# 仅清理旧组件 必须匹配 Pavise 安装回执 点导入仅定义辅助方法 不执行卸载
 
 [CmdletBinding()]
 param([string]$InstallPath = '', [switch]$Uninstall)
@@ -187,7 +187,7 @@ function Test-RtssMissingFile {
     try { [void][IO.File]::GetAttributes($Path); return $false }
     catch [IO.FileNotFoundException] { return $true }
     catch [IO.DirectoryNotFoundException] { return $true }
-    # 权限或输入输出失败不能证明删除完成。
+    # 权限或输入输出失败不能证明删除完成
 }
 
 function Test-RtssPendingOperation {
@@ -202,7 +202,7 @@ function New-RtssUninstallerStartInfo {
     $directory = [IO.Path]::GetDirectoryName($main).TrimEnd('\')
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = [IO.Path]::GetFullPath($Copy); $start.WorkingDirectory = $directory
-    $start.Arguments = '/S _?=' + $directory # NSIS 要求末尾 _?= 路径不加引号。
+    $start.Arguments = '/S _?=' + $directory # NSIS 要求末尾 _?= 路径不加引号
     $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden; $start.ErrorDialog = $false
     return $start
@@ -251,7 +251,7 @@ function Invoke-RtssUninstall {
         $copyLock = [IO.FileStream]::new($copy, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
         if (-not (Test-RtssUninstallerFile $copy) -or (Get-RtssFileIdentity $copy).Split("`n")[-1] -cne $Plan.UninstallerIdentity.Split("`n")[-1]) { throw 'The copied uninstaller failed verification.' }
         Assert-RtssPlanUnchanged $Plan
-        $pending = $true # 启动结果不确定时，保留官方卸载器所需输入文件。
+        $pending = $true # 启动结果不确定时 保留官方卸载器所需输入文件
         $result = Run-RtssPrivateUninstaller (New-RtssUninstallerStartInfo -Copy $copy -InstallationDirectory $Plan.Directory)
         $pending = $result.Pending
         if ($pending) { throw ('The uninstaller is still running. Do not start another removal. Temporary files were retained at ' + $temporary) }
@@ -266,7 +266,7 @@ function Invoke-RtssUninstall {
     } finally {
         if ($null -ne $copyLock) { $copyLock.Dispose() }
         if (-not $pending -and $temporary.Length -gt 0) {
-            # 仅删除本次生成的副本及其空目录，不递归删除。
+            # 仅删除本次生成的副本及其空目录 不递归删除
             try { [IO.File]::Delete([IO.Path]::Combine($temporary, 'PaviseRtssUninstall.exe')) } catch { }
             try { [IO.Directory]::Delete($temporary, $false) } catch { }
         }
@@ -285,7 +285,7 @@ function Invoke-RtssUninstallCommand {
     Invoke-RtssUninstall $plans[0]
 }
 
-# 以下原生运行器定义仅在明确请求 -Uninstall 后编译。
+# 以下原生运行器定义仅在明确请求 -Uninstall 后编译
 
 function Initialize-RtssNativeRunner {
     if ($null -ne ('PaviseRtssManual.NativeRunner' -as [type])) { return }

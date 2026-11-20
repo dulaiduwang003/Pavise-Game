@@ -25,12 +25,13 @@ namespace PaviseApp
             foreach (int language in new[] { 0, 1, 2 })
             {
                 Lang.Cur = language;
-                Check(Lang.T("auto.log.started") == Lang.T("auto.log.started", 0), "日志资源受界面语言影响");
+                Check(Lang.T("auto.log.started") == (language == 0 ? "已开始接管" : "Session management started"), "日志资源没有跟随界面语言");
                 RoundTrip("INFO SESSION [session-a] start | THREAD helper.exe 线程 游戏");
                 RoundTrip("INFO SESSION [session-a] end | 游戏 原名");
                 RoundTrip("INFO SESSION [session-a] start | 结果=applied 状态=stopped");
-                Check(LogText.Record("INFO SESSION [session-a] start | 测试").Contains("] 开始 |"), "会话开始状态未中文化");
-                Check(LogText.Record("INFO SESSION [session-a] end | 测试").Contains("] 结束 |"), "会话结束状态未中文化");
+                // 这两条测的是中文写入时状态码会翻成中文 写入语言跟随界面 所以要显式按中文写
+                Check(LogText.Record("INFO SESSION [session-a] start | 测试", 0).Contains("] 开始 |"), "会话开始状态未中文化");
+                Check(LogText.Record("INFO SESSION [session-a] end | 测试", 0).Contains("] 结束 |"), "会话结束状态未中文化");
                 RoundTrip("INFO AUTO [session-a] GmBoost | applied");
                 foreach (string state in new[] { "started", "restored", "restoring", "stopped", "ready", "pending", "failed", "unverified", "configured", "fso-configured", "pending-reboot", "restore-pending-reboot", "timer-requested", "timer-locked", "timer-limited", "timer-unverified", "unsupported", "unchanged", "canceled", "skipped", "waiting", "exhausted" })
                     RoundTrip("INFO AUTO [session-a] TimerTick | " + state);
@@ -54,9 +55,9 @@ namespace PaviseApp
                 Check(warnings == 1 && errors == 0, "中文告警级别改变");
                 var actions = ActionLogProjection.Project(entries, 4, "session-a");
                 Check(actions.Count >= 4, "动作视图丢失会话动作");
-                Check(actions.All(entry => entry.Module != "SESSION" && entry.Module != "FEATURE"), "动作模块仍显示英文");
-                Check(actions.Any(entry => entry.Message.Contains("恢复未完成")), "恢复失败被误报为成功");
-                Check(ActionLogProjection.Export(session, "session-a").Contains("Pavise 会话动作记录"), "动作导出没有使用中文");
+                Check(language == 0 ? actions.All(entry => entry.Module != "SESSION" && entry.Module != "FEATURE") : actions.Any(entry => entry.Module == "SESSION"), "动作模块没有跟随界面语言");
+                Check(actions.Any(entry => entry.Message.Contains(language == 0 ? "恢复未完成" : "Restoration incomplete")), "恢复失败被误报为成功");
+                Check(ActionLogProjection.Export(session, "session-a").Contains(language == 0 ? "Pavise 会话动作记录" : "Pavise session action log"), "动作导出没有跟随界面语言");
 
                 string name = "THREAD helper.exe";
                 string raw = "2026-11-09 22:01:00  信息 线程整核隔离已核验：" + name + " 进程编号=42 物理核掩码=0x3";
@@ -68,6 +69,8 @@ namespace PaviseApp
 
         private static void CheckWriter()
         {
+            // 前面的循环停在别的语言上 写入检查测的是中文日志
+            Lang.Cur = 0;
             Logger.LogPath = Path.Combine(Environment.CurrentDirectory, "chinese-test.log");
             Logger.WritesEnabled = true;
             Logger.Info("日志中文检查");

@@ -75,40 +75,40 @@ namespace PaviseApp
   sealed class Fixture{
    internal int Boots,Reads,Enables,Restores;internal bool On,Owned,RestoreFails;internal string Boot=BootId;internal Exception Error;
    internal TimerModeController Controller(){return new TimerModeController{
-    Boot=delegate{Boots++;return Boot;},TickOn=delegate{return true;},TickOwned=delegate{return false;},TickEnable=delegate{return true;},TickRestore=delegate{return true;},
+    Boot=delegate{Boots++;return Boot;},TickOwned=delegate{return false;},TickRestore=delegate{return true;},
     GlobalOn=delegate{Reads++;return On;},GlobalOwned=delegate{return Owned;},GlobalEnable=delegate{Enables++;Owned=true;if(Error!=null)throw Error;On=true;return true;},
     GlobalRestore=delegate{Restores++;if(RestoreFails)return false;Owned=On=false;return true;}
    };}
   }
   static long Due(TimerModeController timer){object schedule=typeof(TimerModeController).GetField("globalSchedule",Fields).GetValue(timer);return (long)schedule.GetType().GetField("NextCheck",Fields).GetValue(schedule);}
   static void TimerStages(){
-   Fresh();var f=new Fixture{Boot=null};var timer=f.Controller();timer.BeginAutomaticCycle("1\ntimer");timer.Sync(false,true,22621,1000);
+   Fresh();var f=new Fixture{Boot=null};var timer=f.Controller();timer.BeginAutomaticCycle("1\ntimer");timer.Sync(true,22621,1000);
    Check(f.Boots==1&&f.Reads==1&&f.Enables==0,"unknown boot mutation");
-   for(int i=0;i<100;i++)timer.Sync(false,true,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);
+   for(int i=0;i<100;i++)timer.Sync(true,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);
    Check(f.Reads==1&&f.Boots==1,"unknown boot repeated read or Boot after spent phase");
-   int boots=f.Boots;for(int i=0;i<100;i++)timer.Sync(false,true,22621,Due(timer)+i);Check(f.Boots==boots,"spent phase kept boot polling");
-   timer.BeginAutomaticCycle("1\ntimer");timer.Sync(false,true,22621,Due(timer)+1);Check(f.Reads==1,"same session reset timer");
-   timer.BeginAutomaticCycle("2\ntimer");timer.Sync(false,true,22621,Due(timer)+1);Check(f.Reads==2,"new real session did not open timer phase");
+   int boots=f.Boots;for(int i=0;i<100;i++)timer.Sync(true,22621,Due(timer)+i);Check(f.Boots==boots,"spent phase kept boot polling");
+   timer.BeginAutomaticCycle("1\ntimer");timer.Sync(true,22621,Due(timer)+1);Check(f.Reads==1,"same session reset timer");
+   timer.BeginAutomaticCycle("2\ntimer");timer.Sync(true,22621,Due(timer)+1);Check(f.Reads==2,"new real session did not open timer phase");
    foreach(Exception error in new Exception[]{new NotSupportedException(),new OperationCanceledException()}){
-    Fresh();f=new Fixture{Error=error};timer=f.Controller();timer.Sync(false,true,22621,1000);
-    for(int i=0;i<100;i++)timer.Sync(false,true,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);
+    Fresh();f=new Fixture{Error=error};timer=f.Controller();timer.Sync(true,22621,1000);
+    for(int i=0;i<100;i++)timer.Sync(true,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);
     Check(f.Enables==1&&f.Restores==1&&!f.Owned,"skipped attempt repeated or lost owner");
    }
-   Fresh();f=new Fixture{Error=new NotSupportedException(),RestoreFails=true};timer=f.Controller();timer.BeginAutomaticCycle("1\ntimer");timer.Sync(false,true,22621,1000);
+   Fresh();f=new Fixture{Error=new NotSupportedException(),RestoreFails=true};timer=f.Controller();timer.BeginAutomaticCycle("1\ntimer");timer.Sync(true,22621,1000);
    Check(f.Restores==1&&f.Owned&&timer.GlobalState=="restore-failed","first recovery responsibility");long firstDue=Due(timer);
-   timer.Sync(false,false,22621,firstDue-1);Check(f.Restores==1,"off bypassed recovery deadline");
-   timer.Sync(false,false,22621,firstDue+1);Check(f.Restores==2,"second recovery absent");long secondDue=Due(timer);
-   Check(secondDue>=firstDue+TimeSpan.FromSeconds(60).Ticks,"recovery backoff missing");timer.Sync(false,false,22621,secondDue+1);
-   for(int i=0;i<100;i++){timer.Sync(false,i%2==0,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);timer.BeginAutomaticCycle("1\ntimer");}
+   timer.Sync(false,22621,firstDue-1);Check(f.Restores==1,"off bypassed recovery deadline");
+   timer.Sync(false,22621,firstDue+1);Check(f.Restores==2,"second recovery absent");long secondDue=Due(timer);
+   Check(secondDue>=firstDue+TimeSpan.FromSeconds(60).Ticks,"recovery backoff missing");timer.Sync(false,22621,secondDue+1);
+   for(int i=0;i<100;i++){timer.Sync(i%2==0,22621,Due(timer)+TimeSpan.FromHours(i+1).Ticks);timer.BeginAutomaticCycle("1\ntimer");}
    Check(f.Restores==3&&f.Owned&&timer.GlobalState=="restore-failed","restore budget lost owner or was refilled");
-   timer.BeginAutomaticCycle("2\ntimer");f.RestoreFails=false;timer.Sync(false,false,22621,Due(timer)+1);Check(f.Restores==4&&!f.Owned,"new session recovery failed");
-   Fresh();Settings.SaveStr("AutoGlobalTimerBoot","on|"+BootSessionIdentity.Create(new Guid("492d4395-a022-451e-a8b3-8481dff82763"),1));f=new Fixture{On=true};timer=f.Controller();for(int i=0;i<20;i++)timer.Sync(false,true,22621,i==0?1000:Due(timer)+1);Check(f.Reads==40&&f.Enables==0,"normal healthy observation was capped");
+   timer.BeginAutomaticCycle("2\ntimer");f.RestoreFails=false;timer.Sync(false,22621,Due(timer)+1);Check(f.Restores==4&&!f.Owned,"new session recovery failed");
+   Fresh();Settings.SaveStr("AutoGlobalTimerBoot","on|"+BootSessionIdentity.Create(new Guid("492d4395-a022-451e-a8b3-8481dff82763"),1));f=new Fixture{On=true};timer=f.Controller();for(int i=0;i<20;i++)timer.Sync(true,22621,i==0?1000:Due(timer)+1);Check(f.Reads==40&&f.Enables==0,"normal healthy observation was capped");
    Console.WriteLine("PASS unknown boot/skip finite, 3 recovery failures, owner retention and healthy monitoring");
   }
   static void LeaseStages(){
    Fresh();var lease=new TimerResolutionLease();int acquire=0,release=0;bool failRelease=true;
-   lease.Set=delegate(uint desired,bool on,out uint actual){actual=5000;if(on){acquire++;return 0;}release++;return failRelease?-1:0;};
-   lease.Query=delegate(out uint c,out uint f,out uint a){c=156250;f=a=5000;return 0;};
+   lease.Set=delegate(uint desired,bool on,out uint actual){actual=5033;if(on){acquire++;return 0;}release++;return failRelease?-1:0;};
+   lease.Query=delegate(out uint c,out uint f,out uint a){c=156250;f=5000;a=5033;return 0;};
    lease.BeginAutomaticCycle("1\ntimer");Check(lease.Update(true,1),"lease acquire");
    for(int i=0;i<30;i++)lease.Update(false,TimeSpan.FromHours(i+1).Ticks);
    Check(release==3&&lease.HasResidue&&lease.State=="restore-failed","lease recovery unbounded or ownership discarded");
@@ -121,14 +121,56 @@ namespace PaviseApp
   }
   static void RecoveryRouteReports(){
    Fresh();var f=new Fixture{Error=new NotSupportedException(),RestoreFails=true};var timer=f.Controller();long now=DateTime.UtcNow.Ticks;
-   using(var trace=new RecoveryAttemptTrace()){timer.Sync(false,true,22621,now);Check(trace.Reported&&trace.Next==Due(timer),"timer actual failure did not report its deadline");}
-   using(var trace=new RecoveryAttemptTrace()){timer.Sync(false,false,22621,now);Check(trace.Reported&&trace.Next==Due(timer)&&f.Restores==1,"timer cooldown was not reported");}
-   timer.Sync(false,false,22621,Due(timer)+1);using(var trace=new RecoveryAttemptTrace()){timer.Sync(false,false,22621,Due(timer)+1);Check(trace.Reported&&trace.Next==long.MaxValue&&f.Restores==3,"timer exhaustion not reported");}
+   using(var trace=new RecoveryAttemptTrace()){timer.Sync(true,22621,now);Check(trace.Reported&&trace.Next==Due(timer),"timer actual failure did not report its deadline");}
+   using(var trace=new RecoveryAttemptTrace()){timer.Sync(false,22621,now);Check(trace.Reported&&trace.Next==Due(timer)&&f.Restores==1,"timer cooldown was not reported");}
+   timer.Sync(false,22621,Due(timer)+1);using(var trace=new RecoveryAttemptTrace()){timer.Sync(false,22621,Due(timer)+1);Check(trace.Reported&&trace.Next==long.MaxValue&&f.Restores==3,"timer exhaustion not reported");}
    Fresh();var lease=new TimerResolutionLease();int releases=0;lease.Set=delegate(uint desired,bool on,out uint actual){actual=5000;if(on)return 0;releases++;return -1;};lease.Query=delegate(out uint c,out uint finest,out uint actual){c=156250;finest=actual=5000;return 0;};Check(lease.Update(true,now),"route fixture acquire");
    var route=new RecoveryRouteSet(1,()=>now);Check(!route.Capture("timer",()=>lease.Update(false,now))&&releases==1,"route fixture first failure");long due=route.Next;Check(due>now&&due<long.MaxValue,"lease did not report finite own deadline");
    for(int i=0;i<1000;i++)route.RetryDue();Check(releases==1&&route.Next==due,"outer polling bypassed lease deadline");now=due+1;route.RetryDue();Check(releases==2&&route.Next>now,"outer route suppressed legitimate second owner attempt");now=route.Next+1;route.RetryDue();Check(releases==3&&route.Next==long.MaxValue&&lease.HasResidue,"route did not retain exhausted lease");
   }
-  static int Main(){try{RecoveryRouteReports();StoreCycles();HistoryAndIntent();RecoveryCycles();TimerStages();LeaseStages();Console.WriteLine("PASS automatic timer/store boundaries assertions="+checks+" transient_settings=true native_mutations=0 product_startup=0");return 0;}catch(Exception e){Console.Error.WriteLine(e);return 1;}}
+  // 旧版计时器节拍快照恢复时要调 bcdedit 自检构建里只交给替身 没注入就当场拒绝 启动 bcdedit.exe 的接缝一次也不会被调用
+  static void TickRestoreRefusal(){
+   Fresh();var started=new System.Collections.Generic.List<string>();var calls=new System.Collections.Generic.List<string>();
+   TimerTickTweak.BcdForTest=null;TimerTickTweak.BcdStartForTest=delegate(string args,out int code){started.Add(args);code=-1;return "";};
+   try{
+    Check(Settings.Save("TimerTickByPavise",true)&&Settings.SaveStr("PrevTimerTick","no|no|__pavise_absent__")&&TimerTickTweak.OwnsState,"timer tick receipt fixture");
+    string refusal="no refusal";
+    try{TimerTickTweak.Restore();}catch(Exception e){refusal=e.Message;}
+    Check(refusal=="Unmocked bcdedit call"&&started.Count==0&&TimerTickTweak.OwnsState,"timer tick restore without an injected bcdedit double is refused: refusal="+refusal+" seam="+string.Join(";",started.ToArray()));
+    TimerTickTweak.BcdForTest=delegate(string args,out int code){calls.Add(args);code=1;return "";};
+    Check(!TimerTickTweak.Restore()&&calls.Count==1&&calls[0]=="/enum {current}"&&started.Count==0&&TimerTickTweak.OwnsState,"injected bcdedit double answers the read and the process seam stays unused");
+    TimerTickTweak.BcdStartForTest=null;refusal="no refusal";int seamCode;
+    try{TimerTickTweak.StartBcd("/enum {current}",out seamCode);}catch(Exception e){refusal=e.Message;}
+    Check(refusal=="Selftest builds cannot start bcdedit.exe","bcdedit seam without an injected double is refused: "+refusal);
+   }finally{TimerTickTweak.BcdForTest=null;TimerTickTweak.BcdStartForTest=null;Fresh();}
+   Console.WriteLine("PASS timer tick restore refuses bcdedit without an injected double");
+  }
+  static string Refusal(Action action){try{action();return "no refusal";}catch(Exception e){return e.Message;}}
+  // VBS 的关闭和恢复会改 HKLM 设备防护键和启动配置里的 hypervisorlaunchtype 自检构建里整个交给替身 没注入就当场拒绝
+  // VBS 自己的 bcdedit 入口同样只认替身 本该交给 bcdedit.exe 的参数只会交到启动进程的接缝 接缝没注入也拒绝
+  static void VbsRefusal(){
+   Fresh();var started=new System.Collections.Generic.List<string>();var calls=new System.Collections.Generic.List<string>();int disables=0,restores=0;
+   VbsTweak.DisableForTest=null;VbsTweak.RestoreForTest=null;VbsTweak.BcdForTest=null;VbsTweak.BcdStartForTest=delegate(string args,out int code){started.Add(args);code=-1;return "";};
+   try{
+    Check(Settings.Save("VbsDisabledByPavise",true)&&Settings.SaveStr("PrevHvLaunch","auto")&&VbsTweak.OwnsState,"vbs receipt fixture");
+    string refusal=Refusal(delegate{VbsTweak.Disable();});
+    Check(refusal=="Unmocked VBS disable"&&started.Count==0,"vbs disable without an injected double is refused: refusal="+refusal+" seam="+string.Join(";",started.ToArray()));
+    refusal=Refusal(delegate{VbsTweak.Restore();});
+    Check(refusal=="Unmocked VBS restore"&&started.Count==0&&VbsTweak.OwnsState,"vbs restore without an injected double is refused: refusal="+refusal+" seam="+string.Join(";",started.ToArray()));
+    refusal=Refusal(delegate{int code;VbsTweak.RunBcd("/enum {current}",out code);});
+    Check(refusal=="Unmocked VBS bcdedit call"&&started.Count==0,"vbs bcdedit call without an injected double is refused: refusal="+refusal+" seam="+string.Join(";",started.ToArray()));
+    VbsTweak.DisableForTest=delegate{disables++;return true;};VbsTweak.RestoreForTest=delegate{restores++;return false;};
+    VbsTweak.BcdForTest=delegate(string args,out int code){calls.Add(args);code=1;return "";};
+    Check(VbsTweak.Disable()&&disables==1&&!VbsTweak.Restore()&&restores==1&&calls.Count==0&&started.Count==0&&VbsTweak.OwnsState,"injected vbs doubles answer disable and restore without any bcdedit call");
+    int answered;string text=VbsTweak.RunBcd("/enum {current}",out answered);
+    Check(text==""&&answered==1&&calls.Count==1&&calls[0]=="/enum {current}"&&started.Count==0,"injected vbs bcdedit double answers the call and the process seam stays unused");
+    VbsTweak.BcdStartForTest=null;
+    refusal=Refusal(delegate{int code;VbsTweak.StartBcd("/enum {current}",out code);});
+    Check(refusal=="Selftest builds cannot start bcdedit.exe for VBS","vbs bcdedit seam without an injected double is refused: "+refusal);
+   }finally{VbsTweak.DisableForTest=null;VbsTweak.RestoreForTest=null;VbsTweak.BcdForTest=null;VbsTweak.BcdStartForTest=null;Fresh();}
+   Console.WriteLine("PASS vbs disable restore and bcdedit refuse without injected doubles");
+  }
+  static int Main(){try{RecoveryRouteReports();StoreCycles();HistoryAndIntent();RecoveryCycles();TimerStages();LeaseStages();TickRestoreRefusal();VbsRefusal();Console.WriteLine("PASS automatic timer/store boundaries assertions="+checks+" transient_settings=true native_mutations=0 product_startup=0");return 0;}catch(Exception e){Console.Error.WriteLine(e);return 1;}}
  }
 }
 #endif

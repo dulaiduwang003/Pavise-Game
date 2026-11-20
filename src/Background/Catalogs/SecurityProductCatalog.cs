@@ -1,0 +1,138 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+
+namespace PaviseApp
+{
+    // 安全软件清单在启动时一次封存 会话和设置变化均不能重新打开探测
+    internal static class SecurityProductCatalog
+    {
+        private static readonly object sync = new object();
+        private static SecurityProductSnapshot snapshot = SecurityProductSnapshot.Unknown(false, "");
+        private static string[] roots = new string[0];
+        private static int startupClaimed;
+        private static int generation;
+        private static SecurityProbeTerminationException startupBlocked;
+
+        internal static SecurityProductSnapshot StartupSnapshot { get { lock (sync) return snapshot; } }
+
+        internal static void StartupScanOnce()
+        {
+            if (Interlocked.CompareExchange(ref startupClaimed, 1, 0) != 0)
+            { if (startupBlocked != null) throw startupBlocked; return; }
+            SecurityProductSnapshot fresh;
+            try { fresh = RunStartupProbe(); }
+            catch (SecurityProbeTerminationException error)
+            {
+                lock (sync) { startupBlocked = error; snapshot = SecurityProductSnapshot.Unknown(true, "Helper termination unconfirmed; startup stopped"); }
+                throw;
+            }
+            catch (Exception error) { fresh = SecurityProductSnapshot.Unknown(true, error.GetType().Name); }
+            if (fresh == null) fresh = SecurityProductSnapshot.Unknown(true, "Empty startup result");
+            lock (sync) { snapshot = fresh; roots = fresh.ProtectedRoots; generation = 1; }
+            int active = 0, inactive = 0, uncertain = 0;
+            foreach (SecurityProductInfo product in fresh.Products)
+            {
+                if (product.State == SecurityProductState.Active) active++;
+                else if (product.State == SecurityProductState.Inactive) inactive++;
+                else uncertain++;
+            }
+            Logger.Log(() => Logger.Format("启动安全清单已封存，产品数={0} 受保护根进程={1} 活动={2} 非活动={3} 待确认={4} 未知={5}", "Security startup inspection sealed products={0} protectedRoots={1} active={2} inactive={3} uncertain={4} unknown={5}", fresh.Products.Length, roots.Length, active, inactive, uncertain, fresh.HasUnknownState));
+        }
+
+        private static SecurityProductSnapshot RunStartupProbe() { return SecurityStartupProbe.ReadOnce(); }
+        internal static int CurrentGeneration() { lock (sync) return generation; }
+        internal static string[] Roots() { lock (sync) return (string[])roots.Clone(); }
+        internal static bool IsSecurityProduct(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            lock (sync)
+            {
+                foreach (string root in roots) if (FamilyBoundary.UnderRoot(path, root)) return true;
+                return false;
+            }
+        }
+
+        internal static string ProtectedRoot(string path)
+        { return ProductRoot(path, StandardBases(), Environment.GetFolderPath(Environment.SpecialFolder.Windows)); }
+        private static string[] StandardBases()
+        {
+            List<string> list = new List<string>();
+            Environment.SpecialFolder[] specialFolderItems = new Environment.SpecialFolder[3]
+            {
+                Environment.SpecialFolder.ProgramFiles,
+                Environment.SpecialFolder.ProgramFilesX86,
+                Environment.SpecialFolder.CommonApplicationData
+            };
+            foreach (Environment.SpecialFolder folder in specialFolderItems)
+            {
+                string folderPath;
+                try
+                {
+                    folderPath = Environment.GetFolderPath(folder);
+                }
+                catch
+                {
+                    continue;
+                }
+                if (!string.IsNullOrEmpty(folderPath))
+                {
+                    list.Add(folderPath.TrimEnd('\\'));
+                }
+            }
+            return list.ToArray();
+        }
+
+        internal static string ProductRoot(string registered, string[] bases, string windowsRoot)
+        {
+            if (string.IsNullOrEmpty(registered))
+            {
+                return null;
+            }
+            string expandEnvironmentVariablesResult = Environment.ExpandEnvironmentVariables(registered.Trim().Trim('"'));
+            if (expandEnvironmentVariablesResult.Length < 4 || expandEnvironmentVariablesResult[1] != ':' || expandEnvironmentVariablesResult[2] != '\\')
+            {
+                return null;
+            }
+            string directoryName;
+            try
+            {
+                directoryName = Path.GetDirectoryName(expandEnvironmentVariablesResult);
+            }
+            catch
+            {
+                return null;
+            }
+            if (string.IsNullOrEmpty(directoryName) || directoryName.TrimEnd('\\').Length <= 2)
+            {
+                return null;
+            }
+            directoryName = directoryName.TrimEnd('\\');
+            if (!string.IsNullOrEmpty(windowsRoot) && (WhitelistRule.PathEquals(directoryName, windowsRoot.TrimEnd('\\')) || FamilyBoundary.UnderRoot(directoryName, windowsRoot)))
+            {
+                return null;
+            }
+            string[] basesOffset = bases ?? new string[0];
+            foreach (string entryText in basesOffset)
+            {
+                if (!string.IsNullOrEmpty(entryText))
+                {
+                    if (WhitelistRule.PathEquals(directoryName, entryText))
+                    {
+                        return null;
+                    }
+                    if (FamilyBoundary.UnderRoot(directoryName, entryText))
+                    {
+                        int splitCount = directoryName.Substring(entryText.Length).Trim('\\').Split('\\')
+                            .Length;
+                        return (splitCount >= 3) ? Path.GetDirectoryName(directoryName) : directoryName;
+                    }
+                }
+            }
+            return directoryName;
+        }
+
+
+    }
+}
