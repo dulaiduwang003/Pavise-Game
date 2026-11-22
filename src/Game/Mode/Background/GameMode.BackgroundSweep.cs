@@ -106,13 +106,6 @@ namespace PaviseApp
             HashSet<int> gameDescendants = (inspectGameFamily ? FamilyBoundary.WalkDescendants(whitelist.Parents, gameFamilyRoots, selfPid, 24, creations) : EmptyPidSet);
             HashSet<int> userFacingFamily = (wideScope ? EmptyPidSet : CollectUserFacingFamily(foregroundPid, whitelist, (!protectGameFamily) ? rendererPid : 0));
             FamilyBoundary.FilterUserFacingGameFamily(userFacingFamily, activeProfile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, rendererAncestors, FamilyEvidence);
-            // 竞技场景切出游戏后 用户正在操作的那个程序完全放开 连同同名进程和子进程 规则和智能场景豁免可见窗口相同
-            // 只看拿着焦点的那一个窗口 桌面上其他开着的窗口照压 资源管理器这类外壳只放它自己 不连带从它启动的程序
-            // 游戏本体在前台时不算切出 开了家族治理的游戏子进程照旧治理
-            bool gameForeground = foregroundPid > 0 && (foregroundPid == rendererPid || (gamePids != null && gamePids.Contains(foregroundPid)) || exactGameProcesses.Contains(foregroundPid));
-            HashSet<int> switchedOutFamily = preserveOnForeground && foregroundPid > 4 && foregroundPid != selfPid && !gameForeground
-                ? CollectUserFacingFamily(foregroundPid, EmptyPidSet, whitelist, rendererPid) : EmptyPidSet;
-            FamilyBoundary.FilterUserFacingGameFamily(switchedOutFamily, activeProfile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, rendererAncestors, FamilyEvidence);
             bool firstSweepSnapshot;
             lock (sync)
             {
@@ -231,11 +224,6 @@ namespace PaviseApp
                         {
                             ReportUntrack(pid);
                         }
-                        continue;
-                    }
-                    if (switchedOutFamily.Contains(pid))
-                    {
-                        ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
                     string imagePath = ((processInfo != null) ? processInfo.Path : null);

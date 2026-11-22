@@ -8,7 +8,8 @@ namespace PaviseApp
 
         internal bool TrySetBackgroundGovernanceSelection(int selection)
         {
-            if (selection < 0 || selection > 3) return false;
+            // 疯狂档开关关着时只能选到激进
+            if (selection < 0 || selection > (BackgroundGovernancePolicy.InsaneVisible() ? 3 : 2)) return false;
             bool saved;
             lock (familyPolicyGate)
             {
@@ -19,7 +20,6 @@ namespace PaviseApp
                 if (selection > 0)
                 {
                     // 总开关仍关闭时先保存请求档位 家族锁防止扫描看到只完成一半的修改
-
                     if (!TrySetBackgroundGovernanceMode(selection - 1)) return false;
                     if (enabled && !backgroundGovernanceSaveUnverified) return true;
                 }
@@ -43,6 +43,26 @@ namespace PaviseApp
             foreach (string key in stored) if (string.Equals(key, PolicyCatalog.KeySuppress, StringComparison.OrdinalIgnoreCase)) return false;
             enabled = true; // 只有确认旧总开关不存在后 才使用原有默认值
             return true;
+        }
+
+        internal bool TrySetBackgroundGovernanceInsaneVisible(bool visible)
+        {
+            bool saved;
+            lock (familyPolicyGate)
+            {
+                lock (sync)
+                {
+                    if (stopping) return false;
+                    if (BackgroundGovernancePolicy.InsaneVisible() == visible) return true;
+                    string value = visible ? "1" : "0";
+                    saved = Settings.SaveStrDurable(BackgroundGovernancePolicy.InsaneVisibleKey, value)
+                        && Settings.LoadStr(BackgroundGovernancePolicy.InsaneVisibleKey, "") == value;
+                    InvalidateFamilyPolicy();
+                    firstSweep = true;
+                }
+            }
+            RequestPolicyApply("TrySetBackgroundGovernanceInsaneVisible");
+            return saved;
         }
 
         internal bool TrySetBackgroundGovernanceMode(int mode)

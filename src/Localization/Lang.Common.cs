@@ -119,6 +119,7 @@ namespace PaviseApp
             messages.Add("sec.app", new string[2] { "常规", "General" });
             messages.Add("dlg.ok", new string[2] { "知道了", "Got it" });
             messages.Add("dlg.confirm", new string[2] { "确定", "OK" });
+            messages.Add("dlg.confirm.countdown", new string[2] { "确定（{0} 秒）", "OK ({0}s)" });
             messages.Add("dlg.cancel", new string[2] { "取消", "Cancel" });
             messages.Add("dlg.tag.info", new string[2] { "提示", "Info" });
             messages.Add("dlg.tag.warn", new string[2] { "注意", "Notice" });

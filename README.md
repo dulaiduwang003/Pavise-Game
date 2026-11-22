@@ -13,7 +13,7 @@
 **A free, open-source runtime resource orchestrator for Windows games.**<br>
 Intelligent background suppression during play helps your existing hardware devote more of its performance to the current game.
 
-**Source version 3.3.1.4 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
+**Source version 3.3.1.5 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -24,7 +24,7 @@ Intelligent background suppression during play helps your existing hardware devo
 
 </div>
 
-> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.4. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.5. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
 
 ## Why runtime resource orchestration?
 
@@ -98,7 +98,7 @@ Development experiments on Microsoft background governance, Job limits, recovery
 
 ## Complete feature list
 
-The following lists the features and sub-capabilities in the current 3.3.1.4 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
+The following lists the features and sub-capabilities in the current 3.3.1.5 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
 <details>
 <summary>View the complete feature list</summary>
@@ -191,17 +191,19 @@ Smart and Competitive share power parameters. With managed power, laptops retain
 
 While a game session owns a power plan, the guard keeps verifying the active plan and managed parameters and writes back external changes. Repeated external edits do not change the user's choice to No switching. Checks and writes are serial; repeated conflicts slow the response interval to at most 15 seconds, with rate-limited logs. Initial acquisition, plan creation, write failures, monitor-registration failures, and restoration retain finite retry budgets. Restoration preserves later external changes. Reselect the power plan if an older version changed it to No switching.
 
-## 3.3.1.4 release notes
+## 3.3.1.5 release notes
 
 - Please be civil when reporting issues. Pavise is free and open source, and I don't owe anyone anything.
-- Background governance now has four levels: Off, Normal, Aggressive and Insane.
-- Aggressive caps each background app at 0.5 of a core and 10 MiB/s of disk; keyboard and mouse drivers, remapping tools and headset software still respond on time.
-- Insane gives each background app only 0.01% of the CPU so background apps nearly stop, and asks for confirmation before switching.
-- In Competitive, the app you switch to after leaving the game is fully released along with its child processes; other background apps stay governed.
-- The whitelist always takes priority: with Suppress family processes on, programs covered by the whitelist or Steam platform protection are no longer suppressed.
-- Accelerator protection now covers Steam++ (Watt Toolkit).
+- After updating, background governance is reset to Normal.
+- Insane is hidden by default; turn on Insane background governance in Settings to use it. Its warning stays up for 10 seconds.
+- No governance level moves background apps to other cores.
+- Normal allows Windows priority boosts for background apps.
+- Aggressive: 0.5 of a core and 10 MiB/s of disk per background app.
+- Insane: 0.01% of the CPU and 1 MiB/s of disk per background app.
+- With Suppress family processes on, the whitelist and Steam platform protection still exempt their programs.
+- Accelerator protection now covers Steam++.
 - Added a per-game Disable CFG option in Advanced tuning. It is off by default.
-- Peripheral drivers are now identified natively, fixing keyboard and mouse drivers that some users still saw suppressed on Aggressive.
+- Peripheral drivers are now identified natively, fixing keyboard and mouse drivers being limited on Aggressive.
 - Background sweeps during matches now use less CPU and memory.
 
 ## 3.3.1.3 release notes

@@ -103,6 +103,14 @@ namespace PaviseApp
 
         private string LaptopPerformanceLabel { get { return DsLabels.Pick("厂商性能模式", "Vendor performance"); } }
 
+        // 疯狂档开关关着时只给关闭 正常和激进 打开后才有疯狂
+        internal void SetBackgroundGovernanceInsane(bool insaneVisible)
+        {
+            BackgroundGovernance.SetItems(insaneVisible
+                ? new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive"), Lang.T("background.governance.freeze") }
+                : new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive") });
+        }
+
         internal void RefreshBackgroundGovernanceInformation()
         {
             backgroundGovernanceInfo.AccessibleDescription = BackgroundGovernance.AccessibleDescription;
@@ -225,7 +233,7 @@ namespace PaviseApp
                 RoundedStyle = false,
                 Bg = Theme.Card
             };
-            BackgroundGovernance.SetItems(new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive"), Lang.T("background.governance.freeze") });
+            SetBackgroundGovernanceInsane(BackgroundGovernancePolicy.InsaneVisible());
             backgroundGovernanceInfo = new PerformanceInfoButton
             {
                 Name = "StrategyBackgroundGovernanceInfo",

@@ -65,9 +65,9 @@ namespace PaviseApp
                     && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "3") == "0" && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "garbage") == "0",
                     "Governance setting must be canonical with safe default");
                 Check(!BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 1) && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 0)
-                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0) && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1)
-                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 2),
-                    "Every enabled governance level must limit background boost, and governance Off must not");
+                    && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0) && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1)
+                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 2) && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 7),
+                    "Aggressive and Insane must limit background boost; Normal, unknown levels and governance Off must not");
                 Check(BackgroundGovernancePolicy.ResourceCpuRate(0, 32) == 625 && BackgroundGovernancePolicy.ResourceCpuRate(0, 8) == 2500
                     && BackgroundGovernancePolicy.ResourceCpuRate(0, 4) == 2500,
                     "Normal CPU caps must be two cores per process and at most 25% on small machines");

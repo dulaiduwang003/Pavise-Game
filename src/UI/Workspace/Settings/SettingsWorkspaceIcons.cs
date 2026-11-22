@@ -44,6 +44,12 @@ namespace PaviseApp
                             new PointF(22f, 15f)
                         });
                         break;
+                    case "levels":
+                        // 三根由低到高的竖条 表示后台治理档位
+                        graphics.DrawLine(pen, 7, 27, 7, 20);
+                        graphics.DrawLine(pen, 16, 27, 16, 13);
+                        graphics.DrawLine(pen, 25, 27, 25, 5);
+                        break;
                     case "clock":
                         graphics.DrawEllipse(pen, 3, 3, 26, 26);
                         graphics.DrawLine(pen, 16, 8, 16, 16);

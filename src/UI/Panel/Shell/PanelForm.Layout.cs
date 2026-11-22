@@ -835,8 +835,9 @@ namespace PaviseApp
             SettingsWorkspaceTile settingsWorkspaceTile2 = SettingsTile(panel, "SettingsAutoHide");
             SettingsWorkspaceTile settingsWorkspaceTile3 = SettingsTile(panel, "SettingsExitGrace");
             SettingsWorkspaceTile settingsWorkspaceTile4 = SettingsTile(panel, "SettingsLanguage");
+            SettingsWorkspaceTile governanceInsane = SettingsTile(panel, "SettingsGovernanceInsane");
             SettingsWorkspaceTile aiTuning = SettingsTile(panel, "SettingsAiTuning");
-            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || aiTuning == null)
+            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || governanceInsane == null || aiTuning == null)
             {
                 return;
             }
@@ -869,10 +870,13 @@ namespace PaviseApp
             settingsWorkspaceTile2.BottomSeparator = true;
             settingsWorkspaceTile3.BottomSeparator = true;
             settingsWorkspaceTile4.BottomSeparator = true;
+            governanceInsane.SetBounds(0, top, width, governanceInsane.MeasureHeight(width));
+            top = governanceInsane.Bottom;
+            governanceInsane.BottomSeparator = true;
             aiTuning.SetBounds(0, top, width, aiTuning.MeasureHeight(width));
             top = aiTuning.Bottom;
             aiTuning.BottomSeparator = false;
-            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, aiTuning };
+            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, governanceInsane, aiTuning };
             foreach (SettingsWorkspaceTile settingsWorkspaceTile8 in settingsWorkspaceTileItems2)
             {
                 settingsWorkspaceTile8.ArrangeContent();

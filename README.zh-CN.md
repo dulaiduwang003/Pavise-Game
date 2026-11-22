@@ -13,7 +13,7 @@
 **开源、免费的 Windows 游戏运行时资源编排器。**<br>
 以游戏时智能压制后台为核心，让现有硬件的性能更充分地用于当前对局。
 
-**源码版本 3.3.1.4 · 智能后台压制 · 逐游戏配置 · 动作与诊断日志**
+**源码版本 3.3.1.5 · 智能后台压制 · 逐游戏配置 · 动作与诊断日志**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -24,7 +24,7 @@
 
 </div>
 
-> 本仓库提供 **Pavise 源码、构建方法与可运行的回归测试**。当前源码版本为 **3.3.1.4**，正式下载版本和已发布更新记录以[发布页](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)为准。
+> 本仓库提供 **Pavise 源码、构建方法与可运行的回归测试**。当前源码版本为 **3.3.1.5**，正式下载版本和已发布更新记录以[发布页](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)为准。
 
 ## 为什么是运行时资源编排器
 
@@ -98,7 +98,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps
 
 ## 全部功能清单
 
-以下按当前 3.3.1.4 源码列出功能名称及子项。各项按系统、硬件、驱动与游戏支持情况提供，操作说明见[使用教程](https://pavise.club/docs/v3/)。
+以下按当前 3.3.1.5 源码列出功能名称及子项。各项按系统、硬件、驱动与游戏支持情况提供，操作说明见[使用教程](https://pavise.club/docs/v3/)。
 
 | 分组 | 功能名称 |
 | --- | --- |
@@ -186,18 +186,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Run-PublicTests.ps
 
 对局持有电源计划期间，守护持续核验活动计划和托管参数，并写回外部改动；不会因外部反复修改而自动改成“不切换”。核验和写回串行执行，反复冲突时反应间隔放慢至最多 15 秒，日志限频。首次接管、计划创建、写入失败、监视登记失败和退局恢复仍有明确次数上限；退局恢复保留外部后写值。旧版曾自动改成“不切换”的设置，需重新选择电源计划。
 
-## 3.3.1.4 更新说明
+## 3.3.1.5 更新说明
 
 - 反馈问题请好好说话。Pavise 免费开源，作者不欠任何人。
-- 后台治理档位改为关闭、正常、激进、疯狂四项。
-- 激进档每个后台进程最多用 0.5 个核、磁盘限速 10 MiB/s，键鼠驱动、改键工具和耳机软件仍能按时响应。
-- 疯狂档每个后台进程只给全机 0.01% 的 CPU，后台基本停住，切换前会弹出提示。
-- 竞技场景切出游戏后，正在操作的程序连同它的子进程完全放开，其余后台照常治理。
-- 白名单优先级最高：开启「压制家族进程」后，白名单和 Steam 平台保护覆盖的程序也不会被压制。
-- 加速器保护新增 Steam++（Watt Toolkit）。
+- 升级后后台治理改回正常档。
+- 疯狂档默认隐藏，需在设置里打开「后台治理疯狂档」；切换前的提示停留 10 秒。
+- 后台治理各档都不挪核。
+- 正常档不限制 Windows 临时提优。
+- 激进档每个后台进程 0.5 核、磁盘 10 MiB/s。
+- 疯狂档每个后台进程全机 0.01% CPU、磁盘 1 MiB/s。
+- 开启「压制家族进程」时也不压白名单和 Steam 平台保护覆盖的程序。
+- 加速器保护新增 Steam++。
 - 游戏库深度调优新增逐游戏「关闭 CFG」，默认关闭。
-- 外设驱动改用原生方式识别，修复部分用户在激进档下键鼠驱动仍被压制的问题。
-- 降低对局中后台扫描的 CPU 占用和内存分配。
+- 外设驱动改用原生识别，修复激进档下键鼠驱动被压。
+- 降低对局中后台扫描的 CPU 和内存占用。
 
 ## 3.3.1.3 更新说明
 

@@ -115,6 +115,8 @@ namespace PaviseApp
                     Logger.Log(() => Lang.T("log.program.1"));
                 }
                 Settings.Remove("EvidenceMode");
+                try { BackgroundGovernancePolicy.ResetForThisVersionOnce(); }
+                catch { }
                 LaboratorySession.Recover();
                 if (!LaboratoryManualActions.RecoverStartup()) Logger.Warn(Logger.Text("手动实验室恢复仍未完成", "Manual laboratory recovery remains pending"));
                 PowerPlan.HealFromCrash();

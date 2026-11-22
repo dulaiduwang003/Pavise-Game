@@ -41,9 +41,11 @@ namespace PaviseApp
 
         private Timer closeDelayTimer;
 
+        private int closeDelaySeconds = 3;
+
         private bool CloseDelayPending
         {
-            get { return closeDelay != null && (!closeDelay.IsRunning || closeDelay.Elapsed.TotalSeconds < 3); }
+            get { return closeDelay != null && (!closeDelay.IsRunning || closeDelay.Elapsed.TotalSeconds < closeDelaySeconds); }
         }
 
         private float sweep;
@@ -396,6 +398,47 @@ namespace PaviseApp
             };
             dialog.Disposed += delegate { dialog.closeDelayTimer.Dispose(); };
             return dialog;
+        }
+
+        // 带倒计时的确认框 倒计时结束前确认和取消都点不了 Esc 回车和关闭窗口也不生效
+        internal static PaviseDialog CreateDelayedConfirm(IWin32Window owner, string title, string body, DlgKind kind, int seconds)
+        {
+            var dialog = new PaviseDialog(title, body, kind, Lang.T("dlg.confirm"), Lang.T("dlg.cancel"), null, DlgW, owner);
+            var accept = (PillButton)dialog.Controls["dialogAccept"];
+            var cancel = (PillButton)dialog.Controls["dialogCancel"];
+            dialog.closeDelaySeconds = Math.Max(1, seconds);
+            dialog.closeDelay = new Stopwatch();
+            dialog.closeDelayTimer = new Timer { Interval = 100 };
+            accept.Enabled = false;
+            if (cancel != null) cancel.Enabled = false;
+            accept.Text = Lang.F("dlg.confirm.countdown", dialog.closeDelaySeconds);
+            int buttonWidth = Math.Max(accept.Width, TextRenderer.MeasureText(accept.Text, accept.Font).Width + Theme.S(32));
+            int shift = Math.Min(buttonWidth, Math.Max(1, dialog.ClientSize.Width - Theme.S(52))) - accept.Width;
+            accept.Width += shift;
+            accept.Left -= shift;
+            if (cancel != null) cancel.Left -= shift;
+            dialog.closeDelayTimer.Tick += delegate
+            {
+                // 按实际展示后的单调时间解锁 界面卡顿不能缩短阅读时间
+                int remaining = Math.Max(0, (int)Math.Ceiling(dialog.closeDelaySeconds - dialog.closeDelay.Elapsed.TotalSeconds));
+                accept.Text = remaining > 0 ? Lang.F("dlg.confirm.countdown", remaining) : Lang.T("dlg.confirm");
+                if (remaining > 0) return;
+                dialog.closeDelayTimer.Stop();
+                accept.Enabled = true;
+                if (cancel != null) cancel.Enabled = true;
+            };
+            dialog.Disposed += delegate { dialog.closeDelayTimer.Dispose(); };
+            Form form = owner as Form;
+            if (form == null || !form.Visible) dialog.StartPosition = FormStartPosition.CenterScreen;
+            return dialog;
+        }
+
+        public static bool ConfirmAfterDelay(IWin32Window owner, string title, string body, DlgKind kind, int seconds)
+        {
+            using (PaviseDialog dialog = CreateDelayedConfirm(owner, title, body, kind, seconds))
+            {
+                return ((owner != null) ? dialog.ShowDialog(owner) : dialog.ShowDialog()) == DialogResult.OK;
+            }
         }
 
         private int MeasureBody(int width)

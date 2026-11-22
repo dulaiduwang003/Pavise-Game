@@ -19,8 +19,37 @@ namespace PaviseApp
         internal static int Selection(bool masterEnabled, int mode)
         { return masterEnabled ? Normalize(mode) + 1 : 0; }
 
+        // 设置里的疯狂档开关 默认关 关着时界面只给关闭 正常和激进 存着的疯狂档按正常档运行
+        // 存着的档位不改 打开开关后按它生效
+        internal const string InsaneVisibleKey = "BackgroundGovernanceInsaneVisible";
+
+        internal static bool InsaneVisible()
+        { return Settings.LoadStr(InsaneVisibleKey, "0") == "1"; }
+
+        internal static int Effective(int storedMode)
+        {
+            int mode = Normalize(storedMode);
+            return mode == Freeze && !InsaneVisible() ? Normal : mode;
+        }
+
+        // 运行时实际生效的档位
         internal static int Load()
+        { return Effective(LoadStored()); }
+
+        // 用户保存的档位 不看疯狂档开关
+        internal static int LoadStored()
         { return Parse(Settings.LoadStr(SettingKey, "0")); }
+
+        // 升级到这一版时 不管以前选的是哪一档 都改回正常档 疯狂档开关也关上 只做一次
+        internal const string ResetMarkerKey = "BackgroundGovernanceResetV1";
+
+        internal static void ResetForThisVersionOnce()
+        {
+            if (Settings.LoadStr(ResetMarkerKey, "") == "1") return;
+            bool levelSaved = Settings.LoadStr(SettingKey, "0") == Text(Normal) || Save(Normal);
+            bool switchSaved = Settings.LoadStr(InsaneVisibleKey, "0") != "1" || Settings.SaveStrDurable(InsaneVisibleKey, "0");
+            if (levelSaved && switchSaved) Settings.SaveStrDurable(ResetMarkerKey, "1");
+        }
 
         internal static int Parse(string value)
         {
@@ -39,10 +68,10 @@ namespace PaviseApp
             return Settings.SaveStrDurable(SettingKey, value) && Settings.LoadStr(SettingKey, "") == value;
         }
 
-        // 三档都禁止普通后台线程临时提优
+        // 激进和疯狂档禁止 Windows 临时提升普通后台线程的优先级 正常档不限制
 
         internal static bool WantsBackgroundBoostLimit(bool masterEnabled, int mode)
-        { return masterEnabled; }
+        { return masterEnabled && Normalize(mode) != Normal; }
 
         // 三档都把普通后台放进一个带锚点的 Job 由内核锁定 Idle 优先级 进程自己改不回 并申请磁盘限速
         // CPU 硬上限按每个进程能用多少核时间给 再换算成 Job 接口要的全机万分比 核多核少的机器得到同样的绝对预算
@@ -74,27 +103,6 @@ namespace PaviseApp
             return normalized == Freeze ? FreezeIoBandwidth : normalized == Aggressive ? AggressiveIoBandwidth : NormalIoBandwidth;
         }
 
-        // 激进和疯狂档另把普通后台收到分区给后台的那组核心上 把游戏常用的核心让出来 正常档不收核
-        // 有可靠分区时直接用它 大小核是能效核 X3D 是不带 3D 缓存的那组 双 CCD 是另一个 CCD 其余八核以上机型是 0 号核加末尾核
-        // 没有分区时只有疯狂档退回末尾 1～2 个物理核 算不出来 多处理器组或结果覆盖全部核心时不收核
-        // 激进档只收到整组核心式的分区上 也就是能效核 X3D 不带缓存的 CCD 或双 CCD 的另一组
-        // 从同构 CPU 里抠出一两个核的分区和末尾核都不用 后台锁在 Idle 优先级 只剩一两个核时 游戏和系统线程一占住 键鼠驱动就排不上队
-        // 模拟 6 核 12 线程笔记本实测 收到末尾一个物理核后 1000Hz 鼠标回调只跟上 9%～77% 不收核时全部跟上
-        internal static ulong AggressiveCoreTarget(bool masterEnabled, int mode, bool multiGroup, bool safePartition, bool domainPartition, ulong partitionBackground, ulong tailSqueeze, ulong allMask)
-        {
-            if (!masterEnabled || multiGroup || allMask == 0) return 0;
-            ulong target;
-            if (mode == Freeze) target = safePartition ? partitionBackground : tailSqueeze;
-            else if (mode == Aggressive && safePartition && domainPartition) target = partitionBackground;
-            else return 0;
-            target &= allMask;
-            return target == allMask ? 0 : target;
-        }
-
-        // 分区方案的标签见 CpuPartitionPolicy.Decide 这三种把一整组核心分给后台 其余几种只分一到四个核
-        internal static bool DomainPartition(string tag)
-        {
-            return tag == "hybrid-pe" || tag == "x3d-cache" || tag == "symmetric-ccd";
-        }
+        // 三档都不挪核 后台留在原来的核心范围里 只靠 CPU 上限 优先级和磁盘限速管住
     }
 }
