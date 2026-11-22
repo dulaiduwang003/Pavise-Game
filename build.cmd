@@ -55,7 +55,7 @@ set MANIFEST=build\Pavise.manifest.tmp
 >> "%MANIFEST%" echo   ^</compatibility^>
 >> "%MANIFEST%" echo ^</assembly^>
 if /i "%~4"=="--il-only" goto ilonly
-rem 原生 ETW 代码直接链进 exe 需要 MSVC 的 link.exe 和 Windows SDK 细节见 tools\Build-MixedExe.ps1
+rem 原生代码直接链进 exe 需要 MSVC 的 link.exe 和 Windows SDK 细节见 tools\Build-MixedExe.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Build-MixedExe.ps1" -Output "%OUT%" -Manifest "%MANIFEST%" -Icon src\Assets\Pavise.ico -Define PAVISE_STABILITY_COMPARISON -ProductResources
 if errorlevel 1 goto err
 goto identity
@@ -105,7 +105,7 @@ exit /b 1
 echo Usage: build.cmd -b dev [output.exe] [--selftest ^| --il-only]
 echo        prod is the same build the exe is shipped as compiled
 echo        Builds use src\Assets\Pavise.ico and never run a Pavise entry point.
-echo        The default build links the native ETW code into the exe and needs MSVC link.exe
+echo        The default build links native code into the exe and needs MSVC link.exe
 echo        (Visual Studio Build Tools, or PAVISE_MSVC_ENV pointing at an environment script).
 echo        --il-only builds the pure IL twin that loads the native code from its DLL image.
 call :restorecp

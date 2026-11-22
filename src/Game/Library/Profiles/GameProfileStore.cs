@@ -28,6 +28,8 @@ namespace PaviseApp
 
         private bool loadFailed;
 
+        private bool readLegacyRendererRecords;
+
         private int saveFailed;
 
         private int retryableSaveFailure;
@@ -39,6 +41,15 @@ namespace PaviseApp
             get
             {
                 return loadFailed;
+            }
+        }
+
+        // 本次读档读到过旧的渲染进程记录 调用方据此保存一次 档案里就不再留那种记录
+        internal bool ReadLegacyRendererRecords
+        {
+            get
+            {
+                return readLegacyRendererRecords;
             }
         }
 
@@ -151,17 +162,12 @@ namespace PaviseApp
         {
             ValidateProfiles(profiles);
             List<string> list = new List<string>();
-            List<string> list2 = new List<string>();
             List<string> list3 = new List<string>();
             List<string> list4 = new List<string>();
             list.Add(HeaderV5);
             foreach (GameProfile profile in profiles)
             {
                 list.Add("P|" + B64(profile.Id) + "|" + B64(profile.Name) + "|" + B64(profile.Root) + "|" + B64(profile.ExecutablePath) + "|" + B64(Join(profile.Entries)));
-                if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
-                {
-                    list2.Add("L|" + B64(profile.Id) + "|" + B64(profile.LearnedExecutablePath));
-                }
                 if (profile.ForceTrigger)
                 {
                     list3.Add("F|" + B64(profile.Id));
@@ -175,7 +181,6 @@ namespace PaviseApp
                     list4.Add("O|" + B64(profile.Id) + "|" + B64(@override.Key) + "|" + B64(@override.Value));
                 }
             }
-            list.AddRange(list2);
             list.AddRange(list3);
             list.AddRange(list4);
             return StrictUtf8.GetBytes(string.Join(Environment.NewLine, list.ToArray()) + Environment.NewLine);
@@ -320,9 +325,8 @@ namespace PaviseApp
                 }
                 ValidateRootPath(profile.Root);
                 ValidateExecutablePath(profile.ExecutablePath);
-                ValidateExecutablePath(profile.LearnedExecutablePath);
                 ValidateDiscoverySource(profile.DiscoverySource, profile.DiscoverySourcePath);
-                if (profile.ForceTrigger && string.IsNullOrEmpty(profile.PreferredExecutablePath))
+                if (profile.ForceTrigger && string.IsNullOrEmpty(profile.ExecutablePath))
                 {
                     throw new FormatException("forced profile has no executable");
                 }
@@ -396,6 +400,7 @@ namespace PaviseApp
         private List<GameProfile> Load()
         {
             List<GameProfile> list = new List<GameProfile>();
+            readLegacyRendererRecords = false;
             try
             {
                 if (!File.Exists(path))
@@ -543,12 +548,10 @@ namespace PaviseApp
                 }
                 foreach (KeyValuePair<string, string> item in dictionary2)
                 {
-                    GameProfile value2;
-                    if (!dictionary.TryGetValue(item.Key, out value2))
+                    if (!dictionary.ContainsKey(item.Key))
                     {
                         throw new FormatException("dangling L record");
                     }
-                    value2.LearnedExecutablePath = item.Value;
                 }
                 foreach (string item2 in hashSet2)
                 {
@@ -583,7 +586,14 @@ namespace PaviseApp
                         throw new FormatException("Legacy thread preferences could not be read; original profile data retained");
                     }
                 }
+                int skippedRenderers;
+                int mergedRenderers = MergeLegacyRenderers(list, dictionary2, out skippedRenderers);
                 ValidateProfiles(list);
+                readLegacyRendererRecords = dictionary2.Count > 0;
+                if (mergedRenderers > 0 || skippedRenderers > 0)
+                {
+                    Logger.Log(() => Logger.Format("游戏库：旧的渲染进程记录已并入登记路径 {0} 条，另有 {1} 条因路径已登记给其他游戏而丢弃", "Game library: merged {0} old renderer record(s) into the registered path; dropped {1} whose path is already registered to another game", mergedRenderers, skippedRenderers));
+                }
                 if (processedCount > 0)
                 {
                     Logger.Log(() => Logger.Text("游戏库：已忽略 ", "Game library: ignored ") + processedCount + Logger.Text(" 条旧的逐游戏“扩大后台范围／智能自适应升档”覆盖，已改由场景规则决定", " old per-game broader-scope / Smart adaptive escalation override(s); the scene rules now decide"));
@@ -596,6 +606,60 @@ namespace PaviseApp
                 Logger.LogFailure(Lang.T("log.gameprofiles.9"), error);
             }
             return list;
+        }
+
+        // 旧档案在登记路径之外另存一条学到的渲染进程 读档时并成一条登记路径 之后不再写这种记录
+        // 只看档案里的数据 不查磁盘 留下的路径不对时 下次对局的渲染确认会照常改正
+        private static int MergeLegacyRenderers(List<GameProfile> profiles, Dictionary<string, string> legacy, out int skipped)
+        {
+            skipped = 0;
+            int merged = 0;
+            if (legacy.Count == 0)
+            {
+                return 0;
+            }
+            HashSet<string> registered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (GameProfile profile in profiles)
+            {
+                if (!string.IsNullOrEmpty(profile.ExecutablePath))
+                {
+                    registered.Add(profile.ExecutablePath);
+                }
+            }
+            foreach (GameProfile profile in profiles)
+            {
+                string renderer;
+                if (!legacy.TryGetValue(profile.Id, out renderer) || string.Equals(profile.ExecutablePath, renderer, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                // 两款游戏不能登记同一个文件 这条路径已经登记给另一款游戏时不并入
+                if (registered.Contains(renderer))
+                {
+                    skipped++;
+                    // 强制接管必须有明确的文件 并不进来又没有登记路径时只能关掉
+                    if (string.IsNullOrEmpty(profile.ExecutablePath))
+                    {
+                        profile.ForceTrigger = false;
+                    }
+                    continue;
+                }
+                if (!string.IsNullOrEmpty(profile.ExecutablePath))
+                {
+                    registered.Remove(profile.ExecutablePath);
+                }
+                registered.Add(renderer);
+                profile.ExecutablePath = renderer;
+                profile.RecordSource(renderer, false);
+                string entry = Path.GetFileNameWithoutExtension(renderer);
+                if (!string.IsNullOrWhiteSpace(entry))
+                {
+                    profile.Entries.Clear();
+                    profile.Entries.Add(entry);
+                }
+                merged++;
+            }
+            return merged;
         }
 
         public static GameProfile NewProfile(string name, string root)

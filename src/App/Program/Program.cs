@@ -34,6 +34,9 @@ namespace PaviseApp
         [STAThread]
         private static void Main(string[] args)
         {
+            int hidWorkerExit;
+            if (NativeHid.TryRunWorker(args, out hidWorkerExit))
+            { Environment.ExitCode = hidWorkerExit; return; }
             int securityProbeExit;
             if (SecurityStartupProbe.TryRunHelper(args, out securityProbeExit))
             { Environment.ExitCode = securityProbeExit; return; }

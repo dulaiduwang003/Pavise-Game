@@ -61,15 +61,25 @@ namespace PaviseApp
         {
             try
             {
-                Check(PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "1") == "1" && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "garbage") == "0", "Governance setting must be canonical with safe default");
+                Check(PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "1") == "1" && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "2") == "2"
+                    && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "3") == "0" && PolicyCatalog.Canonical(PolicyCatalog.KeyBackgroundGovernance, "garbage") == "0",
+                    "Governance setting must be canonical with safe default");
                 Check(!BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 1) && !BackgroundGovernancePolicy.WantsBackgroundBoostLimit(false, 0)
-                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0) && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1),
-                    "Both enabled governance levels must limit background boost, and governance Off must not");
-                Check(BackgroundGovernancePolicy.ResourceCpuRate(1, 32) == 1 && BackgroundGovernancePolicy.ResourceCpuRate(0, 32) == 625
-                    && BackgroundGovernancePolicy.ResourceCpuRate(0, 8) == 2500 && BackgroundGovernancePolicy.ResourceCpuRate(0, 4) == 2500,
-                    "Resource Job CPU caps must be two cores per process, at most 25% on small machines, and 0.01% for Aggressive");
-                Check(BackgroundGovernancePolicy.ResourceIoBandwidth(0) == 50L * 1024 * 1024 && BackgroundGovernancePolicy.ResourceIoBandwidth(1) == 1024 * 1024,
-                    "Resource Job disk targets must be 50 MiB/s for Normal and 1 MiB/s for Aggressive");
+                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 0) && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 1)
+                    && BackgroundGovernancePolicy.WantsBackgroundBoostLimit(true, 2),
+                    "Every enabled governance level must limit background boost, and governance Off must not");
+                Check(BackgroundGovernancePolicy.ResourceCpuRate(0, 32) == 625 && BackgroundGovernancePolicy.ResourceCpuRate(0, 8) == 2500
+                    && BackgroundGovernancePolicy.ResourceCpuRate(0, 4) == 2500,
+                    "Normal CPU caps must be two cores per process and at most 25% on small machines");
+                // 激进档按 0.5 个核给 全机万分比随核数变 换算回去每个进程拿到的核时间相同
+                Check(BackgroundGovernancePolicy.ResourceCpuRate(1, 32) == 156 && BackgroundGovernancePolicy.ResourceCpuRate(1, 12) == 417
+                    && BackgroundGovernancePolicy.ResourceCpuRate(1, 4) == 1250 && BackgroundGovernancePolicy.ResourceCpuRate(1, 1) == 2500,
+                    "Aggressive CPU caps must give each process 0.5 of a core on every machine size");
+                Check(BackgroundGovernancePolicy.ResourceCpuRate(2, 32) == 1 && BackgroundGovernancePolicy.ResourceCpuRate(2, 4) == 1,
+                    "Freeze CPU caps must stay at 0.01% of the machine");
+                Check(BackgroundGovernancePolicy.ResourceIoBandwidth(0) == 50L * 1024 * 1024 && BackgroundGovernancePolicy.ResourceIoBandwidth(1) == 10L * 1024 * 1024
+                    && BackgroundGovernancePolicy.ResourceIoBandwidth(2) == 1024 * 1024,
+                    "Resource Job disk targets must be 50 MiB/s for Normal, 10 MiB/s for Aggressive and 1 MiB/s for Insane");
                 Check(RecoveryRecordKeys.Contains(RetiredBackgroundCpuCap.ReceiptKey) && RecoveryRecordKeys.Contains(RetiredBackgroundCpuCap.LegacyReceiptKey),
                     "Retired CPU cap receipts must still be swept by reset and settings archival");
                 BoostLevels(); NativeBoostRoundTrip();

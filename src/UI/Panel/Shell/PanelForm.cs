@@ -180,6 +180,9 @@ namespace PaviseApp
 
             private readonly FamilySuppressionSwitch fullscreen;
 
+            // 关闭 CFG 写进系统的逐程序设置 默认关 开启前确认风险
+            private readonly FamilySuppressionSwitch controlFlowGuard;
+
             private readonly GameCardDetailsButton coreDetails;
 
             private readonly Label extensionTitle;
@@ -211,6 +214,7 @@ namespace PaviseApp
                 family = MakeOption("libraryFamilyToggle", Lang.T("lib.family.suppress"), false, form.ToggleGameFamilySuppression);
                 rebar = MakeOption("libraryRebarToggle", Lang.T("lib.rebar"), false, form.ToggleGameRebar);
                 fullscreen = MakeOption("libraryFullscreenToggle", Lang.T("lib.fso"), false, form.ToggleGameFullscreenOptimizations);
+                controlFlowGuard = MakeOption("libraryCfgToggle", Lang.T("lib.cfg"), false, form.ToggleGameControlFlowGuard);
                 core.IconKey = "core";
                 core.DetailsWidth = 62;
                 performance.IconKey = "core";
@@ -219,6 +223,7 @@ namespace PaviseApp
                 family.IconKey = "family";
                 rebar.IconKey = "rebar";
                 fullscreen.IconKey = "fullscreen";
+                controlFlowGuard.IconKey = "cfg";
                 coreDetails = new GameCardDetailsButton
                 {
                     Name = "libraryCoreSettings",
@@ -257,6 +262,7 @@ namespace PaviseApp
                 family.TabIndex = 6;
                 rebar.TabIndex = 7;
                 fullscreen.TabIndex = 8;
+                controlFlowGuard.TabIndex = 9;
                 RefreshItem(initial);
             }
 
@@ -335,8 +341,10 @@ namespace PaviseApp
                 family.Enabled = !owner.familyChangeBusy;
                 rebar.Enabled = !owner.rebarChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
-                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[7] { core, performance, threadBoost, antiCheat, family, rebar, fullscreen };
-                string[] textEntries = new string[7]
+                controlFlowGuard.Checked = profile.DisableControlFlowGuard;
+                controlFlowGuard.Enabled = !owner.cfgChangeBusy;
+                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[8] { core, performance, threadBoost, antiCheat, family, rebar, fullscreen, controlFlowGuard };
+                string[] textEntries = new string[8]
                 {
                     "lib.cores.toggle.tip",
                     "gm.scheduling.resources.detail",
@@ -344,7 +352,8 @@ namespace PaviseApp
                     "lib.ace.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
                     "lib.rebar.tip",
-                    "lib.fso.tip"
+                    "lib.fso.tip",
+                    "lib.cfg.tip"
                 };
                 for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                 {
@@ -352,15 +361,15 @@ namespace PaviseApp
                     familySuppressionSwitchItems[i].AccessibleDescription = Lang.T(textEntries[i]);
                     tips.SetToolTip(familySuppressionSwitchItems[i], familySuppressionSwitchItems[i].AccessibleDescription);
                 }
-                string learnedExecutablePathOffset = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath + "|" + profile.LearnedExecutablePath;
-                if (extensionKey != learnedExecutablePathOffset)
+                string profileIdentity = profile.Id + "|" + profile.Root + "|" + profile.ExecutablePath;
+                if (extensionKey != profileIdentity)
                 {
                     if (extension != null)
                     {
                         extension.Dispose();
                     }
                     extension = null;
-                    extensionKey = learnedExecutablePathOffset;
+                    extensionKey = profileIdentity;
 #if PAVISE_SELFTEST
                     if (true) extension = owner.LibraryExtensionForTest == null ? null : owner.LibraryExtensionForTest(profile);
                     else
@@ -413,13 +422,13 @@ namespace PaviseApp
                     antiCheat.SetBounds(0, threadBoost.Bottom + Theme.S(8), width, Theme.S(40));
                     otherTitle.SetBounds(Theme.S(4), antiCheat.Bottom + Theme.S(12), labelWidth, Theme.S(22));
                     int rowTop = otherTitle.Bottom + Theme.S(4);
-                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[3] { family, rebar, fullscreen };
+                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { family, rebar, fullscreen, controlFlowGuard };
                     for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
                     {
                         familySuppressionSwitchItems[i].SetBounds(0, rowTop, width, Theme.S(40));
                         rowTop = familySuppressionSwitchItems[i].Bottom + Theme.S(8);
                     }
-                    int uOffset = Dpi.U(fullscreen.Bottom) + 8;
+                    int uOffset = Dpi.U(controlFlowGuard.Bottom) + 8;
                     extensionTitle.Visible = extension != null;
                     if (extension != null)
                     {
@@ -814,6 +823,8 @@ namespace PaviseApp
         private bool rebarChangeBusy;
 
         private bool fullscreenOptimizationsChangeBusy;
+
+        private bool cfgChangeBusy;
 
         private bool antiCheatChangeBusy;
 

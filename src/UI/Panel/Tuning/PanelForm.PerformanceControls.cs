@@ -20,6 +20,7 @@ namespace PaviseApp
             {
             case "GameNvRebarV1":
             case "GameDisableFullscreenOptimizationsV1":
+            case PolicyCatalog.KeyGameControlFlowGuard:
             case "NvMaxPerf":
             case "NvShaderCache":
                 return PerformanceRestartScope.ProcessRestart;

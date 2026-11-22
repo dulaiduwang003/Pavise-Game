@@ -34,7 +34,7 @@ namespace PaviseApp
                 Check(LogText.Record("INFO SESSION [session-a] start | 测试", 0).Contains("] 开始 |"), "会话开始状态未中文化");
                 Check(LogText.Record("INFO SESSION [session-a] end | 测试", 0).Contains("] 结束 |"), "会话结束状态未中文化");
                 RoundTrip("INFO AUTO [session-a] GmBoost | applied");
-                foreach (string state in new[] { "started", "restored", "restoring", "stopped", "ready", "pending", "failed", "unverified", "configured", "fso-configured", "pending-reboot", "restore-pending-reboot", "timer-requested", "timer-locked", "timer-limited", "timer-unverified", "unsupported", "unchanged", "canceled", "skipped", "waiting", "exhausted" })
+                foreach (string state in new[] { "started", "restored", "restoring", "stopped", "ready", "pending", "failed", "unverified", "configured", "fso-configured", "cfg-configured", "pending-reboot", "restore-pending-reboot", "timer-requested", "timer-locked", "timer-limited", "timer-unverified", "unsupported", "unchanged", "canceled", "skipped", "waiting", "exhausted" })
                     RoundTrip("INFO AUTO [session-a] TimerTick | " + state);
                 RoundTrip("INFO THREAD [session-a] result=stopped");
                 RoundTrip("WARN AUTO [session-a] GmBoost | restore-failed");

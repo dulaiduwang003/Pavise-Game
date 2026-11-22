@@ -234,12 +234,16 @@ namespace PaviseApp
             PolicySnapshot policy = sessionPolicy ?? PolicyResolver.Global();
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
             ulong target = BackgroundGovernancePolicy.AggressiveCoreTarget(policy.SuppressBackground, policy.BackgroundGovernanceMode, CpuTopology.MultiGroup,
-                safePartition, CpuTopology.ThrottleMask, safePartition ? 0 : CpuTopology.BackgroundSqueezeMask(), CpuTopology.AllMask);
+                safePartition, BackgroundGovernancePolicy.DomainPartition(CpuTopology.PartitionTag), CpuTopology.ThrottleMask,
+                safePartition ? 0 : CpuTopology.BackgroundSqueezeMask(), CpuTopology.AllMask);
             if (target != loggedAggressiveCoreTarget)
             {
                 loggedAggressiveCoreTarget = target;
                 if (target != 0)
-                    Logger.Info(Logger.Format("后台治理激进档：普通后台收到 CPU{0}（{1}），只在各进程原范围内收紧", "Aggressive background level: ordinary background narrowed to CPU{0} ({1}), only tightened inside each process's original range", CpuTopology.DescribeRanges(target), (safePartition ? Logger.Text("分区 ", "partition ") + CpuTopology.PartitionTag : Logger.Text("无分区 收核", "no partition, cores narrowed"))));
+                {
+                    string level = policy.BackgroundGovernanceMode == BackgroundGovernancePolicy.Freeze ? Logger.Text("疯狂", "Insane") : Logger.Text("激进", "Aggressive");
+                    Logger.Info(Logger.Format("后台治理{2}档：普通后台收到 CPU{0}（{1}），只在各进程原范围内收紧", "{2} background level: ordinary background narrowed to CPU{0} ({1}), only tightened inside each process's original range", CpuTopology.DescribeRanges(target), (safePartition ? Logger.Text("分区 ", "partition ") + CpuTopology.PartitionTag : Logger.Text("无分区 收核", "no partition, cores narrowed")), level));
+                }
             }
             return target;
         }

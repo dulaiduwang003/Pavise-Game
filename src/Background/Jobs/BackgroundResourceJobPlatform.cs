@@ -145,9 +145,17 @@ namespace PaviseApp
             basic.Basic.Priority = IdlePriorityClass;
             if (!SetInformationJobObject(job, ExtendedLimitInformation, ref basic, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
             { reason = "priority:" + Marshal.GetLastWin32Error(); return false; }
-            var cpu = new CpuRate { ControlFlags = limits.CpuRate > 0 ? CpuRateEnable | CpuRateHardCap : 0, Value = limits.CpuRate };
-            if (!SetInformationJobObject(job, CpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf(typeof(CpuRate))))
-            { reason = "cpu:" + Marshal.GetLastWin32Error(); return false; }
+            // 要写的 CPU 上限是 0 时 系统不接受在从没开过上限的 Job 上写关闭 会报错误 87
+            // 所以先读一下 已经是关的就不写
+            CpuRate current;
+            bool alreadyOff = limits.CpuRate == 0 && QueryInformationJobObject(job, CpuRateControlInformation, out current, (uint)Marshal.SizeOf(typeof(CpuRate)), IntPtr.Zero)
+                && (current.ControlFlags & CpuRateEnable) == 0;
+            if (!alreadyOff)
+            {
+                var cpu = new CpuRate { ControlFlags = limits.CpuRate > 0 ? CpuRateEnable | CpuRateHardCap : 0, Value = limits.CpuRate };
+                if (!SetInformationJobObject(job, CpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf(typeof(CpuRate))))
+                { reason = "cpu:" + Marshal.GetLastWin32Error(); return false; }
+            }
             bool member;
             if (!IsProcessInJob(process, job, out member)) { reason = "membership:" + Marshal.GetLastWin32Error(); return false; }
             if (!member && !AssignProcessToJobObject(job, process)) { reason = "assign:" + Marshal.GetLastWin32Error(); return false; }
@@ -181,9 +189,16 @@ namespace PaviseApp
             basic.Basic.Flags = SilentBreakaway;
             if (!SetInformationJobObject(job, ExtendedLimitInformation, ref basic, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
             { reason = "clear-priority:" + Marshal.GetLastWin32Error(); return false; }
-            var cpu = new CpuRate();
-            if (!SetInformationJobObject(job, CpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf(typeof(CpuRate))))
-            { reason = "clear-cpu:" + Marshal.GetLastWin32Error(); return false; }
+            // Job 从没开过 CPU 上限时 再写关闭会被系统拒绝 报错误 87 导致恢复卡住 已经是关的就跳过
+            CpuRate before;
+            bool cpuAlreadyOff = QueryInformationJobObject(job, CpuRateControlInformation, out before, (uint)Marshal.SizeOf(typeof(CpuRate)), IntPtr.Zero)
+                && (before.ControlFlags & CpuRateEnable) == 0;
+            if (!cpuAlreadyOff)
+            {
+                var cpu = new CpuRate();
+                if (!SetInformationJobObject(job, CpuRateControlInformation, ref cpu, (uint)Marshal.SizeOf(typeof(CpuRate))))
+                { reason = "clear-cpu:" + Marshal.GetLastWin32Error(); return false; }
+            }
             ExtendedLimits check;
             CpuRate cpuCheck;
             if (!QueryInformationJobObject(job, ExtendedLimitInformation, out check, (uint)Marshal.SizeOf(typeof(ExtendedLimits)), IntPtr.Zero)

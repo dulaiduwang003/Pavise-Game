@@ -62,7 +62,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            if (KnownWorkPackage(imagePath) || (WhitelistRule.IsUnsafeFamilyAnchor(imagePath) && !WhitelistRule.IsJavaRuntimeHost(imagePath)) || PlatformRuntimePolicy.RuntimePlatform(name) != null || OverlayHostCatalog.ShouldProtectProcess(name, imagePath, true))
+            if (KnownWorkPackage(imagePath) || (WhitelistRule.IsUnsafeFamilyAnchor(imagePath) && !WhitelistRule.IsJavaRuntimeHost(imagePath)) || PlatformRuntimePolicy.RuntimePlatform(name) != null || OverlayHostCatalog.ShouldProtectProcess(name, imagePath))
             {
                 return true;
             }

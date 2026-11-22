@@ -32,7 +32,7 @@ namespace PaviseApp
             {
                 return;
             }
-            string path = armed.PreferredExecutablePath;
+            string path = armed.ExecutablePath;
             if (string.IsNullOrEmpty(path))
             {
                 return;

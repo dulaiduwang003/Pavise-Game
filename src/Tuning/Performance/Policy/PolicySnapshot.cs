@@ -87,7 +87,7 @@ namespace PaviseApp
 
         internal int BackgroundGovernanceMode
         {
-            get { return ValueOf(PolicyCatalog.KeyBackgroundGovernance) == "1" ? BackgroundGovernancePolicy.Aggressive : BackgroundGovernancePolicy.Normal; }
+            get { return BackgroundGovernancePolicy.Parse(ValueOf(PolicyCatalog.KeyBackgroundGovernance)); }
         }
 
         internal bool BackgroundBoostLimitRequested

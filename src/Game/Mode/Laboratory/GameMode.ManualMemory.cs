@@ -19,7 +19,6 @@ namespace PaviseApp
                     foreach (GameProfile profile in profiles)
                     {
                         AddMemoryGameName(names, profile.ExecutablePath);
-                        AddMemoryGameName(names, profile.LearnedExecutablePath);
                         foreach (string entry in profile.Entries) AddMemoryGameName(names, entry);
                     }
                 }

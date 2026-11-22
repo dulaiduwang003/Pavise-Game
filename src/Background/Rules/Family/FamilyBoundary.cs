@@ -56,6 +56,28 @@ namespace PaviseApp
 
         private const int CatalogVerdictCap = 8192;
 
+        // 对局中每轮扫描都拿几百个进程的路径和整个游戏库比对 路径规范化和逐个目录比较占了大半耗时和内存分配
+        // 规范化只看路径本身 按原始路径记下结果 所属游戏目录同样按原始路径记下 游戏目录列表一变就整体作废
+        // 前台 进程身份和创建时间不进缓存 每轮照旧按快照判断
+        private const int PathMemoCap = 4096;
+
+        private static readonly object pathMemoSync = new object();
+
+        private static readonly Dictionary<string, string> normalizedPaths = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        private static readonly Dictionary<string, string> libraryRootByPath = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        private static string[] libraryRootMemoRoots = new string[0];
+
+        // 系统文件夹位置几乎不变 每次判断游戏目录是否安全都重新查 12 个文件夹太贵 隔一阵刷新一次
+        private const long UnsafeRootRefreshMs = 30000;
+
+        private static readonly object unsafeRootSync = new object();
+
+        private static string[] unsafeRootPaths;
+
+        private static long unsafeRootStamp;
+
         private static readonly object catalogSync = new object();
 
         private static readonly Dictionary<int, CatalogVerdict> catalogVerdicts = new Dictionary<int, CatalogVerdict>();
@@ -117,6 +139,7 @@ namespace PaviseApp
         internal static bool CatalogProtected(int pid, long creation, string name, string path)
         {
             int currentGenerationResult = PeripheralVendorProbe.CurrentGeneration();
+            if (PeripheralVendorProbe.MatchesRegisteredProgram(pid, creation, path)) return true;
             int keywordGeneration = PeripheralCatalog.UserKeywordGeneration;
             int currentGenerationResult2 = SecurityProductCatalog.CurrentGeneration();
             int mask = PlatformRuntimePolicy.Mask;
@@ -297,17 +320,12 @@ namespace PaviseApp
             {
                 if (item != null && (exactExecutablesOnly || forceFamilyProtection || FamilyExemptFor(item)))
                 {
-                    string executable = WhitelistRule.NormalizeImagePath(item.ExecutablePath);
-                    string learned = WhitelistRule.NormalizeImagePath(item.LearnedExecutablePath);
+                    string executable = NormalizedPath(item.ExecutablePath);
                     if (executable.Length > 0)
                     {
                         hashSet2.Add(executable);
                     }
-                    if (learned.Length > 0)
-                    {
-                        hashSet2.Add(learned);
-                    }
-                    if (exactExecutablesOnly && forceFamilyProtection && executable.Length == 0 && learned.Length == 0)
+                    if (exactExecutablesOnly && forceFamilyProtection && executable.Length == 0)
                         foreach (string entry in item.Entries)
                         {
                             string gameName = WhitelistRule.NormalizeName(entry);
@@ -334,8 +352,8 @@ namespace PaviseApp
                 {
                     continue;
                 }
-                if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(WhitelistRule.NormalizeImagePath(procEntry.Path)) || LibraryRootOf(procEntry.Path, list) != null))
-                    || legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name)))
+                if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(NormalizedPath(procEntry.Path)) || (list.Count > 0 && LibraryRootMemo(procEntry.Path, list) != null)))
+                    || (legacyGameNames.Count > 0 && legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name))))
                 {
                     hashSet3.Add(procEntry.Pid);
                 }
@@ -359,6 +377,84 @@ namespace PaviseApp
                 hashSet.UnionWith(WalkAncestorChain(dictionary, item3, selfPid, 24));
             }
             return hashSet;
+        }
+
+        // 和 WhitelistRule.NormalizeImagePath 结果相同 只是同一条原始路径不再重复规范化
+        internal static string NormalizedPath(string raw)
+        {
+            if (raw == null) return WhitelistRule.NormalizeImagePath(raw);
+            lock (pathMemoSync)
+            {
+                string normalized;
+                if (normalizedPaths.TryGetValue(raw, out normalized)) return normalized;
+            }
+            string result = WhitelistRule.NormalizeImagePath(raw);
+            lock (pathMemoSync)
+            {
+                if (normalizedPaths.Count >= PathMemoCap) normalizedPaths.Clear();
+                normalizedPaths[raw] = result;
+            }
+            return result;
+        }
+
+        // 和 LibraryRootOf 结果相同 游戏目录列表和上次不同时先清空记录
+        private static string LibraryRootMemo(string path, List<string> roots)
+        {
+            lock (pathMemoSync)
+            {
+                if (!SameRoots(libraryRootMemoRoots, roots))
+                {
+                    libraryRootByPath.Clear();
+                    libraryRootMemoRoots = roots.ToArray();
+                }
+                string root;
+                if (libraryRootByPath.TryGetValue(path, out root)) return root.Length == 0 ? null : root;
+                root = LibraryRootOf(path, roots);
+                if (libraryRootByPath.Count >= PathMemoCap) libraryRootByPath.Clear();
+                libraryRootByPath[path] = root ?? "";
+                return root;
+            }
+        }
+
+        private static bool SameRoots(string[] remembered, List<string> roots)
+        {
+            if (remembered.Length != roots.Count) return false;
+            for (int i = 0; i < remembered.Length; i++)
+            {
+                if (!string.Equals(remembered[i], roots[i], StringComparison.Ordinal)) return false;
+            }
+            return true;
+        }
+
+        private static string[] UnsafeRootPaths()
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            lock (unsafeRootSync)
+            {
+                if (unsafeRootPaths != null && (now - unsafeRootStamp) * 1000 / System.Diagnostics.Stopwatch.Frequency < UnsafeRootRefreshMs)
+                    return unsafeRootPaths;
+            }
+            var paths = new List<string>(UnsafeRoots.Length);
+            foreach (Environment.SpecialFolder folder in UnsafeRoots)
+            {
+                string folderPath;
+                try
+                {
+                    folderPath = Environment.GetFolderPath(folder);
+                }
+                catch
+                {
+                    continue;
+                }
+                if (!string.IsNullOrEmpty(folderPath)) paths.Add(folderPath.TrimEnd('\\'));
+            }
+            string[] result = paths.ToArray();
+            lock (unsafeRootSync)
+            {
+                unsafeRootPaths = result;
+                unsafeRootStamp = now;
+            }
+            return result;
         }
 
         internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents, Dictionary<int, string> names, HashSet<int> roots,
@@ -449,7 +545,7 @@ namespace PaviseApp
             Dictionary<int, int> dictionary2 = new Dictionary<int, int>();
             foreach (ProcEntry value2 in dictionary.Values)
             {
-                if (string.Equals(value2.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || string.Equals(value2.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || (safeFamilyDirSucceeded && UnderRoot(value2.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, value2.Pid, value2.Creation, value2.Path)))
+                if (string.Equals(value2.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || (safeFamilyDirSucceeded && UnderRoot(value2.Path, profile.Root)) || (familyEvidence != null && familyEvidence.Contains(profile, value2.Pid, value2.Creation, value2.Path)))
                 {
                     hashSet2.Add(value2.Pid);
                 }
@@ -506,19 +602,9 @@ namespace PaviseApp
             {
                 return false;
             }
-            Environment.SpecialFolder[] unsafeRoots = UnsafeRoots;
-            foreach (Environment.SpecialFolder folder in unsafeRoots)
+            foreach (string folderPath in UnsafeRootPaths())
             {
-                string folderPath;
-                try
-                {
-                    folderPath = Environment.GetFolderPath(folder);
-                }
-                catch
-                {
-                    continue;
-                }
-                if (!string.IsNullOrEmpty(folderPath) && string.Equals(dirTrimmed, folderPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(dirTrimmed, folderPath, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }

@@ -414,10 +414,10 @@ namespace PaviseApp
                 RaiseLibraryChanged();
                 return;
             }
-            if (key == "GameDisableFullscreenOptimizationsV1")
+            if (key == "GameDisableFullscreenOptimizationsV1" || key == PolicyCatalog.KeyGameControlFlowGuard)
             {
-                AutomaticFso.Invalidate();
-                AutomaticFso.Sync(true, -1L);
+                ExeLaunchSettings.Invalidate();
+                ExeLaunchSettings.Sync(true, -1L);
                 RaiseLibraryChanged();
                 return;
             }
@@ -507,10 +507,6 @@ namespace PaviseApp
                     if (!string.IsNullOrEmpty(profile.ExecutablePath))
                     {
                         hashSet2.Add(profile.ExecutablePath);
-                    }
-                    if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
-                    {
-                        hashSet2.Add(profile.LearnedExecutablePath);
                     }
                 }
             }
@@ -873,9 +869,9 @@ namespace PaviseApp
         {
             return false;
         }
-        private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath, bool familyExempt)
+        private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath)
         {
-            if (pid <= 4 || !OverlayHostCatalog.ShouldProtectProcess(name, imagePath, familyExempt))
+            if (pid <= 4 || !OverlayHostCatalog.ShouldProtectProcess(name, imagePath))
             {
                 return false;
             }

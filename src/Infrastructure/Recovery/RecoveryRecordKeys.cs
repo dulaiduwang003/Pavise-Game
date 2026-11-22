@@ -11,7 +11,7 @@ namespace PaviseApp
             "PowerOverlaySnap", "PrevPowerPlan", "ManagedPlanPolicyV3", "ManagedPresetCreationV1", "ExtremePowerKnobSnap", "CoreParkSnap", "PrevTimerTick", "PrevRefreshHz",
             "PrevMMAgent", "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevMaintDisabled", "PrevOptionalServicesPausedV1", "PrevPresenceQos",
             "LinkMetricReceipt", RetiredBackgroundCpuCap.LegacyReceiptKey, RetiredBackgroundCpuCap.ReceiptKey, "GameAffinityJobReceiptsV1", "AutoCoreThreadPlacementV1", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "Crash_ThrottleMasks", "Crash_BoostMask", "Crash_BoostNames", "Crash_BoostEntriesV2", "Crash_BoostPriorityOwnershipV1",
-            "FthExclusionBak", "FthCustomBak", "MsiList", "FsoExeList", LaboratoryPower.ReceiptKey, LaboratoryGpu.PowerReceipt, LaboratoryGpu.ClockReceipt, AntiCheatAffinityLease.ReceiptKey,
+            "FthExclusionBak", "FthCustomBak", "MsiList", "FsoExeList", CfgTweak.ListKey, LaboratoryPower.ReceiptKey, LaboratoryGpu.PowerReceipt, LaboratoryGpu.ClockReceipt, AntiCheatAffinityLease.ReceiptKey,
             LaboratoryFileFilter.ReceiptKey, LaboratoryClockRepair.ReceiptKey, LaboratoryAudioEffects.ReceiptKey,
             "RtssInstallationOwnerV1"
         };

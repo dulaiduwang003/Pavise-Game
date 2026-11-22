@@ -13,8 +13,6 @@ namespace PaviseApp
 
         public string ExecutablePath;
 
-        public string LearnedExecutablePath;
-
         // 来源只用于诊断 绑定登记时的精确路径 不决定调度或已开启功能的执行资格
         public string DiscoverySource;
 
@@ -72,18 +70,6 @@ namespace PaviseApp
             }
         }
 
-        public string PreferredExecutablePath
-        {
-            get
-            {
-                if (!string.IsNullOrEmpty(LearnedExecutablePath))
-                {
-                    return LearnedExecutablePath;
-                }
-                return ExecutablePath;
-            }
-        }
-
         public bool DisableFullscreenOptimizations
         {
             get
@@ -97,6 +83,15 @@ namespace PaviseApp
             }
         }
 
+        public bool DisableControlFlowGuard
+        {
+            get
+            {
+                string value;
+                return Overrides.TryGetValue(PolicyCatalog.KeyGameControlFlowGuard, out value) && value == "1";
+            }
+        }
+
         public GameProfile Clone()
         {
             GameProfile gameProfile = new GameProfile();
@@ -104,7 +99,6 @@ namespace PaviseApp
             gameProfile.Name = Name;
             gameProfile.Root = Root;
             gameProfile.ExecutablePath = ExecutablePath;
-            gameProfile.LearnedExecutablePath = LearnedExecutablePath;
             gameProfile.DiscoverySource = DiscoverySource;
             gameProfile.DiscoverySourcePath = DiscoverySourcePath;
             gameProfile.ForceTrigger = ForceTrigger;

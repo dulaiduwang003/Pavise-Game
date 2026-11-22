@@ -9,7 +9,8 @@ namespace PaviseApp
         private static readonly HashSet<string> ProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "uu", "uu_ball", "uu_launcher", "xunyou", "leigod", "leigod_launcher", "leishensdk", "qiyou", "biubiu", "bbservice", "dolphinq",
-            "wtfast", "guguai"
+            // Steam++ 也就是 Watt Toolkit 在本机跑代理加速 Steam 联网 压住它 经过它的请求全部卡住
+            "wtfast", "guguai", "steam++"
         };
 
         private static readonly string[] Tokens = new string[30]

@@ -288,6 +288,7 @@ namespace PaviseApp
                 list.Add(KeywordItem(keyword));
             }
             list.AddRange(list2);
+            whitePeripheralGeneration = PeripheralVendorProbe.CachedGeneration();
             list.AddRange(AutomaticExemptionItems());
             whiteRows = list;
             FilterWhitelistRows();
@@ -642,9 +643,14 @@ namespace PaviseApp
             list.Add(AutomaticExemption("white.auto.anticheat", Lang.F("white.auto.anticheat.list", string.Join(" · ", list3.ToArray())), "acshield", Lang.T("white.auto.details.groups") + "\r\n\r\n" + string.Join("\r\n\r\n", list2.ToArray()) + "\r\n\r\n" + DetailSection("white.auto.details.tokens", string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay())) + "\r\n\r\n" + DetailSection("white.auto.details.anticheatdirs", string.Join(" · ", AntiCheatCatalog.DirectoryNamesForDisplay()))));
             string[] value5 = PeripheralCatalog.NameKeywordsForDisplay();
             string[] value6 = PeripheralCatalog.DescriptionWordsForDisplay();
-            list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + DetailSection("white.auto.details.vendors", string.Join(" · ", PeripheralCatalog.PresentVendorTokensForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
+            list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
+            PeripheralDevice[] devices = PeripheralVendorProbe.DevicesForDisplay();
+            string[] registeredPrograms = PeripheralVendorProbe.RegisteredProgramsForDisplay();
             string holders = InputDeviceHolderText();
-            list.Add(AutomaticExemption("white.auto.inputholders", holders, "gamepad", DetailSection("white.auto.details.inputholders", holders) + "\r\n\r\n" + Lang.T("white.auto.inputholders.note")));
+            list.Add(AutomaticExemption("white.auto.inputholders", devices.Length == 0 ? holders : Lang.F("white.auto.inputholders.count", devices.Length), "gamepad",
+                DetailSection("white.auto.details.inputdevices", PeripheralDeviceText(devices)) + "\r\n\r\n" +
+                (registeredPrograms.Length == 0 ? "" : DetailSection("white.auto.inputdevices.programs", string.Join(" · ", registeredPrograms)) + "\r\n\r\n") +
+                DetailSection("white.auto.details.inputholders", holders) + "\r\n\r\n" + Lang.T("white.auto.inputholders.note")));
             string[] restricted = ProtectedGameRoster.Names();
             if (restricted.Length > 0)
             {
@@ -666,6 +672,23 @@ namespace PaviseApp
         {
             string[] names = InputDeviceHolders.HolderNamesForDisplay();
             return names.Length == 0 ? Lang.T("white.auto.inputholders.none") : string.Join(" · ", names);
+        }
+
+        private static string PeripheralDeviceText(PeripheralDevice[] devices)
+        {
+            if (devices.Length == 0) return Lang.T("white.auto.inputdevices.none");
+            var rows = new List<string>(devices.Length);
+            foreach (PeripheralDevice device in devices)
+            {
+                var kinds = new List<string>(3);
+                if ((device.Kind & PeripheralKind.Keyboard) != 0) kinds.Add(Lang.T("white.auto.inputdevices.keyboard"));
+                if ((device.Kind & PeripheralKind.Mouse) != 0) kinds.Add(Lang.T("white.auto.inputdevices.mouse"));
+                if ((device.Kind & PeripheralKind.Headset) != 0) kinds.Add(Lang.T("white.auto.inputdevices.headset"));
+                if (kinds.Count == 0) continue;
+                rows.Add(Lang.F("white.auto.inputdevices.entry", string.Join(" / ", kinds.ToArray()), device.Name,
+                    Lang.T(device.Connected ? "white.auto.inputdevices.connected" : "white.auto.inputdevices.inactive")));
+            }
+            return rows.Count == 0 ? Lang.T("white.auto.inputdevices.none") : string.Join("\r\n", rows.ToArray());
         }
 
         private static WhitelistItem AutomaticExemption(string titleKey, string subtitle, string glyph, string details)

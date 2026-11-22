@@ -39,7 +39,7 @@ namespace PaviseApp
         {
             foreach (GameProfile profile in profiles)
             {
-                if (SameLibraryPath(profile.ExecutablePath, path) || SameLibraryPath(profile.LearnedExecutablePath, path) || profile.ContainsPath(path))
+                if (SameLibraryPath(profile.ExecutablePath, path) || profile.ContainsPath(path))
                 {
                     return true;
                 }
@@ -250,17 +250,16 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                if (!valuesEqual && observedProfile != null && (!string.Equals(gameProfile.ExecutablePath, observedProfile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || !string.Equals(gameProfile.LearnedExecutablePath, observedProfile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase) || !string.Equals(gameProfile.Root, observedProfile.Root, StringComparison.OrdinalIgnoreCase)))
+                if (!valuesEqual && observedProfile != null && (!string.Equals(gameProfile.ExecutablePath, observedProfile.ExecutablePath, StringComparison.OrdinalIgnoreCase) || !string.Equals(gameProfile.Root, observedProfile.Root, StringComparison.OrdinalIgnoreCase)))
                 {
                     return false;
                 }
-                if (valuesEqual && gameProfile.LearnedExecutablePath == null && string.Equals(gameProfile.Root, rootValue, StringComparison.OrdinalIgnoreCase) && gameProfile.Entries.Count == 1 && gameProfile.Entries.Contains(fileNameWithoutExtension))
+                if (valuesEqual && string.Equals(gameProfile.Root, rootValue, StringComparison.OrdinalIgnoreCase) && gameProfile.Entries.Count == 1 && gameProfile.Entries.Contains(fileNameWithoutExtension))
                 {
                     return true;
                 }
                 GameProfile gameProfile2 = gameProfile.Clone();
                 gameProfile2.ExecutablePath = executablePathValue;
-                gameProfile2.LearnedExecutablePath = null;
                 // 自动换路径不能沿用另一文件的人工来源 同路径确认也不猜测旧库来源
                 if (!valuesEqual) gameProfile2.RecordSource(executablePathValue, false);
                 gameProfile2.Root = rootValue;
@@ -286,7 +285,7 @@ namespace PaviseApp
                 sourceDescription = gameProfile2.SourceDescription(executablePathValue);
             }
             Logger.Log(() => Logger.Format("{0}{1}{2}{3}{4}{5}；来源={6}", "{0}{1}{2}{3}{4}{5}; source={6}", Lang.T("log.gamemodelibrary.2"), name, Lang.T("log.gamemodelibrary.3"), fileNameWithoutExtension, Lang.T("log.gamemodelibrary.4"), executablePathValue, sourceDescription));
-            AutomaticFso.Invalidate();
+            ExeLaunchSettings.Invalidate();
             RequestFullGameDetection();
             RaiseLibraryChanged();
             return true;
@@ -306,8 +305,7 @@ namespace PaviseApp
             GameProfile profile = candidate == null ? null : candidate.Profile;
             string path = candidate == null ? null : candidate.RendererPath;
             return store != null && profile != null && !string.IsNullOrEmpty(path)
-                && (string.Equals(path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
                 && store.HasUnchanged(profile.Id, path);
         }
         // 替换已确认的渲染进程须有 GPU 3D 证据 未确认的启动器仍按普通候选处理
@@ -325,7 +323,7 @@ namespace PaviseApp
                 return candidate;
             }
             // 已用画面提交和 GPU 3D 负载确认过的游戏本体直接入场 不等加载画面过去再取证
-            // 只认登记或学到的 exe 且文件未变 网页 启动器和同目录其他程序路径不同 照常取证
+            // 只认登记的 exe 且文件未变 网页 启动器和同目录其他程序路径不同 照常取证
             if (VerifiedGameExecutable(candidate))
             {
                 candidate.Evidence = Lang.T("detect.learned");
@@ -403,10 +401,6 @@ namespace PaviseApp
                 if (!object.ReferenceEquals(profile, self))
                 {
                     if (string.Equals(profile.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                    if (string.Equals(profile.LearnedExecutablePath, resolved, StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }
@@ -709,14 +703,12 @@ namespace PaviseApp
             }
             GameDetection current = Handoff.Current;
             bool rendererChanged = current != null && !RendererHandoffTracker.SameIdentity(current, selected);
-            bool valuesEqual = string.Equals(gameProfile2.LearnedExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
-            bool valuesEqual2 = string.Equals(gameProfile2.ExecutablePath, selected.RendererPath, StringComparison.OrdinalIgnoreCase);
             bool registeredKept = RegisteredRendererProtected(gameProfile2, selected.RendererPath);
             if (registeredKept)
             {
                 NoteRegisteredRendererKept(gameProfile2, selected);
             }
-            if (!registeredKept && !gameProfile2.ForceTrigger && !rendererChanged && (selected.RendererLearnable || valuesEqual || (valuesEqual2 && !string.IsNullOrEmpty(gameProfile2.LearnedExecutablePath))))
+            if (!registeredKept && !gameProfile2.ForceTrigger && !rendererChanged && selected.RendererLearnable)
             {
                 GameDetection gameDetection = RendererHandoffTracker.Copy(selected);
                 gameDetection.RendererLearnable = true;
@@ -976,7 +968,7 @@ namespace PaviseApp
                 }
                 SetActiveDetectionLocked(gameDetection2);
             }
-            AutomaticFso.Sync(true, -1L);
+            ExeLaunchSettings.Sync(true, -1L);
             NotifyExtensionSession(true);
             RendererProbes.MaybeObserveActivity(gameDetection2);
             return gameDetection2.Profile.Name;

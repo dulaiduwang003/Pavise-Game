@@ -155,6 +155,7 @@ namespace PaviseApp
             case "GmAutoCoresV2":
             case "GameNvRebarV1":
             case "GameDisableFullscreenOptimizationsV1":
+            case PolicyCatalog.KeyGameControlFlowGuard:
                 return "0";
             default:
                 if (preferenceReads != null)

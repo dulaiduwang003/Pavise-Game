@@ -84,6 +84,31 @@ namespace PaviseApp
                         });
                         g.DrawLine(pen, 10, 17, 14, 11);
                         break;
+                    // 盾牌里一条分叉的调用路径 表示控制流防护
+                    case "cfg":
+                        g.DrawPolygon(pen, new PointF[6]
+                        {
+                            new PointF(12f, 2f),
+                            new PointF(20f, 5f),
+                            new PointF(20f, 12f),
+                            new PointF(12f, 22f),
+                            new PointF(4f, 12f),
+                            new PointF(4f, 5f)
+                        });
+                        g.DrawLine(pen, 12, 7, 12, 11);
+                        g.DrawLines(pen, new PointF[3]
+                        {
+                            new PointF(12f, 11f),
+                            new PointF(8.5f, 14f),
+                            new PointF(8.5f, 16f)
+                        });
+                        g.DrawLines(pen, new PointF[3]
+                        {
+                            new PointF(12f, 11f),
+                            new PointF(15.5f, 14f),
+                            new PointF(15.5f, 16f)
+                        });
+                        break;
                     case "threads":
                         g.DrawEllipse(pen, 1, 3, 3, 3);
                         g.DrawEllipse(pen, 1f, 10.5f, 3f, 3f);

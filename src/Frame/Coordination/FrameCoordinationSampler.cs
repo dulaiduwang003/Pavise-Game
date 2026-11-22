@@ -161,29 +161,50 @@ namespace PaviseApp
                 Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
             }
 
-            private ulong ReadPresentStream(ref Native.EventRecord record, bool dxgi)
+            private uint ReadPresentFlags(ref NativeEtw.PresentRecord present, ref Native.EventRecord raw, bool replay, out uint flags)
+            {
+                if (replay)
+                {
+                    flags = present.FlagsValue;
+                    return ReplayProperty(present.Properties, 1u, present.FlagsStatus);
+                }
+                var property = new Property { Name = (ulong)FlagsName.ToInt64(), Index = uint.MaxValue };
+                uint status = TdhGetProperty(ref raw, 0u, IntPtr.Zero, 1u, ref property, 4u, flagBuffer);
+                flags = status == 0 ? BitConverter.ToUInt32(flagBuffer, 0) : 0;
+                return status;
+            }
+
+            private ulong ReadPresentStream(ref NativeEtw.PresentRecord present, ref Native.EventRecord raw, bool replay)
             {
                 uint status;
-                if (replaying) status = ReplayProperty(8u, streamBuffer);
+                ulong stream;
+                if (replay)
+                {
+                    status = ReplayProperty(present.Properties, 2u, present.StreamStatus);
+                    stream = present.Stream;
+                }
                 else
                 {
-                    var property = new Property { Name = (ulong)(dxgi ? DxgiStreamName : D3d9StreamName).ToInt64(), Index = uint.MaxValue };
-                    if (property.Name == 0) { Sample.PresentSourceReadFailures++; streamUnknown = true; return 0; }
-                    status = TdhGetProperty(ref record, 0u, IntPtr.Zero, 1u, ref property, 8u, streamBuffer);
+                    IntPtr name = present.IsDxgi != 0 ? DxgiStreamName : D3d9StreamName;
+                    if (name == IntPtr.Zero) { Sample.PresentSourceReadFailures++; streamUnknown = true; return 0; }
+                    var property = new Property { Name = (ulong)name.ToInt64(), Index = uint.MaxValue };
+                    status = TdhGetProperty(ref raw, 0u, IntPtr.Zero, 1u, ref property, 8u, streamBuffer);
+                    stream = status == 0 ? BitConverter.ToUInt64(streamBuffer, 0) : 0;
                 }
                 if (status != 0)
                 {
                     Sample.PresentSourceReadFailures++;
-                    RecordPropertyFailure(status, record.EventHeader.EventDescriptor.Version);
+                    RecordPropertyFailure(status, present.Version);
                     streamUnknown = true;
                     return 0;
                 }
-                ulong stream = BitConverter.ToUInt64(streamBuffer, 0);
+
                 if (stream == 0)
                 { Sample.PresentSourceReadFailures++; Sample.ZeroPresentSources++; streamUnknown = true; }
                 else Sample.PresentSourceReadSuccesses++;
                 return stream;
             }
+
 
             private void RecordPropertyFailure(uint status, int version)
             {
@@ -314,262 +335,281 @@ namespace PaviseApp
                 }
             }
 
-            // 计数与应急检查之后的逐事件规则 原生前置处理的回放也从这里进入 两条路径共用这一份
-            private void Dispatch(ref Native.EventRecord r)
+            private bool WithinWindow(long time)
             {
-                    if (!Invalid)
+                return !Invalid && time >= Begin && time <= End;
+            }
+
+            private void Dispatch(ref Native.EventRecord raw)
+            {
+                long time = raw.EventHeader.TimeStamp;
+                if (!WithinWindow(time)) return;
+                Guid provider = raw.EventHeader.ProviderId;
+                if (provider != KernelThread)
+                {
+                    bool dxgi = provider == Dxgi;
+                    if ((!dxgi && provider != D3d9) || raw.EventHeader.ProcessId != Sample.Pid) return;
+                    var present = new NativeEtw.PresentRecord
                     {
-                        long timeStamp = r.EventHeader.TimeStamp;
-                        if (Invalid || timeStamp < Begin || timeStamp > End)
+                        ThreadId = (int)raw.EventHeader.ThreadId,
+                        Id = raw.EventHeader.EventDescriptor.Id,
+                        Version = raw.EventHeader.EventDescriptor.Version,
+                        IsDxgi = dxgi ? (byte)1 : (byte)0,
+                        UserDataLength = raw.UserDataLength
+                    };
+                    ApplyPresent(time, ref present, ref raw, false);
+                    return;
+                }
+
+                int processor = ProcessorIndex(ref raw);
+                SchedulerCpuState cpu = ObserveScheduler(time, processor, false);
+                if (cpu == null) return;
+                var record = new NativeEtw.Record { Time = time, Cpu = (ushort)processor };
+                switch (raw.EventHeader.EventDescriptor.Opcode)
+                {
+                    case 36:
+                        SchedulerSwitches++;
+                        record.Kind = NativeEtw.KindSwitchShort;
+                        if (raw.UserDataLength >= 24)
                         {
+                            record.Kind = NativeEtw.KindSwitch;
+                            record.A = Marshal.ReadInt32(raw.UserData);
+                            if (Relation != null)
+                            {
+                                record.B = Marshal.ReadInt32(raw.UserData, 4);
+                                record.State = Marshal.ReadByte(raw.UserData, 14);
+                            }
+                        }
+                        break;
+                    case 50:
+                        record.Kind = NativeEtw.KindReadyShort;
+                        if (raw.UserDataLength >= 8)
+                        {
+                            record.Kind = NativeEtw.KindReady;
+                            record.A = Marshal.ReadInt32(raw.UserData);
+                            record.State = Marshal.ReadByte(raw.UserData, 6);
+                        }
+                        break;
+                    default:
+                        return;
+                }
+                ApplySchedulerRecord(ref record, cpu, false);
+            }
+
+            private SchedulerCpuState ObserveScheduler(long time, int processor, bool orderReversed)
+            {
+                if (PresenterOnly || Sample.PresentIdentityOnly) return null;
+                if (processor < 0 || processor > ushort.MaxValue)
+                {
+                    if (Relation != null) Relation.Invalidate(Logger.Text("处理器编号超过采样器支持范围", "processor index exceeds the sampler's supported range"));
+                    Fault = FrameCaptureIssue.DecodeFailed;
+                    Invalid = true;
+                    return null;
+                }
+                SchedulerCpuState cpu;
+                if (!cpuStates.TryGetValue(processor, out cpu))
+                {
+                    cpu = new SchedulerCpuState();
+                    cpuStates.Add(processor, cpu);
+                }
+                if (time < cpu.Last || orderReversed)
+                {
+                    cpu.Running = 0;
+                    if (Relation != null) Relation.Invalidate(Logger.Text("同一CPU事件时间倒序，状态重建弃用", "events on the same CPU are out of time order; state reconstruction discarded"));
+                    return null;
+                }
+                cpu.Last = time;
+                return cpu;
+            }
+
+            private void ApplySchedulerRecord(ref NativeEtw.Record record, SchedulerCpuState cpu, bool replay)
+            {
+                switch (record.Kind)
+                {
+                    case NativeEtw.KindSwitchShort:
+                        if (replay) SchedulerSwitches++;
+                        cpu.Running = 0;
+                        if (Relation != null) Relation.Invalidate(Logger.Text("CSwitch数据不足，状态重建弃用", "insufficient CSwitch data; state reconstruction discarded"));
+                        return;
+                    case NativeEtw.KindSwitch:
+                        if (replay) SchedulerSwitches++;
+                        if (Relation != null)
+                        {
+                            // 原生前置已核对完整切换链 已省略的非游戏切换不在回放中重复核对
+                            if (replay) Relation.ReplaySwitch(record.Time, record.Cpu, record.A, record.B, record.State);
+                            else Relation.Switch(record.Time, record.Cpu, record.A, record.B, record.State);
+                        }
+                        if (RelationWithinBudget()) cpu.Running = Sample.Threads.ContainsKey(record.A) ? record.A : 0;
+                        return;
+                    case NativeEtw.KindReadyShort:
+                        if (Relation != null) Relation.Invalidate(Logger.Text("ReadyThread数据不足，状态重建弃用", "insufficient ReadyThread data; state reconstruction discarded"));
+                        return;
+                    case NativeEtw.KindReady:
+                        int target = record.A;
+                        if (Relation != null) Relation.Ready(record.Time, target, record.State, record.Cpu);
+                        if (!RelationWithinBudget() || (record.State & 1) != 0) return;
+                        int running = cpu.Running;
+                        // 固定线程集内 非零运行线程由切换事件准入
+                        if (FixedThreadSet && running == 0) return;
+                        if (running == target || !Sample.Threads.ContainsKey(target)
+                            || (!FixedThreadSet && !Sample.Threads.ContainsKey(running)) || !AdmitRelevantEvent()) return;
+                        long key = ((long)target << 32) | (uint)running;
+                        Dictionary<long, int> edges = Edges[record.Time >= Half ? 1 : 0];
+                        int hits;
+                        if (!edges.TryGetValue(key, out hits) && Edges[0].Count + Edges[1].Count >= EmergencyDependencyEdges)
+                        {
+                            FailBudget(FrameCaptureIssue.EdgeBudget, Logger.Text("线程关联超过完整采集应急上限", "thread relations exceeded the full-capture emergency limit"));
                             return;
                         }
-                        int receiveValue = ((timeStamp >= Half) ? 1 : 0);
-                        int threadId = (int)r.EventHeader.ThreadId;
-                        Guid providerId = r.EventHeader.ProviderId;
-                        if (providerId == KernelThread)
+                        edges[key] = hits == int.MaxValue ? hits : hits + 1;
+                        return;
+                }
+            }
+
+            private void ApplyPresent(long timeStamp, ref NativeEtw.PresentRecord present, ref Native.EventRecord raw, bool replay)
+            {
+                int threadId = present.ThreadId;
+                bool isDxgi = present.IsDxgi != 0;
+                int windowHalf = timeStamp >= Half ? 1 : 0;
+                int id = present.Id;
+                int startId = isDxgi ? 42 : 1;
+                int stopId = isDxgi ? 43 : 2;
+                // DXGI 还会发送交换链创建等事件 只有已识别的 Present 边界才能影响来源核验
+                if (id != startId && id != stopId) return;
+                if (!PresenterOnly && !Sample.Threads.ContainsKey(threadId))
+                {
+                    if (Sample.LayoutObservation) { Sample.UntrackedPresentEvents++; streamUnknown = true; }
+                    return;
+                }
+                if (present.Version != 0)
+                {
+                    if (Sample.LayoutObservation)
+                    {
+                        Sample.UnsupportedPresentEvents++;
+                        if (Sample.FirstUnsupportedPresentVersion < 0) Sample.FirstUnsupportedPresentVersion = present.Version;
+                        streamUnknown = true;
+                    }
+                    return;
+                }
+                if (!AdmitRelevantEvent()) return;
+                int pendingId;
+                if (id == startId)
+                {
+                    if (isDxgi)
+                    {
+                        uint flags;
+                        uint flagsStatus = ReadPresentFlags(ref present, ref raw, replay, out flags);
+                        if (flagsStatus != 0 || (flags & 1u) != 0)
                         {
-                            if (PresenterOnly || Sample.PresentIdentityOnly)
+                            if (Sample.LayoutObservation && flagsStatus != 0)
                             {
-                                return;
+                                Sample.PresentFlagsReadFailures++;
+                                RecordPropertyFailure(flagsStatus, present.Version);
+                                streamUnknown = true;
                             }
-                            // 大处理器编号必须使用 ProcessorIndex 不能截断后归到另一颗 CPU
-                            int bufferContextMask = ProcessorIndex(ref r);
-                            if (bufferContextMask < 0 || bufferContextMask > ushort.MaxValue)
+                            pending.Remove(threadId);
+                            pendingStreams.Remove(threadId);
+                            if (flagsStatus == 0) pending[threadId] = -id;
+                            return;
+                        }
+                    }
+                    if (Sample.LayoutObservation && pending.TryGetValue(threadId, out pendingId) && pendingId > 0)
+                    { Sample.ReplacedPresentStarts++; streamUnknown = true; }
+                    pending[threadId] = id;
+                    if (Sample.LayoutObservation)
+                    {
+                        pendingStreams[threadId] = ReadPresentStream(ref present, ref raw, replay);
+                        pendingAt[threadId] = timeStamp;
+                        presentStarted.Add(threadId);
+                    }
+                }
+                else if (pending.TryGetValue(threadId, out pendingId) && pendingId == startId)
+                {
+                    pending.Remove(threadId);
+                    if (present.UserDataLength >= 4 && (replay ? present.Result : Marshal.ReadInt32(raw.UserData)) == 0)
+                    {
+                        int presentCount;
+                        Presents[windowHalf].TryGetValue(threadId, out presentCount);
+                        Presents[windowHalf][threadId] = presentCount + 1;
+                        if (Sample.LayoutObservation)
+                        {
+                            ulong stream;
+                            if (!pendingStreams.TryGetValue(threadId, out stream) || stream == 0) streamUnknown = true;
+                            else
                             {
-                                if (Relation != null) Relation.Invalidate(Logger.Text("处理器编号超过采样器支持范围", "processor index exceeds the sampler's supported range"));
-                                Fault = FrameCaptureIssue.DecodeFailed;
+                                Dictionary<ulong, PresentStreamEvidence> streams = isDxgi ? dxgiPresentStreams : d3d9PresentStreams;
+                                PresentStreamEvidence source;
+                                if (!streams.TryGetValue(stream, out source))
+                                {
+                                    if (PresentStreamCount >= EmergencyPresentSources)
+                                    {
+                                        Sample.PresentSourceCapacityEvents++;
+                                        FailBudget(FrameCaptureIssue.EventBudget, Logger.Text("成功呈现来源超过采集应急上限", "successful present sources exceeded the capture emergency limit"));
+                                        return;
+                                    }
+                                    source = new PresentStreamEvidence(); streams.Add(stream, source);
+                                }
+                                int submitted;
+                                if (!source.Counts[windowHalf].TryGetValue(threadId, out submitted))
+                                {
+                                    if (presentCounterKeys >= EmergencyPresentCounterKeys)
+                                    { FailBudget(FrameCaptureIssue.EdgeBudget, Logger.Text("呈现来源计数键超过采集应急上限", "present-source counter keys exceeded the capture emergency limit")); return; }
+                                    presentCounterKeys++;
+                                }
+                                source.Counts[windowHalf][threadId] = submitted + 1;
+                                source.Successes++;
+                            }
+                            Sample.PresentStreamCount = PresentStreamCount;
+                            Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
+                            // 第二个成功来源已足以否定单一来源 保留两源诊断后停止 不截取单源继续准入
+                            if (Sample.PresentIdentityOnly && PresentStreamCount > 1)
+                            {
+                                Fault = FrameCaptureIssue.InsufficientEvidence;
+                                FaultDetail = Logger.Text("仅呈现身份采集确认多个成功来源，本轮样本弃用", "present-identity-only capture confirmed multiple successful sources; this round's sample discarded");
                                 Invalid = true;
                                 return;
                             }
-                            SchedulerCpuState cpu;
-                            if (!cpuStates.TryGetValue(bufferContextMask, out cpu))
-                            {
-                                cpu = new SchedulerCpuState();
-                                cpuStates.Add(bufferContextMask, cpu);
-                            }
-                            int opcode = r.EventHeader.EventDescriptor.Opcode;
-                            // 回放只含原生留下的事件 倒序由原生按这颗 CPU 的全部事件判定后标出
-                            if (timeStamp < cpu.Last || replayKind == NativeEtw.KindOrderReversed)
-                            {
-                                cpu.Running = 0;
-                                if (Relation != null) Relation.Invalidate(Logger.Text("同一CPU事件时间倒序，状态重建弃用", "events on the same CPU are out of time order; state reconstruction discarded"));
-                                return;
-                            }
-                            cpu.Last = timeStamp;
-                            switch (opcode)
-                            {
-                            case 36:
-                            {
-                                SchedulerSwitches++;
-                                if (r.UserDataLength < 24)
-                                {
-                                    cpu.Running = 0;
-                                    if (Relation != null) Relation.Invalidate(Logger.Text("CSwitch数据不足，状态重建弃用", "insufficient CSwitch data; state reconstruction discarded"));
-                                    break;
-                                }
-                                int int32 = Marshal.ReadInt32(r.UserData);
-                                // 回放缺少不涉及游戏线程的切换 切换链衔接已由原生看过全部切换并在断开处报告
-                                if (Relation != null && replaying)
-                                    Relation.ReplaySwitch(timeStamp, bufferContextMask, int32, Marshal.ReadInt32(r.UserData, 4), Marshal.ReadByte(r.UserData, 14));
-                                else if (Relation != null)
-                                    Relation.Switch(timeStamp, bufferContextMask, int32, Marshal.ReadInt32(r.UserData, 4), Marshal.ReadByte(r.UserData, 14));
-                                if (!RelationWithinBudget()) return;
-                                bool isInSampleThreads = Sample.Threads.ContainsKey(int32);
-                                cpu.Running = (isInSampleThreads ? int32 : 0);
-                                break;
-                            }
-                            case 50:
-                            {
-                                if (r.UserDataLength < 8)
-                                {
-                                    if (Relation != null) Relation.Invalidate(Logger.Text("ReadyThread数据不足，状态重建弃用", "insufficient ReadyThread data; state reconstruction discarded"));
-                                    break;
-                                }
-                                int targetTid = Marshal.ReadInt32(r.UserData);
-                                byte readyFlags = Marshal.ReadByte(r.UserData, 6);
-                                if (Relation != null) Relation.Ready(timeStamp, targetTid, readyFlags, bufferContextMask);
-                                if (!RelationWithinBudget()) return;
-                                if ((readyFlags & 1) != 0)
-                                {
-                                    break;
-                                }
-                                int receiveValue2 = cpu.Running;
-                                // 非零条目均由本次采样固定线程集中的 CSwitch 事件准入
-                                if (FixedThreadSet && receiveValue2 == 0) break;
-                                if (receiveValue2 != targetTid && Sample.Threads.ContainsKey(targetTid) && (FixedThreadSet || Sample.Threads.ContainsKey(receiveValue2)) && AdmitRelevantEvent())
-                                {
-                                    long key = ((long)targetTid << 32) | (uint)receiveValue2;
-                                    Dictionary<long, int> edges = Edges[receiveValue];
-                                    int value;
-                                    if (!edges.TryGetValue(key, out value) && Edges[0].Count + Edges[1].Count >= EmergencyDependencyEdges)
-                                    { FailBudget(FrameCaptureIssue.EdgeBudget, Logger.Text("线程关联超过完整采集应急上限", "thread relations exceeded the full-capture emergency limit")); return; }
-                                    edges[key] = value == int.MaxValue ? value : value + 1;
-                                }
-                                break;
-                            }
-                            }
                         }
-                        else
-                        {
-                            bool isDxgi = providerId == Dxgi;
-                            bool isD3d9 = providerId == D3d9;
-                            if (!isDxgi && !isD3d9 || r.EventHeader.ProcessId != Sample.Pid) return;
-                            int id = r.EventHeader.EventDescriptor.Id;
-                            // DXGI 还会发送交换链创建等事件 只有已识别的 Present 边界才能影响来源核验
-                            if (id != (isDxgi ? 42 : 1) && id != (isDxgi ? 43 : 2)) return;
-                            if (!PresenterOnly && !Sample.Threads.ContainsKey(threadId))
-                            {
-                                if (Sample.LayoutObservation) { Sample.UntrackedPresentEvents++; streamUnknown = true; }
-                                return;
-                            }
-                            if (r.EventHeader.EventDescriptor.Version != 0)
-                            {
-                                if (Sample.LayoutObservation)
-                                {
-                                    Sample.UnsupportedPresentEvents++;
-                                    if (Sample.FirstUnsupportedPresentVersion < 0) Sample.FirstUnsupportedPresentVersion = r.EventHeader.EventDescriptor.Version;
-                                    streamUnknown = true;
-                                }
-                                return;
-                            }
-                            if (!AdmitRelevantEvent()) return;
-                            int value2;
-                            if (id == ((!isDxgi) ? 1 : 42))
-                            {
-                                if (isDxgi)
-                                {
-                                    Property property = default(Property);
-                                    property.Name = (ulong)FlagsName.ToInt64();
-                                    property.Index = uint.MaxValue;
-                                    Property property2 = property;
-                                    uint flagsStatus = replaying ? ReplayProperty(4u, flagBuffer)
-                                        : TdhGetProperty(ref r, 0u, IntPtr.Zero, 1u, ref property2, 4u, flagBuffer);
-                                    if (flagsStatus != 0 || (BitConverter.ToUInt32(flagBuffer, 0) & 1u) != 0)
-                                    {
-                                        if (Sample.LayoutObservation && flagsStatus != 0)
-                                        {
-                                            Sample.PresentFlagsReadFailures++;
-                                            RecordPropertyFailure(flagsStatus, r.EventHeader.EventDescriptor.Version);
-                                            streamUnknown = true;
-                                        }
-                                        pending.Remove(threadId);
-                                        pendingStreams.Remove(threadId);
-                                        if (flagsStatus == 0) pending[threadId] = -id;
-                                        return;
-                                    }
-                                }
-                                if (Sample.LayoutObservation && pending.TryGetValue(threadId, out value2) && value2 > 0)
-                                { Sample.ReplacedPresentStarts++; streamUnknown = true; }
-                                pending[threadId] = id;
-                                if (Sample.LayoutObservation)
-                                {
-                                    pendingStreams[threadId] = ReadPresentStream(ref r, isDxgi);
-                                    pendingAt[threadId] = timeStamp;
-                                    presentStarted.Add(threadId);
-                                }
-                            }
-                            else if (id == (isDxgi ? 43 : 2) && pending.TryGetValue(threadId, out value2) && value2 == ((!isDxgi) ? 1 : 42))
-                            {
-                                pending.Remove(threadId);
-                                if (r.UserDataLength >= 4 && Marshal.ReadInt32(r.UserData) == 0)
-                                {
-                                    int value3;
-                                    Presents[receiveValue].TryGetValue(threadId, out value3);
-                                    Presents[receiveValue][threadId] = value3 + 1;
-                                    if (Sample.LayoutObservation)
-                                    {
-                                        ulong stream;
-                                        if (!pendingStreams.TryGetValue(threadId, out stream) || stream == 0) streamUnknown = true;
-                                        else
-                                        {
-                                            Dictionary<ulong, PresentStreamEvidence> streams = isDxgi ? dxgiPresentStreams : d3d9PresentStreams;
-                                            PresentStreamEvidence source;
-                                            if (!streams.TryGetValue(stream, out source))
-                                            {
-                                                if (PresentStreamCount >= EmergencyPresentSources)
-                                                {
-                                                    Sample.PresentSourceCapacityEvents++;
-                                                    FailBudget(FrameCaptureIssue.EventBudget, Logger.Text("成功呈现来源超过采集应急上限", "successful present sources exceeded the capture emergency limit"));
-                                                    return;
-                                                }
-                                                source = new PresentStreamEvidence(); streams.Add(stream, source);
-                                            }
-                                            int submitted;
-                                            if (!source.Counts[receiveValue].TryGetValue(threadId, out submitted))
-                                            {
-                                                if (presentCounterKeys >= EmergencyPresentCounterKeys)
-                                                { FailBudget(FrameCaptureIssue.EdgeBudget, Logger.Text("呈现来源计数键超过采集应急上限", "present-source counter keys exceeded the capture emergency limit")); return; }
-                                                presentCounterKeys++;
-                                            }
-                                            source.Counts[receiveValue][threadId] = submitted + 1;
-                                            source.Successes++;
-                                        }
-                                        Sample.PresentStreamCount = PresentStreamCount;
-                                        Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
-                                        // 第二个成功来源已足以否定单一来源 保留两源诊断后停止 不截取单源继续准入
-                                        if (Sample.PresentIdentityOnly && PresentStreamCount > 1)
-                                        {
-                                            Fault = FrameCaptureIssue.InsufficientEvidence;
-                                            FaultDetail = Logger.Text("仅呈现身份采集确认多个成功来源，本轮样本弃用", "present-identity-only capture confirmed multiple successful sources; this round's sample discarded");
-                                            Invalid = true;
-                                            return;
-                                        }
-                                    }
-                                    if (Relation != null) Relation.SuccessfulPresent(threadId, timeStamp);
-                                    if (!RelationWithinBudget()) return;
-                                }
-                                pendingStreams.Remove(threadId);
-                            }
-                            else if (id == (isDxgi ? 43 : 2))
-                            {
-                                // 显式 TEST 不提交画面 其结束事件不是缺少开始边界的未知提交
-                                if (pending.TryGetValue(threadId, out value2) && value2 == -(isDxgi ? 42 : 1))
-                                { pending.Remove(threadId); pendingStreams.Remove(threadId); }
-                                else if (Sample.LayoutObservation)
-                                {
-                                    // 仅豁免该线程紧贴开窗的首个孤立结束事件
-                                    if (!presentStarted.Contains(threadId) && timeStamp >= Begin && timeStamp - Begin <= PresentEdgeTicks && edgeStops.Add(threadId))
-                                        Sample.EdgePresentStops++;
-                                    else { Sample.UnmatchedPresentStops++; streamUnknown = true; }
-                                }
-                            }
-                        }
+                        if (Relation != null) Relation.SuccessfulPresent(threadId, timeStamp);
+                        if (!RelationWithinBudget()) return;
                     }
+                    pendingStreams.Remove(threadId);
+                }
+                else
+                {
+                    // 显式 TEST 不提交画面 其结束事件不是缺少开始边界的未知提交
+                    if (pendingId == -startId)
+                    { pending.Remove(threadId); pendingStreams.Remove(threadId); }
+                    else if (Sample.LayoutObservation)
+                    {
+                        // 仅豁免该线程紧贴开窗的首个孤立结束事件
+                        if (!presentStarted.Contains(threadId) && timeStamp >= Begin && timeStamp - Begin <= PresentEdgeTicks && edgeStops.Add(threadId))
+                            Sample.EdgePresentStops++;
+                        else { Sample.UnmatchedPresentStops++; streamUnknown = true; }
+                    }
+                }
             }
 
-            private bool replaying;
-            private byte replayKind;
-            private NativeEtw.PresentRecord replayPresent;
-            private const int ReplayDataBytes = 24;
-
-            // 原生回调已在原始事件上按同样的条件读好属性 回放到读取位置时取回同一结果
-            private uint ReplayProperty(uint bytes, byte[] data)
+            // 原生按原事件的读取条件保存属性值和返回码 回放只在同一读取位置核对
+            private static uint ReplayProperty(uint properties, uint required, uint status)
             {
-                uint read = bytes == 4u ? 1u : 2u;
-                if ((replayPresent.Properties & read) == 0) throw new InvalidOperationException(Logger.Text("原生前置处理没有读取这项画面提交属性", "native preprocessing did not read this present property"));
-                uint status = bytes == 4u ? replayPresent.FlagsStatus : replayPresent.StreamStatus;
+                if ((properties & required) == 0) throw new InvalidOperationException(Logger.Text("原生前置处理没有读取这项画面提交属性", "native preprocessing did not read this present property"));
                 if (status == ReaderOutOfMemory) throw new OutOfMemoryException();
                 if (status == ReaderFault) throw new ReaderFaultException();
-                ulong value = bytes == 4u ? replayPresent.FlagsValue : replayPresent.Stream;
-                for (int index = 0; index < bytes; index++) data[index] = (byte)(value >> (8 * index));
                 return status;
             }
 
-            // 消费者返回后 按到达顺序把原生留下的事件交给 Dispatch 每条记录带着原生在该事件处的
-            // 已送达数和切换数 回放中失效时停在同一个事件上 计数也停在那里 和逐事件处理一致
+            // 按到达顺序消费紧凑记录 应急停止保留停下时的事件计数
             internal void ReplayNative()
             {
                 NativeEtwCapture native = NativeCapture;
                 if (native == null || Invalid) return;
-                IntPtr data = Marshal.AllocHGlobal(ReplayDataBytes);
-                replaying = true;
                 try
                 {
                     NativeEtw.Stats stats;
                     bool complete = native.Read(out stats, delegate(NativeEtw.Record record, NativeEtw.PresentRecord present)
                     {
-                        ReplayRecord(record, present, data);
+                        ReplayRecord(ref record, ref present);
                         return !Invalid;
                     });
                     if (!complete) { Fault = FrameCaptureIssue.DecodeFailed; FaultDetail = Logger.Text("原生前置处理的事件记录无法读取", "native preprocessing event records could not be read"); Invalid = true; return; }
@@ -619,75 +659,43 @@ namespace PaviseApp
                     FaultDetail = Logger.Text("原生事件回放失败：", "native event replay failed: ") + ex.Message;
                     Invalid = true;
                 }
-                finally
-                {
-                    replaying = false;
-                    replayKind = 0;
-                    Marshal.FreeHGlobal(data);
-                }
             }
 
-            // 把一条原生记录还原成 Dispatch 需要的事件字段 内核事件统一按 16 位处理器索引给出 CPU
-            private void ReplayRecord(NativeEtw.Record record, NativeEtw.PresentRecord present, IntPtr data)
+            private void ReplayRecord(ref NativeEtw.Record record, ref NativeEtw.PresentRecord present)
             {
-                for (int index = 0; index < ReplayDataBytes; index++) Marshal.WriteByte(data, index, 0);
-                var r = new Native.EventRecord();
-                r.EventHeader.TimeStamp = record.Time;
-                r.UserData = data;
                 Count = record.Count;
                 SchedulerSwitches = record.Switches;
-                replayKind = record.Kind;
                 switch (record.Kind)
                 {
-                case NativeEtw.KindDiscontinuity:
-                    if (Relation != null) Relation.BreakContinuity(record.Time);
-                    return;
-                case NativeEtw.KindPresent:
-                    replayPresent = present;
-                    r.EventHeader.ProviderId = present.IsDxgi != 0 ? Dxgi : D3d9;
-                    r.EventHeader.ProcessId = (uint)Sample.Pid;
-                    r.EventHeader.ThreadId = (uint)present.ThreadId;
-                    r.EventHeader.EventDescriptor.Id = present.Id;
-                    r.EventHeader.EventDescriptor.Version = present.Version;
-                    r.UserDataLength = (ushort)present.UserDataLength;
-                    Marshal.WriteInt32(data, present.Result);
-                    Dispatch(ref r);
-                    return;
-                case NativeEtw.KindSwitch:
-                case NativeEtw.KindSwitchShort:
-                    // Dispatch 会把这次切换再计一次
-                    SchedulerSwitches = record.Switches - 1;
-                    r.EventHeader.EventDescriptor.Opcode = 36;
-                    if (record.Kind == NativeEtw.KindSwitch)
-                    {
-                        r.UserDataLength = 24;
-                        Marshal.WriteInt32(data, 0, record.A);
-                        Marshal.WriteInt32(data, 4, record.B);
-                        Marshal.WriteByte(data, 14, record.State);
-                    }
-                    break;
-                case NativeEtw.KindReady:
-                case NativeEtw.KindReadyShort:
-                    r.EventHeader.EventDescriptor.Opcode = 50;
-                    if (record.Kind == NativeEtw.KindReady)
-                    {
-                        SchedulerCpuState cpu;
-                        int running = cpuStates.TryGetValue(record.Cpu, out cpu) ? cpu.Running : 0;
+                    case NativeEtw.KindDiscontinuity:
+                        if (Relation != null) Relation.BreakContinuity(record.Time);
+                        return;
+                    case NativeEtw.KindPresent:
+                        if (WithinWindow(record.Time))
+                        {
+                            Native.EventRecord noRawEvent = default(Native.EventRecord);
+                            ApplyPresent(record.Time, ref present, ref noRawEvent, true);
+                        }
+                        return;
+                    case NativeEtw.KindSwitch:
+                    case NativeEtw.KindSwitchShort:
+                        // 原生累计值包含当前切换 共用处理入口会计入本条
+                        SchedulerSwitches--;
+                        break;
+                    case NativeEtw.KindReady:
+                        SchedulerCpuState prior;
+                        int running = cpuStates.TryGetValue(record.Cpu, out prior) ? prior.Running : 0;
                         if (running != record.B) throw new InvalidOperationException(Logger.Text("原生前置处理与回放的运行线程不一致", "running thread differs between native preprocessing and replay"));
-                        r.UserDataLength = 8;
-                        Marshal.WriteInt32(data, 0, record.A);
-                        Marshal.WriteByte(data, 6, record.State);
-                    }
-                    break;
-                case NativeEtw.KindOrderReversed:
-                    break;
-                default:
-                    throw new InvalidOperationException(Logger.Text("原生前置处理留下了未知记录类型 ", "native preprocessing left an unknown record kind ") + record.Kind);
+                        break;
+                    case NativeEtw.KindReadyShort:
+                    case NativeEtw.KindOrderReversed:
+                        break;
+                    default:
+                        throw new InvalidOperationException(Logger.Text("原生前置处理留下了未知记录类型 ", "native preprocessing left an unknown record kind ") + record.Kind);
                 }
-                r.EventHeader.ProviderId = KernelThread;
-                r.EventHeader.Flags = 0x0200;
-                r.BufferContext = record.Cpu;
-                Dispatch(ref r);
+                if (!WithinWindow(record.Time)) return;
+                SchedulerCpuState cpu = ObserveScheduler(record.Time, record.Cpu, record.Kind == NativeEtw.KindOrderReversed);
+                if (cpu != null) ApplySchedulerRecord(ref record, cpu, true);
             }
         }
 

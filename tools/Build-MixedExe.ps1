@@ -1,5 +1,5 @@
-﻿# 把托管代码和原生 ETW 组件链成一个 x64 exe 原生代码直接在 exe 里 不写出 DLL
-#   csc 编成 netmodule  从 NativeEtwImage.cs 和 NativeCpuImage.cs 取出 Zig 编好的目标文件  rc 生成图标 清单和版本资源  link.exe 链接
+﻿# 把托管代码和原生组件链成一个 x64 exe 原生代码直接在 exe 里 不写出 DLL
+#   csc 编成 netmodule  从内嵌镜像取出 Zig 编好的目标文件  rc 生成图标 清单和版本资源  link.exe 链接
 # 需要 MSVC 的 link.exe lib.exe 和 Windows SDK 的 rc.exe kernel32.lib 按下面的顺序找
 #   PAVISE_MSVC_ENV 指向的环境脚本  vswhere 找到的 vcvars64.bat  已经在 PATH 里的 MSVC 工具
 # 只允许导入 KERNEL32.dll 和 mscoree.dll 不依赖 VC 运行库
@@ -234,7 +234,8 @@ try {
 
     $objects = @()
     foreach ($component in @(@{ Image = 'NativeEtwImage.cs'; Source = 'PaviseEtw.cpp'; Object = 'PaviseEtw.obj' },
-        @{ Image = 'NativeCpuImage.cs'; Source = 'PaviseCpu.cpp'; Object = 'PaviseCpu.obj' })) {
+        @{ Image = 'NativeCpuImage.cs'; Source = 'PaviseCpu.cpp'; Object = 'PaviseCpu.obj' },
+        @{ Image = 'NativeHidImage.cs'; Source = 'PaviseHid.cpp'; Object = 'PaviseHid.obj' })) {
         $object = Join-Path $work $component.Object
         Write-NativeObject $component.Image $component.Source $object
         $objects += $object
@@ -272,7 +273,8 @@ try {
     $imports = @(Get-Imports $image)
     foreach ($name in $imports) { if ($name -ne 'KERNEL32.dll' -and $name -ne 'mscoree.dll') { throw ('Unexpected import in the linked exe: ' + $name) } }
     $exports = @(Get-Exports $image)
-    foreach ($name in @('PvEtwAbi', 'PvEtwLayout', 'PvEtwCreate', 'PvEtwCallback', 'PvEtwDestroy', 'PaviseCpuAbi', 'PaviseCpuidEx')) {
+    foreach ($name in @('PvEtwAbi', 'PvEtwLayout', 'PvEtwCreate', 'PvEtwCallback', 'PvEtwDestroy', 'PaviseCpuAbi', 'PaviseCpuidEx',
+        'PaviseHidAbi', 'PaviseHidOpen', 'PaviseHidProbe', 'PaviseHidClose')) {
         if ($exports -notcontains $name) { throw ('Native export missing from the linked exe: ' + $name) }
     }
     'linked ' + $Output + ' imports=' + ($imports -join ',') + ' native_exports=' + $exports.Count

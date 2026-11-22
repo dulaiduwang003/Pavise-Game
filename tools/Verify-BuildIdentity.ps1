@@ -27,7 +27,7 @@ $identityMachine = [Reflection.ImageFileMachine]::I386
 $identityAssembly.ManifestModule.GetPEKind([ref]$identityPeKind, [ref]$identityMachine)
 if (($identityPeKind -band [Reflection.PortableExecutableKinds]::ILOnly) -eq 0) {
     if ($identityMachine -ne [Reflection.ImageFileMachine]::AMD64) { throw 'The linked executable must be x64.' }
-    foreach ($identityType in @('NativeEtwImage', 'NativeCpuImage', 'NativeImageFile')) {
+    foreach ($identityType in @('NativeEtwImage', 'NativeCpuImage', 'NativeHidImage', 'NativeImageFile')) {
         if ($null -ne $identityAssembly.GetType('PaviseApp.' + $identityType)) { throw "The linked executable still carries the extracted native image: $identityType" }
     }
 }
@@ -57,6 +57,7 @@ foreach ($identityType in @(
     'AntiCheatAffinityEligibility',
     'AntiCheatSuppressionPolicy',
     'SvcQuery',
+    'NativeHid',
     'GameAffinityJobNative',
     'GameAffinityJobLease',
     'BackgroundResourceJobPlatform',
@@ -88,7 +89,7 @@ foreach ($identityType in @(
     'NvDriverRetryCoordinator',
     'PowerMaintenance',
     'DisplayAwakeLogThrottle',
-    'AutomaticFsoCoordinator',
+    'ExeLaunchSettingCoordinator',
     'AutomationLogDedup',
     'ModeLockGameIdentity',
     'AutoAddCoordinator',

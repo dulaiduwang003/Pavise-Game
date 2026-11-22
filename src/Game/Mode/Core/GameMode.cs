@@ -39,6 +39,8 @@ namespace PaviseApp
 
         internal const string AutomaticFsoKey = "AutoDisableFullscreenOptimizations";
 
+        internal const string AutomaticCfgKey = "AutoDisableControlFlowGuard";
+
 
 
 

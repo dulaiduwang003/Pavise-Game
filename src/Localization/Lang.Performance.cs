@@ -220,6 +220,10 @@ namespace PaviseApp
             messages.Add("log.fso.1", new string[2] { "已禁用全屏优化", "Fullscreen optimizations disabled for" });
             messages.Add("log.fso.2", new string[2] { "已恢复全屏优化", "Fullscreen optimizations restored for" });
             messages.Add("log.fso.3", new string[2] { "全屏优化设置回读核验失败", "Fullscreen optimizations write verification failed for" });
+            messages.Add("log.cfg.disabled", new string[2] { "已为下次启动关闭 CFG", "CFG disabled for the next launch of" });
+            messages.Add("log.cfg.restored", new string[2] { "已恢复 CFG", "CFG restored for" });
+            messages.Add("log.cfg.failed", new string[2] { "CFG 设置写入或核验失败", "CFG setting failed for" });
+            messages.Add("log.cfg.foreign", new string[2] { "该程序在 Windows 安全中心已有逐程序设置，CFG 保持原样", "This program already has its own exploit protection settings; CFG left unchanged for" });
             messages.Add("t.gpuinventory.1", new string[2] { "核显", "iGPU" });
             messages.Add("t.gpuinventory.2", new string[2] { "独显", "dGPU" });
             messages.Add("log.gpuinventory.6", new string[2] { "显卡枚举 DXCore 未报告核显独显属性 退回总线号与显存启发式判断 首个受影响适配器 ", "GPU enumeration: DXCore did not report integrated/discrete, falling back to bus-number and VRAM heuristics; first affected adapter " });

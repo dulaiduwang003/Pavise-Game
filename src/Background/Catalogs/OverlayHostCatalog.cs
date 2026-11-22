@@ -16,11 +16,12 @@ namespace PaviseApp
             "NahimicSvc64", "fraps"
         };
 
-        internal static bool ShouldProtectProcess(string name, string imagePath, bool protectGamePlatformHosts)
+        // Steam 的主程序 网页和覆盖层跟白名单里的 Steam 平台保护走 保护没被移除就一直算覆盖层宿主
+        internal static bool ShouldProtectProcess(string name, string imagePath)
         {
             if (StreamingToolCatalog.IsStreamingToolProcess(name, imagePath)) return true;
             string name2 = WhitelistRule.NormalizeName(name);
-            if (!ProcessNames.Contains(name2) && (!protectGamePlatformHosts || !PlatformRuntimePolicy.Enabled("steam") || !GamePlatformProcessNames.Contains(name2)))
+            if (!ProcessNames.Contains(name2) && (!PlatformRuntimePolicy.Enabled("steam") || !GamePlatformProcessNames.Contains(name2)))
             {
                 return false;
             }

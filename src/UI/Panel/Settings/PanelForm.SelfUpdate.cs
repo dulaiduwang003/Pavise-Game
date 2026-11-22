@@ -16,7 +16,7 @@ namespace PaviseApp
                 return PerformancePolicy.Text("请先退出游戏，再更新 Pavise，避免中断本局守护。", "Leave the game before updating Pavise to avoid interrupting the current guard session.");
             if (gameMode != null && gameMode.ProfileStoreSaveFailed)
                 return PerformancePolicy.Text("游戏库保存未完成，请先处理保存问题；不会通过更新重置用户数据。", "The game library could not be saved. Resolve that issue first; updating will not reset user data.");
-            if (Volatile.Read(ref auditBusy) != 0 || ShaderCleanupBusy || familyChangeBusy || rebarChangeBusy || fullscreenOptimizationsChangeBusy
+            if (Volatile.Read(ref auditBusy) != 0 || ShaderCleanupBusy || familyChangeBusy || rebarChangeBusy || fullscreenOptimizationsChangeBusy || cfgChangeBusy
                 || PrivacyControl.Busy || PerformanceTuning.EnvironmentBundleBusy())
                 return PerformancePolicy.Text("检测、配置或维护操作仍在进行，请完成后重新更新。", "An inspection, configuration or maintenance operation is still running. Retry when it finishes.");
             return null;

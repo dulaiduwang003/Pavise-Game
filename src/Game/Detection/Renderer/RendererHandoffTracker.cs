@@ -469,9 +469,9 @@ namespace PaviseApp
 
         internal static bool SameProfile(GameProfile a, GameProfile b)
         {
-            if (a != null && b != null && string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase) && a.ForceTrigger == b.ForceTrigger && SamePath(a.Root, b.Root) && SamePath(a.ExecutablePath, b.ExecutablePath))
+            if (a != null && b != null && string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase) && a.ForceTrigger == b.ForceTrigger && SamePath(a.Root, b.Root))
             {
-                return SamePath(a.LearnedExecutablePath, b.LearnedExecutablePath);
+                return SamePath(a.ExecutablePath, b.ExecutablePath);
             }
             return false;
         }

@@ -285,6 +285,7 @@ namespace PaviseApp
             }, list);
             Step("AC hard affinity", () => new AntiCheatAffinityLease().Recover(), list);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, list);
+            StepIf("CFG", CfgTweak.HasResidue, CfgTweak.RestoreAll, list);
             StepIf(Lang.T("gm.pausemaint"), () => MaintenancePause.HasResidue, MaintenancePause.Restore, list);
             StepIf("FTH", () => FthTweak.RepairedByPavise, FthTweak.Restore, list);
             list.AddRange(PerformanceTuning.RestoreAllFailures(ReportRestoreProgress));

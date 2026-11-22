@@ -8,7 +8,7 @@ namespace PaviseApp
 
         internal bool TrySetBackgroundGovernanceSelection(int selection)
         {
-            if (selection < 0 || selection > 2) return false;
+            if (selection < 0 || selection > 3) return false;
             bool saved;
             lock (familyPolicyGate)
             {
@@ -47,7 +47,7 @@ namespace PaviseApp
 
         internal bool TrySetBackgroundGovernanceMode(int mode)
         {
-            if (mode != BackgroundGovernancePolicy.Normal && mode != BackgroundGovernancePolicy.Aggressive) return false;
+            if (!BackgroundGovernancePolicy.Valid(mode)) return false;
             bool saved;
             lock (familyPolicyGate)
             {
@@ -56,7 +56,7 @@ namespace PaviseApp
                     if (stopping || ProfileStoreSaveFailed) return false;
                     string current;
                     if (!Settings.TryLoadStr(BackgroundGovernancePolicy.SettingKey, out current)) return false;
-                    if (current == (mode == BackgroundGovernancePolicy.Aggressive ? "1" : "0")) return true;
+                    if (current == BackgroundGovernancePolicy.Text(mode)) return true;
                     saved = BackgroundGovernancePolicy.Save(mode);
                     backgroundGovernanceSaveUnverified = !saved;
                     InvalidateFamilyPolicy();

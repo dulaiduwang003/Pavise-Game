@@ -74,8 +74,9 @@ namespace PaviseApp
             get
             {
                 if (!SuppressBackground) return Lang.T("background.governance.status.off");
-                return Lang.T(BackgroundGovernancePolicy.Load() == BackgroundGovernancePolicy.Aggressive
-                    ? "background.governance.status.aggressive" : "background.governance.status.normal");
+                int mode = BackgroundGovernancePolicy.Load();
+                return Lang.T(mode == BackgroundGovernancePolicy.Freeze ? "background.governance.status.freeze"
+                    : mode == BackgroundGovernancePolicy.Aggressive ? "background.governance.status.aggressive" : "background.governance.status.normal");
             }
         }
 

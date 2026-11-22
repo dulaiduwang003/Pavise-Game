@@ -135,6 +135,43 @@ namespace PaviseApp
                 }
             }
         }
+        // 关闭 CFG 前确认风险 恢复直接保存 写入和撤销都由逐 exe 设置组件按记录完成
+        private void ToggleGameControlFlowGuard(GameLibraryItem item)
+        {
+            if (cfgChangeBusy || item == null || item.Profile == null)
+            {
+                return;
+            }
+            string id = item.Profile.Id;
+            GameProfile current = FindLibraryProfile(id);
+            if (current == null)
+            {
+                RefreshGames();
+                return;
+            }
+            bool disable = !current.DisableControlFlowGuard;
+            if (disable && !PaviseDialog.Confirm(LibraryDialogOwner, Lang.T("lib.cfg"), Lang.T("lib.cfg.confirm"), DlgKind.Warn))
+            {
+                return;
+            }
+            cfgChangeBusy = true;
+            try
+            {
+                if (!gameMode.SetProfileOverride(id, PolicyCatalog.KeyGameControlFlowGuard, disable ? "1" : "0") && !gameMode.ProfileStoreSaveFailed)
+                {
+                    PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.cfg"), Lang.T("lib.cfg.failed"));
+                }
+            }
+            finally
+            {
+                cfgChangeBusy = false;
+                if (!base.IsDisposed && !base.Disposing)
+                {
+                    RefreshGames();
+                    SelectProfile(id);
+                }
+            }
+        }
         // 开启前确认风险 关闭直接保存 对局中改动由反作弊引擎立即撤销并按回执恢复
         private void ToggleGameAntiCheatSuppression(GameLibraryItem item)
         {

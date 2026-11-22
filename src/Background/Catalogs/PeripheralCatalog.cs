@@ -78,7 +78,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            return MatchesPresentDevice(name, fileInfoTextResult);
+            return false;
         }
 
         internal static bool IsAmdNoiseSuppressionProcess(string name, string path)
@@ -108,29 +108,6 @@ namespace PaviseApp
         {
             return string.Equals(name, "AMDNoiseSuppression", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(name, "AMDNoiseSuppression.exe", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool MatchesPresentDevice(string name, string info)
-        {
-            string[] tokensResult = PeripheralVendorProbe.Tokens();
-            if (tokensResult.Length == 0)
-            {
-                return false;
-            }
-            string toLowerInvariantResult = (name ?? "").ToLowerInvariant();
-            string[] textEntries = tokensResult;
-            foreach (string value in textEntries)
-            {
-                if (toLowerInvariantResult.Contains(value))
-                {
-                    return true;
-                }
-                if (info.Length > 0 && info.Contains(value))
-                {
-                    return true;
-                }
-            }
-            return false;
         }
 
         internal static bool IsInputAudioLike(string name)
@@ -229,11 +206,6 @@ namespace PaviseApp
         internal static string[] DescriptionWordsForDisplay()
         {
             return (string[])DescriptionWords.Clone();
-        }
-
-        internal static string[] PresentVendorTokensForDisplay()
-        {
-            return PeripheralVendorProbe.Tokens();
         }
 
         private static string FileInfoText(string path)

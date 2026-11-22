@@ -92,7 +92,7 @@ namespace PaviseApp
             switch (key)
             {
             default:
-                return key == "GameDisableFullscreenOptimizationsV1";
+                return key == "GameDisableFullscreenOptimizationsV1" || key == PolicyCatalog.KeyGameControlFlowGuard;
             case "PerformancePreset":
             case "GmAutoCoresV2":
             case "GameFamilyBackground":

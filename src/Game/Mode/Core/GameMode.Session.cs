@@ -434,7 +434,7 @@ namespace PaviseApp
                     }
                     PrivacyControl.TryRestoreRetired(() => !active && !stopping && !panicReq);
                     SyncPerformanceAutomation();
-                    AutomaticFso.Sync(false, -1L);
+                    ExeLaunchSettings.Sync(false, -1L);
                     SyncGameNvDelivery();
                     MaybeRecoverHistoricalCriticalThreads();
                     if (!enabled || ProfileStoreSaveFailed)

@@ -323,10 +323,6 @@ namespace PaviseApp
                 {
                     list.Add(profile.ExecutablePath);
                 }
-                if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
-                {
-                    list.Add(profile.LearnedExecutablePath);
-                }
             }
             using (AddGameDialog addGameDialog = new AddGameDialog(list, gameMode.ActiveGame == null, seeds))
             {

@@ -13,7 +13,7 @@
 **A free, open-source runtime resource orchestrator for Windows games.**<br>
 Intelligent background suppression during play helps your existing hardware devote more of its performance to the current game.
 
-**Source version 3.3.1.3 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
+**Source version 3.3.1.4 · Intelligent background suppression · Per-game configuration · Action and diagnostic logs**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
@@ -24,7 +24,7 @@ Intelligent background suppression during play helps your existing hardware devo
 
 </div>
 
-> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.3. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
+> This repository provides **Pavise source code, build instructions, and runnable regression tests**. The current source version is 3.3.1.4. Available downloads and published release notes are listed on the [releases page](https://github.com/dulaiduwang003/Pavise-Game/releases/latest).
 
 ## Why runtime resource orchestration?
 
@@ -76,7 +76,7 @@ Before upgrading, exit the game and close the old version normally. In-app updat
 
 ## Build from source
 
-Use the .NET Framework C# compiler and Windows PowerShell included with Windows, plus `link.exe`, `lib.exe` and `rc.exe` from Visual Studio Build Tools (MSVC x64 tools and a Windows SDK). The build script finds these tools with vswhere, or you can point `PAVISE_MSVC_ENV` at your own environment script. The ETW and CPUID object files are precompiled with Zig and stored in `src/Interop/NativeEtwImage.cs` and `src/Interop/NativeCpuImage.cs`. The standard build links them into `Pavise.exe` without requiring Zig. The [source guide](docs/SOURCE-GUIDE.md) maps the current directories and build entry points.
+Use the .NET Framework C# compiler and Windows PowerShell included with Windows, plus `link.exe`, `lib.exe` and `rc.exe` from Visual Studio Build Tools (MSVC x64 tools and a Windows SDK). The build script finds these tools with vswhere, or you can point `PAVISE_MSVC_ENV` at your own environment script. The ETW, CPUID and HID probe object files are precompiled with Zig and stored in `src/Interop/NativeEtwImage.cs`, `src/Interop/NativeCpuImage.cs` and `src/Interop/NativeHidImage.cs`. The standard build links them into `Pavise.exe` without requiring Zig. The [source guide](docs/SOURCE-GUIDE.md) maps the current directories and build entry points.
 
 ```bat
 build.cmd -b prod
@@ -98,7 +98,7 @@ Development experiments on Microsoft background governance, Job limits, recovery
 
 ## Complete feature list
 
-The following lists the features and sub-capabilities in the current 3.3.1.3 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
+The following lists the features and sub-capabilities in the current 3.3.1.4 source. Availability depends on Windows, hardware, drivers, and the game. See the [user guide](https://pavise.club/en/docs/v3/) for instructions.
 
 <details>
 <summary>View the complete feature list</summary>
@@ -106,9 +106,9 @@ The following lists the features and sub-capabilities in the current 3.3.1.3 sou
 | Group | Features |
 | --- | --- |
 | **Guard and overview** | Guard switch, Smart and Competitive modes, game and guard status, hardware and utilization monitoring, live CPU, GPU, and memory readings, and session counters for suppressed processes and paused services. |
-| **Intelligent background suppression (core)** | Background governance; Off, Normal, and Aggressive levels; dynamic scope expansion under load; whole-core background limits; background CPU, disk I/O, and memory-page priority reduction; efficiency mode (EcoQoS); limits on dynamic background thread boosts; Delivery Optimization download yielding; automatic maintenance limits during play; game and essential dependency protection; releasing or retaining governance when switching away; restoration after play. |
+| **Intelligent background suppression (core)** | Background governance; Off, Normal, Aggressive, and Insane levels; dynamic scope expansion under load; whole-core background limits; background CPU, disk I/O, and memory-page priority reduction; efficiency mode (EcoQoS); limits on dynamic background thread boosts; Delivery Optimization download yielding; automatic maintenance limits during play; game and essential dependency protection; releasing or retaining governance when switching away; restoration after play. |
 | **Game library and detection** | Game executable detection; adding an EXE or a running game; selecting minimized or tray games; Steam and WeGame scanning; automatic library additions; ignore list and undo; search; renaming games; replacing or restoring covers; removing games. |
-| **Per-game tuning** | Per-game configuration; forced optimization trigger; Suppress family processes; disabling fullscreen optimizations; NVIDIA ReBAR; advanced tuning grouped into CPU and Other with saved values shown inline; game core range and isolation; a separate render-thread affinity switch with Automatic, Single render core, and Manual modes and optional whole-core avoidance; per-game opt-out of Performance priority and Game thread boost. |
+| **Per-game tuning** | Per-game configuration; forced optimization trigger; Suppress family processes; disabling fullscreen optimizations; disabling CFG per game; NVIDIA ReBAR; advanced tuning grouped into CPU and Other with saved values shown inline; game core range and isolation; a separate render-thread affinity switch with Automatic, Single render core, and Manual modes and optional whole-core avoidance; per-game opt-out of Performance priority and Game thread boost. |
 | **CPU placement and isolation** | All-core, P-core, E-core, CCD, and cache-domain selection; manual logical processor selection; keeping one thread per core or including SMT siblings; whole-core background avoidance; draft CPU selections with Save and Reload saved; CPU-range restoration. |
 | **Performance priority, thread boost, and render thread affinity** | Two per-game switches in advanced tuning, on by default: Performance priority (game process at High, raised disk and GPU priority, locked high-performance QoS) and Game thread boost (frame-submitting thread at the highest level with its partner slightly higher, or the busiest thread when it cannot be identified). Per-game render thread affinity only places cores: Automatic gives one to three frame-critical threads their own physical cores by measurement, Single render core pins the render thread to the best core, and Manual pins it to chosen CPUs. Changes apply next session and owned changes are restored when it is turned off, the game ends, or the app exits. Game memory priority adjustment and its legacy recovery path have been removed. |
 | **In-game power** | No-switch, managed, or existing power plans; managed power and dynamic parameters; separate AC and DC settings; CPU-topology matching; core parking, EPP, and boost coordination; plan and parameter verification; an in-game power-plan guard; original-plan restoration; laptop vendor performance modes; Lenovo SmartFan and ASUS G-Helper integration; original vendor-mode restoration; handheld compatibility; keeping the system awake during play. |
@@ -119,7 +119,7 @@ The following lists the features and sub-capabilities in the current 3.3.1.3 sou
 | **Audio** | Keeping audio awake on AC power; original audio setting restoration. |
 | **Performance laboratory** | EPP power yielding, maximum GPU clock requests (raise the clock floor on supported AMD GPUs or request a clock lock on NVIDIA), maximum power limits on supported AMD and NVIDIA discrete GPUs, CPU idle policy (original policy or higher idle threshold), and laboratory-state checks and restoration. |
 | **Anti-cheat suppression and protection** | Per-game Anti-cheat suppression switch in the Library, off by default and turned on per game: installed ACE, EasyAntiCheat and BattlEye services are suppressed only during that game's matches and restored when the match ends; components bundled in game folders and Vanguard are only protected, other anti-cheat software is protected or recorded only; anti-cheat is never governed as ordinary background; game and launch-chain dependency protection. |
-| **Whitelist and dependency protection** | Adding running processes, services, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components (marked protection only or record only), input/audio/peripheral driver chains, and streaming tools; viewing and clearing the process access restriction history. |
+| **Whitelist and dependency protection** | Adding running processes, services, EXEs, or files by drag and drop; path and family protection; name search; scope inspection; removal; restoring platform and preset lists; protection for Windows system processes, gaming network accelerators, GPU drivers, hardware power and cooling tools, anti-cheat and game-protection components (marked protection only or record only), input/audio/peripheral driver chains, and streaming tools; viewing and clearing the process access restriction history. View detected keyboards, mice, and headsets with their connection state. Verified peripheral background programs are exempt during games. |
 | **League of Legends and WeGame** | Dedicated LoL enhancements; auxiliary-process cleanup and restoration; immediate cleanup or restore; headless LoL client; lobby restoration; LoL add-on inspection and removal; overlay-cleanup notices; login and update dependency protection. |
 | **System checkup** | Sampling; cancellation and rerun; findings, evidence levels, and action links; restoration records; one-click repair. |
 | **Checkup: platform and CPU** | Platform capabilities; GPU inventory; NVIDIA interfaces; CPU Sets partitioning; EcoQoS; Windows version; 3D V-Cache driver; Windows Game Mode; CPU and background load; CPU topology; throttling events from the last seven days; top three background consumers; resident RGB software detection. |
@@ -170,7 +170,10 @@ Discovery budgets are per managed game session and rule phase: Single render cor
 | --- | --- |
 | **Off** | Disables background governance. |
 | **Normal** | Lowers background CPU, disk I/O and memory priorities, enables efficiency mode and blocks temporary boosts. CPU usage per app is capped at the equivalent of two cores, up to a quarter of the machine. The disk limit is 50 MiB/s per app when Windows accepts it. |
-| **Aggressive** | Caps each background app at 0.01% of total CPU capacity and confines it to a few cores. The disk limit is 1 MiB/s per app. Both levels retain the CPU cap, priority lock and very low I/O priority if Windows rejects the disk limit. |
+| **Aggressive** | Caps each background app at 0.5 of a core. On hybrid, X3D and dual-CCD CPUs it also moves apps to the efficiency cores or the other CCD; on other CPUs it does not confine cores. Keyboard and mouse drivers, remapping tools and headset software can still respond on time. The disk limit is 10 MiB/s per app. |
+| **Insane** | Caps each background app at 0.01% of total CPU capacity and confines it to a few cores (the last one or two physical cores when there is no partition), so background apps nearly stop. Remapping, auto-click and macro tools or unlisted peripheral and headset software may stutter. The disk limit is 1 MiB/s per app. |
+
+All three levels retain the CPU cap, priority lock and very low I/O priority if Windows rejects the disk limit.
 
 Background governance leaves system services and system components in the Windows folder alone: session 0 processes that host services such as diagnostics and search indexing are not governed, and wide scope only adds apps with visible windows, never the Windows folder.
 
@@ -187,6 +190,19 @@ Automatic render placement and clear core stay within the game's allowed CPU ran
 Smart and Competitive share power parameters. With managed power, laptops retain the previous policy and desktops use CPU-matched presets. If a high-performance template is missing, the original plan can be checked and copied as a candidate. Supported handhelds leave power management to Windows and vendor software.
 
 While a game session owns a power plan, the guard keeps verifying the active plan and managed parameters and writes back external changes. Repeated external edits do not change the user's choice to No switching. Checks and writes are serial; repeated conflicts slow the response interval to at most 15 seconds, with rate-limited logs. Initial acquisition, plan creation, write failures, monitor-registration failures, and restoration retain finite retry budgets. Restoration preserves later external changes. Reselect the power plan if an older version changed it to No switching.
+
+## 3.3.1.4 release notes
+
+- Please be civil when reporting issues. Pavise is free and open source, and I don't owe anyone anything.
+- Background governance now has four levels: Off, Normal, Aggressive and Insane.
+- Aggressive caps each background app at 0.5 of a core and 10 MiB/s of disk; keyboard and mouse drivers, remapping tools and headset software still respond on time.
+- Insane gives each background app only 0.01% of the CPU so background apps nearly stop, and asks for confirmation before switching.
+- In Competitive, the app you switch to after leaving the game is fully released along with its child processes; other background apps stay governed.
+- The whitelist always takes priority: with Suppress family processes on, programs covered by the whitelist or Steam platform protection are no longer suppressed.
+- Accelerator protection now covers Steam++ (Watt Toolkit).
+- Added a per-game Disable CFG option in Advanced tuning. It is off by default.
+- Peripheral drivers are now identified natively, fixing keyboard and mouse drivers that some users still saw suppressed on Aggressive.
+- Background sweeps during matches now use less CPU and memory.
 
 ## 3.3.1.3 release notes
 

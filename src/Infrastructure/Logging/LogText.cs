@@ -360,7 +360,7 @@ namespace PaviseApp
             { "restore-pending-reboot", "恢复待重启" }, { "ready", "已就绪" }, { "pending", "待确认" },
             { "failed", "执行失败" }, { "stopped", "已停止" }, { "unverified", "未核验" },
             { "timer-unverified", "计时器未核验" }, { "on", "开启" }, { "off", "关闭" },
-            { "configured", "已配置" }, { "fso-configured", "全屏优化已配置" }, { "pending-reboot", "等待重启" },
+            { "configured", "已配置" }, { "fso-configured", "全屏优化已配置" }, { "cfg-configured", "控制流防护已配置" }, { "pending-reboot", "等待重启" },
             { "timer-requested", "计时器已请求" }, { "timer-locked", "计时器已锁定" }, { "timer-limited", "计时器受限" },
             { "unsupported", "不受支持" }, { "unchanged", "无需修改" }, { "canceled", "已取消" },
             { "skipped", "已跳过" }, { "waiting", "等待中" }, { "exhausted", "预算已耗尽" },

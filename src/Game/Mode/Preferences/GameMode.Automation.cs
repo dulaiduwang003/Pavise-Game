@@ -7,16 +7,16 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    internal partial class GameMode : IAutomaticFsoHost
+    internal partial class GameMode : IExeLaunchSettingHost
     {
-        private AutomaticFsoCoordinator automaticFso;
+        private ExeLaunchSettingCoordinator exeLaunchSettings;
 
         private AutomationLogDedup automationLog;
 
         // 两个组件正常由构造函数创建 这里的兜底只给测试里不走构造函数造出来的 GameMode 用
-        internal AutomaticFsoCoordinator AutomaticFso
+        internal ExeLaunchSettingCoordinator ExeLaunchSettings
         {
-            get { return LazyInitializer.EnsureInitialized(ref automaticFso, () => new AutomaticFsoCoordinator(this)); }
+            get { return LazyInitializer.EnsureInitialized(ref exeLaunchSettings, () => new ExeLaunchSettingCoordinator(this)); }
         }
 
         internal AutomationLogDedup AutomationLog
@@ -24,17 +24,17 @@ namespace PaviseApp
             get { return LazyInitializer.EnsureInitialized(ref automationLog, () => new AutomationLogDedup()); }
         }
 
-        object IAutomaticFsoHost.SyncRoot { get { return sync; } }
-        bool IAutomaticFsoHost.Stopping { get { return stopping; } }
-        bool IAutomaticFsoHost.ProfileStoreSaveFailed { get { return ProfileStoreSaveFailed; } }
-        bool IAutomaticFsoHost.LibraryRecoveryPending
+        object IExeLaunchSettingHost.SyncRoot { get { return sync; } }
+        bool IExeLaunchSettingHost.Stopping { get { return stopping; } }
+        bool IExeLaunchSettingHost.ProfileStoreSaveFailed { get { return ProfileStoreSaveFailed; } }
+        bool IExeLaunchSettingHost.LibraryRecoveryPending
         {
             get { return autoIgnoreLoadFailed || (libraryIgnoreTransaction != null && libraryIgnoreTransaction.RecoveryPending); }
         }
-        GameDetection IAutomaticFsoHost.ActiveDetection { get { return activeDetection; } }
-        IEnumerable<GameProfile> IAutomaticFsoHost.ProfilesLocked { get { return profiles; } }
-        GameProfile IAutomaticFsoHost.FindProfileLocked(string profileId) { return FindProfileLocked(profileId); }
-        void IAutomaticFsoHost.RecordAutomation(string key, string state) { RecordAutomation(key, state); }
+        GameDetection IExeLaunchSettingHost.ActiveDetection { get { return activeDetection; } }
+        IEnumerable<GameProfile> IExeLaunchSettingHost.ProfilesLocked { get { return profiles; } }
+        GameProfile IExeLaunchSettingHost.FindProfileLocked(string profileId) { return FindProfileLocked(profileId); }
+        void IExeLaunchSettingHost.RecordAutomation(string key, string state) { RecordAutomation(key, state); }
 
         internal void InitializeAutomation()
         {
@@ -172,6 +172,10 @@ namespace PaviseApp
             {
                 return Lang.T("auto.fso");
             }
+            if (key == AutomaticCfgKey)
+            {
+                return Lang.T("lib.cfg");
+            }
             PolicyItem policyItem = PolicyCatalog.ItemOf(key);
             if (policyItem == null)
             {
@@ -188,6 +192,7 @@ namespace PaviseApp
             case "applied": return Lang.T("auto.log.applied");
             case "configured": return Lang.T("auto.log.configured");
             case "fso-configured": return Lang.T("auto.fso.configured");
+            case "cfg-configured": return Lang.T("auto.cfg.configured");
             case "restored": return Lang.T("auto.log.restored");
             case "failed": return Lang.T("auto.log.failed");
             case "restore-failed": return Lang.T("auto.log.restore-failed");
@@ -217,7 +222,8 @@ namespace PaviseApp
                 case "PowerPlanOn":
                     return PowerPlanExecutionState;
                 case "AutoDisableFullscreenOptimizations":
-                    return AutomaticFso.State;
+                case "AutoDisableControlFlowGuard":
+                    return ExeLaunchSettings.State(key);
                 case "AutoTimerTick":
                     return timerMode.TickState;
                 case "AutoGlobalTimer":

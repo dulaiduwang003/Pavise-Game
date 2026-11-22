@@ -47,6 +47,40 @@ namespace PaviseApp
         private const uint SERVICE_ACTIVE = 1u;
 
         private const int ERROR_MORE_DATA = 234;
+        private const uint SC_MANAGER_CONNECT = 1u;
+        private const uint SERVICE_QUERY_STATUS = 4u;
+        private const uint SERVICE_RUNNING = 4u;
+        private const uint SERVICE_WIN32_OWN_PROCESS = 0x10u;
+        private const uint SERVICE_USER_OWN_PROCESS_INSTANCE = 0xD0u;
+        private const uint SERVICE_INTERACTIVE_PROCESS = 0x100u;
+
+        internal static int RunningOwnProcessId(string name)
+        {
+            IntPtr manager = OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+            if (manager == IntPtr.Zero) return 0;
+            try
+            {
+                IntPtr service = OpenServiceW(manager, name, SERVICE_QUERY_STATUS);
+                if (service == IntPtr.Zero) return 0;
+                try
+                {
+                    SERVICE_STATUS_PROCESS status;
+                    uint needed;
+                    if (!QueryServiceStatusEx(service, SC_ENUM_PROCESS_INFO, out status, (uint)Marshal.SizeOf(typeof(SERVICE_STATUS_PROCESS)), out needed)
+                        || status.CurrentState != SERVICE_RUNNING) return 0;
+                    uint hostType = status.ServiceType & ~SERVICE_INTERACTIVE_PROCESS;
+                    return hostType == SERVICE_WIN32_OWN_PROCESS || hostType == SERVICE_USER_OWN_PROCESS_INSTANCE ? (int)status.ProcessId : 0;
+                }
+                finally
+                {
+                    CloseServiceHandle(service);
+                }
+            }
+            finally
+            {
+                CloseServiceHandle(manager);
+            }
+        }
 
         public static List<KeyValuePair<string, int>> RunningServices()
         {
@@ -103,6 +137,12 @@ namespace PaviseApp
 
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr OpenSCManagerW(string machine, string db, uint access);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr OpenServiceW(IntPtr scm, string name, uint access);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool QueryServiceStatusEx(IntPtr service, int infoLevel, out SERVICE_STATUS_PROCESS status, uint size, out uint needed);
 
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool EnumServicesStatusExW(IntPtr scm, int infoLevel, uint type, uint state, IntPtr buffer, uint bufSize, out uint bytesNeeded, out uint servicesReturned, ref uint resumeHandle, string groupName);

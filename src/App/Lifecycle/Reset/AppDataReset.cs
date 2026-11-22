@@ -52,6 +52,7 @@ namespace PaviseApp
             hashSet.Add(LaptopPerfMode.PreferenceKey);
             hashSet.Add("AutoBackgroundCoreLayoutV1");
             hashSet.Add("AutoDisableFullscreenOptimizations");
+            hashSet.Add("AutoDisableControlFlowGuard");
             hashSet.Add("GmAggressive");
             hashSet.Add("GmAdaptiveEscalateV1");
             hashSet.Add("GmRenderLane");

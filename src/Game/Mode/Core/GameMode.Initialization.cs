@@ -37,7 +37,7 @@ namespace PaviseApp
             nvDriverRetry = new NvDriverRetryCoordinator(this);
             powerMaintenance = new PowerMaintenance(this);
             displayAwakeLog = new DisplayAwakeLogThrottle();
-            automaticFso = new AutomaticFsoCoordinator(this);
+            exeLaunchSettings = new ExeLaunchSettingCoordinator(this);
             automationLog = new AutomationLogDedup();
             modeLockGame = new ModeLockGameIdentity(this);
             autoAdd = new AutoAddCoordinator(this);
@@ -336,10 +336,15 @@ namespace PaviseApp
             {
                 profiles.AddRange(profileStore.LoadProfiles(!libraryIgnoreTransaction.RecoveryPending));
                 List<GameProfile> list2 = GetProfiles();
-                if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending && RefreshLibraryInstallRoots(list2) && SaveProfileSnapshotLocked(list2))
+                if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending)
                 {
-                    profiles.Clear();
-                    profiles.AddRange(list2);
+                    // 读档时读到过旧的渲染进程记录 安装目录没有变化也要保存一次
+                    bool rootsRefreshed = RefreshLibraryInstallRoots(list2);
+                    if ((rootsRefreshed || profileStore.ReadLegacyRendererRecords) && SaveProfileSnapshotLocked(list2))
+                    {
+                        profiles.Clear();
+                        profiles.AddRange(list2);
+                    }
                 }
             }
             catch

@@ -167,6 +167,7 @@ namespace PaviseApp
             Add(dictionary, Kind.Shader, "NvShaderCache");
             Add(dictionary, Kind.Rebar, "NvRebar", "GameNvRebarV1");
             Add(dictionary, Kind.Fullscreen, "GameDisableFullscreenOptimizationsV1");
+            Add(dictionary, Kind.CpuMitigations, PolicyCatalog.KeyGameControlFlowGuard);
             Add(dictionary, Kind.GpuPower, "GmGpuPowerMax");
             Add(dictionary, Kind.Laptop, "GmLaptopPerfV1", "AutoLaptopPerformanceV2");
             Add(dictionary, Kind.Upscale, "NvDlss");

@@ -225,7 +225,7 @@ namespace PaviseApp
                 RoundedStyle = false,
                 Bg = Theme.Card
             };
-            BackgroundGovernance.SetItems(new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive") });
+            BackgroundGovernance.SetItems(new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive"), Lang.T("background.governance.freeze") });
             backgroundGovernanceInfo = new PerformanceInfoButton
             {
                 Name = "StrategyBackgroundGovernanceInfo",
@@ -368,6 +368,12 @@ namespace PaviseApp
             ContextMenuStrip dropDown = Power.DropDown;
             ContextMenuStrip governanceDropDown = BackgroundGovernance.DropDown;
             if (control != null && (control == this || Contains(control) || control == Trigger || (dropDown != null && (control == dropDown || dropDown.Contains(control))) || (governanceDropDown != null && (control == governanceDropDown || governanceDropDown.Contains(control)))))
+            {
+                return false;
+            }
+            // 选档后弹出的确认框是另一个窗口 在里面点按钮不算点到浮层外面
+            Form clickedForm = control == null ? null : control.FindForm();
+            if (clickedForm != null && clickedForm.Modal && clickedForm != FindForm())
             {
                 return false;
             }

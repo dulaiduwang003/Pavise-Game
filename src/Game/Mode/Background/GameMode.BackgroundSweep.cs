@@ -6,18 +6,21 @@ namespace PaviseApp
     internal partial class GameMode
     {
         private readonly GameLaunchChainHold launchChainHold = new GameLaunchChainHold();
+        // 开局汇总最多等这么久 之后不管还有没有进程在核对都记下来
+        private const int OpeningSummaryHoldMs = 15000;
+        private int openingSummarySince, openingThrottled, openingProtected;
         private static bool GovernedGameLauncher(string name, string path)
         {
             if (!string.Equals(WhitelistRule.NormalizeName(name), "wegame", StringComparison.OrdinalIgnoreCase)) return false;
             string image = WhitelistRule.NormalizeImagePath(path);
             return image.Length == 0 || string.Equals(WhitelistRule.NormalizeName(System.IO.Path.GetFileName(image)), "wegame", StringComparison.OrdinalIgnoreCase);
         }
-        // 白名单里的 Steam 平台保护按白名单处理 Steam 主程序 网页 覆盖层及其子进程（含 Vulkan 着色器预处理）
-        // 在任何治理档位都免压 也不被限制到后台核 本局游戏开了逐游戏家族后台治理时 按该功能的说明可以压 Steam
-        // 用户在白名单里移除平台保护后按普通后台处理
-        private static bool SteamPlatformShielded(PlatformProcessOwner owner, bool protectGameFamily)
+        // 白名单里的 Steam 平台保护和手动白名单一样优先 Steam 主程序 网页 覆盖层及其子进程 包括 Vulkan 着色器预处理
+        // 和 Steam 拉起的第三方启动器 在任何治理档位都免压 也不被限制到后台核 本局游戏开了逐游戏家族后台治理也不例外
+        // 想连 Steam 一起压 要在白名单里移除平台保护 移除后按普通后台处理
+        private static bool SteamPlatformShielded(PlatformProcessOwner owner)
         {
-            return owner != null && protectGameFamily && owner.Platform == "steam" && PlatformRuntimePolicy.Enabled(owner.Platform);
+            return owner != null && owner.Platform == "steam" && PlatformRuntimePolicy.Enabled(owner.Platform);
         }
         private void SweepWithStableWhitelist(ProcessSnapshot all, HashSet<int> gamePids)
         {
@@ -103,6 +106,13 @@ namespace PaviseApp
             HashSet<int> gameDescendants = (inspectGameFamily ? FamilyBoundary.WalkDescendants(whitelist.Parents, gameFamilyRoots, selfPid, 24, creations) : EmptyPidSet);
             HashSet<int> userFacingFamily = (wideScope ? EmptyPidSet : CollectUserFacingFamily(foregroundPid, whitelist, (!protectGameFamily) ? rendererPid : 0));
             FamilyBoundary.FilterUserFacingGameFamily(userFacingFamily, activeProfile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, rendererAncestors, FamilyEvidence);
+            // 竞技场景切出游戏后 用户正在操作的那个程序完全放开 连同同名进程和子进程 规则和智能场景豁免可见窗口相同
+            // 只看拿着焦点的那一个窗口 桌面上其他开着的窗口照压 资源管理器这类外壳只放它自己 不连带从它启动的程序
+            // 游戏本体在前台时不算切出 开了家族治理的游戏子进程照旧治理
+            bool gameForeground = foregroundPid > 0 && (foregroundPid == rendererPid || (gamePids != null && gamePids.Contains(foregroundPid)) || exactGameProcesses.Contains(foregroundPid));
+            HashSet<int> switchedOutFamily = preserveOnForeground && foregroundPid > 4 && foregroundPid != selfPid && !gameForeground
+                ? CollectUserFacingFamily(foregroundPid, EmptyPidSet, whitelist, rendererPid) : EmptyPidSet;
+            FamilyBoundary.FilterUserFacingGameFamily(switchedOutFamily, activeProfile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, rendererAncestors, FamilyEvidence);
             bool firstSweepSnapshot;
             lock (sync)
             {
@@ -212,13 +222,20 @@ namespace PaviseApp
                         continue;
                     }
                     bool platformRemoved = whitelist.PlatformProcesses.TryGetValue(pid, out platformOwner) && !PlatformRuntimePolicy.Enabled(platformOwner.Platform);
-                    bool whitelisted = whitelist.Protected.Contains(pid) || SteamPlatformShielded(platformOwner, protectGameFamily);
+                    // 白名单在普通后台治理里优先级最高 手动规则 预设名单和平台保护覆盖到的进程
+                    // 不管档位 家族治理 扩围还是启动链身份 一律不压 反作弊压制由反作弊引擎单独处理 不走这里
+                    bool whitelisted = whitelist.Protected.Contains(pid) || SteamPlatformShielded(platformOwner);
                     if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, whitelisted, libraryFamily.Contains(pid) && !governedLauncher, protectGameFamily, gamePids, gameDescendants, platformRemoved))
                     {
                         if (core.Release(pid, SuppressReason.Background))
                         {
                             ReportUntrack(pid);
                         }
+                        continue;
+                    }
+                    if (switchedOutFamily.Contains(pid))
+                    {
+                        ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
                     string imagePath = ((processInfo != null) ? processInfo.Path : null);
@@ -258,7 +275,7 @@ namespace PaviseApp
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-                    if (TryProtectOverlayHost(pid, creation, nm, imagePath, protectGameFamily))
+                    if (TryProtectOverlayHost(pid, creation, nm, imagePath))
                     {
                         continue;
                     }
@@ -273,7 +290,8 @@ namespace PaviseApp
                         continue;
                     }
                     // 开着键鼠手柄等 HID 设备的后台进程多半是外设驱动 压了会拖慢按键和宏 按行为放行 不靠品牌名单
-                    if (InputDeviceHolders.IsHolder(pid, creation, nm))
+                    // 还没核对完的进程这一轮也先不压 等核对出不是驱动再压
+                    if (InputDeviceHolders.IsHolderOrPending(pid, creation, nm))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -408,7 +426,7 @@ namespace PaviseApp
             coreProtected.UnionWith(whitelist.Protected);
             foreach (KeyValuePair<int, PlatformProcessOwner> platformProcess in whitelist.PlatformProcesses)
             {
-                if (SteamPlatformShielded(platformProcess.Value, protectGameFamily))
+                if (SteamPlatformShielded(platformProcess.Value))
                 {
                     coreProtected.Add(platformProcess.Key);
                 }
@@ -438,6 +456,22 @@ namespace PaviseApp
             {
                 return;
             }
+            // 开局头一两轮多数进程还在核对外设占用 没有被压 汇总等核对完再记 数量按这几轮累计
+            if (openingSummarySince == 0)
+            {
+                openingSummarySince = Environment.TickCount | 1;
+                openingThrottled = 0;
+                openingProtected = 0;
+            }
+            openingThrottled += throttledCount;
+            openingProtected += protectedCount;
+            if (EffSuppress && InputDeviceHolders.AnyPending() && Environment.TickCount - openingSummarySince < OpeningSummaryHoldMs)
+            {
+                return;
+            }
+            throttledCount = openingThrottled;
+            protectedCount = openingProtected;
+            openingSummarySince = 0;
             if (EffSuppress)
             {
                 string presetExtremeText = ((preset == PerformancePreset.Extreme) ? Lang.T("preset.extreme") : (PresetValue.IsCompetitive(preset) ? Lang.T("preset.competitive") : ((preset == PerformancePreset.Handheld) ? Lang.T("preset.handheld") : Lang.T("preset.standard"))));

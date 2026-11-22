@@ -73,7 +73,7 @@ namespace PaviseApp
                 GameProfile previous = profiles.Find(value => string.Equals(value.Id, item.Id, StringComparison.OrdinalIgnoreCase));
                 if (previous == null || previous.DiscoverySource != item.DiscoverySource
                     || !string.Equals(previous.DiscoverySourcePath, item.DiscoverySourcePath, StringComparison.OrdinalIgnoreCase))
-                    Logger.Info(Logger.Format("游戏库来源：{0}；来源={1}；路径={2}", "Game library source: {0}; source={1}; path={2}", item.Name, item.SourceDescription(item.PreferredExecutablePath), item.PreferredExecutablePath));
+                    Logger.Info(Logger.Format("游戏库来源：{0}；来源={1}；路径={2}", "Game library source: {0}; source={1}; path={2}", item.Name, item.SourceDescription(item.ExecutablePath), item.ExecutablePath));
             }
             profiles.Clear();
             profiles.AddRange(next);
@@ -122,7 +122,7 @@ namespace PaviseApp
                     {
                         rootValue = restrictFallbackResult;
                     }
-                    if (!string.Equals(rootValue, item.Root, StringComparison.OrdinalIgnoreCase) && (rootUnavailable || (rootValue != null && (string.IsNullOrEmpty(item.Root) || FamilyBoundary.UnderRoot(item.Root, rootValue)) && (string.IsNullOrEmpty(item.LearnedExecutablePath) || FamilyBoundary.UnderRoot(item.LearnedExecutablePath, rootValue)))))
+                    if (!string.Equals(rootValue, item.Root, StringComparison.OrdinalIgnoreCase) && (rootUnavailable || (rootValue != null && (string.IsNullOrEmpty(item.Root) || FamilyBoundary.UnderRoot(item.Root, rootValue)))))
                     {
                         item.Root = rootValue;
                         result = true;
@@ -170,16 +170,11 @@ namespace PaviseApp
                 {
                     return manuallySelected && item2.RecordSource(executablePath2, true);
                 }
-                if (string.Equals(item2.LearnedExecutablePath, executablePath2, StringComparison.OrdinalIgnoreCase))
-                {
-                    return manuallySelected && item2.RecordSource(executablePath2, true);
-                }
                 if (string.IsNullOrEmpty(item2.ExecutablePath) && item2.Entries.Contains(item))
                 {
                     item2.ExecutablePath = executablePath2;
                     item2.Root = rootValue;
                     item2.Name = name2;
-                    item2.LearnedExecutablePath = null;
                     item2.RecordSource(executablePath2, manuallySelected);
                     nextIgnore.Remove(executablePath2);
                     return true;
@@ -213,7 +208,7 @@ namespace PaviseApp
         }
         private void KickLibraryChanged()
         {
-            AutomaticFso.Invalidate();
+            ExeLaunchSettings.Invalidate();
             ClearFamilyDiscovery();
             InvalidateRendererHandoff();
             InvalidateFamilyPolicy();
@@ -251,7 +246,7 @@ namespace PaviseApp
                 {
                     if (string.Equals(profile.Id, profileId, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (on && string.IsNullOrEmpty(profile.ExecutablePath) && string.IsNullOrEmpty(profile.LearnedExecutablePath))
+                        if (on && string.IsNullOrEmpty(profile.ExecutablePath))
                         {
                             return false;
                         }
@@ -406,6 +401,7 @@ namespace PaviseApp
             if (clearProfileOverridesResult > 0)
             {
                 NotifyOverridePolicyChanged("GameDisableFullscreenOptimizationsV1", false);
+                NotifyOverridePolicyChanged(PolicyCatalog.KeyGameControlFlowGuard, false);
                 NotifyOverridePolicyChanged("GameNvRebarV1", false);
                 if (hadServiceOverride)
                 {
@@ -479,10 +475,6 @@ namespace PaviseApp
                         {
                             hashSet.Add(profile.ExecutablePath);
                         }
-                        if (!string.IsNullOrEmpty(profile.LearnedExecutablePath))
-                        {
-                            hashSet.Add(profile.LearnedExecutablePath);
-                        }
                     }
                 }
                 List<GameProfile> list = GetProfiles();
@@ -491,7 +483,7 @@ namespace PaviseApp
                     return;
                 }
                 ModeLockGame.ClearForProfileLocked(profileId);
-                AutomaticFso.Invalidate();
+                ExeLaunchSettings.Invalidate();
                 InvalidateStandbyCleanerWork();
                 ClearFamilyDiscovery();
                 ForgetRendererObservation(profileId);
@@ -501,7 +493,7 @@ namespace PaviseApp
                 }
                 InvalidateRendererHandoff();
             }
-            AutomaticFso.Sync(true, -1L);
+            ExeLaunchSettings.Sync(true, -1L);
             RequestFullGameDetection();
             RequestPolicyApply("RemoveProfile");
             RaiseLibraryChanged();
@@ -602,10 +594,9 @@ namespace PaviseApp
             {
                 foreach (GameProfile profile in profiles)
                 {
-                    string preferredExecutablePath = profile.PreferredExecutablePath;
-                    if (!string.IsNullOrEmpty(preferredExecutablePath))
+                    if (!string.IsNullOrEmpty(profile.ExecutablePath))
                     {
-                        list.Add(preferredExecutablePath);
+                        list.Add(profile.ExecutablePath);
                     }
                 }
                 return list;

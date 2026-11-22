@@ -33,10 +33,30 @@ namespace PaviseApp
 
         private const uint DEVPROP_TYPE_STRING = 18u;
 
+        private const uint DEVPROP_TYPE_GUID = 13u;
+
         private static readonly DEVPROPKEY BusReportedDescKey = new DEVPROPKEY
         {
             fmtid = new Guid(1410045054u, 35648, 17852, 168, 162, 106, 11, 137, 76, 189, 162),
             pid = 4u
+        };
+
+        private static readonly DEVPROPKEY ContainerIdKey = new DEVPROPKEY
+        {
+            fmtid = new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"),
+            pid = 2u
+        };
+
+        private static readonly DEVPROPKEY ServiceKey = new DEVPROPKEY
+        {
+            fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"),
+            pid = 6u
+        };
+
+        private static readonly DEVPROPKEY FriendlyNameKey = new DEVPROPKEY
+        {
+            fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"),
+            pid = 14u
         };
 
         public static List<string> ByClass(Guid classGuid)
@@ -89,6 +109,38 @@ namespace PaviseApp
 
         public static string BusReportedDesc(string instanceId)
         {
+            return StringProperty(instanceId, BusReportedDescKey);
+        }
+
+        internal static Guid ContainerId(string instanceId)
+        {
+            byte[] raw = ReadProperty(instanceId, ContainerIdKey, DEVPROP_TYPE_GUID);
+            return raw != null && raw.Length == 16 ? new Guid(raw) : Guid.Empty;
+        }
+
+        internal static string ServiceName(string instanceId)
+        {
+            return StringProperty(instanceId, ServiceKey);
+        }
+
+        internal static string FriendlyName(string instanceId)
+        {
+            return StringProperty(instanceId, FriendlyNameKey);
+        }
+
+        private static string StringProperty(string instanceId, DEVPROPKEY key)
+        {
+            byte[] raw = ReadProperty(instanceId, key, DEVPROP_TYPE_STRING);
+            if (raw == null || raw.Length % 2 != 0)
+            {
+                return null;
+            }
+            string value = Encoding.Unicode.GetString(raw).TrimEnd('\0').Trim();
+            return value.Length == 0 ? null : value;
+        }
+
+        private static byte[] ReadProperty(string instanceId, DEVPROPKEY key, uint propertyType)
+        {
             if (string.IsNullOrEmpty(instanceId))
             {
                 return null;
@@ -100,7 +152,6 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                DEVPROPKEY key = BusReportedDescKey;
                 uint size = 0u;
                 uint type;
                 int cMGetDevNodePropertyWResult = CM_Get_DevNode_PropertyW(devInst, ref key, out type, null, ref size, 0u);
@@ -109,14 +160,16 @@ namespace PaviseApp
                     return null;
                 }
                 byte[] rawBytes = new byte[size];
-                if (CM_Get_DevNode_PropertyW(devInst, ref key, out type, rawBytes, ref size, 0u) != 0 || type != DEVPROP_TYPE_STRING)
+                if (CM_Get_DevNode_PropertyW(devInst, ref key, out type, rawBytes, ref size, 0u) != 0 || type != propertyType
+                    || size == 0 || size > rawBytes.Length)
                 {
                     return null;
                 }
-                string @string = Encoding.Unicode.GetString(rawBytes, 0, (int)size);
-                char[] trimChars = new char[1];
-                string trimEndTrimmed = @string.TrimEnd(trimChars).Trim();
-                return (trimEndTrimmed.Length == 0) ? null : trimEndTrimmed;
+                if (size != rawBytes.Length)
+                {
+                    Array.Resize(ref rawBytes, (int)size);
+                }
+                return rawBytes;
             }
             catch
             {

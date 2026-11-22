@@ -11,8 +11,6 @@ namespace PaviseApp
 
         private readonly string executable;
 
-        private readonly string learned;
-
         private readonly bool force;
 
         internal GameFamilyProfileKey(GameProfile profile)
@@ -20,7 +18,6 @@ namespace PaviseApp
             id = profile.Id;
             root = profile.Root;
             executable = profile.ExecutablePath;
-            learned = profile.LearnedExecutablePath;
             force = profile.ForceTrigger;
         }
 
@@ -41,7 +38,7 @@ namespace PaviseApp
         {
             if (!string.IsNullOrEmpty(path))
             {
-                if ((string.IsNullOrEmpty(executable) || !Equal(executable, path)) && (string.IsNullOrEmpty(learned) || !Equal(learned, path)))
+                if (string.IsNullOrEmpty(executable) || !Equal(executable, path))
                 {
                     if (rootPrefix != null)
                     {
@@ -56,9 +53,9 @@ namespace PaviseApp
 
         public bool Equals(GameFamilyProfileKey other)
         {
-            if (force == other.force && Equal(id, other.id) && Equal(root, other.root) && Equal(executable, other.executable))
+            if (force == other.force && Equal(id, other.id) && Equal(root, other.root))
             {
-                return Equal(learned, other.learned);
+                return Equal(executable, other.executable);
             }
             return false;
         }
@@ -77,8 +74,7 @@ namespace PaviseApp
             int hashCodeValue = (force ? 1 : 0);
             hashCodeValue = hashCodeValue * 31 + Hash(id);
             hashCodeValue = hashCodeValue * 31 + Hash(root);
-            hashCodeValue = hashCodeValue * 31 + Hash(executable);
-            return hashCodeValue * 31 + Hash(learned);
+            return hashCodeValue * 31 + Hash(executable);
         }
 
         private static bool Equal(string a, string b)

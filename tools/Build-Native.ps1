@@ -1,13 +1,14 @@
 ﻿# 用 Zig 0.15.2 编译 src/Native 下的原生组件 并重新生成 src/Interop 里对应的内嵌镜像
 #   Etw    PaviseEtw.cpp    得到 PaviseEtw.dll 和 PaviseEtw.obj    写入 NativeEtwImage.cs    完整采集的 ETW 前置处理
 #   Cpu    PaviseCpu.cpp    得到 PaviseCpu.dll 和 PaviseCpu.obj    写入 NativeCpuImage.cs    核心类型备用探测的 CPUID 读取
+#   Hid    PaviseHid.cpp    得到 PaviseHid.dll 和 PaviseHid.obj    写入 NativeHidImage.cs    外设接口和占用进程的原生核验
 # 正式构建由 build.cmd 把 obj 链进 Pavise.exe 不落盘 测试构建没有链接这一步 仍按 DLL 镜像加载
 # 不链接 C 运行库 只允许导入 KERNEL32.dll 生成的类只在没有 PAVISE_EMBEDDED_NATIVE 的测试构建里编译
-#   powershell -NoProfile -ExecutionPolicy Bypass -File tools\Build-Native.ps1 [-Component Etw|Cpu|All] [-Zig <zig.exe>] [-Output <dir>] [-CheckOnly]
+#   powershell -NoProfile -ExecutionPolicy Bypass -File tools\Build-Native.ps1 [-Component Etw|Cpu|Hid|All] [-Zig <zig.exe>] [-Output <dir>] [-CheckOnly]
 # -CheckOnly 只构建到 Output 已提交的镜像与新构建不一致时报错
 # -Source 和 -ImagePath 供测试重建冻结或变异副本 不动工作区 只能配合单个组件使用
 param(
-    [ValidateSet('Etw', 'Cpu', 'All')]
+    [ValidateSet('Etw', 'Cpu', 'Hid', 'All')]
     [string]$Component = 'All',
     [string]$Zig = '',
     [string]$Output = '',
@@ -40,6 +41,8 @@ $components = @(
         Link = @('-shared', '-Wl,--entry=DllMainCRTStartup') },
     @{ Name = 'Cpu'; Source = 'PaviseCpu.cpp'; Binary = 'PaviseCpu.dll'; Class = 'NativeCpuImage'; Subsystem = 2;
         Link = @('-shared', '-Wl,--entry=PaviseCpuDllMain') }
+    @{ Name = 'Hid'; Source = 'PaviseHid.cpp'; Binary = 'PaviseHid.dll'; Class = 'NativeHidImage'; Subsystem = 2;
+        Link = @('-shared', '-Wl,--entry=PaviseHidDllMain') }
 )
 
 function Get-Sha256([byte[]]$bytes) {

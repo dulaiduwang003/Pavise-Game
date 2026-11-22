@@ -86,7 +86,7 @@ namespace PaviseApp
                                     || !string.Equals(armedGameName, armed.Name, StringComparison.OrdinalIgnoreCase)
                                     || !NvDriverRetry.PreStageCurrentLocked(path, planKey)) return;
                                 GameProfile current = FindProfileLocked(armed.Id);
-                                if (current == null || !string.Equals(current.PreferredExecutablePath, path, StringComparison.OrdinalIgnoreCase)
+                                if (current == null || !string.Equals(current.ExecutablePath, path, StringComparison.OrdinalIgnoreCase)
                                     || AutomaticPreStagePlan(PolicyResolver.For(current), Native.OnAcPower()).AutomaticKey != plan.AutomaticKey) return;
                             }
                             if (!string.IsNullOrEmpty(previous) && !string.Equals(previous, path, StringComparison.OrdinalIgnoreCase))

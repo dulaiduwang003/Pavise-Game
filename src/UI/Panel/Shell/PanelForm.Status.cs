@@ -1077,6 +1077,7 @@ namespace PaviseApp
                     try
                     {
                         full = QueryWhitelistState(true);
+                        PeripheralVendorProbe.RefreshDevicesForDisplay();
                     }
                     catch
                     {

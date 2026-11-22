@@ -366,7 +366,7 @@ namespace PaviseApp
 
         private static GameDetection FindForegroundCandidateInProfile(Dictionary<int, GameProcessSnapshot> byPid, GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence, GameDetection incumbent = null)
         {
-            bool registeredExecutable = SamePath(profile.ExecutablePath, foreground.Path) || SamePath(profile.LearnedExecutablePath, foreground.Path);
+            bool registeredExecutable = SamePath(profile.ExecutablePath, foreground.Path);
             // 现有渲染进程仍存活时 不能仅凭全屏就提升新候选 还需 GPU 证据以排除全屏网页及 SDK 覆盖层
 
             bool challengesLiveRenderer = !registeredExecutable && IncumbentRendererLive(incumbent, profile, foreground, byPid);
@@ -393,7 +393,7 @@ namespace PaviseApp
             }
             else if (!profile.ForceTrigger)
             {
-                gameDetection = (foreground.FullscreenLike && !challengesLiveRenderer ? Elected(profile, foreground, !registeredExecutable, Lang.T("detect.fullscreen")) : (SamePath(profile.LearnedExecutablePath, foreground.Path) ? Elected(profile, foreground, false, Lang.T("detect.learned")) : ((!SamePath(profile.ExecutablePath, foreground.Path)) ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window")))));
+                gameDetection = (foreground.FullscreenLike && !challengesLiveRenderer ? Elected(profile, foreground, !registeredExecutable, Lang.T("detect.fullscreen")) : (!registeredExecutable ? PendingGpuConfirm(profile, foreground) : Elected(profile, foreground, false, Lang.T("detect.window"))));
             }
             else
             {
@@ -455,9 +455,9 @@ namespace PaviseApp
             {
                 return true;
             }
-            if (a != null && b != null && !string.IsNullOrEmpty(a.Id) && string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase) && a.ForceTrigger == b.ForceTrigger && string.Equals(a.Root ?? "", b.Root ?? "", StringComparison.OrdinalIgnoreCase) && string.Equals(a.ExecutablePath ?? "", b.ExecutablePath ?? "", StringComparison.OrdinalIgnoreCase))
+            if (a != null && b != null && !string.IsNullOrEmpty(a.Id) && string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase) && a.ForceTrigger == b.ForceTrigger && string.Equals(a.Root ?? "", b.Root ?? "", StringComparison.OrdinalIgnoreCase))
             {
-                return string.Equals(a.LearnedExecutablePath ?? "", b.LearnedExecutablePath ?? "", StringComparison.OrdinalIgnoreCase);
+                return string.Equals(a.ExecutablePath ?? "", b.ExecutablePath ?? "", StringComparison.OrdinalIgnoreCase);
             }
             return false;
         }
@@ -636,7 +636,7 @@ namespace PaviseApp
                 if (CandidateIdentityUsable(member) && !ElectionVetoed(member.Name, member.Path))
                 {
                     // 游戏关闭后 常驻启动器及平台后代继续受保护 但不能因此维持已结束的游戏会话
-                    bool selected = SamePath(profile.ExecutablePath, member.Path) || SamePath(profile.LearnedExecutablePath, member.Path);
+                    bool selected = SamePath(profile.ExecutablePath, member.Path);
                     if (!selected && ((!member.Visible && !member.Foreground) || PlatformRuntimePolicy.RuntimePlatform(member.Name) != null))
                     {
                         continue;
@@ -661,10 +661,6 @@ namespace PaviseApp
         private static bool IsDirectMember(GameProfile profile, GameProcessSnapshot identity, GameFamilyEvidence familyEvidence = null)
         {
             if (SamePath(profile.ExecutablePath, identity.Path))
-            {
-                return true;
-            }
-            if (SamePath(profile.LearnedExecutablePath, identity.Path))
             {
                 return true;
             }
@@ -717,16 +713,11 @@ namespace PaviseApp
             {
                 return ElectForced(profile, members);
             }
-            GameProcessSnapshot gameProcessSnapshot = null;
             GameProcessSnapshot gameProcessSnapshot2 = null;
             foreach (GameProcessSnapshot member in members)
             {
                 if ((member.Visible || member.Foreground) && !ElectionVetoed(member.Name, member.Path))
                 {
-                    if (SamePath(profile.LearnedExecutablePath, member.Path) && (gameProcessSnapshot == null || PreferSnapshot(member, gameProcessSnapshot)))
-                    {
-                        gameProcessSnapshot = member;
-                    }
                     if (member.Foreground && (gameProcessSnapshot2 == null || member.Creation > gameProcessSnapshot2.Creation))
                     {
                         gameProcessSnapshot2 = member;
@@ -735,11 +726,7 @@ namespace PaviseApp
             }
             if (gameProcessSnapshot2 != null && gameProcessSnapshot2.FullscreenLike)
             {
-                return Elected(profile, gameProcessSnapshot2, !SamePath(profile.ExecutablePath, gameProcessSnapshot2.Path) && !SamePath(profile.LearnedExecutablePath, gameProcessSnapshot2.Path), Lang.T("detect.fullscreen"));
-            }
-            if (gameProcessSnapshot != null)
-            {
-                return Elected(profile, gameProcessSnapshot, false, Lang.T("detect.learned"));
+                return Elected(profile, gameProcessSnapshot2, !SamePath(profile.ExecutablePath, gameProcessSnapshot2.Path), Lang.T("detect.fullscreen"));
             }
             if (gameProcessSnapshot2 == null)
             {
@@ -757,7 +744,7 @@ namespace PaviseApp
             GameProcessSnapshot gameProcessSnapshot = null;
             foreach (GameProcessSnapshot member in members)
             {
-                if ((SamePath(profile.ExecutablePath, member.Path) || SamePath(profile.LearnedExecutablePath, member.Path)) && (gameProcessSnapshot == null || PreferForced(member, gameProcessSnapshot)))
+                if (SamePath(profile.ExecutablePath, member.Path) && (gameProcessSnapshot == null || PreferForced(member, gameProcessSnapshot)))
                 {
                     gameProcessSnapshot = member;
                 }
@@ -813,7 +800,7 @@ namespace PaviseApp
             gameDetection.RendererPath = selected.Path;
             gameDetection.RendererForeground = selected.Foreground;
             gameDetection.RendererCandidateSelected = true;
-            gameDetection.RendererUserSelected = SamePath(profile.ExecutablePath, selected.Path) || SamePath(profile.LearnedExecutablePath, selected.Path);
+            gameDetection.RendererUserSelected = SamePath(profile.ExecutablePath, selected.Path);
             gameDetection.RendererLearnable = learnable;
             gameDetection.RendererMatchRank = MatchRank(profile, selected.Path);
             gameDetection.Evidence = evidence;
@@ -848,28 +835,11 @@ namespace PaviseApp
             {
                 return 3;
             }
-            if (SamePath(profile.LearnedExecutablePath, path))
-            {
-                return 2;
-            }
             if (!profile.ContainsPath(path))
             {
                 return 0;
             }
             return 1;
-        }
-
-        private static bool PreferSnapshot(GameProcessSnapshot candidate, GameProcessSnapshot current)
-        {
-            if (candidate.Foreground != current.Foreground)
-            {
-                return candidate.Foreground;
-            }
-            if (candidate.Creation != current.Creation)
-            {
-                return candidate.Creation > current.Creation;
-            }
-            return candidate.Pid < current.Pid;
         }
 
         private static bool BetterHit(GameDetection candidate, GameDetection current)
@@ -931,8 +901,8 @@ namespace PaviseApp
             {
                 return -1;
             }
-            string[] textEntries = new string[5] { a.Id, a.Root, a.ExecutablePath, a.LearnedExecutablePath, a.Name };
-            string[] textEntries2 = new string[5] { b.Id, b.Root, b.ExecutablePath, b.LearnedExecutablePath, b.Name };
+            string[] textEntries = new string[4] { a.Id, a.Root, a.ExecutablePath, a.Name };
+            string[] textEntries2 = new string[4] { b.Id, b.Root, b.ExecutablePath, b.Name };
             for (int i = 0; i < textEntries.Length; i++)
             {
                 int compareResult = string.Compare(textEntries[i] ?? "", textEntries2[i] ?? "", StringComparison.OrdinalIgnoreCase);
@@ -1012,10 +982,6 @@ namespace PaviseApp
             if (profile == null)
             {
                 return false;
-            }
-            if (SamePath(profile.LearnedExecutablePath, path))
-            {
-                return true;
             }
             if (SamePath(profile.ExecutablePath, path))
             {
