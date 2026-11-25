@@ -78,8 +78,6 @@ if /i not "%PAVISE_OUTPUT_DIR%"=="%CD%\" (
     if errorlevel 1 goto err
     copy /y "NOTICE" "%PAVISE_OUTPUT_DIR%NOTICE" >nul
     if errorlevel 1 goto err
-    copy /y "Uninstall-RTSS.cmd" "%PAVISE_OUTPUT_DIR%Uninstall-RTSS.cmd" >nul
-    if errorlevel 1 goto err
     copy /y "tools\Uninstall-Rtss.ps1" "%PAVISE_OUTPUT_DIR%Uninstall-Rtss.ps1" >nul
     if errorlevel 1 goto err
 )

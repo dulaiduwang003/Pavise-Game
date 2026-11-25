@@ -226,7 +226,7 @@ function Invoke-RtssUninstall {
         throw 'Only an identity-verified RTSS installation owned by Pavise may be removed.'
     }
     $ownershipReceipt = Get-PaviseRtssOwnershipReceipt
-    if (-not (Test-RtssAdministrator)) { throw 'Removal requires administrator rights. Run Uninstall-RTSS.cmd as administrator, or open an administrator PowerShell and run this script with -Uninstall.' }
+    if (-not (Test-RtssAdministrator)) { throw 'Removal requires administrator rights. Open PowerShell as administrator and run this script with -Uninstall.' }
     $mutex = [Threading.Mutex]::new($false, 'Global\PaviseRtssManualUninstallV1')
     $locked = $false; $temporary = ''; $pending = $false; $copyLock = $null
     try {

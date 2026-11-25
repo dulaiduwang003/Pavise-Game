@@ -451,6 +451,18 @@ namespace PaviseApp
                 var core = new SuppressionCore(journal);
                 worker.Change("priority 32");
                 if (timerSupported) worker.Change("qos 0 0");
+                string scenario = exit + (batched ? " (batched)" : " (immediate)");
+                if (exit == "retry")
+                {
+                    Check(Native.TrySetIoPriority(worker.Handle, 1) && Native.TrySetPagePriority(worker.Handle, 3),
+                        scenario + " could not set nondefault worker priorities");
+                }
+                int originalIo = Native.QueryIoPriority(worker.Handle);
+                int originalPage = Native.QueryPagePriority(worker.Handle);
+                Check(originalIo >= 0 && originalPage >= 0, scenario + " could not read initial worker priorities");
+                if (exit == "retry")
+                    Check(originalIo == 1 && originalPage == 3, scenario + " did not start with the requested priorities");
+
                 int failures = 0;
                 SuppressionCore.BeforeJournalPublishForTest = (temporary, destination, replacing) =>
                 {
@@ -517,9 +529,14 @@ namespace PaviseApp
                         finally { core.EndBackgroundJournalRound(false); }
                     }
                     else Release(core, worker);
-                    Check(!core.BackgroundReleasePending && Native.GetPriorityClass(worker.Handle) == (changed ? 128u : 32u)
-                        && Native.QueryIoPriority(worker.Handle) == 2 && Native.QueryPagePriority(worker.Handle) == 5,
-                        exit + " did not restore owned fields and preserve the program's changes on release");
+                    uint expectedCpu = changed ? 128u : 32u;
+                    uint releasedCpu = Native.GetPriorityClass(worker.Handle);
+                    int releasedIo = Native.QueryIoPriority(worker.Handle);
+                    int releasedPage = Native.QueryPagePriority(worker.Handle);
+                    bool pending = core.BackgroundReleasePending;
+                    Check(!pending && releasedCpu == expectedCpu && releasedIo == originalIo && releasedPage == originalPage,
+                        string.Format("{0} release expected CPU/I/O/page={1}/{2}/{3} and pending=False, got {4}/{5}/{6} and pending={7}",
+                            scenario, expectedCpu, originalIo, originalPage, releasedCpu, releasedIo, releasedPage, pending));
                     if (timerSupported) worker.CheckPower(changed ? 4 : 0, 0, exit + " did not restore owned timer or preserve its changed state");
                 }
                 finally { SuppressionCore.BeforeJournalPublishForTest = null; }
