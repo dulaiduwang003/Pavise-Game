@@ -144,12 +144,6 @@ namespace PaviseApp
             messages.Add("log.peripheralvendorprobe.1", new string[2] { "外设词条 提取到 ", "Peripheral terms: extracted " });
             messages.Add("log.peripheralvendorprobe.2", new string[2] { " 条 ", " entries " });
             messages.Add("log.peripheralvendorprobe.3", new string[2] { "外设词条 提取失败 ", "Peripheral terms: extraction failed " });
-            messages.Add("log.inputdeviceholders.1", new string[2] { "外设驱动 发现正在使用 HID 设备的后台进程 已放行 ", "Peripheral drivers: background processes using HID devices released " });
-            messages.Add("log.inputdeviceholders.nointerface", new[] { "外设驱动 HID 扫描未找到可核验的私有接口", "Peripheral drivers: no eligible private HID interface found" });
-            messages.Add("log.inputdeviceholders.unreadable", new[] { "外设驱动 HID 扫描读不到进程 {0}", "Peripheral drivers: HID scan could not read process {0}" });
-            messages.Add("log.inputdeviceholders.timeout", new[] { "外设驱动 HID 查询超时，跳过进程 {0}", "Peripheral drivers: HID query timed out, skipped process {0}" });
-            messages.Add("log.inputdeviceholders.interfacefailure", new[] { "外设驱动 HID 接口读取失败，本轮无法核验设备", "Peripheral drivers: HID interface read failed, devices could not be verified this scan" });
-            messages.Add("log.inputdeviceholders.workerfailure", new[] { "外设驱动 HID 辅助进程未返回有效结果", "Peripheral drivers: HID worker did not return a valid result" });
             messages.Add("t.systemaudithardware.1", new string[2] { "内存频率", "Memory frequency" });
             messages.Add("t.systemaudithardware.2", new string[2] { " 标称 ", " rated " });
             messages.Add("t.systemaudithardware.3", new string[2] { "读取失败", "Read failed" });

@@ -87,19 +87,23 @@ namespace PaviseApp
             return LoadProfiles(true);
         }
 
-        internal List<GameProfile> LoadProfiles(bool createIfMissing)
+        internal List<GameProfile> LoadProfiles(bool allowWrite)
         {
-            List<GameProfile> list = Load();
-            if (loadFailed)
+            lock (saveSync)
             {
-                Save(list);
-                return new List<GameProfile>();
+                bool migratedGovernance;
+                List<GameProfile> list = Load(out migratedGovernance);
+                if (loadFailed)
+                {
+                    SaveCore(list, null);
+                    return new List<GameProfile>();
+                }
+                if (allowWrite && (migratedGovernance || !File.Exists(path)))
+                {
+                    SaveCore(list, null);
+                }
+                return list;
             }
-            if (createIfMissing && !File.Exists(path))
-            {
-                Save(list);
-            }
-            return list;
         }
 
         public bool Save(IList<GameProfile> profiles)
@@ -397,10 +401,11 @@ namespace PaviseApp
             return "I|" + id;
         }
 
-        private List<GameProfile> Load()
+        private List<GameProfile> Load(out bool migratedGovernance)
         {
             List<GameProfile> list = new List<GameProfile>();
             readLegacyRendererRecords = false;
+            migratedGovernance = false;
             try
             {
                 if (!File.Exists(path))
@@ -526,6 +531,11 @@ namespace PaviseApp
                                 processedCount++;
                             }
                             continue;
+                        }
+                        if (decodeResult4 == PolicyCatalog.KeyBackgroundGovernance && decodeResult5 == BackgroundGovernancePolicy.LegacyStoredValue)
+                        {
+                            decodeResult5 = BackgroundGovernancePolicy.Text(BackgroundGovernancePolicy.Aggressive);
+                            migratedGovernance = true;
                         }
                         string canonicalResult = ((!ThreadBoostSelection.IsLegacy(decodeResult4)) ? PolicyCatalog.Canonical(decodeResult4, decodeResult5) : ((decodeResult5 == "0" || decodeResult5 == "1") ? decodeResult5 : null));
                         if (canonicalResult == null || !string.Equals(canonicalResult, decodeResult5, StringComparison.Ordinal))

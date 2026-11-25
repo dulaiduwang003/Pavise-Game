@@ -24,6 +24,11 @@ namespace PaviseApp
             internal bool Active = true;
             internal bool TimerSealUnavailable;
             internal int LegacyRecoveryFailures;
+            internal string JobName;
+            internal ulong JobMask;
+            internal char JobPhase = 'N';
+            internal bool JobActive, JobRejected, JobLogged;
+            internal IntPtr JobHandle;
             internal readonly List<AntiCheatResourceField> Fields = new List<AntiCheatResourceField>();
             internal int MaintenanceFailures;
             internal long NextLog;
@@ -211,6 +216,7 @@ namespace PaviseApp
                     foreach (Entry entry in map.Values)
                     {
                         if (!HasAntiCheatResources(entry)) continue;
+                        if (AntiCheatJobNeedsRelease(entry.AntiCheatResources) && !entry.AntiCheatResources.JobActive) return true;
                         if (entry.AntiCheatResourceRemovalPending || entry.AntiCheatResourceJournalPending) return true;
                         if (!entry.AntiCheatResources.Active && entry.Journaled) return true;
                         foreach (AntiCheatResourceField field in entry.AntiCheatResources.Fields)
@@ -301,9 +307,6 @@ namespace PaviseApp
             case 3:
                 uint mask = Native.EcoQoSWantMask(DesiredTimerSeal(entry.Level, true) && !entry.AntiCheatResources.TimerSealUnavailable);
                 return QosValue((int)mask, (int)mask);
-            case 4: return DesiredBoostDisabled(entry.Level, true, entry.OrigBoost);
-            // GPU 不在反作弊写入范围 旧回执里的这一类只按原值恢复
-            case 5: return -1;
             default: return -1;
             }
         }
@@ -368,9 +371,10 @@ namespace PaviseApp
             }
             bool complete = true;
             var corrected = new List<string>();
-            // 第 5 类 GPU 不写 普通后台也不降 GPU
-            for (int kind = 0; kind <= 4; kind++)
+            // 动态提优和 GPU 只按回执恢复
+            for (int kind = 0; kind <= 3; kind++)
             {
+                if (kind == 0 && state.JobActive) continue;
                 if (kind == 3 && !Native.PowerThrottlingSupported) continue;
                 long desired = AntiCheatResourceTarget(entry, kind), observed;
                 AntiCheatResourceField field = null;
@@ -383,7 +387,7 @@ namespace PaviseApp
                     state.Fields.Add(field);
                 }
                 if (field.Phase == 'S') { field.Phase = 'N'; field.Acquired = false; field.Original = -1; }
-                bool maintaining = field.Acquired && kind != 5;
+                bool maintaining = field.Acquired;
                 if (!maintaining && field.Failures >= 3) { complete = false; LastApplyError = "initial-resource-budget:" + kind; continue; }
                 if (!ReadAntiCheatResource(handle, kind, out observed) || desired < 0)
                 {
@@ -441,7 +445,7 @@ namespace PaviseApp
                 if (!SaveAntiCheatResourceJournal(entry)) { field.Acquired = acquiredBefore; field.Phase = 'P'; complete = false; LastApplyError = "resource-commit-journal:" + kind; continue; }
                 // 只归还本次成功的预扣 此前首次失败不能因成功观察或配置往返清零
                 if (!maintaining) { field.Failures--; SaveAntiCheatResourceJournal(entry); }
-                else corrected.Add(kind == 0 ? Logger.Text("CPU优先级", "CPU priority") : kind == 1 ? Logger.Text("I/O优先级", "I/O priority") : kind == 2 ? Logger.Text("内存页优先级", "memory page priority") : kind == 3 ? Logger.Text("EcoQoS与计时器策略", "EcoQoS and timer policy") : Logger.Text("动态提优策略", "dynamic boost policy"));
+                else corrected.Add(kind == 0 ? Logger.Text("CPU优先级", "CPU priority") : kind == 1 ? Logger.Text("I/O优先级", "I/O priority") : kind == 2 ? Logger.Text("内存页优先级", "memory page priority") : Logger.Text("EcoQoS与计时器策略", "EcoQoS and timer policy"));
             }
             if (corrected.Count > 0 && DateTime.UtcNow.Ticks >= state.NextCorrectionLog)
             {
@@ -450,7 +454,7 @@ namespace PaviseApp
             }
             if (!complete) return PauseAntiCheatResources(entry, LastApplyError);
             state.MaintenanceFailures = 0;
-            entry.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(entry.Level)).Ticks;
+            entry.NextReconcileTicks = DateTime.UtcNow.AddSeconds(state.JobActive ? 30 : 5).Ticks;
             return true;
         }
 
@@ -479,6 +483,7 @@ namespace PaviseApp
         private static bool RestoreLegacyAntiCheatResources(IntPtr handle, Entry entry, Func<bool> checkpoint)
         {
             AntiCheatResourceState state = entry.AntiCheatResources;
+            if (!ClearAntiCheatJob(entry, checkpoint)) return false;
             if (state.LegacyRecoveryFailures >= 8) return false;
             state.LegacyRecoveryFailures++;
             if (checkpoint != null && !checkpoint()) return false;
@@ -491,6 +496,7 @@ namespace PaviseApp
         private static bool RestoreAntiCheatResources(IntPtr handle, Entry entry, Func<bool> checkpoint = null)
         {
             if (!OwnsAntiCheatResources(entry)) return true;
+            if (!ClearAntiCheatJob(entry, checkpoint)) return false;
             foreach (AntiCheatResourceField field in entry.AntiCheatResources.Fields)
             {
                 if (field.Phase == 'S' || field.Phase == 'N') continue;
@@ -529,6 +535,9 @@ namespace PaviseApp
             var text = new StringBuilder("ar1;");
             text.Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(state.Plan))).Append(';').Append(state.Active ? '1' : '0').Append(';').Append(state.TimerSealUnavailable ? '1' : '0');
             text.Append(";r:").Append(state.LegacyRecoveryFailures);
+            if (state.JobName != null || state.JobRejected)
+                text.Append(";j:").Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(state.JobName ?? ""))).Append(',')
+                    .Append(state.JobMask.ToString("X", CultureInfo.InvariantCulture)).Append(',').Append(state.JobPhase).Append(',').Append(state.JobRejected ? '1' : '0');
             foreach (AntiCheatResourceField field in state.Fields)
                 text.Append(';').Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(field.Plan))).Append(',').Append(field.Kind)
                     .Append(',').Append(field.Original.ToString(CultureInfo.InvariantCulture)).Append(',').Append(field.Expected.ToString(CultureInfo.InvariantCulture))
@@ -543,13 +552,25 @@ namespace PaviseApp
             {
                 if (value == null || value.Length > 262144) return null;
                 string[] rows = Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split(';');
-                if (rows.Length < 4 || rows.Length > 261 || rows[0] != "ar1" || (rows[2] != "0" && rows[2] != "1") || (rows[3] != "0" && rows[3] != "1")) return null;
+                if (rows.Length < 4 || rows.Length > 262 || rows[0] != "ar1" || (rows[2] != "0" && rows[2] != "1") || (rows[3] != "0" && rows[3] != "1")) return null;
                 var state = new AntiCheatResourceState { Plan = Encoding.UTF8.GetString(Convert.FromBase64String(rows[1])), Active = rows[2] == "1", TimerSealUnavailable = rows[3] == "1" };
                 int firstField = 4;
                 if (rows.Length > 4 && rows[4].StartsWith("r:", StringComparison.Ordinal))
                 {
                     if (!int.TryParse(rows[4].Substring(2), NumberStyles.None, CultureInfo.InvariantCulture, out state.LegacyRecoveryFailures) || state.LegacyRecoveryFailures < 0 || state.LegacyRecoveryFailures > 8) return null;
                     firstField++;
+                }
+                if (rows.Length > firstField && rows[firstField].StartsWith("j:", StringComparison.Ordinal))
+                {
+                    string[] job = rows[firstField++].Substring(2).Split(',');
+                    if (job.Length != 4 || job[2].Length != 1 || (job[3] != "0" && job[3] != "1")) return null;
+                    state.JobName = Encoding.UTF8.GetString(Convert.FromBase64String(job[0]));
+                    if (state.JobName.Length == 0) state.JobName = null;
+                    if (!ulong.TryParse(job[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out state.JobMask)
+                        || (state.JobMask & (state.JobMask - 1)) != 0) return null;
+                    state.JobPhase = job[2][0]; state.JobRejected = job[3] == "1";
+                    if (state.JobPhase != 'N' && state.JobPhase != 'P' && state.JobPhase != 'A' && state.JobPhase != 'S') return null;
+                    if ((state.JobPhase == 'P' || state.JobPhase == 'A') && state.JobName == null) return null;
                 }
                 var keys = new HashSet<string>(StringComparer.Ordinal);
                 for (int i = firstField; i < rows.Length; i++)

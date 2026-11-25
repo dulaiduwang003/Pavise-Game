@@ -32,10 +32,12 @@ namespace PaviseApp
         internal string NameOf(int pid) { return pid == 99 ? "background-only" : null; }
         internal void ObserveTargetExit(int pid, long birth) { }
         internal bool PrepareAntiCheatAffinity(int pid, long birth, string name) { return true; }
+        internal bool ReleaseAntiCheatJob(int pid, long birth) { return true; }
     }
     internal sealed class AntiCheatAffinityRuntime
     {
         internal Func<AntiCheatAffinityTarget, int, bool> ForwardAdmission;
+        internal Func<int, long, bool> BeforeRestore;
         internal AntiCheatAffinityRuntime(Func<int, long, string, bool> prepare, Func<int, string> admission) { }
         internal bool Shutdown() { return true; }
         internal void RevokeGroup(string group = null) { }
@@ -59,6 +61,7 @@ namespace PaviseApp
         private sealed class AcquireRequest { internal long Birth; }
         private readonly Dictionary<string, SweepRetryPhase> sweepRetryPhases = new Dictionary<string, SweepRetryPhase>(StringComparer.Ordinal);
         private readonly Dictionary<int, long> sweepEventBirths = new Dictionary<int, long>();
+        private readonly Dictionary<string, object> admissionServiceReads = new Dictionary<string, object>();
         private readonly HashSet<string> sweepObservedEvents = new HashSet<string>(StringComparer.Ordinal);
         private long sweepEventPhase;
         private string sweepPhaseKey;
@@ -94,12 +97,15 @@ namespace PaviseApp
         private int fullSweepRequested = 1, overflowSweepRequested, suspendedWakes, loopIterations;
         private long panicUntilUtcTicks;
         private string governanceContextKey;
+        private int contextWakes;
+        internal Func<bool?> SessionChoice;
         private AntiCheatAffinityRuntime affinityRuntime;
         private bool affinityFastWake, affinityShutdownOk = true;
+        private long nextAuditTicks;
         private bool ProcessEventsAvailable { get { return true; } }
         internal volatile bool Paused;
         internal volatile bool InSession = true;
-        internal volatile bool EngineDebt;
+        internal volatile bool EngineDebt = true;
         internal volatile bool IncrementalThrows;
         internal bool UseCapture;
         internal void ObserveOnce() { lock (engineSync) { iterationSnapshot = null; iterationCaptureAttempted = false; ObserveRecordOnlyProcesses(CaptureSweepSnapshot()); } }
@@ -128,6 +134,10 @@ namespace PaviseApp
         private bool ReleaseAll(string reason) { Interlocked.Increment(ref releaseCalls); lock (evidenceSync) releases.Add(clock.Elapsed.TotalMilliseconds); return true; }
         private static int FullSweepInterval(bool eventsAvailable) { return eventsAvailable ? 60000 : 8000; }
         private void SyncAffinity(bool suspended) { }
+        private void RefreshPendingAdmissionSession() { }
+        private void RetryPendingAdmissions() { }
+        private void RemovePendingAdmission(int pid, long birth) { }
+        private long PendingAdmissionDeadline(long otherwise) { return otherwise; }
         // 会话开关不在本台架范围内 循环里的同步按台架字段返回是否在对局
         private bool SyncSession() { return InSession; }
         private bool HasEngineWork() { return EngineDebt; }
@@ -346,7 +356,7 @@ namespace PaviseApp
         {
             using (var f = new TamerLoopFixture(true))
             {
-                f.Paused = true; f.InSession = false; f.Start();
+                f.Paused = true; f.InSession = false; f.EngineDebt = false; f.Start();
                 Until(() => f.Iterations >= 2, "Suspended loop never ran its initial iterations");
                 Thread.Sleep(100);
                 int settled = f.Iterations;
@@ -383,6 +393,23 @@ namespace PaviseApp
                 Console.WriteLine("suspended debt wakes bounded limit=" + TamerLoopFixture.SuspendedWakeLimit + " releases=" + f.Releases.Length);
             }
         }
+        private static void ActiveWithoutWorkBlocks(bool throws)
+        {
+            using (var f = new TamerLoopFixture(!throws))
+            {
+                f.EngineDebt = false;
+                f.SweepOutcome = delegate { if (throws) throw new InvalidOperationException("empty-snapshot-failure"); return true; };
+                Begin(f);
+                Until(() => f.LastWaitTimeout == Timeout.Infinite, "Active empty loop used a periodic wait");
+                Thread.Sleep(100);
+                int settled = f.Iterations;
+                f.Event(1);
+                Until(() => f.Handled.Length == 1, "Active empty loop lost the immediate process event");
+                Check(f.Iterations == settled + 1 && f.LastWaitTimeout == Timeout.Infinite, "Process event left the active empty loop polling");
+                Thread.Sleep(1500);
+                Check(f.Iterations == settled + 1 && f.Attempts.Length == 1, "Active empty loop woke without work");
+            }
+        }
         private static int Main()
         {
             try
@@ -391,8 +418,8 @@ namespace PaviseApp
                 HealthyEventsAndPoke(); ConfigurationAndContextDuringFailure();
                 FailedSweepEvents(false); FailedSweepEvents(true); OverflowBackoff();
                 IncrementalFailureCompensation(); RecoveryAndStopRemainPrompt(); ExhaustionAndStablePhases(); RecordOnlyCaptureSharesBudget(); CompleteSweepEndsFailureEpisode();
-                SuspendedWithoutWorkBlocks(); SuspendedDebtWakesAreBounded();
-                Console.WriteLine("PASS TamerRetryChecks checks=" + checks + " scenarios=16 real_clock=true real_AutoResetEvent=recorded native_writes=0 product_started=false");
+                SuspendedWithoutWorkBlocks(); SuspendedDebtWakesAreBounded(); ActiveWithoutWorkBlocks(false); ActiveWithoutWorkBlocks(true);
+                Console.WriteLine("PASS TamerRetryChecks checks=" + checks + " scenarios=18 real_clock=true real_AutoResetEvent=recorded native_writes=0 product_started=false");
                 return 0;
             }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }

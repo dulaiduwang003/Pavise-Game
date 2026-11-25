@@ -350,6 +350,7 @@ namespace PaviseApp
             catch
             {
             }
+            PublishGameProcessNames();
             InitializeRendererObservations();
         }
 

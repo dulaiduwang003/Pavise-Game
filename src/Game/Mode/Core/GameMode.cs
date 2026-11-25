@@ -198,10 +198,6 @@ namespace PaviseApp
 
         private CriticalRuntimeSource criticalSource;
 
-        private CriticalThreadObservation criticalObservation = new CriticalThreadObservation();
-
-        private readonly CriticalThreadIdealHints criticalIdealHints = new CriticalThreadIdealHints();
-
         private CriticalThreadHardAffinitySession criticalSession;
 
         private bool criticalRestorationConfirmed;
@@ -215,8 +211,6 @@ namespace PaviseApp
         private volatile bool criticalHistoricalDebt;
 
         private long criticalDebtNextRead;
-
-        private CriticalThreadRuntimeTelemetry criticalRuntimeTelemetry;
 
         private int criticalForegroundAuditPending;
 
@@ -659,6 +653,25 @@ namespace PaviseApp
             }
         }
 
+        private bool WantsFrameCaptureReservationLocked()
+        {
+            if (!enabled || stopping) return false;
+            if (profiles.Count == 0 || ProfileStoreSaveFailed) return true;
+            foreach (GameProfile profile in profiles)
+                if (PolicyResolver.For(profile).ThreadBoostOn) return true;
+            return false;
+        }
+
+        internal void StartFrameCaptureReservation()
+        {
+            lock (sync) FrameCaptureReservation.StartRuntime(WantsFrameCaptureReservationLocked());
+        }
+
+        private void SyncFrameCaptureReservation()
+        {
+            lock (sync) FrameCaptureReservation.SetEnabled(WantsFrameCaptureReservationLocked());
+        }
+
         public bool Enabled
         {
             get
@@ -689,6 +702,7 @@ namespace PaviseApp
                 }
                 if (enabledChanged)
                 {
+                    SyncFrameCaptureReservation();
                     if (value)
                     {
                         ClearEnvFuse("gamedvr");

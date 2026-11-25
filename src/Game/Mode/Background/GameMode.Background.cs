@@ -18,6 +18,7 @@ namespace PaviseApp
                 }
                 return;
             }
+            if (!adaptiveGuard.Escalated && adaptiveGuard.Episodes >= AdaptiveGuard.MaxEpisodes) return;
             long now = AdaptiveNow();
             int stepResult = adaptiveGuard.Step(adaptivePressure.Update(AdaptiveSample(), now), now);
             if (stepResult > 0)

@@ -43,8 +43,6 @@ namespace PaviseApp
 
             public string Path;
 
-            public int VendorGeneration;
-
             public int KeywordGeneration;
 
             public int SecurityGeneration;
@@ -138,8 +136,6 @@ namespace PaviseApp
 
         internal static bool CatalogProtected(int pid, long creation, string name, string path)
         {
-            int currentGenerationResult = PeripheralVendorProbe.CurrentGeneration();
-            if (PeripheralVendorProbe.MatchesRegisteredProgram(pid, creation, path)) return true;
             int keywordGeneration = PeripheralCatalog.UserKeywordGeneration;
             int currentGenerationResult2 = SecurityProductCatalog.CurrentGeneration();
             int mask = PlatformRuntimePolicy.Mask;
@@ -148,7 +144,7 @@ namespace PaviseApp
                 lock (catalogSync)
                 {
                     CatalogVerdict value;
-                    if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.VendorGeneration == currentGenerationResult && value.KeywordGeneration == keywordGeneration && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
+                    if (catalogVerdicts.TryGetValue(pid, out value) && value.Creation == creation && value.KeywordGeneration == keywordGeneration && value.SecurityGeneration == currentGenerationResult2 && value.PlatformMask == mask && string.Equals(value.Name, name, StringComparison.Ordinal) && string.Equals(value.Path, path, StringComparison.Ordinal))
                     {
                         return value.Protected;
                     }
@@ -169,7 +165,6 @@ namespace PaviseApp
                         Creation = creation,
                         Name = name,
                         Path = path,
-                        VendorGeneration = currentGenerationResult,
                         KeywordGeneration = keywordGeneration,
                         SecurityGeneration = currentGenerationResult2,
                         PlatformMask = mask,
@@ -274,17 +269,65 @@ namespace PaviseApp
             return image.Length > 0 && string.Equals(normalized, WhitelistRule.NormalizeName(Path.GetFileName(image)), StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static HashSet<int> CollectGameCreationHosts(ProcessSnapshot snapshot, ICollection<int> games, int selfPid, int ownerSession)
+        internal sealed class SweepIndex
+        {
+            internal readonly ProcEntry[] Entries;
+            internal readonly Dictionary<int, ProcEntry> CreationProcesses = new Dictionary<int, ProcEntry>();
+            private readonly Dictionary<string, string> paths = new Dictionary<string, string>(StringComparer.Ordinal);
+            private Dictionary<int, int> parents;
+
+            internal SweepIndex(ProcessSnapshot snapshot, int selfPid, int ownerSession)
+            {
+                var eligible = new List<ProcEntry>();
+                var duplicates = new HashSet<int>();
+                foreach (ProcEntry process in snapshot.Entries)
+                {
+                    IndexCreationProcess(process, CreationProcesses, duplicates);
+                    if (process == null || process.Pid <= 4 || process.Pid == selfPid || process.Session != ownerSession || process.Creation <= 0)
+                        continue;
+                    eligible.Add(process);
+                }
+                Entries = eligible.ToArray();
+            }
+
+            internal Dictionary<int, int> LibraryParents(ProcessSnapshot snapshot, int selfPid, int ownerSession)
+            {
+                if (parents != null) return parents;
+                parents = new Dictionary<int, int>();
+                foreach (ProcEntry process in Entries)
+                {
+                    ProcEntry parent = snapshot.Find(process.ParentPid);
+                    if (parent != null && parent.Pid > 4 && parent.Pid != selfPid && parent.Pid != process.Pid
+                        && parent.Session == ownerSession && parent.Creation > 0 && parent.Creation <= process.Creation)
+                        parents[process.Pid] = parent.Pid;
+                }
+                return parents;
+            }
+
+            internal string ImagePath(string raw)
+            {
+                string path;
+                if (!paths.TryGetValue(raw, out path)) paths.Add(raw, path = NormalizedPath(raw));
+                return path;
+            }
+        }
+
+        private static void IndexCreationProcess(ProcEntry process, Dictionary<int, ProcEntry> processes, HashSet<int> duplicates)
+        {
+            if (process == null || duplicates.Contains(process.Pid)) return;
+            if (processes.ContainsKey(process.Pid)) { processes.Remove(process.Pid); duplicates.Add(process.Pid); }
+            else processes.Add(process.Pid, process);
+        }
+
+        internal static HashSet<int> CollectGameCreationHosts(ProcessSnapshot snapshot, ICollection<int> games, int selfPid, int ownerSession, SweepIndex index = null)
         {
             var result = new HashSet<int>();
             if (snapshot == null || games == null || ownerSession < 0) return result;
-            var processes = new Dictionary<int, ProcEntry>();
-            var duplicates = new HashSet<int>();
-            foreach (ProcEntry process in snapshot.Entries)
+            Dictionary<int, ProcEntry> processes = index == null ? new Dictionary<int, ProcEntry>() : index.CreationProcesses;
+            if (index == null)
             {
-                if (process == null || duplicates.Contains(process.Pid)) continue;
-                if (processes.ContainsKey(process.Pid)) { processes.Remove(process.Pid); duplicates.Add(process.Pid); }
-                else processes.Add(process.Pid, process);
+                var duplicates = new HashSet<int>();
+                foreach (ProcEntry process in snapshot.Entries) IndexCreationProcess(process, processes, duplicates);
             }
             string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             foreach (int game in games)
@@ -306,7 +349,7 @@ namespace PaviseApp
             return result;
         }
 
-        internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured, ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null, bool exactExecutablesOnly = false, bool forceFamilyProtection = false)
+        internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured, ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null, bool exactExecutablesOnly = false, bool forceFamilyProtection = false, SweepIndex index = null)
         {
             HashSet<int> hashSet = new HashSet<int>();
             if (configured == null || snapshot == null || ownerSession < 0)
@@ -341,23 +384,23 @@ namespace PaviseApp
             {
                 return hashSet;
             }
-            Dictionary<int, int> dictionary = exactExecutablesOnly ? null : new Dictionary<int, int>();
+            Dictionary<int, int> dictionary = exactExecutablesOnly ? null : index == null ? new Dictionary<int, int>() : index.LibraryParents(snapshot, selfPid, ownerSession);
             HashSet<int> hashSet3 = new HashSet<int>();
             if (!exactExecutablesOnly && familyEvidence != null)
-                hashSet3.UnionWith(familyEvidence.MatchingProcesses(configured, snapshot, selfPid, ownerSession, forceFamilyProtection));
-            ProcEntry[] entries = snapshot.Entries;
+                hashSet3.UnionWith(familyEvidence.MatchingProcesses(configured, snapshot, selfPid, ownerSession, forceFamilyProtection, index == null ? null : index.Entries));
+            ProcEntry[] entries = index == null ? snapshot.Entries : index.Entries;
             foreach (ProcEntry procEntry in entries)
             {
                 if (procEntry.Pid <= 4 || procEntry.Pid == selfPid || procEntry.Session != ownerSession || procEntry.Creation <= 0)
                 {
                     continue;
                 }
-                if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(NormalizedPath(procEntry.Path)) || (list.Count > 0 && LibraryRootMemo(procEntry.Path, list) != null)))
+                if ((!string.IsNullOrEmpty(procEntry.Path) && (hashSet2.Contains(index == null ? NormalizedPath(procEntry.Path) : index.ImagePath(procEntry.Path)) || (list.Count > 0 && LibraryRootMemo(procEntry.Path, list) != null)))
                     || (legacyGameNames.Count > 0 && legacyGameNames.Contains(WhitelistRule.NormalizeName(procEntry.Name))))
                 {
                     hashSet3.Add(procEntry.Pid);
                 }
-                if (!exactExecutablesOnly)
+                if (!exactExecutablesOnly && index == null)
                 {
                     ProcEntry procEntry2 = snapshot.Find(procEntry.ParentPid);
                     if (procEntry2 != null && procEntry2.Pid > 4 && procEntry2.Pid != selfPid && procEntry2.Pid != procEntry.Pid && procEntry2.Session == ownerSession && procEntry2.Creation > 0 && procEntry2.Creation <= procEntry.Creation)
@@ -610,6 +653,51 @@ namespace PaviseApp
                 }
             }
             return true;
+        }
+
+        internal static HashSet<int> CollectRendererDescendants(ProcessSnapshot snapshot, int rendererPid, long rendererCreation, int selfPid,
+            int ownerSession, Dictionary<int, long> retained)
+        {
+            var descendants = new HashSet<int>();
+            ProcEntry renderer = snapshot == null ? null : snapshot.Find(rendererPid);
+            if (renderer == null || rendererPid <= 4 || rendererCreation <= 0 || renderer.Creation != rendererCreation
+                || ownerSession < 0 || renderer.Session != ownerSession)
+            {
+                retained.Clear();
+                return descendants;
+            }
+
+            // 创建时间和会话足以核验快照中的父子边 不要求读到图像路径
+            var parents = new Dictionary<int, int>();
+            foreach (ProcEntry child in snapshot.ByPid.Values)
+            {
+                if (child.Pid <= 4 || child.Pid == selfPid || child.Session != ownerSession || child.Creation <= 0) continue;
+                ProcEntry parent = snapshot.Find(child.ParentPid);
+                if (parent != null && parent.Session == ownerSession && parent.Creation > 0 && parent.Creation < child.Creation)
+                    parents.Add(child.Pid, parent.Pid);
+            }
+            var index = new DescendantIndex(parents);
+            var pending = new Queue<int>();
+            pending.Enqueue(rendererPid);
+            // 中间进程退出后 仍用已核验且存活的子孙接续进程树
+            foreach (KeyValuePair<int, long> previous in retained)
+            {
+                ProcEntry current = snapshot.Find(previous.Key);
+                if (current != null && current.Creation == previous.Value && current.Session == ownerSession && descendants.Add(current.Pid))
+                    pending.Enqueue(current.Pid);
+            }
+            while (pending.Count != 0)
+            {
+                int parent = pending.Dequeue();
+                for (int position = index.FirstChild(parent); position >= 0; position = index.NextSibling(position))
+                {
+                    int child = index.ChildAt(position);
+                    if (descendants.Add(child)) pending.Enqueue(child);
+                }
+            }
+            retained.Clear();
+            foreach (int pid in descendants) retained.Add(pid, snapshot.Find(pid).Creation);
+            return descendants;
         }
 
         internal static HashSet<int> WalkDescendants(Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth)

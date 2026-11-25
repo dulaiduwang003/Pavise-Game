@@ -11,7 +11,7 @@ namespace PaviseApp
             bool stateChanged;
             lock (stateLock)
             {
-                stateChanged = clientRunning || gameRunning || lcuReady || phase.Length > 0 || weGameProcessCount != 0 || crossProcessCount != 0 || uxProcessCount != 0;
+                stateChanged = clientRunning || gameRunning || lcuReady || phase.Length > 0 || weGameProcessCount != 0 || crossProcessCount > 0 || uxProcessCount != 0;
                 clientRunning = false;
                 gameRunning = false;
                 lcuReady = false;
@@ -192,7 +192,7 @@ namespace PaviseApp
             {
                 return left == right;
             }
-            if (left.Running == right.Running && left.Enabled == right.Enabled && left.CleanupEnabled == right.CleanupEnabled && left.HeadlessEnabled == right.HeadlessEnabled && string.Equals(left.LolRoot, right.LolRoot, StringComparison.OrdinalIgnoreCase) && string.Equals(left.WeGameRoot, right.WeGameRoot, StringComparison.OrdinalIgnoreCase) && left.InstallationFound == right.InstallationFound && left.WeGameFound == right.WeGameFound && left.ClientRunning == right.ClientRunning && left.GameRunning == right.GameRunning && left.LcuReady == right.LcuReady && string.Equals(left.Phase, right.Phase, StringComparison.Ordinal) && left.HeadlessActive == right.HeadlessActive && left.WeGameProcessCount == right.WeGameProcessCount && left.WeGameMainRunning == right.WeGameMainRunning && left.CrossProcessCount == right.CrossProcessCount && left.UxProcessCount == right.UxProcessCount && left.CleanedProcessCount == right.CleanedProcessCount && left.ReleasedWorkingSetBytes == right.ReleasedWorkingSetBytes && string.Equals(left.LastAction, right.LastAction, StringComparison.Ordinal) && string.Equals(left.LastError, right.LastError, StringComparison.Ordinal))
+            if (left.Running == right.Running && left.Enabled == right.Enabled && left.CleanupEnabled == right.CleanupEnabled && left.HeadlessEnabled == right.HeadlessEnabled && string.Equals(left.LolRoot, right.LolRoot, StringComparison.OrdinalIgnoreCase) && string.Equals(left.WeGameRoot, right.WeGameRoot, StringComparison.OrdinalIgnoreCase) && left.InstallationFound == right.InstallationFound && left.WeGameFound == right.WeGameFound && left.ClientRunning == right.ClientRunning && left.GameRunning == right.GameRunning && left.LcuReady == right.LcuReady && string.Equals(left.Phase, right.Phase, StringComparison.Ordinal) && left.HeadlessActive == right.HeadlessActive && left.WeGameProcessCount == right.WeGameProcessCount && left.WeGameMainRunning == right.WeGameMainRunning && (!right.CrossProcessCount.HasValue || left.CrossProcessCount == right.CrossProcessCount) && left.UxProcessCount == right.UxProcessCount && left.CleanedProcessCount == right.CleanedProcessCount && left.ReleasedWorkingSetBytes == right.ReleasedWorkingSetBytes && string.Equals(left.LastAction, right.LastAction, StringComparison.Ordinal) && string.Equals(left.LastError, right.LastError, StringComparison.Ordinal))
             {
                 return left.LastActionUtc == right.LastActionUtc;
             }

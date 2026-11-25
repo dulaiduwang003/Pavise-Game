@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace PaviseApp
@@ -162,6 +163,40 @@ namespace PaviseApp
             catch (Exception error) { failure = error.GetType().Name; }
             finally { Release(factory); }
             return selected;
+        }
+
+        // 按 VEN DEV SUBSYS 列出 DXGI 报告的适配器名称 游戏读到的显卡型号就是这里的名称
+        internal static bool TryReadAdapterNames(Dictionary<string, string> names, out string failure)
+        {
+            failure = null;
+            IDXGIFactory1 factory = null;
+            try
+            {
+                Guid iid = typeof(IDXGIFactory1).GUID;
+                int created = CreateDXGIFactory1(ref iid, out factory);
+                if (created < 0 || factory == null) { failure = "CreateDXGIFactory1 0x" + created.ToString("X8"); return false; }
+                for (uint index = 0; index < 256; index++)
+                {
+                    IDXGIAdapter1 adapter = null;
+                    try
+                    {
+                        int status = factory.EnumAdapters1(index, out adapter);
+                        if (status == DxgiNotFound) break;
+                        if (status < 0 || adapter == null) { failure = "EnumAdapters1 0x" + status.ToString("X8"); continue; }
+                        AdapterDescription description;
+                        int described = adapter.GetDesc1(out description);
+                        if (described < 0) { failure = "GetDesc1 0x" + described.ToString("X8"); continue; }
+                        if ((description.Flags & DxgiRemoteOrSoftware) != 0 || string.IsNullOrWhiteSpace(description.Description)) continue;
+                        string key = string.Format("VEN_{0:X4}&DEV_{1:X4}&SUBSYS_{2:X8}", description.VendorId, description.DeviceId, description.SubSysId);
+                        if (!names.ContainsKey(key)) names[key] = description.Description.Trim();
+                    }
+                    catch (Exception error) { failure = error.GetType().Name; }
+                    finally { Release(adapter); }
+                }
+            }
+            catch (Exception error) { failure = error.GetType().Name; }
+            finally { Release(factory); }
+            return failure == null;
         }
 
         private static OverviewGpuInfo ReadDisplayDevices(out string failure)

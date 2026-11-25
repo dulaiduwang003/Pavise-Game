@@ -8,8 +8,7 @@ namespace PaviseApp
 
         internal bool TrySetBackgroundGovernanceSelection(int selection)
         {
-            // 疯狂档开关关着时只能选到激进
-            if (selection < 0 || selection > (BackgroundGovernancePolicy.InsaneVisible() ? 3 : 2)) return false;
+            if (selection < 0 || selection > 2) return false;
             bool saved;
             lock (familyPolicyGate)
             {
@@ -28,6 +27,7 @@ namespace PaviseApp
                     && Settings.TryLoadStoredBool(PolicyCatalog.KeySuppress, out confirmed) && confirmed == next;
                 backgroundGovernanceSaveUnverified = !saved;
                 InvalidateFamilyPolicy();
+                if (!saved || selection == 0) core.SetResourceJobMode(-1, null);
                 SyncAutomationPolicy();
                 lock (sync) firstSweep = true;
             }
@@ -43,26 +43,6 @@ namespace PaviseApp
             foreach (string key in stored) if (string.Equals(key, PolicyCatalog.KeySuppress, StringComparison.OrdinalIgnoreCase)) return false;
             enabled = true; // 只有确认旧总开关不存在后 才使用原有默认值
             return true;
-        }
-
-        internal bool TrySetBackgroundGovernanceInsaneVisible(bool visible)
-        {
-            bool saved;
-            lock (familyPolicyGate)
-            {
-                lock (sync)
-                {
-                    if (stopping) return false;
-                    if (BackgroundGovernancePolicy.InsaneVisible() == visible) return true;
-                    string value = visible ? "1" : "0";
-                    saved = Settings.SaveStrDurable(BackgroundGovernancePolicy.InsaneVisibleKey, value)
-                        && Settings.LoadStr(BackgroundGovernancePolicy.InsaneVisibleKey, "") == value;
-                    InvalidateFamilyPolicy();
-                    firstSweep = true;
-                }
-            }
-            RequestPolicyApply("TrySetBackgroundGovernanceInsaneVisible");
-            return saved;
         }
 
         internal bool TrySetBackgroundGovernanceMode(int mode)
@@ -82,6 +62,8 @@ namespace PaviseApp
                     InvalidateFamilyPolicy();
                     firstSweep = true;
                 }
+                if (!saved || mode == BackgroundGovernancePolicy.Normal)
+                    core.SetResourceJobMode(saved ? mode : -1, null);
             }
             RequestPolicyApply("TrySetBackgroundGovernanceMode");
             return saved;

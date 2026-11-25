@@ -19,6 +19,7 @@ namespace PaviseApp
             switch (key)
             {
             case "GameNvRebarV1":
+            case PolicyCatalog.KeyGameLowLatency:
             case "GameDisableFullscreenOptimizationsV1":
             case PolicyCatalog.KeyGameControlFlowGuard:
             case "NvMaxPerf":
@@ -256,7 +257,7 @@ namespace PaviseApp
             case "GmPauseDl":
                 return AutoText("对局暂停 Windows 传递优化下载，结束恢复。", "Pauses Windows Delivery Optimization downloads during a match, then restores.");
             case "GmPauseUpdate":
-                return AutoText("对局暂停 Windows 更新活动，结束恢复。", "Pauses Windows Update activity during a match, then restores.");
+                return AutoText("开局暂停可控制的 Windows 更新服务，退局恢复。智能切出时恢复，竞技切出时保持暂停。", "Pauses eligible Windows Update services at match start and restores them on exit. Smart restores them on switch-out, and Competitive keeps the pause.");
             case "GmAwake":
                 return AutoText("游戏前台时阻止屏幕与电脑自动休眠。", "Prevents automatic display and system sleep while the game is foreground.");
             case "NvMaxPerf":

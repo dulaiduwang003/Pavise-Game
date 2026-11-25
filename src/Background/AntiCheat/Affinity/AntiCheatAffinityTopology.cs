@@ -14,6 +14,7 @@ namespace PaviseApp
         internal byte Scheduling;
         internal bool Parked;
         internal bool Allocated;
+        internal ulong AllocatedMask;
         internal bool Favored { get; set; }
         internal int L3Id = -1;
         internal uint L3Bytes;
@@ -270,6 +271,7 @@ namespace PaviseApp
                     coreId = state.Core;
                     core.Parked |= state.Parked;
                     core.Allocated |= state.Allocated;
+                    if (state.Allocated) core.AllocatedMask |= 1UL << logical;
                     // 部分系统只给主要 SMT 线程提供等级 不能据此把同一物理核拆成两个性能层级
 
                     core.Scheduling = Math.Max(core.Scheduling, state.Scheduling);
@@ -315,28 +317,6 @@ namespace PaviseApp
             return new AntiCheatAffinityChoice { Reason = reason };
         }
 
-        // 同一缓存域内的停泊只反映负载高低 多缓存域机器的停泊可能来自厂商的游戏策略 不能据此唤醒
-        private static bool SingleCacheDomain(List<AntiCheatAffinityCore> cores)
-        {
-            int domain = -1;
-            foreach (AntiCheatAffinityCore core in cores)
-            {
-                if (core.L3Id < 0) continue;
-                if (domain >= 0 && domain != core.L3Id) return false;
-                domain = core.L3Id;
-            }
-            return true;
-        }
-
-        private static int CompareAuxiliary(AntiCheatAffinityCore a, AntiCheatAffinityCore b)
-        {
-            // 未停泊的核排在前面 只有按游戏核心范围放宽时列表里才会出现停泊核
-            int order = a.Parked.CompareTo(b.Parked);
-            if (order == 0) order = a.Scheduling.CompareTo(b.Scheduling);
-            return order != 0 ? order : b.Mask.CompareTo(a.Mask);
-        }
-
-        // avoidMask 为游戏核心范围偏好 范围外容量不足时沿用原候选
         internal static AntiCheatAffinityChoice Select(AntiCheatAffinitySnapshot snapshot, ushort group,
             ulong originalAllowedMask, ulong protectedMask, ulong gameDomainMask, int maximumPhysicalCores = int.MaxValue,
             ulong avoidMask = 0)
@@ -346,129 +326,26 @@ namespace PaviseApp
                 return Skip(snapshot == null ? "topology-unavailable" : snapshot.Reason);
             if (!snapshot.CpuSetMetadata) return Skip("cpu-state-unavailable");
             if (originalAllowedMask == 0) return Skip("empty-original-affinity");
-            List<AntiCheatAffinityCore> local = new List<AntiCheatAffinityCore>();
-            ulong full = 0;
-            SortedSet<byte> tiers = new SortedSet<byte>();
+            ulong full = 0, allocated = 0;
             foreach (AntiCheatAffinityCore core in snapshot.Cores)
             {
                 if (core == null || core.Mask == 0) return Skip("invalid-core-topology");
-                if (core.Group != group) continue;
+                if (core.Group != group) return Skip("multiple-processor-groups");
                 if ((full & core.Mask) != 0) return Skip("overlapping-physical-cores");
                 full |= core.Mask;
-                local.Add(core);
-                tiers.Add(core.Efficiency);
+                allocated |= core.AllocatedMask != 0 ? core.AllocatedMask : core.Allocated ? core.Mask : 0;
             }
-            if (local.Count == 0 || (originalAllowedMask & ~full) != 0 || ((protectedMask | gameDomainMask) & ~full) != 0)
+            if (CountBits(full) <= 1) return Skip("single-logical-processor");
+            if ((originalAllowedMask & ~full) != 0 || ((protectedMask | gameDomainMask) & ~full) != 0)
                 return Skip("affinity-outside-group");
-            avoidMask &= full;
-            List<AntiCheatAffinityCore> candidates = new List<AntiCheatAffinityCore>();
-            List<AntiCheatAffinityCore> parkedOutside = new List<AntiCheatAffinityCore>();
-            foreach (AntiCheatAffinityCore core in local)
-            {
-                // 仅接纳原范围完整覆盖 且所有 SMT 线程均未受保护的物理核
-
-                if ((core.Mask & originalAllowedMask) != core.Mask || (core.Mask & protectedMask) != 0
-                    || core.Allocated || core.Favored) continue;
-                if (!core.Parked) candidates.Add(core);
-                else if (avoidMask != 0 && (core.Mask & avoidMask) == 0) parkedOutside.Add(core);
-            }
-            // 上限以内能给几个完整物理核就给几个 只剩一个可用时照样收进这一个 不因凑不够上限而放弃限制
-            const int minimumCores = 1;
-            if (avoidMask != 0)
-            {
-                // 优先游戏范围外的未停泊核 单缓存域容量不足时可补入范围外停泊核 减少反复迁移
-                // 硬亲和性允许线程运行于停泊核 仍选不出合法池时沿用原候选
-                List<AntiCheatAffinityCore> outside = candidates.FindAll(core => (core.Mask & avoidMask) == 0);
-                if (outside.Count < minimumCores && SingleCacheDomain(local)) outside.AddRange(parkedOutside);
-                if (outside.Count >= minimumCores)
-                {
-                    AntiCheatAffinityChoice preferred = Choose(local, outside, tiers, gameDomainMask, maximumPhysicalCores, minimumCores);
-                    if (preferred.Applicable) return preferred;
-                }
-            }
-            return Choose(local, candidates, tiers, gameDomainMask, maximumPhysicalCores, minimumCores);
-        }
-
-        private static AntiCheatAffinityChoice Choose(List<AntiCheatAffinityCore> local, List<AntiCheatAffinityCore> candidates,
-            SortedSet<byte> tiers, ulong gameDomainMask, int maximumPhysicalCores, int minimumCores)
-        {
-            if (candidates.Count < minimumCores) return Skip("insufficient-unreserved-cores");
-            if (tiers.Count > 1)
-            {
-                List<byte> orderedTiers = new List<byte>(tiers);
-                int performanceCores = 0;
-                foreach (AntiCheatAffinityCore core in local)
-                    if (core.Efficiency == orderedTiers[orderedTiers.Count - 1])
-                        performanceCores++;
-                if (performanceCores < 2) return Skip("insufficient-game-core-capacity");
-                // 优先选择较高的次级类别 最低逻辑处理器类别只有能提供两个完整物理核时才作为备用
-
-                for (int tier = orderedTiers.Count - 2; tier >= 0; tier--)
-                {
-                    List<AntiCheatAffinityCore> pool = new List<AntiCheatAffinityCore>();
-                    foreach (AntiCheatAffinityCore core in candidates)
-                        if (core.Efficiency == orderedTiers[tier]) pool.Add(core);
-                    // EfficiencyClass 相同时 使用 SchedulingClass 区分 E 核与低功耗 E 核
-                    SortedSet<byte> secondaryClasses = new SortedSet<byte>();
-                    foreach (AntiCheatAffinityCore core in pool) secondaryClasses.Add(core.Scheduling);
-                    List<byte> schedulingClasses = new List<byte>(secondaryClasses);
-                    for (int rank = schedulingClasses.Count - 1; rank >= 0; rank--)
-                    {
-                        List<AntiCheatAffinityCore> classPool = new List<AntiCheatAffinityCore>();
-                        foreach (AntiCheatAffinityCore core in pool)
-                            if (core.Scheduling == schedulingClasses[rank]) classPool.Add(core);
-                        if (classPool.Count >= minimumCores && local.Count - Math.Min(maximumPhysicalCores, classPool.Count) >= 2)
-                            return Pick(classPool, "efficiency", "secondary-efficiency-tier", maximumPhysicalCores);
-                    }
-                }
-                return Skip("insufficient-efficiency-core-capacity");
-            }
-            // 候选核心通常未停泊 只有按游戏核心范围放宽时才含范围外的停泊核 已停泊的游戏核心仍计入游戏容量
-            if (local.Count < 4 + minimumCores) return Skip("insufficient-game-core-capacity");
-            int domain = -1;
-            bool validDomain = gameDomainMask != 0;
-            foreach (AntiCheatAffinityCore core in local)
-            {
-                if ((core.Mask & gameDomainMask) == 0) continue;
-                if (core.L3Id < 0 || (domain >= 0 && domain != core.L3Id)) validDomain = false;
-                domain = core.L3Id;
-            }
-            if (validDomain && domain >= 0)
-            {
-                bool alternateExists = false;
-                foreach (AntiCheatAffinityCore core in local)
-                    if (core.L3Id >= 0 && core.L3Id != domain) alternateExists = true;
-                SortedDictionary<int, List<AntiCheatAffinityCore>> alternatives = new SortedDictionary<int, List<AntiCheatAffinityCore>>();
-                foreach (AntiCheatAffinityCore core in candidates)
-                {
-                    if (core.L3Id < 0 || core.L3Id == domain) continue;
-                    List<AntiCheatAffinityCore> pool;
-                    if (!alternatives.TryGetValue(core.L3Id, out pool))
-                    { pool = new List<AntiCheatAffinityCore>(); alternatives.Add(core.L3Id, pool); }
-                    pool.Add(core);
-                }
-                List<AntiCheatAffinityCore> best = null;
-                foreach (List<AntiCheatAffinityCore> pool in alternatives.Values)
-                    if (pool.Count >= minimumCores && local.Count - Math.Min(maximumPhysicalCores, pool.Count) >= 4
-                        && (best == null || pool.Count > best.Count)) best = pool;
-                if (best != null) return Pick(best, "alternate-cache-domain", "explicit-game-cache-domain-preserved", maximumPhysicalCores);
-                if (alternateExists) return Skip("alternate-cache-domain-unavailable");
-            }
-            // 依据缓存域证据选择 并为游戏和系统保留四个物理核
-            candidates.Sort(CompareAuxiliary);
-            int auxiliaryCount = Math.Min(Math.Min(maximumPhysicalCores, 2), Math.Min(candidates.Count, local.Count - 4));
-            List<AntiCheatAffinityCore> auxiliary = new List<AntiCheatAffinityCore>();
-            for (int i = 0; i < auxiliaryCount; i++) auxiliary.Add(candidates[i]);
-            return Pick(auxiliary, "auxiliary", auxiliaryCount == 1 ? "one-complete-auxiliary-core" : "two-complete-auxiliary-cores", maximumPhysicalCores);
-        }
-
-        private static AntiCheatAffinityChoice Pick(List<AntiCheatAffinityCore> cores, string kind, string reason, int maximumPhysicalCores)
-        {
-            cores.Sort(CompareAuxiliary);
-            int count = Math.Min(cores.Count, maximumPhysicalCores);
-            ulong mask = 0;
-            for (int i = 0; i < count; i++) mask |= cores[i].Mask;
-            return new AntiCheatAffinityChoice { Mask = mask, PhysicalCount = count, Kind = count == 1 ? "single-" + kind : kind, Reason = reason };
+            ulong eligible = originalAllowedMask & ~(protectedMask | allocated);
+            ulong preferred = eligible & ~(gameDomainMask | avoidMask);
+            ulong available = preferred != 0 ? preferred : eligible;
+            if (available == 0) return Skip("insufficient-unreserved-cores");
+            ulong selected = 1UL << 63;
+            while ((selected & available) == 0) selected >>= 1;
+            return new AntiCheatAffinityChoice { Mask = selected, PhysicalCount = 1, Kind = "logical-processor",
+                Reason = preferred != 0 ? "last-available-logical-processor" : "last-unreserved-logical-processor" };
         }
     }
 }

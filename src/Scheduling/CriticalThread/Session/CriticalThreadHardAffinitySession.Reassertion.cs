@@ -8,19 +8,15 @@ namespace PaviseApp
     {
         private int runtimeMaskRunning;
         private readonly ThreadRuntimeCorrectionPolicy runtimeMaskPolicy = new ThreadRuntimeCorrectionPolicy();
-        private volatile bool lastRuntimePending, runtimeThreadHasExited, runtimeAdmissionRequired;
+        private volatile bool runtimeThreadHasExited;
         private volatile string lastRuntimeDetail = "";
-        private long runtimeNextDueTicks;
         private readonly HashSet<string> exitedClearWorkers = new HashSet<string>(StringComparer.Ordinal);
         private WorkerReclamation workerReclamation;
         private volatile bool workerReclamationPending;
         private volatile string workerReclamationDetail = "";
 
-        internal bool LastRuntimePending { get { return lastRuntimePending; } }
         internal bool ThreadHasExited { get { return runtimeThreadHasExited; } }
-        internal bool RuntimeAdmissionRequired { get { return runtimeAdmissionRequired; } }
         internal string LastRuntimeDetail { get { return lastRuntimeDetail; } }
-        internal long RuntimeNextDueTicks { get { return Interlocked.Read(ref runtimeNextDueTicks); } }
         internal bool WorkerReclamationPending { get { return workerReclamationPending; } }
         internal string WorkerReclamationDetail { get { return workerReclamationDetail; } }
 
@@ -46,10 +42,7 @@ namespace PaviseApp
             var facts = new List<RuntimeMaskFact>();
             try
             {
-                lastRuntimePending = false;
-                runtimeAdmissionRequired = false;
                 lastRuntimeDetail = "";
-                Interlocked.Exchange(ref runtimeNextDueTicks, 0);
                 if (nowTicks <= 0) return RuntimePending(Logger.Text("运行期核验时钟不可用", "runtime verification clock unavailable"));
                 if (runtimeThreadHasExited) return RuntimePending(Logger.Text("原角色或进程已确认退出；不接管复用的线程身份", "original role or process confirmed exited; reused thread identities are not taken over"));
                 using (gate.EnterUse())
@@ -140,16 +133,6 @@ namespace PaviseApp
                                 retired++;
                                 continue;
                             }
-                            if (plan.SelectedWorkersOnly && !plan.IsCandidate(row.Thread))
-                            {
-                                // 工作池成员退出不撤销其他冻结角色的维护资格 也不接入同号新线程
-                                HardThreadReceipt owned = Find(row.Thread);
-                                if (owned != null) { owned.Phase = HardThreadPhase.Gone; Save(); }
-                                else ForgetUnchanged(row.Thread);
-                                fact.Verified = true;
-                                retired++;
-                                continue;
-                            }
                             if (plan.IsCandidate(row.Thread) || plan.IsWorkerPlacement(row.Thread)) runtimeThreadHasExited = true;
                             fact.Failure = Logger.Text("原线程已退出；不接管同号新线程", "original thread exited; a new thread with the same TID is not taken over") + ThreadFact(row.Thread, observed);
                             continue;
@@ -161,19 +144,11 @@ namespace PaviseApp
                             fact.Failure = failure + ThreadFact(row.Thread, observed);
                             continue;
                         }
-                        if (!fact.Owned && FloatingCandidate(row.Thread))
-                        {
-                            // 本策略只设置理想处理器 不维护候选亲和性 读回范围变化由理想处理器自身的范围门禁处理
-                            RememberUnchanged(row.Thread, observed);
-                            fact.Verified = true;
-                            continue;
-                        }
                         if (observed.Mask != row.Applied)
                         {
                             Forget(row.Thread);
                             if (!fact.Owned)
                             {
-                                runtimeAdmissionRequired = true;
                                 fact.Failure = Logger.Text("只读范围需要首次写入归属；等待有限准入，不在运行期无限重试", "read-only scope needs first-write ownership; waiting for bounded admission, no unbounded runtime retries") + ThreadFact(row.Thread, observed);
                                 continue;
                             }
@@ -216,7 +191,6 @@ namespace PaviseApp
             }
             finally
             {
-                long next = 0;
                 foreach (RuntimeMaskFact fact in facts)
                 {
                     if (fact.Started)
@@ -226,10 +200,7 @@ namespace PaviseApp
                     }
                     if (fact.ExitedWorker && !exitedClearWorkers.Contains(fact.Row.Thread.Key))
                         runtimeMaskPolicy.ForgetExited(fact.Row.Thread.Key);
-                    long due = runtimeMaskPolicy.NextDue(fact.Row.Thread.Key);
-                    if (due > 0 && (next == 0 || due < next)) next = due;
                 }
-                Interlocked.Exchange(ref runtimeNextDueTicks, next);
                 Volatile.Write(ref runtimeMaskRunning, 0);
             }
         }
@@ -362,7 +333,6 @@ namespace PaviseApp
 
         private bool RuntimePending(string detail)
         {
-            lastRuntimePending = true;
             lastRuntimeDetail = Detail = detail;
             lastFailureKind = HardThreadFailureKind.ObservationUnavailable;
             return false;
@@ -372,7 +342,7 @@ namespace PaviseApp
         {
             return row != null && row.Thread != null && row.Phase == HardThreadPhase.Applied && row.PreviousKnown
                 && row.Group == plan.Group && row.PreviousGroup == row.Group && row.Applied != 0
-                && (!owned && FloatingCandidate(row.Thread) || (row.Applied & ~gate.Target.AllowedMask) == 0) && OriginalMaskAdmissible(row.Captured)
+                && (row.Applied & ~gate.Target.AllowedMask) == 0 && OriginalMaskAdmissible(row.Captured)
                 && OriginalMaskAdmissible(row.Previous) && row.Applied == plan.MaskFor(row.Thread, row.Captured)
                 && (!owned || journal.Revision > 0);
         }
@@ -485,8 +455,6 @@ namespace PaviseApp
         private HardThreadReceipt ReassertUnchanged(HardThreadReceipt observation, HardThreadObserved current, out bool attempted)
         {
             attempted = false;
-            if (FloatingCandidate(observation.Thread))
-                throw new InvalidOperationException(Logger.Text("浮动渲染角色只读范围不能晋升为亲和性写入归属", "read-only scope of a floating render role cannot be promoted to affinity write ownership"));
             string failure = PrepareReassertion(observation, current);
             if (failure != null)
                 throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, failure, true);

@@ -13,15 +13,25 @@ namespace PaviseApp
         {
             public string Path;
 
+            public string ProcessName;
+
             public string Title;
 
             public long Memory;
+
+            public double? Cpu;
 
             public int Count;
 
             public bool Checked;
 
             public Bitmap Icon;
+
+            // 打开选择器时正被普通后台治理
+            public bool Governed;
+
+            // 没有应用窗口的后台进程
+            public bool Background;
         }
 
         private sealed class ScanResult
@@ -32,6 +42,10 @@ namespace PaviseApp
         }
 
         private readonly HashSet<string> known;
+
+        private readonly HashSet<int> governed;
+
+        private readonly bool focusPicker;
 
         private readonly List<Entry> all = new List<Entry>();
 
@@ -46,6 +60,8 @@ namespace PaviseApp
         private readonly PillButton confirm;
 
         public readonly List<string> Selected = new List<string>();
+
+        internal Entry FocusSelection { get; private set; }
 
         private readonly string confirmLabel;
 
@@ -67,10 +83,13 @@ namespace PaviseApp
             }
         }
 
-        public RunningPickerDialog(HashSet<string> alreadyListed, string confirmText = null, string titleText = null, string descriptionText = null)
+        public RunningPickerDialog(HashSet<string> alreadyListed, string confirmText = null, string titleText = null, string descriptionText = null, IEnumerable<int> governedPids = null,
+            bool focusPicker = false)
         {
+            this.focusPicker = focusPicker;
             confirmLabel = confirmText ?? Lang.T("white.pick.add");
             known = ((alreadyListed == null) ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : new HashSet<string>(alreadyListed, StringComparer.OrdinalIgnoreCase));
+            governed = governedPids == null ? new HashSet<int>() : new HashSet<int>(governedPids);
             Text = titleText ?? Lang.T("white.pick.title");
             base.FormBorderStyle = FormBorderStyle.None;
             base.StartPosition = FormStartPosition.CenterParent;
@@ -124,6 +143,12 @@ namespace PaviseApp
             list.ItemHeight = Math.Min(255, Theme.S(52));
             list.DrawItem += DrawEntry;
             list.MouseDown += OnListMouseDown;
+            if (focusPicker)
+                list.KeyDown += delegate(object sender, KeyEventArgs e) {
+                    if (e.KeyCode != Keys.Space || list.SelectedItem == null) return;
+                    ToggleEntry((Entry)list.SelectedItem);
+                    e.SuppressKeyPress = true;
+                };
             roundPanel.Controls.Add(new TechListScrollHost((TechListBox)list)
             {
                 Dock = DockStyle.Fill
@@ -142,7 +167,8 @@ namespace PaviseApp
                 {
                     if (item.Checked)
                     {
-                        Selected.Add(item.Path);
+                        if (!focusPicker) Selected.Add(item.Path);
+                        else FocusSelection = item;
                     }
                 }
                 base.DialogResult = DialogResult.OK;
@@ -291,7 +317,7 @@ namespace PaviseApp
                 {
                     try
                     {
-                        list = Scan(known, () => ScanCanceled(generation));
+                        list = Scan(known, governed, focusPicker, () => ScanCanceled(generation));
                     }
                     catch
                     {
@@ -385,18 +411,23 @@ namespace PaviseApp
             ApplyFilter();
         }
 
-        internal static List<Entry> Scan(HashSet<string> exclude)
+        private static List<Entry> Scan(HashSet<string> exclude, HashSet<int> governedPids,
+            bool focusPicker, Func<bool> canceled)
         {
-            return Scan(exclude, null);
-        }
-
-        private static List<Entry> Scan(HashSet<string> exclude, Func<bool> canceled)
-        {
-            List<RunningProgram> list = RunningProgramDiscovery.ScanForWhitelist(canceled);
-            if (list == null)
+            ProcessSnapshot start = focusPicker ? ProcessSnapshotSource.Capture() : null;
+            List<RunningProgram> list = focusPicker ? RunningProgramDiscovery.ScanForBackgroundFocus(canceled, start)
+                : RunningProgramDiscovery.ScanForWhitelist(canceled);
+            if (list == null) return null;
+            ProcessSnapshot end = null;
+            if (start != null)
             {
-                return null;
+                while (!canceled() && AutoCores.NowTicks - start.MonotonicTicks < TimeSpan.FromMilliseconds(300).Ticks)
+                    Thread.Sleep(25);
+                if (canceled()) return null;
+                try { end = ProcessSnapshotSource.Capture(); }
+                catch { }
             }
+            bool cpuAvailable = end != null && end.MonotonicTicks > start.MonotonicTicks;
             List<Entry> list2 = new List<Entry>();
             foreach (RunningProgram item in list)
             {
@@ -404,19 +435,74 @@ namespace PaviseApp
                 {
                     return null;
                 }
-                if (exclude == null || !exclude.Contains(item.Path))
+                string key = focusPicker ? BackgroundFocusItem.Identity(item.ProcessName, item.Path) : item.Path;
+                if (key == null || (exclude != null && exclude.Contains(key))) continue;
+                Entry entry = EntryOf(item, governedPids);
+                if (cpuAvailable)
+                    entry.Cpu = CurrentCpuPercent(item, start, end, Environment.ProcessorCount);
+                list2.Add(entry);
+            }
+            if (cpuAvailable) OrderByCpu(list2);
+            else Order(list2);
+            return list2;
+        }
+
+        internal static double CurrentCpuPercent(RunningProgram app, ProcessSnapshot start, ProcessSnapshot end, int logicalProcessors)
+        {
+            long elapsed = end.MonotonicTicks - start.MonotonicTicks;
+            if (elapsed <= 0) return 0;
+            double cpu = 0;
+            foreach (int pid in app.ProcessIds)
+            {
+                ProcEntry before = start.Find(pid);
+                ProcEntry after = end.Find(pid);
+                if (before != null && after != null && before.Creation > 0 && before.Creation == after.Creation)
+                    cpu += Math.Max(0, after.Cpu - before.Cpu);
+            }
+            return 100 * cpu / elapsed / Math.Max(1, logicalProcessors);
+        }
+
+        internal static void OrderByCpu(List<Entry> entries)
+        {
+            entries.Sort((a, b) => {
+                int cpu = Nullable.Compare(b.Cpu, a.Cpu);
+                if (cpu != 0) return cpu;
+                int path = string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+                return path != 0 ? path : string.Compare(a.ProcessName, b.ProcessName, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        internal static Entry EntryOf(RunningProgram item, HashSet<int> governedPids)
+        {
+            bool governedNow = false;
+            if (governedPids != null)
+            {
+                foreach (int pid in item.ProcessIds)
                 {
-                    list2.Add(new Entry
-                    {
-                        Path = item.Path,
-                        Title = item.Title,
-                        Memory = item.Memory,
-                        Count = item.ProcessIds.Count
-                    });
+                    if (governedPids.Contains(pid)) { governedNow = true; break; }
                 }
             }
-            list2.Sort((Entry a, Entry b) => b.Memory.CompareTo(a.Memory));
-            return list2;
+            return new Entry
+            {
+                Path = item.Path,
+                ProcessName = item.ProcessName,
+                Title = item.Title,
+                Memory = item.Memory,
+                Count = item.ProcessIds.Count,
+                Governed = governedNow,
+                Background = !item.HasWindow
+            };
+        }
+
+        // 正在被治理的排最前 想加白的多半就是它们 其余按占用内存从大到小
+        internal static void Order(List<Entry> entries)
+        {
+            entries.Sort(delegate(Entry a, Entry b)
+            {
+                if (a.Governed != b.Governed) return a.Governed ? -1 : 1;
+                int memory = b.Memory.CompareTo(a.Memory);
+                return memory != 0 ? memory : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+            });
         }
 
         private static Bitmap LoadIcon(string path)
@@ -465,7 +551,15 @@ namespace PaviseApp
             {
                 return;
             }
-            shown[indexFromPointResult].Checked = !shown[indexFromPointResult].Checked;
+            ToggleEntry(shown[indexFromPointResult]);
+        }
+
+        private void ToggleEntry(Entry selected)
+        {
+            bool check = !selected.Checked;
+            if (focusPicker)
+                foreach (Entry item in all) item.Checked = false;
+            selected.Checked = check;
             list.Invalidate();
             int processedCount = 0;
             foreach (Entry item in all)
@@ -475,7 +569,7 @@ namespace PaviseApp
                     processedCount++;
                 }
             }
-            confirm.Text = ((processedCount > 0) ? Lang.F("white.pick.add.n", processedCount) : confirmLabel);
+            confirm.Text = processedCount > 0 && !focusPicker ? Lang.F("white.pick.add.n", processedCount) : confirmLabel;
             confirm.Enabled = processedCount > 0;
             confirm.Invalidate();
         }
@@ -529,10 +623,30 @@ namespace PaviseApp
             int scaledDimension3 = Theme.S(90);
             int rightOffset = rect.Right + Theme.S(12);
             int remainingS = bounds.Right - rightOffset - scaledDimension3 - Theme.S(24);
-            TextRenderer.DrawText(graphics, entry.Title, Theme.UI(9.2f, true), new Rectangle(rightOffset, bounds.Top + Theme.S(6), remainingS, Theme.S(20)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-            TextRenderer.DrawText(graphics, entry.Path, Theme.UI(7.6f, false), new Rectangle(rightOffset, bounds.Top + Theme.S(25), remainingS, Theme.S(18)), Theme.Faint, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
-            string formatMemoryOffset = FormatMemory(entry.Memory) + ((entry.Count > 1) ? (" " + Lang.F("white.pick.procs", entry.Count)) : "");
-            TextRenderer.DrawText(graphics, formatMemoryOffset, Theme.UI(7.8f, false), new Rectangle(bounds.Right - scaledDimension3 - Theme.S(14), bounds.Top, scaledDimension3, bounds.Height), Theme.Dim, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+            string title = !focusPicker || string.Equals(entry.Title, entry.ProcessName, StringComparison.OrdinalIgnoreCase)
+                ? entry.Title : entry.Title + " · " + entry.ProcessName;
+            TextRenderer.DrawText(graphics, title, Theme.UI(9.2f, true), new Rectangle(rightOffset, bounds.Top + Theme.S(6), remainingS, Theme.S(20)), Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+            // 路径前面标出正在被治理或没有窗口 让用户一眼找到该加白的后台进程
+            int pathLeft = rightOffset;
+            string tag = entry.Governed ? Lang.T("white.pick.governed") : (entry.Background ? Lang.T("white.pick.background") : null);
+            if (tag != null)
+            {
+                Font tagFont = Theme.UI(7.6f, true);
+                Rectangle tagBounds = new Rectangle(rightOffset, bounds.Top + Theme.S(25), remainingS, Theme.S(18));
+                TextRenderer.DrawText(graphics, tag, tagFont, tagBounds, entry.Governed ? Theme.Accent : Theme.Dim, TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
+                pathLeft += TextRenderer.MeasureText(graphics, tag, tagFont, Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(8);
+            }
+            TextRenderer.DrawText(graphics, entry.Path, Theme.UI(7.6f, false), new Rectangle(pathLeft, bounds.Top + Theme.S(25), Math.Max(0, remainingS - (pathLeft - rightOffset)), Theme.S(18)), Theme.Faint, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
+            string usage = !focusPicker
+                ? FormatMemory(entry.Memory) + (entry.Count > 1 ? " " + Lang.F("white.pick.procs", entry.Count) : "")
+                : FocusCpuText(entry);
+            TextRenderer.DrawText(graphics, usage, Theme.UI(7.8f, false), new Rectangle(bounds.Right - scaledDimension3 - Theme.S(14), bounds.Top, scaledDimension3, bounds.Height), Theme.Dim, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        }
+
+        internal static string FocusCpuText(Entry entry)
+        {
+            return entry.Cpu.HasValue ? Lang.F("background.focus.currentcpu", entry.Cpu.Value)
+                : Lang.T("background.focus.unknowncpu");
         }
 
         internal static string FormatMemory(long bytes)

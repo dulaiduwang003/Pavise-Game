@@ -54,14 +54,6 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         internal Func<GameProfile, GameCardExtension> LibraryExtensionForTest;
 #endif
-        private Dictionary<string, bool> QueryLibraryRunningState(List<string> paths)
-        {
-#if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (RunningQueryForTest == null) throw new InvalidOperationException("Library running state was not mocked");
-            return RunningQueryForTest(paths);
-#endif
-            return ProbeRunning(paths);
-        }
         public void NotifyLibraryChanged()
         {
             try
@@ -236,6 +228,60 @@ namespace PaviseApp
             finally
             {
                 boostChangeBusy = false;
+                if (!base.IsDisposed && !base.Disposing)
+                {
+                    RefreshGames();
+                    SelectProfile(id);
+                }
+            }
+        }
+
+        // 只支持 NVIDIA 开启前确认驱动接口可用 关闭直接保存
+        private async void ToggleGameLowLatency(GameLibraryItem item)
+        {
+            if (lowLatencyChangeBusy || item == null || item.Profile == null)
+            {
+                return;
+            }
+            string id = item.Profile.Id;
+            GameProfile current = FindLibraryProfile(id);
+            if (current == null)
+            {
+                RefreshGames();
+                return;
+            }
+            bool enable = !PolicyResolver.For(current).NvLowLatency;
+            string targetPath = current.ExecutablePath;
+            GameConfigurationDialog initiator = libraryConfigurationDialog;
+            lowLatencyChangeBusy = true;
+            try
+            {
+                if (enable)
+                {
+                    bool available = await Task.Run((Func<bool>)NvDrsTweaks.DriverAvailable);
+                    if (base.IsDisposed || base.Disposing || (initiator != null && (initiator.IsDisposed || libraryConfigurationDialog != initiator || !initiator.Visible)))
+                    {
+                        return;
+                    }
+                    current = FindLibraryProfile(id);
+                    if (current == null || !string.Equals(current.ExecutablePath, targetPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                    if (!available)
+                    {
+                        PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.lowlatency"), Lang.T("lib.rebar.driver"));
+                        return;
+                    }
+                }
+                if (!gameMode.SetProfileOverride(id, PolicyCatalog.KeyGameLowLatency, enable ? "1" : "0") && !gameMode.ProfileStoreSaveFailed)
+                {
+                    PaviseDialog.Warn(LibraryDialogOwner, Lang.T("lib.lowlatency"), Lang.T("lib.family.save.failed"));
+                }
+            }
+            finally
+            {
+                lowLatencyChangeBusy = false;
                 if (!base.IsDisposed && !base.Disposing)
                 {
                     RefreshGames();
@@ -566,7 +612,46 @@ namespace PaviseApp
             }
             return false;
         }
-        private static Dictionary<string, bool> ProbeRunning(List<string> paths)
+        private static bool TryLibraryRunningFromSnapshot(ProcessSnapshot snapshot, int session,
+            Dictionary<string, List<string>> candidates, Dictionary<string, bool> running)
+        {
+            if (snapshot == null || snapshot.Count == 0 || snapshot.ByPid.Count != snapshot.Count)
+            {
+                return false;
+            }
+            var matches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ProcEntry process in snapshot.Entries)
+            {
+                List<string> paths;
+                if (string.IsNullOrEmpty(process.Name))
+                {
+                    if (process.Pid > 4 && process.Session == session) return false;
+                    continue;
+                }
+                if (!candidates.TryGetValue(process.Name, out paths))
+                {
+                    continue;
+                }
+                if (process.Session != session || process.Pid <= 4 || process.Creation <= 0 || string.IsNullOrEmpty(process.Path))
+                {
+                    return false;
+                }
+                foreach (string path in paths)
+                {
+                    if (string.Equals(path, process.Path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches.Add(path);
+                    }
+                }
+            }
+            foreach (string path in matches)
+            {
+                running[path] = true;
+            }
+            return true;
+        }
+
+        private Dictionary<string, bool> QueryLibraryRunningState(List<string> paths, bool force)
         {
             Dictionary<string, bool> dictionary = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, List<string>> dictionary2 = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
@@ -596,6 +681,19 @@ namespace PaviseApp
                     value.Add(path);
                 }
             }
+            if (!force && dictionary2.Count > 0 && gameMode != null)
+            {
+                int session;
+                ProcessSnapshot snapshot = gameMode.RecentLibraryProcessSnapshot(out session);
+                if (TryLibraryRunningFromSnapshot(snapshot, session, dictionary2, dictionary))
+                {
+                    return dictionary;
+                }
+            }
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (RunningQueryForTest == null) throw new InvalidOperationException("Library running state was not mocked");
+            return RunningQueryForTest(paths);
+#endif
             if (dictionary2.Count == 0)
             {
                 return dictionary;
@@ -867,6 +965,16 @@ namespace PaviseApp
             Interlocked.Increment(ref whiteVersion);
             pageWhitelist.AutoScroll = false;
             Native.Dark(pageWhitelist);
+            processRulesTabs = new TierPicker
+            {
+                Name = "ProcessRulesTabs",
+                BackColor = Theme.Bg,
+                StrongSelection = true,
+                WrapChoices = true,
+                AccessibleName = Lang.T("white.tabs.name")
+            };
+            processRulesTabs.IndexChanged = SelectProcessRulesTab;
+            whiteContent = new DBPanel { Name = "WhitelistContent", BackColor = Theme.Bg };
             whiteSearchPanel = new WhitelistSearchSurface
             {
                 Name = "WhitelistSearchSurface",
@@ -919,7 +1027,7 @@ namespace PaviseApp
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true
             };
-            whitePick = new PillButton(AutoText("添加进程", "Add process"), BtnKind.Primary)
+            whitePick = new PillButton(Lang.T("white.action.pick"), BtnKind.Primary)
             {
                 Name = "whitelistPick"
             };
@@ -927,20 +1035,26 @@ namespace PaviseApp
             {
                 PickRunningForWhitelist();
             };
-            whiteBrowse = new PillButton(AutoText("添加 EXE", "Add EXE"))
+            whiteAddMenuButton = new PillButton("\u25be")
             {
-                Name = "whitelistBrowse"
+                Name = "WhitelistAddMenu",
+                AccessibleName = Lang.T("white.add.more"),
+                AccessibleRole = AccessibleRole.ButtonDropDown
             };
-            whiteBrowse.Click += delegate
+            whiteMoreButton = new PillButton("\u2026")
             {
-                BrowseForWhitelist();
+                Name = "WhitelistMoreActions",
+                AccessibleName = Lang.T("white.actions.more"),
+                AccessibleRole = AccessibleRole.ButtonDropDown
             };
-            whiteKeyword = new PillButton(AutoText("添加关键词", "Add keyword"))
-            {
-                Name = "whitelistKeyword",
-                AccessibleDescription = AutoText("进程名、文件描述、产品名或公司名包含这个词的程序按外设驱动保护。", "Apps whose process name, file description, product or company contains this word are protected as peripheral drivers.")
-            };
-            whiteKeyword.Click += delegate { AddWhitelistKeyword(); };
+            whiteAddMenu = CreateWhitelistMenu(whiteAddMenuButton);
+            AddWhitelistMenuItem(whiteAddMenu, "whitelistKeyword", Lang.T("white.action.keyword"), AddWhitelistKeyword);
+            AddWhitelistMenuItem(whiteAddMenu, "whitelistBrowse", Lang.T("white.action.exe"), BrowseForWhitelist);
+            whiteActionsMenu = CreateWhitelistMenu(whiteMoreButton);
+            btnRestorePlatformProtection = AddWhitelistMenuItem(whiteActionsMenu, "restorePlatformProtection", Lang.T("white.platform.restore"),
+                delegate { RunWhitelistOp(() => (!gameMode.RestorePlatformProtection()) ? gameMode.WhitelistLastError : null); });
+            btnRestorePlatformProtection.AccessibleDescription = Lang.T("white.platform.hint");
+            AddWhitelistMenuItem(whiteActionsMenu, "whitelistRestorePreset", Lang.T("white.action.reset"), RestoreWhitelistPreset);
             whitePanel = new EmptyStatePanel
             {
                 Name = "WhitelistSurface",
@@ -1016,7 +1130,7 @@ namespace PaviseApp
                 ownedMenu.Dispose();
             };
             whitePanel.Controls.Add(lstWhite);
-            Control[] controlItems = new Control[3] { pageWhitelist, whitePanel, lstWhite };
+            Control[] controlItems = new Control[] { pageWhitelist, whiteContent, whitePanel, lstWhite };
             foreach (Control control in controlItems)
             {
                 control.AllowDrop = true;
@@ -1027,37 +1141,12 @@ namespace PaviseApp
             btnRemoveWhitelist = new PillButton(Lang.T("btn.remove"))
             {
                 Name = "whitelistRemove",
-                Enabled = false
+                Enabled = false,
+                Visible = false
             };
             btnRemoveWhitelist.Click += delegate
             {
                 RemoveSelectedWhitelist();
-            };
-            btnRestorePlatformProtection = new PillButton(Lang.T("white.platform.restore"))
-            {
-                Name = "restorePlatformProtection"
-            };
-            btnRestorePlatformProtection.AccessibleName = btnRestorePlatformProtection.Text;
-            btnRestorePlatformProtection.AccessibleDescription = Lang.T("white.platform.hint");
-            btnRestorePlatformProtection.Click += delegate
-            {
-                RunWhitelistOp(() => (!gameMode.RestorePlatformProtection()) ? gameMode.WhitelistLastError : null);
-            };
-            whiteReset = new PillButton(AutoText("恢复预设", "Restore preset"))
-            {
-                Name = "whitelistRestorePreset"
-            };
-            whiteReset.Click += delegate
-            {
-                if (PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("white.reset.confirm"), DlgKind.Warn))
-                {
-                    RunWhitelistOp(delegate
-                    {
-                        // 恢复默认也清掉手动关键词 它们同属自定义白名单
-                        string keywordError = PeripheralUserKeywords.Clear();
-                        return (!gameMode.ResetWhitelist()) ? gameMode.WhitelistLastError : keywordError;
-                    });
-                }
             };
             lblWhiteHint = new Label
             {
@@ -1068,14 +1157,18 @@ namespace PaviseApp
                 AutoEllipsis = true,
                 TextAlign = ContentAlignment.MiddleLeft
             };
-            pageWhitelist.Controls.AddRange(new Control[11] { whiteSearchPanel, whiteFilters, whiteCount, whitePick, whiteKeyword, whiteBrowse, whitePanel, btnRemoveWhitelist, btnRestorePlatformProtection, whiteReset, lblWhiteHint });
+            whiteContent.Controls.AddRange(new Control[] { whiteSearchPanel, whiteFilters, whiteMoreButton,
+                whitePanel, whiteCount, lblWhiteHint, btnRemoveWhitelist });
+            pageWhitelist.Controls.AddRange(new Control[] { processRulesTabs, whitePick, whiteAddMenuButton, whiteContent });
+            BuildFocusSuppressionSection();
             pageWhitelist.SizeChanged += delegate
             {
                 LayoutWhitelistViewport();
             };
+            SyncProcessRulesTabLabels();
             RefreshWhitelist(false);
             SyncWhitelistPlatformHint();
-            LayoutWhitelistViewport();
+            SelectProcessRulesTab(processRulesTabIndex);
         }
     }
 }

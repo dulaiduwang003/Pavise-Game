@@ -132,7 +132,7 @@ namespace PaviseApp
                 }
 
                 string current = PerformanceActionBackend.Read(id, target);
-                string desired = PerformanceActionBackend.WantedRegistry(id, current);
+                string desired = PerformanceActionBackend.WantedRegistry(id, target, current);
                 if (desired != current)
                 {
                     // 第一次系统写入前 先持久保存恢复上下文

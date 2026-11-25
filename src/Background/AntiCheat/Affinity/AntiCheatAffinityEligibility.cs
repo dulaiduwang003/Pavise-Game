@@ -12,7 +12,6 @@ namespace PaviseApp
             IEnumerable<KeyValuePair<string, int>> runningServices, HashSet<int> gameAncestors, out string reason)
         {
             if (!ServiceCandidate(name, pid, session, gameAncestors, out reason)) return false;
-            string group = ImageGroup(name);
             if (runningServices == null) { reason = "running-services-unavailable"; return false; }
             bool found = false;
             try
@@ -21,7 +20,7 @@ namespace PaviseApp
                 {
                     if (service.Value != pid) continue;
                     found = true;
-                    if (!string.Equals(ServiceGroup(service.Key), group, StringComparison.Ordinal))
+                    if (!IsAceServiceName(service.Key))
                     { reason = "shared-or-unverified-service-host"; return false; }
                 }
             }
@@ -39,13 +38,13 @@ namespace PaviseApp
             if (gameAncestors == null) { reason = "game-ancestry-unavailable"; return false; }
             if (gameAncestors.Contains(pid)) { reason = "game-process-or-ancestor"; return false; }
             if (session != 0) { reason = "not-session-zero-service"; return false; }
-            if (ImageGroup(name) == null) { reason = "launcher-helper-or-unknown-role"; return false; }
+            if (!IsAceServiceImage(name)) { reason = "launcher-helper-or-unknown-role"; return false; }
             reason = "";
             return true;
         }
 
         // 只有装在正式位置的映像才纳管 游戏目录里自带的同名组件和读不到路径的只保护
-        // ACE 在 Program Files 下的 AntiCheatExpert 目录内 EasyAntiCheat 和 BattlEye 只认各自安装器放的那一个文件
+        // ACE 映像须在 Program Files 下的 AntiCheatExpert 目录内
         internal static bool InstalledImage(string name, string path, out string reason)
         {
             return InstalledImage(name, path, ProgramRoots(), out reason);
@@ -55,8 +54,7 @@ namespace PaviseApp
         {
             reason = "image-path-unavailable";
             string image = NormalizeImage(name);
-            string group = ImageGroup(image);
-            if (group == null) { reason = "launcher-helper-or-unknown-role"; return false; }
+            if (!IsAceServiceImage(image)) { reason = "launcher-helper-or-unknown-role"; return false; }
             string normalized = WhitelistRule.NormalizeImagePath(path);
             if (normalized.Length == 0) return false;
             reason = "not-installed-location";
@@ -66,14 +64,7 @@ namespace PaviseApp
             {
                 string root = WhitelistRule.NormalizeImagePath((rawRoot ?? "").TrimEnd('\\', '/')).TrimEnd('\\');
                 if (root.Length < 3) continue;
-                if (group == "ace")
-                {
-                    if (normalized.StartsWith(root + "\\AntiCheatExpert\\", StringComparison.OrdinalIgnoreCase)) { reason = ""; return true; }
-                    continue;
-                }
-                string expected = group == "eac" ? root + "\\" + image + "\\" + image + ".exe"
-                    : root + "\\Common Files\\BattlEye\\" + image + ".exe";
-                if (string.Equals(normalized, expected, StringComparison.OrdinalIgnoreCase)) { reason = ""; return true; }
+                if (normalized.StartsWith(root + "\\AntiCheatExpert\\", StringComparison.OrdinalIgnoreCase)) { reason = ""; return true; }
             }
             return false;
         }
@@ -120,39 +111,20 @@ namespace PaviseApp
             reason = "unverified-ace-client";
             ProcEntry parent = snapshot.Find(client.ParentPid);
             if (parent == null || parent.Pid == pid || parent.Creation <= 0 || parent.Creation > birth
-                || parent.Session != 0 || ImageGroup(parent.Name) != "ace" || gameAncestors.Contains(parent.Pid)) return false;
+                || parent.Session != 0 || !IsAceServiceImage(parent.Name) || gameAncestors.Contains(parent.Pid)) return false;
             service = parent;
             reason = "";
             return true;
         }
 
-        private static string ImageGroup(string name)
+        private static bool IsAceServiceImage(string name)
         {
-            name = NormalizeImage(name);
-            if (EqualsAny(name, "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service")) return "ace";
-            if (EqualsAny(name, "EasyAntiCheat", "EasyAntiCheat_EOS")) return "eac";
-            if (EqualsAny(name, "BEService", "BEService_x64")) return "battleye";
-            return null;
+            return EqualsAny(NormalizeImage(name), "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service");
         }
 
-        private static string ServiceGroup(string name)
+        private static bool IsAceServiceName(string name)
         {
-            if (string.IsNullOrEmpty(name)) return null;
-            if (EqualsAny(name, "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service", "AntiCheatExpert Service", "ACE-BASE", "ACE-GAME")) return "ace";
-            if (EqualsAny(name, "EasyAntiCheat", "EasyAntiCheat_EOS") || ProductService(name, "EasyAntiCheat_EOS_")) return "eac";
-            if (EqualsAny(name, "BEService", "BEService_x64")) return "battleye";
-            return null;
-        }
-
-        private static bool ProductService(string name, string prefix)
-        {
-            if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || name.Length <= prefix.Length) return false;
-            for (int i = prefix.Length; i < name.Length; i++)
-            {
-                char c = name[i];
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
-            }
-            return true;
+            return EqualsAny(name, "SGuard", "SGuard64", "SGuardSvc", "SGuardSvc64", "ACE-Service64", "AntiCheatExpert", "AntiCheatExpert.Service", "AntiCheatExpert Service", "ACE-BASE", "ACE-GAME");
         }
 
         private static bool EqualsAny(string name, params string[] values)

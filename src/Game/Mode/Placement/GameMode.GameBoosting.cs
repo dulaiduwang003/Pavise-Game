@@ -92,8 +92,9 @@ namespace PaviseApp
             boostPass.NvMaxPerf = ((policySnapshot != null) ? policySnapshot.NvMaxPerf : nvMaxPerf);
             boostPass.NvShader = ((policySnapshot != null) ? policySnapshot.NvShaderCacheMax : nvShaderCacheMax);
             boostPass.NvRebar = ((policySnapshot != null) ? policySnapshot.NvRebar : nvRebarOn);
+            boostPass.NvLowLatency = policySnapshot != null && policySnapshot.NvLowLatency;
             boostPass.NvDlss = ((policySnapshot != null) ? policySnapshot.NvDlssMode : nvDlssMode);
-            NvGamePlan nvGamePlan = RefreshAutomaticNvPlan(boostPass.NvMaxPerf, boostPass.NvShader, Native.OnAcPower(), boostPass.NvRebar);
+            NvGamePlan nvGamePlan = RefreshAutomaticNvPlan(boostPass.NvMaxPerf, boostPass.NvShader, Native.OnAcPower(), boostPass.NvRebar, boostPass.NvLowLatency);
             boostPass.NvMaxPerf = nvGamePlan.MaxPerf;
             boostPass.RendererPid = -1;
             boostPass.RendererCreation = 0L;

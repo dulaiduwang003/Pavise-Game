@@ -49,24 +49,13 @@ namespace PaviseApp
             }
         }
 
-        internal long NextDue(string property)
-        {
-            lock (gate)
-            {
-                State state;
-                return states.TryGetValue(property, out state) ? state.Next : 0;
-            }
-        }
-
         // 只供已证明退出且归属已结清的身份使用 删除存活属性会重填退避并掩盖原维护状态
-        internal bool ForgetExited(string property)
+        internal void ForgetExited(string property)
         {
             lock (gate)
             {
                 State state;
-                if (!states.TryGetValue(property, out state)) return true;
-                if (state.Running) return false;
-                return states.Remove(property);
+                if (states.TryGetValue(property, out state) && !state.Running) states.Remove(property);
             }
         }
     }

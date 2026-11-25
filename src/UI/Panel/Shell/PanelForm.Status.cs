@@ -713,7 +713,7 @@ namespace PaviseApp
                     Dictionary<string, bool> states = null;
                     try
                     {
-                        states = QueryLibraryRunningState(paths);
+                        states = QueryLibraryRunningState(paths, force);
                         // 成功快照不补充当前游戏列表的失败预算 真实新会话或列表变化仍独立计数
                     }
                     catch
@@ -824,13 +824,6 @@ namespace PaviseApp
                 RefreshOverviewGuardActivity();
                 paviseCore.AccessibleName = ModeButton.ModeName(gameMode.ActivePreset);
                 paviseCore.AccessibleDescription = gameMode.StatusText;
-                if (overviewLogVersion != Logger.Version)
-                {
-                    overviewLogVersion = Logger.Version;
-                    int warnings;
-                    LogStreamView.CountIssues(Logger.Tail(220), out warnings, out overviewErrors);
-                }
-                overviewAction = ((!elevated) ? "admin" : (gameMode.ProfileStoreSaveFailed ? "library" : ((gameMode.Enabled && overviewErrors > 0) ? "logs" : "")));
             }
         }
         private void RefreshUpdatePresentation()
@@ -1040,7 +1033,9 @@ namespace PaviseApp
         {
             if (btnRemoveWhitelist != null && !btnRemoveWhitelist.IsDisposed)
             {
-                btnRemoveWhitelist.Enabled = CanRemoveSelectedWhitelist();
+                bool canRemove = CanRemoveSelectedWhitelist();
+                btnRemoveWhitelist.Visible = canRemove;
+                btnRemoveWhitelist.Enabled = canRemove;
             }
             if (lblWhiteHint != null && !lblWhiteHint.IsDisposed)
             {
@@ -1057,6 +1052,7 @@ namespace PaviseApp
             int version = Interlocked.Increment(ref whiteVersion);
             List<WhitelistRuleView> views = QueryWhitelistState(false);
             FillWhitelist(views);
+            RefreshFocusEntries();
             if (!deep || !UiActive)
             {
                 return;
@@ -1077,7 +1073,6 @@ namespace PaviseApp
                     try
                     {
                         full = QueryWhitelistState(true);
-                        PeripheralVendorProbe.RefreshDevicesForDisplay();
                     }
                     catch
                     {
@@ -1133,12 +1128,16 @@ namespace PaviseApp
                 {
                     powerButton.CloseDropDown();
                 }
-                int matchIndex = powerPlanChoices.FindIndex((string id) => string.Equals(id, PowerPlan.EffectivePlanId, StringComparison.OrdinalIgnoreCase));
-                if (matchIndex >= 0)
+                if (modeFlyout.Visible)
                 {
-                    powerButton.SetSilently(matchIndex);
+                    string selectedPlan = PowerPlan.EffectivePlanId;
+                    int matchIndex = powerPlanChoices.FindIndex(id => string.Equals(id, selectedPlan, StringComparison.OrdinalIgnoreCase));
+                    if (matchIndex >= 0)
+                    {
+                        powerButton.SetSilently(matchIndex);
+                    }
+                    LayoutModeFlyout();
                 }
-                if (modeFlyout.Visible) LayoutModeFlyout();
             }
         }
         public void SyncAllToggles()
@@ -1338,6 +1337,7 @@ namespace PaviseApp
             if (!shouldRunUi)
             {
                 SetOverviewTelemetryActive(false);
+                if (gpuSpoofCard != null) gpuSpoofCard.SetPageActive(false);
 
                 if (uiTimer != null)
                 {

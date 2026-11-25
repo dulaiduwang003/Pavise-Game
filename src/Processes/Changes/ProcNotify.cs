@@ -19,6 +19,8 @@ namespace PaviseApp
 
         public Func<string, int, bool> FastTrack;
 
+        public Func<bool> FastTrackEnabled;
+
         private EtwProcessWatcher etw;
 
         private long lastFastStartTicks;
@@ -146,11 +148,13 @@ namespace PaviseApp
         {
             try
             {
-                if (Volatile.Read(ref accepting) == 0 || FastTrack == null || this.FastStart == null || pid <= 4)
+                Func<bool> fastTrackEnabled = FastTrackEnabled;
+                if (Volatile.Read(ref accepting) == 0 || FastTrack == null || this.FastStart == null || pid <= 4
+                    || fastTrackEnabled == null || !fastTrackEnabled())
                 {
                     return;
                 }
-                IntPtr intPtr = Native.OpenProcess(4096, false, pid);
+                IntPtr intPtr = Native.OpenProcess(1052672, false, pid);
                 if (intPtr == IntPtr.Zero)
                 {
                     return;
@@ -169,7 +173,7 @@ namespace PaviseApp
                 {
                     Native.CloseHandle(intPtr);
                 }
-                FastTrackMaybe(name, sessionId);
+                if (fastTrackEnabled()) FastTrackMaybe(name, sessionId);
             }
             catch
             {
@@ -302,9 +306,7 @@ namespace PaviseApp
                                             int sessionId;
                                             int sessionValue = ResolveVerifiedSessionId(session, Native.TryGetLiveProcessSessionId(intPtr, pidValue, out sessionId), sessionId);
                                             long creation;
-                                            long cpu;
-                                            ulong io;
-                                            if (sessionValue >= 0 && nameValue.Length > 0 && Native.QueryProcessSample(intPtr, out creation, out cpu, out io) && creation > 0)
+                                            if (sessionValue >= 0 && nameValue.Length > 0 && Native.TryGetProcessCreation(intPtr, out creation))
                                             {
                                                 processChange.Session = sessionValue;
                                                 processChange.Name = nameValue;
@@ -326,9 +328,7 @@ namespace PaviseApp
                                     {
                                         try
                                         {
-                                            long cpu2;
-                                            ulong io2;
-                                            Native.QueryProcessSample(intPtr2, out processChange.ParentCreation, out cpu2, out io2);
+                                            Native.TryGetProcessCreation(intPtr2, out processChange.ParentCreation);
                                         }
                                         finally
                                         {

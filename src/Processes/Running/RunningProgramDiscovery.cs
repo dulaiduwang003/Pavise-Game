@@ -16,7 +16,12 @@ namespace PaviseApp
             return Scan(canceled, true);
         }
 
-        private static List<RunningProgram> Scan(Func<bool> canceled, bool whitelist)
+        internal static List<RunningProgram> ScanForBackgroundFocus(Func<bool> canceled, ProcessSnapshot snapshot)
+        {
+            return snapshot == null ? null : Scan(canceled, true, snapshot);
+        }
+
+        private static List<RunningProgram> Scan(Func<bool> canceled, bool whitelist, ProcessSnapshot focusSnapshot = null)
         {
             Process[] runningProcesses = null;
             try
@@ -60,7 +65,9 @@ namespace PaviseApp
                     try
                     {
                         int id2 = process2.Id;
-                        if (id2 <= 4 || id2 == id || !hashSet.Contains(id2) || process2.SessionId != sessionId)
+                        // 游戏库只收有窗口的程序 白名单还要收没有窗口的后台进程 驱动助手和服务助手多半没有窗口 却正是会被治理的那些
+                        bool hasWindow = hashSet.Contains(id2);
+                        if (id2 <= 4 || id2 == id || (!whitelist && !hasWindow) || process2.SessionId != sessionId)
                         {
                             continue;
                         }
@@ -70,30 +77,37 @@ namespace PaviseApp
                             continue;
                         }
                         string pathValue;
+                        ProcEntry focusProcess = focusSnapshot == null ? null : focusSnapshot.Find(id2);
                         try
                         {
+                            if (focusSnapshot != null && (focusProcess == null || focusProcess.Session != sessionId
+                                || Native.QueryProcessIdentityState(intPtr, focusProcess.Creation) != 0))
+                                continue;
                             pathValue = Native.ImagePath(intPtr);
                         }
                         finally
                         {
                             Native.CloseHandle(intPtr);
                         }
-                        string processNameValue = GameSessionDetector.ImageNameFromVerifiedPath(pathValue);
+                        string processNameValue = focusProcess == null ? GameSessionDetector.ImageNameFromVerifiedPath(pathValue) : focusProcess.Name;
                         if (!(whitelist ? IsWhitelistCandidate(processNameValue, pathValue, windowsRoot)
                             : GameSessionDetector.IsLibraryCandidate(processNameValue, pathValue, windowsRoot)))
                         {
                             continue;
                         }
+                        string key = focusSnapshot == null ? pathValue : BackgroundFocusItem.Identity(processNameValue, pathValue);
+                        if (key == null) continue;
                         RunningProgram value;
-                        if (!dictionary.TryGetValue(pathValue, out value))
+                        if (!dictionary.TryGetValue(key, out value))
                         {
                             RunningProgram runningProgram = new RunningProgram();
                             runningProgram.Path = pathValue;
                             runningProgram.ProcessName = processNameValue;
                             runningProgram.Title = processNameValue;
                             value = runningProgram;
-                            dictionary.Add(pathValue, value);
+                            dictionary.Add(key, value);
                         }
+                        if (hasWindow) value.HasWindow = true;
                         if (!value.ProcessIds.Contains(id2))
                         {
                             value.ProcessIds.Add(id2);

@@ -11,7 +11,7 @@ namespace PaviseApp
         {
             string[] keys = { "NvMaxPerf", "NvShaderCache" };
             var touched = new List<string>();
-            foreach (string key in keys)
+            foreach (string key in new[] { "NvMaxPerf", "NvShaderCache", "NvRebar", PolicyCatalog.KeyGameLowLatency })
             {
                 string state;
                 if (evidence.TryGetValue(key, out state) && !string.IsNullOrEmpty(state) && state != "unchanged") touched.Add(key);
@@ -808,6 +808,20 @@ namespace PaviseApp
             ReleaseBackground(Lang.T("t.gamemodeenv.41"));
         }
         private int ReleaseBackground(string reasonPrefix)
+        {
+            lock (familyPolicyGate)
+            {
+                core.BeginBackgroundJournalRound();
+                try
+                {
+                    core.SetResourceJobMode(-1, null);
+                    return ReleaseBackgroundProcesses(reasonPrefix);
+                }
+                finally { core.EndBackgroundJournalRound(false); }
+            }
+        }
+
+        private int ReleaseBackgroundProcesses(string reasonPrefix)
         {
             if (!core.AnyWith(SuppressReason.Background))
             {

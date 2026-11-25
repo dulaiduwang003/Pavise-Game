@@ -174,6 +174,11 @@ namespace PaviseApp
             });
             return list;
         }
+        // 白名单选择器把正被普通后台治理的进程排在最前
+        internal List<int> GovernedBackgroundPids()
+        {
+            return core.PidsWith(SuppressReason.Background);
+        }
         public bool AddWhitelistAuto(string executablePath)
         {
             return AddWhitelistRule(ResolveAutoKind(executablePath), executablePath);
@@ -380,17 +385,21 @@ namespace PaviseApp
             }
             return gameDetection2;
         }
-        private List<int> LiveStickyFamily()
+        private List<int> LiveStickyFamily(out bool reused)
         {
-            List<int> list = new List<int>();
-            foreach (KeyValuePair<int, GameId> stickyId in stickyIds)
+            reused = false;
+            List<int> live = new List<int>();
+            foreach (KeyValuePair<int, GameId> identity in stickyIds)
             {
-                if (AliveWithIdentity(stickyId.Key))
-                {
-                    list.Add(stickyId.Key);
-                }
+                string name;
+                long creation;
+                if (!TryStickyIdentity(identity.Key, out name, out creation)) continue;
+                if (creation == identity.Value.Creation && string.Equals(name, identity.Value.Name, StringComparison.OrdinalIgnoreCase))
+                    live.Add(identity.Key);
+                else
+                    reused = true;
             }
-            return list;
+            return live;
         }
         public bool NeedsWhitelistParentIdentity(int session)
         {
@@ -613,7 +622,6 @@ namespace PaviseApp
                         whitelistProcessInfo2.Creation = procEntry.Creation;
                         whitelistEvaluation.Creations[pid] = whitelistProcessInfo2.Creation;
                         whitelistProcessInfo2.Cpu = procEntry.Cpu;
-                        whitelistProcessInfo2.Io = procEntry.Io;
                         if (whitelistProcessInfo2.Session == selfSession)
                         {
                             whitelistEvaluation.Parents[pid] = whitelistProcessInfo2.Parent;
@@ -701,6 +709,7 @@ namespace PaviseApp
             {
                 ProcessSnapshot all = ProcessSnapshotSource.Capture(selfSession);
                 WhitelistEvaluation whitelistEvaluation = EvaluateWhitelist(all);
+                ReleaseFocusWhitelistMatches(whitelistEvaluation);
                 matched = whitelistEvaluation.Protected.Count;
                 int processedCount = 0;
                 foreach (int item in whitelistEvaluation.Protected)

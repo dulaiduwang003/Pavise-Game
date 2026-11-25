@@ -116,7 +116,7 @@ namespace
     bool Same(const Guid& left, const Guid& right) { return left.Low == right.Low && left.High == right.High; }
 
     // 接口版本 结构布局或回放规则变了就加一 C# 端版本不符时不加载
-    const int32_t AbiVersion = 1;
+    const int32_t AbiVersion = 5;
 
     enum Kind : uint8_t
     {
@@ -125,8 +125,7 @@ namespace
         KindPresent = 3,        // 本进程的画面提交开始或结束 A 是画面提交表里的下标
         KindOrderReversed = 4,  // 同一 CPU 的事件时间倒序
         KindSwitchShort = 5,    // 线程切换数据不足
-        KindReadyShort = 6,     // 线程就绪数据不足
-        KindDiscontinuity = 7   // 第一次发现同一 CPU 前后两次切换衔接不上
+        KindReadyShort = 6     // 线程就绪数据不足
     };
 
     enum Fault : int32_t
@@ -161,7 +160,7 @@ namespace
         double CallerCpuBeforeEvents;
         // 留下的记录最多这么多条 和回放的关系状态块容量相同 事件上限放大后原生存储不能先涨到几百 MB 才在回放时作废
         int32_t EmergencyRecords;
-        int32_t Reserved;
+        int32_t PresenterOnly;   // 非零时只取画面提交
     };
 
     struct Record
@@ -214,8 +213,6 @@ namespace
     {
         int64_t Last;
         int32_t Running;       // 这颗 CPU 上正在跑的游戏线程 不是游戏线程时为 0
-        int32_t LastIncoming;  // 最近一次切入的线程 用于连续性检查
-        int32_t IncomingKnown;
         int32_t Padding;
     };
 
@@ -236,7 +233,6 @@ namespace
         int32_t Count;
         int32_t Switches;
         bool Invalid;
-        bool Continuous;
         volatile LONG FaultCode;
         volatile LONG Stopped;
     };
@@ -388,14 +384,6 @@ namespace
             }
             int32_t incoming = ReadInt32(record, 0), outgoing = ReadInt32(record, 4);
             uint8_t oldState = ReadByte(record, 14);
-            // 连续性要看全部切换 同一 CPU 上一次切入的线程应当就是这一次切出的线程
-            if (state->IncomingKnown != 0 && state->LastIncoming != outgoing && context->Continuous)
-            {
-                context->Continuous = false;
-                Emit(context, time, KindDiscontinuity, cpu, incoming, outgoing, 0);
-            }
-            state->LastIncoming = incoming;
-            state->IncomingKnown = 1;
             bool trackedIncoming = Tracked(context, incoming);
             // 切换链断开时 这颗 CPU 上的游戏线程也要随这次切换清掉 回放才能得到同样的运行状态
             if (trackedIncoming || Tracked(context, outgoing) || state->Running != 0)
@@ -464,6 +452,14 @@ namespace
     {
         Context* context = static_cast<Context*>(record->UserContext);
         if (context == nullptr || context->Invalid || context->Stopped != 0) return;
+        const Guid& provider = record->Header.ProviderId;
+        if (context->Settings.PresenterOnly != 0)
+        {
+            uint16_t id = record->Header.Descriptor.Id;
+            bool present = (Same(provider, Dxgi) && (id == 42 || id == 43))
+                || (Same(provider, D3d9) && (id == 1 || id == 2));
+            if (!present || record->Header.ProcessId != static_cast<uint32_t>(context->Settings.Pid)) return;
+        }
         if (context->Count < 0x7fffffff) context->Count++;
         if (context->Count > context->Settings.EmergencySystemEvents) { Fail(context, FaultSystemEvents); return; }
         if ((context->Count & (context->Settings.CpuCheckInterval - 1)) == 0)
@@ -476,7 +472,6 @@ namespace
         }
         int64_t time = record->Header.TimeStamp;
         if (time < context->Settings.Begin || time > context->Settings.End) return;
-        const Guid& provider = record->Header.ProviderId;
         if (Same(provider, KernelThread)) { OnKernelThread(context, record, time); return; }
         bool dxgi = Same(provider, Dxgi);
         if (!dxgi && !Same(provider, D3d9)) return;
@@ -513,7 +508,6 @@ extern "C"
         if (context == nullptr) return nullptr;
         context->Settings = *settings;
         context->Settings.Threads = nullptr;
-        context->Continuous = true;
         if (settings->ThreadCount > 0)
         {
             context->Threads = static_cast<int32_t*>(Allocate(static_cast<size_t>(settings->ThreadCount) * sizeof(int32_t)));

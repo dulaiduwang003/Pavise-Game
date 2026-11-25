@@ -115,9 +115,8 @@ namespace PaviseApp
             if (renderRule != null) next.Overrides[CriticalThreadRule.Key] = renderRule.Encode();
             else if (schedulingDisabled) next.Overrides[CriticalThreadRule.Key] = CriticalThreadRule.UnifiedOff().Encode();
             else next.Overrides.Remove(CriticalThreadRule.Key);
-            CriticalThreadRule previousRule = CriticalThreadRule.ParseForRuntime(expectedRule);
-            if (previousRule != null && previousRule.IsOff && renderRule != null && !renderRule.IsOff)
-                next.Overrides[PolicyCatalog.KeyGameScheduling] = "0";
+            if (RenderModeSaveWouldEnable(current, next))
+                return "lib.threads.save.modefirst";
             string conflict = ValidateCriticalPreference(next);
             if (conflict != null) return conflict;
             string currentResource, nextResource;

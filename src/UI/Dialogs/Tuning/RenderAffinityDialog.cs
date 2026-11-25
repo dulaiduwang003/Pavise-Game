@@ -1,21 +1,16 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 每个游戏单独保存渲染线程亲和性 自动（推荐） 渲染单核或手动选核
+    // 每个游戏单独保存渲染单核或手动选核
     // 优先级在深度调优里逐游戏设置 这里没有资源或提优开关
     internal sealed class RenderAffinityDialog : Form
     {
-        // 第三项“手动”也落在渲染单核的固定路径上 用位置区分
-        private static readonly SchedulingStrategy[] ModeStrategies =
-            { SchedulingStrategy.Orchestration, SchedulingStrategy.RenderCore, SchedulingStrategy.RenderCore };
-        private const int AutomaticMode = 0, SingleCoreMode = 1, ManualMode = 2;
-
-        // 推荐标签只标在自动上 未保存模式时的缺省选中项也是它
-        internal static bool IsRecommended(SchedulingStrategy strategy) { return strategy == CriticalThreadRule.RecommendedStrategy; }
+        private const int SingleCoreMode = 0, ManualMode = 1, ModeCount = 2;
 
         private readonly Func<CriticalThreadRule, bool?, string> save;
         private readonly ulong all, allowed, reserved;
@@ -23,13 +18,11 @@ namespace PaviseApp
         private readonly bool trusted;
         private readonly string scopeError;
         private readonly PillButton[] modes;
-        private readonly Label title, game, statusHint, placementHint, conflictHint, preview, sessionHint, error;
-        private readonly Label choicesTitle, choicesHint, observationHint, cpuTitle, cpuCount, cpuHelp;
-        // 缺少上局读数时隐藏观测说明
-        private readonly SchedulingBottleneckEvidence observation;
+        private readonly Label title, game, statusHint, placementHint, conflictHint, observationHint, preview, sessionHint, error;
+        private readonly string singleCoreReading, manualReading;
+        private readonly Label choicesTitle, choicesHint, cpuTitle, cpuCount, cpuHelp;
         private readonly StrategyDetails details;
         private readonly LibraryDialogButton apply, cancel, close;
-        private const int VisibleChoices = 3;
         private readonly DBPanel body, choiceList;
         private readonly FamilySuppressionSwitch clearCore;
         // 手动模式的选核卡片 矩阵与核心调度页是同一个控件 按物理核分组 点核编号选整颗核
@@ -53,12 +46,12 @@ namespace PaviseApp
         {
         }
 
-        internal RenderAffinityDialog(GameProfile profile, CriticalThreadRule initial, Func<CriticalThreadRule, bool?, string> saveRule, string conflict = null, string status = null,
-            SchedulingBottleneckEvidence lastObservation = null)
+        internal RenderAffinityDialog(GameProfile profile, CriticalThreadRule initial, Func<CriticalThreadRule, bool?, string> saveRule,
+            string conflict = null, string status = null, RenderAffinityObservation singleCoreObservation = null,
+            RenderAffinityObservation manualObservation = null)
         {
             if (profile == null || saveRule == null) throw new ArgumentNullException();
             save = saveRule;
-            observation = lastObservation;
             Name = "RenderAffinityDialog";
             Text = Lang.T("lib.threads.title");
             AccessibleName = Text;
@@ -81,7 +74,6 @@ namespace PaviseApp
             scopeError = range.Error;
             string storedRaw = CriticalThreadRule.Raw(profile);
             CriticalThreadRule stored = CriticalThreadRule.Parse(storedRaw);
-            bool legacyLayout = initial != null && !initial.IsUnified || stored != null && !stored.IsUnified;
             bool retiredComparison = IsRetiredComparison(storedRaw) || initial != null && IsRetiredComparison(initial.Encode());
             bool retiredStrategy = stored != null && stored.IsRetiredStrategy || initial != null && initial.IsRetiredStrategy;
             // 旧的只调优先级方案（游戏优先 渲染优先 依赖协同）没有放置内容 运行时关闭
@@ -89,11 +81,10 @@ namespace PaviseApp
             bool priorityOnly = source != null && source.IsUnified && !source.IsOff && !source.IsComparison
                 && (source.IsGamePriority || source.IsDependencyBoost || source.IsRenderStrategy && !source.PinsRenderThread);
             if (initial != null) initial = CriticalThreadRule.ParseForRuntime(initial.Encode());
-            // 缺省选中自动 已有模式按换算后的运行规则预选 手动规则在拓扑未变时预选原来的 CPU
+            // 缺省选中渲染单核 已存手动规则在拓扑未变时预选原来的 CPU
             string stamp = ManualCorePlan.Stamp(all, physical);
             if (initial != null && initial.IsManualPin && initial.Topology == stamp) manualSelection = initial.ManualMask & allowed;
-            mode = retiredComparison || retiredStrategy || initial == null || initial.IsOff ? AutomaticMode
-                : initial.IsManualPin ? ManualMode : initial.PinsRenderThread ? SingleCoreMode : AutomaticMode;
+            mode = initial != null && initial.IsManualPin ? ManualMode : SingleCoreMode;
 
             title = LabelOf(Text, Theme.UI(17f, true), Theme.Fg);
             title.Name = "RenderAffinityTitle";
@@ -120,11 +111,11 @@ namespace PaviseApp
             choiceList = new DBPanel { Name = "RenderAffinityChoices", BackColor = Theme.Bg, AutoScroll = true, TabIndex = 0,
                 AccessibleRole = AccessibleRole.Grouping, AccessibleName = choicesTitle.Text };
             Native.Dark(choiceList);
-            modes = new PillButton[ModeStrategies.Length];
+            modes = new PillButton[ModeCount];
             for (int i = 0; i < modes.Length; i++)
             {
                 int selectedMode = i;
-                modes[i] = new StrategyChoice(ModeCaption(i), ModeStrategies[i], i == ManualMode) { Name = "RenderAffinityMode" + i, TabIndex = i };
+                modes[i] = new StrategyChoice(ModeCaption(i), i == ManualMode) { Name = "RenderAffinityMode" + i, TabIndex = i };
                 modes[i].Click += delegate { SelectMode(selectedMode, false); };
                 ((StrategyChoice)modes[i]).Navigate = delegate(Keys key)
                 {
@@ -136,9 +127,6 @@ namespace PaviseApp
             placementHint.Name = "RenderAffinityStrategyHint";
             details = new StrategyDetails(placementHint) { Name = "RenderAffinityDetails" };
             conflictHint = LabelOf(string.IsNullOrEmpty(conflict) ? "" : Lang.T(conflict), Theme.UI(9f, false), Theme.Warning);
-            if (legacyLayout) conflictHint.Text += (conflictHint.Text.Length == 0 ? "" : "\n") + T(
-                "保存后使用所选模式。",
-                "Save to use the selected mode.");
             if (priorityOnly) conflictHint.Text += (conflictHint.Text.Length == 0 ? "" : "\n") + T(
                 "原方案只调优先级，已交给深度调优的逐游戏开关；选一种模式保存后生效。",
                 "The old strategy only adjusted priority, which now comes from the per-game switches in Advanced tuning; choose a mode and save.");
@@ -153,10 +141,12 @@ namespace PaviseApp
                 "The processor topology changed, so the previously chosen CPUs no longer apply. Choose again.");
             observationHint = LabelOf("", Theme.UI(9f, false), Theme.Dim);
             observationHint.Name = "RenderAffinityObservation";
-            clearCoreRequested = initial != null && initial.ClearCore && !initial.IsOrchestration;
+            singleCoreReading = FormatObservation(singleCoreObservation);
+            manualReading = FormatObservation(manualObservation);
+            clearCoreRequested = initial != null && initial.ClearCore;
             clearCore = new FamilySuppressionSwitch
             {
-                Name = "RenderAffinityClearCore", Surface = Theme.Bg, TabIndex = ModeStrategies.Length + 1, IconKey = "core",
+                Name = "RenderAffinityClearCore", Surface = Theme.Bg, TabIndex = ModeCount + 1, IconKey = "core",
                 Text = T("整核避让", "Whole-core avoidance"),
                 Summary = T("其他游戏线程避开渲染线程所在的整颗物理核", "Other game threads stay off the render thread's physical core"),
                 Checked = clearCoreRequested,
@@ -164,7 +154,7 @@ namespace PaviseApp
             };
             clearCore.Click += delegate { if (clearCore.Enabled) { clearCoreRequested = !clearCore.Checked; RefreshChoice(); } };
             cpuUsable = trusted ? all & allowed & ~reserved : 0;
-            cpuCard = new CpuPicker { Name = "RenderAffinityCpuCard", TabIndex = ModeStrategies.Length };
+            cpuCard = new CpuPicker { Name = "RenderAffinityCpuCard", TabIndex = ModeCount };
             cpuTitle = LabelOf(T("渲染线程使用的 CPU", "CPUs for the render thread"), Theme.UI(11f, true), Theme.Fg);
             cpuTitle.Name = "RenderAffinityCpuTitle";
             cpuCount = LabelOf("", Theme.UI(9f, false), Theme.Dim);
@@ -217,6 +207,15 @@ namespace PaviseApp
             RefreshChoice();
         }
 
+        private static string FormatObservation(RenderAffinityObservation observation)
+        {
+            if (observation == null) return "";
+            string reading = Lang.F("lib.threads.observation.time", observation.SampledAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+            if (observation.PresenterTid > 0) reading += " · " + Lang.F("lib.threads.observation.presenter", observation.PresenterTid);
+            if (observation.PresentStreamCount > 0) reading += " · " + Lang.F("lib.threads.observation.streams", observation.PresentStreamCount);
+            return reading;
+        }
+
         private static bool IsRetiredComparison(string raw)
         { return raw == "7|compare|original" || raw == "7|compare|1" || raw == "7|compare|2"; }
 
@@ -224,19 +223,18 @@ namespace PaviseApp
 
         private static string ModeCaption(int index)
         {
-            return index == ManualMode ? T("手动", "Manual") : ThreadLayoutDescriptions.StrategyName(ModeStrategies[index]);
+            return index == ManualMode ? T("手动", "Manual") : ThreadLayoutDescriptions.SingleCoreName();
         }
 
-        private static string ChoiceSummary(SchedulingStrategy strategy, bool manual)
+        private static string ChoiceSummary(bool manual)
         {
             return manual ? T("渲染线程固定到你选的 CPU 上", "Pin the render thread to the CPUs you choose")
-                : strategy == SchedulingStrategy.RenderCore ? T("渲染线程固定到最合适的一颗核", "Pin the render thread to the best core")
-                : T("按实测给关键线程指定优先核心，不锁定", "Measure and point critical threads at preferred cores without locking them");
+                : T("渲染线程固定到最合适的一颗核", "Pin the render thread to the best core");
         }
 
-        private static string CompactStrategyHint(SchedulingStrategy strategy, bool manual)
+        private static string CompactStrategyHint(bool manual)
         {
-            return manual ? ThreadLayoutDescriptions.ManualHint() : ThreadLayoutDescriptions.StrategyHint(strategy);
+            return manual ? ThreadLayoutDescriptions.ManualHint() : ThreadLayoutDescriptions.SingleCoreHint();
         }
 
         // 逻辑 CPU 的核型说明 大小核标性能核/能效核 缓存不对称时标大缓存组
@@ -259,7 +257,7 @@ namespace PaviseApp
             foreach (ulong core in physical)
             {
                 ulong logical = core & all & cpuUsable;
-                if (logical == 0 || Bits(logical) > CriticalThreadAutoPolicy.MaximumIsolated) continue;
+                if (logical == 0 || Bits(logical) > CriticalThreadRule.MaximumIsolated) continue;
                 int score = (preferred != 0 && (logical & preferred) != 0 ? 4 : 0)
                     + (CpuTopology.Hybrid && (logical & CpuTopology.PerfMask) == logical ? 2 : 0)
                     + ((logical & 1UL) == 0 ? 1 : 0);
@@ -297,7 +295,7 @@ namespace PaviseApp
         {
             cpuReason.Text = "";
             mask &= cpuUsable;
-            if (Bits(mask) > CriticalThreadAutoPolicy.MaximumIsolated)
+            if (Bits(mask) > CriticalThreadRule.MaximumIsolated)
             {
                 cpuLimitHit = true;
                 cpuMatrix.ShowSelectionImmediately(manualSelection);
@@ -387,57 +385,20 @@ namespace PaviseApp
                 public override void DoDefaultAction() { owner.PerformClick(); }
             }
 
-            internal readonly SchedulingStrategy Strategy;
             internal readonly bool Manual;
             internal Action<Keys> Navigate;
 
-            internal StrategyChoice(string caption, SchedulingStrategy strategy, bool manual) : base(caption)
+            internal StrategyChoice(string caption, bool manual) : base(caption)
             {
-                Strategy = strategy;
                 Manual = manual;
                 Font = Theme.UI(10.5f, true);
                 AccessibleRole = AccessibleRole.RadioButton;
-                AccessibleDescription = (!manual && IsRecommended(strategy) ? RecommendedText + T("。", ". ") : "")
-                    + ChoiceSummary(strategy, manual) + " " + CompactStrategyHint(strategy, manual);
+                AccessibleDescription = ChoiceSummary(manual) + " " + CompactStrategyHint(manual);
             }
 
-            private string ChoiceText { get { return ChoiceSummary(Strategy, Manual); } }
+            private string ChoiceText { get { return ChoiceSummary(Manual); } }
 
-            internal static string RecommendedText { get { return T("推荐", "Recommended"); } }
-
-            // 英文 Recommended 在高缩放下挤不进名称后面 放不下时依次换小一号的短词 都放不下才不画
-            private static string[] RecommendedCandidates { get { return new[] { RecommendedText, T("推荐", "Suggested"), T("推荐", "Best") }; } }
-
-            // 推荐标签紧跟方案名 放不下时不画 不挤压名称和摘要 绘制和测量共用这里选出的文字与字体
-            private Rectangle RecommendedLayout(out string text, out Font font)
-            {
-                text = null; font = null;
-                if (Manual || !IsRecommended(Strategy)) return Rectangle.Empty;
-                Rectangle caption = CaptionBounds;
-                TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
-                Size name = TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue), flags);
-                string[] candidates = RecommendedCandidates;
-                for (int step = 0; step < candidates.Length; step++)
-                {
-                    bool compact = Tile || step > 0;
-                    string candidate = candidates[step];
-                    Font candidateFont = Theme.UI(compact ? 7.5f : 8f, true);
-                    Size label = TextRenderer.MeasureText(candidate, candidateFont, new Size(int.MaxValue, int.MaxValue), flags);
-                    int width = label.Width + Theme.S(compact ? 8 : 12), height = Math.Max(label.Height + Theme.S(4), Theme.S(18));
-                    int left = caption.Left + name.Width + Theme.S(compact ? 6 : 8);
-                    if (left + width > caption.Right) continue;
-                    text = candidate; font = candidateFont;
-                    return new Rectangle(left, caption.Top + Math.Max(0, (name.Height - height) / 2), width, height);
-                }
-                return Rectangle.Empty;
-            }
-
-            internal Rectangle RecommendedBounds
-            {
-                get { string text; Font font; return RecommendedLayout(out text, out font); }
-            }
-
-            // 并排小卡片 三个模式排成一行时用更小的边距 图标和名称字号 名称和摘要在中间 单选标记在右侧
+            // 并排小卡片使用较小的边距 图标在左侧 单选标记在右侧
             private bool tile;
             internal bool Tile
             {
@@ -523,19 +484,11 @@ namespace PaviseApp
                         graphics.DrawLine(edge, Theme.S(2), Theme.S(10), Theme.S(2), Height - Theme.S(10));
                 }
                 Rectangle icon = IconBounds;
-                DrawStrategyIcon(graphics, icon, Manual ? SchedulingStrategy.RenderBoost : Strategy, selected ? Theme.Accent : Theme.Fg);
+                DrawStrategyIcon(graphics, icon, Manual ? SchedulingStrategy.RenderBoost : SchedulingStrategy.RenderCore, selected ? Theme.Accent : Theme.Fg);
                 if (!Tile)
                     using (Pen divider = new Pen(Col.Lerp(fill, Theme.Stroke, 0.8f)))
                         graphics.DrawLine(divider, icon.Right + Theme.S(10), Height / 2 - Theme.S(20), icon.Right + Theme.S(10), Height / 2 + Theme.S(20));
                 TextRenderer.DrawText(graphics, Text, Font, CaptionBounds, Theme.Fg, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                string badgeText; Font badgeFont;
-                Rectangle badge = RecommendedLayout(out badgeText, out badgeFont);
-                if (!badge.IsEmpty)
-                {
-                    DsPaint.TechFrame(graphics, badge, Theme.S(3), Col.Lerp(fill, Theme.Accent, Theme.LightMode ? 0.10f : 0.18f), Theme.Accent);
-                    TextRenderer.DrawText(graphics, badgeText, badgeFont, badge, Theme.Accent,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                }
                 TextRenderer.DrawText(graphics, ChoiceText, Theme.UI(8.5f, false), SummaryBounds, Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
                 Rectangle radio = RadioBounds;
                 using (SolidBrush brush = new SolidBrush(selected ? Theme.Accent : Theme.Card)) graphics.FillEllipse(brush, radio);
@@ -591,14 +544,10 @@ namespace PaviseApp
                     T("适用情况", "Use case"), T("你已知道哪颗核最适合渲染", "You know which core suits rendering best"),
                     T("调整内容", "Changes"), T("渲染线程只在所选 CPU 上运行", "The render thread runs only on the chosen CPUs"),
                     T("使用限制", "Limits"), T("换处理器或改游戏核心范围后需重选", "Choose again after changing the CPU or the game's range") };
-                if (choice == SingleCoreMode) return new string[] {
+                return new string[] {
                     T("适用情况", "Use case"), T("渲染线程频繁换核", "The render thread migrates frequently"),
                     T("调整内容", "Changes"), T("固定到最合适的一颗物理核", "Pins it to the most suitable physical core"),
-                    T("使用限制", "Limits"), T("不开整核避让时不独占", "Not exclusive without whole-core avoidance") };
-                return new string[] {
-                    T("适用情况", "Use case"), T("CPU 瓶颈、1% low 偏低", "CPU-bound, with weak 1% lows"),
-                    T("调整内容", "Changes"), T("关键线程优先在选定的物理核上运行，不锁定", "Critical threads prefer chosen cores without being locked"),
-                    T("使用限制", "Limits"), T("余量不够时少放或不放", "Places fewer or none without headroom") };
+                    T("使用限制", "Limits"), T("可开启整核避让", "Supports whole-core avoidance") };
             }
 
             internal void SetChoice(int choice)
@@ -607,7 +556,7 @@ namespace PaviseApp
                 string[] facts = Facts(choice);
                 for (int i = 0; i < 3; i++) { factTitles[i].Text = facts[i * 2]; factDescriptions[i].Text = facts[i * 2 + 1]; }
                 AccessibleName = heading.Text;
-                AccessibleDescription = CompactStrategyHint(ModeStrategies[choice], choice == ManualMode) + " " + string.Join(" · ", facts);
+                AccessibleDescription = CompactStrategyHint(choice == ManualMode) + " " + string.Join(" · ", facts);
                 Invalidate();
             }
 
@@ -630,7 +579,7 @@ namespace PaviseApp
                 int textWidth = FactTextWidth(inner, columns);
                 int height = Theme.S(18) + Theme.S(20) + Theme.S(8)
                     + TextHeight(ModeCaption(choice), Theme.UI(13f, true), inner) + Theme.S(10)
-                    + TextHeight(CompactStrategyHint(ModeStrategies[choice], choice == ManualMode), Theme.UI(9f, false), inner) + Theme.S(10);
+                    + TextHeight(CompactStrategyHint(choice == ManualMode), Theme.UI(9f, false), inner) + Theme.S(10);
                 string[] facts = Facts(choice);
                 int tallest = 0;
                 for (int i = 0; i < 3; i++)
@@ -644,7 +593,7 @@ namespace PaviseApp
             internal int MinimumHeight(int width)
             {
                 int height = 0;
-                for (int choice = 0; choice < ModeStrategies.Length; choice++) height = Math.Max(height, ContentHeight(width, choice));
+                for (int choice = 0; choice < ModeCount; choice++) height = Math.Max(height, ContentHeight(width, choice));
                 return height;
             }
             internal void ArrangeContent()
@@ -785,21 +734,6 @@ namespace PaviseApp
                         graphics.DrawLines(pen, new[] { new PointF(10, 10), new PointF(16, 4), new PointF(22, 10) });
                         graphics.DrawLine(pen, 16, 4, 16, 17);
                     }
-                    else
-                    {
-                        graphics.FillRectangle(fill, 4, 5, 14, 14);
-                        graphics.FillRectangle(fill, 20, 20, 9, 9);
-                        graphics.DrawRectangle(pen, 4, 5, 14, 14);
-                        graphics.DrawRectangle(pen, 8, 9, 6, 6);
-                        graphics.DrawRectangle(pen, 20, 20, 9, 9);
-                        graphics.DrawLines(pen, new[] { new PointF(18, 12), new PointF(25, 12), new PointF(25, 20) });
-                        graphics.DrawLines(pen, new[] { new PointF(11, 19), new PointF(11, 25), new PointF(20, 25) });
-                        for (int position = 8; position <= 14; position += 6)
-                        {
-                            graphics.DrawLine(pen, position, 2, position, 5);
-                            graphics.DrawLine(pen, 1, position + 1, 4, position + 1);
-                        }
-                    }
                 }
             }
             finally { graphics.Restore(state); }
@@ -817,17 +751,12 @@ namespace PaviseApp
             return Math.Max(Theme.S(18), TextRenderer.MeasureText(text, font, new Size(Math.Max(1, width), int.MaxValue),
                 TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height);
         }
-        private bool FormalMode { get { return mode >= 0; } }
-        private SchedulingStrategy SelectedStrategy { get { return ModeStrategies[Math.Max(0, Math.Min(mode, ModeStrategies.Length - 1))]; } }
         private bool Manual { get { return mode == ManualMode; } }
 
         private CriticalThreadRule Draft(out string failure)
         {
             failure = null;
-            if (!FormalMode)
-            { failure = T("请选择一种亲和性模式。", "Choose an affinity mode."); return null; }
-            // 自动保存时沿用带避让的编码 运行时不看这一位 渲染单核和手动按开关决定
-            bool avoid = mode == AutomaticMode || clearCore != null && clearCore.Checked;
+            bool avoid = clearCoreRequested;
             if (Manual)
             {
                 if (!trusted) { failure = T("处理器拓扑不可验证，暂不能手动选核", "CPU topology could not be verified; manual selection is unavailable"); return null; }
@@ -836,9 +765,9 @@ namespace PaviseApp
                 failure = scopeError ?? manual.Validate(all, physical, allowed, reserved, trusted);
                 return manual;
             }
-            CriticalThreadRule rule = CriticalThreadRule.UnifiedStrategy(SelectedStrategy, avoid);
-            // 自动在运行时按实测容量决定放几条 余量不够就不放 保存时不拦 渲染单核开避让时才先核对容量
-            if (rule.ClearCore && mode != AutomaticMode) failure = scopeError ?? rule.ClearCoreCapacityError(all, physical, allowed, reserved, trusted);
+            CriticalThreadRule rule = CriticalThreadRule.UnifiedStrategy(SchedulingStrategy.RenderCore, avoid);
+            // 渲染单核开启整核避让时先核对容量
+            if (rule.ClearCore) failure = scopeError ?? rule.ClearCoreCapacityError(all, physical, allowed, reserved, trusted);
             return rule;
         }
         private void SelectMode(int index, bool moveFocus)
@@ -869,13 +798,8 @@ namespace PaviseApp
         {
             string errorBefore = error.Text;
             for (int i = 0; i < modes.Length; i++) { modes[i].Kind = i == mode ? BtnKind.Primary : BtnKind.Normal; ((StrategyChoice)modes[i]).RefreshSelection(); }
-            // 自动不用整核避让 开关显示为关且不可改 回到渲染单核或手动时还原原来的勾选
-            bool automatic = mode == AutomaticMode;
-            clearCore.Enabled = FormalMode && !automatic;
-            clearCore.Checked = clearCore.Enabled && clearCoreRequested;
-            clearCore.Summary = automatic ? T("自动只设优先核心，不需要避让", "Not used in Automatic, which only sets preferred cores")
-                : T("其他游戏线程避开渲染线程所在的整颗物理核", "Other game threads stay off the render thread's physical core");
-            int picked = Bits(manualSelection), limit = CriticalThreadAutoPolicy.MaximumIsolated;
+            clearCore.Checked = clearCoreRequested;
+            int picked = Bits(manualSelection), limit = CriticalThreadRule.MaximumIsolated;
             cpuCount.Text = T("已选 " + picked + " / " + limit, "Selected " + picked + " / " + limit)
                 + (cpuLimitHit ? T(" · 已到上限", " · limit reached") : "");
             cpuCount.ForeColor = cpuLimitHit ? Theme.Warning : picked > 0 ? Theme.Accent : Theme.Dim;
@@ -885,14 +809,12 @@ namespace PaviseApp
             Draft(out failure);
             error.Text = failure == null ? "" : Lang.T(failure);
             apply.Enabled = failure == null;
-            placementHint.Text = FormalMode ? CompactStrategyHint(SelectedStrategy, Manual) : T("请选择亲和性模式。", "Choose an affinity mode.");
-            details.SetChoice(Math.Max(0, mode));
-            observationHint.Text = observation == null || !FormalMode ? "" : observation.Hint(SelectedStrategy);
-            preview.Text = !FormalMode ? ""
-                : automatic ? T("只做核心放置，不改优先级；条件不满足时本局少放或不放。", "Only places cores and never changes priority; reserves fewer or none when conditions are not met.")
-                : Manual ? T("整核避让可能影响非常依赖多线程的游戏；系统任务仍可使用这些核心。", "Whole-core avoidance may slow heavily threaded games; system tasks can still use these cores.")
+            placementHint.Text = CompactStrategyHint(Manual);
+            observationHint.Text = Manual ? manualReading : singleCoreReading;
+            details.SetChoice(mode);
+            preview.Text = Manual ? T("整核避让可能影响非常依赖多线程的游戏；系统任务仍可使用这些核心。", "Whole-core avoidance may slow heavily threaded games; system tasks can still use these cores.")
                 : T("整核避让可能影响非常依赖多线程的游戏；系统任务仍可使用这颗核。", "Whole-core avoidance may slow heavily threaded games; system tasks can still use the core.");
-            clearCore.AccessibleDescription = FormalMode ? ThreadLayoutDescriptions.ClearCoreHint(automatic ? SchedulingStrategy.Orchestration : SchedulingStrategy.RenderCore, clearCore.Checked) : "";
+            clearCore.AccessibleDescription = ThreadLayoutDescriptions.ClearCoreHint(clearCore.Checked);
             UpdateAccessibleDescription();
             clearCore.Invalidate();
             // 错误提示或不可选原因那一行出现 消失或换了内容会改变高度 计数变长挤得标题换行也要重排 这几种情况退回完整重排
@@ -912,10 +834,10 @@ namespace PaviseApp
         }
         private void UpdateAccessibleDescription()
         {
-            AccessibleDescription = (FormalMode ? modes[mode].Text : T("请选择模式", "Choose a mode")) + " " + statusHint.Text + " " + placementHint.Text + " " + conflictHint.Text
-                + (observationHint.Text.Length == 0 ? "" : " " + observationHint.Text)
+            AccessibleDescription = modes[mode].Text + " " + statusHint.Text + " " + placementHint.Text + " " + conflictHint.Text
+                + (observationHint.Text.Length > 0 ? " " + observationHint.Text : "")
                 + (Manual && cpuReason != null && cpuReason.Text.Length > 0 ? " " + cpuReason.Text : "")
-                + (FormalMode ? " " + clearCore.Text + (clearCore.Checked ? T(" 开", " on") : T(" 关", " off")) : "")
+                + " " + clearCore.Text + (clearCore.Checked ? T(" 开", " on") : T(" 关", " off"))
                 + " " + preview.Text + " " + sessionHint.Text + " " + error.Text;
         }
         private void LayoutChoice()
@@ -973,7 +895,6 @@ namespace PaviseApp
                     choiceList.AutoScrollMinSize = Size.Empty;
                     choiceList.HorizontalScroll.Enabled = false;
                     choiceList.HorizontalScroll.Visible = false;
-                    clearCore.Visible = FormalMode;
                     preview.Visible = preview.Text.Length > 0;
                     int contentHeight = LayoutBody(inner);
                     if (contentHeight > bodyLimit)
@@ -1014,9 +935,8 @@ namespace PaviseApp
         private int LayoutBody(int width)
         {
             int gap = Theme.S(8);
-            // 够宽时三个模式并排成一行小卡片 否则逐行竖排 两种都按内容取最小高度
-            int visible = Math.Min(VisibleChoices, modes.Length);
-            bool tiles = width >= Theme.S(600) && modes.Length == visible;
+            // 够宽时并排显示 两种布局都按内容取最小高度
+            bool tiles = width >= Theme.S(600);
             int tileWidth = tiles ? (width - gap * (modes.Length - 1)) / modes.Length : width;
             int rowHeight = 0;
             foreach (StrategyChoice choice in modes)
@@ -1024,7 +944,7 @@ namespace PaviseApp
                 choice.Tile = tiles;
                 rowHeight = Math.Max(rowHeight, choice.MinimumHeight(tileWidth));
             }
-            int listHeight = tiles ? rowHeight : visible * rowHeight + (visible - 1) * gap;
+            int listHeight = tiles ? rowHeight : modes.Length * rowHeight + (modes.Length - 1) * gap;
             choicesTitle.SetBounds(0, 0, Math.Max(1, width - Theme.S(100)), Theme.S(26));
             choicesHint.SetBounds(Math.Max(0, width - Theme.S(100)), 0, Math.Min(width, Theme.S(100)), Theme.S(26));
             int rowTop = Theme.S(34);
@@ -1085,11 +1005,8 @@ namespace PaviseApp
                 cpuCard.SetBounds(0, bottom + Theme.S(20), width, cardBottom + pad);
                 bottom = cpuCard.Bottom;
             }
-            if (FormalMode)
-            {
-                clearCore.SetBounds(0, bottom + Theme.S(20), width, Theme.S(48));
-                bottom = clearCore.Bottom;
-            }
+            clearCore.SetBounds(0, bottom + Theme.S(20), width, Theme.S(48));
+            bottom = clearCore.Bottom;
             if (preview.Visible)
             {
                 preview.SetBounds(0, bottom + Theme.S(8), width, Measure(preview, width));

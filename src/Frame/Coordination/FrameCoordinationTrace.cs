@@ -45,6 +45,238 @@ namespace PaviseApp
         // ERROR_SHUTDOWN_IN_PROGRESS 表示进程退出时已关闭 GPU 身份通道
         internal const int IdentityClosedError = 1115;
         private const int IdentityHealWaitMs = 3500;
+        private const uint SchedulerFlags = 0x0812, SystemLoggerMode = 0x02000000;
+        private const uint TraceQuery = 0, TraceUpdate = 2, TraceFlush = 3;
+        private const int TraceMissing = 4201, TraceChanged = 13;
+
+        internal sealed class Reservation
+        {
+            private const uint BufferKB = 64, MaximumBuffers = 512, FlushSeconds = 1;
+            private const uint Mode = Native.EventTraceRealTimeMode | SystemLoggerMode;
+            private const uint FileModes = 0x0000000f | 0x00000020 | 0x00000200 | 0x00003000;
+            private const uint PrivateOrBufferedModes = 0x00020800 | 0x00000400;
+            private const uint IncompatibleModes = FileModes | PrivateOrBufferedModes | 0x40 | 0x10000
+                | 0x01000000 | 0x10000000 | 0x80000000;
+            private const int OutputNameBytes = 2048;
+
+            private struct Readback
+            {
+                internal Native.EventTraceProperties Properties;
+                internal string LogFileName;
+#if PAVISE_SELFTEST
+                internal string LoggerName;
+#endif
+            }
+
+            internal readonly string Name;
+            private readonly Guid id;
+            private ulong handle;
+            private Readback baseline;
+#if PAVISE_SELFTEST
+            private Native.EventTraceProperties requested;
+            private Readback lastReadback;
+            private int? lastQueryStatus;
+
+            internal string ReadbackDetails
+            {
+                get
+                {
+                    return "logger=" + Name + " request " + FormatReadback(requested, Name, "")
+                        + (lastQueryStatus.HasValue ? " QUERY rc=" + lastQueryStatus.Value + " "
+                            + FormatReadback(lastReadback.Properties, lastReadback.LoggerName, lastReadback.LogFileName) : " QUERY not run");
+                }
+            }
+
+            private static string FormatReadback(Native.EventTraceProperties value, string logger, string file)
+            {
+                return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "wnodeBytes={0} providerId={1} handle=0x{2:X} timestamp={3} guid={4} clock={5} wnodeFlags=0x{6:X}"
+                    + " bufferKiB={7} min={8} max={9} maxFileSize={10} mode=0x{11:X8} flush={12} flags=0x{13:X} ageLimit={14}"
+                    + " allocated={15} free={16} eventsLost={17} written={18} logLost={19} realtimeLost={20}"
+                    + " loggerThread={21} fileOffset={22} loggerOffset={23} logger={24} file={25}",
+                    value.WnodeBufferSize, value.WnodeProviderId, value.WnodeHistoricalContext, value.WnodeTimeStamp, value.WnodeGuid,
+                    value.WnodeClientContext, value.WnodeFlags, value.BufferSize, value.MinimumBuffers, value.MaximumBuffers,
+                    value.MaximumFileSize, value.LogFileMode, value.FlushTimer, value.EnableFlags, value.AgeLimit,
+                    value.NumberOfBuffers, value.FreeBuffers, value.EventsLost, value.BuffersWritten, value.LogBuffersLost,
+                    value.RealTimeBuffersLost, value.LoggerThreadId, value.LogFileNameOffset, value.LoggerNameOffset,
+                    logger ?? "<unavailable>", file ?? "<unavailable>");
+            }
+#endif
+
+            internal Reservation(string name, Guid id) { Name = name; this.id = id; }
+            internal bool OwnsSession { get { return handle != 0; } }
+            internal bool NeedsRebuild { get; private set; }
+
+            internal int Start()
+            {
+                if (OwnsSession) return VerifyIdle();
+                var value = new Native.EventTraceProperties { WnodeGuid = id, WnodeClientContext = 1,
+                    WnodeFlags = Native.WnodeFlagTracedGuid, BufferSize = BufferKB, MinimumBuffers = 0,
+                    MaximumBuffers = MaximumBuffers, LogFileMode = Mode, FlushTimer = FlushSeconds };
+                IntPtr pointer = ReserveProperties(Name, value, false);
+                try
+                {
+#if PAVISE_SELFTEST
+                    requested = (Native.EventTraceProperties)Marshal.PtrToStructure(pointer, typeof(Native.EventTraceProperties));
+                    lastQueryStatus = null;
+#endif
+                    ulong opened;
+                    int status = StartSession(out opened, Name, pointer);
+                    if (status != 0) return status;
+                    handle = opened;
+                }
+                finally { Marshal.FreeHGlobal(pointer); }
+                Readback readback;
+                int result = QueryOwned(out readback);
+                if (result != 0) return Invalidate(result);
+                value = readback.Properties;
+                if ((value.LogFileMode & Mode) != Mode || (value.LogFileMode & IncompatibleModes) != 0
+                    || readback.LogFileName != "" || value.EnableFlags != 0
+                    || (ulong)value.BufferSize * value.MaximumBuffers < BufferKB * MaximumBuffers)
+                    return Invalidate(TraceChanged);
+                baseline = readback;
+                NeedsRebuild = false;
+                return 0;
+            }
+
+            internal int VerifyIdle()
+            {
+                Native.EventTraceProperties value;
+                return Verify(0, out value);
+            }
+
+            internal int Verify(uint flags, out Native.EventTraceProperties value)
+            {
+                Readback readback;
+                int result = QueryOwned(out readback);
+                value = readback.Properties;
+                if (result != 0) return Invalidate(result);
+
+                // 只比较稳定配置 累计计数和查询头会变化
+                var initial = baseline.Properties;
+                if (value.BufferSize != initial.BufferSize || value.MinimumBuffers != initial.MinimumBuffers
+                    || value.MaximumBuffers != initial.MaximumBuffers || value.MaximumFileSize != initial.MaximumFileSize
+                    || value.LogFileMode != initial.LogFileMode || value.FlushTimer != initial.FlushTimer
+                    || value.WnodeClientContext != initial.WnodeClientContext || value.AgeLimit != initial.AgeLimit
+                    || readback.LogFileName != baseline.LogFileName || value.EnableFlags != flags)
+                    return Invalidate(TraceChanged);
+                return 0;
+            }
+
+            internal int SetFlags(uint flags)
+            {
+                Readback ignored;
+                int result = Change(handle, null, id, TraceUpdate, flags, out ignored);
+                if (result != 0) return Invalidate(result);
+                Native.EventTraceProperties value;
+                return Verify(flags, out value);
+            }
+
+            internal int Flush()
+            {
+                Readback ignored;
+                int result = Change(handle, null, id, TraceFlush, 0, out ignored);
+                return result == 0 ? 0 : Invalidate(result);
+            }
+
+            internal int Invalidate(int error)
+            {
+                NeedsRebuild = true;
+                return error;
+            }
+
+            private int QueryOwned(out Readback readback)
+            {
+                readback = default(Readback);
+                if (!OwnsSession) return TraceMissing;
+                int result = Change(0, Name, id, TraceQuery, 0, out readback);
+#if PAVISE_SELFTEST
+                lastQueryStatus = result;
+                lastReadback = readback;
+#endif
+                if (result != 0) return result;
+                var value = readback.Properties;
+                return value.WnodeGuid == id && value.WnodeHistoricalContext == handle ? 0 : TraceMissing;
+            }
+
+            internal int Stop()
+            {
+                if (!OwnsSession) return 0;
+                int result = StopOwned(Name, id, handle);
+                if (result == 0) handle = 0;
+                return result;
+            }
+
+            internal static int StopRecorded(string name, Guid id)
+            { return StopOwned(name, id, 0); }
+
+            private static int StopOwned(string name, Guid id, ulong expected)
+            {
+                Readback readback;
+                int result = Change(0, name, id, TraceQuery, 0, out readback);
+                if (result == TraceMissing) return 0;
+                if (result != 0) return result;
+                var value = readback.Properties;
+                ulong owner = value.WnodeHistoricalContext;
+                if (value.WnodeGuid != id || owner == 0 || (expected != 0 && owner != expected)) return 0;
+                result = Change(owner, null, id, Native.EventTraceControlStop, 0, out readback);
+                return result == TraceMissing ? 0 : result;
+            }
+
+            private static int Change(ulong owner, string name, Guid id, uint command, uint flags, out Readback readback)
+            {
+                var requested = new Native.EventTraceProperties {
+                    WnodeGuid = command == TraceQuery ? Guid.Empty : id,
+                    WnodeFlags = Native.WnodeFlagTracedGuid,
+                    LogFileMode = command == TraceUpdate ? Native.EventTraceRealTimeMode : 0,
+                    EnableFlags = flags };
+                IntPtr pointer = ReserveProperties(name, requested, command != TraceUpdate);
+                try
+                {
+                    int result = Control(owner, name, pointer, command);
+                    var value = (Native.EventTraceProperties)Marshal.PtrToStructure(pointer, typeof(Native.EventTraceProperties));
+                    bool query = result == 0 && command == TraceQuery;
+                    readback = new Readback { Properties = value, LogFileName = query ? ReadOutputString(pointer, value.LogFileNameOffset) : null };
+#if PAVISE_SELFTEST
+                    if (query) readback.LoggerName = ReadOutputString(pointer, value.LoggerNameOffset);
+#endif
+                    return result;
+                }
+                finally { Marshal.FreeHGlobal(pointer); }
+            }
+
+            private static string ReadOutputString(IntPtr pointer, uint offset)
+            {
+                if (offset == 0) return "";
+                int size = Marshal.SizeOf(typeof(Native.EventTraceProperties));
+                int end = size + 2 * OutputNameBytes;
+                if ((offset & 1) != 0 || offset < size || offset >= end) return null;
+                IntPtr start = IntPtr.Add(pointer, (int)offset);
+                if (Marshal.ReadInt16(start) == 0) return "";
+                string text = Marshal.PtrToStringUni(start, (end - (int)offset) / 2);
+                int terminator = text.IndexOf('\0');
+                return terminator < 0 ? null : text.Substring(0, terminator);
+            }
+
+            private static IntPtr ReserveProperties(string name, Native.EventTraceProperties value, bool output)
+            {
+                int size = Marshal.SizeOf(typeof(Native.EventTraceProperties));
+                int nameBytes = output || name == null ? OutputNameBytes : (name.Length + 1) * 2;
+                int total = size + nameBytes + (output ? OutputNameBytes : 0);
+                IntPtr pointer = Marshal.AllocHGlobal(total);
+                Marshal.Copy(new byte[total], 0, pointer, total);
+                value.WnodeBufferSize = (uint)total;
+                if (nameBytes != 0) value.LoggerNameOffset = (uint)size;
+                if (output) value.LogFileNameOffset = (uint)(size + nameBytes);
+                Marshal.StructureToPtr(value, pointer, false);
+                if (name != null && !output)
+                {
+                    byte[] bytes = System.Text.Encoding.Unicode.GetBytes(name);
+                    Marshal.Copy(bytes, 0, IntPtr.Add(pointer, size), bytes.Length);
+                }
+                return pointer;
+            }
+        }
         private static readonly object ledgerGate = new object();
         private sealed class Channel
         {
@@ -72,6 +304,11 @@ namespace PaviseApp
         private IntPtr nativeCallback, nativeContext;
         private Thread pump;
         private bool started, claimed;
+        private Reservation reservation;
+        private Native.EventTraceProperties initialReservedStats;
+        private bool reservedAttempt, reservedActive, reservedQuiesced;
+        private volatile bool reservedTeardownComplete;
+        private Action reservedClosed;
         // stopRequested 保留恢复债务 两个原生句柄均关闭后设置 handlesClosed 由最后完成的线程结清通道
 
         private volatile bool stopRequested, handlesClosed;
@@ -88,8 +325,11 @@ namespace PaviseApp
             get
             {
                 lock (failureGate)
+                {
+                    bool pending = reservation == null ? claimed && !receiptSettled : reservation.NeedsRebuild && reservation.OwnsSession;
                     return "primary=" + PrimaryError + "@" + PrimaryStage + " cleanup=" + CleanupError + "@" + CleanupStage
-                        + " recovery=" + (receiptSettled || !claimed ? "settled" : "pending");
+                        + " recovery=" + (pending ? "pending" : "settled");
+                }
             }
         }
         private void RecordPrimaryFailure(int code, string stage)
@@ -152,6 +392,19 @@ namespace PaviseApp
             if (release != null) RunDrainedCleanup(release);
         }
 
+        internal void WhenReservedCaptureClosed(Action action)
+        {
+            lock (memory)
+            {
+                if (reservation != null && (!reservedTeardownComplete || !consumerReturned))
+                {
+                    reservedClosed += action;
+                    return;
+                }
+            }
+            action();
+        }
+
         private void RunDrainedCleanup(Action release)
         {
             try { release(); }
@@ -192,6 +445,7 @@ namespace PaviseApp
         internal static Func<ulong> OpenForTest;
         // 测试替身中 ids 为 null 表示不使用事件标识过滤
         internal static Func<Guid, ulong, ushort[], int> EnableForTest;
+        internal static Func<ulong, Guid, uint, int> FrameProviderForTest;
         // 正值覆盖测试系统版本 用于核对关键字选择
         internal static int BuildForTest;
         internal static Func<ulong, Native.EventRecordCallback, int> ProcessForTest;
@@ -274,8 +528,8 @@ namespace PaviseApp
         }
         internal bool Start(int pid, Native.EventRecordCallback receive)
         { return Start(pid, receive, false); }
-        internal bool Start(int pid, Native.EventRecordCallback receive, bool presenterOnly)
-        { lock (cleanup) return StartLocked(pid, receive, presenterOnly); }
+        internal bool Start(int pid, Native.EventRecordCallback receive, bool presenterOnly, bool filterPresentIds = false)
+        { lock (cleanup) return StartLocked(pid, receive, presenterOnly, filterPresentIds); }
         // 完整采集交给原生回调处理 须在 Start 之前设置 上下文的释放归调用方 要等消费者退出
         // 之后传给 Start 的托管回调只给替换了 ProcessTrace 的测试注入事件用 系统直接调用原生函数
         internal bool UseNativeConsumer(IntPtr receive, IntPtr context)
@@ -288,7 +542,7 @@ namespace PaviseApp
             }
         }
         // 初始化全程持有清理锁 防止停止操作插入到句柄只打开一半的状态
-        private bool StartLocked(int pid, Native.EventRecordCallback receive, bool presenterOnly)
+        private bool StartLocked(int pid, Native.EventRecordCallback receive, bool presenterOnly, bool filterPresentIds)
         {
             if (started || stopRequested) { RecordPrimaryFailure(1247, "already-started"); return false; }
             started = true;
@@ -299,21 +553,75 @@ namespace PaviseApp
             properties = Props(name, true, presenterOnly);
             Error = StartSession(out session, name, properties);
             if (Error != 0) { RecordPrimaryFailure(Error, "start-trace"); session = 0; Stop(); return false; }
-            IntPtr pidPointer = Marshal.AllocHGlobal(4), filterPointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Filter)));
-            try
-            {
-                Marshal.WriteInt32(pidPointer, pid);
-                Marshal.StructureToPtr(new Filter { Ptr = (ulong)pidPointer.ToInt64(), Size = 4, Type = 0x80000004 }, filterPointer, false);
-                var parameters = new Native.EnableTraceParameters { Version = 2, EnableFilterDesc = filterPointer, FilterDescCount = 1 };
-                Guid dxgi = FrameCoordinationSampler.Dxgi, d3d9 = FrameCoordinationSampler.D3d9;
-                Error = Native.EnableTraceEx2(session, ref dxgi, 1, 5, 0x8000000000000002UL, 0, 0, ref parameters);
-                if (Error != 0) Stage = "enable-dxgi";
-                else if ((Error = Native.EnableTraceEx2(session, ref d3d9, 1, 5, 0x8000000000000002UL, 0, 0, ref parameters)) != 0) Stage = "enable-d3d9";
-            }
-            finally { Marshal.FreeHGlobal(pidPointer); Marshal.FreeHGlobal(filterPointer); }
-            if (Error != 0) { RecordPrimaryFailure(Error, Stage); Stop(); return false; }
+            if (!StartFrameProviders(pid, filterPresentIds)) { Stop(); return false; }
             return OpenAndPumpLocked(receive);
         }
+
+        internal bool StartReserved(int pid, Native.EventRecordCallback receive, Reservation owned)
+        {
+            lock (cleanup)
+            {
+                if (started || stopRequested) { RecordPrimaryFailure(1247, "already-started"); return false; }
+                started = true;
+                reservedAttempt = true;
+                if (GetActiveProcessorGroupCount() != 1) { RecordPrimaryFailure(50, "processor-groups"); return false; }
+                if (owned == null) { RecordPrimaryFailure(1450, "reservation-unavailable"); return false; }
+                int status = owned.Verify(0, out initialReservedStats);
+                if (status != 0) { RecordPrimaryFailure(status, "reservation-query"); return false; }
+                reservation = owned;
+                session = initialReservedStats.WnodeHistoricalContext;
+                name = owned.Name;
+                // 先接上实时消费者 再开启高频调度事件
+                if (!OpenAndPumpLocked(receive)) return false;
+                status = owned.SetFlags(SchedulerFlags);
+                if (status != 0)
+                {
+                    RecordPrimaryFailure(status, "reservation-enable-flags");
+                    Stop();
+                    return false;
+                }
+                if (!StartFrameProviders(pid, false))
+                {
+                    owned.Invalidate(PrimaryError);
+                    Stop();
+                    return false;
+                }
+                reservedActive = true;
+                return true;
+            }
+        }
+
+        private bool StartFrameProviders(int pid, bool filterPresentIds)
+        {
+            int status = EnableFrameProvider(pid, FrameCoordinationSampler.Dxgi, 42, 43, filterPresentIds);
+            if (status != 0) { RecordPrimaryFailure(status, "enable-dxgi"); return false; }
+            status = EnableFrameProvider(pid, FrameCoordinationSampler.D3d9, 1, 2, filterPresentIds);
+            if (status != 0) { RecordPrimaryFailure(status, "enable-d3d9"); return false; }
+            return true;
+        }
+
+        private unsafe int EnableFrameProvider(int pid, Guid provider, ushort start, ushort stop, bool filterPresentIds)
+        {
+#if PAVISE_SELFTEST
+            if (FrameProviderForTest != null) return FrameProviderForTest(session, provider, 1);
+#endif
+            Filter* filters = stackalloc Filter[2];
+            filters[0] = new Filter { Ptr = (ulong)&pid, Size = 4, Type = 0x80000004 };
+            // 前四字节保存 FilterIn Reserved 和 Count
+            ushort* ids = stackalloc ushort[4];
+            ids[0] = 1; ids[1] = 2; ids[2] = start; ids[3] = stop;
+            filters[1] = new Filter { Ptr = (ulong)ids, Size = 8, Type = EventIdFilterType };
+            var parameters = new Native.EnableTraceParameters { Version = 2, EnableFilterDesc = (IntPtr)filters,
+                FilterDescCount = filterPresentIds ? 2u : 1u };
+            int status = Native.EnableTraceEx2(session, ref provider, 1, 5, RuntimePresentKeyword, 0, 0, ref parameters);
+            if (!filterPresentIds || (status != 50 && status != 87)) return status;
+            // 系统不支持组合过滤时保留进程约束
+            parameters.FilterDescCount = 1;
+            status = Native.EnableTraceEx2(session, ref provider, 1, 5, RuntimePresentKeyword, 0, 0, ref parameters);
+            if (status == 0) UnfilteredProviders++;
+            return status;
+        }
+
         // 同进程通道占用提示 不作为后续启动成功的保证
         internal static bool PresentProbeBusy
         {
@@ -392,7 +700,11 @@ namespace PaviseApp
             pump = new Thread(delegate()
             {
                 PumpTid = Native.GetCurrentThreadId(); LoopProfile.Tag("FrameTracePump");
-                try { int rc = ProcessConsumer(opened); if (rc != 0 && rc != 1223) RecordPrimaryFailure(rc, "process-trace"); }
+                try
+                {
+                    int rc = ProcessConsumer(opened);
+                    if (rc != 0 && rc != 1223) RecordPrimaryFailure(rc, "process-trace");
+                }
                 finally
                 {
                     try
@@ -404,7 +716,7 @@ namespace PaviseApp
                     {
                         // ProcessTrace 已返回 迟到消费者也先释放本方回调资源 回执仍按句柄状态结清
                         NotifyConsumerReturned();
-                        if (handlesClosed) Settle();
+                        if (handlesClosed || reservedTeardownComplete) Settle();
                     }
                 }
             });
@@ -471,10 +783,129 @@ namespace PaviseApp
         private bool StopLocked(int waitMs)
         {
             if (receiptSettled) return Error == 0 && Lost == 0;
+            if (reservedAttempt)
+            {
+                if (reservation != null) return StopReserved(waitMs);
+                NotifyConsumerReturned();
+                Settle();
+                return false;
+            }
             bool stopped = false;
             bool released = FrameRecoveryBudget.Run(channel.Key, delegate { stopped = StopCore(waitMs); return receiptSettled; });
             return released && stopped;
         }
+        private bool StopReserved(int waitMs)
+        {
+            stopRequested = true;
+            if (!reservedQuiesced)
+            {
+                reservedQuiesced = true;
+                if (PrimaryStage == "process-trace") reservation.Invalidate(PrimaryError);
+                if (!reservation.NeedsRebuild) QuiesceReservation();
+            }
+            if (CloseTraceConsumer() != 0) reservation.Invalidate(CleanupError);
+            if (reservation.NeedsRebuild) StopDamagedReservation();
+            bool drained = PumpFinished(waitMs);
+            if (drained)
+            {
+                NotifyConsumerReturned();
+                CloseTraceConsumer();
+                if (!reservation.NeedsRebuild && PrimaryStage == "process-trace")
+                {
+                    reservation.Invalidate(PrimaryError);
+                    StopDamagedReservation();
+                }
+                if (!reservation.NeedsRebuild) ReadReservedStats();
+            }
+            else
+            {
+                RecordCleanupFailure(1460, "drain-consumer");
+                reservation.Invalidate(1460);
+                StopDamagedReservation();
+            }
+            reservedTeardownComplete = true;
+            bool returned;
+            lock (memory) returned = consumerReturned;
+            if (returned) Settle();
+            return drained && receiptSettled && Error == 0 && Lost == 0;
+        }
+
+        private void QuiesceReservation()
+        {
+            Native.EventTraceProperties value;
+            int result = reservation.Verify(reservedActive ? SchedulerFlags : 0, out value);
+            string stage = "reservation-query";
+            if (result == 0 && reservedActive)
+            {
+                stage = "disable-dxgi";
+                result = DisableFrameProvider(FrameCoordinationSampler.Dxgi);
+            }
+            if (result == 0 && reservedActive)
+            {
+                stage = "disable-d3d9";
+                result = DisableFrameProvider(FrameCoordinationSampler.D3d9);
+            }
+            if (result == 0 && reservedActive)
+            {
+                stage = "reservation-disable-flags";
+                result = reservation.SetFlags(0);
+            }
+            if (result == 0 && reservedActive)
+            {
+                // 冲刷会话缓冲后排完已入队事件
+                stage = "reservation-flush";
+                result = reservation.Flush();
+            }
+            if (result != 0) RecordCleanupFailure(reservation.Invalidate(result), stage);
+        }
+
+        private int DisableFrameProvider(Guid provider)
+        {
+#if PAVISE_SELFTEST
+            if (FrameProviderForTest != null) return FrameProviderForTest(session, provider, 0);
+#endif
+            var parameters = new Native.EnableTraceParameters { Version = 2 };
+            return Native.EnableTraceEx2(session, ref provider, 0, 0, 0, 0, 0, ref parameters);
+        }
+
+        private void StopDamagedReservation()
+        {
+            if (!reservation.OwnsSession) return;
+            int result = reservation.Stop();
+            if (result != 0) RecordCleanupFailure(result, "reservation-stop");
+        }
+
+        private void ReadReservedStats()
+        {
+            Native.EventTraceProperties value;
+            int result = reservation.Verify(0, out value);
+            if (result != 0)
+            {
+                RecordCleanupFailure(result, "reservation-stats");
+                StopDamagedReservation();
+                return;
+            }
+            // 会话累计计数按采样窗取无符号差值
+            LostEvents = unchecked(value.EventsLost - initialReservedStats.EventsLost);
+            LostBuffers = unchecked(value.RealTimeBuffersLost - initialReservedStats.RealTimeBuffersLost);
+            Lost = (uint)Math.Min(uint.MaxValue, (ulong)LostEvents + LostBuffers);
+            SessionStats = "session=bufferKB:" + value.BufferSize + ",min:" + value.MinimumBuffers + ",max:" + value.MaximumBuffers
+                + ",allocated:" + value.NumberOfBuffers + ",free:" + value.FreeBuffers
+                + ",written:" + unchecked(value.BuffersWritten - initialReservedStats.BuffersWritten)
+                + ",logLost:" + unchecked(value.LogBuffersLost - initialReservedStats.LogBuffersLost);
+        }
+
+        private int CloseTraceConsumer()
+        {
+            if (consumer == Native.InvalidProcessTraceHandle) return 0;
+            int close = CloseConsumer(consumer);
+            // 实时追踪返回关闭待完成仍需排空回调
+            if (close == 0 || close == 7007 || close == 6) consumer = Native.InvalidProcessTraceHandle;
+            if (close == 0 || close == 7007) return 0;
+            RecordCleanupFailure(close, "close-consumer");
+            return close;
+        }
+
         private bool StopCore(int waitMs)
         {
             int rc = 0;
@@ -494,13 +925,7 @@ namespace PaviseApp
                 if (rc == 0 || rc == 4201 || rc == 234) session = 0;
                 if (rc != 0 && rc != 4201) RecordCleanupFailure(rc, "stop-trace");
             }
-            if (consumer != Native.InvalidProcessTraceHandle)
-            {
-                int close = CloseConsumer(consumer);
-                // 实时追踪返回关闭待完成仍需排空回调
-                if (close == 0 || close == 7007 || close == 6) consumer = Native.InvalidProcessTraceHandle;
-                if (close != 0 && close != 7007) RecordCleanupFailure(close, "close-consumer");
-            }
+            CloseTraceConsumer();
             bool closedHandles = session == 0 && consumer == Native.InvalidProcessTraceHandle;
             if (closedHandles) handlesClosed = true;
             bool settled = closedHandles && PumpFinished(waitMs);
@@ -537,7 +962,14 @@ namespace PaviseApp
                 }
             }
             if (!cleared) RecordCleanupFailure(5, "ledger-clear");
-            lock (memory) FreeMemory();
+            Action closed;
+            lock (memory)
+            {
+                FreeMemory();
+                closed = reservedClosed;
+                reservedClosed = null;
+            }
+            if (closed != null) RunDrainedCleanup(closed);
             return cleared;
         }
         private static bool ClearLedger(Channel channel, string expected)
@@ -554,6 +986,34 @@ namespace PaviseApp
             if (loggerName != IntPtr.Zero) { Marshal.FreeHGlobal(loggerName); loggerName = IntPtr.Zero; }
             GC.KeepAlive(callback);
         }
+        internal static bool HealLegacyFrameForReservation()
+        {
+            lock (ledgerGate)
+            {
+                if (frameChannel.Active != null) return true;
+                string previous;
+                if (!Settings.TryLoadStr(frameChannel.Key, out previous)) return false;
+                if (previous.Length == 0) return true;
+                if (!System.Text.RegularExpressions.Regex.IsMatch(previous, frameChannel.Pattern)) return false;
+                int start = FrameSessionPrefix.Length;
+                int end = previous.IndexOf('.', start);
+                int owner;
+                if (!int.TryParse(previous.Substring(start, end - start), out owner) || owner <= 0) return false;
+                if (owner != Process.GetCurrentProcess().Id)
+                {
+                    try
+                    {
+                        using (Process process = Process.GetProcessById(owner))
+                            if (!process.HasExited) return false;
+                    }
+                    catch (ArgumentException) { }
+                    catch (InvalidOperationException) { return false; }
+                    catch (System.ComponentModel.Win32Exception) { return false; }
+                }
+                return RecoverReceiptLocked(frameChannel, previous) == 0;
+            }
+        }
+
         internal static bool Heal()
         { bool frame = Heal(frameChannel); bool identity = Heal(identityChannel); return Heal(presentChannel) && identity && frame; }
         private static bool Heal(Channel channel)

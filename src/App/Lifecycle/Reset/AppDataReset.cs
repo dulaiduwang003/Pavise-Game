@@ -55,6 +55,9 @@ namespace PaviseApp
             hashSet.Add("AutoDisableControlFlowGuard");
             hashSet.Add("GmAggressive");
             hashSet.Add("GmAdaptiveEscalateV1");
+            hashSet.Add("BackgroundGovernanceInsaneVisible");
+            hashSet.Add(BackgroundFocusItem.SettingKey);
+            hashSet.Add("GmBackgroundInputProgramsV1");
             hashSet.Add("GmRenderLane");
             hashSet.Add("FrameCoordination");
             hashSet.Add("GmStandbyCleanerOptionsV1");
@@ -165,7 +168,7 @@ namespace PaviseApp
             {
                 return true;
             }
-            string[] textEntries = new string[6] { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_" };
+            string[] textEntries = { "Tame_", "CoreLearn_", "WgShellAuto_", "WgShellFuse_", "PrivacySetting_", "WgShellProfileV2_", LegacyMonitoringCleanup.RetiredWorkloadVerdictPrefix };
             foreach (string entryText in textEntries)
             {
                 if (name.Length > entryText.Length && name.StartsWith(entryText, StringComparison.OrdinalIgnoreCase))
@@ -312,7 +315,8 @@ namespace PaviseApp
                 return resetDataReport;
             }
             if (LegacyPurge.HasHardThreadRecoveryDebt(validateDataDirectoryResult) || !GameNvCanonicalStore.SafeToClear(validateDataDirectoryResult)
-                || LaboratoryFileFilter.HasReceipt || LaboratoryAudioEffects.HasReceipt || LaboratoryClockRepair.HasUnfinishedRecovery || LaboratoryManualActions.Busy)
+                || LaboratoryFileFilter.HasReceipt || LaboratoryAudioEffects.HasReceipt || LaboratoryClockRepair.HasUnfinishedRecovery || LaboratoryManualActions.Busy
+                || !FrameCaptureReservation.Recover() || (GpuSpoof.HasResidue() && !GpuSpoof.RestoreAll()))
             {
                 resetDataReport.Warnings = 1;
                 resetDataReport.Failure = "Original runtime recovery is pending; original records and preferences retained";

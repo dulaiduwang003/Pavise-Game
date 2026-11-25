@@ -62,6 +62,8 @@ namespace PaviseApp
 
         public const string KeyGameRebar = "GameNvRebarV1";
 
+        public const string KeyGameLowLatency = "GameNvLowLatencyV1";
+
         public const string KeyNvDlss = "NvDlss";
 
         public const string KeyAmdAntiLag = "AmdAntiLag";
@@ -92,11 +94,11 @@ namespace PaviseApp
 
         public static readonly string[] HandheldBlocked = new string[0];
 
-        private static readonly PolicyItem[] Items = new PolicyItem[20]
+        private static readonly PolicyItem[] Items = new PolicyItem[21]
         {
             new PolicyItem("PerformancePreset", PolicyValueKind.Enum, "0", "cfg.mode", "cfg.group.mode", new string[2] { "0", "1" }),
             new PolicyItem("GmSuppress", PolicyValueKind.Bool, "1", "v14.bg.master", "cfg.group.bg", null),
-            new PolicyItem("BackgroundGovernanceMode", PolicyValueKind.Enum, "0", "background.governance.mode", "cfg.group.bg", new string[3] { "0", "1", "2" }),
+            new PolicyItem("BackgroundGovernanceMode", PolicyValueKind.Enum, "0", "background.governance.mode", "cfg.group.bg", new string[2] { "0", "1" }),
             new PolicyItem("GmThreadBoostStrategyV1", PolicyValueKind.Choice, "on", "auto.threadboost", "cfg.group.bg", ThreadBoostSelection.Choices),
             new PolicyItem(KeyGameScheduling, PolicyValueKind.Bool, "1", "gm.scheduling.title", "cfg.group.bg", null),
             new PolicyItem("GameFamilyBackground", PolicyValueKind.Bool, "0", "lib.family.suppress", "cfg.group.bg", null),
@@ -104,6 +106,7 @@ namespace PaviseApp
             new PolicyItem(KeyGameControlFlowGuard, PolicyValueKind.Bool, "0", "lib.cfg", "cfg.group.gpu", null),
             new PolicyItem("GmAutoCoresV2", PolicyValueKind.Bool, "0", "schedule.auto.allow", "cfg.group.bg", null),
             new PolicyItem("GameNvRebarV1", PolicyValueKind.Bool, "0", "set.nvrebar", "cfg.group.gpu", null),
+            new PolicyItem(KeyGameLowLatency, PolicyValueKind.Bool, "0", "lib.lowlatency", "cfg.group.gpu", null),
             new PolicyItem(AntiCheatSuppressionPolicy.Key, PolicyValueKind.Bool, "0", "lib.ace", "cfg.group.bg", null),
             new PolicyItem("GmBoost", PolicyValueKind.Bool, "1", "gm.boost", "cfg.group.bg", null),
             new PolicyItem("PowerPlanOn", PolicyValueKind.Bool, "1", "plan.pick.title", "cfg.group.mempower", null),

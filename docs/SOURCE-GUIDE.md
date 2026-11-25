@@ -10,7 +10,7 @@ Pavise 使用 .NET Framework 和 Windows Forms。`build.cmd -b prod` 从 `src/` 
 | [`src/Game/Mode/Core/`](../src/Game/Mode/Core/) 和 [`src/Game/Mode/Detection/`](../src/Game/Mode/Detection/) | 对局会话、策略、恢复编排和游戏识别 |
 | [`src/Game/Mode/Background/`](../src/Game/Mode/Background/) 和 [`src/Background/`](../src/Background/) | 后台治理、保护规则、Job 管理和恢复 |
 | [`src/Scheduling/`](../src/Scheduling/) 和 [`src/Game/Mode/Threads/`](../src/Game/Mode/Threads/) | 游戏线程调度、核心范围和亲和性 |
-| [`src/Frame/`](../src/Frame/) 和 [`src/Native/`](../src/Native/) | 帧采集、ETW 前置处理、CPUID 探测和 HID 句柄核验 |
+| [`src/Frame/`](../src/Frame/) 和 [`src/Native/`](../src/Native/) | 帧采集、ETW 前置处理和 CPUID 探测 |
 | [`src/Power/`](../src/Power/) 和 [`src/Tuning/`](../src/Tuning/) | 电源计划、计时器和系统调优 |
 | [`src/UI/`](../src/UI/) 和 [`src/Localization/`](../src/Localization/) | 窗口、游戏库、界面动效和本地化 |
 | [`src/Infrastructure/Recovery/`](../src/Infrastructure/Recovery/) 和 [`src/Update/`](../src/Update/) | 恢复预算、失败记录、更新和卸载 |
@@ -19,5 +19,5 @@ Pavise 使用 .NET Framework 和 Windows Forms。`build.cmd -b prod` 从 `src/` 
 
 ## 原生构建与回归
 
-- 正式构建读取 [ETW 镜像](../src/Interop/NativeEtwImage.cs)、[CPUID 镜像](../src/Interop/NativeCpuImage.cs)和 [HID 镜像](../src/Interop/NativeHidImage.cs)。修改原生源码后，用 Zig 0.15.2 运行 [`tools/Build-Native.ps1`](../tools/Build-Native.ps1)生成镜像。可将 `zig.exe` 加入 PATH，或使用 `-Zig` 指定其路径。
+- 正式构建读取 [ETW 镜像](../src/Interop/NativeEtwImage.cs)和 [CPUID 镜像](../src/Interop/NativeCpuImage.cs)。修改原生源码后，用 Zig 0.15.2 运行 [`tools/Build-Native.ps1`](../tools/Build-Native.ps1)生成镜像。可将 `zig.exe` 加入 PATH，或使用 `-Zig` 指定其路径。
 - 公开回归由 [`tools/Run-PublicTests.ps1`](../tools/Run-PublicTests.ps1) 统一运行。测试范围和单项命令见[测试说明](../tests/README.md)。

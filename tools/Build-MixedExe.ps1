@@ -234,8 +234,7 @@ try {
 
     $objects = @()
     foreach ($component in @(@{ Image = 'NativeEtwImage.cs'; Source = 'PaviseEtw.cpp'; Object = 'PaviseEtw.obj' },
-        @{ Image = 'NativeCpuImage.cs'; Source = 'PaviseCpu.cpp'; Object = 'PaviseCpu.obj' },
-        @{ Image = 'NativeHidImage.cs'; Source = 'PaviseHid.cpp'; Object = 'PaviseHid.obj' })) {
+        @{ Image = 'NativeCpuImage.cs'; Source = 'PaviseCpu.cpp'; Object = 'PaviseCpu.obj' })) {
         $object = Join-Path $work $component.Object
         Write-NativeObject $component.Image $component.Source $object
         $objects += $object
@@ -273,8 +272,7 @@ try {
     $imports = @(Get-Imports $image)
     foreach ($name in $imports) { if ($name -ne 'KERNEL32.dll' -and $name -ne 'mscoree.dll') { throw ('Unexpected import in the linked exe: ' + $name) } }
     $exports = @(Get-Exports $image)
-    foreach ($name in @('PvEtwAbi', 'PvEtwLayout', 'PvEtwCreate', 'PvEtwCallback', 'PvEtwDestroy', 'PaviseCpuAbi', 'PaviseCpuidEx',
-        'PaviseHidAbi', 'PaviseHidOpen', 'PaviseHidProbe', 'PaviseHidClose')) {
+    foreach ($name in @('PvEtwAbi', 'PvEtwLayout', 'PvEtwCreate', 'PvEtwCallback', 'PvEtwDestroy', 'PaviseCpuAbi', 'PaviseCpuidEx')) {
         if ($exports -notcontains $name) { throw ('Native export missing from the linked exe: ' + $name) }
     }
     'linked ' + $Output + ' imports=' + ($imports -join ',') + ' native_exports=' + $exports.Count

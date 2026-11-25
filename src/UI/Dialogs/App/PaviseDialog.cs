@@ -43,6 +43,9 @@ namespace PaviseApp
 
         private int closeDelaySeconds = 3;
 
+        // 倒计时只拦确认 带取消的确认框随时能取消 Esc 和关窗都算取消
+        private bool cancelDuringDelay;
+
         private bool CloseDelayPending
         {
             get { return closeDelay != null && (!closeDelay.IsRunning || closeDelay.Elapsed.TotalSeconds < closeDelaySeconds); }
@@ -305,7 +308,7 @@ namespace PaviseApp
             base.AcceptButton = null;
             base.KeyDown += delegate(object s, KeyEventArgs e)
             {
-                if (paviseDialog.CloseDelayPending && (e.KeyCode == Keys.Escape || e.KeyCode == Keys.Return))
+                if (paviseDialog.CloseDelayPending && (e.KeyCode == Keys.Return || (e.KeyCode == Keys.Escape && !paviseDialog.cancelDuringDelay)))
                 {
                     e.SuppressKeyPress = e.Handled = true;
                     return;
@@ -362,7 +365,7 @@ namespace PaviseApp
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
-            if (CloseDelayPending
+            if (CloseDelayPending && (!cancelDuringDelay || base.DialogResult == DialogResult.OK)
                 && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
             {
                 e.Cancel = true;
@@ -400,7 +403,7 @@ namespace PaviseApp
             return dialog;
         }
 
-        // 带倒计时的确认框 倒计时结束前确认和取消都点不了 Esc 回车和关闭窗口也不生效
+        // 带倒计时的确认框 倒计时结束前确认和回车都不生效 取消 Esc 和关闭窗口随时可用
         internal static PaviseDialog CreateDelayedConfirm(IWin32Window owner, string title, string body, DlgKind kind, int seconds)
         {
             var dialog = new PaviseDialog(title, body, kind, Lang.T("dlg.confirm"), Lang.T("dlg.cancel"), null, DlgW, owner);
@@ -409,8 +412,8 @@ namespace PaviseApp
             dialog.closeDelaySeconds = Math.Max(1, seconds);
             dialog.closeDelay = new Stopwatch();
             dialog.closeDelayTimer = new Timer { Interval = 100 };
+            dialog.cancelDuringDelay = true;
             accept.Enabled = false;
-            if (cancel != null) cancel.Enabled = false;
             accept.Text = Lang.F("dlg.confirm.countdown", dialog.closeDelaySeconds);
             int buttonWidth = Math.Max(accept.Width, TextRenderer.MeasureText(accept.Text, accept.Font).Width + Theme.S(32));
             int shift = Math.Min(buttonWidth, Math.Max(1, dialog.ClientSize.Width - Theme.S(52))) - accept.Width;
@@ -425,7 +428,6 @@ namespace PaviseApp
                 if (remaining > 0) return;
                 dialog.closeDelayTimer.Stop();
                 accept.Enabled = true;
-                if (cancel != null) cancel.Enabled = true;
             };
             dialog.Disposed += delegate { dialog.closeDelayTimer.Dispose(); };
             Form form = owner as Form;

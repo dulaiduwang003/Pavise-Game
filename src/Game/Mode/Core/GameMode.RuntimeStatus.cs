@@ -74,9 +74,8 @@ namespace PaviseApp
             get
             {
                 if (!SuppressBackground) return Lang.T("background.governance.status.off");
-                int mode = BackgroundGovernancePolicy.Load();
-                return Lang.T(mode == BackgroundGovernancePolicy.Freeze ? "background.governance.status.freeze"
-                    : mode == BackgroundGovernancePolicy.Aggressive ? "background.governance.status.aggressive" : "background.governance.status.normal");
+                return Lang.T(BackgroundGovernancePolicy.Load() == BackgroundGovernancePolicy.Aggressive
+                    ? "background.governance.status.aggressive" : "background.governance.status.normal");
             }
         }
 
@@ -350,6 +349,15 @@ namespace PaviseApp
                 {
                     return active ? null : armedGameName;
                 }
+            }
+        }
+
+        internal bool IsAnyGamePreparingOrRunning()
+        {
+            lock (sync)
+            {
+                return active || activeDetection != null || gameGoneSinceTicks != 0
+                    || armedAwaitingElection || !string.IsNullOrEmpty(armedGameName);
             }
         }
 

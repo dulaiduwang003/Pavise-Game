@@ -520,6 +520,14 @@ namespace PaviseApp
             return true;
         }
 
+        private static bool IsAddonDeletionBlockedBeforeConfirmation(LolOptimizationSnapshot snapshot, bool inspectionBlocked, bool canDelete)
+        {
+            if (IsAddonDeletionBlocked(snapshot, inspectionBlocked)) return true;
+            if (!canDelete || snapshot == null || snapshot.CrossProcessCount.HasValue) return false;
+            List<string> names;
+            return LolAddonCleaner.HasBlockingProcesses(snapshot.LolRoot, out names);
+        }
+
         internal static bool CanRequestAddonDeletion(LolOptimizationSnapshot snapshot, bool busy, bool inspecting, bool hasCandidates, bool inspectionBlocked, string inspectionError)
         {
             if (snapshot != null && snapshot.Enabled && !snapshot.Discovering && !busy && !inspecting && hasCandidates)
@@ -616,7 +624,10 @@ namespace PaviseApp
                 return;
             }
             bool rootChanged = !string.Equals(root, inspectRoot, StringComparison.OrdinalIgnoreCase);
-            int combinedMask = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | ((s.CrossProcessCount > 0) ? 16 : 0);
+            const int crossMask = 16;
+            int crossState = s.CrossProcessCount.HasValue ? (s.CrossProcessCount > 0 ? crossMask : 0)
+                : (rootChanged || inspectSignature < 0 ? 0 : inspectSignature & crossMask);
+            int combinedMask = (s.ClientRunning ? 1 : 0) | (s.GameRunning ? 2 : 0) | ((s.WeGameProcessCount > 0) ? 4 : 0) | ((s.UxProcessCount > 0) ? 8 : 0) | crossState;
             string observationStage = "availability|" + PerformanceTuning.RecoveryCycleSerial;
             if (!inspectionFailures.Allowed(0, combinedMask, root, observationStage)) return;
             bool selectionChanged = combinedMask != inspectSignature;
@@ -719,7 +730,7 @@ namespace PaviseApp
             {
                 return;
             }
-            if (IsAddonDeletionBlocked(snapshot, inspectionBlocked))
+            if (IsAddonDeletionBlockedBeforeConfirmation(snapshot, inspectionBlocked, canDelete))
             {
                 string body = PerformancePolicy.Text("请先完全退出 WeGame 和英雄联盟（包括仍在后台运行的相关进程），再点击“删除附加层”重试。", "Fully exit WeGame and League of Legends, including their background processes, then try Delete add-ons again.");
                 inspectUtc = DateTime.MinValue;

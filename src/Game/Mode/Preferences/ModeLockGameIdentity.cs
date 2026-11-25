@@ -49,18 +49,19 @@ namespace PaviseApp
             IntPtr intPtr = Native.OpenProcess(1052672, false, gamePid);
             if (intPtr == IntPtr.Zero)
             {
-                return !Native.LastOpenProcessFailureWasNoSuchProcess();
+                if (!Native.LastOpenProcessFailureWasNoSuchProcess()) return true;
+                ClearLocked();
+                return false;
             }
             try
             {
-                if (Native.WaitForSingleObject(intPtr, 0u) != 258u)
+                uint wait = Native.WaitForSingleObject(intPtr, 0u);
+                if (wait != 0u && (wait != 258u || Native.QueryProcessIdentityState(intPtr, gameCreation) <= 0))
                 {
-                    return false;
+                    return true;
                 }
-                long creation;
-                long cpu;
-                ulong io;
-                return !Native.QueryProcessSample(intPtr, out creation, out cpu, out io) || creation == gameCreation;
+                ClearLocked();
+                return false;
             }
             finally
             {
@@ -72,10 +73,15 @@ namespace PaviseApp
         {
             if (!string.IsNullOrEmpty(profileId) && string.Equals(gameProfileId, profileId, StringComparison.OrdinalIgnoreCase))
             {
-                gamePid = 0;
-                gameCreation = 0L;
-                gameProfileId = null;
+                ClearLocked();
             }
+        }
+
+        private void ClearLocked()
+        {
+            gamePid = 0;
+            gameCreation = 0L;
+            gameProfileId = null;
         }
     }
 }

@@ -332,7 +332,7 @@ namespace PaviseApp
                         currentEntry.BackgroundRestorePending = false;
                     }
                     currentEntry.SqueezeAff = squeezeAffValue;
-                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry), false, currentEntry);
+                    bool applyThrottleSucceeded = ApplyThrottle(processHandle, currentEntry.Level, currentEntry.OrigPri, currentEntry.OrigAff, currentEntry.OrigCpuSets, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry), false, currentEntry);
                     if (!applyThrottleSucceeded && squeezeAffValue != 0)
                     {
                         currentEntry.SqueezeAff = 0uL;

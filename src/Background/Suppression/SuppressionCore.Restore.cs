@@ -24,13 +24,12 @@ namespace PaviseApp
                 }
                 if (entry.ResourceJobOnlyIo) return ReleaseResourceJob(entry, entry.AccountingPid);
                 // 资源 Job 锁住的 Idle 要先解开 优先级才写得回去 反作弊按它自己的逐字段回执恢复
-                uint pressedPriority = Native.GetPriorityClass(handle);
-                int pressedIo = Native.QueryIoPriority(handle), pressedPage = Native.QueryPagePriority(handle);
+                InheritedPriorities inherited = ReadInheritedPriorities(handle, entry);
                 if (!RestoreBackgroundPlacement(handle, entry)) return false;
-                if (!ReleaseJobBeforeProcessRestore(handle, entry, entry.AccountingPid, pressedPriority, pressedIo, pressedPage)) return false;
+                if (!ReleaseJobBeforeProcessRestore(handle, entry, entry.AccountingPid, inherited)) return false;
                 if (HasAntiCheatResources(entry)) return RestoreRecordedAntiCheatResources(handle, entry);
                 if (!RestoreOrdinaryEntryValues(handle, entry)) return false;
-                RestoreInheritedDescendants(entry.AccountingPid, entry, pressedPriority, pressedIo, pressedPage);
+                RestoreInheritedDescendants(entry.AccountingPid, entry, inherited);
                 return true;
             }
             catch (Exception ex)
@@ -84,7 +83,7 @@ namespace PaviseApp
             return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, qosControl, qosState, gpu, boost, restorePlacement, restorePriority, true);
         }
 
-        internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority, bool restorePage)
+        internal static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask, uint[] cpuSets, int qosControl, int qosState, int gpu, int boost, bool restorePlacement, bool restorePriority, bool restorePage, bool restorePower = true)
         {
             bool placementRestored = !restorePlacement || Native.RestoreCpuSetsVerified(h, cpuSets);
             uint priSnapshot = ((pri == 0 || pri == uint.MaxValue) ? 32u : pri);
@@ -101,7 +100,7 @@ namespace PaviseApp
             {
                 placementRestored &= Native.TrySetPagePriority(h, pgSnapshot);
             }
-            if (Native.PowerThrottlingSupported)
+            if (restorePower && Native.PowerThrottlingSupported)
             {
                 placementRestored &= Native.RestorePowerThrottling(h, qosControl, qosState);
             }
@@ -127,28 +126,40 @@ namespace PaviseApp
 
         private bool SaveGpuJournal()
         {
-            lock (sync) return SaveJournalLocked(true, true);
+            lock (sync) return SaveBackgroundResourceCleanup();
         }
 
         private bool RestoreOrdinaryEntryValues(IntPtr handle, Entry entry)
-        { return RestoreOrdinaryEntryValues(handle, entry, allMask, () => SaveGpuJournal()); }
+        {
+            return RestoreOrdinaryEntryValues(handle, entry, allMask, SaveGpuJournal,
+                restored => RearmRestoredOrdinaryFields(entry, restored));
+        }
 
-        private bool ReleaseJobBeforeProcessRestore(IntPtr handle, Entry entry, int pid, uint priority, int io, int page)
+        private bool ReleaseJobBeforeProcessRestore(IntPtr handle, Entry entry, int pid, InheritedPriorities inherited)
         {
             if (!entry.ResourceJobRestoringProcess && ReleaseResourceJob(entry, pid)) return true;
             if (entry.ResourceJobRestoringProcess)
             {
                 FinishResourceJobProcessRestore(handle, entry, SaveGpuJournal, delegate
                 {
-                    RestoreInheritedDescendants(pid, entry, priority, io, page);
-                });
+                    RestoreInheritedDescendants(pid, entry, inherited);
+                }, restored => RearmRestoredOrdinaryFields(entry, restored));
             }
             return false;
         }
 
-        private static bool FinishResourceJobProcessRestore(IntPtr handle, Entry entry, Func<bool> checkpoint, Action descendants)
+        private static bool FinishResourceJobProcessRestore(IntPtr handle, Entry entry, Func<bool> checkpoint, Action descendants,
+            Action<OrdinaryFields> fieldsRestored = null)
         {
             if (HasAntiCheatResources(entry) || !checkpoint() || !RestoreBackgroundPlacement(handle, entry)) return false;
+            if (entry.OrdinaryValues)
+            {
+                if (descendants != null) descendants();
+                if (!RestoreOrdinaryEntryValues(handle, entry, CpuTopology.AllMask, checkpoint, fieldsRestored)) return false;
+                entry.ResourceJobRestoringProcess = false;
+                entry.ResourceJobOnlyIo = true;
+                return checkpoint();
+            }
             // 卸下优先级锁后旧磁盘限额可能仍在 只归还留在本方压制值上的字段
             // 中途退出后从这个阶段重入 用户后来设置的值继续保留
             uint priority = Native.GetPriorityClass(handle);
@@ -183,12 +194,71 @@ namespace PaviseApp
             return checkpoint();
         }
 
-        private static bool RestoreOrdinaryEntryValues(IntPtr handle, Entry entry, ulong mask, Func<bool> checkpoint)
+        private static bool RestoreOrdinaryEntryValues(IntPtr handle, Entry entry, ulong mask, Func<bool> checkpoint,
+            Action<OrdinaryFields> fieldsRestored = null)
         {
             bool restored = RestoreValues(handle, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, mask,
-                entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, -1, entry.OrigBoost, RestorePlacement(entry));
+                entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, -1, entry.OrigBoost, RestorePlacement(entry),
+                !entry.OrdinaryValues, true, !entry.OrdinaryValues);
+            if (entry.OrdinaryValues)
+            {
+                OrdinaryFields fields = OrdinaryFields.None;
+                restored &= RestoreOrdinaryPriority(handle, entry, ref fields);
+                restored &= RestoreOrdinaryPower(handle, entry, ref fields);
+                if (fields != OrdinaryFields.None && fieldsRestored != null) fieldsRestored(fields);
+            }
             bool gpuRestored = entry.GpuLease.Restore(handle, () => Native.QueryProcessIdentityState(handle, entry.Creation), checkpoint);
+            if (restored && gpuRestored && entry.OrdinaryValues)
+            {
+                entry.OrdinaryPriorityOwned = false;
+                entry.OrdinaryTimerOwned = false;
+                entry.OrdinaryOwnershipJournalPending = false;
+            }
             return restored && gpuRestored;
+        }
+
+        private uint RestorablePressedPriority(IntPtr handle, Entry entry)
+        {
+            return !entry.OrdinaryValues || entry.OrdinaryPriorityOwned || FocusPriorityStillOwned(entry)
+                ? Native.GetPriorityClass(handle) : 0u;
+        }
+
+        private static bool RestoreOrdinaryPriority(IntPtr handle, Entry entry, ref OrdinaryFields restored)
+        {
+            if (!entry.OrdinaryPriorityOwned || entry.OrigPri == 0 || entry.OrigPri == IdlePriorityClass) return true;
+            uint current = Native.GetPriorityClass(handle);
+            if (current == 0) return false;
+            if (current == IdlePriorityClass)
+            {
+                if (!Native.SetPriorityClass(handle, entry.OrigPri) || Native.GetPriorityClass(handle) != entry.OrigPri) return false;
+                restored |= OrdinaryFields.Priority;
+            }
+            entry.OrdinaryPriorityOwned = false;
+            return true;
+        }
+
+        private static bool RestoreOrdinaryPower(IntPtr handle, Entry entry, ref OrdinaryFields restored)
+        {
+            if (!Native.PowerThrottlingSupported) return true;
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(handle, out control, out state)) return false;
+            int mask = BackgroundEcoMatches(control, state) ? 1 : 0;
+            bool timerStillOwned = entry.OrdinaryTimerOwned && (control & 4) != 0 && (state & 4) != 0;
+            if (timerStillOwned) mask |= 4;
+            else entry.OrdinaryTimerOwned = false;
+            int desiredControl = (control & ~mask) | (Math.Max(0, entry.OrigQoSControl) & mask);
+            int desiredState = (state & ~mask) | (Math.Max(0, entry.OrigQoSState) & mask);
+            if (control != desiredControl || state != desiredState)
+            {
+                if (!Native.RestorePowerThrottling(handle, desiredControl, desiredState)
+                    || !ConfirmEcoState(() => Native.TryQueryPowerThrottling(handle, out control, out state)
+                        && (control & mask) == (desiredControl & mask) && (state & mask) == (desiredState & mask),
+                        () => System.Threading.Thread.Sleep(1))) return false;
+                if (timerStillOwned && ((desiredControl & 4) == 0 || (desiredState & 4) == 0))
+                    restored |= OrdinaryFields.Timer;
+            }
+            entry.OrdinaryTimerOwned = false;
+            return true;
         }
 
         private RestoreResult RestoreOne(int pid, Entry e)
@@ -270,12 +340,11 @@ namespace PaviseApp
                 if (e.ResourceJobOnlyIo)
                     return ReleaseResourceJob(e, pid) ? RestoreResult.Restored : RestoreResult.Protected;
                 // 资源 Job 锁住的 Idle 要先解开 优先级才写得回去 写回前记下被压的值 用来认出继承了它的子孙
-                uint pressedPriority = Native.GetPriorityClass(restoreHandle);
-                int pressedIo = Native.QueryIoPriority(restoreHandle), pressedPage = Native.QueryPagePriority(restoreHandle);
-                if (RestoreBackgroundPlacement(restoreHandle, e) && ReleaseJobBeforeProcessRestore(restoreHandle, e, pid, pressedPriority, pressedIo, pressedPage) && (HasAntiCheatResources(e) ? RestoreRecordedAntiCheatResources(restoreHandle, e)
+                InheritedPriorities inherited = ReadInheritedPriorities(restoreHandle, e);
+                if (RestoreBackgroundPlacement(restoreHandle, e) && ReleaseJobBeforeProcessRestore(restoreHandle, e, pid, inherited) && (HasAntiCheatResources(e) ? RestoreRecordedAntiCheatResources(restoreHandle, e)
                     : RestoreOrdinaryEntryValues(restoreHandle, e)))
                 {
-                    RestoreInheritedDescendants(pid, e, pressedPriority, pressedIo, pressedPage);
+                    RestoreInheritedDescendants(pid, e, inherited);
                     return RestoreResult.Restored;
                 }
                 return (!Native.StillActive(restoreHandle)) ? RestoreResult.Gone : RestoreResult.Protected;
@@ -489,6 +558,9 @@ namespace PaviseApp
                 Entry currentEntry;
                 if (map.TryGetValue(pid, out currentEntry) && currentEntry == e)
                 {
+                    if (restoreOutcome == RestoreResult.Gone && HasAntiCheatResources(e)
+                        && !ClearAntiCheatJob(e, () => SaveAntiCheatResourceJournal(e)))
+                        restoreOutcome = result = RestoreResult.Protected;
                     if (e.Reasons == SuppressReason.None)
                     {
                         if (restoreOutcome != RestoreResult.Protected)
@@ -590,6 +662,16 @@ namespace PaviseApp
             }
             lock (sync) RecordFailureBudget(e, "restore", restoreOutcome != RestoreResult.Protected, e.NextRetryTicks);
             return restoreOutcome == RestoreResult.Restored;
+        }
+
+        internal void RetryAntiCheatResourceRecovery()
+        {
+            var pending = new List<KeyValuePair<int, Entry>>();
+            lock (sync)
+                foreach (KeyValuePair<int, Entry> item in map)
+                    if (HasAntiCheatResources(item.Value) && item.Value.Reasons == SuppressReason.None
+                        && !RestoreBudgetBlocked(item.Value, "restore", true)) pending.Add(item);
+            foreach (KeyValuePair<int, Entry> item in pending) TryRestore(item.Key, item.Value, true);
         }
 
         public void RetryPending()

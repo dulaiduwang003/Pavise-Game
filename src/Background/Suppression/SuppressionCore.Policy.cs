@@ -6,11 +6,11 @@ namespace PaviseApp
     internal sealed partial class SuppressionCore
     {
 
-        private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, bool antiCheat, ulong desiredAffinity, bool affinityOwned, int originalBoost)
+        private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, bool antiCheat, ulong desiredAffinity, bool affinityOwned)
         {
             affinityOwned |= antiCheat;
             uint priority = DesiredPriority(level, originalPriority, antiCheat);
-            if (Native.GetPriorityClass(h) != priority)
+            if (antiCheat && Native.GetPriorityClass(h) != priority)
             {
                 return false;
             }
@@ -22,11 +22,12 @@ namespace PaviseApp
             }
             int controlMask;
             int stateMask;
-            if (Native.PowerThrottlingSupported && (!Native.TryQueryPowerThrottling(h, out controlMask, out stateMask) || !PowerStateMatches(controlMask, stateMask, Native.EcoQoSWantMask(DesiredTimerSeal(level, antiCheat)))))
+            if (Native.PowerThrottlingSupported && (!Native.TryQueryPowerThrottling(h, out controlMask, out stateMask) || !(antiCheat
+                ? PowerStateMatches(controlMask, stateMask, Native.EcoQoSWantMask(DesiredTimerSeal(level, true)))
+                : BackgroundEcoMatches(controlMask, stateMask))))
             {
                 return false;
             }
-            bool disableDynamicBoostSucceeded = DisableDynamicBoost(level, antiCheat);
             uint[] expected = originalCpuSets ?? new uint[0];
             if (!affinityOwned && !Native.CpuSetsMatch(h, expected))
             {
@@ -36,23 +37,12 @@ namespace PaviseApp
             {
                 return false;
             }
-            int boostState = DesiredBoostDisabled(level, antiCheat, originalBoost);
-            if ((disableDynamicBoostSucceeded && boostState < 0) || (boostState >= 0 && Native.QueryBoostDisabled(h) != boostState))
-            {
-                return false;
-            }
             return true;
         }
 
         internal static bool SevereAntiCheat(SuppressionLevel level, bool antiCheat)
         {
             return antiCheat && level >= SuppressionLevel.Isolated;
-        }
-
-        internal static bool DisableDynamicBoost(SuppressionLevel level, bool antiCheat)
-        {
-            if (antiCheat) return level >= SuppressionLevel.Restrained;
-            return BackgroundBoostLimit && level >= SuppressionLevel.Isolated;
         }
 
         internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority, bool antiCheat)
@@ -89,50 +79,7 @@ namespace PaviseApp
 
         internal static bool DesiredTimerSeal(SuppressionLevel level, bool antiCheat)
         {
-            if (level >= SuppressionLevel.Isolated)
-            {
-                if (antiCheat)
-                {
-                    return SevereAntiCheat(level, antiCheat);
-                }
-                return true;
-            }
-            return false;
-        }
-
-        internal static int DesiredBoostDisabled(SuppressionLevel level, bool antiCheat, int originalBoost)
-        {
-            if (originalBoost != 0 && originalBoost != 1)
-            {
-                return -1;
-            }
-            if (!DisableDynamicBoost(level, antiCheat))
-            {
-                return originalBoost;
-            }
-            return 1;
-        }
-
-        internal static string ApplyBoostPolicy(SuppressionLevel level, bool antiCheat, int originalBoost, Func<int> read, Func<bool, bool> write)
-        {
-            int desiredState = DesiredBoostDisabled(level, antiCheat, originalBoost);
-            if (desiredState < 0)
-            {
-                if (!DisableDynamicBoost(level, antiCheat))
-                {
-                    return "";
-                }
-                return "boost-snapshot";
-            }
-            if (read() != desiredState && !write(desiredState == 1))
-            {
-                return "boost-write";
-            }
-            if (read() != desiredState)
-            {
-                return "boost-readback";
-            }
-            return "";
+            return level >= SuppressionLevel.Isolated;
         }
 
         internal static bool PowerStateMatches(int control, int state, uint required)
@@ -209,7 +156,7 @@ namespace PaviseApp
 
         internal static int AntiCheatAuditSeconds(SuppressionLevel level)
         {
-            return level >= SuppressionLevel.Isolated ? 1 : (level >= SuppressionLevel.Restrained ? 2 : 4);
+            return 5;
         }
 
         private static int PositiveMod(int value, int modulo)

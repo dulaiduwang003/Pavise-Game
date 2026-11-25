@@ -111,7 +111,7 @@ namespace PaviseApp
 
         private bool weGameMainRunning;
 
-        private int crossProcessCount;
+        private int? crossProcessCount;
 
         private int uxProcessCount;
 

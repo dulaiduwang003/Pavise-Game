@@ -11,8 +11,7 @@ namespace PaviseApp
         // 产品启动时注入 空着表示不用资源 Job
         internal static IResourceJobPlatform ResourceJobPlatform;
 
-        // 当前档位 -1 表示后台治理关闭 由对局扫描按策略写入
-        internal static volatile int ResourceJobMode = -1;
+        private int resourceJobMode = -1;
 
         private sealed class ResourceJob
         {
@@ -24,8 +23,7 @@ namespace PaviseApp
             internal uint? AppliedCpuRate;
             internal long AcceptedIoBandwidth;
             internal bool SkipIo;
-            internal bool Unusable;
-            internal int Failures;
+            internal bool Unusable, Preparing;
 
             internal bool Matches(ResourceJobLimits want)
             {
@@ -62,16 +60,16 @@ namespace PaviseApp
             return TryReadResourceJobIdentity(name, out jobPid, out jobCreation) && jobPid == pid && jobCreation == creation;
         }
 
-        private static ResourceJobLimits DesiredResourceLimits(Entry e)
+        private ResourceJobLimits DesiredResourceLimits(Entry e)
         {
-            int mode = ResourceJobMode;
-            if (mode < 0 || ResourceJobPlatform == null || e == null) return null;
+            int mode = resourceJobMode;
+            if (mode != BackgroundGovernancePolicy.Aggressive || ResourceJobPlatform == null || e == null) return null;
             if ((e.Reasons & SuppressReason.Background) == 0 || e.BackgroundLevel < SuppressionLevel.Restrained) return null;
             // 反作弊不进资源 Job 扫描型反作弊会挂起游戏线程 它自己抢不到时间片 挂起就从几百毫秒拉长到秒级 硬限额等于把它饿死
             if (AntiCheatCatalog.IsAntiCheatLikeName(e.Name)) return null;
             return new ResourceJobLimits
             {
-                CpuRate = BackgroundGovernancePolicy.ResourceCpuRate(mode, Environment.ProcessorCount),
+                CpuRate = BackgroundGovernancePolicy.ResourceCpuRate(mode, BackgroundResourceJobPlatform.LogicalProcessorCount),
                 IoBandwidth = BackgroundGovernancePolicy.ResourceIoBandwidth(mode)
             };
         }
@@ -80,6 +78,8 @@ namespace PaviseApp
         private bool ResourceJobMatches(Entry e, int pid)
         {
             if (ResourceJobPlatform == null) return true;
+            if (IsFocusTarget(e, pid)) return FocusResourceJobMatches(e, pid);
+            if (e.FocusJob != null) return false;
             ResourceJobLimits want = DesiredResourceLimits(e);
             ResourceJob job;
             bool tracked = resourceJobs.TryGetValue(pid, out job) && job.Creation == e.Creation;
@@ -90,18 +90,37 @@ namespace PaviseApp
         }
 
         // 不再需要限制时先清空 否则 Job 锁住的 Idle 会让随后的优先级写回失效
+        private bool LiveOrdinaryResourceJob(Entry entry, int pid)
+        {
+            ResourceJob job;
+            return resourceJobs.TryGetValue(pid, out job) && job.Job != IntPtr.Zero && !job.Unusable
+                && job.Creation == entry.Creation && job.Name == entry.ResourceJobName;
+        }
+
         private bool PrepareResourceJob(Entry e, int pid)
         {
             if (e.ResourceJobOnlyIo || e.ResourceJobRestoringProcess) return false;
-            if (DesiredResourceLimits(e) != null) return true;
-            return ReleaseResourceJob(e, pid);
+            lock (sync)
+            {
+                bool focus = IsFocusTarget(e, pid);
+                if (!focus) ReleaseFocusForEntry(e, pid);
+                if (focus || DesiredResourceLimits(e) == null || (e.ResourceJobName != null && !LiveOrdinaryResourceJob(e, pid)))
+                    ReleaseOrdinaryResourceJobLocked(e, pid, false);
+                return true;
+            }
         }
 
         private void EnsureResourceJob(Entry e, int pid)
         {
             IResourceJobPlatform platform = ResourceJobPlatform;
+            if (platform == null || pid <= 4 || e.Creation <= 0 || !Monitor.IsEntered(sync)) return;
+            if (IsFocusTarget(e, pid))
+            {
+                EnsureFocusResourceJob(platform, e, pid);
+                return;
+            }
             ResourceJobLimits want = DesiredResourceLimits(e);
-            if (platform == null || want == null || pid <= 4 || e.Creation <= 0 || !Monitor.IsEntered(sync)) return;
+            if (want == null || e.FocusJob != null) return;
             PruneResourceJobs(platform);
             ResourceJob job;
             if (resourceJobs.TryGetValue(pid, out job) && job.Creation != e.Creation)
@@ -112,9 +131,8 @@ namespace PaviseApp
             }
             // 只靠日志找回的 Job 要先按原名恢复 新 Job 不能覆盖它的回执
             if (e.ResourceJobName != null && (job == null || e.ResourceJobName != job.Name)) return;
-            if (job != null && (job.Unusable || job.Matches(want))) return;
+            if (job != null && (job.Preparing || job.Unusable || job.Matches(want))) return;
             IntPtr process = platform.OpenTarget(pid, e.Creation);
-            // 拿不到加入 Job 需要的权限 多半是受保护或权限更高的进程 本局不再尝试
             if (process == IntPtr.Zero) { MarkResourceJobUnusable(e, pid, job, "process-access"); return; }
             try
             {
@@ -133,60 +151,78 @@ namespace PaviseApp
                     job = new ResourceJob { Name = name, Job = handle, Pid = pid, Creation = e.Creation };
                     resourceJobs[pid] = job;
                 }
-                // 先把名字写进日志再加限制 Pavise 中途崩溃后下次启动能按名字找回并解除
-                if (e.ResourceJobName != job.Name)
-                {
-                    e.ResourceJobName = job.Name;
-                    e.ResourceJobMayHaveIo = false;
-                    if (!SaveJournalLocked(true, true))
+                string previousName = e.ResourceJobName;
+                bool previousDisk = e.ResourceJobMayHaveIo;
+                bool applyDisk = !job.SkipIo && job.AcceptedIoBandwidth != want.IoBandwidth;
+                e.ResourceJobName = job.Name;
+                e.ResourceJobMayHaveIo = previousDisk || applyDisk;
+                job.Preparing = true;
+                IntPtr target = process;
+                process = IntPtr.Zero;
+                CommitBackgroundResource(
+                    () => ApplyPreparedResourceJob(platform, job, e, pid, target, want, previousDisk, applyDisk),
+                    () =>
                     {
-                        e.ResourceJobName = null;
-                        NoteResourceJobFailure(e, job, "journal", false);
-                        return;
-                    }
-                }
-                if (job.AppliedCpuRate != want.CpuRate)
+                        job.Preparing = false;
+                        if (e.ResourceJobName == job.Name)
+                        {
+                            e.ResourceJobName = previousName;
+                            e.ResourceJobMayHaveIo = previousDisk;
+                        }
+                        NoteResourceJobFailure(e, job, "journal");
+                        platform.Close(target);
+                        SaveBackgroundResourceCleanup();
+                    });
+            }
+            catch (Exception error)
+            {
+                NoteResourceJobFailure(e, job, "exception:" + error.GetType().Name);
+            }
+            finally { if (process != IntPtr.Zero) platform.Close(process); }
+        }
+
+        private void ApplyPreparedResourceJob(IResourceJobPlatform platform, ResourceJob job, Entry entry, int pid,
+            IntPtr process, ResourceJobLimits limits, bool previousDisk, bool applyDisk)
+        {
+            job.Preparing = false;
+            try
+            {
+                Entry live;
+                if (!map.TryGetValue(pid, out live) || live != entry || entry.ResourceJobName != job.Name
+                    || IsFocusTarget(entry, pid) || DesiredResourceLimits(entry) == null) return;
+                entry.ResourceJobMayHaveIo = previousDisk;
+                if (job.AppliedCpuRate != limits.CpuRate)
                 {
                     bool wasApplied = job.AppliedCpuRate.HasValue;
                     job.AppliedCpuRate = null;
                     string failure;
-                    if (!platform.Apply(job.Job, process, want, out failure))
+                    if (!platform.Apply(job.Job, process, limits, out failure))
                     {
                         string clearFailure;
                         job.AcceptedIoBandwidth = 0;
-                        bool cleared = ClearResourceLimits(platform, job.Job, e, out clearFailure);
-                        if (cleared) { e.ResourceJobName = null; SaveJournalLocked(true, true); }
-                        bool permanent = failure != null && (failure.StartsWith("assign", StringComparison.Ordinal) || failure.StartsWith("membership", StringComparison.Ordinal));
-                        NoteResourceJobFailure(e, job, failure ?? "apply", permanent || !cleared);
+                        if (ClearResourceLimits(platform, job.Job, entry, out clearFailure))
+                        {
+                            entry.ResourceJobName = null;
+                            SaveBackgroundResourceCleanup();
+                        }
+                        NoteResourceJobFailure(entry, job, failure ?? "apply");
                         return;
                     }
                     if (!wasApplied) resourceJobJoined++;
-                    job.AppliedCpuRate = want.CpuRate;
+                    job.AppliedCpuRate = limits.CpuRate;
                 }
-                if (!job.SkipIo && job.AcceptedIoBandwidth != want.IoBandwidth)
-                    ApplyResourceIo(platform, job, e, want.IoBandwidth);
+                if (applyDisk) ApplyResourceIo(platform, job, entry, limits.IoBandwidth, previousDisk);
             }
             catch (Exception error)
             {
-                NoteResourceJobFailure(e, job, "exception:" + error.GetType().Name, e.ResourceJobName != null);
+                NoteResourceJobFailure(entry, job, "exception:" + error.GetType().Name);
             }
             finally { platform.Close(process); }
         }
 
-        private void ApplyResourceIo(IResourceJobPlatform platform, ResourceJob job, Entry entry, long bandwidth)
+        private void ApplyResourceIo(IResourceJobPlatform platform, ResourceJob job, Entry entry, long bandwidth, bool previouslyOwned)
         {
-            bool previouslyOwned = entry.ResourceJobMayHaveIo;
-            if (!previouslyOwned)
-            {
-                entry.ResourceJobMayHaveIo = true;
-                if (!SaveJournalLocked(true, true))
-                {
-                    entry.ResourceJobMayHaveIo = false;
-                    job.SkipIo = true;
-                    LogResourceIoSkipped(entry, "journal");
-                    return;
-                }
-            }
+            entry.ResourceJobMayHaveIo = true;
             string reason;
             try
             {
@@ -199,7 +235,6 @@ namespace PaviseApp
             catch (EntryPointNotFoundException) { reason = "io:entry-point"; }
             catch (Exception error)
             {
-                // 异常发生时写入结果未知 恢复时必须尝试解除
                 previouslyOwned = true;
                 reason = "exception:" + error.GetType().Name;
             }
@@ -215,7 +250,7 @@ namespace PaviseApp
                 return;
             }
             entry.ResourceJobMayHaveIo = false;
-            SaveJournalLocked(true, true);
+            SaveBackgroundResourceCleanup();
         }
 
         private void LogResourceIoSkipped(Entry entry, string reason)
@@ -228,10 +263,10 @@ namespace PaviseApp
         // 清空这个进程的资源 Job 限制 没有限制或进程已退出都算完成
         private bool ReleaseResourceJob(Entry e, int pid)
         {
-            lock (sync) return ReleaseResourceJobLocked(e, pid);
+            lock (sync) return ReleaseFocusForEntry(e, pid) & ReleaseOrdinaryResourceJobLocked(e, pid, true);
         }
 
-        private bool ReleaseResourceJobLocked(Entry e, int pid)
+        private bool ReleaseOrdinaryResourceJobLocked(Entry e, int pid, bool restoreProcess)
         {
             IResourceJobPlatform platform = ResourceJobPlatform;
             ResourceJob job;
@@ -244,7 +279,7 @@ namespace PaviseApp
                 e.ResourceJobName = job.Name;
                 job.AppliedCpuRate = null;
                 job.AcceptedIoBandwidth = 0;
-                if (!ClearResourceLimits(platform, job.Job, e, out reason))
+                if (!ClearResourceLimits(platform, job.Job, e, out reason, restoreProcess))
                 {
                     if (platform.Probe(pid, e.Creation) == 1) { e.ResourceJobName = null; return true; }
                     LogResourceJobReason("release:" + reason, e);
@@ -253,7 +288,7 @@ namespace PaviseApp
                 e.ResourceJobName = null;
                 return true;
             }
-            bool cleared = ClearResourceJobByName(platform, e, pid, out reason);
+            bool cleared = ClearResourceJobByName(platform, e, pid, out reason, restoreProcess);
             if (cleared) e.ResourceJobName = null;
             else LogResourceJobReason("release:" + reason, e);
             return cleared;
@@ -265,13 +300,13 @@ namespace PaviseApp
             catch (Exception error) { reason = "clear-io:" + error.GetType().Name; return false; }
         }
 
-        private static bool ClearResourceLimits(IResourceJobPlatform platform, IntPtr job, Entry entry, out string reason)
+        private static bool ClearResourceLimits(IResourceJobPlatform platform, IntPtr job, Entry entry, out string reason, bool restoreProcess = true)
         {
             reason = null;
             if (!entry.ResourceJobOnlyIo && !platform.Clear(job, out reason)) return false;
             if (entry.ResourceJobMayHaveIo && !ClearResourceIo(platform, job, out reason))
             {
-                if (!entry.ResourceJobOnlyIo) entry.ResourceJobRestoringProcess = true;
+                if (!entry.ResourceJobOnlyIo && restoreProcess) entry.ResourceJobRestoringProcess = true;
                 return false;
             }
             entry.ResourceJobMayHaveIo = false;
@@ -279,7 +314,7 @@ namespace PaviseApp
         }
 
         // 崩溃恢复和日志载入的条目没有内存里的句柄 按名字重开
-        private static bool ClearResourceJobByName(IResourceJobPlatform platform, Entry entry, int pid, out string reason)
+        private static bool ClearResourceJobByName(IResourceJobPlatform platform, Entry entry, int pid, out string reason, bool restoreProcess = true)
         {
             reason = null;
             string name = entry.ResourceJobName;
@@ -295,18 +330,14 @@ namespace PaviseApp
                 reason = "open:" + error;
                 return false;
             }
-            try { return ClearResourceLimits(platform, job, entry, out reason); }
+            try { return ClearResourceLimits(platform, job, entry, out reason, restoreProcess); }
             finally { platform.Close(job); }
         }
 
-        private void NoteResourceJobFailure(Entry e, ResourceJob job, string reason, bool permanent)
+        private void NoteResourceJobFailure(Entry e, ResourceJob job, string reason)
         {
-            if (job != null)
-            {
-                job.Failures++;
-                if (permanent || job.Failures >= 3) job.Unusable = true;
-            }
-            if (job == null || job.Unusable) resourceJobFallbacks++;
+            if (job != null) job.Unusable = true;
+            resourceJobFallbacks++;
             LogResourceJobReason(reason, e);
         }
 
@@ -358,6 +389,16 @@ namespace PaviseApp
             {
                 if (ResourceJobPlatform == null || (resourceJobJoined == 0 && resourceJobFallbacks == 0)) return "";
                 int active = 0, diskAccepted = 0, diskSkipped = 0;
+                foreach (IEnumerable<FocusResourceJob> jobs in new IEnumerable<FocusResourceJob>[] { focusResourceJobs.Values, focusIndividualJobs.Values })
+                {
+                    foreach (FocusResourceJob job in jobs)
+                    {
+                        if (!job.Active) continue;
+                        active++;
+                        if (job.DiskOwned) diskAccepted++;
+                        if (job.SkipDisk) diskSkipped++;
+                    }
+                }
                 foreach (ResourceJob job in resourceJobs.Values)
                 {
                     if (!job.AppliedCpuRate.HasValue) continue;

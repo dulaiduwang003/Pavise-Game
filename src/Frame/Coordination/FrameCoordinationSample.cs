@@ -3,6 +3,15 @@ using System.Globalization;
 
 namespace PaviseApp
 {
+    internal enum FrameLayoutCapture
+    {
+        None,
+        Presenter,
+#if PAVISE_SELFTEST
+        Full
+#endif
+    }
+
     internal sealed class FrameCoordinationSample
     {
         internal int Pid;
@@ -22,9 +31,6 @@ namespace PaviseApp
         internal bool PriorityReserved;
 
         internal bool PresenterOnly;
-        // 只识别呈现身份时不采集调度关系 它与旧式 PresenterOnly 兼容采集是不同用途
-        internal bool PresentIdentityOnly;
-        // 完整实验观测只发布诊断与角色线索 不改变既有提优或识别的失败预算
         internal bool LayoutObservation;
 
         internal string Detail;
@@ -60,13 +66,17 @@ namespace PaviseApp
 
         internal uint LostEvents;
 
+#if PAVISE_SELFTEST
         internal ThreadRelationSnapshot Relation;
+#endif
 
         // 呈现次数不能区分游戏画面和同进程辅助窗口 统一调度只准入来源可核验的单一提交流
         internal bool PresentStreamsKnown;
         internal int PresentStreamCount;
 
-        internal string PresentFirstHalf, PresentSecondHalf, PresentSelectionReason, PresentSources;
+        internal string PresentSelectionReason;
+#if PAVISE_SELFTEST
+        internal string PresentFirstHalf, PresentSecondHalf, PresentSources;
         internal int PresentSourceReadSuccesses, PresentSourceReadFailures, PresentFlagsReadFailures;
         internal int UntrackedPresentEvents, UnsupportedPresentEvents, UnmatchedPresentStops, ReplacedPresentStarts, UnclosedPresentStarts, ZeroPresentSources;
         // 窗口边界截断的提交单独计数 不影响来源核验
@@ -76,7 +86,7 @@ namespace PaviseApp
 
         internal string DescribePresentCapture()
         {
-            return "捕获Issue=" + Issue + "；采集用途=" + (PresentIdentityOnly ? "仅呈现身份，调度关系未采集" : "完整或兼容观察")
+            return "捕获Issue=" + Issue
                 + "；呈现选择=" + (PresentSelectionReason ?? Detail ?? "尚未完成")
                 + (TraceFailureDetail.Length == 0 ? "" : "；ETW证据=" + TraceFailureDetail)
                 + "；单呈现角色已核验=" + PresentValid
@@ -92,35 +102,9 @@ namespace PaviseApp
                 + "；采集结束仍未配对开始=" + UnclosedPresentStarts + "；窗口边界提交=" + EdgePresentStops + "/" + EdgePresentStarts
                 + "；来源容量事件=" + PresentSourceCapacityEvents;
         }
+#endif
 
         internal Dictionary<int, long> Threads = new Dictionary<int, long>();
-
-        private sealed class CpuReading
-        {
-            internal long Creation, Kernel, User, At;
-        }
-        private readonly Dictionary<int, CpuReading> cpuBefore = new Dictionary<int, CpuReading>();
-        private readonly Dictionary<int, CpuReading> cpuAfter = new Dictionary<int, CpuReading>();
-
-        // 复用身份查询已经返回的计数 前读结束和后读开始分别包住完整事件窗口
-        internal void RecordThreadCpuBefore(int tid, long creation, long kernel, long user, long readAfter)
-        {
-            cpuBefore[tid] = new CpuReading { Creation = creation, Kernel = kernel, User = user, At = readAfter };
-        }
-        internal void RecordThreadCpuAfter(int tid, long creation, long kernel, long user, long readBefore)
-        {
-            cpuAfter[tid] = new CpuReading { Creation = creation, Kernel = kernel, User = user, At = readBefore };
-        }
-        internal bool CpuZeroGrowthVerified(int tid, long creation, long begin, long end)
-        {
-            CpuReading before, after;
-            return tid > 0 && creation > 0 && begin < end
-                && cpuBefore.TryGetValue(tid, out before) && cpuAfter.TryGetValue(tid, out after)
-                && before.Creation == creation && after.Creation == creation
-                && before.At <= begin && after.At >= end
-                && before.Kernel >= 0 && before.User >= 0 && after.Kernel >= before.Kernel && after.User >= before.User
-                && after.Kernel == before.Kernel && after.User == before.User;
-        }
 
         internal FrameCoordinationSample Reject(FrameCaptureIssue issue, string extra = null)
         {

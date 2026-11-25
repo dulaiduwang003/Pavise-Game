@@ -33,7 +33,7 @@ namespace PaviseApp
         // 自动会话还没把改动恢复干净 环境恢复和退局核验都要等它
         internal bool SessionUnrestored { get { return session != null && !session.IsRestored; } }
 
-        internal void Sync()
+        internal void Sync(LaboratorySelection.ReadScope selectionReads = null)
         {
             bool match; int pid; long creation;
             lock (host.SyncGate)
@@ -58,8 +58,10 @@ namespace PaviseApp
                     session = new LaboratorySession(host.PowerApplyGate);
                 }
             }
-            session.BeginAutomaticCycle(host.GameSessionStarts);
-            LaboratorySelection selection = LaboratorySelection.Read(match, pid, creation);
+            long gameSession = host.GameSessionStarts;
+            session.BeginAutomaticCycle(gameSession);
+            LaboratorySelection selection = selectionReads == null ? LaboratorySelection.Read(match, pid, creation)
+                : selectionReads.Read(match, pid, creation, gameSession);
             lock (host.SyncGate)
             {
                 if (closed) return;

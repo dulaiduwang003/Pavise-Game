@@ -111,6 +111,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
+                if (processReused && HasAntiCheatResources(currentEntry)
+                    && !ClearAntiCheatJob(currentEntry, () => SaveAntiCheatResourceJournal(currentEntry))) return false;
                 if (processReused) ObserveBackgroundAccountingExit(currentEntry);
                 RemoveEntryLocked(pid);
                 batchApply.Remove(pid);
@@ -180,7 +182,8 @@ namespace PaviseApp
             return ReleaseOne(pid, reason, expectedCreation, requireCreation, null, out had, out restoreResult);
         }
 
-        private int ReleaseOne(int pid, SuppressReason reason, long expectedCreation, bool requireCreation, string expectedName, out bool had, out RestoreResult? restoreResult)
+        private int ReleaseOne(int pid, SuppressReason reason, long expectedCreation, bool requireCreation, string expectedName, out bool had,
+            out RestoreResult? restoreResult)
         {
             if ((reason & SuppressReason.AntiCheat) != 0) RevokeAntiCheatTarget(pid);
             restoreResult = null;

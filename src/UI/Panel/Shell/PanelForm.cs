@@ -178,6 +178,9 @@ namespace PaviseApp
 
             private readonly FamilySuppressionSwitch rebar;
 
+            // NVIDIA 预渲染 1 帧 默认关 启动游戏前写入 退局恢复
+            private readonly FamilySuppressionSwitch lowLatency;
+
             private readonly FamilySuppressionSwitch fullscreen;
 
             // 关闭 CFG 写进系统的逐程序设置 默认关 开启前确认风险
@@ -213,6 +216,7 @@ namespace PaviseApp
                 antiCheat = MakeOption("libraryAceToggle", Lang.T("lib.ace"), false, form.ToggleGameAntiCheatSuppression);
                 family = MakeOption("libraryFamilyToggle", Lang.T("lib.family.suppress"), false, form.ToggleGameFamilySuppression);
                 rebar = MakeOption("libraryRebarToggle", Lang.T("lib.rebar"), false, form.ToggleGameRebar);
+                lowLatency = MakeOption("libraryLowLatencyToggle", Lang.T("lib.lowlatency"), false, form.ToggleGameLowLatency);
                 fullscreen = MakeOption("libraryFullscreenToggle", Lang.T("lib.fso"), false, form.ToggleGameFullscreenOptimizations);
                 controlFlowGuard = MakeOption("libraryCfgToggle", Lang.T("lib.cfg"), false, form.ToggleGameControlFlowGuard);
                 core.IconKey = "core";
@@ -222,6 +226,7 @@ namespace PaviseApp
                 antiCheat.IconKey = "ace";
                 family.IconKey = "family";
                 rebar.IconKey = "rebar";
+                lowLatency.IconKey = "lowlatency";
                 fullscreen.IconKey = "fullscreen";
                 controlFlowGuard.IconKey = "cfg";
                 coreDetails = new GameCardDetailsButton
@@ -261,8 +266,9 @@ namespace PaviseApp
                 antiCheat.TabIndex = 5;
                 family.TabIndex = 6;
                 rebar.TabIndex = 7;
-                fullscreen.TabIndex = 8;
-                controlFlowGuard.TabIndex = 9;
+                lowLatency.TabIndex = 8;
+                fullscreen.TabIndex = 9;
+                controlFlowGuard.TabIndex = 10;
                 RefreshItem(initial);
             }
 
@@ -334,17 +340,19 @@ namespace PaviseApp
                 family.Checked = profile.SuppressFamilyBackground;
                 family.Gated = !item.RendererObserved;
                 rebar.Checked = corePolicy.NvRebar;
+                lowLatency.Checked = corePolicy.NvLowLatency;
                 fullscreen.Checked = profile.DisableFullscreenOptimizations;
                 antiCheat.Checked = AntiCheatSuppressionPolicy.Enabled(profile);
                 antiCheat.Summary = Lang.T(antiCheat.Checked ? "lib.ace.on" : "lib.ace.off");
                 antiCheat.Enabled = !owner.antiCheatChangeBusy;
                 family.Enabled = !owner.familyChangeBusy;
                 rebar.Enabled = !owner.rebarChangeBusy;
+                lowLatency.Enabled = !owner.lowLatencyChangeBusy;
                 fullscreen.Enabled = !owner.fullscreenOptimizationsChangeBusy;
                 controlFlowGuard.Checked = profile.DisableControlFlowGuard;
                 controlFlowGuard.Enabled = !owner.cfgChangeBusy;
-                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[8] { core, performance, threadBoost, antiCheat, family, rebar, fullscreen, controlFlowGuard };
-                string[] textEntries = new string[8]
+                FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[9] { core, performance, threadBoost, antiCheat, family, rebar, lowLatency, fullscreen, controlFlowGuard };
+                string[] textEntries = new string[9]
                 {
                     "lib.cores.toggle.tip",
                     "gm.scheduling.resources.detail",
@@ -352,6 +360,7 @@ namespace PaviseApp
                     "lib.ace.tip",
                     item.RendererObserved ? "lib.family.tip" : "lib.family.gated.body",
                     "lib.rebar.tip",
+                    "lib.lowlatency.tip",
                     "lib.fso.tip",
                     "lib.cfg.tip"
                 };
@@ -399,17 +408,33 @@ namespace PaviseApp
                     return;
                 }
                 arranging = true;
+                int contentHeight;
                 try
                 {
                     int width = Math.Max(1, base.Width);
-                    int labelWidth = Math.Max(1, width - Theme.S(8));
-                    cpuTitle.SetBounds(Theme.S(4), Theme.S(2), labelWidth, Theme.S(22));
-                    core.SetBounds(0, cpuTitle.Bottom + Theme.S(4), width, Theme.S(40));
+                    FamilySuppressionSwitch[] otherRows = { family, rebar, lowLatency, fullscreen, controlFlowGuard };
+                    int minimumOtherWidth = Theme.S(240);
+                    foreach (FamilySuppressionSwitch row in otherRows)
+                        minimumOtherWidth = Math.Max(minimumOtherWidth, row.PreferredSize.Width);
+
+                    // 左栏标题后要容纳摘要、开关和“调整”。两栏都放得下才并排。
+                    int summaryColumn = Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft());
+                    int minimumSchedulingWidth = Math.Max(Theme.S(384), summaryColumn + Theme.S(200));
+                    int gap = Theme.S(16);
+                    int available = width - gap;
+                    bool twoColumns = available >= minimumSchedulingWidth + minimumOtherWidth;
+                    int schedulingWidth = twoColumns
+                        ? Math.Max(minimumSchedulingWidth, Math.Min(available * 3 / 5, available - minimumOtherWidth))
+                        : width;
+                    int otherLeft = twoColumns ? schedulingWidth + gap : 0;
+                    int otherWidth = width - otherLeft;
+
+                    cpuTitle.SetBounds(Theme.S(4), Theme.S(2), Math.Max(1, schedulingWidth - Theme.S(8)), Theme.S(22));
+                    core.SetBounds(0, cpuTitle.Bottom + Theme.S(4), schedulingWidth, Theme.S(40));
                     coreDetails.SetBounds(Math.Max(0, core.Width - Theme.S(65)), core.Top + Theme.S(2), Theme.S(64), Theme.S(36));
                     coreDetails.BringToFront();
-                    owner.criticalThreadEditor.SetBounds(0, core.Bottom + Theme.S(8), width, owner.criticalThreadEditor.Height);
+                    owner.criticalThreadEditor.SetBounds(0, core.Bottom + Theme.S(8), schedulingWidth, owner.criticalThreadEditor.Height);
                     // 核心范围和渲染调度的行内摘要保持同列
-                    int summaryColumn = Math.Max(core.NaturalSummaryLeft(), owner.criticalThreadEnabled.NaturalSummaryLeft());
                     if (core.SummaryLeft != summaryColumn || owner.criticalThreadEnabled.SummaryLeft != summaryColumn)
                     {
                         core.SummaryLeft = owner.criticalThreadEnabled.SummaryLeft = summaryColumn;
@@ -417,18 +442,18 @@ namespace PaviseApp
                         owner.criticalThreadEnabled.Invalidate();
                     }
                     // 亲和性下面接这款游戏的性能优先级和游戏线程提优 三项同属“调度与优先级”
-                    performance.SetBounds(0, owner.criticalThreadEditor.Bottom + Theme.S(8), width, Theme.S(40));
-                    threadBoost.SetBounds(0, performance.Bottom + Theme.S(8), width, Theme.S(40));
-                    antiCheat.SetBounds(0, threadBoost.Bottom + Theme.S(8), width, Theme.S(40));
-                    otherTitle.SetBounds(Theme.S(4), antiCheat.Bottom + Theme.S(12), labelWidth, Theme.S(22));
+                    performance.SetBounds(0, owner.criticalThreadEditor.Bottom + Theme.S(8), schedulingWidth, Theme.S(40));
+                    threadBoost.SetBounds(0, performance.Bottom + Theme.S(8), schedulingWidth, Theme.S(40));
+                    antiCheat.SetBounds(0, threadBoost.Bottom + Theme.S(8), schedulingWidth, Theme.S(40));
+                    int otherTop = twoColumns ? cpuTitle.Top : antiCheat.Bottom + Theme.S(12);
+                    otherTitle.SetBounds(otherLeft + Theme.S(4), otherTop, Math.Max(1, otherWidth - Theme.S(8)), Theme.S(22));
                     int rowTop = otherTitle.Bottom + Theme.S(4);
-                    FamilySuppressionSwitch[] familySuppressionSwitchItems = new FamilySuppressionSwitch[4] { family, rebar, fullscreen, controlFlowGuard };
-                    for (int i = 0; i < familySuppressionSwitchItems.Length; i++)
+                    foreach (FamilySuppressionSwitch row in otherRows)
                     {
-                        familySuppressionSwitchItems[i].SetBounds(0, rowTop, width, Theme.S(40));
-                        rowTop = familySuppressionSwitchItems[i].Bottom + Theme.S(8);
+                        row.SetBounds(otherLeft, rowTop, otherWidth, Theme.S(40));
+                        rowTop = row.Bottom + Theme.S(8);
                     }
-                    int uOffset = Dpi.U(controlFlowGuard.Bottom) + 8;
+                    int uOffset = Dpi.U(Math.Max(antiCheat.Bottom, controlFlowGuard.Bottom)) + 8;
                     extensionTitle.Visible = extension != null;
                     if (extension != null)
                     {
@@ -438,14 +463,15 @@ namespace PaviseApp
                         extension.Visible = true;
                         uOffset += 44 + Dpi.U(px);
                     }
-                    base.Height = Theme.S(uOffset);
-                    // 行和叠在行上的“调整”按钮都可能换了位置 整块重画 免得旧位置留下残影
-                    Invalidate(true);
+                    contentHeight = Theme.S(uOffset);
                 }
                 finally
                 {
                     arranging = false;
                 }
+                // 高度变化可能让视口增减滚动条，此时允许按最终宽度重新排版。
+                base.Height = contentHeight;
+                Invalidate(true);
             }
 
             protected override void Dispose(bool disposing)
@@ -822,6 +848,8 @@ namespace PaviseApp
 
         private bool rebarChangeBusy;
 
+        private bool lowLatencyChangeBusy;
+
         private bool fullscreenOptimizationsChangeBusy;
 
         private bool cfgChangeBusy;
@@ -955,12 +983,6 @@ namespace PaviseApp
 
         private Size overviewViewport;
 
-        private string overviewAction;
-
-        private long overviewLogVersion = -1L;
-
-        private int overviewErrors;
-
         private volatile bool donateLoading;
 
         private DonateDialog donateDialog;
@@ -1062,13 +1084,17 @@ namespace PaviseApp
 
         private Label whiteCount;
 
+        private TierPicker processRulesTabs;
+
+        private int processRulesTabIndex;
+
+        private DBPanel whiteContent;
+
         private PillButton whitePick;
 
-        private PillButton whiteBrowse;
+        private PillButton whiteAddMenuButton;
 
-        private PillButton whiteKeyword;
-
-        private PillButton whiteReset;
+        private PillButton whiteMoreButton;
 
         private List<WhitelistRuleView> whiteViews = new List<WhitelistRuleView>();
 
@@ -1082,7 +1108,11 @@ namespace PaviseApp
 
         private ContextMenuStrip whiteMenu;
 
-        private PillButton btnRestorePlatformProtection;
+        private ContextMenuStrip whiteAddMenu;
+
+        private ContextMenuStrip whiteActionsMenu;
+
+        private ToolStripMenuItem btnRestorePlatformProtection;
 
         private PillButton btnRemoveWhitelist;
 

@@ -4,7 +4,12 @@ namespace PaviseApp
     {
         public string Name;
 
+        internal string DriverName;
+
         public string HardwareId;
+
+        // 设备实例路径 对应 Enum 下的设备键
+        public string InstanceId;
 
         public GpuVendor Vendor;
 
@@ -15,6 +20,11 @@ namespace PaviseApp
         public long VideoMemoryBytes;
 
         public int BusNumber = -1;
+
+        internal GpuAdapter Copy()
+        {
+            return (GpuAdapter)MemberwiseClone();
+        }
 
         public string KindText
         {

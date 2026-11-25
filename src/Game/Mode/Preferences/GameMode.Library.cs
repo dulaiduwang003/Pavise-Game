@@ -16,6 +16,18 @@ namespace PaviseApp
             }
             return false;
         }
+        internal ProcessSnapshot RecentLibraryProcessSnapshot(out int session)
+        {
+            session = selfSession;
+            ProcessSnapshot snapshot = latestProcessSnapshot;
+            if (!enabled || stopping || session < 0 || snapshot == null)
+            {
+                return null;
+            }
+            long age = AutoCores.NowTicks - snapshot.MonotonicTicks;
+            return age >= 0 && age <= 1500 * TimeSpan.TicksPerMillisecond ? snapshot : null;
+        }
+
         private bool EnsureLibraryReadyLocked()
         {
             if (libraryIgnoreTransaction == null)
@@ -77,6 +89,7 @@ namespace PaviseApp
             }
             profiles.Clear();
             profiles.AddRange(next);
+            PublishGameProcessNames();
             autoAddIgnore.Clear();
             autoAddIgnore.UnionWith(nextIgnore);
             return true;
@@ -194,6 +207,7 @@ namespace PaviseApp
         }
         private void RaiseLibraryChanged()
         {
+            SyncFrameCaptureReservation();
             Action libraryChanged = this.LibraryChanged;
             if (libraryChanged != null)
             {
@@ -354,6 +368,7 @@ namespace PaviseApp
             }
             if (setProfileOverrideSucceeded)
             {
+                if (key == ThreadBoostSelection.Key) SyncFrameCaptureReservation();
                 NotifyOverridePolicyChanged(key, PolicyCatalog.Canonical(key, value) == "1");
                 if (key == AntiCheatSuppressionPolicy.Key) NotifyAntiCheatSession();
             }
@@ -403,6 +418,7 @@ namespace PaviseApp
                 NotifyOverridePolicyChanged("GameDisableFullscreenOptimizationsV1", false);
                 NotifyOverridePolicyChanged(PolicyCatalog.KeyGameControlFlowGuard, false);
                 NotifyOverridePolicyChanged("GameNvRebarV1", false);
+                NotifyOverridePolicyChanged(PolicyCatalog.KeyGameLowLatency, false);
                 if (hadServiceOverride)
                 {
                     PauseServicesPolicyChanged(pauseServicesOn);

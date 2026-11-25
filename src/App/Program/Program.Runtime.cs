@@ -201,7 +201,7 @@ namespace PaviseApp
                 RenderLane.HealFromCrash();
                 try
                 {
-                    FrameCoordination.HealFromCrash();
+                    FrameCoordination.HealFromCrash(false);
                 }
                 catch
                 {
@@ -231,6 +231,8 @@ namespace PaviseApp
                 if (!jobAffinityRecovered) Logger.Warn(Logger.Format("游戏亲和性 Job 等待恢复： {0}", "Game affinity Job recovery pending: {0}", jobAffinityRecoveryReason));
                 // 后台资源 Job 的系统调用在这里注入 崩溃恢复要按名字解除上次留下的限制
                 SuppressionCore.ResourceJobPlatform = new BackgroundResourceJobPlatform();
+                SuppressionCore.AntiCheatJobs = new AntiCheatJobPlatform();
+                AntiCheatAffinityLease.BeforeConstraintRestore = SuppressionCore.ClearRecordedAntiCheatJob;
                 // 释放时按进程快照找出继承了压制值的子孙
                 SuppressionCore.InheritanceCandidates = InheritedDescendants.Find;
                 NativeEtw.RetireExtractedFiles();
@@ -322,6 +324,7 @@ namespace PaviseApp
                         }
                         LegacyMonitoringCleanup.Start();
                         tamer.Start();
+                        gameMode.StartFrameCaptureReservation();
                         gameMode.Start();
                         GameExtension.Start();
                     }
@@ -349,7 +352,8 @@ namespace PaviseApp
                     GameExtension.NotifyProcessChanges(batch);
                 };
                 SystemAudit.LibraryPaths = gameMode.LibraryExecutablePaths;
-                procNotify.FastTrack = (string name, int session) => gameMode.NeedsGameProcessIdentity(name, session);
+                procNotify.FastTrackEnabled = gameMode.AllowsEtwProcessStart;
+                procNotify.FastTrack = gameMode.MatchesFastGameStart;
                 procNotify.FastStart += gameMode.KickGameDetectionNow;
                 procNotify.Start();
                 gameMode.ProcessEventsAvailable = procNotify.IsActive;
@@ -896,18 +900,21 @@ namespace PaviseApp
                         Logger.Info(Lang.T("log.program.autostart.traywaiting"));
                     }
                 }
+                try
+                {
+                    SystemEvents.PowerModeChanged += delegate { LaboratoryPower.NoteQualificationChange(); };
+                    LaboratoryPower.PowerStatusNotifications = true;
+                }
+                catch (InvalidOperationException) { }
+                catch (System.Runtime.InteropServices.ExternalException) { }
                 SystemEvents.SessionEnded += delegate
                 {
+                    lock (startGate) exiting = true;
+                    FrameCaptureReservation.RequestStopRuntime();
+                    try { gameMode.Enabled = false; } catch { }
                     try { tamer.PanicRestore(); } catch { }
                     bool labClosed = false;
                     try { labClosed = gameMode.Laboratory.Close(8000); } catch { }
-                    try
-                    {
-                        gameMode.Enabled = false;
-                    }
-                    catch
-                    {
-                    }
                     try
                     {
                         OptionalServicePause.Restore();
@@ -1134,6 +1141,8 @@ namespace PaviseApp
                 }
                 finally
                 {
+                    lock (startGate) exiting = true;
+                    if (Volatile.Read(ref runtimeStopped) == 0) FrameCaptureReservation.FinishAfterUiExit();
                     uiDispatcher.Dispose();
                 }
                 InvalidateMainInstanceBootstrap();

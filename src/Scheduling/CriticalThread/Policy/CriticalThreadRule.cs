@@ -8,12 +8,13 @@ namespace PaviseApp
 
     // 只保存逐游戏策略 线程身份由运行时确认
     // 新值只能追加在末尾 持久化使用策略文本 不使用枚举数值
-    // RetiredGentle 对应退役的“温和提优” 档案加载要求原文能解析回自身 只保留编码 运行时按关闭处理
+    // Orchestration 和 RetiredGentle 只用于旧档读取 运行时关闭
     internal enum SchedulingStrategy { Orchestration, RenderBoost, RenderCore, DependencyBoost, RenderCoreTimeCritical, GamePriority, RetiredGentle }
 
     internal sealed class CriticalThreadRule
     {
         internal const string Key = "GameCriticalThreadHardRuleV1";
+        internal const int MaximumIsolated = 4;
 
         internal const string AutomaticTopology = "auto";
 
@@ -29,6 +30,8 @@ namespace PaviseApp
 
         internal bool IsUnified { get { return Layout == CriticalThreadLayout.Unified; } }
 
+        internal bool IsUnifiedPreference { get { return IsUnified && (Automatic || IsOff); } }
+
         internal readonly bool IsOff;
 
         internal readonly SchedulingComparisonArm ComparisonArm;
@@ -37,13 +40,15 @@ namespace PaviseApp
 
         internal readonly SchedulingStrategy Strategy;
 
-        // ParseForRuntime 已将旧手动规则转换为自动选核策略 退役方案的旧编码不算正式策略
+        // 旧布局和手动规则由各自的字段识别
         private bool FormalStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy != SchedulingStrategy.RetiredGentle; } }
 
         // 退役方案的旧编码只供档案读取和界面提示 运行副本一律关闭
         internal bool IsRetiredStrategy { get { return IsUnified && !IsOff && !IsComparison && Automatic && !ManualTarget && Strategy == SchedulingStrategy.RetiredGentle; } }
 
-        internal bool IsOrchestration { get { return FormalStrategy && Strategy == SchedulingStrategy.Orchestration; } }
+        private bool IsOrchestration { get { return FormalStrategy && Strategy == SchedulingStrategy.Orchestration; } }
+
+        internal bool IsRetiredAutomatic { get { return IsOrchestration || !IsUnified && Automatic && !ManualTarget; } }
 
         internal bool IsDependencyBoost { get { return FormalStrategy && Strategy == SchedulingStrategy.DependencyBoost; } }
 
@@ -57,15 +62,13 @@ namespace PaviseApp
 
         internal ulong ManualMask { get { ulong mask = 0; foreach (ulong target in targets) mask |= target; return IsManualPin ? mask : 0; } }
 
-        internal bool UsesWorkloadDiscovery { get { return IsOrchestration || IsDependencyBoost; } }
-
         internal bool IsRenderStrategy { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderBoost || Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical) || IsManualPin; } }
 
         internal bool SupportsClearCore { get { return FormalStrategy && !IsDependencyBoost && !IsGamePriority || IsManualPin; } }
 
         internal bool PinsRenderThread { get { return FormalStrategy && (Strategy == SchedulingStrategy.RenderCore || Strategy == SchedulingStrategy.RenderCoreTimeCritical) || IsManualPin; } }
 
-        // 写入其他游戏线程范围的资格 只有开了整核避让的渲染单核和手动才让其他线程避开 自动只设理想处理器 不碰其他线程
+        // 整核避让允许移动其他游戏线程
         internal bool WritesOtherThreadRanges { get { return !IsOrchestration && ClearCore && SupportsClearCore; } }
 
         private readonly ulong[] targets;
@@ -99,11 +102,11 @@ namespace PaviseApp
         internal CriticalThreadRule(string topology, bool workerAvoidance, CriticalThreadLayout layout, params ulong[] processors)
         {
             RequireLayout(layout);
-            if (string.IsNullOrEmpty(topology) || topology == "auto" || processors == null || processors.Length < 1 || processors.Length > CriticalThreadAutoPolicy.MaximumIsolated || processors.Any((ulong x) => x == 0 || (x & (x - 1)) != 0) || processors.Distinct().Count() != processors.Length
+            if (string.IsNullOrEmpty(topology) || topology == "auto" || processors == null || processors.Length < 1 || processors.Length > MaximumIsolated || processors.Any((ulong x) => x == 0 || (x & (x - 1)) != 0) || processors.Distinct().Count() != processors.Length
                 || (layout == CriticalThreadLayout.ElasticAuxiliary || layout == CriticalThreadLayout.Unified) && processors.Length != 1
                 || layout == CriticalThreadLayout.Unified && !ValidTopologyText(topology))
             {
-                throw new ArgumentException("Choose one to " + CriticalThreadAutoPolicy.MaximumIsolated + " distinct logical processors");
+                throw new ArgumentException("Choose one to " + MaximumIsolated + " distinct logical processors");
             }
             Topology = topology;
             WorkerAvoidance = workerAvoidance;
@@ -143,14 +146,10 @@ namespace PaviseApp
             return new CriticalThreadRule(false, CriticalThreadLayout.Unified);
         }
 
-        // 推荐的亲和性模式 也是打开渲染线程亲和性 还没选过模式时的缺省 自动
-        // 自动按实测给一到三条帧关键线程各指定一颗优先运行的物理核（只设理想处理器 不锁定） 其他线程不受限制 条件不满足就少放或不放
-        internal const SchedulingStrategy RecommendedStrategy = SchedulingStrategy.Orchestration;
-
-        // 已保存的模式原样读取 不因缺省变化改写 自动的编码带避让位 运行时只做软放置 不看这一位
+        // 显式开启且没有可用规则时使用的模式
         internal static CriticalThreadRule UnifiedDefault()
         {
-            return UnifiedStrategy(RecommendedStrategy, true);
+            return UnifiedStrategy(SchedulingStrategy.RenderCore, false);
         }
 
         private CriticalThreadRule(SchedulingStrategy strategy, bool clearCore)
@@ -162,7 +161,7 @@ namespace PaviseApp
             WorkerAvoidance = clearCore && strategy != SchedulingStrategy.DependencyBoost && strategy != SchedulingStrategy.RetiredGentle;
         }
 
-        // 无清核的编排沿用 7|auto 编码
+        // 保留自动旧档编码
         internal static CriticalThreadRule UnifiedStrategy(SchedulingStrategy strategy, bool clearCore)
         {
             return strategy == SchedulingStrategy.Orchestration && !clearCore ? UnifiedAuto() : new CriticalThreadRule(strategy, clearCore);
@@ -215,9 +214,9 @@ namespace PaviseApp
         private CriticalThreadRule(string topology, ulong[] processors, bool clearCore, ManualSetTag tag)
         {
             if (string.IsNullOrEmpty(topology) || topology == AutomaticTopology || topology != topology.ToUpperInvariant() || !ValidTopologyText(topology)
-                || processors == null || processors.Length < 2 || processors.Length > CriticalThreadAutoPolicy.MaximumIsolated
+                || processors == null || processors.Length < 2 || processors.Length > MaximumIsolated
                 || processors.Any(x => x == 0 || (x & (x - 1)) != 0) || processors.Distinct().Count() != processors.Length)
-                throw new ArgumentException("Choose two to " + CriticalThreadAutoPolicy.MaximumIsolated + " distinct logical processors");
+                throw new ArgumentException("Choose two to " + MaximumIsolated + " distinct logical processors");
             Topology = topology;
             WorkerAvoidance = clearCore;
             Layout = CriticalThreadLayout.Unified;
@@ -278,16 +277,15 @@ namespace PaviseApp
         internal static CriticalThreadRule ParseForRuntime(string text)
         {
             CriticalThreadRule rule = Parse(text);
+            if (rule != null && !rule.IsUnified && rule.IsRetiredAutomatic) return UnifiedOff();
             // 运行只接收统一规则 旧格式解析仅供原有恢复收据核验使用
-            if (rule == null || !rule.IsUnified || !rule.Automatic && !rule.IsOff) return null;
-            // 退役的对照和温和提优只保留读取兼容 运行副本关闭 不按缺省方案重新启用
-            if (rule.IsComparison || rule.IsRetiredStrategy) return UnifiedOff();
+            if (rule == null || !rule.IsUnifiedPreference) return null;
+            // 退役方案只保留读取兼容
+            if (rule.IsComparison || rule.IsRetiredStrategy || rule.IsOrchestration) return UnifiedOff();
             // 只调优先级的旧方案（游戏优先 渲染优先 依赖协同）没有放置内容 运行副本关闭
             if (rule.IsGamePriority || rule.IsDependencyBoost || rule.IsRenderStrategy && !rule.PinsRenderThread) return UnifiedOff();
             // 旧的专核强化按渲染单核加整核避让运行
             if (rule.IsTimeCriticalRender) return UnifiedStrategy(SchedulingStrategy.RenderCore, true);
-            // 旧的“7|auto”和“7|auto|x”运行副本统一成带避让位的编码 自动实际只设理想处理器 不清核
-            if (rule.IsOrchestration && !rule.ClearCore) return UnifiedStrategy(SchedulingStrategy.Orchestration, true);
             // 手动规则原样运行 运行时再按当前拓扑和游戏范围核验
             return rule;
         }
@@ -508,7 +506,7 @@ namespace PaviseApp
             reserved = AutoCores.WholeCores(reserved, physical);
             if (Automatic && !ManualTarget)
             {
-                if (CriticalThreadAutoPolicy.Targets(1, physical, allowed, reserved, 0uL, 0uL, null, 0uL, 0uL) == null)
+                if (physical.Count(core => (core & allowed) != 0 && (core & reserved) == 0) < 3)
                 {
                     return PerformancePolicy.Text("可用物理核心不足：至少选中三个不同物理核，每核可只选一个逻辑线程", "Not enough available physical cores: select at least three distinct physical cores; one logical processor per core is enough");
                 }

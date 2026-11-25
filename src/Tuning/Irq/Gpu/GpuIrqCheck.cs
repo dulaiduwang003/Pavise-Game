@@ -645,9 +645,10 @@ namespace PaviseApp
             InterruptAttribution interruptAttribution = new InterruptAttribution();
             try
             {
-                if (!interruptAttribution.Start())
+                if (!interruptAttribution.Start(cancelled))
                 {
-                    error = InterruptAttribution.StartFailureText(interruptAttribution);
+                    if (cancelled == null || !cancelled())
+                        error = InterruptAttribution.StartFailureText(interruptAttribution);
                     return null;
                 }
                 Stopwatch stopwatch = Stopwatch.StartNew();

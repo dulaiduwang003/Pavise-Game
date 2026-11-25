@@ -142,8 +142,9 @@ namespace PaviseApp
                 {
                 }
             }
-            CaptureWindowEvidence(list);
-            return DetectSnapshot((IList<GameProcessSnapshot>)list, profiles, out armedProfile);
+            string armedVia;
+            return DetectSnapshot(list, profiles, out armedProfile, out armedVia, null,
+                list.Count == 0 ? null : CaptureWindowEvidence());
         }
 
         public static GameDetection Detect(ProcessSnapshot processes, IList<GameProfile> profiles, int ownerSession, out string armedProfile)
@@ -170,8 +171,8 @@ namespace PaviseApp
                     list.Add(identity);
                 }
             }
-            CaptureWindowEvidence(list);
-            return DetectSnapshot(list, profiles, out armedProfile, out armedVia, familyEvidence);
+            return DetectSnapshot(list, profiles, out armedProfile, out armedVia, familyEvidence,
+                list.Count == 0 ? null : CaptureWindowEvidence());
         }
 
         internal static bool TryCaptureProcessIdentity(ProcEntry entry, int ownerSession, out GameProcessSnapshot identity)
@@ -366,14 +367,16 @@ namespace PaviseApp
 
         private static GameDetection FindForegroundCandidateInProfile(Dictionary<int, GameProcessSnapshot> byPid, GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence, GameDetection incumbent = null)
         {
+            if (ElectionVetoed(foreground.Name, foreground.Path)
+                || (!IsDirectMember(profile, foreground, familyEvidence)
+                    && !HasMemberAncestor(foreground, byPid, null, profile, familyEvidence)))
+            {
+                return null;
+            }
             bool registeredExecutable = SamePath(profile.ExecutablePath, foreground.Path);
             // 现有渲染进程仍存活时 不能仅凭全屏就提升新候选 还需 GPU 证据以排除全屏网页及 SDK 覆盖层
 
             bool challengesLiveRenderer = !registeredExecutable && IncumbentRendererLive(incumbent, profile, foreground, byPid);
-            if (ElectionVetoed(foreground.Name, foreground.Path))
-            {
-                return null;
-            }
             HashSet<int> hashSet = new HashSet<int>();
             foreach (GameProcessSnapshot value in byPid.Values)
             {
@@ -381,10 +384,6 @@ namespace PaviseApp
                 {
                     hashSet.Add(value.Pid);
                 }
-            }
-            if (!hashSet.Contains(foreground.Pid) && !HasMemberAncestor(foreground, byPid, hashSet))
-            {
-                return null;
             }
             GameDetection gameDetection;
             if (profile.ForceTrigger && registeredExecutable)
@@ -541,6 +540,12 @@ namespace PaviseApp
 
         internal static GameDetection DetectSnapshot(IList<GameProcessSnapshot> snapshot, IList<GameProfile> profiles, out string armedProfile, out string armedVia, GameFamilyEvidence familyEvidence = null)
         {
+            return DetectSnapshot(snapshot, profiles, out armedProfile, out armedVia, familyEvidence, null);
+        }
+
+        private static GameDetection DetectSnapshot(IList<GameProcessSnapshot> snapshot, IList<GameProfile> profiles,
+            out string armedProfile, out string armedVia, GameFamilyEvidence familyEvidence, WindowEvidence windowEvidence)
+        {
             armedProfile = null;
             armedVia = null;
             if (snapshot == null || profiles == null || profiles.Count == 0)
@@ -596,6 +601,11 @@ namespace PaviseApp
                         hashSet3.Add(value2.Pid);
                         list.Add(value2);
                     }
+                }
+                if (windowEvidence != null)
+                {
+                    foreach (GameProcessSnapshot member in list)
+                        windowEvidence.Observe(member);
                 }
                 if (armedProfile == null)
                 {
@@ -675,7 +685,8 @@ namespace PaviseApp
             return true;
         }
 
-        private static bool HasMemberAncestor(GameProcessSnapshot identity, Dictionary<int, GameProcessSnapshot> byPid, HashSet<int> memberPids)
+        private static bool HasMemberAncestor(GameProcessSnapshot identity, Dictionary<int, GameProcessSnapshot> byPid,
+            HashSet<int> memberPids, GameProfile profile = null, GameFamilyEvidence familyEvidence = null)
         {
             GameProcessSnapshot gameProcessSnapshot = identity;
             HashSet<int> hashSet = new HashSet<int>();
@@ -697,7 +708,7 @@ namespace PaviseApp
                 {
                     return false;
                 }
-                if (memberPids.Contains(parentPid))
+                if (memberPids != null ? memberPids.Contains(parentPid) : IsDirectMember(profile, value, familyEvidence))
                 {
                     return true;
                 }
@@ -970,7 +981,7 @@ namespace PaviseApp
             {
                 if (!profile.Entries.Contains(name))
                 {
-                    return IsFallbackEntryName(profile, name);
+                    return IsFallbackEntryName(Path.GetFileNameWithoutExtension(profile.ExecutablePath), name);
                 }
                 return true;
             }
@@ -990,13 +1001,8 @@ namespace PaviseApp
             return profile.ContainsPath(path);
         }
 
-        private static bool IsFallbackEntryName(GameProfile profile, string name)
+        internal static bool IsFallbackEntryName(string fileNameWithoutExtension, string name)
         {
-            if (string.IsNullOrEmpty(profile.ExecutablePath) || string.IsNullOrEmpty(name))
-            {
-                return false;
-            }
-            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(profile.ExecutablePath);
             if (string.IsNullOrEmpty(fileNameWithoutExtension) || fileNameWithoutExtension.Length < 3)
             {
                 return false;
@@ -1129,27 +1135,39 @@ namespace PaviseApp
             }
         }
 
-        private static void CaptureWindowEvidence(IList<GameProcessSnapshot> snapshot)
+        private static WindowEvidence CaptureWindowEvidence()
         {
-            if (snapshot == null || snapshot.Count == 0)
+            int foregroundPid = ForegroundPid();
+            bool fullscreen = foregroundPid > 0 && ForegroundWindowFullscreenLike(foregroundPid);
+            return new WindowEvidence(foregroundPid, fullscreen, VisibleWindowPids(false), IsLiveProcessCreation);
+        }
+
+        private sealed class WindowEvidence
+        {
+            private readonly int foregroundPid;
+            private readonly bool fullscreen;
+            private readonly HashSet<int> visible;
+            private readonly Func<int, long, bool> isLive;
+            private readonly HashSet<KeyValuePair<int, long>> observed = new HashSet<KeyValuePair<int, long>>();
+
+            internal WindowEvidence(int foregroundPid, bool fullscreen, HashSet<int> visible, Func<int, long, bool> isLive)
             {
-                return;
+                this.foregroundPid = foregroundPid;
+                this.fullscreen = fullscreen;
+                this.visible = visible;
+                this.isLive = isLive;
             }
-            int foregroundPidResult = ForegroundPid();
-            bool fullscreenForeground = foregroundPidResult > 0 && ForegroundWindowFullscreenLike(foregroundPidResult);
-            HashSet<int> hashSet = VisibleWindowPids(false);
-            foreach (GameProcessSnapshot item in snapshot)
+
+            internal void Observe(GameProcessSnapshot identity)
             {
-                if (item != null && item.Pid > 0 && item.Creation > 0)
+                bool foreground = identity.Pid == foregroundPid;
+                bool shown = visible.Contains(identity.Pid);
+                if ((foreground || shown) && observed.Add(new KeyValuePair<int, long>(identity.Pid, identity.Creation))
+                    && isLive(identity.Pid, identity.Creation))
                 {
-                    bool foregroundValue = item.Pid == foregroundPidResult;
-                    bool visibleValue = hashSet.Contains(item.Pid);
-                    if ((foregroundValue || visibleValue) && IsLiveProcessCreation(item.Pid, item.Creation))
-                    {
-                        item.Foreground = foregroundValue;
-                        item.Visible = visibleValue;
-                        item.FullscreenLike = foregroundValue && fullscreenForeground;
-                    }
+                    identity.Foreground = foreground;
+                    identity.Visible = shown;
+                    identity.FullscreenLike = foreground && fullscreen;
                 }
             }
         }

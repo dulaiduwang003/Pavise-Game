@@ -97,7 +97,8 @@ namespace PaviseApp
                 }
             }
             if (renderer != null && GameExtension.Current != null
-                && GameExtension.Current.AppliesTo(renderer.Profile) && HasRendererObservation(renderer.Profile))
+                && GameExtension.Current.AppliesTo(renderer.Profile) && HasRendererObservation(renderer.Profile)
+                && GameExtension.Current.WantsSessionNotifications)
             {
                 RendererObservationStore observations = rendererObservations;
                 if (observations != null)
@@ -266,6 +267,7 @@ namespace PaviseApp
             shutdownWritersStopped = false;
             Stopwatch elapsed = Stopwatch.StartNew();
             stopping = true;
+            FrameCaptureReservation.RequestStopRuntime();
             InvalidatePowerPlanSession();
             Laboratory.Sync();
             RevokeCriticalThreadIntent("Stop");
@@ -433,7 +435,8 @@ namespace PaviseApp
                         continue;
                     }
                     PrivacyControl.TryRestoreRetired(() => !active && !stopping && !panicReq);
-                    SyncPerformanceAutomation();
+                    var laboratoryReads = new LaboratorySelection.ReadScope();
+                    SyncPerformanceAutomation(laboratoryReads);
                     ExeLaunchSettings.Sync(false, -1L);
                     SyncGameNvDelivery();
                     MaybeRecoverHistoricalCriticalThreads();
@@ -450,7 +453,7 @@ namespace PaviseApp
                             RetryDeactivate(Lang.T("t.gamemode.43"));
                         }
                     }
-                    else if (!ScanGameSession())
+                    else if (!ScanGameSession(laboratoryReads))
                     {
                         continue;
                     }
@@ -494,7 +497,7 @@ namespace PaviseApp
             {
             }
         }
-        private bool ScanGameSession()
+        private bool ScanGameSession(LaboratorySelection.ReadScope laboratoryReads)
         {
             bool fallbackOnly;
             if (!ShouldRunProcessScan(out fallbackOnly))
@@ -581,6 +584,7 @@ namespace PaviseApp
                     Logger.Log(() => Lang.T("log.gamemode.46") + runningGame);
                     ResetAdaptiveGuard();
                     Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
+                    ReleaseBackground(Lang.T("t.gamemodeenv.41"));
                     ReportFinish();
                     BeginSessionPolicy();
                     ReportBegin(runningGame);
@@ -603,7 +607,7 @@ namespace PaviseApp
                 UpdateSessionForeground(processSnapshot, rendererPid, gamePids);
                 bool smartSceneSwitchedOut = SmartSceneSwitchedOut;
                 ApplyEnv();
-                SyncPerformanceAutomation();
+                SyncPerformanceAutomation(laboratoryReads);
                 ApplyStandbyCleanerPolicy();
                 RefreshAutoCoreMode();
                 if (EffSuppress && !smartSceneSwitchedOut)
@@ -963,6 +967,7 @@ namespace PaviseApp
                 policySnapshot = sessionPolicy = ((gameProfile != null) ? PolicyResolver.For(gameProfile) : PolicyResolver.Global());
                 CaptureSessionCorePreferencesLocked(gameProfile, policySnapshot);
             }
+            FrameCaptureReservation.OnGameStarted();
             SyncAutomationPolicy();
             BeginAutomationEvidence();
             if (!policySnapshot.IsGlobal)
@@ -988,6 +993,7 @@ namespace PaviseApp
 #endif
         private void ReportBegin(string game)
         {
+            core.ResetOrdinaryBackgroundAttempts();
             BeginBackgroundRecoveryAccounting();
             ResetBoostIdentity();
             long currentProcessCpuTicksResult = CurrentProcessCpuTicks();
@@ -997,6 +1003,7 @@ namespace PaviseApp
                 repCreation.Clear();
                 repProc.Clear();
                 repSealed.Clear();
+                ResetBackgroundFocusGame();
                 repGame = game;
                 repStart = Stopwatch.GetTimestamp();
                 repPaviseCpuStart = currentProcessCpuTicksResult;
@@ -1068,6 +1075,7 @@ namespace PaviseApp
         }
         private void ReportFinish()
         {
+            core.ResetOrdinaryBackgroundAttempts();
             string repGameSnapshot;
             long repStartSnapshot;
             Dictionary<int, long> dictionary;
@@ -1078,6 +1086,7 @@ namespace PaviseApp
             lock (sync)
             {
                 repGameSnapshot = repGame;
+                if (repGameSnapshot != null) ResetBackgroundFocusGame();
                 repStartSnapshot = repStart;
                 dictionary = new Dictionary<int, long>(repCpu);
                 dictionary2 = new Dictionary<int, string>(repProc);

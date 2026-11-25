@@ -41,7 +41,13 @@ namespace PaviseApp
 
         public override bool NeedsProcessIdentity(string name)
         {
-            return LolRuntimeProcesses.IsScanCandidateName(name);
+            if (!LolRuntimeProcesses.IsScanCandidateName(name)) return false;
+            LolOptimizationService current;
+            lock (gate)
+            {
+                current = service;
+            }
+            return current == null || current.NeedsProcessIdentity();
         }
 
         public override void NotifyProcessChanges(ProcessChangeBatch batch)

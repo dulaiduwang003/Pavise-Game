@@ -20,6 +20,8 @@ namespace PaviseApp
         {
         }
 
+        public virtual bool WantsSessionNotifications { get { return false; } }
+
         public virtual void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
         }

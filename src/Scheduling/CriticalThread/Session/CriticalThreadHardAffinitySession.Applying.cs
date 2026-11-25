@@ -55,8 +55,7 @@ namespace PaviseApp
                 workerAdmissionBudget.Failed(thread);
         }
 
-        private bool FloatingCandidate(HardThreadIdentity thread)
-        { return plan != null && plan.FloatingCandidates && plan.IsCandidate(thread); }
+
 
         private void NoteSkip(string reason, HardThreadIdentity thread, HardThreadObserved observed)
         {
@@ -174,7 +173,7 @@ namespace PaviseApp
             });
         }
 
-        internal HardThreadPlan CreatePlan(HardThreadChoice[] choices, bool requireWorkerCoverage = false, bool preserveOriginalMasks = false, HardThreadChoice[] workerPlacements = null, bool sharedCandidate = false, bool selectedWorkersOnly = false, bool floatingCandidates = false)
+        internal HardThreadPlan CreatePlan(HardThreadChoice[] choices, bool requireWorkerCoverage = false, bool preserveOriginalMasks = false, HardThreadChoice[] workerPlacements = null, bool sharedCandidate = false)
         {
             if (disposed)
             {
@@ -193,7 +192,7 @@ namespace PaviseApp
                     {
                         throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "original process observation unavailable");
                     }
-                    return HardThreadPlan.Create(gate.Target, hardThreadMachine, choices, gate.AllowWorkers ? HardThreadWorkerMode.AvoidWorkers : HardThreadWorkerMode.CandidatesOnly, requireWorkerCoverage, preserveOriginalMasks, workerPlacements, sharedCandidate, selectedWorkersOnly, floatingCandidates);
+                    return HardThreadPlan.Create(gate.Target, hardThreadMachine, choices, gate.AllowWorkers ? HardThreadWorkerMode.AvoidWorkers : HardThreadWorkerMode.CandidatesOnly, requireWorkerCoverage, preserveOriginalMasks, workerPlacements, sharedCandidate);
                 }
                 catch (Exception ex)
                 {
@@ -403,16 +402,10 @@ namespace PaviseApp
                 }
                 if (unavailable != null)
                 {
-                    if (!plan.SelectedWorkersOnly) ForgetUnchanged(row.Thread);
+                    ForgetUnchanged(row.Thread);
                     throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable,
                         Logger.Text("unchanged thread coverage changed or became unavailable；原因=", "unchanged thread coverage changed or became unavailable; reason=") + unavailable
-                        + ThreadFact(row.Thread, observed), !plan.SelectedWorkersOnly);
-                }
-                if (FloatingCandidate(row.Thread))
-                {
-                    // 浮动角色的范围仅读取 不将游戏后改的值纳入写入归属
-                    RememberUnchanged(row.Thread, observed, deferConfirmation);
-                    continue;
+                        + ThreadFact(row.Thread, observed), true);
                 }
                 if (observed.Mask != row.Applied)
                 {
@@ -440,16 +433,10 @@ namespace PaviseApp
                             NoteSkip(Logger.Text("unchanged thread coverage changed or became unavailable；纠正失败=", "unchanged thread coverage changed or became unavailable; correctionFailure=") + error.Message, row.Thread, observed);
                             continue;
                         }
-                        if (plan.SelectedWorkersOnly && qualificationOnly)
-                        {
-                            // 尚未调用原生设置时保留冻结的只读基线 不能为补接纳而重捕获外部新值
-                            if (Find(row.Thread) == null) lock (factsGate)
-                            { unchangedPlacements[row.Thread.Key] = row; verified.Remove(row.Thread.Key); }
-                        }
-                        else ForgetUnchanged(row.Thread);
+                        ForgetUnchanged(row.Thread);
                         throw new HardThreadOperationException(operation == null ? HardThreadFailureKind.WriteOrDurabilityFault : operation.Kind,
                             Logger.Text("unchanged thread coverage changed or became unavailable；纠正失败=", "unchanged thread coverage changed or became unavailable; correctionFailure=") + error.Message
-                            + ThreadFact(row.Thread, observed), !plan.SelectedWorkersOnly || !qualificationOnly);
+                            + ThreadFact(row.Thread, observed), true);
                     }
                     message = message ?? "unchanged thread TID " + row.Thread.Tid + " applied=0x" + row.Applied.ToString("X")
                         + " observed=0x" + observed.Mask.ToString("X");
@@ -649,8 +636,6 @@ namespace PaviseApp
                 }
                 if (!plan.IsCandidate(hardThreadIdentity))
                 {
-                    if (plan.SelectedWorkersOnly && !plan.IsWorkerPlacement(hardThreadIdentity))
-                        throw InvalidRequest(Logger.Text("显式工作组输入包含未获准的线程身份", "explicit workload group input contains unapproved thread identities"));
                     if (coverage == HardThreadCoverage.CandidatesOnly)
                     {
                         throw InvalidRequest("candidate coverage cannot include workers");
@@ -670,8 +655,7 @@ namespace PaviseApp
                 }
                 else if (Find(hardThreadIdentity) == null) unchangedInput++;
             }
-            int workerLimit = plan.SelectedWorkersOnly ? HardThreadPlan.MaximumSelectedWorkerPlacements : 8;
-            if ((!plan.RequireWorkerCoverage && processedCount > workerLimit) || journal.Rows.Count + unchangedInput + processedCount2 > 512)
+            if ((!plan.RequireWorkerCoverage && processedCount > 8) || journal.Rows.Count + unchangedInput + processedCount2 > 512)
             {
                 throw InvalidRequest("bounded worker batch required (input=" + threads.Length + " rows=" + journal.Rows.Count + " new=" + processedCount2 + " workers=" + processedCount + ")");
             }
@@ -701,7 +685,7 @@ namespace PaviseApp
             HardThreadPlan hardThreadPlan;
             try
             {
-                hardThreadPlan = HardThreadPlan.Create(gate.Target, hardThreadMachine, plan.Choices, plan.WorkerMode, plan.RequireWorkerCoverage, plan.PreserveOriginalMasks, plan.WorkerPlacements, plan.SharedCandidate, plan.SelectedWorkersOnly, plan.FloatingCandidates);
+                hardThreadPlan = HardThreadPlan.Create(gate.Target, hardThreadMachine, plan.Choices, plan.WorkerMode, plan.RequireWorkerCoverage, plan.PreserveOriginalMasks, plan.WorkerPlacements, plan.SharedCandidate);
             }
             catch (Exception ex)
             {
@@ -746,7 +730,7 @@ namespace PaviseApp
                             || plan.MaskFor(thread, observed.Mask) == 0)
                         {
                             // 已退役的弹性辅助池要求完整保留两个处理器 成员缺失时仍整体拒绝 不退化成单核排队
-                            if (plan.IsCandidate(thread) || plan.IsWorkerPlacement(thread) && !plan.SelectedWorkersOnly)
+                            if (plan.IsCandidate(thread) || plan.IsWorkerPlacement(thread))
                                 throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable,
                                     (plan.IsCandidate(thread) ? "candidate" : "auxiliary worker") + " preflight unavailable or externally constrained" + ThreadFact(thread, observed), Pending());
                             skipped.Add(thread.Key);
@@ -775,7 +759,7 @@ namespace PaviseApp
                     }
                 }
             }
-            bool fullCoverageRequired = !plan.SelectedWorkersOnly && coverage != HardThreadCoverage.Complete && coverage != HardThreadCoverage.CandidatesOnly;
+            bool fullCoverageRequired = coverage != HardThreadCoverage.Complete && coverage != HardThreadCoverage.CandidatesOnly;
             bool workersVerified = !plan.RequireWorkerCoverage;
             foreach (HardThreadIdentity thread in threads)
             {
@@ -806,7 +790,7 @@ namespace PaviseApp
                 if (RetireConfirmedWorkerExit(thread, hardThreadObserved2)) continue;
                 if (hardThreadObserved2 == null || hardThreadObserved2.Read != 0 || !hardThreadObserved2.CpuSetsEmpty || hardThreadObserved2.Group != plan.Group || !OriginalMaskAdmissible(hardThreadObserved2.Mask))
                 {
-                    if (isCandidate || plan.IsWorkerPlacement(thread) && !plan.SelectedWorkersOnly)
+                    if (isCandidate || plan.IsWorkerPlacement(thread))
                     {
                         throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable, "candidate changed before admission", Pending());
                     }
@@ -820,7 +804,7 @@ namespace PaviseApp
                 ulong appliedValue = plan.MaskFor(thread, hardThreadObserved2.Mask);
                 if (appliedValue == 0)
                 {
-                    if (isCandidate || plan.IsWorkerPlacement(thread) && !plan.SelectedWorkersOnly)
+                    if (isCandidate || plan.IsWorkerPlacement(thread))
                         throw new HardThreadOperationException(HardThreadFailureKind.ObservationUnavailable,
                             "original thread range has no processor compatible with this layout", Pending());
                     skipped.Add(thread.Key);
@@ -913,7 +897,7 @@ namespace PaviseApp
                         }
                     }
                     HardThreadOperationException ex3 = ex2 as HardThreadOperationException;
-                    if (!nativeWriteAttempted && unappliedRecorded && !isCandidate && !(plan.IsWorkerPlacement(thread) && !plan.SelectedWorkersOnly)
+                    if (!nativeWriteAttempted && unappliedRecorded && !isCandidate && !plan.IsWorkerPlacement(thread)
                         && ex3 != null && ex3.Kind == HardThreadFailureKind.ObservationUnavailable)
                     {
                         skipped.Add(thread.Key);
@@ -972,13 +956,6 @@ namespace PaviseApp
 
         private bool CompleteApply(bool partial)
         {
-            if (plan.SelectedWorkersOnly)
-            {
-                Status = partial ? HardThreadStatus.CoveragePending : HardThreadStatus.Applied;
-                Detail = (partial ? Logger.Text("显式工作组部分成员尚未核验，保留已接管字段", "some explicit workload group members not yet verified, owned fields retained")
-                    : Logger.Text("显式工作组成员已逐线程读回；未声明全游戏线程避让或系统独占", "explicit workload group members read back per thread; no claim of game-wide worker avoidance or system exclusivity")) + (partial && skipNote != null ? Logger.Text("；", "; ") + skipNote : "");
-                return true;
-            }
             Status = ((plan.WorkerMode == HardThreadWorkerMode.CandidatesOnly) ? HardThreadStatus.AppliedCandidates : ((!partial) ? HardThreadStatus.Applied : HardThreadStatus.CoveragePending));
             Detail = ((Status == HardThreadStatus.AppliedCandidates) ? "only original candidates are bound; worker placement is unchanged" : ((!partial) ? "provided snapshot threads verified; future workers are not instantly exclusive" : "thread lifecycle coverage is incomplete"))
                 + (partial && skipNote != null ? Logger.Text("；", "; ") + skipNote : "");

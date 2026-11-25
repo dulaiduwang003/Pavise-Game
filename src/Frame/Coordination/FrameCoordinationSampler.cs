@@ -36,9 +36,12 @@ namespace PaviseApp
             internal int SchedulerSwitches;
 
             internal bool PresenterOnly;
+            internal readonly FrameLayoutCapture LayoutCapture;
+
+            internal bool RenderCapture
+            { get { return LayoutCapture == FrameLayoutCapture.Presenter; } }
 
             internal bool FixedThreadSet;
-            internal bool WorkloadObservation;
             internal double CallerCpuBeforeEvents = double.NaN;
 
             internal volatile bool Invalid;
@@ -128,8 +131,11 @@ namespace PaviseApp
             private readonly Dictionary<int, ulong> pendingStreams = new Dictionary<int, ulong>();
             private sealed class PresentStreamEvidence
             {
-                internal readonly Dictionary<int, int>[] Counts = new Dictionary<int, int>[] { new Dictionary<int, int>(), new Dictionary<int, int>() };
+                internal readonly HashSet<int>[] Threads = { new HashSet<int>(), new HashSet<int>() };
+#if PAVISE_SELFTEST
+                internal readonly Dictionary<int, int>[] Counts = { new Dictionary<int, int>(), new Dictionary<int, int>() };
                 internal int Successes;
+#endif
             }
             private readonly Dictionary<ulong, PresentStreamEvidence> dxgiPresentStreams = new Dictionary<ulong, PresentStreamEvidence>(),
                 d3d9PresentStreams = new Dictionary<ulong, PresentStreamEvidence>();
@@ -145,18 +151,25 @@ namespace PaviseApp
 
             internal void CompletePresentStreams()
             {
-                int unclosed = 0, edge = 0;
-                foreach (KeyValuePair<int, int> item in pending)
+#if PAVISE_SELFTEST
+                Sample.UnclosedPresentStarts = Sample.EdgePresentStarts = 0;
+                if (!Sample.LayoutObservation)
+                    foreach (int start in pending.Values) if (start > 0) Sample.UnclosedPresentStarts++;
+#endif
+                if (Sample.LayoutObservation)
                 {
-                    if (item.Value <= 0) continue;
-                    long startedAt;
-                    // 仅豁免紧贴关窗的未完成提交
-                    if (Sample.LayoutObservation && pendingAt.TryGetValue(item.Key, out startedAt) && End >= startedAt && End - startedAt <= PresentEdgeTicks) edge++;
-                    else unclosed++;
+                    foreach (KeyValuePair<int, int> item in pending)
+                    {
+                        if (item.Value <= 0) continue;
+                        long startedAt;
+                        bool edgeStart = pendingAt.TryGetValue(item.Key, out startedAt) && End >= startedAt && End - startedAt <= PresentEdgeTicks;
+                        if (!edgeStart) streamUnknown = true;
+#if PAVISE_SELFTEST
+                        if (edgeStart) Sample.EdgePresentStarts++;
+                        else Sample.UnclosedPresentStarts++;
+#endif
+                    }
                 }
-                Sample.UnclosedPresentStarts = unclosed;
-                Sample.EdgePresentStarts = edge;
-                if (Sample.LayoutObservation && unclosed > 0) streamUnknown = true;
                 Sample.PresentStreamCount = PresentStreamCount;
                 Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
             }
@@ -186,41 +199,56 @@ namespace PaviseApp
                 else
                 {
                     IntPtr name = present.IsDxgi != 0 ? DxgiStreamName : D3d9StreamName;
-                    if (name == IntPtr.Zero) { Sample.PresentSourceReadFailures++; streamUnknown = true; return 0; }
+                    if (name == IntPtr.Zero)
+                    {
+#if PAVISE_SELFTEST
+                        Sample.PresentSourceReadFailures++;
+#endif
+                        streamUnknown = true;
+                        return 0;
+                    }
                     var property = new Property { Name = (ulong)name.ToInt64(), Index = uint.MaxValue };
                     status = TdhGetProperty(ref raw, 0u, IntPtr.Zero, 1u, ref property, 8u, streamBuffer);
                     stream = status == 0 ? BitConverter.ToUInt64(streamBuffer, 0) : 0;
                 }
                 if (status != 0)
                 {
+#if PAVISE_SELFTEST
                     Sample.PresentSourceReadFailures++;
                     RecordPropertyFailure(status, present.Version);
+#endif
                     streamUnknown = true;
                     return 0;
                 }
 
-                if (stream == 0)
-                { Sample.PresentSourceReadFailures++; Sample.ZeroPresentSources++; streamUnknown = true; }
+                if (stream == 0) streamUnknown = true;
+#if PAVISE_SELFTEST
+                if (stream == 0) { Sample.PresentSourceReadFailures++; Sample.ZeroPresentSources++; }
                 else Sample.PresentSourceReadSuccesses++;
+#endif
                 return stream;
             }
 
-
+#if PAVISE_SELFTEST
             private void RecordPropertyFailure(uint status, int version)
             {
                 if (Sample.FirstPropertyFailureVersion >= 0) return;
                 Sample.FirstPropertyFailureCode = status;
                 Sample.FirstPropertyFailureVersion = version;
             }
+#endif
 
             internal void CompletePresentDiagnostics(int first, int second, FrameCaptureIssue issue)
             {
+#if PAVISE_SELFTEST
                 Sample.PresentFirstHalf = DescribeCounts(Presents[0]);
                 Sample.PresentSecondHalf = DescribeCounts(Presents[1]);
                 var sources = new List<string>();
                 DescribeSources(sources, dxgiPresentStreams, "DXGI");
                 DescribeSources(sources, d3d9PresentStreams, "D3D9");
                 Sample.PresentSources = sources.Count == 0 ? "无可核验来源" : string.Join(" | ", sources.ToArray());
+#endif
+
                 if (issue != FrameCaptureIssue.None) Sample.PresentSelectionReason = Logger.Text("采集未通过核验：", "capture failed verification: ") + issue;
                 else if (first == 0 || second == 0)
                     Sample.PresentSelectionReason = SelectionFailure(Presents[0], Logger.Text("前半", "first half")) + Logger.Text("；", "; ") + SelectionFailure(Presents[1], Logger.Text("后半", "second half"));
@@ -228,6 +256,7 @@ namespace PaviseApp
                 else Sample.PresentSelectionReason = Logger.Text("两半主导线程一致：", "dominant thread consistent across halves: ") + first + Logger.Text("；每半至少16次且占比至少70%", "; each half has at least 16 presents and at least 70% share");
             }
 
+#if PAVISE_SELFTEST
             private static void DescribeSources(List<string> details, Dictionary<ulong, PresentStreamEvidence> streams, string provider)
             {
                 foreach (var entry in streams)
@@ -251,6 +280,7 @@ namespace PaviseApp
                 return "总数=" + total + " 线程数=" + entries.Count + " [" + string.Join(" | ", details.ToArray()) + "]"
                     + (entries.Count > 8 ? "；其余线程=" + (entries.Count - 8) : "");
             }
+#endif
 
             private static string SelectionFailure(Dictionary<int, int> counts, string half)
             {
@@ -270,11 +300,14 @@ namespace PaviseApp
                 new Dictionary<int, int>()
             };
 
-            internal readonly Dictionary<long, int>[] Edges = new Dictionary<long, int>[2]
+            internal readonly Dictionary<long, int>[] Edges;
+
+            internal Evidence(FrameLayoutCapture layoutCapture = FrameLayoutCapture.None)
             {
-                new Dictionary<long, int>(),
-                new Dictionary<long, int>()
-            };
+                LayoutCapture = layoutCapture;
+                if (layoutCapture != FrameLayoutCapture.Presenter)
+                    Edges = new[] { new Dictionary<long, int>(), new Dictionary<long, int>() };
+            }
 
             private sealed class SchedulerCpuState
             {
@@ -308,6 +341,13 @@ namespace PaviseApp
                     if (Invalid)
                     {
                         return;
+                    }
+                    if (RenderCapture)
+                    {
+                        Guid provider = r.EventHeader.ProviderId;
+                        ushort id = r.EventHeader.EventDescriptor.Id;
+                        if (provider == KernelThread || r.EventHeader.ProcessId != Sample.Pid || !(provider == Dxgi && (id == 42 || id == 43)
+                                || provider == D3d9 && (id == 1 || id == 2))) return;
                     }
                     if (Count < int.MaxValue) Count++;
                     if (Count > EmergencySystemEvents)
@@ -398,7 +438,7 @@ namespace PaviseApp
 
             private SchedulerCpuState ObserveScheduler(long time, int processor, bool orderReversed)
             {
-                if (PresenterOnly || Sample.PresentIdentityOnly) return null;
+                if (PresenterOnly) return null;
                 if (processor < 0 || processor > ushort.MaxValue)
                 {
                     if (Relation != null) Relation.Invalidate(Logger.Text("处理器编号超过采样器支持范围", "processor index exceeds the sampler's supported range"));
@@ -433,12 +473,7 @@ namespace PaviseApp
                         return;
                     case NativeEtw.KindSwitch:
                         if (replay) SchedulerSwitches++;
-                        if (Relation != null)
-                        {
-                            // 原生前置已核对完整切换链 已省略的非游戏切换不在回放中重复核对
-                            if (replay) Relation.ReplaySwitch(record.Time, record.Cpu, record.A, record.B, record.State);
-                            else Relation.Switch(record.Time, record.Cpu, record.A, record.B, record.State);
-                        }
+                        if (Relation != null) Relation.Switch(record.Time, record.Cpu, record.A, record.B, record.State);
                         if (RelationWithinBudget()) cpu.Running = Sample.Threads.ContainsKey(record.A) ? record.A : 0;
                         return;
                     case NativeEtw.KindReadyShort:
@@ -478,15 +513,20 @@ namespace PaviseApp
                 if (id != startId && id != stopId) return;
                 if (!PresenterOnly && !Sample.Threads.ContainsKey(threadId))
                 {
-                    if (Sample.LayoutObservation) { Sample.UntrackedPresentEvents++; streamUnknown = true; }
+                    if (Sample.LayoutObservation) streamUnknown = true;
+#if PAVISE_SELFTEST
+                    if (Sample.LayoutObservation) Sample.UntrackedPresentEvents++;
+#endif
                     return;
                 }
                 if (present.Version != 0)
                 {
                     if (Sample.LayoutObservation)
                     {
+#if PAVISE_SELFTEST
                         Sample.UnsupportedPresentEvents++;
                         if (Sample.FirstUnsupportedPresentVersion < 0) Sample.FirstUnsupportedPresentVersion = present.Version;
+#endif
                         streamUnknown = true;
                     }
                     return;
@@ -503,8 +543,10 @@ namespace PaviseApp
                         {
                             if (Sample.LayoutObservation && flagsStatus != 0)
                             {
+#if PAVISE_SELFTEST
                                 Sample.PresentFlagsReadFailures++;
                                 RecordPropertyFailure(flagsStatus, present.Version);
+#endif
                                 streamUnknown = true;
                             }
                             pending.Remove(threadId);
@@ -514,7 +556,12 @@ namespace PaviseApp
                         }
                     }
                     if (Sample.LayoutObservation && pending.TryGetValue(threadId, out pendingId) && pendingId > 0)
-                    { Sample.ReplacedPresentStarts++; streamUnknown = true; }
+                    {
+#if PAVISE_SELFTEST
+                        Sample.ReplacedPresentStarts++;
+#endif
+                        streamUnknown = true;
+                    }
                     pending[threadId] = id;
                     if (Sample.LayoutObservation)
                     {
@@ -543,35 +590,36 @@ namespace PaviseApp
                                 {
                                     if (PresentStreamCount >= EmergencyPresentSources)
                                     {
+#if PAVISE_SELFTEST
                                         Sample.PresentSourceCapacityEvents++;
+#endif
                                         FailBudget(FrameCaptureIssue.EventBudget, Logger.Text("成功呈现来源超过采集应急上限", "successful present sources exceeded the capture emergency limit"));
                                         return;
                                     }
                                     source = new PresentStreamEvidence(); streams.Add(stream, source);
                                 }
-                                int submitted;
-                                if (!source.Counts[windowHalf].TryGetValue(threadId, out submitted))
+                                HashSet<int> threads = source.Threads[windowHalf];
+                                if (!threads.Contains(threadId))
                                 {
                                     if (presentCounterKeys >= EmergencyPresentCounterKeys)
                                     { FailBudget(FrameCaptureIssue.EdgeBudget, Logger.Text("呈现来源计数键超过采集应急上限", "present-source counter keys exceeded the capture emergency limit")); return; }
+                                    threads.Add(threadId);
                                     presentCounterKeys++;
                                 }
+#if PAVISE_SELFTEST
+                                int submitted;
+                                source.Counts[windowHalf].TryGetValue(threadId, out submitted);
                                 source.Counts[windowHalf][threadId] = submitted + 1;
                                 source.Successes++;
+#endif
                             }
                             Sample.PresentStreamCount = PresentStreamCount;
                             Sample.PresentStreamsKnown = !streamUnknown && PresentStreamCount > 0;
-                            // 第二个成功来源已足以否定单一来源 保留两源诊断后停止 不截取单源继续准入
-                            if (Sample.PresentIdentityOnly && PresentStreamCount > 1)
-                            {
-                                Fault = FrameCaptureIssue.InsufficientEvidence;
-                                FaultDetail = Logger.Text("仅呈现身份采集确认多个成功来源，本轮样本弃用", "present-identity-only capture confirmed multiple successful sources; this round's sample discarded");
-                                Invalid = true;
-                                return;
-                            }
                         }
+#if PAVISE_SELFTEST
                         if (Relation != null) Relation.SuccessfulPresent(threadId, timeStamp);
                         if (!RelationWithinBudget()) return;
+#endif
                     }
                     pendingStreams.Remove(threadId);
                 }
@@ -583,9 +631,12 @@ namespace PaviseApp
                     else if (Sample.LayoutObservation)
                     {
                         // 仅豁免该线程紧贴开窗的首个孤立结束事件
-                        if (!presentStarted.Contains(threadId) && timeStamp >= Begin && timeStamp - Begin <= PresentEdgeTicks && edgeStops.Add(threadId))
-                            Sample.EdgePresentStops++;
-                        else { Sample.UnmatchedPresentStops++; streamUnknown = true; }
+                        bool edgeStop = !presentStarted.Contains(threadId) && timeStamp >= Begin && timeStamp - Begin <= PresentEdgeTicks && edgeStops.Add(threadId);
+                        if (!edgeStop) streamUnknown = true;
+#if PAVISE_SELFTEST
+                        if (edgeStop) Sample.EdgePresentStops++;
+                        else Sample.UnmatchedPresentStops++;
+#endif
                     }
                 }
             }
@@ -667,9 +718,6 @@ namespace PaviseApp
                 SchedulerSwitches = record.Switches;
                 switch (record.Kind)
                 {
-                    case NativeEtw.KindDiscontinuity:
-                        if (Relation != null) Relation.BreakContinuity(record.Time);
-                        return;
                     case NativeEtw.KindPresent:
                         if (WithinWindow(record.Time))
                         {
@@ -846,11 +894,6 @@ namespace PaviseApp
             return FrameCaptureIssue.None;
         }
 
-        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive)
-        {
-            return Capture(pid, birth, alive, false);
-        }
-
         private static bool AdmitPresenter(FrameCoordinationSample sample, int tid)
         {
             IntPtr intPtr = Native.OpenThread(2048, false, tid);
@@ -878,36 +921,30 @@ namespace PaviseApp
         }
 
         internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly)
-        { return Capture(pid, birth, alive, presenterOnly, false); }
+        { return Capture(pid, birth, alive, presenterOnly, FrameLayoutCapture.None); }
 
-        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, bool layoutObservation)
-        { return Capture(pid, birth, alive, presenterOnly, layoutObservation, false); }
-
-        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation)
-        { return Capture(pid, birth, alive, presenterOnly, layoutObservation, workloadObservation, false); }
-
-        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation, bool presentIdentityOnly)
+        internal static FrameCoordinationSample Capture(int pid, long birth, Func<bool> alive, bool presenterOnly, FrameLayoutCapture layout)
         {
+            bool layoutObservation = layout != FrameLayoutCapture.None;
+            bool schedulerEvents = !presenterOnly && layout != FrameLayoutCapture.Presenter;
             double captureThreadCpuStart = CaptureThreadCpuMs();
             FrameCoordinationSample frameCoordinationSample = new FrameCoordinationSample();
             frameCoordinationSample.Pid = pid;
             frameCoordinationSample.Birth = birth;
             frameCoordinationSample.PresenterOnly = presenterOnly;
-            frameCoordinationSample.PresentIdentityOnly = presentIdentityOnly;
             // 来源读取取决于采集用途 须在消费者启动前冻结
             frameCoordinationSample.LayoutObservation = layoutObservation;
             FrameCoordinationSample frameCoordinationSample2 = frameCoordinationSample;
             frameCoordinationSample2.Reject(FrameCaptureIssue.InsufficientEvidence);
-            Evidence evidence = new Evidence();
+            Evidence evidence = new Evidence(layout);
             evidence.Sample = frameCoordinationSample2;
             evidence.PresenterOnly = presenterOnly;
-            evidence.WorkloadObservation = workloadObservation;
             Evidence evidence2 = evidence;
             FrameCoordinationTrace frameCoordinationTrace = new FrameCoordinationTrace();
+            FrameCaptureReservation.CaptureLease reservation = null;
+            bool reservedTrace = false;
             try
             {
-                if (presentIdentityOnly && (presenterOnly || !layoutObservation || workloadObservation))
-                    return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, Logger.Text("仅呈现身份采集的用途组合无效", "invalid purpose combination for present-identity-only capture"));
                 if (!alive())
                 {
                     return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
@@ -916,6 +953,19 @@ namespace PaviseApp
                 if (processStateResult != 0)
                 {
                     return frameCoordinationSample2.Reject((processStateResult > 0) ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.TargetUnavailable);
+                }
+                if (schedulerEvents)
+                {
+                    int reservationError;
+                    reservation = FrameCaptureReservation.Acquire(alive, out reservationError);
+                    if (reservation == null)
+                    {
+                        if (reservationError == FrameCaptureReservation.Canceled)
+                            return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
+                        frameCoordinationSample2.TraceCode = reservationError;
+                        frameCoordinationSample2.TraceStage = "reservation";
+                        return frameCoordinationSample2.Reject(FrameCaptureIssue.TraceUnavailable, "reservation code=" + reservationError);
+                    }
                 }
                 if (!presenterOnly)
                 {
@@ -945,33 +995,39 @@ namespace PaviseApp
                 evidence2.Begin = Stopwatch.GetTimestamp();
                 evidence2.Half = evidence2.Begin + Stopwatch.Frequency * 8 / 5;
                 evidence2.End = evidence2.Begin + Stopwatch.Frequency * 16 / 5;
-                // 关系摘要只供统一调度的布局观察使用 线程协同只认呈现与配合线程 不建关系图
-                // 也就不会因建图的资源上限弃掉可用样本
-                if (layoutObservation && !presenterOnly && !presentIdentityOnly)
+#if PAVISE_SELFTEST
+                if (layoutObservation && schedulerEvents)
                     evidence2.Relation = new ThreadRelationCollector(frameCoordinationSample2.Threads, evidence2.Begin,
                         evidence2.Half, evidence2.End, Stopwatch.Frequency);
+#endif
                 evidence2.CallerCpuBeforeEvents = CpuSince(captureThreadCpuStart, CaptureThreadCpuMs());
                 if (CpuEmergencyExceeded(double.NaN, evidence2.CallerCpuBeforeEvents))
                     return frameCoordinationSample2.Reject(FrameCaptureIssue.CpuBudget, Logger.Text("采集准备的 CPU 已超过应急上限", "capture preparation CPU exceeded the emergency limit"));
-                // 完整采集的逐事件处理只走原生前置处理 加载或创建失败时本轮直接弃用 不换回 C# 逐事件处理
-                bool fullCapture = !presenterOnly && !presentIdentityOnly;
+                // 原生事件处理加载或创建失败时弃用本轮采样
+                bool fullCapture = !presenterOnly;
                 if (fullCapture)
                 {
                     string nativeFailure;
                     evidence2.NativeCapture = NativeEtwCapture.Create(pid, evidence2.Begin, evidence2.End, frameCoordinationSample2.Threads.Keys,
                         layoutObservation, evidence2.CallerCpuBeforeEvents, ConsumerThreadCpuMs,
-                        new Evidence.NativePropertyReader(evidence2.ReadNativeProperty), out nativeFailure);
+                        new Evidence.NativePropertyReader(evidence2.ReadNativeProperty), out nativeFailure, layout);
                     if (evidence2.NativeCapture == null)
                         return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, nativeFailure);
                     if (!frameCoordinationTrace.UseNativeConsumer(evidence2.NativeCapture.Callback, evidence2.NativeCapture.Context))
                         return frameCoordinationSample2.Reject(FrameCaptureIssue.CaptureFailed, Logger.Text("原生事件处理无法接入采集会话", "native event processing could not attach to the capture session"));
                 }
-                if (!(fullCapture ? frameCoordinationTrace.Start(pid, evidence2.ReceiveNative, false)
-                    : frameCoordinationTrace.Start(pid, evidence2.Receive, presenterOnly || presentIdentityOnly)))
+                Native.EventRecordCallback receive = fullCapture ? (Native.EventRecordCallback)evidence2.ReceiveNative : evidence2.Receive;
+                reservedTrace = reservation != null;
+                bool started = reservedTrace ? frameCoordinationTrace.StartReserved(pid, receive, reservation.Session)
+                    : frameCoordinationTrace.Start(pid, receive, true, evidence2.RenderCapture);
+                if (!started)
                 {
                     frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
                     frameCoordinationSample2.TraceStage = frameCoordinationTrace.Stage;
                     frameCoordinationSample2.TraceFailureDetail = frameCoordinationTrace.FailureDetail;
+                    frameCoordinationSample2.Events = evidence2.RelevantCount;
+                    frameCoordinationSample2.SystemEvents = evidence2.Count;
+                    frameCoordinationSample2.LostEvents = frameCoordinationTrace.Lost;
                     return frameCoordinationSample2.Reject(FrameCaptureIssue.TraceUnavailable, frameCoordinationSample2.TraceFailureDetail);
                 }
                 while (Stopwatch.GetTimestamp() < evidence2.End && alive() && !evidence2.Invalid && !evidence2.NativeFaulted)
@@ -1006,37 +1062,39 @@ namespace PaviseApp
                         evidence2.CompletePresentDiagnostics(presentTidValue, dominantResult, frameCaptureIssue);
                     else frameCoordinationSample2.PresentSelectionReason = Logger.Text("完整采集触发应急保护：", "full capture triggered emergency protection: ") + frameCaptureIssue;
                 }
-                var processingPacer = new CaptureProcessingPacer(delegate
-                    {
-                        double current = CaptureThreadCpuMs();
-                        if ((frameCaptureIssue == FrameCaptureIssue.None || frameCaptureIssue == FrameCaptureIssue.CpuBudget)
-                            && CpuEmergencyExceeded(frameCoordinationTrace.CpuMs, CpuSince(captureThreadCpuStart, current)))
-                            frameCoordinationSample2.Reject(FrameCaptureIssue.CpuBudget, Logger.Text("采集及摘要处理的累计 CPU 超过应急上限", "cumulative CPU for capture and summary processing exceeded the emergency limit"));
-                        return current;
-                    },
-                    delegate { return Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency; },
-                    delegate { Thread.Sleep(1); frameCoordinationSample2.ProcessingYields++; });
+#if PAVISE_SELFTEST
                 if (evidence2.Relation != null)
+                {
+                    var processingPacer = new CaptureProcessingPacer(delegate
+                        {
+                            double current = CaptureThreadCpuMs();
+                            if ((frameCaptureIssue == FrameCaptureIssue.None || frameCaptureIssue == FrameCaptureIssue.CpuBudget)
+                                && CpuEmergencyExceeded(frameCoordinationTrace.CpuMs, CpuSince(captureThreadCpuStart, current)))
+                                frameCoordinationSample2.Reject(FrameCaptureIssue.CpuBudget, Logger.Text("采集及摘要处理的累计 CPU 超过应急上限", "cumulative CPU for capture and summary processing exceeded the emergency limit"));
+                            return current;
+                        },
+                        delegate { return Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency; },
+                        delegate { Thread.Sleep(1); frameCoordinationSample2.ProcessingYields++; });
+                    Func<bool> continueBuild = delegate
+                    {
+                        if (alive())
+                        {
+                            processingPacer.Continue();
+                            if (frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget) return false;
+                            if (alive()) return true;
+                        }
+                        frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
+                        return false;
+                    };
+                    int presenter = presentTidValue == dominantResult ? presentTidValue : 0;
                     frameCoordinationSample2.Relation = !frameCoordinationTrace.Drained
-                        ? ThreadRelationSnapshot.Unavailable(pid, birth, evidence2.Begin, evidence2.End, Stopwatch.Frequency,
-                            frameCoordinationSample2.LostEvents, Logger.Text("事件消费者尚未退出，保留现场并弃用关系摘要", "event consumer has not exited; state retained and relation summary discarded"))
-                        : evidence2.Relation.Build(frameCoordinationSample2,
-                            presentTidValue == dominantResult ? presentTidValue : 0, evidence2.Edges,
-                            frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget ? FrameCaptureIssue.CpuBudget : frameCaptureIssue,
-                            delegate(int tid, long created) { return VerifyRelationIdentity(frameCoordinationSample2, tid, created); }, workloadObservation,
-                            delegate
-                            {
-                                if (!alive())
-                                {
-                                    frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
-                                    return false;
-                                }
-                                processingPacer.Continue();
-                                if (frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget) return false;
-                                if (alive()) return true;
-                                frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
-                                return false;
-                            });
+                            ? ThreadRelationSnapshot.Unavailable(pid, birth, evidence2.Begin, evidence2.End, Stopwatch.Frequency,
+                                frameCoordinationSample2.LostEvents, Logger.Text("事件消费者尚未退出，保留现场并弃用关系摘要", "event consumer has not exited; state retained and relation summary discarded"))
+                            : evidence2.Relation.Build(frameCoordinationSample2, presenter, evidence2.Edges,
+                                frameCoordinationSample2.Issue == FrameCaptureIssue.CpuBudget ? FrameCaptureIssue.CpuBudget : frameCaptureIssue,
+                                delegate(int tid, long created) { return VerifyRelationIdentity(frameCoordinationSample2, tid, created); }, continueBuild);
+                }
+#endif
                 if (frameCoordinationSample2.Issue != FrameCaptureIssue.None
                     && frameCoordinationSample2.Issue != FrameCaptureIssue.InsufficientEvidence)
                     return frameCoordinationSample2;
@@ -1053,7 +1111,12 @@ namespace PaviseApp
                     return frameCoordinationSample2;
                 }
                 frameCoordinationSample2.PresentTid = presentTidValue;
-                frameCoordinationSample2.WorkerTid = SelectWorker(evidence2, presentTidValue);
+#if PAVISE_SELFTEST
+                if (layout == FrameLayoutCapture.Full || !layoutObservation)
+#else
+                if (!layoutObservation)
+#endif
+                    frameCoordinationSample2.WorkerTid = SelectWorker(evidence2, presentTidValue);
                 frameCoordinationSample2.Valid = true;
                 frameCoordinationSample2.Issue = FrameCaptureIssue.None;
                 long presentCreation;
@@ -1061,7 +1124,7 @@ namespace PaviseApp
                     && frameCoordinationSample2.PresentStreamCount == 1
                     && frameCoordinationSample2.Threads.TryGetValue(presentTidValue, out presentCreation)
                     && VerifyRelationIdentity(frameCoordinationSample2, presentTidValue, presentCreation);
-                frameCoordinationSample2.Detail = (presenterOnly ? "presenter confirmed; presenter-only capture" : ((frameCoordinationSample2.WorkerTid == 0) ? "presenter confirmed; no stable worker" : "presenter and worker confirmed"));
+                frameCoordinationSample2.Detail = (presenterOnly ? "presenter confirmed; presenter-only capture" : (layoutObservation ? "presenter confirmed" : ((frameCoordinationSample2.WorkerTid == 0) ? "presenter confirmed; no stable worker" : "presenter and worker confirmed")));
                 if (!alive()) return frameCoordinationSample2.Reject(FrameCaptureIssue.Canceled);
                 processStateResult = NativeFrameThreads.ProcessState(pid, birth);
                 if (processStateResult != 0)
@@ -1089,10 +1152,15 @@ namespace PaviseApp
                 evidence2.Invalid = true;
                 if (evidence2.NativeCapture != null) evidence2.NativeCapture.Stop();
                 frameCoordinationTrace.Stop();
-                frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
-                frameCoordinationSample2.TraceStage = frameCoordinationTrace.Stage;
+                if (reservation != null)
+                {
+                    if (reservedTrace) frameCoordinationTrace.WhenReservedCaptureClosed(reservation.Dispose);
+                    else reservation.Dispose();
+                }
                 if (frameCoordinationTrace.Error != 0)
                 {
+                    frameCoordinationSample2.TraceCode = frameCoordinationTrace.Error;
+                    frameCoordinationSample2.TraceStage = frameCoordinationTrace.Stage;
                     frameCoordinationSample2.TraceFailureDetail = frameCoordinationTrace.FailureDetail;
                     if (frameCoordinationSample2.Issue == FrameCaptureIssue.TraceUnavailable || frameCoordinationSample2.Issue == FrameCaptureIssue.TraceStopFailed)
                         frameCoordinationSample2.Reject(frameCoordinationSample2.Issue, frameCoordinationSample2.TraceFailureDetail);
@@ -1157,7 +1225,6 @@ namespace PaviseApp
                 if (exit != 0) return;
                 if (creation <= 0) { sample.RecordThreadIdentityFailure(tid, 0, Logger.Text("线程创建时间未知", "thread creation time unknown")); return; }
                 sample.Threads[tid] = creation;
-                sample.RecordThreadCpuBefore(tid, creation, kernel, user, Stopwatch.GetTimestamp());
             }
             finally { Native.CloseHandle(handle); }
         }
@@ -1170,10 +1237,8 @@ namespace PaviseApp
             {
                 long creation, exit, kernel, user;
                 if (Native.QueryThreadOwnerPid(handle) != sample.Pid) return false;
-                long readBefore = Stopwatch.GetTimestamp();
                 if (!Native.GetThreadTimes(handle, out creation, out exit, out kernel, out user)
                     || creation != expectedCreation || creation <= 0) return false;
-                sample.RecordThreadCpuAfter(tid, creation, kernel, user, readBefore);
                 return exit == 0;
             }
             finally { Native.CloseHandle(handle); }

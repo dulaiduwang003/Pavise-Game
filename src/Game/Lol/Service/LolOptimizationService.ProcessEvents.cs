@@ -7,6 +7,17 @@ namespace PaviseApp
     internal sealed partial class LolOptimizationService
     {
 
+        internal bool NeedsProcessIdentity()
+        {
+            lock (stateLock)
+            {
+                if ((enabled && (cleanupEnabled || headlessEnabled)) || headlessActive
+                    || headlessLeaseReleasePending || !string.IsNullOrEmpty(headlessLeaseRoot)) return true;
+            }
+            string mark;
+            return !Settings.TryLoadStr("LolHeadlessEngagedRoot", out mark) || !string.IsNullOrEmpty(mark);
+        }
+
         public void NotifyProcessChanges(ProcessChangeBatch batch)
         {
             if (batch == null)

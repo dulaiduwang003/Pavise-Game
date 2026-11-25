@@ -20,10 +20,13 @@ namespace PaviseApp
 
         internal const string AudioIdle = "EnvAudioIdleV1";
 
+        internal const string MultimediaProfile = "EnvMultimediaProfileV1";
+
         internal static readonly PerformanceAction[] All = new PerformanceAction[]
         {
             new PerformanceAction("EnvCpuMitigationsV1", "关闭可配置 CPU 软件缓解", "Disable configurable CPU software mitigations", "降低 Intel/AMD 可配置的 CPU 漏洞防护，需 Win10 2004+，范围由处理器与系统决定。应用或恢复后重启电脑；关闭恢复原值。旧版已开启时，先关再开以使用扩展策略。", "Reduces configurable CPU vulnerability protections on Intel/AMD with Windows 10 2004+. Scope depends on the CPU and OS. Restart after applying or restoring; Off restores originals. If enabled in an older version, switch off and on for the expanded policy.", true),
-            new PerformanceAction("EnvAudioIdleV1", "交流供电下音频保持唤醒", "Keep AC-powered audio awake", "仅修改已有 PortCls 空闲配置的音频驱动。减少空闲后第一次出声的唤醒等待；默认已禁用时无新增收益。驱动需重载，按重启处理。", "Changes only existing PortCls audio idle settings. Reduces first-sound wake delay; no additional benefit if already disabled. Requires driver reload; treat as requiring restart.", true)
+            new PerformanceAction("EnvAudioIdleV1", "交流供电下音频保持唤醒", "Keep AC-powered audio awake", "仅修改已有 PortCls 空闲配置的音频驱动。减少空闲后第一次出声的唤醒等待；默认已禁用时无新增收益。驱动需重载，按重启处理。", "Changes only existing PortCls audio idle settings. Reduces first-sound wake delay; no additional benefit if already disabled. Requires driver reload; treat as requiring restart.", true),
+            new PerformanceAction("EnvMultimediaProfileV1", "多媒体调度", "Multimedia scheduling", "写入 Windows 多媒体调度的网络节流、后台 CPU 预留和 Games 任务共 6 个值。Games 任务只影响主动登记的线程，没有实测证据表明能提升帧率或降低延迟；Priority 在 High 类别下不生效。应用或恢复后重启电脑；关闭恢复原值。", "Writes six Windows multimedia scheduling values: network throttling, background CPU reserve and the Games task. The Games task affects only threads that register for it, and no measurement shows higher FPS or lower latency; Priority has no effect in the High category. Restart after applying or restoring; Off restores originals.", true)
         };
 
         // 下线的功能留在这里只为识别旧的恢复记录 不能再开启 也不在调优页显示

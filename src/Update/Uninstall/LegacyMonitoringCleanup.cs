@@ -10,6 +10,7 @@ namespace PaviseApp
     internal static class LegacyMonitoringCleanup
     {
         internal const string OwnershipKey = "RtssInstallationOwnerV1";
+        internal const string RetiredWorkloadVerdictPrefix = "WorkloadWideVerdictV1:";
         internal const string ResourceName = "Pavise.LegacyCleanup.RtssUninstall.ps1";
         private static int queued;
         private static readonly string[] RetiredPreferences = {
@@ -26,6 +27,9 @@ namespace PaviseApp
                 try
                 {
                     foreach (string key in RetiredPreferences) Settings.TryRemove(key, false);
+                    string[] verdicts;
+                    if (Settings.TryLoadStoredNames(RetiredWorkloadVerdictPrefix, out verdicts))
+                        foreach (string key in verdicts) Settings.TryRemove(key, false);
                     // 未持有所有权时 不检查进程 也不改动 RTSS
                     if (String.IsNullOrEmpty(Settings.LoadStr(OwnershipKey, ""))) return;
                     RunOwnedCleanup();

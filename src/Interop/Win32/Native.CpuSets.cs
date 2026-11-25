@@ -7,19 +7,6 @@ namespace PaviseApp
     internal static partial class Native
     {
 
-        private struct ThreadGroupAffinity
-        {
-            public UIntPtr Mask;
-
-            public ushort Group;
-
-            public ushort Reserved0;
-
-            public ushort Reserved1;
-
-            public ushort Reserved2;
-        }
-
         public static bool TrySetCpuSets(IntPtr h, uint[] ids)
         {
             if (ids == null || ids.Length == 0)
@@ -157,19 +144,6 @@ namespace PaviseApp
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetThreadSelectedCpuSets(IntPtr thread, uint[] ids, uint count);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetThreadGroupAffinity(IntPtr thread, out ThreadGroupAffinity affinity);
-
-        internal static bool ThreadAllowsMask(IntPtr thread, ulong mask)
-        {
-            ThreadGroupAffinity affinity;
-            if (GetThreadGroupAffinity(thread, out affinity) && affinity.Group == 0 && mask != 0)
-            {
-                return (mask & ~affinity.Mask.ToUInt64()) == 0;
-            }
-            return false;
-        }
 
         internal static uint[] QueryThreadCpuSets(IntPtr thread)
         {

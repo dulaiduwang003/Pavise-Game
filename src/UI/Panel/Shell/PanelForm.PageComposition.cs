@@ -183,6 +183,7 @@ namespace PaviseApp
             BuildPerformanceTuningEnvironment(performanceGrid, ref y);
             BuildEnvironmentTimerOptions(performanceGrid, ref y);
             BuildLaboratoryOptions(performanceGrid, ref y);
+            BuildGpuSpoofCard(performanceGrid);
             ConfigurePerformanceCards(performanceGrid);
             GroupPerformanceSections(performanceGrid);
             performanceGrid.Complete();
@@ -715,7 +716,7 @@ namespace PaviseApp
                 Lang.T("nav.log"),
                 Lang.T("nav.set"),
                 Lang.T("nav.about"),
-                Lang.T("nav.white"),
+                Lang.T("nav.processrules"),
                 Lang.T("v20.advanced.nav.irq"),
                 Lang.T("nav.corescheduling")
             };
@@ -727,7 +728,6 @@ namespace PaviseApp
             string[] cloneResult = (string[])textEntries.Clone();
             cloneResult[1] = PerformancePolicy.Text("游戏库", "Library");
             cloneResult[(int)PageId.Policy] = Lang.T("v20.advanced.nav.system");
-            cloneResult[10] = Lang.T("nav.white");
             // 反作弊在游戏库深度调优里逐游戏设置（仅 ACE） 保护名单在白名单页 底部导航不放反作弊页
             nav = new NavRail(cloneResult, icons, new int[6] { 0, 1, 10, 2, 6, 8 }, null, null, 0);
             nav.Name = "MainNavigation";

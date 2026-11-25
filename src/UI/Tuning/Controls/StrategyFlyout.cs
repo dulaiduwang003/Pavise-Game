@@ -41,9 +41,19 @@ namespace PaviseApp
             }
         }
 
+        internal sealed class BackgroundGovernanceSelect : TechSelect
+        {
+            protected override MenuBadge BadgeFor(int index)
+            {
+                return index == BackgroundGovernancePolicy.Normal + 1
+                    ? new MenuBadge(Lang.T("background.governance.badge.recommended"), true)
+                    : base.BadgeFor(index);
+            }
+        }
+
         internal readonly TierPicker Scene;
 
-        internal readonly TechSelect BackgroundGovernance;
+        internal readonly BackgroundGovernanceSelect BackgroundGovernance;
 
         private readonly PerformanceInfoButton backgroundGovernanceInfo;
 
@@ -102,14 +112,6 @@ namespace PaviseApp
         }
 
         private string LaptopPerformanceLabel { get { return DsLabels.Pick("厂商性能模式", "Vendor performance"); } }
-
-        // 疯狂档开关关着时只给关闭 正常和激进 打开后才有疯狂
-        internal void SetBackgroundGovernanceInsane(bool insaneVisible)
-        {
-            BackgroundGovernance.SetItems(insaneVisible
-                ? new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive"), Lang.T("background.governance.freeze") }
-                : new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive") });
-        }
 
         internal void RefreshBackgroundGovernanceInformation()
         {
@@ -225,7 +227,7 @@ namespace PaviseApp
                 RoundedStyle = false,
                 Bg = Theme.Card
             };
-            BackgroundGovernance = new TechSelect
+            BackgroundGovernance = new BackgroundGovernanceSelect
             {
                 Name = "backgroundGovernanceMode",
                 AccessibleName = Lang.T("background.governance.mode"),
@@ -233,7 +235,7 @@ namespace PaviseApp
                 RoundedStyle = false,
                 Bg = Theme.Card
             };
-            SetBackgroundGovernanceInsane(BackgroundGovernancePolicy.InsaneVisible());
+            BackgroundGovernance.SetItems(new[] { Lang.T("background.governance.off"), Lang.T("background.governance.normal"), Lang.T("background.governance.aggressive") });
             backgroundGovernanceInfo = new PerformanceInfoButton
             {
                 Name = "StrategyBackgroundGovernanceInfo",
@@ -379,7 +381,7 @@ namespace PaviseApp
             {
                 return false;
             }
-            // 选档后弹出的确认框是另一个窗口 在里面点按钮不算点到浮层外面
+            // 弹窗内的点击不关闭策略浮层
             Form clickedForm = control == null ? null : control.FindForm();
             if (clickedForm != null && clickedForm.Modal && clickedForm != FindForm())
             {

@@ -2,6 +2,34 @@ using System;
 
 namespace PaviseApp
 {
+    internal static class Logger { internal static void Log(Func<string> text) { } }
+    internal static class Lang { internal static string T(string text) { return text; } }
+
+    internal sealed class AdaptiveRoundFixture
+    {
+        private readonly AdaptiveGuard adaptiveGuard = new AdaptiveGuard();
+        private readonly CpuSaturation adaptivePressure = new CpuSaturation(AdaptiveGuard.EnterUtilization, AdaptiveGuard.ExitUtilization);
+        private bool adaptiveEscalated;
+        private long now;
+        internal bool AdaptiveEscalationWanted = true;
+        internal bool Escalated { get { return adaptiveEscalated; } }
+        internal int Episodes { get { return adaptiveGuard.Episodes; } }
+        private long AdaptiveNow() { return now; }
+        private double AdaptiveSample() { return adaptivePressure.Sample(); }
+
+        // Insert production step
+        // Insert production reset
+
+        internal void Tick(long when, bool busy)
+        {
+            now = when;
+            SmartGovernanceThresholdChecks.NativeIdle += busy ? 40 : 120;
+            SmartGovernanceThresholdChecks.NativeKernel += 150;
+            SmartGovernanceThresholdChecks.NativeUser += 50;
+            StepAdaptiveGuard();
+        }
+    }
+
     internal static class SmartGovernanceThresholdChecks
     {
         private static int checks;
@@ -65,6 +93,37 @@ namespace PaviseApp
                 "Existing three-episode bound changed");
         }
 
+        private static void ExhaustedAdaptiveRoundSkipsNativeReads()
+        {
+            var round = new AdaptiveRoundFixture();
+            NativeGroups = 1; NativeReads = 0;
+            NativeIdle = NativeKernel = NativeUser = 0;
+            for (int episode = 1; episode <= 3; episode++)
+            {
+                long now = (episode * 200) * Second;
+                round.Tick(now, true);
+                round.Tick(now + Second, true);
+                round.Tick(now + 11 * Second, true);
+                Check(round.Escalated && round.Episodes == episode, "native guard lost an escalation");
+                int before = NativeReads;
+                round.Tick(now + 12 * Second, false);
+                round.Tick(now + 17 * Second, false);
+                Check(round.Escalated && NativeReads == before + 2, "guard stopped sampling during its last active episode");
+                round.Tick(now + 137 * Second, false);
+                Check(!round.Escalated && NativeReads == before + 3, "guard failed to sample the final de-escalation");
+            }
+            int exhausted = NativeReads;
+            for (int i = 0; i < 5; i++) round.Tick((800 + i) * Second, true);
+            Console.WriteLine("Exhausted adaptive native queries for five rounds=" + (NativeReads - exhausted));
+            Check(NativeReads == exhausted && !round.Escalated, "settled adaptive guard still queried native CPU");
+            round.AdaptiveEscalationWanted = false;
+            round.Tick(900 * Second, true);
+            Check(round.Episodes == 0 && NativeReads == exhausted, "disabled guard did not reset without sampling");
+            round.AdaptiveEscalationWanted = true;
+            round.Tick(901 * Second, true);
+            Check(NativeReads == exhausted + 1 && !round.Escalated, "new adaptive phase did not sample again");
+        }
+
         private static void InvalidInput()
         {
             foreach (double[] pair in new[] {
@@ -126,7 +185,7 @@ namespace PaviseApp
         {
             try
             {
-                SmartBoundaries(); OtherConsumersUnchanged(); GuardTiming(); InvalidInput(); NativeCounterScope();
+                SmartBoundaries(); OtherConsumersUnchanged(); GuardTiming(); InvalidInput(); NativeCounterScope(); ExhaustedAdaptiveRoundSkipsNativeReads();
                 Console.WriteLine("PASS Smart governance thresholds assertions=" + checks
                     + "; Smart=70/60; other_users=90/80; confirmation=10s; exit_hold=5s; relaxation=120s; native_samples=false; Pavise_started=false");
                 return 0;

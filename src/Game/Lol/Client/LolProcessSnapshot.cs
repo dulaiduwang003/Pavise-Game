@@ -16,7 +16,7 @@ namespace PaviseApp
 
         public bool WeGameMainRunning;
 
-        public int CrossProcessCount;
+        public int? CrossProcessCount;
 
         public int UxProcessCount;
 

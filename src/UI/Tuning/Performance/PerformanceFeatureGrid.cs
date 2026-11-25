@@ -381,7 +381,8 @@ namespace PaviseApp
                         for (; i < columns && processedCount + i < list.Count; i++)
                         {
                             PerformanceFeatureCard performanceFeatureCard2 = list[processedCount + i] as PerformanceFeatureCard;
-                            if (performanceFeatureCard2 == null || performanceFeatureCard2.MinimumPresentationWidth > columnsRatio)
+                            if (performanceFeatureCard2 == null || performanceFeatureCard2.StartsNewRow
+                                || performanceFeatureCard2.MinimumPresentationWidth > columnsRatio)
                             {
                                 break;
                             }

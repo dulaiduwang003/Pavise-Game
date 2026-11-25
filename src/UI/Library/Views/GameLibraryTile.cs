@@ -402,15 +402,21 @@ namespace PaviseApp
                 moreButton.Bg = Theme.Inset;
                 moreButton.Invalidate();
                 configurationButton.AccessibleName = Item.Profile.Name + " · " + PerformancePolicy.Text("深度调优", "Advanced tuning");
-                configurationButton.Text = addonNoticeAvailable ? PerformancePolicy.Text("有附加层可清理", "Add-ons available to remove") : PerformancePolicy.Text("深度调优", "Advanced tuning");
-                configurationButton.Attention = addonNoticeAvailable;
-                string addonTip = addonNoticeAvailable ? PerformancePolicy.Text("发现可删除的英雄联盟附加层。点击进入专属优化；删除前请完全退出英雄联盟和 WeGame。", "League add-ons were found. Open the dedicated settings here; fully exit League of Legends and WeGame before removal.") : "";
+                string noticeTip = "";
+                configurationButton.AttentionGlyph = null;
+                configurationButton.Text = PerformancePolicy.Text("深度调优", "Advanced tuning");
                 if (addonNoticeAvailable)
                 {
-                    base.AccessibleDescription += "\r\n" + addonTip;
+                    configurationButton.AttentionGlyph = "lol";
+                    configurationButton.Text = PerformancePolicy.Text("有附加层可清理", "Add-ons available to remove");
+                    noticeTip = PerformancePolicy.Text("发现可删除的英雄联盟附加层。点击进入专属优化；删除前请完全退出英雄联盟和 WeGame。", "League add-ons were found. Open the dedicated settings here; fully exit League of Legends and WeGame before removal.");
+                }
+                if (configurationButton.Attention)
+                {
+                    base.AccessibleDescription += "\r\n" + noticeTip;
                     configurationButton.AccessibleName += " · " + configurationButton.Text;
                 }
-                tips.SetToolTip(configurationButton, addonTip);
+                tips.SetToolTip(configurationButton, noticeTip);
                 configurationButton.Expanded = ConfigurationExpanded;
                 configurationButton.Bg = Theme.Card;
                 configurationButton.Invalidate();

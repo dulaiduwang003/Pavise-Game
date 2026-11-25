@@ -55,7 +55,8 @@ namespace PaviseApp
                 list = list3;
             }
             uninstallReport.Warnings += list.Count;
-            if (LegacyPurge.HasHardThreadRecoveryDebt(dataDir) || !GameNvCanonicalStore.SafeToClear(dataDir))
+            if (LegacyPurge.HasHardThreadRecoveryDebt(dataDir) || !GameNvCanonicalStore.SafeToClear(dataDir)
+                || !FrameCaptureReservation.Recover())
             {
                 uninstallReport.Failure = "Original runtime recovery is pending; application and records retained";
                 uninstallReport.Warnings++;
@@ -148,7 +149,8 @@ namespace PaviseApp
                 uninstallReport.Failure = Lang.T("wipe.stopfail") + " (" + ex.GetType().Name + ")";
                 return uninstallReport;
             }
-            if (LegacyPurge.HasHardThreadRecoveryDebt(dataDir) || !GameNvCanonicalStore.SafeToClear(dataDir))
+            if (LegacyPurge.HasHardThreadRecoveryDebt(dataDir) || !GameNvCanonicalStore.SafeToClear(dataDir)
+                || !FrameCaptureReservation.Recover())
             {
                 uninstallReport.Failure = "Original runtime recovery is pending; application and records retained";
                 uninstallReport.Warnings++;

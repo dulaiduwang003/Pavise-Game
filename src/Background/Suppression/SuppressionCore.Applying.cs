@@ -52,9 +52,12 @@ namespace PaviseApp
                 {
                     if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                     Entry protectedEntry;
+                    if (map.TryGetValue(pid, out protectedEntry) && HasAntiCheatResources(protectedEntry)
+                        && !SameName(protectedEntry.Name, name)) return AcquireResult.AlreadyProtected;
                     if (map.TryGetValue(pid, out protectedEntry) && SameName(protectedEntry.Name, name))
                     {
                         if (protectedEntry.ResourceJobOnlyIo || protectedEntry.ResourceJobRestoringProcess
+                            || (protectedEntry.OrdinaryValues && protectedEntry.Reasons == SuppressReason.None)
                             || (protectedEntry.ResourceJobName != null && protectedEntry.RestoreInFlight))
                             return AcquireResult.AlreadyProtected;
                         protectedEntry.SetReasons(protectedEntry.Reasons | reason);
@@ -106,6 +109,13 @@ namespace PaviseApp
                         if ((reason & SuppressReason.AntiCheat) != 0 && antiCheatAdmissionEpoch != Interlocked.Read(ref antiCheatForwardEpoch)) return AcquireResult.AlreadyProtected;
                         Entry trackedEntry;
                         bool alreadyTracked = map.TryGetValue(pid, out trackedEntry);
+                        if (alreadyTracked && HasAntiCheatResources(trackedEntry)
+                            && (trackedEntry.Creation != creation || !SameName(trackedEntry.Name, name)))
+                        {
+                            if (trackedEntry.Creation <= 0 || trackedEntry.Creation == creation
+                                || !ClearAntiCheatJob(trackedEntry, () => SaveAntiCheatResourceJournal(trackedEntry)))
+                                return AcquireResult.AlreadyProtected;
+                        }
                         if (alreadyTracked && DiscardChangedTrackedNameLocked(pid, name, creation, trackedEntry))
                         {
                             alreadyTracked = false;
@@ -133,6 +143,7 @@ namespace PaviseApp
                             }
                         }
                         if (alreadyTracked && (trackedEntry.ResourceJobOnlyIo || trackedEntry.ResourceJobRestoringProcess
+                            || (trackedEntry.OrdinaryValues && trackedEntry.Reasons == SuppressReason.None)
                             || (trackedEntry.ResourceJobName != null && trackedEntry.RestoreInFlight)))
                             return AcquireResult.AlreadyProtected;
                         if (alreadyTracked && trackedEntry.OrigPri != uint.MaxValue && (reason & SuppressReason.AntiCheat) != 0
@@ -212,7 +223,7 @@ namespace PaviseApp
                                 RecordBatchApplyResultLocked(pid, true, null);
                                 return AcquireResult.AlreadyThrottled;
                             }
-                            if (!(HasAntiCheatResources(trackedEntry) && AntiCheatThrottled(trackedEntry)) && !GpuPolicyNeedsRelease(trackedEntry) && VerifyBackgroundJob(trackedEntry) && ResourceJobMatches(trackedEntry, pid) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, AntiCheatThrottled(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry), trackedEntry.OrigBoost))
+                            if (!(HasAntiCheatResources(trackedEntry) && AntiCheatThrottled(trackedEntry)) && !GpuPolicyNeedsRelease(trackedEntry) && VerifyBackgroundJob(trackedEntry) && ResourceJobMatches(trackedEntry, pid) && ThrottleMatches(processHandle, trackedEntry.Level, trackedEntry.OrigPri, trackedEntry.OrigAff, trackedEntry.OrigCpuSets, AntiCheatThrottled(trackedEntry), DesiredAffinityOf(trackedEntry), PlacementIsProtected(trackedEntry)))
                             {
                                 ScheduleAfterMatch(trackedEntry, pid);
                                 RecordBatchApplyResultLocked(pid, true, null);
@@ -239,8 +250,10 @@ namespace PaviseApp
                             }
                             return AcquireResult.AlreadyThrottled;
                         }
-                        uint priorityClass = Native.GetPriorityClass(processHandle);
-                        if (priorityClass == 0)
+                        bool ordinary = reason == SuppressReason.Background;
+                        uint priorityClass = ordinary && (OrdinaryAttemptsOf(pid, creation) & OrdinaryFields.Priority) != 0
+                            ? 0u : Native.GetPriorityClass(processHandle);
+                        if (priorityClass == 0 && !ordinary)
                         {
                             return AcquireResult.ApplyFailed;
                         }
@@ -292,7 +305,7 @@ namespace PaviseApp
                             controlMask = -1;
                             stateMask = -1;
                         }
-                        int origBoostValue = Native.QueryBoostDisabled(processHandle);
+                        int origBoostValue = ordinary || reason == SuppressReason.AntiCheat ? -1 : Native.QueryBoostDisabled(processHandle);
                         if (staleThrottle && origBoostValue == 1)
                         {
                             origBoostValue = 0;
@@ -342,6 +355,7 @@ namespace PaviseApp
                             SetEntryLocked(pid, newTrackedEntry);
                             e = newTrackedEntry;
                         }
+                        e.OrdinaryValues = ordinary;
                         if (AntiCheatThrottled(e) && !AttachAntiCheatResourceHistory(pid, e)) return AcquireResult.ApplyFailed;
                         if (!PersistJournalLocked())
                         {
@@ -350,7 +364,7 @@ namespace PaviseApp
                         }
                         bool queueApplyLockedSucceeded = QueueApplyLocked(pid, name);
                         bool applied = queueApplyLockedSucceeded || (AntiCheatThrottled(e) ? ApplyAntiCheatResources(processHandle, e)
-                            : ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, origBoostValue, false, DesiredAffinityOf(e), PlacementIsProtected(e), e));
+                            : ApplyThrottle(processHandle, level, priorityClassSnapshot, origAffValue, origCpuSetsValue, false, DesiredAffinityOf(e), PlacementIsProtected(e), e));
                         Entry appliedEntry;
                         if (map.TryGetValue(pid, out appliedEntry) && !queueApplyLockedSucceeded)
                         {
@@ -393,6 +407,7 @@ namespace PaviseApp
 
         private static bool EntrySnapshotMatches(IntPtr handle, Entry entry)
         {
+            if (entry.OrdinaryValues) return false;
             if (entry.BackgroundJobPlacement && (entry.BackgroundJobActive || entry.BackgroundRestorePending)) return false;
             if (entry.GpuLease.PendingCheckpoint || entry.GpuLease.Phase == 'P' || entry.GpuLease.Phase == 'A') return false;
             int gpu = entry.GpuLease.Phase == 'L' ? entry.OrigGpu : -1;
@@ -404,7 +419,7 @@ namespace PaviseApp
             if (AntiCheatThrottled(entry)) return ApplyAntiCheatResources(handle, entry);
             if (!VerifyBackgroundJob(entry)) return false;
             DetectBackgroundPlacementChange(handle, entry);
-            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, entry.OrigBoost, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry), entry);
+            return ApplyThrottle(handle, entry.Level, entry.OrigPri, entry.OrigAff, entry.OrigCpuSets, AntiCheatThrottled(entry), DesiredAffinityOf(entry), PlacementIsProtected(entry), entry);
         }
 
         private bool BeginSuppressionCycle(IntPtr handle, Entry entry, int pid)
@@ -571,7 +586,7 @@ namespace PaviseApp
             if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
             {
                 e.AntiCheatResources.MaintenanceFailures = 0;
-                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(HasAntiCheatResources(e) && e.AntiCheatResources.JobActive ? 30 : AntiCheatAuditSeconds(e.Level)).Ticks;
                 return;
             }
             RecordFailureBudget(e, "reconcile", true, 0);
@@ -579,7 +594,7 @@ namespace PaviseApp
             e.ReconcileFailures = 0;
             if (AntiCheatThrottled(e))
             {
-                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+                e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(HasAntiCheatResources(e) && e.AntiCheatResources.JobActive ? 30 : AntiCheatAuditSeconds(e.Level)).Ticks;
                 return;
             }
             if (e.FastReconcileRemaining > 0)
@@ -598,7 +613,7 @@ namespace PaviseApp
             if (HasAntiCheatResources(e) && AntiCheatThrottled(e))
             {
                 e.SetApplied(applied);
-                if (applied) e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(AntiCheatAuditSeconds(e.Level)).Ticks;
+                if (applied) e.NextReconcileTicks = DateTime.UtcNow.AddSeconds(HasAntiCheatResources(e) && e.AntiCheatResources.JobActive ? 30 : AntiCheatAuditSeconds(e.Level)).Ticks;
                 return;
             }
             FailureBudgetFor(e, "reconcile");
@@ -630,7 +645,7 @@ namespace PaviseApp
             if (e.ReconcileFailures >= 8) e.NextReconcileTicks = DateTime.MaxValue.Ticks;
         }
 
-        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int origBoost, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false, Entry accountingEntry = null)
+        private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false, Entry accountingEntry = null)
         {
             affinityOwned |= antiCheat;
             Interlocked.Increment(ref applyOperations);
@@ -640,13 +655,9 @@ namespace PaviseApp
                 failures.Add("resource-job-release");
                 return StopFailedApply(failures);
             }
-            if (DisableDynamicBoost(level, antiCheat) && DesiredBoostDisabled(level, antiCheat, origBoost) < 0)
-            {
-                failures.Add("boost-snapshot");
-                return StopFailedApply(failures);
-            }
             uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
-            if (Native.GetPriorityClass(h) != desiredPriority && !AccountBackgroundWrite(accountingEntry, Native.SetPriorityClass(h, desiredPriority)))
+            if (antiCheat && Native.GetPriorityClass(h) != desiredPriority
+                && !AccountBackgroundWrite(accountingEntry, Native.SetPriorityClass(h, desiredPriority)))
             {
                 failures.Add("priority-write");
             }
@@ -654,6 +665,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
+            if (!antiCheat && accountingEntry != null) ApplyFirstOrdinaryValues(h, accountingEntry);
             if (accountingEntry != null && GpuPolicyNeedsRelease(accountingEntry)
                 && !accountingEntry.GpuLease.Restore(h, () => EntryIdentity(h, accountingEntry), () => SaveGpuJournal()))
             {
@@ -717,9 +729,18 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            if (Native.PowerThrottlingSupported)
+            if (Native.PowerThrottlingSupported && !antiCheat)
             {
-                bool desiredTimerSealSucceeded = DesiredTimerSeal(level, antiCheat);
+                int control, state;
+                if (!Native.TryQueryPowerThrottling(h, out control, out state))
+                    failures.Add("eco-readback");
+                else if (!BackgroundEcoMatches(control, state)
+                    && !AccountBackgroundWrite(accountingEntry, Native.RestorePowerThrottling(h, control | 1, state | 1)))
+                    failures.Add("eco-write");
+            }
+            if (Native.PowerThrottlingSupported && antiCheat)
+            {
+                bool desiredTimerSealSucceeded = DesiredTimerSeal(level, true);
                 uint requiredQosMask = Native.EcoQoSWantMask(desiredTimerSealSucceeded);
                 int controlMask;
                 int stateMask;
@@ -734,16 +755,7 @@ namespace PaviseApp
             {
                 return StopFailedApply(failures);
             }
-            string boostFailure = ApplyBoostPolicy(level, antiCheat, origBoost, () => Native.QueryBoostDisabled(h), (bool disabled) => AccountBackgroundWrite(accountingEntry, Native.TrySetBoostDisabled(h, disabled)));
-            if (boostFailure.Length > 0)
-            {
-                failures.Add(boostFailure);
-            }
-            if (failures.Count != 0)
-            {
-                return StopFailedApply(failures);
-            }
-            if (Native.GetPriorityClass(h) != desiredPriority)
+            if (antiCheat && Native.GetPriorityClass(h) != desiredPriority)
             {
                 failures.Add("priority-readback");
             }
@@ -755,7 +767,7 @@ namespace PaviseApp
             {
                 failures.Add("page-readback");
             }
-            if (Native.PowerThrottlingSupported && !EcoStateVisible(h, Native.EcoQoSWantMask(DesiredTimerSeal(level, antiCheat))))
+            if (Native.PowerThrottlingSupported && !EcoStateVisible(h, Native.EcoQoSWantMask(DesiredTimerSeal(level, antiCheat)), antiCheat))
             {
                 failures.Add("eco-readback");
             }
@@ -765,17 +777,110 @@ namespace PaviseApp
             return failures.Count == 0;
         }
 
+        [Flags]
+        private enum OrdinaryFields
+        {
+            None = 0,
+            Priority = 1,
+            Timer = 2,
+            Both = Priority | Timer
+        }
+
+        private readonly Dictionary<int, KeyValuePair<long, OrdinaryFields>> ordinaryAttempts =
+            new Dictionary<int, KeyValuePair<long, OrdinaryFields>>();
+
+        internal void ResetOrdinaryBackgroundAttempts()
+        {
+            lock (sync) ordinaryAttempts.Clear();
+        }
+
+        private OrdinaryFields OrdinaryAttemptsOf(int pid, long creation)
+        {
+            KeyValuePair<long, OrdinaryFields> previous;
+            return ordinaryAttempts.TryGetValue(pid, out previous) && previous.Key == creation
+                ? previous.Value : OrdinaryFields.None;
+        }
+
+        private void RearmRestoredOrdinaryFields(Entry entry, OrdinaryFields restored)
+        {
+            if (restored == OrdinaryFields.None) return;
+            lock (sync)
+            {
+                int pid = entry.AccountingPid;
+                Entry current;
+                if (!map.TryGetValue(pid, out current) || current != entry) return;
+                KeyValuePair<long, OrdinaryFields> previous;
+                if (!ordinaryAttempts.TryGetValue(pid, out previous) || previous.Key != entry.Creation) return;
+                OrdinaryFields remaining = previous.Value & ~restored;
+                entry.OrdinaryResnapshot |= previous.Value & restored;
+                if (remaining == OrdinaryFields.None) ordinaryAttempts.Remove(pid);
+                else ordinaryAttempts[pid] = new KeyValuePair<long, OrdinaryFields>(entry.Creation, remaining);
+            }
+        }
+
+        private void ApplyFirstOrdinaryValues(IntPtr handle, Entry entry)
+        {
+            int pid = entry.AccountingPid;
+            OrdinaryFields attempted = OrdinaryAttemptsOf(pid, entry.Creation);
+            if (attempted != OrdinaryFields.Both)
+            {
+                entry.OrdinaryValues = true;
+                ordinaryAttempts[pid] = new KeyValuePair<long, OrdinaryFields>(entry.Creation, OrdinaryFields.Both);
+                OrdinaryFields resnapshot = entry.OrdinaryResnapshot;
+                entry.OrdinaryResnapshot = OrdinaryFields.None;
+                if ((attempted & OrdinaryFields.Priority) == 0)
+                {
+                    if ((resnapshot & OrdinaryFields.Priority) != 0)
+                        entry.SetOriginalPriority(Native.GetPriorityClass(handle));
+                    if (entry.OrigPri == 0)
+                        LogSkippedOrdinaryField(entry, "priority-snapshot", 0);
+                    else if (!AccountBackgroundWrite(entry, Native.SetPriorityClass(handle, IdlePriorityClass)))
+                        LogSkippedOrdinaryField(entry, "priority-write", System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                    else
+                        entry.OrdinaryPriorityOwned = entry.OrigPri != IdlePriorityClass;
+                }
+
+                if ((attempted & OrdinaryFields.Timer) == 0 && Native.PowerThrottlingSupported)
+                {
+                    if ((resnapshot & OrdinaryFields.Timer) != 0)
+                    {
+                        int control, state;
+                        bool sampled = Native.TryQueryPowerThrottling(handle, out control, out state);
+                        entry.OrigQoSControl = sampled ? control : -1;
+                        entry.OrigQoSState = sampled ? state : -1;
+                    }
+                    if (AccountBackgroundWrite(entry, Native.ApplyEcoQoS(handle, true)))
+                        entry.OrdinaryTimerOwned = Native.EcoQoSWantMask(true) == 5;
+                    else
+                        LogSkippedOrdinaryField(entry, "timer-write", System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                }
+                entry.OrdinaryOwnershipJournalPending |= entry.OrdinaryPriorityOwned || entry.OrdinaryTimerOwned;
+                SavePendingOrdinaryOwnershipJournal(entry);
+            }
+        }
+
+        private static void LogSkippedOrdinaryField(Entry entry, string field, int error)
+        {
+            Logger.Warn(Logger.Format("后台治理跳过单项 进程={0} 编号={1} 原因={2} 错误={3}",
+                "Background governance skipped a field: process={0} pid={1} reason={2} error={3}",
+                entry.Name, entry.AccountingPid, field, error));
+        }
+
+        private static bool BackgroundEcoMatches(int control, int state)
+        { return (control & 1) != 0 && (state & 1) != 0; }
+
         private bool StopFailedApply(List<string> failed)
         {
             LastApplyError = string.Join(",", failed.ToArray());
             return false;
         }
 
-        private static bool EcoStateVisible(IntPtr h, uint required)
+        private static bool EcoStateVisible(IntPtr h, uint required, bool antiCheat)
         {
             int controlMask;
             int stateMask;
-            return ConfirmEcoState(() => Native.TryQueryPowerThrottling(h, out controlMask, out stateMask) && PowerStateMatches(controlMask, stateMask, required), delegate
+            return ConfirmEcoState(() => Native.TryQueryPowerThrottling(h, out controlMask, out stateMask)
+                && (antiCheat ? PowerStateMatches(controlMask, stateMask, required) : BackgroundEcoMatches(controlMask, stateMask)), delegate
             {
                 Thread.Sleep(1);
             });
@@ -817,6 +922,8 @@ namespace PaviseApp
                 {
                     return false;
                 }
+                if (reason == SuppressReason.Background && ActiveBackgroundJournalRound == null)
+                    SavePendingOrdinaryOwnershipJournal(entry);
                 if (entry.GaveUp)
                 {
                     return true;
@@ -872,7 +979,7 @@ namespace PaviseApp
                     {
                         return true;
                     }
-                    if (!(HasAntiCheatResources(appliedEntry) && AntiCheatThrottled(appliedEntry)) && !GpuPolicyNeedsRelease(appliedEntry) && VerifyBackgroundJob(appliedEntry) && ResourceJobMatches(appliedEntry, pid) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, AntiCheatThrottled(appliedEntry), DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry), appliedEntry.OrigBoost))
+                    if (!(HasAntiCheatResources(appliedEntry) && AntiCheatThrottled(appliedEntry)) && !GpuPolicyNeedsRelease(appliedEntry) && VerifyBackgroundJob(appliedEntry) && ResourceJobMatches(appliedEntry, pid) && ThrottleMatches(processHandle, level, origPri, origAff, appliedEntry.OrigCpuSets, AntiCheatThrottled(appliedEntry), DesiredAffinityOf(appliedEntry), PlacementIsProtected(appliedEntry)))
                     {
                         if (!appliedEntry.Applied && appliedEntry.ReconcileFailures > 0)
                         {

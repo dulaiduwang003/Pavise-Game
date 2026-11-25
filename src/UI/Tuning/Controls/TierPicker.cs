@@ -157,7 +157,7 @@ namespace PaviseApp
             }
             if (current) return wrappedHeight;
             var segments = new List<Rectangle>();
-            int gap = Theme.S(4), horizontalPadding = Theme.S(24);
+            int gap = Theme.S(4), horizontalPadding = 2 * Theme.S(12), verticalPadding = 2 * Theme.S(6);
             int x = 0, y = 0, rowHeight = 0, rowStart = 0;
             for (int i = 0; i < Count; i++)
             {
@@ -167,13 +167,13 @@ namespace PaviseApp
                     TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width,
                     TextRenderer.MeasureText(label, regularFont, Size.Empty,
                     TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Width);
-                int cellWidth = Math.Min(width, Math.Max(Theme.S(72), natural + horizontalPadding));
+                int cellWidth = Math.Min(width, Math.Max(Theme.S(72), natural + horizontalPadding + 1));
                 Size textSize = new Size(Math.Max(1, cellWidth - horizontalPadding - 1), int.MaxValue);
                 int textHeight = Math.Max(TextRenderer.MeasureText(label, font, textSize,
                     TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height,
                     TextRenderer.MeasureText(label, regularFont, textSize,
                     TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height);
-                int cellHeight = Math.Max(Theme.S(32), textHeight + Theme.S(12) + 1);
+                int cellHeight = Math.Max(Theme.S(32), textHeight + verticalPadding + 1);
                 if (x > 0 && x + cellWidth > width)
                 {
                     SetRowHeight(segments, rowStart, rowHeight);

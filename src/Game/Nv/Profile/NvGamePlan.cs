@@ -8,6 +8,8 @@ namespace PaviseApp
 
         public bool Rebar;
 
+        public bool LowLatency;
+
         public string DlssMode;
 
         public bool Automatic;
@@ -16,7 +18,7 @@ namespace PaviseApp
         {
             get
             {
-                return (MaxPerf ? 1 : 0) | (ShaderCacheMax ? 2 : 0) | (Rebar ? 16 : 0);
+                return (MaxPerf ? 1 : 0) | (ShaderCacheMax ? 2 : 0) | (LowLatency ? 4 : 0) | (Rebar ? 16 : 0);
             }
         }
 
@@ -24,7 +26,7 @@ namespace PaviseApp
         {
             get
             {
-                if (!MaxPerf && !Rebar && !ShaderCacheMax)
+                if (!MaxPerf && !Rebar && !ShaderCacheMax && !LowLatency)
                 {
                     if (DlssMode != null)
                     {
@@ -36,7 +38,7 @@ namespace PaviseApp
             }
         }
 
-        internal static NvGamePlan ForAutomatic(bool maxPerf, bool shaderCache, bool onAc, bool rebar = false)
+        internal static NvGamePlan ForAutomatic(bool maxPerf, bool shaderCache, bool onAc, bool rebar = false, bool lowLatency = false)
         {
             NvGamePlan nvGamePlan = new NvGamePlan();
             nvGamePlan.Automatic = true;
@@ -44,6 +46,7 @@ namespace PaviseApp
             nvGamePlan.ShaderCacheMax = shaderCache;
             nvGamePlan.DlssMode = "off";
             nvGamePlan.Rebar = rebar;
+            nvGamePlan.LowLatency = lowLatency;
             return nvGamePlan;
         }
     }

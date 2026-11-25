@@ -319,9 +319,9 @@ namespace PaviseApp
                 Logger.Info(msg);
             }
         }
-        private void SyncPerformanceAutomation()
+        private void SyncPerformanceAutomation(LaboratorySelection.ReadScope selectionReads = null)
         {
-            Laboratory.Sync();
+            Laboratory.Sync(selectionReads);
             bool automationAllowed;
             bool gameActive;
             bool visualMatch;
@@ -348,7 +348,7 @@ namespace PaviseApp
         }
         internal static NvGamePlan AutomaticPreStagePlan(PolicySnapshot policy, bool onAc)
         {
-            return NvGamePlan.ForAutomatic(policy.NvMaxPerf, policy.NvShaderCacheMax, onAc, policy.NvRebar);
+            return NvGamePlan.ForAutomatic(policy.NvMaxPerf, policy.NvShaderCacheMax, onAc, policy.NvRebar, policy.NvLowLatency);
         }
         private bool RunPreStagedMutation(Action mutation)
         {

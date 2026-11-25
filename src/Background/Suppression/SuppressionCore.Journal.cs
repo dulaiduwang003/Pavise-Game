@@ -22,7 +22,7 @@ namespace PaviseApp
                 batchJournalDirty = true;
                 return true;
             }
-            return SaveJournalLocked();
+            return ActiveBackgroundJournalRound == null ? SaveJournalLocked() : SaveBackgroundResourceCleanup();
         }
 
         private void BeginJournalDefer()
@@ -43,7 +43,8 @@ namespace PaviseApp
                     if (journalDefer == 0 && batchDepth == 0 && batchJournalDirty)
                     {
                         batchJournalDirty = false;
-                        SaveJournalLocked();
+                        if (ActiveBackgroundJournalRound == null) SaveJournalLocked();
+                        else SaveBackgroundResourceCleanup();
                     }
                 }
             }
@@ -76,7 +77,20 @@ namespace PaviseApp
             return (entry.ResourceJobMayHaveIo ? "|job-v1|" : "|job-cpu-v2|") + entry.ResourceJobName;
         }
 
-        // GPU 后的资源 Job 段与 GPU 回执一起按当前恢复进度重写
+        private static string FocusJobJournalSuffix(Entry entry)
+        {
+            FocusJobReceipt receipt = entry.FocusJob;
+            return receipt == null ? "" : "|focus-v1|" + receipt.Name + "|" + receipt.Priority + "|" + (receipt.Disk ? "1" : "0");
+        }
+
+        private static string OrdinaryJournalSuffix(Entry entry)
+        {
+            if (!entry.OrdinaryValues) return "";
+            int flags = (entry.OrdinaryPriorityOwned ? 1 : 0) | (entry.OrdinaryTimerOwned ? 2 : 0);
+            return "|ordinary-v1|" + flags;
+        }
+
+        // 依照已恢复字段更新回执
         private static string UpdatedJournalLine(string original, Entry entry)
         {
             int gpuMarker = original.LastIndexOf("|gpu-v1|", StringComparison.Ordinal);
@@ -87,11 +101,44 @@ namespace PaviseApp
                 if (nameStart > 0 && ValidResourceJobName(original.Substring(nameStart + 1)))
                     original = original.Substring(0, original.LastIndexOf('|', nameStart - 1));
             }
+            int ordinaryMarker = original.LastIndexOf("|ordinary-v1|", StringComparison.Ordinal);
+            if (ordinaryMarker >= 0) original = original.Substring(0, ordinaryMarker) + OrdinaryJournalSuffix(entry);
             int marker = original.LastIndexOf("|ac-resources|", StringComparison.Ordinal);
             if (HasAntiCheatResources(entry) && marker >= 0)
                 original = original.Substring(0, marker) + "|ac-resources|" + EncodeAntiCheatResources(entry.AntiCheatResources);
             return original + "|gpu-v1|" + entry.GpuLease.Encode()
-                + ResourceJobJournalSuffix(entry);
+                + FocusJobJournalSuffix(entry) + ResourceJobJournalSuffix(entry);
+        }
+
+#if PAVISE_SELFTEST
+        internal static Action<string, string, bool> BeforeJournalPublishForTest;
+#endif
+
+        private static void PublishJournalFile(string temporaryPath, string destinationPath)
+        {
+            for (int delay = 10; ; delay *= 2)
+            {
+                try
+                {
+                    bool replaceExisting = File.Exists(destinationPath);
+#if PAVISE_SELFTEST
+                    Action<string, string, bool> beforePublish = BeforeJournalPublishForTest;
+                    if (beforePublish != null) beforePublish(temporaryPath, destinationPath, replaceExisting);
+#endif
+                    if (replaceExisting) File.Replace(temporaryPath, destinationPath, null);
+                    else File.Move(temporaryPath, destinationPath);
+                    return;
+                }
+                catch (IOException)
+                {
+                    if (delay > 80) throw;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    if (delay > 80) throw;
+                }
+                System.Threading.Thread.Sleep(delay);
+            }
         }
 
         private bool SaveJournalLocked(bool durable = false, bool preserveBackgroundBudgets = false)
@@ -116,8 +163,9 @@ namespace PaviseApp
                         }
                         lines.Add(item.Key + "|" + entry.Creation + "|" + B64(entry.Name) + "|" + entry.OrigPri + "|" + entry.OrigAff + "|" + entry.OrigIo + "|" + entry.OrigPg + "|" + Native.CpuSetIdsText(entry.OrigCpuSets) + "|" + entry.OrigQoSControl + "|" + entry.OrigQoSState + "|" + entry.OrigGpu + "|" + entry.OrigBoost + (entry.AntiCheatPlacementExternal ? "|ac-placement|1|0" : ((entry.AutomaticLayoutSets != null || entry.AutomaticLayoutYielded) ? ("|layout|" + Native.CpuSetIdsText(entry.AutomaticLayoutSets) + "|" + (entry.AutomaticLayoutYielded ? "1" : "0")) : (entry.BackgroundPlacementOwned ? ("|" + (entry.BackgroundJobPlacement ? "bg-job" : "bg") + "|" + entry.BackgroundApplied + "|" + entry.BackgroundPrevious) : "")))
                             + (HasAntiCheatResources(entry) ? "|ac-resources|" + EncodeAntiCheatResources(entry.AntiCheatResources) : "")
+                            + OrdinaryJournalSuffix(entry)
                             + "|gpu-v1|" + entry.GpuLease.Encode()
-                            + ResourceJobJournalSuffix(entry));
+                            + FocusJobJournalSuffix(entry) + ResourceJobJournalSuffix(entry));
                     }
                 }
                 if (lines.Count == 1)
@@ -145,14 +193,7 @@ namespace PaviseApp
                         fileStream.Flush(true);
                     }
                 }
-                if (File.Exists(journalPath))
-                {
-                    File.Replace(journalPathOffset, journalPath, null);
-                }
-                else
-                {
-                    File.Move(journalPathOffset, journalPath);
-                }
+                PublishJournalFile(journalPathOffset, journalPath);
                 bool resourceJournal = false;
                 foreach (Entry entry in map.Values) resourceJournal |= HasAntiCheatResources(entry);
                 if (resourceJournal)
@@ -178,12 +219,14 @@ namespace PaviseApp
         private void MarkJournaledLocked(bool preserveBackgroundBudgets = false)
         {
             backgroundJobJournalPending = false;
+            backgroundJournalCleanupPending = false;
             if (!preserveBackgroundBudgets) backgroundJobJournalFailures.Clear();
             foreach (Entry entry in map.Values)
             {
                 if (entry.OrigPri != uint.MaxValue)
                 {
                     entry.Journaled = true;
+                    entry.OrdinaryOwnershipJournalPending = false;
                 }
             }
         }
@@ -231,11 +274,32 @@ namespace PaviseApp
                 resourceJobName = lineParts[lineParts.Length - 1];
                 Array.Resize(ref lineParts, lineParts.Length - 2);
             }
+            FocusJobReceipt focusJob = null;
+            if (lineParts.Length >= 13 && lineParts[lineParts.Length - 4] == "focus-v1")
+            {
+                int offset = lineParts.Length - 4;
+                string name = lineParts[offset + 1];
+                uint priority;
+                string disk = lineParts[offset + 3];
+                if ((!ValidFocusJobName(name) && !ValidResourceJobName(name)) || !uint.TryParse(lineParts[offset + 2], out priority)
+                    || (priority != 0 && priority != 0x40 && priority != 0x4000 && priority != 0x20
+                        && priority != 0x8000 && priority != 0x80 && priority != 0x100)
+                    || (disk != "0" && disk != "1"))
+                    return null;
+                focusJob = new FocusJobReceipt { Name = name, Priority = priority, Disk = disk == "1" };
+                Array.Resize(ref lineParts, offset);
+            }
             GpuPriorityLease gpuLease = null;
             if (lineParts.Length >= 9 && lineParts[lineParts.Length - 2] == "gpu-v1")
             {
                 gpuLease = GpuPriorityLease.Parse(lineParts[lineParts.Length - 1]);
                 if (gpuLease == null) return null;
+                Array.Resize(ref lineParts, lineParts.Length - 2);
+            }
+            int ordinaryFlags = -1;
+            if (lineParts.Length >= 14 && lineParts[lineParts.Length - 2] == "ordinary-v1")
+            {
+                if (!int.TryParse(lineParts[lineParts.Length - 1], out ordinaryFlags) || ordinaryFlags < 0 || ordinaryFlags > 3) return null;
                 Array.Resize(ref lineParts, lineParts.Length - 2);
             }
             AntiCheatResourceState resources = null;
@@ -256,6 +320,8 @@ namespace PaviseApp
             }
             uint[] origCpuSetsValue = ((lineParts.Length >= 8) ? Native.ParseCpuSetIds(lineParts[7]) : new uint[0]);
             if (resourceJobName != null && !ResourceJobIdentityMatches(resourceJobName, pid, creation)) return null;
+            if (focusJob != null && !ValidFocusJobName(focusJob.Name)
+                && (!ResourceJobIdentityMatches(focusJob.Name, pid, creation) || resourceJobName != null)) return null;
             if (origCpuSetsValue == null)
             {
                 return null;
@@ -327,6 +393,9 @@ namespace PaviseApp
             entry.Name = nameValue;
             entry.Creation = creation;
             entry.SetOriginalPriority(originalPriority);
+            entry.OrdinaryValues = ordinaryFlags >= 0;
+            entry.OrdinaryPriorityOwned = (ordinaryFlags & 1) != 0 && entry.OrdinaryValues;
+            entry.OrdinaryTimerOwned = (ordinaryFlags & 2) != 0 && entry.OrdinaryValues;
             entry.OrigAff = originalAffinity;
             entry.OrigIo = originalIoPriority;
             entry.OrigPg = originalPagePriority;
@@ -336,10 +405,13 @@ namespace PaviseApp
             entry.OrigGpu = originalGpuPriority;
             entry.GpuLease = gpuLease ?? GpuPriorityLease.Legacy(originalGpuPriority);
             entry.ResourceJobName = resourceJobName;
+            entry.FocusJob = focusJob;
             entry.ResourceJobMayHaveIo = resourceJobMayHaveIo;
             entry.ResourceJobRestoringProcess = jobTag == "job-restore-v2";
             entry.ResourceJobOnlyIo = jobTag == "job-io-v2";
             entry.OrigBoost = originalBoost;
+            if (resources != null && resources.JobName != null && !AntiCheatJobIdentity.ValidName(resources.JobName, pid, entry.Creation)) return null;
+            entry.AntiCheatPid = pid;
             entry.AntiCheatResources = resources;
             entry.AntiCheatPlacementExternal = externalAcPlacement;
             entry.LegacyPlacementDebt = !externalAcPlacement;
@@ -414,6 +486,8 @@ namespace PaviseApp
                         Logger.Log(() => Lang.T("log.suppressioncorerecovery.3") + (i + 1) + Lang.T("log.suppressioncorerecovery.4"));
                         continue;
                     }
+                    if (HasAntiCheatResources(entry) && !ClearAntiCheatJob(entry, null))
+                    { unsettledLines.Add(UpdatedJournalLine(allLines[i], entry)); continue; }
                     IntPtr restoreHandle = Native.OpenProcess(12800, false, pid);
                     if (restoreHandle == IntPtr.Zero)
                     {
@@ -460,6 +534,16 @@ namespace PaviseApp
                         if (!entry.ResourceJobOnlyIo && entry.BackgroundJobPlacement && !ReleaseBackgroundJob(entry))
                         {
                             unsettledLines.Add(allLines[i]); continue;
+                        }
+                        if (entry.FocusJob != null)
+                        {
+                            string focusReason;
+                            if (!RecoverFocusJob(ResourceJobPlatform, entry, pid, out focusReason))
+                            {
+                                Logger.Warn(Logger.Format("重点压制 Job 恢复未完成：进程={0} 原因={1}", "Focus Job recovery incomplete: process={0} reason={1}", entry.Name, focusReason));
+                                unsettledLines.Add(UpdatedJournalLine(allLines[i], entry));
+                                continue;
+                            }
                         }
                         // 资源 Job 锁住的优先级要先解开 后面的原值才写得回去
                         if (entry.ResourceJobName != null)

@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 
 namespace PaviseApp
 {
@@ -12,59 +10,22 @@ namespace PaviseApp
         {
             internal int InitialAttempts;
             internal long NextInitial;
-            internal HardThreadIdentity[] Roles, PriorityRoles, ObservedRoles;
+            internal HardThreadIdentity[] Roles;
             internal string Evidence;
             internal bool ObservationOnly;
-            // 自动模式已用理想处理器软放置关键角色 没有硬绑定会话 也不做运行期纠正
-            internal bool SoftPlaced;
-            // 无排队证据且尚未接管时 可在负载升高后使用剩余采集额度重判
-            internal bool AwaitingLoad;
-            // 独立核固定到此逻辑 CPU 提优清核时仅据此预留物理核 0 表示不改亲和性
+            // 逻辑 CPU 掩码 0 表示本阶段无法放置
             internal ulong RenderTarget;
             internal bool RenderClear;
             // 本局没能放置时的原因说明 供界面详情和日志使用
-            internal string AffinityNote;
+            internal string AffinityNote, PreflightError;
             // 新线程接纳仅失败时扣次数 预算归属原阶段 规则往返不补充
             internal int ClearCoreFailures;
-            internal SchedulingLoadWatch LoadWatch;
-            internal long NextLoadSample;
-            internal UnifiedWorkloadSet Workload;
-            internal UnifiedWorkloadPlan WorkloadPlan;
-            internal int PlacementAdmissionAttempts;
-            internal long NextPlacementAdmission;
-            internal bool WorkloadReviewUsed, RenderReviewUsed, RoleExitPending, RoleReviewAllowed;
-            internal UnifiedWorkloadSet PreviousWorkload;
-            internal long WorkloadReviewAfter;
+            internal bool RenderReviewUsed, RoleExitPending, RoleReviewAllowed;
             internal readonly HardThreadWorkerAdmissionBudget WorkerAdmissionBudget = new HardThreadWorkerAdmissionBudget();
         }
 
-        private bool StepUnifiedLoadWatch(CriticalRuntimeSource source, UnifiedSchedulingPhase phase, ThreadLayoutCaptureRequest request,
-            bool foreground, long now)
-        {
-            if (request == null || !request.RejudgeAvailable) { phase.AwaitingLoad = false; return false; }
-            if (now < phase.NextLoadSample) return false;
-            phase.NextLoadSample = now + TimeSpan.FromSeconds(15).Ticks;
-            if (phase.LoadWatch == null) phase.LoadWatch = new SchedulingLoadWatch();
-            long cpu = 0;
-            bool known = foreground && UnifiedThreadRuntimeSampling.ReadProcessCpu(source.Pid, source.Birth, out cpu);
-            if (!phase.LoadWatch.Observe(known, cpu, now)) return false;
-            phase.AwaitingLoad = false;
-            if (!request.TryRejudge(now)) return false;
-            Logger.Info(Logger.Format("游戏调度 {0} PID={1} 负载比首次判定时明显升高并保持，使用剩余一次采集重新判定；{2}；此前未施加任何接管", "Game scheduling {0} PID={1} load rose clearly above the first decision and stayed there, using the one remaining capture to decide again; {2}; nothing had been taken over before", source.Name, source.Pid, phase.LoadWatch.Describe()));
-            phase.Roles = phase.PriorityRoles = phase.ObservedRoles = null;
-            phase.PreviousWorkload = phase.Workload;
-            phase.WorkloadReviewAfter = now;
-            phase.Workload = null;
-            phase.WorkloadPlan = null;
-            phase.ObservationOnly = false;
-            phase.Evidence = null;
-            criticalObservation.Reset();
-            unifiedNextCpuSample = 0;
-            return true;
-        }
-
         private readonly Dictionary<string, UnifiedSchedulingPhase> unifiedSchedulingPhases = new Dictionary<string, UnifiedSchedulingPhase>(StringComparer.Ordinal);
-        private long unifiedPhaseSerial, unifiedNextCpuSample, unifiedNextAudit, unifiedNextUiPublish, unifiedNextClearCoreScan;
+        private long unifiedPhaseSerial, unifiedNextRoleCheck, unifiedNextAudit, unifiedNextUiPublish, unifiedNextClearCoreScan;
         private int unifiedClearedWorkers, unifiedClearCoreQuickScans;
         private bool unifiedClearCoreCoverageKnown;
         private string unifiedClearCoreNote = "";
@@ -72,32 +33,26 @@ namespace PaviseApp
         internal static readonly long UnifiedHeartbeatTicks = TimeSpan.FromMinutes(10).Ticks;
 
         private readonly SchedulingDiagnosticLog unifiedStateLog = new SchedulingDiagnosticLog();
-        // 每个游戏仅在内存保留最近一次放置前观察 供方案窗口对照 不参与准入
-        private readonly Dictionary<string, SchedulingBottleneckEvidence> schedulingEvidence
-            = new Dictionary<string, SchedulingBottleneckEvidence>(StringComparer.OrdinalIgnoreCase);
+        // 按游戏和模式保留最近一次已准入的放置前读数
+        private readonly Dictionary<string, RenderAffinityObservation> singleCoreObservations =
+            new Dictionary<string, RenderAffinityObservation>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, RenderAffinityObservation> manualObservations =
+            new Dictionary<string, RenderAffinityObservation>(StringComparer.OrdinalIgnoreCase);
 
-        private SchedulingBottleneckEvidence NoteSchedulingEvidence(CriticalRuntimeSource source, UnifiedThreadCaptureEvidence window)
+        private void NoteSchedulingEvidence(CriticalRuntimeSource source, UnifiedThreadCaptureEvidence baseline)
         {
-            SchedulingBottleneckEvidence observed = SchedulingBottleneckEvidence.From(window == null ? null : window.Relation,
-                window == null ? null : window.Presenter, DateTime.Now, window != null && window.PresentIdentityOnly);
-            lock (schedulingEvidence) schedulingEvidence[source.Profile] = observed;
-            return observed;
+            bool manual = source.Rule.IsManualPin;
+            var observations = manual ? manualObservations : singleCoreObservations;
+            var observation = new RenderAffinityObservation(baseline.SampledAt, baseline.Presenter.Tid, baseline.Streams);
+            lock (observations) observations[source.Profile] = observation;
         }
 
-        internal SchedulingBottleneckEvidence LastSchedulingEvidence(string profileId)
+        internal RenderAffinityObservation LastSchedulingEvidence(string profileId, bool manual)
         {
             if (string.IsNullOrEmpty(profileId)) return null;
-            SchedulingBottleneckEvidence observed;
-            lock (schedulingEvidence) return schedulingEvidence.TryGetValue(profileId, out observed) ? observed : null;
-        }
-
-        private static HardThreadIdentity[] UnifiedObservedRoles(UnifiedSchedulingPhase phase)
-        {
-            if (phase.Roles == null) return null;
-            if (phase.ObservedRoles == null)
-                phase.ObservedRoles = phase.Roles.Concat(phase.PriorityRoles ?? new HardThreadIdentity[0])
-                    .GroupBy(role => role.Key).Select(group => group.First()).ToArray();
-            return phase.ObservedRoles;
+            var observations = manual ? manualObservations : singleCoreObservations;
+            RenderAffinityObservation observed;
+            lock (observations) return observations.TryGetValue(profileId, out observed) ? observed : null;
         }
 
         private static string EffectiveGameSchedulingRaw(GameProfile profile)
@@ -130,11 +85,10 @@ namespace PaviseApp
                     FinishCriticalDiagnosticLogs();
                     EndThreadLayoutDiagnostics(Logger.Text("统一调度原计划结束", "Original unified scheduling plan ended"), true);
                     criticalSource = null;
-                    criticalObservation.Reset();
-                    unifiedNextCpuSample = unifiedNextAudit = unifiedNextUiPublish = 0;
+                    unifiedNextRoleCheck = unifiedNextAudit = unifiedNextUiPublish = 0;
                     unifiedLastState = null;
                 }
-                if (source == null || source.Rule.IsOff)
+                if (source == null || !source.Rule.PinsRenderThread)
                 {
                     bool restored = WithdrawCriticalThreadsLocked(source == null ? missing : Logger.Text("用户关闭渲染线程亲和性", "User turned off render thread affinity"));
                     if (source != null) PublishUnifiedState(source, restored ? "off" : "recovery-pending",
@@ -155,9 +109,17 @@ namespace PaviseApp
                         return true;
                     }
                 }
-                // 进程设置权限与线程设置权限独立 历史进程拒绝不替代本局线程身份 原值及实际 API 准入
-                BeginThreadLayoutDiagnostics(source);
                 UnifiedSchedulingPhase phase = UnifiedPhase(source);
+                if (criticalSession == null && threadLayoutIdentity != ThreadLayoutIdentity(source))
+                {
+                    if (phase.PreflightError == null) phase.PreflightError = RenderAffinityPreflightError(source);
+                    if (phase.PreflightError != null)
+                    {
+                        PublishUnifiedState(source, "unsupported", phase.PreflightError, false, false);
+                        return true;
+                    }
+                }
+                BeginThreadLayoutDiagnostics(source);
                 long now = AutoCores.NowTicks;
                 ThreadLayoutCaptureRequest request = EnsureThreadLayoutCapture(source);
                 // 亲和性还没选定角色 仍有采集额度时 线程提优通道先让出采集线程（见 PlacementCaptureFirst）
@@ -171,67 +133,38 @@ namespace PaviseApp
                     ReviewExitedRoles(source, phase, request, now);
                     return true;
                 }
-                if (phase.SoftPlaced && TickSoftPlacement(source, phase, request, now)) return true;
-                // 在途观察长于核验周期 恢复结清后保活同一请求 节奏门禁不能把已开始的采集取消
                 bool observingRequest = request != null && request.NeedsObserver(now) && foreground;
-                if (observingRequest) WantCriticalRoles(source, null);
+                // 已在途的观察要完成原窗口 不另开采集
+                bool captureInFlight = observingRequest && !request.NeedsCapture(now);
+                if (captureInFlight) WantCriticalRoles(source);
                 if (phase.ObservationOnly)
                 {
                     bool released = criticalSession == null || RestoreCriticalThreadsLocked();
-                    if (released && phase.AwaitingLoad && StepUnifiedLoadWatch(source, phase, request, foreground, now))
-                    {
-                        PublishUnifiedState(source, "observing", Logger.Text("负载已明显升高，使用剩余一次采集重新判定；此前未施加任何接管", "Load has risen markedly, re-judging with the one remaining capture; no takeover was applied before"), false, false);
-                        return true;
-                    }
-                    string watching = Logger.Text("调度观察；", "Scheduling observation; ") + phase.Evidence
-                        + (released ? Logger.Text("；未新增线程控制，停止本阶段原基线的线程扫描", "; no new thread control, thread scanning for this phase's original baseline stopped") : Logger.Text("；已停止空控制计划，恢复归属尚未结清", "; empty control plan stopped, restore ownership not yet settled"))
-                        + (released && phase.AwaitingLoad ? Logger.Text("；负载明显升高并保持一分钟后会用剩余一次采集重新判定", "; if load rises markedly and stays up for one minute, the one remaining capture is used to re-judge") : "");
-                    bool readings = released && phase.AwaitingLoad && phase.LoadWatch != null;
-                // 界面保留实时读数 日志仅在连续升高计数变化时记录
-                    string watchKey = watching + (readings ? "|" + phase.LoadWatch.Streak : "");
-                    PublishUnifiedState(source, released ? "observing" : "recovery-pending",
-                        watching + (readings ? Logger.Text("；", "; ") + phase.LoadWatch.Describe() : ""), false, !released, watchKey);
+                    string detail = Logger.Text("调度观察；", "Scheduling observation; ") + phase.Evidence
+                        + (released ? Logger.Text("；已停止线程扫描", "; thread scanning stopped") : Logger.Text("；恢复归属尚未结清", "; restore ownership not yet settled"));
+                    PublishUnifiedState(source, released ? "observing" : "recovery-pending", detail, false, !released);
                     return true;
                 }
                 if (criticalSession != null)
                 {
                     if (now < unifiedNextAudit) return true;
                     unifiedNextAudit = now + TimeSpan.FromSeconds(2).Ticks;
-                    // 时间关键优先级依赖原单核绑定 先纠正范围 再由控制器按实际绑定决定提优或撤回增量
-                    bool maskKnown = !source.Rule.IsTimeCriticalRender || criticalPlan != null && criticalSession.MaintainApplied(now);
-                    if (source.Rule.IsTimeCriticalRender && criticalPlan != null && criticalPlan.RequireWorkerCoverage
-                        && (maskKnown || criticalSession.RuntimeAdmissionRequired))
-                        AdmitClearCoreNewcomers(source, phase, now);
-                    if (!source.Rule.IsTimeCriticalRender) maskKnown = criticalPlan == null || criticalSession.MaintainApplied(now);
+                    bool maskKnown = criticalPlan == null || criticalSession.MaintainApplied(now);
                     if (criticalSession.ThreadHasExited)
                     {
                         // 重识别可以耗尽 旧角色退出后的恢复不能因此跳过 未知读值不构成退出证明
                         phase.RoleExitPending = true;
-                        phase.RoleReviewAllowed = source.Rule.IsRenderStrategy ? !phase.RenderReviewUsed : !phase.WorkloadReviewUsed;
-                        if (source.Rule.IsRenderStrategy) phase.RenderReviewUsed = true;
-                        else phase.WorkloadReviewUsed = true;
+                        phase.RoleReviewAllowed = !phase.RenderReviewUsed;
+                        phase.RenderReviewUsed = true;
                         ReviewExitedRoles(source, phase, request, now);
                         return true;
                     }
-                    // 清核成员由新线程扫描统一接纳 本分支仅处理无清核的显式工作组
-                    if (phase.WorkloadPlan != null && criticalPlan != null && !criticalPlan.RequireWorkerCoverage && criticalSession.RuntimeAdmissionRequired
-                        && phase.PlacementAdmissionAttempts < 3 && now >= phase.NextPlacementAdmission && foreground)
-                    {
-                        phase.PlacementAdmissionAttempts++;
-                        phase.NextPlacementAdmission = now + TimeSpan.FromSeconds(10).Ticks;
-                        HardThreadIdentity[] members = criticalPlan.Choices.Concat(criticalPlan.WorkerPlacements)
-                            .Select(choice => choice.Thread).ToArray();
-                        // 原值已符合目标的成员尚无本方写入 后续首次接管仍消耗同一有限账本
-                        criticalSession.AdmitNewThreads(members, criticalPlan.SelectedWorkersOnly
-                            ? HardThreadCoverage.Partial : HardThreadCoverage.CandidatesOnly);
-                        maskKnown = criticalSession.MaintainApplied(now);
-                    }
-                    if (!source.Rule.IsTimeCriticalRender && criticalPlan != null && criticalPlan.RequireWorkerCoverage) AdmitClearCoreNewcomers(source, phase, now);
+                    if (criticalPlan != null && criticalPlan.RequireWorkerCoverage) AdmitClearCoreNewcomers(source, phase, now);
                     string detail = Logger.Text("策略=", "strategy=") + StrategyName(source.Rule) + Logger.Text("；运行期纠偏=无限；原角色冻结", "; runtimeCorrection=unlimited; original roles frozen")
-                        + (phase.WorkloadPlan == null ? "" : Logger.Text("；", "; ") + DescribeWorkloadPlan(phase))
-                        + Logger.Text("；亲和性=", "; affinity=") + DescribeUnifiedAffinity(source, phase, maskKnown)
-                        + Logger.Text("；未新增线程提优或优先核", "; no new thread boost or preferred core");
+                        + Logger.Text("；亲和性=", "; affinity=") + DescribeUnifiedAffinity(phase, maskKnown)
+                        + Logger.Text("；本计划仅维护 CPU 范围", "; this plan only maintains CPU ranges");
                     bool allKnown = maskKnown && criticalPlan != null;
+                    // 复用现有核验结果 保留前台角色复核的身份确认
                     if (request != null) request.ObserveIdentitySnapshot(allKnown, now);
                     PublishUnifiedState(source, allKnown ? "active" : criticalPlan != null ? "conflict" : "observing", detail, allKnown, false);
                     return true;
@@ -241,104 +174,102 @@ namespace PaviseApp
                     PublishUnifiedState(source, "recovery-pending", Logger.Text("旧线程恢复记录尚未结清，未新增控制", "Old thread restore records not yet settled, no new control"), false, true);
                     return true;
                 }
-                if (smartSwitchedOut || RendererForegroundPid() != source.Pid)
+                if (!foreground)
                 {
-                    criticalObservation.MarkPaused();
                     PublishUnifiedState(source, "observing", Logger.Text("等待游戏返回前台；既有规则与采样次数保留", "Waiting for the game to return to the foreground; existing rules and capture counts retained"), false, false);
                     return true;
                 }
-                if (now < unifiedNextCpuSample) return true;
                 if (phase.Roles == null && request == null)
                 {
-                    PublishUnifiedState(source, "observing", threadLayoutSkipReason ?? Logger.Text("本局无法建立有界角色观察；未启动线程扫描或新增写入", "Bounded role observation cannot be set up this session; no thread scan started and no new writes"), false, false);
+                    PublishUnifiedState(source, "observing", Logger.Text("本局无法建立有界角色观察；未启动线程扫描或新增写入", "Bounded role observation cannot be set up this session; no thread scan started and no new writes"), false, false);
                     return true;
                 }
-                if (phase.Roles == null && request != null && !request.HasUsableBaseline
-                    && (request.ObservationExhausted || now < request.NextCaptureDueTicks))
+                if (phase.InitialAttempts >= 3)
                 {
-                    PublishUnifiedState(source, "observing", request.DescribeState(now)
-                        + Logger.Text("；等待期间不枚举线程，观察额度耗尽后停止角色采样", "; threads are not enumerated while waiting, role capture stops once the observation budget is used up"), false, false);
+                    PublishUnifiedState(source, "conflict", Logger.Text("首次接管次数已用完；本局停止新增接管，保留恢复归属", "Initial acquisition attempts used up; no new takeovers this session, restore ownership retained"), false, false);
                     return true;
                 }
-                if (phase.Roles != null && (phase.InitialAttempts >= 3 || now < phase.NextInitial))
+                if (phase.Roles == null && !request.HasUsableBaseline)
                 {
-                    if (phase.InitialAttempts >= 3) PublishUnifiedState(source, "conflict", Logger.Text("首次接管次数已用完；本局停止新增接管，保留恢复归属", "Initial acquisition attempts used up; no new takeovers this session, restore ownership retained"), false, false);
+                    // 采集前只核验进程身份 呈现线程身份由采集器确认
+                    if (captureInFlight || now < unifiedNextRoleCheck) return true;
+                    bool needsObserver = observingRequest;
+                    if (!needsObserver && request.NeedsIdentitySnapshot(now))
+                    {
+                        unifiedNextRoleCheck = now + TimeSpan.FromSeconds(5).Ticks;
+                        long captureDue = request.NextCaptureDueTicks;
+                        if (now < captureDue) unifiedNextRoleCheck = Math.Min(unifiedNextRoleCheck, captureDue);
+                        request.ObserveIdentitySnapshot(NativeFrameThreads.ProcessState(source.Pid, source.Birth) == 0, now);
+                        needsObserver = request.NeedsObserver(now);
+                    }
+                    if (needsObserver) WantCriticalRoles(source);
+                    string detail = request.DescribeState(now)
+                        + Logger.Text("；等待期间不枚举线程，观察额度耗尽后停止角色采样", "; threads are not enumerated while waiting, role capture stops once the observation budget is used up");
+                    PublishUnifiedState(source, "observing", detail, false, false);
                     return true;
                 }
-                // 失败窗口仅留作诊断 不能用其过期时间挡住冷却后尚余的身份确认与采集次数
-                UnifiedThreadCaptureEvidence admittedBaseline = request == null || !request.HasUsableBaseline ? null : request.ReadUnifiedBaseline();
-                if (phase.Roles == null && admittedBaseline != null && now - admittedBaseline.Observed > TimeSpan.FromSeconds(65).Ticks)
+                if (now < phase.NextInitial || now < unifiedNextRoleCheck) return true;
+                UnifiedThreadCaptureEvidence baseline = phase.Roles == null ? request.ReadUnifiedBaseline() : null;
+                if (baseline != null && now - baseline.Observed > TimeSpan.FromSeconds(65).Ticks)
                 {
-                    PublishUnifiedState(source, "observing", Logger.Text("角色证据已超过准入新鲜度；停止原基线的线程扫描，不追加采集额度", "Role evidence is past admission freshness; thread scanning for the original baseline stopped, no extra capture budget"), false, false);
+                    phase.ObservationOnly = true;
+                    phase.Evidence = Logger.Text("角色证据已超过准入新鲜度；停止原基线的线程核验，保留本阶段采集预算",
+                        "Role evidence is past admission freshness; thread verification for the original baseline stopped, existing capture budget retained");
+                    PublishUnifiedState(source, "observing", phase.Evidence, false, false);
                     return true;
                 }
-                unifiedNextCpuSample = now + TimeSpan.FromSeconds(5).Ticks;
-            // 旁观线程退出不影响已冻结角色的准入
-                ThreadTimes snapshot = phase.Roles == null || phase.Workload != null && !source.Rule.IsDependencyBoost
-                    ? ProcessSnapshotSource.SampleThreads(source.Pid, source.Birth, 1500)
-                    : UnifiedThreadRuntimeSampling.Read(source.Pid, source.Birth, UnifiedObservedRoles(phase));
-            // 新鲜度以取完快照后的时刻核验 避免使用本轮起点误判新快照
-                long sampledAt = AutoCores.NowTicks;
-                bool snapshotKnown = CriticalThreadObservation.Valid(snapshot, source.Birth, sampledAt);
-                if (request != null) request.ObserveIdentitySnapshot(snapshotKnown, now);
-                if (!observingRequest && request != null && request.NeedsObserver(now)) WantCriticalRoles(source, snapshot);
-                if (!snapshotKnown)
-                {
-                    PublishUnifiedState(source, "observing", Logger.Text("线程身份或 CPU 快照暂不可核验；未新增写入", "Thread identity or CPU snapshot cannot be verified yet; no new writes"), false, false);
-                    return true;
-                }
+                unifiedNextRoleCheck = now + TimeSpan.FromSeconds(5).Ticks;
                 if (phase.Roles == null)
                 {
-                    if (source.Rule.UsesWorkloadDiscovery)
-                    {
-                        if (!PrepareWorkloadRoles(source, phase, request, snapshot, sampledAt)) return true;
-                    }
-                    else
-                    {
+                    ThreadTimes snapshot = baseline == null || baseline.Presenter == null ? null
+                        : UnifiedThreadRuntimeSampling.Read(source.Pid, source.Birth, baseline.Presenter);
+                    long sampledAt = AutoCores.NowTicks;
                     string reason;
-                    UnifiedThreadCaptureEvidence baseline = request == null ? null : request.ReadUnifiedBaseline();
-                    HardThreadIdentity[] roles = UnifiedThreadAdmissionPolicy.Select(baseline, snapshot, null,
-                        source.Pid, source.Birth, sampledAt, false, out reason);
+                    HardThreadIdentity[] roles = UnifiedThreadAdmissionPolicy.Select(baseline, snapshot, source.Pid, source.Birth, sampledAt, out reason);
+                    request.ObserveIdentitySnapshot(roles.Length != 0, now);
                     if (roles.Length == 0)
                     {
-                        PublishUnifiedState(source, "observing", reason + Logger.Text("；普通高负载及线程池保留原优先级和运行范围", "; ordinary high-load threads and thread pools keep their original priority and running range"), false, false);
+                        PublishUnifiedState(source, "observing", reason, false, false);
                         return true;
                     }
                     phase.Roles = roles;
-                    // 这里不预留也不写线程优先级
-                    phase.PriorityRoles = new HardThreadIdentity[0];
+                    NoteSchedulingEvidence(source, baseline);
                     phase.Evidence = reason + Logger.Text("；", "; ") + (source.Rule.IsManualPin
-                        ? Logger.Text("手动亲和性：渲染线程固定到所选逻辑 CPU，只改核心范围，不改优先级和进程类别", "Manual affinity: render thread pinned to the selected logical CPU, only the core range changes, priority and process class unchanged")
-                        : Logger.Text("渲染单核：自动选出最合适的物理核固定渲染线程，只改核心范围，不改优先级和进程类别", "Single render core: the most suitable physical core is chosen automatically to pin the render thread, only the core range changes, priority and process class unchanged"));
-                    PrepareRenderAffinity(source, phase, baseline);
+                        ? Logger.Text("手动亲和性：按所选逻辑 CPU 调整呈现线程的核心范围", "Manual affinity adjusts the presenter's CPU range to the selected logical processors")
+                        : Logger.Text("渲染单核：按物理核选择结果调整呈现线程的核心范围", "Single render core adjusts the presenter's CPU range based on physical-core selection"));
+                    PrepareRenderAffinity(source, phase);
                     if (!string.IsNullOrEmpty(phase.AffinityNote)) phase.Evidence += Logger.Text("；", "; ") + phase.AffinityNote;
-                    phase.AwaitingLoad = false;
-                    // 选不出可用核心时没有任何可做的放置 本阶段只观察
                     phase.ObservationOnly = phase.RenderTarget == 0;
-                    Logger.Info(Logger.Format("游戏调度 角色准入： {0} PID={1} 创建={2} 规则={3} 原规则={4} 角色={5} 目标CPU={6} 清核={7}；{8}；{9}；选择证据不作为性能收益证据", "Game scheduling role admission: {0} PID={1} birth={2} rule={3} originalRule={4} roles={5} targetCpu={6} coreClearing={7}; {8}; {9}; selection evidence is not evidence of a performance gain", source.Name, source.Pid, source.Birth, source.Rule.Encode(), source.RuleText, string.Join(",", roles.Select(role => role.Key).ToArray()), (phase.RenderTarget == 0 ? Logger.Text("未改亲和性", "affinity unchanged") : TargetProcessors(phase.RenderTarget)), (phase.RenderClear ? Logger.Text("开", "on") : Logger.Text("关", "off")), phase.Evidence, NoteSchedulingEvidence(source, baseline).Describe()));
+                    Logger.Info(Logger.Format("游戏调度 角色准入： {0} PID={1} 创建={2} 规则={3} 角色={4} 目标CPU={5} 计划整核避让={6}；{7}；性能收益需实测",
+                        "Game scheduling role admission: {0} PID={1} birth={2} rule={3} role={4} targetCpu={5} plannedWholeCoreAvoidance={6}; {7}; performance gains require measurement",
+                        source.Name, source.Pid, source.Birth, source.Rule.Encode(), roles[0].Key,
+                        phase.RenderTarget == 0 ? Logger.Text("无", "none") : TargetProcessors(phase.RenderTarget),
+                        phase.RenderClear ? Logger.Text("开", "on") : Logger.Text("关", "off"), phase.Evidence));
+                }
+                else
+                {
+                    HardThreadRead identity = UnifiedThreadRuntimeSampling.Check(source.Pid, source.Birth, phase.Roles[0]);
+                    if (request != null) request.ObserveIdentitySnapshot(identity == HardThreadRead.Known, now);
+                    if (identity == HardThreadRead.Unknown)
+                    {
+                        PublishUnifiedState(source, "observing", Logger.Text("原呈现线程身份暂不可核验；等待下一轮", "The original presenter identity is temporarily unavailable; waiting for the next check"), false, false);
+                        return true;
+                    }
+                    if (identity == HardThreadRead.Gone)
+                    {
+                        phase.InitialAttempts = 3;
+                        PublishUnifiedState(source, "observing", Logger.Text("原呈现线程已退出或身份已变化；本局停止新增接管", "The original presenter exited or changed identity; no further takeovers this session"), false, false);
+                        return true;
                     }
                 }
                 if (phase.ObservationOnly)
                 {
-                    PublishUnifiedState(source, "observing", Logger.Text("本阶段接管条件未满足；未创建线程控制；", "Takeover conditions not met for this phase; no thread control created; ") + phase.Evidence, false, false);
-                    return true;
-                }
-                if (phase.InitialAttempts >= 3 || now < phase.NextInitial)
-                {
-                    PublishUnifiedState(source, "conflict", Logger.Text("首次接管尚未完成，当前阶段尝试=", "Initial acquisition not yet complete, current phase attempt=") + phase.InitialAttempts
-                        + Logger.Text("/3；首次准入与恢复预算有界，运行期已接管字段纠偏不限次数", "/3; initial admission and restore budgets are bounded, runtime correction of managed fields is unlimited"), false, false);
-                    return true;
-                }
-                if (phase.Roles.Any(role => !CriticalThreadRuntimePolicy.Contains(snapshot, role))
-                    || phase.PriorityRoles.Any(role => !CriticalThreadRuntimePolicy.Contains(snapshot, role)))
-                {
-                    phase.InitialAttempts = 3;
-                    PublishUnifiedState(source, "observing", Logger.Text("原准入身份已退出；本局不凭新线程号重选或追加采样", "Originally admitted identities have exited; no reselection or extra capture by new thread IDs this session"), false, false);
+                    PublishUnifiedState(source, "observing", Logger.Text("本阶段接管条件未满足；", "Takeover conditions not met for this phase; ") + phase.Evidence, false, false);
                     return true;
                 }
                 phase.InitialAttempts++;
                 phase.NextInitial = now + TimeSpan.FromSeconds(10).Ticks;
-                StartUnifiedThreadControl(source, snapshot, phase);
+                StartUnifiedThreadControl(source, phase);
             }
             catch (Exception error)
             {
@@ -351,144 +282,58 @@ namespace PaviseApp
             return true;
         }
 
-        // 自动模式只做软放置 每个关键角色把理想处理器指向为它选出的物理核 所选核忙时调度器照样把它挪走
-        // 不改任何线程的亲和性 不建立硬绑定会话 不写恢复回执 也不做运行期纠正 游戏或别的程序改了理想处理器就放手
-        // 后台治理仍避开这些物理核 让关键角色想去的核尽量空着
-        private void StartSoftPlacement(CriticalRuntimeSource source, UnifiedSchedulingPhase phase)
+        private void ReviewExitedRoles(CriticalRuntimeSource source, UnifiedSchedulingPhase phase, ThreadLayoutCaptureRequest request, long now)
         {
-            HardThreadChoice[] choices = phase.WorkloadPlan == null || phase.WorkloadPlan.Primary == null
-                ? new HardThreadChoice[0] : phase.WorkloadPlan.Choices;
-            // 理想处理器只能指向一个逻辑 CPU 取所选范围里编号最小的那个
-            HardThreadChoice[] hints = choices.Where(choice => choice != null && choice.Mask != 0)
-                .Select(choice => new HardThreadChoice(choice.Thread, choice.Mask & (~choice.Mask + 1))).ToArray();
-            if (hints.Length == 0)
+            if (!WithdrawCriticalThreadsLocked(Logger.Text("关键角色已退出，先撤回原计划及清核限制，再检查剩余复核预算", "critical role exited; withdrawing the original plan and core-clearing limits before checking the remaining review budget")))
             {
-                phase.ObservationOnly = true;
-                phase.Evidence += Logger.Text("；本局没有为关键角色选出物理核，未新增放置", "; no physical core chosen for critical roles this session, no new placement");
-                PublishUnifiedState(source, "observing", phase.Evidence, false, false);
+                PublishUnifiedState(source, "recovery-pending", Logger.Text("关键角色退出；原计划恢复未结清，未启动新角色观察或写入", "critical role exited; restore of the original plan is unsettled; no new role observation or writes started"), false, true);
                 return;
             }
-            string applied = criticalIdealHints.Apply(source.Pid, source.Birth, hints);
-            if (criticalIdealHints.Count == 0)
-            {
-                phase.ObservationOnly = true;
-                phase.Evidence += Logger.Text("；理想处理器提示没有写入（", "; ideal processor hints not written (") + applied + Logger.Text("），本局未新增放置", "), no new placement this session");
-                PublishUnifiedState(source, "observing", phase.Evidence, false, false);
-                return;
-            }
-            phase.SoftPlaced = true;
-            // 只为真正写上（或原本就对）的提示留核 写失败的角色不占后台核心
-            PublishSoftCoreReservation(source, criticalIdealHints.TargetMask);
-            if (threadLayoutCapture != null) threadLayoutCapture.MarkApplied(AutoCores.NowTicks);
-            unifiedNextAudit = AutoCores.NowTicks + TimeSpan.FromSeconds(SoftPlacementAuditSeconds).Ticks;
-            Logger.Info(Logger.Format("游戏调度 软放置 {0} PID={1}；{2}；{3}；只设理想处理器，不改亲和性，调度器可随时迁移；后台避开这些物理核；退局恢复仍是本方写入的值", "Game scheduling soft placement {0} PID={1}; {2}; {3}; only ideal processors set, affinity unchanged, the scheduler may migrate at any time; background avoids these physical cores; exit restore still uses the values we wrote", source.Name, source.Pid, DescribeWorkloadPlan(phase), applied));
-            PublishUnifiedState(source, "active", Logger.Text("自动（软放置）：", "Automatic (soft placement): ") + applied + Logger.Text("；不限制任何线程的运行范围", "; no thread's running range is restricted"), true, false);
+            phase.RoleExitPending = false;
+            phase.Roles = null;
+            phase.RenderTarget = 0; phase.RenderClear = false; phase.AffinityNote = null;
+            // 恢复结清后才能使新证据获得准入资格 沿用原阶段全部预算 不沿用旧线程的原值或核心选择
+            bool queued = phase.RoleReviewAllowed && request != null && request.RequestRenderRoleReview(now);
+            phase.RoleReviewAllowed = false;
+            phase.ObservationOnly = !queued;
+            phase.Evidence = queued ? Logger.Text("原角色退出，原计划及清核归属已结清；等待剩余次数取得的新角色证据", "original role exited; original plan and core-clearing ownership settled; waiting for new role evidence from remaining attempts")
+                : Logger.Text("原角色退出；无剩余角色复核资格，原计划及清核归属已结清", "original role exited; no role review eligibility left; original plan and core-clearing ownership settled");
+            unifiedClearedWorkers = unifiedClearCoreQuickScans = 0; unifiedClearCoreNote = "";
+            unifiedNextRoleCheck = unifiedNextClearCoreScan = 0;
+            PublishUnifiedState(source, "observing", phase.ObservationOnly ? phase.Evidence
+                : Logger.Text("原计划已结清；使用本阶段剩余一次角色复核，不凭新线程号沿用旧原值", "original plan settled; using this phase's one remaining role review without carrying old original values over by new thread ID"), false, false);
         }
 
-        // 软放置只读核对的间隔 提示被改或线程退出就放手 不重新写入
-        private const int SoftPlacementAuditSeconds = 10;
-
-        // 返回 false 表示本阶段的提示已在别处撤回（换配置后又切回 恢复流程） 交回普通路径按剩余首次放置次数重新放置
-        private bool TickSoftPlacement(CriticalRuntimeSource source, UnifiedSchedulingPhase phase, ThreadLayoutCaptureRequest request, long now)
+        private void StartUnifiedThreadControl(CriticalRuntimeSource source, UnifiedSchedulingPhase phase)
         {
-            if (criticalIdealHints.Count == 0)
-            {
-                phase.SoftPlaced = false;
-                return false;
-            }
-            if (now < unifiedNextAudit) return true;
-            unifiedNextAudit = now + TimeSpan.FromSeconds(SoftPlacementAuditSeconds).Ticks;
-            int[] exited;
-            string audit = criticalIdealHints.Audit(out exited);
-            if (audit.Length != 0) Logger.Info(Logger.Format("游戏调度 软放置核对 {0}：{1}；已放手，不重新写入", "Game scheduling soft placement check {0}: {1}; released, not written again", source.Name, audit));
-            // 关键角色的线程退出 多半是游戏换图或重建了渲染器 放下其余提示 用本阶段剩余的一次复核重新找角色
-            if (exited.Length != 0)
-            {
-                phase.SoftPlaced = false;
-                phase.RoleExitPending = true;
-                phase.RoleReviewAllowed = !phase.WorkloadReviewUsed;
-                phase.WorkloadReviewUsed = true;
-                ReviewExitedRoles(source, phase, request, now);
-                return true;
-            }
-            // 游戏自己改了理想处理器就交给游戏 全部被改后本局不再放置
-            if (criticalIdealHints.Count == 0)
-            {
-                phase.SoftPlaced = false;
-                phase.ObservationOnly = true;
-                ClearSoftCoreReservation();
-                phase.Evidence += Logger.Text("；软放置的角色已退出或理想处理器已被改动，本局不再接管", "; soft-placed roles exited or their ideal processor was changed, no further takeover this session");
-                PublishUnifiedState(source, "observing", phase.Evidence, false, false);
-                return true;
-            }
-            // 放手了一部分 后台预留缩到仍有效的提示所在的核
-            if (audit.Length != 0)
-            {
-                ulong remaining = criticalIdealHints.TargetMask;
-                PublishSoftCoreReservation(source, remaining);
-            }
-            PublishUnifiedState(source, "active", Logger.Text("自动（软放置）：仍有效的理想处理器提示=", "Automatic (soft placement): validIdealProcessorHints=") + criticalIdealHints.Count
-                + Logger.Text("；不限制任何线程的运行范围；每 ", "; no thread's running range is restricted; read-only check every ") + SoftPlacementAuditSeconds + Logger.Text(" 秒只读核对一次", " seconds"), true, false);
-            return true;
-        }
-
-        private void StartUnifiedThreadControl(CriticalRuntimeSource source, ThreadTimes snapshot, UnifiedSchedulingPhase phase)
-        {
-            if (source.Rule.IsOrchestration)
-            {
-                StartSoftPlacement(source, phase);
-                return;
-            }
-            // 线程优先级和进程类别分别归游戏线程提优和性能优先级
-            // 这里不预留线程优先级 不归还进程提优 也不建立线程属性控制
-            HardThreadIdentity[] reserved = phase.Roles.GroupBy(role => role.Key).Select(group => group.First()).ToArray();
             IntPtr process = Native.OpenProcess(0x1000, false, source.Pid);
             if (process == IntPtr.Zero) throw new InvalidOperationException(Logger.Text("游戏进程查询句柄不可用", "Game process query handle unavailable"));
             try
             {
                 ulong mask = 0;
-                if (!source.Rule.IsDependencyBoost && (!Native.TryQueryAffinity(process, out mask) || mask == 0))
+                if (!Native.TryQueryAffinity(process, out mask) || mask == 0)
                     throw new InvalidOperationException(Logger.Text("游戏当前允许范围不可核验", "Game's current allowed range cannot be verified"));
                 StartThreadLayoutDiagnostics(source, mask);
                 var pass = new BoostPass { RendererPid = source.Pid, RendererCreation = source.Birth, RendererName = source.Name };
-                // 纯提优计划独立于选核资格 依赖组仅按线程身份授权
                 CriticalThreadTargetLease target = CreateCriticalThreadTarget(pass, process, source.Rule, source.Profile, source.RuleText,
-                    mask, source.Epoch, source.Serial, source.Rule.IsDependencyBoost || source.Rule.IsRenderStrategy && phase.RenderTarget == 0);
+                    mask, source.Epoch, source.Serial);
                 if (target == null) throw new InvalidOperationException(Logger.Text("游戏身份、范围或当前用户规则未通过写入授权核验", "Game identity, range or current user rule failed write authorization verification"));
                 criticalSession = CriticalThreadHardAffinitySession.OpenNative(target);
                 criticalSession.UseWorkerAdmissionBudget(phase.WorkerAdmissionBudget);
                 criticalRestorationConfirmed = false;
                 criticalThreadResidue = true;
-                ThreadTimes fresh = UnifiedThreadRuntimeSampling.Read(source.Pid, source.Birth, reserved);
-                if (!CriticalThreadObservation.Valid(fresh, source.Birth, AutoCores.NowTicks)
-                    || reserved.Any(role => !CriticalThreadRuntimePolicy.Contains(fresh, role)))
-                    throw new InvalidOperationException(Logger.Text("会话建立后角色身份或新鲜快照未确认", "Role identity or fresh snapshot not confirmed after the session was set up"));
                 unifiedClearedWorkers = 0;
                 unifiedClearCoreCoverageKnown = false;
                 unifiedClearCoreNote = "";
-                // 自动模式在入口就转去软放置 这里只剩渲染单核的硬固定
-                if (phase.RenderTarget != 0)
+                HardThreadChoice[] choices = { new HardThreadChoice(phase.Roles[0], phase.RenderTarget) };
+                if (phase.RenderClear) ApplyClearCore(source, choices);
+                else
                 {
-                    HardThreadChoice[] choices = { new HardThreadChoice(phase.Roles[0], phase.RenderTarget) };
-                    // 提优清核不改渲染线程范围 仅预留其物理核并设置理想处理器
-                    if (phase.RenderClear) ApplyClearCore(source, choices, !source.Rule.PinsRenderThread);
-                    else
-                    {
-                        criticalPlan = criticalSession.CreatePlan(choices, false, false, null, true);
-                        if (!criticalSession.Apply(criticalPlan, new[] { phase.Roles[0] }, HardThreadCoverage.CandidatesOnly))
-                            throw new InvalidOperationException(Logger.Text("渲染线程首次固定未核验：", "Initial render thread pin not verified: ") + criticalSession.Detail);
-                    }
+                    criticalPlan = criticalSession.CreatePlan(choices, false, false, null, true);
+                    if (!criticalSession.Apply(criticalPlan, phase.Roles, HardThreadCoverage.CandidatesOnly))
+                        throw new InvalidOperationException(Logger.Text("渲染线程首次固定未核验：", "Initial render thread pin not verified: ") + criticalSession.Detail);
                 }
                 PublishBackgroundCoreReservation(source);
-                // 没有建立任何放置时不保留空会话
-                if (criticalPlan == null)
-                {
-                    phase.ObservationOnly = true;
-                    phase.Evidence += Logger.Text("；本局没有可固定或可避让的核心，未新增放置", "; no core to pin or avoid this session, no new placement");
-                    bool released = RestoreCriticalThreadsLocked();
-                    PublishUnifiedState(source, released ? "observing" : "recovery-pending", phase.Evidence, false, !released);
-                    return;
-                }
                 if (threadLayoutCapture != null) threadLayoutCapture.MarkApplied(AutoCores.NowTicks);
                 unifiedNextAudit = 0;
                 PublishUnifiedState(source, "coverage-pending", Logger.Text("角色已冻结；亲和性逐线程核验；", "Roles frozen; affinity verified per thread; ") + phase.Evidence
@@ -511,10 +356,8 @@ namespace PaviseApp
 
         private static string StrategyName(CriticalThreadRule rule)
         {
-            // 运行副本只会是自动 渲染单核或手动
-            string name = rule.IsManualPin ? Logger.Text("手动亲和性", "Manual affinity") : rule.PinsRenderThread ? Logger.Text("渲染单核", "Single render core") : rule.IsOrchestration ? Logger.Text("自动（软放置）", "Automatic (soft placement)")
-                : rule.IsTimeCriticalRender ? Logger.Text("独立核时间关键", "Dedicated-core time-critical") : rule.IsDependencyBoost ? Logger.Text("依赖组提优", "Dependency group boost") : rule.IsGamePriority ? Logger.Text("游戏优先", "Game priority") : rule.IsRenderStrategy ? Logger.Text("渲染线程提优", "Render thread boost") : Logger.Text("主副核编排", "Primary/secondary core orchestration");
-            return name + (rule.ClearCore && !rule.IsOrchestration ? Logger.Text("+整核避让", "+whole-core avoidance") : "");
+            string name = rule.IsManualPin ? Logger.Text("手动亲和性", "Manual affinity") : Logger.Text("渲染单核", "Single render core");
+            return name + (rule.ClearCore ? Logger.Text("+整核避让", "+whole-core avoidance") : "");
         }
 
         // 固定目标的位数 只有手动可以是多个逻辑 CPU 而且是 1 到 4 个 渲染单核选出来的必须是单个 CPU
@@ -523,20 +366,39 @@ namespace PaviseApp
         {
             int count = AutoCores.CountBits(target);
             if (rule.IsManualPin)
-                return count >= 1 && count <= CriticalThreadAutoPolicy.MaximumIsolated ? null
-                    : Logger.Text("手动所选 CPU 有 ", "Manual selection has ") + count + Logger.Text(" 个，只支持 1 到 ", " CPUs; only 1 to ") + CriticalThreadAutoPolicy.MaximumIsolated + Logger.Text(" 个", " are supported");
+                return count >= 1 && count <= CriticalThreadRule.MaximumIsolated ? null
+                    : Logger.Text("手动所选 CPU 有 ", "Manual selection has ") + count + Logger.Text(" 个，只支持 1 到 ", " CPUs; only 1 to ") + CriticalThreadRule.MaximumIsolated + Logger.Text(" 个", " are supported");
             return count == 1 ? null : Logger.Text("渲染单核选出的目标不是单个 CPU（0x", "the render single-core target is not a single CPU (0x") + target.ToString("X") + Logger.Text("）", ")");
+        }
+
+        // 开始观察前只核验固定条件 实时进程范围和核心占用留到准入时核验
+        private string RenderAffinityPreflightError(CriticalRuntimeSource source)
+        {
+            ulong all = CpuTopology.AllMask;
+            ulong[] physical = CpuTopology.PhysicalCoreMasks();
+            if (IntPtr.Size != 8 || CpuTopology.MultiGroup || !CpuTopology.TopologySourcesAgree
+                || CpuTopology.AllMaskReconciled || all == 0 || physical.Length == 0)
+                return Logger.Text("处理器拓扑不可核验", "Processor topology cannot be verified");
+            CriticalThreadRule rule = source.Rule;
+            if (rule.IsManualPin && rule.Topology != ManualCorePlan.Stamp(all, physical))
+                return Logger.Text("处理器拓扑已变化，请重新选择手动 CPU", "Processor topology changed, choose the manual CPUs again");
+            CriticalThreadAllowedRange scope;
+            lock (sync) scope = CriticalThreadAllowedRange.FromProfile(CriticalPreferenceProfileLocked(source.Profile),
+                all, physical, 0, AutoCores.Supported, true);
+            if (scope.Error != null) return scope.Error;
+            return rule.IsManualPin && (rule.ManualMask & scope.Mask) != rule.ManualMask
+                ? Logger.Text("所选 CPU 不在本局配置的游戏核心范围内", "Selected CPUs are outside this session's configured game core range")
+                : null;
         }
 
         // 渲染单核与手动的选核 渲染单核选一颗最合适的物理核 手动核验所选 CPU 仍在游戏范围内
         // 只在准入时选一次 选不出就本局不放置 原因写进 AffinityNote
-        private void PrepareRenderAffinity(CriticalRuntimeSource source, UnifiedSchedulingPhase phase, UnifiedThreadCaptureEvidence baseline)
+        private void PrepareRenderAffinity(CriticalRuntimeSource source, UnifiedSchedulingPhase phase)
         {
             phase.RenderTarget = 0;
             phase.RenderClear = false;
             phase.AffinityNote = null;
-            if (!source.Rule.PinsRenderThread && !source.Rule.ClearCore) return;
-            string skipped = source.Rule.PinsRenderThread ? Logger.Text("本局不固定核心", "no core pinned this session") + (source.Rule.ClearCore ? Logger.Text("、不清核", ", no core clearing") : "") : Logger.Text("本局不清核", "no core clearing this session");
+            string skipped = Logger.Text("本局不固定核心", "no core pinned this session") + (source.Rule.ClearCore ? Logger.Text("、不清核", ", no core clearing") : "");
             if (CpuTopology.MultiGroup || !CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)
             { phase.AffinityNote = Logger.Text("处理器拓扑不可核验，", "Processor topology cannot be verified, ") + skipped; return; }
             ulong mask;
@@ -565,8 +427,7 @@ namespace PaviseApp
             }
             else
             {
-                target = RenderIsolationPlan.Choose(allowed, physical, CpuTopology.PerfMask, CpuTopology.CriticalPlacementPreferredMask,
-                    baseline == null || baseline.Relation == null ? null : baseline.Relation.Presenter, out reason);
+                target = RenderIsolationPlan.Choose(allowed, physical, CpuTopology.PerfMask, CpuTopology.CriticalPlacementPreferredMask, out reason);
                 if (target == 0)
                 { phase.AffinityNote = Logger.Text("未选出可用核心（", "No usable core chosen (") + reason + Logger.Text("），", "), ") + skipped; return; }
                 string shape = RenderTargetShapeError(source.Rule, target);
@@ -577,17 +438,16 @@ namespace PaviseApp
             bool room = RenderIsolationPlan.LeavesRoomForOthers(allowed, physical, core);
             phase.RenderClear = source.Rule.ClearCore && room;
             if (source.Rule.ClearCore && !room) phase.AffinityNote = Logger.Text("整核避让后其他线程不足两颗物理核，本局不避让", "Whole-core avoidance would leave other threads fewer than two physical cores, no avoidance this session");
-            // 提优策略仅在可清核时预留核心
-            phase.RenderTarget = source.Rule.PinsRenderThread || phase.RenderClear ? target : 0;
+            phase.RenderTarget = target;
         }
 
         // 先收紧其他游戏线程的原范围 让出目标物理核及 SMT 同核线程 再安置关键角色
         // 不可读或无法避让的线程记为覆盖不足 批次受剩余日志容量限制 后续扫描补齐
-        private void ApplyClearCore(CriticalRuntimeSource source, HardThreadChoice[] choices, bool floating)
+        private void ApplyClearCore(CriticalRuntimeSource source, HardThreadChoice[] choices)
         {
-            criticalPlan = criticalSession.CreatePlan(choices, true, true, null, false, false, floating);
-            ThreadTimes all = ProcessSnapshotSource.SampleThreads(source.Pid, source.Birth, 0);
-            if (!CriticalThreadObservation.Valid(all, source.Birth, AutoCores.NowTicks))
+            criticalPlan = criticalSession.CreatePlan(choices, true, true);
+            ThreadTimes all = ProcessSnapshotSource.SampleThreadIdentities(source.Pid, source.Birth, 0);
+            if (!CriticalThreadRuntimePolicy.Valid(all, source.Birth, AutoCores.NowTicks))
                 throw new InvalidOperationException(Logger.Text("清核需要可核验的线程快照", "Core clearing needs a verifiable thread snapshot"));
             HardThreadCoverage coverage;
             int uncovered;
@@ -599,8 +459,7 @@ namespace PaviseApp
             RefreshClearCoreNote(all, uncovered);
             unifiedClearCoreQuickScans = 0;
             ScheduleClearCoreScan(AutoCores.NowTicks, uncovered);
-            Logger.Log(() => Logger.Format("游戏调度 {0}{1}{2}{3}，其余 {4} 个线程让出所在物理核，可用范围=0x{5}{6}；退局逐线程恢复原值", "Game scheduling {0}{1}{2}{3}, the other {4} threads yield their physical cores, allowedMask=0x{5}{6}; exit restores original values per thread", source.Name, (source.Rule.IsTimeCriticalRender && !unifiedClearCoreCoverageKnown
-                ? Logger.Text(" 清核覆盖尚未完整核验，时间关键提优未启用：", " core-clearing coverage not fully verified, time-critical boost not enabled: ") : Logger.Text(" 清核已生效：", " core clearing active: ")), (floating ? Logger.Text("渲染线程保持原范围，理想处理器指向 ", "render thread keeps its original range, ideal processor set to ") : Logger.Text("关键角色固定到 ", "critical roles pinned to ")), string.Join(Logger.Text("、", ", "), choices.Select(choice => TargetProcessors(choice.Mask)).ToArray()), unifiedClearedWorkers, criticalPlan.Workers.ToString("X"), unifiedClearCoreNote));
+            Logger.Log(() => Logger.Format("游戏调度 {0} 清核已生效：渲染线程固定到 {1}，其余 {2} 个线程让出所在物理核，可用范围=0x{3}{4}；退局逐线程恢复原值", "Game scheduling {0} core clearing active: render thread pinned to {1}, the other {2} threads yield their physical cores, allowedMask=0x{3}{4}; exit restores original values per thread", source.Name, TargetProcessors(choices[0].Mask), unifiedClearedWorkers, criticalPlan.Workers.ToString("X"), unifiedClearCoreNote));
         }
 
         // 批内须包含关键角色 线程数与日志行数合计不超过 512 时整批提交
@@ -610,7 +469,7 @@ namespace PaviseApp
         {
             coverage = HardThreadCoverage.Partial;
             uncovered = 0;
-            if (sample == null || !CoreThreadTracker.ValidShape(sample)) return new HardThreadIdentity[0];
+            if (sample == null || !CriticalThreadRuntimePolicy.ValidShape(sample)) return new HardThreadIdentity[0];
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var candidates = new List<HardThreadIdentity>();
             var known = new List<HardThreadIdentity>();
@@ -640,7 +499,7 @@ namespace PaviseApp
             HardThreadOwnership[] receipts = criticalSession.ActiveReceipts;
             unifiedClearedWorkers = Math.Max(0, receipts.Length - (criticalPlan == null ? 0 : criticalPlan.Choices.Length));
             var covered = new HashSet<string>(receipts.Select(receipt => receipt.Thread.Key), StringComparer.Ordinal);
-            unifiedClearCoreCoverageKnown = uncovered == 0 && CoreThreadTracker.ValidShape(sample);
+            unifiedClearCoreCoverageKnown = uncovered == 0 && CriticalThreadRuntimePolicy.ValidShape(sample);
             if (unifiedClearCoreCoverageKnown)
                 for (int index = 0; index < sample.Ids.Length; index++)
                     if (sample.Ids[index] <= 0 || sample.Ids[index] > int.MaxValue || sample.Created[index] <= 0
@@ -666,12 +525,8 @@ namespace PaviseApp
             try
             {
                 unifiedClearCoreCoverageKnown = false;
-                ThreadTimes all = ProcessSnapshotSource.SampleThreads(source.Pid, source.Birth, 1500);
-                if (!CriticalThreadObservation.Valid(all, source.Birth, AutoCores.NowTicks))
-                {
-                    if (source.Rule.IsTimeCriticalRender) RecordClearCoreFailure(phase, Logger.Text("清核成员快照未通过身份核验", "Core clearing member snapshot failed identity verification"));
-                    return;
-                }
+                ThreadTimes all = ProcessSnapshotSource.SampleThreadIdentities(source.Pid, source.Birth, 1500);
+                if (!CriticalThreadRuntimePolicy.Valid(all, source.Birth, AutoCores.NowTicks)) return;
                 var covered = new HashSet<string>(criticalSession.ActiveReceipts.Select(receipt => receipt.Thread.Key), StringComparer.Ordinal);
                 int newcomers = 0;
                 for (int index = 0; index < all.Ids.Length; index++)
@@ -697,7 +552,7 @@ namespace PaviseApp
             }
         }
 
-        // 覆盖不完整多半是游戏刚开就退出的短线程 这期间渲染线程会退回原优先级 2 秒后补扫就能恢复 不必等满 10 秒
+        // 覆盖不完整时允许 2 秒后补扫
         // 补扫最多连续两次 仍不完整（读不到或只能跑在目标核的线程）就回到 10 秒一轮 扫描不会因此变密
         private void ScheduleClearCoreScan(long now, int uncovered)
         {
@@ -715,12 +570,12 @@ namespace PaviseApp
                 + (phase.ClearCoreFailures >= 3 ? Logger.Text("；已停止接纳新线程，已生效的固定与清核保持", "; new thread admission stopped, active pinning and core clearing kept") : "");
         }
 
-        private string DescribeUnifiedAffinity(CriticalRuntimeSource source, UnifiedSchedulingPhase phase, bool maskKnown)
+        private string DescribeUnifiedAffinity(UnifiedSchedulingPhase phase, bool maskKnown)
         {
             string note = string.IsNullOrEmpty(phase.AffinityNote) ? "" : Logger.Text("；", "; ") + phase.AffinityNote;
             if (criticalPlan == null) return Logger.Text("宽域，未接管掩码", "Wide scope, mask not managed") + note;
             if (!maskKnown) return criticalSession.LastRuntimeDetail + note;
-            string bound = criticalPlan.FloatingCandidates ? Logger.Text("渲染线程保持原范围，理想处理器指向预留核", "Render thread keeps its original range, ideal processor points at the reserved core") : Logger.Text("指定 CPU 已读回", "Assigned CPU read back");
+            string bound = Logger.Text("指定 CPU 已读回", "Assigned CPU read back");
             if (!criticalPlan.RequireWorkerCoverage) return bound + Logger.Text("；未清核，非整核独占", "; no core clearing, not whole-core exclusive") + note;
             ulong cleared = 0;
             foreach (HardThreadChoice choice in criticalPlan.Choices)
@@ -730,17 +585,14 @@ namespace PaviseApp
                 + unifiedClearCoreNote + note;
         }
 
-        // 含实时读数的说明须提供稳定 logKey 避免每次采样都产生日志
-        private void PublishUnifiedState(CriticalRuntimeSource source, string state, string detail, bool applied, bool recoveryPending,
-            string logKey = null, string englishDetail = null)
+        private void PublishUnifiedState(CriticalRuntimeSource source, string state, string detail, bool applied, bool recoveryPending)
         {
             if (source == null) return;
-            logKey = logKey ?? detail;
             long now = AutoCores.NowTicks;
             string summary;
             string owner = source.Serial + "|" + source.Pid + "|" + source.Birth + "|" + source.Rule.Encode();
             // 每种原因首现即时记录 成功/冲突来回切换不重置各自窗口 变化读数只进详情
-            if (unifiedStateLog.Admit(owner, state, logKey, now,
+            if (unifiedStateLog.Admit(owner, state, detail, now,
                 state == "active" ? UnifiedHeartbeatTicks : TimeSpan.FromMinutes(2).Ticks, out summary))
             {
                 Logger.Info(Logger.Format("游戏调度 状态={0} 游戏={1} PID={2} 创建={3} 规则={4}；{5}{6}", "Game scheduling state={0} game={1} PID={2} birth={3} rule={4}; {5}{6}", state, source.Name, source.Pid, source.Birth, source.Rule.Encode(), detail, summary));
@@ -751,8 +603,7 @@ namespace PaviseApp
             string uiDetail = detail;
             if (Lang.Cur != 0)
             {
-                uiDetail = englishDetail != null ? englishDetail
-                    : state == "active" ? ThreadLayoutDescriptions.Text("", "Managed fields were read back. Saved rules remain under continuous correction.", "管理項目の読み戻しを確認しました。保存したルールを継続的に維持します。")
+                uiDetail = state == "active" ? ThreadLayoutDescriptions.Text("", "Managed fields were read back. Saved rules remain under continuous correction.", "管理項目の読み戻しを確認しました。保存したルールを継続的に維持します。")
                     : state == "off" ? ThreadLayoutDescriptions.Text("", "Game scheduling is off; owned settings were restored.", "ゲームスケジューリングは無効で、所有する設定を復元しました。")
                     : recoveryPending ? ThreadLayoutDescriptions.Text("", "New writes stopped; restoration is awaiting verification.", "新規書き込みを停止し、復元の確認を待っています。")
                     : state == "unsupported" ? ThreadLayoutDescriptions.Text("", "This thread-control stage could not be started. Existing recovery ownership is retained; background governance is unaffected.", "")

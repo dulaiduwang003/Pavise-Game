@@ -171,18 +171,7 @@ namespace PaviseApp
 
         internal static string EnvironmentBundleDetail
         {
-            get
-            {
-                string detail = PerformancePolicy.Text("关闭 VBS（含内存完整性和 hypervisor）和适用的 CPU 软件缓解，并调整音频设备的交流电源管理。启用时按处理器和系统选择缓解范围。会降低安全防护并影响 WSL2、Hyper-V。关闭后恢复原配置，启用或恢复后需重启电脑。",
-                    "Disables VBS (including Memory Integrity and the hypervisor) and applicable CPU software mitigations, and adjusts audio device power management on AC. The CPU and Windows version determine the mitigation scope when enabled. This reduces protection and affects WSL2 and Hyper-V. Turning it off restores the original settings. Restart after enabling or restoring.");
-                if (EnvironmentPreference(PerformanceActionCatalog.CpuMitigations))
-                {
-                    detail += CpuMitigationsExpanded
-                        ? PerformancePolicy.Text("\nCPU 缓解已选范围：扩展", "\nSelected CPU mitigation scope: expanded")
-                        : PerformancePolicy.Text("\nCPU 缓解已选范围：基础", "\nSelected CPU mitigation scope: basic");
-                }
-                return detail + EnvironmentBundleIssues();
-            }
+            get { return ReadEnvironmentBundle().Detail; }
         }
 
         internal static bool EnvironmentBundleEnabled
@@ -213,34 +202,34 @@ namespace PaviseApp
         {
             lock (gate)
             {
-                if (busy.Contains(id))
-                {
-                    return "working";
-                }
-                string value;
-                if (!states.TryGetValue(id, out value))
-                {
-                    value = Settings.LoadStr(id + "State", "");
-                }
-                bool live = value == "live-applied" || value == "live-restored";
-                if (value != "configured" && value != "restored" && !live)
-                {
-                    return value;
-                }
-                object result;
-                switch (BootSessionIdentity.Compare(Settings.LoadStr(id + "Boot", ""), Boot()))
-                {
-                default:
-                    result = live ? value : ((value == "configured") ? "pending-reboot" : "restore-pending-reboot");
-                    break;
-                case IrqRebootState.Rebooted:
-                    result = ((value == "configured" || value == "live-applied") ? "ready" : "restored");
-                    break;
-                case IrqRebootState.Unknown:
-                    result = "unverified";
-                    break;
-                }
-                return (string)result;
+                return ReadStateLocked(id, Boot);
+            }
+        }
+
+        private static string ReadStateLocked(string id, Func<string> readBoot)
+        {
+            if (busy.Contains(id))
+            {
+                return "working";
+            }
+            string value;
+            if (!states.TryGetValue(id, out value))
+            {
+                value = Settings.LoadStr(id + "State", "");
+            }
+            bool live = value == "live-applied" || value == "live-restored";
+            if (value != "configured" && value != "restored" && !live)
+            {
+                return value;
+            }
+            switch (BootSessionIdentity.Compare(Settings.LoadStr(id + "Boot", ""), readBoot()))
+            {
+            case IrqRebootState.Rebooted:
+                return (value == "configured" || value == "live-applied") ? "ready" : "restored";
+            case IrqRebootState.Unknown:
+                return "unverified";
+            default:
+                return live ? value : (value == "configured" ? "pending-reboot" : "restore-pending-reboot");
             }
         }
 
@@ -627,37 +616,47 @@ namespace PaviseApp
                 return PerformancePolicy.Text("CPU 缓解", "CPU mitigations");
             case "EnvAudioIdleV1":
                 return PerformancePolicy.Text("音频空闲电源", "Audio idle power");
+            case PerformanceActionCatalog.MultimediaProfile:
+                return PerformancePolicy.Text("多媒体调度", "Multimedia scheduling");
             default:
                 return "VBS";
             }
         }
 
-        private static string EnvironmentBundleIssues()
+        private static string EnvironmentBundleDetails(List<EnvironmentMemberObservation> members, bool cpuSelected, bool cpuExpanded)
         {
+            string detail = PerformancePolicy.Text("关闭 VBS（含内存完整性和 hypervisor）和适用的 CPU 软件缓解，调整音频设备的交流电源管理，并写入多媒体调度参数。启用时按处理器和系统选择缓解范围。会降低安全防护并影响 WSL2、Hyper-V。关闭后恢复原配置，启用或恢复后需重启电脑。",
+                "Disables VBS (including Memory Integrity and the hypervisor) and applicable CPU software mitigations, adjusts audio device power management on AC, and writes multimedia scheduling parameters. The CPU and Windows version determine the mitigation scope when enabled. This reduces protection and affects WSL2 and Hyper-V. Turning it off restores the original settings. Restart after enabling or restoring.");
+            if (cpuSelected)
+            {
+                detail += cpuExpanded
+                    ? PerformancePolicy.Text("\nCPU 缓解已选范围：扩展", "\nSelected CPU mitigation scope: expanded")
+                    : PerformancePolicy.Text("\nCPU 缓解已选范围：基础", "\nSelected CPU mitigation scope: basic");
+            }
             List<string> list = new List<string>();
             List<string> list2 = new List<string>();
-            foreach (string item in EnvironmentMembers())
+            foreach (EnvironmentMemberObservation member in members)
             {
-                string stateResult = State(item);
+                string stateResult = member.State;
                 if (stateResult == "failed" || stateResult == "stopped")
                 {
-                    list.Add(EnvironmentMemberName(item));
+                    list.Add(EnvironmentMemberName(member.Id));
                 }
                 if (stateResult == "restore-failed")
                 {
-                    list2.Add(EnvironmentMemberName(item));
+                    list2.Add(EnvironmentMemberName(member.Id));
                 }
             }
-            string environmentBundleIssuesResult = "";
+
             if (list.Count > 0)
             {
-                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", list.ToArray());
+                detail += "\n" + PerformancePolicy.Text("执行受限项：", "Blocked settings: ") + string.Join(", ", list.ToArray());
             }
             if (list2.Count > 0)
             {
-                environmentBundleIssuesResult = environmentBundleIssuesResult + "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", list2.ToArray());
+                detail += "\n" + PerformancePolicy.Text("恢复未完成项：", "Restoration incomplete: ") + string.Join(", ", list2.ToArray());
             }
-            return environmentBundleIssuesResult;
+            return detail;
         }
 
         private static List<string> EnvironmentMembers()
@@ -716,18 +715,72 @@ namespace PaviseApp
             }
         }
 
-        internal static string EnvironmentBundleState()
+        internal sealed class EnvironmentBundleObservation
         {
-            return GroupState(EnvironmentMembers(), EnvironmentPreference);
+            internal bool Enabled;
+            internal string State;
+            internal string Label;
+            internal string Detail;
         }
 
-        private static string GroupState(List<string> members, Predicate<string> selected)
+        private sealed class EnvironmentMemberObservation
         {
-            if (EnvironmentBundleBusy())
+            internal string Id;
+            internal string State;
+            internal bool Selected;
+        }
+
+        internal static EnvironmentBundleObservation ReadEnvironmentBundle()
+        {
+            var members = new List<EnvironmentMemberObservation>();
+            int selectedCount = 0;
+            bool working;
+            bool cpuSelected = false;
+            bool cpuExpanded;
+            lock (gate)
+            {
+                working = busy.Count > 0;
+                bool bootRead = false;
+                string boot = null;
+                Func<string> readBoot = delegate
+                {
+                    if (!bootRead)
+                    {
+                        boot = Boot();
+                        bootRead = true;
+                    }
+                    return boot;
+                };
+                foreach (string id in EnvironmentMembers())
+                {
+                    bool selected = EnvironmentPreference(id);
+                    if (selected) selectedCount++;
+                    if (id == PerformanceActionCatalog.CpuMitigations) cpuSelected = selected;
+                    members.Add(new EnvironmentMemberObservation { Id = id, Selected = selected, State = ReadStateLocked(id, readBoot) });
+                }
+                cpuExpanded = cpuSelected && CpuMitigationsExpanded;
+            }
+            string state = GroupState(members, selectedCount, working);
+            return new EnvironmentBundleObservation
+            {
+                Enabled = selectedCount > 0,
+                State = state,
+                Label = GroupLabel(members, selectedCount, state),
+                Detail = EnvironmentBundleDetails(members, cpuSelected, cpuExpanded)
+            };
+        }
+
+        internal static string EnvironmentBundleState()
+        {
+            return ReadEnvironmentBundle().State;
+        }
+
+        private static string GroupState(List<EnvironmentMemberObservation> members, int selectedCount, bool working)
+        {
+            if (working)
             {
                 return "working";
             }
-            int selectedCount = 0;
             int supportedSelections = 0;
             bool hasFailure = false;
             bool hasStopped = false;
@@ -736,24 +789,19 @@ namespace PaviseApp
             bool hasRestorePendingReboot = false;
             bool hasUnverified = false;
             bool hasRestored = false;
-            foreach (string member in members)
+            foreach (EnvironmentMemberObservation member in members)
             {
-                bool isSelected = selected(member);
-                string state = State(member);
-                if (isSelected)
+                string state = member.State;
+                if (member.Selected && state != "unsupported")
                 {
-                    selectedCount++;
-                    if (state != "unsupported")
-                    {
-                        supportedSelections++;
-                    }
+                    supportedSelections++;
                 }
                 hasFailure |= state == "failed";
                 hasStopped |= state == "stopped";
                 hasRecoveryFailure |= state == "restore-failed";
                 hasPendingReboot |= state == "pending-reboot";
                 hasRestorePendingReboot |= state == "restore-pending-reboot";
-                hasUnverified |= state == "unverified" || (isSelected && state.Length == 0);
+                hasUnverified |= state == "unverified" || (member.Selected && state.Length == 0);
                 hasRestored |= state == "restored";
             }
             if (hasRecoveryFailure)
@@ -801,15 +849,14 @@ namespace PaviseApp
 
         internal static string EnvironmentBundleLabel()
         {
-            return GroupLabel(EnvironmentMembers(), EnvironmentPreference);
+            return ReadEnvironmentBundle().Label;
         }
 
-        private static string GroupLabel(List<string> members, Predicate<string> selected)
+        private static string GroupLabel(List<EnvironmentMemberObservation> members, int selectedCount, string groupStateResult)
         {
-            string groupStateResult = GroupState(members, selected);
             if (groupStateResult == "partial")
             {
-                return PerformancePolicy.Text("部分启用 · 保留旧版选择 · ", "Partly enabled; existing choices retained · ") + GroupEnabledCount(members, selected) + "/" + members.Count;
+                return PerformancePolicy.Text("部分启用 · 保留旧版选择 · ", "Partly enabled; existing choices retained · ") + selectedCount + "/" + members.Count;
             }
             string envPerformanceReadyText = ((groupStateResult == "ready") ? Lang.T("env.performance.ready") : Label(groupStateResult));
             if (groupStateResult == "working")
@@ -819,9 +866,9 @@ namespace PaviseApp
             int processedCount = 0;
             int processedCount2 = 0;
             bool restartRequired = false;
-            foreach (string member in members)
+            foreach (EnvironmentMemberObservation member in members)
             {
-                string stateResult = State(member);
+                string stateResult = member.State;
                 if (stateResult == "unsupported")
                 {
                     processedCount++;

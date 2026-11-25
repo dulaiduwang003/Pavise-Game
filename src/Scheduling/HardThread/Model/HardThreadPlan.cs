@@ -10,7 +10,6 @@ namespace PaviseApp
         private readonly HardThreadChoice[] workerPlacements;
 
         internal const int MaximumWorkerPlacements = 3;
-        internal const int MaximumSelectedWorkerPlacements = 32;
 
         internal readonly HardThreadTarget Target;
 
@@ -26,10 +25,6 @@ namespace PaviseApp
 
         internal readonly bool PreserveOriginalMasks;
         internal readonly bool SharedCandidate;
-        internal readonly bool SelectedWorkersOnly;
-        // 浮动候选 候选只用来确定要清出的物理核 自身保持原范围不写 用于“渲染线程提优”打开清核
-        internal readonly bool FloatingCandidates;
-
         internal HardThreadChoice[] Choices
         {
             get
@@ -43,7 +38,7 @@ namespace PaviseApp
             get { return (HardThreadChoice[])workerPlacements.Clone(); }
         }
 
-        private HardThreadPlan(HardThreadTarget target, HardThreadChoice[] choices, HardThreadChoice[] workerPlacements, ulong workers, ulong processMask, ushort group, HardThreadWorkerMode workerMode, bool requireWorkerCoverage, bool preserveOriginalMasks, bool sharedCandidate, bool selectedWorkersOnly, bool floatingCandidates)
+        private HardThreadPlan(HardThreadTarget target, HardThreadChoice[] choices, HardThreadChoice[] workerPlacements, ulong workers, ulong processMask, ushort group, HardThreadWorkerMode workerMode, bool requireWorkerCoverage, bool preserveOriginalMasks, bool sharedCandidate)
         {
             Target = target;
             this.choices = (HardThreadChoice[])choices.Clone();
@@ -55,11 +50,9 @@ namespace PaviseApp
             RequireWorkerCoverage = requireWorkerCoverage;
             PreserveOriginalMasks = preserveOriginalMasks;
             SharedCandidate = sharedCandidate;
-            SelectedWorkersOnly = selectedWorkersOnly;
-            FloatingCandidates = floatingCandidates;
         }
 
-        internal static HardThreadPlan Create(HardThreadTarget target, HardThreadMachine machine, HardThreadChoice[] selected, HardThreadWorkerMode workerMode = HardThreadWorkerMode.CandidatesOnly, bool requireWorkerCoverage = false, bool preserveOriginalMasks = false, HardThreadChoice[] workerPlacements = null, bool sharedCandidate = false, bool selectedWorkersOnly = false, bool floatingCandidates = false)
+        internal static HardThreadPlan Create(HardThreadTarget target, HardThreadMachine machine, HardThreadChoice[] selected, HardThreadWorkerMode workerMode = HardThreadWorkerMode.CandidatesOnly, bool requireWorkerCoverage = false, bool preserveOriginalMasks = false, HardThreadChoice[] workerPlacements = null, bool sharedCandidate = false)
         {
             if (target != null && target.AllowedMask == 0)
                 throw new InvalidOperationException(Logger.Text("此目标仅授予优先级控制，不允许创建亲和性计划", "this target is granted priority control only; affinity plans are not allowed"));
@@ -75,9 +68,9 @@ namespace PaviseApp
             {
                 throw new InvalidOperationException("original process mask does not contain the allowed range");
             }
-            if (selected == null || selected.Length < 1 || selected.Length > CriticalThreadAutoPolicy.MaximumIsolated)
+            if (selected == null || selected.Length < 1 || selected.Length > CriticalThreadRule.MaximumIsolated)
             {
-                throw new ArgumentException("one to " + CriticalThreadAutoPolicy.MaximumIsolated + " candidates required");
+                throw new ArgumentException("one to " + CriticalThreadRule.MaximumIsolated + " candidates required");
             }
             ulong numericValue = 0uL;
             ulong numericValue2 = 0uL;
@@ -128,7 +121,7 @@ namespace PaviseApp
                 }
             }
         // 容量不足而退化为共享主核时 仅接管提交的候选 允许沿用原清核授权
-            if (sharedCandidate && (requireWorkerCoverage || selectedWorkersOnly
+            if (sharedCandidate && (requireWorkerCoverage
                 || selected.Length != 1 || workerPlacements != null && workerPlacements.Length != 0))
                 throw new InvalidOperationException(Logger.Text("共享主核计划仅允许一个目标，不包含整核避让", "a shared primary-core plan allows only one target and excludes whole-core avoidance"));
             // 共享主核计划只固定这一个线程 不预留整颗核 其他游戏线程仍可使用原范围
@@ -144,16 +137,10 @@ namespace PaviseApp
             {
                 throw new ArgumentException("complete worker coverage requires worker avoidance");
             }
-            if (floatingCandidates && (!requireWorkerCoverage || !preserveOriginalMasks || sharedCandidate || selectedWorkersOnly))
-                throw new ArgumentException(Logger.Text("浮动候选只用于清核：需要整核避让和原范围保护", "floating candidates are only for core clearing: whole-core avoidance and original-range protection are required"));
             HardThreadChoice[] auxiliary = workerPlacements ?? new HardThreadChoice[0];
-            if (selectedWorkersOnly && (workerMode != HardThreadWorkerMode.AvoidWorkers || requireWorkerCoverage || !preserveOriginalMasks))
-                throw new ArgumentException(Logger.Text("显式工作组计划只接管列明成员，必须保护原范围，不能声明全线程避让", "explicit worker-group plans take over listed members only, must protect the original range, and cannot declare all-thread avoidance"));
-            int auxiliaryLimit = selectedWorkersOnly ? MaximumSelectedWorkerPlacements : MaximumWorkerPlacements;
-            if (auxiliary.Length > auxiliaryLimit || (!selectedWorkersOnly && auxiliary.Length != 0
+            if (auxiliary.Length > MaximumWorkerPlacements || (auxiliary.Length != 0
                 && (workerMode != HardThreadWorkerMode.AvoidWorkers || !requireWorkerCoverage || !preserveOriginalMasks)))
-                throw new ArgumentException(selectedWorkersOnly ? Logger.Text("显式工作组范围必须保护原值，且最多32个成员", "explicit worker-group ranges must protect original values and have at most 32 members")
-                    : Logger.Text("辅助工作线程范围需要完整覆盖、原范围保护，且最多三个成员", "auxiliary worker ranges require full coverage, original-range protection, and at most three members"));
+                throw new ArgumentException(Logger.Text("辅助工作线程范围需要完整覆盖、原范围保护，且最多三个成员", "auxiliary worker ranges require full coverage, original-range protection, and at most three members"));
             foreach (HardThreadChoice placement in auxiliary)
             {
                 if (placement == null || placement.Thread == null || !hashSet.Add(placement.Thread.Key)
@@ -161,7 +148,7 @@ namespace PaviseApp
                     throw new ArgumentException(Logger.Text("辅助成员身份重复、与主候选重合，或范围越过工作线程允许核心", "auxiliary member identity is duplicated, overlaps the primary candidate, or its range exceeds the allowed worker cores"));
             }
             // 辅助范围不独占物理核 普通工作线程仍可使用原先的剩余核心范围
-            return new HardThreadPlan(target, selected, auxiliary, remainingAllowedMask, machine.ProcessMask, machine.Group, workerMode, requireWorkerCoverage, preserveOriginalMasks, sharedCandidate, selectedWorkersOnly, floatingCandidates);
+            return new HardThreadPlan(target, selected, auxiliary, remainingAllowedMask, machine.ProcessMask, machine.Group, workerMode, requireWorkerCoverage, preserveOriginalMasks, sharedCandidate);
         }
 
         internal bool IsCandidate(HardThreadIdentity thread)
@@ -191,7 +178,7 @@ namespace PaviseApp
             {
                 if (hardThreadChoice.Thread.Tid == thread.Tid && hardThreadChoice.Thread.Creation == thread.Creation)
                 {
-                    return FloatingCandidates ? ProcessMask : hardThreadChoice.Mask;
+                    return hardThreadChoice.Mask;
                 }
             }
             if (WorkerMode != HardThreadWorkerMode.AvoidWorkers)
@@ -200,7 +187,6 @@ namespace PaviseApp
             }
             foreach (HardThreadChoice placement in workerPlacements)
                 if (placement.Thread.Tid == thread.Tid && placement.Thread.Creation == thread.Creation) return placement.Mask;
-            if (SelectedWorkersOnly) throw new InvalidOperationException(Logger.Text("显式工作组计划不能接管未列明的线程身份", "an explicit worker-group plan cannot take over unlisted thread identities"));
             return Workers;
         }
 
@@ -209,10 +195,6 @@ namespace PaviseApp
             ulong desired = MaskFor(thread);
             if (!PreserveOriginalMasks) return desired;
             if (original == 0 || (original & ~ProcessMask) != 0) return 0;
-            // 浮动候选按原值记录 不写入 游戏原范围窄于进程范围时也照原样保留
-            if (FloatingCandidates && IsCandidate(thread)) return original;
-            // 并行工作组保留各线程原有窄范围 未知成员不能借用共同工作池取得写入资格
-            if (SelectedWorkersOnly && IsWorkerPlacement(thread)) return original & desired;
             // 放置范围不得超出线程原范围
             // 辅助池需要完整保留两个可选处理器 原范围缺少成员时撤回 不能退化成单核排队
             return IsCandidate(thread) || IsWorkerPlacement(thread)

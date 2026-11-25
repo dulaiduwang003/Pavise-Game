@@ -63,7 +63,7 @@ namespace PaviseApp
                     e.AntiCheatResources.Active = false;
                     if (!SaveAntiCheatResourceJournal(e)) { e.AntiCheatResources.Active = true; return false; }
                 }
-                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, e.OrigBoost, false, DesiredAffinityOf(e), PlacementIsProtected(e), e);
+                return VerifyBackgroundJob(e) && ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, false, DesiredAffinityOf(e), PlacementIsProtected(e), e);
             }
         }
 
@@ -110,7 +110,7 @@ namespace PaviseApp
                         outermostBatch = true;
                         if (batchJournalDirty)
                         {
-                            journalSaved = SaveJournalLocked();
+                            journalSaved = SaveAcquisitionJournal();
                         }
                         batchJournalDirty = false;
                         if (batchApply.Count > 0)

@@ -33,11 +33,15 @@ namespace PaviseApp
 
             private bool keyboard = true;
 
-            private readonly int row = Theme.S(56);
+            private int row = Theme.S(56);
 
             private readonly int header = Theme.S(32);
 
             private readonly int footer = Theme.S(28);
+
+            private readonly bool multiline;
+            private readonly Func<int, bool> canSelect;
+            private const TextFormatFlags WrapText = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
 
             internal Func<bool> CanInteract;
 
@@ -89,13 +93,21 @@ namespace PaviseApp
 
             internal ProfileList(int selected, int[] order, Func<int, string> title, Func<int, string> description,
                 string accessibleName, int separatorBefore)
+                : this(selected, order, title, description, accessibleName, separatorBefore, false, _ => true)
+            {
+            }
+
+            internal ProfileList(int selected, int[] order, Func<int, string> title, Func<int, string> description,
+                string accessibleName, int separatorBefore, bool multiline, Func<int, bool> canSelect)
             {
                 this.selected = selected;
                 this.order = order;
                 this.title = title;
                 this.description = description;
                 this.separatorBefore = separatorBefore;
-                active = Array.IndexOf(order, selected);
+                this.multiline = multiline;
+                this.canSelect = canSelect;
+                active = Math.Max(0, Array.IndexOf(order, selected));
                 // 菜单最多展示四项 其余通过既有滚动和键盘导航访问
                 base.Size = new Size(Theme.S(458), header + row * Math.Min(4, order.Length) + footer);
                 SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
@@ -103,6 +115,23 @@ namespace PaviseApp
                 base.TabStop = true;
                 base.AccessibleRole = AccessibleRole.List;
                 base.AccessibleName = accessibleName;
+            }
+
+            internal void FitRows(int width)
+            {
+                if (!multiline) return;
+                foreach (int index in order)
+                {
+                    int titleHeight = WrappedHeight(title(index), Theme.UI(10f, true), width - Theme.S(55));
+                    int detailHeight = WrappedHeight(description(index), Theme.UI(9f, false), width - Theme.S(35));
+                    row = Math.Max(row, titleHeight + detailHeight + Theme.S(17));
+                }
+                Height = header + row * order.Length + footer;
+            }
+
+            private static int WrappedHeight(string text, Font font, int width)
+            {
+                return TextRenderer.MeasureText(text, font, new Size(Math.Max(1, width), int.MaxValue), WrapText).Height;
             }
 
             internal void SetSelected(int index)
@@ -143,9 +172,9 @@ namespace PaviseApp
                 Graphics graphics = e.Graphics;
                 graphics.Clear(Theme.Card);
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                TextRenderer.DrawText(graphics, PerformancePolicy.Text("按使用场景选择", "Choose for your workload"), Theme.UI(9f, true), new Rectangle(Theme.S(12), 0, base.Width - Theme.S(24), header), Theme.Dim, TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter);
                 GraphicsState gstate = graphics.Save();
-                graphics.SetClip(new Rectangle(0, header, base.Width, ViewHeight));
+                graphics.SetClip(new Rectangle(0, header, base.Width, ViewHeight), CombineMode.Intersect);
+                const TextFormatFlags rowClipping = TextFormatFlags.PreserveGraphicsClipping;
                 for (int i = 0; i < order.Length; i++)
                 {
                     int onPaintValue = order[i];
@@ -174,11 +203,20 @@ namespace PaviseApp
                             graphics.DrawLine(pen2, Theme.S(12), top, base.Width - Theme.S(12), top);
                         }
                     }
-                    TextRenderer.DrawText(graphics, title(onPaintValue), Theme.UI(10f, true), new Rectangle(Theme.S(14), top + Theme.S(6), base.Width - Theme.S(55), Theme.S(21)), isSelected ? Theme.Accent : Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-                    TextRenderer.DrawText(graphics, description(onPaintValue), Theme.UI(9f, false), new Rectangle(Theme.S(14), top + Theme.S(30), base.Width - Theme.S(35), Theme.S(20)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    string titleText = title(onPaintValue);
+                    Font titleFont = Theme.UI(10f, true);
+                    int titleWidth = base.Width - Theme.S(55);
+                    int titleHeight = multiline ? WrappedHeight(titleText, titleFont, titleWidth) : Theme.S(21);
+                    int detailTop = top + (multiline ? Theme.S(9) + titleHeight : Theme.S(30));
+                    int detailHeight = multiline ? top + row - Theme.S(6) - detailTop : Theme.S(20);
+                    TextFormatFlags textFlags = rowClipping | (multiline ? WrapText : TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    bool enabled = canSelect(onPaintValue);
+                    Color titleColor = enabled ? (isSelected ? Theme.Accent : Theme.Fg) : Theme.Faint;
+                    TextRenderer.DrawText(graphics, titleText, titleFont, new Rectangle(Theme.S(14), top + Theme.S(6), titleWidth, titleHeight), titleColor, textFlags);
+                    TextRenderer.DrawText(graphics, description(onPaintValue), Theme.UI(9f, false), new Rectangle(Theme.S(14), detailTop, base.Width - Theme.S(35), detailHeight), enabled ? Theme.Dim : Theme.Faint, textFlags);
                     if (isSelected)
                     {
-                        TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), top + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent);
+                        TextRenderer.DrawText(graphics, "✓", Theme.UI(11f, true), new Rectangle(base.Width - Theme.S(37), top + Theme.S(6), Theme.S(22), Theme.S(21)), Theme.Accent, rowClipping);
                     }
                 }
                 if (MaxOffset > 0)
@@ -187,7 +225,19 @@ namespace PaviseApp
                     Theme.FillRound(graphics, new Rectangle(base.Width - Theme.S(6), header + offset * (ViewHeight - thumbHeight) / MaxOffset, Theme.S(3), thumbHeight), Theme.S(2), Theme.StrokeHi);
                 }
                 graphics.Restore(gstate);
-                TextRenderer.DrawText(graphics, PerformancePolicy.Text("↑ ↓ 浏览   Enter 选择   Esc 取消", "↑ ↓ Browse   Enter Select   Esc Cancel"), Theme.UI(8.5f, false), new Rectangle(Theme.S(12), base.Height - footer, base.Width - Theme.S(24), footer), Theme.Faint, TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter);
+
+                var headerBounds = new Rectangle(0, 0, base.Width, header);
+                var footerBounds = new Rectangle(0, base.Height - footer, base.Width, footer);
+                using (var background = new SolidBrush(Theme.Card))
+                {
+                    graphics.FillRectangle(background, headerBounds);
+                    graphics.FillRectangle(background, footerBounds);
+                }
+                const TextFormatFlags hintFlags = TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter;
+                int textInset = Theme.S(12);
+                string heading = multiline ? AccessibleName : PerformancePolicy.Text("按使用场景选择", "Choose for your workload");
+                TextRenderer.DrawText(graphics, heading, Theme.UI(9f, true), Rectangle.Inflate(headerBounds, -textInset, 0), Theme.Dim, hintFlags);
+                TextRenderer.DrawText(graphics, PerformancePolicy.Text("↑ ↓ 浏览   Enter 选择   Esc 取消", "↑ ↓ Browse   Enter Select   Esc Cancel"), Theme.UI(8.5f, false), Rectangle.Inflate(footerBounds, -textInset, 0), Theme.Faint, hintFlags);
             }
 
             protected override void OnMouseMove(MouseEventArgs e)
@@ -262,7 +312,7 @@ namespace PaviseApp
                     pressedRow = -1;
                     dragY = -1;
                     base.Capture = false;
-                    if (Interactive && hitResult >= 0 && hitResult == pressedRowSnapshot && this.Picked != null)
+                    if (Interactive && hitResult >= 0 && hitResult == pressedRowSnapshot && canSelect(order[hitResult]) && this.Picked != null)
                     {
                         this.Picked(order[hitResult]);
                     }
@@ -325,7 +375,7 @@ namespace PaviseApp
                     break;
                 case Keys.Return:
                 case Keys.Space:
-                    if (this.Picked != null)
+                    if (canSelect(order[active]) && this.Picked != null)
                     {
                         this.Picked(order[active]);
                     }
@@ -378,6 +428,10 @@ namespace PaviseApp
 
         private readonly Func<string> listName;
 
+        private readonly Func<int, string> caption;
+
+        private readonly Func<int, bool> canSelect;
+
         private readonly int separatorBefore;
 
         internal int SelectedIndex
@@ -392,7 +446,7 @@ namespace PaviseApp
 
         internal void SetSilently(int index)
         {
-            if (!base.IsDisposed && Array.IndexOf(order, index) >= 0)
+            if (!base.IsDisposed && (Array.IndexOf(order, index) >= 0 || (caption != null && index == -1)))
             {
                 selected = index;
                 base.AccessibleDescription = description(index);
@@ -410,6 +464,12 @@ namespace PaviseApp
 
         internal PerformanceProfilePicker(int[] order, Func<int, string> title, Func<int, string> description,
             Func<string> listName, int separatorBefore = -1)
+            : this(order, title, description, listName, separatorBefore, null, null)
+        {
+        }
+
+        internal PerformanceProfilePicker(int[] order, Func<int, string> title, Func<int, string> description,
+            Func<string> listName, int separatorBefore, Func<int, string> caption, Func<int, bool> canSelect)
         {
             if (order == null || order.Length == 0) throw new ArgumentException(Logger.Text("选项顺序不能为空。", "Option order cannot be empty."), "order");
             if (title == null) throw new ArgumentNullException("title");
@@ -420,6 +480,8 @@ namespace PaviseApp
             this.description = description;
             this.listName = listName;
             this.separatorBefore = separatorBefore;
+            this.caption = caption;
+            this.canSelect = canSelect ?? (_ => true);
             selected = order[0];
             base.Size = new Size(Theme.S(230), Theme.S(38));
             base.TabStop = true;
@@ -456,7 +518,12 @@ namespace PaviseApp
                 }
                 PaintBusy(e.Graphics, base.ClientRectangle, graphicsPath);
             }
-            TextRenderer.DrawText(e.Graphics, title(selected), Theme.UI(9.5f, false), new Rectangle(Theme.S(11), 0, base.Width - Theme.S(40), base.Height), base.Enabled ? Theme.Fg : Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | ((base.Width < Theme.S(200)) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine));
+            string label = caption == null ? title(selected) : caption(selected);
+            Font font = Theme.UI(9.5f, false);
+            Rectangle labelBounds = new Rectangle(Theme.S(11), 0, Math.Max(1, base.Width - Theme.S(40)), base.Height);
+            TextFormatFlags labelFlags = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter;
+            labelFlags |= caption == null && base.Width < Theme.S(200) ? TextFormatFlags.WordBreak : TextFormatFlags.SingleLine;
+            TextRenderer.DrawText(e.Graphics, label, font, labelBounds, base.Enabled ? Theme.Fg : Theme.Dim, labelFlags);
             int remainingWidth = base.Width - Theme.S(21);
             int heightRatio = base.Height / 2;
             using (Pen pen2 = new Pen(base.Enabled ? Theme.Accent : Theme.Dim, Theme.S(2)))
@@ -550,7 +617,6 @@ namespace PaviseApp
             }
             ContextMenuStrip next = new ContextMenuStrip
             {
-                Padding = Padding.Empty,
                 Margin = Padding.Empty,
                 BackColor = Theme.Card,
                 AutoSize = false,
@@ -563,16 +629,22 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (PopupCreatedForTest != null) PopupCreatedForTest(popup);
 #endif
-            ProfileList profileList = new ProfileList(selected, order, title, description, listName(), separatorBefore);
+            ProfileList profileList = CreateProfileList();
             profileList.CanInteract = () => base.CanInteract && object.ReferenceEquals(dropdown.Menu, next);
             ProfileList profileList2 = (list = profileList);
             Rectangle workingArea = Screen.FromControl(this).WorkingArea;
             Rectangle rectangle = RectangleToScreen(base.ClientRectangle);
             int availableBelow = Math.Max(0, workingArea.Bottom - rectangle.Bottom - Theme.S(6));
             int availableAbove = Math.Max(0, rectangle.Top - workingArea.Top - Theme.S(6));
-            Size size = DsPopup.Fit(new Size(Theme.S(460), profileList2.Height + 2), workingArea, Theme.S(12), 1);
-            int popupHeight = Math.Max(1, Math.Min(profileList2.Height, Math.Max(availableAbove, availableBelow) - 2));
-            profileList2.Size = new Size(Math.Max(1, size.Width - 2), Math.Max(1, Math.Min(size.Height - 2, popupHeight)));
+            // ContextMenuStrip retains its own padding even with both menu margins hidden.
+            Padding menuPadding = next.Padding;
+            int popupMargin = 2 * Theme.S(dropdown.EdgeMarginLogical);
+            Size popupSize = DsPopup.Fit(new Size(Theme.S(460), 1), workingArea, popupMargin, 1);
+            profileList2.FitRows(popupSize.Width - menuPadding.Horizontal);
+            int popupHeight = Math.Min(profileList2.Height + menuPadding.Vertical, Math.Max(availableAbove, availableBelow));
+            popupSize = DsPopup.Fit(new Size(popupSize.Width, popupHeight), workingArea, popupMargin, 1);
+            profileList2.Size = new Size(Math.Max(1, popupSize.Width - menuPadding.Horizontal),
+                Math.Max(1, popupSize.Height - menuPadding.Vertical));
             profileList2.EnsureActiveVisible();
             next.Items.Add(new ToolStripControlHost(profileList2)
             {
@@ -581,22 +653,10 @@ namespace PaviseApp
                 AutoSize = false,
                 Size = profileList2.Size
             });
-            next.Size = new Size(profileList2.Width + 2, profileList2.Height + 2);
+            next.Size = new Size(profileList2.Width + menuPadding.Horizontal, profileList2.Height + menuPadding.Vertical);
             profileList2.Picked += delegate(int index)
             {
-                if (base.CanInteract && object.ReferenceEquals(dropdown.Menu, next))
-                {
-                    Close();
-                    if (base.CanInteract)
-                    {
-                        Focus();
-                        SetSilently(index);
-                        if (this.SelectionChanged != null)
-                        {
-                            this.SelectionChanged(this, EventArgs.Empty);
-                        }
-                    }
-                }
+                if (object.ReferenceEquals(dropdown.Menu, next)) CommitSelection(index);
             };
             profileList2.Cancelled += delegate
             {
@@ -635,6 +695,36 @@ namespace PaviseApp
             }
             Invalidate();
         }
+
+        private ProfileList CreateProfileList()
+        {
+            return new ProfileList(selected, order, title, description, listName(), separatorBefore, caption != null, canSelect);
+        }
+
+        private void CommitSelection(int index)
+        {
+            if (!base.CanInteract || !canSelect(index)) return;
+            Close();
+            if (!base.CanInteract) return;
+            Focus();
+            SetSilently(index);
+            if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
+        }
+
+#if PAVISE_SELFTEST
+        internal void SelectForTest(int index)
+        {
+            CommitSelection(index);
+        }
+
+        internal Control PopupListForTest(int width)
+        {
+            ProfileList preview = CreateProfileList();
+            preview.FitRows(width);
+            preview.Width = width;
+            return preview;
+        }
+#endif
 
         protected void Close()
         {

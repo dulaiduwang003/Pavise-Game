@@ -12,13 +12,15 @@ namespace PaviseApp
         [ThreadStatic]
         private static Action<string> restoreProgress;
 
-        private static readonly string[] DataFiles = new string[15]
+        private static readonly string[] DataFiles = new string[16]
         {
             "Pavise.irq-sessions.dat", "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt", "Pavise.autoignore.txt", "Pavise.profiles.dat", "Pavise.renderer-observations.dat", "Pavise.library-ignore.txn", "Pavise.log", "Pavise.log.old",
-            "crash.log", "Pavise.preview.log", "Pavise.freeze.state", "Pavise.suppression.state", "backdrop.img"
+            "crash.log", "Pavise.preview.log", "Pavise.freeze.state", "Pavise.suppression.state", "Pavise.suppression.state.once", "backdrop.img"
         };
 
-        private static readonly string[] AtomicDataFiles = new string[3] { "Pavise.whitelist.txt", "Pavise.autoignore.txt", "Pavise.suppression.state" };
+        private static readonly string[] AtomicDataFiles = new string[4] {
+            "Pavise.whitelist.txt", "Pavise.autoignore.txt", "Pavise.suppression.state",
+            "Pavise.suppression.state.once" };
 
         private static readonly string[] UniqueTempDataFiles = new string[5] { "Pavise.profiles.dat", "Pavise.irq-sessions.dat", "Pavise.renderer-observations.dat", "Pavise.library-ignore.txn", "Pavise.autoignore.txt" };
 
@@ -283,17 +285,20 @@ namespace PaviseApp
                 RenderLane.HealFromCrash();
                 return !RenderLane.HasResidue();
             }, list);
+            if (SuppressionCore.AntiCheatJobs == null) SuppressionCore.AntiCheatJobs = new AntiCheatJobPlatform();
+            AntiCheatAffinityLease.BeforeConstraintRestore = SuppressionCore.ClearRecordedAntiCheatJob;
             Step("AC hard affinity", () => new AntiCheatAffinityLease().Recover(), list);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, list);
             StepIf("CFG", CfgTweak.HasResidue, CfgTweak.RestoreAll, list);
+            StepIf("GPU name", GpuSpoof.HasResidue, GpuSpoof.RestoreAll, list);
             StepIf(Lang.T("gm.pausemaint"), () => MaintenancePause.HasResidue, MaintenancePause.Restore, list);
             StepIf("FTH", () => FthTweak.RepairedByPavise, FthTweak.Restore, list);
             list.AddRange(PerformanceTuning.RestoreAllFailures(ReportRestoreProgress));
             StepIf(Lang.T("irqcheck.purge"), () => GpuIrqCheck.HasResidue, GpuIrqCheck.RestoreAll, list);
-            string[] textEntries = new string[9]
+            string[] textEntries = new string[10]
             {
                 "pstate", "smooth", "shadercache", "ansel", "rebarfeat", "rebaropt", "rebarsize",
-                "dlssovr", "dlsspreset"
+                "dlssovr", "dlsspreset", NvDrsTweaks.KeyMaxFrames
             };
             foreach (string entryText in textEntries)
             {

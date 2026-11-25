@@ -8,10 +8,17 @@ namespace PaviseApp
 
         internal long WriteTicks;
 
+#if PAVISE_SELFTEST
+        internal static System.Action<string> BeforeReadForTest;
+#endif
+
         internal static RendererFileStamp Read(string path)
         {
             try
             {
+#if PAVISE_SELFTEST
+                if (BeforeReadForTest != null) BeforeReadForTest(path);
+#endif
                 FileInfo fileInfo = new FileInfo(path);
                 object result;
                 if (!fileInfo.Exists || fileInfo.Length <= 0)

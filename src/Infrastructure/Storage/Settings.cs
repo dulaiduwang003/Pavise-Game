@@ -50,6 +50,7 @@ namespace PaviseApp
         internal static Action<string> BeforePreferenceDeleteForTest;
         internal static Action AfterTransientResetForTest;
         internal static Action<string> BeforeStrictStringReadForTest;
+        internal static Action<string> BeforeValueReadForTest;
         internal static Action<string> BeforeStrictBoolReadForTest;
         internal static Action<string> BeforeStoredNamesReadForTest;
         internal static Action<string> BeforeStringWriteForTest;
@@ -277,6 +278,7 @@ namespace PaviseApp
             {
                 if (transientValues != null)
                 {
+                    if (BeforeValueReadForTest != null) BeforeValueReadForTest(name);
                     object value;
                     return transientValues.TryGetValue(name, out value) ? value : null;
                 }
@@ -766,7 +768,7 @@ namespace PaviseApp
                 }
                 finally
                 {
-                    BumpMutationGeneration();
+                    if (name != FrameCaptureReservation.ReceiptKey) BumpMutationGeneration();
                 }
             }
         }

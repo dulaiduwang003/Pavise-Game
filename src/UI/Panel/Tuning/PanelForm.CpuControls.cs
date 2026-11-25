@@ -305,10 +305,12 @@ namespace PaviseApp
 
         // 手动打开渲染线程调度前说明效果需自行对照 可能变差 取消时不写入任何配置
         // 只有用户在深度调优里显式打开这款游戏的开关时才确认
-        private bool ConfirmSchedulingRisk()
+        private bool ConfirmSchedulingRisk(bool usesDefault)
         {
             if (SchedulingRiskConfirmForTest != null) return SchedulingRiskConfirmForTest();
-            return PaviseDialog.Confirm(LibraryDialogOwner, Lang.T("lib.threads.title"), Lang.T("lib.threads.enable.warn"), DlgKind.Warn);
+            string warning = Lang.T("lib.threads.enable.warn");
+            if (usesDefault) warning += "\n\n" + Lang.T("lib.threads.enable.default");
+            return PaviseDialog.Confirm(LibraryDialogOwner, Lang.T("lib.threads.title"), warning, DlgKind.Warn);
         }
 
         private void SaveCriticalThreadSwitch(bool enabled)
@@ -318,9 +320,16 @@ namespace PaviseApp
                 return;
             }
             // 确认窗口关闭后界面可能已切换或销毁 规则与开关的并发变化由下方的原值校验拦截
-            if (enabled && (!ConfirmSchedulingRisk() || IsDisposed || Disposing || criticalThreadProfile == null || criticalThreadSyncing))
+            if (enabled)
             {
-                return;
+                string profileId = criticalThreadProfile;
+                string expectedRule = criticalThreadExpected;
+                CriticalThreadRule saved = CriticalThreadRule.Parse(expectedRule);
+                CriticalThreadRule effective = CriticalThreadRule.ParseForRuntime(expectedRule);
+                bool usesDefault = (saved == null || !saved.IsComparison) && (effective == null || effective.IsOff);
+                if (!ConfirmSchedulingRisk(usesDefault) || IsDisposed || Disposing
+                    || criticalThreadProfile != profileId || criticalThreadExpected != expectedRule || criticalThreadSyncing)
+                    return;
             }
             GameProfile profile = FindLibraryProfile(criticalThreadProfile);
             string expectedEnabled = null;

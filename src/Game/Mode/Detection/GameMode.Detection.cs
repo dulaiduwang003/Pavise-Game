@@ -277,6 +277,7 @@ namespace PaviseApp
                     return false;
                 }
                 profiles[index] = gameProfile2;
+                PublishGameProcessNames();
                 if (!valuesEqual)
                 {
                     ForgetRendererObservation(profileId);

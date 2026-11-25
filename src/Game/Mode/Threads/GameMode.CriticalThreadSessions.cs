@@ -1,7 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -18,8 +15,8 @@ namespace PaviseApp
             if (!Monitor.TryEnter(criticalProcessGate, 0)) return;
             try
             {
-                // 游戏切回前台后 拿到门禁的这一轮把采样截止时间清零 立刻取一次快照当新基线
-                if (Interlocked.Exchange(ref criticalForegroundAuditPending, 0) != 0) unifiedNextCpuSample = 0;
+                // 返回前台后允许重新核验角色
+                if (Interlocked.Exchange(ref criticalForegroundAuditPending, 0) != 0) unifiedNextRoleCheck = 0;
                 StepUnifiedThreadRuntimeLocked(source, missing);
             }
             finally
@@ -31,13 +28,11 @@ namespace PaviseApp
         private bool WithdrawCriticalThreadsLocked(string reason)
         {
             bool track = criticalSession != null || criticalPriorityReservation != null || criticalRestorationConfirmed;
-            long started = Stopwatch.GetTimestamp();
             if (criticalSession != null && !criticalRestorationConfirmed)
             {
                 LogCriticalThreadState("withdrawn", reason);
             }
             bool restored = RestoreCriticalThreadsLocked();
-            if (track) TraceCriticalRuntime("restore", restored ? "ok" : "pending", criticalSource == null ? 0 : criticalSource.Pid, started);
             if (track && restored) FinishCriticalDiagnosticLogs();
             return restored;
         }
@@ -66,9 +61,8 @@ namespace PaviseApp
                     FinishCriticalDiagnosticLogs();
                     EndThreadLayoutDiagnostics(Logger.Text("功能停止：", "feature stopped: ") + caller, true);
                     criticalSource = null;
-                    criticalObservation.Reset();
                 }
-                ResetCriticalAuto();
+                ResetCriticalRoles();
                 return withdrawCriticalThreadsLockedSucceeded;
             }
             finally
@@ -97,7 +91,6 @@ namespace PaviseApp
                 return false;
             }
             criticalSource = null;
-            criticalObservation.Reset();
             return true;
         }
         private void PublishCriticalThreadState(CriticalRuntimeSource source, string state, string detail, bool applied = false, bool pending = false, int workers = 0, long observed = 0L, CriticalThreadCoverageState coverage = CriticalThreadCoverageState.None, bool logState = true)

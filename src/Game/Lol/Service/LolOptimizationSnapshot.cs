@@ -34,7 +34,7 @@ namespace PaviseApp
 
         public bool WeGameMainRunning { get; internal set; }
 
-        public int CrossProcessCount { get; private set; }
+        public int? CrossProcessCount { get; private set; }
 
         public int UxProcessCount { get; private set; }
 
@@ -52,7 +52,7 @@ namespace PaviseApp
 
         public bool Discovering { get; private set; }
 
-        internal LolOptimizationSnapshot(bool running, bool enabled, bool cleanupEnabled, bool headlessEnabled, string lolRoot, string weGameRoot, bool installationFound, bool weGameFound, bool clientRunning, bool gameRunning, bool lcuReady, string phase, bool headlessActive, int weGameProcessCount, int crossProcessCount, int uxProcessCount, int cleanedProcessCount, long releasedWorkingSetBytes, string lastAction, string lastError, DateTime updatedUtc, DateTime lastActionUtc, bool discovering)
+        internal LolOptimizationSnapshot(bool running, bool enabled, bool cleanupEnabled, bool headlessEnabled, string lolRoot, string weGameRoot, bool installationFound, bool weGameFound, bool clientRunning, bool gameRunning, bool lcuReady, string phase, bool headlessActive, int weGameProcessCount, int? crossProcessCount, int uxProcessCount, int cleanedProcessCount, long releasedWorkingSetBytes, string lastAction, string lastError, DateTime updatedUtc, DateTime lastActionUtc, bool discovering)
         {
             Discovering = discovering;
             Running = running;

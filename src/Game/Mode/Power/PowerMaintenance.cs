@@ -67,7 +67,9 @@ namespace PaviseApp
 
         internal void StartSchemeGuard()
         {
-            if (schemeGuard == null) schemeGuard = PowerSchemeGuard.Start(NotifySchemeChanged);
+            if (schemeGuard != null) return;
+            schemeGuard = PowerSchemeGuard.Start(NotifySchemeChanged);
+            LaboratoryPower.ObserveSchemeChanges(() => schemeGuard.Watching);
         }
 
         internal void Step()
@@ -84,6 +86,7 @@ namespace PaviseApp
 
         internal void NotifySchemeChanged()
         {
+            LaboratoryPower.NoteQualificationChange();
             bool sessionCurrent;
             lock (host.Sync)
             {

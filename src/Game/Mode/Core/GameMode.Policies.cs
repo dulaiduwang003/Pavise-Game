@@ -21,15 +21,19 @@ namespace PaviseApp
                 {
                     RecordNvAutomation("NvShaderCache", "failed", preStage);
                 }
+                if (plan.LowLatency)
+                {
+                    RecordNvAutomation(PolicyCatalog.KeyGameLowLatency, "failed", preStage);
+                }
             }
             return list;
         }
         internal void ResetNvApplyAttempts()
         {
         }
-        internal NvGamePlan RefreshAutomaticNvPlan(bool maxPerf, bool cache, bool onAc, bool rebar = false)
+        internal NvGamePlan RefreshAutomaticNvPlan(bool maxPerf, bool cache, bool onAc, bool rebar = false, bool lowLatency = false)
         {
-            NvGamePlan nvGamePlan = NvGamePlan.ForAutomatic(maxPerf, cache, onAc, rebar);
+            NvGamePlan nvGamePlan = NvGamePlan.ForAutomatic(maxPerf, cache, onAc, rebar, lowLatency);
             int automaticKey = nvGamePlan.AutomaticKey;
             lock (sync)
             {
@@ -444,6 +448,13 @@ namespace PaviseApp
         }
         private void ApplyEnv()
         {
+            bool managePowerPlan, tuneProcessor;
+            using (PowerPlan.BeginSelectionReadScope())
+                SyncEnvironmentPolicies(out managePowerPlan, out tuneProcessor);
+            SyncEnvironmentPowerPlan(managePowerPlan, tuneProcessor);
+        }
+        private void SyncEnvironmentPolicies(out bool managePowerPlan, out bool tuneProcessor)
+        {
             SyncTimerAutomaticCycle();
             long ticks = DateTime.UtcNow.Ticks;
             SyncAutomationPolicy();
@@ -471,8 +482,7 @@ namespace PaviseApp
                 && (doActive || DoTweak.HasResidue || DeliveryOptimizationActivity.IsDownloading());
             bool want2 = pauseUpdate && slowActionsDue && !SessionServiceSuspended("wu", ticks);
             bool want3 = pauseMaintenance && slowActionsDue && !SessionServiceSuspended("maint", ticks);
-            bool powerPlanEnabled = ResolvePowerPlanEnabled(mode, powerPlanOn);
-            bool managePowerPlan = powerPlanEnabled;
+            managePowerPlan = ResolvePowerPlanEnabled(mode, powerPlanOn);
             doActive = EnvStep("do", want, doActive, DoTweak.Activate, DoTweak.Restore);
             wuActive = EnvStep("wu", want2, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             maintActive = EnvStep("maint", want3, maintActive, MaintenancePause.Activate, MaintenancePause.Restore);
@@ -483,8 +493,11 @@ namespace PaviseApp
             amdAfmfActive = EnvStep("amdafmf", afmfRequested && AdlxTweaks.AfmfSupported(), amdAfmfActive, AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
             LaptopPerformance.Step();
             PowerMaintenance.Step();
-            bool processorTuningRequestedSucceeded = ProcessorTuningRequested(policySnapshot2);
-            int powerPolicyKeyResult = PowerPolicyKey(processorTuningRequestedSucceeded, managePowerPlan);
+            tuneProcessor = ProcessorTuningRequested(policySnapshot2);
+        }
+        private void SyncEnvironmentPowerPlan(bool managePowerPlan, bool tuneProcessor)
+        {
+            int powerPolicyKeyResult = PowerPolicyKey(tuneProcessor, managePowerPlan);
             long ticks2 = DateTime.UtcNow.Ticks;
             bool restoreFailedPowerPlanSucceeded = RestoreFailedPowerPlan(ticks2);
             if (managePowerPlan && !stopping && restoreFailedPowerPlanSucceeded)
@@ -494,7 +507,7 @@ namespace PaviseApp
                     return;
                 }
                 int applyEnvValue = powerPolicyKeyResult;
-                bool aggrShot = processorTuningRequestedSucceeded;
+                bool aggrShot = tuneProcessor;
                 int genShot = Volatile.Read(ref powerSessionGen);
                 planActive = true;
                 lastPowerPolicyKey = applyEnvValue;
@@ -556,6 +569,10 @@ namespace PaviseApp
                 if (plan.Rebar)
                 {
                     RecordNvAutomation("NvRebar", NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.RebarKeys) ? "failed" : "configured", preStage);
+                }
+                if (plan.LowLatency)
+                {
+                    RecordNvAutomation(PolicyCatalog.KeyGameLowLatency, failed.Contains("maxframes") ? "failed" : "configured", preStage);
                 }
             }
             NoteNvKey("pstate", plan.MaxPerf, failed.Contains("pstate"));

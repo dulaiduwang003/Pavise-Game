@@ -216,6 +216,16 @@ namespace PaviseApp
             UiClock.Frame += OnFrame;
         }
 
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            if (Visible)
+            {
+                SnapCells();
+                Invalidate();
+            }
+            base.OnVisibleChanged(e);
+        }
+
         protected override void OnHandleDestroyed(EventArgs e)
         {
             UiClock.Frame -= OnFrame;
@@ -234,6 +244,7 @@ namespace PaviseApp
 
         private void OnFrame(object s, EventArgs e)
         {
+            if (!Visible) return;
             bool animationChanged = false;
             for (int i = 0; i < 64; i++)
             {
@@ -263,6 +274,7 @@ namespace PaviseApp
                 SnapCells();
                 return;
             }
+            if (!Visible) return;
             for (int i = 0; i < 64; i++)
             {
                 cellOn[i].To(((selected & (ulong)(1L << i)) != 0) ? 1f : 0f);

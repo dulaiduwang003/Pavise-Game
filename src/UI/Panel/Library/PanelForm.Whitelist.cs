@@ -173,10 +173,68 @@ namespace PaviseApp
                 }
             }
         }
+        private static ContextMenuStrip CreateWhitelistMenu(PillButton anchor)
+        {
+            var menu = new ContextMenuStrip
+            {
+                Font = Theme.UI(9f, false),
+                BackColor = Theme.Card,
+                ForeColor = Theme.Fg,
+                ShowImageMargin = false,
+                DropShadowEnabled = false,
+                Renderer = new TechMenuRenderer()
+            };
+            anchor.Click += delegate
+            {
+                menu.Show(anchor, new Point(anchor.Width, anchor.Height + Theme.S(4)), ToolStripDropDownDirection.BelowLeft);
+            };
+            anchor.Disposed += delegate { menu.Dispose(); };
+            return menu;
+        }
+        private static ToolStripMenuItem AddWhitelistMenuItem(ContextMenuStrip menu, string name, string text, Action action)
+        {
+            var item = new ToolStripMenuItem(text) { Name = name };
+            item.Click += delegate { action(); };
+            menu.Items.Add(item);
+            return item;
+        }
+        private void RestoreWhitelistPreset()
+        {
+            if (!PaviseDialog.Confirm(this, "PAVISE AUTO", Lang.T("white.reset.confirm"), DlgKind.Warn)) return;
+            RunWhitelistOp(delegate
+            {
+                // 恢复默认也清掉同属自定义白名单的关键词
+                string keywordError = PeripheralUserKeywords.Clear();
+                return (!gameMode.ResetWhitelist()) ? gameMode.WhitelistLastError : keywordError;
+            });
+        }
+        private void SelectProcessRulesTab(int index)
+        {
+            processRulesTabIndex = index;
+            processRulesTabs.Index = index;
+            bool whitelist = index == 0;
+            pageWhitelist.AllowDrop = whitelist;
+            whiteContent.Visible = whitelist;
+            whitePick.Visible = whitelist;
+            whiteAddMenuButton.Visible = whitelist;
+            focusSection.Visible = !whitelist;
+            LayoutWhitelistViewport();
+        }
+        private void SyncProcessRulesTabLabels()
+        {
+            if (processRulesTabs == null || processRulesTabs.IsDisposed) return;
+            string whitelistLabel = Lang.T("nav.white") + "  " + whiteRows.Count;
+            string focusLabel = Lang.T("background.focus.title") + "  " + focusEntries.Length;
+            string[] labels = processRulesTabs.Labels;
+            if (labels != null && labels[0] == whitelistLabel && labels[1] == focusLabel) return;
+            processRulesTabs.Labels = new[] { whitelistLabel, focusLabel };
+            processRulesTabs.Invalidate();
+            LayoutWhitelistViewport();
+        }
         private void PickRunningForWhitelist()
         {
             HashSet<string> hashSet = WhitelistExecutablePaths(gameMode.GetWhitelistRulesFast());
-            using (RunningPickerDialog runningPickerDialog = new RunningPickerDialog(hashSet))
+            using (RunningPickerDialog runningPickerDialog = new RunningPickerDialog(hashSet, governedPids: gameMode.GovernedBackgroundPids()))
             {
                 if (ShowDim(runningPickerDialog) == DialogResult.OK && runningPickerDialog.Selected.Count != 0)
                 {
@@ -288,10 +346,10 @@ namespace PaviseApp
                 list.Add(KeywordItem(keyword));
             }
             list.AddRange(list2);
-            whitePeripheralGeneration = PeripheralVendorProbe.CachedGeneration();
             list.AddRange(AutomaticExemptionItems());
             whiteRows = list;
             FilterWhitelistRows();
+            SyncProcessRulesTabLabels();
         }
         private void FilterWhitelistRows()
         {
@@ -630,8 +688,7 @@ namespace PaviseApp
             foreach (AcGroup acGroup in groups)
             {
                 list3.Add(acGroup.Name);
-                // ACE EAC BattlEye 由反作弊引擎按游戏开关压制 其余反作弊只保护或只记录
-                string scope = acGroup.RecordOnly ? AutoText("仅记录", "Record only") : acGroup.Suppressible ? AutoText("按游戏开启后压制（游戏库 · 深度调优）", "Suppressed only for games enabled in Library · Advanced tuning") : Lang.T("ac.protectiononly");
+                string scope = acGroup.RecordOnly ? AutoText("仅记录", "Record only") : Lang.T(acGroup.Suppressible ? "ac.pergame" : "ac.protectiononly");
                 list2.Add(acGroup.Name + " · " + scope + "\r\n" + string.Join(" · ", acGroup.Procs));
             }
             AcProtectionGroup[] protectionOnlyGroups = AntiCheatCatalog.ProtectionOnlyGroups;
@@ -644,13 +701,6 @@ namespace PaviseApp
             string[] value5 = PeripheralCatalog.NameKeywordsForDisplay();
             string[] value6 = PeripheralCatalog.DescriptionWordsForDisplay();
             list.Add(AutomaticExemption("white.auto.peripheral", Lang.F("white.auto.peripheral.list", string.Join(" · ", value5)), "settings", DetailSection("white.auto.details.namekeywords", string.Join(" · ", value5)) + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords", string.Join(" · ", value6)) + "\r\n\r\n" + Lang.T("white.auto.details.peripheral.note")));
-            PeripheralDevice[] devices = PeripheralVendorProbe.DevicesForDisplay();
-            string[] registeredPrograms = PeripheralVendorProbe.RegisteredProgramsForDisplay();
-            string holders = InputDeviceHolderText();
-            list.Add(AutomaticExemption("white.auto.inputholders", devices.Length == 0 ? holders : Lang.F("white.auto.inputholders.count", devices.Length), "gamepad",
-                DetailSection("white.auto.details.inputdevices", PeripheralDeviceText(devices)) + "\r\n\r\n" +
-                (registeredPrograms.Length == 0 ? "" : DetailSection("white.auto.inputdevices.programs", string.Join(" · ", registeredPrograms)) + "\r\n\r\n") +
-                DetailSection("white.auto.details.inputholders", holders) + "\r\n\r\n" + Lang.T("white.auto.inputholders.note")));
             string[] restricted = ProtectedGameRoster.Names();
             if (restricted.Length > 0)
             {
@@ -668,29 +718,6 @@ namespace PaviseApp
             list.Add(AutomaticExemption("white.auto.voice", Lang.F("white.auto.voice.list", voiceProducts), "pulse", DetailSection("white.auto.details.voiceproducts", voiceProducts) + "\r\n\r\n" + DetailSection("white.auto.details.processes", string.Join(" · ", VoiceChatCatalog.ProcessNamesForDisplay())) + "\r\n\r\n" + Lang.T("white.auto.details.voice.note")));
             return list;
         }
-        private static string InputDeviceHolderText()
-        {
-            string[] names = InputDeviceHolders.HolderNamesForDisplay();
-            return names.Length == 0 ? Lang.T("white.auto.inputholders.none") : string.Join(" · ", names);
-        }
-
-        private static string PeripheralDeviceText(PeripheralDevice[] devices)
-        {
-            if (devices.Length == 0) return Lang.T("white.auto.inputdevices.none");
-            var rows = new List<string>(devices.Length);
-            foreach (PeripheralDevice device in devices)
-            {
-                var kinds = new List<string>(3);
-                if ((device.Kind & PeripheralKind.Keyboard) != 0) kinds.Add(Lang.T("white.auto.inputdevices.keyboard"));
-                if ((device.Kind & PeripheralKind.Mouse) != 0) kinds.Add(Lang.T("white.auto.inputdevices.mouse"));
-                if ((device.Kind & PeripheralKind.Headset) != 0) kinds.Add(Lang.T("white.auto.inputdevices.headset"));
-                if (kinds.Count == 0) continue;
-                rows.Add(Lang.F("white.auto.inputdevices.entry", string.Join(" / ", kinds.ToArray()), device.Name,
-                    Lang.T(device.Connected ? "white.auto.inputdevices.connected" : "white.auto.inputdevices.inactive")));
-            }
-            return rows.Count == 0 ? Lang.T("white.auto.inputdevices.none") : string.Join("\r\n", rows.ToArray());
-        }
-
         private static WhitelistItem AutomaticExemption(string titleKey, string subtitle, string glyph, string details)
         {
             WhitelistItem whitelistItem = new WhitelistItem(null);

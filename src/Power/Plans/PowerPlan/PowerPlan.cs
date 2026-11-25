@@ -218,35 +218,63 @@ namespace PaviseApp
             }
         }
 
-        public static string SelectedPlanId
+        private sealed class SelectionReadScope : IDisposable
         {
-            get
+            private readonly SelectionReadScope previous = selectionReads;
+            private int generation;
+            private string selected;
+
+            internal SelectionReadScope() { selectionReads = this; }
+
+            internal string Read()
             {
-                string value;
-                if (!Settings.TryLoadStr(ChoiceKey, out value))
+                int current = Settings.MutationGeneration;
+                if (selected != null && generation == current) return selected;
+                bool readable;
+                string value = ReadSelectedPlanId(out readable);
+                if (readable && current == Settings.MutationGeneration)
                 {
-                    return "off";
+                    selected = value;
+                    generation = current;
                 }
-                bool value2;
-                if (value.StartsWith(ChoicePrefix, StringComparison.Ordinal))
-                {
-                    value = value.Substring(ChoicePrefix.Length);
-                    if (value.Length == 0)
-                    {
-                        return "off";
-                    }
-                }
-                else if (!Settings.TryLoadBool("PowerPlanOn", true, out value2) || !value2)
-                {
-                    return "off";
-                }
-                Guid g;
-                if (value.Length != 0 && value != "managed" && value != "off" && (!TryGuid(value, out g) || g == Guid.Empty))
-                {
-                    return "off";
-                }
+                else selected = null;
                 return value;
             }
+
+            public void Dispose() { selectionReads = previous; }
+        }
+
+        [ThreadStatic]
+        private static SelectionReadScope selectionReads;
+
+        internal static IDisposable BeginSelectionReadScope()
+        { return new SelectionReadScope(); }
+
+        public static string SelectedPlanId
+        {
+            get { bool readable; return ReadSelectedPlanId(out readable); }
+        }
+
+        private static string ReadSelectedPlanId(out bool readable)
+        {
+            string value;
+            readable = Settings.TryLoadStr(ChoiceKey, out value);
+            if (!readable) return "off";
+            if (value.StartsWith(ChoicePrefix, StringComparison.Ordinal))
+            {
+                value = value.Substring(ChoicePrefix.Length);
+                if (value.Length == 0) return "off";
+            }
+            else
+            {
+                bool enabled;
+                readable = Settings.TryLoadBool("PowerPlanOn", true, out enabled);
+                if (!readable || !enabled) return "off";
+            }
+            Guid id;
+            if (value.Length != 0 && value != "managed" && value != "off" && (!TryGuid(value, out id) || id == Guid.Empty))
+                return "off";
+            return value;
         }
 
         public static bool ManagedSelected
@@ -267,7 +295,7 @@ namespace PaviseApp
             get
             {
                 if (HandheldBypass) return "off";
-                string selectedPlanId = SelectedPlanId;
+                string selectedPlanId = selectionReads == null ? SelectedPlanId : selectionReads.Read();
                 if (selectedPlanId.Length <= 0)
                 {
                     return "managed";

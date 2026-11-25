@@ -827,10 +827,12 @@ namespace PaviseApp
         }
         private void OnWhiteDragEnter(object sender, DragEventArgs e)
         {
-            e.Effect = (e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None);
+            e.Effect = processRulesTabIndex == 0 && e.Data.GetDataPresent(DataFormats.FileDrop)
+                ? DragDropEffects.Copy : DragDropEffects.None;
         }
         private void OnWhiteDragDrop(object sender, DragEventArgs e)
         {
+            if (processRulesTabIndex != 0) return;
             string[] getDataOffset = e.Data.GetData(DataFormats.FileDrop) as string[];
             if (getDataOffset != null && getDataOffset.Length != 0)
             {

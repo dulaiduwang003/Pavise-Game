@@ -6,6 +6,51 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
+    // MMCSS 系统配置的 6 个值 驱动启动时读取 重启电脑才生效
+    internal static class MultimediaProfile
+    {
+        internal const string ProfilePath = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile";
+
+        internal const string GamesPath = ProfilePath + "\\Tasks\\Games";
+
+        // 路径 值名 写入内容 写入内容带类型前缀
+        private static readonly string[,] Values = new string[6, 3]
+        {
+            { ProfilePath, "NetworkThrottlingIndex", "d:-1" },
+            { ProfilePath, "SystemResponsiveness", "d:10" },
+            { GamesPath, "Scheduling Category", "s:High" },
+            { GamesPath, "Priority", "d:6" },
+            { GamesPath, "GPU Priority", "d:8" },
+            { GamesPath, "SFIO Priority", "s:High" }
+        };
+
+        // Games 任务不存在时不新建 只写系统配置的两项
+        internal static string[] Targets(bool profile, bool games)
+        {
+            var list = new List<string>();
+            for (int i = 0; i < Values.GetLength(0); i++)
+                if (Values[i, 0] == ProfilePath ? profile : games) list.Add(Target(i));
+            return list.ToArray();
+        }
+
+        internal static bool Owns(string target)
+        {
+            return Wanted(target) != null;
+        }
+
+        internal static string Wanted(string target)
+        {
+            for (int i = 0; i < Values.GetLength(0); i++)
+                if (string.Equals(target, Target(i), StringComparison.OrdinalIgnoreCase)) return Values[i, 2];
+            return null;
+        }
+
+        private static string Target(int index)
+        {
+            return PerformanceActionBackend.RegistryTarget(Values[index, 0], Values[index, 1]);
+        }
+    }
+
     internal static class PerformanceActionBackend
     {
 #if PAVISE_SELFTEST
@@ -334,10 +379,15 @@ namespace PaviseApp
                 "The existing registry value is of type " + kind + ", not DWORD, QWORD or binary; its original value cannot be recorded, so it was left unchanged");
         }
 
+        private static bool RegistryPathAllowed(string target, string path)
+        {
+            return path.StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase) || MultimediaProfile.Owns(target);
+        }
+
         internal static string ReadRegistry(string target)
         {
             string[] targetParts = target.Split('\n');
-            if (targetParts.Length != 2 || !targetParts[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
+            if (targetParts.Length != 2 || !RegistryPathAllowed(target, targetParts[0]))
             {
                 throw new FormatException("Invalid registry target");
             }
@@ -358,6 +408,9 @@ namespace PaviseApp
                     return "q:" + ((long)value).ToString(CultureInfo.InvariantCulture);
                 case RegistryValueKind.Binary:
                     return "b:" + Convert.ToBase64String((byte[])value);
+                case RegistryValueKind.String:
+                    if (!MultimediaProfile.Owns(target)) throw new InvalidOperationException(UnsupportedRegistryKind(kind));
+                    return "s:" + (string)value;
                 default:
         // 不支持的注册表类型无法原样恢复 保留原值并记录实际类型
                     throw new InvalidOperationException(UnsupportedRegistryKind(kind));
@@ -368,7 +421,7 @@ namespace PaviseApp
         private static bool WriteRegistry(string target, string value)
         {
             string[] targetParts = target.Split('\n');
-            if (targetParts.Length != 2 || !targetParts[0].StartsWith("SYSTEM\\", StringComparison.OrdinalIgnoreCase))
+            if (targetParts.Length != 2 || !RegistryPathAllowed(target, targetParts[0]))
             {
                 return false;
             }
@@ -389,6 +442,10 @@ namespace PaviseApp
                 else if (value.StartsWith("q:", StringComparison.Ordinal))
                 {
                     registryKey.SetValue(targetParts[1], long.Parse(value.Substring(2), CultureInfo.InvariantCulture), RegistryValueKind.QWord);
+                }
+                else if (value.StartsWith("s:", StringComparison.Ordinal) && MultimediaProfile.Owns(target))
+                {
+                    registryKey.SetValue(targetParts[1], value.Substring(2), RegistryValueKind.String);
                 }
                 else
                 {
@@ -450,6 +507,8 @@ namespace PaviseApp
                 if (target != null && target.EndsWith("\nFeatureSettingsOverrideMask", StringComparison.OrdinalIgnoreCase))
                     return CpuMitigationPolicy.WantedMask(original);
             }
+            if (id == PerformanceActionCatalog.MultimediaProfile && MultimediaProfile.Owns(target))
+                return MultimediaProfile.Wanted(target);
             return WantedRegistry(id, original);
         }
 
@@ -471,6 +530,8 @@ namespace PaviseApp
                 return new string[1] { RegistryTarget("SYSTEM\\CurrentControlSet\\Control\\FileSystem", "NtfsDisableLastAccessUpdate") };
             case "EnvQuantumProfileV1":
                 return new string[1] { RegistryTarget("SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation") };
+            case PerformanceActionCatalog.MultimediaProfile:
+                return MultimediaProfile.Targets(KeyExists(MultimediaProfile.ProfilePath), KeyExists(MultimediaProfile.GamesPath));
             default:
             {
                 List<string> list = new List<string>();
@@ -498,6 +559,11 @@ namespace PaviseApp
                 return list.ToArray();
             }
             }
+        }
+
+        private static bool KeyExists(string path)
+        {
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(path)) return key != null;
         }
 
         private static uint NvId(string id)

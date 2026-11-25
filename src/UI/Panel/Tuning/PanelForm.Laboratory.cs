@@ -29,8 +29,10 @@ namespace PaviseApp
                 AccessibleName = AutoText("CPU 空闲策略", "CPU idle strategy"), AccessibleDescription = detail,
                 Size = new Size(Theme.S(230), Theme.S(38)) };
             int height;
-            SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(detail, ScrollContentW, picker, 100),
+            var card = (PerformanceFeatureCard)MakeAutoCard(parent, 6, y, ScrollContentW, FullTextCardHeight(detail, ScrollContentW, picker, 100),
                 picker.AccessibleName, detail, picker, out height);
+            card.PickerInHeader = true;
+            card.StartsNewRow = true;
             y += height + 8;
             string[] choices = { "default", "threshold" };
             // 重复选择当前项不重写配置

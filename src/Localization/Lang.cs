@@ -75,6 +75,7 @@ namespace PaviseApp
             AddPowerMessages(messages);
             AddCheckupMessages(messages);
             AddPerformanceMessages(messages);
+            AddGpuSpoofMessages(messages);
             AddLogsMessages(messages);
             return messages;
         }

@@ -8,6 +8,14 @@ namespace PaviseApp
 {
     internal partial class PanelForm : Form
     {
+        private GpuSpoofCard gpuSpoofCard;
+
+        private void BuildGpuSpoofCard(Control parent)
+        {
+            gpuSpoofCard = new GpuSpoofCard { SessionBlocked = gameMode.IsAnyGamePreparingOrRunning };
+            parent.Controls.Add(gpuSpoofCard);
+        }
+
 #if PAVISE_SELFTEST
         internal Func<EnvironmentGraphicsObservation> EnvironmentReadForTest;
         internal Action<Action> EnvironmentQueueForTest;
@@ -24,12 +32,13 @@ namespace PaviseApp
             EnvironmentGraphicsObservation environmentGraphicsObservation = new EnvironmentGraphicsObservation();
             environmentGraphicsObservation.GlobalTimerOn = PerformancePolicy.EnvironmentPreference("AutoGlobalTimer");
             environmentGraphicsObservation.GlobalTimerOwned = GlobalTimerResTweak.OwnsState;
+            PerformanceTuning.EnvironmentBundleObservation bundle = PerformanceTuning.ReadEnvironmentBundle();
             environmentGraphicsObservation.Tuning = new EnvironmentTuningObservation
             {
-                BundleOn = PerformanceTuning.EnvironmentBundleEnabled,
-                BundleState = PerformanceTuning.EnvironmentBundleState(),
-                BundleLabel = PerformanceTuning.EnvironmentBundleLabel(),
-                BundleDetail = EnvironmentBundlePerformanceDetail(PerformanceTuning.EnvironmentBundleDetail)
+                BundleOn = bundle.Enabled,
+                BundleState = bundle.State,
+                BundleLabel = bundle.Label,
+                BundleDetail = EnvironmentBundlePerformanceDetail(bundle.Detail)
             };
             return environmentGraphicsObservation;
         }

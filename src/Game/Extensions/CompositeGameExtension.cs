@@ -100,6 +100,16 @@ namespace PaviseApp
             }
         }
 
+        public override bool WantsSessionNotifications
+        {
+            get
+            {
+                foreach (GameExtensionModule module in modules)
+                    if (module.WantsSessionNotifications) return true;
+                return false;
+            }
+        }
+
         public override void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
             GameExtensionModule[] modulesSnapshot = modules;

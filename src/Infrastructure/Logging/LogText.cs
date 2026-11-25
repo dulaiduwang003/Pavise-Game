@@ -300,8 +300,6 @@ namespace PaviseApp
             new Fragment("THREAD ", "线程 "),
             new Fragment("THREAD [", "线程 ["),
             new Fragment("THREAD exclusive verified: ", "线程整核隔离已核验： "),
-            new Fragment("THREAD soft placement audit: ", "线程软放置核验： "),
-            new Fragment("THREAD soft placement released: ", "线程软放置已释放： "),
             new Fragment("TID ", "线程编号 "),
             new Fragment("Tamer snapshot: attempt=", "后台治理快照：尝试="),
             new Fragment("Tamer sweep recovery: phase=", "后台治理扫描恢复：阶段="),

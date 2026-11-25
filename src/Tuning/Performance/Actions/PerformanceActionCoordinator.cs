@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace PaviseApp
@@ -205,25 +206,67 @@ namespace PaviseApp
             }
         }
 
-        private bool RestoreSelected(string id, Predicate<PerformanceActionStore.Receipt> selected, bool force)
+        private sealed class ReceiptBatch
         {
-            int count;
-            return RestoreSelected(id, selected, force, out count);
+            internal ILookup<string, PerformanceActionStore.Receipt> Groups;
+            internal Exception ReadError;
         }
 
-        private bool RestoreSelected(string id, Predicate<PerformanceActionStore.Receipt> selected, bool force, out int count)
+        private static ReceiptBatch ReadReceiptBatch()
+        {
+            var batch = new ReceiptBatch();
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                try
+                {
+                    List<PerformanceActionStore.Receipt> receipts;
+                    if (PerformanceTuning.ReadRecoveryReceipts(out receipts))
+                    {
+                        batch.Groups = receipts.ToLookup(receipt => receipt.Id, StringComparer.Ordinal);
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    batch.ReadError = ex;
+                }
+            }
+            return batch;
+        }
+
+        private bool RestoreSelected(string id, Predicate<PerformanceActionStore.Receipt> selected, bool force, ReceiptBatch batch = null)
+        {
+            int count;
+            return RestoreSelected(id, selected, force, out count, batch);
+        }
+
+        private bool RestoreSelected(string id, Predicate<PerformanceActionStore.Receipt> selected, bool force, out int count, ReceiptBatch batch)
         {
             bool result = true;
             count = 0;
-            List<PerformanceActionStore.Receipt> list;
-            try
+            IEnumerable<PerformanceActionStore.Receipt> list;
+            if (batch != null)
             {
-                if (!PerformanceTuning.ReadRecoveryReceipts(out list)) return false;
+                if (batch.Groups == null)
+                {
+                    if (batch.ReadError != null) RestoreFailure(id, "journal:" + id, batch.ReadError.Message);
+                    return false;
+                }
+                list = batch.Groups[id];
             }
-            catch (Exception ex)
+            else
             {
-                RestoreFailure(id, "journal:" + id, ex.Message);
-                return false;
+                try
+                {
+                    List<PerformanceActionStore.Receipt> current;
+                    if (!PerformanceTuning.ReadRecoveryReceipts(out current)) return false;
+                    list = current;
+                }
+                catch (Exception ex)
+                {
+                    RestoreFailure(id, "journal:" + id, ex.Message);
+                    return false;
+                }
             }
             foreach (PerformanceActionStore.Receipt item in list)
             {
@@ -287,28 +330,13 @@ namespace PaviseApp
                 foreach (Func<bool> observer in attempt.RecoveryObservers) RecoveryAttemptTrace.Exhausted(observer);
         }
 
-        private static bool HasRetiredDefenderRecords()
+        private static bool HasRetiredDefenderRecords(ReceiptBatch batch)
         {
-            try
-            {
-                List<PerformanceActionStore.Receipt> receipts;
-                if (!PerformanceTuning.ReadRecoveryReceipts(out receipts)) return true;
-                foreach (PerformanceActionStore.Receipt item in receipts)
-                {
-                    if (item.Id == "AutoDefenderSessionV1" || item.Id == "AutoDefenderResourcesV1")
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            catch
-            {
-                return true;
-            }
+            return batch.Groups == null || batch.Groups.Contains("AutoDefenderSessionV1")
+                || batch.Groups.Contains("AutoDefenderResourcesV1");
         }
 
-        private bool RestoreRetired(bool force)
+        private bool RestoreRetired(bool force, ReceiptBatch batch = null)
         {
             bool restoreRetiredSucceeded = true;
             // 已下线项按记录自动恢复 时间片和最后访问时间改的是系统设置 也在这里还原
@@ -316,7 +344,7 @@ namespace PaviseApp
             foreach (string id in textEntries)
             {
                 int count;
-                restoreRetiredSucceeded &= RestoreSelected(id, null, force, out count);
+                restoreRetiredSucceeded &= RestoreSelected(id, null, force, out count, batch);
                 if (count > 0)
                 {
                     Record(id, "restored");
@@ -363,15 +391,16 @@ namespace PaviseApp
             bool guardStopped = guardWasOn && !request.Guard;
             guardWasOn = request.Guard;
             // 拒绝开启已退役的桌面效果 保留依据回执恢复的能力
-            bool restoreSelectedSucceeded = RestoreSelected("MatchVisualEffectsV1", null, false);
+            ReceiptBatch receipts = ReadReceiptBatch();
+            bool restoreSelectedSucceeded = RestoreSelected("MatchVisualEffectsV1", null, false, receipts);
             if (!restoreSelectedSucceeded || State("MatchVisualEffectsV1").Length > 0)
             {
                 Record("MatchVisualEffectsV1", (!restoreSelectedSucceeded) ? "restore-failed" : "off");
             }
-            bool defenderRunningWithResidue = HasRetiredDefenderRecords() && PerformanceActionBackend.DefenderRunning();
+            bool defenderRunningWithResidue = HasRetiredDefenderRecords(receipts) && PerformanceActionBackend.DefenderRunning();
             bool restoreRetiredDefender = defenderRunningWithResidue && !defenderWasRunning;
             defenderWasRunning = defenderRunningWithResidue;
-            bool restoreRetiredSucceeded = RestoreRetired(restoreRetiredDefender || guardStopped);
+            bool restoreRetiredSucceeded = RestoreRetired(restoreRetiredDefender || guardStopped, receipts);
             if (!request.Match || !request.Guard)
             {
                 sessionRestoreOk = restoreRetiredSucceeded && restoreSelectedSucceeded;

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -17,20 +18,27 @@ namespace PaviseApp
                 PerformancePolicy.Text("读取本机配置，生成包含全部功能说明与当前设置的提示词，复制给 AI 获取建议。", "Read hardware and generate a prompt explaining every feature and current configuration for your AI."), "info", button);
         }
 
-        private void ShowAiTuningPrompt()
+        private async void ShowAiTuningPrompt()
         {
             if (aiTuningPromptOpen || IsDisposed || Disposing) return;
             aiTuningPromptOpen = true;
             try
             {
-                string features = AiTuningFeatureCatalog.Describe(gameMode);
                 string display = Screen.FromControl(this).DeviceName;
+                GameMode mode = gameMode;
+                int language = Lang.Effective;
+                string features = await Task.Run(delegate
+                {
+                    using (Lang.Override(language)) return AiTuningFeatureCatalog.Describe(mode);
+                });
+                if (IsDisposed || Disposing || !UiActive) return;
                 using (var dialog = new AiTuningPromptDialog(features, display)) ShowDim(dialog);
             }
             catch (Exception)
             {
-                PaviseDialog.Warn(this, PerformancePolicy.Text("AI 调优提示词", "AI tuning prompt"),
-                    PerformancePolicy.Text("未能生成完整功能说明，请重试。", "Could not generate the complete feature description. Please retry."));
+                if (!IsDisposed && !Disposing && UiActive)
+                    PaviseDialog.Warn(this, PerformancePolicy.Text("AI 调优提示词", "AI tuning prompt"),
+                        PerformancePolicy.Text("未能生成完整功能说明，请重试。", "Could not generate the complete feature description. Please retry."));
             }
             finally { aiTuningPromptOpen = false; }
         }

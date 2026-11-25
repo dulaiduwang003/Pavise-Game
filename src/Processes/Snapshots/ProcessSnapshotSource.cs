@@ -41,10 +41,6 @@ namespace PaviseApp
 
         private const int OffsetSessionId = 100;
 
-        private const int OffsetReadTransferCount = 232;
-
-        private const int OffsetWriteTransferCount = 240;
-
         private const int ProcessRecordBytes = 256;
 
         private const int ThreadRecordBytes = 80;
@@ -265,12 +261,17 @@ namespace PaviseApp
             }
         }
 
-        internal static ThreadTimes SampleThreads(int pid, long creation)
+        internal static ThreadTimes SampleThreads(int pid, long creation, int maxAgeMs)
         {
-            return SampleThreads(pid, creation, 1500);
+            return ReadThreads(pid, creation, maxAgeMs, true);
         }
 
-        internal static ThreadTimes SampleThreads(int pid, long creation, int maxAgeMs)
+        internal static ThreadTimes SampleThreadIdentities(int pid, long creation, int maxAgeMs)
+        {
+            return ReadThreads(pid, creation, maxAgeMs, false);
+        }
+
+        private static ThreadTimes ReadThreads(int pid, long creation, int maxAgeMs, bool includeCpu)
         {
             if (IntPtr.Size != 8 || pid <= 0 || creation <= 0)
             {
@@ -290,7 +291,7 @@ namespace PaviseApp
                     {
                         Interlocked.Increment(ref threadSampleReuses);
                     }
-                    return ParseThreads(sharedBuffer, sharedBufferUsed, pid, creation, sharedBufferTakenTicks);
+                    return ParseThreads(sharedBuffer, sharedBufferUsed, pid, creation, sharedBufferTakenTicks, includeCpu);
                 }
                 catch
                 {
@@ -299,7 +300,7 @@ namespace PaviseApp
             }
         }
 
-        internal static ThreadTimes ParseThreads(IntPtr buffer, int used, int pid, long creation, long taken)
+        internal static ThreadTimes ParseThreads(IntPtr buffer, int used, int pid, long creation, long taken, bool includeCpu = true)
         {
             int threadsValue;
             for (long iterationIndex = 0L; iterationIndex >= 0 && iterationIndex + ProcessRecordBytes <= used; iterationIndex += threadsValue)
@@ -321,10 +322,13 @@ namespace PaviseApp
                     ThreadTimes threadTimes = new ThreadTimes();
                     threadTimes.Ticks = taken;
                     threadTimes.Creation = creation;
-                    threadTimes.ProcessCpu = Marshal.ReadInt64(ptr, OffsetUserTime) + Marshal.ReadInt64(ptr, OffsetKernelTime);
                     threadTimes.Ids = new long[int32];
                     threadTimes.Created = new long[int32];
-                    threadTimes.Cpu = new long[int32];
+                    if (includeCpu)
+                    {
+                        threadTimes.ProcessCpu = Marshal.ReadInt64(ptr, OffsetUserTime) + Marshal.ReadInt64(ptr, OffsetKernelTime);
+                        threadTimes.Cpu = new long[int32];
+                    }
                     ThreadTimes threadTimes2 = threadTimes;
                     for (int i = 0; i < int32; i++)
                     {
@@ -335,10 +339,11 @@ namespace PaviseApp
                         }
                         threadTimes2.Ids[i] = Marshal.ReadIntPtr(ptr2, OffsetThreadId).ToInt64();
                         threadTimes2.Created[i] = Marshal.ReadInt64(ptr2, OffsetThreadCreateTime);
-                        threadTimes2.Cpu[i] = Marshal.ReadInt64(ptr2, OffsetThreadKernelTime) + Marshal.ReadInt64(ptr2, OffsetThreadUserTime);
-                        if (threadTimes2.Cpu[i] < 0 || threadTimes2.Created[i] < 0)
+                        if (threadTimes2.Created[i] < 0) return null;
+                        if (includeCpu)
                         {
-                            return null;
+                            threadTimes2.Cpu[i] = Marshal.ReadInt64(ptr2, OffsetThreadKernelTime) + Marshal.ReadInt64(ptr2, OffsetThreadUserTime);
+                            if (threadTimes2.Cpu[i] < 0) return null;
                         }
                     }
                     return threadTimes2;
@@ -367,10 +372,8 @@ namespace PaviseApp
                     procEntry.Pid = pidValue;
                     procEntry.ParentPid = Marshal.ReadIntPtr(ptr, OffsetParentProcessId).ToInt32();
                     procEntry.Session = Marshal.ReadInt32(ptr, OffsetSessionId);
-                    procEntry.Threads = Marshal.ReadInt32(ptr, OffsetThreadCount);
                     procEntry.Creation = Marshal.ReadInt64(ptr, OffsetCreateTime);
                     procEntry.Cpu = Marshal.ReadInt64(ptr, OffsetUserTime) + Marshal.ReadInt64(ptr, OffsetKernelTime);
-                    procEntry.Io = (ulong)(Marshal.ReadInt64(ptr, OffsetReadTransferCount) + Marshal.ReadInt64(ptr, OffsetWriteTransferCount));
                     procEntry.Name = ReadName(namePtr, byteLength);
                     ProcEntry item = procEntry;
                     list.Add(item);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
@@ -23,13 +24,27 @@ namespace PaviseApp
 
         private const uint SpdrpBusNumber = 21u;
 
+        private const int RestartSettleSeconds = 15;
+
         private const string ClassPath = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}";
 
         private static Guid DisplayClass = new Guid("4d36e968-e325-11ce-bfc1-08002be10318");
 
-        private static readonly object lk = new object();
+        private static readonly object refreshLock = new object();
 
-        private static GpuAdapter[] cached;
+        private static readonly object restartLock = new object();
+
+        private static readonly GpuAdapter[] empty = new GpuAdapter[0];
+
+        private static readonly GpuAdapter[] unverifiedEmpty = new GpuAdapter[0];
+
+        private static volatile GpuAdapter[] cached;
+
+        private static int activeRestarts;
+
+        private static int restartGeneration;
+
+        private static long restartSettleUntil;
 
         private static bool degradeLogged;
 
@@ -80,25 +95,130 @@ namespace PaviseApp
             get
             {
                 GpuAdapter[] adaptersResult = Adapters();
-                if (adaptersResult.Length > 0)
+                foreach (GpuAdapter adapter in adaptersResult)
                 {
-                    return !HasDiscrete;
+                    if (!adapter.Integrated) return false;
                 }
-                return false;
+                return adaptersResult.Length > 0;
             }
         }
 
         public static GpuAdapter[] Adapters()
         {
-            lock (lk)
+            if (cached == null) Refresh(true);
+            return CachedAdapters();
+        }
+
+        internal static GpuAdapter[] CachedAdapters()
+        {
+            return CopyAdapters(cached ?? empty);
+        }
+
+        internal static bool CachedReadFailed
+        {
+            get { return ReferenceEquals(cached, unverifiedEmpty); }
+        }
+
+        internal static void Refresh()
+        {
+            Refresh(false);
+        }
+
+        private static void Refresh(bool initializeOnly)
+        {
+            lock (refreshLock)
             {
-                if (cached == null)
+                if (initializeOnly && cached != null) return;
+                int generation;
+                lock (restartLock)
                 {
-                    cached = Build();
+                    if (activeRestarts != 0) return;
+                    generation = restartGeneration;
                 }
-                return cached;
+
+                GpuAdapter[] adapters;
+                try
+                {
+#if PAVISE_DELTA_FORCE_GPU_CHECKS
+                    adapters = ReadForTest();
+#else
+                    adapters = Build();
+#endif
+                }
+                catch
+                {
+                    adapters = UnverifiedInventory();
+                }
+
+                lock (restartLock)
+                {
+                    if (generation != restartGeneration) return;
+                    GpuAdapter[] previous = cached ?? empty;
+                    if (adapters == null)
+                    {
+                        if (cached == null) cached = unverifiedEmpty;
+                        return;
+                    }
+                    if (Stopwatch.GetTimestamp() < restartSettleUntil && !IncludesPreviousAdapters(adapters, previous)) return;
+                    cached = CopyAdapters(adapters);
+                }
             }
         }
+
+        private static GpuAdapter[] CopyAdapters(GpuAdapter[] adapters)
+        {
+            if (adapters.Length == 0) return empty;
+            var copy = new GpuAdapter[adapters.Length];
+            for (int i = 0; i < adapters.Length; i++) copy[i] = adapters[i].Copy();
+            return copy;
+        }
+
+        private static bool IncludesPreviousAdapters(GpuAdapter[] adapters, GpuAdapter[] previous)
+        {
+            var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (GpuAdapter adapter in adapters) present.Add(adapter.InstanceId);
+            foreach (GpuAdapter adapter in previous)
+            {
+                if (!present.Contains(adapter.InstanceId)) return false;
+            }
+            return true;
+        }
+
+        // 重启期间保留原清单
+        internal static void BeginAdapterRestart()
+        {
+            lock (restartLock)
+            {
+                activeRestarts++;
+                restartGeneration++;
+            }
+        }
+
+        // 设备重新出现前保留原清单
+        internal static void EndAdapterRestart()
+        {
+            lock (restartLock)
+            {
+                if (--activeRestarts == 0)
+                    restartSettleUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * RestartSettleSeconds;
+            }
+        }
+
+#if PAVISE_DELTA_FORCE_GPU_CHECKS
+        internal static Func<GpuAdapter[]> ReadForTest;
+
+        internal static void ResetForTest()
+        {
+            lock (refreshLock)
+            lock (restartLock)
+            {
+                cached = null;
+                activeRestarts = 0;
+                restartGeneration = 0;
+                restartSettleUntil = 0;
+            }
+        }
+#endif
 
         public static GpuAdapter Primary()
         {
@@ -237,7 +357,7 @@ namespace PaviseApp
             GpuDriverBinding[] bindings;
             if (!GpuInventoryDiscovery.TryMapPresent(instances, ReadCurrentDriver, out bindings))
                 return UnverifiedInventory();
-            if (bindings.Length == 0) return new GpuAdapter[0];
+            if (bindings.Length == 0) return empty;
             Dictionary<string, bool> dictionary2 = DxCoreGpuProbe.CollectIntegrated();
             List<GpuAdapter> list = new List<GpuAdapter>();
             try
@@ -246,7 +366,7 @@ namespace PaviseApp
                 {
                     if (registryKey == null)
                     {
-                        return list.ToArray();
+                        return UnverifiedInventory();
                     }
                     foreach (GpuDriverBinding binding in bindings)
                     {
@@ -261,7 +381,8 @@ namespace PaviseApp
                             {
                                 return UnverifiedInventory();
                             }
-                            string compactResult = Compact(registryKey2.GetValue("DriverDesc") as string);
+                            string driverName = registryKey2.GetValue("DriverDesc") as string;
+                            string compactResult = Compact(driverName);
                             if (compactResult.Length == 0)
                             {
                                 return UnverifiedInventory();
@@ -284,7 +405,9 @@ namespace PaviseApp
                             list.Add(new GpuAdapter
                             {
                                 Name = compactResult,
+                                DriverName = driverName.Trim(),
                                 HardwareId = hardwareId,
+                                InstanceId = binding.InstanceId,
                                 Vendor = vendor,
                                 BusNumber = value,
                                 VideoMemoryBytes = videoMemoryBytes,
@@ -310,8 +433,8 @@ namespace PaviseApp
 
         private static GpuAdapter[] UnverifiedInventory()
         {
-            Logger.Warn(Logger.Text("GPU 清单：当前 PCI 适配器映射不完整，暂不能选择控制目标。", "GPU inventory: current PCI adapter mapping is incomplete; target selection unavailable."));
-            return new GpuAdapter[0];
+            Logger.Warn(Logger.Text("GPU 清单暂无法核实，保留现有缓存。", "GPU inventory could not be verified. Keeping the cached inventory."));
+            return null;
         }
 
         private static long VideoMemoryBytes(RegistryKey key)

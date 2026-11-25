@@ -53,6 +53,10 @@ namespace PaviseApp
         }
         private bool RememberSticky(GameDetection hit)
         {
+            return RememberStickyFamily(hit, false);
+        }
+        private bool RememberStickyFamily(GameDetection hit, bool reanchored)
+        {
             if (hit == null)
             {
                 ClearSticky();
@@ -63,7 +67,11 @@ namespace PaviseApp
             {
                 string name;
                 long creation;
-                if (TryStickyIdentity(familyPid, out name, out creation) && (familyPid != hit.RendererPid || StickyIdentityMatches(hit, name, creation)))
+                GameId previous;
+                if (TryStickyIdentity(familyPid, out name, out creation)
+                    && (familyPid != hit.RendererPid || StickyIdentityMatches(hit, name, creation))
+                    && (!reanchored || stickyIds.TryGetValue(familyPid, out previous) && previous.Creation == creation
+                        && string.Equals(previous.Name, name, StringComparison.OrdinalIgnoreCase)))
                 {
                     dictionary[familyPid] = new GameId
                     {
@@ -91,6 +99,7 @@ namespace PaviseApp
             {
                 return false;
             }
+            if (reanchored) hit.FamilyPids.RemoveWhere(pid => !dictionary.ContainsKey(pid));
             stickyIds.Clear();
             foreach (KeyValuePair<int, GameId> item in dictionary)
             {
@@ -114,21 +123,20 @@ namespace PaviseApp
             stickyMiss = 0;
             stickyGraceOnly = false;
         }
-        private bool AnyStickyReused()
-        {
-            foreach (KeyValuePair<int, GameId> stickyId in stickyIds)
-            {
-                string name;
-                long creation;
-                if (TryStickyIdentity(stickyId.Key, out name, out creation) && (creation != stickyId.Value.Creation || !string.Equals(name, stickyId.Value.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+#if PAVISE_SELFTEST
+        internal Func<int, GameProcessSnapshot> RendererTestStickyIdentity;
+#endif
         private bool TryStickyIdentity(int pid, out string name, out long creation)
         {
+#if PAVISE_SELFTEST
+            if (RendererTestStickyIdentity != null)
+            {
+                GameProcessSnapshot identity = RendererTestStickyIdentity(pid);
+                name = identity == null ? null : identity.Name;
+                creation = identity == null ? 0 : identity.Creation;
+                return identity != null;
+            }
+#endif
             return TryIdentity(pid, out name, out creation);
         }
 

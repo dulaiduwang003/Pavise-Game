@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 反作弊引擎工作线程 只在开了逐游戏开关的对局里压制已核验的 ACE EasyAntiCheat BattlEye 服务
+    // 对局中开启逐游戏开关时压制通过身份核验的 ACE 进程
     // 没有对局也没有在管对象时一直阻塞在唤醒事件上 不读进程快照 不查服务表 也不做别的周期系统调用
     internal class Tamer
     {
@@ -21,6 +21,10 @@ namespace PaviseApp
 
             public int Session;
 
+            public int ServicePid;
+
+            public long ServiceBirth;
+
 
             public AcquireResult Result;
 
@@ -31,8 +35,13 @@ namespace PaviseApp
 
         internal const int FailedSweepRetryMs = 1000;
 
-        // 开了压制但还没有在管对象时 最长隔这么久复查一次对局上下文
         internal const int SessionWaitMs = 8000;
+
+        internal const int JobAuditIntervalMs = 30000;
+
+        internal const int ProcessAuditIntervalMs = 5000;
+
+        internal const int AdmissionAttemptLimit = 3;
 
         internal const int ObservationIntervalMs = 30000;
 
@@ -99,6 +108,8 @@ namespace PaviseApp
                         }
                         if (birth <= 0 || IsPidCurrentlyAlive(change.Pid)) continue;
                         core.ObserveTargetExit(change.Pid, birth);
+                    RemovePendingAdmission(change.Pid, birth);
+                    admissionServiceReads.Remove(change.Pid + ":" + birth);
                     }
                     // 序号不能单独确认进程身份 重放通知不能补充预算
                     string identity = change.Pid + "/" + birth + "/" + change.Kind;
@@ -117,6 +128,84 @@ namespace PaviseApp
             SweepRetryPhase phase;
             if (!sweepRetryPhases.TryGetValue(key, out phase)) sweepRetryPhases[key] = phase = new SweepRetryPhase();
             return phase;
+        }
+
+        private sealed class PendingAdmission
+        {
+            internal AcquireRequest Request;
+            internal string BudgetKey;
+            internal long Next;
+        }
+        private readonly Dictionary<string, PendingAdmission> pendingAdmissions = new Dictionary<string, PendingAdmission>(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> admissionAttempts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private int admissionGeneration, observedAdmissionGeneration;
+        private string admissionContext;
+
+        private void RefreshPendingAdmissionSession()
+        {
+            int generation = Interlocked.CompareExchange(ref admissionGeneration, 0, 0);
+            if (generation == observedAdmissionGeneration && admissionContext == governanceContextKey) return;
+            pendingAdmissions.Clear();
+            observedAdmissionGeneration = generation;
+            admissionContext = governanceContextKey;
+        }
+
+        private void RemovePendingAdmission(int pid, long birth)
+        { pendingAdmissions.Remove(pid + ":" + birth); }
+
+        private void TrackPendingAdmission(AcquireRequest request, AntiCheatAffinityGameContext context, string reason)
+        {
+            if (request == null) return;
+            string key = request.Pid + ":" + request.Birth;
+            if (context == null || !IsGroupEnabled(request.Group) || request.ServicePid <= 0 || request.ServiceBirth <= 0
+                || (reason != "running-services-unavailable" && reason != "process-not-in-running-services"))
+            { pendingAdmissions.Remove(key); return; }
+            foreach (string old in new List<string>(pendingAdmissions.Keys))
+                if (pendingAdmissions[old].Request.Pid == request.Pid && old != key) pendingAdmissions.Remove(old);
+            string serviceKey = request.ServicePid + ":" + request.ServiceBirth;
+            admissionServiceReads[serviceKey] = GovernanceReadOf(request.ServicePid, request.ServiceBirth);
+            int attempts;
+            string budgetKey = context.Key + "|" + key;
+            admissionAttempts.TryGetValue(budgetKey, out attempts);
+            if (attempts >= AdmissionAttemptLimit) { pendingAdmissions.Remove(key); return; }
+            if (pendingAdmissions.ContainsKey(key)) return;
+            if (attempts == 0) admissionAttempts[budgetKey] = 1;
+            sweepEventBirths[request.Pid] = request.Birth;
+            pendingAdmissions[key] = new PendingAdmission { Request = request, BudgetKey = budgetKey,
+                Next = DateTime.UtcNow.AddMilliseconds(ProcessAuditIntervalMs).Ticks };
+        }
+
+        private void RetryPendingAdmissions()
+        {
+            long now = DateTime.UtcNow.Ticks;
+            var requests = new List<AcquireRequest>();
+            foreach (string key in new List<string>(pendingAdmissions.Keys))
+            {
+                PendingAdmission pending = pendingAdmissions[key];
+                if (now < pending.Next) continue;
+                AcquireRequest request = pending.Request;
+                string name; long birth; int session;
+                if (!IsGroupEnabled(request.Group) || !ReadGovernanceIdentity(request.Pid, out name, out birth, out session)
+                    || birth != request.Birth || !string.Equals(name, request.Name, StringComparison.OrdinalIgnoreCase))
+                { pendingAdmissions.Remove(key); continue; }
+                int attempts = admissionAttempts[pending.BudgetKey];
+                if (attempts >= AdmissionAttemptLimit) { pendingAdmissions.Remove(key); continue; }
+                admissionAttempts[pending.BudgetKey] = attempts + 1;
+                pending.Next = now + TimeSpan.FromMilliseconds(ProcessAuditIntervalMs).Ticks;
+                GovernanceRead read = GovernanceReadOf(request.ServicePid, request.ServiceBirth);
+                if ((read.Services == null || read.Services.Count == 0) && read.ServiceQueries + read.ServiceFailures < AdmissionAttemptLimit
+                    && now >= read.LastServiceQuery + TimeSpan.FromMilliseconds(ProcessAuditIntervalMs).Ticks)
+                { read.Services = null; read.NextServiceQuery = 0; }
+                requests.Add(request);
+            }
+            ApplyBatch(requests, null);
+        }
+
+        private long PendingAdmissionDeadline(long otherwise)
+        {
+            foreach (PendingAdmission pending in pendingAdmissions.Values)
+                if (pending.Next < otherwise) otherwise = pending.Next;
+            return otherwise;
         }
 
         private readonly object sync = new object();
@@ -162,6 +251,7 @@ namespace PaviseApp
         private Thread worker;
 
         internal Func<AntiCheatAffinityGameContext> AffinityGameContext;
+        internal Func<long> AuditTicks = delegate { return DateTime.UtcNow.Ticks; };
         // 当前对局 为空表示不在对局 false 表示对局中没开压制 true 表示开了 未接入时保持手动控制 供隔离测试使用
         internal Func<bool?> SessionChoice;
         // 测试接缝 生产中就是系统快照和 SCM 服务表
@@ -169,8 +259,16 @@ namespace PaviseApp
         internal Func<List<KeyValuePair<string, int>>> QueryServices = SvcQuery.RunningServices;
         private AntiCheatAffinityRuntime affinityRuntime;
         private bool affinityFastWake;
+        private long nextAuditTicks;
+        private int auditResetRequested;
+        private string auditLayoutKey;
+        private readonly Dictionary<string, long> nextTargetAudits = new Dictionary<string, long>(StringComparer.Ordinal);
         private bool affinityShutdownOk = true;
         private string governanceContextKey;
+
+        internal const int ContextWakeLimit = 30;
+
+        private int contextWakes;
 
         internal int LoopIterations { get { return Interlocked.CompareExchange(ref loopIterations, 0, 0); } }
 
@@ -289,6 +387,8 @@ namespace PaviseApp
                     enabled[key] = on;
                     forwardEnabled = new Dictionary<string, bool>(enabled, StringComparer.OrdinalIgnoreCase);
                 }
+                if (changed) Interlocked.Exchange(ref auditResetRequested, 1);
+                if (changed) Interlocked.Increment(ref admissionGeneration);
                 if (changed) Logger.Log(() => Logger.Format("反作弊分组 {0} {1}", "Anti-cheat group {0} {1}", key, (on ? Logger.Text("开启压制", "suppression on") : Logger.Text("关闭并恢复", "off and restored"))));
                 return true;
             }
@@ -408,9 +508,10 @@ namespace PaviseApp
 
         private void Loop()
         {
-            Logger.Log("反作弊压制引擎启动 保留原核心分配", "Anti-cheat suppression engine starting, original core assignment kept");
+            Logger.Log("ACE 压制引擎启动", "ACE suppression engine starting");
             affinityRuntime = new AntiCheatAffinityRuntime(core.PrepareAntiCheatAffinity, CheckAffinityAdmission)
             {
+                BeforeRestore = delegate(int pid, long birth) { return core.ReleaseAntiCheatJob(pid, birth); },
                 ForwardAdmission = delegate(AntiCheatAffinityTarget target, int maximumPhysicalCores)
                 {
                     bool on;
@@ -441,6 +542,7 @@ namespace PaviseApp
                         bool phaseChanged = false;
                         bool inSession = SyncSession();
                         RefreshGovernanceSession();
+                        RefreshPendingAdmissionSession();
                         SweepRetryPhase retryPhase = SelectSweepRetryPhase(changes, out phaseChanged);
                         captureRetryPhase = retryPhase;
                         iterationSnapshot = null;
@@ -455,6 +557,7 @@ namespace PaviseApp
                         }
                         wasInSession = inSession;
                         suspended = Paused || panicCooldown;
+                        if (!suspended) RetryPendingAdmissions();
                         if (!suspended)
                         {
                             failedSweepRetryNotBefore = retryPhase.NotBefore;
@@ -469,7 +572,7 @@ namespace PaviseApp
                         }
                         // 只有执行失败才消耗阶段预算 Poke 不能重置预算或截止时间
                         else if (retryPhase.Failures < 3 && ticks >= failedSweepRetryNotBefore
-                            && (phaseChanged || (fullSweep && retryPhase.Failures == 0) || ticks >= nextFullSweepTicks || (overflowSweep && ticks >= nextOverflowSweepTicks)))
+                            && (phaseChanged || (fullSweep && retryPhase.Failures == 0) || (retryPhase.Failures > 0 && ticks >= nextFullSweepTicks) || (overflowSweep && ticks >= nextOverflowSweepTicks)))
                         {
                             bool sweepSucceeded = false;
                             try
@@ -536,10 +639,12 @@ namespace PaviseApp
                 catch (Exception ex)
                 {
                     Logger.RepeatedError("Tamer", Logger.Format("反作弊压制异常 {0}: {1}", "Anti-cheat suppression exception {0}: {1}", ex.GetType().Name, ex.Message), -1L);
+                    engineWork = HasEngineWork();
                 }
                 int millisecondsTimeout;
                 if (suspended)
                 {
+                    contextWakes = 0;
                     // 暂停时只为结清恢复债务做有限次数的退避唤醒 没有债务就一直等外部唤醒
                     int wakes = Interlocked.CompareExchange(ref suspendedWakes, 0, 0);
                     if (!engineWork || wakes >= SuspendedWakeLimit) millisecondsTimeout = Timeout.Infinite;
@@ -552,15 +657,20 @@ namespace PaviseApp
                 else
                 {
                     Interlocked.Exchange(ref suspendedWakes, 0);
-                    long remainingNumericValue = nextFullSweepTicks - DateTime.UtcNow.Ticks;
-                    long remainingMax = Math.Max(nextOverflowSweepTicks, failedSweepRetryNotBefore) - DateTime.UtcNow.Ticks;
-                    if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0 && remainingMax > 0 && (remainingNumericValue <= 0 || remainingMax < remainingNumericValue))
+                    if (!engineWork) millisecondsTimeout = ContextWait();
+                    else
                     {
-                        remainingNumericValue = remainingMax;
+                        long now = DateTime.UtcNow.Ticks;
+                        long due = nextAuditTicks > 0 ? nextAuditTicks : now + TimeSpan.FromMilliseconds(ProcessAuditIntervalMs).Ticks;
+                        due = PendingAdmissionDeadline(due);
+                        if (failedSweepRetryNotBefore > now && failedSweepRetryNotBefore < DateTime.MaxValue.Ticks && failedSweepRetryNotBefore < due) due = failedSweepRetryNotBefore;
+                        if (Interlocked.CompareExchange(ref overflowSweepRequested, 0, 0) != 0)
+                        {
+                            long overflowDue = Math.Max(nextOverflowSweepTicks, failedSweepRetryNotBefore);
+                            if (overflowDue > now && overflowDue < due) due = overflowDue;
+                        }
+                        millisecondsTimeout = (int)Math.Min(int.MaxValue, Math.Max(1L, (due - now + 9999) / 10000));
                     }
-                    millisecondsTimeout = (int)((remainingNumericValue <= 0) ? SessionWaitMs : Math.Min(SessionWaitMs, Math.Max(1L, remainingNumericValue / 10000)));
-                    // 每秒核验只在有在管对象时进行
-                    if (affinityFastWake) millisecondsTimeout = Math.Min(millisecondsTimeout, 1000);
                 }
                 kick.WaitOne(millisecondsTimeout);
             }
@@ -571,7 +681,7 @@ namespace PaviseApp
         private bool HasEngineWork()
         {
             AntiCheatAffinityRuntime runtime = affinityRuntime;
-            return core.AnyWith(SuppressReason.AntiCheat) || core.AntiCheatResourceRecoveryPending
+            return pendingAdmissions.Count != 0 || core.AnyWith(SuppressReason.AntiCheat) || core.AntiCheatResourceRecoveryPending
                 || (runtime != null && runtime.PendingRecovery);
         }
 
@@ -579,26 +689,46 @@ namespace PaviseApp
         {
             var pids = new HashSet<int>(core.PidsWith(SuppressReason.AntiCheat));
             foreach (int pid in sweepEventBirths.Keys) pids.Add(pid);
+            foreach (PendingAdmission pending in pendingAdmissions.Values) pids.Add(pending.Request.Pid);
             relevantPids = pids;
             listening = value;
         }
 
+        internal static int AuditInterval(bool jobLocked)
+        { return jobLocked ? JobAuditIntervalMs : ProcessAuditIntervalMs; }
+
         private void SyncAffinity(bool suspended)
         {
             AntiCheatAffinityGameContext context = suspended ? null : GovernanceContext();
+            string layout = context == null ? "" : context.Key + "/" + context.Group + "/" + context.ProtectedMask + "/" + context.GameDomainMask + "/" + context.AvoidMask;
+            bool resetAudits = Interlocked.Exchange(ref auditResetRequested, 0) != 0;
+            if (layout != auditLayoutKey || resetAudits) { auditLayoutKey = layout; nextTargetAudits.Clear(); }
+            long now = AuditTicks();
             Dictionary<string, string> activeGroups = BuildActive();
             List<AntiCheatAffinityTarget> targets = new List<AntiCheatAffinityTarget>();
-            HashSet<int> pausedTargets = new HashSet<int>();
+            HashSet<int> pausedTargets = new HashSet<int>(), deferredTargets = new HashSet<int>();
+            HashSet<string> current = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<int> audited = new HashSet<int>();
             foreach (int pid in core.PidsWith(SuppressReason.AntiCheat))
             {
                 string name = core.NameOf(pid), group;
                 long birth = core.CreationOf(pid);
+                string key = pid + ":" + birth;
                 AcquireRequest retained = new AcquireRequest { Pid = pid, Name = name, Birth = birth };
                 if (suspended || name == null || !activeGroups.TryGetValue(name, out group))
                 {
                     core.Release(pid, SuppressReason.AntiCheat);
                     continue;
                 }
+                current.Add(key);
+                long due;
+                if (nextTargetAudits.TryGetValue(key, out due) && now < due)
+                {
+                    targets.Add(new AntiCheatAffinityTarget { Pid = pid, Birth = birth, Name = name, Group = group });
+                    deferredTargets.Add(pid);
+                    continue;
+                }
+                audited.Add(pid);
                 if (RetainedGovernanceUnknown(retained, context))
                 {
                     if (affinityRuntime.MaintainsTarget(pid, birth))
@@ -609,16 +739,41 @@ namespace PaviseApp
                     continue;
                 }
                 if (CheckGovernanceAdmission(retained, context) != null)
-                { core.Release(pid, SuppressReason.AntiCheat); continue; }
+                { core.Release(pid, SuppressReason.AntiCheat); current.Remove(key); continue; }
                 if (!suspended && birth > 0 && name != null)
-                    core.Reconcile(pid, name, SuppressReason.AntiCheat);
-                // 资源准入已经核验独立服务或 ACE 直属客户端 客户端同样需要现有的核心范围限制
+                    core.Reconcile(pid, name, SuppressReason.AntiCheat, true);
                 if (birth > 0 && (core.IsThrottled(pid) || affinityRuntime.MaintainsTarget(pid, birth)) && name != null && activeGroups.TryGetValue(name, out group))
+                {
                     targets.Add(new AntiCheatAffinityTarget { Pid = pid, Birth = birth, Name = name, Group = group });
+                    if (core.AntiCheatJobLocked(pid, birth)) deferredTargets.Add(pid);
+                }
             }
             if (targets.Count == 0) context = null;
-            affinityRuntime.Tick(context, targets, AntiCheatModes.CoreLimit, pausedTargets);
-            affinityFastWake = !suspended && targets.Count > 0;
+            affinityRuntime.Tick(context, targets, AntiCheatModes.CoreLimit, pausedTargets, deferredTargets);
+            core.RetryAntiCheatResourceRecovery();
+            AntiCheatAffinityView[] views = affinityRuntime.Views;
+            foreach (AntiCheatAffinityTarget target in targets)
+            {
+                if (!audited.Contains(target.Pid) || pausedTargets.Contains(target.Pid)) continue;
+                ulong mask = 0;
+                foreach (AntiCheatAffinityView view in views)
+                    if (view.Pid == target.Pid && view.Birth == target.Birth && view.Mask != 0 && (view.Mask & (view.Mask - 1)) == 0
+                        && (view.Bound || view.Code == "already-matched")) { mask = view.Mask; break; }
+                core.EnsureAntiCheatJob(target.Pid, target.Birth, mask);
+            }
+            nextAuditTicks = 0;
+            foreach (string key in new List<string>(nextTargetAudits.Keys))
+                if (!current.Contains(key)) nextTargetAudits.Remove(key);
+            foreach (int pid in core.PidsWith(SuppressReason.AntiCheat))
+            {
+                long birth = core.CreationOf(pid);
+                string key = pid + ":" + birth;
+                long due;
+                if (audited.Contains(pid) || !nextTargetAudits.TryGetValue(key, out due))
+                    nextTargetAudits[key] = due = now + TimeSpan.FromMilliseconds(AuditInterval(core.AntiCheatJobLocked(pid, birth))).Ticks;
+                if (nextAuditTicks == 0 || due < nextAuditTicks) nextAuditTicks = due;
+            }
+            affinityFastWake = false;
         }
 
         private AntiCheatAffinityGameContext GovernanceContext()
@@ -648,20 +803,29 @@ namespace PaviseApp
             string key = context == null ? null : context.Key;
             if (key == governanceContextKey) return;
             governanceContextKey = key;
+            contextWakes = 0;
             Interlocked.Exchange(ref fullSweepRequested, 1);
+        }
+
+        // 对局刚开始时上下文还没稳定 只做有限次数的唤醒等它就绪
+        private int ContextWait()
+        {
+            if (SessionChoice == null || governanceContextKey != null || contextWakes >= ContextWakeLimit) return Timeout.Infinite;
+            return contextWakes++ < 10 ? 1000 : ProcessAuditIntervalMs;
         }
 
         private sealed class GovernanceRead
         {
             internal List<KeyValuePair<string, int>> Services;
             internal int ServiceQueries, ServiceFailures;
-            internal long NextServiceQuery;
+            internal long NextServiceQuery, LastServiceQuery;
             internal string Path;
             internal int PathFailures;
             internal long NextPathRead;
         }
 
         private readonly Dictionary<string, GovernanceRead> governanceReads = new Dictionary<string, GovernanceRead>(StringComparer.Ordinal);
+        private readonly Dictionary<string, GovernanceRead> admissionServiceReads = new Dictionary<string, GovernanceRead>(StringComparer.Ordinal);
 
         private List<KeyValuePair<string, int>> iterationServices;
 
@@ -673,6 +837,7 @@ namespace PaviseApp
         {
             string key = pid.ToString(CultureInfo.InvariantCulture) + ":" + birth.ToString(CultureInfo.InvariantCulture);
             GovernanceRead read;
+            if (admissionServiceReads.TryGetValue(key, out read)) return read;
             if (!governanceReads.TryGetValue(key, out read))
             {
                 if (governanceReads.Count >= 256) PruneGovernanceReads(null);
@@ -692,12 +857,15 @@ namespace PaviseApp
         }
 
         // 服务表只在出现尚未核验的反作弊服务候选时读取 一轮最多读一次 结果按进程编号和创建时间缓存
-        // 进程不变就不再查询 服务刚起来时 SCM 可能还没登记它的进程编号 没找到时 5 秒后最多再查一次
+        // 服务启动候选每五秒核验 缺席和读取失败共用三次准入预算
         private List<KeyValuePair<string, int>> ServicesFor(int pid, long birth)
         {
             if (pid <= 0 || birth <= 0) return null;
             GovernanceRead read = GovernanceReadOf(pid, birth);
             long now = DateTime.UtcNow.Ticks;
+            if (admissionServiceReads.ContainsKey(pid + ":" + birth)
+                && (read.ServiceQueries + read.ServiceFailures >= AdmissionAttemptLimit
+                    || now < read.LastServiceQuery + TimeSpan.FromMilliseconds(ProcessAuditIntervalMs).Ticks)) return read.Services;
             bool recheck = read.Services != null && read.Services.Count == 0 && read.ServiceQueries < 2 && now >= read.NextServiceQuery;
             if (read.Services != null && !recheck) return read.Services;
             if (read.ServiceFailures >= 3 || now < read.NextServiceQuery) return read.Services;
@@ -709,10 +877,11 @@ namespace PaviseApp
                 try { iterationServices = query == null ? null : query(); }
                 catch { iterationServices = null; }
             }
+            read.LastServiceQuery = now;
             if (iterationServices == null)
             {
                 read.ServiceFailures++;
-                read.NextServiceQuery = now + TimeSpan.FromSeconds(8).Ticks;
+                read.NextServiceQuery = now + TimeSpan.FromMilliseconds(ProcessAuditIntervalMs).Ticks;
                 Logger.Warn(Logger.Format("反作弊服务表读取失败：进程编号={0} 尝试={1}/3{2}", "Anti-cheat service table read failed: pid={0} attempt={1}/3{2}", pid, read.ServiceFailures, (read.ServiceFailures >= 3 ? Logger.Text("；该进程只保护", "; this process is protected only") : "")));
                 return read.Services;
             }
@@ -799,7 +968,11 @@ namespace PaviseApp
                 return "process-identity-changed";
             request.Session = session;
             string reason;
-            if (session == 0) return ServiceAdmission(name, request.Pid, birth, context);
+            if (session == 0)
+            {
+                request.ServicePid = request.Pid; request.ServiceBirth = birth;
+                return ServiceAdmission(name, request.Pid, birth, context);
+            }
             ProcEntry service;
             if (!AntiCheatAffinityEligibility.TryAceClientService(context.Processes, name, request.Pid, birth, session,
                 context.GameAncestors, out service, out reason)) return reason;
@@ -807,6 +980,7 @@ namespace PaviseApp
             if (!ReadGovernanceIdentity(service.Pid, out serviceName, out serviceBirth, out serviceSession)
                 || serviceBirth != service.Creation || serviceSession != service.Session
                 || !string.Equals(serviceName, service.Name, StringComparison.OrdinalIgnoreCase)) return "service-identity-changed";
+            request.ServicePid = service.Pid; request.ServiceBirth = serviceBirth;
             return ServiceAdmission(serviceName, service.Pid, serviceBirth, context);
         }
 
@@ -1063,6 +1237,7 @@ namespace PaviseApp
                                 : CheckGovernanceAdmission(acquisition, context);
                             if (blocked != null)
                             {
+                                TrackPendingAdmission(acquisition, context, blocked);
                                 if (IsGroupEnabled(acquisition.Group) && core.HasReason(acquisition.Pid, SuppressReason.AntiCheat)
                                     && RetainedGovernanceUnknown(acquisition, context))
                                 { acquisition.Result = AcquireResult.AlreadyProtected; continue; }
@@ -1070,6 +1245,7 @@ namespace PaviseApp
                                 acquisition.Result = AcquireResult.AlreadyProtected;
                                 continue;
                             }
+                            RemovePendingAdmission(acquisition.Pid, acquisition.Birth);
                             acquisition.Result = core.Acquire(acquisition.Pid, acquisition.Name, SuppressReason.AntiCheat, acquisition.Group, AntiCheatModes.Level, acquisition.Birth);
                         }
                         catch
@@ -1146,8 +1322,12 @@ namespace PaviseApp
 
         private bool ReleaseAll(string reason)
         {
+            pendingAdmissions.Clear();
+            if (!core.ReleaseAntiCheatJobs()) return false;
             bool affinityRestored = affinityRuntime == null || affinityRuntime.Stop();
             int releaseReasonResult = core.ReleaseReason(SuppressReason.AntiCheat);
+            core.RetryAntiCheatResourceRecovery();
+            nextTargetAudits.Clear(); nextAuditTicks = 0;
             if (releaseReasonResult > 0)
             {
                 Logger.Log(() => Logger.Format("反作弊压制解除 {0} restoredProcessCount={1} 个进程", "Anti-cheat suppression released {0} restoredProcessCount={1} processes", reason, releaseReasonResult));

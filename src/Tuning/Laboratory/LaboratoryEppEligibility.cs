@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Management;
 using System.Threading;
 
@@ -17,6 +19,42 @@ namespace PaviseApp
     // 在界面线程之外读取一次机箱类型 电池 UPS 或 EPP 支持不能证明它是笔记本
     internal static class LaboratoryEppEligibility
     {
+        internal sealed class ChassisCache
+        {
+            private readonly object gate = new object();
+            private readonly Func<int[]> probe;
+            private readonly Func<long> now;
+            private LaboratoryEppDeviceKind? cached;
+            private long retryAfter;
+
+            internal ChassisCache(Func<int[]> probe, Func<long> now)
+            {
+                this.probe = probe;
+                this.now = now;
+            }
+
+            internal LaboratoryEppDeviceKind Read()
+            {
+                lock (gate)
+                {
+                    if (cached.HasValue) return cached.Value;
+                    if (now() < retryAfter) return LaboratoryEppDeviceKind.Unknown;
+                    try
+                    {
+                        LaboratoryEppDeviceKind kind = Classify(probe());
+                        cached = kind;
+                        return kind;
+                    }
+                    catch
+                    {
+                        retryAfter = now() + Stopwatch.Frequency * 5;
+                        return LaboratoryEppDeviceKind.Unknown;
+                    }
+                }
+            }
+        }
+
+        private static readonly ChassisCache chassis = new ChassisCache(ReadChassisTypes, Stopwatch.GetTimestamp);
         private static int started;
         private static int deviceKind = (int)LaboratoryEppDeviceKind.Checking;
 #if PAVISE_SELFTEST
@@ -76,29 +114,33 @@ namespace PaviseApp
             if (desktop && !portable) return LaboratoryEppDeviceKind.Desktop;
             return LaboratoryEppDeviceKind.Unknown;
         }
+        private static int[] ReadChassisTypes()
+        {
+            var values = new List<int>();
+            var options = new EnumerationOptions { Timeout = TimeSpan.FromSeconds(3), ReturnImmediately = false };
+            using (var query = new ManagementObjectSearcher(new ManagementScope("root\\CIMV2"),
+                new ObjectQuery("SELECT ChassisTypes FROM Win32_SystemEnclosure"), options))
+            using (ManagementObjectCollection rows = query.Get())
+                foreach (ManagementObject row in rows)
+                {
+                    using (row)
+                    {
+                        Array types = row["ChassisTypes"] as Array;
+                        if (types == null || types.Length > 32) continue;
+                        foreach (object type in types) values.Add(Convert.ToInt32(type));
+                    }
+                }
+            return values.ToArray();
+        }
+
+        internal static LaboratoryEppDeviceKind ReadChassisKind()
+        {
+            return chassis.Read();
+        }
+
         private static void ProbeDevice()
         {
-            LaboratoryEppDeviceKind result = LaboratoryEppDeviceKind.Unknown;
-            try
-            {
-                var values = new System.Collections.Generic.List<int>();
-                var options = new EnumerationOptions { Timeout = TimeSpan.FromSeconds(3), ReturnImmediately = false };
-                using (var query = new ManagementObjectSearcher(new ManagementScope("root\\CIMV2"),
-                    new ObjectQuery("SELECT ChassisTypes FROM Win32_SystemEnclosure"), options))
-                using (ManagementObjectCollection rows = query.Get())
-                    foreach (ManagementObject row in rows)
-                    {
-                        using (row)
-                        {
-                            Array types = row["ChassisTypes"] as Array;
-                            if (types == null || types.Length > 32) continue;
-                            foreach (object type in types) values.Add(Convert.ToInt32(type));
-                        }
-                    }
-                result = Classify(values.ToArray());
-            }
-            catch { result = LaboratoryEppDeviceKind.Unknown; }
-            Volatile.Write(ref deviceKind, (int)result);
+            Volatile.Write(ref deviceKind, (int)ReadChassisKind());
         }
     }
 }

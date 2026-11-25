@@ -7,6 +7,8 @@ namespace PaviseApp
 {
     internal sealed class GameConfigurationDialog : Form
     {
+        private const int PreferredDialogWidth = 944;
+
         private readonly DBPanel viewport;
 
         private readonly Label title;
@@ -86,7 +88,7 @@ namespace PaviseApp
             base.Controls.AddRange(new Control[6] { title, gameName, platform, dismiss, viewport, close });
             ProfileId = item.Profile.Id;
             RefreshGame(item, originalIcon);
-            base.ClientSize = new Size(Theme.S(672), Theme.S(420));
+            base.ClientSize = new Size(Theme.S(PreferredDialogWidth), Theme.S(420));
             ArrangeDialog();
         }
 
@@ -154,7 +156,7 @@ namespace PaviseApp
                 int left = Theme.S(24);
                 int top = Theme.S(126);
                 int scaledDimension2 = Theme.S(74);
-                int minLimit = Math.Max(1, Math.Min(Theme.S(672), workingArea.Width - scaledDimension * 2));
+                int minLimit = Math.Max(1, Math.Min(Theme.S(PreferredDialogWidth), workingArea.Width - scaledDimension * 2));
                 int width = Math.Max(1, minLimit - left * 2);
                 Point point = new Point(0, Math.Max(0, -viewport.AutoScrollPosition.Y));
                 viewport.AutoScrollPosition = Point.Empty;

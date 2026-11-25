@@ -3,35 +3,29 @@ using System.Globalization;
 
 namespace PaviseApp
 {
-    // 同一阶段共享有限采集预算 渲染策略两次 工作组策略三次 成功 失败和角色退出均不补充次数
-    // 未接管时可使用余量重判负载 已接管时仅在角色确认退出 原计划恢复结清后允许一次角色复核
+    // 同一阶段共享两次有界采集额度
     internal sealed class ThreadLayoutCaptureRequest
     {
-        private enum BaselineState { Pending, CoolingDown, Frozen, Exhausted, Intervened }
+        private enum BaselineState { Pending, CoolingDown, TraceRetry, Frozen, Exhausted, TraceExhausted, Intervened }
         private readonly object gate = new object();
         private readonly Action<string, string, bool> report;
         internal readonly int Pid;
         internal readonly long Birth;
         internal readonly string Identity;
-        internal bool WorkloadObservation { get { return workload; } }
-        internal readonly bool PresentIdentityOnly;
+        internal readonly FrameLayoutCapture Capture;
         private readonly long createdAt;
-        private readonly bool workload;
-        private readonly int maximumAttempts;
-        private readonly System.Collections.Generic.List<UnifiedThreadCaptureEvidence> workloadBaselines = new System.Collections.Generic.List<UnifiedThreadCaptureEvidence>();
+        private const int MaximumAttempts = 2;
+        private static readonly int[] TraceRetrySeconds = { 30, 60, 120 };
         private BaselineState baselineState;
-        private bool capturing, canceled, foreground = true, captureForegroundLost, rejudged, roleReview, workloadConfirmation;
+        private bool capturing, canceled, foreground = true, captureForegroundLost, roleReview;
         private long appliedAt, nextBaselineAt, foregroundSince, lastIdentitySnapshot;
-        private int attempts, baselineAttempts, identityConfirmations, activeStage = -1;
-        private UnifiedThreadCaptureEvidence unifiedBaseline, lastBaselineAttempt;
+        private int attempts, traceRetries, identityConfirmations;
+        private UnifiedThreadCaptureEvidence unifiedBaseline;
 
         internal ThreadLayoutCaptureRequest(int pid, long birth, string identity, long now,
-            Action<string, string, bool> writer, bool workloadMode = false, bool presentIdentityOnly = false)
+            Action<string, string, bool> writer, FrameLayoutCapture capture = FrameLayoutCapture.Presenter)
         {
-            if (workloadMode && presentIdentityOnly) throw new ArgumentException(Logger.Text("工作组观察不能使用仅呈现身份采集", "workload observation cannot use present-identity-only capture"), "presentIdentityOnly");
-            Pid = pid; Birth = birth; Identity = identity; report = writer;
-            PresentIdentityOnly = presentIdentityOnly;
-            workload = workloadMode; maximumAttempts = workload ? 3 : 2;
+            Pid = pid; Birth = birth; Identity = identity; report = writer; Capture = capture;
             createdAt = foregroundSince = now;
             nextBaselineAt = now + TimeSpan.FromSeconds(15).Ticks;
         }
@@ -47,15 +41,6 @@ namespace PaviseApp
                 identityConfirmations = 0;
                 lastIdentitySnapshot = 0;
                 if (!value && capturing) captureForegroundLost = true;
-            }
-        }
-
-        internal bool ReadyForPlacement(long now)
-        {
-            lock (gate)
-            {
-                if (canceled) return true;
-                return baselineState != BaselineState.Pending && baselineState != BaselineState.CoolingDown;
             }
         }
 
@@ -79,17 +64,30 @@ namespace PaviseApp
 
         private long NextCaptureDueLocked()
         {
-            if (canceled || capturing || attempts >= maximumAttempts || !foreground) return long.MaxValue;
+            if (canceled || capturing || attempts >= MaximumAttempts || !foreground) return long.MaxValue;
             if (appliedAt > 0) return long.MaxValue;
             if (baselineState == BaselineState.Pending)
                 return Math.Max(createdAt + TimeSpan.FromSeconds(StartupSettleSeconds).Ticks, foregroundSince + TimeSpan.FromSeconds(15).Ticks);
-            if (baselineState == BaselineState.CoolingDown)
+            if (baselineState == BaselineState.CoolingDown || baselineState == BaselineState.TraceRetry)
                 return Math.Max(nextBaselineAt, foregroundSince + TimeSpan.FromSeconds(30).Ticks);
             return long.MaxValue;
         }
 
         internal long NextCaptureDueTicks
         { get { lock (gate) return NextCaptureDueLocked(); } }
+
+        internal bool NeedsIdentitySnapshot(long now)
+        {
+            lock (gate)
+            {
+                long due = NextCaptureDueLocked();
+                if (due == long.MaxValue) return false;
+                if (now >= due) return true;
+                // 复用既有核验节奏 在启动退避结束前确认两次身份
+                return baselineState == BaselineState.TraceRetry
+                    && now >= due - TimeSpan.FromSeconds(10).Ticks && !IdentityReadyLocked(due);
+            }
+        }
 
         internal bool HasUsableBaseline
         { get { lock (gate) return !canceled && unifiedBaseline != null; } }
@@ -98,111 +96,36 @@ namespace PaviseApp
         {
             get
             {
-                lock (gate) return !capturing && (canceled || attempts >= maximumAttempts
-                    || baselineState == BaselineState.Exhausted || baselineState == BaselineState.Intervened);
+                lock (gate) return !capturing && (canceled || attempts >= MaximumAttempts
+                    || baselineState == BaselineState.Exhausted || baselineState == BaselineState.TraceExhausted
+                    || baselineState == BaselineState.Intervened);
             }
         }
 
         internal bool NeedsCapture(long now)
         {
-            ReadyForPlacement(now);
             lock (gate) return now >= NextCaptureDueLocked() && IdentityReadyLocked(now);
         }
 
         internal bool NeedsObserver(long now)
         {
-            ReadyForPlacement(now);
             // 在途采集即使用完总次数 也必须保活到完成或取消 冷却期不保留 ETW 观察器
-            lock (gate) return !canceled && (capturing || now >= NextCaptureDueLocked() && IdentityReadyLocked(now));
+            lock (gate) return !canceled && foreground && (capturing && !captureForegroundLost
+                || now >= NextCaptureDueLocked() && IdentityReadyLocked(now));
         }
 
         private bool IdentityReadyLocked(long now)
         { return identityConfirmations >= 2 && now >= lastIdentitySnapshot && now - lastIdentitySnapshot <= TimeSpan.FromSeconds(30).Ticks; }
 
-        internal bool RejudgeAvailable
-        {
-            get
-            {
-                lock (gate) return !canceled && !capturing && !rejudged && appliedAt == 0 && attempts < maximumAttempts
-                    && baselineState == BaselineState.Frozen;
-            }
-        }
-
-        // 尚未干预且负载明显升高时 可用剩余额度作废旧基线并重新判定
-        internal bool TryRejudge(long now)
-        {
-            lock (gate)
-            {
-                if (canceled || capturing || rejudged || appliedAt != 0 || attempts >= maximumAttempts || baselineState != BaselineState.Frozen) return false;
-                rejudged = true;
-                workloadConfirmation = false;
-                unifiedBaseline = null;
-                lastBaselineAttempt = null;
-                baselineState = BaselineState.CoolingDown; nextBaselineAt = now;
-                return true;
-            }
-        }
-
-        internal int WorkloadBaselineCount { get { lock (gate) return workloadBaselines.Count; } }
-
-        internal UnifiedThreadCaptureEvidence[] ReadWorkloadBaselines()
-        {
-            bool usable;
-            return ReadWorkloadBaselines(out usable);
-        }
-
-        internal UnifiedThreadCaptureEvidence[] ReadWorkloadBaselines(out bool currentBaselineUsable)
-        {
-            lock (gate)
-            {
-                // 完成回调可并发发布第三窗 窗口数组与可准入状态必须来自同一次锁内快照
-                currentBaselineUsable = !canceled && unifiedBaseline != null;
-                return canceled ? new UnifiedThreadCaptureEvidence[0] : workloadBaselines.ToArray();
-            }
-        }
-
-        internal bool RequestWorkloadConfirmation(long now)
-        {
-            lock (gate)
-            {
-                if (!workload || canceled || capturing || appliedAt != 0 || attempts >= maximumAttempts
-                    || baselineState != BaselineState.Frozen || workloadBaselines.Count >= 2) return false;
-                unifiedBaseline = lastBaselineAttempt = null;
-                workloadConfirmation = true;
-                baselineState = BaselineState.CoolingDown; nextBaselineAt = now + TimeSpan.FromSeconds(5).Ticks;
-                return true;
-            }
-        }
-
-        // 两窗角色不同只使用原预算最后一次确认 尚未写入时采集 不能混入本方干预后的布局
-        internal bool RequestWorkloadRoleConfirmation(long now)
-        {
-            lock (gate)
-            {
-                if (!workload || canceled || capturing || rejudged || appliedAt != 0 || attempts >= maximumAttempts
-                    || baselineState != BaselineState.Frozen || workloadBaselines.Count < 2) return false;
-                rejudged = workloadConfirmation = true;
-                unifiedBaseline = lastBaselineAttempt = null;
-                baselineState = BaselineState.CoolingDown; nextBaselineAt = now + TimeSpan.FromSeconds(5).Ticks;
-                return true;
-            }
-        }
-
-        internal bool RequestWorkloadRoleReview(long now)
-        { return RequestRoleReview(now, true); }
-
-        internal bool RequestRenderRoleReview(long now)
-        { return RequestRoleReview(now, false); }
-
         // 调用方须先证明角色退出并结清旧写入 共享原发现预算 保留前台和进程身份门禁
-        private bool RequestRoleReview(long now, bool workloadMode)
+        internal bool RequestRenderRoleReview(long now)
         {
             lock (gate)
             {
-                if (workload != workloadMode || canceled || capturing || rejudged || attempts >= maximumAttempts) return false;
-                rejudged = roleReview = true;
+                if (canceled || capturing || roleReview || attempts >= MaximumAttempts || baselineState == BaselineState.TraceExhausted) return false;
+                roleReview = true;
                 appliedAt = 0;
-                unifiedBaseline = lastBaselineAttempt = null;
+                unifiedBaseline = null;
                 baselineState = BaselineState.CoolingDown; nextBaselineAt = now + TimeSpan.FromSeconds(5).Ticks;
                 return true;
             }
@@ -211,13 +134,11 @@ namespace PaviseApp
         internal bool TryBegin(long now, out int stage)
         {
             stage = -1;
-            ReadyForPlacement(now);
             lock (gate)
             {
                 if (now < NextCaptureDueLocked() || !IdentityReadyLocked(now)) return false;
-                stage = baselineState == BaselineState.Pending || baselineState == BaselineState.CoolingDown ? 0 : 1;
-                capturing = true; captureForegroundLost = false; activeStage = stage; attempts++;
-                if (stage == 0) baselineAttempts++;
+                stage = 0;
+                capturing = true; captureForegroundLost = false; attempts++;
                 return true;
             }
         }
@@ -227,52 +148,74 @@ namespace PaviseApp
 
         internal void Complete(int stage, FrameCoordinationSample sample, long now)
         {
-            bool usable, changedDuringCapture, lostForeground, frozen = false;
+            UnifiedThreadCaptureEvidence evidence;
+            bool usable, changedDuringCapture, lostForeground, traceExhausted = false, frozen = false;
+            int retrySeconds = 0;
             lock (gate)
             {
-                if (!capturing || stage != activeStage) return;
-                capturing = false; activeStage = -1;
-                if (sample != null && (sample.PresentIdentityOnly != PresentIdentityOnly
-                    || PresentIdentityOnly && (!sample.LayoutObservation || sample.PresenterOnly || sample.Relation != null)))
-                    sample.Reject(FrameCaptureIssue.CaptureFailed, Logger.Text("采集用途与原观察请求不一致，本轮样本弃用", "capture purpose does not match the original observation request; this round's sample discarded"));
-                changedDuringCapture = stage == 0 && appliedAt > 0;
+                if (!capturing || stage != 0) return;
+                capturing = false;
+                changedDuringCapture = appliedAt > 0;
                 lostForeground = captureForegroundLost || !foreground;
-                if (stage == 0 && !canceled && !changedDuringCapture && !lostForeground)
+                evidence = new UnifiedThreadCaptureEvidence(sample, now);
+                if (!canceled && !changedDuringCapture && !lostForeground)
                 {
-                    lastBaselineAttempt = new UnifiedThreadCaptureEvidence(sample, now);
-                    // 工作组策略继续核验关系摘要 渲染策略只要求单来源 呈现身份及采集完整性
-                    frozen = sample != null && sample.Pid == Pid && sample.Birth == Birth && (workload
-                        ? (sample.Issue == FrameCaptureIssue.None || sample.Issue == FrameCaptureIssue.InsufficientEvidence)
-                            && sample.LostEvents == 0 && sample.Relation != null && sample.Relation.WorkloadValid
-                        : lastBaselineAttempt.Valid && lastBaselineAttempt.Presenter != null && sample.PresentStreamsKnown && sample.PresentStreamCount == 1);
+                    frozen = sample != null && sample.Pid == Pid && sample.Birth == Birth
+                        && evidence.Valid && evidence.Presenter != null
+                        && sample.PresentStreamsKnown && sample.PresentStreamCount == 1;
                     if (frozen)
                     {
-                        unifiedBaseline = lastBaselineAttempt; baselineState = BaselineState.Frozen;
-                        if (workload) workloadBaselines.Add(lastBaselineAttempt);
+                        unifiedBaseline = evidence;
+                        baselineState = BaselineState.Frozen;
                     }
                 }
-                if (stage == 0 && !frozen)
+                bool emptyTraceFailure = Capture == FrameLayoutCapture.Presenter && sample != null
+                    && sample.Issue == FrameCaptureIssue.TraceUnavailable
+                    && sample.Events == 0 && sample.SystemEvents == 0 && sample.LostEvents == 0;
+                if (emptyTraceFailure)
+                {
+                    attempts--;
+                    if (changedDuringCapture) baselineState = BaselineState.Intervened;
+                    else if (!canceled)
+                    {
+                        traceExhausted = traceRetries >= TraceRetrySeconds.Length;
+                        baselineState = traceExhausted ? BaselineState.TraceExhausted : BaselineState.TraceRetry;
+                        if (!traceExhausted)
+                        {
+                            retrySeconds = TraceRetrySeconds[traceRetries++];
+                            nextBaselineAt = now + TimeSpan.FromSeconds(retrySeconds).Ticks;
+                        }
+                    }
+                }
+                else if (!frozen)
                 {
                     if (changedDuringCapture) baselineState = BaselineState.Intervened;
-                    else if (attempts >= maximumAttempts) baselineState = BaselineState.Exhausted;
+                    else if (attempts >= MaximumAttempts) baselineState = BaselineState.Exhausted;
                     else
                     {
                         baselineState = BaselineState.CoolingDown;
                         nextBaselineAt = now + TimeSpan.FromSeconds(30).Ticks;
                     }
                 }
-                usable = !canceled && !lostForeground && sample != null && sample.Pid == Pid && sample.Birth == Birth
-                    && !changedDuringCapture && sample.Valid && sample.Issue == FrameCaptureIssue.None
-                    && sample.LostEvents == 0 && sample.Relation != null && sample.Relation.Valid
-                    && sample.Relation.Pid == Pid && sample.Relation.Birth == Birth && sample.Relation.LostEvents == 0;
+                usable = frozen;
+#if PAVISE_SELFTEST
+                if (sample != null && sample.Relation != null)
+                    usable = !canceled && !lostForeground && sample.Pid == Pid && sample.Birth == Birth
+                        && !changedDuringCapture && sample.Valid && sample.Issue == FrameCaptureIssue.None
+                        && sample.LostEvents == 0 && sample.Relation.Valid
+                        && sample.Relation.Pid == Pid && sample.Relation.Birth == Birth && sample.Relation.LostEvents == 0;
+#endif
             }
-            string context = stage == 0 ? Logger.Text("角色基线", "role baseline") : Logger.Text("角色复核", "role review");
-            string detail = Logger.Text("采集次数=", "captures=") + Attempts + "/" + maximumAttempts + Logger.Text("；基线已冻结=", "; baselineFrozen=") + frozen
-                + Logger.Text("；关系可用=", "; relationUsable=") + usable;
-            if (PresentIdentityOnly) detail += Logger.Text("；采集用途=仅呈现身份；调度关系、CPU排队与换核分布=未采集", "; capturePurpose=present identity only; scheduling relations, CPU queueing and core migration=not captured");
+            string detail = Logger.Text("采集次数=", "captures=") + Attempts + "/" + MaximumAttempts + Logger.Text("；基线已冻结=", "; baselineFrozen=") + frozen;
+            detail += Logger.Text("；采集用途=呈现身份", "; capturePurpose=presenter identity");
+            if (traceExhausted)
+                detail += Logger.Text("；会话启动重试已用完，本阶段停止采集", "; trace startup retries exhausted, capture stopped for this phase");
+            else if (retrySeconds > 0)
+                detail += Logger.Format("；会话启动失败，至少等待 {0} 秒重试", "; trace startup failed, retry in at least {0} s", retrySeconds);
             if (sample != null)
             {
                 detail += Logger.Text("；丢失事件=", "; lostEvents=") + sample.LostEvents + Logger.Text("；返回码=", "; traceCode=") + sample.TraceCode
+                    + Logger.Text("；采集会话阶段=", "; traceStage=") + sample.TraceStage
                     + Logger.Text("；来源字段已核验=", "; sourceFieldsVerified=") + sample.PresentStreamsKnown + Logger.Text("；成功提交流数量=", "; presentStreamCount=") + sample.PresentStreamCount
                     + Logger.Text("；呈现候选=", "; presenterCandidate=") + sample.PresentTid
                     + Logger.Text("；相关事件=", "; relevantEvents=") + sample.Events + Logger.Text("（参考=", " (reference=") + FrameCoordinationSampler.MaxRelevantEvents + Logger.Text("）", ")")
@@ -285,25 +228,23 @@ namespace PaviseApp
                 if (sample.ThreadIdentityReadFailures > 0)
                     detail += Logger.Text("；首个未核验TID=", "; firstUnverifiedTid=") + sample.FirstUnverifiedThreadId + Logger.Text("；身份错误码=", "; identityError=") + sample.FirstThreadIdentityError
                         + Logger.Text("；身份失败阶段=", "; identityFailurePhase=") + sample.FirstThreadIdentityStage;
+#if PAVISE_SELFTEST
                 if (sample.Relation != null)
                 {
-                    detail += Logger.Text("；工作图可用=", "; workloadGraphValid=") + sample.Relation.WorkloadValid + Logger.Text("；详细候选=", "; detailedCandidates=") + sample.Relation.WorkloadThreads.Length
-                        + Logger.Text("；溢出线程桶=", "; overflowedThreadBuckets=") + sample.Relation.OverflowedThreads + Logger.Text("；工作图截断=", "; workloadGraphTruncated=") + sample.Relation.WorkloadTruncated
-                        + Logger.Text("；状态转换=", "; stateTransitions=") + sample.Relation.RecordedTransitions + Logger.Text("（参考=", " (reference=") + ThreadRelationCollector.MaximumTransitions + Logger.Text("）", ")")
-                        + Logger.Text("；状态块=", "; stateBlocks=") + sample.Relation.AllocatedBlocks + Logger.Text("（参考=", " (reference=") + ThreadRelationCollector.MaximumBlocks + Logger.Text("）", ")");
-                    if (workload && !sample.Relation.WorkloadValid)
-                        detail += Logger.Text("；工作图原因=", "; workloadGraphReason=") + ShortReason(sample.Relation.WorkloadReason);
+                    detail += Logger.Text("；关系可用=", "; relationUsable=") + usable
+                        + Logger.Text("；状态转换=", "; stateTransitions=") + sample.Relation.RecordedTransitions
+                        + Logger.Text("；状态块=", "; stateBlocks=") + sample.Relation.AllocatedBlocks;
                 }
+#endif
                 if (!frozen && !usable)
                 {
-                    string failure = new UnifiedThreadCaptureEvidence(sample, now).FailureReason;
-                    detail += Logger.Text("；原因=", "; reason=") + ShortReason(failure);
+                    detail += Logger.Text("；原因=", "; reason=") + ShortReason(evidence.FailureReason);
                 }
             }
             else detail += Logger.Text("；原因=采样未返回", "; reason=sample not returned");
             if (changedDuringCapture) detail += Logger.Text("；采集期间已施加干预，本轮不能作为原布局基线", "; intervention applied during capture; this round cannot serve as the original layout baseline");
             if (lostForeground) detail += Logger.Text("；采集期间前台资格中断，本轮不能作为准入基线", "; foreground eligibility interrupted during capture; this round cannot serve as an admission baseline");
-            Write(context, detail, workload || PresentIdentityOnly ? frozen : usable);
+            Write(Logger.Text("角色基线", "role baseline"), detail, usable);
         }
 
         private static string ShortReason(string reason)
@@ -315,8 +256,6 @@ namespace PaviseApp
         private static string CpuText(double value)
         { return double.IsNaN(value) || double.IsInfinity(value) || value < 0 ? Logger.Text("未知", "unknown") : value.ToString("F3", CultureInfo.InvariantCulture); }
 
-        internal string DescribeState() { return DescribeState(AutoCores.NowTicks); }
-
         internal string DescribeState(long now)
         {
             lock (gate)
@@ -324,12 +263,13 @@ namespace PaviseApp
                 string state = canceled ? Logger.Text("已取消", "canceled") : capturing ? Logger.Text("正在采集角色基线，尚未完成", "capturing role baseline; not yet complete")
                     : baselineState == BaselineState.Pending ? Logger.Text("等待首次基线", "waiting for the first baseline")
                     : baselineState == BaselineState.CoolingDown ? (roleReview ? Logger.Text("原角色已退出，等待稳定前台后用剩余次数复核新角色", "original role exited; the new role will be reviewed with remaining attempts after a stable foreground")
-                        : workloadConfirmation ? Logger.Text("等待稳定前台后使用剩余次数确认工作组角色", "waiting for a stable foreground to confirm workload roles with remaining attempts")
-                        : rejudged ? Logger.Text("负载已升高，等待稳定前台后用剩余次数重新判定", "load increased; waiting for a stable foreground to re-judge with remaining attempts") : Logger.Text("基线未通过，等待稳定前台后使用剩余次数", "baseline failed; waiting for a stable foreground to use remaining attempts"))
+                        : Logger.Text("基线未通过，等待稳定前台后使用剩余次数", "baseline failed; waiting for a stable foreground to use remaining attempts"))
+                    : baselineState == BaselineState.TraceRetry ? Logger.Text("会话启动失败，等待重试", "trace startup failed, waiting to retry")
+                    : baselineState == BaselineState.TraceExhausted ? Logger.Text("会话启动重试已用完，本阶段停止采集", "trace startup retries exhausted, capture stopped for this phase")
                     : baselineState == BaselineState.Frozen ? Logger.Text("有效基线已冻结", "valid baseline frozen")
-                    : baselineState == BaselineState.Exhausted ? Logger.Text("基线未通过，完整采集预算已耗尽", "baseline failed; full-capture budget exhausted")
+                    : baselineState == BaselineState.Exhausted ? Logger.Text("基线未通过，角色采集预算已耗尽", "baseline failed; role capture budget exhausted")
                     : Logger.Text("已施加干预，禁止重建原布局基线", "intervention applied; rebuilding the original layout baseline is not allowed");
-                return Logger.Text("观察阶段=", "observationPhase=") + state + Logger.Text("；完整采集次数=", "; fullCaptures=") + attempts + "/" + maximumAttempts + Logger.Text("；基线采集次数=", "; baselineCaptures=") + baselineAttempts
+                return Logger.Text("观察阶段=", "observationPhase=") + state + Logger.Text("；角色采集次数=", "; roleCaptures=") + attempts + "/" + MaximumAttempts
                     + Logger.Text("；连续身份确认=", "; consecutiveIdentityConfirmations=") + identityConfirmations + "/2"
                     + Logger.Text("；下次采集=", "; nextCapture=") + (NextCaptureDueLocked() == long.MaxValue ? Logger.Text("当前无新增采集", "none scheduled")
                         : Logger.Text("至少等待", "in at least ") + Math.Ceiling(Math.Max(0, NextCaptureDueLocked() - now) / (double)TimeSpan.TicksPerSecond) + Logger.Text("秒", " s"))
@@ -338,7 +278,7 @@ namespace PaviseApp
         }
 
         internal UnifiedThreadCaptureEvidence ReadUnifiedBaseline()
-        { lock (gate) return canceled || baselineState == BaselineState.Intervened ? null : unifiedBaseline ?? lastBaselineAttempt; }
+        { lock (gate) return canceled ? null : unifiedBaseline; }
 
         internal void MarkApplied(long now)
         {
@@ -346,7 +286,7 @@ namespace PaviseApp
             {
                 if (canceled || appliedAt != 0) return;
                 appliedAt = now;
-                if (unifiedBaseline == null) { baselineState = BaselineState.Intervened; lastBaselineAttempt = null; }
+                if (unifiedBaseline == null) baselineState = BaselineState.Intervened;
             }
         }
 

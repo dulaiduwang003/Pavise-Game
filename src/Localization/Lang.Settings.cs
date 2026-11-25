@@ -115,9 +115,6 @@ namespace PaviseApp
             messages.Add("set.exitgrace", new string[2] { "退局确认等待时间", "Game exit confirmation delay" });
             messages.Add("set.exitgrace.seconds", new string[2] { "{0} 秒", "{0} s" });
             messages.Add("set.exitgrace.n", new string[2] { "默认 8 秒，修改立即生效。0 秒即刻退局，可能误判进程交接；后台压制先解除，不受等待时间影响。", "Default: 8 s; applies immediately. 0 s ends the session at once and may misread process handoffs. Background suppression is released before the wait." });
-            messages.Add("set.governance.insane", new string[2] { "后台治理疯狂档", "Insane background governance" });
-            messages.Add("set.governance.insane.n", new string[2] { "默认关闭。打开后可在顶部策略里选择疯狂档：每个后台进程只给全机 0.01% 的 CPU，后台基本停住，部分程序可能卡顿或失灵。", "Off by default. Turn it on to choose Insane in the strategy menu at the top. Insane gives each background app only 0.01% of the CPU, so background apps nearly stop and some may stutter or stop working." });
-            messages.Add("set.governance.insane.summary", new string[2] { "默认关闭 · 打开后才能选疯狂档", "Off by default · Turn on to choose Insane" });
             messages.Add("set.exitgrace.fail", new string[2] { "退局等待时间保存失败，已保留原设置。", "Could not save the exit delay. The previous setting was retained." });
             messages.Add("set.lang.n", new string[2] { "选择语言后立即生效 界面与新产生的日志提示一并切换", "Select a language to apply it immediately; the UI and newly written log messages switch together." });
             messages.Add("lang.zh", new string[2] { "中文", "中文" });

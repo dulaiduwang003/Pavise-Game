@@ -11,9 +11,6 @@ namespace PaviseApp
         private string threadLayoutIdentity;
         private bool threadLayoutDiagnosticsReady, threadLayoutPhaseLimitReported;
         private ThreadLayoutCaptureRequest threadLayoutCapture;
-        // 本局因为记住的结论而不采集时 界面和日志显示的原因
-        private string threadLayoutSkipReason;
-
         private static string ThreadLayoutIdentity(CriticalRuntimeSource source)
         { return source.Serial + "|" + source.Profile + "|" + source.Pid + "|" + source.Birth + "|" + source.RuleText; }
 
@@ -31,11 +28,6 @@ namespace PaviseApp
                 threadLayoutSerial = source.Serial;
             }
             threadLayoutCapture = null;
-            if (source.Rule.IsDependencyBoost)
-            {
-                StartThreadLayoutDiagnostics(source, 0);
-                return;
-            }
             ulong processMask;
             if (!ReadCriticalProcessMask(source.Pid, source.Birth, out processMask))
             {
@@ -47,26 +39,16 @@ namespace PaviseApp
 
         private void StartThreadLayoutDiagnostics(CriticalRuntimeSource source, ulong processMask)
         {
-            if (threadLayoutDiagnosticsReady || processMask == 0 && !source.Rule.IsDependencyBoost || threadLayoutIdentity != ThreadLayoutIdentity(source)) return;
+            if (threadLayoutDiagnosticsReady || processMask == 0 || threadLayoutIdentity != ThreadLayoutIdentity(source)) return;
             // 只复用已读回的范围建立当前识别身份 不为日志增加原生读取或重建采集预算
             threadLayoutDiagnosticsReady = true;
-            Logger.Info(Logger.Format("线程识别 开始 会话={0} 游戏={1} PID={2} 创建={3} 规则={4}{5}", "Thread identification start session={0} game={1} PID={2} birth={3} rule={4}{5}", source.Serial, source.Profile, source.Pid, source.Birth, source.RuleText, (source.Rule.IsDependencyBoost ? Logger.Text(" 仅优先级控制，无亲和性授权", " priority control only, no affinity grant") : Logger.Text(" 允许范围=0x", " allowedMask=0x") + processMask.ToString("X"))));
+            Logger.Info(Logger.Format("线程识别 开始 会话={0} 游戏={1} PID={2} 创建={3} 规则={4}{5}", "Thread identification start session={0} game={1} PID={2} birth={3} rule={4}{5}", source.Serial, source.Profile, source.Pid, source.Birth, source.RuleText, Logger.Text(" 允许范围=0x", " allowedMask=0x") + processMask.ToString("X")));
         }
 
         private ThreadLayoutCaptureRequest EnsureThreadLayoutCapture(CriticalRuntimeSource source)
         {
-            if (source.Rule.Layout == CriticalThreadLayout.Compatible) return null;
-            int daysLeft;
-            threadLayoutSkipReason = null;
-            if (source.Rule.IsOrchestration && WorkloadVerdictMemory.Recent(source.Profile, source.Path, out daysLeft))
-            {
-                threadLayoutSkipReason = Logger.Text("此前已判定本游戏不适合给关键线程留核（负载铺满大部分核心，或可用核心不够）；本局不采集、不放置，约 ", "Previously judged unsuitable for reserving cores for critical threads (load spans most cores, or too few usable cores); no capture or placement this session, re-evaluated in about ")
-                    + daysLeft + Logger.Text(" 天后或游戏更新后重新判定", " days or after a game update");
-                threadLayoutCapture = null;
-                FrameCoordination.ConfigureLayoutObservation(null);
-                return null;
-            }
             string identity = ThreadLayoutIdentity(source);
+            if (threadLayoutCapture != null && threadLayoutCapture.Identity == identity) return threadLayoutCapture;
             ThreadLayoutCaptureRequest request;
             if (!threadLayoutCapturePhases.TryGetValue(identity, out request))
             {
@@ -86,19 +68,12 @@ namespace PaviseApp
                         string line = Logger.Text("线程识别 会话=", "Thread identification session=") + source.Serial + Logger.Text(" 游戏=", " game=") + source.Profile + " PID=" + source.Pid
                             + Logger.Text(" 创建=", " birth=") + source.Birth + Logger.Text(" 阶段=", " phase=") + stage + Logger.Text("；", "; ") + detail;
                         if (usable) Logger.Info(line); else Logger.Warn(line);
-                    }, source.Rule.UsesWorkloadDiscovery, source.Rule.IsRenderStrategy
-                        && source.Rule.Strategy == SchedulingStrategy.RenderBoost && !source.Rule.ClearCore);
+                    });
                 threadLayoutCapturePhases.Add(identity, request);
             }
             threadLayoutCapture = request;
             FrameCoordination.ConfigureLayoutObservation(request);
             return request;
-        }
-
-        private bool ThreadLayoutObservationWanted(CriticalRuntimeSource source)
-        {
-            return source.Rule.Layout != CriticalThreadLayout.Compatible && threadLayoutCapture != null
-                && threadLayoutCapture.NeedsObserver(AutoCores.NowTicks);
         }
 
         private void EndThreadLayoutDiagnostics(string reason, bool restored)

@@ -105,6 +105,15 @@ namespace PaviseApp
                     wake.Set();
                     return false;
                 }
+                if (options.FreeMegabytes == 0)
+                {
+                    if (current != null)
+                    {
+                        current = null;
+                        wake.Set();
+                    }
+                    return true;
+                }
                 string cycle = CycleIdentity(options);
                 ActionFailureStore.BeginAutomaticCycle("GmStandbyCleanerV2", "system", cycle);
                 if (ActionFailureStore.IsBlocked("GmStandbyCleanerV2", "system"))

@@ -17,7 +17,7 @@ $rsp = Join-Path $OutputDirectory 'sources.rsp'
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'source-manifest.json') -Encoding UTF8
 $exe = Join-Path $OutputDirectory 'BackgroundGovernanceRuntimeChecks.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-& $compiler -nologo -unsafe+ -warn:0 -target:exe -platform:x64 -codepage:65001 '-main:PaviseApp.BackgroundGovernanceRuntimeChecks' -reference:System.dll -reference:System.Core.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Management.dll -reference:System.Xml.dll -reference:System.Security.dll ('-out:'+$exe) ('@'+$rsp) *> (Join-Path $OutputDirectory 'compile.log')
+& $compiler -nologo -unsafe+ -define:PAVISE_SELFTEST -warn:0 -target:exe -platform:x64 -codepage:65001 '-main:PaviseApp.BackgroundGovernanceRuntimeChecks' -reference:System.dll -reference:System.Core.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Management.dll -reference:System.Xml.dll -reference:System.Security.dll ('-out:'+$exe) ('@'+$rsp) *> (Join-Path $OutputDirectory 'compile.log')
 if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath (Join-Path $OutputDirectory 'compile.log'); throw 'Background governance runtime compilation failed' }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName=$exe; $info.UseShellExecute=$false; $info.CreateNoWindow=$true; $info.WindowStyle='Hidden'

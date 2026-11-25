@@ -28,8 +28,8 @@ function Extract-Method([string]$text,[string]$signature){
  if($close -le $open){throw 'Unbalanced method'}
  $text.Substring($start,$close-$start+1)
 }
-$signatures=@('private void Loop()','public void NotifyProcessChanges(ProcessChangeBatch batch)','public void Poke()','private List<ProcessChange> DrainProcessChanges()','private void RefreshGovernanceSession()','public bool PanicRestore()','public void Start()','public bool Stop()','private void RevokeRuntimeWrites(string group = null)','private sealed class SweepRetryPhase','private SweepRetryPhase SelectSweepRetryPhase(List<ProcessChange> changes, out bool changed)','private ProcessSnapshot CaptureSweepSnapshot()')
-$constantNames=@('FailedSweepRetryMs','SessionWaitMs','ObservationIntervalMs','SuspendedWakeLimit')
+$signatures=@('private void Loop()','public void NotifyProcessChanges(ProcessChangeBatch batch)','public void Poke()','private List<ProcessChange> DrainProcessChanges()','private void RefreshGovernanceSession()','private int ContextWait()','public bool PanicRestore()','public void Start()','public bool Stop()','private void RevokeRuntimeWrites(string group = null)','private sealed class SweepRetryPhase','private SweepRetryPhase SelectSweepRetryPhase(List<ProcessChange> changes, out bool changed)','private ProcessSnapshot CaptureSweepSnapshot()')
+$constantNames=@('FailedSweepRetryMs','SessionWaitMs','ObservationIntervalMs','SuspendedWakeLimit','ProcessAuditIntervalMs','ContextWakeLimit')
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 function Run-Variant([string]$label,[string]$path,[bool]$expectFailure,[string]$expectedMessage='failure deadline bypassed by initial signal'){
  $sourceText=[IO.File]::ReadAllText($path)
@@ -68,6 +68,7 @@ $kills=0
 if($Mutations){
  $productionText=[IO.File]::ReadAllText($sourceFile)
  $mutants=@(
+  @{Name='active-empty-finite-wait';From='if (!engineWork) millisecondsTimeout = Timeout.Infinite;';To='if (!engineWork) millisecondsTimeout = 1000;';Message='Active empty loop used a periodic wait'},
   @{Name='idle-finite-wait';From='if (!engineWork || wakes >= SuspendedWakeLimit) millisecondsTimeout = Timeout.Infinite;';To='if (!engineWork || wakes >= SuspendedWakeLimit) millisecondsTimeout = 500;';Message='Idle suspended loop'},
   @{Name='unbounded-debt-wakes';From='if (!engineWork || wakes >= SuspendedWakeLimit) millisecondsTimeout = Timeout.Infinite;';To='if (!engineWork) millisecondsTimeout = Timeout.Infinite;';Message='Debt wakes continued after the wake limit'},
   @{Name='events-ignore-listening';From='if (batch == null || !listening)';To='if (batch == null)';Message='Idle suspended loop'}

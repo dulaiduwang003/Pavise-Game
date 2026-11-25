@@ -1,17 +1,15 @@
 using System;
-using System.Linq;
 
 namespace PaviseApp
 {
     // 准入只使用未施加干预时冻结的有效观察 放置后复查不能替换角色证据
     internal sealed class UnifiedThreadCaptureEvidence
     {
-        internal readonly int Pid, PresenterTid, WorkerTid, Streams;
+        internal readonly int Pid, Streams;
         internal readonly long Birth, Observed;
+        internal readonly DateTime SampledAt;
         internal readonly bool Valid, StreamsKnown;
-        internal readonly bool PresentIdentityOnly;
         internal readonly HardThreadIdentity Presenter;
-        internal readonly ThreadRelationSnapshot Relation;
         internal readonly string FailureReason;
 
         internal UnifiedThreadCaptureEvidence(FrameCoordinationSample sample, long observed)
@@ -19,11 +17,10 @@ namespace PaviseApp
             Observed = observed;
             FailureReason = CaptureFailure(sample);
             if (sample == null) return;
-            Pid = sample.Pid; Birth = sample.Birth; PresenterTid = sample.PresentTid; WorkerTid = sample.WorkerTid;
-            PresentIdentityOnly = sample.PresentIdentityOnly;
+            Pid = sample.Pid; Birth = sample.Birth;
             Streams = sample.PresentStreamCount; StreamsKnown = sample.PresentStreamsKnown;
             Valid = sample.PresentValid && sample.Issue == FrameCaptureIssue.None && sample.LostEvents == 0;
-            Relation = sample.Relation;
+            if (Valid) SampledAt = DateTime.Now;
             long created;
             if (sample.PresentTid > 0 && sample.Threads.TryGetValue(sample.PresentTid, out created) && created > 0)
                 Presenter = new HardThreadIdentity(sample.PresentTid, created);
@@ -48,21 +45,36 @@ namespace PaviseApp
             if (!string.IsNullOrEmpty(sample.PresentSelectionReason)
                 && reason.IndexOf(sample.PresentSelectionReason, StringComparison.Ordinal) < 0)
                 reason += (reason.Length == 0 ? "" : Logger.Text("；", "; ")) + Logger.Text("呈现选择=", "presentSelection=") + sample.PresentSelectionReason;
+#if PAVISE_SELFTEST
             if (sample.Relation != null && !sample.Relation.Valid && !string.IsNullOrEmpty(sample.Relation.Reason)
                 && reason.IndexOf(sample.Relation.Reason, StringComparison.Ordinal) < 0)
                 reason += (reason.Length == 0 ? "" : Logger.Text("；", "; ")) + Logger.Text("线程关系=", "threadRelation=") + sample.Relation.Reason;
+#endif
             if (!sample.PresentStreamsKnown) reason += (reason.Length == 0 ? "" : Logger.Text("；", "; ")) + Logger.Text("呈现来源字段未核验", "present source field unverified");
             else if (sample.PresentStreamCount != 1) reason += (reason.Length == 0 ? "" : Logger.Text("；", "; ")) + Logger.Text("成功提交流数量=", "successfulStreams=") + sample.PresentStreamCount;
             return reason.Length == 0 ? Logger.Text("采样未通过完整性核验", "sample failed integrity verification") : reason;
         }
     }
 
+    internal sealed class RenderAffinityObservation
+    {
+        internal readonly DateTime SampledAt;
+        internal readonly int PresenterTid, PresentStreamCount;
+
+        internal RenderAffinityObservation(DateTime sampledAt, int presenterTid, int presentStreamCount)
+        {
+            SampledAt = sampledAt;
+            PresenterTid = presenterTid;
+            PresentStreamCount = presentStreamCount;
+        }
+    }
+
     internal static class UnifiedThreadAdmissionPolicy
     {
         internal static HardThreadIdentity[] Select(UnifiedThreadCaptureEvidence evidence, ThreadTimes current,
-            CriticalThreadHotspot[] hotspots, int pid, long birth, long now, bool manual, out string reason)
+            int pid, long birth, long now, out string reason)
         {
-            reason = Logger.Text("尚未完成可用于准入的放置前观察；CPU 热点仅作候选", "no pre-placement observation usable for admission yet; CPU hotspots are candidates only");
+            reason = Logger.Text("尚未完成可用于准入的放置前观察", "no pre-placement observation usable for admission yet");
             if (evidence == null) return new HardThreadIdentity[0];
             if (evidence.Pid != pid || evidence.Birth != birth)
             { reason = Logger.Text("放置前观察的进程身份不匹配", "pre-placement observation process identity mismatch"); return new HardThreadIdentity[0]; }
@@ -72,7 +84,7 @@ namespace PaviseApp
             { reason = Logger.Text("放置前观察已超过 65 秒新鲜度，不用旧证据接管新角色", "pre-placement observation exceeds the 65 s freshness limit, old evidence is not used to take over new roles"); return new HardThreadIdentity[0]; }
             if (!evidence.Valid)
             { reason = Logger.Text("放置前观察无效：", "pre-placement observation invalid: ") + evidence.FailureReason; return new HardThreadIdentity[0]; }
-            if (!CriticalThreadObservation.Valid(current, birth, now))
+            if (!CriticalThreadRuntimePolicy.Valid(current, birth, now))
             { reason = Logger.Text("当前线程身份或 CPU 快照不可核验", "current thread identity or CPU snapshot cannot be verified"); return new HardThreadIdentity[0]; }
             if (!evidence.StreamsKnown)
             { reason = Logger.Text("呈现来源字段未核验；不能把提交最多的线程当作游戏主线程", "present source field unverified; the thread with the most presents cannot be treated as the game main thread"); return new HardThreadIdentity[0]; }
@@ -82,8 +94,7 @@ namespace PaviseApp
             { reason = Logger.Text("放置前观察缺少固定呈现候选身份", "pre-placement observation lacks a fixed presenter candidate identity"); return new HardThreadIdentity[0]; }
             if (!CriticalThreadRuntimePolicy.Contains(current, evidence.Presenter))
             { reason = Logger.Text("呈现候选身份已变化；不把复用线程号接入旧规则", "presenter candidate identity changed; reused thread IDs are not attached to old rules"); return new HardThreadIdentity[0]; }
-            reason = manual ? Logger.Text("已确认单一呈现提交候选；手动目标仅固定该角色，不声称整核独占或完整关键路径", "single presenter candidate confirmed; the manual target pins only this role, without claiming whole-core exclusivity or the full critical path")
-                : Logger.Text("两半窗口内单一来源及呈现身份均已核验；只准入呈现角色，不据此确认伙伴或完整关键路径", "single source and presenter identity verified in both half windows; only the presenter role is admitted, partners and the full critical path are not confirmed from this");
+            reason = Logger.Text("两半窗口内单一来源及呈现身份均已核验；只准入呈现角色", "single source and presenter identity verified in both half windows; presenter admitted");
             return new[] { evidence.Presenter };
         }
     }

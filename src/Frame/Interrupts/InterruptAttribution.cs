@@ -53,6 +53,7 @@ namespace PaviseApp
         private const int ErrorAlreadyExists = 183;
 
         private const int ErrorInvalidParameter = 87;
+        private const int ErrorNoSystemResources = 1450;
 
         private const string SessionName = "PaviseInterruptProbe";
 
@@ -75,6 +76,8 @@ namespace PaviseApp
         private static readonly object ownershipGate = new object();
         private static InterruptAttribution retainedOwner;
         private EventWaitHandle aliveOwned;
+        private IDisposable captureSlot;
+        private bool reservationSuspended;
         private IntPtr loggerName, sessionProperties;
         private ulong sessionHandle;
         private bool startAttempted, sessionPending, sessionStopAccepted, consumerCloseAccepted, workerStarted, consumerReturned;
@@ -191,7 +194,7 @@ namespace PaviseApp
                 return true;
             }
         }
-        public bool Start()
+        public bool Start(Func<bool> cancelled = null)
         {
             lock (gate)
             {
@@ -207,6 +210,8 @@ namespace PaviseApp
                 }
                 try
                 {
+                    captureSlot = FrameCaptureReservation.Enter(() => stopRequested || cancelled != null && cancelled());
+                    if (captureSlot == null || stopRequested) { BeginCleanupLocked(); return false; }
                     Native.TryEnableDebugPrivilege();
                     string error;
                     if (!LoadModules(out error))
@@ -228,6 +233,14 @@ namespace PaviseApp
                         sessionPending = sessionStopAccepted = false;
                         Marshal.FreeHGlobal(previousProperties);
                         sessionProperties = AllocProps(FlagDpc | FlagInterrupt);
+                        result = StartTrace(out opened, SessionName, sessionProperties);
+                    }
+                    if (result == ErrorNoSystemResources && FrameCaptureReservation.SuspendIdleForInterrupt())
+                    {
+                        reservationSuspended = true;
+                        IntPtr freshProperties = AllocProps(FlagDpc | FlagInterrupt);
+                        Marshal.FreeHGlobal(sessionProperties);
+                        sessionProperties = freshProperties;
                         result = StartTrace(out opened, SessionName, sessionProperties);
                     }
                     if (result != 0)
@@ -631,6 +644,7 @@ namespace PaviseApp
                 worker = null; keepAlive = null;
                 if (loggerName != IntPtr.Zero) { Marshal.FreeHGlobal(loggerName); loggerName = IntPtr.Zero; }
                 if (sessionProperties != IntPtr.Zero) { Marshal.FreeHGlobal(sessionProperties); sessionProperties = IntPtr.Zero; }
+                ReleaseCaptureSlot();
                 if (now >= ownershipNext && ownershipFailures < CleanupAttempts && !ReleaseOwnership())
                 {
                     ownershipFailures++; ownershipNext = now + (1000L << (ownershipFailures - 1)); incomplete = true;
@@ -649,6 +663,21 @@ namespace PaviseApp
             {
                 if (cleanupTimer == null) cleanupTimer = new Timer(delegate { lock (gate) CleanupLocked(); }, null, -1, -1);
                 cleanupTimer.Change((int)Math.Min(int.MaxValue, Math.Max(1L, due - now)), -1);
+            }
+        }
+
+        private void ReleaseCaptureSlot()
+        {
+            if (captureSlot == null) return;
+            try
+            {
+                if (reservationSuspended) FrameCaptureReservation.ResumeAfterInterrupt();
+            }
+            finally
+            {
+                reservationSuspended = false;
+                captureSlot.Dispose();
+                captureSlot = null;
             }
         }
 

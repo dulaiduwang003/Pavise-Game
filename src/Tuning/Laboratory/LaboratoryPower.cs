@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -21,6 +22,7 @@ namespace PaviseApp
         bool HasBattery { get; }
         Guid ActiveManagedPlan();
         bool EppSupported(Guid plan);
+        bool CpuPackagePowerAvailable { get; }
         int OwnerStatus(Guid plan); // 返回值 1 为本方持有 0 为确认不存在 -1 为未知或外部持有
         uint? Read(Guid plan, Guid setting);
         bool Write(Guid plan, Guid setting, uint value);
@@ -49,6 +51,22 @@ namespace PaviseApp
         internal static readonly Guid Epp = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
         internal static readonly Guid Epp1 = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static LaboratoryPowerController controller;
+        private static Func<bool> schemeChangesAvailable;
+        private static int qualificationRevision;
+        internal static volatile bool PowerStatusNotifications;
+        internal static int QualificationRevision { get { return Volatile.Read(ref qualificationRevision); } }
+        internal static bool QualificationNotifications
+        {
+            get
+            {
+                var schemeChanges = Volatile.Read(ref schemeChangesAvailable);
+                return PowerStatusNotifications && schemeChanges != null && schemeChanges();
+            }
+        }
+        internal static void ObserveSchemeChanges(Func<bool> available)
+        { Volatile.Write(ref schemeChangesAvailable, available); }
+        internal static void NoteQualificationChange()
+        { Interlocked.Increment(ref qualificationRevision); }
         private static LaboratoryPowerController Controller
         {
             get { return controller ?? (controller = new LaboratoryPowerController(new PowerPlan.NativeLaboratoryPower(), PowerPlan.LaboratoryGate)); }
@@ -112,6 +130,9 @@ namespace PaviseApp
             }
         }
         private bool initialized, idleBlocked, eppBlocked, recoveryPending;
+        private bool missingPackagePower, skipPackageQualification;
+        private int packageQualificationRevision, packageSettingsGeneration;
+        private long packageQualificationDeadline;
         private string idle = "default", idleState = "等待对局", eppState = "等待对局";
         private Guid plan;
         private int pid, attempts, samples, releaseSamples;
@@ -168,6 +189,7 @@ namespace PaviseApp
                 case "电源方案已包含提高深层空闲门槛": return "The power plan already includes raised deep-idle thresholds";
                 case "已关闭": return "Off";
                 case "不适用：需要笔记本及自主性能控制支持": return "Not applicable: requires a laptop and autonomous performance control";
+                case "不适用：需要 CPU 封装功耗通道": return "Not applicable: requires a CPU package power channel";
                 case "等待可验证的游戏渲染进程": return "Waiting for a verified game renderer";
                 case "渲染进程身份失效，已停止试探": return "Renderer identity is no longer valid; trial stopped";
                 case "渲染显卡发生变化，已停止试探": return "Rendering adapter changed; trial stopped";
@@ -204,6 +226,14 @@ namespace PaviseApp
 
         private void UpdateCore(bool wantEpp, string wantedIdle, int rendererPid, long rendererCreation)
         {
+            int revision = LaboratoryPower.QualificationRevision;
+            int settingsGeneration = Settings.MutationGeneration;
+            if (skipPackageQualification && !recoveryPending && wantEpp && wantedIdle == "default"
+                && rendererPid == pid && rendererCreation == creation && LaboratoryPower.QualificationNotifications
+                && revision == packageQualificationRevision && settingsGeneration == packageSettingsGeneration
+                && platform.Now < packageQualificationDeadline)
+                return;
+            skipPackageQualification = false;
             if (recoveryPending)
             {
                 if (!RestoreCore(null)) { idleState = eppState = "恢复未完成"; return; }
@@ -285,7 +315,11 @@ namespace PaviseApp
                 if (!RestoreCore(true)) { eppState = "恢复未完成"; return; }
                 ResetEpp(); eppBlocked = false; pid = rendererPid; creation = rendererCreation;
             }
-            if (eppBlocked) return;
+            if (eppBlocked)
+            {
+                RememberCleanMissingPackage(revision, settingsGeneration);
+                return;
+            }
             bool owned;
             if (!OwnedValuesMatch(true, out owned))
             {
@@ -293,6 +327,12 @@ namespace PaviseApp
             }
             long now = platform.Now;
             if (now < nextSample) return;
+            if (phase == 0 && !owned && !platform.CpuPackagePowerAvailable)
+            {
+                missingPackagePower = StopEpp("不适用：需要 CPU 封装功耗通道");
+                RememberCleanMissingPackage(revision, settingsGeneration);
+                return;
+            }
             nextSample = now + TimeSpan.TicksPerSecond * 5;
             // 查询重开 策略往返和成功观察都不补充次数 只有真实新会话清理此账本
             string gpuSamplingIdentity = "gpu-sample|" + pid.ToString(CultureInfo.InvariantCulture) + "|" + creation.ToString(CultureInfo.InvariantCulture);
@@ -387,15 +427,27 @@ namespace PaviseApp
             ResetEpp(); eppBlocked = false;
             return true;
         }
-        private void StopEpp(string reason)
+        private bool StopEpp(string reason)
         {
             bool ok = RestoreCore(true); ResetEpp(false); eppBlocked = true;
             eppState = ok ? reason : "恢复未完成";
+            return ok;
+        }
+        private void RememberCleanMissingPackage(int revision, int settingsGeneration)
+        {
+            if (!missingPackagePower || idle != "default" || recoveryPending || !LaboratoryPower.QualificationNotifications) return;
+            Journal journal;
+            if (!Load(out journal) || journal.Values.Count != 0) return;
+            packageQualificationRevision = revision;
+            packageSettingsGeneration = settingsGeneration;
+            packageQualificationDeadline = platform.Now + TimeSpan.TicksPerSecond * 15;
+            skipPackageQualification = true;
         }
         private void ResetWindow() { windowStart = 0; samples = 0; gpuTotal = cpuTotal = wattsTotal = 0; }
         private void ResetEpp(bool forgetSession = true)
         {
             phase = releaseSamples = 0; nextSample = lastGood = 0;
+            missingPackagePower = skipPackageQualification = false;
             if (forgetSession) { attempts = pid = 0; creation = 0; }
             adapterKnown = false; ResetWindow(); platform.ResetSampling();
         }
@@ -495,12 +547,17 @@ namespace PaviseApp
         {
             any = false; Journal journal;
             if (!Load(out journal) || journal.Values.Count != 0 && journal.Owner != plan) return false;
+            bool ownerChecked = false;
             foreach (Value value in journal.Values)
                 if (IsEpp(value.Setting) == epp)
                 {
                     any = true;
-                    if (value.ManagedOnly && platform.OwnerStatus(journal.Owner) != 1
-                        || platform.Read(journal.Owner, value.Setting) != value.Wanted) return false;
+                    if (value.ManagedOnly && (!epp || !ownerChecked))
+                    {
+                        if (platform.OwnerStatus(journal.Owner) != 1) return false;
+                        ownerChecked = true;
+                    }
+                    if (platform.Read(journal.Owner, value.Setting) != value.Wanted) return false;
                 }
             return true;
         }

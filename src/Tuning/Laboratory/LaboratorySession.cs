@@ -6,6 +6,26 @@ namespace PaviseApp
 {
     internal sealed class LaboratorySelection
     {
+        internal sealed class ReadScope
+        {
+            private int generation;
+            private long session;
+            private LaboratorySelection previous;
+
+            internal LaboratorySelection Read(bool match, int pid, long creation, long gameSession)
+            {
+                int current = Settings.MutationGeneration;
+                if (match && previous != null && generation == current && session == gameSession
+                    && previous.RendererPid == pid && previous.RendererCreation == creation)
+                    return previous;
+                LaboratorySelection value = LaboratorySelection.Read(match, pid, creation);
+                previous = match && current == Settings.MutationGeneration ? value : null;
+                generation = current;
+                session = gameSession;
+                return value;
+            }
+        }
+
         internal bool Epp, Power, Clocks;
         internal string Idle = "default";
         internal int RendererPid;

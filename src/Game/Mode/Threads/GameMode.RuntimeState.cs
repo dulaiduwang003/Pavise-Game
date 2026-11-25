@@ -32,6 +32,8 @@ namespace PaviseApp
 
             public bool NvRebar;
 
+            public bool NvLowLatency;
+
             public string NvDlss;
 
             public bool Exclusive;
@@ -157,8 +159,6 @@ namespace PaviseApp
 
             internal string OriginalRule { get { return rule; } }
 
-            private readonly bool priorityOnly;
-
             private int revoked;
 
             internal readonly Guid SessionId;
@@ -199,10 +199,9 @@ namespace PaviseApp
                 epoch = originalEpoch;
                 gameSerial = originalGameSerial;
                 rule = originalRule;
-                // 授权跟随原规则冻结 纯优先级不授予候选固定或其他线程避让权限
+                // 授权跟随原规则冻结
                 CriticalThreadRule originalStrategy = CriticalThreadRule.ParseForRuntime(originalRule);
                 WorkerAvoidanceAllowed = originalStrategy.WritesOtherThreadRanges;
-                priorityOnly = originalStrategy.IsDependencyBoost;
                 store = owner.CriticalThreadStoreRoot;
                 SessionId = Guid.NewGuid();
             }
@@ -236,7 +235,7 @@ namespace PaviseApp
             internal void RequireRecovery()
             {
                 if (!Monitor.IsEntered(owner.criticalProcessGate) || SessionId == Guid.Empty || ProcessId <= 0 || ProcessCreation <= 0
-                    || string.IsNullOrEmpty(rule) || AllowedMask == 0 && !priorityOnly
+                    || string.IsNullOrEmpty(rule) || AllowedMask == 0
                     || store != owner.CriticalThreadStoreRoot)
                 {
                     throw new InvalidOperationException("No original game-thread restoration identity");
@@ -427,8 +426,6 @@ namespace PaviseApp
             public long Creation;
 
             public long Cpu;
-
-            public ulong Io;
         }
 
         private sealed class WhitelistEvaluation

@@ -47,6 +47,8 @@ namespace PaviseApp
 
             internal Rectangle StatusBounds;
 
+            internal Rectangle StatusActionBounds;
+
             internal Rectangle LockBounds;
 
             internal Rectangle HostBounds;
@@ -94,6 +96,20 @@ namespace PaviseApp
             }
         }
 
+        private bool pickerInHeader;
+        internal bool PickerInHeader
+        {
+            get { return pickerInHeader; }
+            set
+            {
+                if (pickerInHeader == value) return;
+                pickerInHeader = value;
+                cachedPresentation = null;
+                ArrangePresentation();
+                if (PresentationChanged != null) PresentationChanged();
+            }
+        }
+
         private bool compactRow;
 
         internal bool CompactRow
@@ -128,6 +144,8 @@ namespace PaviseApp
         internal Action PresentationStateChanged;
 
         internal string IconKey = "";
+
+        internal bool StartsNewRow;
 
         internal string Summary = "";
 
@@ -212,9 +230,15 @@ namespace PaviseApp
             {
                 return !string.IsNullOrEmpty(base.StatusText)
                     && !string.Equals(base.StatusText, base.LockText, StringComparison.Ordinal)
-                    && ExceptionalStatus();
+                    && (AlwaysShowStatus || ExceptionalStatus());
             }
         }
+
+        protected virtual bool AlwaysShowStatus { get { return false; } }
+
+        protected virtual LinkLabel StatusAction { get { return null; } }
+
+        protected virtual bool ShowStatusAction { get { return false; } }
 
         private string ShownTitle
         {
@@ -660,11 +684,14 @@ namespace PaviseApp
             Size hostSize = CompactHostSize(availableWidth);
             int hostWidth = hostSize.Width, hostHeight = hostSize.Height;
             int textLeft = pad + iconSize + Theme.S(10);
-            bool inlineHost = base.Hosted is Toggle || (base.Hosted != null && !(base.Hosted is TierPicker)
-                && width - pad - textLeft - hostWidth - Theme.S(16) >= Theme.S(220));
+            bool headerPicker = PickerInHeader && base.Hosted is PerformanceProfilePicker;
+            bool pickerBesideTitle = headerPicker && width - pad - textLeft - hostWidth - Theme.S(16) >= Theme.S(145);
+            bool inlineHost = !headerPicker && (base.Hosted is Toggle || (base.Hosted != null && !(base.Hosted is TierPicker)
+                && width - pad - textLeft - hostWidth - Theme.S(16) >= Theme.S(220)));
             int textRight = Math.Max(textLeft + 1, width - pad - (inlineHost ? hostWidth + Theme.S(16) : 0));
             int textWidth = Math.Max(1, textRight - textLeft);
-            int titleWidth = Math.Max(1, textWidth - infoSize - Theme.S(4));
+            int titleWidth = Math.Max(1, textWidth - infoSize - Theme.S(4)
+                - (pickerBesideTitle ? hostWidth + Theme.S(16) : 0));
             string shownTitle = ShownTitle, shownSummary = ShownSummary;
             string shownStatus = ShownStatus;
             Font titleFont = Theme.UI(9f, true), detailFont = Theme.UI(8.5f, false);
@@ -674,6 +701,7 @@ namespace PaviseApp
                 && value.Host == base.Hosted && value.FullWidthPicker == FullWidthPicker
                 && value.HostWidth == hostWidth && value.HostHeight == hostHeight && value.Title == shownTitle && value.Detail == shownSummary
                 && value.Status == shownStatus && value.Lock == base.LockText
+                && (!value.StatusActionBounds.IsEmpty) == ShowStatusAction
                 && object.ReferenceEquals(value.TitleFont, titleFont) && object.ReferenceEquals(value.DetailFont, detailFont)
                 && object.ReferenceEquals(value.LockFont, stateFont))
             {
@@ -688,6 +716,14 @@ namespace PaviseApp
                 Math.Max(1, Math.Min(titleWidth, titleNaturalWidth)), titleHeight);
             Rectangle infoBounds = new Rectangle(titleBounds.Right + Theme.S(4), pad, infoSize, infoSize);
             int bottom = Math.Max(titleBounds.Bottom, infoBounds.Bottom);
+            Rectangle hostBounds = Rectangle.Empty;
+            if (headerPicker)
+            {
+                hostBounds = pickerBesideTitle
+                    ? new Rectangle(width - pad - hostWidth, pad, hostWidth, hostHeight)
+                    : new Rectangle(pad, bottom + Theme.S(8), hostWidth, hostHeight);
+                bottom = Math.Max(bottom, hostBounds.Bottom);
+            }
             Rectangle detailBounds = Rectangle.Empty;
             if (shownSummary.Length > 0)
             {
@@ -695,8 +731,7 @@ namespace PaviseApp
                     Measure(shownSummary, detailFont, textWidth, Theme.S(16)));
                 bottom = detailBounds.Bottom;
             }
-            Rectangle hostBounds = Rectangle.Empty;
-            if (base.Hosted != null && !inlineHost)
+            if (base.Hosted != null && !inlineHost && !headerPicker)
             {
                 hostBounds = new Rectangle(pad, bottom + Theme.S(8), hostWidth, hostHeight);
                 bottom = hostBounds.Bottom;
@@ -708,6 +743,15 @@ namespace PaviseApp
                 statusBounds = new Rectangle(textLeft, bottom + Theme.S(4), textWidth,
                     Measure(shownStatus, stateFont, textWidth, Theme.S(16)));
                 bottom = statusBounds.Bottom;
+            }
+            Rectangle actionBounds = Rectangle.Empty;
+            LinkLabel action = StatusAction;
+            if (ShowStatusAction && action != null)
+            {
+                int actionWidth = Math.Min(textWidth, TextRenderer.MeasureText(action.Text, stateFont).Width + Theme.S(4));
+                actionBounds = new Rectangle(textLeft, bottom + Theme.S(4), actionWidth,
+                    Measure(action.Text, stateFont, actionWidth, Theme.S(18)) + Theme.S(2));
+                bottom = actionBounds.Bottom;
             }
             if (base.LockText.Length > 0)
             {
@@ -724,7 +768,7 @@ namespace PaviseApp
                 TitleFont = titleFont, DetailFont = detailFont, LockFont = stateFont,
                 IconBounds = new Rectangle(pad, pad + (infoSize - iconSize) / 2, iconSize, iconSize),
                 TitleBounds = titleBounds, InfoBounds = infoBounds, DetailBounds = detailBounds,
-                StatusBounds = statusBounds, LockBounds = lockBounds,
+                StatusBounds = statusBounds, StatusActionBounds = actionBounds, LockBounds = lockBounds,
                 HostBounds = inlineHost ? new Rectangle(Math.Max(0, width - pad - hostWidth), (height - hostHeight) / 2, hostWidth, hostHeight) : hostBounds,
                 Height = height
             };
@@ -768,6 +812,12 @@ namespace PaviseApp
             LockBounds = value.LockBounds;
             DetailBounds = value.DetailBounds;
             InfoBounds = value.InfoBounds;
+            LinkLabel action = StatusAction;
+            if (action != null && !value.StatusActionBounds.IsEmpty)
+            {
+                action.Font = value.LockFont;
+                action.Bounds = value.StatusActionBounds;
+            }
             if (information.Bounds != value.InfoBounds)
             {
                 information.Bounds = value.InfoBounds;
@@ -832,7 +882,7 @@ namespace PaviseApp
         protected override void OnControlAdded(ControlEventArgs e)
         {
             base.OnControlAdded(e);
-            if (e.Control is PerformanceInfoButton)
+            if (e.Control is PerformanceInfoButton || e.Control == StatusAction)
             {
                 return;
             }
@@ -947,7 +997,10 @@ namespace PaviseApp
                 }
                 if (!StatusBounds.IsEmpty)
                 {
-                    TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(compact ? 8f : 8.5f, false), StatusBounds, (base.StatusColor == Theme.Warning || base.StatusColor == Theme.Danger) ? base.StatusColor : Theme.Warning, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+                    Color statusColor = AlwaysShowStatus || base.StatusColor == Theme.Warning || base.StatusColor == Theme.Danger
+                        ? base.StatusColor : Theme.Warning;
+                    TextRenderer.DrawText(graphics, base.StatusText, Theme.UI(compact ? 8f : 8.5f, false), StatusBounds,
+                        statusColor, TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
                 }
                 if (!LockBounds.IsEmpty)
                 {

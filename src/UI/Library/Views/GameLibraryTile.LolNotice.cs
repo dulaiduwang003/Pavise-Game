@@ -7,6 +7,7 @@ namespace PaviseApp
     internal sealed partial class GameLibraryTile
     {
         private System.Windows.Forms.Timer addonNoticeTimer;
+        private Form addonNoticeHost;
         private string addonNoticeKey = "";
         private DateTime nextAddonNoticeUtc;
         private int addonNoticeSerial;
@@ -44,7 +45,8 @@ namespace PaviseApp
             }
             if (addonNoticeTimer != null)
             {
-                addonNoticeTimer.Enabled = Visible && IsHandleCreated && key.Length > 0;
+                WatchAddonNoticeHost(IsHandleCreated && key.Length > 0 ? FindForm() : null);
+                SyncAddonNoticeTimer();
                 QueueAddonNoticeInspection(false);
             }
         }
@@ -67,9 +69,39 @@ namespace PaviseApp
             return !failed && inspection.CanDelete;
         }
 
+        private bool CanProbeAddonNotice()
+        {
+            return addonNoticeKey.Length != 0 && !IsDisposed && !Disposing && IsHandleCreated
+                && addonNoticeHost != null && !addonNoticeHost.IsDisposed && !addonNoticeHost.Disposing
+                && PanelForm.ShouldRunUi(Visible && addonNoticeHost.Visible, addonNoticeHost.WindowState);
+        }
+
+        private bool SyncAddonNoticeTimer()
+        {
+            if (addonNoticeTimer == null) return false;
+            bool active = CanProbeAddonNotice();
+            bool resumed = active && !addonNoticeTimer.Enabled;
+            addonNoticeTimer.Enabled = active;
+            return resumed;
+        }
+
+        private void WatchAddonNoticeHost(Form host)
+        {
+            if (addonNoticeHost == host) return;
+            if (addonNoticeHost != null) addonNoticeHost.Resize -= OnAddonNoticeHostResize;
+            addonNoticeHost = host;
+            if (addonNoticeHost != null) addonNoticeHost.Resize += OnAddonNoticeHostResize;
+        }
+
+        private void OnAddonNoticeHostResize(object sender, EventArgs e)
+        {
+            if (!SyncAddonNoticeTimer()) return;
+            QueueAddonNoticeInspection(true);
+        }
+
         private void QueueAddonNoticeInspection(bool force)
         {
-            if (IsDisposed || Disposing || !IsHandleCreated || !Visible || addonNoticeKey.Length == 0) return;
+            if (!CanProbeAddonNotice()) return;
             if (addonNoticeJob != 0)
             {
                 addonNoticePending |= force;
@@ -131,7 +163,14 @@ namespace PaviseApp
             addonNoticeJob = 0;
             nextAddonNoticeUtc = DateTime.MinValue;
             if (addonNoticeTimer != null) addonNoticeTimer.Stop();
+            WatchAddonNoticeHost(null);
             base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            RefreshAddonNotice();
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -144,6 +183,7 @@ namespace PaviseApp
         private void DisposeAddonNotice()
         {
             addonNoticeJob = 0;
+            WatchAddonNoticeHost(null);
             if (addonNoticeTimer == null) return;
             addonNoticeTimer.Dispose();
             addonNoticeTimer = null;

@@ -6,9 +6,8 @@ namespace PaviseApp
     internal partial class GameMode
     {
         private readonly GameLaunchChainHold launchChainHold = new GameLaunchChainHold();
-        // 开局汇总最多等这么久 之后不管还有没有进程在核对都记下来
-        private const int OpeningSummaryHoldMs = 15000;
-        private int openingSummarySince, openingThrottled, openingProtected;
+        private readonly Dictionary<int, long> rendererDescendantBirths = new Dictionary<int, long>();
+        private KeyValuePair<int, long> rendererDescendantRoot;
         private static bool GovernedGameLauncher(string name, string path)
         {
             if (!string.Equals(WhitelistRule.NormalizeName(name), "wegame", StringComparison.OrdinalIgnoreCase)) return false;
@@ -25,20 +24,25 @@ namespace PaviseApp
         private void SweepWithStableWhitelist(ProcessSnapshot all, HashSet<int> gamePids)
         {
             using (SuccessLogBatch.Begin("background-sweep session=" + AutomationSession))
-                SweepWithStableWhitelistCore(all, gamePids);
+            {
+                core.BeginBackgroundJournalRound();
+                try { SweepWithStableWhitelistCore(all, gamePids); }
+                finally
+                {
+                    lock (familyPolicyGate) core.EndBackgroundJournalRound(false);
+                }
+            }
         }
         private void SweepWithStableWhitelistCore(ProcessSnapshot all, HashSet<int> gamePids)
         {
+            int epoch = FamilyPolicyEpoch;
             PolicySnapshot policy = sessionPolicy;
             PerformancePreset preset = ((policy != null) ? policy.Preset : ActivePreset);
             PolicySnapshot effectivePolicy = policy ?? PolicyResolver.Global();
-            SuppressionCore.BackgroundBoostLimit = effectivePolicy.BackgroundBoostLimitRequested;
-            SuppressionCore.ResourceJobMode = effectivePolicy.SuppressBackground ? effectivePolicy.BackgroundGovernanceMode : -1;
             bool preserveOnForeground = preset == PerformancePreset.Competitive;
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool wideScope = WideBackgroundScope(policy ?? PolicyResolver.Global());
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
-            int epoch = FamilyPolicyEpoch;
             bool protectGameFamily = true;
             int rendererPid = 0;
             long rendererCreation = 0;
@@ -76,22 +80,23 @@ namespace PaviseApp
                     }
                 }
             }
-            HashSet<int> libraryFamily = FamilyBoundary.CollectProtectedLibraryFamily(protectedProfiles, all, selfPid, selfSession, FamilyEvidence);
+            var familyIndex = new FamilyBoundary.SweepIndex(all, selfPid, selfSession);
+            HashSet<int> libraryFamily = FamilyBoundary.CollectProtectedLibraryFamily(protectedProfiles, all, selfPid, selfSession, FamilyEvidence, index: familyIndex);
             // 即使没有可用游戏库根目录 也保护已登记或已学习的游戏本体 防止家族压制
-            HashSet<int> exactGameProcesses = FamilyBoundary.CollectProtectedLibraryFamily(exactGameProfiles, all, selfPid, selfSession, FamilyEvidence, true, true);
+            HashSet<int> exactGameProcesses = FamilyBoundary.CollectProtectedLibraryFamily(exactGameProfiles, all, selfPid, selfSession, FamilyEvidence, true, true, familyIndex);
             libraryFamily.UnionWith(exactGameProcesses);
             var gameCreationSeeds = new HashSet<int>(exactGameProcesses);
             gameCreationSeeds.UnionWith(gamePids ?? EmptyPidSet);
             if (rendererPid > 0) gameCreationSeeds.Add(rendererPid);
-            HashSet<int> gameCreationHosts = FamilyBoundary.CollectGameCreationHosts(all, gameCreationSeeds, selfPid, selfSession);
-            // 开了逐游戏家族治理时只保留游戏本体 本局启动链（启动器 LeagueClient RiotClientServices 等）也按普通后台治理
+            HashSet<int> gameCreationHosts = FamilyBoundary.CollectGameCreationHosts(all, gameCreationSeeds, selfPid, selfSession, familyIndex);
+            // 开了逐游戏家族治理时 本局启动链按普通后台治理
             // 但不收到后台核心 免得它们之后创建的进程继承收窄的范围
             // 其他游戏的创建者和与本局无关的启动后端照旧保护
             ProcEntry rendererEntry = rendererPid > 0 ? all.Find(rendererPid) : null;
             bool rendererAlive = rendererEntry != null && (rendererCreation <= 0 || rendererEntry.Creation == rendererCreation);
             launchChainHold.Begin(AutomationSession, all);
             HashSet<int> governedLaunchChain = !protectGameFamily && rendererAlive
-                ? FamilyBoundary.CollectGameCreationHosts(all, new[] { rendererPid }, selfPid, selfSession) : EmptyPidSet;
+                ? FamilyBoundary.CollectGameCreationHosts(all, new[] { rendererPid }, selfPid, selfSession, familyIndex) : EmptyPidSet;
             bool hasRenderer = rendererPid > 0;
             bool protectRendererAncestors = protectGameFamily && hasRenderer;
             bool inspectGameFamily = hasRenderer && (protectGameFamily || !wideScope);
@@ -104,6 +109,16 @@ namespace PaviseApp
                 gameFamilyRoots.Add(rendererPid);
             }
             HashSet<int> gameDescendants = (inspectGameFamily ? FamilyBoundary.WalkDescendants(whitelist.Parents, gameFamilyRoots, selfPid, 24, creations) : EmptyPidSet);
+            if (rendererDescendantRoot.Key != rendererPid || rendererDescendantRoot.Value != rendererCreation)
+            {
+                rendererDescendantBirths.Clear();
+                rendererDescendantRoot = new KeyValuePair<int, long>(rendererPid, rendererCreation);
+            }
+            HashSet<int> rendererDescendants = FamilyBoundary.CollectRendererDescendants(all, rendererPid, rendererCreation, selfPid, selfSession, rendererDescendantBirths);
+            int jobMode = effectivePolicy.SuppressBackground ? effectivePolicy.BackgroundGovernanceMode : -1;
+            Dictionary<int, string> focusMembers = jobMode == BackgroundGovernancePolicy.Aggressive
+                ? FocusProgramMembers(all, whitelist, gamePids, rendererDescendants, familyIndex) : null;
+            if (!RunBackgroundPolicy(epoch, () => core.SetResourceJobMode(jobMode, focusMembers))) return;
             HashSet<int> userFacingFamily = (wideScope ? EmptyPidSet : CollectUserFacingFamily(foregroundPid, whitelist, (!protectGameFamily) ? rendererPid : 0));
             FamilyBoundary.FilterUserFacingGameFamily(userFacingFamily, activeProfile, all, rendererPid, selfPid, selfSession, gamePids, gameDescendants, rendererAncestors, FamilyEvidence);
             bool firstSweepSnapshot;
@@ -122,6 +137,7 @@ namespace PaviseApp
             ProcEntry[] entries = all.Entries;
             foreach (ProcEntry procEntry in entries)
             {
+                bool restoreProtectedInheritance = false;
                 try
                 {
                     int pid = procEntry.Pid;
@@ -137,13 +153,10 @@ namespace PaviseApp
                     long cpu;
                     SuppressionLevel suppressionLevel;
 
-                    if (procEntry.Creation > 0 && scanTime - procEntry.Creation < 20000000)
-                    {
-                        continue;
-                    }
                     nm = ((processInfo != null) ? processInfo.Name : procEntry.Name);
                     if (whitelist.RuntimeProtected.Contains(pid))
                     {
+                        restoreProtectedInheritance = true;
                         BackgroundReleaseState backgroundReleaseState = core.ReleaseBackgroundForRenderer(pid, procEntry.Creation, nm);
                         if (backgroundReleaseState == BackgroundReleaseState.IdentityMismatch && core.DiscardReusedRendererTracking(pid, procEntry.Creation, nm))
                         {
@@ -158,6 +171,7 @@ namespace PaviseApp
                     }
                     if (string.Equals(nm, selfName, StringComparison.OrdinalIgnoreCase))
                     {
+                        restoreProtectedInheritance = true;
                         if (core.Release(pid, SuppressReason.Background))
                         {
                             ReportUntrack(pid);
@@ -168,7 +182,11 @@ namespace PaviseApp
                     // WeGame 主进程是英雄联盟的祖先且常有可见窗口 但每局游戏由 LeagueClient 创建
                     // 因此不按游戏祖先（创建者 渲染祖先 游戏库家族）或可见窗口家族豁免 只有它本身在前台时不压
                     bool governedLauncher = GovernedGameLauncher(nm, (processInfo != null ? processInfo.Path : null) ?? procEntry.Path);
-                    if (TryProtectHardwareControlBackground(pid, procEntry.Creation, nm)) continue;
+                    if (TryProtectHardwareControlBackground(pid, procEntry.Creation, nm))
+                    {
+                        restoreProtectedInheritance = true;
+                        continue;
+                    }
                     if (processInfo == null)
                     {
                         sameSession = selfSession >= 0 && procEntry.Session == selfSession;
@@ -180,9 +198,12 @@ namespace PaviseApp
                     }
                     long observedCreation = ((processInfo != null) ? processInfo.Creation : procEntry.Creation);
                     string observedPath = ((processInfo != null) ? processInfo.Path : procEntry.Path);
-                    if (IsRendererHandoffProtected(pid, observedCreation, observedPath))
+                    bool rendererDescendant = rendererDescendants.Contains(pid);
+                    if (rendererDescendant || IsRendererHandoffProtected(pid, observedCreation, observedPath))
                     {
-                        BackgroundReleaseState backgroundReleaseState2 = core.ReleaseBackgroundForRenderer(pid, observedCreation, nm);
+                        restoreProtectedInheritance = true;
+                        long protectedCreation = rendererDescendant ? procEntry.Creation : observedCreation;
+                        BackgroundReleaseState backgroundReleaseState2 = core.ReleaseBackgroundForRenderer(pid, protectedCreation, nm);
                         if (backgroundReleaseState2 == BackgroundReleaseState.Ready || backgroundReleaseState2 == BackgroundReleaseState.Gone)
                         {
                             ReportUntrack(pid);
@@ -196,6 +217,7 @@ namespace PaviseApp
                     }
                     if (isInGameBoost)
                     {
+                        restoreProtectedInheritance = true;
                         continue;
                     }
                     PlatformProcessOwner platformOwner;
@@ -211,6 +233,7 @@ namespace PaviseApp
                         || !governedChainMember && (gameCreationHosts.Contains(pid) && !governedLauncher || FamilyBoundary.IsRequiredGameLaunchHost(nm, observedPath))
                         || !rendererAlive && launchChainHold.Contains(pid, observedCreation))
                     {
+                        restoreProtectedInheritance = true;
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
@@ -220,6 +243,7 @@ namespace PaviseApp
                     bool whitelisted = whitelist.Protected.Contains(pid) || SteamPlatformShielded(platformOwner);
                     if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, whitelisted, libraryFamily.Contains(pid) && !governedLauncher, protectGameFamily, gamePids, gameDescendants, platformRemoved))
                     {
+                        restoreProtectedInheritance = true;
                         if (core.Release(pid, SuppressReason.Background))
                         {
                             ReportUntrack(pid);
@@ -229,7 +253,6 @@ namespace PaviseApp
                     string imagePath = ((processInfo != null) ? processInfo.Path : null);
                     creation = ((processInfo != null) ? processInfo.Creation : 0);
                     cpu = ((processInfo != null) ? processInfo.Cpu : 0);
-                    ulong io = ((processInfo != null) ? processInfo.Io : 0);
                     if (processInfo == null)
                     {
                         IntPtr intPtr = Native.OpenProcess(4096, false, pid);
@@ -238,7 +261,8 @@ namespace PaviseApp
                             try
                             {
                                 imagePath = Native.ImagePath(intPtr);
-                                Native.QueryProcessSample(intPtr, out creation, out cpu, out io);
+                                ulong ignoredIo;
+                                Native.QueryProcessSample(intPtr, out creation, out cpu, out ignoredIo);
                             }
                             finally
                             {
@@ -248,10 +272,12 @@ namespace PaviseApp
                     }
                     if (TryProtectAmdNoiseSuppression(pid, creation, nm, imagePath))
                     {
+                        restoreProtectedInheritance = true;
                         continue;
                     }
                     if (SelfBuildGuard.IsOwnBuild(nm, imagePath))
                     {
+                        restoreProtectedInheritance = true;
                         if (core.Release(pid, SuppressReason.Background))
                         {
                             ReportUntrack(pid);
@@ -260,11 +286,13 @@ namespace PaviseApp
                     }
                     if (!PerformanceScopeAllows(imagePath))
                     {
+                        restoreProtectedInheritance = true;
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
                     if (TryProtectOverlayHost(pid, creation, nm, imagePath))
                     {
+                        restoreProtectedInheritance = true;
                         continue;
                     }
                     string libraryRoot = FamilyBoundary.LibraryRootOf(imagePath, protectedRoots);
@@ -272,24 +300,21 @@ namespace PaviseApp
                     {
                         libraryRoot = activeGameRoot;
                     }
-                    if (!FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, imagePath, sameSession ? selfSession : (-1), selfSession, foregroundPid, userFacingFamily.Contains(pid) && !governedLauncher, windowsPrefix, protectRendererAncestors && rendererAncestors.Contains(pid) && !governedLauncher, libraryRoot, wideScope, protectGameFamily, creation, platformRemoved, preserveOnForeground))
+                    bool focused = focusMembers != null && focusMembers.ContainsKey(pid);
+                    if (!FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, imagePath, sameSession ? selfSession : (-1), selfSession, foregroundPid, userFacingFamily.Contains(pid) && !governedLauncher, windowsPrefix, protectRendererAncestors && rendererAncestors.Contains(pid) && !governedLauncher, libraryRoot, wideScope || focused, protectGameFamily, creation, platformRemoved, preserveOnForeground || focused))
                     {
-                        ReleaseBackgroundExemption(pid, nm, null);
-                        continue;
-                    }
-                    // 开着键鼠手柄等 HID 设备的后台进程多半是外设驱动 压了会拖慢按键和宏 按行为放行 不靠品牌名单
-                    // 还没核对完的进程这一轮也先不压 等核对出不是驱动再压
-                    if (InputDeviceHolders.IsHolderOrPending(pid, creation, nm))
-                    {
+                        restoreProtectedInheritance = true;
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
                     if (SelfProtectedRoster.Contains(nm))
                     {
+                        restoreProtectedInheritance = true;
                         ReleaseBackgroundExemption(pid, nm, null);
                         selfProtectedCount++;
                         continue;
                     }
+                    if (!focused && procEntry.Creation > 0 && scanTime - procEntry.Creation < 20000000) continue;
                     suppressionLevel = (EffSuppress ? BackgroundLevel() : SuppressionLevel.None);
                     string trackedName = core.NameOf(pid);
                     if (trackedName != null)
@@ -335,6 +360,14 @@ namespace PaviseApp
                 catch
                 {
                 }
+                finally
+                {
+                    if (restoreProtectedInheritance && procEntry.Session == selfSession)
+                    {
+                        try { core.RestoreProtectedChildInheritance(procEntry); }
+                        catch { }
+                    }
+                }
             }
             SuppressionCore.BatchResult batchResult = null;
             if (!RunBackgroundPolicy(epoch, delegate
@@ -362,6 +395,15 @@ namespace PaviseApp
             {
                 return;
             }
+            FamilyBoundary.PruneCatalogVerdicts(observedPids);
+            foreach (int trackedPid in core.PidsWith(SuppressReason.Background))
+            {
+                if (!observedPids.Contains(trackedPid) && core.Release(trackedPid, SuppressReason.Background))
+                {
+                    ReportUntrack(trackedPid);
+                }
+            }
+            if (!RunBackgroundPolicy(epoch, () => core.EndBackgroundJournalRound(true))) return;
             foreach (BackgroundRequest request in pending)
             {
                 if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled) && (batchResult == null || !batchResult.WasApplied(request.Pid)))
@@ -425,6 +467,7 @@ namespace PaviseApp
             }
             // 启动链不收核放在平台规则之后 用户移除了平台保护也不能让启动器带着收窄的范围去创建下一个游戏
             coreProtected.UnionWith(launchChainCoreExempt);
+            coreProtected.UnionWith(rendererDescendants);
             if (!RunBackgroundPolicy(epoch, delegate
             {
                 SyncCoreBackground(coreProtected, foregroundPid);
@@ -432,40 +475,15 @@ namespace PaviseApp
             {
                 return;
             }
-            FamilyBoundary.PruneCatalogVerdicts(observedPids);
-            foreach (int trackedPid in core.PidsWith(SuppressReason.Background))
-            {
-                if (!observedPids.Contains(trackedPid) && core.Release(trackedPid, SuppressReason.Background))
-                {
-                    ReportUntrack(trackedPid);
-                }
-            }
             if (!firstSweepSnapshot)
             {
                 return;
             }
-            // 开局头一两轮多数进程还在核对外设占用 没有被压 汇总等核对完再记 数量按这几轮累计
-            if (openingSummarySince == 0)
-            {
-                openingSummarySince = Environment.TickCount | 1;
-                openingThrottled = 0;
-                openingProtected = 0;
-            }
-            openingThrottled += throttledCount;
-            openingProtected += protectedCount;
-            if (EffSuppress && InputDeviceHolders.AnyPending() && Environment.TickCount - openingSummarySince < OpeningSummaryHoldMs)
-            {
-                return;
-            }
-            throttledCount = openingThrottled;
-            protectedCount = openingProtected;
-            openingSummarySince = 0;
             if (EffSuppress)
             {
                 string presetExtremeText = ((preset == PerformancePreset.Extreme) ? Lang.T("preset.extreme") : (PresetValue.IsCompetitive(preset) ? Lang.T("preset.competitive") : ((preset == PerformancePreset.Handheld) ? Lang.T("preset.handheld") : Lang.T("preset.standard"))));
                 bool sustainedGovernance = PresetValue.IsCompetitive(preset) || preset == PerformancePreset.Handheld;
                 string message = presetExtremeText + (sustainedGovernance ? Lang.T("t.gamemodesweep.2") : Lang.T("t.gamemodesweep.3")) + (wideScope ? Lang.T("t.gamemodesweep.5") : "");
-                Logger.Log(() => string.Format(Lang.T("background.scope"), SuppressionCore.DisableDynamicBoost(BackgroundLevel(), false) ? Logger.Text("开启", "on") : Logger.Text("关闭", "off")));
                 Logger.Log(() => Lang.T("log.gamemodesweep.1") + message + Lang.T("log.gamemodesweep.7") + throttledCount + Lang.T("log.gamemodesweep.8") + ((failedCount > 0) ? (" " + failedCount + Lang.T("log.gamemodesweep.9")) : "") + ((protectedCount > 0) ? (" " + protectedCount + Lang.T("log.gamemodesweep.10")) : "") + ((selfProtectedCount > 0) ? (" " + selfProtectedCount + Lang.T("t.gamemodesweep.11")) : "") + core.ResourceJobSummary());
             }
             lock (sync)

@@ -19,8 +19,6 @@ namespace PaviseApp
 {
     internal partial class PanelForm : Form
     {
-        private int whitePeripheralGeneration;
-
         private static void AssertNavMatchesPageIds(NavRail rail)
         {
             int pageIdCount = (int)PageId.Count;
@@ -95,9 +93,10 @@ namespace PaviseApp
                 {
                     RefreshWhitelist(true);
                 }
-            }, RefreshWhitelistPeripherals);
+            }, RefreshFocusEntries);
             pageHooks[2] = new PageHook(pagePolicy, delegate(bool active)
             {
+                if (gpuSpoofCard != null) gpuSpoofCard.SetPageActive(active);
                 if (active)
                 {
                     RefreshAutomationPage();
@@ -182,6 +181,7 @@ namespace PaviseApp
                 list2.Add(AutoText("不可用", "Unavailable") + " [" + selected + "]");
             }
             powerButton.SetItems(list2.ToArray());
+            powerButton.SetSilently(powerPlanChoices.FindIndex(id => string.Equals(id, selected, StringComparison.OrdinalIgnoreCase)));
         }
         private void ToggleModeFlyout()
         {
@@ -400,16 +400,6 @@ namespace PaviseApp
         protected override void WndProc(ref Message m)
         {
             HandlePowerSchemeNotification(m);
-            const int DeviceChange = 0x0219;
-            const int DeviceNodesChanged = 0x0007;
-            const int DeviceArrival = 0x8000;
-            const int DeviceRemoved = 0x8004;
-            if (m.Msg == DeviceChange)
-            {
-                long change = m.WParam.ToInt64();
-                if (change == DeviceNodesChanged || change == DeviceArrival || change == DeviceRemoved)
-                    PeripheralVendorProbe.InvalidateDevices();
-            }
             if (m.Msg == 10 && m.WParam == IntPtr.Zero) StopPageReveal();
             if (m.Msg == 563)
             {
@@ -421,12 +411,6 @@ namespace PaviseApp
             else if (m.Msg == 562) EndMoveSizeLoop();
             base.WndProc(ref m);
             if (m.Msg == 736 || m.Msg == 126 || m.Msg == 26) QueueWindowScaleUpdate();
-        }
-        private void RefreshWhitelistPeripherals()
-        {
-            if (Volatile.Read(ref whiteBusy) == 0
-                && (PeripheralVendorProbe.RefreshDue() || whitePeripheralGeneration != PeripheralVendorProbe.CachedGeneration()))
-                RefreshWhitelist(true);
         }
         private PageHook CurrentPageHook()
         {

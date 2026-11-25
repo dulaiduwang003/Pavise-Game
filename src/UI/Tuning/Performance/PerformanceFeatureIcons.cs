@@ -73,6 +73,7 @@ namespace PaviseApp
             EppYield,
             GpuClockLock,
             GpuPowerCeiling,
+            GpuSpoof,
             CpuIdlePolicy,
             FileFilterReduction,
             ClockConfigurationRepair,
@@ -171,7 +172,7 @@ namespace PaviseApp
             Add(dictionary, Kind.GpuPower, "GmGpuPowerMax");
             Add(dictionary, Kind.Laptop, "GmLaptopPerfV1", "AutoLaptopPerformanceV2");
             Add(dictionary, Kind.Upscale, "NvDlss");
-            Add(dictionary, Kind.AntiLag, "AmdAntiLag");
+            Add(dictionary, Kind.AntiLag, "AmdAntiLag", PolicyCatalog.KeyGameLowLatency);
             Add(dictionary, Kind.Interpolate, "AmdAfmf");
             Add(dictionary, Kind.RenderLane, "GmRenderLane");
             Add(dictionary, Kind.FrameSync, "FrameCoordination");
@@ -187,7 +188,7 @@ namespace PaviseApp
             Add(dictionary, Kind.CpuMitigations, "EnvCpuMitigationsV1");
             Add(dictionary, Kind.LastAccess, "EnvNtfsLastAccessV1");
             Add(dictionary, Kind.Quantum, "EnvQuantumProfileV1");
-            Add(dictionary, Kind.Audio, "EnvAudioIdleV1");
+            Add(dictionary, Kind.Audio, "EnvAudioIdleV1", PerformanceActionCatalog.MultimediaProfile);
             Add(dictionary, Kind.Environment, "EnvPerformanceBundleV1");
             Add(dictionary, Kind.NtfsMemory, "EnvPrivacyNtfsMemoryV1");
             Add(dictionary, Kind.Diagnostics, "EnvPrivacyDiagnosticsV1");
@@ -208,6 +209,7 @@ namespace PaviseApp
             Add(dictionary, Kind.EppYield, "LabEppYieldV1");
             Add(dictionary, Kind.GpuClockLock, "LabGpuClockMaxV1");
             Add(dictionary, Kind.GpuPowerCeiling, "LabGpuPowerMaxV1");
+            Add(dictionary, Kind.GpuSpoof, "GpuSpoof");
             Add(dictionary, Kind.CpuIdlePolicy, "LabCpuIdleStrategyV1");
             Add(dictionary, Kind.FileFilterReduction, "LabFileFilterV1");
             Add(dictionary, Kind.ClockConfigurationRepair, "LabClockRepairV1");
@@ -617,6 +619,10 @@ namespace PaviseApp
                 Gpu(g, p, 3f, 14f, 24f, 13f);
                 Poly(g, p, 5f, 8f, 5f, 4f, 27f, 4f, 27f, 8f);
                 Bolt(g, p, 12f, 8f, 10f, 17f);
+                break;
+            case Kind.GpuSpoof:
+                Gpu(g, p, 3f, 15f, 24f, 12f);
+                Arrow(g, d, 7f, 8f, 25f, 8f);
                 break;
             case Kind.FileFilterReduction:
                 Poly(g, p, 4f, 3f, 14f, 3f, 19f, 8f, 19f, 16f);

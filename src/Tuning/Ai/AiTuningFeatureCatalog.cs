@@ -19,6 +19,8 @@ namespace PaviseApp
 
         private static string T(string chinese) { return Lang.TranslateChinese(chinese); }
 
+        private static string CatalogText(string key) { return Lang.T(key, IsPortuguese ? Lang.Portuguese : Lang.Chinese); }
+
         internal static string Describe(GameMode mode)
         {
             var stringBuilder = new StringBuilder(12000);
@@ -39,7 +41,7 @@ namespace PaviseApp
                 AppendProfiles(stringBuilder, mode);
             }
             stringBuilder.AppendLine(T("功能条目：") + count.ToString(CultureInfo.InvariantCulture));
-            stringBuilder.AppendLine(T("已下线不可开启：通用/手动LOL脱壳、文件过滤/计时修复/音效减负、Defender、全局ETW、网络旁路/统一限速、后台全冻结/工作集修剪、旧极限档、AMD Anti-Lag、桌面合成调度、游戏高性能显卡预选、游戏内存优先级、独立反作弊引擎/强度/弱核绑定、独立游戏线程提优开关、计时器恒定节拍、前台时间片档位、NTFS最后访问时间/游戏盘短文件名/NTFS缓存池、实验室音频低缓冲、CPU空闲策略的禁止空闲档（实测或公开测试无可测收益）；缓存预热、限制Windows应用后台任务、Windows可变刷新率、窗口化游戏优化、游戏低延迟已整项删除，旧记录直接丢弃；其余3.x已下线功能的旧记录按归属恢复，1.x/2.x遗留及旧反作弊、旧微软后台Job写入不再恢复。"));
+            stringBuilder.AppendLine(T("已下线不可开启：通用/手动LOL脱壳、文件过滤/计时修复/音效减负、Defender、全局ETW、网络旁路/统一限速、后台全冻结/工作集修剪、旧极限档、AMD Anti-Lag、桌面合成调度、游戏高性能显卡预选、游戏内存优先级、独立反作弊引擎/强度/弱核绑定、独立游戏线程提优开关、计时器恒定节拍、前台时间片档位、NTFS最后访问时间/游戏盘短文件名/NTFS缓存池、实验室音频低缓冲、CPU空闲策略的禁止空闲档（实测或公开测试无可测收益）；缓存预热、限制Windows应用后台任务、Windows可变刷新率、窗口化游戏优化已整项删除，旧记录直接丢弃；其余3.x已下线功能的旧记录按归属恢复，1.x/2.x遗留及旧微软后台Job写入不再恢复；反作弊回执按原记录恢复。"));
             return stringBuilder.ToString();
         }
 
@@ -53,8 +55,9 @@ namespace PaviseApp
         {
             switch (key)
             {
-                case "GmSuppress": return T("在顶部策略设置→游戏场景下方选择「后台治理」三档，无独立开关");
+                case "GmSuppress": return T("在顶部策略设置→游戏场景下方选择「后台治理」");
                 case "GmAwake": return T("内置自动行为，无独立开关");
+                case BackgroundFocusItem.SettingKey: return CatalogText("background.focus.ai.operation");
                 case PolicyCatalog.KeyGameScheduling: return T("游戏卡片深度调优逐游戏开关，「调整」窗口选模式");
                 case "GmBoost": case ThreadBoostSelection.Key: return T("游戏卡片深度调优逐游戏开关，默认开");
                 case PolicyCatalog.KeyStandbyCleaner: return T("环境页全局开关，「设置参数」调整阈值与轮询间隔");
@@ -62,6 +65,7 @@ namespace PaviseApp
                 case PerformanceActionCatalog.CpuMitigations:
                 case "EnvVbsDisabledV1":
                 case PerformanceActionCatalog.AudioIdle:
+                case PerformanceActionCatalog.MultimediaProfile:
                     return T("随「系统增强」统一设置");
                 case "ModeSmart": case "ModeCompetitive": return T("模式行为说明，选运行模式");
                 case "ManagedPower2223": case "ManagedPowerDynamic": return T("电源行为说明，选由软件调度");
@@ -70,7 +74,7 @@ namespace PaviseApp
                 case "LabCpuIdleStrategyV1":
                 case "GameExitGrace": return T("选择项");
                 case "GameFamilyBackground": case "GameDisableFullscreenOptimizationsV1": case PolicyCatalog.KeyGameControlFlowGuard:
-                case "GmAutoCoresV2": case "GameNvRebarV1": case AntiCheatSuppressionPolicy.Key: return T("逐游戏开关");
+                case "GmAutoCoresV2": case "GameNvRebarV1": case PolicyCatalog.KeyGameLowLatency: case AntiCheatSuppressionPolicy.Key: return T("逐游戏开关");
                 case "GameCriticalThreadHardRuleV1": return T("逐游戏亲和性窗口，保存下局生效");
                 case "GameForceTrigger": return T("游戏卡片菜单「强制接管」");
                 case "GameCoreIsolation": return T("逐游戏核心计划选项");
@@ -79,6 +83,7 @@ namespace PaviseApp
                 case "LolColumnEnabled": return T("专属模块说明，LOL卡片自动启用，子项独立");
                 case "LolColumnCleanupEnabled": return T("开关+立即净化");
                 case "LolColumnHeadlessEnabled": return T("开关+恢复界面");
+                case "GpuSpoof": return Lang.T("env.gpu.spoof.ai.operation");
                 case "LolAddonCleanup": case "ManualMemoryCleanup": case "Checkup":
                 case "ShaderCleanup": case "SettingsReset":
                 case "LogManagement": return T("动作/诊断切换，刷新/清空/选中复制/导出");
@@ -108,21 +113,22 @@ namespace PaviseApp
             switch (key)
             {
                 case "PerformancePreset": return F(key, T("运行模式"), T("选择智能/竞技，改变后台治理；托管参数相同"), T("按切屏需求和后台争用选择，不会自动打开所有功能"));
-                case "GmSuppress": return F(key, T("后台治理"), T("关闭/正常/激进/疯狂下拉四档，关闭为首项，无独立总开关；疯狂要先在设置里打开「后台治理疯狂档」，开关关闭时下拉只有关闭、正常和激进，存着的疯狂档按正常档运行；三档都把普通后台设为Idle优先级、I/O极低、页面优先级1，请求EcoQoS并忽略其计时器精度请求，不调显卡优先级；激进和疯狂关闭Windows动态提优，正常档不关；三档都把每个普通后台进程放进命名资源Job：优先级锁Idle、CPU硬上限（每进程：正常两核且不超过全机25%，激进0.5核，疯狂全机0.01%）、尝试磁盘限速（正常50MiB/s，激进10MiB/s，疯狂1MiB/s），磁盘限速不可用时保留CPU限额和I/O极低优先级，无权限/其他会话/嵌套失败时退回逐进程写入，释放与崩溃恢复先清Job的CPU限额与优先级锁，再写回逐进程原值，尚未解除的磁盘限速单独记录；三档都不挪核；只治理与Pavise同会话的进程，系统服务（会话0）和Windows目录下的系统组件不压制，扩围只多纳入有可见窗口的应用；ACE（Program Files\\AntiCheatExpert下核实）随普通后台治理，其他反作弊只保护；WeGame主进程按普通后台，仅自身前台时不压；全部已配置/学习的游戏本体均受保护，家族开关或目录缺失不放行；核验后的游戏创建链及LeagueClient/RiotClientServices启动联网宿主豁免（开了家族治理的本局启动链除外），UI辅助仍可治理；用户开的核心隔离生效或调度预留核时后台在原范围内避让"), T("后台争用；疯狂时对局中后台程序基本停住，激进保留键鼠和耳机软件按时响应所需的少量CPU；智能切出放行、竞技切出照常治理；提优按可核验原值恢复，不强制开启原本禁用的提优；手工进程白名单、家族与运行期保护照常有效；KOOK/YY/TeamSpeak/Discord等语音软件内置保护，QQ、微信、音乐播放器和浏览器不在名单，对局中会被压，需要时手动加白；关闭、移出治理或退局恢复"));
-                case BackgroundGovernancePolicy.SettingKey: return F(key, T("后台治理档位"), T("顶部策略设置→游戏场景下方，默认正常；要先在设置里打开「后台治理疯狂档」才能选疯狂，开关关闭时存着的疯狂档按正常档运行；正常/激进/疯狂三档优先级与效率模式写入相同，都放进资源Job锁定Idle（每进程CPU：正常两核且不超过25%，激进0.5核，疯狂全机0.01%；磁盘限速目标：正常50MiB/s，激进10MiB/s，疯狂1MiB/s），激进和疯狂另禁止Windows临时提升普通后台线程优先级，磁盘限速单独尝试，三档都不挪核，也作用于ACE"), T("激进按模拟实测可让键鼠驱动、改键工具和耳机软件按时响应（未用真实驱动验证）；疯狂时对局中后台程序基本停住，改键/连点/宏工具、名单外的外设和耳机软件可能卡顿；智能前台时放行，竞技持续治理；不挂起或杀进程、不改服务启动方式；写入/核验/恢复失败各阶段有次数上限；不扩大到游戏、手工白名单、只保护的反作弊或游戏必要依赖"));
-                case PolicyCatalog.KeyGameScheduling: return F(key, T("渲染线程亲和性"), T("逐游戏开关，默认关；只做核心放置，不改线程和进程优先级；三模式：自动（推荐：游戏运行满两分钟后两次实测找出卡帧的关键串行线程，每条只设一颗优先运行的物理核（理想处理器，不锁定、不改亲和性，其他游戏线程不受限，后台避开这些核；游戏自己改了就放手），两条合计超一核才放第二条，三条合计超两核且≥10物理核才放第三条，每放一条须剩余核心实测负载留一成余量，否则少放或不放；判定不适合留核的游戏记7天或到游戏更新）、渲染单核（渲染线程固定到最合适一颗核，可选整核避让）、手动（固定到所选1~4个逻辑CPU，可选整核避让，拓扑变化作废）；选核优先性能核、X3D大三级缓存组，避开CPU0"), T("CPU瓶颈、1% low偏低时对照；整核避让可能拖慢极度依赖多线程的游戏；保存下局生效，关闭立即撤回，关闭/退局/程序退出恢复本方修改并保留外部后续改动；效果因游戏而异"));
-                case "GameFamilyBackground": return F(key, T("压制家族进程"), T("开启后本局只保留游戏本体：游戏目录内非本体进程、游戏子进程及本局启动链（含LeagueClient/RiotClientServices，不收核，游戏退出即放开）都按普通后台治理；白名单优先于本开关，Steam主程序/网页/覆盖层及其拉起的进程仍受白名单里的Steam平台保护"), T("LoL未开对局真无头时的大厅或常驻启动器占用；可能影响聊天/加载；须先出现已观测渲染，开启有警告；白名单（含Steam平台保护）、反作弊、独立录屏与输入音频仍保护；要压Steam须先在白名单移除平台保护"));
+                case "GmSuppress": return F(key, T("后台治理"), CatalogText("background.governance.ai.purpose"), CatalogText("background.governance.ai.scene"));
+                case BackgroundGovernancePolicy.SettingKey: return F(key, T("后台治理档位"), CatalogText("background.governance.ai.modePurpose"), CatalogText("background.governance.ai.modeScene"));
+                case PolicyCatalog.KeyGameScheduling: return F(key, T("渲染线程亲和性"), T("逐游戏开关，默认关。渲染单核和手动都通过轻量采样从画面提交事件识别渲染线程。渲染单核将渲染线程固定在一颗物理核上，优先性能核、系统首选核（X3D 优先大三级缓存组），同等条件避开 CPU 0，再按编号选核。手动固定在所选的一到四个逻辑 CPU 上，拓扑变化后需重选。两种模式都可开启整核避让。优先级由深度调优的独立开关管理。"), T("CPU瓶颈、1% low偏低时对照；整核避让可能拖慢极度依赖多线程的游戏；保存下局生效，关闭立即撤回，关闭/退局/程序退出恢复本方修改并保留外部后续改动；效果因游戏而异"));
+                case "GameFamilyBackground": return F(key, T("压制家族进程"), T("开启后本局游戏渲染进程及其子孙仍受保护；游戏目录内其他进程与本局启动链（含LeagueClient/RiotClientServices，不收核，游戏退出即放开）按普通后台治理；白名单优先于本开关，Steam主程序/网页/覆盖层及其拉起的进程仍受白名单里的Steam平台保护"), T("LoL未开对局真无头时的大厅或常驻启动器占用；可能影响聊天/加载；须先出现已观测渲染，开启有警告；白名单（含Steam平台保护）、反作弊、独立录屏与输入音频仍保护；要压Steam须先在白名单移除平台保护"));
                 case "GameDisableFullscreenOptimizationsV1": return F(key, T("逐游戏禁用全屏优化"), T("设置所选游戏的Windows全屏优化兼容标志"), T("排查显示或切屏问题；可能回退，下次启动游戏生效"));
                 case PolicyCatalog.KeyGameControlFlowGuard: return F(key, T("逐游戏关闭CFG"), T("按完整路径为所选游戏关闭Windows控制流防护（CFG）"), T("CPU瓶颈时可能略降开销；降低该游戏的漏洞防护，部分反作弊可能拒绝启动；下次启动游戏生效"));
                 case "GmAutoCoresV2": return F(key, T("逐游戏核心范围"), T("在选核页手动保存逻辑CPU范围，下次启动游戏生效；全选且不隔离视为不限制；隔离时后台避让并自动硬亲和性，范围外至少留两颗完整物理核；优先用Job锁定进程范围防止自行改绑，Job不可用且清理完成时回退进程硬亲和性，原因写入诊断日志；各系列CPU按Windows拓扑/CPU Sets及受支持的逐核CPUID确认性能核/能效核，不按型号、编号或SMT猜测，证据不足显示未确认"), T("减少跨缓存域/SMT争用；范围太窄会限并行；游戏已有自定义线程掩码或显式线程CPU Set ID、线程集合不稳定或读取不明时跳过整进程绑核且禁止亲和性回退；写入前锁占用或线程变动每进程最多试3次；权限拒绝或身份不符停止；退局先清Job限制再恢复原范围，Pavise异常退出后下次启动按回执恢复；不能保证还原游戏运行期自行改的线程分配"));
                 case "GameNvRebarV1": return F(key, T("逐游戏NVIDIA ReBAR强开"), T("设置游戏驱动ReBAR偏好"), T("支持ReBAR的NVIDIA平台；可能掉帧，逐游戏测试，重启游戏；关闭或退局恢复"));
-                case AntiCheatSuppressionPolicy.Key: return F(key, T("逐游戏反作弊压制"), T("默认关闭，按游戏开启；本游戏对局中压制装在正式位置的ACE/EasyAntiCheat/BattlEye服务：最低CPU、I/O与内存优先级、EcoQoS并忽略计时器精度请求、禁止临时提优、移到最多2个后台物理核（只有1个可用时用1个），每秒核验；不限CPU、不限速、不冻结；游戏目录自带组件与Vanguard只保护，tp/EA/GameGuard/FACEIT/NEAC只记录"), T("反作弊服务占用明显时可开；干预其进程不保证不被封号；退局、游戏退出或关闭即恢复"));
+                case PolicyCatalog.KeyGameLowLatency: return F(key, T("逐游戏NVIDIA低延迟"), T("把所选游戏的NVIDIA预渲染帧限制为1"), T("仅DX9/DX11；DX12/Vulkan自管，Reflex优先；帧率可能略降，需重启游戏；关闭或退局恢复"));
+                case AntiCheatSuppressionPolicy.Key: return F(key, T("逐游戏 ACE 反作弊压制"), T("默认关闭，按游戏开启。只在本游戏对局中压制装在正式位置的 ACE 进程。使用最低 CPU 和 I/O 优先级、内存优先级 1、EcoQoS，并忽略计时器精度请求。使用每进程 Job 锁定 Idle 优先级和最后一个可用逻辑处理器，无法入 Job 时退回逐进程设置。EasyAntiCheat、BattlEye、Vanguard 和游戏目录自带的组件仅保护。tp、EA、GameGuard、FACEIT、NEAC 仅记录"), T("ACE 服务占用明显时可开。厂商可能将干预反作弊进程视为违规。退局、游戏退出或关闭开关即恢复"));
                 case "GmBoost": return F(key, T("性能优先级"), T("逐游戏开关，默认开，没有全局开关：游戏进程High、磁盘I/O高、GPU调度类高，并锁定高性能QoS（不被节流到能效核，Win11计时器请求照常）；已是Realtime保留"), T("游戏与后台争用CPU/磁盘/GPU；需权限与驱动支持并读回；改动下局生效，退局按归属恢复"));
-                case ThreadBoostSelection.Key: return F(key, T("游戏线程提优"), T("逐游戏开关，默认开，没有全局开关：识别画面提交线程设为TIME_CRITICAL、配合线程+1，识别额度用尽改提最忙线程，不固定核心"), T("渲染线程排队等CPU时；与亲和性叠加时亲和性只决定在哪些核上跑；退局恢复"));
+                case ThreadBoostSelection.Key: return F(key, T("游戏线程提优"), T("逐游戏开关，默认开，没有全局开关：有游戏可用时启动预留一个系统采样会话，识别画面提交线程设为TIME_CRITICAL、配合线程+1，识别额度用尽改提最忙线程，不固定核心"), T("渲染线程排队等CPU时；与亲和性叠加时亲和性只决定在哪些核上跑；退局恢复"));
                 case "PowerPlanOn": return F(key, T("对局电源计划"), T("选择不切换、由软件调度或指定已有计划，退局返回原计划；托管时原生逐项写入与回读，优先卓越性能、回退高性能，均缺失时核验后复制原计划（可为平衡）作独立候选，不改原计划；组策略锁定项跳过并记录；隐藏模板按GUID核验，权限或系统拒绝则停止"), T("减轻省电约束；对局中电源计划守护监视计划存储，外部切走或改托管参数即写回，不设累计上限、不自动改成不切换，对方反复改回时放慢到最多15秒；首次应用失败每项最多3次；指定计划只切换不改参数；读取失败不视为核验成功"));
                 case PolicyCatalog.KeyStandbyCleaner: return F(key, T("待机内存清理"), T("对局中仅在待机列表达到阈值且可用内存低于阈值时清理；可选默认/保守/激进/自定义"), T("特定内存压力；频繁清理会丢缓存并增加卡顿"));
                 case "AutoGlobalTimer": return F(key, T("全局计时器分辨率"), T("对局按本机实测选档：先找略高于0.5ms的最细一档并读回、实测Sleep(1)；本机没有就实测0.5ms本身，不理想再往上找到1ms为止，避开正好0.5ms时多等一跳；系统精度不足时显示受限；故障后停止本阶段请求，有限次数恢复旧请求及自身豁免状态，耗尽保留恢复记录；全局配置重启后核验"), T("短等待敏感场景；Win10 2004至22H2只对自己请求精度的游戏生效，全局配置需build20348+并重启，运行故障不被环境就绪遮蔽；可能增耗"));
-                case "GmPauseUpdate": return F(key, T("暂停Windows更新"), T("对局暂停可控制的Windows更新活动"), T("更新正在下载/安装占资源，退局恢复"));
+                case "GmPauseUpdate": return F(key, T("暂停Windows更新"), T("开局暂停可控制的Windows更新服务，智能切出时恢复，竞技切出时保持"), T("更新正在下载/安装占资源，退局恢复"));
                 case "NvMaxPerf": return F(key, T("NVIDIA最高性能偏好"), T("设置游戏驱动最大性能电源偏好，不超频"), T("降频/唤醒波动；可能增热，部分需重启游戏"));
                 case "NvShaderCache": return F(key, T("NVIDIA着色器缓存无上限"), T("调整驱动着色器缓存容量"), T("缓存淘汰导致重编译；占用磁盘，通常重启游戏"));
                 default: return F(key, IsPortuguese ? Lang.Ui(item.LangKey) : item.LangKey, T("当前策略项，详细用途未核验"), T("先核对该版本实现再建议"));
@@ -135,6 +141,7 @@ namespace PaviseApp
             {
                 case PerformanceActionCatalog.CpuMitigations: return F(action.Key, IsPortuguese ? action.Title : action.Zh, T("手动开启系统增强时，在支持的Intel/AMD和Win10 2004+系统上采用扩展策略，其余设备仅处理适用的基础项。基础范围涉及Spectre V2/Meltdown，扩展范围还涉及SSBD、AMD用户到内核BTI及适用的MDS/TAA/L1TF组合"), T("相应缓解开销构成瓶颈时评估，开启会降低防护，关闭按归属恢复，应用和恢复需重启，旧版范围不自动扩大"));
                 case PerformanceActionCatalog.AudioIdle: return F(action.Key, IsPortuguese ? action.Title : action.Zh, T("关闭已有PortCls交流空闲省电；系统增强成员"), T("首次出声唤醒等待；增加功耗，需重启"));
+                case PerformanceActionCatalog.MultimediaProfile: return F(action.Key, IsPortuguese ? action.Title : action.Zh, T("写入MMCSS网络节流、后台CPU预留和Games任务共6个值；系统增强成员"), T("只影响登记为Games的线程，无实测收益，Priority在High下不生效；需重启"));
                 default: return F(action.Key, IsPortuguese ? action.Title : action.Zh, IsPortuguese ? action.Detail : action.DetailZh, T("以本机支持情况为准"));
             }
         }
@@ -145,7 +152,7 @@ namespace PaviseApp
                 F("GameModeOn", T("守护总开关"), T("启停游戏会话自动优化；概览激活时显示本局已压制进程/已暂停服务数量，去重且只计已确认执行项；智能切出时明确显示后台压制已释放或恢复中，服务数量独立核验"), T("需要自动优化时开启；失败/待确认不计入，退局或停守护收起；手动持久配置按各自设置处理")),
                 F("GmAwake", T("对局保持唤醒"), T("守护开启且游戏前台时自动阻止显示器/系统休眠；切出、退局或停守护释放，不读取旧开关偏好"), T("防止黑屏/休眠，不是禁止CPU空闲，不阻止手动休眠")),
                 F("GmPauseDl", T("传递优化下载让路"), T("后台治理开启后每局开局确认一次传递优化后台下载，仅确认后台下载活动时暂停（限带宽并停止DoSvc），未知/空闲/前台下载不触发，开局未检测到本局不再暂停，读取失败每局最多3次；智能切出恢复，竞技切出保留，停用或退局恢复"), T("DO争网或磁盘；仅处理此组件，不控制Steam等下载器")),
-                F("GmPauseMaintenanceV1", T("对局阻止自动维护"), T("后台治理开启时对局中阻止新的Windows自动维护开始，退局恢复"), T("维护任务竞争资源；不中止已在运行的维护")),
+                F("GmPauseMaintenanceV1", T("对局阻止自动维护"), T("后台治理开启时对局中阻止新的Windows自动维护开始，智能切出时恢复，竞技切出时保持，退局恢复"), T("维护任务竞争资源；不中止已在运行的维护")),
                 F("OverviewTelemetry", T("概览硬件/占用监控"), T("显示CPU/GPU/内存/显示器型号与CPU/GPU/内存占用；窗口前台且无对局每2秒刷新，对局中或失焦每10秒；GPU读取连续失败3次后本次运行暂停读取；隐藏或离页停止读取"), T("查看资源状态，不测游戏FPS，不采集游戏帧率")),
                 F("ModeSmart", T("智能模式"), T("CPU≥70%持续10秒扩围，每局最多3次；<60%持续5秒后平稳120秒恢复；切出释放并保护前台"), T("常切屏、兼顾浏览器/语音；切屏不全清优先级/绑核")),
                 F("ModeCompetitive", T("竞技模式"), T("较广治理，切出保留，合格软件前台不豁免；保护游戏、白名单、必要依赖"), T("后台争用；用户会话范围回归2223，不普压Session0服务")),
@@ -153,17 +160,21 @@ namespace PaviseApp
                 F("ManagedPowerDynamic", T("托管电源动态参数"), T("交流AC与电池DC分别设置；旧策略采用原竞技基线，台式机新版按CPU匹配，智能/竞技共用；按CPU拓扑与供电特征调整处理器、停泊、EPP与睿频，沿用旧策略设备DC放宽规则；场景/升档/切出不改参数"), T("由软件调度时自动计算，无额外开关；不切换/指定已有计划优先，退局恢复；实验室覆盖按自身原值恢复")),
                 F("AutoLaptopPerformanceV2", T("笔记本厂商性能模式"), T("在顶部策略设置→对局电源下方开启；仅在已核验支持的笔记本显示，检测中及台式机等不支持设备隐藏；联想 SmartFan 核验原档，ASUS 通过运行中的 G-Helper 前五个配置档切 Turbo，由新驱动确认记录核验并在退局恢复完整原配置"), T("默认关；交流供电、游戏会话且电源非不切换；ASUS DSTS 仅用于接口识别，保留已有自定义 Turbo/全速；外部改档让出，增热/噪声，不等于Windows电源计划")),
                 F("GameDvrOff", T("关闭Game DVR与Xbox后台录制"), T("守护开启期间关闭Windows后台游戏录制，即时回放与录制热键不可用"), T("录制占编码/GPU/磁盘；关开关、停守护或退出还原；需要录屏时关闭")),
-                F("EnvPerformanceBundleV1", T("系统增强"), T("联动VBS/Hypervisor、CPU缓解、交流音频省电三项，旧版单独开启的成员保留原选择"), T("对应开销明显时评估，开启会降低防护，可能影响WSL2/Hyper-V及部分反作弊要求，关闭按归属恢复，应用或恢复后需重启")),
+                F("EnvPerformanceBundleV1", T("系统增强"), T("联动VBS/Hypervisor、CPU缓解、交流音频省电、多媒体调度四项，旧版单独开启的成员保留原选择"), T("对应开销明显时评估，开启会降低防护，可能影响WSL2/Hyper-V及部分反作弊要求，关闭按归属恢复，应用或恢复后需重启")),
                 F("EnvVbsDisabledV1", T("系统增强·VBS/Hypervisor"), T("关闭VBS、内存完整性和相关hypervisor启动项"), T("虚拟化安全开销；影响WSL2/Hyper-V及部分反作弊，需重启")),
                 F("LabEppYieldV1", T("实验室·EPP功耗让路"), T("实际自主性能模式支持且GPU忙/CPU有余量时调EPP让共享功耗，验证失败回退"), T("插电笔记本+托管+可读功耗；台式/电池不执行，可能转CPU瓶颈；换计划/空闲策略先恢复后重采样")),
                 F("LabGpuClockMaxV1", T("实验室·GPU频率锁最大值"), T("支持绝对频率调节的 AMD 独显将频率下限提高到当前设定的上限，NVIDIA 请求锁定最高核心频率"), T("需独显驱动支持，实际频率受温度和功耗限制。关闭或退局时 AMD 恢复原下限，NVIDIA 回到自动调频并清除原锁频")),
                 F("LabGpuPowerMaxV1", T("实验室·GPU功耗墙拉满"), T("向支持的 AMD 或 NVIDIA 独显请求驱动允许的最高功耗上限，不改电压"), T("适用于 GPU 受功耗限制的负载，可能增热增耗。关闭或退局时恢复原上限，保留外部后续修改")),
                 F("LabCpuIdleStrategyV1", T("实验室·CPU空闲策略"), T("跟随当前计划基准/提高空闲门槛，在计划生效后覆盖当前计划，无需托管"), T("交流对局唤醒瓶颈；关闭/切策略/换计划恢复该计划原值，退局恢复")),
-                F("Whitelist", T("白名单与依赖保护"), T("从运行进程/EXE/拖放添加路径/家族保护；可手动添加外设关键词（进程名/文件描述/产品名/公司名包含即按外设保护，至少2字）；运行列表含浏览器、聊天/开发工具及最小化/托盘应用，排除系统与反作弊；内置八类：Windows系统进程、网游加速器、显卡驱动与硬件功耗散热控制、反作弊与游戏保护组件（按组标注按游戏开启后压制（ACE/EasyAntiCheat/BattlEye）/仅保护/仅记录，反作弊一律不进普通后台治理）、输入音频与外设驱动链、正在连接设备的外设驱动（显示识别到的键盘、鼠标和耳机及连接状态；对局中核实后台程序是否持续连接厂商私有HID或手柄接口，或匹配已连接外设登记的专用服务，不看品牌词）、直播与推流工具、语音通话软件（KOOK/YY/TeamSpeak/Mumble/Discord，进程名须与程序文件名一致）；可查看目录并按具体名称搜索；进程访问受限历史有记录时显示，可查看/清空；直播主程序及专用组件保护已核验子孙，父进程退出后仍保留存活成员，独立组件单独识别，开启「压制家族进程」时继续保护；来源筛选、移除、恢复平台保护、恢复预设（删除全部自定义）"), T("保护语音/外设/录屏/直播；过宽放过负载，无逐项限速")),
+                F("GpuSpoof", Lang.T("env.gpu.spoof.toggle"),
+                    string.Join(" ", Lang.T("env.gpu.spoof.ai.purpose"), Lang.T("env.gpu.spoof.platform.desktop"),
+                        Lang.T("env.gpu.spoof.platform.mobile").TrimEnd('.', '。')), Lang.T("env.gpu.spoof.ai.scene")),
+                F("Whitelist", T("白名单与依赖保护"), T("从运行进程/EXE/拖放添加路径/家族保护；可手动添加外设关键词（进程名/文件描述/产品名/公司名包含即按外设保护，至少2字）；运行列表含浏览器、聊天/开发工具及最小化/托盘应用，排除系统与反作弊；内置七类：Windows系统进程、网游加速器、显卡驱动与硬件功耗散热控制、反作弊与游戏保护组件（按组标注按游戏开启后压制（仅 ACE）/仅保护/仅记录，反作弊一律不进普通后台治理）、输入音频与外设驱动链、直播与推流工具、语音通话软件（KOOK/YY/TeamSpeak/Mumble/Discord，进程名须与程序文件名一致）；可查看目录并按具体名称搜索；进程访问受限历史有记录时显示，可查看/清空；直播主程序及专用组件保护已核验子孙，父进程退出后仍保留存活成员，独立组件单独识别，开启「压制家族进程」时继续保护；来源筛选、移除、恢复平台保护、恢复预设（删除全部自定义）"), T("保护语音/外设/录屏/直播；过宽放过负载，无逐项限速")),
+                F(BackgroundFocusItem.SettingKey, CatalogText("background.focus.title"), CatalogText("background.focus.ai.purpose"), CatalogText("background.focus.ai.scene")),
                 F("GameLibrary", T("游戏库/自动入库/忽略名单"), T("添加程序/运行目标（含最小化/托盘游戏）、平台扫描/自动收录、搜索、重命名、换/还原封面、移除/撤销忽略；卡片深度调优含核心范围、渲染线程调度、压制家族进程、ReBAR、全屏优化、CFG"), T("识别游戏；自动收录默认关闭，移除后防重复收录；入库仅待检测；入场须连续两窗有画面提交且GPU 3D≥3%，或≥10%且家族最高，无GPU数据不入场；强制接管除外，以前已确认渲染且文件未变的登记exe启动即入场，入场后低负载不退；已确认进程不被启动器改写；登记启动器仍切到渲染进程")),
                 F("GameForceTrigger", T("逐游戏强制接管"), T("对有明确EXE的游戏开启（需确认），该EXE进程存在即保持游戏会话"), T("正常识别失败时使用；误用于普通程序会错误触发游戏策略")),
                 F("GameCoreIsolation", T("逐游戏核心隔离/核心选择"), T("后台避让游戏整颗物理核；按全部/P核/E核/CCD(含缓存)/无SMT/补全SMT快捷选核；手动范围优先于游戏自设的线程分配，照常绑定并记录接管线程数；落核停止区分访问被拒、恢复未结清与读回不符，保留原始阶段和错误码，不凭权限失败断言反作弊拦截"), T("有备用核且拓扑/分配可靠；范围过小可能回退，不隔离中断")),
-                F("GameCriticalThreadHardRuleV1", T("逐游戏亲和性模式"), T("窗口选自动/渲染单核/手动；渲染单核与手动可选整核避让，自动只设优先核心、不用整核避让；手动在CPU格子里选1~4个逻辑CPU；只调优先级的旧方案（游戏优先、渲染优先、依赖协同）按关闭，旧专核强化按渲染单核+整核避让，旧对照和温和提优按关闭"), T("选核遵守游戏核心范围；整核避让后其他线程至少留两颗物理核；编辑下局生效，关闭立即恢复")),
+                F("GameCriticalThreadHardRuleV1", T("逐游戏亲和性模式"), T("窗口可选渲染单核或手动。没有有效的已存模式时，开启后使用渲染单核。旧自动模式和多核协同按关闭处理。两种模式均可开启整核避让，手动可在 CPU 格子里选一到四个逻辑 CPU。旧专核强化按渲染单核加整核避让运行。只调优先级的旧方案、对照和温和提优按关闭处理。"), T("选核遵守游戏核心范围；整核避让后其他线程至少留两颗物理核；编辑下局生效，关闭立即恢复")),
                 F("LolColumnEnabled", T("英雄联盟专属卡片"), T("游戏库有LoL时卡片自动启用，提供借壳启动与对局真无头两个开关"), T("需核验LOL/客户端身份；受客户端版本影响")),
                 F("LolColumnCleanupEnabled", T("LoL借壳启动"), T("正常登录后LCU确认大厅可用，精确结束WeGame、Cross及腾讯附加进程；不注入、不改内存、不碰游戏文件；立即净化可手动执行（需LCU就绪）"), T("平台附属持续占用；WeGame社交/助手暂不可用")),
                 F("LolColumnHeadlessEnabled", T("LoL对局真无头"), T("进入对局后用LCU原生接口关闭大厅界面，对局结束由守护链拉起；大厅反复重生达上限本局熔断恢复；恢复界面可手动拉起"), T("大厅占CPU/GPU；需可靠客户端接口")),
@@ -224,20 +235,27 @@ namespace PaviseApp
                     if (key == "PerformancePreset") return value == "1" ? T("竞技") : T("智能");
                     if (key == BackgroundGovernancePolicy.SettingKey)
                     {
+                        bool enabled = PolicyResolver.RawGlobalValue("GmSuppress") == "1";
                         int governanceMode = BackgroundGovernancePolicy.Load();
-                        string level = governanceMode == BackgroundGovernancePolicy.Freeze ? T("疯狂") : governanceMode == BackgroundGovernancePolicy.Aggressive ? T("激进") : T("正常");
-                        return PolicyResolver.RawGlobalValue("GmSuppress") == "1" ? level + T("；实际接管未核验") : T("关闭（保留") + level + T("偏好）");
+                        string level = governanceMode == BackgroundGovernancePolicy.Aggressive ? T("激进") : T("正常");
+                        return enabled ? level + T("；实际接管未核验") : T("关闭（保留") + level + T("偏好）");
                     }
                     if (key == "PowerPlanOn") return PowerConfiguration();
                     // 渲染线程调度的全局值只是总闸 逐游戏开关和方案见下文
                     if (key == PolicyCatalog.KeyGameScheduling) return value == "1" ? T("总闸开；逐游戏见下文") : T("总闸关（逐游戏开关不生效）");
                     if (key == "GmBoost" || key == ThreadBoostSelection.Key) return T("逐游戏见下文，默认开");
-                    if (key == "GameFamilyBackground" || key == "GmAutoCoresV2" || key == "GameNvRebarV1" || key == "GameDisableFullscreenOptimizationsV1" || key == PolicyCatalog.KeyGameControlFlowGuard || key == AntiCheatSuppressionPolicy.Key) return T("逐游戏见下文，默认关");
+                    if (key == "GameFamilyBackground" || key == "GmAutoCoresV2" || key == "GameNvRebarV1" || key == PolicyCatalog.KeyGameLowLatency || key == "GameDisableFullscreenOptimizationsV1" || key == PolicyCatalog.KeyGameControlFlowGuard || key == AntiCheatSuppressionPolicy.Key) return T("逐游戏见下文，默认关");
                     if (item.Kind == PolicyValueKind.Bool) return OnOff(value == "1");
                     return value == "on" ? T("开启") : value == "off" ? T("关闭") : T("保存值未知");
                 }
                 switch (key)
                 {
+                    case BackgroundFocusItem.SettingKey:
+                        var focus = BackgroundFocusItem.Parse(Settings.LoadStr(BackgroundFocusItem.SettingKey, ""));
+                        var programs = new List<string>();
+                        foreach (BackgroundFocusItem program in focus.Values) programs.Add(program.Name);
+                        programs.Sort(StringComparer.OrdinalIgnoreCase);
+                        return programs.Count == 0 ? "—" : string.Join(", ", programs);
                     case "GmAwake": return T("自动随前台游戏执行");
                     case "GmPauseDl": return T("随后台治理") + OnOff(PolicyResolver.Global().SuppressBackground) + T("；任务活动未核验");
                     case "GmPauseMaintenanceV1": return T("随后台治理") + OnOff(PolicyResolver.Global().SuppressBackground);
@@ -252,9 +270,10 @@ namespace PaviseApp
                         + (mode == null || !mode.LaptopPerformance.SupportKnown ? T("未核验") : mode.LaptopPerformance.Supported ? T("已确认支持") : T("未确认兼容接口"));
                     case "GameDvrOff": return BoolConfiguration(key, true);
                     case "LolColumnEnabled": case "LolColumnCleanupEnabled": case "LolColumnHeadlessEnabled": return BoolConfiguration(key, false);
+                    case "GpuSpoof": return GpuSpoofConfiguration();
                     case "LabEppYieldV1": case "LabGpuClockMaxV1": case "LabGpuPowerMaxV1": return BoolConfiguration(key, false);
                     case "LabCpuIdleStrategyV1": { string selected = LaboratorySelection.CanonicalIdle(Settings.LoadStr(key, "default")); return selected == "threshold" ? T("提高空闲门槛") : T("跟随原策略"); }
-                    case "EnvPerformanceBundleV1": return T("成员偏好：") + EnvironmentIntent("EnvVbsDisabledV1") + T("；") + EnvironmentIntent("EnvCpuMitigationsV1") + T("；") + EnvironmentIntent("EnvAudioIdleV1");
+                    case "EnvPerformanceBundleV1": return T("成员偏好：") + EnvironmentIntent("EnvVbsDisabledV1") + T("；") + EnvironmentIntent("EnvCpuMitigationsV1") + T("；") + EnvironmentIntent("EnvAudioIdleV1") + T("；") + EnvironmentIntent(PerformanceActionCatalog.MultimediaProfile);
                     case "GameLibrary": return BoolConfiguration("GmAutoAdd", false) + T("（自动入库）；逐游戏摘要见下文。");
                     case "GameExitGrace": return mode == null ? T("未取得会话对象，未读取宽限值。") : T("保存宽限=") + mode.ExitGraceSeconds.ToString(CultureInfo.InvariantCulture) + T("秒。");
                     case "AutoHideOnGame": return BoolConfiguration(key, true);
@@ -280,6 +299,7 @@ namespace PaviseApp
                 case "EnvVbsDisabledV1": effect = T("禁用VBS/内存完整性/Hypervisor"); break;
                 case PerformanceActionCatalog.CpuMitigations: effect = T("关闭Spectre V2/Meltdown缓解") + (PerformanceTuning.CpuMitigationsExpanded ? T("及扩展软件策略（取消SSBD/AMD BTI显式启用，非全部缓解）") : T("（基础范围）")); break;
                 case PerformanceActionCatalog.AudioIdle: effect = T("关闭交流音频空闲省电"); break;
+                case PerformanceActionCatalog.MultimediaProfile: effect = T("写入多媒体调度参数"); break;
                 default: return T("修改意图未知");
             }
             try
@@ -315,6 +335,20 @@ namespace PaviseApp
 
         private static string OnOff(bool value) { return value ? T("开") : T("关"); }
 
+        // 按设备上的实际名称报告 不看开关记录
+        private static string GpuSpoofConfiguration()
+        {
+            GpuSpoofSnapshot snapshot = GpuSpoof.Read();
+            if (snapshot.Error.Length > 0) return Lang.T("env.gpu.spoof.state.error");
+            if (!snapshot.CanRestart) return Lang.T(snapshot.Uncertain ? "env.gpu.spoof.state.uncertain" : "env.gpu.spoof.state.none");
+            string status;
+            if (snapshot.Partial) status = "env.gpu.spoof.state.partial";
+            else if (snapshot.On) status = snapshot.ReadbackMatches == true ? "env.gpu.spoof.state.active" : "env.gpu.spoof.state.pending";
+            else if (snapshot.RecoveryRestartPending || snapshot.ReadbackMatches == false) status = "env.gpu.spoof.state.restorepending";
+            else status = snapshot.CanRestore ? "env.gpu.spoof.state.recoverable" : "env.gpu.spoof.state.off";
+            return Lang.T(status);
+        }
+
         private static void AppendProfiles(StringBuilder text, GameMode mode)
         {
             text.AppendLine(); text.AppendLine(T("【逐游戏设置（不含路径）】"));
@@ -332,7 +366,7 @@ namespace PaviseApp
                     PolicySnapshot game = PolicyResolver.For(profile);
                     text.AppendLine(T("  [GmBoost] 性能优先级=") + OnOff(game.BoostGame) + (profile.Overrides.ContainsKey("GmBoost") ? T("（逐游戏保存）") : T("（默认）")));
                     text.AppendLine(T("  [GmThreadBoostStrategyV1] 游戏线程提优=") + OnOff(game.ThreadBoostOn) + (profile.Overrides.ContainsKey(ThreadBoostSelection.Key) ? T("（逐游戏保存）") : T("（默认）")));
-                    foreach (string key in new[] { "GmAutoCoresV2", "GameFamilyBackground", "GameNvRebarV1", "GameDisableFullscreenOptimizationsV1", PolicyCatalog.KeyGameControlFlowGuard, AntiCheatSuppressionPolicy.Key })
+                    foreach (string key in new[] { "GmAutoCoresV2", "GameFamilyBackground", "GameNvRebarV1", PolicyCatalog.KeyGameLowLatency, "GameDisableFullscreenOptimizationsV1", PolicyCatalog.KeyGameControlFlowGuard, AntiCheatSuppressionPolicy.Key })
                     {
                         string value;
                         bool specified = profile.Overrides.TryGetValue(key, out value);
@@ -358,12 +392,9 @@ namespace PaviseApp
             bool on = PolicyResolver.For(profile).GameSchedulingOn;
             string strategy;
             if (stored == null) strategy = T("已保存模式无效");
+            else if (raw == null) strategy = T("未保存模式");
             else if (stored.IsOff) strategy = T("模式为关闭");
-            else
-            {
-                string source = raw == null ? T("未保存模式，默认") : raw.StartsWith("7|", StringComparison.Ordinal) ? T("已保存") : T("旧规则不延用，按默认");
-                strategy = source + StrategyName(stored);
-            }
+            else strategy = T("已保存") + StrategyName(stored);
             return (on ? T("开") : T("关")) + T("；") + strategy;
         }
 
@@ -373,7 +404,6 @@ namespace PaviseApp
             CriticalThreadRule effective = CriticalThreadRule.ParseForRuntime(rule.Encode());
             if (effective == null || effective.IsOff) return T("关闭");
             if (effective.IsManualPin) return T("手动·CPU") + CpuTopology.DescribeRanges(effective.ManualMask) + (effective.ClearCore ? T("·整核避让") : "");
-            if (effective.IsOrchestration) return T("自动");
             return T("渲染单核") + (effective.ClearCore ? T("·整核避让") : "");
         }
 

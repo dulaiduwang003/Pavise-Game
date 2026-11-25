@@ -240,7 +240,7 @@ namespace PaviseApp
                 PerformanceTuning.BeginRecoveryCycle(109);
                 Check(runner.Update(1004, first, () => true) && faulted.WaitOne(2000) && control.Queries == 3, "True new session failed to admit one standby attempt");
                 control.Fail = false;
-                Check(runner.Update(1005, new StandbyCleanerOptions(300, 0, 250), () => true), "Healthy standby observations did not start");
+                Check(runner.Update(1005, new StandbyCleanerOptions(300, 1, 250), () => true), "Healthy standby observations did not start");
                 int initial = control.Queries;
                 for (int i = 0; i < 300 && control.Queries < initial + 4; i++) Thread.Sleep(10);
                 Check(control.Queries >= initial + 4, "Successful below-threshold samples consumed a failure budget");

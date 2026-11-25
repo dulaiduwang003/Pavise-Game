@@ -87,12 +87,7 @@ namespace PaviseApp
 
         internal int BackgroundGovernanceMode
         {
-            get { return BackgroundGovernancePolicy.Effective(BackgroundGovernancePolicy.Parse(ValueOf(PolicyCatalog.KeyBackgroundGovernance))); }
-        }
-
-        internal bool BackgroundBoostLimitRequested
-        {
-            get { return BackgroundGovernancePolicy.WantsBackgroundBoostLimit(SuppressBackground, BackgroundGovernanceMode); }
+            get { return BackgroundGovernancePolicy.Parse(ValueOf(PolicyCatalog.KeyBackgroundGovernance)); }
         }
 
         public bool WideBackgroundScope
@@ -256,6 +251,14 @@ namespace PaviseApp
             }
         }
 
+        public bool NvLowLatency
+        {
+            get
+            {
+                return On(PolicyCatalog.KeyGameLowLatency);
+            }
+        }
+
         public string NvDlssMode
         {
             get
@@ -319,8 +322,8 @@ namespace PaviseApp
                 return;
             }
             gameScoped = true;
-            CriticalThreadRule savedSchedulingRule = CriticalThreadRule.ParseForRuntime(CriticalThreadRule.Raw(profile));
-            gameSchedulingRuleOff = savedSchedulingRule != null && savedSchedulingRule.IsOff;
+            CriticalThreadRule savedSchedulingRule = PolicyResolver.StoredSchedulingRule(profile);
+            gameSchedulingRuleOff = savedSchedulingRule == null || !savedSchedulingRule.PinsRenderThread;
             ManualCores = ManualCorePlan.Parse(ManualCorePlan.Raw(profile));
             if (ManualCores != null)
             {

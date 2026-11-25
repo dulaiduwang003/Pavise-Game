@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace PaviseApp
 {
     // 后台资源 Job 的系统调用
-    // 每个后台进程一个命名 Job 往目标进程里放一个只读句柄当锚点 目标活着 Job 的名字就在 Pavise 崩溃后能按名字重开再解除限制
+    // 目标进程保留只读锚点 崩溃后按名称解除限额
     // 子进程静默脱离 启动器拉起的游戏不会继承资源限制
     internal sealed class BackgroundResourceJobPlatform : IResourceJobPlatform
     {
@@ -84,6 +84,21 @@ namespace PaviseApp
         private static extern bool ProcessIdToSessionId(uint pid, out uint session);
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentProcessId();
+        [DllImport("kernel32.dll")]
+        private static extern uint GetActiveProcessorCount(ushort group);
+
+        internal static readonly int LogicalProcessorCount = ReadLogicalProcessorCount();
+
+        private static int ReadLogicalProcessorCount()
+        {
+            try
+            {
+                uint count = GetActiveProcessorCount(ushort.MaxValue);
+                if (count > 0 && count <= int.MaxValue) return (int)count;
+            }
+            catch (EntryPointNotFoundException) { }
+            return Environment.ProcessorCount;
+        }
 
         public IntPtr OpenTarget(int pid, long creation)
         {
@@ -118,15 +133,48 @@ namespace PaviseApp
                 Native.CloseHandle(job);
                 return IntPtr.Zero;
             }
-            // 锚点只给查询权限 目标拿着它也改不了限制 本方从不去关它 免得误关目标自己复用的句柄值
+            if (Anchor(job, process, out reason)) return job;
+            Native.CloseHandle(job);
+            return IntPtr.Zero;
+        }
+
+        public bool Anchor(IntPtr job, IntPtr process, out string reason)
+        {
+            reason = null;
             IntPtr remote;
-            if (!DuplicateHandle(GetCurrentProcess(), job, process, out remote, JobQuery, false, 0))
+            if (DuplicateHandle(GetCurrentProcess(), job, process, out remote, JobQuery, false, 0))
+                return true;
+            reason = "anchor:" + Marshal.GetLastWin32Error();
+            return false;
+        }
+
+        public bool MatchesFocusProgram(IntPtr process, string key)
+        {
+            return string.Equals(BackgroundFocusItem.Identity(Native.ImageName(process), Native.ImagePath(process)),
+                key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public uint ReadPriority(IntPtr process) { return Native.GetPriorityClass(process); }
+
+        public bool RestoreIdlePriority(int pid, long creation, uint priority, out bool restored)
+        {
+            restored = false;
+            IntPtr process = Native.OpenProcess(0x1200, false, pid);
+            if (process == IntPtr.Zero) return Probe(pid, creation) == 1;
+            try
             {
-                reason = "anchor:" + Marshal.GetLastWin32Error();
-                Native.CloseHandle(job);
-                return IntPtr.Zero;
+                long actualCreation, cpu;
+                ulong io;
+                if (!Native.StillActive(process)) return true;
+                if (!Native.QueryProcessSample(process, out actualCreation, out cpu, out io)) return false;
+                if (actualCreation != creation) return true;
+                uint current = Native.GetPriorityClass(process);
+                if (current == 0) return false;
+                if (current != IdlePriorityClass || priority == IdlePriorityClass) return true;
+                restored = Native.SetPriorityClass(process, priority) && Native.GetPriorityClass(process) == priority;
+                return restored;
             }
-            return job;
+            finally { Native.CloseHandle(process); }
         }
 
         public IntPtr Open(string name, out int error)
@@ -141,10 +189,10 @@ namespace PaviseApp
             reason = null;
             if (limits == null) { reason = "limits"; return false; }
             var basic = new ExtendedLimits();
-            basic.Basic.Flags = SilentBreakaway | PriorityLimit;
-            basic.Basic.Priority = IdlePriorityClass;
+            basic.Basic.Flags = SilentBreakaway | (limits.LockIdle ? PriorityLimit : 0);
+            basic.Basic.Priority = limits.LockIdle ? IdlePriorityClass : 0;
             if (!SetInformationJobObject(job, ExtendedLimitInformation, ref basic, (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
-            { reason = "priority:" + Marshal.GetLastWin32Error(); return false; }
+            { reason = "job-flags:" + Marshal.GetLastWin32Error(); return false; }
             // 要写的 CPU 上限是 0 时 系统不接受在从没开过上限的 Job 上写关闭 会报错误 87
             // 所以先读一下 已经是关的就不写
             CpuRate current;
@@ -168,8 +216,9 @@ namespace PaviseApp
             ExtendedLimits basic;
             if (!QueryInformationJobObject(job, ExtendedLimitInformation, out basic, (uint)Marshal.SizeOf(typeof(ExtendedLimits)), IntPtr.Zero))
             { reason = "verify-read:" + Marshal.GetLastWin32Error(); return false; }
-            if (basic.Basic.Flags != (SilentBreakaway | PriorityLimit) || basic.Basic.Priority != IdlePriorityClass)
-            { reason = "verify-priority-limit"; return false; }
+            if (basic.Basic.Flags != (SilentBreakaway | (limits.LockIdle ? PriorityLimit : 0))
+                || (limits.LockIdle && basic.Basic.Priority != IdlePriorityClass))
+            { reason = "verify-job-flags"; return false; }
             CpuRate cpu;
             if (!QueryInformationJobObject(job, CpuRateControlInformation, out cpu, (uint)Marshal.SizeOf(typeof(CpuRate)), IntPtr.Zero))
             { reason = "verify-cpu-read:" + Marshal.GetLastWin32Error(); return false; }
@@ -178,7 +227,8 @@ namespace PaviseApp
             { reason = "verify-cpu"; return false; }
             bool member;
             if (!IsProcessInJob(process, job, out member) || !member) { reason = "verify-membership"; return false; }
-            if (Native.GetPriorityClass(process) != IdlePriorityClass) { reason = "verify-process-priority"; return false; }
+            if (limits.LockIdle && Native.GetPriorityClass(process) != IdlePriorityClass)
+            { reason = "verify-process-priority"; return false; }
             return true;
         }
 

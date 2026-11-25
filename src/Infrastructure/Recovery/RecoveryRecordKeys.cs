@@ -13,7 +13,7 @@ namespace PaviseApp
             "LinkMetricReceipt", RetiredBackgroundCpuCap.LegacyReceiptKey, RetiredBackgroundCpuCap.ReceiptKey, "GameAffinityJobReceiptsV1", "AutoCoreThreadPlacementV1", "FrameCoordinationJournalV1", "FrameMemoryProtectionJournalV1", "Crash_ThrottleMasks", "Crash_BoostMask", "Crash_BoostNames", "Crash_BoostEntriesV2", "Crash_BoostPriorityOwnershipV1",
             "FthExclusionBak", "FthCustomBak", "MsiList", "FsoExeList", CfgTweak.ListKey, LaboratoryPower.ReceiptKey, LaboratoryGpu.PowerReceipt, LaboratoryGpu.ClockReceipt, AntiCheatAffinityLease.ReceiptKey,
             LaboratoryFileFilter.ReceiptKey, LaboratoryClockRepair.ReceiptKey, LaboratoryAudioEffects.ReceiptKey,
-            "RtssInstallationOwnerV1"
+            "RtssInstallationOwnerV1", GpuSpoof.LedgerKey, FrameCaptureReservation.ReceiptKey
         };
 
         private static readonly string[] prefixes = new string[6]

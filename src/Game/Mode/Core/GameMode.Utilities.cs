@@ -223,15 +223,6 @@ namespace PaviseApp
         {
             return Lang.T("t.gamemodeboost.39") + QoSDump(process);
         }
-        private static bool StoredRuleAdmits(string storedRaw, CriticalThreadRule bound)
-        {
-            CriticalThreadRule criticalThreadRule = CriticalThreadRule.ParseForRuntime(storedRaw);
-            if (criticalThreadRule != null)
-            {
-                return criticalThreadRule.Admits(bound);
-            }
-            return false;
-        }
         private static void PurgeRetiredIrqObservation(string dir)
         {
             Settings.Remove("IrqSessionProbe");
@@ -421,7 +412,7 @@ namespace PaviseApp
                 RaiseLibraryChanged();
                 return;
             }
-            if (key == "GameNvRebarV1")
+            if (key == "GameNvRebarV1" || key == PolicyCatalog.KeyGameLowLatency)
             {
                 lock (sync)
                 {
@@ -441,6 +432,7 @@ namespace PaviseApp
                 break;
             case "PowerPlanOn":
             case "GameNvRebarV1":
+            case PolicyCatalog.KeyGameLowLatency:
             case "GmAutoCoresV2":
             case "GmManualCorePlanV2":
             case "PerformancePreset":
@@ -671,7 +663,7 @@ namespace PaviseApp
                     pass.QosBoost = performance;
                     pass.ClassicThreadBoost = game.ThreadBoostOn;
                     CriticalThreadRule sessionRule = PolicyResolver.GameSchedulingRule(sessionProfile);
-                    pass.PlacementConfigured = sessionRule != null && !sessionRule.IsOff;
+                    pass.PlacementConfigured = sessionRule != null && sessionRule.PinsRenderThread;
                 }
             }
             // 线程协同的工作线程每 200 毫秒复核一次准入 这里只发布本轮结论 不让它去拿会话锁
@@ -749,38 +741,42 @@ namespace PaviseApp
             {
                 stickyGraceOnly = false;
                 stickyMiss = 0;
-                if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase) && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
+                bool reanchored = false;
+                if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null
+                    && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase)
+                    && stickyDetection.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid
+                    && AliveWithIdentity(stickyDetection.RendererPid))
                 {
-                    bool canReplaceStickyRenderer = false;
-                    GameId value;
+                    GameId storedRenderer;
                     string name;
                     long creation;
-                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid && stickyIds.TryGetValue(stickyDetection.RendererPid, out value) && TryStickyIdentity(hit.RendererPid, out name, out creation) && FreshRendererMayReplaceSticky(hit, name, creation, value.Creation, RendererForegroundHeldMs(hit.RendererPid)))
+                    bool canReplaceStickyRenderer = hit.RendererPid > 0
+                        && stickyIds.TryGetValue(stickyDetection.RendererPid, out storedRenderer)
+                        && TryStickyIdentity(hit.RendererPid, out name, out creation)
+                        && FreshRendererMayReplaceSticky(hit, name, creation, storedRenderer.Creation, RendererForegroundHeldMs(hit.RendererPid));
+                    if (!canReplaceStickyRenderer)
                     {
-                        canReplaceStickyRenderer = true;
-                    }
-                    if (hit.RendererPid != stickyDetection.RendererPid && !canReplaceStickyRenderer)
-                    {
-                        List<int> verifiedStickyPids = LiveStickyFamily();
-                        if (!ReanchorToStickyInstance(hit, stickyDetection, verifiedStickyPids))
-                        {
-                            ClearSticky();
-                        }
+                        bool reused;
+                        List<int> verifiedStickyPids = LiveStickyFamily(out reused);
+                        reanchored = ReanchorToStickyInstance(hit, stickyDetection, verifiedStickyPids);
+                        if (!reanchored) ClearSticky();
                     }
                 }
-                if (!RememberSticky(hit))
+                if (!(reanchored ? RememberStickyFamily(hit, true) : RememberSticky(hit)))
                 {
                     return ApplyStickiness(null);
                 }
                 {
-                    foreach (int item in LiveStickyFamily())
+                    foreach (int item in stickyIds.Keys)
                     {
                         hit.FamilyPids.Add(item);
                     }
                     return hit;
                 }
             }
-            if (stickyDetection != null && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
+            bool stickyReused = false;
+            List<int> liveFamily = stickyDetection == null ? null : LiveStickyFamily(out stickyReused);
+            if (liveFamily != null && stickyDetection.RendererPid > 0 && liveFamily.Contains(stickyDetection.RendererPid))
             {
                 stickyGraceOnly = false;
                 stickyMiss = 0;
@@ -797,7 +793,7 @@ namespace PaviseApp
                 gameDetection.Evidence = stickyDetection.Evidence;
                 GameDetection gameDetection2 = gameDetection;
                 gameDetection2.FamilyPids.Add(stickyDetection.RendererPid);
-                foreach (int item2 in LiveStickyFamily())
+                foreach (int item2 in liveFamily)
                 {
                     gameDetection2.FamilyPids.Add(item2);
                 }
@@ -808,7 +804,7 @@ namespace PaviseApp
                 stickyDetection = gameDetection2;
                 return gameDetection2;
             }
-            if (stickyDetection != null && stickyMiss < 1 && !AnyStickyReused())
+            if (stickyDetection != null && stickyMiss < 1 && !stickyReused)
             {
                 stickyMiss++;
                 stickyGraceOnly = true;

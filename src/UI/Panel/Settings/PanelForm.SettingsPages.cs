@@ -230,9 +230,6 @@ namespace PaviseApp
                 }
             };
             AddSettingsTile(scroll, "SettingsExitGrace", Lang.T("set.exitgrace"), Lang.T("set.exitgrace.n"), "clock", pickExitGrace).Summary = AutoText("默认 8 秒 · 修改后立即生效", "Default: 8 s · Changes apply immediately");
-            swGovernanceInsane = MakeSwitch(BackgroundGovernancePolicy.InsaneVisible(), OnGovernanceInsaneToggle);
-            swGovernanceInsane.Name = "SettingsGovernanceInsaneSwitch";
-            AddSettingsTile(scroll, "SettingsGovernanceInsane", Lang.T("set.governance.insane"), Lang.T("set.governance.insane.n"), "levels", swGovernanceInsane).Summary = Lang.T("set.governance.insane.summary");
             TierPicker tierPicker = new TierPicker();
             tierPicker.Name = "SettingsLanguagePicker";
             TierPicker tierPicker2 = tierPicker;

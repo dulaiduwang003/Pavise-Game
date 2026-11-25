@@ -12,7 +12,7 @@ namespace PaviseApp
         private void ApplyGameTweaks(IntPtr h, int pid, BoostPass pass, bool needTweak)
         {
             if (!needTweak) return;
-            NvGamePlan plan = NvGamePlan.ForAutomatic(pass.NvMaxPerf, pass.NvShader, Native.OnAcPower(), pass.NvRebar);
+            NvGamePlan plan = NvGamePlan.ForAutomatic(pass.NvMaxPerf, pass.NvShader, Native.OnAcPower(), pass.NvRebar, pass.NvLowLatency);
             string targetPath;
             lock (sync) targetPath = activeDetection == null ? pass.ActionTarget : activeDetection.RendererPath;
             NvSessionAttempt attempt = NvDriverRetry.BeginSessionAttempt(targetPath ?? pass.RendererName, pid, pass.RendererCreation, plan.AutomaticKey);
@@ -136,10 +136,19 @@ namespace PaviseApp
             int deactivateCoreValue = 0;
             bool runSessionRecoveryRouteSucceeded4 = RunSessionRecoveryRoute("background", delegate
             {
-                List<int> list = core.PidsWith(SuppressReason.Background);
-                deactivateCoreValue += core.ReleaseReason(SuppressReason.Background);
-                foreach (int item in list) if (core.IsThrottled(item)) return false;
-                return true;
+                lock (familyPolicyGate)
+                {
+                    core.BeginBackgroundJournalRound();
+                    try
+                    {
+                        core.SetResourceJobMode(-1, null);
+                        List<int> list = core.PidsWith(SuppressReason.Background);
+                        deactivateCoreValue += core.ReleaseReason(SuppressReason.Background);
+                        foreach (int item in list) if (core.IsThrottled(item)) return false;
+                        return true;
+                    }
+                    finally { core.EndBackgroundJournalRound(false); }
+                }
             });
             bool restoreEnvSucceeded = RestoreEnv();
             ClearEnvRetryState();

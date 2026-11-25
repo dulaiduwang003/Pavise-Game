@@ -47,15 +47,22 @@ namespace PaviseApp
                     if (found.Count >= Limit) break;
                     // 编号会被复用 子进程必须晚于父进程出生 也必须是开始压以后才出生的
                     if (child.Creation <= parent.Value || child.Creation < pressedSince || !seen.Add(child.Pid)) continue;
-                    if (child.Session != session) continue;
-                    // 路径读不到的不碰 认不出是不是系统组件或反作弊
-                    if (string.IsNullOrEmpty(child.Path) || child.Path.StartsWith(windows, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (AntiCheatCatalog.IsAntiCheatLikeName(child.Name) || AntiCheatCatalog.IsAntiCheatPath(child.Path)) continue;
+                    if (!CanRestore(child)) continue;
                     found.Add(new KeyValuePair<int, long>(child.Pid, child.Creation));
                     queue.Enqueue(new KeyValuePair<int, long>(child.Pid, child.Creation));
                 }
             }
             return found;
+        }
+
+        internal static bool CanRestore(ProcEntry child)
+        { return CanRestore(child.Session, child.Name, child.Path); }
+
+        internal static bool CanRestore(int childSession, string name, string path)
+        {
+            return childSession == session && !string.IsNullOrEmpty(path)
+                && !path.StartsWith(windows, StringComparison.OrdinalIgnoreCase)
+                && !AntiCheatCatalog.IsAntiCheatLikeName(name) && !AntiCheatCatalog.IsAntiCheatPath(path);
         }
 
         // 建好以后只读 多个线程共用同一份

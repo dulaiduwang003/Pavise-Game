@@ -88,6 +88,7 @@ namespace PaviseApp
     internal sealed class AntiCheatAffinityLease
     {
         internal const string ReceiptKey = "AntiCheatHardAffinityV1";
+        internal static Func<int, long, bool> BeforeConstraintRestore;
         private sealed class Receipt
         {
             internal AntiCheatAffinityIdentity Identity;
@@ -761,32 +762,6 @@ namespace PaviseApp
                         bool existingBackend = backends.TryGetValue(identity.Key, out prior);
                         ulong original = existingBackend ? prior.Original : expected;
                         restoreOriginal = original;
-                        string reason = "processor-group-unsupported";
-                        bool supported = false;
-                        try { supported = group == 0 && GetActiveProcessorGroupCount() == 1; }
-                        catch (EntryPointNotFoundException) { }
-                        // SGuard64 会给个别线程单独设范围 严格准入的 Job 一定被拒 直接用进程硬亲和性
-                        // 已有进程租约沿用原后端 避免切换 Job 后把本方写入值当作原值
-                        if (sguard) reason = "sguard-thread-masks";
-                        else if (supported && (!existingBackend || prior.Job) && jobs.Ensure(identity.ProcessId, identity.CreationTime, Path.GetFileNameWithoutExtension(identity.ImagePath), original, target, out reason))
-                        {
-                            backends[identity.Key] = new Backend { Original = original, Desired = target, Job = true, Detail = Logger.Text("Job 硬亲和性已核验", "Job hard affinity verified") };
-                            if (admittedEpoch != ForwardEpoch)
-                            {
-                                // 写入期间资格被撤销 先解除这一次的 Job 再报失败 由调用方按回执结清
-                                string cleanup;
-                                if (ReleaseConstraint(identity, out cleanup)) observed = Failure(AntiCheatAffinityRead.Unavailable, Logger.Text("反作弊旧代写入资格已撤销：阶段=post-job-write", "anti-cheat stale-generation write eligibility revoked: phase=post-job-write"));
-                                else observed = Failure(AntiCheatAffinityRead.Unavailable, Logger.Text("反作弊旧代写入资格已撤销：阶段=post-job-write 恢复=", "anti-cheat stale-generation write eligibility revoked: phase=post-job-write recovery=") + cleanup);
-                                return false;
-                            }
-                            observed = Read(identity);
-                            return observed.Read == AntiCheatAffinityRead.Known && observed.Group == group && observed.Mask == target;
-                        }
-                        if (!sguard && GameThreadAffinityAdmission.IsRefusal(reason))
-                        { observed = Failure(AntiCheatAffinityRead.Unavailable, Logger.Text("线程分配保护拒绝：", "thread assignment protection refused: ") + reason); return false; }
-                        if (jobs.HasPendingFor(identity.ProcessId, identity.CreationTime) || jobs.IsActive(identity.ProcessId, identity.CreationTime))
-                        { observed = Failure(AntiCheatAffinityRead.Unavailable, Logger.Text("Job 硬绑定待恢复：", "Job hard binding awaits restore: ") + reason); return false; }
-                        // 退回进程方案前复核原句柄和外部 CPU Sets 防止耗时操作期间基准变化
                         observed = ReadHandle(handle, identity);
                         if (observed.Read != AntiCheatAffinityRead.Known || observed.Group != group || observed.Mask != expected
                             || (target & ~observed.AllowedMask) != 0 || !observed.CpuSetsKnown || (!allowCpuSets && !observed.CpuSetsEmpty)) return false;
@@ -806,7 +781,7 @@ namespace PaviseApp
                         }
                         detail = existingBackend && !prior.Job ? prior.Detail
                             : sguard ? Logger.Text("进程硬亲和性已核验；SGuard64 自设范围的线程原值记在内存，恢复进程范围后逐线程写回", "process hard affinity verified; original values of SGuard64 self-set thread ranges are kept in memory, written back per thread after the process range is restored")
-                            : Logger.Text("进程硬亲和性已核验；Job 未启用（", "process hard affinity verified; Job not enabled (") + reason + Logger.Text("）", ")");
+                            : Logger.Text("进程硬亲和性已核验", "process hard affinity verified");
                     }
                     if (!admission && observed.Mask != target && !sguard)
                     {
@@ -886,6 +861,9 @@ namespace PaviseApp
             }
             public bool ReleaseConstraint(AntiCheatAffinityIdentity identity, out string reason)
             {
+                var clear = BeforeConstraintRestore;
+                if (identity != null && clear != null && !clear(identity.ProcessId, identity.CreationTime))
+                { reason = "ace-job-release-pending"; return false; }
                 reason = null;
                 if (identity == null) return true;
                 if (!jobs.Release(identity.ProcessId, identity.CreationTime, out reason)) return false;

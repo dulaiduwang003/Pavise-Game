@@ -835,9 +835,8 @@ namespace PaviseApp
             SettingsWorkspaceTile settingsWorkspaceTile2 = SettingsTile(panel, "SettingsAutoHide");
             SettingsWorkspaceTile settingsWorkspaceTile3 = SettingsTile(panel, "SettingsExitGrace");
             SettingsWorkspaceTile settingsWorkspaceTile4 = SettingsTile(panel, "SettingsLanguage");
-            SettingsWorkspaceTile governanceInsane = SettingsTile(panel, "SettingsGovernanceInsane");
             SettingsWorkspaceTile aiTuning = SettingsTile(panel, "SettingsAiTuning");
-            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || governanceInsane == null || aiTuning == null)
+            if (settingsWorkspaceTile == null || settingsWorkspaceTile2 == null || settingsWorkspaceTile3 == null || settingsWorkspaceTile4 == null || aiTuning == null)
             {
                 return;
             }
@@ -870,13 +869,10 @@ namespace PaviseApp
             settingsWorkspaceTile2.BottomSeparator = true;
             settingsWorkspaceTile3.BottomSeparator = true;
             settingsWorkspaceTile4.BottomSeparator = true;
-            governanceInsane.SetBounds(0, top, width, governanceInsane.MeasureHeight(width));
-            top = governanceInsane.Bottom;
-            governanceInsane.BottomSeparator = true;
             aiTuning.SetBounds(0, top, width, aiTuning.MeasureHeight(width));
             top = aiTuning.Bottom;
             aiTuning.BottomSeparator = false;
-            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, governanceInsane, aiTuning };
+            SettingsWorkspaceTile[] settingsWorkspaceTileItems2 = { settingsWorkspaceTile, settingsWorkspaceTile2, settingsWorkspaceTile3, settingsWorkspaceTile4, aiTuning };
             foreach (SettingsWorkspaceTile settingsWorkspaceTile8 in settingsWorkspaceTileItems2)
             {
                 settingsWorkspaceTile8.ArrangeContent();
@@ -931,106 +927,85 @@ namespace PaviseApp
         }
         private void LayoutWhitelistViewport()
         {
-            if (whiteArranging || pageWhitelist == null || whitePanel == null || whitePanel.IsDisposed)
+            if (whiteArranging || pageWhitelist == null || processRulesTabs == null || focusSection == null
+                || whiteContent == null || whiteContent.IsDisposed)
             {
                 return;
             }
             whiteArranging = true;
             pageWhitelist.SuspendLayout();
-            Point point = new Point(Math.Max(0, -pageWhitelist.AutoScrollPosition.X), Math.Max(0, -pageWhitelist.AutoScrollPosition.Y));
+            int scrollY = Math.Max(0, -pageWhitelist.AutoScrollPosition.Y);
             try
             {
-                for (int i = 0; i < 2; i++)
+                for (int attempt = 0; attempt < 2; attempt++)
                 {
-                    int width = pageWhitelist.ClientSize.Width;
-                    int uLimit = Math.Max(280, Dpi.U(width));
-                    int uLimit2 = Math.Max(1, Dpi.U(pageWhitelist.ClientSize.Height));
-                    int layoutWhitelistViewportValue = ((uLimit < 600) ? 16 : 24);
-                    int remainingULimit = uLimit - layoutWhitelistViewportValue * 2;
-                    int layoutWhitelistViewportValue2 = 10;
-                    bool wideLayout = uLimit >= 920;
-                    bool mediumLayout = uLimit >= 660;
-                    int layoutWhitelistViewportValue3 = 16;
-                    int layoutWhitelistViewportValue4;
-                    if (wideLayout)
+                    int clientWidth = pageWhitelist.ClientSize.Width;
+                    int width = Dpi.U(clientWidth);
+                    int margin = width < 600 ? 16 : 24;
+                    int contentWidth = Math.Max(1, width - margin * 2);
+                    const int tabsTop = 16, actionHeight = 38, actionGap = 6, menuWidth = 36;
+                    int tabWidth = Math.Min(contentWidth, 360);
+                    int tabHeight = (int)Math.Ceiling(processRulesTabs.WrappedHeightFor(Theme.S(tabWidth)) / Dpi.Scale);
+                    WhiteBounds(processRulesTabs, margin, tabsTop, tabWidth, tabHeight);
+
+                    int contentTop = tabsTop + Math.Max(tabHeight, actionHeight) + 12;
+                    int minContentHeight;
+                    if (processRulesTabIndex == 0)
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, 200, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue + 212, layoutWhitelistViewportValue3, 280, 38);
-                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + 504, layoutWhitelistViewportValue3, Math.Max(1, remainingULimit - 866), 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 350, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteKeyword, uLimit - layoutWhitelistViewportValue - 214, layoutWhitelistViewportValue3, 112, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 92, layoutWhitelistViewportValue3, 92, 38);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 38 + 12;
-                    }
-                    else if (mediumLayout)
-                    {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit - 362, 38);
-                        WhiteBounds(whitePick, uLimit - layoutWhitelistViewportValue - 350, layoutWhitelistViewportValue3, 126, 38);
-                        WhiteBounds(whiteKeyword, uLimit - layoutWhitelistViewportValue - 214, layoutWhitelistViewportValue3, 112, 38);
-                        WhiteBounds(whiteBrowse, uLimit - layoutWhitelistViewportValue - 92, layoutWhitelistViewportValue3, 92, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, Math.Min(330, remainingULimit - 100), 34);
-                        WhiteBounds(whiteCount, layoutWhitelistViewportValue + Math.Min(330, remainingULimit - 100) + 12, layoutWhitelistViewportValue3 + 48, Math.Max(1, remainingULimit - 342), 34);
-                        layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 94;
+                        int pickWidth = Math.Max(126, Dpi.U(TextRenderer.MeasureText(whitePick.Text, DsType.Font(DsText.Body, true)).Width) + 20);
+                        int actionsLeft = contentWidth - pickWidth - actionGap - menuWidth;
+                        bool inlineActions = actionsLeft >= tabWidth + 16;
+                        int actionsTop = inlineActions ? tabsTop + Math.Max(0, tabHeight - actionHeight) / 2 : contentTop;
+                        WhiteBounds(whitePick, margin + actionsLeft, actionsTop, pickWidth, actionHeight);
+                        WhiteBounds(whiteAddMenuButton, margin + contentWidth - menuWidth, actionsTop, menuWidth, actionHeight);
+                        if (!inlineActions) contentTop += actionHeight + 8;
+
+                        bool compact = contentWidth < 560;
+                        minContentHeight = compact ? 244 : 202;
+                        int whiteHeight = Math.Max(minContentHeight, Dpi.U(pageWhitelist.ClientSize.Height) - contentTop - margin);
+                        WhiteBounds(whiteContent, margin, contentTop, contentWidth, whiteHeight);
+                        LayoutWhitelistContent(contentWidth, whiteHeight, compact);
                     }
                     else
                     {
-                        WhiteBounds(whiteSearchPanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue3, remainingULimit, 38);
-                        WhiteBounds(whiteFilters, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 48, remainingULimit, 34);
-                        if (uLimit >= 420)
-                        {
-                            int buttonWidth = (remainingULimit - layoutWhitelistViewportValue2 * 2) / 3;
-                            WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
-                            WhiteBounds(whiteKeyword, layoutWhitelistViewportValue + buttonWidth + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
-                            WhiteBounds(whiteBrowse, layoutWhitelistViewportValue + (buttonWidth + layoutWhitelistViewportValue2) * 2, layoutWhitelistViewportValue3 + 92, remainingULimit - (buttonWidth + layoutWhitelistViewportValue2) * 2, 34);
-                            layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 138;
-                        }
-                        else
-                        {
-                            int buttonWidth = (remainingULimit - layoutWhitelistViewportValue2) / 2;
-                            WhiteBounds(whitePick, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 92, buttonWidth, 34);
-                            WhiteBounds(whiteKeyword, layoutWhitelistViewportValue + buttonWidth + layoutWhitelistViewportValue2, layoutWhitelistViewportValue3 + 92, remainingULimit - buttonWidth - layoutWhitelistViewportValue2, 34);
-                            WhiteBounds(whiteBrowse, layoutWhitelistViewportValue, layoutWhitelistViewportValue3 + 136, remainingULimit, 34);
-                            layoutWhitelistViewportValue4 = layoutWhitelistViewportValue3 + 182;
-                        }
+                        minContentHeight = focusEntries.Length == 0 ? 166 : 238;
+                        int focusHeight = Math.Max(minContentHeight, Dpi.U(pageWhitelist.ClientSize.Height) - contentTop - margin);
+                        LayoutFocusSuppressionSection(margin, contentTop, contentWidth, focusHeight);
                     }
-                    whiteCount.Visible = (wideLayout || mediumLayout) && whiteCount.Width >= Theme.S(70);
-                    whiteSearch.SetBounds(Theme.S(40), Theme.S(10), Math.Max(1, whiteSearchPanel.Width - Theme.S(52)), Theme.S(24));
-                    bool compactContent = remainingULimit < 620;
-                    int layoutWhitelistViewportValue5 = (compactContent ? 82 : 36);
-                    int lowerBound = Math.Max(layoutWhitelistViewportValue4 + 152, uLimit2 - layoutWhitelistViewportValue - layoutWhitelistViewportValue5);
-                    WhiteBounds(whitePanel, layoutWhitelistViewportValue, layoutWhitelistViewportValue4, remainingULimit, lowerBound - layoutWhitelistViewportValue4 - 12);
-                    if (compactContent)
-                    {
-                        int ratio2 = (remainingULimit - layoutWhitelistViewportValue2) / 2;
-                        WhiteBounds(btnRestorePlatformProtection, layoutWhitelistViewportValue, lowerBound, ratio2, 34);
-                        WhiteBounds(whiteReset, layoutWhitelistViewportValue + ratio2 + layoutWhitelistViewportValue2, lowerBound, remainingULimit - ratio2 - layoutWhitelistViewportValue2, 34);
-                        WhiteBounds(btnRemoveWhitelist, uLimit - layoutWhitelistViewportValue - 88, lowerBound + 44, 88, 34);
-                        WhiteBounds(lblWhiteHint, layoutWhitelistViewportValue + 2, lowerBound + 44, Math.Max(1, remainingULimit - 104), 34);
-                    }
-                    else
-                    {
-                        WhiteBounds(btnRemoveWhitelist, uLimit - layoutWhitelistViewportValue - 88, lowerBound, 88, 36);
-                        WhiteBounds(whiteReset, uLimit - layoutWhitelistViewportValue - 206, lowerBound, 108, 36);
-                        WhiteBounds(btnRestorePlatformProtection, uLimit - layoutWhitelistViewportValue - 356, lowerBound, 140, 36);
-                        WhiteBounds(lblWhiteHint, layoutWhitelistViewportValue + 2, lowerBound, Math.Max(1, remainingULimit - 374), 36);
-                    }
-                    int v = lowerBound + layoutWhitelistViewportValue5 + layoutWhitelistViewportValue;
-                    bool autoScrollValue = Theme.S(v) > pageWhitelist.ClientSize.Height;
+
+                    int scrollHeight = Theme.S(contentTop + minContentHeight + margin);
+                    bool needsScroll = scrollHeight > pageWhitelist.ClientSize.Height;
                     pageWhitelist.AutoScrollMargin = Size.Empty;
-                    pageWhitelist.AutoScrollMinSize = (autoScrollValue ? new Size(0, Theme.S(v)) : Size.Empty);
-                    pageWhitelist.AutoScroll = autoScrollValue;
-                    if (width == pageWhitelist.ClientSize.Width)
-                    {
-                        break;
-                    }
+                    pageWhitelist.AutoScrollMinSize = needsScroll ? new Size(0, scrollHeight) : Size.Empty;
+                    pageWhitelist.AutoScroll = needsScroll;
+                    if (clientWidth == pageWhitelist.ClientSize.Width) break;
                 }
-                pageWhitelist.AutoScrollPosition = new Point(point.X, Math.Min(point.Y, DockScrollLimit(pageWhitelist)));
+                pageWhitelist.AutoScrollPosition = new Point(0, Math.Min(scrollY, DockScrollLimit(pageWhitelist)));
             }
             finally
             {
                 pageWhitelist.ResumeLayout(true);
                 whiteArranging = false;
             }
+        }
+        private void LayoutWhitelistContent(int width, int height, bool compact)
+        {
+            const int gap = 10, menuWidth = 36, footerHeight = 34;
+            int searchWidth = compact ? width - menuWidth - gap : 200;
+            SetOverviewBounds(whiteSearchPanel, 0, 0, searchWidth, 38);
+            whiteSearch.SetBounds(Theme.S(40), Theme.S(10), Math.Max(1, whiteSearchPanel.Width - Theme.S(52)), Theme.S(24));
+            SetOverviewBounds(whiteMoreButton, width - menuWidth, 0, menuWidth, 38);
+            SetOverviewBounds(whiteFilters, compact ? 0 : searchWidth + 12, compact ? 48 : 0, compact ? width : 280, 38);
+
+            int listTop = compact ? 96 : 50;
+            int footerTop = height - footerHeight;
+            SetOverviewBounds(whitePanel, 0, listTop, width, footerTop - listTop - gap);
+            int countWidth = Math.Min(122, width / 3);
+            int removeWidth = Math.Max(96, Dpi.U(TextRenderer.MeasureText(btnRemoveWhitelist.Text, btnRemoveWhitelist.Font).Width) + 20);
+            SetOverviewBounds(whiteCount, 2, footerTop, countWidth, footerHeight);
+            lblWhiteHint.Visible = width >= 400;
+            SetOverviewBounds(lblWhiteHint, countWidth + 12, footerTop, width - countWidth - removeWidth - 22, footerHeight);
+            SetOverviewBounds(btnRemoveWhitelist, width - removeWidth, footerTop, removeWidth, footerHeight);
         }
         private void LayoutWorkspaceViewport()
         {

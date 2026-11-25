@@ -47,7 +47,7 @@ namespace PaviseApp
         }
 
         internal HashSet<int> MatchingProcesses(IList<GameProfile> configured, ProcessSnapshot snapshot,
-            int selfPid, int ownerSession, bool forceFamilyProtection)
+            int selfPid, int ownerSession, bool forceFamilyProtection, ProcEntry[] entries = null)
         {
             var result = new HashSet<int>();
             if (configured == null || snapshot == null || ownerSession < 0) return result;
@@ -69,7 +69,7 @@ namespace PaviseApp
                 }
             }
             // 只为本次不可变证据建立索引 每个成员仍匹配同一快照中的创建时间 路径和会话
-            foreach (ProcEntry process in snapshot.Entries)
+            foreach (ProcEntry process in entries ?? snapshot.Entries)
             {
                 if (process.Pid <= 4 || process.Pid == selfPid || process.Session != ownerSession
                     || process.Creation <= 0 || string.IsNullOrEmpty(process.Path)) continue;

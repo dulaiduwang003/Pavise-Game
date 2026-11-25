@@ -41,35 +41,10 @@ namespace PaviseApp
             Volatile.Write(ref backgroundCoreReservation, new BackgroundCoreReservation(source, owner, criticalSession, plan, physical));
         }
 
-        // 自动模式的软放置没有硬绑定会话 只记来源和关键角色所在的整颗物理核 提示全部失效或退局时撤回
-        private sealed class SoftCoreReservation
-        {
-            internal readonly CriticalRuntimeSource Source;
-            internal readonly ulong PhysicalMask;
-            internal SoftCoreReservation(CriticalRuntimeSource source, ulong physicalMask) { Source = source; PhysicalMask = physicalMask; }
-        }
-
-        private SoftCoreReservation softCoreReservation;
-
-        // chosen 是仍有效的提示指向的逻辑 CPU 预留它们所在的整颗物理核
-        private void PublishSoftCoreReservation(CriticalRuntimeSource source, ulong chosen)
-        {
-            ulong physical = 0;
-            foreach (ulong core in CpuTopology.PhysicalCoreMasks()) if ((core & chosen) != 0) physical |= core;
-            Volatile.Write(ref softCoreReservation, physical == 0 ? null : new SoftCoreReservation(source, physical));
-        }
-
-        private void ClearSoftCoreReservation() { Volatile.Write(ref softCoreReservation, null); }
-
         private ulong GameBackgroundReservedCores()
         {
             BackgroundCoreReservation reservation = Volatile.Read(ref backgroundCoreReservation);
-            if (reservation == null)
-            {
-                SoftCoreReservation soft = Volatile.Read(ref softCoreReservation);
-                return soft != null && ReservationSourceCurrent(soft.Source) ? soft.PhysicalMask : 0;
-            }
-            if (reservation.Owner.Revoked
+            if (reservation == null || reservation.Owner.Revoked
                 || !object.ReferenceEquals(reservation.Owner, criticalOriginalTarget)
                 || !object.ReferenceEquals(reservation.Session, criticalSession)
                 || !object.ReferenceEquals(reservation.Plan, criticalPlan)

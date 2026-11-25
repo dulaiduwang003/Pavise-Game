@@ -343,6 +343,19 @@ namespace PaviseApp
             return true;
         }
 
+        internal static bool TryGetProcessCreation(IntPtr handle, out long creation)
+        {
+            long exit;
+            long kernel;
+            long user;
+            if (GetProcessTimes(handle, out creation, out exit, out kernel, out user) && creation > 0)
+            {
+                return true;
+            }
+            creation = 0L;
+            return false;
+        }
+
         internal static int QueryProcessIdentityState(IntPtr handle, long expectedCreation)
         {
             long creation;

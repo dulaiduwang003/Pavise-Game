@@ -65,6 +65,10 @@ namespace PaviseApp
             {
                 return Cancelled(out nativeStatus);
             }
+            if (options.FreeMegabytes == 0)
+            {
+                return StandbyCleanerResult.BelowThreshold;
+            }
             bool tryQuery;
             try
             {

@@ -17,7 +17,7 @@ namespace PaviseApp
             CriticalThreadRule initial = CriticalThreadRule.ParseForRuntime(expected);
             using (var dialog = new RenderAffinityDialog(profile, initial,
                 (rule, resource) => gameMode.SaveRenderSchedulingConfiguration(profile.Id, expected, expectedResource, expectedResourceEnabled, rule, resource), null, RenderAffinityDisabledStatus(profile),
-                gameMode.LastSchedulingEvidence(profile.Id)))
+                gameMode.LastSchedulingEvidence(profile.Id, false), gameMode.LastSchedulingEvidence(profile.Id, true)))
                 dialog.ShowDialog(LibraryDialogOwner);
             criticalThreadExpected = CriticalThreadRule.Raw(FindLibraryProfile(profile.Id));
             criticalThreadError = null;
@@ -29,7 +29,8 @@ namespace PaviseApp
             // 启停由外层开关管理 分别说明全局和逐游戏停用状态
             if (PolicyResolver.GlobalValue(PolicyCatalog.KeyGameScheduling) != "1")
                 return Lang.T("gm.scheduling.masteroff");
-            if (PolicyResolver.For(profile).ValueOf(PolicyCatalog.KeyGameScheduling) != "1")
+            CriticalThreadRule stored = CriticalThreadRule.Parse(CriticalThreadRule.Raw(profile));
+            if (PolicyResolver.For(profile).ValueOf(PolicyCatalog.KeyGameScheduling) != "1" || stored == null || !stored.IsUnifiedPreference || stored.IsRetiredAutomatic)
                 return Lang.T("gm.scheduling.gameoff");
             return null;
         }
@@ -55,10 +56,11 @@ namespace PaviseApp
             string conflict = GameMode.ValidateCriticalPreference(draft);
             if (conflict == null)
                 return gameMode.SaveCoreConfiguration(profile.Id, expectedPlan, expectedRule, expectedEnabled, plan, enabled, initial, null, false, null, switchDraft);
-            string explanation = ThreadUi("新核心范围和渲染线程亲和性已选的 CPU 冲突。请在下面重新选核、改为自动，或关闭渲染线程亲和性后保存。\n", "The new CPU range conflicts with the CPUs chosen for render thread affinity. Choose other CPUs below, switch to Automatic, or turn render thread affinity off to save.\n") + Lang.T(conflict);
+            string explanation = ThreadUi("新核心范围和渲染线程亲和性已选的 CPU 冲突。请在下面重新选核、改为渲染单核，或关闭渲染线程亲和性后保存。\n", "The new CPU range conflicts with the CPUs chosen for render thread affinity. Choose other CPUs below, switch to Single render core, or turn render thread affinity off to save.\n") + Lang.T(conflict);
             using (var dialog = new RenderAffinityDialog(draft, initial, (rule, resource) =>
                 gameMode.SaveCoreConfiguration(profile.Id, expectedPlan, expectedRule, expectedEnabled, plan, enabled, rule,
-                    expectedResource, expectedResourceEnabled, resource, switchDraft), explanation, RenderAffinityDisabledStatus(draft)))
+                    expectedResource, expectedResourceEnabled, resource, switchDraft), explanation, RenderAffinityDisabledStatus(draft),
+                gameMode.LastSchedulingEvidence(profile.Id, false), gameMode.LastSchedulingEvidence(profile.Id, true)))
             {
                 if (dialog.ShowDialog(LibraryDialogOwner) != DialogResult.OK)
                     return ThreadUi("已取消核心范围修改", "CPU range change cancelled");

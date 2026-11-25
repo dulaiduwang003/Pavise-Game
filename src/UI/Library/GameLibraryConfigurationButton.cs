@@ -51,7 +51,9 @@ namespace PaviseApp
 
         private bool modalPresentation;
 
-        internal bool Attention;
+        internal string AttentionGlyph;
+
+        internal bool Attention { get { return !string.IsNullOrEmpty(AttentionGlyph); } }
 
         internal bool ModalPresentation
         {
@@ -132,7 +134,7 @@ namespace PaviseApp
                     new Point(0, base.Height - Theme.S(5))
                 });
             }
-            Glyphs.Draw(graphics, Attention ? "lol" : "settings", new Rectangle(Theme.S(13), (base.Height - Theme.S(15)) / 2, Theme.S(15), Theme.S(15)), Attention ? accent : (expanded ? Theme.Accent : Theme.Dim));
+            Glyphs.Draw(graphics, Attention ? AttentionGlyph : "settings", new Rectangle(Theme.S(13), (base.Height - Theme.S(15)) / 2, Theme.S(15), Theme.S(15)), Attention ? accent : (expanded ? Theme.Accent : Theme.Dim));
             TextRenderer.DrawText(graphics, Text, Font, new Rectangle(Theme.S(38), 0, Math.Max(1, base.Width - Theme.S(74)), base.Height), ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             int remainingWidth = base.Width - Theme.S(19);
             int heightRatio = base.Height / 2;

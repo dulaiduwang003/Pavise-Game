@@ -55,7 +55,7 @@ namespace PaviseApp
             long session = Interlocked.Read(ref gameSessionStarts);
             NvDrsTweaks.SyncAutomaticPhase(path, session, plan.AutomaticKey);
             string cycle = session + "\n" + plan.AutomaticKey;
-            foreach (string action in new[] { "NvDriverProfile", "NvMaxPerf", "NvShaderCache", "NvRebar" })
+            foreach (string action in new[] { "NvDriverProfile", "NvMaxPerf", "NvShaderCache", "NvRebar", PolicyCatalog.KeyGameLowLatency })
                 ActionFailureStore.BeginAutomaticCycle(action, Path.GetFileName(path), cycle);
         }
 

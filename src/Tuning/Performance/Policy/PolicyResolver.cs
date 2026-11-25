@@ -112,13 +112,12 @@ namespace PaviseApp
             return StoredSchedulingRule(profile);
         }
 
-        // 亲和性打开时这款游戏要运行的模式 不看开关本身 未保存或旧布局的配置走缺省的自动
-        // 只调优先级的旧方案和已退役对照由解析器明确停用 不能按缺省规则重新启用 损坏的规则返回 null
+        // 读取运行规则 不看开关 未保存模式和旧布局按关闭处理
         internal static CriticalThreadRule StoredSchedulingRule(GameProfile profile)
         {
             string raw = CriticalThreadRule.Raw(profile);
             return raw == null || !raw.StartsWith("7|", StringComparison.Ordinal)
-                ? CriticalThreadRule.UnifiedDefault() : CriticalThreadRule.ParseForRuntime(raw);
+                ? CriticalThreadRule.UnifiedOff() : CriticalThreadRule.ParseForRuntime(raw);
         }
 
         internal static string GlobalValue(string key)
@@ -154,6 +153,7 @@ namespace PaviseApp
             case AntiCheatSuppressionPolicy.Key:
             case "GmAutoCoresV2":
             case "GameNvRebarV1":
+            case PolicyCatalog.KeyGameLowLatency:
             case "GameDisableFullscreenOptimizationsV1":
             case PolicyCatalog.KeyGameControlFlowGuard:
                 return "0";
@@ -174,6 +174,10 @@ namespace PaviseApp
             if (key == "GmThreadBoostStrategyV1")
             {
                 return ThreadBoostSelection.RawGlobal;
+            }
+            if (key == PolicyCatalog.KeyBackgroundGovernance)
+            {
+                return BackgroundGovernancePolicy.Text(BackgroundGovernancePolicy.Load());
             }
             PolicyItem policyItem = PolicyCatalog.ItemOf(key);
             if (policyItem == null)

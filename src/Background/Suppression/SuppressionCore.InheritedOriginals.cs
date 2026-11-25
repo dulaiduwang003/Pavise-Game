@@ -7,9 +7,8 @@ namespace PaviseApp
     {
         private const uint IdlePriorityClass = 0x40, BelowNormalPriorityClass = 0x4000, NormalPriorityClass = 0x20;
 
-        // 父进程优先级是 Idle 或低于正常时 新建的子进程会继承它 I/O 和页面优先级也照搬父进程当时的值 EcoQoS 不继承 2026-11-19 实测过
-        // 父进程正被本方压着时新建的子进程 读到的当前值是继承来的 不能当原值 否则释放时写回的还是被压的值
-        // 父进程必须是本方条目且原值已知 早于子进程创建 现在仍是同一个进程 并且它的当前值确实不同于原值 才改用父进程的原值
+        // 子进程继承父进程的低优先级和资源优先级
+        // 只向创建于压制期间的子进程传递已知原值
         private void AdoptInheritedOriginalsLocked(IntPtr child, int childPid, long childCreation, ref uint priority, ref int ioPriority, ref int pagePriority)
         {
             if (childCreation <= 0) return;
@@ -24,11 +23,13 @@ namespace PaviseApp
                 long creation, cpu;
                 ulong io;
                 if (!Native.QueryProcessSample(handle, out creation, out cpu, out io) || creation != parent.Creation) return;
-                uint parentPriority = Native.GetPriorityClass(handle);
+                uint originalPriority = OriginalPriorityForInheritance(parent);
+                uint parentPriority = priority == IdlePriorityClass || priority == BelowNormalPriorityClass
+                    ? RestorablePressedPriority(handle, parent) : 0;
                 int parentIo = Native.QueryIoPriority(handle);
                 int parentPage = Native.QueryPagePriority(handle);
-                if ((priority == IdlePriorityClass || priority == BelowNormalPriorityClass) && priority == parentPriority && parentPriority != parent.OrigPri)
-                    priority = ChildPriorityOf(parent.OrigPri);
+                if (parentPriority != 0 && priority == parentPriority && parentPriority != originalPriority)
+                    priority = ChildPriorityOf(originalPriority);
                 if (parent.OrigIo >= 0 && parentIo >= 0 && ioPriority == parentIo && parentIo != parent.OrigIo) ioPriority = parent.OrigIo;
                 if (parent.OrigPg >= 0 && parentPage >= 0 && pagePriority == parentPage && parentPage != parent.OrigPg) pagePriority = parent.OrigPg;
             }
@@ -43,21 +44,111 @@ namespace PaviseApp
         // 空着表示不处理没登记过的子孙
         internal static Func<int, long, long, List<KeyValuePair<int, long>>> InheritanceCandidates;
 
-        // 本方没登记过的子孙 比如受保护的或扫描没覆盖到的 也从被压的父进程那里继承了值 父进程写回时一并写回
-        // 只写当前值正好等于父进程被压值的那几项 子进程自己后来改过的不动
-        private void RestoreInheritedDescendants(int pid, Entry parent, uint pressedPriority, int pressedIo, int pressedPage)
+        internal void RestoreProtectedChildInheritance(ProcEntry child)
+        {
+            int parentPid = child.ParentPid;
+            if (child.Creation <= 0 || parentPid <= 4 || parentPid == child.Pid) return;
+            string parentName;
+            lock (sync)
+            {
+                Entry parent, trackedChild;
+                if (!map.TryGetValue(parentPid, out parent) || !parent.Applied || parent.RestoreInFlight
+                    || (parent.Reasons & SuppressReason.Background) == 0 || parent.OrigPri == uint.MaxValue
+                    || parent.Creation <= 0 || child.Creation <= parent.Creation
+                    || parent.PressedSince <= 0 || child.Creation <= parent.PressedSince) return;
+                if (map.TryGetValue(child.Pid, out trackedChild) && trackedChild.Creation == child.Creation) return;
+                if (!string.IsNullOrEmpty(child.Path) && !InheritedDescendants.CanRestore(child)) return;
+                // 同一进程身份在父进程本次受压期间只检查一次
+                long checkedCreation;
+                if (parent.InheritanceChecks == null) parent.InheritanceChecks = new Dictionary<int, long>();
+                if (parent.InheritanceChecks.TryGetValue(child.Pid, out checkedCreation) && checkedCreation == child.Creation) return;
+                parent.InheritanceChecks[child.Pid] = child.Creation;
+
+                IntPtr handle = Native.OpenProcess(0x1000, false, parentPid);
+                if (handle == IntPtr.Zero) return;
+                InheritedPriorities inherited;
+                try
+                {
+                    if (Native.QueryProcessIdentityState(handle, parent.Creation) != 0) return;
+                    uint expectedPriority = parent.OrdinaryValues ? IdlePriorityClass : DesiredPriority(parent.Level, parent.OrigPri, false);
+                    int expectedIo = DesiredIoPriority(parent.Level);
+                    int expectedPage = DesiredPagePriority(parent.Level, false);
+                    inherited = new InheritedPriorities(parent, OriginalPriorityForInheritance(parent),
+                        RestorablePressedPriority(handle, parent) == expectedPriority ? expectedPriority : 0,
+                        Native.QueryIoPriority(handle) == expectedIo ? expectedIo : -1,
+                        Native.QueryPagePriority(handle) == expectedPage ? expectedPage : -1);
+                }
+                finally { Native.CloseHandle(handle); }
+                if (!inherited.HasChanges || !RestoreInheritedChild(child.Pid, child.Creation, inherited, child)) return;
+                parentName = parent.Name;
+            }
+            Logger.Info(Logger.Format("后台治理 写回受保护子进程继承的压制值：进程={0} 编号={1} 父进程={2}",
+                "Background control wrote back suppressed priorities inherited by a protected child: process={0} pid={1} parent={2}", child.Name, child.Pid, parentName));
+        }
+
+        private uint OriginalPriorityForInheritance(Entry entry)
+        { return FocusPriorityStillOwned(entry) ? entry.FocusJob.Priority : entry.OrigPri; }
+
+        private InheritedPriorities ReadInheritedPriorities(IntPtr handle, Entry entry)
+        {
+            lock (sync)
+            {
+                return new InheritedPriorities(entry, OriginalPriorityForInheritance(entry), RestorablePressedPriority(handle, entry),
+                    Native.QueryIoPriority(handle), Native.QueryPagePriority(handle));
+            }
+        }
+
+        private struct InheritedPriorities
+        {
+            internal readonly uint OriginalPriority, PressedPriority;
+            internal readonly int OriginalIo, PressedIo, OriginalPage, PressedPage;
+
+            internal InheritedPriorities(Entry parent, uint originalPriority, uint priority, int io, int page)
+            {
+                OriginalPriority = ChildPriorityOf(originalPriority);
+                OriginalIo = parent.OrigIo;
+                OriginalPage = parent.OrigPg;
+                PressedPriority = (priority == IdlePriorityClass || priority == BelowNormalPriorityClass) && priority != originalPriority ? priority : 0;
+                PressedIo = OriginalIo >= 0 && io >= 0 && io != OriginalIo ? io : -1;
+                PressedPage = OriginalPage >= 0 && page >= 0 && page != OriginalPage ? page : -1;
+            }
+
+            internal bool HasChanges { get { return PressedPriority != 0 || PressedIo >= 0 || PressedPage >= 0; } }
+        }
+
+        // 只写当前值等于父进程被压值的项 子进程自己改过的项保留
+        private static bool RestoreInheritedChild(int pid, long birth, InheritedPriorities inherited, ProcEntry protectedChild = null)
+        {
+            IntPtr handle = Native.OpenProcess(0x1200, false, pid);
+            if (handle == IntPtr.Zero) return false;
+            try
+            {
+                if (Native.QueryProcessIdentityState(handle, birth) != 0) return false;
+                if (protectedChild != null && (Native.ParentProcessId(handle) != protectedChild.ParentPid
+                    || (string.IsNullOrEmpty(protectedChild.Path)
+                        && !InheritedDescendants.CanRestore(protectedChild.Session, protectedChild.Name, Native.ImagePath(handle))))) return false;
+                bool wrote = false;
+                if (inherited.PressedPriority != 0 && Native.GetPriorityClass(handle) == inherited.PressedPriority)
+                    wrote |= Native.SetPriorityClass(handle, inherited.OriginalPriority) && Native.GetPriorityClass(handle) == inherited.OriginalPriority;
+                if (inherited.PressedIo >= 0 && Native.QueryIoPriority(handle) == inherited.PressedIo)
+                    wrote |= Native.TrySetIoPriority(handle, inherited.OriginalIo) && Native.QueryIoPriority(handle) == inherited.OriginalIo;
+                if (inherited.PressedPage >= 0 && Native.QueryPagePriority(handle) == inherited.PressedPage)
+                    wrote |= Native.TrySetPagePriority(handle, inherited.OriginalPage) && Native.QueryPagePriority(handle) == inherited.OriginalPage;
+                return wrote;
+            }
+            finally { Native.CloseHandle(handle); }
+        }
+
+        // 父进程写回时同时处理没有单独登记的子孙
+        private void RestoreInheritedDescendants(int pid, Entry parent, InheritedPriorities inherited)
         {
             Func<int, long, long, List<KeyValuePair<int, long>>> source = InheritanceCandidates;
             if (source == null || parent.PressedSince <= 0 || parent.OrigPri == uint.MaxValue || parent.Creation <= 0) return;
-            bool priorityPressed = (pressedPriority == IdlePriorityClass || pressedPriority == BelowNormalPriorityClass) && pressedPriority != parent.OrigPri;
-            bool ioPressed = parent.OrigIo >= 0 && pressedIo >= 0 && pressedIo != parent.OrigIo;
-            bool pagePressed = parent.OrigPg >= 0 && pressedPage >= 0 && pressedPage != parent.OrigPg;
-            if (!priorityPressed && !ioPressed && !pagePressed) return;
+            if (!inherited.HasChanges) return;
             List<KeyValuePair<int, long>> candidates;
             try { candidates = source(pid, parent.Creation, parent.PressedSince); }
             catch (Exception) { return; }
             if (candidates == null || candidates.Count == 0) return;
-            uint childPriority = ChildPriorityOf(parent.OrigPri);
             int restored = 0;
             foreach (KeyValuePair<int, long> candidate in candidates)
             {
@@ -67,20 +158,7 @@ namespace PaviseApp
                     Entry tracked;
                     if (map.TryGetValue(candidate.Key, out tracked) && tracked.Creation == candidate.Value) continue;
                 }
-                IntPtr handle = Native.OpenProcess(0x1200, false, candidate.Key);
-                if (handle == IntPtr.Zero) continue;
-                try
-                {
-                    long creation, cpu;
-                    ulong io;
-                    if (!Native.QueryProcessSample(handle, out creation, out cpu, out io) || creation != candidate.Value) continue;
-                    bool wrote = false;
-                    if (priorityPressed && Native.GetPriorityClass(handle) == pressedPriority) wrote |= Native.SetPriorityClass(handle, childPriority);
-                    if (ioPressed && Native.QueryIoPriority(handle) == pressedIo) wrote |= Native.TrySetIoPriority(handle, parent.OrigIo);
-                    if (pagePressed && Native.QueryPagePriority(handle) == pressedPage) wrote |= Native.TrySetPagePriority(handle, parent.OrigPg);
-                    if (wrote) restored++;
-                }
-                finally { Native.CloseHandle(handle); }
+                if (RestoreInheritedChild(candidate.Key, candidate.Value, inherited)) restored++;
             }
             if (restored > 0) Logger.Info(Logger.Format("后台治理 写回继承了压制值的子进程：父进程={0} 进程数={1}", "Background control wrote back children that inherited suppressed values: parent={0} processes={1}", parent.Name, restored));
         }

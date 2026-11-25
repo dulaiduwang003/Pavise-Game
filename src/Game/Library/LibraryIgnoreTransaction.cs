@@ -25,7 +25,9 @@ namespace PaviseApp
 
         private readonly GameProfileStore store;
 
-        internal bool RecoveryPending { get; private set; }
+        private volatile bool recoveryPending;
+
+        internal bool RecoveryPending { get { return recoveryPending; } private set { recoveryPending = value; } }
 
 #if PAVISE_SELFTEST
         internal Action<string> BeforeWriteForTest;

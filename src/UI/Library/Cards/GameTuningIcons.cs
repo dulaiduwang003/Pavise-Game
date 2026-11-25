@@ -67,6 +67,13 @@ namespace PaviseApp
                             new PointF(17f, 22f)
                         });
                         break;
+                    // 秒表 表示缩短排队
+                    case "lowlatency":
+                        g.DrawEllipse(pen, 4, 6, 16, 16);
+                        g.DrawLine(pen, 9, 2, 15, 2);
+                        g.DrawLine(pen, 12, 2, 12, 6);
+                        g.DrawLine(pen, 12, 14, 16, 10);
+                        break;
                     case "fullscreen":
                         g.DrawRectangle(pen, 2, 3, 20, 18);
                         g.DrawLine(pen, 2, 7, 22, 7);

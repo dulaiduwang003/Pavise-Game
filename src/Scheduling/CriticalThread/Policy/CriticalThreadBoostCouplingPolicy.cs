@@ -5,29 +5,6 @@ namespace PaviseApp
     internal static class CriticalThreadBoostCouplingPolicy
     {
 
-        internal static bool FrameAssociated(HardThreadChoice[] choices, CriticalThreadRoleFact[] roles)
-        {
-            if (choices == null || roles == null)
-            {
-                return false;
-            }
-            foreach (HardThreadChoice hardThreadChoice in choices)
-            {
-                if (hardThreadChoice == null || hardThreadChoice.Thread == null)
-                {
-                    continue;
-                }
-                foreach (CriticalThreadRoleFact criticalThreadRoleFact in roles)
-                {
-                    if (criticalThreadRoleFact != null && criticalThreadRoleFact.Tid == hardThreadChoice.Thread.Tid && criticalThreadRoleFact.Creation == hardThreadChoice.Thread.Creation)
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         internal static string Text(CriticalThreadBoostCoupling value, int tid)
         {
             switch (value)

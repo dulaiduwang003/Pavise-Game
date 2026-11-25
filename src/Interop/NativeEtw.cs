@@ -5,18 +5,17 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // 完整采集的原生前置处理 源码在 src/Native/PaviseEtw.cpp
-    // 正式构建（PAVISE_EMBEDDED_NATIVE）由 build.cmd 把原生代码链进 Pavise.exe 导出函数就在主模块里 不写出也不加载任何文件
-    // 测试构建只有 csc 没有链接这一步 仍把 NativeEtwImage.cs 里的 DLL 落盘后加载 落盘与核对见 NativeImageFile
-    // 完整采集只走这条路径 缺少原生代码 镜像损坏 写出失败 内容或接口不符 32 位进程时 完整采集直接失败并写明原因
-    // 不换回 C# 逐事件处理 只抓画面提交的轻量采集事件很少 仍由 C# 直接处理
+    // 完整采集和渲染规则采集的原生前置处理 源码见 src/Native/PaviseEtw.cpp
+    // 正式构建由 build.cmd 把原生代码链进 Pavise.exe
+    // 测试构建由 NativeImageFile 落盘核对并加载内嵌镜像
+    // 线程提优的轻量回退由 C# 直接处理
     internal static class NativeEtw
     {
         internal const string FileName = "PaviseEtw.dll";
-        internal const int Abi = 1;
+        internal const int Abi = 5;
 
         internal const byte KindSwitch = 1, KindReady = 2, KindPresent = 3, KindOrderReversed = 4,
-            KindSwitchShort = 5, KindReadyShort = 6, KindDiscontinuity = 7;
+            KindSwitchShort = 5, KindReadyShort = 6;
         internal const int FaultNone = 0, FaultSystemEvents = 1, FaultCpu = 2, FaultMemory = 3, FaultReader = 4, FaultRecords = 5;
 
         // 以下四个结构和 PaviseEtw.cpp 一一对应 加载时按 PvEtwLayout 报回的大小核对
@@ -28,7 +27,7 @@ namespace PaviseApp
             internal IntPtr Threads, ConsumerCpuMs, ReadProperty;
             internal int ThreadCount, EmergencySystemEvents, CpuCheckInterval, LayoutObservation;
             internal double EmergencyCaptureCpuMs, CallerCpuBeforeEvents;
-            internal int EmergencyRecords, Reserved;
+            internal int EmergencyRecords, PresenterOnly;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -306,7 +305,7 @@ namespace PaviseApp
         }
 
         internal static NativeEtwCapture Create(int pid, long begin, long end, ICollection<int> threads, bool layoutObservation, double callerCpuBeforeEvents,
-            Func<double> consumerCpuMs, Delegate propertyReader, out string failure)
+            Func<double> consumerCpuMs, Delegate propertyReader, out string failure, FrameLayoutCapture layout = FrameLayoutCapture.None)
         {
             NativeEtw.Api loaded = NativeEtw.Loaded;
             if (loaded == null) { failure = Logger.Format("原生事件处理不可用：{0}", "Native event processing unavailable: {0}", NativeEtw.Status); return null; }
@@ -331,7 +330,8 @@ namespace PaviseApp
                     EmergencySystemEvents = FrameCoordinationSampler.EmergencySystemEvents,
                     CpuCheckInterval = FrameCoordinationSampler.CpuCheckInterval,
                     EmergencyCaptureCpuMs = FrameCoordinationSampler.EmergencyCaptureCpuMs,
-                    CallerCpuBeforeEvents = callerCpuBeforeEvents, EmergencyRecords = EmergencyRecords };
+                    CallerCpuBeforeEvents = callerCpuBeforeEvents, EmergencyRecords = EmergencyRecords,
+                    PresenterOnly = layout == FrameLayoutCapture.Presenter ? 1 : 0 };
                 IntPtr created = loaded.Create(ref config);
                 if (created == IntPtr.Zero) { failure = Logger.Text("原生事件处理拒绝了采集参数或内存不足", "native event processing rejected the capture parameters or ran out of memory"); return null; }
                 capture.handle = created;

@@ -10,7 +10,8 @@ namespace PaviseApp {
         public static void SaveStr(string key, string value) { Values[key] = value; }
     }
     internal static class PortugueseLanguageChecks {
-        private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
+        private static int checks;
+        private static void Check(bool value, string message) { checks++; if (!value) throw new Exception(message); }
         private static bool Formats(string template) {
             object[] args = new object[100];
             for (int i = 0; i < args.Length; i++) args[i] = 1;
@@ -30,7 +31,28 @@ namespace PaviseApp {
             Lang.Cur = Lang.Chinese; Lang.Init();
             Check(Lang.Cur == Lang.Portuguese, "PT-BR must be restored on startup");
             Check(Lang.T("set.lang") == "Idioma", "Language label must be in Portuguese");
+            Check(Lang.T("mode.pick.competitive").Contains("controle permanece ativo ao sair da janela do jogo"),
+                "Competitive mode must describe retained background governance in Portuguese");
+            string governance = Lang.T("background.governance.detail");
+            Check(governance.Contains("o modo Inteligente libera o controle em segundo plano, e o modo Competitivo o mantém")
+                && governance.Contains("Agressivo limita cada processo comum em segundo plano a três núcleos lógicos e 10 MiB/s")
+                && governance.Contains("Normal é o padrão e não aplica limites de CPU ou disco")
+                && governance.Contains("Alterações posteriores do aplicativo nesses dois ajustes são preservadas")
+                && governance.Contains("Jogos, seus processos descendentes"),
+                "Background governance must describe limits, scene switch-out and protected game descendants in Portuguese");
+            Check(Lang.T("background.focus.title") == "Controle reforçado"
+                && Lang.F("background.focus.inactive", Lang.T("background.focus.reason.voice")).Contains("software de voz")
+                && Lang.T("background.focus.perprocess") == "Limite por processo"
+                && Lang.T("background.focus.description").Contains("por processo se o agrupamento falhar"),
+                "Focused suppression controls, summary and protection reasons must be translated");
+            Check(Lang.T("background.governance.badge.recommended") == "Recomendado",
+                "The Recommended badge must be translated in Portuguese");
             Check(Lang.T("lib.family.suppress") == "Limitar processos relacionados", "Renamed game family option must be in Portuguese");
+            string affinity = Lang.T("gm.scheduling.detail");
+            Check(affinity.Contains("Um núcleo de renderização") && affinity.Contains("Manual") && !affinity.Contains("Automático")
+                && Lang.TranslateEnglish("Single render core") == "Um núcleo de renderização"
+                && Lang.T("lib.threads.enable.default").Contains("Um núcleo de renderização"),
+                "Render affinity must present exactly the supported Portuguese modes and the new default");
             Check(Lang.DiagnosticLanguage == Lang.Chinese, "PT-BR diagnostics must select canonical Chinese");
             Check(Lang.TranslateEnglish("游戏库：已忽略 ") == "游戏库：已忽略 ", "Chinese diagnostic text must not be translated");
             Check(Lang.TranslateChinese("未命名游戏") == "Jogo sem nome", "Prompt descriptions must be translated");
@@ -90,7 +112,7 @@ namespace PaviseApp {
             Lang.Set(Lang.English); Check(Settings.LoadStr("Lang", "") == "en", "English setting changed");
             Check(Lang.TranslateChinese("未命名游戏") == "未命名游戏", "Other languages must preserve source prompt strings");
             Lang.Set(Lang.Chinese); Check(Settings.LoadStr("Lang", "") == "zh", "Chinese setting changed");
-            Console.WriteLine("PASS Portuguese language checks");
+            Console.WriteLine("PASS Portuguese language checks: " + checks + " checks");
         }
     }
 }

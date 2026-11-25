@@ -60,6 +60,7 @@ namespace PaviseApp
             {
             case "EnvCpuMitigationsV1":
             case "EnvAudioIdleV1":
+            case PerformanceActionCatalog.MultimediaProfile:
             case "EnvVbsDisabledV1":
             case "AutoGlobalTimer":
                 return true;
@@ -97,6 +98,7 @@ namespace PaviseApp
             case "GmAutoCoresV2":
             case "GameFamilyBackground":
             case "GameNvRebarV1":
+            case PolicyCatalog.KeyGameLowLatency:
             case AntiCheatSuppressionPolicy.Key:
                 return true;
             }

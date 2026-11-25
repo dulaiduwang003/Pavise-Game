@@ -35,6 +35,9 @@ namespace PaviseApp
 
         public const string KeyShaderOn = "shaderon";
 
+        // 预渲染帧上限 回执名和已删除的旧低延迟不同 旧回执照常丢弃
+        public const string KeyMaxFrames = "maxframes";
+
         private const char AppliedSep = '~';
 
         internal const string DriverFailureAction = "NvDriverProfile";
@@ -168,6 +171,8 @@ namespace PaviseApp
                 return 1343646814u;
             case "shaderon":
                 return 1675263u;
+            case "maxframes":
+                return 8102046u;
             default:
                 return 0u;
             }
@@ -233,6 +238,18 @@ namespace PaviseApp
             return false;
         }
 
+        internal static bool DriverAvailable()
+        {
+            try
+            {
+                return Driver.Available;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static bool DlssDriverSupported()
         {
             if (Driver.Available)
@@ -270,6 +287,10 @@ namespace PaviseApp
             {
                 list.Add(new KeyValuePair<string, uint>("shaderon", 1u));
                 list.Add(new KeyValuePair<string, uint>("shadercache", uint.MaxValue));
+            }
+            if (plan.LowLatency)
+            {
+                list.Add(new KeyValuePair<string, uint>("maxframes", 1u));
             }
             if (plan.Rebar)
             {
@@ -417,6 +438,8 @@ namespace PaviseApp
             case "rebaropt":
             case "rebarsize":
                 return "NvRebar";
+            case "maxframes":
+                return PolicyCatalog.KeyGameLowLatency;
             case "dlssovr":
             case "dlsspreset":
                 return "NvDlss";

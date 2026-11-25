@@ -269,6 +269,7 @@ namespace PaviseApp
             {
                 return;
             }
+            if (!string.Equals(selected.RendererPath, selected.Profile.ExecutablePath, StringComparison.OrdinalIgnoreCase)) return;
             int rendererForegroundPidResult = host.RendererForegroundPid();
             if ((rendererForegroundPidResult == selected.RendererPid) ? host.HasRendererObservation(selected.Profile) : host.RendererObservations.Has(selected.Profile.Id, selected.Profile.ExecutablePath))
             {

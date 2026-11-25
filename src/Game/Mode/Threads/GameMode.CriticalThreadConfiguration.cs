@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -26,14 +25,11 @@ namespace PaviseApp
                 criticalThreadUi = new CriticalThreadUiState(criticalThreadUiState.ProfileId, "recovery-pending", PerformancePolicy.Text("已停止新增绑定，正在核验原设置恢复", "Further bindings stopped; verifying restoration"), criticalThreadUiState.Enabled, false, true, criticalThreadUiState.Workers, criticalThreadUiState.SnapshotTicks, criticalThreadUiState.WorkerMask, criticalThreadUiState.CandidateMasks, criticalThreadUiState.CandidateLabels, criticalThreadUiState.SessionActive, criticalThreadUiState.RequestedWorkerAvoid, criticalThreadUiState.Coverage, criticalThreadUiState.SessionToken, criticalThreadUiState.GameSerial, criticalThreadUiState.IntentEpoch, criticalThreadUiState.TargetPid, criticalThreadUiState.TargetBirth, criticalThreadUiState.RuleSignature);
             }
         }
-        // 依赖组的零掩码表示仅授权优先级 不授权亲和性写入
-        private CriticalThreadTargetLease CreateCriticalThreadTarget(BoostPass pass, IntPtr process, CriticalThreadRule expectedRule, string expectedProfile, string expectedRawRule, ulong currentProcessMask, long expectedEpoch, long expectedSerial, bool priorityOnlySession = false)
+        private CriticalThreadTargetLease CreateCriticalThreadTarget(BoostPass pass, IntPtr process, CriticalThreadRule expectedRule, string expectedProfile, string expectedRawRule, ulong currentProcessMask, long expectedEpoch, long expectedSerial)
         {
-            bool identityOnly = expectedRule != null && expectedRule.IsDependencyBoost;
-            bool priorityOnly = identityOnly || priorityOnlySession && expectedRule != null && expectedRule.IsRenderStrategy && !expectedRule.IsTimeCriticalRender;
-            if (!Monitor.IsEntered(criticalProcessGate) || pass == null || process == IntPtr.Zero || expectedRule == null || expectedRule.IsOff || expectedRule.IsComparison
-                || !identityOnly && currentProcessMask == 0 || GetProcessId(process) != (uint)pass.RendererPid
-                || (!priorityOnly && (CpuTopology.MultiGroup || !CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)))
+            if (!Monitor.IsEntered(criticalProcessGate) || pass == null || process == IntPtr.Zero || expectedRule == null || !expectedRule.PinsRenderThread
+                || currentProcessMask == 0 || GetProcessId(process) != (uint)pass.RendererPid
+                || CpuTopology.MultiGroup || !CpuTopology.TopologySourcesAgree || CpuTopology.AllMaskReconciled)
             {
                 return null;
             }
@@ -50,7 +46,7 @@ namespace PaviseApp
             string imagePath = Native.ImagePath(process);
             ulong mask;
             if (string.IsNullOrEmpty(imagePath) || !GamePerformanceTargetPolicy.AllowsGameTarget(imagePath)
-                || !identityOnly && (!Native.TryQueryAffinity(process, out mask) || mask != currentProcessMask))
+                || !Native.TryQueryAffinity(process, out mask) || mask != currentProcessMask)
             {
                 return null;
             }
@@ -58,23 +54,19 @@ namespace PaviseApp
             {
                 GameDetection gameDetection = activeDetection;
                 GameProfile gameProfile = CriticalPreferenceProfileLocked(expectedProfile);
-                bool admits = expectedRule.IsUnified && expectedRule.Automatic
-                    ? expectedRule.Encode() == (PolicyResolver.GameSchedulingRule(gameProfile) == null ? null : PolicyResolver.GameSchedulingRule(gameProfile).Encode())
-                    : StoredRuleAdmits(expectedRawRule, expectedRule);
+                bool admits = expectedRule.Encode() == EffectiveGameSchedulingRaw(gameProfile);
                 if (!enabled || stopping || panicReq || !active || smartSwitchedOut || ProfileStoreSaveFailed || gameDetection == null || gameDetection.Profile == null || gameProfile == null || gameDetection.Profile.Id != gameProfile.Id || !gameDetection.RendererCandidateSelected || gameDetection.RendererSafetyOnly || gameDetection.RequiresGpuConfirm || gameDetection.RendererPid != pass.RendererPid || gameDetection.RendererCreation != currentCreation || !string.Equals(gameDetection.RendererPath, imagePath, StringComparison.OrdinalIgnoreCase) || EffectiveGameSchedulingRaw(gameProfile) != expectedRawRule || !admits || Interlocked.Read(ref criticalIntentEpoch) != expectedEpoch || gameSessionStarts != expectedSerial)
                 {
                     return null;
                 }
-                CriticalThreadAllowedRange criticalThreadAllowedRange = priorityOnly ? null : CriticalThreadAllowedRange.For(gameProfile);
-                if (!priorityOnly && criticalThreadAllowedRange.Error != null)
+                CriticalThreadAllowedRange criticalThreadAllowedRange = CriticalThreadAllowedRange.For(gameProfile);
+                if (criticalThreadAllowedRange.Error != null)
                 {
                     return null;
                 }
-                // 依赖组的零范围是没有亲和性授权 不是猜测进程可用核心 其他策略保留真实范围
-                ulong allowedThreadMask = identityOnly ? 0 : priorityOnly ? currentProcessMask : currentProcessMask & criticalThreadAllowedRange.Mask;
-                ulong reservedCores = priorityOnly ? 0 : AutoCores.WholeCores(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, CpuTopology.PhysicalCoreMasks());
-                string validationError = priorityOnly ? null
-                    : expectedRule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), allowedThreadMask, reservedCores, true);
+                ulong allowedThreadMask = currentProcessMask & criticalThreadAllowedRange.Mask;
+                ulong reservedCores = AutoCores.WholeCores(AutoCores.LiveAllocated() & ~CoreIsolationClient.ActiveMask, CpuTopology.PhysicalCoreMasks());
+                string validationError = expectedRule.Validate(allMask, CpuTopology.PhysicalCoreMasks(), allowedThreadMask, reservedCores, true);
                 if (validationError != null)
                 {
                     return null;
@@ -98,11 +90,8 @@ namespace PaviseApp
             }
             return false;
         }
-        private void WantCriticalRoles(CriticalRuntimeSource source, ThreadTimes snapshot)
+        private void WantCriticalRoles(CriticalRuntimeSource source)
         {
-            if (source.Rule.Layout != CriticalThreadLayout.Compatible) EnsureThreadLayoutCapture(source);
-            if (FrameCoordination.ReadCriticalRoles(source.Pid, source.Birth, snapshot, AutoCores.NowTicks)
-                .Any(fact => fact.Role == "presentation-associated") && !ThreadLayoutObservationWanted(source)) return;
             criticalRolesTouched = true;
             int pid = source.Pid;
             long birth = source.Birth;
@@ -111,7 +100,9 @@ namespace PaviseApp
             Func<bool> admitted = delegate
             {
                 GameDetection gameDetection = Volatile.Read(ref activeDetection);
-                return enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed && CriticalRolesWanted(pid, birth) && gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameDetection.RendererPid == pid && gameDetection.RendererCreation == birth && RendererForegroundPid() == pid;
+                return enabled && active && !stopping && !panicReq && !ProfileStoreSaveFailed
+                    && source.Epoch == Interlocked.Read(ref criticalIntentEpoch) && source.Serial == Interlocked.Read(ref gameSessionStarts)
+                    && CriticalRolesWanted(pid, birth) && gameDetection != null && gameDetection.RendererCandidateSelected && !gameDetection.RendererSafetyOnly && !gameDetection.RequiresGpuConfirm && gameDetection.RendererPid == pid && gameDetection.RendererCreation == birth && RendererForegroundPid() == pid;
             };
             FrameCoordination.EnsureObserver(pid, birth, source.Name, admitted);
         }
@@ -128,7 +119,7 @@ namespace PaviseApp
                 FrameCoordination.ReleaseObserver();
             }
         }
-        private void ResetCriticalAuto()
+        private void ResetCriticalRoles()
         {
             criticalRolesTouched = false;
             SettleCriticalRoles();
@@ -180,19 +171,9 @@ namespace PaviseApp
             {
                 return new CriticalThreadUiState(profileId, "off", PerformancePolicy.Text("未启用线程硬绑定", "Thread hard affinity is off"), false, false, false, 0, 0L, 0uL, null, null, false, false, CriticalThreadCoverageState.None, null, 0L, 0L, 0, 0L);
             }
-            string nextSessionDetail = criticalThreadRule.Layout != CriticalThreadLayout.Compatible
-                ? ThreadLayoutDescriptions.StrategyName(criticalThreadRule) + " · " + ThreadLayoutDescriptions.StrategyHint(criticalThreadRule)
-                : criticalThreadRule.Automatic
-                ? PerformancePolicy.Text("下次游戏运行时，对局稳定后自动识别关键线程，给它们指定优先运行的物理核，不锁定", "In the next game session, once play settles, the critical threads are identified and pointed at preferred physical cores without locking them")
-                : PerformancePolicy.Text("保存的规则在下次有效游戏会话中核验", "The saved rule is checked in the next valid game session");
+            string nextSessionDetail = ThreadLayoutDescriptions.StrategyName(criticalThreadRule) + " · " + ThreadLayoutDescriptions.StrategyHint(criticalThreadRule);
             return new CriticalThreadUiState(profileId, "waiting-game", nextSessionDetail, true, false, false, 0, 0L, 0uL, null, null, false, criticalThreadRule.WorkerAvoidance, CriticalThreadCoverageState.None, null, 0L, 0L, 0, 0L);
         }
-        private void TraceCriticalRuntime(string stage, string result, int pid, long started, bool forwardAttempt = false)
-        {
-            if (criticalRuntimeTelemetry == null) criticalRuntimeTelemetry = new CriticalThreadRuntimeTelemetry();
-            criticalRuntimeTelemetry.Record(stage, result, pid, started, forwardAttempt);
-        }
-
         // 未改动资源草案时不制造逐游戏覆盖 有改动时与策略共用同一份持久快照
         internal string SaveRenderSchedulingConfiguration(string profileId, string expected, string expectedResourceOverride,
             bool expectedResourceEnabled, CriticalThreadRule rule, bool? resourceEnabled)
@@ -227,9 +208,7 @@ namespace PaviseApp
                 }
                 string resourceError = ResourcePriorityDraftError(gameProfile, expectedResourceOverride, expectedResourceEnabled, resourceEnabled);
                 if (resourceError != null) return resourceError;
-                CriticalThreadRule savedRule = CriticalThreadRule.ParseForRuntime(CriticalThreadRule.Raw(gameProfile));
-                // 自动在运行时按实测容量决定放几条 余量不够就不放 保存时不拦
-                if (rule != null && rule.ClearCore && !rule.IsOrchestration)
+                if (rule.ClearCore)
                 {
                     CriticalThreadAllowedRange clearRange = CriticalThreadAllowedRange.For(gameProfile);
                     string clearError = clearRange.Error ?? rule.ClearCoreCapacityError(allMask, CpuTopology.PhysicalCoreMasks(), clearRange.Mask,
@@ -253,8 +232,8 @@ namespace PaviseApp
                 GameProfile gameProfile2 = gameProfile.Clone();
                 gameProfile2.Overrides[CriticalThreadRule.Key] = rule.Encode();
                 if (resourceEnabled.HasValue) gameProfile2.Overrides[PolicyCatalog.KeyBoost] = resourceEnabled.Value ? "1" : "0";
-                // 从旧关闭规则另存正式策略时 同笔保留关闭状态
-                if (savedRule != null && savedRule.IsOff)
+                // 只解除无可用模式的旧开启值 同次保存的模式仍保持关闭
+                if (RenderModeSaveWouldEnable(gameProfile, gameProfile2))
                     gameProfile2.Overrides[PolicyCatalog.KeyGameScheduling] = "0";
                 string beforeEnabled, afterEnabled;
                 gameProfile.Overrides.TryGetValue(PolicyCatalog.KeyGameScheduling, out beforeEnabled);
@@ -281,6 +260,14 @@ namespace PaviseApp
             }
             RaiseLibraryChanged();
             return null;
+        }
+
+        private static bool RenderModeSaveWouldEnable(GameProfile current, GameProfile draft)
+        {
+            if (PolicyResolver.For(draft).ValueOf(PolicyCatalog.KeyGameScheduling) != "1") return false;
+            CriticalThreadRule previous = PolicyResolver.StoredSchedulingRule(current);
+            CriticalThreadRule replacement = PolicyResolver.StoredSchedulingRule(draft);
+            return (previous == null || !previous.PinsRenderThread) && replacement != null && replacement.PinsRenderThread;
         }
 
         private static string ResourcePriorityDraftError(GameProfile current, string expectedOverride, bool expectedEnabled, bool? desired)

@@ -13,9 +13,9 @@ namespace PaviseApp
             "wtfast", "guguai", "steam++"
         };
 
-        private static readonly string[] Tokens = new string[30]
+        private static readonly string[] Tokens = new string[]
         {
-            "accelerat", "booster", "加速器", "xunyou", "leigod", "leishen", "qiyou", "biubiu", "dolphinq", "wtfast",
+            "accelerat", "gearup", "lagofast", "加速器", "xunyou", "leigod", "leishen", "qiyou", "biubiu", "dolphinq", "wtfast",
             "exitlag", "noping", "mudfish", "clash", "mihomo", "sing-box", "v2ray", "xray", "nekoray", "nekobox",
             "hiddify", "wireguard", "openvpn", "tailscale", "zerotier", "sstap", "netch", "guguai", "ggkuai", "古怪"
         };
@@ -27,6 +27,7 @@ namespace PaviseApp
                 return false;
             }
             name = WhitelistRule.NormalizeName(name);
+            if (string.Equals(name, "MpCopyAccelerator", StringComparison.OrdinalIgnoreCase)) return false;
             if (ProcessNames.Contains(name))
             {
                 return true;

@@ -395,6 +395,7 @@ namespace PaviseApp
                 return lolProcessSnapshot;
             }
             lolProcessSnapshot.ScanSucceeded = true;
+            if (!namesOnly) lolProcessSnapshot.CrossProcessCount = 0;
             Process[] processesSnapshot = processes;
             foreach (Process process in processesSnapshot)
             {
@@ -450,7 +451,7 @@ namespace PaviseApp
                     {
                         lolProcessSnapshot.WeGameMainRunning = true;
                     }
-                    if (IsUnder(path, CombineSafe(lolRoot, "Cross")))
+                    if (!namesOnly && IsUnder(path, CombineSafe(lolRoot, "Cross")))
                     {
                         lolProcessSnapshot.CrossProcessCount++;
                     }

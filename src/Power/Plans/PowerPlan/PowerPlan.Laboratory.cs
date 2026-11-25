@@ -77,6 +77,7 @@ namespace PaviseApp
                     || Current() != record.Plan || !ManagedPlans.IsOwned(record.Plan)) return Guid.Empty;
                 return record.Plan;
             }
+            public bool CpuPackagePowerAvailable { get { return EnergyMeter.Available; } }
             public bool EppSupported(Guid scheme)
             {
                 bool? ac, dc; ReadAutonomousScaling(scheme, out ac, out dc);

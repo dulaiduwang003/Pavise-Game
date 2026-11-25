@@ -8,28 +8,6 @@ namespace PaviseApp
 {
     internal static class FrameCoordination
     {
-        private sealed class OriginalCriticalRoles
-        {
-            internal readonly int Epoch;
-
-            internal readonly int Pid;
-
-            internal readonly long Birth;
-
-            internal readonly long Observed;
-
-            internal readonly CriticalThreadRoleFact[] Facts;
-
-            internal OriginalCriticalRoles(int epoch, int pid, long birth, long observed, CriticalThreadRoleFact[] facts)
-            {
-                Epoch = epoch;
-                Pid = pid;
-                Birth = birth;
-                Observed = observed;
-                Facts = facts;
-            }
-        }
-
         internal const string ActionKey = "FrameCoordination";
 
         internal const string JournalKey = "FrameCoordinationJournalV1";
@@ -82,7 +60,6 @@ namespace PaviseApp
 
         private static bool captureSessionStoreFailed;
 
-        private static OriginalCriticalRoles criticalRoles;
         private static ThreadLayoutCaptureRequest layoutObservation;
 
         internal static void ConfigureLayoutObservation(ThreadLayoutCaptureRequest request)
@@ -158,7 +135,7 @@ namespace PaviseApp
                 pid = target;
                 birth = created;
                 observing = false;
-                int epoch = NextEpochLocked(target, created);
+                int epoch = Interlocked.Increment(ref generation);
                 worker = new Thread((ThreadStart)delegate
                 {
                     Run(target, created, name, epoch, admitted, session);
@@ -282,10 +259,6 @@ namespace PaviseApp
                     if (frameCoordinationSample == null || frameCoordinationSample.Issue == FrameCaptureIssue.CaptureFailed || frameCoordinationSample.Issue == FrameCaptureIssue.DecodeFailed || frameCoordinationSample.Issue == FrameCaptureIssue.TraceStopFailed)
                     {
                         ActionFailureStore.Trip("FrameCoordination", name, (frameCoordinationSample == null) ? "Thread capture returned no result" : frameCoordinationSample.Detail);
-                    }
-                    if (frameCoordinationSample != null && frameCoordinationSample.Valid)
-                    {
-                        PublishCriticalRoles(frameCoordinationSample, epoch);
                     }
                     int appliedReleaseVersion;
                     bool applied;
@@ -825,7 +798,7 @@ namespace PaviseApp
                 return false;
             }
             bool restoreSucceeded = Restore();
-            if (restoreSucceeded & FrameCoordinationTrace.Heal())
+            if (restoreSucceeded & FrameCoordinationTrace.Heal() & FrameCaptureReservation.StopRuntime())
             {
                 return result;
             }
@@ -833,8 +806,11 @@ namespace PaviseApp
         }
 
         internal static bool HealFromCrash()
+        { return HealFromCrash(true); }
+
+        internal static bool HealFromCrash(bool recoverReservation)
         {
-            return FrameCoordinationTrace.Heal() & Restore();
+            return FrameCoordinationTrace.Heal() & (!recoverReservation || FrameCaptureReservation.Recover()) & Restore();
         }
 
         internal static void EnsureObserver(int target, long created, string name, Func<bool> admitted)
@@ -867,7 +843,7 @@ namespace PaviseApp
                     pid = target;
                     birth = created;
                     observing = true;
-                    int epoch = NextEpochLocked(target, created);
+                    int epoch = Interlocked.Increment(ref generation);
                     try
                     {
                         worker = new Thread((ThreadStart)delegate
@@ -884,7 +860,7 @@ namespace PaviseApp
                         observing = false;
                         worker = null;
                         state = 3;
-                        request.Complete(stage, new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
+                        request.Complete(stage, new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
                             .Reject(FrameCaptureIssue.CaptureFailed, Logger.Text("观察线程启动失败：", "Observer thread failed to start: ") + error.GetType().Name + " " + error.Message));
                     }
                 }
@@ -934,7 +910,6 @@ namespace PaviseApp
                 if (sample == null || sample.Issue == FrameCaptureIssue.Canceled || sample.Issue == FrameCaptureIssue.TargetChanged) return;
                 if (sample.PresentValid)
                 {
-                    PublishCriticalRoles(sample, epoch);
                     Logger.Info(Logger.Format("游戏调度 已观察到稳定呈现提交候选：{0} 进程编号={1} 呈现线程={2}；本次授权观察已结束，后续采集继续使用原请求剩余额度", "Game scheduling observed a stable presentation candidate: {0} pid={1} presentTid={2}; this authorized observation ended, later captures keep using the original request's remaining budget", name, target, sample.PresentTid));
                 }
             }
@@ -1172,16 +1147,7 @@ namespace PaviseApp
             return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly);
         }
 
-        private static FrameCoordinationSample TakeCapture(int target, long created, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation)
-        {
-            return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly, layoutObservation, workloadObservation);
-        }
-
-        private static FrameCoordinationSample TakeCapture(int target, long created, Func<bool> alive, bool presenterOnly, bool layoutObservation, bool workloadObservation, bool presentIdentityOnly)
-        {
-            return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly, layoutObservation, workloadObservation, presentIdentityOnly);
-        }
-
+#if PAVISE_SELFTEST
         private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive)
         { return TakeObserverCapture(target, created, alive, Volatile.Read(ref layoutObservation)); }
 
@@ -1191,105 +1157,32 @@ namespace PaviseApp
             if (request == null || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation))
                 || request.Pid != target || request.Birth != created || !request.TryBegin(AutoCores.NowTicks, out stage))
             {
-                // 观察入口只消费本次完整采集预算 等待 在途 耗尽及取消均不能另开轻量 ETW
+                // 观察入口只消费本次角色采集预算 等待 在途 耗尽及取消均不另开会话
                 bool changed = request != null && (request.Pid != target || request.Birth != created);
                 return new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
                     .Reject(changed ? FrameCaptureIssue.TargetChanged : FrameCaptureIssue.Canceled,
-                        changed ? Logger.Text("观察请求身份不匹配，未启动采集", "observation request identity mismatch; capture not started") : Logger.Text("尚未取得本次完整观察预算，未启动采集", "full observation budget for this round not obtained yet; capture not started"));
+                        changed ? Logger.Text("观察请求身份不匹配，未启动采集", "observation request identity mismatch; capture not started") : Logger.Text("尚未取得本次角色观察预算，未启动采集", "role observation budget for this round not obtained yet; capture not started"));
             }
             return TakeObserverCapture(target, created, alive, request, stage);
         }
 
+#endif
         private static FrameCoordinationSample TakeObserverCapture(int target, long created, Func<bool> alive, ThreadLayoutCaptureRequest request, int stage)
         {
             FrameCoordinationSample sample = null;
             try
             {
                 if (!alive() || !object.ReferenceEquals(request, Volatile.Read(ref layoutObservation)))
-                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
                         .Reject(FrameCaptureIssue.Canceled, Logger.Text("本次观察开始前资格已撤销，未启动采集", "eligibility revoked before this observation began; capture not started"));
                 // 恢复失败也结算本次有限观察 不能靠反复重建观察线程绕过预算
                 if (!(Restore() & FrameCoordinationTrace.Heal()))
-                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true, PresentIdentityOnly = request.PresentIdentityOnly }
+                    return sample = new FrameCoordinationSample { Pid = target, Birth = created, LayoutObservation = true }
                         .Reject(FrameCaptureIssue.TraceStopFailed, Logger.Text("既有线程或采集通道恢复尚未核验，未启动本次采集", "restore of existing threads or the capture channel not verified yet; this capture not started"));
-                sample = TakeCapture(target, created, alive, false, true, request.WorkloadObservation, request.PresentIdentityOnly);
+                sample = FrameCoordinationSampler.Capture(target, created, alive, false, request.Capture);
                 return sample;
             }
             finally { request.Complete(stage, sample); }
-        }
-
-        private static void PublishCriticalRoles(FrameCoordinationSample original, int originalEpoch)
-        {
-            PublishCriticalRolesAt(original, originalEpoch, AutoCores.NowTicks);
-        }
-
-        private static void PublishCriticalRolesAt(FrameCoordinationSample original, int originalEpoch, long observed)
-        {
-            if (original == null || !original.Valid || original.Issue != 0 || original.LostEvents != 0)
-            {
-                return;
-            }
-            lock (sync)
-            {
-                if (closed || originalEpoch != generation || original.Pid != pid || original.Birth != birth)
-                {
-                    return;
-                }
-                List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
-                long value;
-                if (original.PresentTid > 0 && original.Threads.TryGetValue(original.PresentTid, out value) && value > 0)
-                {
-                    list.Add(new CriticalThreadRoleFact(original.PresentTid, value, "presentation-associated"));
-                    if (original.WorkerTid > 0 && original.WorkerTid != original.PresentTid && original.Threads.TryGetValue(original.WorkerTid, out value) && value > 0)
-                    {
-                        list.Add(new CriticalThreadRoleFact(original.WorkerTid, value, "dependency-associated"));
-                    }
-                    criticalRoles = new OriginalCriticalRoles(originalEpoch, pid, birth, observed, list.ToArray());
-                }
-            }
-        }
-
-        private static int NextEpochLocked(int target, long created)
-        {
-            OriginalCriticalRoles originalCriticalRoles = criticalRoles;
-            int incrementResult = Interlocked.Increment(ref generation);
-            if (originalCriticalRoles != null && originalCriticalRoles.Epoch == incrementResult - 1 && originalCriticalRoles.Pid == target && originalCriticalRoles.Birth == created)
-            {
-                criticalRoles = new OriginalCriticalRoles(incrementResult, target, created, originalCriticalRoles.Observed, originalCriticalRoles.Facts);
-            }
-            return incrementResult;
-        }
-
-        internal static CriticalThreadRoleFact[] ReadCriticalRoles(int target, long processBirth, ThreadTimes latest, long now)
-        {
-            if (!CriticalThreadObservation.Valid(latest, processBirth, now))
-            {
-                return new CriticalThreadRoleFact[0];
-            }
-            lock (sync)
-            {
-                OriginalCriticalRoles originalCriticalRoles = criticalRoles;
-                if (closed || originalCriticalRoles == null || originalCriticalRoles.Epoch != generation || originalCriticalRoles.Pid != target || originalCriticalRoles.Birth != processBirth || pid != target || birth != processBirth || now < originalCriticalRoles.Observed || now - originalCriticalRoles.Observed > 650000000)
-                {
-                    return new CriticalThreadRoleFact[0];
-                }
-                Dictionary<long, long> dictionary = new Dictionary<long, long>();
-                for (int i = 0; i < latest.Ids.Length; i++)
-                {
-                    dictionary.Add(latest.Ids[i], latest.Created[i]);
-                }
-                List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
-                CriticalThreadRoleFact[] facts = originalCriticalRoles.Facts;
-                foreach (CriticalThreadRoleFact criticalThreadRoleFact in facts)
-                {
-                    long value;
-                    if (dictionary.TryGetValue(criticalThreadRoleFact.Tid, out value) && value == criticalThreadRoleFact.Creation)
-                    {
-                        list.Add(criticalThreadRoleFact);
-                    }
-                }
-                return list.ToArray();
-            }
         }
 
 #if PAVISE_SELFTEST
@@ -1312,12 +1205,6 @@ namespace PaviseApp
         internal static void ResetCaptureSessionsForTest()
         { lock (captureSessionGate) { captureSessions.Clear(); captureSessionsLoaded = captureSessionStoreFailed = false; } }
         internal static FrameCaptureSession CaptureSessionForTest(int target, long created) { return CaptureSession(target, created); }
-        internal static void SeedCriticalRolesForTest(FrameCoordinationSample sample, int epoch, long now)
-        {
-            lock (sync) { closed = false; generation = epoch; pid = sample.Pid; birth = sample.Birth; criticalRoles = null; }
-            PublishCriticalRolesAt(sample, epoch, now);
-        }
-        internal static void InvalidateCriticalRolesForTest() { lock (sync) generation++; }
         internal static void SetPlatformForTest(IFrameThreads replacement)
         { platform = replacement ?? new NativeFrameThreads(); FrameMemoryProtection.SetPlatformForTest(platform as IFrameThreadMemory); }
 #endif

@@ -134,6 +134,8 @@ namespace PaviseApp
             }
 
             public uint OrigPri;
+            public bool OrdinaryValues, OrdinaryPriorityOwned, OrdinaryTimerOwned, OrdinaryOwnershipJournalPending;
+            public OrdinaryFields OrdinaryResnapshot;
 
             public ulong OrigAff;
 
@@ -163,11 +165,13 @@ namespace PaviseApp
             public GameAffinityJobLease BackgroundJobs;
             // 资源 Job 写了限制时记它的名字 跟着日志落盘 崩溃后按名字解除
             public string ResourceJobName;
+            internal FocusJobReceipt FocusJob;
             public bool ResourceJobMayHaveIo;
             // 优先级锁已解除后先归还进程字段 归还完成的回执只负责磁盘限额
             public bool ResourceJobRestoringProcess, ResourceJobOnlyIo;
             // 本方开始压这个进程的时间 用 FILETIME 只有之后新建的子孙才可能继承到被压的值 崩溃恢复载入的条目为 0
             public long PressedSince;
+            public Dictionary<int, long> InheritanceChecks;
             public string BackgroundAffinityDetail;
 
             // Reasons 清空后及持久日志中 仍保留反作弊放置所有权
@@ -387,9 +391,6 @@ namespace PaviseApp
             }
         }
 
-        // 普通后台的临时提优限制使用本会话 Aggressive 标志 反作弊策略单独管理
-        internal static volatile bool BackgroundBoostLimit;
-
         public SuppressionCore()
             : this(null)
         {
@@ -400,7 +401,19 @@ namespace PaviseApp
             throttleMask = CpuTopology.ThrottleMask;
             allMask = CpuTopology.AllMask;
             journalPath = statePath;
+            RemoveRetiredOrdinaryAttempts(statePath);
             LoadJournal();
+        }
+
+        private static void RemoveRetiredOrdinaryAttempts(string statePath)
+        {
+            if (string.IsNullOrEmpty(statePath)) return;
+            foreach (string suffix in new[] { ".once", ".once.tmp", ".once.stale.bak" })
+            {
+                try { System.IO.File.Delete(statePath + suffix); }
+                catch (System.IO.DirectoryNotFoundException) { }
+                catch (Exception error) { Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), error); }
+            }
         }
 
         public bool HasReason(int pid, SuppressReason reason)
