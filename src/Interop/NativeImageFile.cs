@@ -14,9 +14,79 @@ namespace PaviseApp
         // 测试改用独立目录 不写真实数据目录
         internal static string RootForTest = null;
 
+        internal static bool IsLocalCandidate(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string baseDir = RootForTest ?? AppDomain.CurrentDomain.BaseDirectory;
+            if (string.IsNullOrEmpty(baseDir)) return false;
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                string fullBase = Path.GetFullPath(baseDir);
+                if (!fullBase.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.OrdinalIgnoreCase) &&
+                    !fullBase.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    fullBase += Path.DirectorySeparatorChar;
+                }
+                return fullPath.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        private static FileStream TryOpenSideBySide(string fileName, string sha256, out string path)
+        {
+            path = null;
+            string baseDir = RootForTest ?? AppDomain.CurrentDomain.BaseDirectory;
+            if (string.IsNullOrEmpty(baseDir)) return null;
+
+            string[] candidates = new string[]
+            {
+                Path.Combine(baseDir, fileName),
+                Path.Combine(baseDir, "native", fileName)
+            };
+
+            foreach (string candidate in candidates)
+            {
+                if (!File.Exists(candidate) || Reparse(candidate)) continue;
+                FileStream stream = null;
+                try
+                {
+                    stream = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using (SHA256 sha = SHA256.Create())
+                    {
+                        byte[] digest = sha.ComputeHash(stream);
+                        var text = new System.Text.StringBuilder(digest.Length * 2);
+                        foreach (byte value in digest) text.Append(value.ToString("x2", CultureInfo.InvariantCulture));
+                        if (string.Equals(text.ToString(), sha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            stream.Position = 0;
+                            path = candidate;
+                            FileStream held = stream;
+                            stream = null;
+                            return held;
+                        }
+                    }
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                finally
+                {
+                    if (stream != null) stream.Dispose();
+                }
+            }
+            return null;
+        }
+
         // 成功时返回已逐字节核对的只读句柄 调用方用完前一直持有 失败返回 null 并写明原因
         internal static FileStream Prepare(string base64, int length, string sha256, string fileName, out string path, out string reason)
         {
+            FileStream sideBySide = TryOpenSideBySide(fileName, sha256, out path);
+            if (sideBySide != null)
+            {
+                reason = "";
+                return sideBySide;
+            }
+
             path = null;
             byte[] image = Convert.FromBase64String(base64);
             string hash = Hash(image);
